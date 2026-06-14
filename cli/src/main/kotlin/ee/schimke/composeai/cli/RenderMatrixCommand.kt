@@ -11,6 +11,7 @@ import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
+import okio.Path.Companion.toPath
 
 /**
  * `compose-preview render-matrix` — the CLI counterpart of the `render_matrix` MCP tool
@@ -156,7 +157,7 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
   private fun matchesPreview(id: String): Boolean =
     when {
       exactId != null -> id == exactId
-      filter != null -> id.contains(filter!!)
+      filter != null -> id.contains(filter!!, ignoreCase = true)
       else -> true
     }
 
@@ -217,15 +218,16 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
       return null
     }
     val sheet = ContactSheet.stitch(tiles) ?: return null
-    val target =
-      contactSheetExplicitPath?.let { File(it) }
-        ?: File(
-          module.projectDir,
-          "build/compose-previews/${previewId.replace(Regex("[^A-Za-z0-9._-]"), "_")}-matrix.png",
-        )
-    target.parentFile?.mkdirs()
-    target.writeBytes(sheet)
-    return target
+    // Production IO goes through the injected Okio FileSystem (docs/AGENTS.md), so tests can drive
+    // the write through a FakeFileSystem; bridge back to File only for the reported path.
+    val targetPath =
+      contactSheetExplicitPath?.toPath()
+        ?: (module.projectDir.path.toPath() /
+          "build/compose-previews" /
+          "${previewId.replace(Regex("[^A-Za-z0-9._-]"), "_")}-matrix.png")
+    targetPath.parent?.let { fileSystem.createDirectories(it) }
+    fileSystem.write(targetPath) { write(sheet) }
+    return File(targetPath.toString())
   }
 
   private fun renderJson(

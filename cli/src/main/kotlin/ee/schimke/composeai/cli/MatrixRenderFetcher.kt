@@ -102,7 +102,14 @@ internal class MatrixRenderFetcher(
                 null
               }
 
-            val rejected = ack?.rejected?.firstOrNull { it.id == previewId }
+            // renderNow threw: nothing was queued, so no renderFinished will arrive — don't burn
+            // the full render timeout waiting on a render that never started.
+            if (ack == null) {
+              results += CellResult(cell, png = null)
+              continue
+            }
+
+            val rejected = ack.rejected.firstOrNull { it.id == previewId }
             if (rejected != null) {
               onLog("render rejected for cell '${cell.label}': ${rejected.reason}")
               results += CellResult(cell, png = null)

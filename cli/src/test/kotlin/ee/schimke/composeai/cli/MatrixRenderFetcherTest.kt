@@ -120,6 +120,35 @@ class MatrixRenderFetcherTest {
   }
 
   @Test
+  fun `a renderNow failure fails the cell fast without waiting the render timeout`() {
+    val projectDir = newTempFolder("matrix-render-throws")
+    writeDescriptor(projectDir)
+    val fetcher = MatrixRenderFetcher(factory = FakeFactory(throwOnRender = true))
+
+    var outcome: MatrixRenderFetcher.Outcome? = null
+    val elapsedMs =
+      kotlin.system.measureTimeMillis {
+        outcome =
+          fetcher.fetch(
+            projectDir = projectDir,
+            moduleName = "sample",
+            previewId = "com.example.Red",
+            cells = listOf(MatrixCell(uiMode = "light")),
+          )
+      }
+
+    // The render timeout is 180s; a renderNow that threw must not block on a render that never
+    // started, so the call returns near-instantly rather than waiting it out.
+    assertTrue(
+      elapsedMs < 30_000,
+      "renderNow failure must not wait the render timeout (took ${elapsedMs}ms)",
+    )
+    val ok = outcome
+    assertTrue(ok is MatrixRenderFetcher.Outcome.Ok, "expected Ok, got $ok")
+    assertNull(ok.cells.single().png, "a renderNow failure must yield a null png")
+  }
+
+  @Test
   fun `missing descriptor returns DescriptorMissing`() {
     val projectDir = newTempFolder("matrix-no-descriptor")
     val outcome =
@@ -151,13 +180,17 @@ class MatrixRenderFetcherTest {
   // -------------------------------------------------------------------------
   // Fake factory + session
 
-  private class FakeFactory(private val rejectDevice: String? = null) : RenderSessionFactory {
+  private class FakeFactory(
+    private val rejectDevice: String? = null,
+    private val throwOnRender: Boolean = false,
+  ) : RenderSessionFactory {
     override val backendKind: RenderSessionBackend = RenderSessionBackend.Subprocess
 
     override fun open(config: RenderSessionConfig): RenderSession =
       FakeSession(
         renderRoot = File(config.workspaceRoot, "build/compose-previews/renders"),
         rejectDevice = rejectDevice,
+        throwOnRender = throwOnRender,
       )
   }
 
@@ -174,8 +207,11 @@ class MatrixRenderFetcherTest {
    * yield identical bytes), then emits the `renderFinished` the fetcher waits on. A cell whose
    * device matches [rejectDevice] is rejected instead.
    */
-  private class FakeSession(private val renderRoot: File, private val rejectDevice: String?) :
-    RenderSession {
+  private class FakeSession(
+    private val renderRoot: File,
+    private val rejectDevice: String?,
+    private val throwOnRender: Boolean = false,
+  ) : RenderSession {
     private val listeners = java.util.concurrent.CopyOnWriteArrayList<NotificationListener>()
     private var counter = 0
 
@@ -211,6 +247,7 @@ class MatrixRenderFetcherTest {
       timeout: kotlin.time.Duration,
     ): RenderNowResult {
       val id = previewIds.single()
+      if (throwOnRender) throw RenderSessionException("simulated renderNow transport error")
       if (rejectDevice != null && overrides?.device == rejectDevice) {
         return RenderNowResult(
           queued = emptyList(),
