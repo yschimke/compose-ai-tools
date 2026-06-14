@@ -77,15 +77,24 @@ internal fun renderInitScript(pluginVersion: String): String =
 // publish the CLI's own release version to `~/.m2` and resolve from there
 // rather than Maven Central.
 //
-// Auto-inject is suppressed for modules that apply
-// `com.android.kotlin.multiplatform.library` — the AGP-KMP plugin's single
-// `android` variant trips a variant-ambiguity error on
-// `androidRuntimeClasspath` once the renderer-android artifact view kicks in,
-// breaking `compose-preview show` for any project where the plugin landed
-// purely via auto-inject. The supported KMP-Android layout
-// (samples/cmp-shared, with a `jvm("desktop")` target) still works when the
-// user adds `id("ee.schimke.composeai.preview")` to that module's plugins {}
-// block themselves — we just no longer apply it implicitly.
+// Modules that apply `com.android.kotlin.multiplatform.library` (AGP 9's
+// KMP-Android library plugin) are auto-injected like any other Compose module —
+// the init script's `withPlugin("com.android.kotlin.multiplatform.library")` hook
+// applies the plugin, and the plugin's own apply() routes them through the
+// Compose Multiplatform Desktop pipeline (the matching withPlugin hook in
+// ComposePreviewPlugin -> ComposePreviewTasks.registerDesktopTasks). So the
+// canonical layout — a `:shared` module with an `androidMain` target plus a
+// `jvm("desktop")` target (samples/cmp-shared) — previews without the user
+// pre-applying `id("ee.schimke.composeai.preview")` themselves.
+//
+// A pure KMP-Android module with NO `jvm("desktop")` target has no JVM-flavoured
+// runtime classpath, so the desktop renderer can't drive it: its only runtime
+// config is `androidRuntimeClasspath`, which carries `*-android` Compose AARs
+// that reference `android.os.Parcelable` and explode in a host JVM. That case
+// fails soft in the plugin — `validateComposePreviewDesktopRenderClasspath`
+// aborts the render task with an actionable "add a `jvm("desktop")` target"
+// message, and the discovery / Tooling-API model paths resolve leniently — so
+// auto-injecting the plugin id build-wide never crashes the whole query.
 //
 // When the consumer's settings file declares `exclusiveContent { ... }`
 // inside `pluginManagement { repositories { ... } }` (the Confetti shape;
@@ -118,7 +127,6 @@ val useMavenLocal = pluginVersion.endsWith("-SNAPSHOT") ||
     System.getenv("COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL") == "1"
 
 var composeAiPreviewPreAppliedDirs: Set<java.io.File> = emptySet()
-var composeAiPreviewKmpAndroidDirs: Set<java.io.File> = emptySet()
 var composeAiPreviewSettingsHasExclusiveContent: Boolean = false
 // Projects that declare their own `buildscript { repositories { ... } }` block — populated
 // at settingsEvaluated time. Only consulted when composeAiPreviewSettingsHasExclusiveContent
@@ -142,30 +150,6 @@ fun composeAiPreviewCatalogAccessors(rootDir: java.io.File): List<Regex> {
         "(?m)^[ \\t]*([A-Za-z0-9_.\\-]+)\\s*=\\s*(?:" +
             "\\{[^}]*\\bid\\s*=\\s*\"ee\\.schimke\\.composeai\\.preview\"[^}]*\\}|" +
             "\"ee\\.schimke\\.composeai\\.preview(?::[^\"]*)?\"" +
-            ")"
-    )
-    return entryRe.findAll(section).map { match ->
-        val accessor = match.groupValues[1].replace(Regex("[-_]"), ".")
-        Regex("\\blibs\\s*\\.\\s*plugins\\s*\\.\\s*" + Regex.escape(accessor) + "\\b")
-    }.toList()
-}
-
-// Catalog-alias accessors for `com.android.kotlin.multiplatform.library` — same shape as
-// composeAiPreviewCatalogAccessors but pinned to the KMP-Android plugin id so a module
-// declaring it via `alias(libs.plugins.android.kotlin.multiplatform.library)` is detected
-// alongside the literal `id("com.android.kotlin.multiplatform.library")` form.
-fun composeAiPreviewKmpAndroidCatalogAccessors(rootDir: java.io.File): List<Regex> {
-    val catalog = java.io.File(rootDir, "gradle/libs.versions.toml")
-    if (!catalog.isFile) return emptyList()
-    val text = runCatching { catalog.readText() }.getOrNull() ?: return emptyList()
-    val pluginsHeader = Regex("(?m)^\\[plugins\\]\\s*${'$'}").find(text) ?: return emptyList()
-    val sectionStart = pluginsHeader.range.last + 1
-    val nextSection = Regex("(?m)^\\[").find(text, sectionStart)
-    val section = text.substring(sectionStart, nextSection?.range?.first ?: text.length)
-    val entryRe = Regex(
-        "(?m)^[ \\t]*([A-Za-z0-9_.\\-]+)\\s*=\\s*(?:" +
-            "\\{[^}]*\\bid\\s*=\\s*\"com\\.android\\.kotlin\\.multiplatform\\.library\"[^}]*\\}|" +
-            "\"com\\.android\\.kotlin\\.multiplatform\\.library(?::[^\"]*)?\"" +
             ")"
     )
     return entryRe.findAll(section).map { match ->
@@ -215,42 +199,6 @@ fun scanForComposeAiPreviewDeclaration(
             val raw = runCatching { buildFile.readText() }.getOrNull() ?: continue
             val text = composeAiPreviewStripComments(raw)
             if (literalVersionedRe.containsMatchIn(text)) {
-                declared.add(dir)
-                break
-            }
-            if (catalogAccessors.any { it.containsMatchIn(text) }) {
-                declared.add(dir)
-                break
-            }
-        }
-    }
-    return declared
-}
-
-// Scan for modules that apply `com.android.kotlin.multiplatform.library` — auto-inject
-// skips both the buildscript classpath injection and the withPlugin apply hooks for these
-// dirs. Applying compose-preview to a KMP-Android module trips an AGP-KMP variant model
-// mismatch on `androidRuntimeClasspath` once the consumer's CLI run resolves the renderer's
-// artifact view. Users who explicitly want previews on a KMP-Android module can add
-// `id("ee.schimke.composeai.preview")` to that module's plugins {} block themselves — the
-// supported layout in samples/cmp-shared (with a `jvm("desktop")` target) still works that
-// way; we just don't apply it implicitly anymore.
-fun scanForKmpAndroidDeclaration(
-    rootDir: java.io.File,
-    projectDirs: List<java.io.File>,
-): Set<java.io.File> {
-    val catalogAccessors = composeAiPreviewKmpAndroidCatalogAccessors(rootDir)
-    val literalRe = Regex(
-        "\\bid\\s*[(\\s]\\s*[\"']com\\.android\\.kotlin\\.multiplatform\\.library[\"']"
-    )
-    val declared = LinkedHashSet<java.io.File>()
-    for (dir in projectDirs) {
-        for (name in listOf("build.gradle.kts", "build.gradle")) {
-            val buildFile = java.io.File(dir, name)
-            if (!buildFile.isFile) continue
-            val raw = runCatching { buildFile.readText() }.getOrNull() ?: continue
-            val text = composeAiPreviewStripComments(raw)
-            if (literalRe.containsMatchIn(text)) {
                 declared.add(dir)
                 break
             }
@@ -420,7 +368,6 @@ gradle.settingsEvaluated {
     }
     collect(rootProject)
     composeAiPreviewPreAppliedDirs = scanForComposeAiPreviewDeclaration(rootDir, projectDirs)
-    composeAiPreviewKmpAndroidDirs = scanForKmpAndroidDeclaration(rootDir, projectDirs)
     composeAiPreviewSettingsHasExclusiveContent =
         composeAiPreviewSettingsDeclaresExclusiveContent(settingsDir)
     // Only walk the buildscript-repos scan when it matters — in the non-exclusiveContent
@@ -456,28 +403,19 @@ gradle.settingsEvaluated {
 
 allprojects {
     if (composeAiPreviewIsIncludedBuild) return@allprojects
-    // Skip BOTH the buildscript classpath injection AND the apply hooks for KMP-Android
-    // modules. Doing only one half leaves the other half active: skipping the classpath
-    // injection alone still fires the withPlugin hooks (which then fail to find the plugin
-    // class), and skipping only the hooks still drags an unused plugin marker onto the
-    // buildscript classpath. Both halves gated together is the safe shape — see
-    // scanForKmpAndroidDeclaration() above for the rationale.
-    val composeAiPreviewSkipKmpAndroid = projectDir in composeAiPreviewKmpAndroidDirs
-
     // In the exclusiveContent shape we can't add repositories to buildscript.repositories
     // (Gradle 9.3+ rejects it; issues #1470, #1482), so projects that don't already have
     // their own buildscript repos have no way to resolve our classpath dep — adding it
     // there would only produce `Cannot resolve external dependency ... because no
     // repositories are defined` at configuration time, which short-circuits the entire
     // Tooling API query (the 0.11.8 regression). Skip the injection wholesale for those
-    // projects; they silently miss the plugin, the same as projects that we explicitly
-    // skip for KMP-Android, and the user's recourse is the same plugins { } DSL apply.
+    // projects; they silently miss the plugin, and the user's recourse is the
+    // plugins { } DSL apply.
     val composeAiPreviewSkipExclusiveContentClasspathDep =
         composeAiPreviewSettingsHasExclusiveContent &&
             projectDir !in composeAiPreviewProjectsWithOwnBuildscriptRepos
 
-    if (!composeAiPreviewSkipKmpAndroid &&
-        !composeAiPreviewSkipExclusiveContentClasspathDep &&
+    if (!composeAiPreviewSkipExclusiveContentClasspathDep &&
         projectDir !in composeAiPreviewPreAppliedDirs) {
         buildscript {
             // When the settings file declares `exclusiveContent { ... }` in `pluginManagement {
@@ -504,7 +442,6 @@ allprojects {
         }
     }
 
-    if (composeAiPreviewSkipKmpAndroid) return@allprojects
     // No buildscript classpath dep was injected and the project doesn't pre-apply, so
     // `pluginManager.apply(...)` from the withPlugin hooks would fail with "Plugin with id
     // ... not found." Skipping the hooks keeps the failure mode quiet — non-preview
@@ -519,6 +456,14 @@ allprojects {
 
     pluginManager.withPlugin("com.android.application") { applyComposeAiPreview() }
     pluginManager.withPlugin("com.android.library") { applyComposeAiPreview() }
+    // `com.android.kotlin.multiplatform.library` (AGP 9's KMP-Android library plugin) is
+    // applied like any other Compose module; ComposePreviewPlugin's matching withPlugin hook
+    // routes it through the Compose Multiplatform Desktop pipeline. The canonical
+    // `:shared` + `jvm("desktop")` layout previews without a manual apply; a pure
+    // KMP-Android module with no desktop target fails soft in the plugin (the desktop
+    // render-classpath guard aborts with an actionable message) rather than crashing the
+    // CLI's Tooling-API query — see the header comment.
+    pluginManager.withPlugin("com.android.kotlin.multiplatform.library") { applyComposeAiPreview() }
     pluginManager.withPlugin("org.jetbrains.compose") { applyComposeAiPreview() }
 }
 """
