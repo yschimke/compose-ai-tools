@@ -25,7 +25,10 @@ A **data product** is `(kind, schemaVersion, payload)`:
   `fonts/*`, `test/*`. New namespaces are fair game; pick one whose
   intent is obvious on the wire.
 - `schemaVersion` — positive integer, owned by the kind. Bumped only
-  on incompatible payload changes; additive fields don't bump.
+  on incompatible payload changes; additive fields don't bump. The main
+  report payloads have **published JSON schemas** under
+  [`schema/`](../../schema/README.md), validated against representative
+  payloads in CI so the wire shape and its schema can't drift.
 - `payload` — JSON. Shape per-kind, documented alongside the kind.
 
 Transports:

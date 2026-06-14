@@ -1,0 +1,25 @@
+{
+  "findings": [
+    {
+      "level": "ERROR",
+      "type": "TouchTargetSizeCheck",
+      "message": "This item's height is 32dp. Consider making the height of this touch target 48dp or larger.",
+      "viewDescription": "Submit button",
+      "boundsInScreen": "40,560,200,624"
+    },
+    {
+      "level": "WARNING",
+      "type": "TextContrastCheck",
+      "message": "This item's text contrast ratio is 3.10. Consider increasing this to 4.50.",
+      "viewDescription": "Subtitle label",
+      "boundsInScreen": "24,120,336,160"
+    },
+    {
+      "level": "INFO",
+      "type": "SpeakableTextPresentCheck",
+      "message": "This clickable item may not have a label readable by screen readers.",
+      "viewDescription": null,
+      "boundsInScreen": null
+    }
+  ]
+}

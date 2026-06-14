@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://schimke.ee/composeai/compose-semantics.schema.json",
+  "title": "ComposeSemanticsPayload",
+  "description": "Payload for the `compose/semantics` data product: the Compose semantics tree projected for a render. Kotlin source of truth: ComposeSemanticsPayload / ComposeSemanticsNode in :data-layoutinspector-core. Each node carries a stable `ref` (see #1784).",
+  "x-composeai": {
+    "kind": "compose/semantics",
+    "schemaVersion": 2,
+    "kotlinType": "ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload",
+    "kotlinConst": "ComposeSemanticsProduct.SCHEMA_VERSION",
+    "fixture": "vscode-extension/preview-harness/fixtures/inspection-tree.json"
+  },
+  "definitions": {
+    "ComposeSemanticsNode": {
+      "type": "object",
+      "required": ["nodeId", "boundsInRoot"],
+      "properties": {
+        "nodeId": { "type": "string" },
+        "ref": { "type": ["string", "null"], "description": "Stable content-independent handle." },
+        "boundsInRoot": { "type": "string", "description": "`left,top,right,bottom`." },
+        "label": { "type": ["string", "null"] },
+        "text": { "type": ["string", "null"] },
+        "layoutText": { "type": ["string", "null"] },
+        "layoutFontSize": { "type": ["string", "null"] },
+        "layoutForegroundColor": { "type": ["string", "null"] },
+        "layoutBackgroundColor": { "type": ["string", "null"] },
+        "layoutLineCount": { "type": ["integer", "null"] },
+        "layoutMaxLines": { "type": ["integer", "null"] },
+        "layoutOverflow": { "type": ["string", "null"] },
+        "layoutTruncated": { "type": ["boolean", "null"] },
+        "layoutDidOverflowWidth": { "type": ["boolean", "null"] },
+        "layoutDidOverflowHeight": { "type": ["boolean", "null"] },
+        "editableText": { "type": ["string", "null"] },
+        "inputText": { "type": ["string", "null"] },
+        "role": { "type": ["string", "null"] },
+        "testTag": { "type": ["string", "null"] },
+        "mergeMode": { "type": ["string", "null"] },
+        "clickable": { "type": "boolean", "description": "Defaults to false; omitted when default." },
+        "children": { "type": "array", "items": { "$ref": "#/definitions/ComposeSemanticsNode" }, "description": "Omitted when empty." }
+      }
+    },
+    "ComposeSemanticsPayload": {
+      "type": "object",
+      "required": ["root"],
+      "properties": {
+        "root": { "$ref": "#/definitions/ComposeSemanticsNode" }
+      }
+    }
+  },
+  "$ref": "#/definitions/ComposeSemanticsPayload"
+}

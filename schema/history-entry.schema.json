@@ -1,0 +1,107 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://schimke.ee/composeai/history-entry.schema.json",
+  "title": "HistoryEntry",
+  "description": "The sidecar metadata recorded for a single archived render. Written next to the PNG by the daemon's history sources and committed to the reporting branch as `entry.json`. Prose spec: docs/daemon/HISTORY.md (§ Sidecar metadata) and docs/daemon/REPORTING-BRANCH.md. Forward-compatible: consumers ignore unknown fields; additive fields do not bump the version.",
+  "x-composeai": {
+    "kind": "history/entry",
+    "schemaVersion": 1,
+    "kotlinType": "ee.schimke.composeai.daemon.history.HistoryEntry",
+    "example": "schema/examples/history-entry.json"
+  },
+  "definitions": {
+    "HistorySourceInfo": {
+      "type": "object",
+      "description": "Which storage backend this entry was read from. Filled in by the reader, not the writer.",
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["fs", "git", "http"] },
+        "id": { "type": "string", "description": "Stable identifier for the source, e.g. `fs:/abs/.compose-preview-history` or `git:refs/heads/preview/main@<sha>`." }
+      }
+    },
+    "WorktreeInfo": {
+      "type": "object",
+      "description": "The working tree the render was produced in.",
+      "properties": {
+        "path": { "type": ["string", "null"] },
+        "id": { "type": ["string", "null"], "description": "Worktree dir basename, or the COMPOSEAI_WORKTREE_ID override." },
+        "agentId": { "type": ["string", "null"], "description": "Populated when COMPOSEAI_AGENT_ID is set." }
+      }
+    },
+    "GitInfo": {
+      "type": "object",
+      "description": "Git provenance of the working tree at render time.",
+      "properties": {
+        "branch": { "type": ["string", "null"], "description": "null in detached HEAD." },
+        "commit": { "type": ["string", "null"] },
+        "shortCommit": { "type": ["string", "null"] },
+        "dirty": { "type": ["boolean", "null"] },
+        "remote": { "type": ["string", "null"] }
+      }
+    },
+    "RenderMetrics": {
+      "type": "object",
+      "description": "Render-time resource metrics.",
+      "required": ["heapAfterGcMb", "nativeHeapMb", "sandboxAgeRenders", "sandboxAgeMs"],
+      "properties": {
+        "heapAfterGcMb": { "type": "integer" },
+        "nativeHeapMb": { "type": "integer" },
+        "sandboxAgeRenders": { "type": "integer" },
+        "sandboxAgeMs": { "type": "integer" }
+      }
+    },
+    "PreviewMetadataSnapshot": {
+      "type": "object",
+      "description": "Preview metadata frozen at render time.",
+      "properties": {
+        "displayName": { "type": ["string", "null"] },
+        "group": { "type": ["string", "null"] },
+        "sourceFile": { "type": ["string", "null"] },
+        "config": { "type": ["string", "null"] }
+      }
+    },
+    "HistoryDelta": {
+      "type": "object",
+      "description": "Cheap delta vs the previous entry of the same preview.",
+      "required": ["pngHashChanged"],
+      "properties": {
+        "pngHashChanged": { "type": "boolean" },
+        "diffPx": { "type": ["integer", "null"], "description": "Pixel-mode only (H5); null in metadata mode." },
+        "ssim": { "type": ["number", "null"], "description": "Pixel-mode only (H5); null in metadata mode." }
+      }
+    },
+    "HistoryEntry": {
+      "type": "object",
+      "required": [
+        "id", "previewId", "module", "timestamp",
+        "pngHash", "pngSize", "pngPath",
+        "producer", "trigger", "source", "renderTookMs"
+      ],
+      "properties": {
+        "id": { "type": "string", "description": "On the FS source `<utc-timestamp>-<short-hash>`; on the reporting branch `<shortCommit>:<previewId>`." },
+        "previewId": { "type": "string" },
+        "module": { "type": "string", "description": "Gradle module path, e.g. `:samples:android`." },
+        "timestamp": { "type": "string", "format": "date-time", "description": "ISO-8601 UTC." },
+        "pngHash": { "type": "string", "description": "Full SHA-256 hex of the PNG bytes." },
+        "pngSize": { "type": "integer" },
+        "pngPath": { "type": "string", "description": "Path to the PNG relative to this sidecar." },
+        "producer": { "type": "string", "enum": ["daemon", "gradle", "manual"] },
+        "trigger": {
+          "type": "string",
+          "enum": ["initial", "renderNow", "fileChanged", "discoveryUpdated", "setVisible", "recycleResume", "manual"]
+        },
+        "triggerDetail": { "description": "Per-trigger free-form JSON; consumers ignore unknown shapes." },
+        "source": { "$ref": "#/definitions/HistorySourceInfo" },
+        "worktree": { "$ref": "#/definitions/WorktreeInfo" },
+        "git": { "$ref": "#/definitions/GitInfo" },
+        "renderTookMs": { "type": "integer" },
+        "metrics": { "$ref": "#/definitions/RenderMetrics" },
+        "previewMetadata": { "$ref": "#/definitions/PreviewMetadataSnapshot" },
+        "previousId": { "type": ["string", "null"] },
+        "deltaFromPrevious": { "$ref": "#/definitions/HistoryDelta" },
+        "semantics": { "description": "Optional inline semantics snapshot (JSON); see compose-semantics.schema.json." }
+      }
+    }
+  },
+  "$ref": "#/definitions/HistoryEntry"
+}

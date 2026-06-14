@@ -1,0 +1,13 @@
+{
+  "totalMs": 234,
+  "phases": [
+    { "name": "render", "startMs": 0, "durationMs": 234 }
+  ],
+  "metrics": {
+    "classloadMs": 12,
+    "composeMs": 140,
+    "measureMs": 41,
+    "drawMs": 41,
+    "tookMs": 234
+  }
+}

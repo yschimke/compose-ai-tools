@@ -1,0 +1,31 @@
+{
+  "id": "6af6b8c:com.example.OnboardingKt.WelcomeScreenPreview",
+  "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
+  "module": ":samples:android",
+  "timestamp": "2026-04-30T10:12:34Z",
+  "pngHash": "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90",
+  "pngSize": 4218,
+  "pngPath": "render.png",
+  "producer": "daemon",
+  "trigger": "fileChanged",
+  "triggerDetail": { "kind": "source", "path": "/abs/path/Onboarding.kt" },
+  "source": { "kind": "git", "id": "git:refs/heads/preview/main@6af6b8c1" },
+  "worktree": { "path": "/home/yuri/workspace/compose-ai-tools", "id": "main", "agentId": null },
+  "git": {
+    "branch": "main",
+    "commit": "6af6b8c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7",
+    "shortCommit": "6af6b8c",
+    "dirty": false,
+    "remote": "https://github.com/yschimke/compose-ai-tools"
+  },
+  "renderTookMs": 234,
+  "metrics": { "heapAfterGcMb": 312, "nativeHeapMb": 540, "sandboxAgeRenders": 17, "sandboxAgeMs": 81234 },
+  "previewMetadata": {
+    "displayName": "Welcome screen",
+    "group": "onboarding",
+    "sourceFile": "/abs/path/Onboarding.kt",
+    "config": "phone-portrait"
+  },
+  "previousId": "5db5a7b:com.example.OnboardingKt.WelcomeScreenPreview",
+  "deltaFromPrevious": { "pngHashChanged": true, "diffPx": null, "ssim": null }
+}

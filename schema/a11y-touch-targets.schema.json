@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://schimke.ee/composeai/a11y-touch-targets.schema.json",
+  "title": "AccessibilityTouchTargetsPayload",
+  "description": "Payload for the `a11y/touchTargets` data product: per-target touch-size (48dp) and overlap findings for a render. Kotlin source of truth: AccessibilityTouchTargetsPayload / AccessibilityTouchTarget in :data-a11y-core.",
+  "x-composeai": {
+    "kind": "a11y/touchTargets",
+    "schemaVersion": 1,
+    "kotlinType": "ee.schimke.composeai.renderer.AccessibilityTouchTargetsPayload",
+    "kotlinConst": "AccessibilityDataProducts.SCHEMA_VERSION",
+    "example": "schema/examples/a11y-touch-targets.json"
+  },
+  "definitions": {
+    "AccessibilityTouchTarget": {
+      "type": "object",
+      "required": ["nodeId", "boundsInScreen", "widthDp", "heightDp", "findings"],
+      "properties": {
+        "nodeId": { "type": "string" },
+        "boundsInScreen": { "type": "string", "description": "`left,top,right,bottom` in pixels." },
+        "widthDp": { "type": "number" },
+        "heightDp": { "type": "number" },
+        "findings": { "type": "array", "items": { "type": "string" } },
+        "overlappingNodeIds": { "type": ["array", "null"], "items": { "type": "string" } }
+      }
+    },
+    "AccessibilityTouchTargetsPayload": {
+      "type": "object",
+      "required": ["targets"],
+      "properties": {
+        "targets": { "type": "array", "items": { "$ref": "#/definitions/AccessibilityTouchTarget" } }
+      }
+    }
+  },
+  "$ref": "#/definitions/AccessibilityTouchTargetsPayload"
+}

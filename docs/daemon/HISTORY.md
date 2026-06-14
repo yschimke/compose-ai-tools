@@ -75,6 +75,11 @@ renders inside the same second.
 }
 ```
 
+The entry shape is published as a JSON schema —
+[`schema/history-entry.schema.json`](../../schema/history-entry.schema.json) —
+and the per-render data products archived alongside it (a11y, semantics,
+theme, …) have their own schemas under [`schema/`](../../schema/README.md).
+
 `index.jsonl` carries the same fields minus the two heavy snapshots,
 `previewMetadata` and `semantics` — readers fetch the full sidecar via
 `history/read` (metadata) or `history/diff mode=semantics` (the tree).
@@ -279,9 +284,17 @@ The default `.compose-preview-history/` directory. Read-write.
 ### `GitRefHistorySource`
 
 Mirrors render output to a parallel git ref (e.g.
-`refs/heads/preview/<branch>`). Each render burst is one commit;
-`HistoryEntry.git.commit` records which working-tree commit produced
-the render.
+`refs/heads/preview/<branch>`) — the **reporting branch**. Each render
+burst is one commit; `HistoryEntry.git.commit` records which
+working-tree commit produced the render.
+
+The on-ref layout is **not** the FS `<timestamp>-<hash>` + `index.jsonl`
+shape; it is the "git-as-the-log" contract — stable, overwritten
+per-preview paths (`<previewId>/render.png` + `entry.json` + optional
+data-product sidecars), one commit per changed render, history via
+`git log`. The full contract is in
+[`REPORTING-BRANCH.md`](REPORTING-BRANCH.md) (#1868); the write/push path
+that produces it is #1870.
 
 Configured via `composeai.daemon.gitRefHistory` (comma-separated full
 ref names). Empty / unset means no `GitRefHistorySource`. Suggested

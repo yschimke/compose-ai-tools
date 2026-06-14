@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://schimke.ee/composeai/compose-semantics-diff.schema.json",
+  "title": "SemanticsDelta",
+  "description": "Payload for the `compose-semantics-diff/v1` derived product: the structural diff between two semantics trees (nodes added / removed / changed, keyed by stable `ref`). Kotlin source of truth: SemanticsDelta in :data-layoutinspector-core. The `schema` discriminator is always emitted (@EncodeDefault).",
+  "x-composeai": {
+    "kind": "compose-semantics-diff/v1",
+    "schemaVersion": 1,
+    "kotlinType": "ee.schimke.composeai.data.layoutinspector.SemanticsDelta",
+    "kotlinConst": "SemanticsDiffProduct.SCHEMA",
+    "example": "schema/examples/compose-semantics-diff.json"
+  },
+  "definitions": {
+    "SemanticsNodeSummary": {
+      "type": "object",
+      "required": ["ref"],
+      "properties": {
+        "ref": { "type": "string" },
+        "role": { "type": ["string", "null"] },
+        "testTag": { "type": ["string", "null"] },
+        "text": { "type": ["string", "null"] },
+        "label": { "type": ["string", "null"] }
+      }
+    },
+    "SemanticsFieldChange": {
+      "type": "object",
+      "required": ["field", "from", "to"],
+      "properties": {
+        "field": { "type": "string" },
+        "from": { "type": ["string", "null"] },
+        "to": { "type": ["string", "null"] }
+      }
+    },
+    "SemanticsNodeChange": {
+      "type": "object",
+      "required": ["ref", "changes"],
+      "properties": {
+        "ref": { "type": "string" },
+        "anchor": { "type": ["string", "null"] },
+        "changes": { "type": "array", "items": { "$ref": "#/definitions/SemanticsFieldChange" } }
+      }
+    },
+    "SemanticsDelta": {
+      "type": "object",
+      "required": ["schema"],
+      "properties": {
+        "schema": { "type": "string", "const": "compose-semantics-diff/v1" },
+        "added": { "type": "array", "items": { "$ref": "#/definitions/SemanticsNodeSummary" } },
+        "removed": { "type": "array", "items": { "$ref": "#/definitions/SemanticsNodeSummary" } },
+        "changed": { "type": "array", "items": { "$ref": "#/definitions/SemanticsNodeChange" } }
+      }
+    }
+  },
+  "$ref": "#/definitions/SemanticsDelta"
+}

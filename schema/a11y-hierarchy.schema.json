@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://schimke.ee/composeai/a11y-hierarchy.schema.json",
+  "title": "AccessibilityHierarchyPayload",
+  "description": "Payload for the `a11y/hierarchy` data product: the screen-reader-facing accessibility node list for a render. Kotlin source of truth: AccessibilityHierarchyPayload / AccessibilityNode in :data-a11y-core. The `ref` is a stable, content-independent handle (see #1784) that round-trips into interaction calls.",
+  "x-composeai": {
+    "kind": "a11y/hierarchy",
+    "schemaVersion": 1,
+    "kotlinType": "ee.schimke.composeai.renderer.AccessibilityHierarchyPayload",
+    "kotlinConst": "AccessibilityDataProducts.SCHEMA_VERSION",
+    "example": "schema/examples/a11y-hierarchy.json"
+  },
+  "definitions": {
+    "AccessibilityNode": {
+      "type": "object",
+      "required": ["label", "boundsInScreen"],
+      "properties": {
+        "label": { "type": "string", "description": "Visible text or contentDescription." },
+        "ref": { "type": ["string", "null"], "description": "Stable content-independent handle." },
+        "role": { "type": ["string", "null"], "description": "TalkBack class announcement." },
+        "states": { "type": "array", "items": { "type": "string" }, "description": "e.g. clickable, disabled, checked. Omitted when empty." },
+        "merged": { "type": "boolean", "description": "Screen-reader focusable. Defaults to true; omitted when default." },
+        "boundsInScreen": { "type": "string", "description": "`left,top,right,bottom` in pixels." }
+      }
+    },
+    "AccessibilityHierarchyPayload": {
+      "type": "object",
+      "required": ["nodes"],
+      "properties": {
+        "nodes": { "type": "array", "items": { "$ref": "#/definitions/AccessibilityNode" } }
+      }
+    }
+  },
+  "$ref": "#/definitions/AccessibilityHierarchyPayload"
+}
