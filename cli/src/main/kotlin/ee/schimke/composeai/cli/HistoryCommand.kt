@@ -251,11 +251,27 @@ class HistoryCommand(private val args: List<String>) {
 
   private fun positionalAfter(sub: String): String? = positionalsAfter(sub).firstOrNull()
 
-  /** Non-flag args after the subcommand token, in order (the entry ids). */
+  /**
+   * Operands after the subcommand token, in order (the entry ids). Skips flag tokens *and* the
+   * value of a space-separated valued flag (e.g. `--history-dir /tmp/h e1` → `[e1]`), so options
+   * may appear before the ids.
+   */
   private fun positionalsAfter(sub: String): List<String> {
-    val nonFlags = args.filterNot { it.startsWith("-") }
-    val idx = nonFlags.indexOf(sub)
-    return if (idx >= 0) nonFlags.drop(idx + 1) else emptyList()
+    val positionals = mutableListOf<String>()
+    var i = 0
+    while (i < args.size) {
+      val a = args[i]
+      when {
+        a.startsWith("--") && "=" !in a && a in VALUED_FLAGS -> i += 2 // flag + its value
+        a.startsWith("-") -> i += 1 // boolean flag, or `--flag=value`
+        else -> {
+          positionals.add(a)
+          i += 1
+        }
+      }
+    }
+    val idx = positionals.indexOf(sub)
+    return if (idx >= 0) positionals.drop(idx + 1) else emptyList()
   }
 
   private fun dataProductsOf(e: HistoryEntry): List<String> = buildList {
@@ -319,6 +335,24 @@ class HistoryCommand(private val args: List<String>) {
     const val HISTORY_SCHEMA = "compose-preview-history/v1"
     const val HISTORY_DIRNAME = ".compose-preview-history"
     private const val DEFAULT_LIMIT = 50
+
+    /** Flags that take a value, so a space-separated value isn't mistaken for an operand. */
+    private val VALUED_FLAGS =
+      setOf(
+        "--history-dir",
+        "--ref",
+        "--preview",
+        "--since",
+        "--until",
+        "--branch",
+        "--commit",
+        "--agent",
+        "--source",
+        "--cursor",
+        "--limit",
+        "--mode",
+        "--out",
+      )
 
     private val OUT = Json {
       prettyPrint = true
