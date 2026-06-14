@@ -310,7 +310,14 @@ class DesktopRecordingSession(
         put(InputKeyboardRecordingScriptEvents.KEY_UP_EVENT, keyHandler(KeyEventType.KeyUp))
         put(
           RecordingScriptDataExtensions.PROBE_EVENT,
-          RecordingScriptEventHandler { e, _ -> appliedEvidence(e, "probe marker reached") },
+          RecordingScriptEventHandler { e, _ ->
+            // Snapshot the live semantics at the probe (issue #1786) so the codegen path can diff
+            // consecutive probes into assertions. Reuses the same projection target resolution
+            // walks, so the captured testTags/text match what a generated `onNodeWith…` finder
+            // targets. Null root (nothing rendered yet) leaves the snapshot absent → TODO stub.
+            val probeNodes = state.scene.composeSemanticsRoot()?.toProbeNodes()
+            appliedEvidence(e, "probe marker reached", probeSemantics = probeNodes)
+          },
         )
       }
     )

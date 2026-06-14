@@ -100,9 +100,14 @@ class RecordingScriptHandlerRegistry(
 
 /**
  * Build an [RecordingScriptEvidence] for an applied event. Optional [message] is forwarded as the
- * `message` field for human-readable trace context.
+ * `message` field for human-readable trace context. [probeSemantics] carries the host-captured
+ * semantics snapshot for a `recording.probe` event (issue #1786); null for every other kind.
  */
-fun appliedEvidence(event: RecordingScriptEvent, message: String? = null): RecordingScriptEvidence =
+fun appliedEvidence(
+  event: RecordingScriptEvent,
+  message: String? = null,
+  probeSemantics: List<ee.schimke.composeai.daemon.protocol.RecordingProbeNode>? = null,
+): RecordingScriptEvidence =
   RecordingScriptEvidence(
     tMs = event.tMs,
     kind = event.kind,
@@ -112,6 +117,7 @@ fun appliedEvidence(event: RecordingScriptEvent, message: String? = null): Recor
     lifecycleEvent = event.lifecycleEvent,
     tags = event.tags,
     message = message,
+    probeSemantics = probeSemantics,
   )
 
 /**

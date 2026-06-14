@@ -42,7 +42,8 @@ the `compose-preview` CLI where noted):
 - **Matrix render** — `render_matrix` covers `device × locale × uiMode ×
   fontScale` in one call with per-cell hashes and a "which changed" flag.
 - **Recording → test** — `record_preview emitTest=true` emits a runnable
-  Compose UI test from a scripted interaction.
+  Compose UI test from a scripted interaction, inferring assertions at each
+  `recording.probe` from the captured semantics.
 - **Structured failures** — a failed render reports a typed kind + a one-line
   fix hint instead of an opaque message.
 
