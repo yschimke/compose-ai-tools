@@ -51,6 +51,38 @@ class ValidateComposePreviewClasspathTaskTest {
   }
 
   @Test
+  fun `desktop validator message points KMP-Android users at a jvm desktop target`() {
+    // The most common way `*-android` Compose artifacts reach the desktop renderer is a
+    // `com.android.kotlin.multiplatform.library` (`:shared`) module that was auto-injected but
+    // has no `jvm("desktop")` target — the desktop pipeline then falls back to
+    // `androidRuntimeClasspath`. The guard's message must hand that user the concrete fix so the
+    // fail-soft path is actionable rather than cryptic.
+    val project = ProjectBuilder.builder().build()
+    val badJar =
+      project.layout.buildDirectory
+        .file("fake-cache/androidx.compose.ui/ui-android/1.9.5/ui-android-1.9.5.aar")
+        .get()
+        .asFile
+    badJar.parentFile.mkdirs()
+    badJar.writeText("not a real aar")
+
+    val task =
+      project.tasks.register(
+        "validateComposePreviewDesktopKmpMessage",
+        ValidateComposePreviewClasspathTask::class.java,
+      ) {
+        platform.set("desktop")
+        classpath.from(badJar)
+      }
+
+    val thrown = runCatching { task.get().validate() }.exceptionOrNull()
+
+    assertThat(thrown).isInstanceOf(GradleException::class.java)
+    assertThat(thrown!!.message).contains("com.android.kotlin.multiplatform.library")
+    assertThat(thrown.message).contains("jvm(\"desktop\")")
+  }
+
+  @Test
   fun `android validator allows androidx compose artifacts`() {
     val project = ProjectBuilder.builder().build()
     val badJar =

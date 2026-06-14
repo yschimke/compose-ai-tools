@@ -158,6 +158,10 @@ internal object ComposePreviewTasks {
         resolveDependencyConfigName,
         previewOutputDir,
         extension,
+        // Desktop fallback can resolve a KMP-Android module's androidRuntimeClasspath, whose
+        // single AGP variant trips AmbiguousArtifactsFailure under a forced artifactType view —
+        // keep discovery lenient so `compose-preview list` never aborts on such a module.
+        lenientDependencyJars = true,
       ) {
         onlyIf { extension.enabled.get() }
         // `compileAndroidMain` is the lifecycle task for the KMP-Android target's `main`
@@ -315,7 +319,15 @@ internal object ComposePreviewTasks {
     // recording a `ClasspathEntry.Maven`. On JVM this view is a passthrough, so desktop is
     // unchanged; on Android it's what makes coordinate-mode bundles stay small + re-resolvable.
     val depJarView =
-      depConfig?.incoming?.artifactView { attributes.attribute(artifactTypeAttr, "jar") }
+      depConfig?.incoming?.artifactView {
+        // `lenient(true)` for the same reason as the sibling `typeByComponent` view below: when the
+        // resolved config is a KMP-Android module's `androidRuntimeClasspath` (no `jvm("desktop")`
+        // target), its single AGP `android` variant can't satisfy a forced `artifactType=jar`
+        // selection and would otherwise raise `AmbiguousArtifactsFailure` and sink the whole
+        // bundle. Lenient skips the unselectable dep; on clean JVM/desktop configs it's a no-op.
+        lenient(true)
+        attributes.attribute(artifactTypeAttr, "jar")
+      }
     val depJarFiles = depJarView?.files
     // The `artifactType=jar` view extracts every AAR to its `classes.jar`, erasing the aar/jar
     // distinction — but the player's `CoordinateResolver` needs the real packaging to find the
@@ -1063,6 +1075,16 @@ internal object ComposePreviewTasks {
     dependencyConfigName: () -> String,
     previewOutputDir: Provider<Directory>,
     extension: PreviewExtension,
+    // Desktop callers pass `true`: the desktop runtime-config fallback can land on a
+    // KMP-Android module's `androidRuntimeClasspath` (a `:shared` module with no
+    // `jvm("desktop")` target), whose single AGP `android` variant trips an
+    // `AmbiguousArtifactsFailure` when an `artifactType=jar` view is forced on it. Discovery's
+    // dependency jars are a best-effort ClassGraph scan classpath, so `lenient(true)` skips the
+    // unselectable dep instead of aborting the whole `compose-preview list` Tooling-API query —
+    // the desktop render guard still emits an actionable error if the user actually renders that
+    // module. The Android path keeps the default (`false`) so a genuinely unresolvable AAR there
+    // still surfaces loudly.
+    lenientDependencyJars: Boolean = false,
     configureDeps: DiscoverPreviewsTask.() -> Unit,
   ): TaskProvider<DiscoverPreviewsTask> {
     val artifactType = Attribute.of("artifactType", String::class.java)
@@ -1080,11 +1102,19 @@ internal object ComposePreviewTasks {
         // filtering to request the extracted classes.jar (AGP registers the
         // transform). Desktop/JVM projects already return JARs so this is a no-op.
         dependencyJars.from(
-          config.incoming.artifactView { attributes.attribute(artifactType, "jar") }.files
+          config.incoming
+            .artifactView {
+              if (lenientDependencyJars) lenient(true)
+              attributes.attribute(artifactType, "jar")
+            }
+            .files
         )
         dependencyJars.from(
           config.incoming
-            .artifactView { attributes.attribute(artifactType, "android-classes") }
+            .artifactView {
+              if (lenientDependencyJars) lenient(true)
+              attributes.attribute(artifactType, "android-classes")
+            }
             .files
         )
       }
