@@ -461,6 +461,7 @@ class HistoryManager(
       module: String,
       gitProvenance: GitProvenance?,
       gitRefs: List<String> = emptyList(),
+      gitRefSyncMode: GitRefHistorySource.SyncMode = GitRefHistorySource.SyncMode.READ_ONLY,
       repoRoot: java.nio.file.Path? = historyDir?.parent,
       warnEmitter: (String) -> Unit = { System.err.println(it) },
       pruneConfig: HistoryPruneConfig = HistoryPruneConfig(),
@@ -473,6 +474,7 @@ class HistoryManager(
               GitRefHistorySource(
                 repoRoot = repoRoot,
                 ref = ref,
+                syncMode = gitRefSyncMode,
                 cacheDir =
                   historyDir?.let(GitRefHistorySource::defaultCacheDir)
                     ?: repoRoot.resolve(".compose-preview-history").resolve(".git-ref-cache"),

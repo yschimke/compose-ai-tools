@@ -5,54 +5,66 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.time.Instant
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 
 /**
- * Read-only [HistorySource] backed by a git ref (e.g. `refs/heads/preview/main`).
+ * [HistorySource] backed by a git ref (the **reporting branch**, e.g. `refs/heads/preview/main`).
  *
- * **Storage convention** (HISTORY.md § "GitRefHistorySource"):
+ * Implements the "git-as-the-log" contract in docs/daemon/REPORTING-BRANCH.md: stable, overwritten
+ * per-preview paths, one commit per *changed* render, history reconstructed from git rather than an
+ * append index.
+ *
+ * **On-ref layout:**
+ *
  * ```
  * <ref>'s tree
- * ├── <sanitisedPreviewId>/
- * │   ├── <entryId>.png
- * │   └── <entryId>.json
- * ├── ...
- * └── _index.jsonl                ← aggregate of every entry on this ref's HEAD commit
+ * ├── manifest.json                       ← current-state pointer (formatVersion + previews[])
+ * └── <sanitisedPreviewId>/
+ *     ├── render.png                       ← overwritten each render
+ *     ├── entry.json                       ← the full HistoryEntry sidecar
+ *     ├── semantics.json                   ← optional, when entry.semantics is non-null
+ *     ├── a11y.json                        ← optional, a11y/hierarchy
+ *     ├── a11y-atf.json                    ← optional, a11y/atf
+ *     ├── a11y-touch-targets.json          ← optional, a11y/touchTargets
+ *     └── theme.json                       ← optional, compose/theme
  * ```
  *
- * **Implementation strategy.** Shells out to `git` via [ProcessBuilder] (mirrors [GitProvenance]'s
- * pattern). No JGit dependency. The shell-out cost is fine for read operations and we cache results
- * keyed by the ref's HEAD commit-sha so repeated calls during a single session don't re-extract
- * blobs.
+ * **Sync modes** ([SyncMode]):
+ * - [SyncMode.READ_ONLY] (default) — read the ref, never write. Used to mirror a branch populated
+ *   elsewhere (a remote fetch, CI).
+ * - [SyncMode.WRITE_LOCAL] — also commit each changed render onto the ref via git plumbing. No
+ *   push. `WRITE_PUSH` (also pushing the ref) is a follow-up (issue #1870).
  *
- * **Ref-missing behaviour.** When `git rev-parse --verify <ref>` fails, [list] / [read] return
- * empty / null and emit a one-time warn-level notification via [warnEmitter] explaining how to
- * populate the ref. The daemon doesn't fail; the consumer just sees "no main-history available."
+ * **Working-tree safety.** Writes go through a throwaway temporary index plus `hash-object` /
+ * `read-tree` / `update-index` / `write-tree` / `commit-tree` / `update-ref` — the daemon runs
+ * inside the user's live repo, so it must never `checkout` / `add` or otherwise touch the working
+ * tree or the checked-out branch. Only the reporting ref and the object database are modified.
  *
- * **Source rewriting.** The on-ref sidecars carry whatever `source` field they were written with —
- * but we know the source is *us* now. Both [list] and [read] rewrite `entry.source` to a `kind:
- * "git"` shape stamped with this source's id, the ref name, and the ref's HEAD commit sha.
+ * **Skip-if-no-diff.** When the freshly built tree is byte-identical to the ref's current tree, no
+ * commit is made and [write] returns [WriteResult.SKIPPED_DUPLICATE]. Dedup is free.
  *
- * **PNG extraction.** [read] writes the PNG blob into a daemon-managed cache dir
- * (`<historyDir>/.git-ref-cache/`) keyed by `(refCommit, entryId)`. Subsequent reads of the same
- * blob hit the cache. Tempfiles are cleaned up on JVM shutdown via [Runtime.addShutdownHook].
+ * **Read.** Returns the *current* state of the branch (one entry per preview, read from each
+ * `<dir>/entry.json`). The full commit-walk timeline read is a follow-up (issue #1868).
  *
  * @param repoRoot the working tree (or bare repo) the ref lives in.
- * @param ref the full ref name (e.g. `refs/heads/preview/main`); use full form to avoid ambiguity
- *   between heads, remotes, and tags.
+ * @param ref the full ref name (e.g. `refs/heads/preview/main`).
+ * @param syncMode read-only vs write-local; see [SyncMode].
  * @param displayId stable identifier for `entry.source.id` rewriting; defaults to `git:$ref`.
- * @param cacheDir where extracted PNG blobs land; defaults to
- *   `<repoRoot>/.compose-preview-history/.git-ref-cache`.
+ * @param cacheDir where extracted PNG blobs and the throwaway write-index land.
  * @param gitExecutable git binary; defaults to `git` on PATH.
- * @param warnEmitter logger for the ref-missing case. The production daemon passes
- *   [JsonRpcServer]'s log emitter; tests pass a buffer-capturing lambda.
+ * @param warnEmitter logger for the ref-missing read case.
  */
 class GitRefHistorySource(
   private val repoRoot: Path,
   private val ref: String,
+  private val syncMode: SyncMode = SyncMode.READ_ONLY,
   displayId: String = "git:$ref",
   private val cacheDir: Path =
     repoRoot.resolve(".compose-preview-history").resolve(".git-ref-cache"),
@@ -63,38 +75,202 @@ class GitRefHistorySource(
   override val id: String = displayId
   override val kind: String = "git"
 
-  override fun supportsWrites(): Boolean = false
+  override fun supportsWrites(): Boolean = syncMode == SyncMode.WRITE_LOCAL
 
+  /**
+   * Materialises this render into the reporting ref's tree and commits it (when the tree changed).
+   * Never throws: any git failure degrades to [WriteResult.SKIPPED_DUPLICATE] with a logged warning
+   * so history recording can't break the render (history is observation, not state).
+   */
   override fun write(entry: HistoryEntry, png: ByteArray): WriteResult {
-    error("GitRefHistorySource is read-only (ref=$ref); writes go to a writable source.")
+    if (syncMode != SyncMode.WRITE_LOCAL) {
+      error("GitRefHistorySource(ref=$ref) is $syncMode; writes go to a writable source.")
+    }
+    return try {
+      writeLocal(entry, png)
+    } catch (t: Throwable) {
+      System.err.println(
+        "compose-ai-daemon: GitRefHistorySource.write($ref, ${entry.id}) failed " +
+          "(${t.javaClass.simpleName}: ${t.message}); skipping the reporting-branch commit"
+      )
+      WriteResult.SKIPPED_DUPLICATE
+    }
+  }
+
+  private fun writeLocal(entry: HistoryEntry, png: ByteArray): WriteResult {
+    Files.createDirectories(cacheDir)
+    // A non-warning probe (writers create the ref on first render; refHeadCommit() warns, which is
+    // a read-side concern). Null = the ref doesn't exist yet → first commit creates it.
+    val parent = runGit("rev-parse", "--verify", "--quiet", ref)?.takeIf { it.isNotEmpty() }
+
+    val dir = PreviewIdSanitiser.sanitise(entry.previewId)
+    // entry.json mirrors the sidecar but points pngPath at the branch's stable filename.
+    val branchEntry = entry.copy(pngPath = RENDER_FILENAME)
+
+    // Skip-if-no-diff (free dedup): if the preview's current branch entry has byte-identical render
+    // content — same pixels AND the same data-product snapshots — this render adds nothing, so make
+    // no commit. We compare render *content*, not the entry id/timestamp (which churn every render)
+    // or the manifest's generatedAt — otherwise an unchanged re-render would still commit.
+    if (parent != null) {
+      val current =
+        catFile(parent, "$dir/entry.json")?.let {
+          runCatching { JSON.decodeFromString(HistoryEntry.serializer(), it) }.getOrNull()
+        }
+      if (current != null && renderContentUnchanged(current, branchEntry)) {
+        return WriteResult.SKIPPED_DUPLICATE
+      }
+    }
+
+    val indexPath = cacheDir.resolve("write-index-${UUID.randomUUID()}.tmp")
+    val baseEnv = mapOf("GIT_INDEX_FILE" to indexPath.toAbsolutePath().toString())
+    try {
+      // Seed the throwaway index from the parent tree (empty index when the ref is new).
+      if (parent != null && !plumbingOk(baseEnv, "read-tree", parent))
+        return WriteResult.SKIPPED_DUPLICATE
+
+      // Overwrite the preview's directory wholesale: drop every prior path under it so a render
+      // that no longer produces a given data product doesn't leave a stale file behind.
+      if (parent != null) {
+        val existing = runGit("ls-tree", "-r", "--name-only", parent, "--", "$dir/")
+        if (existing != null) {
+          for (p in existing.split('\n').map { it.trim() }.filter { it.isNotEmpty() }) {
+            plumbingOk(baseEnv, "update-index", "--force-remove", p)
+          }
+        }
+      }
+
+      for ((path, bytes) in projectFiles(dir, branchEntry, png)) {
+        val blob = hashObject(baseEnv, bytes) ?: return WriteResult.SKIPPED_DUPLICATE
+        if (!plumbingOk(baseEnv, "update-index", "--add", "--cacheinfo", "100644,$blob,$path")) {
+          return WriteResult.SKIPPED_DUPLICATE
+        }
+      }
+
+      // Refresh the manifest (read prior, upsert this preview).
+      val manifestBytes = buildManifest(parent, branchEntry, dir)
+      val manifestBlob = hashObject(baseEnv, manifestBytes) ?: return WriteResult.SKIPPED_DUPLICATE
+      if (
+        !plumbingOk(
+          baseEnv,
+          "update-index",
+          "--add",
+          "--cacheinfo",
+          "100644,$manifestBlob,$MANIFEST_FILENAME",
+        )
+      ) {
+        return WriteResult.SKIPPED_DUPLICATE
+      }
+
+      val tree = plumbing(baseEnv, "write-tree")?.trim() ?: return WriteResult.SKIPPED_DUPLICATE
+
+      val message =
+        "compose-preview history: ${entry.previewId}\n\n" +
+          "render: ${entry.id}\n" +
+          "produced-from: ${entry.git?.commit ?: "unknown"}\n"
+      val commitArgs = buildList {
+        add("commit-tree")
+        add(tree)
+        if (parent != null) {
+          add("-p")
+          add(parent)
+        }
+        add("-m")
+        add(message)
+      }
+      val commit = plumbing(commitEnv(baseEnv), *commitArgs.toTypedArray())?.trim()
+      if (commit.isNullOrEmpty()) return WriteResult.SKIPPED_DUPLICATE
+
+      val updated =
+        if (parent != null) plumbingOk(baseEnv, "update-ref", ref, commit, parent)
+        else plumbingOk(baseEnv, "update-ref", ref, commit)
+      if (!updated) return WriteResult.SKIPPED_DUPLICATE
+
+      cachedEntries.set(null) // invalidate the read cache so the new commit is visible.
+      return WriteResult.WRITTEN
+    } finally {
+      try {
+        Files.deleteIfExists(indexPath)
+      } catch (_: Throwable) {
+        // best-effort cleanup
+      }
+    }
+  }
+
+  /** The set of `(path, bytes)` this render contributes under the preview's directory. */
+  private fun projectFiles(
+    dir: String,
+    branchEntry: HistoryEntry,
+    png: ByteArray,
+  ): List<Pair<String, ByteArray>> = buildList {
+    add("$dir/$RENDER_FILENAME" to png)
+    add("$dir/entry.json" to JSON.encodeToString(HistoryEntry.serializer(), branchEntry).toBytes())
+    branchEntry.semantics?.let { add("$dir/semantics.json" to encodeJson(it)) }
+    branchEntry.a11yHierarchy?.let { add("$dir/a11y.json" to encodeJson(it)) }
+    branchEntry.a11yAtf?.let { add("$dir/a11y-atf.json" to encodeJson(it)) }
+    branchEntry.a11yTouchTargets?.let { add("$dir/a11y-touch-targets.json" to encodeJson(it)) }
+    branchEntry.theme?.let { add("$dir/theme.json" to encodeJson(it)) }
   }
 
   /**
-   * Cache of `(refCommit, _index.jsonl-bytes)`. Invalidated when [refHeadCommit] returns a
-   * different sha. Populated lazily on first [list] / [read].
+   * True when [candidate] adds no new render content over the branch's [current] entry — same
+   * pixels and the same captured data-product snapshots. Deliberately ignores id / timestamp /
+   * provenance churn so an unchanged re-render produces no commit.
    */
-  private val cachedIndex: AtomicReference<CachedIndex?> = AtomicReference(null)
+  private fun renderContentUnchanged(current: HistoryEntry, candidate: HistoryEntry): Boolean =
+    current.pngHash == candidate.pngHash &&
+      current.semantics == candidate.semantics &&
+      current.a11yHierarchy == candidate.a11yHierarchy &&
+      current.a11yAtf == candidate.a11yAtf &&
+      current.a11yTouchTargets == candidate.a11yTouchTargets &&
+      current.theme == candidate.theme
 
-  /** One-shot guard so a recurring "ref missing" doesn't flood the log. */
-  private val refMissingWarned = AtomicBoolean(false)
+  /**
+   * Reads the prior manifest off [parent] (when present), upserts this preview, returns the bytes.
+   */
+  private fun buildManifest(parent: String?, branchEntry: HistoryEntry, dir: String): ByteArray {
+    val prior: List<ReportingBranchPreview> =
+      parent
+        ?.let { catFile(it, MANIFEST_FILENAME) }
+        ?.let {
+          try {
+            MANIFEST_JSON.decodeFromString(ReportingBranchManifest.serializer(), it).previews
+          } catch (_: Throwable) {
+            emptyList()
+          }
+        } ?: emptyList()
 
-  private data class CachedIndex(val refCommit: String, val entries: List<HistoryEntry>)
-
-  init {
-    // Best-effort: ensure the cache dir exists if the parent already does. Failures here don't
-    // fail the source — read() recreates as needed.
-    try {
-      Files.createDirectories(cacheDir)
-    } catch (_: Throwable) {
-      // ignore — we'll retry in read()
+    val dataProducts = buildList {
+      branchEntry.semantics?.let { add("compose/semantics") }
+      branchEntry.a11yHierarchy?.let { add("a11y/hierarchy") }
+      branchEntry.a11yAtf?.let { add("a11y/atf") }
+      branchEntry.a11yTouchTargets?.let { add("a11y/touchTargets") }
+      branchEntry.theme?.let { add("compose/theme") }
     }
+    val mine =
+      ReportingBranchPreview(
+        previewId = branchEntry.previewId,
+        module = branchEntry.module,
+        dir = dir,
+        pngHash = branchEntry.pngHash,
+        dataProducts = dataProducts,
+      )
+    val previews =
+      (prior.filterNot { it.previewId == branchEntry.previewId } + mine).sortedBy { it.previewId }
+    val manifest =
+      ReportingBranchManifest(
+        formatVersion = REPORTING_BRANCH_FORMAT_VERSION,
+        generatedAt = Instant.now().toString(),
+        commit = branchEntry.git?.commit,
+        sourceBranch = ref.removePrefix("refs/heads/preview/").removePrefix("refs/heads/"),
+        previews = previews,
+      )
+    return MANIFEST_JSON.encodeToString(ReportingBranchManifest.serializer(), manifest).toBytes()
   }
 
   override fun list(filter: HistoryFilter): HistoryListPage {
     val refCommit = refHeadCommit() ?: return emptyPage()
-    val entries = loadIndex(refCommit) ?: return emptyPage()
-    val rewritten = entries.map { rewriteSource(it, refCommit) }
-    val matched = rewritten.filter { HistoryFilters.matches(it, filter) }
+    val entries = listEntries(refCommit).map { rewriteSource(it, refCommit) }
+    val matched = entries.filter { HistoryFilters.matches(it, filter) }
     val totalCount = matched.size
     val slice = HistoryFilters.paginate(matched, filter)
     return HistoryListPage(
@@ -106,36 +282,14 @@ class GitRefHistorySource(
 
   override fun read(entryId: String, includeBytes: Boolean): HistoryReadResult? {
     val refCommit = refHeadCommit() ?: return null
-    val entries = loadIndex(refCommit) ?: return null
-    val match = entries.firstOrNull { it.id == entryId } ?: return null
-    val rewritten = rewriteSource(match, refCommit)
-
-    // Resolve the sidecar path on the ref. The on-disk layout uses a sanitised previewId dir, and
-    // entry.pngPath is "<entryId>.png" (relative to that dir). We re-fetch the *full* sidecar so
-    // we get the previewMetadata snapshot back.
-    val sanitised = PreviewIdSanitiser.sanitise(match.previewId)
-    val sidecarPath = "$sanitised/$entryId.json"
-    val sidecarText = catFile(refCommit, sidecarPath) ?: return null
-    val fullEntry =
-      try {
-        JSON.decodeFromString(HistoryEntry.serializer(), sidecarText)
-      } catch (t: Throwable) {
-        System.err.println(
-          "compose-ai-daemon: GitRefHistorySource.read($entryId): malformed sidecar at " +
-            "$ref:$sidecarPath (${t.javaClass.simpleName}: ${t.message})"
-        )
-        return null
-      }
-    val rewrittenFull = rewriteSource(fullEntry, refCommit)
-
-    // Extract PNG blob to the cache dir.
-    val pngRel = "$sanitised/$entryId.png"
-    val pngFile = extractBlobToCache(refCommit, pngRel) ?: return null
+    val match = listEntries(refCommit).firstOrNull { it.id == entryId } ?: return null
+    val full = rewriteSource(match, refCommit)
+    val dir = PreviewIdSanitiser.sanitise(match.previewId)
+    val pngFile = extractBlobToCache(refCommit, "$dir/$RENDER_FILENAME") ?: return null
     val bytes = if (includeBytes) Files.readAllBytes(pngFile) else null
-
     return HistoryReadResult(
-      entry = rewrittenFull,
-      previewMetadata = rewrittenFull.previewMetadata,
+      entry = full,
+      previewMetadata = full.previewMetadata,
       pngPath = pngFile.toAbsolutePath().toString(),
       pngBytes = bytes,
     )
@@ -145,16 +299,22 @@ class GitRefHistorySource(
   // Internals
   // -------------------------------------------------------------------------
 
+  /** Cache of `(refCommit, entries)`; invalidated when the ref HEAD shifts or a write lands. */
+  private val cachedEntries: AtomicReference<CachedEntries?> = AtomicReference(null)
+  private val refMissingWarned = AtomicBoolean(false)
+
+  private data class CachedEntries(val refCommit: String, val entries: List<HistoryEntry>)
+
+  init {
+    try {
+      Files.createDirectories(cacheDir)
+    } catch (_: Throwable) {
+      // ignore — recreated on demand
+    }
+  }
+
   private fun rewriteSource(entry: HistoryEntry, refCommit: String): HistoryEntry =
-    entry.copy(
-      source =
-        HistorySourceInfo(
-          kind = "git",
-          // We embed the commit + ref into the id so cross-source dedup ("same render visible in
-          // both LocalFs and GitRef") can compare ids cheaply.
-          id = "$id@${refCommit.take(7)}",
-        )
-    )
+    entry.copy(source = HistorySourceInfo(kind = "git", id = "$id@${refCommit.take(7)}"))
 
   /** Returns the ref's HEAD commit sha or null if the ref is missing. Emits one warn on miss. */
   private fun refHeadCommit(): String? {
@@ -165,7 +325,7 @@ class GitRefHistorySource(
         warnEmitter(
           "GitRefHistorySource: ref '$ref' is not present locally.\n" +
             "  Hint: populate it by fetching from a remote (e.g. `git fetch origin $ref:$ref`)\n" +
-            "  or set up CI to push render history on each merge to $branch.\n" +
+            "  or enable WRITE_LOCAL so the daemon records render history on $branch.\n" +
             "  Until then, main-history comparison will not be available."
         )
       }
@@ -174,79 +334,52 @@ class GitRefHistorySource(
     return out.takeIf { it.isNotEmpty() }
   }
 
-  /**
-   * Loads the `_index.jsonl` from the ref's tree, parsing line-by-line and tolerating truncated
-   * lines (skip + warn). Cached by ref-commit-sha; invalidated when the sha shifts.
-   */
-  private fun loadIndex(refCommit: String): List<HistoryEntry>? {
-    val cached = cachedIndex.get()
-    if (cached != null && cached.refCommit == refCommit) return cached.entries
-
-    val text = catFile(refCommit, INDEX_FILENAME)
-    if (text == null) {
-      // No index — empty ref. Cache the empty result so we don't re-shell for nothing.
-      cachedIndex.set(CachedIndex(refCommit, emptyList()))
+  /** Reads the current branch state: every `<dir>/entry.json`, newest-first by timestamp. */
+  private fun listEntries(refCommit: String): List<HistoryEntry> {
+    cachedEntries.get()?.let { if (it.refCommit == refCommit) return it.entries }
+    val tree = runGit("ls-tree", "-r", "--name-only", refCommit)
+    if (tree == null) {
+      cachedEntries.set(CachedEntries(refCommit, emptyList()))
       return emptyList()
     }
-    val parsed = ArrayList<HistoryEntry>()
-    for (line in text.split('\n')) {
-      val trimmed = line.trim()
-      if (trimmed.isEmpty()) continue
-      val entry =
-        try {
-          JSON.decodeFromString(HistoryEntry.serializer(), trimmed)
-        } catch (t: Throwable) {
-          System.err.println(
-            "compose-ai-daemon: GitRefHistorySource.list($ref): skipping malformed index line " +
-              "(${t.javaClass.simpleName}: ${t.message})"
-          )
-          continue
+    val entries =
+      tree
+        .split('\n')
+        .map { it.trim() }
+        .filter { it.endsWith("/entry.json") }
+        .mapNotNull { path ->
+          catFile(refCommit, path)?.let { text ->
+            try {
+              JSON.decodeFromString(HistoryEntry.serializer(), text)
+            } catch (t: Throwable) {
+              System.err.println(
+                "compose-ai-daemon: GitRefHistorySource.list($ref): malformed $path " +
+                  "(${t.javaClass.simpleName}: ${t.message})"
+              )
+              null
+            }
+          }
         }
-      parsed.add(entry)
-    }
-    // _index.jsonl is append-order (oldest first); reverse for newest-first listing.
-    parsed.reverse()
-    val toCache = CachedIndex(refCommit, parsed)
-    cachedIndex.set(toCache)
-    return parsed
+        .sortedByDescending { it.timestamp }
+    cachedEntries.set(CachedEntries(refCommit, entries))
+    return entries
   }
 
-  /**
-   * Returns the contents of `<refCommit>:<path>` as text, or null if the path isn't present in the
-   * tree. Uses `git show` with `--`. Trailing newline is preserved verbatim — the index parser
-   * handles blank lines.
-   */
   private fun catFile(refCommit: String, path: String): String? = runGit("show", "$refCommit:$path")
 
-  /**
-   * Extracts a binary blob from `<refCommit>:<path>` into [cacheDir]. Returns the cached file path
-   * or null on failure. Idempotent: subsequent reads with the same key see the existing file.
-   */
   private fun extractBlobToCache(refCommit: String, path: String): Path? {
     val safeName = "${refCommit.take(7)}-${path.replace('/', '_')}"
     val target = cacheDir.resolve(safeName)
     if (Files.exists(target)) return target
-
     try {
       Files.createDirectories(cacheDir)
     } catch (t: Throwable) {
-      System.err.println(
-        "compose-ai-daemon: GitRefHistorySource.extractBlobToCache: failed to create cache dir " +
-          "$cacheDir (${t.javaClass.simpleName}: ${t.message})"
-      )
       return null
     }
-
-    // Use `git -C <repoRoot> show <refCommit>:<path>` and write stdout to the target tempfile via
-    // ProcessBuilder.redirectOutput. Avoids holding the full PNG in JVM memory.
     val tmp =
       try {
         Files.createTempFile(cacheDir, "extract-", ".tmp")
       } catch (t: Throwable) {
-        System.err.println(
-          "compose-ai-daemon: GitRefHistorySource.extractBlobToCache: tempfile create failed " +
-            "(${t.javaClass.simpleName}: ${t.message})"
-        )
         return null
       }
     try {
@@ -266,8 +399,6 @@ class GitRefHistorySource(
         Files.deleteIfExists(tmp)
         return null
       }
-      // Atomic rename so concurrent reads don't see a half-written cache file. ATOMIC_MOVE may not
-      // be supported on all FSes — fall back to REPLACE_EXISTING when not.
       try {
         Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
       } catch (_: Throwable) {
@@ -275,10 +406,6 @@ class GitRefHistorySource(
       }
       return target
     } catch (t: IOException) {
-      System.err.println(
-        "compose-ai-daemon: GitRefHistorySource.extractBlobToCache: IO failure " +
-          "(${t.javaClass.simpleName}: ${t.message})"
-      )
       Files.deleteIfExists(tmp)
       return null
     } catch (t: Throwable) {
@@ -287,58 +414,138 @@ class GitRefHistorySource(
     }
   }
 
-  private fun runGit(vararg args: String): String? {
+  /** Read-side git: stdout text trimmed of a trailing newline, or null on non-zero/timeout. */
+  private fun runGit(vararg args: String): String? = plumbing(emptyMap(), *args)
+
+  /**
+   * Runs git with optional [env] (e.g. `GIT_INDEX_FILE`) and optional [stdin]; returns stdout or
+   * null on failure. Used for the write plumbing as well as reads.
+   */
+  private fun plumbing(
+    env: Map<String, String>,
+    vararg args: String,
+    stdin: ByteArray? = null,
+    timeoutSec: Long = 30,
+  ): String? {
     return try {
-      val process =
+      val pb =
         ProcessBuilder(listOf(gitExecutable) + args.toList())
           .directory(repoRoot.toFile())
           .redirectErrorStream(false)
-          .start()
-      val finished = process.waitFor(10, TimeUnit.SECONDS)
+      if (env.isNotEmpty()) pb.environment().putAll(env)
+      val process = pb.start()
+      if (stdin != null) process.outputStream.use { it.write(stdin) }
+      else process.outputStream.close()
+      val out = process.inputStream.readBytes()
+      val finished = process.waitFor(timeoutSec, TimeUnit.SECONDS)
       if (!finished) {
         process.destroyForcibly()
         return null
       }
       if (process.exitValue() != 0) return null
-      process.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }.trimEnd('\n')
+      String(out, StandardCharsets.UTF_8).trimEnd('\n')
     } catch (_: Throwable) {
       null
     }
   }
 
+  private fun plumbingOk(env: Map<String, String>, vararg args: String): Boolean =
+    plumbing(env, *args) != null
+
+  private fun hashObject(env: Map<String, String>, bytes: ByteArray): String? =
+    plumbing(env, "hash-object", "-w", "--stdin", stdin = bytes)?.trim()?.takeIf { it.isNotEmpty() }
+
+  private fun commitEnv(base: Map<String, String>): Map<String, String> =
+    base +
+      mapOf(
+        "GIT_AUTHOR_NAME" to GIT_IDENTITY_NAME,
+        "GIT_AUTHOR_EMAIL" to GIT_IDENTITY_EMAIL,
+        "GIT_COMMITTER_NAME" to GIT_IDENTITY_NAME,
+        "GIT_COMMITTER_EMAIL" to GIT_IDENTITY_EMAIL,
+      )
+
+  private fun encodeJson(element: JsonElement): ByteArray =
+    JSON.encodeToString(JsonElement.serializer(), element).toBytes()
+
+  private fun String.toBytes(): ByteArray = toByteArray(StandardCharsets.UTF_8)
+
   private fun emptyPage(): HistoryListPage =
     HistoryListPage(entries = emptyList(), nextCursor = null, totalCount = 0)
 
+  /** Read-only vs write-local for a reporting ref. `WRITE_PUSH` is a follow-up (issue #1870). */
+  enum class SyncMode {
+    READ_ONLY,
+    WRITE_LOCAL,
+  }
+
   companion object {
-    /** Aggregate index filename on the ref's tree. HISTORY.md § "GitRefHistorySource". */
-    const val INDEX_FILENAME: String = "_index.jsonl"
+    /** Stable filename for the overwritten-per-render PNG on the ref. */
+    const val RENDER_FILENAME: String = "render.png"
+
+    /** Current-state pointer at the ref root. docs/daemon/REPORTING-BRANCH.md § manifest.json. */
+    const val MANIFEST_FILENAME: String = "manifest.json"
+
+    /** Bumped on incompatible reporting-branch layout changes. */
+    const val REPORTING_BRANCH_FORMAT_VERSION: Int = 1
 
     /**
-     * Sysprop name — comma-separated list of refs (e.g.
-     * `refs/heads/preview/main,refs/heads/preview/agent/foo`). Wired by each per-target
-     * [DaemonMain] alongside [LocalFsHistorySource].
+     * Comma/semicolon-separated list of refs (e.g.
+     * `refs/heads/preview/main,refs/heads/preview/agent/foo`).
      */
     const val GIT_REF_HISTORY_PROP: String = "composeai.daemon.gitRefHistory"
+
+    /** Sync mode for the reporting refs: `READ_ONLY` (default) or `WRITE_LOCAL`. */
+    const val SYNC_MODE_PROP: String = "composeai.daemon.gitRefHistorySyncMode"
+
+    // Synthetic identity for daemon-authored reporting-branch commits. These are machine-generated
+    // history commits in the *consumer's* repo (not this project's git history), so they carry a
+    // clear non-human author rather than borrowing the developer's identity.
+    private const val GIT_IDENTITY_NAME: String = "compose-preview history"
+    private const val GIT_IDENTITY_EMAIL: String = "compose-preview-history@users.noreply.localhost"
 
     private val JSON: Json = Json {
       ignoreUnknownKeys = true
       encodeDefaults = false
     }
 
-    /**
-     * Parses the [GIT_REF_HISTORY_PROP] sysprop (or [propValue] when explicit) into a list of
-     * non-blank ref strings. Returns an empty list when the property is unset.
-     */
+    /** Manifest is human-/git-diff-friendly: pretty-printed, defaults encoded (formatVersion). */
+    private val MANIFEST_JSON: Json = Json {
+      ignoreUnknownKeys = true
+      encodeDefaults = true
+      prettyPrint = true
+    }
+
     fun parseRefsSysprop(
       propValue: String? = System.getProperty(GIT_REF_HISTORY_PROP)
     ): List<String> =
       propValue?.split(',', ';')?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
 
-    /**
-     * Default cache dir for a given history dir. Mirrors the in-source default but exposed so
-     * [DaemonMain] callers can pin the cache adjacent to the local-fs history dir for symmetric
-     * lifecycle management.
-     */
+    /** Parses [SYNC_MODE_PROP]; unknown / unset → [SyncMode.READ_ONLY]. */
+    fun parseSyncModeSysprop(propValue: String? = System.getProperty(SYNC_MODE_PROP)): SyncMode =
+      when (propValue?.trim()?.uppercase()) {
+        "WRITE_LOCAL" -> SyncMode.WRITE_LOCAL
+        else -> SyncMode.READ_ONLY
+      }
+
     fun defaultCacheDir(historyDir: Path): Path = historyDir.resolve(".git-ref-cache")
   }
 }
+
+/** Current-state manifest written at the reporting ref root. docs/daemon/REPORTING-BRANCH.md. */
+@Serializable
+data class ReportingBranchManifest(
+  val formatVersion: Int = 1,
+  val generatedAt: String,
+  val commit: String? = null,
+  val sourceBranch: String? = null,
+  val previews: List<ReportingBranchPreview> = emptyList(),
+)
+
+@Serializable
+data class ReportingBranchPreview(
+  val previewId: String,
+  val module: String,
+  val dir: String,
+  val pngHash: String,
+  val dataProducts: List<String> = emptyList(),
+)

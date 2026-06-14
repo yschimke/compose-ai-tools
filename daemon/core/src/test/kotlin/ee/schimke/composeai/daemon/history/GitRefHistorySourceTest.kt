@@ -7,8 +7,10 @@ import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -17,13 +19,13 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * H10-read — `GitRefHistorySource` unit tests. Each test synthesises a temp git repo on disk, sets
- * up a `refs/heads/preview/...` ref with the documented storage convention (HISTORY.md §
- * "GitRefHistorySource"), and exercises the source through its public surface.
+ * `GitRefHistorySource` unit tests — the reporting-branch source (read + WRITE_LOCAL). Each test
+ * synthesises a temp git repo, then drives the source through its public surface; WRITE_LOCAL tests
+ * dogfood the writer (write via the source, read back via the source) and inspect the resulting ref
+ * tree directly.
  *
  * **`git` binary required.** All tests `Assume.assumeTrue` on `git --version` so CI runners without
- * git skip cleanly. Production callers (the daemon mains) tolerate missing git the same way
- * [GitProvenance] does — silent degradation.
+ * git skip cleanly. Production callers tolerate missing git the same way [GitProvenance] does.
  */
 class GitRefHistorySourceTest {
 
@@ -38,6 +40,8 @@ class GitRefHistorySourceTest {
     }
   }
 
+  private val ref = "refs/heads/preview/main"
+
   @Before
   fun setUp() {
     assumeTrue("git on PATH required for GitRefHistorySource tests", gitAvailable())
@@ -47,7 +51,6 @@ class GitRefHistorySourceTest {
     runOk("git", "-C", repoRoot.toString(), "config", "user.name", "Test")
     runOk("git", "-C", repoRoot.toString(), "config", "commit.gpgsign", "false")
     runOk("git", "-C", repoRoot.toString(), "config", "tag.gpgsign", "false")
-    // Seed an initial commit so HEAD exists — we reuse it as the parent of preview/ refs.
     Files.writeString(repoRoot.resolve("README"), "init")
     runOk("git", "-C", repoRoot.toString(), "add", "README")
     runOk("git", "-C", repoRoot.toString(), "commit", "-q", "-m", "init")
@@ -59,227 +62,197 @@ class GitRefHistorySourceTest {
   }
 
   // -------------------------------------------------------------------------
-  // Tests
+  // Read: missing / empty ref
   // -------------------------------------------------------------------------
 
   @Test
   fun missing_ref_returns_empty_and_warns_once() {
-    val source =
-      GitRefHistorySource(
-        repoRoot = repoRoot,
-        ref = "refs/heads/preview/nonexistent",
-        warnEmitter = warnEmitter,
-      )
+    val source = source(SyncModeOf.READ_ONLY, "refs/heads/preview/nonexistent")
     val page = source.list(HistoryFilter())
     assertEquals(0, page.totalCount)
     assertTrue(page.entries.isEmpty())
     assertEquals(1, warnCount.get())
-    assertTrue("warn must include ref name", warnLog.contains("refs/heads/preview/nonexistent"))
-    assertTrue("warn must include hint", warnLog.contains("git fetch"))
+    assertTrue(warnLog.contains("refs/heads/preview/nonexistent"))
+    assertTrue(warnLog.contains("git fetch"))
 
-    // Second call → no second warn (one-shot guard).
-    val page2 = source.list(HistoryFilter())
-    assertEquals(0, page2.totalCount)
-    assertEquals(1, warnCount.get())
+    source.list(HistoryFilter())
+    assertEquals("one-shot warn guard", 1, warnCount.get())
 
-    // read() of a missing entry → null. Must not warn again either.
-    val read = source.read("does-not-exist", includeBytes = false)
-    assertNull(read)
+    assertNull(source.read("does-not-exist", includeBytes = false))
     assertEquals(1, warnCount.get())
   }
 
   @Test
   fun empty_ref_returns_empty_no_warn() {
-    // Create the ref pointing at an empty tree (no _index.jsonl, no preview dirs).
-    val emptyTree = createEmptyTree()
-    val emptyCommit = commitTree(emptyTree, parent = null, message = "empty")
-    runOk("git", "-C", repoRoot.toString(), "update-ref", "refs/heads/preview/main", emptyCommit)
+    val emptyCommit = commitTree(mktree(""), parent = null, message = "empty")
+    runOk("git", "-C", repoRoot.toString(), "update-ref", ref, emptyCommit)
 
-    val source =
-      GitRefHistorySource(
-        repoRoot = repoRoot,
-        ref = "refs/heads/preview/main",
-        warnEmitter = warnEmitter,
-      )
-    val page = source.list(HistoryFilter())
+    val page = source(SyncModeOf.READ_ONLY).list(HistoryFilter())
     assertEquals(0, page.totalCount)
-    assertTrue(page.entries.isEmpty())
     assertEquals("ref exists → no warn", 0, warnCount.get())
   }
 
+  // -------------------------------------------------------------------------
+  // WRITE_LOCAL
+  // -------------------------------------------------------------------------
+
   @Test
-  fun populated_ref_lists_and_reads_entries_with_git_source_kind() {
-    // Build three sidecar+png pairs for two preview dirs, plus a matching _index.jsonl.
-    val entries =
-      listOf(
-        synthEntry(
-          id = "20260430-101234-aaaaaaaa",
-          previewId = "com.example.A",
-          bytes = "first".toByteArray(),
-        ),
-        synthEntry(
-          id = "20260430-101300-bbbbbbbb",
-          previewId = "com.example.A",
-          bytes = "second".toByteArray(),
-        ),
-        synthEntry(
-          id = "20260430-101400-cccccccc",
-          previewId = "com.example.B",
-          bytes = "third".toByteArray(),
-        ),
-      )
-    populatePreviewMain(entries)
+  fun supportsWrites_reflects_sync_mode() {
+    assertFalse(source(SyncModeOf.READ_ONLY).supportsWrites())
+    assertTrue(source(SyncModeOf.WRITE_LOCAL).supportsWrites())
+  }
 
-    val source =
-      GitRefHistorySource(
-        repoRoot = repoRoot,
-        ref = "refs/heads/preview/main",
-        warnEmitter = warnEmitter,
+  @Test
+  fun write_local_creates_ref_round_trips_and_writes_manifest() {
+    val src = source(SyncModeOf.WRITE_LOCAL)
+    val bytes = "render-A".toByteArray()
+    val e =
+      entry(
+        id = "20260430-101234-aaaaaaaa",
+        previewId = "com.example.A",
+        bytes = bytes,
+        a11yHierarchy = json.parseToJsonElement("""{"nodes":[]}"""),
+        theme =
+          json.parseToJsonElement(
+            """{"resolvedTokens":{"colorScheme":{},"typography":{},"shapes":{}}}"""
+          ),
       )
-    val page = source.list(HistoryFilter())
-    assertEquals(3, page.totalCount)
-    assertEquals(3, page.entries.size)
-    // Newest first by timestamp (iso strings in entries).
-    assertEquals("20260430-101400-cccccccc", page.entries[0].id)
-    // All entries get source.kind = "git"; the id includes the source's id + the ref's commit.
-    for (entry in page.entries) {
-      assertEquals("git", entry.source.kind)
-      assertTrue(entry.source.id.startsWith("git:refs/heads/preview/main"))
-    }
+    assertEquals(WriteResult.WRITTEN, src.write(e, bytes))
 
-    // read() resolves a real entry to a cache file containing the original bytes.
-    val read = source.read("20260430-101300-bbbbbbbb", includeBytes = true)
+    // The ref tree carries the git-as-the-log layout (overwritten per-preview paths + manifest).
+    val tree = capture("git", "-C", repoRoot.toString(), "ls-tree", "-r", "--name-only", ref)
+    assertTrue(tree.contains("com.example.A/render.png"))
+    assertTrue(tree.contains("com.example.A/entry.json"))
+    assertTrue(tree.contains("com.example.A/a11y.json"))
+    assertTrue(tree.contains("com.example.A/theme.json"))
+    assertTrue(tree.contains("manifest.json"))
+    assertFalse("no a11y-atf file when not captured", tree.contains("a11y-atf.json"))
+
+    val manifest =
+      json.decodeFromString(
+        ReportingBranchManifest.serializer(),
+        capture("git", "-C", repoRoot.toString(), "show", "$ref:manifest.json"),
+      )
+    assertEquals(1, manifest.formatVersion)
+    assertEquals(1, manifest.previews.size)
+    assertEquals("com.example.A", manifest.previews[0].previewId)
+    assertTrue(
+      manifest.previews[0].dataProducts.containsAll(listOf("a11y/hierarchy", "compose/theme"))
+    )
+
+    // Round-trips through the source's own read surface, stamped as a git source.
+    val page = src.list(HistoryFilter())
+    assertEquals(1, page.totalCount)
+    assertEquals(e.id, page.entries[0].id)
+    assertEquals("git", page.entries[0].source.kind)
+    assertTrue(page.entries[0].source.id.startsWith("git:$ref"))
+
+    val read = src.read(e.id, includeBytes = true)
     assertNotNull(read)
-    val pngFile = File(read!!.pngPath)
-    assertTrue("PNG cache file must exist", pngFile.exists())
-    assertEquals("second", pngFile.readText())
-    assertNotNull(read.pngBytes)
-    assertEquals("second", String(read.pngBytes!!))
-    assertEquals("git", read.entry.source.kind)
+    assertTrue(File(read!!.pngPath).exists())
+    assertEquals("render-A", String(read.pngBytes!!))
   }
 
   @Test
-  fun corrupt_index_skips_truncated_line_and_lists_others() {
-    val good1 =
-      synthEntry(
-        id = "20260430-100000-11111111",
-        previewId = "com.example.A",
-        bytes = "a".toByteArray(),
-      )
-    val good2 =
-      synthEntry(
-        id = "20260430-100100-22222222",
-        previewId = "com.example.A",
-        bytes = "b".toByteArray(),
-      )
-    val tree =
-      createTreeWithEntriesAndIndex(listOf(good1, good2)) { jsonl ->
-        // Corrupt: append a half-line that's not valid JSON.
-        jsonl + "{\"id\":\"truncat" + "\n"
-      }
-    val commit = commitTree(tree, parent = null, message = "corrupt-index")
-    runOk("git", "-C", repoRoot.toString(), "update-ref", "refs/heads/preview/main", commit)
+  fun write_local_skips_unchanged_render() {
+    val src = source(SyncModeOf.WRITE_LOCAL)
+    val bytes = "steady".toByteArray()
+    val e = entry(id = "20260430-100000-11111111", previewId = "com.example.Steady", bytes = bytes)
 
-    val source =
-      GitRefHistorySource(
-        repoRoot = repoRoot,
-        ref = "refs/heads/preview/main",
-        warnEmitter = warnEmitter,
-      )
-    val page = source.list(HistoryFilter())
-    // Two valid entries — the third (truncated) line is skipped.
-    assertEquals(2, page.totalCount)
-    assertEquals(2, page.entries.size)
+    assertEquals(WriteResult.WRITTEN, src.write(e, bytes))
+    assertEquals(
+      "identical render content adds nothing → no second commit",
+      WriteResult.SKIPPED_DUPLICATE,
+      src.write(e, bytes),
+    )
+    assertEquals("1", capture("git", "-C", repoRoot.toString(), "rev-list", "--count", ref).trim())
   }
 
   @Test
-  fun cross_source_listing_dedups_and_filter_by_sourceKind() {
-    // Same render lands in BOTH a LocalFs source and the git ref. Cross-source dedup keys on
-    // (previewId, pngHash) and keeps the first writer (LocalFs).
+  fun write_local_overwrites_and_drops_stale_data_file() {
+    val src = source(SyncModeOf.WRITE_LOCAL)
+    val previewId = "com.example.Card"
+
+    val first =
+      entry(
+        id = "20260430-100000-aaaaaaaa",
+        previewId = previewId,
+        bytes = "v1".toByteArray(),
+        a11yHierarchy =
+          json.parseToJsonElement("""{"nodes":[{"label":"x","boundsInScreen":"0,0,1,1"}]}"""),
+      )
+    assertEquals(WriteResult.WRITTEN, src.write(first, "v1".toByteArray()))
+    assertTrue(
+      capture("git", "-C", repoRoot.toString(), "ls-tree", "-r", "--name-only", ref)
+        .contains("$previewId/a11y.json")
+    )
+
+    // A later render with different pixels and NO a11y must overwrite render.png and drop
+    // a11y.json.
+    val second =
+      entry(id = "20260430-100100-bbbbbbbb", previewId = previewId, bytes = "v2".toByteArray())
+    assertEquals(WriteResult.WRITTEN, src.write(second, "v2".toByteArray()))
+
+    val tree = capture("git", "-C", repoRoot.toString(), "ls-tree", "-r", "--name-only", ref)
+    assertTrue(tree.contains("$previewId/render.png"))
+    assertFalse(
+      "stale a11y.json must be removed on overwrite",
+      tree.contains("$previewId/a11y.json"),
+    )
+
+    val page = src.list(HistoryFilter())
+    assertEquals("current-state read → one entry per preview", 1, page.totalCount)
+    assertEquals(second.id, page.entries[0].id)
+    assertEquals("2", capture("git", "-C", repoRoot.toString(), "rev-list", "--count", ref).trim())
+  }
+
+  @Test
+  fun cross_source_listing_dedups_and_filters_by_source_kind() {
     val historyDir = Files.createTempDirectory("xsource-localfs")
     try {
       val localFs = LocalFsHistorySource(historyDir = historyDir)
+      val git = source(SyncModeOf.WRITE_LOCAL)
       val previewId = "com.example.X"
-      val sharedBytes = "shared-render".toByteArray()
-      val sharedHash = LocalFsHistorySource.sha256Hex(sharedBytes)
 
-      // 1. Write the same render to LocalFs.
-      val localFsEntry =
-        HistoryEntry(
-          id = "20260430-090000-deadbeef",
-          previewId = previewId,
-          module = ":t",
-          timestamp = "2026-04-30T09:00:00Z",
-          pngHash = sharedHash,
-          pngSize = sharedBytes.size.toLong(),
-          pngPath = "20260430-090000-deadbeef.png",
-          producer = "daemon",
-          trigger = "renderNow",
-          source = HistorySourceInfo(kind = "fs", id = "fs:${historyDir.toAbsolutePath()}"),
-          renderTookMs = 1L,
-        )
-      localFs.write(localFsEntry, sharedBytes)
+      // Same render written to BOTH sources.
+      val sharedBytes = "shared".toByteArray()
+      val shared =
+        entry(id = "20260430-090000-deadbeef", previewId = previewId, bytes = sharedBytes)
+      localFs.write(shared, sharedBytes)
+      git.write(shared, sharedBytes)
 
-      // 2. Build a git ref carrying the same render PLUS one git-only render.
+      // A git-only render of a different preview.
       val gitOnlyBytes = "git-only".toByteArray()
-      val gitRefEntries =
-        listOf(
-          synthEntryFromHash(
-            id = localFsEntry.id,
-            previewId = previewId,
-            timestamp = localFsEntry.timestamp,
-            pngHash = sharedHash,
-            bytes = sharedBytes,
-          ),
-          synthEntry(
-            id = "20260430-100000-99999999",
-            previewId = previewId,
-            bytes = gitOnlyBytes,
-            timestamp = "2026-04-30T10:00:00Z",
-          ),
-        )
-      populatePreviewMain(gitRefEntries)
+      val gitOnly =
+        entry(id = "20260430-100000-99999999", previewId = "com.example.Y", bytes = gitOnlyBytes)
+      git.write(gitOnly, gitOnlyBytes)
 
-      val gitSource =
-        GitRefHistorySource(
-          repoRoot = repoRoot,
-          ref = "refs/heads/preview/main",
-          warnEmitter = warnEmitter,
-        )
       val manager =
-        HistoryManager(sources = listOf(localFs, gitSource), module = ":t", gitProvenance = null)
+        HistoryManager(sources = listOf(localFs, git), module = ":t", gitProvenance = null)
 
       val all = manager.list(HistoryFilter())
-      // Two unique renders — shared render's LocalFs copy is canonical, git-only render comes from
-      // git.
       assertEquals(2, all.totalCount)
-      val sharedSurface = all.entries.first { it.id == localFsEntry.id }
       assertEquals(
-        "shared render must surface from LocalFs (priority 0)",
+        "shared render surfaces from LocalFs (priority 0)",
         "fs",
-        sharedSurface.source.kind,
+        all.entries.first { it.id == shared.id }.source.kind,
       )
-      val gitOnlySurface = all.entries.first { it.id == "20260430-100000-99999999" }
-      assertEquals("git", gitOnlySurface.source.kind)
+      assertEquals("git", all.entries.first { it.id == gitOnly.id }.source.kind)
 
-      // sourceKind=git filter narrows to git-source entries — both the shared render's git copy
-      // AND the git-only render show up here because the LocalFs (kind="fs") source is filtered
-      // out at the per-source layer before merge-dedup runs.
-      val gitOnlyPage = manager.list(HistoryFilter(sourceKind = "git"))
-      assertEquals(2, gitOnlyPage.totalCount)
-      assertTrue(gitOnlyPage.entries.all { it.source.kind == "git" })
+      val gitPage = manager.list(HistoryFilter(sourceKind = "git"))
+      assertEquals(2, gitPage.totalCount)
+      assertTrue(gitPage.entries.all { it.source.kind == "git" })
 
-      // sourceKind=fs filter shows just the LocalFs canonical copy.
-      val fsOnlyPage = manager.list(HistoryFilter(sourceKind = "fs"))
-      assertEquals(1, fsOnlyPage.totalCount)
-      assertEquals(localFsEntry.id, fsOnlyPage.entries.single().id)
+      val fsPage = manager.list(HistoryFilter(sourceKind = "fs"))
+      assertEquals(1, fsPage.totalCount)
+      assertEquals(shared.id, fsPage.entries.single().id)
     } finally {
       historyDir.toFile().deleteRecursively()
     }
   }
 
   // -------------------------------------------------------------------------
-  // Helpers — temp git repo manipulation via shell-out
+  // Helpers
   // -------------------------------------------------------------------------
 
   private val json = Json {
@@ -287,89 +260,46 @@ class GitRefHistorySourceTest {
     encodeDefaults = false
   }
 
-  private fun synthEntry(
+  // Alias so the tests read clearly without importing the nested enum at call sites.
+  private object SyncModeOf {
+    val READ_ONLY = GitRefHistorySource.SyncMode.READ_ONLY
+    val WRITE_LOCAL = GitRefHistorySource.SyncMode.WRITE_LOCAL
+  }
+
+  private fun source(
+    syncMode: GitRefHistorySource.SyncMode,
+    ref: String = this.ref,
+  ): GitRefHistorySource =
+    GitRefHistorySource(
+      repoRoot = repoRoot,
+      ref = ref,
+      syncMode = syncMode,
+      warnEmitter = warnEmitter,
+    )
+
+  private fun entry(
     id: String,
     previewId: String,
     bytes: ByteArray,
-    timestamp: String =
-      "2026-04-30T${id.substring(9, 11)}:${id.substring(11, 13)}:${id.substring(13, 15)}Z",
-  ): SynthEntry {
-    val pngHash = LocalFsHistorySource.sha256Hex(bytes)
-    return synthEntryFromHash(id, previewId, timestamp, pngHash, bytes)
-  }
-
-  private fun synthEntryFromHash(
-    id: String,
-    previewId: String,
-    timestamp: String,
-    pngHash: String,
-    bytes: ByteArray,
-  ): SynthEntry {
-    val entry =
-      HistoryEntry(
-        id = id,
-        previewId = previewId,
-        module = ":t",
-        timestamp = timestamp,
-        pngHash = pngHash,
-        pngSize = bytes.size.toLong(),
-        pngPath = "$id.png",
-        producer = "daemon",
-        trigger = "renderNow",
-        // The on-ref entry usually carries whatever source it was written under; rewrite happens
-        // at read-time. Here we set "fs" to prove the rewrite is unconditional.
-        source = HistorySourceInfo(kind = "fs", id = "fs:/some/dir"),
-        renderTookMs = 1L,
-      )
-    return SynthEntry(entry = entry, bytes = bytes)
-  }
-
-  private data class SynthEntry(val entry: HistoryEntry, val bytes: ByteArray)
-
-  private fun populatePreviewMain(entries: List<SynthEntry>) {
-    val tree = createTreeWithEntriesAndIndex(entries) { it }
-    val commit = commitTree(tree, parent = null, message = "history")
-    runOk("git", "-C", repoRoot.toString(), "update-ref", "refs/heads/preview/main", commit)
-  }
-
-  /**
-   * Builds an in-tree layout `<previewIdSan>/<id>.{png,json}` + `_index.jsonl` and returns the tree
-   * sha. Uses `git hash-object` + `git mktree` rather than building the working tree.
-   */
-  private fun createTreeWithEntriesAndIndex(
-    entries: List<SynthEntry>,
-    transformIndex: (String) -> String,
-  ): String {
-    // Group entries by sanitisedPreviewId. For each group, build a sub-tree with the per-entry
-    // .png + .json blobs.
-    val byPreview = entries.groupBy { PreviewIdSanitiser.sanitise(it.entry.previewId) }
-    val rootEntries = StringBuilder()
-    for ((sanitised, group) in byPreview) {
-      val subTreeEntries = StringBuilder()
-      for (synth in group) {
-        val pngSha = hashObject(synth.bytes)
-        val sidecarText = json.encodeToString(HistoryEntry.serializer(), synth.entry)
-        val sidecarSha = hashObject(sidecarText.toByteArray(StandardCharsets.UTF_8))
-        subTreeEntries.append("100644 blob $pngSha\t${synth.entry.id}.png\n")
-        subTreeEntries.append("100644 blob $sidecarSha\t${synth.entry.id}.json\n")
-      }
-      val subTree = mktree(subTreeEntries.toString())
-      rootEntries.append("040000 tree $subTree\t$sanitised\n")
-    }
-    // Build _index.jsonl — entries minus previewMetadata, one per line, append-order (oldest
-    // first).
-    val sortedByTs = entries.sortedBy { it.entry.timestamp }
-    val indexBody =
-      sortedByTs.joinToString("\n") {
-        json.encodeToString(HistoryEntry.serializer(), it.entry.copy(previewMetadata = null))
-      } + "\n"
-    val transformed = transformIndex(indexBody)
-    val indexSha = hashObject(transformed.toByteArray(StandardCharsets.UTF_8))
-    rootEntries.append("100644 blob $indexSha\t_index.jsonl\n")
-    return mktree(rootEntries.toString())
-  }
-
-  private fun createEmptyTree(): String = mktree("")
+    timestamp: String = "2026-04-30T10:12:34Z",
+    a11yHierarchy: JsonElement? = null,
+    theme: JsonElement? = null,
+  ): HistoryEntry =
+    HistoryEntry(
+      id = id,
+      previewId = previewId,
+      module = ":t",
+      timestamp = timestamp,
+      pngHash = LocalFsHistorySource.sha256Hex(bytes),
+      pngSize = bytes.size.toLong(),
+      pngPath = "$id.png",
+      producer = "daemon",
+      trigger = "renderNow",
+      source = HistorySourceInfo(kind = "fs", id = "fs:/some/dir"),
+      renderTookMs = 1L,
+      a11yHierarchy = a11yHierarchy,
+      theme = theme,
+    )
 
   private fun mktree(input: String): String {
     val pb =
@@ -377,23 +307,8 @@ class GitRefHistorySourceTest {
         .redirectErrorStream(false)
         .start()
     pb.outputStream.use { it.write(input.toByteArray(StandardCharsets.UTF_8)) }
-    val finished = pb.waitFor(15, TimeUnit.SECONDS)
-    require(finished) { "mktree timed out" }
-    require(pb.exitValue() == 0) { "mktree failed: ${pb.errorStream.bufferedReader().readText()}" }
-    return pb.inputStream.bufferedReader().readText().trim()
-  }
-
-  private fun hashObject(bytes: ByteArray): String {
-    val pb =
-      ProcessBuilder(listOf("git", "-C", repoRoot.toString(), "hash-object", "-w", "--stdin"))
-        .redirectErrorStream(false)
-        .start()
-    pb.outputStream.use { it.write(bytes) }
-    val finished = pb.waitFor(15, TimeUnit.SECONDS)
-    require(finished) { "hash-object timed out" }
-    require(pb.exitValue() == 0) {
-      "hash-object failed: ${pb.errorStream.bufferedReader().readText()}"
-    }
+    require(pb.waitFor(15, TimeUnit.SECONDS)) { "mktree timed out" }
+    require(pb.exitValue() == 0) { "mktree failed" }
     return pb.inputStream.bufferedReader().readText().trim()
   }
 
@@ -405,30 +320,32 @@ class GitRefHistorySourceTest {
       args.add(parent)
     }
     val pb = ProcessBuilder(args).redirectErrorStream(false).start()
-    val finished = pb.waitFor(15, TimeUnit.SECONDS)
-    require(finished) { "commit-tree timed out" }
-    require(pb.exitValue() == 0) {
-      "commit-tree failed: ${pb.errorStream.bufferedReader().readText()}"
-    }
+    require(pb.waitFor(15, TimeUnit.SECONDS)) { "commit-tree timed out" }
+    require(pb.exitValue() == 0) { "commit-tree failed" }
     return pb.inputStream.bufferedReader().readText().trim()
+  }
+
+  private fun capture(vararg args: String): String {
+    val pb = ProcessBuilder(args.toList()).redirectErrorStream(false).start()
+    val out = pb.inputStream.readBytes()
+    require(pb.waitFor(15, TimeUnit.SECONDS)) { "${args.joinToString(" ")} timed out" }
+    require(pb.exitValue() == 0) { "${args.joinToString(" ")} failed" }
+    return String(out, StandardCharsets.UTF_8)
   }
 
   private fun runOk(vararg args: String) {
     val pb = ProcessBuilder(args.toList()).redirectErrorStream(true).start()
-    val finished = pb.waitFor(15, TimeUnit.SECONDS)
-    require(finished) { "${args.joinToString(" ")} timed out" }
+    require(pb.waitFor(15, TimeUnit.SECONDS)) { "${args.joinToString(" ")} timed out" }
     if (pb.exitValue() != 0) {
-      val out = pb.inputStream.bufferedReader().readText()
-      error("${args.joinToString(" ")} failed: $out")
+      error("${args.joinToString(" ")} failed: ${pb.inputStream.bufferedReader().readText()}")
     }
   }
 
-  private fun gitAvailable(): Boolean {
-    return try {
+  private fun gitAvailable(): Boolean =
+    try {
       val pb = ProcessBuilder("git", "--version").redirectErrorStream(true).start()
       pb.waitFor(5, TimeUnit.SECONDS) && pb.exitValue() == 0
     } catch (_: Throwable) {
       false
     }
-  }
 }
