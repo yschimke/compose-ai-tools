@@ -115,6 +115,7 @@ class DaemonMcpLiveCapabilityTest {
         "render_preview",
         buildJsonObject {
           put("uri", uri)
+          put("observe", "png")
           putJsonObject("overrides") { put("widthPx", 123) }
         },
         timeoutMs = 10_000,
