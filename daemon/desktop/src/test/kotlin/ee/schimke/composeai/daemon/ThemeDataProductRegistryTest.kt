@@ -22,7 +22,7 @@ class ThemeDataProductRegistryTest {
     val registry = ThemeDataProductRegistry()
     val cap = registry.capabilities.single()
     assertEquals("compose/theme", cap.kind)
-    assertEquals(1, cap.schemaVersion)
+    assertEquals(2, cap.schemaVersion)
     assertEquals(DataProductTransport.INLINE, cap.transport)
     assertTrue(cap.attachable)
     assertTrue(cap.fetchable)
@@ -92,6 +92,66 @@ class ThemeDataProductRegistryTest {
         .jsonObject["colorScheme"]!!
         .jsonObject["primary"],
     )
+  }
+
+  @Test
+  fun theme_mode_render_attributes_consumers_to_tokens_read() {
+    val outputDir = tempFolder.newFolder("renders-consumers")
+    val registry = ThemeDataProductRegistry()
+    val engine =
+      RenderEngine(
+        outputDir = outputDir,
+        previewContextCapture =
+          object : RenderEngine.PreviewContextCapture {
+            override fun shouldCapture(previewId: String?, renderMode: String?): Boolean =
+              registry.shouldCapture(previewId, renderMode)
+          },
+      )
+
+    val result =
+      engine.render(
+        spec =
+          RenderSpec(
+            previewId = "preview-consumers",
+            renderMode = "theme",
+            className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+            functionName = "ThemedAttributionText",
+            widthPx = 64,
+            heightPx = 64,
+            density = 1.0f,
+            outputBaseName = "theme-consumers",
+          ),
+        requestId = RenderHost.nextRequestId(),
+      )
+    registry.onRender("preview-consumers", result)
+
+    val fetch =
+      registry.fetch("preview-consumers", "compose/theme", params = null, inline = true)
+        as DataProductRegistry.Outcome.Ok
+    val payload = fetch.result.payload!!.jsonObject
+    val consumers = payload["consumers"]!!.jsonArray
+    assertTrue("expected at least one attributed consumer", consumers.isNotEmpty())
+
+    val tokensPerNode = consumers.map { entry ->
+      entry.jsonObject["tokens"]!!.jsonArray.map { it.jsonPrimitive.content }
+    }
+    assertTrue(
+      "expected a consumer attributed to the error colour",
+      tokensPerNode.any { "error" in it },
+    )
+    assertTrue(
+      "expected a consumer attributed to titleMedium typography",
+      tokensPerNode.any { "titleMedium" in it },
+    )
+    // nodeId must live in the same SemanticsNode id space as compose/semantics so the two products
+    // join directly — those ids are numeric.
+    consumers.forEach { entry ->
+      val nodeId = entry.jsonObject["nodeId"]!!.jsonPrimitive.content
+      assertTrue(
+        "nodeId should be a numeric semantics id, was '$nodeId'",
+        nodeId.toIntOrNull() != null,
+      )
+    }
   }
 
   @Test

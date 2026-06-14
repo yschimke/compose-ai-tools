@@ -9,7 +9,13 @@ import kotlinx.serialization.Serializable
  */
 object Material3ThemeProduct {
   const val KIND: String = "compose/theme"
-  const val SCHEMA_VERSION: Int = 1
+
+  /**
+   * v2 populates [ThemePayload.consumers] (node → tokens read) via resolved-value attribution; v1
+   * shipped resolved tokens only and left `consumers` empty (#449, #1847). The payload shape is
+   * unchanged — v1 readers see a populated list where they previously saw `[]`.
+   */
+  const val SCHEMA_VERSION: Int = 2
 }
 
 @Serializable

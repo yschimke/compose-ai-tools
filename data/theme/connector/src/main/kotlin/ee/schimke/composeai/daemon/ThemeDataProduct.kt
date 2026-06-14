@@ -107,8 +107,11 @@ class Material3ThemePreviewOverrideExtension :
  * Compose daemon producer for `compose/theme`.
  *
  * It snapshots the resolved Material 3 theme tokens when a render runs in `mode=theme` (or when a
- * subscribed preview renders). Per issue #449, node-level consumer tracking needs intrusive Compose
- * runtime/compiler instrumentation; v1 keeps the schema shape and returns `consumers: []`.
+ * subscribed preview renders). Schema v2 also populates [ThemePayload.consumers] (#1847) via
+ * [ThemeConsumerCapture]: each node is attributed to the tokens it read by matching its resolved
+ * values against the captured tokens. This is resolved-value attribution, not the compiler-level
+ * instrumentation #449 deferred — typography is matched precisely, colours fall back to a candidate
+ * role set when several roles share a value.
  */
 class ThemeDataProductRegistry : DataProductRegistry {
   private val latestPayloads = ConcurrentHashMap<String, ThemePayload>()
@@ -181,7 +184,19 @@ class ThemeDataProductRegistry : DataProductRegistry {
   ) {
     previewContext
       ?.takeIf { shouldCapture(previewId, it.renderMode) }
-      ?.let(::themePayloadFromPreviewContext)
+      ?.let { context ->
+        themePayloadFromPreviewContext(context)?.let { payload ->
+          // Consumers (#1847) are attributed at capture time (while the held scene's tree is valid)
+          // and baked into the inspection-value payload by the render engine; the one-shot render
+          // tears the tree down before this runs. Carry them onto the resolved payload, whose
+          // tokens come slot-table-first — the same basis attribution matched against.
+          val consumers =
+            (context.inspection.values[MATERIAL3_THEME_PAYLOAD_CONTEXT_KEY] as? ThemePayload)
+              ?.consumers
+              .orEmpty()
+          if (consumers.isEmpty()) payload else payload.copy(consumers = consumers)
+        }
+      }
       ?.let { capture(previewId, it) }
     if (!capturedThisRender.remove(previewId)) {
       latestPayloads.remove(previewId)
@@ -651,7 +666,7 @@ private fun String.parseComposeColor(): Color? {
 
 fun Color.hexArgb(): String = "#%08X".format(toArgb())
 
-private fun TextStyle.token(): TypographyToken =
+internal fun TextStyle.token(): TypographyToken =
   TypographyToken(
     fontFamily = fontFamily?.toString(),
     fontSize = fontSize.takeIf { it.isSpecified }?.value,

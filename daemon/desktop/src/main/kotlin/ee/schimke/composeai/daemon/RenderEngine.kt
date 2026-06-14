@@ -603,6 +603,7 @@ class RenderEngine(
      */
     internal val lottieProgressState: MutableState<Float?> = mutableStateOf(null),
   ) {
+    @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
     internal fun previewContext(): PreviewContext {
       val slotTables = slotTableCapture?.snapshot().orEmpty()
       val rawContext =
@@ -644,9 +645,18 @@ class RenderEngine(
           )
           .parameterInformationCollected()
           .addSlotTables(slotTables)
-      materialThemePayload?.let {
-        builder.putInspectionValue(MATERIAL3_THEME_PAYLOAD_CONTEXT_KEY, it)
+      // Attribute theme consumers (#1847) here, while the held scene's semantics tree is still
+      // valid — the one-shot render tears it down before the registry reads the payload back. Keyed
+      // by SemanticsNode id, matching `compose/semantics`, against the same resolved tokens.
+      val themePayload = materialThemePayload?.let { payload ->
+        val consumers =
+          ThemeConsumerCapture.consumersFor(
+            root = scene.semanticsOwners.firstOrNull()?.unmergedRootSemanticsNode,
+            resolved = payload.resolvedTokens,
+          )
+        if (consumers.isEmpty()) payload else payload.copy(consumers = consumers)
       }
+      themePayload?.let { builder.putInspectionValue(MATERIAL3_THEME_PAYLOAD_CONTEXT_KEY, it) }
       return builder.build()
     }
   }
