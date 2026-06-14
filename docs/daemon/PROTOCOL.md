@@ -583,16 +583,19 @@ empty are interchangeable on the wire. See
 {
   id: string;
   error: {
-    kind: "compile" | "runtime" | "capture" | "timeout" | "internal";
+    kind: "compile" | "runtime" | "capture" | "timeout"
+        | "classpathSkew" | "missingComposable" | "unsetParameter" | "sdkMismatch"
+        | "internal";
     message: string;
     stackTrace?: string;             // present for kind="runtime" | "internal"
+    suggestion?: string;             // one-line remediation for a recognised signature (#1789)
   };
 }
 ```
 
 Render failures are not protocol errors — `renderNow` succeeded in queueing the work. A failure here means the render itself blew up.
 
-> **Implementation gap:** the daemon currently emits `kind: "internal"` for every render failure regardless of the underlying cause; the `compile` / `runtime` / `capture` / `timeout` discriminants are reserved on the wire but not yet populated. Clients should treat any `kind` value as opaque text until this lands.
+The daemon classifies the thrown cause into `kind` (see `RenderErrorClassifier`): the coarse stages (`compile` / `runtime` / `capture` / `timeout` / `internal`) plus fine-grained skew discriminants — `classpathSkew` (AndroidX Compose on a CMP-desktop classpath), `missingComposable` (target isn't an invokable zero-arg `@Composable`), `unsetParameter` (required parameter with no `@PreviewParameter`), and `sdkMismatch` (Robolectric SDK below the consumer's `compileSdk`). Recognised signatures also carry a one-line `suggestion`. `kind` is decoded **tolerantly** ([VERSIONING.md § 4.1](../VERSIONING.md#41-enum-discipline)): adding a discriminant is additive, and an old client maps an unknown value to its `UNKNOWN` sentinel and falls back to `suggestion` / `message`. Branch with an explicit default arm.
 
 ### `classpathDirty`
 

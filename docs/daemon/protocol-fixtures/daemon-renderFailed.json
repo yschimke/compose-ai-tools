@@ -1,8 +1,9 @@
 {
   "id": "com.example.HomeKt#HomePreview",
   "error": {
-    "kind": "runtime",
-    "message": "java.lang.IllegalStateException: not on main thread",
-    "stackTrace": "java.lang.IllegalStateException: not on main thread\n\tat ee.schimke.composeai.daemon.RenderEngine.render(RenderEngine.kt:42)"
+    "kind": "classpathSkew",
+    "message": "java.lang.NoSuchMethodError: Implemented only in JetBrains fork",
+    "stackTrace": "java.lang.NoSuchMethodError: Implemented only in JetBrains fork\n\tat ee.schimke.composeai.daemon.RenderEngine.render(RenderEngine.kt:42)",
+    "suggestion": "Desktop classpath contains AndroidX Compose UI artifacts; use the org.jetbrains.compose UI artifacts for Compose Multiplatform desktop. See docs/RENDERER_COMPATIBILITY.md."
   }
 }

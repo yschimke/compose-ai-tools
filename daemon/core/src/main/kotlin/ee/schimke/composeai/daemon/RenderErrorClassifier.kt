@@ -10,9 +10,11 @@ import ee.schimke.composeai.daemon.protocol.RenderErrorKind
  *
  * Pure (matches on the throwable's message + class names down the cause chain) so it is
  * unit-testable and works whether the cause is a real desktop throwable or a re-thrown sandbox
- * error whose message carries the signature text. New fine-grained kinds (e.g. a dedicated
- * `classpathSkew`) wait on the wire-level tolerant-enum work; until then the skew is conveyed
- * through the suggestion, keeping the change additive and decode-safe for old clients.
+ * error whose message carries the signature text. Recognised skew signatures map to the
+ * fine-grained [RenderErrorKind] discriminants (`classpathSkew` / `sdkMismatch` /
+ * `missingComposable` / `unsetParameter`); the enum decodes tolerantly on the wire, so emitting a
+ * fine-grained kind stays additive and decode-safe for old clients (which see it as
+ * [RenderErrorKind.UNKNOWN] and fall back to [Classification.suggestion] / the message).
  */
 object RenderErrorClassifier {
 
@@ -41,7 +43,7 @@ object RenderErrorClassifier {
         (has("nosuchmethoderror", "noclassdeffounderror") && has("androidx.compose")) ||
         (has("androidx.compose") && has("jvmstubs")) ->
         Classification(
-          RenderErrorKind.RUNTIME,
+          RenderErrorKind.CLASSPATH_SKEW,
           "Desktop classpath contains AndroidX Compose UI artifacts; use the org.jetbrains.compose " +
             "UI artifacts for Compose Multiplatform desktop. See docs/RENDERER_COMPATIBILITY.md.",
         )
@@ -49,7 +51,7 @@ object RenderErrorClassifier {
       // malformed manifest) is a different failure and shouldn't get the compileSdk hint.
       has("requires newer sdk version") || (has("packageparser") && has("newer sdk")) ->
         Classification(
-          RenderErrorKind.RUNTIME,
+          RenderErrorKind.SDK_MISMATCH,
           "Robolectric's SDK is below the consumer's compileSdk; set composePreview.sdkVersion " +
             "(SDK 36 also needs a JDK 21 toolchain). See docs/SDK_COMPATIBILITY.md.",
         )
@@ -63,14 +65,14 @@ object RenderErrorClassifier {
         (has("nosuchmethodexception") && has("composer")) ||
         has("is not a @composable") ->
         Classification(
-          RenderErrorKind.RUNTIME,
+          RenderErrorKind.MISSING_COMPOSABLE,
           "The preview must be a @Composable function with no required parameters (or a " +
             "@PreviewParameter provider). Non-composable previews (tile / notification / Glance) " +
             "render through their own kind.",
         )
       has("@previewparameter") || (has("parameter") && has("no value", "missing", "required")) ->
         Classification(
-          RenderErrorKind.RUNTIME,
+          RenderErrorKind.UNSET_PARAMETER,
           "The preview function has required parameters; give them defaults or a @PreviewParameter " +
             "provider.",
         )

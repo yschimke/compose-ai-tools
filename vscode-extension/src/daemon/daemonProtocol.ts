@@ -813,10 +813,34 @@ export interface RenderFinishedParams {
     unchanged?: boolean;
 }
 
+/**
+ * Classified render-failure kind (issue #1789). The coarse stages are joined by fine-grained
+ * skew discriminants (`classpathSkew` / `missingComposable` / `unsetParameter` / `sdkMismatch`).
+ * Decoded tolerantly per VERSIONING.md § 4.1 — the trailing `(string & {})` keeps an unrecognised
+ * future kind assignable instead of a type error, and consumers must branch with a default arm.
+ */
+export type RenderErrorKind =
+    | "compile"
+    | "runtime"
+    | "capture"
+    | "timeout"
+    | "classpathSkew"
+    | "missingComposable"
+    | "unsetParameter"
+    | "sdkMismatch"
+    | "internal"
+    | (string & {});
+
 export interface RenderError {
-    kind: "compile" | "runtime" | "capture" | "timeout" | "internal";
+    kind: RenderErrorKind;
     message: string;
     stackTrace?: string;
+    /**
+     * One-line remediation for a recognised failure signature (#1789), e.g. a classpath-skew or
+     * Robolectric SDK-mismatch fix hint. Absent when the daemon had no specific suggestion or
+     * pre-dates the field.
+     */
+    suggestion?: string;
 }
 
 export interface RenderFailedParams {

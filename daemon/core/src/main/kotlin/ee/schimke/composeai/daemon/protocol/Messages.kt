@@ -5,8 +5,14 @@ import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
 import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 
@@ -1370,13 +1376,63 @@ data class RenderError(
   val suggestion: String? = null,
 )
 
-@Serializable
-enum class RenderErrorKind {
-  @SerialName("compile") COMPILE,
-  @SerialName("runtime") RUNTIME,
-  @SerialName("capture") CAPTURE,
-  @SerialName("timeout") TIMEOUT,
-  @SerialName("internal") INTERNAL,
+/**
+ * Taxonomy for a failed render (issue #1789). The coarse stages (`compile`/`runtime`/`capture`/
+ * `timeout`/`internal`) are joined by fine-grained discriminants for the load-bearing skew
+ * signatures catalogued in `docs/RENDERER_COMPATIBILITY.md` / `docs/SDK_COMPATIBILITY.md` so an
+ * agent can branch on the *class* of failure rather than re-parse the message:
+ *
+ * - [CLASSPATH_SKEW] — AndroidX Compose UI artifacts on a Compose-Multiplatform desktop classpath
+ *   (the "Implemented only in JetBrains fork" / `jvmstubs` family).
+ * - [MISSING_COMPOSABLE] — the preview target isn't an invokable zero-arg `@Composable`.
+ * - [UNSET_PARAMETER] — the preview function has required parameters and no `@PreviewParameter`.
+ * - [SDK_MISMATCH] — Robolectric's pinned SDK is below the consumer's `compileSdk`.
+ *
+ * Decoded **tolerantly** per [docs/VERSIONING.md § 4.1](../../../../../../../docs/VERSIONING.md):
+ * an unknown future kind from a newer daemon maps to [UNKNOWN] instead of throwing, so adding a
+ * value here stays additive for old clients. Every `when (kind)` must carry an explicit `else`.
+ */
+@Serializable(with = RenderErrorKindSerializer::class)
+enum class RenderErrorKind(val wire: String) {
+  COMPILE("compile"),
+  RUNTIME("runtime"),
+  CAPTURE("capture"),
+  TIMEOUT("timeout"),
+  CLASSPATH_SKEW("classpathSkew"),
+  MISSING_COMPOSABLE("missingComposable"),
+  UNSET_PARAMETER("unsetParameter"),
+  SDK_MISMATCH("sdkMismatch"),
+  INTERNAL("internal"),
+
+  /**
+   * Tolerant-decode sentinel for a kind this build doesn't recognise (a newer daemon emitting a
+   * value added after this client shipped). Never produced by the classifier — only reached when
+   * decoding an unknown wire string. Encodes back as `"unknown"`.
+   */
+  UNKNOWN("unknown"),
+}
+
+/**
+ * Tolerant [RenderErrorKind] serializer: encodes via the [RenderErrorKind.wire] spelling and
+ * decodes an unrecognised string to [RenderErrorKind.UNKNOWN] rather than throwing (VERSIONING.md §
+ * 4.1 enum discipline). This is what keeps adding a new failure discriminant an additive,
+ * non-breaking change for older clients.
+ */
+object RenderErrorKindSerializer : KSerializer<RenderErrorKind> {
+  override val descriptor: SerialDescriptor =
+    PrimitiveSerialDescriptor(
+      "ee.schimke.composeai.daemon.protocol.RenderErrorKind",
+      PrimitiveKind.STRING,
+    )
+
+  override fun serialize(encoder: Encoder, value: RenderErrorKind) {
+    encoder.encodeString(value.wire)
+  }
+
+  override fun deserialize(decoder: Decoder): RenderErrorKind {
+    val raw = decoder.decodeString()
+    return RenderErrorKind.entries.firstOrNull { it.wire == raw } ?: RenderErrorKind.UNKNOWN
+  }
 }
 
 @Serializable

@@ -166,6 +166,41 @@ class MessagesTest {
     assertEquals("missing protocol fixtures: $missing", emptySet<String>(), missing)
   }
 
+  // -- RenderErrorKind tolerant decode (issue #1789 / VERSIONING.md § 4.1) ----
+
+  @Test
+  fun renderErrorKindDecodesFineGrainedDiscriminants() {
+    val params =
+      json.decodeFromString(
+        RenderFailedParams.serializer(),
+        """{"id":"com.example.HomeKt#HomePreview","error":""" +
+          """{"kind":"classpathSkew","message":"Implemented only in JetBrains fork",""" +
+          """"suggestion":"use the org.jetbrains.compose UI artifacts"}}""",
+      )
+    assertEquals(RenderErrorKind.CLASSPATH_SKEW, params.error.kind)
+    // Re-encodes back to the documented wire spelling.
+    val reEncoded = json.encodeToString(RenderFailedParams.serializer(), params)
+    assertEquals(
+      "classpathSkew",
+      json
+        .parseToJsonElement(reEncoded)
+        .let { it as kotlinx.serialization.json.JsonObject }["error"]
+        .let { it as kotlinx.serialization.json.JsonObject }["kind"]
+        .let { (it as kotlinx.serialization.json.JsonPrimitive).content },
+    )
+  }
+
+  @Test
+  fun renderErrorKindToleratesAnUnknownFutureValue() {
+    // A newer daemon emits a kind this client predates — it must decode to UNKNOWN, not throw.
+    val params =
+      json.decodeFromString(
+        RenderFailedParams.serializer(),
+        """{"id":"p","error":{"kind":"someFutureKind","message":"boom"}}""",
+      )
+    assertEquals(RenderErrorKind.UNKNOWN, params.error.kind)
+  }
+
   // -- helpers ----------------------------------------------------------------
 
   private inline fun <reified T : Any> roundTrip(fixtureName: String) {

@@ -567,7 +567,14 @@ class DaemonMcpServer(
       }
     return when (outcome) {
       is RenderOutcome.Failed ->
-        error("awaitNextRender failed for $uri: ${outcome.kind} ${outcome.message}")
+        error(
+          buildString {
+            append("awaitNextRender failed for $uri: ${outcome.kind} ${outcome.message}")
+            // #1789 — append the daemon's classified remediation so the agent gets the fix hint
+            // inline rather than having to re-diagnose the failure from the message alone.
+            outcome.suggestion?.let { append(" — suggestion: $it") }
+          }
+        )
       is RenderOutcome.Finished -> outcome
     }
   }
@@ -4337,6 +4344,8 @@ class DaemonMcpServer(
     val errorObj = params["error"] as? JsonObject
     val kind = errorObj?.get("kind")?.jsonPrimitive?.contentOrNull ?: "unknown"
     val message = errorObj?.get("message")?.jsonPrimitive?.contentOrNull ?: "no message"
+    // #1789 — carry the daemon's classified one-line remediation through to the agent-facing error.
+    val suggestion = errorObj?.get("suggestion")?.jsonPrimitive?.contentOrNull
     // Same pop-and-promote shape as `onRenderFinished` — failure of the head group does NOT
     // sympathetically fail queued non-head groups. Different overrides could plausibly succeed
     // even when O1 throws (e.g., a composable that fails only at small widths), so we keep the
@@ -4344,7 +4353,7 @@ class DaemonMcpServer(
     // next group's renderNow normally. If a follow-up group's render also fails, the same path
     // surfaces it.
     val key = PreviewIdKey(daemon.workspaceId, daemon.modulePath, previewId)
-    popHeadAndPromoteNext(daemon, key, RenderOutcome.Failed(kind, message))
+    popHeadAndPromoteNext(daemon, key, RenderOutcome.Failed(kind, message, suggestion))
   }
 
   /**
@@ -4569,7 +4578,16 @@ class DaemonMcpServer(
   private sealed interface RenderOutcome {
     data class Finished(val pngPath: String) : RenderOutcome
 
-    data class Failed(val kind: String, val message: String) : RenderOutcome
+    data class Failed(
+      val kind: String,
+      val message: String,
+      /**
+       * One-line remediation the daemon classified for a recognised failure signature
+       * (issue #1789), e.g. a classpath-skew or Robolectric SDK-mismatch fix hint. `null` when the
+       * daemon had no specific suggestion (or pre-dates the field — tolerant decode).
+       */
+      val suggestion: String? = null,
+    ) : RenderOutcome
   }
 
   private fun parseSchema(s: String): JsonElement = json.parseToJsonElement(s)

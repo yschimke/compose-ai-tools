@@ -97,7 +97,18 @@ class S5RenderFailedAndroidRealModeTest {
       assertTrue(
         "renderFailed.params.error.kind must be one of the v1 RenderErrorKind values " +
           "(PROTOCOL.md § 6); was $errKind",
-        errKind in setOf("internal", "runtime", "compile", "capture", "timeout"),
+        errKind in
+          setOf(
+            "internal",
+            "runtime",
+            "compile",
+            "capture",
+            "timeout",
+            "classpathSkew",
+            "missingComposable",
+            "unsetParameter",
+            "sdkMismatch",
+          ),
       )
       val errMsg = errorObj["message"]?.jsonPrimitive?.contentOrNull
       assertNotNull("renderFailed.params.error.message must be present", errMsg)

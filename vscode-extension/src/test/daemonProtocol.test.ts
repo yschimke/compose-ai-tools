@@ -26,6 +26,7 @@ import {
     InitializeParams,
     InitializeResult,
     PROTOCOL_VERSION,
+    RenderFailedParams,
     RenderFinishedParams,
     RenderNowParams,
     RenderNowResult,
@@ -129,6 +130,19 @@ describe("daemon protocol — golden fixtures", () => {
         assert.strictEqual(params.kind, "source");
         assert.strictEqual(params.changeType, "modified");
         assert.match(params.path, /\.kt$/);
+    });
+
+    it("parses daemon-renderFailed.json with a fine-grained kind + suggestion", () => {
+        // #1789 — renderFailed carries a classified RenderErrorKind and a one-line remediation,
+        // not just a bare runtime message.
+        const params = readFixture<RenderFailedParams>(
+            "daemon-renderFailed.json",
+        );
+        assert.strictEqual(params.error.kind, "classpathSkew");
+        assert.ok(
+            params.error.suggestion?.includes("org.jetbrains.compose"),
+            "fine-grained failure should carry a remediation suggestion",
+        );
     });
 
     it("parses client-setVisible.json into a string-array shape", () => {
