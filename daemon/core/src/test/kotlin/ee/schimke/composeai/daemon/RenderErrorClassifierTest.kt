@@ -10,20 +10,20 @@ import org.junit.Test
 class RenderErrorClassifierTest {
 
   @Test
-  fun androidxComposeOnDesktopIsRuntimeWithAClasspathSuggestion() {
+  fun androidxComposeOnDesktopIsClasspathSkewWithAClasspathSuggestion() {
     val c =
       RenderErrorClassifier.classify(
         "java.lang.NoSuchMethodError: Implemented only in JetBrains fork"
       )
-    assertEquals(RenderErrorKind.RUNTIME, c.kind)
+    assertEquals(RenderErrorKind.CLASSPATH_SKEW, c.kind)
     assertTrue(c.suggestion, c.suggestion!!.contains("org.jetbrains.compose"))
   }
 
   @Test
-  fun newerSdkIsRuntimeWithAnSdkSuggestion() {
+  fun newerSdkIsSdkMismatchWithAnSdkSuggestion() {
     val c =
       RenderErrorClassifier.classify("PackageParser: Requires newer sdk version #36 (current #35)")
-    assertEquals(RenderErrorKind.RUNTIME, c.kind)
+    assertEquals(RenderErrorKind.SDK_MISMATCH, c.kind)
     assertTrue(c.suggestion, c.suggestion!!.contains("compileSdk"))
   }
 
@@ -48,13 +48,24 @@ class RenderErrorClassifierTest {
   }
 
   @Test
-  fun missingComposableIsRuntimeWithASuggestion() {
+  fun missingComposableIsMissingComposableWithASuggestion() {
     val c =
       RenderErrorClassifier.classify(
         "java.lang.NoSuchMethodException: getDeclaredComposableMethod failed"
       )
-    assertEquals(RenderErrorKind.RUNTIME, c.kind)
+    assertEquals(RenderErrorKind.MISSING_COMPOSABLE, c.kind)
     assertTrue(c.suggestion, c.suggestion!!.contains("@Composable"))
+  }
+
+  @Test
+  fun requiredParameterIsUnsetParameterWithASuggestion() {
+    val c =
+      RenderErrorClassifier.classify(
+        "java.lang.IllegalArgumentException: preview parameter 'user' has no value (missing " +
+          "@PreviewParameter provider)"
+      )
+    assertEquals(RenderErrorKind.UNSET_PARAMETER, c.kind)
+    assertTrue(c.suggestion, c.suggestion!!.contains("@PreviewParameter"))
   }
 
   @Test
@@ -95,7 +106,7 @@ class RenderErrorClassifierTest {
         "wrapper",
         IllegalStateException("PackageParser: Requires newer sdk version"),
       )
-    assertEquals(RenderErrorKind.RUNTIME, RenderErrorClassifier.classify(cause).kind)
+    assertEquals(RenderErrorKind.SDK_MISMATCH, RenderErrorClassifier.classify(cause).kind)
     assertNotNull(RenderErrorClassifier.classify(cause).suggestion)
   }
 }
