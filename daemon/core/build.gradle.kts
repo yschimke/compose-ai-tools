@@ -22,6 +22,12 @@ plugins {
 dependencies {
   api(project(":data-render-core"))
 
+  // Semantics-tree models + structural differ (issue #1785). `api`, not `implementation`: the
+  // published `HistoryDiffResult.semanticsDelta` field is a `SemanticsDelta`, so the type is part
+  // of this module's compile ABI. Pure-JVM core module (no Compose/Android) — safe on the
+  // renderer-agnostic daemon classpath.
+  api(project(":data-layoutinspector-core"))
+
   // Okio-based file IO (`SystemFileSystem`) for data-product reads, history sidecars, bundle IR
   // replay, and forensics dumps. `implementation` — Okio stays an internal detail; daemon/core's
   // public surface keeps its java.io.File signatures.

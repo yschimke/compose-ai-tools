@@ -2,6 +2,7 @@ package ee.schimke.composeai.daemon.history
 
 import java.nio.file.Files
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -250,6 +251,125 @@ class LocalFsHistorySourceWriteTest {
   }
 
   @Test
+  fun semantics_only_change_with_identical_pixels_is_recorded_not_deduped() {
+    // Issue #1785 — a render that changes only semantics (e.g. a dropped testTag /
+    // contentDescription) produces byte-identical pixels. Tier-1 dedup must NOT skip it, else
+    // `history/diff mode=semantics` could never report the change. The PNG is still pointer-deduped
+    // (tier 2), so only a fresh sidecar + index line land — no duplicate bytes.
+    val source = LocalFsHistorySource(historyDir = tmpDir)
+    val previewId = "SemanticOnly"
+    val bytes = byteArrayOf(0x42, 0x42, 0x42)
+    val hash = LocalFsHistorySource.sha256Hex(bytes)
+
+    val first =
+      makeEntry(
+        id = "20260430-100000-${hash.take(8)}",
+        previewId = previewId,
+        hash = hash,
+        size = bytes.size.toLong(),
+        semantics = semanticsJson(testTag = "submit"),
+      )
+    val second =
+      makeEntry(
+        id = "20260430-100001-${hash.take(8)}",
+        previewId = previewId,
+        hash = hash,
+        size = bytes.size.toLong(),
+        semantics = semanticsJson(testTag = "cancel"),
+      )
+
+    assertEquals(WriteResult.WRITTEN, source.write(first, bytes))
+    assertEquals(
+      "identical pixels but a changed semantics tree must land",
+      WriteResult.WRITTEN,
+      source.write(second, bytes),
+    )
+
+    val previewDir = tmpDir.resolve("SemanticOnly")
+    val secondPng = previewDir.resolve("${second.id}.png")
+    val secondSidecar = previewDir.resolve("${second.id}.json")
+    assertFalse("Second PNG must NOT be rewritten — pointer-only", Files.exists(secondPng))
+    assertTrue("Second sidecar must exist", Files.exists(secondSidecar))
+    val secondEntry =
+      json.decodeFromString(HistoryEntry.serializer(), Files.readString(secondSidecar))
+    assertEquals("Second pngPath points at first's PNG", "${first.id}.png", secondEntry.pngPath)
+
+    val indexLines =
+      Files.readAllLines(tmpDir.resolve(LocalFsHistorySource.INDEX_FILENAME)).filter {
+        it.isNotBlank()
+      }
+    assertEquals(2, indexLines.size)
+  }
+
+  @Test
+  fun identical_pixels_and_identical_semantics_is_skipped() {
+    val source = LocalFsHistorySource(historyDir = tmpDir)
+    val previewId = "Steady"
+    val bytes = byteArrayOf(0x55, 0x66, 0x77)
+    val hash = LocalFsHistorySource.sha256Hex(bytes)
+
+    val first =
+      makeEntry(
+        id = "20260430-100000-${hash.take(8)}",
+        previewId = previewId,
+        hash = hash,
+        size = bytes.size.toLong(),
+        semantics = semanticsJson(testTag = "submit"),
+      )
+    val second =
+      makeEntry(
+        id = "20260430-100001-${hash.take(8)}",
+        previewId = previewId,
+        hash = hash,
+        size = bytes.size.toLong(),
+        semantics = semanticsJson(testTag = "submit"),
+      )
+
+    assertEquals(WriteResult.WRITTEN, source.write(first, bytes))
+    assertEquals(
+      "identical pixels AND identical semantics is still a pure duplicate",
+      WriteResult.SKIPPED_DUPLICATE,
+      source.write(second, bytes),
+    )
+  }
+
+  @Test
+  fun identical_semantics_with_different_nodeId_is_skipped() {
+    // The volatile per-render `nodeId` reshuffles between identical renders. Because the dedup
+    // compares trees structurally (SemanticsDiff ignores nodeId), a re-render whose only delta is
+    // nodeId churn must still dedup — otherwise every identical render would record a spurious
+    // entry.
+    val source = LocalFsHistorySource(historyDir = tmpDir)
+    val previewId = "NodeIdChurn"
+    val bytes = byteArrayOf(0x01, 0x02, 0x03, 0x04)
+    val hash = LocalFsHistorySource.sha256Hex(bytes)
+
+    val first =
+      makeEntry(
+        id = "20260430-100000-${hash.take(8)}",
+        previewId = previewId,
+        hash = hash,
+        size = bytes.size.toLong(),
+        semantics = semanticsJson(nodeId = "1", testTag = "submit"),
+      )
+    val second =
+      makeEntry(
+        id = "20260430-100001-${hash.take(8)}",
+        previewId = previewId,
+        hash = hash,
+        size = bytes.size.toLong(),
+        semantics = semanticsJson(nodeId = "999", testTag = "submit"),
+      )
+
+    assertEquals(WriteResult.WRITTEN, source.write(first, bytes))
+    assertEquals(
+      "nodeId-only churn is not a semantic change → dedup still skips",
+      WriteResult.SKIPPED_DUPLICATE,
+      source.write(second, bytes),
+    )
+  }
+
+  @Test
   fun previewId_with_path_separator_is_sanitised() {
     val source = LocalFsHistorySource(historyDir = tmpDir)
     val rawId = "com/example/foo:bar"
@@ -269,7 +389,13 @@ class LocalFsHistorySourceWriteTest {
     assertNotNull(Files.list(tmpDir.resolve("com_example_foo_bar")).findFirst().orElse(null))
   }
 
-  private fun makeEntry(id: String, previewId: String, hash: String, size: Long): HistoryEntry =
+  private fun makeEntry(
+    id: String,
+    previewId: String,
+    hash: String,
+    size: Long,
+    semantics: JsonElement? = null,
+  ): HistoryEntry =
     HistoryEntry(
       id = id,
       previewId = previewId,
@@ -282,5 +408,12 @@ class LocalFsHistorySourceWriteTest {
       trigger = "renderNow",
       source = HistorySourceInfo(kind = "fs", id = "fs:${tmpDir.toAbsolutePath()}"),
       renderTookMs = 1L,
+      semantics = semantics,
+    )
+
+  /** A one-node `compose/semantics` payload as a [JsonElement], for seeding sidecars. */
+  private fun semanticsJson(nodeId: String = "1", testTag: String): JsonElement =
+    json.parseToJsonElement(
+      """{"root":{"nodeId":"$nodeId","boundsInRoot":"0,0,10,10","testTag":"$testTag"}}"""
     )
 }

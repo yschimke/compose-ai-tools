@@ -14,8 +14,10 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.After
@@ -203,6 +205,121 @@ class HistoryDiffTest {
       assertEquals(JsonRpcServer.ERR_HISTORY_PIXEL_NOT_IMPLEMENTED, errCode)
     }
   }
+
+  // -------------------------------------------------------------------------
+  // SEMANTICS mode (issue #1785) — structural text diff of two entries' captured
+  // `compose/semantics` trees. Entries are seeded with a semantics snapshot directly via
+  // `recordRender(semantics = …)`, mirroring what the render path captures off the data-product
+  // registry.
+  // -------------------------------------------------------------------------
+
+  @Test(timeout = 30_000)
+  fun semantics_mode_reports_field_change_on_same_ref() {
+    runWith { _, manager, send, receive ->
+      val from =
+        manager.recordRender(
+          "preview-A",
+          "bytes-1".toByteArray(),
+          trigger = "renderNow",
+          renderTookMs = 1,
+          semantics = semanticsPayload(testTag = "greeting", text = "Hello"),
+        )!!
+      val to =
+        manager.recordRender(
+          "preview-A",
+          "bytes-2".toByteArray(),
+          trigger = "renderNow",
+          renderTookMs = 1,
+          semantics = semanticsPayload(testTag = "greeting", text = "World"),
+        )!!
+
+      val resp = diffRoundTrip(send, receive, from = from.id, to = to.id, mode = "semantics")
+      val delta = resp["result"]!!.jsonObject["semanticsDelta"]!!.jsonObject
+      // Versioned schema rides the wire even though the server encodes with encodeDefaults=false.
+      assertEquals("compose-semantics-diff/v1", delta["schema"]!!.jsonPrimitive.content)
+      // Empty added/removed lists are omitted by the lean encoder — absent ⇒ empty.
+      assertTrue(emptyOrAbsent(delta["added"]))
+      assertTrue(emptyOrAbsent(delta["removed"]))
+      val changed = delta["changed"]!!.jsonArray
+      assertEquals(1, changed.size)
+      val change = changed[0].jsonObject["changes"]!!.jsonArray.single().jsonObject
+      assertEquals("text", change["field"]!!.jsonPrimitive.content)
+      assertEquals("Hello", change["from"]!!.jsonPrimitive.content)
+      assertEquals("World", change["to"]!!.jsonPrimitive.content)
+    }
+  }
+
+  @Test(timeout = 30_000)
+  fun semantics_mode_identical_trees_empty_delta() {
+    runWith { _, manager, send, receive ->
+      val from =
+        manager.recordRender(
+          "preview-A",
+          "bytes-1".toByteArray(),
+          trigger = "renderNow",
+          renderTookMs = 1,
+          semantics = semanticsPayload(testTag = "greeting", text = "Hello"),
+        )!!
+      val to =
+        manager.recordRender(
+          "preview-A",
+          // Different PNG bytes (so dedup doesn't skip the write) but an identical semantics tree.
+          "bytes-2".toByteArray(),
+          trigger = "renderNow",
+          renderTookMs = 1,
+          semantics = semanticsPayload(testTag = "greeting", text = "Hello"),
+        )!!
+
+      val resp = diffRoundTrip(send, receive, from = from.id, to = to.id, mode = "semantics")
+      val delta = resp["result"]!!.jsonObject["semanticsDelta"]!!.jsonObject
+      assertTrue(emptyOrAbsent(delta["added"]))
+      assertTrue(emptyOrAbsent(delta["removed"]))
+      assertTrue(emptyOrAbsent(delta["changed"]))
+    }
+  }
+
+  @Test(timeout = 30_000)
+  fun semantics_mode_missing_snapshot_errors() {
+    runWith { _, manager, send, receive ->
+      val withSemantics =
+        manager.recordRender(
+          "preview-A",
+          "bytes-1".toByteArray(),
+          trigger = "renderNow",
+          renderTookMs = 1,
+          semantics = semanticsPayload(testTag = "greeting", text = "Hello"),
+        )!!
+      val withoutSemantics =
+        manager.recordRender(
+          "preview-A",
+          "bytes-2".toByteArray(),
+          trigger = "renderNow",
+          renderTookMs = 1,
+          // No semantics captured for this render.
+        )!!
+
+      val resp =
+        diffRoundTrip(
+          send,
+          receive,
+          from = withSemantics.id,
+          to = withoutSemantics.id,
+          mode = "semantics",
+        )
+      val errCode = resp["error"]!!.jsonObject["code"]!!.jsonPrimitive.intOrNull
+      assertEquals(JsonRpcServer.ERR_HISTORY_SEMANTICS_NOT_CAPTURED, errCode)
+    }
+  }
+
+  /** True when a delta list field is absent (omitted because empty) or present-but-empty. */
+  private fun emptyOrAbsent(element: JsonElement?): Boolean =
+    element == null || element.jsonArray.isEmpty()
+
+  /** A one-node `compose/semantics` payload as a [JsonElement], for seeding history entries. */
+  private fun semanticsPayload(testTag: String, text: String): JsonElement =
+    json.parseToJsonElement(
+      """{"root":{"nodeId":"1","boundsInRoot":"0,0,100,50","testTag":"$testTag","text":"$text"}}"""
+    )
 
   // -------------------------------------------------------------------------
   // Test infrastructure — minimal JSON-RPC client over piped streams.

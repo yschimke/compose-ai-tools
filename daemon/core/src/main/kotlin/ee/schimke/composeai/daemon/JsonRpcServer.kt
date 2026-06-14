@@ -69,6 +69,9 @@ import ee.schimke.composeai.daemon.protocol.XrStopParams
 import ee.schimke.composeai.daemon.protocol.XrStructureParams
 import ee.schimke.composeai.daemon.protocol.XrStructureResult
 import ee.schimke.composeai.daemon.protocol.XrUpdatePanelsParams
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
+import ee.schimke.composeai.data.layoutinspector.SemanticsDiff
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.renderer.xr.client.StreamFrame as XrStreamFrame
 import ee.schimke.composeai.renderer.xr.client.XrRenderServerFactory
@@ -1203,12 +1206,14 @@ class JsonRpcServer(
     // history write failure never blocks the renderFinished wire-format. The render's notification
     // has already been sent above; history is observation, not state.
     //
-    // Skip history when the frame is byte-identical to the prior one for this preview — there's
-    // nothing new to archive, and a duplicate sidecar would inflate `history/list` results
-    // without changing what the user sees on disk.
-    if (!isUnchanged) {
-      recordHistoryForRender(previewId = previewId, result = result, finished = finished)
-    }
+    // Dedup is the history source's job, not this gate's: a byte-identical frame may still carry a
+    // changed `compose/semantics` tree (a dropped contentDescription leaves pixels untouched), and
+    // that's exactly what `history/diff mode=semantics` exists to catch (issue #1785). So we record
+    // regardless of the pixel-only `isUnchanged` flag and let `LocalFsHistorySource` skip only when
+    // BOTH the bytes and the semantics tree are unchanged — `recordHistoryForRender` returns null
+    // on
+    // that skip, so a truly-redundant frame still emits no `historyAdded` and adds no sidecar.
+    recordHistoryForRender(previewId = previewId, result = result, finished = finished)
     inFlightRenders.remove(result.id)
     previewIdsWithOverridesInFlight.remove(previewId)
     // D3 — wake any `data/fetch` waiter that queued this render. The waiter re-invokes
@@ -1268,6 +1273,25 @@ class JsonRpcServer(
           config = null,
         )
       }
+    // Snapshot the `compose/semantics` tree this render produced (issue #1785) so a later
+    // `history/diff mode=SEMANTICS` can diff two entries structurally. Opportunistic: the inline
+    // fetch returns the payload only when the producer wrote the artefact for this pass (it never
+    // forces a re-render — a missing file is NotAvailable, not RequiresRerender), so renders that
+    // didn't compute semantics simply record `semantics = null`.
+    val semantics =
+      try {
+        val outcome =
+          extensions
+            .publicDataProducts()
+            .fetch(previewId, ComposeSemanticsProduct.KIND, params = null, inline = true)
+        (outcome as? DataProductRegistry.Outcome.Ok)?.result?.payload
+      } catch (t: Throwable) {
+        System.err.println(
+          "compose-ai-daemon: history: compose/semantics fetch for $previewId failed " +
+            "(${t.javaClass.simpleName}: ${t.message}); recording entry without a semantics snapshot"
+        )
+        null
+      }
     val entry =
       try {
         mgr.recordRender(
@@ -1278,6 +1302,7 @@ class JsonRpcServer(
           renderTookMs = finished.tookMs,
           metrics = finished.metrics,
           previewMetadata = previewMetadata,
+          semantics = semantics,
         )
       } catch (t: Throwable) {
         System.err.println(
@@ -1297,8 +1322,12 @@ class JsonRpcServer(
     }
   }
 
+  // Strips the heavy captured `semantics` snapshot (issue #1785) before echoing an entry on the
+  // wire: `history/list` / `history/read` / `historyAdded` / metadata-mode `history/diff` only want
+  // metadata, and the tree is read back off the sidecar exclusively by `history/diff
+  // mode=SEMANTICS`.
   private fun encodeHistoryEntry(entry: HistoryEntry): JsonElement =
-    json.encodeToJsonElement(HistoryEntry.serializer(), entry)
+    json.encodeToJsonElement(HistoryEntry.serializer(), entry.copy(semantics = null))
 
   private fun handleHistoryList(req: JsonRpcRequest) {
     val params =
@@ -1425,10 +1454,13 @@ class JsonRpcServer(
    * - `HistoryEntryNotFound` (-32010) when either id is missing.
    * - `HistoryDiffMismatch` (-32011) when the two entries belong to different previews.
    * - `ERR_HISTORY_PIXEL_NOT_IMPLEMENTED` (-32012) when the caller asks for `mode = pixel` (H5).
+   * - `ERR_HISTORY_SEMANTICS_NOT_CAPTURED` (-32013) when `mode = semantics` but one of the two
+   *   entries has no captured `compose/semantics` snapshot (issue #1785).
    *
    * The metadata-mode response is `pngHashChanged + fromMetadata + toMetadata` (full sidecars).
    * Pixel-mode fields (`diffPx`, `ssim`, `diffPngPath`) stay null in METADATA mode by design — H5
-   * lands the pixel pass.
+   * lands the pixel pass. SEMANTICS mode (issue #1785) adds `semanticsDelta`, the typed structural
+   * diff of the two entries' captured semantics trees.
    */
   private fun handleHistoryDiff(req: JsonRpcRequest) {
     val params =
@@ -1505,8 +1537,55 @@ class JsonRpcServer(
         code = ERR_HISTORY_DIFF_MISMATCH,
         message =
           "history/diff: from.previewId='${from.entry.previewId}' but " +
-            "to.previewId='${to.entry.previewId}'; pixel diff would be meaningless",
+            "to.previewId='${to.entry.previewId}'; a diff across previews would be meaningless",
       )
+      return
+    }
+    // SEMANTICS mode (issue #1785) — diff the two entries' captured `compose/semantics` trees.
+    // Each entry's snapshot is frozen at record time in the sidecar (stripped from the lean index),
+    // so the diff is the pixel-free regression signal: "Button 'Submit' lost its label" instead of
+    // "some pixels moved". The differ ([SemanticsDiff]) ignores positional bounds + the volatile
+    // nodeId, matching nodes by their stable `ref`.
+    if (params.mode == HistoryDiffMode.SEMANTICS) {
+      val missing =
+        when {
+          from.entry.semantics == null -> params.from
+          to.entry.semantics == null -> params.to
+          else -> null
+        }
+      if (missing != null) {
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_HISTORY_SEMANTICS_NOT_CAPTURED,
+          message =
+            "history/diff: entry '$missing' has no captured compose/semantics snapshot; " +
+              "mode='semantics' needs both entries to have been recorded with semantics",
+        )
+        return
+      }
+      val delta =
+        try {
+          val base =
+            json.decodeFromJsonElement(ComposeSemanticsPayload.serializer(), from.entry.semantics!!)
+          val head =
+            json.decodeFromJsonElement(ComposeSemanticsPayload.serializer(), to.entry.semantics!!)
+          SemanticsDiff.diff(base, head)
+        } catch (t: Throwable) {
+          sendErrorResponse(
+            id = req.id,
+            code = ERR_INTERNAL,
+            message = "history/diff: semantics diff failed: ${t.message}",
+          )
+          return
+        }
+      val result =
+        HistoryDiffResult(
+          pngHashChanged = from.entry.pngHash != to.entry.pngHash,
+          fromMetadata = encodeHistoryEntry(from.entry),
+          toMetadata = encodeHistoryEntry(to.entry),
+          semanticsDelta = delta,
+        )
+      sendResponse(req.id, encode(HistoryDiffResult.serializer(), result))
       return
     }
     val result =
@@ -3808,6 +3887,15 @@ class JsonRpcServer(
      * fields by design."
      */
     const val ERR_HISTORY_PIXEL_NOT_IMPLEMENTED: Int = -32012
+
+    /**
+     * HISTORY.md § "Error codes" — `history/diff` was called with `mode = semantics` but one of the
+     * two entries has no captured `compose/semantics` snapshot (issue #1785). Distinct from
+     * `HistoryEntryNotFound`: the entry exists, but it was recorded by a render that didn't compute
+     * semantics (a stub host, or a render that never had the kind subscribed), so there's nothing
+     * to diff against.
+     */
+    const val ERR_HISTORY_SEMANTICS_NOT_CAPTURED: Int = -32013
 
     /** DATA-PRODUCTS.md § "Error codes" — kind not advertised by the daemon. */
     const val ERR_DATA_PRODUCT_UNKNOWN: Int = -32020

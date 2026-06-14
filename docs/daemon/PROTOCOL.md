@@ -53,6 +53,7 @@ Standard JSON-RPC codes plus daemon-specific extensions in the reserved `-32000.
 | -32010   | HistoryEntryNotFound  | `history/read` or `history/diff` referenced a missing entry id. |
 | -32011   | HistoryDiffMismatch   | `history/diff` was given two entries from different previews. |
 | -32012   | HistoryPixelNotImplemented | `history/diff` was called with `mode = "pixel"`; reserved for phase H5. |
+| -32013   | HistorySemanticsNotCaptured | `history/diff` was called with `mode = "semantics"` but one of the two entries has no captured `compose/semantics` snapshot (issue #1785). |
 | -32020   | DataProductUnknown    | `data/*` referenced a kind not advertised by the daemon. See [DATA-PRODUCTS.md](DATA-PRODUCTS.md). |
 | -32021   | DataProductNotAvailable | `data/fetch` against a preview that has never rendered. |
 | -32022   | DataProductFetchFailed  | `data/fetch` re-render or projection failed; details in `data`. |
@@ -429,9 +430,9 @@ Errors:
 ```ts
 // params
 {
-  from: string;                     // entry id
-  to: string;                       // entry id
-  mode?: "metadata" | "pixel";      // default "metadata"
+  from: string;                            // entry id
+  to: string;                              // entry id
+  mode?: "metadata" | "pixel" | "semantics"; // default "metadata"
 }
 
 // result
@@ -443,6 +444,8 @@ Errors:
   diffPx?: number;
   ssim?: number;
   diffPngPath?: string;
+  // Semantics-mode field (issue #1785) — null in METADATA / PIXEL modes.
+  semanticsDelta?: SemanticsDelta;  // compose-semantics-diff/v1
 }
 ```
 
@@ -453,6 +456,14 @@ Errors:
 `mode = "pixel"` return `-32012` (`HistoryPixelNotImplemented`) so callers can distinguish
 "asked for pixel and the daemon isn't ready" from "asked for metadata and got null pixel fields
 by design."
+
+`mode = "semantics"` (issue #1785) diffs the two entries' captured `compose/semantics` trees and
+returns a typed `semanticsDelta` (`compose-semantics-diff/v1`: added / removed / changed nodes,
+matched by each node's stable `ref`). The cheap, pixel-free regression signal — the same
+`SemanticsDiff` that backs `compose-preview diff-semantics` and the MCP `diff_semantics` tool, so
+all three agree. Each entry's tree is snapshotted into its sidecar at record time, so the diff
+reads no PNGs. When one of the two entries has no captured semantics snapshot the call returns
+`-32013` (`HistorySemanticsNotCaptured`), distinct from `HistoryEntryNotFound`.
 
 The diff resolves `from` and `to` across all configured `HistorySource`s — `from` may live in
 `LocalFsHistorySource` while `to` lives on a `preview/main` ref via `GitRefHistorySource`. This is
@@ -465,6 +476,8 @@ Errors:
   be meaningless.
 - `HistoryPixelNotImplemented` (-32012) — `mode = "pixel"` was requested but the pixel pass is
   reserved for phase H5.
+- `HistorySemanticsNotCaptured` (-32013) — `mode = "semantics"` was requested but one of the two
+  entries has no captured `compose/semantics` snapshot.
 
 ### `data/fetch`, `data/subscribe`, `data/unsubscribe` (phase D1)
 

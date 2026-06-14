@@ -29,6 +29,13 @@ import kotlinx.serialization.json.JsonElement
  * - **Optional delta** — [previousId] + [deltaFromPrevious]. The first render of a preview has
  *   `previousId == null` and `deltaFromPrevious == null`. H1 leaves the pixel-mode fields
  *   ([HistoryDelta.diffPx], [HistoryDelta.ssim]) as `null`; H5 will populate them.
+ * - **Semantics snapshot** — [semantics]. The `compose/semantics` payload captured alongside this
+ *   render, frozen so `history/diff mode=SEMANTICS` (issue #1785) can diff two entries' trees
+ *   structurally — the cheap, pixel-free regression signal. Null when the producer didn't compute
+ *   semantics for this render (e.g. stub hosts, renders that never subscribed the kind). Heavy, so
+ *   it lives only in the per-entry sidecar: it's stripped from the lean `index.jsonl` (like
+ *   [previewMetadata]) and never echoed on the `history/list` / `history/read` / `historyAdded`
+ *   wire surfaces — only `history/diff mode=SEMANTICS` reads it back off disk.
  */
 @Serializable
 data class HistoryEntry(
@@ -50,6 +57,7 @@ data class HistoryEntry(
   val previewMetadata: PreviewMetadataSnapshot? = null,
   val previousId: String? = null,
   val deltaFromPrevious: HistoryDelta? = null,
+  val semantics: JsonElement? = null,
 )
 
 /**

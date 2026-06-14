@@ -69,22 +69,41 @@ renders inside the same second.
   },
 
   "previousId": "20260430-101207-9f8e7d6c",
-  "deltaFromPrevious": { "pngHashChanged": true, "diffPx": 142, "ssim": null }
+  "deltaFromPrevious": { "pngHashChanged": true, "diffPx": 142, "ssim": null },
+
+  "semantics": { "root": { "nodeId": "1", "ref": "r", ... } }  // compose/semantics, frozen at render time (#1785)
 }
 ```
 
-`index.jsonl` carries the same fields minus `previewMetadata`. Opened
-in `O_APPEND` mode — each line is under POSIX `PIPE_BUF` so writes are
-atomic.
+`index.jsonl` carries the same fields minus the two heavy snapshots,
+`previewMetadata` and `semantics` — readers fetch the full sidecar via
+`history/read` (metadata) or `history/diff mode=semantics` (the tree).
+Opened in `O_APPEND` mode — each line is under POSIX `PIPE_BUF` so writes
+are atomic.
+
+`semantics` is the `compose/semantics` payload the render produced,
+captured opportunistically (null when the render didn't compute it). It
+exists so `history/diff mode=semantics` (#1785) can diff two entries'
+trees structurally without reading PNGs.
 
 ### Dedup-by-hash on write
 
 Two-tier ladder:
 
 1. **Skip-on-most-recent-match.** If the absolute newest existing entry
-   for this `previewId` has the same `pngHash`, the writer returns
-   `WriteResult.SKIPPED_DUPLICATE` and writes nothing. No PNG, no
-   sidecar, no index line, no `historyAdded` notification.
+   for this `previewId` has the same `pngHash` **and the same semantics
+   tree**, the writer returns `WriteResult.SKIPPED_DUPLICATE` and writes
+   nothing. No PNG, no sidecar, no index line, no `historyAdded`
+   notification. The semantics check (issue #1785) is what keeps a
+   *semantics-only* change recordable: a render that drops a
+   `contentDescription` / `role` / `testTag` produces byte-identical
+   pixels but a changed `compose/semantics` tree, and that's exactly the
+   regression `history/diff mode=semantics` exists to catch — so it must
+   land, not dedup away. The comparison is structural (via `SemanticsDiff`,
+   the same differ the diff uses), so the volatile per-render `nodeId` and
+   positional bounds don't count as a change and a truly-identical
+   re-render still dedups. When either side has no captured snapshot the
+   check falls back to pure `pngHash` dedup.
 2. **Pointer-on-any-match.** If the new bytes match an earlier entry
    (but not the most recent), the new sidecar's `pngPath` points at
    the older PNG and the bytes aren't re-written. Sidecar + index line
@@ -133,10 +152,11 @@ base64 bytes.
 ### `history/diff` (§ H3)
 
 ```ts
-params: { from: string; to: string; mode?: "metadata" | "pixel" }
+params: { from: string; to: string; mode?: "metadata" | "pixel" | "semantics" }
 result: {
   pngHashChanged: boolean;
   diffPx?: number; ssim?: number; diffPngPath?: string;  // pixel mode only
+  semanticsDelta?: SemanticsDelta;                        // semantics mode only
   fromMetadata: HistoryEntry;
   toMetadata: HistoryEntry;
 }
@@ -145,9 +165,29 @@ result: {
 `mode = "metadata"` (default) is hash-compare + sidecar diff.
 `mode = "pixel"` (H5, not yet implemented) writes a marked-diff PNG to
 `<historyDir>/<previewId>/.diffs/`.
+`mode = "semantics"` (issue #1785) diffs the two entries' captured
+`compose/semantics` trees and returns a typed `SemanticsDelta`
+(`compose-semantics-diff/v1`: added / removed / changed nodes, matched by
+each node's stable `ref`). The cheap, pixel-free regression signal — the
+Compose analogue of Playwright's aria-snapshot diff. Each entry's tree is
+snapshotted into its sidecar at record time (see `HistoryEntry.semantics`
+below), so the diff is deterministic and reads no PNGs. The same differ
+(`SemanticsDiff`) backs `compose-preview diff-semantics` and the MCP
+`diff_semantics` tool, so all three surfaces agree.
 
 Mismatched previews → `HistoryDiffMismatch (-32011)`. Missing entry →
-`HistoryEntryNotFound (-32010)`.
+`HistoryEntryNotFound (-32010)`. `mode = "pixel"` →
+`ERR_HISTORY_PIXEL_NOT_IMPLEMENTED (-32012)`. `mode = "semantics"` where one
+of the two entries has no captured semantics snapshot →
+`ERR_HISTORY_SEMANTICS_NOT_CAPTURED (-32013)` (distinct from "entry not
+found": the entry exists, but the render that produced it didn't compute
+semantics).
+
+The semantics snapshot is heavy, so it lives **only** in the per-entry
+sidecar — it's stripped from the lean `index.jsonl` (like `previewMetadata`)
+and never echoed on the `history/list` / `history/read` / `historyAdded` /
+metadata-mode `history/diff` wire surfaces; `history/diff mode=semantics` is
+the one reader that loads it back off disk.
 
 ### `history/prune`
 
