@@ -1757,6 +1757,7 @@ class DaemonMcpServerTest {
           put("uri", uri)
           put("fps", 30)
           put("scale", 4.0)
+          put("observe", "media")
           putJsonArray("events") {
             add(
               buildJsonObject {
@@ -1890,6 +1891,80 @@ class DaemonMcpServerTest {
       .isEqualTo(0)
     assertThat(metadata["sizeBytes"]?.jsonPrimitive?.contentOrNull?.toLongOrNull())
       .isEqualTo(cannedApngBytes.size.toLong())
+  }
+
+  @Test
+  fun `record_preview defaults to the frames observation with no inline media`() {
+    // Issue #1860 acceptance criterion: a bare record_preview (no `observe`) returns the structured
+    // per-frame observation — frames[] + changedFrameCount + on-disk paths — and NO inline media
+    // block. Bytes are opt-in via observe="media"; the encoded artifact stays on disk at videoPath.
+    val framesDir = tmp.newFolder("frames-default")
+    writeSolidPng(framesDir.resolve("frame-00000.png"), 0xFF000000.toInt())
+    writeSolidPng(framesDir.resolve("frame-00001.png"), 0xFFFFFFFF.toInt())
+    val recordingsDir = tmp.newFolder("frames-default-out")
+    factory.daemonConfigurer = { d ->
+      d.recordingEncodedBytes = byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10, 0x01, 0x02)
+      d.recordingEncodeDir = recordingsDir
+      d.advertisedDataExtensions =
+        listOf(ee.schimke.composeai.daemon.InputTouchRecordingScriptEvents.descriptor)
+      d.recordingStopResult =
+        ee.schimke.composeai.daemon.protocol.RecordingStopResult(
+          frameCount = 2,
+          durationMs = 100L,
+          framesDir = framesDir.absolutePath,
+          frameWidthPx = 120,
+          frameHeightPx = 40,
+          scriptEvents = emptyList(),
+        )
+    }
+    client.initialize()
+    val projectDir = tmp.newFolder("frames-default-workspace")
+    tmp.newFolder("frames-default-workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    val resp =
+      client.callTool(
+        "record_preview",
+        buildJsonObject {
+          put("uri", uri)
+          putJsonArray("events") {
+            add(
+              buildJsonObject {
+                put("tMs", 0)
+                put("kind", "input.click")
+                put("pixelX", 10)
+                put("pixelY", 10)
+              }
+            )
+          }
+        },
+        timeoutMs = 10_000,
+      )
+
+    assertThat(resp.isError()).isFalse()
+    // Single text block — no image / embedded-resource media rode along by default.
+    val blocks = resp.raw["content"]!!.jsonArray
+    assertThat(blocks).hasSize(1)
+    assertThat(blocks.single().jsonObject["type"]?.jsonPrimitive?.contentOrNull).isEqualTo("text")
+
+    val metadata = json.parseToJsonElement(resp.firstTextContent()).jsonObject
+    assertThat(metadata["observe"]?.jsonPrimitive?.contentOrNull).isEqualTo("frames")
+    assertThat(metadata["mediaInline"]?.jsonPrimitive?.contentOrNull).isEqualTo("false")
+    // The encoded artifact is still produced and addressable on disk.
+    assertThat(metadata["videoPath"]?.jsonPrimitive?.contentOrNull).isNotEmpty()
+    assertThat(metadata["mimeType"]?.jsonPrimitive?.contentOrNull).isEqualTo("image/apng")
+    // The structured per-frame observation is present (the whole point of the default).
+    assertThat(metadata["changedFrameCount"]?.jsonPrimitive?.contentOrNull?.toIntOrNull())
+      .isEqualTo(1)
+    val frames = metadata["frames"]!!.jsonArray
+    assertThat(frames).hasSize(2)
+    assertThat(frames[1].jsonObject["changedFromPrevious"]?.jsonPrimitive?.contentOrNull)
+      .isEqualTo("true")
   }
 
   @Test
@@ -2523,6 +2598,7 @@ class DaemonMcpServerTest {
         buildJsonObject {
           put("uri", uri)
           put("format", "mp4")
+          put("observe", "media")
           putJsonArray("events") {
             add(
               buildJsonObject {
