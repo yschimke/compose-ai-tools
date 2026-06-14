@@ -93,16 +93,25 @@ previews.
   captured frame adds a `frames[]` entry plus optional metadata. The
   APNG/MP4 capture path keeps per-frame JSON small; embedded-PNG debug
   mode grows fast.
-- `render_preview` defaults to returning the base64 PNG (~1.5 k input
-  tokens per read at typical preview dimensions). For multi-step agent
-  loops, `observe: "semantics"` returns the `compose/semantics` tree +
-  sha256 + dimensions with **no base64** — typically a few hundred
-  tokens for a small preview (scaling with node count, like
-  `compose/semantics` elsewhere in this table), and `observe: "hash"`
-  is ~30 tokens (sha + dimensions only). Prefer these when you're
-  iterating and only need to know *whether* / *what* changed; fetch
-  `observe: "png"` when you actually need to look at pixels (issue
-  #1787).
+- `render_preview` **defaults to `observe: "semantics"`** (issue #1787):
+  the `compose/semantics` tree + sha256 + dimensions with **no base64** —
+  typically a few hundred tokens for a small preview (scaling with node
+  count, like `compose/semantics` elsewhere in this table), mirroring
+  Playwright's snapshot-default / screenshot-on-demand split. `observe:
+  "hash"` is ~30 tokens (sha + dimensions only); pass `observe: "png"`
+  when you actually need to look at pixels (~1.5 k input tokens per read
+  at typical preview dimensions). `resources/read` is unchanged — it
+  still returns the PNG blob, so the VS Code panel and any pixel
+  consumers are unaffected.
+  - **Budget delta, representative 6-step loop** (edit → render →
+    nudge → render → tweak → render, three renders that each formerly
+    forced a PNG read): old default `3 × ~1.5 k ≈ 4.5 k` input tokens
+    of pixels; new default `3 × ~0.3 k ≈ 0.9 k` for the semantics
+    snapshots, with a single `observe: "png"` read (~1.5 k) only on the
+    step that needs eyeballing — **~4.5 k → ~2.4 k, roughly a 45–80 %
+    cut** depending on how many steps still pull pixels. A pure
+    "did-it-change?" gate loop on `observe: "hash"` drops the per-render
+    cost from ~1.5 k to ~30 tokens.
 - `render_preview` with `crop` returns only one element's rectangle
   instead of the full frame — a semantic target (`ref` / `testTag` /
   `role`+`text`, resolved against `compose/semantics`) or explicit
