@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.3](https://github.com/yschimke/compose-ai-tools/compare/v0.15.2...v0.15.3) (2026-06-14)
+
+
+### Bug Fixes
+
+* **plugin:** skip non-renderable KMP-Android modules instead of failing the desktop render ([#1853](https://github.com/yschimke/compose-ai-tools/issues/1853)) ([c4b85cb](https://github.com/yschimke/compose-ai-tools/commit/c4b85cb0418f281bce963ff765dc57704a099c4a))
+
 ## [0.15.2](https://github.com/yschimke/compose-ai-tools/compare/v0.15.1...v0.15.2) (2026-06-14)
 
 
