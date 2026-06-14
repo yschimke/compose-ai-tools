@@ -987,9 +987,11 @@ class DaemonMcpServer(
       ToolDef(
         name = "render_preview",
         description =
-          "Render a preview by URI, bypassing the in-memory render cache. Returns the PNG inline. " +
-            "Pass `observe=\"semantics\"` (or `\"hash\"`) for a token-frugal response — the " +
-            "compose/semantics snapshot + sha + dimensions instead of a base64 PNG (issue #1787). " +
+          "Render a preview by URI, bypassing the in-memory render cache. Returns a token-frugal " +
+            "structured observation by default — the compose/semantics snapshot + sha256 + " +
+            "dimensions, NO base64 PNG (the snapshot-default for an agent loop; issue #1787). " +
+            "Pass `observe=\"png\"` to get the rendered PNG inline when you actually need to see " +
+            "pixels, or `observe=\"hash\"` for just the sha + dimensions. " +
             "Pass `force={reason}` only when the freshness probe missed a real edit (this should be rare); " +
             "report each use on https://github.com/yschimke/compose-ai-tools/issues/924. " +
             "Do NOT delete `build/classes/...` or run `./gradlew clean` to chase a stale render.",
@@ -1000,7 +1002,7 @@ class DaemonMcpServer(
               "type":"object",
               "properties":{
                 "uri":{"type":"string","description":"compose-preview://<workspace>/<module>/<fqn>?config=<qualifier>"},
-                "observe":{"type":"string","enum":["png","semantics","hash"],"description":"Observation level. Default 'png' (base64 image). 'semantics' returns the compose/semantics tree + sha256 + dimensions (no base64 — far cheaper for an agent loop); 'hash' returns just sha256 + dimensions."},
+                "observe":{"type":"string","enum":["png","semantics","hash"],"description":"Observation level (issue #1787). Default 'semantics' — the compose/semantics tree + sha256 + dimensions with NO base64, the token-frugal snapshot-default for an agent loop (fetch pixels only when you need them). 'png' returns the base64 image (request it when you need to see pixels); 'hash' returns just sha256 + dimensions."},
                 "crop":{"type":"object","description":"Return only ONE element's rectangle instead of the full frame (issue #1817) — far fewer tokens, and it focuses the view on the region you care about (the natural partner to diff_semantics: 'ref X changed' -> crop ref X). Set EITHER a semantic target (ref | testTag | role/text, resolved against compose/semantics) OR explicit render-pixel bounds {left,top,right,bottom}. Honours 'observe': png returns the cropped image (+ region metadata), hash/semantics return the crop's sha + dimensions only.","properties":{"ref":{"type":"string"},"testTag":{"type":"string"},"role":{"type":"string"},"text":{"type":"string"},"left":{"type":"integer"},"top":{"type":"integer"},"right":{"type":"integer"},"bottom":{"type":"integer"}}},
                 "overrides":{"type":"object","description":"Optional per-call display overrides."},
                 "force":{"type":"object","description":"Sanctioned escape hatch when the freshness probe missed an edit. Forwards fileChanged({kind:\"classpath\"}) before rendering, dropping the daemon's user classloader. Each use is logged + counted; please report on issue #924.","properties":{"reason":{"type":"string","description":"Human-readable reason for needing force (required)."}},"required":["reason"]}
@@ -1118,8 +1120,11 @@ class DaemonMcpServer(
       ToolDef(
         name = "render_preview",
         description =
-          "Render a preview by URI, bypassing the in-memory render cache. Returns the rendered PNG " +
-            "inline. Optional `overrides` apply per-call display-property overrides (size, density, " +
+          "Render a preview by URI, bypassing the in-memory render cache. Returns a token-frugal " +
+            "structured observation by default (`observe=\"semantics\"`: the compose/semantics tree " +
+            "+ sha256 + dimensions, NO base64; issue #1787) — pass `observe=\"png\"` for the rendered " +
+            "PNG inline, or `observe=\"hash\"` for just sha + dimensions. " +
+            "Optional `overrides` apply per-call display-property overrides (size, density, " +
             "locale, fontScale, uiMode, orientation, device, inspectionMode) plus the connector- " +
             "driven extensions (material3Theme, wallpaper, ambient, focus, keyboard, touchOverlay, " +
             "permissions, remoteCompose, launcherWidget) — see PROTOCOL.md § 5 " +
@@ -1139,7 +1144,7 @@ class DaemonMcpServer(
               "type":"object",
               "properties":{
                 "uri":{"type":"string","description":"compose-preview://<workspace>/<module>/<fqn>?config=<qualifier>"},
-                "observe":{"type":"string","enum":["png","semantics","hash"],"description":"Observation level (issue #1787). Default 'png' returns the base64 image. 'semantics' returns the compose/semantics tree + sha256 + width/height with NO base64 — a token-frugal default for a multi-step agent loop (fetch pixels only when you need them); 'hash' returns just sha256 + dimensions."},
+                "observe":{"type":"string","enum":["png","semantics","hash"],"description":"Observation level (issue #1787). Default 'semantics' returns the compose/semantics tree + sha256 + width/height with NO base64 — the token-frugal snapshot-default for a multi-step agent loop (fetch pixels only when you need them). 'png' returns the base64 image (request it when you need to see pixels); 'hash' returns just sha256 + dimensions."},
                 "overrides":{
                   "type":"object",
                   "description":"Per-call display overrides. Each field is optional; nulls fall back to the discovery-time RenderSpec. Backends that don't model a field (e.g. desktop has no Android resource qualifier system) ignore it.",
@@ -1966,7 +1971,7 @@ class DaemonMcpServer(
       args["uri"]?.jsonPrimitive?.contentOrNull
         ?: return errorCallToolResult("render_preview: missing 'uri'")
     val uri = PreviewUri.parseOrNull(uriStr) ?: return errorCallToolResult("invalid uri: $uriStr")
-    val observe = args["observe"]?.jsonPrimitive?.contentOrNull?.lowercase() ?: "png"
+    val observe = args["observe"]?.jsonPrimitive?.contentOrNull?.lowercase() ?: "semantics"
     if (observe !in setOf("png", "semantics", "hash")) {
       return errorCallToolResult("render_preview: 'observe' must be one of png | semantics | hash")
     }
