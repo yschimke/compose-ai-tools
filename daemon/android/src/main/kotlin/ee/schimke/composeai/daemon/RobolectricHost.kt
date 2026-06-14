@@ -2286,11 +2286,14 @@ open class RobolectricHost(
                   try {
                     // Read-only snapshot of the live semantics for a recording.probe (#1786) —
                     // same unmerged-tree fetch + projection target resolution uses, flattened to
-                    // the compact probe-node list the codegen path diffs into assertions.
+                    // the compact probe-node list the codegen path diffs into assertions. Crosses
+                    // the sandbox boundary as a JSON string (do-not-acquire); the host re-parses.
                     val root =
                       runCatching { rule.onRoot(useUnmergedTree = true).fetchSemanticsNode() }
                         .getOrNull()
-                    cmd.replyNodes.set(root?.let { ComposeSemanticsDataProducer.probeNodes(it) })
+                    cmd.replyNodesJson.set(
+                      root?.let { ComposeSemanticsDataProducer.probeNodesJson(it) }
+                    )
                   } catch (t: Throwable) {
                     cmd.replyError.set(t)
                   } finally {

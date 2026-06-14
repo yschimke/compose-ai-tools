@@ -444,7 +444,8 @@ internal constructor(
    * Override of [InteractiveSession.captureProbeSemantics] (#1786). Enqueues an
    * [InteractiveCommand.CaptureProbeSemantics] envelope; the sandbox-side loop projects the held
    * composition's unmerged semantics tree into the compact probe-node list and hands it back through
-   * [InteractiveCommand.CaptureProbeSemantics.replyNodes]. Read-only — no dispatch, no settle tick.
+   * [InteractiveCommand.CaptureProbeSemantics.replyNodesJson] as JSON. Read-only — no dispatch, no
+   * settle tick.
    */
   override fun captureProbeSemantics():
     List<ee.schimke.composeai.daemon.protocol.RecordingProbeNode>? {
@@ -452,14 +453,13 @@ internal constructor(
     lastUsedAtMs.set(System.currentTimeMillis())
     val replyLatch = CountDownLatch(1)
     val replyError = AtomicReference<Throwable?>(null)
-    val replyNodes =
-      AtomicReference<List<ee.schimke.composeai.daemon.protocol.RecordingProbeNode>?>(null)
+    val replyNodesJson = AtomicReference<String?>(null)
     slot.interactiveCommands.put(
       InteractiveCommand.CaptureProbeSemantics(
         streamId = streamId,
         replyLatch = replyLatch,
         replyError = replyError,
-        replyNodes = replyNodes,
+        replyNodesJson = replyNodesJson,
       )
     )
     if (!replyLatch.await(DISPATCH_TIMEOUT_SEC, TimeUnit.SECONDS)) {
@@ -469,7 +469,8 @@ internal constructor(
       )
     }
     replyError.get()?.let { throw it }
-    return replyNodes.get()
+    // The sandbox returns the snapshot as a JSON string (do-not-acquire); re-parse into host DTOs.
+    return replyNodesJson.get()?.let { ComposeSemanticsDataProducer.decodeProbeNodes(it) }
   }
 
   /**

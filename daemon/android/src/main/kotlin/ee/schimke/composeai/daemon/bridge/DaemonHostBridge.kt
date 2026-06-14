@@ -587,20 +587,23 @@ sealed interface InteractiveCommand {
   /**
    * Snapshot the held composition's live semantics for a `recording.probe` marker (issue #1786).
    * The sandbox-side handler fetches the unmerged semantics root and projects it into the compact
-   * [RecordingProbeNode][ee.schimke.composeai.daemon.protocol.RecordingProbeNode] list via
-   * `ComposeSemanticsDataProducer.probeNodes(...)`, handing it back through [replyNodes].
+   * probe-node list, handing it back through [replyNodesJson] as a JSON string.
+   *
+   * The payload is a `java.lang.String` (do-not-acquire) rather than a typed
+   * `List<RecordingProbeNode>` on purpose: the nodes are built under Robolectric's instrumenting
+   * classloader, so a typed list would arrive host-side as sandbox-loaded objects that fail the
+   * host `RecordingProbeNode` cast / JSON serialization (same boundary `RenderResult` is copied
+   * across). Serialising sandbox-side and re-parsing host-side keeps only a String on the wire.
    *
    * Read-only against the held composition — the handler walks but never dispatches, so it doesn't
    * compete with renders. Throwables from the walk ride [replyError]; the host's
-   * `captureProbeSemantics` rethrows on the caller thread. The projected node list is a daemon
-   * protocol type, so it crosses the bridge the same way [FindUiAutomatorEvidence]'s reason does.
+   * `captureProbeSemantics` rethrows on the caller thread.
    */
   data class CaptureProbeSemantics(
     override val streamId: String,
     val replyLatch: CountDownLatch,
     val replyError: AtomicReference<Throwable?>,
-    val replyNodes:
-      AtomicReference<List<ee.schimke.composeai.daemon.protocol.RecordingProbeNode>?>,
+    val replyNodesJson: AtomicReference<String?>,
   ) : InteractiveCommand
 
   /**

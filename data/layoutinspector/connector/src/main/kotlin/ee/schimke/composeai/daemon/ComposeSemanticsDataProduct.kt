@@ -30,6 +30,7 @@ import java.io.File
 import java.lang.reflect.Method
 import java.util.Locale
 import kotlin.math.roundToInt
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import okio.FileSystem
 import okio.Path.Companion.toPath
@@ -66,6 +67,8 @@ object ComposeSemanticsDataProducer {
   fun buildPayload(root: SemanticsNode): ComposeSemanticsPayload =
     SemanticsRefs.assign(ComposeSemanticsPayload(root = root.toWireNode()))
 
+  private val probeNodesSerializer = ListSerializer(RecordingProbeNode.serializer())
+
   /**
    * Flatten a captured semantics [root] into the compact probe-node list `record_preview` attaches
    * to a `recording.probe`'s evidence (issue #1786). Reuses [buildPayload] so the testTag / text /
@@ -78,6 +81,21 @@ object ComposeSemanticsDataProducer {
    */
   fun probeNodes(root: SemanticsNode): List<RecordingProbeNode> =
     buildPayload(root).root.toProbeNodes()
+
+  /**
+   * [probeNodes] serialised to a JSON string. Android captures the probe snapshot **inside** the
+   * Robolectric sandbox, where `RecordingProbeNode` is acquired by the instrumenting classloader; a
+   * typed list returned across the bridge would arrive as sandbox-loaded objects that fail the
+   * host-side `RecordingProbeNode` cast / JSON serialization (the same reason `RenderResult` is
+   * copied across, and why the bridge otherwise only passes `java.lang.String`). Crossing as a
+   * String (do-not-acquire) sidesteps the boundary; the host re-parses with [decodeProbeNodes].
+   */
+  fun probeNodesJson(root: SemanticsNode): String =
+    json.encodeToString(probeNodesSerializer, probeNodes(root))
+
+  /** Host-side inverse of [probeNodesJson] — re-parse the bridged payload into host DTOs. */
+  fun decodeProbeNodes(payload: String): List<RecordingProbeNode> =
+    json.decodeFromString(probeNodesSerializer, payload)
 
   private fun SemanticsNode.toWireNode(): ComposeSemanticsNode {
     val cfg = config
