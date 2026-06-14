@@ -193,4 +193,35 @@ class KmpAndroidDesktopRoutingTest {
       project.tasks.getByName("validateComposePreviewDesktopRenderClasspath") as TaskInternal
     assertThat(guard.onlyIf.isSatisfiedBy(guard)).isTrue()
   }
+
+  @Test
+  fun `renderability is computed lazily so a desktop target added after registration is not skipped`() {
+    // Codex review on #1853: registerDesktopTasks runs at withPlugin time, BEFORE the consumer's
+    // `kotlin { jvm("desktop") }` block creates desktopRuntimeClasspath. Renderability must be
+    // resolved at task realization, not snapshotted eagerly — otherwise a cmp-shared module whose
+    // desktop config appears later is permanently treated as non-renderable and its render/bundle
+    // are wrongly skipped.
+    val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
+    val extension = project.extensions.create("composePreview", PreviewExtension::class.java)
+    // Pre-`jvm("desktop")` state: only the androidRuntimeClasspath fallback is visible.
+    project.configurations.create("androidRuntimeClasspath") {
+      isCanBeResolved = true
+      isCanBeConsumed = false
+    }
+
+    ComposePreviewTasks.registerDesktopTasks(project, extension)
+
+    // `jvm("desktop")` configures afterwards, creating the desktop runtime classpath.
+    project.configurations.create("desktopRuntimeClasspath") {
+      isCanBeResolved = true
+      isCanBeConsumed = false
+    }
+
+    // Realized now (after the desktop config exists): render AND bundle must observe it and stay
+    // renderable. A regression to an eager snapshot would skip them.
+    for (taskName in listOf("composePreviewRender", "composePreviewBundle")) {
+      val task = project.tasks.getByName(taskName) as TaskInternal
+      assertThat(task.onlyIf.isSatisfiedBy(task)).isTrue()
+    }
+  }
 }

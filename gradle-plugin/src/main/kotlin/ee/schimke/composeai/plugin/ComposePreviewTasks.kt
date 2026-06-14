@@ -461,14 +461,19 @@ internal object ComposePreviewTasks {
         candidates.firstOrNull { it != null && it.asFile.isDirectory }
       }
 
-    // A non-renderable pure-KMP-Android module has nothing the desktop renderer can pack; skip its
-    // bundle for consistency with the render/daemon tasks (issue #1852).
-    // `isDesktopRenderableConfig`
-    // only trips on the literal `androidRuntimeClasspath` fallback, so this is a no-op on the
-    // Android
-    // bundle path (which routes through `${variant}RuntimeClasspath`) and on real desktop modules.
-    val bundleRenderable = isDesktopRenderableConfig(depConfigName)
     project.tasks.register("composePreviewBundle", BundlePreviewTask::class.java) {
+      // A non-renderable pure-KMP-Android module has nothing the desktop renderer can pack; skip
+      // its
+      // bundle for consistency with the render/daemon tasks (issue #1852). Compute renderability
+      // LAZILY here at task realization — NOT from the eager `depConfigName` snapshot above — so a
+      // cmp-shared module whose `jvm("desktop")` target configures after `registerDesktopTasks`
+      // runs
+      // (when only the androidRuntimeClasspath fallback is visible) isn't permanently skipped
+      // (Codex
+      // review on #1853). Mirrors the render task. `isDesktopRenderableConfig` only trips on the
+      // literal `androidRuntimeClasspath` fallback, so this is a no-op on the Android bundle path
+      // (which routes through `${variant}RuntimeClasspath`) and on real desktop modules.
+      val bundleRenderable = isDesktopRenderableConfig(resolveDependencyConfigName())
       onlyIf { extension.enabled.get() && bundleRenderable }
       previewsJson.set(previewOutputDir.map { it.file("previews.json") })
       moduleClassDirs.from(sourceClassDirs)
