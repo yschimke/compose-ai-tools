@@ -28,8 +28,8 @@
     "fonts-browser.dark.png": {
       "fixture": "fonts-browser",
       "theme": "dark",
-      "sha256": "16a8dec157b38aa1f8c1371e2262d4cfa10ca967e89a87c5bff5e1f5ba03c5fc",
-      "size": 126386
+      "sha256": "c16b3489360e8fd642ffdd8a495b8a161cc8cf6c92f5561638188d7933df38d7",
+      "size": 127655
     },
     "fonts-browser.light.png": {
       "fixture": "fonts-browser",
