@@ -1275,14 +1275,23 @@ class JsonRpcServer(
       }
     // Snapshot the structured data products this render produced (issues #1785, #1869) so a later
     // data diff can compare two entries without pixels. Opportunistic: each inline fetch returns a
-    // payload only when the producer wrote that artefact for this pass (it never forces a
+    // payload only when the producer wrote the artefact for this pass (it never forces a
     // re-render — a missing file is NotAvailable, not RequiresRerender), so a render that didn't
     // compute a given kind simply records null for it. a11y/theme kinds use literal strings to keep
     // daemon-core off the :data-a11y-core / :data-theme-core build edges.
+    //
+    // Freshness gate (a11y): a11y artefacts are file-backed and (re)written ONLY on an a11y-mode
+    // render; a normal render leaves a prior a11y render's files on disk, so an unconditional fetch
+    // would freeze STALE a11y data into this entry and corrupt data diffs. Capture the a11y kinds
+    // only when this render actually ran a11y. compose/semantics is written every render, and
+    // compose/theme's in-memory registry self-clears when a render doesn't capture it (fetch then
+    // returns RequiresRerender, not stale Ok) — so both are fresh-or-null and need no gate.
+    val a11yFresh = result.previewContext?.renderMode == "a11y"
     val semantics = fetchHistorySnapshot(previewId, ComposeSemanticsProduct.KIND)
-    val a11yAtf = fetchHistorySnapshot(previewId, "a11y/atf")
-    val a11yHierarchy = fetchHistorySnapshot(previewId, "a11y/hierarchy")
-    val a11yTouchTargets = fetchHistorySnapshot(previewId, "a11y/touchTargets")
+    val a11yAtf = if (a11yFresh) fetchHistorySnapshot(previewId, "a11y/atf") else null
+    val a11yHierarchy = if (a11yFresh) fetchHistorySnapshot(previewId, "a11y/hierarchy") else null
+    val a11yTouchTargets =
+      if (a11yFresh) fetchHistorySnapshot(previewId, "a11y/touchTargets") else null
     val theme = fetchHistorySnapshot(previewId, "compose/theme")
     val entry =
       try {

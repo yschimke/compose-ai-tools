@@ -40,7 +40,10 @@ import kotlinx.serialization.json.JsonElement
  *   per-render `a11y/atf`, `a11y/hierarchy`, `a11y/touchTargets` and `compose/theme` payloads
  *   captured alongside this render (issue #1869), so history covers structured **data**, not just
  *   pixels — a later data diff can answer "what were this preview's a11y findings a commit ago?".
- *   Each is null when the producer didn't compute that kind for this pass. Handled exactly like
+ *   Each is null when the producer didn't compute that kind for this pass. The a11y kinds are
+ *   captured only on an a11y-mode render: their artefacts are file-backed and not cleared between
+ *   renders, so a normal render must NOT freeze a prior a11y render's stale files (the freshness
+ *   gate lives in `JsonRpcServer.recordHistoryForRender`). Otherwise handled exactly like
  *   [semantics]: heavy, sidecar-only, stripped from `index.jsonl` and the wire surfaces; the
  *   reporting-branch writer (issue #1870) projects them into the per-product files (`a11y.json`,
  *   `theme.json`, …) described in docs/daemon/REPORTING-BRANCH.md, validated by the published
