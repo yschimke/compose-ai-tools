@@ -338,7 +338,18 @@ allprojects {
         composeAiPreviewSettingsHasExclusiveContent &&
             projectDir !in composeAiPreviewProjectsWithOwnBuildscriptRepos
 
+    // Gradle inherits a project's buildscript classpath into its subprojects' \`plugins { }\`
+    // resolution, so injecting the plugin onto an ANCESTOR of a module that applies it via the
+    // versioned plugins DSL (\`id("...") version "..."\` / \`alias(libs.plugins.<x>)\`) makes that
+    // subproject fail with "the plugin is already on the classpath with an unknown version" — which
+    // sinks its configuration and makes the CLI/VS Code model query return zero modules (issue
+    // #1855). Skip injection (and the apply hooks) for any project that has a pre-applied
+    // descendant — the root especially — since that classpath is the one that leaks in.
+    val composeAiPreviewHasPreAppliedDescendant =
+        subprojects.any { it.projectDir in composeAiPreviewPreAppliedDirs }
+
     if (!composeAiPreviewSkipExclusiveContentClasspathDep &&
+        !composeAiPreviewHasPreAppliedDescendant &&
         projectDir !in composeAiPreviewPreAppliedDirs) {
         buildscript {
             // When the settings file declares exclusiveContent in pluginManagement.repositories,
@@ -362,7 +373,8 @@ allprojects {
         }
     }
 
-    if (composeAiPreviewSkipExclusiveContentClasspathDep &&
+    if ((composeAiPreviewSkipExclusiveContentClasspathDep ||
+        composeAiPreviewHasPreAppliedDescendant) &&
         projectDir !in composeAiPreviewPreAppliedDirs) return@allprojects
 
     fun applyComposeAiPreview() {

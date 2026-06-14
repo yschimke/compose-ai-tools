@@ -139,6 +139,34 @@ describe("renderInitScript", () => {
         );
     });
 
+    it("skips classpath injection for ancestors of a pre-applied module", () => {
+        // Regression for #1855 (auto-inject half): Gradle inherits a project's buildscript
+        // classpath into its subprojects' `plugins {}` resolution, so injecting onto the root (or
+        // any ancestor) of a module that applies the plugin with a version (`id("...") version
+        // "..."` / `alias(libs.plugins.<x>)`) makes that subproject fail with "the plugin is
+        // already on the classpath with an unknown version" — sinking discovery for the whole
+        // build. Mirror of the CLI renderer's gate; keep both in lockstep.
+        const script = renderInitScript();
+        assert.ok(
+            script.includes(
+                "val composeAiPreviewHasPreAppliedDescendant =\n        subprojects.any { it.projectDir in composeAiPreviewPreAppliedDirs }",
+            ),
+            "expected the pre-applied-descendant scan in allprojects",
+        );
+        assert.ok(
+            script.includes(
+                "if (!composeAiPreviewSkipExclusiveContentClasspathDep &&\n        !composeAiPreviewHasPreAppliedDescendant &&\n        projectDir !in composeAiPreviewPreAppliedDirs) {",
+            ),
+            "expected the injection to be gated on the descendant flag",
+        );
+        assert.ok(
+            script.includes(
+                "if ((composeAiPreviewSkipExclusiveContentClasspathDep ||\n        composeAiPreviewHasPreAppliedDescendant) &&\n        projectDir !in composeAiPreviewPreAppliedDirs) return@allprojects",
+            ),
+            "expected the apply hooks to short-circuit for ancestors of pre-applied modules",
+        );
+    });
+
     it("skips composite-included builds in settingsEvaluated and allprojects", () => {
         // Regression for the Confetti report: with `includeBuild("build-logic")` whose
         // settings.gradle.kts declares `exclusiveContent { ... }` in
