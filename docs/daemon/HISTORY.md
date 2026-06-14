@@ -333,6 +333,29 @@ read or write history — the legacy writer was removed.
 Cross-worktree merging happens above Layer 2 (in MCP, or in the
 editor) — never inside a daemon.
 
+## CLI
+
+`compose-preview history <list|read|diff>` inspects the archive from the
+terminal (issue #1871). It reads the on-disk `.compose-preview-history/`
+([LocalFsHistorySource]) directly — correct whether or not a daemon is
+running, since the daemon persists there — or a reporting branch with
+`--ref refs/heads/preview/main` ([GitRefHistorySource]).
+
+```
+compose-preview history list   [--preview <id>] [--since/--until <iso>] [--branch <b>]
+                               [--commit <sha>] [--source fs|git] [--agent <id>]
+                               [--limit <n>] [--cursor <c>] [--history-dir <dir> | --ref <ref>] [--json]
+compose-preview history read   <entryId> [--out <png>] [--data] [--inline] [--json]
+compose-preview history diff   <fromId> <toId> [--mode metadata] [--json]
+```
+
+Structured-first (cf. #1787): human output is compact; `--json` emits a
+versioned envelope (`compose-preview-history/v1`); heavy snapshots (PNG
+bytes via `--inline`/`--out`, a11y/semantics/theme data via `--data`) ride
+only on explicit opt-in. `diff` is metadata-mode only today; pixel /
+semantics diff is daemon-backed (`history/diff`) and reaches the CLI once
+it grows a daemon JSON-RPC client (follow-up).
+
 ## MCP mapping
 
 URI scheme: `compose-preview-history://<module>/<previewFqn>/<entryId>`
