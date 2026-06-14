@@ -62,8 +62,15 @@ The two sources stay complementary:
 
 ## `manifest.json`
 
-The single top-level file, so a reader can answer "what exists now" without
-walking the log:
+A **derived, optional** cache so a reader can answer "what exists now"
+without walking the tree — **not** authoritative and **never hand-merged**.
+The source of truth is the committed tree itself: the current state is
+`git ls-tree <ref> -- '*/entry.json'`, one entry per preview directory. The
+writer regenerates the manifest from that tree, and on a push race **rebuilds
+it from the post-rebase tree rather than merging it** — so it is not a
+multi-writer contention point the way a shared append index would be (see
+*Concurrency*). A reader that distrusts a stale manifest can ignore it and walk
+the tree directly.
 
 ```jsonc
 {
@@ -101,12 +108,17 @@ branch commit whose entries were rendered from X.
 Multiple worktrees / agents / a CI job may push to the same ref. Because each
 preview owns its own paths:
 
-- renders of **different** previews touch disjoint paths and **auto-merge**;
+- renders of **different** previews touch disjoint per-preview paths and
+  **auto-merge**;
 - only renders of the **same** preview race, and those resolve with
   fetch–rebase–retry with backoff (the writer's job, #1870).
 
-There is no shared line-oriented index to conflict on. This mirrors the
-push-race handling `design-parity` already uses for its baseline branch
+The one file every render touches is the top-level `manifest.json` — but it is
+**derived, not hand-merged**: a writer that loses a race regenerates it from
+the post-rebase tree, so it never produces a content conflict the way a shared
+line-oriented append index (`index.jsonl`) would. That is the contention this
+layout exists to avoid. This mirrors the push-race handling `design-parity`
+already uses for its baseline branch
 (`packages/action/src/github/publish.ts`).
 
 ## Retention

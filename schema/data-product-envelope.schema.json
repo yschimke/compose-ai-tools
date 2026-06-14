@@ -2,22 +2,29 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://schimke.ee/composeai/data-product-envelope.schema.json",
   "title": "DataProductEnvelope",
-  "description": "The `(kind, schemaVersion, payload)` primitive every per-render data product is wrapped in on the wire and on disk. Prose spec: docs/daemon/DATA-PRODUCTS.md (§ The primitive). A producer picks exactly one transport per kind: inline `payload`, a sibling-file `path`, or base64 `bytes`.",
+  "description": "The `(kind, schemaVersion, payload)` primitive every per-render data product is wrapped in on the daemon wire. Mirrors the `DataFetchResult` / `DataProductAttachment` Kotlin types (daemon/core/.../protocol/Messages.kt). Prose spec: docs/daemon/DATA-PRODUCTS.md (§ The primitive). `kind` and `schemaVersion` are always present; a producer carries exactly one primary transport — inline `payload`, a sibling-file `path`, or base64 `bytes`.",
   "x-composeai": {
     "kind": "*",
     "schemaVersion": 2,
-    "note": "The payload shape is per-kind; see the kind's own schema. This envelope only constrains the wrapper."
+    "kotlinType": "ee.schimke.composeai.daemon.protocol.DataFetchResult / DataProductAttachment",
+    "note": "The payload shape is per-kind; see the kind's own schema. This envelope only constrains the wrapper. (The looser `{kind, payload}` shape in the VS Code preview-harness fixtures is the webview's internal form, not this wire envelope.)"
   },
   "definitions": {
     "DataProductEnvelope": {
       "type": "object",
-      "required": ["kind"],
+      "required": ["kind", "schemaVersion"],
+      "oneOf": [
+        { "required": ["payload"] },
+        { "required": ["path"] },
+        { "required": ["bytes"] }
+      ],
       "properties": {
         "kind": { "type": "string", "description": "Namespaced kind, e.g. `a11y/atf`, `compose/semantics`." },
         "schemaVersion": { "type": "integer", "minimum": 1, "description": "Positive integer owned by the kind. Bumped only on incompatible payload changes; additive fields do not bump." },
         "payload": { "description": "Inline JSON; shape per-kind. Use for anything under ~64 KB serialised." },
         "path": { "type": "string", "description": "Absolute path to a sibling file the renderer wrote; lifecycle matches the PNG." },
-        "bytes": { "type": "string", "description": "base64; only when the caller passed `inline: true`." }
+        "bytes": { "type": "string", "description": "base64; only when the caller passed `inline: true`." },
+        "extras": { "type": "array", "description": "Optional non-JSON side outputs (derived images, etc.); pointer-only. See DataProductExtra in Messages.kt.", "items": { "type": "object" } }
       }
     }
   },

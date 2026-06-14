@@ -54,15 +54,18 @@ function validate(value, schema, root, path, errors) {
     return;
   }
 
-  for (const combinator of ["oneOf", "anyOf"]) {
-    if (Array.isArray(schema[combinator])) {
-      const ok = schema[combinator].some((sub) => {
-        const sErrs = [];
-        validate(value, sub, root, path, sErrs);
-        return sErrs.length === 0;
-      });
-      if (!ok) errors.push(`${path}: does not match ${combinator}`);
-    }
+  const countMatches = (subs) =>
+    subs.filter((sub) => {
+      const sErrs = [];
+      validate(value, sub, root, path, sErrs);
+      return sErrs.length === 0;
+    }).length;
+  if (Array.isArray(schema.anyOf) && countMatches(schema.anyOf) === 0) {
+    errors.push(`${path}: does not match anyOf`);
+  }
+  if (Array.isArray(schema.oneOf)) {
+    const n = countMatches(schema.oneOf);
+    if (n !== 1) errors.push(`${path}: must match exactly one of oneOf (matched ${n})`);
   }
 
   if (schema.type && !matchesType(value, schema.type)) {
