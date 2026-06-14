@@ -267,17 +267,19 @@ fun main(args: Array<String>) {
           GitProvenance(workspaceRoot = workspaceRootProp?.let(Path::of))
         } else null
       val gitRefHistoryRefs = GitRefHistorySource.parseRefsSysprop()
+      val gitRefSyncMode = GitRefHistorySource.parseSyncModeSysprop()
       val pruneConfig = HistoryPruneConfig.fromSysprops()
       historyDirProp?.let { dir ->
         System.err.println(
           "compose-ai-tools daemon: HistoryManager active (dir=$dir, gitRefs=${gitRefHistoryRefs}, " +
-            "pruneConfig=$pruneConfig)"
+            "gitRefSyncMode=$gitRefSyncMode, pruneConfig=$pruneConfig)"
         )
         HistoryManager.forLocalFsAndGitRefs(
           historyDir = Path.of(dir),
           module = System.getProperty(MODULE_ID_PROP) ?: "",
           gitProvenance = gitProvenance,
           gitRefs = gitRefHistoryRefs,
+          gitRefSyncMode = gitRefSyncMode,
           repoRoot = workspaceRootProp?.let(Path::of) ?: Path.of(dir).parent,
           pruneConfig = pruneConfig,
         )

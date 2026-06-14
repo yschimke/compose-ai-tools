@@ -318,10 +318,11 @@ warn-level log message via the daemon log channel, then degrades:
 `list` returns empty, `read` returns null. `history/diff` against a
 missing ref entry returns `HistoryEntryNotFound (-32010)`.
 
-Sync modes: `READ_ONLY` (default, landed); `WRITE_LOCAL` (debounced
-local commits, no push); `WRITE_PUSH` (also `git push`). The daemon
-doesn't manage credentials — `WRITE_PUSH` requires a credential helper
-or SSH key in standard locations.
+Sync modes (`composeai.daemon.gitRefHistorySyncMode`): `READ_ONLY`
+(default) and `WRITE_LOCAL` (commit each changed render onto the ref via
+git plumbing, no push) are landed (#1870). `WRITE_PUSH` (also `git push`;
+the daemon doesn't manage credentials, so it needs a credential helper or
+SSH key) is a follow-up. See [`REPORTING-BRANCH.md`](REPORTING-BRANCH.md).
 
 ## Layering
 

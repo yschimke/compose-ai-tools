@@ -48,6 +48,10 @@ class S10MainHistoryReadTest {
     val repoRoot = Files.createTempDirectory("s10-repo").toFile().apply { deleteOnExit() }
     initGitRepo(repoRoot)
     // Populate refs/heads/preview/main with two synthetic entries.
+    // Synthesised in the LEGACY read-only format (`_index.jsonl` + `<entryId>.{png,json}`), so this
+    // also covers GitRefHistorySource's legacy fallback reader for refs predating the
+    // git-as-the-log
+    // layout. Two renders of one preview → two index entries.
     val entries =
       listOf(
         synth(

@@ -140,7 +140,23 @@ feeds the hosted "drift over time" surface (design-parity#13).
 
 ## Status
 
-This document specifies the contract. The write/push path that produces the
-branch (`GitRefHistorySource` `WRITE_LOCAL` / `WRITE_PUSH`) is **not yet
-landed** — see #1870. Today `GitRefHistorySource` is read-only and reads a
-single HEAD index; #1870 moves it to the commit-walk model above.
+`GitRefHistorySource` now implements **`WRITE_LOCAL`** (#1870): it writes the
+git-as-the-log layout above via git plumbing (a throwaway index +
+`hash-object` / `read-tree` / `update-index` / `write-tree` / `commit-tree` /
+`update-ref`, never touching the working tree), commits one change per render
+with content-based skip-if-no-diff, and reads back the **current** branch state
+(one entry per preview). Enable it with `composeai.daemon.gitRefHistorySyncMode=WRITE_LOCAL`
+alongside `composeai.daemon.gitRefHistory=<ref>`. The skip-if-no-diff predicate matches
+`LocalFsHistorySource`'s (pixels + structural semantics) so the two writable sources never
+disagree on what counts as a duplicate. The reader also falls back to the legacy read-only
+format (`_index.jsonl` + `<entryId>.{png,json}`) for refs that predate this layout.
+
+Still to land (follow-ups):
+
+- **`WRITE_PUSH`** — also `git push` the ref, with fetch–rebase–retry on a push
+  race (needs a remote + credentials).
+- **Commit-walk timeline read** — `list` / `read` over the full history of a
+  preview (and the `<shortCommit>:<previewId>` entryId addressing), rather than
+  only the current state. Spec'd here; tracked under #1868.
+- **Burst debounce** — batch a render burst into one commit instead of one
+  commit per render.
