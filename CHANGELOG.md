@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.15.2](https://github.com/yschimke/compose-ai-tools/compare/v0.15.1...v0.15.2) (2026-06-14)
+
+
+### Features
+
+* **cli:** auto-inject the preview plugin into KMP-Android library modules ([#1850](https://github.com/yschimke/compose-ai-tools/issues/1850)) ([ee4bee6](https://github.com/yschimke/compose-ai-tools/commit/ee4bee6700ed66d1576c1a19eae9591e66fcb2af))
+* **theme:** populate compose/theme.consumers via resolved-value attribution ([#1848](https://github.com/yschimke/compose-ai-tools/issues/1848)) ([67d318d](https://github.com/yschimke/compose-ai-tools/commit/67d318ddd0e9278f247d0bcc1db79f8659b21d0b))
+
+
+### Bug Fixes
+
+* **plugin:** scope desktop lenient artifact views to the androidRuntimeClasspath fallback ([#1851](https://github.com/yschimke/compose-ai-tools/issues/1851)) ([d6cdd24](https://github.com/yschimke/compose-ai-tools/commit/d6cdd24e94b87cd81701bd0330e54dfa0ad174b7))
+
 ## [0.15.1](https://github.com/yschimke/compose-ai-tools/compare/v0.15.0...v0.15.1) (2026-06-13)
 
 
