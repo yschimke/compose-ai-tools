@@ -89,27 +89,46 @@ internal object ComposePreviewTasks {
     return rendererConfig
   }
 
+  private val consumerArtifactTypeAttribute: Attribute<String> =
+    Attribute.of("artifactType", String::class.java)
+
   /**
-   * Whether a desktop-routed module whose resolved runtime config is [configName] can actually be
-   * rendered by the JVM desktop renderer.
-   *
-   * The renderer is a JVM process, so it needs JVM-flavoured Compose on the classpath. A pure
-   * `com.android.kotlin.multiplatform.library` module with no `jvm("desktop")` target exposes only
-   * `androidRuntimeClasspath` — carrying `*-android` Compose AARs that reference
-   * `android.os.Parcelable` — and forcing any artifact view on its single AGP `android` variant
-   * trips a variant ambiguity that, left to propagate, hard-fails the whole `composePreviewRender`
-   * pipeline for every module (issue #1852: a no-preview library module like `:meshcore-mobile`
-   * sinks the green modules' render too).
-   *
-   * Such a module is treated as non-renderable: the desktop tasks skip it (fail-soft per module,
-   * with a one-line warning) instead of resolving its classpath and failing. Adding a
-   * `jvm("desktop")` target — the canonical cmp-shared layout — surfaces `desktopRuntimeClasspath`
-   * and flips this back to `true`.
-   *
-   * `internal` + pure so it can be unit-tested without standing up AGP/KGP.
+   * Whether a desktop-routed module whose resolved runtime config is [configName] can be rendered
+   * by the JVM desktop renderer. A pure `com.android.kotlin.multiplatform.library` module with no
+   * `jvm("desktop")` target exposes only `androidRuntimeClasspath` (carrying `*-android` Compose),
+   * which the desktop renderer can't drive. Used ONLY to gate tasks that the Tooling-API model
+   * builder never realizes (the classpath guard, the daemon-start descriptor) — so it can't affect
+   * CLI module detection the way the reverted #1853 task gating did (issue #1855). Pure +
+   * `internal` for unit testing.
    */
   internal fun isDesktopRenderableConfig(configName: String): Boolean =
     configName != "androidRuntimeClasspath"
+
+  /**
+   * Lazily-resolved, config-cache-safe view of the consumer runtime classpath [configName], pinned
+   * to `artifactType=jar`.
+   *
+   * Issue #1852: a KMP-Android module's `androidRuntimeClasspath` exposes ~12 secondary variants,
+   * so resolving it through a bare `incoming.artifactView {}` (no attributes) fails with
+   * `AmbiguousArtifactsFailure` ("cannot choose between variants") and sinks the whole desktop
+   * render. Pinning `artifactType=jar` — exactly what `composePreviewDiscover` already does, which
+   * is why discovery survived 0.15.2 — selects a single jar variant. On JVM/desktop classpaths the
+   * jar attribute is a passthrough, so behaviour there is unchanged. `lenient(true)` is applied
+   * ONLY for the `androidRuntimeClasspath` fallback (mirroring discovery) so a strict JVM classpath
+   * still surfaces a genuinely missing dependency instead of silently dropping it.
+   */
+  private fun pinnedConsumerClasspath(
+    project: Project,
+    configName: String,
+  ): org.gradle.api.file.FileCollection? {
+    val config = project.configurations.findByName(configName) ?: return null
+    return config.incoming
+      .artifactView {
+        if (configName == "androidRuntimeClasspath") lenient(true)
+        attributes.attribute(consumerArtifactTypeAttribute, "jar")
+      }
+      .files
+  }
 
   fun registerDesktopTasks(project: Project, extension: PreviewExtension) {
     val previewOutputDir = project.layout.buildDirectory.dir("compose-previews")
@@ -186,15 +205,7 @@ internal object ComposePreviewTasks {
         // aborts on such a module. JVM/desktop configs stay strict.
         lenientWhenAndroidOnlyFallback = true,
       ) {
-        // Skip discovery for a non-renderable pure-KMP-Android module (only
-        // androidRuntimeClasspath,
-        // no jvm("desktop") target) so it reports nothing instead of being pulled into the pipeline
-        // — keeps it consistent with the render task, which skips the same module (issue #1852).
-        // Computed at task-realization time, when the kotlin{} block has configured and
-        // desktopRuntimeClasspath (if any) exists; captured as a Boolean so onlyIf stays
-        // config-cache-safe.
-        val renderable = isDesktopRenderableConfig(resolveDependencyConfigName())
-        onlyIf { extension.enabled.get() && renderable }
+        onlyIf { extension.enabled.get() }
         // `compileAndroidMain` is the lifecycle task for the KMP-Android target's `main`
         // compilation (which depends on the underlying `compileAndroidMainKotlin`-shaped Kotlin
         // compile under the hood). Use lazy matching so compile tasks registered after this plugin
@@ -222,22 +233,7 @@ internal object ComposePreviewTasks {
       )
     val renderTask =
       project.tasks.register("composePreviewRender", RenderPreviewsTask::class.java) {
-        // A pure KMP-Android module with no jvm("desktop") target can't be rendered by the JVM
-        // desktop renderer; resolving its androidRuntimeClasspath would trip a variant ambiguity
-        // and hard-fail the whole pipeline (issue #1852). Skip it (fail-soft per module) and warn
-        // once — realization time is after the kotlin{} block configures, so the config name is
-        // settled here; capture as a Boolean to keep onlyIf config-cache-safe.
-        val renderable = isDesktopRenderableConfig(resolveDependencyConfigName())
-        if (!renderable) {
-          logger.warn(
-            "compose-preview: skipping module '${project.path}' — it applies " +
-              "com.android.kotlin.multiplatform.library but has no jvm(\"desktop\") target, so the " +
-              "Compose Multiplatform Desktop renderer can't render its *-android Compose artifacts. " +
-              "Add a jvm(\"desktop\") target to render its androidMain previews (see " +
-              "compose-preview/references/cmp-shared.md)."
-          )
-        }
-        onlyIf { extension.enabled.get() && renderable }
+        onlyIf { extension.enabled.get() }
         previewsJson.set(previewOutputDir.map { it.file("previews.json") })
         outputDir.set(previewOutputDir.map { it.dir("renders") })
         // `@ScrollingPreview(modes = [LONG, GIF])` outputs land here (sibling of `renders/`).
@@ -251,18 +247,11 @@ internal object ComposePreviewTasks {
         // Consumer's processed resources so previews can load classpath assets (Lottie `.json`,
         // fonts, images) at render time. Depend on the resource-processing task that stages them.
         renderClasspath.from(sourceResourceDirs)
-        // Feed configurations through a lazily-resolved `incoming.artifactView {}.files` view
-        // rather than the raw `Configuration`, so the @Classpath collection never pins a live
-        // `Configuration` into the task's config-cache `__classpath__` field (the serialization
-        // failure issue #1796 hit on the desktop validate guards). The empty view yields the same
-        // default resolution — module + file dependencies alike — just lazily and serializably.
-        // Only wired when renderable: a non-renderable module's androidRuntimeClasspath would
-        // resolve to a variant ambiguity during input snapshotting even though onlyIf skips the
-        // action, so leave it off the classpath entirely (issue #1852).
-        if (renderable) {
-          project.configurations.findByName(resolveDependencyConfigName())?.let {
-            renderClasspath.from(it.incoming.artifactView {}.files)
-          }
+        // Lazily-resolved, config-cache-safe consumer-classpath view (issue #1796) pinned to
+        // `artifactType=jar` so a KMP-Android `androidRuntimeClasspath` doesn't trip the
+        // 12-variant ambiguity (issue #1852). See [pinnedConsumerClasspath].
+        pinnedConsumerClasspath(project, resolveDependencyConfigName())?.let {
+          renderClasspath.from(it)
         }
         renderClasspath.from(rendererConfig.incoming.artifactView {}.files)
         group = "compose preview"
@@ -462,19 +451,7 @@ internal object ComposePreviewTasks {
       }
 
     project.tasks.register("composePreviewBundle", BundlePreviewTask::class.java) {
-      // A non-renderable pure-KMP-Android module has nothing the desktop renderer can pack; skip
-      // its
-      // bundle for consistency with the render/daemon tasks (issue #1852). Compute renderability
-      // LAZILY here at task realization — NOT from the eager `depConfigName` snapshot above — so a
-      // cmp-shared module whose `jvm("desktop")` target configures after `registerDesktopTasks`
-      // runs
-      // (when only the androidRuntimeClasspath fallback is visible) isn't permanently skipped
-      // (Codex
-      // review on #1853). Mirrors the render task. `isDesktopRenderableConfig` only trips on the
-      // literal `androidRuntimeClasspath` fallback, so this is a no-op on the Android bundle path
-      // (which routes through `${variant}RuntimeClasspath`) and on real desktop modules.
-      val bundleRenderable = isDesktopRenderableConfig(resolveDependencyConfigName())
-      onlyIf { extension.enabled.get() && bundleRenderable }
+      onlyIf { extension.enabled.get() }
       previewsJson.set(previewOutputDir.map { it.file("previews.json") })
       moduleClassDirs.from(sourceClassDirs)
       moduleResourcesDir.set(moduleResourcesDirProvider)
@@ -621,12 +598,11 @@ internal object ComposePreviewTasks {
       "composePreviewDaemonStart",
       ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask::class.java,
     ) {
-      // A non-renderable pure-KMP-Android module (only androidRuntimeClasspath, no jvm("desktop"))
-      // can't be driven by the desktop daemon either, and resolving its runtime classpath would
-      // trip the same variant ambiguity — skip the descriptor emission and leave its config off
-      // the daemon `-cp` (issue #1852).
-      val renderable = isDesktopRenderableConfig(dependencyConfigName())
-      onlyIf { renderable }
+      // A pure-KMP-Android module (only `androidRuntimeClasspath`, no `jvm("desktop")`) can't be
+      // driven by the desktop daemon — skip emitting its launch descriptor (issue #1852). This task
+      // is never realized by the Tooling-API model builder, so gating it can't affect CLI detection
+      // (unlike the reverted #1853 gating on discover/render — issue #1855).
+      onlyIf { isDesktopRenderableConfig(dependencyConfigName()) }
       modulePath.set(project.path)
       // Desktop daemons have no AGP variant. The string is surfaced in `daemon-launch.json`'s
       // `variant` field for debug/log purposes only — VS Code's `daemonProcess.ts` doesn't key
@@ -646,8 +622,7 @@ internal object ComposePreviewTasks {
         project = project,
         extension = extension,
         task = this,
-        userRuntimeConfig =
-          if (renderable) project.configurations.findByName(dependencyConfigName()) else null,
+        userRuntimeConfig = project.configurations.findByName(dependencyConfigName()),
       )
       // `:daemon:desktop`'s `DaemonMain` and `:daemon:android`'s `DaemonMain` share the FQN
       // intentionally (see the kdoc on `daemon/desktop/.../DaemonMain.kt`). The desktop classes
@@ -669,14 +644,10 @@ internal object ComposePreviewTasks {
       // don't match the `build/classes/...` markers), so they stay parent-loaded, not child-first.
       classpath.from(sourceResourceDirs)
       // User's runtime classpath (Compose Multiplatform deps + transitive Kotlin libraries).
-      // Lazy artifact view (not the raw `Configuration`) for config-cache serializability — #1796.
-      // Skipped for a non-renderable module so its ambiguous androidRuntimeClasspath is never
-      // resolved (issue #1852).
-      if (renderable) {
-        project.configurations.findByName(dependencyConfigName())?.let {
-          classpath.from(it.incoming.artifactView {}.files)
-        }
-      }
+      // Lazy artifact view (not the raw `Configuration`) for config-cache serializability — #1796 —
+      // pinned to `artifactType=jar` so a KMP-Android `androidRuntimeClasspath` doesn't trip the
+      // 12-variant ambiguity (#1852). See [pinnedConsumerClasspath].
+      pinnedConsumerClasspath(project, dependencyConfigName())?.let { classpath.from(it) }
 
       // Desktop daemons don't run inside Robolectric, so the AGP-side `--add-opens` flags don't
       // apply here. `-Xmx` is the only essential JVM arg; B-desktop follow-ups can add Skia /
@@ -844,12 +815,15 @@ internal object ComposePreviewTasks {
     toolClasspath: org.gradle.api.artifacts.Configuration,
   ): TaskProvider<ValidateComposePreviewClasspathTask> =
     project.tasks.register(taskName, ValidateComposePreviewClasspathTask::class.java) {
-      // The guard runs as a dependsOn of the render/daemon task, so it would resolve
-      // androidRuntimeClasspath (and fail on its variant ambiguity) BEFORE the render task's own
-      // onlyIf can skip a non-renderable module. Gate it the same way: skip the guard and don't
-      // wire the consumer config when the module isn't desktop-renderable (issue #1852).
-      val renderable = isDesktopRenderableConfig(dependencyConfigName())
-      onlyIf { renderable }
+      // A pure-KMP-Android module (only `androidRuntimeClasspath`, no `jvm("desktop")`) carries
+      // `*-android` Compose on its runtime classpath, which this guard would (correctly, for a
+      // renderable module) flag as "AndroidX Compose on the desktop classpath" and hard-fail. Such
+      // a module can't be desktop-rendered at all, so skip the guard instead of sinking the whole
+      // pipeline on a module that has nothing for the desktop renderer (issue #1852). This task is
+      // never realized by the Tooling-API model builder, so the skip can't affect CLI detection
+      // (issue #1855). A preview-less module like the consumer's `:meshcore-mobile` then renders 0
+      // previews and no-ops cleanly.
+      onlyIf { isDesktopRenderableConfig(dependencyConfigName()) }
       platform.set("desktop")
       // Feed the @Classpath FileCollection a lazily-resolved, content-keyed FileCollection
       // (`incoming.artifactView { }.files`) instead of the raw `Configuration`.
@@ -863,11 +837,7 @@ internal object ComposePreviewTasks {
       // while
       // resolving lazily through a serializable view — mirrors `composePreviewDiscover` above.
       classpath.from(toolClasspath.incoming.artifactView {}.files)
-      if (renderable) {
-        project.configurations.findByName(dependencyConfigName())?.let {
-          classpath.from(it.incoming.artifactView {}.files)
-        }
-      }
+      pinnedConsumerClasspath(project, dependencyConfigName())?.let { classpath.from(it) }
     }
 
   /**
