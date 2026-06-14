@@ -99,7 +99,11 @@
         "previewMetadata": { "$ref": "#/definitions/PreviewMetadataSnapshot" },
         "previousId": { "type": ["string", "null"] },
         "deltaFromPrevious": { "$ref": "#/definitions/HistoryDelta" },
-        "semantics": { "description": "Optional inline semantics snapshot (JSON); see compose-semantics.schema.json." }
+        "semantics": { "description": "Optional inline compose/semantics payload captured at render time (#1785); see compose-semantics.schema.json." },
+        "a11yAtf": { "description": "Optional inline a11y/atf payload captured at render time (#1869); see a11y-atf.schema.json." },
+        "a11yHierarchy": { "description": "Optional inline a11y/hierarchy payload captured at render time (#1869); see a11y-hierarchy.schema.json." },
+        "a11yTouchTargets": { "description": "Optional inline a11y/touchTargets payload captured at render time (#1869); see a11y-touch-targets.schema.json." },
+        "theme": { "description": "Optional inline compose/theme payload captured at render time (#1869); see compose-theme.schema.json." }
       }
     }
   },

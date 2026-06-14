@@ -7,6 +7,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -79,6 +80,66 @@ class LocalFsHistorySourceWriteTest {
     assertEquals(3, indexLines.size)
     val ids = indexLines.map { json.decodeFromString(HistoryEntry.serializer(), it).id }
     assertEquals(entries.map { it.first.id }, ids)
+  }
+
+  @Test
+  fun data_products_persist_in_sidecar_but_are_stripped_from_index() {
+    // Issue #1869 — the a11y/theme payloads captured per render must round-trip through the full
+    // sidecar (so a later data diff can read them back) yet stay out of the lean index.jsonl,
+    // exactly like the semantics snapshot (#1785).
+    val source = LocalFsHistorySource(historyDir = tmpDir)
+    val previewId = "com.example.Card"
+    val bytes = byteArrayOf(0x01, 0x02, 0x03, 0x04)
+    val hash = LocalFsHistorySource.sha256Hex(bytes)
+    val atf =
+      json.parseToJsonElement(
+        """{"findings":[{"level":"ERROR","type":"TouchTargetSizeCheck","message":"too small"}]}"""
+      )
+    val hierarchy =
+      json.parseToJsonElement("""{"nodes":[{"label":"Submit","boundsInScreen":"0,0,10,10"}]}""")
+    val touch =
+      json.parseToJsonElement(
+        """{"targets":[{"nodeId":"n2","boundsInScreen":"0,0,10,10","widthDp":10.0,"heightDp":10.0,"findings":["belowMinimumSize"]}]}"""
+      )
+    val theme =
+      json.parseToJsonElement(
+        """{"resolvedTokens":{"colorScheme":{"primary":"#FF0000"},"typography":{},"shapes":{}}}"""
+      )
+
+    val entry =
+      makeEntry(
+        id = "20260430-101010-${hash.take(8)}",
+        previewId = previewId,
+        hash = hash,
+        size = bytes.size.toLong(),
+        a11yAtf = atf,
+        a11yHierarchy = hierarchy,
+        a11yTouchTargets = touch,
+        theme = theme,
+      )
+    assertEquals(WriteResult.WRITTEN, source.write(entry, bytes))
+
+    val sidecar =
+      json.decodeFromString(
+        HistoryEntry.serializer(),
+        Files.readString(tmpDir.resolve(previewId).resolve("${entry.id}.json")),
+      )
+    assertEquals("a11y/atf snapshot survives in the sidecar", atf, sidecar.a11yAtf)
+    assertEquals(hierarchy, sidecar.a11yHierarchy)
+    assertEquals(touch, sidecar.a11yTouchTargets)
+    assertEquals("compose/theme snapshot survives in the sidecar", theme, sidecar.theme)
+
+    val indexLines =
+      Files.readAllLines(tmpDir.resolve(LocalFsHistorySource.INDEX_FILENAME)).filter {
+        it.isNotBlank()
+      }
+    assertEquals(1, indexLines.size)
+    val indexEntry = json.decodeFromString(HistoryEntry.serializer(), indexLines.single())
+    assertEquals(entry.id, indexEntry.id)
+    assertNull("a11y/atf must be stripped from the lean index line", indexEntry.a11yAtf)
+    assertNull(indexEntry.a11yHierarchy)
+    assertNull(indexEntry.a11yTouchTargets)
+    assertNull("compose/theme must be stripped from the lean index line", indexEntry.theme)
   }
 
   @Test
@@ -395,6 +456,10 @@ class LocalFsHistorySourceWriteTest {
     hash: String,
     size: Long,
     semantics: JsonElement? = null,
+    a11yAtf: JsonElement? = null,
+    a11yHierarchy: JsonElement? = null,
+    a11yTouchTargets: JsonElement? = null,
+    theme: JsonElement? = null,
   ): HistoryEntry =
     HistoryEntry(
       id = id,
@@ -409,6 +474,10 @@ class LocalFsHistorySourceWriteTest {
       source = HistorySourceInfo(kind = "fs", id = "fs:${tmpDir.toAbsolutePath()}"),
       renderTookMs = 1L,
       semantics = semantics,
+      a11yAtf = a11yAtf,
+      a11yHierarchy = a11yHierarchy,
+      a11yTouchTargets = a11yTouchTargets,
+      theme = theme,
     )
 
   /** A one-node `compose/semantics` payload as a [JsonElement], for seeding sidecars. */

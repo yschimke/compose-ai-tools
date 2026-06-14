@@ -96,6 +96,10 @@ class HistoryManager(
     metrics: RenderMetrics? = null,
     previewMetadata: PreviewMetadataSnapshot? = null,
     semantics: JsonElement? = null,
+    a11yAtf: JsonElement? = null,
+    a11yHierarchy: JsonElement? = null,
+    a11yTouchTargets: JsonElement? = null,
+    theme: JsonElement? = null,
     timestamp: Instant = Instant.now(),
   ): HistoryEntry? {
     if (!isEnabled) return null
@@ -146,6 +150,10 @@ class HistoryManager(
         previousId = previousId,
         deltaFromPrevious = delta,
         semantics = semantics,
+        a11yAtf = a11yAtf,
+        a11yHierarchy = a11yHierarchy,
+        a11yTouchTargets = a11yTouchTargets,
+        theme = theme,
       )
 
     var anyWritten = false

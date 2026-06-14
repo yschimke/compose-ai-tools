@@ -1273,25 +1273,26 @@ class JsonRpcServer(
           config = null,
         )
       }
-    // Snapshot the `compose/semantics` tree this render produced (issue #1785) so a later
-    // `history/diff mode=SEMANTICS` can diff two entries structurally. Opportunistic: the inline
-    // fetch returns the payload only when the producer wrote the artefact for this pass (it never
-    // forces a re-render — a missing file is NotAvailable, not RequiresRerender), so renders that
-    // didn't compute semantics simply record `semantics = null`.
-    val semantics =
-      try {
-        val outcome =
-          extensions
-            .publicDataProducts()
-            .fetch(previewId, ComposeSemanticsProduct.KIND, params = null, inline = true)
-        (outcome as? DataProductRegistry.Outcome.Ok)?.result?.payload
-      } catch (t: Throwable) {
-        System.err.println(
-          "compose-ai-daemon: history: compose/semantics fetch for $previewId failed " +
-            "(${t.javaClass.simpleName}: ${t.message}); recording entry without a semantics snapshot"
-        )
-        null
-      }
+    // Snapshot the structured data products this render produced (issues #1785, #1869) so a later
+    // data diff can compare two entries without pixels. Opportunistic: each inline fetch returns a
+    // payload only when the producer wrote the artefact for this pass (it never forces a
+    // re-render — a missing file is NotAvailable, not RequiresRerender), so a render that didn't
+    // compute a given kind simply records null for it. a11y/theme kinds use literal strings to keep
+    // daemon-core off the :data-a11y-core / :data-theme-core build edges.
+    //
+    // Freshness gate (a11y): a11y artefacts are file-backed and (re)written ONLY on an a11y-mode
+    // render; a normal render leaves a prior a11y render's files on disk, so an unconditional fetch
+    // would freeze STALE a11y data into this entry and corrupt data diffs. Capture the a11y kinds
+    // only when this render actually ran a11y. compose/semantics is written every render, and
+    // compose/theme's in-memory registry self-clears when a render doesn't capture it (fetch then
+    // returns RequiresRerender, not stale Ok) — so both are fresh-or-null and need no gate.
+    val a11yFresh = result.previewContext?.renderMode == "a11y"
+    val semantics = fetchHistorySnapshot(previewId, ComposeSemanticsProduct.KIND)
+    val a11yAtf = if (a11yFresh) fetchHistorySnapshot(previewId, "a11y/atf") else null
+    val a11yHierarchy = if (a11yFresh) fetchHistorySnapshot(previewId, "a11y/hierarchy") else null
+    val a11yTouchTargets =
+      if (a11yFresh) fetchHistorySnapshot(previewId, "a11y/touchTargets") else null
+    val theme = fetchHistorySnapshot(previewId, "compose/theme")
     val entry =
       try {
         mgr.recordRender(
@@ -1303,6 +1304,10 @@ class JsonRpcServer(
           metrics = finished.metrics,
           previewMetadata = previewMetadata,
           semantics = semantics,
+          a11yAtf = a11yAtf,
+          a11yHierarchy = a11yHierarchy,
+          a11yTouchTargets = a11yTouchTargets,
+          theme = theme,
         )
       } catch (t: Throwable) {
         System.err.println(
@@ -1322,12 +1327,37 @@ class JsonRpcServer(
     }
   }
 
-  // Strips the heavy captured `semantics` snapshot (issue #1785) before echoing an entry on the
-  // wire: `history/list` / `history/read` / `historyAdded` / metadata-mode `history/diff` only want
-  // metadata, and the tree is read back off the sidecar exclusively by `history/diff
-  // mode=SEMANTICS`.
+  // Opportunistically fetch a data-product payload to freeze into the history entry (issues #1785,
+  // #1869). Inline and never forces a re-render; any failure or unavailable kind yields null so
+  // history recording stays best-effort and never affects the render itself.
+  private fun fetchHistorySnapshot(previewId: String, kind: String): JsonElement? =
+    try {
+      val outcome =
+        extensions.publicDataProducts().fetch(previewId, kind, params = null, inline = true)
+      (outcome as? DataProductRegistry.Outcome.Ok)?.result?.payload
+    } catch (t: Throwable) {
+      System.err.println(
+        "compose-ai-daemon: history: $kind fetch for $previewId failed " +
+          "(${t.javaClass.simpleName}: ${t.message}); recording entry without it"
+      )
+      null
+    }
+
+  // Strips the heavy captured snapshots (semantics #1785, a11y/theme data products #1869) before
+  // echoing an entry on the wire: `history/list` / `history/read` / `historyAdded` / metadata-mode
+  // `history/diff` only want metadata. The payloads are read back off the sidecar exclusively by
+  // `history/diff mode=SEMANTICS` and (later) the data-diff surfaces.
   private fun encodeHistoryEntry(entry: HistoryEntry): JsonElement =
-    json.encodeToJsonElement(HistoryEntry.serializer(), entry.copy(semantics = null))
+    json.encodeToJsonElement(
+      HistoryEntry.serializer(),
+      entry.copy(
+        semantics = null,
+        a11yAtf = null,
+        a11yHierarchy = null,
+        a11yTouchTargets = null,
+        theme = null,
+      ),
+    )
 
   private fun handleHistoryList(req: JsonRpcRequest) {
     val params =
