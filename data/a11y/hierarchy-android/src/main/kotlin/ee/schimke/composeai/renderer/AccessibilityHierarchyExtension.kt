@@ -21,8 +21,12 @@ import ee.schimke.composeai.data.render.extensions.RenderSessionParticipant
 object AccessibilityHierarchyExtractor {
   fun extract(previewId: String?, root: View): AccessibilityAnalysis {
     val result = AccessibilityChecker.analyze(previewId ?: "preview", root)
+    // Stamp a stable, content-independent ref onto each node (issue #1784) so agents and the
+    // semantics differ have the same handle vocabulary on `a11y/hierarchy` that `compose/semantics`
+    // already exposes. Done here at the single producer chokepoint rather than inside
+    // `AccessibilityChecker` so the ATF walk stays a pure View-tree projection.
     return AccessibilityAnalysis(
-      hierarchy = AccessibilityHierarchyPayload(result.nodes),
+      hierarchy = AccessibilityHierarchyPayload(AccessibilityRefs.assign(result.nodes)),
       findings = AccessibilityFindingsPayload(result.findings),
     )
   }

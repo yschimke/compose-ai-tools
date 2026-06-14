@@ -15,9 +15,14 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performTouchInput
 import com.github.takahirom.roborazzi.captureRoboImage
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
 import ee.schimke.composeai.data.layoutinspector.SemanticsTarget
 import ee.schimke.composeai.data.layoutinspector.SemanticsTargets
 import ee.schimke.composeai.data.layoutinspector.TargetResolution
+import ee.schimke.composeai.daemon.protocol.SemanticsInputTarget
+import ee.schimke.composeai.daemon.protocol.SemanticsTargetCandidate
+import ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedCode
+import ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedReason
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.PreviewDeviceContext
 import ee.schimke.composeai.data.render.PreviewDeviceSpec
@@ -36,6 +41,7 @@ import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import kotlinx.serialization.json.Json
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import org.junit.Test
@@ -2731,17 +2737,85 @@ open class RobolectricHost(
         semanticsTargetOf(cmd) ?: return Offset(cmd.pixelX.toFloat(), cmd.pixelY.toFloat())
       val root =
         runCatching { rule.onRoot(useUnmergedTree = true).fetchSemanticsNode() }.getOrNull()
-      val resolved =
-        root?.let {
-          val payload = ComposeSemanticsDataProducer.buildPayload(it)
-          when (val res = SemanticsTargets.resolve(payload, target)) {
-            is TargetResolution.Resolved -> Offset(res.point.x.toFloat(), res.point.y.toFloat())
-            else -> null
-          }
+      if (root == null) {
+        // Nothing rendered yet — no tree to resolve against. Mirror the desktop NO_SEMANTICS_ROOT
+        // diagnostic (issue #1784) so the recording path surfaces a structured reason.
+        cmd.replyMatched?.set(false)
+        cmd.replyUnresolvedReasonJson?.set(
+          encodeUnresolvedReason(cmd, SemanticsTargetUnresolvedCode.NO_SEMANTICS_ROOT, 0, emptyList())
+        )
+        return null
+      }
+      val payload = ComposeSemanticsDataProducer.buildPayload(root)
+      return when (val res = SemanticsTargets.resolve(payload, target)) {
+        is TargetResolution.Resolved -> {
+          cmd.replyMatched?.set(true)
+          Offset(res.point.x.toFloat(), res.point.y.toFloat())
         }
-      cmd.replyMatched?.set(resolved != null)
-      return resolved
+        TargetResolution.NotFound -> {
+          cmd.replyMatched?.set(false)
+          cmd.replyUnresolvedReasonJson?.set(
+            encodeUnresolvedReason(
+              cmd,
+              SemanticsTargetUnresolvedCode.NO_MATCH,
+              0,
+              SemanticsTargets.targetableNodes(payload.root),
+            )
+          )
+          null
+        }
+        is TargetResolution.Ambiguous -> {
+          cmd.replyMatched?.set(false)
+          cmd.replyUnresolvedReasonJson?.set(
+            encodeUnresolvedReason(
+              cmd,
+              SemanticsTargetUnresolvedCode.AMBIGUOUS,
+              res.candidates.size,
+              res.candidates,
+            )
+          )
+          null
+        }
+      }
     }
+
+    /**
+     * Build + JSON-encode the structured [SemanticsTargetUnresolvedReason] (issue #1784) for a target
+     * miss, sandbox-side where the live semantics tree lives. The JSON string crosses the bridge as a
+     * plain `java.lang.String`; the host decodes it back into the typed reason — the same shape the
+     * desktop backend builds host-side via `semanticsTargetUnresolvedReason`.
+     */
+    private fun encodeUnresolvedReason(
+      cmd: InteractiveCommand.Dispatch,
+      code: SemanticsTargetUnresolvedCode,
+      matchCount: Int,
+      candidates: List<ComposeSemanticsNode>,
+    ): String =
+      UNRESOLVED_REASON_JSON.encodeToString(
+        SemanticsTargetUnresolvedReason.serializer(),
+        SemanticsTargetUnresolvedReason(
+          code = code,
+          target =
+            SemanticsInputTarget(
+              ref = cmd.targetRef,
+              testTag = cmd.targetTestTag,
+              role = cmd.targetRole,
+              text = cmd.targetText,
+            ),
+          matchCount = matchCount,
+          candidates =
+            candidates.map {
+              SemanticsTargetCandidate(
+                ref = it.ref,
+                testTag = it.testTag,
+                role = it.role,
+                text = it.text,
+                label = it.label,
+                boundsInRoot = it.boundsInRoot,
+              )
+            },
+        ),
+      )
 
     /** Build the core [SemanticsTarget] from the bridge command's string fields (ref → tag → role+text). */
     private fun semanticsTargetOf(cmd: InteractiveCommand.Dispatch): SemanticsTarget? =
@@ -3224,6 +3298,13 @@ open class RobolectricHost(
       private const val POINTER_MOVE_MS: Long = 16L
 
       private const val ROTARY_SCROLL_STEP: Float = 1f / 3f
+
+      /**
+       * JSON used to ferry a [SemanticsTargetUnresolvedReason] across the sandbox→host bridge as a
+       * plain string (issue #1784). `encodeDefaults` so `matchCount` / `candidates` are always
+       * present on the wire even at their defaults.
+       */
+      private val UNRESOLVED_REASON_JSON: Json = Json { encodeDefaults = true }
     }
   }
 }

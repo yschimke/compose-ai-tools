@@ -191,6 +191,11 @@ no-op.
   pixelY?: number;
   // For 'keyDown'/'keyUp' only.
   keyCode?: string;
+  // Semantic target (#1784) — set instead of pixelX/pixelY to act by stable
+  // handle. The daemon resolves it against the held session's *live* semantics
+  // tree and dispatches at the matched node's centre. Explicit pixels win when
+  // both are present (the escape hatch for canvas / custom-drawn surfaces).
+  target?: { ref?: string; testTag?: string; role?: string; text?: string };
 }
 ```
 
@@ -199,6 +204,21 @@ dispatches the input into the active composition and emits a fresh
 `renderFinished` for the same `previewId` once the composition settles.
 Backpressure is the panel's responsibility: don't send a new click
 before the prior frame arrives. Lost inputs are acceptable.
+
+**Semantic targeting & resolution diagnostics (#1784).** A `target`
+resolves cross-backend (Robolectric + Skiko) against the held session's
+live tree, so an agent re-reads `compose/semantics`, picks a node's
+`ref`, and never does pixel math — the loop self-heals across
+recomposition. Because `interactive/input` is fire-and-forget, a target
+that resolves to no node (or more than one) is logged daemon-side and the
+input is dropped; the matching frame still renders. The **structured**
+diagnostic lives on the `record_preview` / `recording/*` path, which is a
+request: a missed target there yields `unsupported` script evidence whose
+`targetUnresolvedReason` carries `{ code: 'noMatch' | 'ambiguous' |
+'noSemanticsRoot', matchCount, candidates: [{ ref, testTag, role, text,
+label, boundsInRoot }] }`. The agent disambiguates by picking a candidate
+`ref` — mirroring Playwright codegen's "improve the locator when multiple
+match" — without re-rendering.
 
 ## 8a. Display overrides
 

@@ -4,6 +4,10 @@ import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RecordingFormat
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
+import ee.schimke.composeai.daemon.protocol.SemanticsInputTarget
+import ee.schimke.composeai.daemon.protocol.SemanticsTargetCandidate
+import ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedCode
+import ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedReason
 import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -661,6 +665,78 @@ class AndroidRecordingSessionTest {
         "miss diagnostic must point at the missing ActivityScenario; got '$message'",
         message.contains("ActivityScenario"),
       )
+    } finally {
+      session.close()
+    }
+  }
+
+  @Test
+  fun semanticTargetMissSurfacesStructuredCandidates() {
+    // #1784 — when the sandbox resolves a semantic target to no node, `AndroidInteractiveSession`
+    // rethrows a `SemanticsTargetUnresolvedException` carrying the structured reason (decoded from
+    // the JSON the sandbox passed over the bridge). The recording handler must surface that as
+    // `unsupported` evidence with `targetUnresolvedReason` candidates — the cross-backend twin of
+    // the desktop recording path — instead of failing the whole recording.
+    val framesDir = tempFolder.newFolder("target-miss-frames")
+    val encodedDir = tempFolder.newFolder("target-miss-encoded")
+    val sourcePng = File(tempFolder.newFolder("target-miss-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    val reason =
+      SemanticsTargetUnresolvedReason(
+        code = SemanticsTargetUnresolvedCode.NO_MATCH,
+        target = SemanticsInputTarget(testTag = "does-not-exist"),
+        matchCount = 0,
+        candidates =
+          listOf(
+            SemanticsTargetCandidate(
+              ref = "r/tag:submit",
+              testTag = "submit",
+              role = "Button",
+              text = "Submit",
+              boundsInRoot = "0,0,10,10",
+            )
+          ),
+      )
+    val interactive = RecordingDeltaSession(sourcePng).apply { dispatchTargetMiss = reason }
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-target-miss",
+        fps = FPS,
+        scale = 1.0f,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    try {
+      session.postScript(
+        listOf(
+          RecordingScriptEvent(
+            tMs = 0L,
+            kind = "input.click",
+            target = SemanticsInputTarget(testTag = "does-not-exist"),
+          )
+        )
+      )
+      val result = session.stop()
+
+      val evidence = result.scriptEvents.single { it.kind == "input.click" }
+      assertEquals(
+        ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.UNSUPPORTED,
+        evidence.status,
+      )
+      assertNotNull(
+        "semantic-target miss must carry a structured targetUnresolvedReason",
+        evidence.targetUnresolvedReason,
+      )
+      val surfaced = evidence.targetUnresolvedReason!!
+      assertEquals(SemanticsTargetUnresolvedCode.NO_MATCH, surfaced.code)
+      assertEquals("r/tag:submit", surfaced.candidates.single().ref)
     } finally {
       session.close()
     }
@@ -1534,8 +1610,19 @@ class AndroidRecordingSessionTest {
      */
     var lifecycleResult: Boolean? = null
 
+    /**
+     * When non-null, [dispatch] throws a [SemanticsTargetUnresolvedException] carrying this reason —
+     * the host-side shape an unresolved semantic target (#1784) produces after the sandbox reply
+     * crosses the bridge. Lets the recording-handler test assert candidate surfacing without a real
+     * Robolectric sandbox.
+     */
+    var dispatchTargetMiss: SemanticsTargetUnresolvedReason? = null
+
     override fun dispatch(input: ee.schimke.composeai.daemon.protocol.InteractiveInputParams) {
       dispatchCount++
+      dispatchTargetMiss?.let {
+        throw SemanticsTargetUnresolvedException(it, "target did not resolve to a node")
+      }
     }
 
     override fun dispatchSemanticsAction(

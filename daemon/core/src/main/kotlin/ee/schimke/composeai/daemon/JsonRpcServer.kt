@@ -2817,7 +2817,22 @@ class JsonRpcServer(
             val queue = pendingInteractiveInputs[streamId]
             while (queue != null) {
               val next = queue.poll() ?: break
-              session.dispatch(next)
+              try {
+                session.dispatch(next)
+              } catch (e: SemanticsTargetUnresolvedException) {
+                // #1784 — interactive/input is fire-and-forget (parity with Desktop, per
+                // INTERACTIVE.md §8): a semantic target that resolves to no node / more than one is
+                // logged and dropped, NOT routed to the renderFailed path — the matching frame
+                // still
+                // renders. The structured reason + candidates ride the request-shaped
+                // record_preview
+                // / recording path instead (Android's recording handler catches this same
+                // exception).
+                System.err.println(
+                  "compose-ai-daemon: interactive/input target unresolved on stream '$streamId' " +
+                    "(${e.reason.code}, matchCount=${e.reason.matchCount}); dropping input"
+                )
+              }
             }
             // Apply the latest pending Lottie scrub (if any) before rendering — coalesced to the
             // most recent drag position. Mutates the held scene's snapshot state so the render

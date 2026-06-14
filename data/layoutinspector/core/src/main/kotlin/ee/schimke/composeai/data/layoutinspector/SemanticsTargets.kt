@@ -30,6 +30,30 @@ object SemanticsTargets {
     }
   }
 
+  /**
+   * Ref-assigned, flattened nodes that carry at least one thing an agent could target on (`testTag`
+   * / `role` / text / `label` / clickability) — the candidate set surfaced on a
+   * [TargetResolution.NotFound] so the agent sees what *does* exist in the live tree and can pick a
+   * real handle (issue #1784). Reassigns refs defensively (same contract as [resolve]) so a raw
+   * tree still yields stable refs. Bounded by [limit] to keep the diagnostic payload small on dense
+   * trees; the most-targetable nodes (those with a `testTag`) sort first.
+   */
+  fun targetableNodes(
+    root: ComposeSemanticsNode,
+    limit: Int = DEFAULT_CANDIDATE_LIMIT,
+  ): List<ComposeSemanticsNode> =
+    SemanticsRefs.assign(root)
+      .flatten()
+      .filter {
+        it.testTag != null ||
+          it.role != null ||
+          !it.text.isNullOrBlank() ||
+          !it.label.isNullOrBlank() ||
+          it.clickable
+      }
+      .sortedByDescending { it.testTag != null }
+      .take(limit)
+
   private fun resolvedAt(node: ComposeSemanticsNode): TargetResolution {
     val bounds = SemanticsBounds.parse(node.boundsInRoot)
     return if (bounds == null) TargetResolution.NotFound
@@ -57,6 +81,8 @@ object SemanticsTargets {
     add(this@flatten)
     children.forEach { addAll(it.flatten()) }
   }
+
+  private const val DEFAULT_CANDIDATE_LIMIT = 24
 }
 
 /** A request to identify a node by stable handle rather than pixel coordinates (issue #1784). */

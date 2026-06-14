@@ -2066,6 +2066,14 @@ data class RecordingScriptEvidence(
    */
   val unsupportedReason: UiAutomatorUnsupportedReason? = null,
   /**
+   * Typed companion to [message] for unsupported portable semantic-target dispatches (issue #1784)
+   * — a pointer event whose `{ ref | testTag | role+text }` target matched no node or more than
+   * one. Carries the structured cause + candidate nodes so agents can disambiguate without
+   * re-rendering. `null` for pixel-targeted events, applied events, and the `uia.*` path (which
+   * uses [unsupportedReason]).
+   */
+  val targetUnresolvedReason: SemanticsTargetUnresolvedReason? = null,
+  /**
    * For `recording.probe` events: a compact snapshot of the held composition's semantics at the
    * instant the probe fired (issue #1786). Null for non-probe events and for hosts/recordings that
    * predate probe-semantics capture, so older daemons keep producing TODO-stub probes.

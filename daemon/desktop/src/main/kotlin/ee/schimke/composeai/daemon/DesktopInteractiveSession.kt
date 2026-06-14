@@ -315,7 +315,11 @@ class DesktopInteractiveSession(
       is TargetResolution.Resolved -> res.point.x to res.point.y
       TargetResolution.NotFound -> logUnresolved(target, "no node matched")
       is TargetResolution.Ambiguous ->
-        logUnresolved(target, "${res.candidates.size} nodes matched; use a ref to disambiguate")
+        logUnresolved(
+          target,
+          "${res.candidates.size} nodes matched (refs: " +
+            "${res.candidates.mapNotNull { it.ref }}); use a ref to disambiguate",
+        )
     }
   }
 

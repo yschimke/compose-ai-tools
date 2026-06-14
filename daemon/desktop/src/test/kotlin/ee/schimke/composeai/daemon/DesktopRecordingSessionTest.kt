@@ -779,6 +779,90 @@ class DesktopRecordingSessionTest {
     }
   }
 
+  /**
+   * Issue #1784 — a scripted `input.click` whose semantic `target` matches no node resolves to
+   * `unsupported` evidence carrying a structured [SemanticsTargetUnresolvedReason]: `code =
+   * NO_MATCH` and a `candidates` list naming the targetable nodes that *do* exist (here the
+   * `target-box`), so the agent can disambiguate without re-rendering. The fixture never recomposes
+   * (no dispatch happened), so this also proves the miss is non-fatal.
+   */
+  @Test
+  fun scripted_click_with_unknown_testTag_emits_unsupported_with_candidates() {
+    val outputDir = tempFolder.newFolder("nomatch-recording-renders")
+    val recordingsRoot = tempFolder.newFolder("nomatch-recordings-root")
+    savedRecordingsDir = System.getProperty(DesktopHost.RECORDINGS_DIR_PROP)
+    System.setProperty(DesktopHost.RECORDINGS_DIR_PROP, recordingsRoot.absolutePath)
+
+    val engine = RenderEngine(outputDir = outputDir)
+    val host =
+      DesktopHost(
+        engine = engine,
+        previewSpecResolver = { previewId ->
+          if (previewId == TAGGED_TARGET_PREVIEW_ID) {
+            RenderSpec(
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "TaggedClickTargetSquare",
+              widthPx = 64,
+              heightPx = 64,
+              density = 1.0f,
+              outputBaseName = "nomatch-target-square-rec",
+            )
+          } else null
+        },
+      )
+    host.start()
+    try {
+      val session =
+        host.acquireRecordingSession(
+          previewId = TAGGED_TARGET_PREVIEW_ID,
+          recordingId = "test-rec-nomatch",
+          classLoader =
+            DesktopRecordingSessionTest::class.java.classLoader
+              ?: ClassLoader.getSystemClassLoader(),
+          fps = FPS,
+          scale = 1.0f,
+          overrides = null,
+        )
+      try {
+        session.postScript(
+          listOf(
+            RecordingScriptEvent(
+              tMs = 0L,
+              kind = "input.click",
+              target =
+                ee.schimke.composeai.daemon.protocol.SemanticsInputTarget(
+                  testTag = "does-not-exist"
+                ),
+            )
+          )
+        )
+        val result = session.stop()
+
+        val evidence = result.scriptEvents.single { it.kind == "input.click" }
+        assertEquals(RecordingScriptEventStatus.UNSUPPORTED, evidence.status)
+        assertNotNull(
+          "unsupported semantic-target miss must carry a structured targetUnresolvedReason",
+          evidence.targetUnresolvedReason,
+        )
+        val reason = evidence.targetUnresolvedReason!!
+        assertEquals(
+          ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedCode.NO_MATCH,
+          reason.code,
+        )
+        assertEquals(0, reason.matchCount)
+        assertTrue(
+          "candidates must list the targetable nodes that exist; got ${reason.candidates}",
+          reason.candidates.any { it.testTag == "target-box" && it.ref != null },
+        )
+        assertEquals("does-not-exist", reason.target?.testTag)
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
   private fun readPng(file: File): java.awt.image.BufferedImage {
     assertTrue("rendered PNG must exist on disk: ${file.absolutePath}", file.exists())
     assertTrue("rendered PNG must be non-empty", file.length() > 0)

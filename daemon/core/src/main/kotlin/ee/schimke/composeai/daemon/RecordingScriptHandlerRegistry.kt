@@ -127,12 +127,16 @@ fun appliedEvidence(
  *
  * Optional [unsupportedReason] carries a structured cause for `uia.*` dispatches (#874 item #2) —
  * agents that decode it get the matched-count + nearest-match shape and can iterate on selectors
- * without re-rendering. Other event kinds leave it `null`.
+ * without re-rendering. Optional [targetUnresolvedReason] is the equivalent for the portable
+ * ref/testTag/role+text dispatch path (issue #1784) — matched-count + candidate nodes. Other event
+ * kinds leave both `null`.
  */
 fun unsupportedEvidence(
   event: RecordingScriptEvent,
   message: String,
   unsupportedReason: ee.schimke.composeai.daemon.protocol.UiAutomatorUnsupportedReason? = null,
+  targetUnresolvedReason: ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedReason? =
+    null,
 ): RecordingScriptEvidence =
   RecordingScriptEvidence(
     tMs = event.tMs,
@@ -144,4 +148,5 @@ fun unsupportedEvidence(
     tags = event.tags,
     message = message,
     unsupportedReason = unsupportedReason,
+    targetUnresolvedReason = targetUnresolvedReason,
   )

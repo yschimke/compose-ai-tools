@@ -372,6 +372,14 @@ class AndroidRecordingSession(
             keyCode = event.keyCode,
           )
         )
+      } catch (t: SemanticsTargetUnresolvedException) {
+        // #1784 — structured miss: surface the candidate nodes so the agent can disambiguate without
+        // re-rendering, mirroring the desktop recording path.
+        return@RecordingScriptEventHandler unsupportedEvidence(
+          event,
+          t.message ?: "target did not resolve to a node",
+          targetUnresolvedReason = t.reason,
+        )
       } catch (t: Throwable) {
         if (hasTarget) {
           return@RecordingScriptEventHandler unsupportedEvidence(

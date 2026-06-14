@@ -18,6 +18,8 @@ import ee.schimke.composeai.daemon.protocol.RecordingFormat
 import ee.schimke.composeai.daemon.protocol.RecordingInputParams
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvidence
+import ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedCode
+import ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedReason
 import ee.schimke.composeai.data.layoutinspector.SemanticsTargets
 import ee.schimke.composeai.data.layoutinspector.TargetResolution
 import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
@@ -340,33 +342,62 @@ class DesktopRecordingSession(
   private sealed interface ResolvedPixels {
     data class At(val px: Int, val py: Int) : ResolvedPixels
 
-    data class Unresolved(val reason: String) : ResolvedPixels
+    data class Unresolved(
+      val reason: String,
+      val targetUnresolvedReason: SemanticsTargetUnresolvedReason? = null,
+    ) : ResolvedPixels
   }
 
   /**
    * Resolve where a pointer event lands: explicit [RecordingScriptEvent.pixelX]/`pixelY` win;
    * otherwise the [RecordingScriptEvent.target] semantic handle is resolved against the held
    * scene's live semantics tree (issue #1784). Unlike `interactive/input`, recording reports the
-   * miss as `unsupported` script evidence, so the reason string is surfaced to the agent.
+   * miss as `unsupported` script evidence — both a human-readable reason string and, for a target
+   * that matched no node or more than one, a structured [SemanticsTargetUnresolvedReason] carrying
+   * the candidate nodes so the agent can disambiguate without re-rendering.
    */
   private fun resolveEventPixels(event: RecordingScriptEvent): ResolvedPixels {
     val px = event.pixelX
     val py = event.pixelY
     if (px != null && py != null) return ResolvedPixels.At(px, py)
+    val wireTarget = event.target
     val target =
-      event.target?.toSemanticsTarget()
+      wireTarget?.toSemanticsTarget()
         ?: return ResolvedPixels.Unresolved(
           "${event.kind} requires pixelX/pixelY or a resolvable target"
         )
     val root =
       state.scene.composeSemanticsRoot()
-        ?: return ResolvedPixels.Unresolved("no semantics root available for target $target")
+        ?: return ResolvedPixels.Unresolved(
+          "no semantics root available for target $target",
+          semanticsTargetUnresolvedReason(
+            SemanticsTargetUnresolvedCode.NO_SEMANTICS_ROOT,
+            wireTarget,
+            matchCount = 0,
+            candidates = emptyList(),
+          ),
+        )
     return when (val res = SemanticsTargets.resolve(root, target)) {
       is TargetResolution.Resolved -> ResolvedPixels.At(res.point.x, res.point.y)
-      TargetResolution.NotFound -> ResolvedPixels.Unresolved("target $target matched no node")
+      TargetResolution.NotFound ->
+        ResolvedPixels.Unresolved(
+          "target $target matched no node",
+          semanticsTargetUnresolvedReason(
+            SemanticsTargetUnresolvedCode.NO_MATCH,
+            wireTarget,
+            matchCount = 0,
+            candidates = SemanticsTargets.targetableNodes(root),
+          ),
+        )
       is TargetResolution.Ambiguous ->
         ResolvedPixels.Unresolved(
-          "target $target matched ${res.candidates.size} nodes; use a ref to disambiguate"
+          "target $target matched ${res.candidates.size} nodes; use a ref to disambiguate",
+          semanticsTargetUnresolvedReason(
+            SemanticsTargetUnresolvedCode.AMBIGUOUS,
+            wireTarget,
+            matchCount = res.candidates.size,
+            candidates = res.candidates,
+          ),
         )
     }
   }
@@ -377,7 +408,11 @@ class DesktopRecordingSession(
         when (val resolved = resolveEventPixels(event)) {
           is ResolvedPixels.At -> resolved.px to resolved.py
           is ResolvedPixels.Unresolved ->
-            return@RecordingScriptEventHandler unsupportedEvidence(event, resolved.reason)
+            return@RecordingScriptEventHandler unsupportedEvidence(
+              event,
+              resolved.reason,
+              targetUnresolvedReason = resolved.targetUnresolvedReason,
+            )
         }
       val id = pointerIdOrDefault(event)
       val offset = sceneOffset(px, py)
@@ -411,7 +446,11 @@ class DesktopRecordingSession(
         when (val resolved = resolveEventPixels(event)) {
           is ResolvedPixels.At -> resolved.px to resolved.py
           is ResolvedPixels.Unresolved ->
-            return@RecordingScriptEventHandler unsupportedEvidence(event, resolved.reason)
+            return@RecordingScriptEventHandler unsupportedEvidence(
+              event,
+              resolved.reason,
+              targetUnresolvedReason = resolved.targetUnresolvedReason,
+            )
         }
       val id = pointerIdOrDefault(event)
       val offset = sceneOffset(px, py)
@@ -504,7 +543,11 @@ class DesktopRecordingSession(
         when (val resolved = resolveEventPixels(event)) {
           is ResolvedPixels.At -> resolved.px to resolved.py
           is ResolvedPixels.Unresolved ->
-            return@RecordingScriptEventHandler unsupportedEvidence(event, resolved.reason)
+            return@RecordingScriptEventHandler unsupportedEvidence(
+              event,
+              resolved.reason,
+              targetUnresolvedReason = resolved.targetUnresolvedReason,
+            )
         }
       val deltaY = event.scrollDeltaY
       if (deltaY == null) {
