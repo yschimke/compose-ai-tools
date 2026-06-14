@@ -87,6 +87,40 @@ class DaemonA11yFetcherTest {
   }
 
   @Test
+  fun `preserves per-node ref from a11y-hierarchy into the aggregated report`() {
+    // #1784 — the aggregate decodes a11y-hierarchy.json through this module's AccessibilityNode
+    // mirror and re-encodes it into accessibility.json. The mirror must carry `ref` or the stable
+    // handles silently drop out of `compose-preview a11y` output.
+    val projectDir = newTempFolder("module-ref")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    val dataDir = File(projectDir, "build/compose-previews/data/AlphaPreview")
+    dataDir.mkdirs()
+    File(dataDir, "a11y-hierarchy.json")
+      .writeText(
+        """{"nodes":[{"label":"Submit","ref":"a/role:Button[0]","role":"Button","boundsInScreen":"0,0,10,10"}]}"""
+      )
+
+    val fetcher =
+      DaemonA11yFetcher(factory = FakeFactory(mapOf("AlphaPreview" to atfPayload(emptyList()))))
+    val outcome =
+      fetcher.fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previewIds = listOf("AlphaPreview"),
+      )
+
+    assertTrue(outcome is DaemonA11yFetcher.Outcome.Ok, "expected Ok, got $outcome")
+    val report =
+      Companion.json.decodeFromString(
+        AccessibilityReport.serializer(),
+        File(projectDir, "build/compose-previews/accessibility.json").readText(),
+      )
+    assertEquals("a/role:Button[0]", report.entries.single().nodes.single().ref)
+  }
+
+  @Test
   fun `returns DescriptorMissing when daemon-launch_json is absent and writes atf-unavailable sidecar`() {
     val projectDir = newTempFolder("module-no-descriptor")
     val fetcher = DaemonA11yFetcher(factory = FakeFactory(emptyMap()))

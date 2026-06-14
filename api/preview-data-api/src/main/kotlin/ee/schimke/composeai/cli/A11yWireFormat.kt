@@ -48,6 +48,13 @@ data class AccessibilityFinding(
 data class AccessibilityNode(
   /** Visible text or contentDescription. */
   val label: String,
+  /**
+   * Stable, content-independent handle (issue #1784) — mirrors `:data-a11y-core`'s
+   * `AccessibilityNode.ref`. Carried through so the aggregated `accessibility.json` written by
+   * `compose-preview a11y` preserves the per-preview data product's refs instead of stripping them.
+   * `null` for older sidecars / Compose-semantics-only overlays that never assigned one.
+   */
+  val ref: String? = null,
   /** TalkBack-style role announcement (`Button`, `Image`, …). `null` for plain labelled nodes. */
   val role: String? = null,
   /**
