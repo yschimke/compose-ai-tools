@@ -4582,9 +4582,9 @@ class DaemonMcpServer(
       val kind: String,
       val message: String,
       /**
-       * One-line remediation the daemon classified for a recognised failure signature (issue
-       * #1789), e.g. a classpath-skew or Robolectric SDK-mismatch fix hint. `null` when the daemon
-       * had no specific suggestion (or pre-dates the field — tolerant decode).
+       * One-line remediation the daemon classified for a recognised failure signature
+       * (issue #1789), e.g. a classpath-skew or Robolectric SDK-mismatch fix hint. `null` when the
+       * daemon had no specific suggestion (or pre-dates the field — tolerant decode).
        */
       val suggestion: String? = null,
     ) : RenderOutcome

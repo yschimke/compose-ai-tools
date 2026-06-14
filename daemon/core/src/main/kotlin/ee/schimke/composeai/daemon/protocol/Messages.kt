@@ -1413,14 +1413,17 @@ enum class RenderErrorKind(val wire: String) {
 }
 
 /**
- * Tolerant [RenderErrorKind] serializer: encodes via the [RenderErrorKind.wire] spelling and decodes
- * an unrecognised string to [RenderErrorKind.UNKNOWN] rather than throwing (VERSIONING.md § 4.1
- * enum discipline). This is what keeps adding a new failure discriminant an additive, non-breaking
- * change for older clients.
+ * Tolerant [RenderErrorKind] serializer: encodes via the [RenderErrorKind.wire] spelling and
+ * decodes an unrecognised string to [RenderErrorKind.UNKNOWN] rather than throwing (VERSIONING.md §
+ * 4.1 enum discipline). This is what keeps adding a new failure discriminant an additive,
+ * non-breaking change for older clients.
  */
 object RenderErrorKindSerializer : KSerializer<RenderErrorKind> {
   override val descriptor: SerialDescriptor =
-    PrimitiveSerialDescriptor("ee.schimke.composeai.daemon.protocol.RenderErrorKind", PrimitiveKind.STRING)
+    PrimitiveSerialDescriptor(
+      "ee.schimke.composeai.daemon.protocol.RenderErrorKind",
+      PrimitiveKind.STRING,
+    )
 
   override fun serialize(encoder: Encoder, value: RenderErrorKind) {
     encoder.encodeString(value.wire)
