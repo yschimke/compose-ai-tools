@@ -14,7 +14,9 @@ import * as path from "path";
 
 import {
     listReportingBranches,
+    readGitRefEntryField,
     reportingBranchLabel,
+    sanitisePreviewId,
 } from "../reportingBranches";
 
 function gitAvailable(): boolean {
@@ -139,5 +141,101 @@ describe("listReportingBranches", () => {
         } finally {
             fs.rmSync(notRepo, { recursive: true, force: true });
         }
+    });
+});
+
+describe("sanitisePreviewId", () => {
+    it("keeps letters/digits/._- verbatim and collapses the rest", () => {
+        assert.strictEqual(
+            sanitisePreviewId("com.example.OnboardingKt.WelcomeScreenPreview"),
+            "com.example.OnboardingKt.WelcomeScreenPreview",
+        );
+        assert.strictEqual(sanitisePreviewId("a b/c:d"), "a_b_c_d");
+        assert.strictEqual(sanitisePreviewId(""), "_");
+    });
+});
+
+describe("readGitRefEntryField", () => {
+    let repo: string;
+    const hasGit = gitAvailable();
+
+    beforeEach(function () {
+        if (!hasGit) {
+            this.skip();
+        }
+        repo = fs.mkdtempSync(path.join(os.tmpdir(), "git-ref-entry-"));
+        git(repo, "init", "-q");
+        git(repo, "config", "user.email", "test@example.com");
+        git(repo, "config", "user.name", "Test");
+        git(repo, "config", "commit.gpgsign", "false");
+    });
+
+    afterEach(() => {
+        if (repo) {
+            fs.rmSync(repo, { recursive: true, force: true });
+        }
+    });
+
+    // Commits `<sanitisedPreviewId>/entry.json` (mirroring the reporting-branch layout) and returns
+    // the `<shortCommit>:<previewId>` id addressing it.
+    function commitEntry(previewId: string, entry: unknown): string {
+        const dir = sanitisePreviewId(previewId);
+        fs.mkdirSync(path.join(repo, dir), { recursive: true });
+        fs.writeFileSync(
+            path.join(repo, dir, "entry.json"),
+            JSON.stringify(entry),
+        );
+        git(repo, "add", ".");
+        git(repo, "commit", "-q", "-m", `render ${previewId}`);
+        const short = execFileSync(
+            "git",
+            ["-C", repo, "rev-parse", "--short", "HEAD"],
+            { encoding: "utf8" },
+        ).trim();
+        return `${short}:${previewId}`;
+    }
+
+    it("extracts embedded data-product fields from the ref entry.json", () => {
+        const entryId = commitEntry("com.example.A", {
+            id: "x",
+            previewId: "com.example.A",
+            semantics: { root: { ref: "r", role: "Column" } },
+            theme: { resolvedTokens: { colorScheme: { primary: "#FFF" } } },
+            a11yHierarchy: { nodes: [{ ref: "a1", label: "Go" }] },
+        });
+        assert.deepStrictEqual(
+            readGitRefEntryField(repo, entryId, "semantics"),
+            {
+                root: { ref: "r", role: "Column" },
+            },
+        );
+        assert.deepStrictEqual(readGitRefEntryField(repo, entryId, "theme"), {
+            resolvedTokens: { colorScheme: { primary: "#FFF" } },
+        });
+        assert.deepStrictEqual(
+            readGitRefEntryField(repo, entryId, "a11yHierarchy"),
+            { nodes: [{ ref: "a1", label: "Go" }] },
+        );
+    });
+
+    it("returns null when the field, entry, or commit is absent", () => {
+        const entryId = commitEntry("com.example.B", {
+            id: "y",
+            previewId: "com.example.B",
+        });
+        // Field not captured on this entry.
+        assert.strictEqual(
+            readGitRefEntryField(repo, entryId, "semantics"),
+            null,
+        );
+        // Malformed id (no commit prefix) and an unknown commit both degrade to null.
+        assert.strictEqual(
+            readGitRefEntryField(repo, "no-colon", "theme"),
+            null,
+        );
+        assert.strictEqual(
+            readGitRefEntryField(repo, "deadbee:com.example.Z", "theme"),
+            null,
+        );
     });
 });

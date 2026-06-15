@@ -9,7 +9,10 @@ import {
     HistoryReadResult,
     HistorySourceKind,
 } from "./daemon/daemonProtocol";
-import { reportingBranchLabel } from "./reportingBranches";
+import {
+    readGitRefEntryField,
+    reportingBranchLabel,
+} from "./reportingBranches";
 
 /**
  * Read-only Preview History panel — HISTORY.md § "VS Code integration".
@@ -655,12 +658,15 @@ function historyDirFor(scope: HistoryScope): string {
 }
 
 /**
- * Reads an entry's raw `compose/semantics` tree straight from its on-disk sidecar (#1872). The
- * sidecar always carries the full tree, unlike the daemon's `history/read` wire shape which strips
- * it — so this is daemon-independent. Best-effort: returns null for a missing sidecar, unparseable
- * JSON, or an entry that captured no semantics.
+ * Reads an entry's raw `compose/semantics` tree for the data-diff (#1872). On a reporting branch
+ * (`scope.gitRef`) the entry id is `<shortCommit>:<previewId>` and the payload lives in git, so read
+ * it from the ref; otherwise read the on-disk sidecar (which carries the full tree the daemon's
+ * `history/read` wire shape strips). Best-effort: null for a missing/unparseable entry or no capture.
  */
 function readSidecarSemantics(scope: HistoryScope, id: string): unknown {
+    if (scope.gitRef) {
+        return readGitRefEntryField(scope.projectDir, id, "semantics");
+    }
     try {
         const result = new HistoryReader(historyDirFor(scope)).read(id);
         return (
@@ -673,11 +679,13 @@ function readSidecarSemantics(scope: HistoryScope, id: string): unknown {
 }
 
 /**
- * Reads an entry's raw `compose/theme` resolved tokens straight from its on-disk sidecar (#1872),
- * for the theme data-diff. Same rationale as [readSidecarSemantics]: the sidecar carries the full
- * payload the daemon's `history/read` wire shape strips. Best-effort → null on any failure.
+ * Reads an entry's raw `compose/theme` resolved tokens for the theme data-diff (#1872). Reporting
+ * branch → from git; otherwise the on-disk sidecar. Same rationale as [readSidecarSemantics].
  */
 function readSidecarTheme(scope: HistoryScope, id: string): unknown {
+    if (scope.gitRef) {
+        return readGitRefEntryField(scope.projectDir, id, "theme");
+    }
     try {
         const result = new HistoryReader(historyDirFor(scope)).read(id);
         return (
@@ -689,10 +697,13 @@ function readSidecarTheme(scope: HistoryScope, id: string): unknown {
 }
 
 /**
- * Reads an entry's raw `a11y/hierarchy` nodes straight from its on-disk sidecar (#1872), for the
- * a11y data-diff. Same rationale as [readSidecarSemantics]. Best-effort → null on any failure.
+ * Reads an entry's raw `a11y/hierarchy` nodes for the a11y data-diff (#1872). Reporting branch →
+ * from git; otherwise the on-disk sidecar. Same rationale as [readSidecarSemantics].
  */
 function readSidecarA11y(scope: HistoryScope, id: string): unknown {
+    if (scope.gitRef) {
+        return readGitRefEntryField(scope.projectDir, id, "a11yHierarchy");
+    }
     try {
         const result = new HistoryReader(historyDirFor(scope)).read(id);
         return (

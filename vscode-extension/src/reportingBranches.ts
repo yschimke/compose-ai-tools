@@ -4,7 +4,7 @@
 // picker lets the user point the panel at one of them via the daemon's on-demand
 // `ref` history param.
 
-import { execFile } from "child_process";
+import { execFile, execFileSync } from "child_process";
 import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);
@@ -80,4 +80,71 @@ export function reportingBranchLabel(ref: string): string | null {
         return remote[1];
     }
     return null;
+}
+
+// Characters kept verbatim in a sanitised preview-id directory name: Unicode letters/digits plus
+// `.`, `_`, `-`. Mirrors the daemon's Kotlin `PreviewIdSanitiser` (Char.isLetterOrDigit, Unicode).
+const SANITISE_KEEP = /[\p{L}\p{N}._-]/u;
+
+/**
+ * Sanitises a `previewId` into the reporting-branch directory name, mirroring the daemon's
+ * `PreviewIdSanitiser`: kept characters pass through, everything else collapses to `_`, and an
+ * empty id yields `_`. The reporting branch stores each preview under `<sanitised>/`.
+ */
+export function sanitisePreviewId(previewId: string): string {
+    if (previewId.length === 0) {
+        return "_";
+    }
+    let out = "";
+    for (const ch of previewId) {
+        out += SANITISE_KEEP.test(ch) ? ch : "_";
+    }
+    return out;
+}
+
+/** A reporting-branch data-product field embedded in `entry.json`. */
+export type GitRefEntryField = "semantics" | "theme" | "a11yHierarchy";
+
+/**
+ * Reads a single data-product field embedded in a reporting-branch entry, addressed by a
+ * `<shortCommit>:<previewId>` id (#1868), via `git show <commit>:<dir>/entry.json`. The branch's
+ * `entry.json` carries the full `semantics` / `theme` / `a11yHierarchy` payloads, so the History
+ * panel can diff a reporting-branch entry without the data living on the local FS.
+ *
+ * Synchronous — this runs on a user-driven "diff vs previous" click. Best-effort: returns `null`
+ * for a malformed id, a missing entry/field, or any git/parse failure.
+ */
+export function readGitRefEntryField(
+    repoRoot: string,
+    entryId: string,
+    field: GitRefEntryField,
+): unknown {
+    const sep = entryId.indexOf(":");
+    if (sep <= 0) {
+        return null;
+    }
+    const shortCommit = entryId.slice(0, sep);
+    const dir = sanitisePreviewId(entryId.slice(sep + 1));
+    let text: string;
+    try {
+        text = execFileSync(
+            "git",
+            ["show", `${shortCommit}:${dir}/entry.json`],
+            {
+                cwd: repoRoot,
+                encoding: "utf8",
+                timeout: 5000,
+                stdio: ["ignore", "pipe", "ignore"],
+                maxBuffer: 32 * 1024 * 1024,
+            },
+        );
+    } catch {
+        return null;
+    }
+    try {
+        const entry = JSON.parse(text) as Record<string, unknown>;
+        return entry[field] ?? null;
+    } catch {
+        return null;
+    }
 }
