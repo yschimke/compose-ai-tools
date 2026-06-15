@@ -1,5 +1,5 @@
 [versions]
-kotlin = "2.3.21"
+kotlin = "2.4.0"
 # Kotlin language/api floor for published modules. Set lower than `kotlin`
 # so consumers on an older Kotlin can still link against our artifacts —
 # tapmoc enforces this and fails the build if a transitive API dep raises
@@ -48,7 +48,7 @@ compose-multiplatform-material3 = "1.9.0"
 # `compose-multiplatform = 1.10.3`); 2.2.x jumps to foundation 1.11.0, which would drag a
 # *newer* Compose onto the renderer classpath — the failure direction `docs/RENDERER_COMPATIBILITY.md`
 # warns about. Bump only in lockstep with `compose-multiplatform`.
-compottie = "2.1.0"
+compottie = "2.2.1"
 activity-compose = "1.13.0"
 # `androidx.navigation:navigation-compose` — used only by the
 # `:samples:android` NavHost preview that exercises the daemon's
@@ -110,8 +110,8 @@ horologist = "0.7.15"
 #    `wear-compose-remote alpha04` pair broke CI (Kotlin compile + daemon-
 #    harness render), so the pair is held at the last green pre-bump versions
 #    until a mutually-rebuilt pair is verified together.
-compose-remote = "1.0.0-alpha010"
-wear-compose-remote = "1.0.0-alpha03"
+compose-remote = "1.0.0-alpha12"
+wear-compose-remote = "1.0.0-alpha05"
 # Pre-release compose-ui artifacts used by `:samples:remotecompose`, which
 # deliberately diverges from `compose-bom-stable` (1.10.x) to track what
 # wear-compose-remote-material3 alpha pulls in transitively — compose 1.11.0+
