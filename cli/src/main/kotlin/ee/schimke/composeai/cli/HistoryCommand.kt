@@ -1,8 +1,10 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.daemon.history.GitRefHistorySource
+import ee.schimke.composeai.daemon.history.HistoryDiffArtifacts
 import ee.schimke.composeai.daemon.history.HistoryEntry
 import ee.schimke.composeai.daemon.history.HistoryFilter
+import ee.schimke.composeai.daemon.history.HistoryImageDiff
 import ee.schimke.composeai.daemon.history.HistorySource
 import ee.schimke.composeai.daemon.history.LocalFsHistorySource
 import java.nio.file.Files
@@ -29,6 +31,10 @@ import kotlinx.serialization.json.JsonElement
  * v1 reads on-disk / on-branch history directly. Preferring a running daemon's `history` JSON-RPC
  * methods (for live, not-yet-flushed state) needs a CLI-side daemon client — tracked as a
  * follow-up; the on-disk read is the source of truth the daemon persists to.
+ *
+ * `diff --mode pixel` is computed locally via the shared [HistoryImageDiff] (the same code the
+ * daemon's `history/diff mode=pixel` runs, so results agree), reusing the archived PNG bytes off
+ * disk — no daemon round-trip. `--mode semantics` stays daemon-backed for now (follow-up).
  */
 class HistoryCommand(private val args: List<String>) {
 
@@ -160,10 +166,10 @@ class HistoryCommand(private val args: List<String>) {
   private fun diff() {
     val json = "--json" in args
     val mode = args.flagValue("--mode") ?: "metadata"
-    if (mode != "metadata") {
+    if (mode != "metadata" && mode != "pixel") {
       System.err.println(
-        "history diff: --mode $mode is not available from the CLI yet (pixel/semantics diff is " +
-          "daemon-backed via history/diff). Use --mode metadata."
+        "history diff: --mode $mode is not available from the CLI yet (semantics diff is " +
+          "daemon-backed via history/diff). Use --mode metadata or --mode pixel."
       )
       exitProcess(1)
     }
@@ -179,8 +185,12 @@ class HistoryCommand(private val args: List<String>) {
           System.err.println("history diff: entries not found")
           exitProcess(2)
         }
-    val from = source.read(fromId)?.entry
-    val to = source.read(toId)?.entry
+    // Pixel mode decodes the archived frames, so it needs the bytes; metadata mode doesn't.
+    val pixel = mode == "pixel"
+    val fromRead = source.read(fromId, includeBytes = pixel)
+    val toRead = source.read(toId, includeBytes = pixel)
+    val from = fromRead?.entry
+    val to = toRead?.entry
     if (from == null || to == null) {
       System.err.println("history diff: entry not found: ${if (from == null) fromId else toId}")
       exitProcess(2)
@@ -192,6 +202,49 @@ class HistoryCommand(private val args: List<String>) {
       exitProcess(2)
     }
     val pngHashChanged = from.pngHash != to.pngHash
+
+    if (pixel) {
+      // Computed locally via the shared HistoryImageDiff — same code the daemon's `history/diff
+      // mode=pixel` runs, so results agree, and it works whether or not a daemon is up.
+      val fromBytes = fromRead.pngBytes
+      val toBytes = toRead.pngBytes
+      if (fromBytes == null || toBytes == null) {
+        System.err.println("history diff: no PNG bytes available to pixel-diff")
+        exitProcess(2)
+      }
+      val result =
+        try {
+          HistoryImageDiff.diff(fromBytes, toBytes)
+        } catch (e: HistoryImageDiff.UndecodableImageException) {
+          System.err.println("history diff: ${e.message}")
+          exitProcess(2)
+        }
+      val diffPngPath =
+        result.markedPng?.let { writeDiffArtifact(toRead.pngPath, fromId, toId, it) }
+
+      if (json) {
+        val payload =
+          HistoryDiffResponse(
+            schema = HISTORY_SCHEMA,
+            mode = "pixel",
+            pngHashChanged = pngHashChanged,
+            from = leanEntryJson(from),
+            to = leanEntryJson(to),
+            diffPx = result.diffPx,
+            ssim = result.ssim,
+            diffPngPath = diffPngPath,
+          )
+        println(OUT.encodeToString(HistoryDiffResponse.serializer(), payload))
+        return
+      }
+
+      println("diff ${from.id} → ${to.id}  (preview ${from.previewId})")
+      println("  pixels:    ${if (pngHashChanged) "CHANGED" else "unchanged"}")
+      println("  diffPx:    ${result.diffPx}")
+      println("  ssim:      ${"%.4f".format(result.ssim)}")
+      println("  diff PNG:  ${diffPngPath ?: "(none — dimension mismatch)"}")
+      return
+    }
 
     if (json) {
       val payload =
@@ -216,6 +269,39 @@ class HistoryCommand(private val args: List<String>) {
     val toData = dataProductsOf(to)
     if (fromData != toData) println("  data:      $fromData → $toData")
   }
+
+  /**
+   * Writes the marked-diff [pngBytes]. `--out <path>` wins; otherwise it mirrors the daemon's
+   * `<previewDir>/.diffs/<from>__<to>.png` convention (derived from the `to` entry's PNG path) via
+   * [HistoryDiffArtifacts], so CLI- and daemon-produced artefacts land in the same place.
+   * Best-effort — returns the absolute path, or null (after reporting) if the write fails.
+   */
+  private fun writeDiffArtifact(
+    toPngPath: String,
+    fromId: String,
+    toId: String,
+    pngBytes: ByteArray,
+  ): String? =
+    try {
+      val out = args.flagValue("--out")
+      val target =
+        if (out != null) {
+          Paths.get(out)
+        } else {
+          val diffsDir =
+            Paths.get(toPngPath)
+              .toAbsolutePath()
+              .parent
+              .resolve(HistoryDiffArtifacts.DIFFS_DIR_NAME)
+          Files.createDirectories(diffsDir)
+          diffsDir.resolve(HistoryDiffArtifacts.fileName(fromId, toId))
+        }
+      Files.write(target, pngBytes)
+      target.toAbsolutePath().toString()
+    } catch (t: Throwable) {
+      System.err.println("history diff: failed to write diff PNG: ${t.message}")
+      null
+    }
 
   // -------------------------------------------------------------------------
   // Source resolution + helpers
@@ -322,7 +408,8 @@ class HistoryCommand(private val args: List<String>) {
         --inline       Include base64 PNG bytes (--json)
 
       diff options:
-        --mode metadata        (pixel/semantics diff is daemon-backed; not in the CLI yet)
+        --mode metadata|pixel  pixel reports diffPx + ssim and writes a marked-diff PNG
+        --out <path>           (pixel) write the marked-diff PNG here instead of <preview>/.diffs/
 
       Common:
         --json         Emit JSON (schema: $HISTORY_SCHEMA)
@@ -386,4 +473,8 @@ internal data class HistoryDiffResponse(
   val pngHashChanged: Boolean,
   val from: JsonElement,
   val to: JsonElement,
+  // Pixel-mode fields (`--mode pixel`); null in metadata mode.
+  val diffPx: Long? = null,
+  val ssim: Double? = null,
+  val diffPngPath: String? = null,
 )
