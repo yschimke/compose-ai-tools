@@ -156,6 +156,8 @@ export class HistoryRow extends LitElement {
         rightSemantics?: unknown;
         leftTheme?: unknown;
         rightTheme?: unknown;
+        leftA11y?: unknown;
+        rightA11y?: unknown;
     } | null = null;
 
     /** Error text for the open diff expansion, populated by the host
@@ -229,6 +231,8 @@ export class HistoryRow extends LitElement {
                     this._diffPayload.rightSemantics,
                     this._diffPayload.leftTheme,
                     this._diffPayload.rightTheme,
+                    this._diffPayload.leftA11y,
+                    this._diffPayload.rightA11y,
                 );
             }
         }
@@ -416,6 +420,8 @@ export class HistoryRow extends LitElement {
         rightSemantics?: unknown,
         leftTheme?: unknown,
         rightTheme?: unknown,
+        leftA11y?: unknown,
+        rightA11y?: unknown,
     ): void {
         this._expandedKind = "diff";
         this._diffAgainst = against;
@@ -429,6 +435,8 @@ export class HistoryRow extends LitElement {
             rightSemantics,
             leftTheme,
             rightTheme,
+            leftA11y,
+            rightA11y,
         };
     }
 

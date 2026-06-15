@@ -342,6 +342,8 @@ export function setupHistoryBehavior(): void {
                         msg.rightSemantics,
                         msg.leftTheme,
                         msg.rightTheme,
+                        msg.leftA11y,
+                        msg.rightA11y,
                     );
                 break;
             }

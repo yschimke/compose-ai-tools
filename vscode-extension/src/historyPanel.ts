@@ -349,6 +349,9 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
                 // data-diff section (#1872), read from the sidecar for the same reason.
                 leftTheme: readSidecarTheme(scope, id),
                 rightTheme: rightId ? readSidecarTheme(scope, rightId) : null,
+                // And each entry's captured a11y/hierarchy nodes for the a11y data-diff (#1872).
+                leftA11y: readSidecarA11y(scope, id),
+                rightA11y: rightId ? readSidecarA11y(scope, rightId) : null,
             });
         } catch (err) {
             this.view.webview.postMessage({
@@ -679,6 +682,22 @@ function readSidecarTheme(scope: HistoryScope, id: string): unknown {
         const result = new HistoryReader(historyDirFor(scope)).read(id);
         return (
             (result?.entry as { theme?: unknown } | undefined)?.theme ?? null
+        );
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Reads an entry's raw `a11y/hierarchy` nodes straight from its on-disk sidecar (#1872), for the
+ * a11y data-diff. Same rationale as [readSidecarSemantics]. Best-effort → null on any failure.
+ */
+function readSidecarA11y(scope: HistoryScope, id: string): unknown {
+    try {
+        const result = new HistoryReader(historyDirFor(scope)).read(id);
+        return (
+            (result?.entry as { a11yHierarchy?: unknown } | undefined)
+                ?.a11yHierarchy ?? null
         );
     } catch {
         return null;

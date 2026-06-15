@@ -14,8 +14,10 @@
 // The pixel-diff helper lives in `webview/shared/pixelDiff.ts` — the
 // preview panel's diff overlay reaches for the same algorithm.
 
+import { computeA11yDiffData } from "../preview/historyDiffA11yPresenter";
 import { computeSemanticsDiffData } from "../preview/historyDiffSemanticsPresenter";
 import { computeThemeDiffData } from "../preview/historyDiffThemePresenter";
+import { diffA11y, type A11yPayload } from "../shared/a11yDiff";
 import { buildDiffModeBar, type DiffMode } from "../shared/diffModeBar";
 import {
     applyDiffStats,
@@ -73,6 +75,8 @@ export function fillDiff(
     rightSemantics?: unknown,
     leftTheme?: unknown,
     rightTheme?: unknown,
+    leftA11y?: unknown,
+    rightA11y?: unknown,
 ): void {
     const expansion = config.timelineEl.querySelector<HTMLElement>(
         '.expanded[data-id="' +
@@ -120,6 +124,7 @@ export function fillDiff(
     });
     appendSemanticsDiffSection(expansion, leftSemantics, rightSemantics);
     appendThemeDiffSection(expansion, leftTheme, rightTheme);
+    appendA11yDiffSection(expansion, leftA11y, rightA11y);
 }
 
 /**
@@ -263,6 +268,74 @@ function appendThemeDiffSection(
         section.appendChild(list);
     }
     expansion.appendChild(section);
+}
+
+/**
+ * Appends the a11y data-diff (#1872) below the pixel diff (and the semantics / theme sections). Both
+ * entries' captured `a11y/hierarchy` node lists are diffed client-side via [diffA11y]; the section
+ * is omitted when either payload is missing (a render that didn't capture a11y) so the pixel-only
+ * case is unchanged.
+ */
+function appendA11yDiffSection(
+    expansion: HTMLElement,
+    leftA11y: unknown,
+    rightA11y: unknown,
+): void {
+    if (!isA11yPayload(leftA11y) || !isA11yPayload(rightA11y)) {
+        return;
+    }
+    let data: ReturnType<typeof computeA11yDiffData>;
+    try {
+        // base = older "Previous" (right), head = "This entry" (left), matching the other sections.
+        data = computeA11yDiffData(diffA11y(rightA11y, leftA11y));
+    } catch {
+        return;
+    }
+    const section = document.createElement("div");
+    section.className = "diff-a11y";
+    const head = document.createElement("div");
+    head.className = "diff-a11y-header";
+    head.textContent = data.empty
+        ? "Accessibility · no changes"
+        : `Accessibility · ${data.addedCount} added · ${data.removedCount} removed · ${data.changedCount} changed`;
+    section.appendChild(head);
+    if (!data.empty) {
+        const list = document.createElement("ul");
+        list.className = "diff-a11y-list";
+        for (const row of data.rows) {
+            const li = document.createElement("li");
+            li.className = `diff-a11y-row diff-a11y-${row.kind}`;
+            const sigil =
+                row.kind === "added" ? "+" : row.kind === "removed" ? "−" : "~";
+            const label = document.createElement("span");
+            label.className = "diff-a11y-label";
+            label.textContent = `${sigil} ${row.label}`;
+            li.appendChild(label);
+            if (row.fields.length > 0) {
+                const fields = document.createElement("ul");
+                fields.className = "diff-a11y-fields";
+                for (const field of row.fields) {
+                    const fieldLi = document.createElement("li");
+                    fieldLi.textContent = `${field.field}: ${field.from ?? "∅"} → ${field.to ?? "∅"}`;
+                    fields.appendChild(fieldLi);
+                }
+                li.appendChild(fields);
+            }
+            list.appendChild(li);
+        }
+        section.appendChild(list);
+    }
+    expansion.appendChild(section);
+}
+
+/** Narrows an untyped wire value to a `{ nodes }` a11y/hierarchy payload. */
+function isA11yPayload(value: unknown): value is A11yPayload {
+    return (
+        typeof value === "object" &&
+        value !== null &&
+        "nodes" in value &&
+        Array.isArray((value as { nodes: unknown }).nodes)
+    );
 }
 
 function renderHistoryDiffMode(
