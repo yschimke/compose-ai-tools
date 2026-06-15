@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.15.6](https://github.com/yschimke/compose-ai-tools/compare/v0.15.5...v0.15.6) (2026-06-15)
+
+
+### Features
+
+* **cli:** add history list/read/diff commands ([#1883](https://github.com/yschimke/compose-ai-tools/issues/1883)) ([90ce3a8](https://github.com/yschimke/compose-ai-tools/commit/90ce3a80ea304795e7994eb67112bb3625206039))
+* **daemon:** enable history recording by default; gate VS Code history UI behind early-access flag ([#1884](https://github.com/yschimke/compose-ai-tools/issues/1884)) ([9c8be60](https://github.com/yschimke/compose-ai-tools/commit/9c8be60777a7f83af23ff7c40c9a0be5d089bca7))
+* **daemon:** GitRefHistorySource WRITE_LOCAL — publish render history to the reporting branch ([#1878](https://github.com/yschimke/compose-ai-tools/issues/1878)) ([66c04ed](https://github.com/yschimke/compose-ai-tools/commit/66c04ed744e59b9e3b4e8ac0c5b64945d3d82f3d))
+
+
+### Bug Fixes
+
+* **cli:** keep bundle pack --with-semantics best-effort when daemon-start fails ([#1885](https://github.com/yschimke/compose-ai-tools/issues/1885)) ([#1886](https://github.com/yschimke/compose-ai-tools/issues/1886)) ([e312740](https://github.com/yschimke/compose-ai-tools/commit/e312740c3934ec1fcb6b98773ade6768bd3451c3))
+
 ## [0.15.5](https://github.com/yschimke/compose-ai-tools/compare/v0.15.4...v0.15.5) (2026-06-14)
 
 
