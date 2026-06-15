@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.15.7](https://github.com/yschimke/compose-ai-tools/compare/v0.15.6...v0.15.7) (2026-06-15)
+
+
+### Features
+
+* **daemon:** implement history/diff pixel mode (H5) ([#1892](https://github.com/yschimke/compose-ai-tools/issues/1892)) ([10f1bca](https://github.com/yschimke/compose-ai-tools/commit/10f1bca04e3a230dae673efce6242b3e4daa5ecf))
+
+
+### Bug Fixes
+
+* **daemon:** write compose/semantics JSON sidecar on the desktop backend ([#1885](https://github.com/yschimke/compose-ai-tools/issues/1885) follow-up) ([#1891](https://github.com/yschimke/compose-ai-tools/issues/1891)) ([86e300a](https://github.com/yschimke/compose-ai-tools/commit/86e300a53e34ce9d5f80a289c0b992c0e0a9e5fc))
+
 ## [0.15.6](https://github.com/yschimke/compose-ai-tools/compare/v0.15.5...v0.15.6) (2026-06-15)
 
 
