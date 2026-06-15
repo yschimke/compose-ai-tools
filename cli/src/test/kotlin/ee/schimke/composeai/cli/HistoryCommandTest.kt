@@ -15,6 +15,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -50,6 +51,7 @@ class HistoryCommandTest {
     bytes: ByteArray,
     timestamp: String,
     a11yHierarchy: Boolean = false,
+    semantics: JsonElement? = null,
   ): String {
     val source = LocalFsHistorySource(historyDir)
     val entry =
@@ -69,10 +71,16 @@ class HistoryCommandTest {
           if (a11yHierarchy)
             Json.parseToJsonElement("""{"nodes":[{"label":"x","boundsInScreen":"0,0,1,1"}]}""")
           else null,
+        semantics = semantics,
       )
     source.write(entry, bytes)
     return id
   }
+
+  private fun semanticsPayload(text: String): JsonElement =
+    Json.parseToJsonElement(
+      """{"root":{"nodeId":"1","boundsInRoot":"0,0,100,50","testTag":"greeting","text":"$text"}}"""
+    )
 
   @Test
   fun `list --json emits versioned envelope newest-first`() {
@@ -161,6 +169,51 @@ class HistoryCommandTest {
     val diffPngPath = payload["diffPngPath"]!!.jsonPrimitive.content
     assertTrue(diffPngPath.contains(".diffs"), "diff PNG under .diffs/: $diffPngPath")
     assertTrue(Files.exists(Path.of(diffPngPath)), "diff PNG written")
+  }
+
+  @Test
+  fun `diff --mode semantics reports field changes on the same node`() {
+    val from =
+      seed(
+        "20260430-100000-5e11a000",
+        "com.example.A",
+        "v1".toByteArray(),
+        "2026-04-30T10:00:00Z",
+        semantics = semanticsPayload("Hello"),
+      )
+    val to =
+      seed(
+        "20260430-100100-5e11b111",
+        "com.example.A",
+        "v2".toByteArray(),
+        "2026-04-30T10:01:00Z",
+        semantics = semanticsPayload("World"),
+      )
+
+    HistoryCommand(
+        listOf(
+          "diff",
+          from,
+          to,
+          "--mode",
+          "semantics",
+          "--history-dir",
+          historyDir.toString(),
+          "--json",
+        )
+      )
+      .run()
+    val payload = Json.parseToJsonElement(output()).jsonObject
+
+    assertEquals("semantics", payload["mode"]?.jsonPrimitive?.content)
+    val delta = payload["semanticsDelta"]!!.jsonObject
+    assertEquals("compose-semantics-diff/v1", delta["schema"]?.jsonPrimitive?.content)
+    val changed = delta["changed"]!!.jsonArray
+    assertEquals(1, changed.size)
+    val change = changed[0].jsonObject["changes"]!!.jsonArray[0].jsonObject
+    assertEquals("text", change["field"]?.jsonPrimitive?.content)
+    assertEquals("Hello", change["from"]?.jsonPrimitive?.content)
+    assertEquals("World", change["to"]?.jsonPrimitive?.content)
   }
 
   @Test
