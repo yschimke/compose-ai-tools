@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.15.8](https://github.com/yschimke/compose-ai-tools/compare/v0.15.7...v0.15.8) (2026-06-15)
+
+
+### Features
+
+* **cli:** history diff --mode pixel (local pixel diff) ([#1896](https://github.com/yschimke/compose-ai-tools/issues/1896)) ([ffd6ae3](https://github.com/yschimke/compose-ai-tools/commit/ffd6ae3b4913d87a470d65e16376ef5810a72354))
+* **cli:** history diff --mode semantics (local semantics diff) ([#1900](https://github.com/yschimke/compose-ai-tools/issues/1900)) ([f76eb1e](https://github.com/yschimke/compose-ai-tools/commit/f76eb1e6fcbf1a09091260428cbad7cf9fb5673f))
+* **daemon:** emit resolved design tokens on compose/semantics nodes ([#1897](https://github.com/yschimke/compose-ai-tools/issues/1897)) ([#1901](https://github.com/yschimke/compose-ai-tools/issues/1901)) ([827a72e](https://github.com/yschimke/compose-ai-tools/commit/827a72ef389094c77f484f93ac3002553f8ade36))
+* **vscode:** port semantics differ + history data-diff presenter ([#1902](https://github.com/yschimke/compose-ai-tools/issues/1902)) ([9990606](https://github.com/yschimke/compose-ai-tools/commit/99906066b7adb1cd87b7bfe6ea6aeae53fbc2811))
+
 ## [0.15.7](https://github.com/yschimke/compose-ai-tools/compare/v0.15.6...v0.15.7) (2026-06-15)
 
 
