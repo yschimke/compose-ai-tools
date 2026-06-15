@@ -566,6 +566,49 @@ class GitRefHistorySourceTest {
   }
 
   @Test
+  fun debounce_dedups_an_unchanged_render_returning_skipped() {
+    // A duplicate render must report SKIPPED even while debounced, so recordRender doesn't emit a
+    // phantom `historyAdded` (#1882 review).
+    val src = source(SyncModeOf.WRITE_LOCAL, debounceMs = 10_000)
+    val e = entry("20260430-100000-aaaaaaaa", "com.example.A", "a".toByteArray())
+    assertEquals(WriteResult.WRITTEN, src.write(e, "a".toByteArray()))
+    // Identical render in the same window dedups against the buffered one.
+    assertEquals(WriteResult.SKIPPED_DUPLICATE, src.write(e, "a".toByteArray()))
+    src.close()
+    assertEquals(1, refCommitCount())
+    // Once committed, an identical render dedups against the ref tip too.
+    assertEquals(WriteResult.SKIPPED_DUPLICATE, src.write(e, "a".toByteArray()))
+    src.close()
+    assertEquals(1, refCommitCount())
+  }
+
+  @Test
+  fun debounce_latest_wins_skips_a_round_trip_back_to_current() {
+    // Burst v2 then back to v1 against a branch already at v1 ⇒ no net change, no stale v2
+    // committed
+    // (#1882 review).
+    val src = source(SyncModeOf.WRITE_LOCAL, debounceMs = 10_000)
+    val previewId = "com.example.A"
+    assertEquals(
+      WriteResult.WRITTEN,
+      src.write(
+        entry("20260430-100000-aaaaaaaa", previewId, "v1".toByteArray()),
+        "v1".toByteArray(),
+      ),
+    )
+    src.close()
+    assertEquals(1, refCommitCount())
+
+    src.write(entry("20260430-100001-bbbbbbbb", previewId, "v2".toByteArray()), "v2".toByteArray())
+    src.write(entry("20260430-100002-cccccccc", previewId, "v1".toByteArray()), "v1".toByteArray())
+    src.close()
+
+    assertEquals("net-no-change burst makes no commit", 1, refCommitCount())
+    val read = src.read(src.list(HistoryFilter()).entries[0].id, includeBytes = true)
+    assertEquals("branch stays at v1", "v1", String(read!!.pngBytes!!))
+  }
+
+  @Test
   fun debounce_write_push_pushes_the_coalesced_batch_on_close() {
     val bare = setUpBareRemote()
     val src = source(SyncModeOf.WRITE_PUSH, debounceMs = 10_000)

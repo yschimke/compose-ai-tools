@@ -102,15 +102,13 @@ class GitRefHistorySource(
       error("GitRefHistorySource(ref=$ref) is $syncMode; writes go to a writable source.")
     }
     return try {
-      if (debounceMs > 0) {
-        // Buffer for the debounce window; a burst coalesces into one commit on flush (#1882). The
-        // local FS source (priority 0) drives `historyAdded`, so deferring the branch commit is
-        // invisible to the consumer — report WRITTEN since the render was accepted for recording.
-        enqueue(entry, png)
-        WriteResult.WRITTEN
-      } else {
-        commitAndMaybePush(listOf(entry to png))
-      }
+      // Debounced: buffer for the window; a burst coalesces into one commit on flush (#1882). The
+      // local FS source (priority 0) drives `historyAdded`, so deferring the branch commit is
+      // invisible to the consumer — but [enqueue] still resolves WRITTEN vs SKIPPED_DUPLICATE
+      // synchronously (same skip-if-no-diff the batch will apply) so a duplicate render doesn't
+      // make
+      // `recordRender` emit a phantom entry.
+      if (debounceMs > 0) enqueue(entry, png) else commitAndMaybePush(listOf(entry to png))
     } catch (t: Throwable) {
       System.err.println(
         "compose-ai-daemon: GitRefHistorySource.write($ref, ${entry.id}) failed " +
@@ -138,10 +136,31 @@ class GitRefHistorySource(
   private val flushScheduled = AtomicBoolean(false)
   private val debounceScheduler = AtomicReference<ScheduledExecutorService?>(null)
 
-  private fun enqueue(entry: HistoryEntry, png: ByteArray) {
-    synchronized(pendingLock) { pending[entry.previewId] = entry to png }
+  private fun enqueue(entry: HistoryEntry, png: ByteArray): WriteResult {
+    // Resolve WRITTEN vs SKIPPED synchronously (mirrors the batch's skip-if-no-diff) against the
+    // render already buffered this window, or — failing that — the branch's committed entry. A
+    // duplicate render must return SKIPPED so `recordRender` doesn't emit a phantom `historyAdded`.
+    val changed =
+      synchronized(pendingLock) {
+        val prior = pending[entry.previewId]?.first ?: currentBranchEntry(entry.previewId)
+        val isChange = prior == null || !renderContentUnchanged(prior, entry)
+        if (isChange) pending[entry.previewId] = entry to png
+        isChange
+      }
+    if (!changed) return WriteResult.SKIPPED_DUPLICATE
     if (flushScheduled.compareAndSet(false, true)) {
       debounceExecutor().schedule({ runScheduledFlush() }, debounceMs, TimeUnit.MILLISECONDS)
+    }
+    return WriteResult.WRITTEN
+  }
+
+  /** The branch's current entry for [previewId] at the ref tip, or null when absent/unparseable. */
+  private fun currentBranchEntry(previewId: String): HistoryEntry? {
+    val parent =
+      runGit("rev-parse", "--verify", "--quiet", ref)?.takeIf { it.isNotEmpty() } ?: return null
+    val dir = PreviewIdSanitiser.sanitise(previewId)
+    return catFile(parent, "$dir/entry.json")?.let {
+      runCatching { JSON.decodeFromString(HistoryEntry.serializer(), it) }.getOrNull()
     }
   }
 
@@ -296,7 +315,12 @@ class GitRefHistorySource(
           catFile(parent, "$dir/entry.json")?.let {
             runCatching { JSON.decodeFromString(HistoryEntry.serializer(), it) }.getOrNull()
           }
-        if (current != null && renderContentUnchanged(current, branchEntry)) continue
+        if (current != null && renderContentUnchanged(current, branchEntry)) {
+          // Latest-wins: a later render for this preview that matches the ref cancels any earlier
+          // change buffered for it in this batch (e.g. v2 then back to v1 ⇒ no net change).
+          changes.remove(entry.previewId)
+          continue
+        }
       }
       changes[entry.previewId] = BatchChange(dir, branchEntry, png)
     }
