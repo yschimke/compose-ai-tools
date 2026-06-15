@@ -3,10 +3,12 @@ package ee.schimke.composeai.cli
 import ee.schimke.composeai.daemon.history.HistoryEntry
 import ee.schimke.composeai.daemon.history.HistorySourceInfo
 import ee.schimke.composeai.daemon.history.LocalFsHistorySource
+import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import java.nio.file.Files
 import java.nio.file.Path
+import javax.imageio.ImageIO
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -126,6 +128,71 @@ class HistoryCommandTest {
   }
 
   @Test
+  fun `diff --mode pixel reports diffPx and ssim and writes a marked PNG`() {
+    // 8×8 all-black vs. top 4 rows white → exactly 32/64 pixels differ.
+    val from =
+      seed("20260430-100000-aa00aa00", "com.example.A", solidPng(0x000000), "2026-04-30T10:00:00Z")
+    val to =
+      seed(
+        "20260430-100100-bb11bb11",
+        "com.example.A",
+        pngOf { _, y -> if (y < 4) 0xFFFFFF else 0x000000 },
+        "2026-04-30T10:01:00Z",
+      )
+
+    HistoryCommand(
+        listOf(
+          "diff",
+          from,
+          to,
+          "--mode",
+          "pixel",
+          "--history-dir",
+          historyDir.toString(),
+          "--json",
+        )
+      )
+      .run()
+    val payload = Json.parseToJsonElement(output()).jsonObject
+
+    assertEquals("pixel", payload["mode"]?.jsonPrimitive?.content)
+    assertEquals(32L, payload["diffPx"]?.jsonPrimitive?.content?.toLong())
+    assertTrue((payload["ssim"]?.jsonPrimitive?.content?.toDouble() ?: 1.0) < 0.99)
+    val diffPngPath = payload["diffPngPath"]!!.jsonPrimitive.content
+    assertTrue(diffPngPath.contains(".diffs"), "diff PNG under .diffs/: $diffPngPath")
+    assertTrue(Files.exists(Path.of(diffPngPath)), "diff PNG written")
+  }
+
+  @Test
+  fun `diff --mode pixel honours --out`() {
+    val from =
+      seed("20260430-100000-cc22cc22", "com.example.A", solidPng(0x102030), "2026-04-30T10:00:00Z")
+    val to =
+      seed("20260430-100100-dd33dd33", "com.example.A", solidPng(0x405060), "2026-04-30T10:01:00Z")
+    val outPng = historyDir.resolve("my-diff.png")
+
+    HistoryCommand(
+        listOf(
+          "diff",
+          from,
+          to,
+          "--mode",
+          "pixel",
+          "--out",
+          outPng.toString(),
+          "--history-dir",
+          historyDir.toString(),
+          "--json",
+        )
+      )
+      .run()
+    val payload = Json.parseToJsonElement(output()).jsonObject
+
+    assertEquals(outPng.toString(), payload["diffPngPath"]?.jsonPrimitive?.content)
+    assertTrue(Files.exists(outPng), "marked PNG written to --out path")
+  }
+
+  @Test
   fun `read resolves the id when a valued option precedes it`() {
     val id =
       seed("20260430-100000-ffffffff", "com.example.A", "x".toByteArray(), "2026-04-30T10:00:00Z")
@@ -160,6 +227,19 @@ class HistoryCommandTest {
     val payload = Json.parseToJsonElement(output()).jsonObject
 
     assertEquals(true, payload["pngHashChanged"]?.jsonPrimitive?.content?.toBoolean())
+  }
+
+  /** A solid 8×8 opaque PNG of [rgb] (`0xRRGGBB`). */
+  private fun solidPng(rgb: Int): ByteArray = pngOf { _, _ -> rgb }
+
+  /** An 8×8 opaque PNG sampling [rgbAt] (`0xRRGGBB`) per pixel. */
+  private fun pngOf(rgbAt: (x: Int, y: Int) -> Int): ByteArray {
+    val img = BufferedImage(8, 8, BufferedImage.TYPE_INT_RGB)
+    for (y in 0 until 8) for (x in 0 until 8) img.setRGB(x, y, rgbAt(x, y))
+    return ByteArrayOutputStream().use { out ->
+      ImageIO.write(img, "png", out)
+      out.toByteArray()
+    }
   }
 
   @Test

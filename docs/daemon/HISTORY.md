@@ -372,15 +372,18 @@ compose-preview history list   [--preview <id>] [--since/--until <iso>] [--branc
                                [--commit <sha>] [--source fs|git] [--agent <id>]
                                [--limit <n>] [--cursor <c>] [--history-dir <dir> | --ref <ref>] [--json]
 compose-preview history read   <entryId> [--out <png>] [--data] [--inline] [--json]
-compose-preview history diff   <fromId> <toId> [--mode metadata] [--json]
+compose-preview history diff   <fromId> <toId> [--mode metadata|pixel] [--out <png>] [--json]
 ```
 
 Structured-first (cf. #1787): human output is compact; `--json` emits a
 versioned envelope (`compose-preview-history/v1`); heavy snapshots (PNG
 bytes via `--inline`/`--out`, a11y/semantics/theme data via `--data`) ride
-only on explicit opt-in. `diff` is metadata-mode only today; pixel /
-semantics diff is daemon-backed (`history/diff`) and reaches the CLI once
-it grows a daemon JSON-RPC client (follow-up).
+only on explicit opt-in. `diff --mode pixel` is computed locally via the
+shared `HistoryImageDiff` (the same code the daemon's `history/diff
+mode=pixel` runs, so results agree) — it reports `diffPx` + `ssim` and
+writes a marked-diff PNG (to `--out`, else `<preview>/.diffs/`), no daemon
+required. `--mode semantics` stays daemon-backed (`history/diff`) and
+reaches the CLI once it grows a daemon JSON-RPC client (follow-up).
 
 ## MCP mapping
 
