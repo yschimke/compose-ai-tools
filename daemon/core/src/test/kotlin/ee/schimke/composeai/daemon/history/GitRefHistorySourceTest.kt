@@ -30,6 +30,7 @@ import org.junit.Test
 class GitRefHistorySourceTest {
 
   private lateinit var repoRoot: Path
+  private var bareRemote: Path? = null
   private val warnLog = StringBuilder()
   private val warnCount = AtomicInteger(0)
 
@@ -59,6 +60,7 @@ class GitRefHistorySourceTest {
   @After
   fun tearDown() {
     if (this::repoRoot.isInitialized) repoRoot.toFile().deleteRecursively()
+    bareRemote?.parent?.toFile()?.deleteRecursively()
   }
 
   // -------------------------------------------------------------------------
@@ -409,8 +411,103 @@ class GitRefHistorySourceTest {
   }
 
   // -------------------------------------------------------------------------
+  // WRITE_PUSH (#1880) — push to a local bare remote; auth remotes can't run in CI.
+  // -------------------------------------------------------------------------
+
+  @Test
+  fun write_push_publishes_the_ref_to_the_remote() {
+    val bare = setUpBareRemote()
+    val src = source(SyncModeOf.WRITE_PUSH)
+    val bytes = "render-A".toByteArray()
+    val e = entry(id = "20260430-101200-aaaaaaaa", previewId = "com.example.A", bytes = bytes)
+    assertEquals(WriteResult.WRITTEN, src.write(e, bytes))
+
+    // The local ref has it...
+    assertEquals(1, src.list(HistoryFilter()).totalCount)
+    // ...and the push landed it on the remote too.
+    val remoteTree = capture("git", "--git-dir=$bare", "ls-tree", "-r", "--name-only", ref)
+    assertTrue(remoteTree.contains("com.example.A/entry.json"))
+    assertTrue(remoteTree.contains("com.example.A/render.png"))
+    assertEquals("no push warning on success", 0, warnCount.get())
+  }
+
+  @Test
+  fun write_push_retries_on_a_race_without_clobbering() {
+    val bare = setUpBareRemote()
+    val src = source(SyncModeOf.WRITE_PUSH)
+
+    // Two clean pushes of different previews advance the remote to an X+Z tip.
+    val x =
+      entry(id = "20260430-100000-aaaaaaaa", previewId = "com.example.X", bytes = "x".toByteArray())
+    assertEquals(WriteResult.WRITTEN, src.write(x, "x".toByteArray()))
+    val z =
+      entry(id = "20260430-100100-bbbbbbbb", previewId = "com.example.Z", bytes = "z".toByteArray())
+    assertEquals(WriteResult.WRITTEN, src.write(z, "z".toByteArray()))
+
+    // Simulate a competing writer: rewind the LOCAL ref to the X-only commit so the next push is a
+    // non-fast-forward against the remote's X+Z tip (the remote keeps X+Z).
+    val xOnly = capture("git", "-C", repoRoot.toString(), "rev-parse", "$ref~1").trim()
+    runOk("git", "-C", repoRoot.toString(), "update-ref", ref, xOnly)
+
+    val y =
+      entry(id = "20260430-100200-cccccccc", previewId = "com.example.Y", bytes = "y".toByteArray())
+    assertEquals(WriteResult.WRITTEN, src.write(y, "y".toByteArray()))
+
+    // The retry fetched the remote tip and replayed Y on top — all three previews survive on the
+    // remote, with no clobber and no warning.
+    val remoteTree = capture("git", "--git-dir=$bare", "ls-tree", "-r", "--name-only", ref)
+    assertTrue("X kept", remoteTree.contains("com.example.X/entry.json"))
+    assertTrue("Z (the competing render) kept", remoteTree.contains("com.example.Z/entry.json"))
+    assertTrue("Y landed via retry", remoteTree.contains("com.example.Y/entry.json"))
+    assertEquals("race resolved without warning", 0, warnCount.get())
+  }
+
+  @Test
+  fun write_push_degrades_to_one_warning_without_a_remote() {
+    // No `origin` configured: the push (and the fetch retry) fail, but the render is unaffected and
+    // the local commit still lands.
+    val src = source(SyncModeOf.WRITE_PUSH)
+    val bytes = "render".toByteArray()
+    val e = entry(id = "20260430-101200-aaaaaaaa", previewId = "com.example.A", bytes = bytes)
+    assertEquals(WriteResult.WRITTEN, src.write(e, bytes))
+    assertEquals("local commit still made", 1, src.list(HistoryFilter()).totalCount)
+    assertEquals("one-time push warning", 1, warnCount.get())
+    assertTrue(warnLog.contains("could not push"))
+  }
+
+  @Test
+  fun write_push_publishes_pending_commits_on_a_later_dedup() {
+    // First render commits locally but the push fails — no remote yet (one warning).
+    val src = source(SyncModeOf.WRITE_PUSH)
+    val bytes = "render-A".toByteArray()
+    val e = entry(id = "20260430-101200-aaaaaaaa", previewId = "com.example.A", bytes = bytes)
+    assertEquals(WriteResult.WRITTEN, src.write(e, bytes))
+    assertEquals(1, warnCount.get())
+
+    // The remote becomes available; an unchanged render dedups locally but must still publish the
+    // pending local commit (#1880 review) — not strand it until the pixels change.
+    val bare = setUpBareRemote()
+    assertEquals(WriteResult.SKIPPED_DUPLICATE, src.write(e, bytes))
+    val remoteTree = capture("git", "--git-dir=$bare", "ls-tree", "-r", "--name-only", ref)
+    assertTrue(
+      "dedup'd render still published the pending commit",
+      remoteTree.contains("com.example.A/entry.json"),
+    )
+    assertEquals("no new warning once the push succeeds", 1, warnCount.get())
+  }
+
+  // -------------------------------------------------------------------------
   // Helpers
   // -------------------------------------------------------------------------
+
+  /** Creates a bare repo and wires it as `origin` of [repoRoot]; cleaned up in [tearDown]. */
+  private fun setUpBareRemote(): String {
+    val bare = Files.createTempDirectory("git-ref-remote").resolve("remote.git")
+    bareRemote = bare
+    runOk("git", "init", "--bare", "-q", bare.toString())
+    runOk("git", "-C", repoRoot.toString(), "remote", "add", "origin", bare.toString())
+    return bare.toString()
+  }
 
   private val json = Json {
     ignoreUnknownKeys = true
@@ -421,6 +518,7 @@ class GitRefHistorySourceTest {
   private object SyncModeOf {
     val READ_ONLY = GitRefHistorySource.SyncMode.READ_ONLY
     val WRITE_LOCAL = GitRefHistorySource.SyncMode.WRITE_LOCAL
+    val WRITE_PUSH = GitRefHistorySource.SyncMode.WRITE_PUSH
   }
 
   private fun source(
