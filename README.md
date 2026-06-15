@@ -32,6 +32,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![grid-default/dark](renders/grid-default.dark.png) |
 | `light` | ![grid-default/light](renders/grid-default.light.png) |
 
+## history-a11y-diff
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![history-a11y-diff/dark](renders/history-a11y-diff.dark.png) |
+| `light` | ![history-a11y-diff/light](renders/history-a11y-diff.light.png) |
+
 ## history-diff
 
 | Theme | Capture |

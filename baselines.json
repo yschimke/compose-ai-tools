@@ -49,6 +49,18 @@
       "sha256": "2df5211c733f98e719d442faba42f6166db5817b78f0b6122391bdfe158ae9b2",
       "size": 9741
     },
+    "history-a11y-diff.dark.png": {
+      "fixture": "history-a11y-diff",
+      "theme": "dark",
+      "sha256": "f816c7e59ad95b1cf42dc69b054caa955f1a9ea358add890e1ad6dc66ce99882",
+      "size": 46429
+    },
+    "history-a11y-diff.light.png": {
+      "fixture": "history-a11y-diff",
+      "theme": "light",
+      "sha256": "baac6412a15492c8484f223fda81f5e6d3ca445164b916d6dc426fef01e52428",
+      "size": 45858
+    },
     "history-diff.dark.png": {
       "fixture": "history-diff",
       "theme": "dark",
