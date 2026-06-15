@@ -28,14 +28,14 @@
     "fonts-browser.dark.png": {
       "fixture": "fonts-browser",
       "theme": "dark",
-      "sha256": "16a8dec157b38aa1f8c1371e2262d4cfa10ca967e89a87c5bff5e1f5ba03c5fc",
-      "size": 126386
+      "sha256": "37c16dd5a8a6658aa8fbc08d6031578ae5b195b9425753cba167876d36e693fd",
+      "size": 126544
     },
     "fonts-browser.light.png": {
       "fixture": "fonts-browser",
       "theme": "light",
-      "sha256": "a00949ecc512638bcee860b6eda6825f0dd07eeb22b8218f5627f0abfecd0d4d",
-      "size": 120723
+      "sha256": "ad56a96da2bab6013b1d5b635f064b831331b2ab570678c626c180159e988c9d",
+      "size": 120896
     },
     "grid-default.dark.png": {
       "fixture": "grid-default",
