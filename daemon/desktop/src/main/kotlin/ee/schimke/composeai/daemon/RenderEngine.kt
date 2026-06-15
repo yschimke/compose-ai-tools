@@ -479,7 +479,10 @@ class RenderEngine(
       if (root != null) {
         trace.section("wireframe") {
           val previewId = state.spec.previewId ?: state.spec.outputBaseName
-          val payload = ComposeSemanticsDataProducer.buildPayload(root)
+          // Pass the render density so percent-based corner radii (`CircleShape`) resolve to dp
+          // instead of dropping out (#1908). dp-valued tokens (padding/gap/colours) don't use it.
+          val density = state.spec.density
+          val payload = ComposeSemanticsDataProducer.buildPayload(root, density)
           // `compose-semantics.json` — the plain `compose/semantics` data product the Android
           // ComposeSemanticsExtension writes per render. The desktop backend previously fed this
           // tree only into the wireframe / spatial / a11y views and never wrote the sidecar, so
@@ -489,6 +492,7 @@ class RenderEngine(
             rootDir = dataDir,
             previewId = previewId,
             root = root,
+            density = density,
           )
           ComposeSemanticsWireframeDataProducer.writeSvg(
             rootDir = dataDir,

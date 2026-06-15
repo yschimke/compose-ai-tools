@@ -2,14 +2,22 @@
 
 package ee.schimke.composeai.daemon
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsNode
@@ -30,13 +38,16 @@ import org.junit.Test
  */
 class DesktopSemanticsTokensTest {
 
-  private fun buildTree(content: @Composable () -> Unit): ComposeSemanticsNode {
+  private fun buildTree(
+    density: Float = 1.0f,
+    content: @Composable () -> Unit,
+  ): ComposeSemanticsNode {
     val scene =
-      ImageComposeScene(width = 400, height = 400, density = Density(1.0f), content = content)
+      ImageComposeScene(width = 400, height = 400, density = Density(density), content = content)
     try {
       scene.render()
       val root: SemanticsNode = scene.semanticsOwners.first().unmergedRootSemanticsNode
-      return ComposeSemanticsDataProducer.buildPayload(root).root
+      return ComposeSemanticsDataProducer.buildPayload(root, density).root
     } finally {
       scene.close()
     }
@@ -107,5 +118,85 @@ class DesktopSemanticsTokensTest {
     val label = root.find("label")
     assertNotNull(label)
     assertNull("a node with no background / shape / padding must omit tokens", label!!.tokens)
+  }
+
+  @Test
+  fun resolves_row_arrangement_spacing_as_gap() {
+    // #1908 ask 1: `Arrangement.spacedBy` is a measure-policy property, not a `Modifier.padding`;
+    // it must surface as `gap` so spacing tokens (`cardGap` / `rowGap`) evaluate.
+    val root = buildTree {
+      Row(Modifier.testTag("row"), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("a")
+        Text("b")
+      }
+    }
+
+    assertEquals("8.0dp", root.find("row")?.tokens?.gap)
+  }
+
+  @Test
+  fun resolves_column_arrangement_spacing_as_gap() {
+    val root = buildTree {
+      Column(Modifier.testTag("col"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("a")
+        Text("b")
+      }
+    }
+
+    assertEquals("12.0dp", root.find("col")?.tokens?.gap)
+  }
+
+  @Test
+  fun layout_without_arrangement_spacing_omits_gap() {
+    val root = buildTree {
+      Column(Modifier.testTag("col")) {
+        Text("a")
+        Text("b")
+      }
+    }
+
+    assertNull("a layout with no arrangement spacing must omit gap", root.find("col")?.tokens?.gap)
+  }
+
+  @Test
+  fun resolves_circle_shape_descriptor_and_effective_radius() {
+    // #1908 ask 3: `CircleShape` is a percent (`CornerSize(50%)`) shape — no dp corner — so the
+    // radius was silently dropped. It now emits a `"circle"` descriptor and the effective dp radius
+    // resolved against the node's measured size (36dp square → 18dp).
+    val root = buildTree {
+      Box(Modifier.testTag("avatar").size(36.dp).clip(CircleShape).background(Color(0xFF006A60)))
+    }
+
+    val tokens = root.find("avatar")?.tokens
+    assertNotNull("avatar must carry resolved tokens", tokens)
+    assertEquals("circle", tokens!!.shape)
+    assertEquals("18.0dp", tokens.cornerRadius)
+  }
+
+  @Test
+  fun resolves_circle_radius_against_render_density() {
+    // The percent → dp resolution must divide out the render density: a 36dp circle at density 2.5
+    // measures 90px, whose 50% corner (45px) is still 18dp.
+    val root =
+      buildTree(density = 2.5f) { Box(Modifier.testTag("avatar").size(36.dp).clip(CircleShape)) }
+
+    assertEquals("18.0dp", root.find("avatar")?.tokens?.cornerRadius)
+  }
+
+  @Test
+  fun resolves_border_outline_colour() {
+    // #1908 ask 2: outline / role colours come from `Modifier.border`, not `Modifier.background`,
+    // so `backgroundColor` never saw them. They now surface as `borderColor`.
+    val root = buildTree {
+      Box(
+        Modifier.testTag("chip")
+          .border(BorderStroke(1.dp, Color(0xFFCAC4D0)), CircleShape)
+          .size(24.dp)
+      )
+    }
+
+    val tokens = root.find("chip")?.tokens
+    assertNotNull("chip must carry resolved tokens", tokens)
+    assertEquals("#FFCAC4D0", tokens!!.borderColor)
   }
 }

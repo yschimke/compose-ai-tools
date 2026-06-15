@@ -5,7 +5,7 @@
   "description": "Payload for the `compose/semantics` data product: the Compose semantics tree projected for a render. Kotlin source of truth: ComposeSemanticsPayload / ComposeSemanticsNode in :data-layoutinspector-core. Each node carries a stable `ref` (see #1784).",
   "x-composeai": {
     "kind": "compose/semantics",
-    "schemaVersion": 3,
+    "schemaVersion": 4,
     "kotlinType": "ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload",
     "kotlinConst": "ComposeSemanticsProduct.SCHEMA_VERSION",
     "fixture": "vscode-extension/preview-harness/fixtures/inspection-tree.json"
@@ -42,10 +42,13 @@
     },
     "ComposeSemanticsTokens": {
       "type": "object",
-      "description": "Resolved container design tokens for a node (#1897): from Modifier.background / Surface / Card, the background/clip/border shape, and Modifier.padding.",
+      "description": "Resolved container design tokens for a node (#1897, extended in v4 #1908): from Modifier.background / Surface / Card, Modifier.border, the background/clip/border/graphicsLayer shape, Modifier.padding, and the Row/Column arrangement spacing.",
       "properties": {
         "backgroundColor": { "type": ["string", "null"], "description": "Resolved container/fill colour as ARGB hex `#AARRGGBB`." },
-        "cornerRadius": { "type": ["string", "null"], "description": "Resolved corner radius in dp (`12.0dp`); non-uniform shapes emit four comma-separated corners." },
+        "borderColor": { "type": ["string", "null"], "description": "Resolved outline/stroke colour as ARGB hex `#AARRGGBB` from Modifier.border (#1908)." },
+        "cornerRadius": { "type": ["string", "null"], "description": "Resolved corner radius in dp (`12.0dp`); non-uniform shapes emit four comma-separated corners. Percent/CircleShape corners resolve against the node's size and density (#1908)." },
+        "shape": { "type": ["string", "null"], "description": "Shape-family descriptor for non-dp shapes (#1908): `circle` for CircleShape / all-CornerSize(50%), `cut` for CutCornerShape." },
+        "gap": { "type": ["string", "null"], "description": "Resolved Row/Column arrangement spacing in dp (`8.0dp`) from Arrangement.spacedBy (#1908)." },
         "padding": { "anyOf": [{ "$ref": "#/definitions/ComposeSemanticsInsets" }, { "type": "null" }] }
       }
     },
