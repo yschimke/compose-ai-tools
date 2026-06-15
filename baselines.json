@@ -85,6 +85,18 @@
       "sha256": "b528724161e99bf538c6656a72768c1820cc3377e4db4ca14766f4f542ffe003",
       "size": 21181
     },
+    "history-theme-diff.dark.png": {
+      "fixture": "history-theme-diff",
+      "theme": "dark",
+      "sha256": "21a1ff73d581c76d087849b98aaef0f4456e97b9efc5ea6f59aa48f0336412f5",
+      "size": 55593
+    },
+    "history-theme-diff.light.png": {
+      "fixture": "history-theme-diff",
+      "theme": "light",
+      "sha256": "0c87ce873f33159a5831cf88d7271a20de1677d4e6b5dc190ae161d6110e71f6",
+      "size": 55015
+    },
     "inspection-tree.dark.png": {
       "fixture": "inspection-tree",
       "theme": "dark",
