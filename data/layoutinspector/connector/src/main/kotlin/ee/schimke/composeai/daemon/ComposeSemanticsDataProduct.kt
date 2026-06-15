@@ -175,7 +175,8 @@ object ComposeSemanticsDataProducer {
       if (backgroundColor == null && (name == "background" || simpleName == "BackgroundElement")) {
         backgroundColor = backgroundColorHex(mod, elements, inspectable?.valueOverride)
       }
-      // `Modifier.border` carries the outline colour `Surface`/`Card`/dividers apply — a role colour
+      // `Modifier.border` carries the outline colour `Surface`/`Card`/dividers apply — a role
+      // colour
       // (`outline` / `outlineVariant`) a plain `Modifier.background` never sees (issue #1908).
       if (borderColor == null && (name == "border" || simpleName.startsWith("BorderModifier"))) {
         borderColor = borderColorHex(mod, elements)
@@ -234,7 +235,10 @@ object ComposeSemanticsDataProducer {
           continue
         val spacing =
           runCatching {
-              value.javaClass.getDeclaredField("spacing").apply { isAccessible = true }.getFloat(value)
+              value.javaClass
+                .getDeclaredField("spacing")
+                .apply { isAccessible = true }
+                .getFloat(value)
             }
             .getOrNull() ?: continue
         if (spacing > 0f) return "${spacing}dp"
@@ -282,7 +286,8 @@ object ComposeSemanticsDataProducer {
     }
     return runCatching {
         val brush =
-          mod.javaClass.getDeclaredField("brush").apply { isAccessible = true }.get(mod) ?: return null
+          mod.javaClass.getDeclaredField("brush").apply { isAccessible = true }.get(mod)
+            ?: return null
         if (brush.javaClass.simpleName != "SolidColor") return null
         val value =
           brush.javaClass.getDeclaredField("value").apply { isAccessible = true }.getLong(brush)
@@ -332,13 +337,13 @@ object ComposeSemanticsDataProducer {
 
   /**
    * Resolves the dp corner radius of a [Shape] without a `compose.foundation` compile dependency.
-   * `CornerBasedShape` exposes four `CornerSize` corners via no-arg getters. A dp-based `CornerSize`
-   * (`DpCornerSize`) stores its `Dp` in a `size` field (inlined to a float) and is emitted verbatim;
-   * a percent-based `CornerSize` (`PercentCornerSize`, what `CircleShape` and `CornerSize(50%)` use)
-   * is resolved against [minSidePx] / [density] so a circular avatar reports its effective dp radius
-   * (issue #1908). A uniform shape emits one value; otherwise the four corners are emitted
-   * comma-separated. Returns null for non-corner shapes and for pixel corners (`PxCornerSize`,
-   * `RoundedCornerShape(12f)`), which can't be expressed as a fixed dp.
+   * `CornerBasedShape` exposes four `CornerSize` corners via no-arg getters. A dp-based
+   * `CornerSize` (`DpCornerSize`) stores its `Dp` in a `size` field (inlined to a float) and is
+   * emitted verbatim; a percent-based `CornerSize` (`PercentCornerSize`, what `CircleShape` and
+   * `CornerSize(50%)` use) is resolved against [minSidePx] / [density] so a circular avatar reports
+   * its effective dp radius (issue #1908). A uniform shape emits one value; otherwise the four
+   * corners are emitted comma-separated. Returns null for non-corner shapes and for pixel corners
+   * (`PxCornerSize`, `RoundedCornerShape(12f)`), which can't be expressed as a fixed dp.
    */
   private fun Shape.cornerRadiusWire(minSidePx: Int, density: Float): String? {
     val corners =
@@ -394,7 +399,9 @@ object ComposeSemanticsDataProducer {
       .firstOrNull()
   }
 
-  /** Round a computed dp to 2 decimals so percent-derived radii read cleanly (`18.0`, not `17.99`). */
+  /**
+   * Round a computed dp to 2 decimals so percent-derived radii read cleanly (`18.0`, not `17.99`).
+   */
   private fun roundedDp(value: Float): Float = (value * 100f).roundToInt() / 100f
 
   /**

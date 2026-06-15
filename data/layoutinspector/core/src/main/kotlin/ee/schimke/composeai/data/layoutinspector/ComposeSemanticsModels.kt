@@ -86,9 +86,9 @@ data class ComposeSemanticsNode(
 /**
  * Resolved design-token data for a single semantics node (issues #1897, #1908). Populated from the
  * node's Compose modifiers — `Modifier.background` (and `Surface`/`Card`, which apply it),
- * `Modifier.border` (outline colour), the shape on `background` / `clip` / `border` / `graphicsLayer`,
- * `Modifier.padding`, and the `Arrangement` spacing of a `Row`/`Column` measure policy. All fields
- * are optional: a node emits only the tokens it actually declares.
+ * `Modifier.border` (outline colour), the shape on `background` / `clip` / `border` /
+ * `graphicsLayer`, `Modifier.padding`, and the `Arrangement` spacing of a `Row`/`Column` measure
+ * policy. All fields are optional: a node emits only the tokens it actually declares.
  */
 @Serializable
 data class ComposeSemanticsTokens(
@@ -105,8 +105,8 @@ data class ComposeSemanticsTokens(
    * corners comma-separated (`"12.0dp,12.0dp,0.0dp,0.0dp"`, top-start → bottom-start). dp-based
    * corners are emitted verbatim; percent-based corners (`CircleShape`, `CornerSize(50%)`) are
    * resolved against the node's measured size and density so a circular avatar still reports its
-   * effective radius instead of dropping out (issue #1908). Pixel corners (`RoundedCornerShape(12f)`)
-   * stay null — they can't be expressed as a fixed dp.
+   * effective radius instead of dropping out (issue #1908). Pixel corners
+   * (`RoundedCornerShape(12f)`) stay null — they can't be expressed as a fixed dp.
    */
   val cornerRadius: String? = null,
   /**
@@ -118,9 +118,10 @@ data class ComposeSemanticsTokens(
   val shape: String? = null,
   /**
    * Resolved inter-child spacing in dp from a `Row`/`Column` `Arrangement.spacedBy(...)` (or any
-   * `Arrangement.HorizontalOrVertical` carrying a non-zero `spacing`), e.g. `"8.0dp"` (issue #1908).
-   * Null for layouts with no arrangement spacing. This is the gap the spacing tokens
-   * (`cardGap` / `rowGap`) compare against — distinct from [padding], which is the node's own inset.
+   * `Arrangement.HorizontalOrVertical` carrying a non-zero `spacing`), e.g. `"8.0dp"`
+   * (issue #1908). Null for layouts with no arrangement spacing. This is the gap the spacing tokens
+   * (`cardGap` / `rowGap`) compare against — distinct from [padding], which is the node's own
+   * inset.
    */
   val gap: String? = null,
   /** Resolved padding from `Modifier.padding`, in dp per edge. */

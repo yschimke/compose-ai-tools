@@ -38,7 +38,10 @@ import org.junit.Test
  */
 class DesktopSemanticsTokensTest {
 
-  private fun buildTree(density: Float = 1.0f, content: @Composable () -> Unit): ComposeSemanticsNode {
+  private fun buildTree(
+    density: Float = 1.0f,
+    content: @Composable () -> Unit,
+  ): ComposeSemanticsNode {
     val scene =
       ImageComposeScene(width = 400, height = 400, density = Density(density), content = content)
     try {
@@ -145,7 +148,12 @@ class DesktopSemanticsTokensTest {
 
   @Test
   fun layout_without_arrangement_spacing_omits_gap() {
-    val root = buildTree { Column(Modifier.testTag("col")) { Text("a"); Text("b") } }
+    val root = buildTree {
+      Column(Modifier.testTag("col")) {
+        Text("a")
+        Text("b")
+      }
+    }
 
     assertNull("a layout with no arrangement spacing must omit gap", root.find("col")?.tokens?.gap)
   }
@@ -170,9 +178,7 @@ class DesktopSemanticsTokensTest {
     // The percent → dp resolution must divide out the render density: a 36dp circle at density 2.5
     // measures 90px, whose 50% corner (45px) is still 18dp.
     val root =
-      buildTree(density = 2.5f) {
-        Box(Modifier.testTag("avatar").size(36.dp).clip(CircleShape))
-      }
+      buildTree(density = 2.5f) { Box(Modifier.testTag("avatar").size(36.dp).clip(CircleShape)) }
 
     assertEquals("18.0dp", root.find("avatar")?.tokens?.cornerRadius)
   }
