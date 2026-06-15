@@ -47,10 +47,16 @@ export function setupHistoryBehavior(): void {
         requireElementById<HTMLSelectElement>("filter-branch");
     const btnRefreshEl = requireElementById<HTMLButtonElement>("btn-refresh");
     const btnDiffEl = requireElementById<HTMLButtonElement>("btn-diff");
+    const btnSourceRefEl =
+        requireElementById<HTMLButtonElement>("btn-source-ref");
     // Scope chip is owned by `<scope-chip>` — see
     // `components/ScopeChip.ts`. It listens for `setScopeLabel` directly.
 
     let entries: HistoryEntry[] = [];
+    // The active history source's ref (null = local). Tracked so the "Source"
+    // filter is only reset when the source genuinely changes (#1872), not on
+    // every routine `setSourceRef` re-post. `undefined` until the first push.
+    let activeSourceRef: string | null | undefined = undefined;
     // (max-2) selection queue (oldest first). Each `<history-row>` owns
     // its own `selected` state and dispatches
     // `history-row-selection-change` on shift-click; this list is the
@@ -84,6 +90,9 @@ export function setupHistoryBehavior(): void {
 
     btnRefreshEl.addEventListener("click", () => {
         vscode.postMessage({ command: "refresh" });
+    });
+    btnSourceRefEl.addEventListener("click", () => {
+        vscode.postMessage({ command: "selectSourceRef" });
     });
     btnDiffEl.addEventListener("click", () => {
         if (selectedOrder.length === 2) {
@@ -270,6 +279,28 @@ export function setupHistoryBehavior(): void {
                 // for this command. Listed here so the discriminated-union
                 // exhaustiveness check holds.
                 break;
+            case "setSourceRef": {
+                // Reflect the active history source in the toolbar button: the
+                // local working tree, or a pushed reporting branch (#1872).
+                const label = msg.label ?? "Local";
+                btnSourceRefEl.textContent = label;
+                btnSourceRefEl.classList.toggle("active", msg.ref != null);
+                btnSourceRefEl.title =
+                    msg.ref != null
+                        ? `Viewing reporting branch ${label} — click to change source`
+                        : "Choose history source: the local working tree or a pushed reporting branch";
+                // Switching the underlying source flips the entries' source kind
+                // (git for a reporting branch, fs for local). A stale "Source"
+                // filter (fs/git) would then hide the entire new dataset and the
+                // panel would look empty, so reset it to "all" when the source
+                // actually changes — but leave a deliberate filter alone across
+                // routine refreshes (which re-post the same ref).
+                if (msg.ref !== activeSourceRef) {
+                    activeSourceRef = msg.ref;
+                    filterSourceEl.value = "all";
+                }
+                break;
+            }
             case "imageReady": {
                 const row = findRow(msg.id);
                 if (row) row.setImage(msg.imageData, msg.entry);

@@ -1,0 +1,68 @@
+{
+  "name": "history-source-ref",
+  "description": "History panel webview: viewing a pushed reporting branch (#1872). The toolbar source button shows the active branch `preview/main` and the timeline lists git-sourced entries.",
+  "app": "history-app",
+  "bundle": "../media/webview/history.js",
+  "dataset": {
+    "earlyFeatures": "true",
+    "minimalMode": "false"
+  },
+  "messages": [
+    {
+      "command": "setSourceRef",
+      "ref": "refs/heads/preview/main",
+      "label": "preview/main"
+    },
+    {
+      "command": "setScopeLabel",
+      "label": "WelcomeScreenPreview"
+    },
+    {
+      "command": "setEntries",
+      "result": {
+        "entries": [
+          {
+            "id": "20260430-101200-bbbbbbbb",
+            "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
+            "module": ":sample-android",
+            "timestamp": "2026-04-30T10:12:00Z",
+            "pngHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "pngSize": 4218,
+            "pngPath": "20260430-101200-bbbbbbbb.png",
+            "producer": "daemon",
+            "trigger": "renderNow",
+            "source": {
+              "kind": "git",
+              "id": "git:refs/heads/preview/main@a1b2c3d"
+            },
+            "git": {
+              "branch": "main",
+              "shortCommit": "a1b2c3d",
+              "dirty": false
+            }
+          },
+          {
+            "id": "20260430-101000-aaaaaaaa",
+            "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
+            "module": ":sample-android",
+            "timestamp": "2026-04-30T10:10:00Z",
+            "pngHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "pngSize": 4218,
+            "pngPath": "20260430-101000-aaaaaaaa.png",
+            "producer": "daemon",
+            "trigger": "renderNow",
+            "source": {
+              "kind": "git",
+              "id": "git:refs/heads/preview/main@9f8e7d6"
+            },
+            "git": {
+              "branch": "main",
+              "shortCommit": "9f8e7d6",
+              "dirty": false
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

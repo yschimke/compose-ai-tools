@@ -1266,6 +1266,10 @@ export type HistoryToWebview =
     | { command: "entryAdded"; entry: HistoryEntry }
     | { command: "entriesPruned"; removedIds: string[] }
     | { command: "setScopeLabel"; label: string }
+    // Active history source (#1872): `ref` is the full git ref of the reporting
+    // branch being viewed (null = local working tree); `label` is its friendly
+    // form for the toolbar (null = local).
+    | { command: "setSourceRef"; ref: string | null; label: string | null }
     | { command: "showMessage"; text: string }
     | {
           command: "imageReady";

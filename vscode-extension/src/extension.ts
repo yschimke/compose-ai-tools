@@ -80,9 +80,11 @@ import { mergeRemoteComposeChange } from "./daemon/remoteComposeMerge";
 import { mergePermissionsChange } from "./daemon/permissionsMerge";
 import {
     buildHistorySource,
+    HistoryPanel,
     HistoryScope,
     HistorySource,
 } from "./historyPanel";
+import { listReportingBranches } from "./reportingBranches";
 import { historyFeatureEnabled } from "./historyFeature";
 import {
     disposePreviewMainBatches,
@@ -195,6 +197,15 @@ let historySource: HistorySource | null = null;
  * source when the user navigates between modules.
  */
 const historyScopeRef: { current: HistoryScope | null } = { current: null };
+/** The standalone "Preview History" view (#1872). Registered in `activate()`
+ *  when the early-access flag is on; null otherwise. */
+let historyView: HistoryPanel | null = null;
+/** Sets the active history scope and keeps the standalone panel in sync, so
+ *  switching files / previews / reporting branch re-lists the timeline. */
+function applyHistoryScope(scope: HistoryScope | null): void {
+    historyScopeRef.current = scope;
+    historyView?.setScope(scope);
+}
 /** Tracks the most recent preview set per module for daemon focus computation.
  *  The daemon path doesn't re-issue `composePreviewDiscover` on every save — it
  *  pushes `discoveryUpdated`. We mirror the latest snapshot here so save-
@@ -1643,7 +1654,10 @@ export async function activate(
                 if (!client) {
                     throw new Error("daemon unavailable");
                 }
-                return client.historyList({ previewId: scope.previewId });
+                return client.historyList({
+                    previewId: scope.previewId,
+                    ref: scope.gitRef,
+                });
             },
             daemonRead: async (id) => {
                 const moduleId = historyScopeRef.current?.moduleId;
@@ -1661,7 +1675,11 @@ export async function activate(
                 if (!client) {
                     throw new Error("daemon unavailable");
                 }
-                return client.historyRead({ id, inline: false });
+                return client.historyRead({
+                    id,
+                    inline: false,
+                    ref: historyScopeRef.current?.gitRef,
+                });
             },
             daemonDiff: async (fromId, toId) => {
                 const moduleId = historyScopeRef.current?.moduleId;
@@ -1689,6 +1707,7 @@ export async function activate(
                     from: fromId,
                     to: toId,
                     mode: "metadata",
+                    ref: historyScopeRef.current?.gitRef,
                 });
             },
             getCurrentScope: () => historyScopeRef.current,
@@ -1698,6 +1717,71 @@ export async function activate(
         historySource = historyFeatureEnabled() ? makeHistorySource() : null;
     };
     refreshHistorySource();
+
+    // #1872 — register the standalone "Preview History" timeline view. It's
+    // gated behind the early-access flag via the `composePreview.historyEnabled`
+    // context key (see package.json `when`). The view delegates to the live
+    // `historySource`, which `refreshHistorySource` swaps when the flag toggles,
+    // so wrap it in a stable indirection that reads `historySource` at call time.
+    const historyViewSource: HistorySource = {
+        list: (scope) =>
+            historySource?.list(scope) ??
+            Promise.resolve({ entries: [], totalCount: 0 }),
+        read: (id) => historySource?.read(id) ?? Promise.resolve(null),
+        diff: (fromId, toId) =>
+            historySource?.diff(fromId, toId) ?? Promise.resolve(null),
+    };
+    historyView = new HistoryPanel(context.extensionUri, historyViewSource);
+    historyView.setScope(historyScopeRef.current);
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(
+            HistoryPanel.viewId,
+            historyView,
+        ),
+        vscode.commands.registerCommand(
+            "composePreview.history.selectSourceRef",
+            async () => {
+                const scope = historyScopeRef.current;
+                if (!scope) {
+                    void vscode.window.showInformationMessage(
+                        "Open a Kotlin file with a @Preview to choose a history source.",
+                    );
+                    return;
+                }
+                const branches = await listReportingBranches(workspaceRoot);
+                interface RefItem extends vscode.QuickPickItem {
+                    ref?: string;
+                }
+                const items: RefItem[] = [
+                    {
+                        label: "$(folder) Local (working tree)",
+                        description: "History recorded in this checkout",
+                        picked: !scope.gitRef,
+                        ref: undefined,
+                    },
+                    ...branches.map(
+                        (b): RefItem => ({
+                            label: "$(git-branch) " + b.label,
+                            description: b.ref,
+                            picked: scope.gitRef === b.ref,
+                            ref: b.ref,
+                        }),
+                    ),
+                ];
+                const pick = await vscode.window.showQuickPick(items, {
+                    title: "Preview History — source",
+                    placeHolder:
+                        branches.length === 0
+                            ? "No preview/* reporting branches found — showing local only"
+                            : "View local history or a pushed reporting branch",
+                });
+                if (!pick || pick.ref === scope.gitRef) {
+                    return; // cancelled or unchanged
+                }
+                applyHistoryScope({ ...scope, gitRef: pick.ref });
+            },
+        ),
+    );
     context.subscriptions.push(
         vscode.commands.registerCommand("composePreview.refresh", () =>
             refresh(true, editorScope.file ?? undefined),
@@ -4852,7 +4936,7 @@ async function refresh(
         pendingScrollBackfill = new Map();
         setCurrentScopeFile(null);
         clearHeavyRefreshOptIns();
-        historyScopeRef.current = null;
+        applyHistoryScope(null);
         return "no-module";
     }
     // Cancel any in-flight refresh — we have a valid replacement.
@@ -4945,9 +5029,12 @@ async function refresh(
               projectDir,
               previewId: prior!.previewId,
               previewLabel: prior!.previewLabel,
+              // Keep the chosen reporting branch across same-module refreshes
+              // (mirrors the previewId narrow); a module switch resets to local.
+              gitRef: prior!.gitRef,
           }
         : { moduleId: module.modulePath, projectDir };
-    historyScopeRef.current = newScope;
+    applyHistoryScope(newScope);
     const modules: ModuleInfo[] = [module];
     const modulePathList = modules.map((m) => m.modulePath);
 
@@ -5756,7 +5843,7 @@ function handleWebviewMessage(msg: WebviewToExtension) {
                 previewId: requested,
                 previewLabel: requestedLabel,
             };
-            historyScopeRef.current = newScope;
+            applyHistoryScope(newScope);
             break;
         }
         case "openCompileError":
