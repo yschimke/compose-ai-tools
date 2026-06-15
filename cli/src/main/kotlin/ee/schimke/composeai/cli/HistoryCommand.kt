@@ -7,6 +7,9 @@ import ee.schimke.composeai.daemon.history.HistoryFilter
 import ee.schimke.composeai.daemon.history.HistoryImageDiff
 import ee.schimke.composeai.daemon.history.HistorySource
 import ee.schimke.composeai.daemon.history.LocalFsHistorySource
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
+import ee.schimke.composeai.data.layoutinspector.SemanticsDelta
+import ee.schimke.composeai.data.layoutinspector.SemanticsDiff
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.Base64
@@ -32,9 +35,9 @@ import kotlinx.serialization.json.JsonElement
  * methods (for live, not-yet-flushed state) needs a CLI-side daemon client — tracked as a
  * follow-up; the on-disk read is the source of truth the daemon persists to.
  *
- * `diff --mode pixel` is computed locally via the shared [HistoryImageDiff] (the same code the
- * daemon's `history/diff mode=pixel` runs, so results agree), reusing the archived PNG bytes off
- * disk — no daemon round-trip. `--mode semantics` stays daemon-backed for now (follow-up).
+ * `diff --mode pixel` and `--mode semantics` are computed locally via the shared [HistoryImageDiff]
+ * / [SemanticsDiff] (the same code the daemon's `history/diff` runs, so results agree), reusing the
+ * archived PNG bytes / captured `compose/semantics` snapshots off disk — no daemon round-trip.
  */
 class HistoryCommand(private val args: List<String>) {
 
@@ -166,10 +169,9 @@ class HistoryCommand(private val args: List<String>) {
   private fun diff() {
     val json = "--json" in args
     val mode = args.flagValue("--mode") ?: "metadata"
-    if (mode != "metadata" && mode != "pixel") {
+    if (mode != "metadata" && mode != "pixel" && mode != "semantics") {
       System.err.println(
-        "history diff: --mode $mode is not available from the CLI yet (semantics diff is " +
-          "daemon-backed via history/diff). Use --mode metadata or --mode pixel."
+        "history diff: unknown --mode '$mode'. Use metadata (default), pixel, or semantics."
       )
       exitProcess(1)
     }
@@ -243,6 +245,54 @@ class HistoryCommand(private val args: List<String>) {
       println("  diffPx:    ${result.diffPx}")
       println("  ssim:      ${"%.4f".format(result.ssim)}")
       println("  diff PNG:  ${diffPngPath ?: "(none — dimension mismatch)"}")
+      return
+    }
+
+    if (mode == "semantics") {
+      // Structural diff of the two entries' captured compose/semantics trees, computed locally via
+      // the shared SemanticsDiff — the same differ the daemon's `history/diff mode=semantics` runs.
+      // Each entry's tree was snapshotted into its sidecar at record time, so this reads no PNGs.
+      val missing =
+        when {
+          from.semantics == null -> fromId
+          to.semantics == null -> toId
+          else -> null
+        }
+      if (missing != null) {
+        System.err.println(
+          "history diff: entry '$missing' has no captured compose/semantics snapshot " +
+            "(the render that produced it didn't compute semantics)"
+        )
+        exitProcess(2)
+      }
+      val delta =
+        try {
+          val base =
+            DECODE.decodeFromJsonElement(ComposeSemanticsPayload.serializer(), from.semantics!!)
+          val head =
+            DECODE.decodeFromJsonElement(ComposeSemanticsPayload.serializer(), to.semantics!!)
+          SemanticsDiff.diff(base, head)
+        } catch (t: Throwable) {
+          System.err.println("history diff: semantics diff failed: ${t.message}")
+          exitProcess(2)
+        }
+
+      if (json) {
+        val payload =
+          HistoryDiffResponse(
+            schema = HISTORY_SCHEMA,
+            mode = "semantics",
+            pngHashChanged = pngHashChanged,
+            from = leanEntryJson(from),
+            to = leanEntryJson(to),
+            semanticsDelta = OUT.encodeToJsonElement(SemanticsDelta.serializer(), delta),
+          )
+        println(OUT.encodeToString(HistoryDiffResponse.serializer(), payload))
+        return
+      }
+
+      println("diff ${from.id} → ${to.id}  (preview ${from.previewId})")
+      println(formatSemanticsDeltaHuman(delta).prependIndent("  "))
       return
     }
 
@@ -391,7 +441,7 @@ class HistoryCommand(private val args: List<String>) {
       Subcommands:
         list                 List history entries (newest first)
         read <entryId>       Show one entry's metadata (and optionally its PNG / data)
-        diff <fromId> <toId> Compare two entries (metadata mode)
+        diff <fromId> <toId> Compare two entries (metadata | pixel | semantics)
         help                 Show this help message
 
       Source:
@@ -408,7 +458,9 @@ class HistoryCommand(private val args: List<String>) {
         --inline       Include base64 PNG bytes (--json)
 
       diff options:
-        --mode metadata|pixel  pixel reports diffPx + ssim and writes a marked-diff PNG
+        --mode metadata|pixel|semantics
+                               pixel reports diffPx + ssim and writes a marked-diff PNG;
+                               semantics diffs the captured compose/semantics trees
         --out <path>           (pixel) write the marked-diff PNG here instead of <preview>/.diffs/
 
       Common:
@@ -446,6 +498,11 @@ class HistoryCommand(private val args: List<String>) {
       encodeDefaults = true
     }
     private val ENTRY = Json { encodeDefaults = false }
+
+    /**
+     * Lenient decoder for the entries' captured `compose/semantics` payloads (`--mode semantics`).
+     */
+    private val DECODE = Json { ignoreUnknownKeys = true }
   }
 }
 
@@ -477,4 +534,7 @@ internal data class HistoryDiffResponse(
   val diffPx: Long? = null,
   val ssim: Double? = null,
   val diffPngPath: String? = null,
+  // Semantics-mode field (`--mode semantics`); null otherwise. The typed compose-semantics-diff/v1
+  // delta of the two entries' captured trees.
+  val semanticsDelta: JsonElement? = null,
 )
