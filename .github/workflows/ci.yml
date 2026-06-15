@@ -16,9 +16,20 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Release-please PRs only bump the version manifest / CHANGELOG / version
+# strings in docs — no source or build inputs change, so the full build+test
+# suite is pure waste on them and forced an admin bypass to land. Each job
+# below is gated to skip on the `release-please--*` head branch. A skipped job
+# still reports its check (as "skipped"), which branch protection treats as
+# passing — so the required checks go green instantly with no bypass. The
+# guard intentionally lives at job level (not a `branches` filter on the
+# trigger): a workflow that never triggers would leave the required check stuck
+# pending forever. `github.head_ref` is empty on push events, so pushes to main
+# always run the full suite.
 jobs:
   plugin-tests:
     name: Plugin Unit Tests
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -36,6 +47,7 @@ jobs:
 
   functional-tests:
     name: Plugin Functional Tests
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -53,6 +65,7 @@ jobs:
 
   build-samples:
     name: Build Samples
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -133,6 +146,7 @@ jobs:
 
   build-cli:
     name: Build CLI
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -150,6 +164,7 @@ jobs:
   # rot. The graceful no-binary path is covered by the plugin unit/functional tests.
   render-xr-composite:
     name: Render XR composite (sample)
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -281,6 +296,7 @@ jobs:
 
   spatial-scene-codegen:
     name: SpatialScene codegen up to date
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -296,6 +312,7 @@ jobs:
 
   bundle-render:
     name: Bundle Render E2E
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -327,6 +344,7 @@ jobs:
 
   android-bundle-daemon-e2e:
     name: Android Bundle Daemon E2E
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -385,6 +403,7 @@ jobs:
 
   agent-audit-samples:
     name: Agent Audit Samples
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -416,6 +435,7 @@ jobs:
   # (e.g. PR #76 bare-list → envelope) before they hit a real PR.
   actions-tests:
     name: Actions Script Tests
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -440,6 +460,7 @@ jobs:
   # VS Code expects a display even in headless mode.
   vscode-extension-tests:
     name: VS Code Extension Tests
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3

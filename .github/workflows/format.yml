@@ -15,6 +15,7 @@ concurrency:
 
 jobs:
   ktfmt:
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     name: ktfmt (Google style)
     runs-on: ubuntu-latest
     steps:

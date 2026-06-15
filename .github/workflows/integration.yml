@@ -54,6 +54,7 @@ env:
 
 jobs:
   build-plugin:
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     name: Build plugin + CLI
     runs-on: ubuntu-latest
     steps:
@@ -135,6 +136,7 @@ jobs:
           retention-days: 7
 
   integration:
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     name: ${{ matrix.name }}
     needs: build-plugin
     runs-on: ubuntu-latest
@@ -1120,6 +1122,7 @@ jobs:
           retention-days: 7
 
   agp8-min:
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     # Floor-coverage job for AGP 8.x consumers. Uses the in-repo fixture under
     # `.github/ci/fixtures/agp8-min/` (Gradle 8.13 + AGP 8.13.0 + Kotlin 2.0.21
     # + compileSdk 36) so we exercise the bottom of our publicly-supported

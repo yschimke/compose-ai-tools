@@ -34,6 +34,7 @@ concurrency:
 
 jobs:
   desktop-fake:
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     name: Daemon Harness (desktop, fake host)
     runs-on: ubuntu-latest
     steps:
@@ -57,6 +58,7 @@ jobs:
           path: daemon/harness/build/reports/daemon-harness/
 
   desktop-real:
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     name: Daemon Harness (desktop, real renderer)
     runs-on: ubuntu-latest
     steps:
@@ -91,6 +93,7 @@ jobs:
           path: daemon/harness/build/reports/daemon-harness/
 
   android-real:
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     name: Daemon Harness (android, real renderer)
     runs-on: ubuntu-latest
     # Slower than desktop because Robolectric sandbox bootstrap dominates

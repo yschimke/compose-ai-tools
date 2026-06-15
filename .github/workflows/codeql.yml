@@ -33,6 +33,7 @@ concurrency:
 
 jobs:
   analyze:
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
     permissions:

@@ -20,6 +20,8 @@ In **Settings → Actions → General → Workflow permissions**, tick **"Allow 
 2. **Review the release PR.** Titled `chore(main): release X.Y.Z`. Check the proposed `CHANGELOG.md`, the version bumps in `README.md`, `docs/*.md`, `DoctorCommand.kt`, and `.release-please-manifest.json`. Amend commit messages on `main` if the bump isn't right — the PR updates itself.
 3. **Merge the release PR.** On the next `release-please.yml` run (fires immediately on the merge commit), it creates the `vX.Y.Z` tag + GitHub Release, then invokes `release.yml` to build and upload the artifacts.
 
+   > **The heavy CI suite is skipped on release PRs, so no admin bypass is needed to merge.** A release PR only bumps the version manifest / `CHANGELOG.md` / version strings in docs — no source or build inputs change. The build/test/security/preview workflows (`ci`, `codeql`, `compose-preview`, `daemon-harness`, `integration`, `report-schemas`, `format`) gate each job with `if: ${{ !startsWith(github.head_ref, 'release-please--') }}`, so they report **skipped** on the `release-please--*` branch. Branch protection treats a skipped required check as passing, so the required checks go green instantly. The cheap PR-hygiene checks (`pr-title`, `no-agent-attribution`) still run — a release PR passes both. The guard is at job level on purpose: a `branches` filter on the trigger would leave the required check stuck *pending* and block the merge instead.
+
 ## Fallback paths
 
 If the automatic chain ever leaves a release half-published (e.g. Maven Central rejected an upload, CLI build failed), you can re-run the build/publish against an existing tag without touching release-please:

@@ -15,6 +15,7 @@ concurrency:
 
 jobs:
   validate:
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     name: Validate published report schemas
     runs-on: ubuntu-latest
     steps:
