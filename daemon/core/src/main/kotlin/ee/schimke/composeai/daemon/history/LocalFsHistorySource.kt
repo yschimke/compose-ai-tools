@@ -357,8 +357,47 @@ class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
       if (key in survivingPngPaths) 0L else entry.pngSize
     }
 
+    // Marked-diff PNGs (`history/diff mode=pixel`, H5) are a regenerable cache under each preview's
+    // `.diffs/` dir, named `<from>__<to>.png`. They must not outlive the entries they describe, so
+    // any diff referencing a removed entry is pruned too and its bytes count toward freedBytes.
+    val removedSanitisedIds =
+      removedEntries.mapTo(HashSet()) { HistoryDiffArtifacts.sanitiseId(it.id) }
+    val affectedPreviewDirs =
+      removedEntries.mapTo(LinkedHashSet()) { PreviewIdSanitiser.sanitise(it.previewId) }
+    val diffArtifactsToRemove = ArrayList<Path>()
+    var freedDiffBytes = 0L
+    for (previewDir in affectedPreviewDirs) {
+      val diffsDir = historyDir.resolve(previewDir).resolve(HistoryDiffArtifacts.DIFFS_DIR_NAME)
+      if (!Files.isDirectory(diffsDir)) continue
+      try {
+        Files.list(diffsDir).use { stream ->
+          stream.forEach { p ->
+            val name = p.fileName.toString()
+            if (removedSanitisedIds.any { HistoryDiffArtifacts.referencesEntry(name, it) }) {
+              diffArtifactsToRemove.add(p)
+              freedDiffBytes +=
+                try {
+                  Files.size(p)
+                } catch (_: Throwable) {
+                  0L
+                }
+            }
+          }
+        }
+      } catch (t: Throwable) {
+        System.err.println(
+          "compose-ai-daemon: LocalFsHistorySource.prune: .diffs scan failed for " +
+            "$diffsDir (${t.javaClass.simpleName}: ${t.message})"
+        )
+      }
+    }
+    val totalFreedBytes = freedBytes + freedDiffBytes
+
     if (dryRun) {
-      return PruneResult(removedEntryIds = removedEntries.map { it.id }, freedBytes = freedBytes)
+      return PruneResult(
+        removedEntryIds = removedEntries.map { it.id },
+        freedBytes = totalFreedBytes,
+      )
     }
 
     // -----------------------------------------------------------------------------------
@@ -443,7 +482,19 @@ class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
       }
     }
 
-    return PruneResult(removedEntryIds = removedEntries.map { it.id }, freedBytes = freedBytes)
+    // 4. Delete marked-diff artefacts that reference a removed entry (computed above).
+    for (diffFile in diffArtifactsToRemove) {
+      try {
+        Files.deleteIfExists(diffFile)
+      } catch (t: Throwable) {
+        System.err.println(
+          "compose-ai-daemon: LocalFsHistorySource.prune: diff artefact delete failed for " +
+            "$diffFile (${t.javaClass.simpleName}: ${t.message})"
+        )
+      }
+    }
+
+    return PruneResult(removedEntryIds = removedEntries.map { it.id }, freedBytes = totalFreedBytes)
   }
 
   /**

@@ -16,10 +16,12 @@ import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.double
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -229,16 +231,19 @@ class JsonRpcServerHistoryIntegrationTest {
       assertNotNull(diffSelfResult["fromMetadata"])
       assertNotNull(diffSelfResult["toMetadata"])
 
-      // 12. history/diff with mode=pixel → -32012 (reserved for H5).
+      // 12. history/diff with mode=pixel (H5) — self-diff of a real PNG → zero differing pixels,
+      //     perfect ssim, and a marked-diff PNG written under the preview's `.diffs/` dir.
       writeFrame(
         clientToServerOut,
         """{"jsonrpc":"2.0","id":10,"method":"history/diff","params":{"from":"$entryId","to":"$entryId","mode":"pixel"}}""",
       )
       val diffPixel = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 10 }
-      assertEquals(
-        JsonRpcServer.ERR_HISTORY_PIXEL_NOT_IMPLEMENTED,
-        diffPixel!!["error"]!!.jsonObject["code"]!!.jsonPrimitive.intOrNull,
-      )
+      val diffPixelResult = diffPixel!!["result"]!!.jsonObject
+      assertEquals(0L, diffPixelResult["diffPx"]!!.jsonPrimitive.long)
+      assertEquals(1.0, diffPixelResult["ssim"]!!.jsonPrimitive.double, 1e-9)
+      val diffPngPath = diffPixelResult["diffPngPath"]!!.jsonPrimitive.content
+      assertTrue("marked-diff PNG lands under .diffs/", diffPngPath.contains(".diffs"))
+      assertTrue("marked-diff PNG was written", Files.exists(Path.of(diffPngPath)))
 
       // 13. history/prune (H4) — dryRun with a tight policy returns the would-remove set
       //     without mutating disk + does NOT emit a `historyPruned` notification.
@@ -422,9 +427,9 @@ class JsonRpcServerHistoryIntegrationTest {
   }
 
   /**
-   * Test [RenderHost] that writes a deterministic PNG-shaped byte sequence to disk and returns its
-   * path. We don't need a real PNG decoder — H1's history pipeline only sha256s the bytes, so any
-   * deterministic blob works.
+   * Test [RenderHost] that writes a real, deterministic PNG to disk and returns its path. H1's
+   * history pipeline only sha256s the bytes, but H5's `history/diff mode=pixel` decodes them, so
+   * the blob is a genuine (tiny) PNG whose colour is keyed off the request id for determinism.
    */
   private class RealPngHost(private val rendersDir: Path) : RenderHost {
     @Volatile
@@ -450,7 +455,7 @@ class JsonRpcServerHistoryIntegrationTest {
               when (req) {
                 is RenderRequest.Render -> {
                   val pngFile = rendersDir.resolve("render-${req.id}.png")
-                  val payload = "synthetic-render-${req.id}".toByteArray()
+                  val payload = syntheticPng(req.id)
                   Files.write(pngFile, payload)
                   lastPngBytes = payload
                   val cl = Thread.currentThread().contextClassLoader
@@ -489,6 +494,17 @@ class JsonRpcServerHistoryIntegrationTest {
       stopped = true
       queue.put(RenderRequest.Shutdown)
       worker.join(timeoutMs)
+    }
+
+    /** A genuine 8×8 PNG whose solid colour is derived from [id] for determinism. */
+    private fun syntheticPng(id: Long): ByteArray {
+      val img = java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_RGB)
+      val rgb = 0x202020 or ((id.toInt() and 0xFF) shl 8)
+      for (y in 0 until 8) for (x in 0 until 8) img.setRGB(x, y, rgb)
+      return java.io.ByteArrayOutputStream().use { out ->
+        javax.imageio.ImageIO.write(img, "png", out)
+        out.toByteArray()
+      }
     }
   }
 

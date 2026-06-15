@@ -1727,13 +1727,12 @@ enum class InteractiveInputKind {
 }
 
 // ---------------------------------------------------------------------------
-// H3 — `history/diff` metadata-mode wire shape. See HISTORY.md § "What this PR
-// lands § H3" and PROTOCOL.md § 5 ("history/diff").
+// `history/diff` wire shape. See HISTORY.md § "history/diff" and PROTOCOL.md
+// § 5 ("history/diff").
 //
-// Pixel-mode fields (`diffPx`, `ssim`, `diffPngPath`) are reserved on the
-// `HistoryDiffResult` shape but always null in METADATA mode — H5 lands the
-// full pixel pass. A METADATA caller asking for `mode = PIXEL` receives a
-// distinct -32603 error so `null` pixel fields stay unambiguous.
+// `diffPx` / `ssim` / `diffPngPath` are populated by PIXEL mode (H5, issue
+// #1873) and null in METADATA / SEMANTICS modes. `semanticsDelta` is populated
+// by SEMANTICS mode (issue #1785) and null otherwise.
 // ---------------------------------------------------------------------------
 
 @Serializable
@@ -1758,7 +1757,10 @@ data class HistoryDiffResult(
   val pngHashChanged: Boolean,
   val fromMetadata: JsonElement,
   val toMetadata: JsonElement,
-  // Pixel-mode fields — null in METADATA mode; populated by H5.
+  // Pixel-mode fields (H5, issue #1873) — null in METADATA / SEMANTICS modes. `diffPx` is the count
+  // of RGB-differing pixels; `ssim` is the mean structural-similarity index in [-1, 1] (1.0 ⇒
+  // identical); `diffPngPath` is the absolute path of the marked-diff PNG (null on dimension
+  // mismatch or write failure).
   val diffPx: Long? = null,
   val ssim: Double? = null,
   val diffPngPath: String? = null,

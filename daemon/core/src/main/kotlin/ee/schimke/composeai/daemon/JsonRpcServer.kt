@@ -1,7 +1,9 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.history.HistoryDiffArtifacts
 import ee.schimke.composeai.daemon.history.HistoryEntry
 import ee.schimke.composeai.daemon.history.HistoryFilter
+import ee.schimke.composeai.daemon.history.HistoryImageDiff
 import ee.schimke.composeai.daemon.history.HistoryManager
 import ee.schimke.composeai.daemon.history.HistoryPruneConfig
 import ee.schimke.composeai.daemon.history.PreviewMetadataSnapshot
@@ -1483,14 +1485,15 @@ class JsonRpcServer(
    *
    * - `HistoryEntryNotFound` (-32010) when either id is missing.
    * - `HistoryDiffMismatch` (-32011) when the two entries belong to different previews.
-   * - `ERR_HISTORY_PIXEL_NOT_IMPLEMENTED` (-32012) when the caller asks for `mode = pixel` (H5).
    * - `ERR_HISTORY_SEMANTICS_NOT_CAPTURED` (-32013) when `mode = semantics` but one of the two
    *   entries has no captured `compose/semantics` snapshot (issue #1785).
    *
-   * The metadata-mode response is `pngHashChanged + fromMetadata + toMetadata` (full sidecars).
-   * Pixel-mode fields (`diffPx`, `ssim`, `diffPngPath`) stay null in METADATA mode by design — H5
-   * lands the pixel pass. SEMANTICS mode (issue #1785) adds `semanticsDelta`, the typed structural
-   * diff of the two entries' captured semantics trees.
+   * The metadata-mode response is `pngHashChanged + fromMetadata + toMetadata` (full sidecars);
+   * pixel-mode fields stay null there by design. PIXEL mode (H5, issue #1873) decodes both archived
+   * frames and populates `diffPx` + `ssim` + `diffPngPath` (a marked-diff PNG written under
+   * `<historyDir>/<previewId>/.diffs/`) via [HistoryImageDiff]. SEMANTICS mode (issue #1785) adds
+   * `semanticsDelta`, the typed structural diff of the two entries' captured semantics trees. The
+   * `-32012` "pixel not implemented" sentinel is retired now that H5 has landed.
    */
   private fun handleHistoryDiff(req: JsonRpcRequest) {
     val params =
@@ -1513,19 +1516,12 @@ class JsonRpcServer(
       )
       return
     }
-    if (params.mode == HistoryDiffMode.PIXEL) {
-      sendErrorResponse(
-        id = req.id,
-        code = ERR_HISTORY_PIXEL_NOT_IMPLEMENTED,
-        message =
-          "history/diff: pixel mode is reserved for phase H5 and not implemented; " +
-            "call with mode='metadata' (the default) for now",
-      )
-      return
-    }
+    // PIXEL mode needs the actual frame bytes; metadata / semantics modes don't, so only pay the
+    // PNG read when the caller asked for a pixel diff.
+    val includeBytes = params.mode == HistoryDiffMode.PIXEL
     val from =
       try {
-        mgr.read(params.from, includeBytes = false)
+        mgr.read(params.from, includeBytes = includeBytes)
       } catch (t: Throwable) {
         sendErrorResponse(
           id = req.id,
@@ -1544,7 +1540,7 @@ class JsonRpcServer(
     }
     val to =
       try {
-        mgr.read(params.to, includeBytes = false)
+        mgr.read(params.to, includeBytes = includeBytes)
       } catch (t: Throwable) {
         sendErrorResponse(
           id = req.id,
@@ -1618,6 +1614,50 @@ class JsonRpcServer(
       sendResponse(req.id, encode(HistoryDiffResult.serializer(), result))
       return
     }
+    // PIXEL mode (H5, issue #1873) — decode both archived frames, compute diffPx + ssim, and write
+    // a
+    // reviewer-facing marked-diff PNG to `<historyDir>/<previewId>/.diffs/`. The frame bytes were
+    // read above (includeBytes); a null here means the source couldn't supply them (e.g. the PNG
+    // was
+    // moved out from under the archive) — treat as internal, not entry-not-found, since the index
+    // entry resolved fine.
+    if (params.mode == HistoryDiffMode.PIXEL) {
+      val fromBytes = from.pngBytes
+      val toBytes = to.pngBytes
+      if (fromBytes == null || toBytes == null) {
+        val missing = if (fromBytes == null) params.from else params.to
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_INTERNAL,
+          message = "history/diff: entry '$missing' has no PNG bytes to pixel-diff",
+        )
+        return
+      }
+      val diff =
+        try {
+          HistoryImageDiff.diff(fromBytes, toBytes)
+        } catch (t: Throwable) {
+          sendErrorResponse(
+            id = req.id,
+            code = ERR_INTERNAL,
+            message = "history/diff: pixel diff failed: ${t.message}",
+          )
+          return
+        }
+      val diffPngPath =
+        diff.markedPng?.let { bytes -> writeDiffPng(to.pngPath, from.entry.id, to.entry.id, bytes) }
+      val result =
+        HistoryDiffResult(
+          pngHashChanged = from.entry.pngHash != to.entry.pngHash,
+          fromMetadata = encodeHistoryEntry(from.entry),
+          toMetadata = encodeHistoryEntry(to.entry),
+          diffPx = diff.diffPx,
+          ssim = diff.ssim,
+          diffPngPath = diffPngPath,
+        )
+      sendResponse(req.id, encode(HistoryDiffResult.serializer(), result))
+      return
+    }
     val result =
       HistoryDiffResult(
         pngHashChanged = from.entry.pngHash != to.entry.pngHash,
@@ -1629,6 +1669,31 @@ class JsonRpcServer(
       )
     sendResponse(req.id, encode(HistoryDiffResult.serializer(), result))
   }
+
+  /**
+   * Writes the marked-diff [pngBytes] to `<previewDir>/.diffs/<fromId>__<toId>.png`, where
+   * `previewDir` is derived from the `to` entry's archived PNG path ([toPngPath]). Best-effort:
+   * returns the absolute path on success, or null if the write fails (the pixel metrics are still
+   * useful without the artefact). The `.diffs/` subdir is dot-prefixed so `LocalFsHistorySource`'s
+   * per-preview sidecar resolution (which addresses `<id>.json` by name) never trips over it.
+   */
+  private fun writeDiffPng(
+    toPngPath: String,
+    fromId: String,
+    toId: String,
+    pngBytes: ByteArray,
+  ): String? =
+    try {
+      val previewDir = java.nio.file.Path.of(toPngPath).toAbsolutePath().parent
+      val diffsDir = previewDir.resolve(HistoryDiffArtifacts.DIFFS_DIR_NAME)
+      java.nio.file.Files.createDirectories(diffsDir)
+      val out = diffsDir.resolve(HistoryDiffArtifacts.fileName(fromId, toId))
+      java.nio.file.Files.write(out, pngBytes)
+      out.toString()
+    } catch (t: Throwable) {
+      System.err.println("compose-ai-daemon: history/diff writeDiffPng failed: ${t.message}")
+      null
+    }
 
   /**
    * H4 — `history/prune` manual prune trigger. Resolves [HistoryPruneParams] over the daemon's
@@ -3925,12 +3990,13 @@ class JsonRpcServer(
     const val ERR_HISTORY_DIFF_MISMATCH: Int = -32011
 
     /**
-     * HISTORY.md § "Error codes" — `history/diff` was called with `mode = pixel`, which is reserved
-     * for phase H5 and not implemented in H3. We deliberately return a clean error code (rather
-     * than silently leaving the pixel fields null in METADATA mode) so callers can tell "I asked
-     * for pixel and the daemon isn't ready" apart from "I asked for metadata and got null pixel
-     * fields by design."
+     * HISTORY.md § "Error codes" — formerly returned when `history/diff` was called with `mode =
+     * pixel` before H5 (issue #1873) implemented the pixel pass. **Retired:** pixel mode now
+     * populates `diffPx` / `ssim` / `diffPngPath` and never emits this code. Kept as a reserved
+     * wire constant so the number isn't recycled for an unrelated error and old clients that
+     * special-cased it still compile/resolve it.
      */
+    @Deprecated("Pixel mode is implemented (H5); this code is no longer emitted.")
     const val ERR_HISTORY_PIXEL_NOT_IMPLEMENTED: Int = -32012
 
     /**
