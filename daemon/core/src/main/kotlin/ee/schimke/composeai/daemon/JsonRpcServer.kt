@@ -3806,6 +3806,12 @@ class JsonRpcServer(
     } catch (e: Throwable) {
       System.err.println("compose-ai-daemon: historyManager.stopAutoPrune failed: ${e.message}")
     }
+    // #1882 — flush any debounced reporting-branch commit batch and stop its scheduler.
+    try {
+      historyManager?.closeSources()
+    } catch (e: Throwable) {
+      System.err.println("compose-ai-daemon: historyManager.closeSources failed: ${e.message}")
+    }
     closeAllInteractiveSessions()
     closeAllRecordingSessions()
     xrSessions?.close()

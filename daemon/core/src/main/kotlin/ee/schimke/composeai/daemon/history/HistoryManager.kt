@@ -441,6 +441,25 @@ class HistoryManager(
     }
   }
 
+  /**
+   * Closes every source on daemon shutdown — flushes any debounced reporting-branch commit batch
+   * (#1882) and stops its scheduler so nothing buffered is lost. Idempotent and best-effort: a
+   * source whose close throws is logged and skipped. Called from the daemon's shutdown path
+   * alongside [stopAutoPrune].
+   */
+  fun closeSources() {
+    for (source in sources) {
+      try {
+        source.close()
+      } catch (t: Throwable) {
+        System.err.println(
+          "compose-ai-daemon: HistoryManager.closeSources: ${source.id} close failed " +
+            "(${t.javaClass.simpleName}: ${t.message})"
+        )
+      }
+    }
+  }
+
   companion object {
 
     /** Initial delay for [startAutoPrune] — a few seconds, after the sandbox is up. */
@@ -490,6 +509,10 @@ class HistoryManager(
       repoRoot: java.nio.file.Path? = historyDir?.parent,
       warnEmitter: (String) -> Unit = { System.err.println(it) },
       pruneConfig: HistoryPruneConfig = HistoryPruneConfig(),
+      // #1882 — debounce window for the writable reporting-branch source; defaults from the sysprop
+      // so the daemon mains need no change. On-demand read sources never write, so stay
+      // un-debounced.
+      gitRefDebounceMs: Long = GitRefHistorySource.parseDebounceSysprop(),
     ): HistoryManager {
       val sources = buildList {
         if (historyDir != null) add(LocalFsHistorySource(historyDir = historyDir))
@@ -504,6 +527,7 @@ class HistoryManager(
                   historyDir?.let(GitRefHistorySource::defaultCacheDir)
                     ?: repoRoot.resolve(".compose-preview-history").resolve(".git-ref-cache"),
                 warnEmitter = warnEmitter,
+                debounceMs = gitRefDebounceMs,
               )
             )
           }

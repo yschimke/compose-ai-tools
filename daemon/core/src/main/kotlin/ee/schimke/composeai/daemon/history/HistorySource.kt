@@ -162,4 +162,11 @@ interface HistorySource {
    * Each individual knob set to `0` or negative is treated as disabled — that pass is skipped.
    */
   fun prune(config: HistoryPruneConfig, dryRun: Boolean = false): PruneResult = PruneResult.EMPTY
+
+  /**
+   * Releases any background resources and flushes pending work on daemon shutdown. Default no-op;
+   * `GitRefHistorySource` overrides it to flush a debounced commit batch (#1882) and stop its
+   * scheduler so nothing buffered is lost on a clean stop.
+   */
+  fun close() {}
 }
