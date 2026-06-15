@@ -186,11 +186,11 @@ fun runDaemon(
       IncrementalDiscovery(classpath = classpath)
     } else null
 
-  // History feature gated to 1.1 (see [HistoryFeature]). Until then `historyManager` is null on
-  // every launch — `composeai.daemon.historyDir`, the git-ref read sources, prune budgets, and the
-  // `historyManager?.setPruneListener` wire in `JsonRpcServer` all elide because the const-folded
-  // branch goes dead. HISTORY.md describes the original H1+H2 wiring this block preserves
-  // verbatim for the 1.1 re-enable.
+  // History recording is on by default (see [HistoryFeature]); set
+  // `-Dcomposeai.history.enabled=false` to opt out, in which case `historyManager` is null on every
+  // launch and `composeai.daemon.historyDir`, the git-ref read sources, prune budgets, and the
+  // `historyManager?.setPruneListener` wire in `JsonRpcServer` all elide. HISTORY.md describes the
+  // H1+H2 wiring this block sets up.
   val historyManager: HistoryManager? =
     if (HistoryFeature.ENABLED) {
       val historyDirProp = System.getProperty(HISTORY_DIR_PROP)

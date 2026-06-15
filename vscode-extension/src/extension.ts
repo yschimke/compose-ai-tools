@@ -83,7 +83,7 @@ import {
     HistoryScope,
     HistorySource,
 } from "./historyPanel";
-import { HISTORY_FEATURE_ENABLED } from "./historyFeature";
+import { historyFeatureEnabled } from "./historyFeature";
 import {
     disposePreviewMainBatches,
     readPreviewMainPng,
@@ -1618,81 +1618,86 @@ export async function activate(
 
     // Phase H7 — preview history source. The standalone History view is not
     // contributed; history is surfaced from the focus view alongside data products.
-    // History feature gated to 1.1 (see `historyFeature.ts`). When disabled, `historySource`
-    // stays null and every call site already guards on it; the focus webview's history section
-    // hides, and `composePreview.diffAllVsMain` / `diffVsHead` short-circuit to the same
-    // "not ready" branch the daemon-unavailable path already covers.
+    // History UI is gated behind the early-access flag (see `historyFeature.ts`). When the flag
+    // is off, `historySource` stays null and every call site already guards on it; the focus
+    // webview's history section hides, and `composePreview.diffAllVsMain` / `diffVsHead`
+    // short-circuit to the same "not ready" branch the daemon-unavailable path already covers.
+    // `refreshHistorySource` is also called from the config-change listener so toggling the flag
+    // takes effect without a window reload.
     historyScopeRef.current = null;
     const moduleInfoFromScope = (modulePath: string): ModuleInfo | null =>
         gradleService?.findModuleByPath(modulePath) ?? null;
-    historySource = HISTORY_FEATURE_ENABLED
-        ? buildHistorySource({
-              isDaemonReady: (moduleId) =>
-                  daemonGate?.isDaemonReady(moduleId) ?? false,
-              daemonList: async (scope) => {
-                  const module = moduleInfoFromScope(scope.moduleId);
-                  if (!module) {
-                      throw new Error("daemon unavailable");
-                  }
-                  const client = await daemonGate?.getOrSpawn(
-                      module,
-                      daemonScheduler!.daemonEvents(scope.moduleId),
-                  );
-                  if (!client) {
-                      throw new Error("daemon unavailable");
-                  }
-                  return client.historyList({ previewId: scope.previewId });
-              },
-              daemonRead: async (id) => {
-                  const moduleId = historyScopeRef.current?.moduleId;
-                  if (!moduleId) {
-                      throw new Error("no scope");
-                  }
-                  const module = moduleInfoFromScope(moduleId);
-                  if (!module) {
-                      throw new Error("daemon unavailable");
-                  }
-                  const client = await daemonGate?.getOrSpawn(
-                      module,
-                      daemonScheduler!.daemonEvents(moduleId),
-                  );
-                  if (!client) {
-                      throw new Error("daemon unavailable");
-                  }
-                  return client.historyRead({ id, inline: false });
-              },
-              daemonDiff: async (fromId, toId) => {
-                  const moduleId = historyScopeRef.current?.moduleId;
-                  if (!moduleId) {
-                      throw new Error("no scope");
-                  }
-                  const module = moduleInfoFromScope(moduleId);
-                  if (!module) {
-                      throw new Error("daemon unavailable");
-                  }
-                  const client = await daemonGate?.getOrSpawn(
-                      module,
-                      daemonScheduler!.daemonEvents(moduleId),
-                  );
-                  if (!client) {
-                      throw new Error("daemon unavailable");
-                  }
-                  // TODO(1.1): history/diff is experimental in the 1.0 daemon and
-                  // returns MethodNotFound unless the user opts in via
-                  // `composeai.experimental.historyDiff`. Once the daemon flips the
-                  // default, simplify this back to a direct call. Until then,
-                  // surface the gate as a clear "diff unavailable" rather than a
-                  // raw RPC error.
-                  return client.historyDiff({
-                      from: fromId,
-                      to: toId,
-                      mode: "metadata",
-                  });
-              },
-              getCurrentScope: () => historyScopeRef.current,
-              logger: outputChannel,
-          })
-        : null;
+    const makeHistorySource = () =>
+        buildHistorySource({
+            isDaemonReady: (moduleId) =>
+                daemonGate?.isDaemonReady(moduleId) ?? false,
+            daemonList: async (scope) => {
+                const module = moduleInfoFromScope(scope.moduleId);
+                if (!module) {
+                    throw new Error("daemon unavailable");
+                }
+                const client = await daemonGate?.getOrSpawn(
+                    module,
+                    daemonScheduler!.daemonEvents(scope.moduleId),
+                );
+                if (!client) {
+                    throw new Error("daemon unavailable");
+                }
+                return client.historyList({ previewId: scope.previewId });
+            },
+            daemonRead: async (id) => {
+                const moduleId = historyScopeRef.current?.moduleId;
+                if (!moduleId) {
+                    throw new Error("no scope");
+                }
+                const module = moduleInfoFromScope(moduleId);
+                if (!module) {
+                    throw new Error("daemon unavailable");
+                }
+                const client = await daemonGate?.getOrSpawn(
+                    module,
+                    daemonScheduler!.daemonEvents(moduleId),
+                );
+                if (!client) {
+                    throw new Error("daemon unavailable");
+                }
+                return client.historyRead({ id, inline: false });
+            },
+            daemonDiff: async (fromId, toId) => {
+                const moduleId = historyScopeRef.current?.moduleId;
+                if (!moduleId) {
+                    throw new Error("no scope");
+                }
+                const module = moduleInfoFromScope(moduleId);
+                if (!module) {
+                    throw new Error("daemon unavailable");
+                }
+                const client = await daemonGate?.getOrSpawn(
+                    module,
+                    daemonScheduler!.daemonEvents(moduleId),
+                );
+                if (!client) {
+                    throw new Error("daemon unavailable");
+                }
+                // TODO(1.1): history/diff is experimental in the 1.0 daemon and
+                // returns MethodNotFound unless the user opts in via
+                // `composeai.experimental.historyDiff`. Once the daemon flips the
+                // default, simplify this back to a direct call. Until then,
+                // surface the gate as a clear "diff unavailable" rather than a
+                // raw RPC error.
+                return client.historyDiff({
+                    from: fromId,
+                    to: toId,
+                    mode: "metadata",
+                });
+            },
+            getCurrentScope: () => historyScopeRef.current,
+            logger: outputChannel,
+        });
+    const refreshHistorySource = () => {
+        historySource = historyFeatureEnabled() ? makeHistorySource() : null;
+    };
+    refreshHistorySource();
     context.subscriptions.push(
         vscode.commands.registerCommand("composePreview.refresh", () =>
             refresh(true, editorScope.file ?? undefined),
@@ -2098,6 +2103,9 @@ export async function activate(
                     "composePreview.earlyFeatures.enabled",
                 )
             ) {
+                // History UI rides on the early-access flag; rebuild (or tear down)
+                // the history source so the toggle takes effect without a reload.
+                refreshHistorySource();
                 panel?.postMessage({
                     command: "setEarlyFeatures",
                     enabled: earlyFeaturesEnabled(),

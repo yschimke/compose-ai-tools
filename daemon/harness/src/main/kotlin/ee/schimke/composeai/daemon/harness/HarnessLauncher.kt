@@ -6,16 +6,22 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
- * Propagates the `composeai.history.enabled` sysprop from the test JVM into a spawned daemon
- * subprocess. Production daemons leave the property unset and the `HistoryFeature` default
- * (`false`) keeps the history surface dead; the test JVM sets it `true` via the root build's
- * `tasks.withType<Test>().configureEach { systemProperty("composeai.history.enabled", "true") }`
- * hook so the history implementation stays exercised in CI. Without the explicit propagation here
- * the spawned daemon JVM inherits nothing and the harness's history scenarios (S9 / S10 / S11) trip
- * `MethodNotFound` for every history method call. Drop when 1.1 flips the default.
+ * Propagates the history-related sysprops from the test JVM into a spawned daemon subprocess.
+ *
+ * - `composeai.history.enabled` — history records on by default, but tests set it explicitly (root
+ *   build's `tasks.withType<Test>` hook) so the harness's history scenarios (S9 / S10 / S11) stay
+ *   pinned regardless of the production default.
+ * - `composeai.history.gitProvenanceTtlMs` — tests set this `0` so spawned daemons resolve git
+ *   provenance fresh per render (no TTL cache), keeping provenance assertions deterministic.
+ *
+ * Without explicit propagation here the spawned daemon JVM inherits neither, so it would silently
+ * use the production defaults instead of the test settings.
  */
-private fun MutableList<String>.addHistoryFeatureSyspropIfSet() {
+private fun MutableList<String>.addHistorySyspropsIfSet() {
   System.getProperty("composeai.history.enabled")?.let { add("-Dcomposeai.history.enabled=$it") }
+  System.getProperty("composeai.history.gitProvenanceTtlMs")?.let {
+    add("-Dcomposeai.history.gitProvenanceTtlMs=$it")
+  }
 }
 
 /**
@@ -109,7 +115,7 @@ class FakeHarnessLauncher(
           add("-Dcomposeai.daemon.history.maxTotalSizeBytes=$pruneMaxTotalSizeBytes")
         if (pruneAutoIntervalMs != null)
           add("-Dcomposeai.daemon.history.autoPruneIntervalMs=$pruneAutoIntervalMs")
-        addHistoryFeatureSyspropIfSet()
+        addHistorySyspropsIfSet()
         addAll(extraJvmArgs)
         add("-cp")
         add(cpString)
@@ -185,7 +191,7 @@ class RealDesktopHarnessLauncher(
         add("-Dcomposeai.daemon.idleTimeoutMs=2000")
         // Save-after-render ordering watchdog — same justification as `FakeHarnessLauncher` above.
         add("-Dcomposeai.daemon.discoveryWatchdogMs=500")
-        addHistoryFeatureSyspropIfSet()
+        addHistorySyspropsIfSet()
         addAll(extraJvmArgs)
         add("-cp")
         add(cpString)
@@ -330,7 +336,7 @@ class RealAndroidHarnessLauncher(
         // can dominate the first render's wall-clock; tests should use a large *poll* timeout
         // (60-120s) rather than relying on this idle timeout to back-stop a hung daemon.
         add("-Dcomposeai.daemon.idleTimeoutMs=2000")
-        addHistoryFeatureSyspropIfSet()
+        addHistorySyspropsIfSet()
         addAll(extraJvmArgs)
         add("-cp")
         add(cpString)
