@@ -14,12 +14,14 @@
 // The pixel-diff helper lives in `webview/shared/pixelDiff.ts` — the
 // preview panel's diff overlay reaches for the same algorithm.
 
+import { computeSemanticsDiffData } from "../preview/historyDiffSemanticsPresenter";
 import { buildDiffModeBar, type DiffMode } from "../shared/diffModeBar";
 import {
     applyDiffStats,
     computeDiffStats,
     type DiffStats,
 } from "../shared/pixelDiff";
+import { diffSemantics, type SemanticsPayload } from "../shared/semanticsDiff";
 import type { HistoryDiffSummary } from "../shared/types";
 import type { VsCodeApi } from "../shared/vscode";
 import { cssEscape } from "./historyData";
@@ -61,6 +63,8 @@ export function fillDiff(
     rightLabel: string,
     rightImage: string,
     config: HistoryDiffViewConfig,
+    leftSemantics?: unknown,
+    rightSemantics?: unknown,
 ): void {
     const expansion = config.timelineEl.querySelector<HTMLElement>(
         '.expanded[data-id="' +
@@ -106,6 +110,81 @@ export function fillDiff(
     computeDiffStats(payload.leftImage, payload.rightImage).then((s) => {
         applyDiffStats(stats, s);
     });
+    appendSemanticsDiffSection(expansion, leftSemantics, rightSemantics);
+}
+
+/**
+ * Appends the semantics data-diff (#1872) below the pixel diff. Both entries' captured
+ * `compose/semantics` trees are diffed client-side via the shared [diffSemantics] port; the section
+ * is omitted entirely when either tree is missing (a render that didn't capture semantics) so the
+ * pixel-only case is unchanged. Lives as a sibling of the pixel `body`, so the Side/Overlay/Onion
+ * mode switches (which rewrite `body`) leave it intact.
+ */
+function appendSemanticsDiffSection(
+    expansion: HTMLElement,
+    leftSemantics: unknown,
+    rightSemantics: unknown,
+): void {
+    if (
+        !isSemanticsPayload(leftSemantics) ||
+        !isSemanticsPayload(rightSemantics)
+    ) {
+        return;
+    }
+    let data: ReturnType<typeof computeSemanticsDiffData>;
+    try {
+        data = computeSemanticsDiffData(
+            diffSemantics(leftSemantics, rightSemantics),
+        );
+    } catch {
+        return;
+    }
+    const section = document.createElement("div");
+    section.className = "diff-semantics";
+    const head = document.createElement("div");
+    head.className = "diff-semantics-header";
+    head.textContent = data.empty
+        ? "Semantics · no changes"
+        : `Semantics · ${data.addedCount} added · ${data.removedCount} removed · ${data.changedCount} changed`;
+    section.appendChild(head);
+    if (!data.empty) {
+        const list = document.createElement("ul");
+        list.className = "diff-semantics-list";
+        for (const row of data.rows) {
+            const li = document.createElement("li");
+            li.className = `diff-semantics-row diff-semantics-${row.kind}`;
+            const sigil =
+                row.kind === "added" ? "+" : row.kind === "removed" ? "−" : "~";
+            const label = document.createElement("span");
+            label.className = "diff-semantics-label";
+            label.textContent = `${sigil} ${row.label}`;
+            li.appendChild(label);
+            if (row.fields.length > 0) {
+                const fields = document.createElement("ul");
+                fields.className = "diff-semantics-fields";
+                for (const field of row.fields) {
+                    const fieldLi = document.createElement("li");
+                    fieldLi.textContent = `${field.field}: ${field.from ?? "∅"} → ${field.to ?? "∅"}`;
+                    fields.appendChild(fieldLi);
+                }
+                li.appendChild(fields);
+            }
+            list.appendChild(li);
+        }
+        section.appendChild(list);
+    }
+    expansion.appendChild(section);
+}
+
+/** Narrows an untyped wire value to a `{ root }` semantics payload. */
+function isSemanticsPayload(value: unknown): value is SemanticsPayload {
+    return (
+        typeof value === "object" &&
+        value !== null &&
+        "root" in value &&
+        typeof (value as { root: unknown }).root === "object" &&
+        (value as { root: unknown }).root !== null
+    );
 }
 
 function renderHistoryDiffMode(

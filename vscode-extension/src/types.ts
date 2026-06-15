@@ -1289,6 +1289,11 @@ export type HistoryToWebview =
           leftImage: string;
           rightLabel: string;
           rightImage: string;
+          // Raw `compose/semantics` payloads ({ root }) for each entry, when captured. The webview
+          // diffs them client-side to render the semantics data-diff section (#1872). null/omitted
+          // when either render didn't capture semantics.
+          leftSemantics?: unknown;
+          rightSemantics?: unknown;
       }
     | {
           command: "diffPairError";

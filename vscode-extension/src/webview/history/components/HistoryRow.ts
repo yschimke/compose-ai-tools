@@ -152,6 +152,8 @@ export class HistoryRow extends LitElement {
         leftImage: string;
         rightLabel: string;
         rightImage: string;
+        leftSemantics?: unknown;
+        rightSemantics?: unknown;
     } | null = null;
 
     /** Error text for the open diff expansion, populated by the host
@@ -221,6 +223,8 @@ export class HistoryRow extends LitElement {
                     this._diffPayload.rightLabel,
                     this._diffPayload.rightImage,
                     this.diffViewConfig,
+                    this._diffPayload.leftSemantics,
+                    this._diffPayload.rightSemantics,
                 );
             }
         }
@@ -404,11 +408,20 @@ export class HistoryRow extends LitElement {
         leftImage: string,
         rightLabel: string,
         rightImage: string,
+        leftSemantics?: unknown,
+        rightSemantics?: unknown,
     ): void {
         this._expandedKind = "diff";
         this._diffAgainst = against;
         this._diffError = null;
-        this._diffPayload = { leftLabel, leftImage, rightLabel, rightImage };
+        this._diffPayload = {
+            leftLabel,
+            leftImage,
+            rightLabel,
+            rightImage,
+            leftSemantics,
+            rightSemantics,
+        };
     }
 
     /** Host-side hook for `diffPairError`. Renders the error inside

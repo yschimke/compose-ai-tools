@@ -305,6 +305,12 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
                 leftImage: leftBytes,
                 rightLabel,
                 rightImage: rightBytes,
+                // Forward each entry's captured compose/semantics tree (from the sidecar) so the
+                // webview can render the semantics data-diff below the pixel diff (#1872).
+                leftSemantics:
+                    (left.entry as { semantics?: unknown }).semantics ?? null,
+                rightSemantics:
+                    (right.entry as { semantics?: unknown }).semantics ?? null,
             });
         } catch (err) {
             this.view.webview.postMessage({
