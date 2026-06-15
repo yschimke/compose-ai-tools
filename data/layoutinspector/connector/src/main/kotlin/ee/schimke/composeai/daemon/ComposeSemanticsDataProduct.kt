@@ -268,6 +268,10 @@ object ComposeSemanticsDataProducer {
 
   private fun cornerSizeDp(corner: Any?): Float? {
     corner ?: return null
+    // Only a dp-based corner can be expressed as a fixed dp radius. `PxCornerSize`
+    // (`RoundedCornerShape(12f)`) also stores a `size: Float`, but in pixels, and
+    // `PercentCornerSize` a `percent: Float` — reading either as dp would emit a wrong unit/value.
+    if (corner.javaClass.simpleName != "DpCornerSize") return null
     return runCatching {
         val field = corner.javaClass.getDeclaredField("size").apply { isAccessible = true }
         when (val raw = field.get(corner)) {

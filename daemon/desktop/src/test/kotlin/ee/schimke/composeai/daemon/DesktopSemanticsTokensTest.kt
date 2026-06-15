@@ -86,6 +86,20 @@ class DesktopSemanticsTokensTest {
   }
 
   @Test
+  fun pixel_corner_radius_is_not_reported_as_dp() {
+    // `RoundedCornerShape(Float)` is a pixel corner (PxCornerSize); it can't be expressed as a
+    // fixed dp radius, so cornerRadius must stay null rather than mislabel pixels as dp (#1901).
+    val root = buildTree {
+      Box(Modifier.testTag("px").background(Color(0xFF006A60), RoundedCornerShape(12f)))
+    }
+
+    val tokens = root.find("px")?.tokens
+    assertNotNull("background colour should still resolve", tokens)
+    assertEquals("#FF006A60", tokens!!.backgroundColor)
+    assertNull("pixel corner radius must not be emitted as dp", tokens.cornerRadius)
+  }
+
+  @Test
   fun node_without_container_tokens_emits_null() {
     // Plain text carries text-layout fields (layoutForegroundColor etc.) but no container tokens.
     val root = buildTree { Text("just text", modifier = Modifier.testTag("label")) }
