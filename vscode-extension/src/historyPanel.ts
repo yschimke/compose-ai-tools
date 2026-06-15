@@ -345,6 +345,10 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
                 rightSemantics: rightId
                     ? readSidecarSemantics(scope, rightId)
                     : null,
+                // Likewise forward each entry's captured compose/theme tokens for the theme
+                // data-diff section (#1872), read from the sidecar for the same reason.
+                leftTheme: readSidecarTheme(scope, id),
+                rightTheme: rightId ? readSidecarTheme(scope, rightId) : null,
             });
         } catch (err) {
             this.view.webview.postMessage({
@@ -659,6 +663,22 @@ function readSidecarSemantics(scope: HistoryScope, id: string): unknown {
         return (
             (result?.entry as { semantics?: unknown } | undefined)?.semantics ??
             null
+        );
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Reads an entry's raw `compose/theme` resolved tokens straight from its on-disk sidecar (#1872),
+ * for the theme data-diff. Same rationale as [readSidecarSemantics]: the sidecar carries the full
+ * payload the daemon's `history/read` wire shape strips. Best-effort → null on any failure.
+ */
+function readSidecarTheme(scope: HistoryScope, id: string): unknown {
+    try {
+        const result = new HistoryReader(historyDirFor(scope)).read(id);
+        return (
+            (result?.entry as { theme?: unknown } | undefined)?.theme ?? null
         );
     } catch {
         return null;

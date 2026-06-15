@@ -340,6 +340,8 @@ export function setupHistoryBehavior(): void {
                         msg.rightImage,
                         msg.leftSemantics,
                         msg.rightSemantics,
+                        msg.leftTheme,
+                        msg.rightTheme,
                     );
                 break;
             }

@@ -15,6 +15,7 @@
 // preview panel's diff overlay reaches for the same algorithm.
 
 import { computeSemanticsDiffData } from "../preview/historyDiffSemanticsPresenter";
+import { computeThemeDiffData } from "../preview/historyDiffThemePresenter";
 import { buildDiffModeBar, type DiffMode } from "../shared/diffModeBar";
 import {
     applyDiffStats,
@@ -22,6 +23,11 @@ import {
     type DiffStats,
 } from "../shared/pixelDiff";
 import { diffSemantics, type SemanticsPayload } from "../shared/semanticsDiff";
+import {
+    diffTheme,
+    isThemePayload,
+    type ThemeCategory,
+} from "../shared/themeDiff";
 import type { HistoryDiffSummary } from "../shared/types";
 import type { VsCodeApi } from "../shared/vscode";
 import { cssEscape } from "./historyData";
@@ -65,6 +71,8 @@ export function fillDiff(
     config: HistoryDiffViewConfig,
     leftSemantics?: unknown,
     rightSemantics?: unknown,
+    leftTheme?: unknown,
+    rightTheme?: unknown,
 ): void {
     const expansion = config.timelineEl.querySelector<HTMLElement>(
         '.expanded[data-id="' +
@@ -111,6 +119,7 @@ export function fillDiff(
         applyDiffStats(stats, s);
     });
     appendSemanticsDiffSection(expansion, leftSemantics, rightSemantics);
+    appendThemeDiffSection(expansion, leftTheme, rightTheme);
 }
 
 /**
@@ -188,6 +197,72 @@ function isSemanticsPayload(value: unknown): value is SemanticsPayload {
         typeof (value as { root: unknown }).root === "object" &&
         (value as { root: unknown }).root !== null
     );
+}
+
+const THEME_CATEGORY_LABEL: Record<ThemeCategory, string> = {
+    color: "color",
+    typography: "type",
+    shape: "shape",
+};
+
+/**
+ * Appends the theme data-diff (#1872) below the pixel diff (and the semantics section). Both
+ * entries' captured `compose/theme` resolved tokens are diffed client-side via [diffTheme]; the
+ * section is omitted entirely when either payload is missing (a render that didn't capture theme) so
+ * the pixel-only case is unchanged. A sibling of the pixel `body`, so the mode switches leave it
+ * intact.
+ */
+function appendThemeDiffSection(
+    expansion: HTMLElement,
+    leftTheme: unknown,
+    rightTheme: unknown,
+): void {
+    if (!isThemePayload(leftTheme) || !isThemePayload(rightTheme)) {
+        return;
+    }
+    let data: ReturnType<typeof computeThemeDiffData>;
+    try {
+        // base = older "Previous" (right), head = "This entry" (left): `added` reads as tokens newly
+        // present and `changed` as previous → current, matching the semantics direction.
+        data = computeThemeDiffData(diffTheme(rightTheme, leftTheme));
+    } catch {
+        return;
+    }
+    const section = document.createElement("div");
+    section.className = "diff-theme";
+    const head = document.createElement("div");
+    head.className = "diff-theme-header";
+    head.textContent = data.empty
+        ? "Theme · no changes"
+        : `Theme · ${data.addedCount} added · ${data.removedCount} removed · ${data.changedCount} changed`;
+    section.appendChild(head);
+    if (!data.empty) {
+        const list = document.createElement("ul");
+        list.className = "diff-theme-list";
+        for (const row of data.rows) {
+            const li = document.createElement("li");
+            li.className = `diff-theme-row diff-theme-${row.kind}`;
+            const sigil =
+                row.kind === "added" ? "+" : row.kind === "removed" ? "−" : "~";
+            const label = document.createElement("span");
+            label.className = "diff-theme-label";
+            const badge = THEME_CATEGORY_LABEL[row.category];
+            label.textContent =
+                row.kind === "changed"
+                    ? `${sigil} [${badge}] ${row.key}`
+                    : `${sigil} [${badge}] ${row.key} = ${row.value ?? ""}`;
+            li.appendChild(label);
+            if (row.kind === "changed") {
+                const change = document.createElement("div");
+                change.className = "diff-theme-change";
+                change.textContent = `${row.from ?? "∅"} → ${row.to ?? "∅"}`;
+                li.appendChild(change);
+            }
+            list.appendChild(li);
+        }
+        section.appendChild(list);
+    }
+    expansion.appendChild(section);
 }
 
 function renderHistoryDiffMode(

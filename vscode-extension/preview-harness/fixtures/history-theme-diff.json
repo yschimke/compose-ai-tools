@@ -1,0 +1,115 @@
+{
+  "name": "history-theme-diff",
+  "description": "History panel webview: two entries diffed, with the theme data-diff section rendered below the pixel diff. Exercises changed (color/shape/typography), added (typography token), and removed (color token) across all three token categories.",
+  "app": "history-app",
+  "bundle": "../media/webview/history.js",
+  "dataset": {
+    "earlyFeatures": "true",
+    "minimalMode": "false"
+  },
+  "messages": [
+    {
+      "command": "setEntries",
+      "result": {
+        "entries": [
+          {
+            "id": "20260430-101200-bbbbbbbb",
+            "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
+            "module": ":sample-android",
+            "timestamp": "2026-04-30T10:12:00Z",
+            "pngHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "pngSize": 4218,
+            "pngPath": "20260430-101200-bbbbbbbb.png",
+            "producer": "daemon",
+            "trigger": "fileChanged",
+            "source": {
+              "kind": "fs",
+              "id": "fs:/workspace/.compose-preview-history"
+            },
+            "git": {
+              "branch": "feature/onboarding",
+              "shortCommit": "a1b2c3d",
+              "dirty": false
+            }
+          },
+          {
+            "id": "20260430-101000-aaaaaaaa",
+            "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
+            "module": ":sample-android",
+            "timestamp": "2026-04-30T10:10:00Z",
+            "pngHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "pngSize": 4218,
+            "pngPath": "20260430-101000-aaaaaaaa.png",
+            "producer": "daemon",
+            "trigger": "renderNow",
+            "source": {
+              "kind": "fs",
+              "id": "fs:/workspace/.compose-preview-history"
+            },
+            "git": {
+              "branch": "feature/onboarding",
+              "shortCommit": "a1b2c3d",
+              "dirty": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "command": "diffReady",
+      "id": "20260430-101200-bbbbbbbb",
+      "against": "previous",
+      "leftLabel": "This entry · 10:12",
+      "leftImage": "iVBORw0KGgoAAAANSUhEUgAAAWgAAAJYCAIAAADAFeuyAAAH9UlEQVR4nO3UQQ2DUBRFwa+gilDSbW1VAFIQURuwYIWGs+GHdG5GwEtecsbyXgGSMf0C4HGEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8jGfpwAiXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAA2bRwvD5fbjDrvz+7ZcKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5f1dOIDnEg4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gG5uZWZxwmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFneBUZcMccpTkvCAAAAAElFTkSuQmCC",
+      "rightLabel": "Previous · 10:10",
+      "rightImage": "iVBORw0KGgoAAAANSUhEUgAAAWgAAAJYCAIAAADAFeuyAAAH9UlEQVR4nO3UQQ2DUBRFwa+gilDSbW1VAFIQURuwYIWGs+GHdG5GwEtecsbyXgGSMf0C4HGEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8jGfpwAiXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAA2bRwvD5fbjDrvz+7ZcKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5f1dOIDnEg4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gG5uZWZxwmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFneBUZcMccpTkvCAAAAAElFTkSuQmCC",
+      "leftTheme": {
+        "resolvedTokens": {
+          "colorScheme": {
+            "primary": "#4F378B",
+            "secondary": "#625B71"
+          },
+          "typography": {
+            "bodyLarge": {
+              "fontFamily": "Roboto",
+              "fontSize": 16,
+              "fontSizeUnit": "sp",
+              "fontWeight": "500"
+            },
+            "labelSmall": {
+              "fontFamily": "Roboto",
+              "fontSize": 11,
+              "fontSizeUnit": "sp",
+              "fontWeight": "500"
+            }
+          },
+          "shapes": {
+            "small": "RoundedCorner(8.0.dp)",
+            "medium": "RoundedCorner(12.0.dp)"
+          }
+        }
+      },
+      "rightTheme": {
+        "resolvedTokens": {
+          "colorScheme": {
+            "primary": "#6750A4",
+            "secondary": "#625B71",
+            "tertiary": "#7D5260"
+          },
+          "typography": {
+            "bodyLarge": {
+              "fontFamily": "Roboto",
+              "fontSize": 16,
+              "fontSizeUnit": "sp",
+              "fontWeight": "400"
+            }
+          },
+          "shapes": {
+            "small": "RoundedCorner(4.0.dp)",
+            "medium": "RoundedCorner(12.0.dp)"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1768,6 +1768,45 @@ preview-app {
     color: var(--vscode-charts-yellow, #cca700);
 }
 
+/* Theme data-diff (#1872) — mirrors the semantics section's add/remove/change
+ * colour coding; `.diff-theme-change` shows the previous → current value. */
+.diff-theme {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+    font-size: calc(var(--vscode-font-size) - 1px);
+}
+.diff-theme-header {
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+.diff-theme-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.diff-theme-row {
+    padding: 1px 0;
+}
+.diff-theme-label {
+    font-family: var(--vscode-editor-font-family, monospace);
+}
+.diff-theme-change {
+    margin: 2px 0 4px 16px;
+    color: var(--text-secondary);
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-variant-numeric: tabular-nums;
+}
+.diff-theme-added .diff-theme-label {
+    color: var(--vscode-charts-green, #89d185);
+}
+.diff-theme-removed .diff-theme-label {
+    color: var(--vscode-charts-red, #f14c4c);
+}
+.diff-theme-changed .diff-theme-label {
+    color: var(--vscode-charts-yellow, #cca700);
+}
+
 @keyframes fadeIn {
     from {
         opacity: 0;
