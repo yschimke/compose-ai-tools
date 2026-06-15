@@ -153,9 +153,18 @@ alongside `composeai.daemon.gitRefHistory=<ref>`. The skip-if-no-diff predicate 
 disagree on what counts as a duplicate. The reader also falls back to the legacy read-only
 format (`_index.jsonl` + `<entryId>.{png,json}`) for refs that predate this layout.
 
+**`WRITE_PUSH`** (#1880) extends `WRITE_LOCAL`: after the local commit it `git push`es
+`<ref>:<ref>` to a remote (default `origin`; enable with
+`composeai.daemon.gitRefHistorySyncMode=WRITE_PUSH`). A push race — the remote ref
+advanced (non-fast-forward) — is resolved with fetch → fast-forward the local ref to the
+remote tip → replay this render on top (re-running `WRITE_LOCAL`, which dedups to a no-op
+if the remote already carries it) → retry, with backoff. Because each preview owns disjoint
+paths, a competing writer's renders survive the replay rather than being clobbered.
+Credentials are the host's concern; when the push (or its fetch retry) can't reach the
+remote it degrades to a one-time warning — the local commit always stands.
+
 Still to land (follow-ups):
 
-- **`WRITE_PUSH`** — also `git push` the ref, with fetch–rebase–retry on a push
-  race (needs a remote + credentials).
 - **Burst debounce** — batch a render burst into one commit instead of one
   commit per render.
+- **Configurable push remote** — `WRITE_PUSH` currently pushes to `origin`.

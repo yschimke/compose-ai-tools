@@ -41,8 +41,9 @@ import kotlinx.serialization.json.JsonElement
  * **Sync modes** ([SyncMode]):
  * - [SyncMode.READ_ONLY] (default) — read the ref, never write. Used to mirror a branch populated
  *   elsewhere (a remote fetch, CI).
- * - [SyncMode.WRITE_LOCAL] — also commit each changed render onto the ref via git plumbing. No
- *   push. `WRITE_PUSH` (also pushing the ref) is a follow-up (issue #1870).
+ * - [SyncMode.WRITE_LOCAL] — also commit each changed render onto the local ref via git plumbing.
+ * - [SyncMode.WRITE_PUSH] — like `WRITE_LOCAL`, then `git push` the ref to [remote], with
+ *   fetch–rebase–retry on a push race (issue #1880).
  *
  * **Working-tree safety.** Writes go through a throwaway temporary index plus `hash-object` /
  * `read-tree` / `update-index` / `write-tree` / `commit-tree` / `update-ref` — the daemon runs
@@ -52,12 +53,13 @@ import kotlinx.serialization.json.JsonElement
  * **Skip-if-no-diff.** When the freshly built tree is byte-identical to the ref's current tree, no
  * commit is made and [write] returns [WriteResult.SKIPPED_DUPLICATE]. Dedup is free.
  *
- * **Read.** Returns the *current* state of the branch (one entry per preview, read from each
- * `<dir>/entry.json`). The full commit-walk timeline read is a follow-up (issue #1868).
+ * **Read.** Reconstructs the per-preview timeline (#1868) by walking the ref's commits, one entry
+ * per changed render addressed by `<shortCommit>:<previewId>`; falls back to the legacy
+ * `_index.jsonl` tip read for refs that predate the git-as-the-log layout.
  *
  * @param repoRoot the working tree (or bare repo) the ref lives in.
  * @param ref the full ref name (e.g. `refs/heads/preview/main`).
- * @param syncMode read-only vs write-local; see [SyncMode].
+ * @param syncMode read-only / write-local / write-push; see [SyncMode].
  * @param displayId stable identifier for `entry.source.id` rewriting; defaults to `git:$ref`.
  * @param cacheDir where extracted PNG blobs and the throwaway write-index land.
  * @param gitExecutable git binary; defaults to `git` on PATH.
@@ -72,30 +74,90 @@ class GitRefHistorySource(
     repoRoot.resolve(".compose-preview-history").resolve(".git-ref-cache"),
   private val gitExecutable: String = "git",
   private val warnEmitter: (String) -> Unit = { System.err.println(it) },
+  /** Git remote pushed to under [SyncMode.WRITE_PUSH]. Defaults to `origin`. */
+  private val remote: String = DEFAULT_REMOTE,
 ) : HistorySource {
 
   override val id: String = displayId
   override val kind: String = "git"
 
-  override fun supportsWrites(): Boolean = syncMode == SyncMode.WRITE_LOCAL
+  override fun supportsWrites(): Boolean = syncMode != SyncMode.READ_ONLY
 
   /**
-   * Materialises this render into the reporting ref's tree and commits it (when the tree changed).
-   * Never throws: any git failure degrades to [WriteResult.SKIPPED_DUPLICATE] with a logged warning
-   * so history recording can't break the render (history is observation, not state).
+   * Materialises this render into the reporting ref's tree and commits it (when the tree changed),
+   * and under [SyncMode.WRITE_PUSH] also pushes the ref to [remote] (best-effort, with
+   * fetch–rebase–retry on a push race). Never throws: any git failure degrades to
+   * [WriteResult.SKIPPED_DUPLICATE] / a one-time warning so history recording can't break the
+   * render (history is observation, not state).
    */
   override fun write(entry: HistoryEntry, png: ByteArray): WriteResult {
-    if (syncMode != SyncMode.WRITE_LOCAL) {
+    if (!supportsWrites()) {
       error("GitRefHistorySource(ref=$ref) is $syncMode; writes go to a writable source.")
     }
     return try {
-      writeLocal(entry, png)
+      val result = writeLocal(entry, png)
+      if (syncMode == SyncMode.WRITE_PUSH && result == WriteResult.WRITTEN) {
+        pushWithRetry(entry, png)
+      }
+      result
     } catch (t: Throwable) {
       System.err.println(
         "compose-ai-daemon: GitRefHistorySource.write($ref, ${entry.id}) failed " +
           "(${t.javaClass.simpleName}: ${t.message}); skipping the reporting-branch commit"
       )
       WriteResult.SKIPPED_DUPLICATE
+    }
+  }
+
+  private val pushFailedWarned = AtomicBoolean(false)
+
+  /**
+   * Publishes the local commit by pushing `ref:ref` to [remote]. On a push race (the remote ref
+   * advanced — non-fast-forward) the disjoint-paths layout means our render just needs replaying on
+   * the new tip: fetch it, fast-forward the local ref to it, and re-run [writeLocal] to rebuild our
+   * render on top, then retry. An identical render dedups to `SKIPPED_DUPLICATE` on replay (the
+   * remote already has our content) and we stop. A non-race failure (no remote / bad credentials)
+   * can't fetch either, so it falls through to a one-time warning — the local commit still stands.
+   */
+  private fun pushWithRetry(entry: HistoryEntry, png: ByteArray) {
+    var attempt = 1
+    while (attempt <= MAX_PUSH_ATTEMPTS) {
+      if (plumbingOk(emptyMap(), "push", remote, "$ref:$ref")) {
+        return
+      }
+      // Push rejected — fetch the remote tip; null ⇒ no reachable remote, give up (warn).
+      val remoteTip = fetchRemoteTip() ?: break
+      if (!plumbingOk(emptyMap(), "update-ref", ref, remoteTip)) break
+      cachedEntries.set(null) // local ref moved; invalidate the read cache.
+      // Replay our render on the fetched tip. SKIPPED ⇒ the remote already carries it → done.
+      if (writeLocal(entry, png) == WriteResult.SKIPPED_DUPLICATE) return
+      backoff(attempt)
+      attempt++
+    }
+    warnOncePush()
+  }
+
+  /** Fetches [ref] from [remote] into FETCH_HEAD and resolves its tip; null on any failure. */
+  private fun fetchRemoteTip(): String? {
+    if (!plumbingOk(emptyMap(), "fetch", remote, ref)) return null
+    return runGit("rev-parse", "FETCH_HEAD")?.takeIf { it.isNotEmpty() }
+  }
+
+  private fun backoff(attempt: Int) {
+    try {
+      Thread.sleep((50L shl (attempt - 1)).coerceAtMost(2_000L))
+    } catch (_: InterruptedException) {
+      Thread.currentThread().interrupt()
+    }
+  }
+
+  private fun warnOncePush() {
+    if (pushFailedWarned.compareAndSet(false, true)) {
+      warnEmitter(
+        "GitRefHistorySource: could not push '$ref' to remote '$remote'.\n" +
+          "  History is still recorded locally on the ref; only the push to the remote failed.\n" +
+          "  Hint: ensure the remote exists and credentials (credential helper / SSH key) are set up."
+      )
     }
   }
 
@@ -415,16 +477,18 @@ class GitRefHistorySource(
    * render.
    */
   private fun walkTimeline(refCommit: String): List<HistoryEntry> {
-    // `%x00%H` prefixes each commit's section with NUL+sha; `--name-only` then lists the files it
-    // changed (one per line). Walking newest-first and capped keeps the read cost bounded.
+    // `@@@%H` prefixes each commit's section with a sentinel + sha (sanitised preview dirs can't
+    // start with `@`, so it never collides with a `--name-only` path line). Walking newest-first
+    // and
+    // capped keeps the read cost bounded.
     val out =
-      runGit("log", "--format=%x00%H", "--name-only", "--max-count=$MAX_TIMELINE_DEPTH", refCommit)
+      runGit("log", "--format=@@@%H", "--name-only", "--max-count=$MAX_TIMELINE_DEPTH", refCommit)
         ?: return emptyList()
     val entries = mutableListOf<HistoryEntry>()
     var commit: String? = null
     for (raw in out.split('\n')) {
-      if (raw.startsWith(' ')) {
-        commit = raw.substring(1).trim().ifEmpty { null }
+      if (raw.startsWith("@@@")) {
+        commit = raw.substring(3).trim().ifEmpty { null }
         continue
       }
       val path = raw.trim()
@@ -598,10 +662,17 @@ class GitRefHistorySource(
   private fun emptyPage(): HistoryListPage =
     HistoryListPage(entries = emptyList(), nextCursor = null, totalCount = 0)
 
-  /** Read-only vs write-local for a reporting ref. `WRITE_PUSH` is a follow-up (issue #1870). */
+  /** How this source treats the reporting ref. */
   enum class SyncMode {
+    /** Read the ref, never write. */
     READ_ONLY,
+    /** Commit each changed render onto the local ref via git plumbing; no push. */
     WRITE_LOCAL,
+    /**
+     * Like [WRITE_LOCAL], then `git push` the ref to a remote, with fetch–rebase–retry on a push
+     * race. Credentials are the host's concern; push failure degrades to a one-time warning.
+     */
+    WRITE_PUSH,
   }
 
   companion object {
@@ -661,8 +732,15 @@ class GitRefHistorySource(
     fun parseSyncModeSysprop(propValue: String? = System.getProperty(SYNC_MODE_PROP)): SyncMode =
       when (propValue?.trim()?.uppercase()) {
         "WRITE_LOCAL" -> SyncMode.WRITE_LOCAL
+        "WRITE_PUSH" -> SyncMode.WRITE_PUSH
         else -> SyncMode.READ_ONLY
       }
+
+    /** Default git remote for `WRITE_PUSH`. Remote-name config is a follow-up. */
+    const val DEFAULT_REMOTE: String = "origin"
+
+    /** Max push attempts before giving up (one initial + retries after fetch–rebase on a race). */
+    const val MAX_PUSH_ATTEMPTS: Int = 5
 
     fun defaultCacheDir(historyDir: Path): Path = historyDir.resolve(".git-ref-cache")
   }
