@@ -46,6 +46,14 @@ describe("semanticsDiff", () => {
         assert.ok(semanticsDeltaIsEmpty(delta));
     });
 
+    it("treats a lean-encoded delta with omitted arrays as empty (no throw)", () => {
+        // A daemon `history/diff mode=semantics` result with an empty diff omits the arrays.
+        const lean = {
+            schema: "compose-semantics-diff/v1",
+        } as unknown as Parameters<typeof semanticsDeltaIsEmpty>[0];
+        assert.strictEqual(semanticsDeltaIsEmpty(lean), true);
+    });
+
     it("detects added and removed nodes (matched by ref, not content)", () => {
         const base = {
             root: node({

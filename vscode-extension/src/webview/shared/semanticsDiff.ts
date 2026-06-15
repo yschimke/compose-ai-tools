@@ -217,9 +217,11 @@ export function diffSemanticsNodes(
 }
 
 export function semanticsDeltaIsEmpty(delta: SemanticsDelta): boolean {
+    // Tolerate a lean-encoded delta (e.g. from the daemon's `history/diff mode=semantics`, whose
+    // encoder omits empty arrays) — absent means empty, not a throw.
     return (
-        delta.added.length === 0 &&
-        delta.removed.length === 0 &&
-        delta.changed.length === 0
+        (delta.added?.length ?? 0) === 0 &&
+        (delta.removed?.length ?? 0) === 0 &&
+        (delta.changed?.length ?? 0) === 0
     );
 }
