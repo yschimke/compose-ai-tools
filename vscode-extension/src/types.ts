@@ -1302,6 +1302,10 @@ export type HistoryToWebview =
           // client-side for the theme data-diff section (#1872). null/omitted when not captured.
           leftTheme?: unknown;
           rightTheme?: unknown;
+          // Raw `a11y/hierarchy` payloads ({ nodes }) for each entry, when captured. Diffed
+          // client-side for the a11y data-diff section (#1872). null/omitted when not captured.
+          leftA11y?: unknown;
+          rightA11y?: unknown;
       }
     | {
           command: "diffPairError";
