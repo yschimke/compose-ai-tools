@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.15.9](https://github.com/yschimke/compose-ai-tools/compare/v0.15.8...v0.15.9) (2026-06-15)
+
+
+### Features
+
+* **daemon:** commit-walk timeline read for the reporting branch ([#1913](https://github.com/yschimke/compose-ai-tools/issues/1913)) ([098f0fe](https://github.com/yschimke/compose-ai-tools/commit/098f0feb09850a897a95e6215e9038e8e16fef98))
+* **daemon:** extend compose/semantics token capture (gap, border, non-dp radii) ([#1910](https://github.com/yschimke/compose-ai-tools/issues/1910)) ([bb44285](https://github.com/yschimke/compose-ai-tools/commit/bb442858838299340798ed442cb0d05a823a99b8))
+* **daemon:** per-call ref param for history list/read/diff ([#1909](https://github.com/yschimke/compose-ai-tools/issues/1909)) ([000b5c9](https://github.com/yschimke/compose-ai-tools/commit/000b5c90601e738bd83f2cb834a5b5366c7d9038))
+* **vscode:** show a11y data-diff below the pixel diff in history panel ([#1914](https://github.com/yschimke/compose-ai-tools/issues/1914)) ([00dc550](https://github.com/yschimke/compose-ai-tools/commit/00dc5500c8eba4b3bf0a4c2be0711cb3853a8f16))
+* **vscode:** show semantics data-diff below the pixel diff in history panel ([#1904](https://github.com/yschimke/compose-ai-tools/issues/1904)) ([e684701](https://github.com/yschimke/compose-ai-tools/commit/e6847012f9f4ecd9fd1f0261c7c419964b54703e))
+* **vscode:** show theme data-diff below the pixel diff in history panel ([#1912](https://github.com/yschimke/compose-ai-tools/issues/1912)) ([6076e07](https://github.com/yschimke/compose-ai-tools/commit/6076e07861fad5a32f7a72c5c12cb633e899a693))
+* **vscode:** view render history from a reporting branch in the History panel ([#1911](https://github.com/yschimke/compose-ai-tools/issues/1911)) ([c3ff762](https://github.com/yschimke/compose-ai-tools/commit/c3ff7628d3e0d0900b4a4b187ea61f4a9d7264d4))
+
+
+### Bug Fixes
+
+* **vscode:** correct history semantics-diff direction; add harness fixture ([#1907](https://github.com/yschimke/compose-ai-tools/issues/1907)) ([0e57c59](https://github.com/yschimke/compose-ai-tools/commit/0e57c597c05d51b3982ca16448ff60d2794267a1))
+
 ## [0.15.8](https://github.com/yschimke/compose-ai-tools/compare/v0.15.7...v0.15.8) (2026-06-15)
 
 
