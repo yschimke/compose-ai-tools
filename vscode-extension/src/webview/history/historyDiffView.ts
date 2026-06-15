@@ -133,8 +133,11 @@ function appendSemanticsDiffSection(
     }
     let data: ReturnType<typeof computeSemanticsDiffData>;
     try {
+        // Direction: base = the older "Previous" entry (right), head = "This entry" (left), so
+        // `added` reads as nodes newly present in this entry and `removed` as nodes gone from it —
+        // matching how the user reads "what changed in this entry vs the previous".
         data = computeSemanticsDiffData(
-            diffSemantics(leftSemantics, rightSemantics),
+            diffSemantics(rightSemantics, leftSemantics),
         );
     } catch {
         return;
