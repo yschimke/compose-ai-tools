@@ -180,8 +180,13 @@ result: {
 ```
 
 `mode = "metadata"` (default) is hash-compare + sidecar diff.
-`mode = "pixel"` (H5, not yet implemented) writes a marked-diff PNG to
-`<historyDir>/<previewId>/.diffs/`.
+`mode = "pixel"` (H5, issue #1873) decodes both archived frames and returns
+`diffPx` (count of RGB-differing pixels), `ssim` (mean structural-similarity
+index over 8×8 luma windows, `[-1, 1]`, `1.0` ⇒ identical), and
+`diffPngPath` — a marked-diff PNG (the `to` frame at 50% brightness with
+differing pixels painted red) written to `<historyDir>/<previewId>/.diffs/`.
+Differently-sized frames are reported, not errored: `diffPx = max(area)`,
+`ssim = 0.0`, `diffPngPath` omitted (no meaningful overlay).
 `mode = "semantics"` (issue #1785) diffs the two entries' captured
 `compose/semantics` trees and returns a typed `SemanticsDelta`
 (`compose-semantics-diff/v1`: added / removed / changed nodes, matched by
@@ -193,8 +198,9 @@ below), so the diff is deterministic and reads no PNGs. The same differ
 `diff_semantics` tool, so all three surfaces agree.
 
 Mismatched previews → `HistoryDiffMismatch (-32011)`. Missing entry →
-`HistoryEntryNotFound (-32010)`. `mode = "pixel"` →
-`ERR_HISTORY_PIXEL_NOT_IMPLEMENTED (-32012)`. `mode = "semantics"` where one
+`HistoryEntryNotFound (-32010)`. (`-32012` `ERR_HISTORY_PIXEL_NOT_IMPLEMENTED`
+is retired now that H5 has landed; pixel mode no longer errors.)
+`mode = "semantics"` where one
 of the two entries has no captured semantics snapshot →
 `ERR_HISTORY_SEMANTICS_NOT_CAPTURED (-32013)` (distinct from "entry not
 found": the entry exists, but the render that produced it didn't compute

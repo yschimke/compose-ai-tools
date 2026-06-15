@@ -52,7 +52,7 @@ Standard JSON-RPC codes plus daemon-specific extensions in the reserved `-32000.
 | -32005   | RenderFailed          | Render itself failed; details in `data`. |
 | -32010   | HistoryEntryNotFound  | `history/read` or `history/diff` referenced a missing entry id. |
 | -32011   | HistoryDiffMismatch   | `history/diff` was given two entries from different previews. |
-| -32012   | HistoryPixelNotImplemented | `history/diff` was called with `mode = "pixel"`; reserved for phase H5. |
+| -32012   | HistoryPixelNotImplemented | _Retired_ — `mode = "pixel"` is implemented (H5, issue #1873) and no longer errors. Code kept reserved. |
 | -32013   | HistorySemanticsNotCaptured | `history/diff` was called with `mode = "semantics"` but one of the two entries has no captured `compose/semantics` snapshot (issue #1785). |
 | -32020   | DataProductUnknown    | `data/*` referenced a kind not advertised by the daemon. See [DATA-PRODUCTS.md](DATA-PRODUCTS.md). |
 | -32021   | DataProductNotAvailable | `data/fetch` against a preview that has never rendered. |
@@ -452,10 +452,11 @@ Errors:
 `mode = "metadata"` (default) is cheap: hash compare + sidecar return. The pixel-mode fields
 (`diffPx`, `ssim`, `diffPngPath`) stay `null` in METADATA mode by design.
 
-`mode = "pixel"` is **reserved for phase H5** and not implemented in H3 — calls with
-`mode = "pixel"` return `-32012` (`HistoryPixelNotImplemented`) so callers can distinguish
-"asked for pixel and the daemon isn't ready" from "asked for metadata and got null pixel fields
-by design."
+`mode = "pixel"` (H5, issue #1873) decodes both archived frames and returns `diffPx` (count of
+RGB-differing pixels), `ssim` (mean structural-similarity index over 8×8 luma windows, `[-1, 1]`,
+`1.0` ⇒ identical), and `diffPngPath` — a marked-diff PNG (the `to` frame at 50% brightness with
+differing pixels painted red) written under `<historyDir>/<previewId>/.diffs/`. Differently-sized
+frames are reported, not errored: `diffPx = max(area)`, `ssim = 0.0`, `diffPngPath` omitted.
 
 `mode = "semantics"` (issue #1785) diffs the two entries' captured `compose/semantics` trees and
 returns a typed `semanticsDelta` (`compose-semantics-diff/v1`: added / removed / changed nodes,
@@ -472,12 +473,13 @@ the load-bearing case for "did my edits change how this preview renders compared
 
 Errors:
 - `HistoryEntryNotFound` (-32010) — either `from` or `to` does not match any entry.
-- `HistoryDiffMismatch` (-32011) — `from` and `to` belong to different previews; pixel diff would
+- `HistoryDiffMismatch` (-32011) — `from` and `to` belong to different previews; a diff would
   be meaningless.
-- `HistoryPixelNotImplemented` (-32012) — `mode = "pixel"` was requested but the pixel pass is
-  reserved for phase H5.
 - `HistorySemanticsNotCaptured` (-32013) — `mode = "semantics"` was requested but one of the two
   entries has no captured `compose/semantics` snapshot.
+
+(`-32012` `HistoryPixelNotImplemented` is retired now that H5 has landed — pixel mode no longer
+errors. The code stays reserved so it isn't recycled.)
 
 ### `data/fetch`, `data/subscribe`, `data/unsubscribe` (phase D1)
 

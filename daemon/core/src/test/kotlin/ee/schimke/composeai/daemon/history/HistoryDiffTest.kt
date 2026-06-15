@@ -5,6 +5,9 @@ import ee.schimke.composeai.daemon.JsonRpcServer
 import ee.schimke.composeai.daemon.RenderHost
 import ee.schimke.composeai.daemon.RenderRequest
 import ee.schimke.composeai.daemon.RenderResult
+import java.awt.image.BufferedImage
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.PipedInputStream
 import java.io.PipedOutputStream
 import java.nio.file.Files
@@ -13,13 +16,16 @@ import java.time.Instant
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import javax.imageio.ImageIO
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.double
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -37,7 +43,7 @@ import org.junit.Test
  * - different hash, same previewId → `pngHashChanged = true`
  * - different previewIds → `HistoryDiffMismatch (-32011)`
  * - missing `from` / `to` → `HistoryEntryNotFound (-32010)`
- * - `mode = pixel` → `-32012` reserved-for-H5 error
+ * - `mode = pixel` (H5, issue #1873) → `diffPx` + `ssim` + a written marked-diff PNG
  */
 class HistoryDiffTest {
 
@@ -190,19 +196,121 @@ class HistoryDiffTest {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // PIXEL mode (H5, issue #1873) — decode both archived frames, report diffPx + ssim, write a
+  // marked-diff PNG. Entries carry real PNG bytes (the pixel path decodes them).
+  // -------------------------------------------------------------------------
+
   @Test(timeout = 30_000)
-  fun pixel_mode_not_yet_implemented() {
+  fun pixel_mode_identical_frames_report_zero_diff() {
     runWith { _, manager, send, receive ->
+      val png = solidPng(8, 8, 0x3366CC)
+      val a = manager.recordRender("preview-A", png, trigger = "renderNow", renderTookMs = 1)!!
+      // Self-diff: identical bytes ⇒ zero differing pixels, perfect structural similarity.
+      val resp = diffRoundTrip(send, receive, from = a.id, to = a.id, mode = "pixel")
+      val result = resp["result"]!!.jsonObject
+      assertEquals(0L, result["diffPx"]!!.jsonPrimitive.long)
+      assertEquals(1.0, result["ssim"]!!.jsonPrimitive.double, 1e-9)
+      val diffPngPath = result["diffPngPath"]!!.jsonPrimitive.content
+      assertTrue("diff PNG lands under .diffs/", diffPngPath.contains(".diffs"))
+      assertTrue("diff PNG was written", Files.exists(Path.of(diffPngPath)))
+    }
+  }
+
+  @Test(timeout = 30_000)
+  fun pixel_mode_counts_exact_differing_pixels_and_marks_them() {
+    runWith { _, manager, send, receive ->
+      val ts1 = Instant.parse("2026-04-30T10:12:34Z")
+      val ts2 = Instant.parse("2026-04-30T10:12:35Z")
+      // 8×8 all-black vs. top 4 rows white: exactly 32 of 64 pixels differ.
+      val black = solidPng(8, 8, 0x000000)
+      val topHalfWhite = pngOf(8, 8) { x, y -> if (y < 4) 0xFFFFFF else 0x000000 }
       val a =
         manager.recordRender(
           "preview-A",
-          "a-bytes".toByteArray(),
+          black,
           trigger = "renderNow",
           renderTookMs = 1,
+          timestamp = ts1,
         )!!
-      val resp = diffRoundTrip(send, receive, from = a.id, to = a.id, mode = "pixel")
-      val errCode = resp["error"]!!.jsonObject["code"]!!.jsonPrimitive.intOrNull
-      assertEquals(JsonRpcServer.ERR_HISTORY_PIXEL_NOT_IMPLEMENTED, errCode)
+      val b =
+        manager.recordRender(
+          "preview-A",
+          topHalfWhite,
+          trigger = "renderNow",
+          renderTookMs = 1,
+          timestamp = ts2,
+        )!!
+
+      val resp = diffRoundTrip(send, receive, from = a.id, to = b.id, mode = "pixel")
+      val result = resp["result"]!!.jsonObject
+      assertEquals("32 of 64 pixels differ", 32L, result["diffPx"]!!.jsonPrimitive.long)
+      // Structure changed substantially ⇒ ssim well below 1.0.
+      assertTrue("ssim < 1.0 when structure changes", result["ssim"]!!.jsonPrimitive.double < 0.99)
+      assertEquals(true, result["pngHashChanged"]!!.jsonPrimitive.content.toBooleanStrict())
+
+      // The marked-diff PNG paints differing pixels red and darkens matching ones.
+      val diffPngPath = result["diffPngPath"]!!.jsonPrimitive.content
+      val marked = ImageIO.read(ByteArrayInputStream(Files.readAllBytes(Path.of(diffPngPath))))
+      assertEquals(0xFFFF0000.toInt(), marked.getRGB(0, 0)) // a differing (top) pixel → red
+      assertEquals(
+        0xFF000000.toInt(),
+        marked.getRGB(0, 7),
+      ) // a matching (bottom, black) pixel → 50% of black = black
+    }
+  }
+
+  @Test(timeout = 30_000)
+  fun pixel_mode_dimension_mismatch_reports_full_diff_without_overlay() {
+    runWith { _, manager, send, receive ->
+      val ts1 = Instant.parse("2026-04-30T10:12:34Z")
+      val ts2 = Instant.parse("2026-04-30T10:12:35Z")
+      val small = solidPng(4, 4, 0x112233)
+      val large = solidPng(8, 8, 0x112233)
+      val a =
+        manager.recordRender(
+          "preview-A",
+          small,
+          trigger = "renderNow",
+          renderTookMs = 1,
+          timestamp = ts1,
+        )!!
+      val b =
+        manager.recordRender(
+          "preview-A",
+          large,
+          trigger = "renderNow",
+          renderTookMs = 1,
+          timestamp = ts2,
+        )!!
+
+      val resp = diffRoundTrip(send, receive, from = a.id, to = b.id, mode = "pixel")
+      val result = resp["result"]!!.jsonObject
+      assertEquals(
+        "diffPx = max area on dimension mismatch",
+        64L,
+        result["diffPx"]!!.jsonPrimitive.long,
+      )
+      assertEquals(0.0, result["ssim"]!!.jsonPrimitive.double, 1e-9)
+      // No overlay possible for mismatched dimensions.
+      assertTrue(
+        result["diffPngPath"] == null ||
+          result["diffPngPath"] == kotlinx.serialization.json.JsonNull
+      )
+    }
+  }
+
+  /** A solid-colour `width × height` PNG (RGB, opaque) as bytes. */
+  private fun solidPng(width: Int, height: Int, rgb: Int): ByteArray =
+    pngOf(width, height) { _, _ -> rgb }
+
+  /** Builds a `width × height` opaque PNG, sampling [rgbAt] (`0xRRGGBB`) per pixel. */
+  private fun pngOf(width: Int, height: Int, rgbAt: (x: Int, y: Int) -> Int): ByteArray {
+    val img = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
+    for (y in 0 until height) for (x in 0 until width) img.setRGB(x, y, rgbAt(x, y))
+    return ByteArrayOutputStream().use { out ->
+      ImageIO.write(img, "png", out)
+      out.toByteArray()
     }
   }
 
