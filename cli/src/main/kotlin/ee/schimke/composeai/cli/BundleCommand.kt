@@ -174,11 +174,13 @@ private class PackSubcommand(private val args: List<String>) {
             }
             // `--with-semantics` carries the per-preview semantics blob (issue #1843). The
             // semantics tree is produced exclusively by the daemon (the standalone
-            // composePreviewRender task writes no semantics sidecars), so we also start the daemon
-            // in the same Gradle invocation — its launch descriptor is written fresh against the
-            // consumer's current classpath, then a short-lived render session reads the blobs back.
-            // Pointless without a render (the daemon needs something to capture), so skip when
-            // --no-render.
+            // composePreviewRender task writes no semantics sidecars), so we start the daemon and
+            // read the blobs back below. composePreviewDaemonStart runs in its OWN Gradle
+            // invocation (not bundled with render+bundle), AFTER the bundle is already written, so
+            // a
+            // daemon-start failure degrades gracefully instead of aborting the pack —
+            // `--with-semantics` is best-effort (issue #1885). Pointless without a render (the
+            // daemon needs something to capture), so skip when --no-render.
             val packSemantics = withSemantics && !noRender
             if (withSemantics && noRender) {
               System.err.println(
@@ -189,12 +191,15 @@ private class PackSubcommand(private val args: List<String>) {
               buildList {
                   if (!noRender) add(":${target.gradlePath}:composePreviewRender")
                   add(":${target.gradlePath}:composePreviewBundle")
-                  if (packSemantics) add(":${target.gradlePath}:composePreviewDaemonStart")
                 }
                 .toTypedArray()
             val ok = runGradle(gradle, *tasks, arguments = gradleArgsWithForce(gradleArgs))
             if (!ok) {
-              System.err.println("Gradle bundle task failed.")
+              System.err.println(
+                "Gradle bundle task failed." +
+                  if (!verbose) " Re-run with --verbose to surface the underlying Gradle error."
+                  else ""
+              )
               exitProcess(1)
             }
 
@@ -216,8 +221,31 @@ private class PackSubcommand(private val args: List<String>) {
               }
             // Inject semantics (if requested) before the summary so its byte count reflects the
             // enriched bundle; the summary line for semantics is printed after the main summary.
+            // The bundle is already written and valid at this point, so everything below is
+            // best-effort: a daemon-start / open / render failure warns and leaves the bundle as-is
+            // (issue #1885), never failing the pack.
             val semanticsLine =
-              if (packSemantics) packSemanticsBlob(target, resolvedOutput, meta) else null
+              if (packSemantics) {
+                // Start the daemon in a SEPARATE Gradle invocation — its failure must NOT abort the
+                // pack. The launch descriptor is regenerated fresh against the consumer's current
+                // classpath, then DaemonSemanticsFetcher reads the blobs back.
+                val daemonStarted =
+                  runGradle(
+                    gradle,
+                    ":${target.gradlePath}:composePreviewDaemonStart",
+                    arguments = gradleArgsWithForce(gradleArgs),
+                  )
+                if (!daemonStarted) {
+                  System.err.println(
+                    "bundle pack: --with-semantics could not start the preview daemon for " +
+                      "${target.gradlePath} (composePreviewDaemonStart failed) — bundle written " +
+                      "without semantics. Re-run with --verbose to surface the underlying Gradle error."
+                  )
+                  null
+                } else {
+                  packSemanticsBlob(target, resolvedOutput, meta)
+                }
+              } else null
 
             printPackSummary(resolvedOutput, meta)
             semanticsLine?.let { println(it) }
