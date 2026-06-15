@@ -287,7 +287,7 @@ class GitRefHistorySource(
 
   override fun list(filter: HistoryFilter): HistoryListPage {
     val refCommit = refHeadCommit() ?: return emptyPage()
-    val entries = listEntries(refCommit).map { rewriteSource(it, refCommit) }
+    val entries = timelineEntries(refCommit)
     val matched = entries.filter { HistoryFilters.matches(it, filter) }
     val totalCount = matched.size
     val slice = HistoryFilters.paginate(matched, filter)
@@ -299,18 +299,54 @@ class GitRefHistorySource(
   }
 
   override fun read(entryId: String, includeBytes: Boolean): HistoryReadResult? {
+    // Commit-walk form `<shortCommit>:<previewId>` (#1868) — resolve straight to the blobs at that
+    // commit, no need to materialise the whole timeline.
+    val sep = entryId.indexOf(':')
+    if (sep > 0) {
+      return readAtCommit(
+        shortCommit = entryId.substring(0, sep),
+        previewId = entryId.substring(sep + 1),
+        includeBytes = includeBytes,
+      )
+    }
+    // Legacy / tip id (no commit prefix) — resolve against the listing (legacy `_index.jsonl`
+    // refs).
     val refCommit = refHeadCommit() ?: return null
-    val match = listEntries(refCommit).firstOrNull { it.id == entryId } ?: return null
-    val full = rewriteSource(match, refCommit)
+    val match = timelineEntries(refCommit).firstOrNull { it.id == entryId } ?: return null
     val dir = PreviewIdSanitiser.sanitise(match.previewId)
-    // New layout stores the PNG at <dir>/render.png; the legacy format at <dir>/<entryId>.png. The
-    // entry's own pngPath carries whichever was written, so resolve relative to it.
+    // Legacy format stores the PNG at <dir>/<entryId>.png; the entry's own pngPath carries it.
     val pngRel = match.pngPath.takeIf { it.isNotBlank() } ?: RENDER_FILENAME
     val pngFile = extractBlobToCache(refCommit, "$dir/$pngRel") ?: return null
     val bytes = if (includeBytes) Files.readAllBytes(pngFile) else null
     return HistoryReadResult(
-      entry = full,
-      previewMetadata = full.previewMetadata,
+      entry = match,
+      previewMetadata = match.previewMetadata,
+      pngPath = pngFile.toAbsolutePath().toString(),
+      pngBytes = bytes,
+    )
+  }
+
+  /** Reads one timeline entry addressed by `<shortCommit>:<previewId>` (#1868). */
+  private fun readAtCommit(
+    shortCommit: String,
+    previewId: String,
+    includeBytes: Boolean,
+  ): HistoryReadResult? {
+    val dir = PreviewIdSanitiser.sanitise(previewId)
+    val text = catFile(shortCommit, "$dir/entry.json") ?: return null
+    val parsed =
+      try {
+        JSON.decodeFromString(HistoryEntry.serializer(), text)
+      } catch (_: Throwable) {
+        return null
+      }
+    val entry = timelineEntry(parsed, shortCommit)
+    val pngRel = parsed.pngPath.takeIf { it.isNotBlank() } ?: RENDER_FILENAME
+    val pngFile = extractBlobToCache(shortCommit, "$dir/$pngRel") ?: return null
+    val bytes = if (includeBytes) Files.readAllBytes(pngFile) else null
+    return HistoryReadResult(
+      entry = entry,
+      previewMetadata = entry.previewMetadata,
       pngPath = pngFile.toAbsolutePath().toString(),
       pngBytes = bytes,
     )
@@ -355,40 +391,85 @@ class GitRefHistorySource(
     return out.takeIf { it.isNotEmpty() }
   }
 
-  /** Reads the current branch state: every `<dir>/entry.json`, newest-first by timestamp. */
-  private fun listEntries(refCommit: String): List<HistoryEntry> {
+  /**
+   * Reconstructs the preview timeline (#1868) by walking the ref's commit history: every commit
+   * that changed a `<dir>/entry.json` contributes one entry per changed preview, addressed by
+   * `<shortCommit>:<previewId>`, newest-first (git-log order), capped at [MAX_TIMELINE_DEPTH].
+   * Cached per ref HEAD (invalidated on write). Falls back to the legacy `_index.jsonl` tip read
+   * for refs that predate the git-as-the-log layout (those have no `entry.json` to walk).
+   */
+  private fun timelineEntries(refCommit: String): List<HistoryEntry> {
     cachedEntries.get()?.let { if (it.refCommit == refCommit) return it.entries }
-    val tree = runGit("ls-tree", "-r", "--name-only", refCommit)
-    if (tree == null) {
-      cachedEntries.set(CachedEntries(refCommit, emptyList()))
-      return emptyList()
+    val walked = walkTimeline(refCommit)
+    val resolved = walked.ifEmpty {
+      readLegacyIndex(refCommit).map { rewriteSource(it, refCommit) }
     }
-    val entries =
-      tree
-        .split('\n')
-        .map { it.trim() }
-        .filter { it.endsWith("/entry.json") }
-        .mapNotNull { path ->
-          catFile(refCommit, path)?.let { text ->
-            try {
-              JSON.decodeFromString(HistoryEntry.serializer(), text)
-            } catch (t: Throwable) {
-              System.err.println(
-                "compose-ai-daemon: GitRefHistorySource.list($ref): malformed $path " +
-                  "(${t.javaClass.simpleName}: ${t.message})"
-              )
-              null
-            }
-          }
-        }
-        .sortedByDescending { it.timestamp }
-    // Backward compatibility: a ref written under the legacy read-only format (an aggregate
-    // `_index.jsonl` + `<entryId>.{png,json}` per preview dir, the layout the old read-only
-    // GitRefHistorySource documented) has no `entry.json` files, so the scan above is empty.
-    // Fall back to parsing `_index.jsonl` so existing preview/* refs keep reading.
-    val resolved = entries.ifEmpty { readLegacyIndex(refCommit) }
     cachedEntries.set(CachedEntries(refCommit, resolved))
     return resolved
+  }
+
+  /**
+   * Git-log walk over `entry.json` changes — see [timelineEntries]. Each commit's changed
+   * `<dir>/entry.json` blobs are read and stamped with a `<shortCommit>:<previewId>` id. A render
+   * that produced no diff made no commit, so the walk yields exactly one entry per *changed*
+   * render.
+   */
+  private fun walkTimeline(refCommit: String): List<HistoryEntry> {
+    // `%x00%H` prefixes each commit's section with NUL+sha; `--name-only` then lists the files it
+    // changed (one per line). Walking newest-first and capped keeps the read cost bounded.
+    val out =
+      runGit("log", "--format=%x00%H", "--name-only", "--max-count=$MAX_TIMELINE_DEPTH", refCommit)
+        ?: return emptyList()
+    val entries = mutableListOf<HistoryEntry>()
+    var commit: String? = null
+    for (raw in out.split('\n')) {
+      if (raw.startsWith(' ')) {
+        commit = raw.substring(1).trim().ifEmpty { null }
+        continue
+      }
+      val path = raw.trim()
+      val c = commit
+      if (c == null || !path.endsWith("/entry.json")) continue
+      val text = catFile(c, path) ?: continue
+      val parsed =
+        try {
+          JSON.decodeFromString(HistoryEntry.serializer(), text)
+        } catch (t: Throwable) {
+          System.err.println(
+            "compose-ai-daemon: GitRefHistorySource.walk($ref): malformed $path@${c.take(7)} " +
+              "(${t.javaClass.simpleName}: ${t.message})"
+          )
+          null
+        }
+      if (parsed != null) entries += timelineEntry(parsed, c.take(7))
+    }
+    return linkPrevious(entries)
+  }
+
+  /** Stamps a parsed branch entry with its commit-walk id + git source (#1868). */
+  private fun timelineEntry(entry: HistoryEntry, shortCommit: String): HistoryEntry =
+    entry.copy(
+      id = "$shortCommit:${entry.previewId}",
+      source = HistorySourceInfo(kind = "git", id = "$id@$shortCommit"),
+    )
+
+  /**
+   * Rewrites each entry's [HistoryEntry.previousId] to the adjacent-older timeline id for the same
+   * preview (#1868). The raw value carried in `entry.json` is the producing LocalFs timestamp id,
+   * which a git-ref [read] can't resolve (it resolves `<shortCommit>:<previewId>` ids), so a client
+   * following `previousId` for "diff vs previous" would otherwise get a not-found. The oldest entry
+   * of each preview gets `previousId = null`. Input is newest-first; output preserves that order.
+   */
+  private fun linkPrevious(newestFirst: List<HistoryEntry>): List<HistoryEntry> {
+    val olderId = HashMap<String, String>() // previewId -> id of the next-older entry seen so far
+    // Walk oldest-first so each entry's "previous" is the older neighbour we already passed.
+    val relinked =
+      newestFirst.asReversed().map { entry ->
+        val prev = olderId[entry.previewId]
+        olderId[entry.previewId] = entry.id
+        entry.copy(previousId = prev)
+      }
+    return relinked.asReversed()
   }
 
   /**
@@ -535,6 +616,14 @@ class GitRefHistorySource(
 
     /** Bumped on incompatible reporting-branch layout changes. */
     const val REPORTING_BRANCH_FORMAT_VERSION: Int = 1
+
+    /**
+     * Depth cap for the commit-walk timeline read (#1868) — the newest N commits of the ref are
+     * walked when reconstructing a preview's history. Bounds read cost on long-lived branches;
+     * older history stays reachable by tightening the `since`/`until` filter against a re-orphaned
+     * ref.
+     */
+    const val MAX_TIMELINE_DEPTH: Int = 500
 
     /**
      * Comma/semicolon-separated list of refs (e.g.
