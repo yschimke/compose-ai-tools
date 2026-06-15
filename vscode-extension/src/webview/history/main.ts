@@ -25,6 +25,12 @@ export class HistoryApp extends LitElement {
     protected render(): TemplateResult {
         return html`
             <div class="toolbar" role="toolbar" aria-label="History filters">
+                <button
+                    id="btn-source-ref"
+                    title="Choose history source: the local working tree or a pushed reporting branch"
+                >
+                    Local
+                </button>
                 <select id="filter-source" title="Source">
                     <option value="all">All sources</option>
                     <option value="fs">Local filesystem</option>

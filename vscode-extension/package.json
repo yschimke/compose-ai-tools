@@ -71,6 +71,13 @@
                     "id": "composePreview.panel",
                     "name": "Previews",
                     "visibility": "visible"
+                },
+                {
+                    "type": "webview",
+                    "id": "composePreview.historyPanel",
+                    "name": "Preview History",
+                    "visibility": "collapsed",
+                    "when": "config.composePreview.earlyFeatures.enabled"
                 }
             ]
         },
@@ -137,6 +144,13 @@
                 "title": "Browse Google Fonts",
                 "category": "Compose Preview",
                 "icon": "$(text-size)"
+            },
+            {
+                "command": "composePreview.history.selectSourceRef",
+                "title": "Select History Source (local or reporting branch)",
+                "category": "Compose Preview",
+                "icon": "$(git-branch)",
+                "enablement": "config.composePreview.earlyFeatures.enabled"
             }
         ],
         "menus": {
@@ -155,6 +169,11 @@
                     "command": "composePreview.copyDoctorReport",
                     "when": "view == composePreview.panel",
                     "group": "navigation@3"
+                },
+                {
+                    "command": "composePreview.history.selectSourceRef",
+                    "when": "view == composePreview.historyPanel",
+                    "group": "navigation@1"
                 }
             ],
             "explorer/context": [
@@ -167,6 +186,10 @@
             "commandPalette": [
                 {
                     "command": "composePreview.openBundle",
+                    "when": "config.composePreview.earlyFeatures.enabled"
+                },
+                {
+                    "command": "composePreview.history.selectSourceRef",
                     "when": "config.composePreview.earlyFeatures.enabled"
                 }
             ]

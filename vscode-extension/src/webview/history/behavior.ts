@@ -47,6 +47,8 @@ export function setupHistoryBehavior(): void {
         requireElementById<HTMLSelectElement>("filter-branch");
     const btnRefreshEl = requireElementById<HTMLButtonElement>("btn-refresh");
     const btnDiffEl = requireElementById<HTMLButtonElement>("btn-diff");
+    const btnSourceRefEl =
+        requireElementById<HTMLButtonElement>("btn-source-ref");
     // Scope chip is owned by `<scope-chip>` — see
     // `components/ScopeChip.ts`. It listens for `setScopeLabel` directly.
 
@@ -84,6 +86,9 @@ export function setupHistoryBehavior(): void {
 
     btnRefreshEl.addEventListener("click", () => {
         vscode.postMessage({ command: "refresh" });
+    });
+    btnSourceRefEl.addEventListener("click", () => {
+        vscode.postMessage({ command: "selectSourceRef" });
     });
     btnDiffEl.addEventListener("click", () => {
         if (selectedOrder.length === 2) {
@@ -270,6 +275,18 @@ export function setupHistoryBehavior(): void {
                 // for this command. Listed here so the discriminated-union
                 // exhaustiveness check holds.
                 break;
+            case "setSourceRef": {
+                // Reflect the active history source in the toolbar button: the
+                // local working tree, or a pushed reporting branch (#1872).
+                const label = msg.label ?? "Local";
+                btnSourceRefEl.textContent = label;
+                btnSourceRefEl.classList.toggle("active", msg.ref != null);
+                btnSourceRefEl.title =
+                    msg.ref != null
+                        ? `Viewing reporting branch ${label} — click to change source`
+                        : "Choose history source: the local working tree or a pushed reporting branch";
+                break;
+            }
             case "imageReady": {
                 const row = findRow(msg.id);
                 if (row) row.setImage(msg.imageData, msg.entry);

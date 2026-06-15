@@ -9,6 +9,7 @@ import {
     HistoryReadResult,
     HistorySourceKind,
 } from "./daemon/daemonProtocol";
+import { reportingBranchLabel } from "./reportingBranches";
 
 /**
  * Read-only Preview History panel — HISTORY.md § "VS Code integration".
@@ -113,6 +114,9 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
 
     /** Force a re-list against the current scope. */
     async refresh(): Promise<void> {
+        // Reflect the active source (Local vs a reporting branch) in the
+        // toolbar regardless of whether there's a scope/preview to list yet.
+        this.postSourceRef();
         if (!this.view || !this.currentScope) {
             this.view?.webview.postMessage({
                 command: "showMessage",
@@ -154,10 +158,31 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
         }
     }
 
+    /** Pushes the active history source (Local vs reporting branch) to the
+     *  webview so the toolbar control shows where entries are coming from. */
+    private postSourceRef(): void {
+        if (!this.view) {
+            return;
+        }
+        const ref = this.currentScope?.gitRef ?? null;
+        this.view.webview.postMessage({
+            command: "setSourceRef",
+            ref,
+            label: ref ? (reportingBranchLabel(ref) ?? ref) : null,
+        });
+    }
+
     private async handleMessage(msg: HistoryWebviewMessage): Promise<void> {
         switch (msg.command) {
             case "refresh":
                 await this.refresh();
+                break;
+            case "selectSourceRef":
+                // Routed to the extension command, which runs the quick-pick and
+                // calls back into setScope() with the chosen ref.
+                await vscode.commands.executeCommand(
+                    "composePreview.history.selectSourceRef",
+                );
                 break;
             case "loadImage":
                 if (msg.id) {
@@ -506,6 +531,13 @@ export interface HistoryScope {
      *  Surfaced in the panel's toolbar as a chip when set so the user can
      *  see why entries are narrowed. Not used for filtering. */
     previewLabel?: string;
+    /** Reporting-branch source (#1872). When set to a full git ref (e.g.
+     *  `refs/heads/preview/main`), the panel reads history from that pushed
+     *  reporting branch via the daemon's on-demand `ref` param instead of the
+     *  local working tree. Undefined ⇒ local history. Reading a ref is
+     *  daemon-only (the FS reader can't read a git ref), so the panel shows
+     *  empty rather than misleading local entries when the daemon is down. */
+    gitRef?: string;
 }
 
 /**
@@ -524,6 +556,13 @@ export function buildHistorySource(opts: BuildSourceOptions): HistorySource {
                         `[history] daemon list failed for ${scope.moduleId}, falling back to FS: ${(err as Error).message}`,
                     );
                 }
+            }
+            if (scope.gitRef) {
+                // Reporting-branch view is daemon-only: the FS reader and the
+                // synthetic current-render fallback below are both local, so
+                // falling back would mask a down daemon with the wrong (local)
+                // history. Empty ⇒ the panel shows its "no history" hint.
+                return result ?? { entries: [], totalCount: 0 };
             }
             if (!result) {
                 result = new HistoryReader(historyDirFor(scope)).list({
@@ -561,6 +600,11 @@ export function buildHistorySource(opts: BuildSourceOptions): HistorySource {
                     );
                 }
             }
+            // Reporting-branch entries only exist on the daemon side; never
+            // resolve a git-ref id against the local FS reader.
+            if (scope.gitRef) {
+                return null;
+            }
             return new HistoryReader(historyDirFor(scope)).read(id);
         },
         diff: async (fromId, toId) => {
@@ -585,6 +629,10 @@ export function buildHistorySource(opts: BuildSourceOptions): HistorySource {
                         `[history] daemon diff failed, falling back to FS: ${(err as Error).message}`,
                     );
                 }
+            }
+            // Reporting-branch entries are daemon-only — no local FS diff.
+            if (scope.gitRef) {
+                return null;
             }
             return new HistoryReader(historyDirFor(scope)).diff(
                 fromId,
