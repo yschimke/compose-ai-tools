@@ -14,10 +14,13 @@ import kotlin.math.max
  * comparisons) and lives in a test-scope module, so it isn't reused here. This produces *metrics*
  * for two archived history PNGs plus a reviewer-facing marked-diff image:
  *
- * - **[Result.diffPx]** — count of pixels whose RGB differs at all between the two frames. A blunt,
- *   deterministic "how many pixels moved" number; perceptual closeness is [Result.ssim]'s job.
+ * - **[Result.diffPx]** — count of pixels whose **ARGB** (incl. alpha) differs at all between the
+ *   two frames. A blunt, deterministic "how many pixels moved" number; perceptual closeness is
+ *   [Result.ssim]'s job. Alpha is compared so a transparency-only change (round-device clip masks,
+ *   opacity tweaks) registers rather than reading as identical.
  * - **[Result.ssim]** — mean structural-similarity index (Wang et al. 2004) over 8×8 luma windows,
- *   in `[-1, 1]` (1.0 ⇒ identical). Captures "did the structure change" rather than raw pixel
+ *   in `[-1, 1]` (1.0 ⇒ identical). Luma is alpha-composited over black so transparency changes
+ *   move the structural signal too. Captures "did the structure change" rather than raw pixel
  *   count, so anti-aliasing jitter that bumps [diffPx] barely dents `ssim`.
  * - **[Result.markedPng]** — the `to` frame at 50% brightness with every differing pixel painted
  *   bright red, encoded as PNG bytes, so a reviewer can locate the change without flipping between
@@ -71,7 +74,7 @@ object HistoryImageDiff {
       for (x in 0 until w) {
         val pa = a.getRGB(x, y)
         val pb = b.getRGB(x, y)
-        if ((pa and 0xFFFFFF) != (pb and 0xFFFFFF)) {
+        if (pa != pb) { // full ARGB — alpha-only changes count too
           diffPx++
           marked.setRGB(x, y, 0xFFFF0000.toInt()) // opaque red
         } else {
@@ -150,10 +153,12 @@ object HistoryImageDiff {
     for (y in 0 until h) {
       for (x in 0 until w) {
         val p = img.getRGB(x, y)
+        val alpha = ((p ushr 24) and 0xFF) / 255.0
         val r = (p shr 16) and 0xFF
         val g = (p shr 8) and 0xFF
         val bl = p and 0xFF
-        out[y * w + x] = 0.299 * r + 0.587 * g + 0.114 * bl
+        // Composite over black so a transparency change shifts luma (opaque pixels are unchanged).
+        out[y * w + x] = alpha * (0.299 * r + 0.587 * g + 0.114 * bl)
       }
     }
     return out

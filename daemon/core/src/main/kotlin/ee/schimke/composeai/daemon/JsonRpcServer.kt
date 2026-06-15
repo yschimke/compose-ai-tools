@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.history.HistoryDiffArtifacts
 import ee.schimke.composeai.daemon.history.HistoryEntry
 import ee.schimke.composeai.daemon.history.HistoryFilter
 import ee.schimke.composeai.daemon.history.HistoryImageDiff
@@ -1684,10 +1685,9 @@ class JsonRpcServer(
   ): String? =
     try {
       val previewDir = java.nio.file.Path.of(toPngPath).toAbsolutePath().parent
-      val diffsDir = previewDir.resolve(".diffs")
+      val diffsDir = previewDir.resolve(HistoryDiffArtifacts.DIFFS_DIR_NAME)
       java.nio.file.Files.createDirectories(diffsDir)
-      val sanitize = { s: String -> s.replace(Regex("[^A-Za-z0-9._-]"), "_") }
-      val out = diffsDir.resolve("${sanitize(fromId)}__${sanitize(toId)}.png")
+      val out = diffsDir.resolve(HistoryDiffArtifacts.fileName(fromId, toId))
       java.nio.file.Files.write(out, pngBytes)
       out.toString()
     } catch (t: Throwable) {

@@ -298,6 +298,68 @@ class LocalFsHistorySourcePruneTest {
   }
 
   @Test
+  fun prune_removes_diff_artifacts_referencing_pruned_entries_and_counts_their_bytes() {
+    val now = Instant.now()
+    val previewId = "P"
+    // e[0] newest … e[2] oldest, all one preview.
+    val e =
+      (0 until 3).map { i ->
+        writeEntry(
+          previewId = previewId,
+          timestamp = now.minusSeconds(i.toLong() * 3600),
+          suffix = "%02d".format(i),
+        )
+      }
+    val diffsDir = tmpDir.resolve(previewId).resolve(HistoryDiffArtifacts.DIFFS_DIR_NAME)
+    Files.createDirectories(diffsDir)
+    // Orphan-to-be: references the soon-pruned oldest entry. Survivor: references the two kept.
+    val orphanDiff = diffsDir.resolve(HistoryDiffArtifacts.fileName(e[2].id, e[1].id))
+    val survivorDiff = diffsDir.resolve(HistoryDiffArtifacts.fileName(e[1].id, e[0].id))
+    Files.write(orphanDiff, ByteArray(100))
+    Files.write(survivorDiff, ByteArray(50))
+
+    // Keep newest 2 per preview → e[2] pruned; e[0], e[1] survive.
+    val result =
+      source.prune(
+        HistoryPruneConfig(maxEntriesPerPreview = 2, maxAgeDays = 0, maxTotalSizeBytes = 0L)
+      )
+
+    assertEquals(listOf(e[2].id), result.removedEntryIds)
+    assertFalse("diff referencing the pruned entry is removed", Files.exists(orphanDiff))
+    assertTrue("diff referencing only survivors is kept", Files.exists(survivorDiff))
+    // freedBytes = pruned entry's PNG + the orphan diff's 100 bytes.
+    assertEquals(e[2].pngSize + 100L, result.freedBytes)
+  }
+
+  @Test
+  fun dry_run_counts_orphan_diff_bytes_without_deleting_them() {
+    val now = Instant.now()
+    val previewId = "P"
+    val e =
+      (0 until 2).map { i ->
+        writeEntry(
+          previewId = previewId,
+          timestamp = now.minusSeconds(i.toLong() * 3600),
+          suffix = "%02d".format(i),
+        )
+      }
+    val diffsDir = tmpDir.resolve(previewId).resolve(HistoryDiffArtifacts.DIFFS_DIR_NAME)
+    Files.createDirectories(diffsDir)
+    val orphanDiff = diffsDir.resolve(HistoryDiffArtifacts.fileName(e[1].id, e[0].id))
+    Files.write(orphanDiff, ByteArray(42))
+
+    val result =
+      source.prune(
+        HistoryPruneConfig(maxEntriesPerPreview = 1, maxAgeDays = 0, maxTotalSizeBytes = 0L),
+        dryRun = true,
+      )
+
+    assertEquals(listOf(e[1].id), result.removedEntryIds)
+    assertEquals(e[1].pngSize + 42L, result.freedBytes)
+    assertTrue("dry-run must not delete artefacts", Files.exists(orphanDiff))
+  }
+
+  @Test
   fun index_rewrite_is_atomic_against_failures() {
     // Synthesise N entries; verify the index is bytewise rewritten cleanly. We can't easily
     // simulate

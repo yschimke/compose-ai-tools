@@ -288,6 +288,11 @@ are best-effort; orphans self-heal. Multiple sidecars may share one PNG
 sidecar is removed; `freedBytes` only counts entries whose PNG actually
 went away.
 
+Marked-diff PNGs (`history/diff mode=pixel`) under each preview's
+`.diffs/` dir are a regenerable cache: prune deletes any
+`<from>__<to>.png` that references a removed entry (so a diff never
+outlives the history it describes) and adds its bytes to `freedBytes`.
+
 `GitRefHistorySource` and any read-only backend skip pruning entirely
 (cleanup is the producer's concern).
 

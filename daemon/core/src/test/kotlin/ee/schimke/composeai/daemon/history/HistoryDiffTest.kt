@@ -300,9 +300,57 @@ class HistoryDiffTest {
     }
   }
 
+  @Test(timeout = 30_000)
+  fun pixel_mode_reports_alpha_only_change() {
+    runWith { _, manager, send, receive ->
+      val ts1 = Instant.parse("2026-04-30T10:12:34Z")
+      val ts2 = Instant.parse("2026-04-30T10:12:35Z")
+      // Identical RGB everywhere; `to` makes the top-left 4×4 quadrant fully transparent. Without
+      // alpha-aware comparison this would read as diffPx=0 / ssim=1.0 (regression guard for the
+      // 0xFFFFFF-mask bug).
+      val opaque = argbPngOf(8, 8) { _, _ -> 0xFF3366CC.toInt() }
+      val withHole =
+        argbPngOf(8, 8) { x, y -> if (x < 4 && y < 4) 0x003366CC else 0xFF3366CC.toInt() }
+      val a =
+        manager.recordRender(
+          "preview-A",
+          opaque,
+          trigger = "renderNow",
+          renderTookMs = 1,
+          timestamp = ts1,
+        )!!
+      val b =
+        manager.recordRender(
+          "preview-A",
+          withHole,
+          trigger = "renderNow",
+          renderTookMs = 1,
+          timestamp = ts2,
+        )!!
+
+      val resp = diffRoundTrip(send, receive, from = a.id, to = b.id, mode = "pixel")
+      val result = resp["result"]!!.jsonObject
+      assertEquals("the 16 transparent pixels differ", 16L, result["diffPx"]!!.jsonPrimitive.long)
+      assertTrue(
+        "ssim < 1.0 for a transparency change",
+        result["ssim"]!!.jsonPrimitive.double < 0.99,
+      )
+    }
+  }
+
   /** A solid-colour `width × height` PNG (RGB, opaque) as bytes. */
   private fun solidPng(width: Int, height: Int, rgb: Int): ByteArray =
     pngOf(width, height) { _, _ -> rgb }
+
+  /** Builds a `width × height` ARGB PNG, sampling [argbAt] (`0xAARRGGBB`) per pixel. */
+  private fun argbPngOf(width: Int, height: Int, argbAt: (x: Int, y: Int) -> Int): ByteArray {
+    val img = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
+    for (y in 0 until height) for (x in 0 until width) img.setRGB(x, y, argbAt(x, y))
+    return ByteArrayOutputStream().use { out ->
+      ImageIO.write(img, "png", out)
+      out.toByteArray()
+    }
+  }
 
   /** Builds a `width × height` opaque PNG, sampling [rgbAt] (`0xRRGGBB`) per pixel. */
   private fun pngOf(width: Int, height: Int, rgbAt: (x: Int, y: Int) -> Int): ByteArray {
