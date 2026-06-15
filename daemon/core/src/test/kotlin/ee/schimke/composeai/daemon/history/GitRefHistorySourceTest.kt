@@ -317,7 +317,8 @@ class GitRefHistorySourceTest {
           warnEmitter = warnEmitter,
         )
 
-      // Without `ref`, only the (empty) configured local source is consulted — the branch is unseen.
+      // Without `ref`, only the (empty) configured local source is consulted — the branch is
+      // unseen.
       assertEquals(0, manager.list(HistoryFilter()).totalCount)
       assertNull(manager.read(entryA.id, includeBytes = false))
 

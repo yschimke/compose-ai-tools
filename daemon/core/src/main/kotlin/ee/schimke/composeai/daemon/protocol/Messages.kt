@@ -1541,11 +1541,7 @@ data class HistoryListResult(
 // `ref` (H10-read) — read this id from an on-demand git reporting branch instead of the configured
 // sources; must match the `ref` the id was listed from.
 @Serializable
-data class HistoryReadParams(
-  val id: String,
-  val inline: Boolean = false,
-  val ref: String? = null,
-)
+data class HistoryReadParams(val id: String, val inline: Boolean = false, val ref: String? = null)
 
 @Serializable
 data class HistoryReadResultDto(
