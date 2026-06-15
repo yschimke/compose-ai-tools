@@ -46,6 +46,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![history-semantics-diff/dark](renders/history-semantics-diff.dark.png) |
 | `light` | ![history-semantics-diff/light](renders/history-semantics-diff.light.png) |
 
+## history-source-ref
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![history-source-ref/dark](renders/history-source-ref.dark.png) |
+| `light` | ![history-source-ref/light](renders/history-source-ref.light.png) |
+
 ## inspection-tree
 
 | Theme | Capture |

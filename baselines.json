@@ -28,14 +28,14 @@
     "fonts-browser.dark.png": {
       "fixture": "fonts-browser",
       "theme": "dark",
-      "sha256": "37c16dd5a8a6658aa8fbc08d6031578ae5b195b9425753cba167876d36e693fd",
-      "size": 126544
+      "sha256": "16a8dec157b38aa1f8c1371e2262d4cfa10ca967e89a87c5bff5e1f5ba03c5fc",
+      "size": 126386
     },
     "fonts-browser.light.png": {
       "fixture": "fonts-browser",
       "theme": "light",
-      "sha256": "ad56a96da2bab6013b1d5b635f064b831331b2ab570678c626c180159e988c9d",
-      "size": 120896
+      "sha256": "a00949ecc512638bcee860b6eda6825f0dd07eeb22b8218f5627f0abfecd0d4d",
+      "size": 120723
     },
     "grid-default.dark.png": {
       "fixture": "grid-default",
@@ -64,14 +64,26 @@
     "history-semantics-diff.dark.png": {
       "fixture": "history-semantics-diff",
       "theme": "dark",
-      "sha256": "911207336bc73d61700d6f99e1d993ac5a799fc1d79646feeb8da4c1bc05c423",
-      "size": 47327
+      "sha256": "7220ec5de2ab6d43616f26c157fbd6f00b35ef91b89393eaff3f58a693e97e49",
+      "size": 47958
     },
     "history-semantics-diff.light.png": {
       "fixture": "history-semantics-diff",
       "theme": "light",
-      "sha256": "d0f5ff1625433e123a0ae68974f5fa8cd6ba0baad98463e6204757d5d01d67e2",
-      "size": 46676
+      "sha256": "df8875fa8cfc9bb8df897330d861a4e071c44436931be868a73fbf32f8b4d5f5",
+      "size": 47349
+    },
+    "history-source-ref.dark.png": {
+      "fixture": "history-source-ref",
+      "theme": "dark",
+      "sha256": "339fa5a504ababf9314aff7a26d7f0865e3ac73b51fb676c1e0450340b1bd1c2",
+      "size": 21812
+    },
+    "history-source-ref.light.png": {
+      "fixture": "history-source-ref",
+      "theme": "light",
+      "sha256": "b528724161e99bf538c6656a72768c1820cc3377e4db4ca14766f4f542ffe003",
+      "size": 21181
     },
     "inspection-tree.dark.png": {
       "fixture": "inspection-tree",
