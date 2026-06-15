@@ -96,8 +96,15 @@ class GitRefHistorySource(
     }
     return try {
       val result = writeLocal(entry, png)
-      if (syncMode == SyncMode.WRITE_PUSH && result == WriteResult.WRITTEN) {
-        pushWithRetry(entry, png)
+      if (syncMode == SyncMode.WRITE_PUSH) {
+        if (result == WriteResult.WRITTEN) {
+          pushWithRetry(entry, png)
+        } else {
+          // No new commit this round, but a prior push may have failed (offline / missing creds),
+          // leaving the local ref ahead of the remote. Try to publish it now so a dedup'd render
+          // doesn't strand the ref unpublished until the pixels change again.
+          publishPendingCommits()
+        }
       }
       result
     } catch (t: Throwable) {
@@ -135,6 +142,20 @@ class GitRefHistorySource(
       attempt++
     }
     warnOncePush()
+  }
+
+  /**
+   * Best-effort fast-forward publish of any local commits the remote is missing — used when a write
+   * dedups ([WriteResult.SKIPPED_DUPLICATE]) but an earlier push may have failed, so the ref would
+   * otherwise stay unpublished until the pixels change again (#1880 review). A plain `git push`
+   * fast-forwards the remote (and is a no-op "up-to-date" success when nothing is pending); a
+   * genuine divergence is left for the next changed render's full replay rather than risking a
+   * clobber here. Only warns (once) on a real failure.
+   */
+  private fun publishPendingCommits() {
+    if (!plumbingOk(emptyMap(), "push", remote, "$ref:$ref")) {
+      warnOncePush()
+    }
   }
 
   /** Fetches [ref] from [remote] into FETCH_HEAD and resolves its tip; null on any failure. */

@@ -475,6 +475,27 @@ class GitRefHistorySourceTest {
     assertTrue(warnLog.contains("could not push"))
   }
 
+  @Test
+  fun write_push_publishes_pending_commits_on_a_later_dedup() {
+    // First render commits locally but the push fails — no remote yet (one warning).
+    val src = source(SyncModeOf.WRITE_PUSH)
+    val bytes = "render-A".toByteArray()
+    val e = entry(id = "20260430-101200-aaaaaaaa", previewId = "com.example.A", bytes = bytes)
+    assertEquals(WriteResult.WRITTEN, src.write(e, bytes))
+    assertEquals(1, warnCount.get())
+
+    // The remote becomes available; an unchanged render dedups locally but must still publish the
+    // pending local commit (#1880 review) — not strand it until the pixels change.
+    val bare = setUpBareRemote()
+    assertEquals(WriteResult.SKIPPED_DUPLICATE, src.write(e, bytes))
+    val remoteTree = capture("git", "--git-dir=$bare", "ls-tree", "-r", "--name-only", ref)
+    assertTrue(
+      "dedup'd render still published the pending commit",
+      remoteTree.contains("com.example.A/entry.json"),
+    )
+    assertEquals("no new warning once the push succeeds", 1, warnCount.get())
+  }
+
   // -------------------------------------------------------------------------
   // Helpers
   // -------------------------------------------------------------------------
