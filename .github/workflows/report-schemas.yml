@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   validate:
-    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
+    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     name: Validate published report schemas
     runs-on: ubuntu-latest
     steps:

@@ -33,7 +33,7 @@ concurrency:
 
 jobs:
   analyze:
-    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
+    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
     permissions:
