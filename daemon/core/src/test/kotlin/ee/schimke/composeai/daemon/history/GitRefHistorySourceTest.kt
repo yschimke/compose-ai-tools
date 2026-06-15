@@ -143,11 +143,14 @@ class GitRefHistorySourceTest {
     // Round-trips through the source's own read surface, stamped as a git source.
     val page = src.list(HistoryFilter())
     assertEquals(1, page.totalCount)
-    assertEquals(e.id, page.entries[0].id)
-    assertEquals("git", page.entries[0].source.kind)
-    assertTrue(page.entries[0].source.id.startsWith("git:$ref"))
+    val listed = page.entries[0]
+    // Commit-walk timeline (#1868): entries are addressed by `<shortCommit>:<previewId>`.
+    assertEquals("com.example.A", listed.previewId)
+    assertTrue(listed.id.endsWith(":com.example.A"))
+    assertEquals("git", listed.source.kind)
+    assertTrue(listed.source.id.startsWith("git:$ref"))
 
-    val read = src.read(e.id, includeBytes = true)
+    val read = src.read(listed.id, includeBytes = true)
     assertNotNull(read)
     assertTrue(File(read!!.pngPath).exists())
     assertEquals("render-A", String(read.pngBytes!!))
@@ -201,9 +204,49 @@ class GitRefHistorySourceTest {
     )
 
     val page = src.list(HistoryFilter())
-    assertEquals("current-state read → one entry per preview", 1, page.totalCount)
-    assertEquals(second.id, page.entries[0].id)
+    // Commit-walk timeline (#1868): both renders of the preview are visible (one per commit), even
+    // though the tip tree keeps only the latest render.png.
+    assertEquals("timeline read → one entry per changed render", 2, page.totalCount)
+    assertEquals("com.example.Card", page.entries[0].previewId)
+    assertTrue(page.entries[0].id.endsWith(":com.example.Card"))
     assertEquals("2", capture("git", "-C", repoRoot.toString(), "rev-list", "--count", ref).trim())
+  }
+
+  // -------------------------------------------------------------------------
+  // Commit-walk timeline read (#1868)
+  // -------------------------------------------------------------------------
+
+  @Test
+  fun commit_walk_exposes_full_timeline_and_reads_an_older_point() {
+    val src = source(SyncModeOf.WRITE_LOCAL)
+    val previewId = "com.example.Timeline"
+    // Three distinct renders of the same preview → three commits (skip-if-no-diff would collapse
+    // identical ones, so the bytes differ).
+    val v1 =
+      entry("20260430-100000-11111111", previewId, "v1".toByteArray(), "2026-04-30T10:00:00Z")
+    val v2 =
+      entry("20260430-100100-22222222", previewId, "v2".toByteArray(), "2026-04-30T10:01:00Z")
+    val v3 =
+      entry("20260430-100200-33333333", previewId, "v3".toByteArray(), "2026-04-30T10:02:00Z")
+    assertEquals(WriteResult.WRITTEN, src.write(v1, "v1".toByteArray()))
+    assertEquals(WriteResult.WRITTEN, src.write(v2, "v2".toByteArray()))
+    assertEquals(WriteResult.WRITTEN, src.write(v3, "v3".toByteArray()))
+
+    val page = src.list(HistoryFilter())
+    // The tip tree still holds one render.png, but the timeline exposes all three commits.
+    assertEquals(3, page.totalCount)
+    assertTrue(page.entries.all { it.previewId == previewId })
+    assertTrue(page.entries.all { it.id.endsWith(":$previewId") })
+    // Newest commit first.
+    assertEquals("2026-04-30T10:02:00Z", page.entries[0].timestamp)
+    assertEquals("2026-04-30T10:00:00Z", page.entries[2].timestamp)
+
+    // Read the *oldest* point by its `<shortCommit>:<previewId>` id → its own bytes, not the tip's.
+    val oldest = page.entries[2]
+    val read = src.read(oldest.id, includeBytes = true)
+    assertNotNull(read)
+    assertEquals("v1", String(read!!.pngBytes!!))
+    assertEquals("git", read.entry.source.kind)
   }
 
   @Test
@@ -237,7 +280,7 @@ class GitRefHistorySourceTest {
         "fs",
         all.entries.first { it.id == shared.id }.source.kind,
       )
-      assertEquals("git", all.entries.first { it.id == gitOnly.id }.source.kind)
+      assertEquals("git", all.entries.first { it.previewId == "com.example.Y" }.source.kind)
 
       val gitPage = manager.list(HistoryFilter(sourceKind = "git"))
       assertEquals(2, gitPage.totalCount)
@@ -326,19 +369,25 @@ class GitRefHistorySourceTest {
       val page = manager.list(HistoryFilter(ref = ref))
       assertEquals(2, page.totalCount)
       assertTrue(page.entries.all { it.source.kind == "git" })
-      assertEquals(setOf(entryA.id, entryB.id), page.entries.map { it.id }.toSet())
+      // Commit-walk ids are `<shortCommit>:<previewId>`; match on the stable previewId.
+      assertEquals(
+        setOf("com.example.A", "com.example.B"),
+        page.entries.map { it.previewId }.toSet(),
+      )
 
       // Other filter dimensions still apply within the ref's entries.
       val narrowed = manager.list(HistoryFilter(ref = ref, previewId = "com.example.A"))
       assertEquals(1, narrowed.totalCount)
       assertEquals("com.example.A", narrowed.entries.single().previewId)
 
-      // A ref-scoped read resolves the bytes; the same id without a ref stays invisible.
-      val read = manager.read(entryA.id, includeBytes = true, ref = ref)
+      // A ref-scoped read resolves the bytes by the timeline id; an id without a ref stays
+      // invisible.
+      val aId = narrowed.entries.single().id
+      val read = manager.read(aId, includeBytes = true, ref = ref)
       assertNotNull(read)
       assertEquals("render-A", String(read!!.pngBytes!!))
       assertEquals("git", read.entry.source.kind)
-      assertNull(manager.read(entryA.id, includeBytes = false))
+      assertNull(manager.read(aId, includeBytes = false))
     } finally {
       localDir.toFile().deleteRecursively()
     }
