@@ -307,6 +307,8 @@ export function setupHistoryBehavior(): void {
                         msg.leftImage,
                         msg.rightLabel,
                         msg.rightImage,
+                        msg.leftSemantics,
+                        msg.rightSemantics,
                     );
                 break;
             }

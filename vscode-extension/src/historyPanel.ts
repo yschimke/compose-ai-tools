@@ -236,6 +236,9 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
 
             let right: HistoryReadResult | null = null;
             let rightLabel = "";
+            // Entry id of the comparison side, for sidecar-based semantics lookup. Null for the
+            // synthetic "current render" (no sidecar / no captured semantics).
+            let rightId: string | null = null;
             if (against === "current") {
                 const synthList = currentRendersFor(scope).list(previewId);
                 const synth = synthList.entries[0] as
@@ -280,6 +283,7 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
                     return;
                 }
                 right = await this.source.read(prev.id);
+                rightId = prev.id;
                 rightLabel = `Previous · ${formatLabelTime(prev.timestamp)}`;
             }
             if (!right) {
@@ -305,6 +309,17 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
                 leftImage: leftBytes,
                 rightLabel,
                 rightImage: rightBytes,
+                // Forward each entry's captured compose/semantics tree so the webview can render the
+                // semantics data-diff below the pixel diff (#1872). Read straight from the on-disk
+                // sidecar (which always carries the full tree) rather than `left.entry` / `right.entry`
+                // — the daemon's `history/read` strips `semantics` from the wire (only
+                // `history/diff mode=semantics` returns it), so the daemon-backed flow would otherwise
+                // always see null. The sidecar read is daemon-independent and matches the local
+                // archive the daemon writes to.
+                leftSemantics: readSidecarSemantics(scope, id),
+                rightSemantics: rightId
+                    ? readSidecarSemantics(scope, rightId)
+                    : null,
             });
         } catch (err) {
             this.view.webview.postMessage({
@@ -582,6 +597,24 @@ export function buildHistorySource(opts: BuildSourceOptions): HistorySource {
 
 function historyDirFor(scope: HistoryScope): string {
     return `${scope.projectDir}/.compose-preview-history`;
+}
+
+/**
+ * Reads an entry's raw `compose/semantics` tree straight from its on-disk sidecar (#1872). The
+ * sidecar always carries the full tree, unlike the daemon's `history/read` wire shape which strips
+ * it — so this is daemon-independent. Best-effort: returns null for a missing sidecar, unparseable
+ * JSON, or an entry that captured no semantics.
+ */
+function readSidecarSemantics(scope: HistoryScope, id: string): unknown {
+    try {
+        const result = new HistoryReader(historyDirFor(scope)).read(id);
+        return (
+            (result?.entry as { semantics?: unknown } | undefined)?.semantics ??
+            null
+        );
+    } catch {
+        return null;
+    }
 }
 
 function currentRendersFor(scope: HistoryScope): CurrentRendersHistory {
