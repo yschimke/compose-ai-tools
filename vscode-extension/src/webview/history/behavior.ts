@@ -53,6 +53,10 @@ export function setupHistoryBehavior(): void {
     // `components/ScopeChip.ts`. It listens for `setScopeLabel` directly.
 
     let entries: HistoryEntry[] = [];
+    // The active history source's ref (null = local). Tracked so the "Source"
+    // filter is only reset when the source genuinely changes (#1872), not on
+    // every routine `setSourceRef` re-post. `undefined` until the first push.
+    let activeSourceRef: string | null | undefined = undefined;
     // (max-2) selection queue (oldest first). Each `<history-row>` owns
     // its own `selected` state and dispatches
     // `history-row-selection-change` on shift-click; this list is the
@@ -285,6 +289,16 @@ export function setupHistoryBehavior(): void {
                     msg.ref != null
                         ? `Viewing reporting branch ${label} — click to change source`
                         : "Choose history source: the local working tree or a pushed reporting branch";
+                // Switching the underlying source flips the entries' source kind
+                // (git for a reporting branch, fs for local). A stale "Source"
+                // filter (fs/git) would then hide the entire new dataset and the
+                // panel would look empty, so reset it to "all" when the source
+                // actually changes — but leave a deliberate filter alone across
+                // routine refreshes (which re-post the same ref).
+                if (msg.ref !== activeSourceRef) {
+                    activeSourceRef = msg.ref;
+                    filterSourceEl.value = "all";
+                }
                 break;
             }
             case "imageReady": {
