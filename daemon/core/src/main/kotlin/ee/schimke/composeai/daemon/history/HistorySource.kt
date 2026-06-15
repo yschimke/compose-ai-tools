@@ -29,6 +29,14 @@ data class HistoryFilter(
   val agentId: String? = null,
   val sourceKind: String? = null,
   val sourceId: String? = null,
+  /**
+   * H10-read — when set, the listing is served from a single on-demand [GitRefHistorySource] for
+   * this full ref name (e.g. `refs/heads/preview/main`) instead of the manager's configured
+   * sources. Lets a client view *any* reporting branch without that ref being wired at daemon
+   * startup. Routing only — not an entry field, so [HistoryFilters.matches] ignores it; the other
+   * filter dimensions still apply within the ref's entries.
+   */
+  val ref: String? = null,
 )
 
 /**

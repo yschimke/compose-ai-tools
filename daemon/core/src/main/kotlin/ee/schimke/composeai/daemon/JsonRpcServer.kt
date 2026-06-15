@@ -1398,6 +1398,7 @@ class JsonRpcServer(
         agentId = params.agentId,
         sourceKind = params.sourceKind,
         sourceId = params.sourceId,
+        ref = params.ref,
       )
     val page =
       try {
@@ -1442,7 +1443,7 @@ class JsonRpcServer(
     }
     val read =
       try {
-        mgr.read(params.id, includeBytes = params.inline)
+        mgr.read(params.id, includeBytes = params.inline, ref = params.ref)
       } catch (t: Throwable) {
         sendErrorResponse(
           id = req.id,
@@ -1521,7 +1522,7 @@ class JsonRpcServer(
     val includeBytes = params.mode == HistoryDiffMode.PIXEL
     val from =
       try {
-        mgr.read(params.from, includeBytes = includeBytes)
+        mgr.read(params.from, includeBytes = includeBytes, ref = params.ref)
       } catch (t: Throwable) {
         sendErrorResponse(
           id = req.id,
@@ -1540,7 +1541,7 @@ class JsonRpcServer(
     }
     val to =
       try {
-        mgr.read(params.to, includeBytes = includeBytes)
+        mgr.read(params.to, includeBytes = includeBytes, ref = params.ref)
       } catch (t: Throwable) {
         sendErrorResponse(
           id = req.id,

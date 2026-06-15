@@ -1526,6 +1526,9 @@ data class HistoryListParams(
   val agentId: String? = null,
   val sourceKind: String? = null,
   val sourceId: String? = null,
+  // H10-read — serve this listing from an on-demand git reporting branch (full ref name, e.g.
+  // `refs/heads/preview/main`) instead of the daemon's configured sources. See HISTORY.md.
+  val ref: String? = null,
 )
 
 @Serializable
@@ -1535,7 +1538,10 @@ data class HistoryListResult(
   val totalCount: Int,
 )
 
-@Serializable data class HistoryReadParams(val id: String, val inline: Boolean = false)
+// `ref` (H10-read) — read this id from an on-demand git reporting branch instead of the configured
+// sources; must match the `ref` the id was listed from.
+@Serializable
+data class HistoryReadParams(val id: String, val inline: Boolean = false, val ref: String? = null)
 
 @Serializable
 data class HistoryReadResultDto(
@@ -1750,6 +1756,9 @@ data class HistoryDiffParams(
   val from: String,
   val to: String,
   val mode: HistoryDiffMode = HistoryDiffMode.METADATA,
+  // H10-read — resolve both `from` and `to` from this on-demand git reporting branch instead of the
+  // configured sources. One ref per diff request (both sides share it).
+  val ref: String? = null,
 )
 
 @Serializable
