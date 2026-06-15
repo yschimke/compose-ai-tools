@@ -66,7 +66,10 @@ const COMPARED_FIELDS: Array<[string, (n: A11yNode) => string | null]> = [
     ["label", (n) => asStr(n.label)],
     ["role", (n) => asStr(n.role)],
     ["states", (n) => statesStr(n.states)],
-    ["merged", (n) => (n.merged == null ? null : String(n.merged))],
+    // The wire model defaults a missing `merged` to true (AccessibilityNode.merged); mirror that
+    // here so a legacy sidecar (written before the field existed) doesn't report a spurious
+    // `merged: ∅ → true` against a newer capture.
+    ["merged", (n) => String(n.merged ?? true)],
 ];
 
 /** Content anchor for a node lacking a stable ref: role + label, before sibling disambiguation. */

@@ -92,6 +92,23 @@ describe("diffA11y", () => {
         });
     });
 
+    it("treats a missing merged as true (no spurious change vs a newer capture)", () => {
+        // Legacy sidecar omits `merged`; newer capture has the wire default `true`.
+        const base: A11yPayload = { nodes: [{ ref: "a1", label: "X" }] };
+        const head: A11yPayload = {
+            nodes: [{ ref: "a1", label: "X", merged: true }],
+        };
+        assert.ok(a11yDeltaIsEmpty(diffA11y(base, head)));
+        // A real merged:false still shows as a change.
+        const unmerged: A11yPayload = {
+            nodes: [{ ref: "a1", label: "X", merged: false }],
+        };
+        const delta = diffA11y(base, unmerged);
+        assert.deepStrictEqual(delta.changed[0].changes, [
+            { field: "merged", from: "true", to: "false" },
+        ]);
+    });
+
     it("returns an empty delta for identical hierarchies", () => {
         const nodes = [{ ref: "a1", role: "Button", label: "Go", states: [] }];
         assert.ok(a11yDeltaIsEmpty(diffA11y({ nodes }, { nodes: [...nodes] })));
