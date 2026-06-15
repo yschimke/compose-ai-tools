@@ -27,6 +27,7 @@ concurrency:
 
 jobs:
   apply:
+    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     name: Apply compose-preview
     runs-on: ubuntu-latest
     steps:
