@@ -4,7 +4,11 @@ import kotlinx.serialization.Serializable
 
 object ComposeSemanticsProduct {
   const val KIND: String = "compose/semantics"
-  const val SCHEMA_VERSION: Int = 2
+  // v3 (#1897): each node may carry resolved design-token data (`tokens`) — container colour,
+  // corner radius, padding — so design-parity's token-compliance check can populate `actual`
+  // instead of degrading to "missing from candidate". Additive: older `compose-semantics.json`
+  // parses with `tokens = null`.
+  const val SCHEMA_VERSION: Int = 3
   const val FILE: String = "compose-semantics.json"
 }
 
@@ -63,7 +67,45 @@ data class ComposeSemanticsNode(
   val testTag: String? = null,
   val mergeMode: String? = null,
   val clickable: Boolean = false,
+  /**
+   * Resolved design-token data extracted from this node's modifiers (issue #1897).
+   *
+   * The text half of the projection (`layoutForegroundColor`, `layoutFontSize`, …) describes drawn
+   * text; this carries the *container* tokens design-parity's token-compliance check compares
+   * against — resolved background/fill colour, corner radius, and padding. Null for the common case
+   * of a node that declares none of them (pure layout / text nodes).
+   */
+  val tokens: ComposeSemanticsTokens? = null,
   val children: List<ComposeSemanticsNode> = emptyList(),
+)
+
+/**
+ * Resolved design-token data for a single semantics node (issue #1897). Populated from the node's
+ * Compose modifiers — `Modifier.background` (and `Surface`/`Card`, which apply it), the shape on
+ * `background` / `clip` / `border`, and `Modifier.padding`. All fields are optional: a node emits
+ * only the tokens it actually declares.
+ */
+@Serializable
+data class ComposeSemanticsTokens(
+  /** Resolved container/fill colour as ARGB hex (`#AARRGGBB`), e.g. from `Modifier.background`. */
+  val backgroundColor: String? = null,
+  /**
+   * Resolved corner radius in dp from the node's `background` / `clip` / `border` shape. A uniform
+   * `RoundedCornerShape` emits a single value (`"12.0dp"`); a non-uniform shape emits the four
+   * corners comma-separated (`"12.0dp,12.0dp,0.0dp,0.0dp"`, top-start → bottom-start).
+   */
+  val cornerRadius: String? = null,
+  /** Resolved padding from `Modifier.padding`, in dp per edge. */
+  val padding: ComposeSemanticsInsets? = null,
+)
+
+/** Per-edge insets in dp (`"16.0dp"`), as resolved from `Modifier.padding` (issue #1897). */
+@Serializable
+data class ComposeSemanticsInsets(
+  val start: String? = null,
+  val top: String? = null,
+  val end: String? = null,
+  val bottom: String? = null,
 )
 
 @Serializable data class LayoutInspectorPayload(val root: LayoutInspectorNode)

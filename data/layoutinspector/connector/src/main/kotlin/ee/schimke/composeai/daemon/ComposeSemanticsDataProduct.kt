@@ -3,6 +3,7 @@ package ee.schimke.composeai.daemon
 import androidx.compose.runtime.tooling.CompositionData
 import androidx.compose.runtime.tooling.CompositionGroup
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.ModifierInfo
@@ -14,6 +15,7 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnitType
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
@@ -126,9 +128,173 @@ object ComposeSemanticsDataProducer {
           else -> null
         },
       clickable = cfg.getOrNull(SemanticsActions.OnClick) != null,
+      tokens = resolvedTokens(),
       children = children.map { it.toWireNode() },
     )
   }
+
+  /**
+   * Projects the design-token data carried by this node's Compose modifiers (issue #1897): the
+   * resolved container colour (`Modifier.background`, which `Surface`/`Card` apply), the corner
+   * radius of its `background` / `clip` / `border` shape, and its `Modifier.padding`. Returns null
+   * when the node declares none of them — the common case for pure layout / text nodes.
+   *
+   * Modifiers are read off the node's [LayoutInfo.getModifierInfo] entries. The preferred source is
+   * each entry's [InspectableValue] projection (the same `nameFallback` / `inspectableElements`
+   * surface the layout inspector uses), but some foundation elements (notably `BackgroundElement`)
+   * don't populate inspector info on the desktop/skiko build, so each lookup falls back to
+   * reflecting the element's backing field. Reflection (rather than a `compose.foundation` compile
+   * dependency) also keeps this module foundation-free, matching the layout inspector's approach.
+   */
+  private fun SemanticsNode.resolvedTokens(): ComposeSemanticsTokens? {
+    val modifiers =
+      try {
+        layoutInfo.getModifierInfo()
+      } catch (_: Throwable) {
+        return null
+      }
+    var backgroundColor: String? = null
+    var cornerRadius: String? = null
+    var padding: ComposeSemanticsInsets? = null
+    for (info in modifiers) {
+      val mod = info.modifier
+      val inspectable = mod as? InspectableValue
+      val name = inspectable?.nameFallback
+      val elements = inspectable?.inspectableElements?.associate { it.name to it.value }.orEmpty()
+      val simpleName = mod.javaClass.simpleName
+
+      if (backgroundColor == null && (name == "background" || simpleName == "BackgroundElement")) {
+        backgroundColor = backgroundColorHex(mod, elements, inspectable?.valueOverride)
+      }
+      if (padding == null && (name == "padding" || simpleName.startsWith("PaddingElement"))) {
+        padding = paddingInsets(mod, elements, inspectable?.valueOverride)
+      }
+      // Corner radius comes from any shape-bearing modifier: `background(color, shape)`,
+      // `clip(shape)` (which Compose routes through `graphicsLayer`), or `border(..., shape)`.
+      // Non-rounded shapes (RectangleShape, etc.) yield null and are skipped.
+      if (cornerRadius == null) {
+        cornerRadius = shapeOf(mod, elements)?.cornerRadiusWire()
+      }
+    }
+    return if (backgroundColor == null && cornerRadius == null && padding == null) null
+    else
+      ComposeSemanticsTokens(
+        backgroundColor = backgroundColor,
+        cornerRadius = cornerRadius,
+        padding = padding,
+      )
+  }
+
+  /**
+   * Resolves a `background` modifier's fill colour as ARGB hex. Reads the inspector `color` element
+   * / `valueOverride` when present; otherwise reflects `BackgroundElement`'s `color` field — a
+   * [Color] value class stored as its packed `ULong`. For sRGB colours (the common case) the ARGB
+   * is the high 32 bits; brushes and non-sRGB packings are skipped rather than mis-decoded.
+   */
+  private fun backgroundColorHex(
+    mod: Any,
+    elements: Map<String, Any?>,
+    valueOverride: Any?,
+  ): String? {
+    ((elements["color"] ?: valueOverride) as? Color)?.let {
+      return if (it == Color.Unspecified) null else colorToWireString(it)
+    }
+    return runCatching {
+        val field = mod.javaClass.getDeclaredField("color").apply { isAccessible = true }
+        val packed = field.getLong(mod).toULong()
+        // sRGB packs the colour space id (non-zero) into the low 32 bits as 0; anything else is a
+        // wide-gamut/unspecified packing we can't read as a plain ARGB hex.
+        if (packed and 0xFFFFFFFFuL != 0uL) return null
+        val argb = (packed shr 32).toInt()
+        if (argb == 0) null else "#${String.format(Locale.US, "%08X", argb)}"
+      }
+      .getOrNull()
+  }
+
+  /**
+   * Reads padding from a `padding` modifier. `Modifier.padding(all)` reports the value through
+   * [InspectableValue.valueOverride], the per-edge and horizontal/vertical overloads through named
+   * [elements]; when inspector info is absent the four `Dp` fields (`start`/`top`/`end`/`bottom`)
+   * are reflected off `PaddingElement`. The `PaddingValues` overload is left unresolved.
+   */
+  private fun paddingInsets(
+    mod: Any,
+    elements: Map<String, Any?>,
+    valueOverride: Any?,
+  ): ComposeSemanticsInsets? {
+    fun el(key: String): String? = (elements[key] as? Dp)?.toWireDp()
+    val all = el("all") ?: (valueOverride as? Dp)?.toWireDp()
+    if (all != null) return ComposeSemanticsInsets(start = all, top = all, end = all, bottom = all)
+    val horizontal = el("horizontal")
+    val vertical = el("vertical")
+    val start = el("start") ?: horizontal ?: reflectDp(mod, "start")
+    val top = el("top") ?: vertical ?: reflectDp(mod, "top")
+    val end = el("end") ?: horizontal ?: reflectDp(mod, "end")
+    val bottom = el("bottom") ?: vertical ?: reflectDp(mod, "bottom")
+    if (start == null && top == null && end == null && bottom == null) return null
+    return ComposeSemanticsInsets(start = start, top = top, end = end, bottom = bottom)
+  }
+
+  /** The inspector `shape` element, or a reflected `shape` field on the modifier element. */
+  private fun shapeOf(mod: Any, elements: Map<String, Any?>): Shape? {
+    (elements["shape"] as? Shape)?.let {
+      return it
+    }
+    return runCatching {
+        val field = mod.javaClass.getDeclaredField("shape").apply { isAccessible = true }
+        field.get(mod) as? Shape
+      }
+      .getOrNull()
+  }
+
+  /**
+   * Resolves the dp corner radius of a [Shape] without a `compose.foundation` compile dependency.
+   * `CornerBasedShape` exposes four `CornerSize` corners via no-arg getters; a dp-based
+   * `CornerSize` stores its `Dp` in a `size` field (inlined to a float). A uniform shape emits one
+   * value; otherwise the four corners are emitted comma-separated. Returns null for non-corner
+   * shapes and for `CornerSize`s that aren't dp-based (e.g. percent), which can't be expressed as a
+   * fixed dp.
+   */
+  private fun Shape.cornerRadiusWire(): String? {
+    val corners =
+      listOf("getTopStart", "getTopEnd", "getBottomEnd", "getBottomStart").map { getter ->
+        cornerSizeDp(invokeNoArg(getter))
+      }
+    if (corners.any { it == null }) return null
+    val values = corners.filterNotNull()
+    return if (values.distinct().size == 1) "${values.first()}dp"
+    else values.joinToString(",") { "${it}dp" }
+  }
+
+  private fun cornerSizeDp(corner: Any?): Float? {
+    corner ?: return null
+    // Only a dp-based corner can be expressed as a fixed dp radius. `PxCornerSize`
+    // (`RoundedCornerShape(12f)`) also stores a `size: Float`, but in pixels, and
+    // `PercentCornerSize` a `percent: Float` — reading either as dp would emit a wrong unit/value.
+    if (corner.javaClass.simpleName != "DpCornerSize") return null
+    return runCatching {
+        val field = corner.javaClass.getDeclaredField("size").apply { isAccessible = true }
+        when (val raw = field.get(corner)) {
+          is Float -> raw
+          is Dp -> raw.value
+          else -> null
+        }
+      }
+      .getOrNull()
+  }
+
+  private fun reflectDp(mod: Any, field: String): String? =
+    runCatching {
+        val value =
+          mod.javaClass.getDeclaredField(field).apply { isAccessible = true }.getFloat(mod)
+        if (value.isNaN()) null else "${value}dp"
+      }
+      .getOrNull()
+
+  private fun Any.invokeNoArg(name: String): Any? =
+    runCatching { javaClass.getMethod(name).invoke(this) }.getOrNull()
+
+  private fun Dp.toWireDp(): String = "${value}dp"
 
   private fun SemanticsConfiguration.label(): String? {
     getOrNull(SemanticsProperties.ContentDescription)
@@ -266,6 +432,10 @@ typealias ComposeSemanticsPayload =
   ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 
 typealias ComposeSemanticsNode = ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
+
+typealias ComposeSemanticsTokens = ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTokens
+
+typealias ComposeSemanticsInsets = ee.schimke.composeai.data.layoutinspector.ComposeSemanticsInsets
 
 typealias LayoutInspectorPayload = ee.schimke.composeai.data.layoutinspector.LayoutInspectorPayload
 
