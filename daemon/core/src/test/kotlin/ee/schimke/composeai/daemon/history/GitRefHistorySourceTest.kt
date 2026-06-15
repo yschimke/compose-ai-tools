@@ -241,6 +241,12 @@ class GitRefHistorySourceTest {
     assertEquals("2026-04-30T10:02:00Z", page.entries[0].timestamp)
     assertEquals("2026-04-30T10:00:00Z", page.entries[2].timestamp)
 
+    // previousId is relinked to the adjacent-older timeline id (resolvable on the ref), not the raw
+    // LocalFs timestamp id; the oldest entry has none.
+    assertEquals(page.entries[1].id, page.entries[0].previousId)
+    assertEquals(page.entries[2].id, page.entries[1].previousId)
+    assertNull(page.entries[2].previousId)
+
     // Read the *oldest* point by its `<shortCommit>:<previewId>` id → its own bytes, not the tip's.
     val oldest = page.entries[2]
     val read = src.read(oldest.id, includeBytes = true)

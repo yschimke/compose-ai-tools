@@ -443,7 +443,7 @@ class GitRefHistorySource(
         }
       if (parsed != null) entries += timelineEntry(parsed, c.take(7))
     }
-    return entries
+    return linkPrevious(entries)
   }
 
   /** Stamps a parsed branch entry with its commit-walk id + git source (#1868). */
@@ -452,6 +452,25 @@ class GitRefHistorySource(
       id = "$shortCommit:${entry.previewId}",
       source = HistorySourceInfo(kind = "git", id = "$id@$shortCommit"),
     )
+
+  /**
+   * Rewrites each entry's [HistoryEntry.previousId] to the adjacent-older timeline id for the same
+   * preview (#1868). The raw value carried in `entry.json` is the producing LocalFs timestamp id,
+   * which a git-ref [read] can't resolve (it resolves `<shortCommit>:<previewId>` ids), so a client
+   * following `previousId` for "diff vs previous" would otherwise get a not-found. The oldest entry
+   * of each preview gets `previousId = null`. Input is newest-first; output preserves that order.
+   */
+  private fun linkPrevious(newestFirst: List<HistoryEntry>): List<HistoryEntry> {
+    val olderId = HashMap<String, String>() // previewId -> id of the next-older entry seen so far
+    // Walk oldest-first so each entry's "previous" is the older neighbour we already passed.
+    val relinked =
+      newestFirst.asReversed().map { entry ->
+        val prev = olderId[entry.previewId]
+        olderId[entry.previewId] = entry.id
+        entry.copy(previousId = prev)
+      }
+    return relinked.asReversed()
+  }
 
   /**
    * Legacy reader: parse the aggregate `_index.jsonl`, tolerating truncated lines; newest-first.
