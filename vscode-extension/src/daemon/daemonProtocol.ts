@@ -901,6 +901,11 @@ export interface HistoryListParams {
     agentId?: string;
     sourceKind?: HistorySourceKind;
     sourceId?: string;
+    /** H10-read — serve this listing from an on-demand git reporting branch
+     *  (full ref name, e.g. `refs/heads/preview/main`) instead of the daemon's
+     *  configured sources. Lets the panel view any reporting branch without it
+     *  being wired at daemon startup. */
+    ref?: string;
 }
 
 export interface HistoryListResult {
@@ -917,6 +922,9 @@ export interface HistoryReadParams {
      *  false, the client reads `pngPath` from disk — preferred for local
      *  same-host clients (VS Code) to avoid the wire round-trip. */
     inline?: boolean;
+    /** H10-read — read this id from an on-demand git reporting branch instead
+     *  of the configured sources; must match the `ref` it was listed from. */
+    ref?: string;
 }
 
 export interface HistoryReadResult {
@@ -937,6 +945,9 @@ export interface HistoryDiffParams {
     from: string;
     to: string;
     mode?: HistoryDiffMode; // default 'metadata'
+    /** H10-read — resolve both `from` and `to` from this on-demand git
+     *  reporting branch instead of the configured sources. One ref per diff. */
+    ref?: string;
 }
 
 /**

@@ -290,6 +290,69 @@ class GitRefHistorySourceTest {
   }
 
   // -------------------------------------------------------------------------
+  // H10-read — on-demand ref serving through HistoryManager (issue #1872)
+  // -------------------------------------------------------------------------
+
+  @Test
+  fun on_demand_ref_serves_unconfigured_branch_through_manager() {
+    // Populate the reporting branch via the WRITE_LOCAL writer (dogfood), with two previews.
+    val writer = source(SyncModeOf.WRITE_LOCAL)
+    val bytesA = "render-A".toByteArray()
+    val bytesB = "render-B".toByteArray()
+    val entryA = entry(id = "20260430-101200-aaaaaaaa", previewId = "com.example.A", bytes = bytesA)
+    val entryB = entry(id = "20260430-101300-bbbbbbbb", previewId = "com.example.B", bytes = bytesB)
+    assertEquals(WriteResult.WRITTEN, writer.write(entryA, bytesA))
+    assertEquals(WriteResult.WRITTEN, writer.write(entryB, bytesB))
+
+    val localDir = Files.createTempDirectory("on-demand-localfs")
+    try {
+      // The branch is deliberately NOT in `gitRefs` — it's only reachable on demand via `ref`.
+      val manager =
+        HistoryManager.forLocalFsAndGitRefs(
+          historyDir = localDir,
+          module = ":t",
+          gitProvenance = null,
+          gitRefs = emptyList(),
+          repoRoot = repoRoot,
+          warnEmitter = warnEmitter,
+        )
+
+      // Without `ref`, only the (empty) configured local source is consulted — the branch is unseen.
+      assertEquals(0, manager.list(HistoryFilter()).totalCount)
+      assertNull(manager.read(entryA.id, includeBytes = false))
+
+      // With `ref`, the listing is served on-demand from that branch, stamped as a git source.
+      val page = manager.list(HistoryFilter(ref = ref))
+      assertEquals(2, page.totalCount)
+      assertTrue(page.entries.all { it.source.kind == "git" })
+      assertEquals(setOf(entryA.id, entryB.id), page.entries.map { it.id }.toSet())
+
+      // Other filter dimensions still apply within the ref's entries.
+      val narrowed = manager.list(HistoryFilter(ref = ref, previewId = "com.example.A"))
+      assertEquals(1, narrowed.totalCount)
+      assertEquals("com.example.A", narrowed.entries.single().previewId)
+
+      // A ref-scoped read resolves the bytes; the same id without a ref stays invisible.
+      val read = manager.read(entryA.id, includeBytes = true, ref = ref)
+      assertNotNull(read)
+      assertEquals("render-A", String(read!!.pngBytes!!))
+      assertEquals("git", read.entry.source.kind)
+      assertNull(manager.read(entryA.id, includeBytes = false))
+    } finally {
+      localDir.toFile().deleteRecursively()
+    }
+  }
+
+  @Test
+  fun on_demand_ref_without_factory_yields_empty() {
+    // A manager with no git-ref factory (no repo root — fake-mode/test paths) must tolerate a `ref`
+    // request: it returns empty / null rather than throwing or falling back to configured sources.
+    val manager = HistoryManager(sources = emptyList(), module = ":t", gitProvenance = null)
+    assertEquals(0, manager.list(HistoryFilter(ref = ref)).totalCount)
+    assertNull(manager.read("any-id", includeBytes = false, ref = ref))
+  }
+
+  // -------------------------------------------------------------------------
   // Helpers
   // -------------------------------------------------------------------------
 

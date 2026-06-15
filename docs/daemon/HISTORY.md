@@ -156,20 +156,28 @@ result: { entries: HistoryEntry[]; nextCursor?: string; totalCount: number }
 Filters `branch`, `branchPattern`, `commit`, `worktreePath`, `agentId`,
 `sourceKind`, `sourceId` are also accepted. Newest first.
 
+`ref?` (H10-read) serves the listing from an on-demand `GitRefHistorySource`
+for that full ref name (e.g. `refs/heads/preview/main`) **instead of** the
+daemon's configured sources, so a client can view any reporting branch without
+it being wired at daemon startup (`composeai.daemon.gitRefHistory`). The other
+filter dimensions still apply within that ref's entries. Available only when the
+daemon knows a repo root; otherwise a `ref` request returns empty.
+
 ### `history/read`
 
 ```ts
-params: { id: string; inline?: boolean }
+params: { id: string; inline?: boolean; ref? }
 result: { entry: HistoryEntry; previewMetadata: PreviewInfoDto; pngPath: string; pngBytes?: string }
 ```
 
 Local clients use `pngPath`; remote clients pass `inline: true` for
-base64 bytes.
+base64 bytes. `ref?` reads the id from that on-demand reporting branch (must
+match the `ref` it was listed from), mirroring `history/list`.
 
 ### `history/diff` (§ H3)
 
 ```ts
-params: { from: string; to: string; mode?: "metadata" | "pixel" | "semantics" }
+params: { from: string; to: string; mode?: "metadata" | "pixel" | "semantics"; ref? }
 result: {
   pngHashChanged: boolean;
   diffPx?: number; ssim?: number; diffPngPath?: string;  // pixel mode only
@@ -196,6 +204,10 @@ snapshotted into its sidecar at record time (see `HistoryEntry.semantics`
 below), so the diff is deterministic and reads no PNGs. The same differ
 (`SemanticsDiff`) backs `compose-preview diff-semantics` and the MCP
 `diff_semantics` tool, so all three surfaces agree.
+
+`ref?` (H10-read) resolves both `from` and `to` from that on-demand reporting
+branch instead of the configured sources — one ref per diff request (both sides
+share it), mirroring `history/list`.
 
 Mismatched previews → `HistoryDiffMismatch (-32011)`. Missing entry →
 `HistoryEntryNotFound (-32010)`. (`-32012` `ERR_HISTORY_PIXEL_NOT_IMPLEMENTED`

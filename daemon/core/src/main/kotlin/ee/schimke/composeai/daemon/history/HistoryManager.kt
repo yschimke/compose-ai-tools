@@ -47,6 +47,15 @@ class HistoryManager(
    * manual `history/prune` RPC calls override individual fields per-call.
    */
   pruneConfig: HistoryPruneConfig = HistoryPruneConfig(),
+  /**
+   * H10-read — builds a read-only [HistorySource] for an arbitrary git ref on demand, so a
+   * `history/list` / `read` / `diff` carrying a [HistoryFilter.ref] can serve from a reporting
+   * branch that wasn't wired at daemon startup. Given a full ref name, returns the source (a fresh
+   * [GitRefHistorySource]); null when on-demand ref reads aren't available (no repo root — e.g.
+   * fake-mode/test managers), in which case a `ref` request yields empty / not-found rather than
+   * falling back to the configured sources.
+   */
+  private val gitRefSourceFactory: ((String) -> HistorySource?)? = null,
 ) {
   private val pruneConfigRef: AtomicReference<HistoryPruneConfig> = AtomicReference(pruneConfig)
 
@@ -210,6 +219,14 @@ class HistoryManager(
    * surfaces its `source.kind = "git"` entry.
    */
   fun list(filter: HistoryFilter): HistoryListPage {
+    // H10-read — a `ref` request is served from a single on-demand git-ref source, bypassing the
+    // configured sources entirely (the caller wants *that* branch's history, not a merge).
+    filter.ref?.let { ref ->
+      val source =
+        gitRefSourceFactory?.invoke(ref)
+          ?: return HistoryListPage(entries = emptyList(), totalCount = 0)
+      return source.list(filter)
+    }
     if (sources.isEmpty()) return HistoryListPage(entries = emptyList(), totalCount = 0)
     if (sources.size == 1) return sources.single().list(filter)
 
@@ -249,8 +266,16 @@ class HistoryManager(
     )
   }
 
-  /** Reads one entry. Falls through sources in order until a hit. */
-  fun read(entryId: String, includeBytes: Boolean): HistoryReadResult? {
+  /**
+   * Reads one entry. When [ref] is set, reads from a single on-demand [GitRefHistorySource] for
+   * that branch (matching the routing in [list]); otherwise falls through the configured sources in
+   * order until a hit.
+   */
+  fun read(entryId: String, includeBytes: Boolean, ref: String? = null): HistoryReadResult? {
+    if (ref != null) {
+      val source = gitRefSourceFactory?.invoke(ref) ?: return null
+      return source.read(entryId, includeBytes = includeBytes)
+    }
     for (source in sources) {
       val result = source.read(entryId, includeBytes = includeBytes)
       if (result != null) return result
@@ -484,11 +509,29 @@ class HistoryManager(
           }
         }
       }
+      // H10-read — on-demand ref reads reuse the same construction as the startup-wired refs, so a
+      // `history/list?ref=…` for any branch behaves identically to a configured one. Available only
+      // when a repo root is known.
+      val gitRefSourceFactory: ((String) -> HistorySource?)? =
+        if (repoRoot != null) {
+          { ref ->
+            GitRefHistorySource(
+              repoRoot = repoRoot,
+              ref = ref,
+              syncMode = gitRefSyncMode,
+              cacheDir =
+                historyDir?.let(GitRefHistorySource::defaultCacheDir)
+                  ?: repoRoot.resolve(".compose-preview-history").resolve(".git-ref-cache"),
+              warnEmitter = warnEmitter,
+            )
+          }
+        } else null
       return HistoryManager(
         sources = sources,
         module = module,
         gitProvenance = gitProvenance,
         pruneConfig = pruneConfig,
+        gitRefSourceFactory = gitRefSourceFactory,
       )
     }
   }
