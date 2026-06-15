@@ -469,17 +469,27 @@ class RenderEngine(
       }
     }
 
-    // Compose semantics wireframe — derive the standalone 2D schematic (SVG + baked PNG) from the
-    // held scene's unmerged semantics root, matching the unmerged tree the Android producer uses so
-    // both backends emit the same diagram. Always-on (requiresRerender = false) like the Android
+    // Compose semantics (`compose/semantics` JSON sidecar) + wireframe — both derive from the held
+    // scene's unmerged semantics root, matching the unmerged tree the Android producer uses so both
+    // backends emit the same data. Always-on (requiresRerender = false) like the Android
     // post-capture extension, and wrapped in try/catch so a walk/bake failure never strands the
-    // PNG.
+    // outputs.
     try {
       val root = state.scene.semanticsOwners.firstOrNull()?.unmergedRootSemanticsNode
       if (root != null) {
         trace.section("wireframe") {
           val previewId = state.spec.previewId ?: state.spec.outputBaseName
           val payload = ComposeSemanticsDataProducer.buildPayload(root)
+          // `compose-semantics.json` — the plain `compose/semantics` data product the Android
+          // ComposeSemanticsExtension writes per render. The desktop backend previously fed this
+          // tree only into the wireframe / spatial / a11y views and never wrote the sidecar, so
+          // `bundle pack --with-semantics` and design-parity found no semantics on desktop (#1885
+          // follow-up). Write it from the same captured root.
+          ComposeSemanticsDataProducer.writeArtifacts(
+            rootDir = dataDir,
+            previewId = previewId,
+            root = root,
+          )
           ComposeSemanticsWireframeDataProducer.writeSvg(
             rootDir = dataDir,
             previewId = previewId,

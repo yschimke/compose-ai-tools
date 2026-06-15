@@ -90,9 +90,13 @@ class RenderEngineTest {
   }
 
   @Test
-  fun renderAlsoProducesSemanticsWireframe() {
-    // End-to-end: a real desktop render must drop the always-on `compose/semantics-wireframe`
-    // artefacts (SVG + baked PNG) into the data dir, keyed by the preview id, alongside the PNG.
+  fun renderAlsoProducesSemanticsArtifacts() {
+    // End-to-end: a real desktop render must drop the always-on `compose/semantics` JSON sidecar
+    // AND the `compose/semantics-wireframe` artefacts (SVG + baked PNG) into the data dir, keyed by
+    // the preview id, alongside the PNG. The plain JSON sidecar (compose-semantics.json) is what
+    // `bundle pack --with-semantics` and design-parity read — the desktop backend previously wrote
+    // only the wireframe and omitted it, so semantics never reached the bundle (issue #1885
+    // follow-up).
     val outputDir = tempFolder.newFolder("renders-wireframe")
     val dataDir = tempFolder.newFolder("data-wireframe")
     val engine = RenderEngine(outputDir = outputDir, dataDir = dataDir)
@@ -111,6 +115,15 @@ class RenderEngineTest {
       host.submit(request, timeoutMs = 60_000)
 
       val previewDir = File(dataDir, "wireframe-red")
+      val semantics = File(previewDir, "compose-semantics.json")
+      assertTrue(
+        "compose-semantics.json sidecar must be produced: ${semantics.absolutePath}",
+        semantics.exists(),
+      )
+      assertTrue(
+        "compose-semantics.json must carry a node tree",
+        semantics.readText().contains("\"root\""),
+      )
       val svg = File(previewDir, "compose-semantics-wireframe.svg")
       val png = File(previewDir, "compose-semantics-wireframe.png")
       assertTrue("wireframe SVG must be produced: ${svg.absolutePath}", svg.exists())
