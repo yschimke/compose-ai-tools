@@ -1298,6 +1298,10 @@ export type HistoryToWebview =
           // when either render didn't capture semantics.
           leftSemantics?: unknown;
           rightSemantics?: unknown;
+          // Raw `compose/theme` payloads ({ resolvedTokens }) for each entry, when captured. Diffed
+          // client-side for the theme data-diff section (#1872). null/omitted when not captured.
+          leftTheme?: unknown;
+          rightTheme?: unknown;
       }
     | {
           command: "diffPairError";
