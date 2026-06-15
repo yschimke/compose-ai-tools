@@ -72,6 +72,14 @@ object RenderDataArtifactContextKeys {
     )
 
   /**
+   * Render density (`spec.density`, dp = px / density). Threaded so producers that resolve a
+   * percent-based corner radius (`CircleShape`) against a node's measured px size can express it in
+   * dp (issue #1908); other token fields carry dp directly and don't need it.
+   */
+  val Density: ExtensionContextKey<Float> =
+    ExtensionContextKey(name = "render-data-artifact.density", type = Float::class.javaObjectType)
+
+  /**
    * The held [`androidx.activity.ComponentActivity`] the rule launched for this render. Threaded
    * to extensions that read activity-scoped state — `getIntent()` (deep-link routing audits),
    * `onBackPressedDispatcher.hasEnabledCallbacks()` (registered back callbacks). Robolectric's

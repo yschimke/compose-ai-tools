@@ -53,9 +53,10 @@ object ComposeSemanticsDataProducer {
     previewId: String,
     root: SemanticsNode,
     fileSystem: FileSystem = SystemFileSystem,
+    density: Float = 1f,
   ) {
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
-    val payload = buildPayload(root)
+    val payload = buildPayload(root, density)
     fileSystem.write(previewDir.resolve(FILE).path.toPath()) {
       writeUtf8(json.encodeToString(ComposeSemanticsPayload.serializer(), payload))
     }
@@ -65,9 +66,13 @@ object ComposeSemanticsDataProducer {
    * Projects a captured semantics [root] into the stable wire model. Public so the wireframe
    * producer (and any other derived view) reuses the exact same projection — label precedence,
    * bounds formatting, merge-mode mapping — rather than re-walking the tree with different rules.
+   *
+   * [density] is the render density (dp = px / density). It is only needed to express a
+   * percent-based corner radius (`CircleShape`) as dp; the default of `1f` leaves px-equals-dp
+   * captures (and the token text/colour fields, which carry dp directly) unchanged (issue #1908).
    */
-  fun buildPayload(root: SemanticsNode): ComposeSemanticsPayload =
-    SemanticsRefs.assign(ComposeSemanticsPayload(root = root.toWireNode()))
+  fun buildPayload(root: SemanticsNode, density: Float = 1f): ComposeSemanticsPayload =
+    SemanticsRefs.assign(ComposeSemanticsPayload(root = root.toWireNode(density)))
 
   private val probeNodesSerializer = ListSerializer(RecordingProbeNode.serializer())
 
@@ -99,7 +104,7 @@ object ComposeSemanticsDataProducer {
   fun decodeProbeNodes(payload: String): List<RecordingProbeNode> =
     json.decodeFromString(probeNodesSerializer, payload)
 
-  private fun SemanticsNode.toWireNode(): ComposeSemanticsNode {
+  private fun SemanticsNode.toWireNode(density: Float): ComposeSemanticsNode {
     val cfg = config
     val layout = cfg.layoutDetails()
     return ComposeSemanticsNode(
@@ -128,8 +133,8 @@ object ComposeSemanticsDataProducer {
           else -> null
         },
       clickable = cfg.getOrNull(SemanticsActions.OnClick) != null,
-      tokens = resolvedTokens(),
-      children = children.map { it.toWireNode() },
+      tokens = resolvedTokens(density),
+      children = children.map { it.toWireNode(density) },
     )
   }
 
@@ -146,7 +151,7 @@ object ComposeSemanticsDataProducer {
    * reflecting the element's backing field. Reflection (rather than a `compose.foundation` compile
    * dependency) also keeps this module foundation-free, matching the layout inspector's approach.
    */
-  private fun SemanticsNode.resolvedTokens(): ComposeSemanticsTokens? {
+  private fun SemanticsNode.resolvedTokens(density: Float): ComposeSemanticsTokens? {
     val modifiers =
       try {
         layoutInfo.getModifierInfo()
@@ -154,8 +159,12 @@ object ComposeSemanticsDataProducer {
         return null
       }
     var backgroundColor: String? = null
+    var borderColor: String? = null
     var cornerRadius: String? = null
+    var shape: String? = null
     var padding: ComposeSemanticsInsets? = null
+    // `CircleShape` / `CornerSize(50%)` resolve to dp against the node's shorter measured side.
+    val minSidePx = minOf(size.width, size.height)
     for (info in modifiers) {
       val mod = info.modifier
       val inspectable = mod as? InspectableValue
@@ -166,23 +175,73 @@ object ComposeSemanticsDataProducer {
       if (backgroundColor == null && (name == "background" || simpleName == "BackgroundElement")) {
         backgroundColor = backgroundColorHex(mod, elements, inspectable?.valueOverride)
       }
+      // `Modifier.border` carries the outline colour `Surface`/`Card`/dividers apply — a role colour
+      // (`outline` / `outlineVariant`) a plain `Modifier.background` never sees (issue #1908).
+      if (borderColor == null && (name == "border" || simpleName.startsWith("BorderModifier"))) {
+        borderColor = borderColorHex(mod, elements)
+      }
       if (padding == null && (name == "padding" || simpleName.startsWith("PaddingElement"))) {
         padding = paddingInsets(mod, elements, inspectable?.valueOverride)
       }
-      // Corner radius comes from any shape-bearing modifier: `background(color, shape)`,
-      // `clip(shape)` (which Compose routes through `graphicsLayer`), or `border(..., shape)`.
-      // Non-rounded shapes (RectangleShape, etc.) yield null and are skipped.
-      if (cornerRadius == null) {
-        cornerRadius = shapeOf(mod, elements)?.cornerRadiusWire()
+      // Shape comes from any shape-bearing modifier: `background(color, shape)`, `clip(shape)`
+      // (which Compose routes through `graphicsLayer`), or `border(..., shape)`. A plain rectangle
+      // yields null for both fields and is skipped.
+      val nodeShape = shapeOf(mod, elements)
+      if (nodeShape != null) {
+        if (cornerRadius == null) cornerRadius = nodeShape.cornerRadiusWire(minSidePx, density)
+        if (shape == null) shape = nodeShape.shapeDescriptor()
       }
     }
-    return if (backgroundColor == null && cornerRadius == null && padding == null) null
+    val gap = arrangementGapWire()
+    return if (
+      backgroundColor == null &&
+        borderColor == null &&
+        cornerRadius == null &&
+        shape == null &&
+        gap == null &&
+        padding == null
+    )
+      null
     else
       ComposeSemanticsTokens(
         backgroundColor = backgroundColor,
+        borderColor = borderColor,
         cornerRadius = cornerRadius,
+        shape = shape,
+        gap = gap,
         padding = padding,
       )
+  }
+
+  /**
+   * Resolves the inter-child spacing of a `Row`/`Column` from its measure policy (issue #1908).
+   * `Arrangement.spacedBy(n)` is stored on the `Row`/`Column`MeasurePolicy as an
+   * `Arrangement.HorizontalOrVertical` whose `spacing` `Dp` is kept in a `spacing` float field; the
+   * value-class `getSpacing` getter is name-mangled, so the field is read directly. Reflection (not
+   * a `compose.foundation` dependency) keeps this module foundation-free, matching the rest of the
+   * extractor. Returns null when the layout has no arrangement spacing.
+   */
+  private fun SemanticsNode.arrangementGapWire(): String? {
+    val policy =
+      runCatching { layoutInfo.javaClass.getMethod("getMeasurePolicy").invoke(layoutInfo) }
+        .getOrNull() ?: return null
+    var cls: Class<*>? = policy.javaClass
+    while (cls != null && cls != Any::class.java) {
+      for (field in cls.declaredFields) {
+        val value =
+          runCatching { field.apply { isAccessible = true }.get(policy) }.getOrNull() ?: continue
+        if (!value.javaClass.name.startsWith("androidx.compose.foundation.layout.Arrangement"))
+          continue
+        val spacing =
+          runCatching {
+              value.javaClass.getDeclaredField("spacing").apply { isAccessible = true }.getFloat(value)
+            }
+            .getOrNull() ?: continue
+        if (spacing > 0f) return "${spacing}dp"
+      }
+      cls = cls.superclass
+    }
+    return null
   }
 
   /**
@@ -204,6 +263,30 @@ object ComposeSemanticsDataProducer {
         val packed = field.getLong(mod).toULong()
         // sRGB packs the colour space id (non-zero) into the low 32 bits as 0; anything else is a
         // wide-gamut/unspecified packing we can't read as a plain ARGB hex.
+        if (packed and 0xFFFFFFFFuL != 0uL) return null
+        val argb = (packed shr 32).toInt()
+        if (argb == 0) null else "#${String.format(Locale.US, "%08X", argb)}"
+      }
+      .getOrNull()
+  }
+
+  /**
+   * Resolves a `border` modifier's stroke colour as ARGB hex. `Modifier.border` projects its colour
+   * through the inspector `color` element even when the brush is a plain `SolidColor`; that's read
+   * first, falling back to reflecting the backing `brush` field's `SolidColor.value`. A gradient
+   * brush (no single colour) is skipped (issue #1908).
+   */
+  private fun borderColorHex(mod: Any, elements: Map<String, Any?>): String? {
+    (elements["color"] as? Color)?.let {
+      return if (it == Color.Unspecified) null else colorToWireString(it)
+    }
+    return runCatching {
+        val brush =
+          mod.javaClass.getDeclaredField("brush").apply { isAccessible = true }.get(mod) ?: return null
+        if (brush.javaClass.simpleName != "SolidColor") return null
+        val value =
+          brush.javaClass.getDeclaredField("value").apply { isAccessible = true }.getLong(brush)
+        val packed = value.toULong()
         if (packed and 0xFFFFFFFFuL != 0uL) return null
         val argb = (packed shr 32).toInt()
         if (argb == 0) null else "#${String.format(Locale.US, "%08X", argb)}"
@@ -249,16 +332,18 @@ object ComposeSemanticsDataProducer {
 
   /**
    * Resolves the dp corner radius of a [Shape] without a `compose.foundation` compile dependency.
-   * `CornerBasedShape` exposes four `CornerSize` corners via no-arg getters; a dp-based
-   * `CornerSize` stores its `Dp` in a `size` field (inlined to a float). A uniform shape emits one
-   * value; otherwise the four corners are emitted comma-separated. Returns null for non-corner
-   * shapes and for `CornerSize`s that aren't dp-based (e.g. percent), which can't be expressed as a
-   * fixed dp.
+   * `CornerBasedShape` exposes four `CornerSize` corners via no-arg getters. A dp-based `CornerSize`
+   * (`DpCornerSize`) stores its `Dp` in a `size` field (inlined to a float) and is emitted verbatim;
+   * a percent-based `CornerSize` (`PercentCornerSize`, what `CircleShape` and `CornerSize(50%)` use)
+   * is resolved against [minSidePx] / [density] so a circular avatar reports its effective dp radius
+   * (issue #1908). A uniform shape emits one value; otherwise the four corners are emitted
+   * comma-separated. Returns null for non-corner shapes and for pixel corners (`PxCornerSize`,
+   * `RoundedCornerShape(12f)`), which can't be expressed as a fixed dp.
    */
-  private fun Shape.cornerRadiusWire(): String? {
+  private fun Shape.cornerRadiusWire(minSidePx: Int, density: Float): String? {
     val corners =
       listOf("getTopStart", "getTopEnd", "getBottomEnd", "getBottomStart").map { getter ->
-        cornerSizeDp(invokeNoArg(getter))
+        cornerSizeDp(invokeNoArg(getter), minSidePx, density)
       }
     if (corners.any { it == null }) return null
     val values = corners.filterNotNull()
@@ -266,21 +351,66 @@ object ComposeSemanticsDataProducer {
     else values.joinToString(",") { "${it}dp" }
   }
 
-  private fun cornerSizeDp(corner: Any?): Float? {
+  private fun cornerSizeDp(corner: Any?, minSidePx: Int, density: Float): Float? {
     corner ?: return null
-    // Only a dp-based corner can be expressed as a fixed dp radius. `PxCornerSize`
-    // (`RoundedCornerShape(12f)`) also stores a `size: Float`, but in pixels, and
-    // `PercentCornerSize` a `percent: Float` — reading either as dp would emit a wrong unit/value.
-    if (corner.javaClass.simpleName != "DpCornerSize") return null
-    return runCatching {
-        val field = corner.javaClass.getDeclaredField("size").apply { isAccessible = true }
-        when (val raw = field.get(corner)) {
-          is Float -> raw
-          is Dp -> raw.value
-          else -> null
+    return when (corner.javaClass.simpleName) {
+      // A dp corner stores its `Dp` (inlined float) directly.
+      "DpCornerSize" ->
+        runCatching {
+            val field = corner.javaClass.getDeclaredField("size").apply { isAccessible = true }
+            when (val raw = field.get(corner)) {
+              is Float -> raw
+              is Dp -> raw.value
+              else -> null
+            }
+          }
+          .getOrNull()
+      // A percent corner is a fraction of the shorter side: `px = minSide * percent/100`, then dp.
+      "PercentCornerSize" ->
+        cornerPercent(corner)?.let { pct ->
+          if (minSidePx <= 0 || density <= 0f) null
+          else roundedDp((minSidePx * pct / 100f) / density)
         }
+      // `PxCornerSize` (`RoundedCornerShape(12f)`) stores pixels we can't turn into a fixed dp.
+      else -> null
+    }
+  }
+
+  /**
+   * The percent (`50.0` for `CircleShape`) stored in a `PercentCornerSize`. The backing field is
+   * `percent` (its `toString` renders `"CornerSize(size = 50.0%)"`, but that label is not the field
+   * name); fall back to `size` defensively in case a future Compose renames it.
+   */
+  private fun cornerPercent(corner: Any?): Float? {
+    corner ?: return null
+    if (corner.javaClass.simpleName != "PercentCornerSize") return null
+    return sequenceOf("percent", "size")
+      .mapNotNull { name ->
+        runCatching {
+            corner.javaClass.getDeclaredField(name).apply { isAccessible = true }.getFloat(corner)
+          }
+          .getOrNull()
       }
-      .getOrNull()
+      .firstOrNull()
+  }
+
+  /** Round a computed dp to 2 decimals so percent-derived radii read cleanly (`18.0`, not `17.99`). */
+  private fun roundedDp(value: Float): Float = (value * 100f).roundToInt() / 100f
+
+  /**
+   * Shape-family descriptor for shapes whose radius isn't a single dp number (issue #1908):
+   * `"circle"` for a `CircleShape` / all-`CornerSize(50%)` rounded shape, `"cut"` for a
+   * `CutCornerShape`. Null for a plain rectangle or an ordinary dp `RoundedCornerShape` (its radius
+   * is already carried by [cornerRadiusWire]), so the descriptor stays signal, not noise.
+   */
+  private fun Shape.shapeDescriptor(): String? {
+    if (javaClass.simpleName == "CutCornerShape") return "cut"
+    val corners =
+      listOf("getTopStart", "getTopEnd", "getBottomEnd", "getBottomStart").map {
+        cornerPercent(invokeNoArg(it))
+      }
+    if (corners.all { it != null && it >= 50f }) return "circle"
+    return null
   }
 
   private fun reflectDp(mod: Any, field: String): String? =

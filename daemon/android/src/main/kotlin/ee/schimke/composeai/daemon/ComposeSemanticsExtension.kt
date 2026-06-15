@@ -26,10 +26,12 @@ class ComposeSemanticsExtension : PostCaptureProcessor {
     val rootDir = context.require(RenderDataArtifactContextKeys.RootDir)
     val outputBaseName = context.require(RenderDataArtifactContextKeys.OutputBaseName)
     val semanticsRoot = context.require(RenderDataArtifactContextKeys.SemanticsRoot)
+    val density = context.get(RenderDataArtifactContextKeys.Density) ?: 1f
     ComposeSemanticsDataProducer.writeArtifacts(
       rootDir = rootDir,
       previewId = outputBaseName,
       root = semanticsRoot,
+      density = density,
     )
   }
 
