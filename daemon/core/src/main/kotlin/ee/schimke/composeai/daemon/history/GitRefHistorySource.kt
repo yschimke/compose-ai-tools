@@ -83,6 +83,8 @@ class GitRefHistorySource(
    * render (synchronous, today's behaviour).
    */
   private val debounceMs: Long = 0,
+  /** Which renders reach the reporting branch (#1872 curation); see [PublishPolicy]. */
+  private val publishPolicy: PublishPolicy = PublishPolicy.CLEAN_ON_BRANCH,
 ) : HistorySource {
 
   override val id: String = displayId
@@ -101,6 +103,10 @@ class GitRefHistorySource(
     if (!supportsWrites()) {
       error("GitRefHistorySource(ref=$ref) is $syncMode; writes go to a writable source.")
     }
+    // Curation (#1872): keep uncommitted / off-branch local states off the shared branch. The
+    // render
+    // still lands in the local FS history; it just isn't buffered, committed, or pushed here.
+    if (!shouldPublish(entry)) return WriteResult.SKIPPED_DUPLICATE
     return try {
       // Debounced: buffer for the window; a burst coalesces into one commit on flush (#1882). The
       // local FS source (priority 0) drives `historyAdded`, so deferring the branch commit is
@@ -116,6 +122,23 @@ class GitRefHistorySource(
       )
       WriteResult.SKIPPED_DUPLICATE
     }
+  }
+
+  /** The branch this ref tracks (e.g. `refs/heads/preview/main` → `main`). */
+  private val sourceBranch: String
+    get() = ref.removePrefix("refs/heads/preview/").removePrefix("refs/heads/")
+
+  /**
+   * Curation gate (#1872): whether [entry] may reach the reporting branch under [publishPolicy].
+   * [PublishPolicy.ALL] is always true; [PublishPolicy.CLEAN_ON_BRANCH] requires a clean working
+   * tree (`git.dirty != true`) on the tracked [sourceBranch]. A render with no git provenance is
+   * allowed (nothing to curate against — e.g. fake-mode / tests).
+   */
+  private fun shouldPublish(entry: HistoryEntry): Boolean {
+    if (publishPolicy == PublishPolicy.ALL) return true
+    val git = entry.git ?: return true
+    if (git.dirty == true) return false
+    return git.branch == sourceBranch
   }
 
   /**
@@ -487,7 +510,7 @@ class GitRefHistorySource(
         formatVersion = REPORTING_BRANCH_FORMAT_VERSION,
         generatedAt = Instant.now().toString(),
         commit = changed.firstOrNull()?.first?.git?.commit,
-        sourceBranch = ref.removePrefix("refs/heads/preview/").removePrefix("refs/heads/"),
+        sourceBranch = sourceBranch,
         previews = previews,
       )
     return MANIFEST_JSON.encodeToString(ReportingBranchManifest.serializer(), manifest).toBytes()
@@ -830,6 +853,23 @@ class GitRefHistorySource(
     WRITE_PUSH,
   }
 
+  /**
+   * Which renders are allowed onto the reporting branch (#1872 curation). The local FS source
+   * always records every render (the developer's scratch history); this only gates the *shared*
+   * branch so uncommitted / off-branch local states don't pollute it.
+   */
+  enum class PublishPolicy {
+    /** Record every render (today's behaviour) — no curation. */
+    ALL,
+    /**
+     * Only record renders of a **clean** working tree (`git.dirty != true`) that were produced **on
+     * the branch this ref tracks** (`git.branch == sourceBranch`), so each branch entry is a
+     * committed, reproducible state. Renders with no git provenance are allowed (nothing to curate
+     * against — e.g. fake-mode).
+     */
+    CLEAN_ON_BRANCH,
+  }
+
   companion object {
     /** Stable filename for the overwritten-per-render PNG on the ref. */
     const val RENDER_FILENAME: String = "render.png"
@@ -908,6 +948,21 @@ class GitRefHistorySource(
       if (propValue == null) return DEFAULT_DEBOUNCE_MS
       return propValue.trim().toLongOrNull()?.coerceAtLeast(0) ?: 0
     }
+
+    /** Sysprop for the reporting-branch publish policy (#1872 curation). */
+    const val PUBLISH_POLICY_PROP: String = "composeai.daemon.gitRefHistoryPublishPolicy"
+
+    /**
+     * Parses [PUBLISH_POLICY_PROP]; `all` → [PublishPolicy.ALL], else →
+     * [PublishPolicy.CLEAN_ON_BRANCH].
+     */
+    fun parsePublishPolicySysprop(
+      propValue: String? = System.getProperty(PUBLISH_POLICY_PROP)
+    ): PublishPolicy =
+      when (propValue?.trim()?.lowercase()) {
+        "all" -> PublishPolicy.ALL
+        else -> PublishPolicy.CLEAN_ON_BRANCH
+      }
 
     fun defaultCacheDir(historyDir: Path): Path = historyDir.resolve(".git-ref-cache")
   }
