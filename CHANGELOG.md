@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.11](https://github.com/yschimke/compose-ai-tools/compare/v0.15.10...v0.15.11) (2026-06-16)
+
+
+### Bug Fixes
+
+* **discovery:** find previews under AGP 9.x built-in Kotlin ([#1924](https://github.com/yschimke/compose-ai-tools/issues/1924)) ([#1925](https://github.com/yschimke/compose-ai-tools/issues/1925)) ([7953931](https://github.com/yschimke/compose-ai-tools/commit/7953931eeba628144de88105335bfbd9095fa0dc))
+
 ## [0.15.10](https://github.com/yschimke/compose-ai-tools/compare/v0.15.9...v0.15.10) (2026-06-16)
 
 
