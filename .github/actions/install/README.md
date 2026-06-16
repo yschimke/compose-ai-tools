@@ -26,6 +26,13 @@ remainder of the job.
 
 ## Pin the CLI to a Gradle version catalog
 
+> **Avoid CLI / plugin version skew.** `version: latest` floats to the
+> newest release independent of the Gradle plugin you've pinned. A CLI
+> newer than the applied plugin can't discover it, so renders break on
+> every release (issue #1920). Pin both from one source of truth — and if
+> you drive CI through the [`apply`](../apply/README.md#version-skew)
+> action, it also guards against this automatically.
+
 To keep the CLI version in lockstep with the rest of the project's
 toolchain, declare it in `gradle/libs.versions.toml` and let
 [Renovate](https://docs.renovatebot.com/) bump it on releases:

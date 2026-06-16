@@ -461,6 +461,8 @@ jobs:
         run: python3 .github/actions/lib/test_notification_previews.py -v
       - name: Run xr-gallery tests
         run: python3 .github/actions/lib/test_xr_gallery.py -v
+      - name: Run apply skew-guard tests
+        run: python3 .github/actions/apply/test_check_skew.py -v
 
   # VS Code extension tests — both the existing in-process Mocha suite and
   # the @vscode/test-electron integration tests. The latter download a
