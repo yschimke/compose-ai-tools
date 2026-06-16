@@ -131,15 +131,60 @@ class GitRefHistorySource(
   /**
    * Curation gate (#1872): whether [entry] may reach the reporting branch under [publishPolicy].
    * [PublishPolicy.ALL] is always true; [PublishPolicy.CLEAN_ON_BRANCH] requires a clean working
-   * tree (`git.dirty != true`) on the tracked [sourceBranch]. A render with no git provenance is
-   * allowed (nothing to curate against — e.g. fake-mode / tests).
+   * tree on the tracked [sourceBranch].
+   *
+   * Reads `dirty` / `branch` **fresh** at decision time rather than trusting `entry.git`: that's
+   * filled from `GitProvenance.snapshot()`, which caches for a short TTL, so in a save-loop a
+   * render of a now-dirty tree can carry a stale `dirty=false` and would otherwise slip onto the
+   * curated branch. Falls back to the recorded `entry.git` only when a fresh read isn't possible
+   * (git unavailable); when neither yields provenance (fake-mode) the render is allowed — nothing
+   * to curate against.
    */
   private fun shouldPublish(entry: HistoryEntry): Boolean {
     if (publishPolicy == PublishPolicy.ALL) return true
-    val git = entry.git ?: return true
-    if (git.dirty == true) return false
-    return git.branch == sourceBranch
+    val dirty = currentDirty() ?: entry.git?.dirty
+    val branch = currentBranch() ?: entry.git?.branch
+    if (dirty == null && branch == null) return true
+    if (dirty == true) return false
+    return branch == sourceBranch
   }
+
+  /**
+   * Fresh working-tree dirtiness, **ignoring the history system's own artifacts** — the local FS
+   * archive and the git-ref cache both live under the history dir ([cacheDir]'s parent), and
+   * `HistoryManager` writes the FS source before this one, so if that dir isn't gitignored its
+   * just-written files would make every render look dirty and self-block curation (#1923 review). A
+   * change anywhere else marks the tree dirty. Null when git can't be run.
+   */
+  private fun currentDirty(): Boolean? {
+    val out = runGit("-c", "core.quotePath=false", "status", "--porcelain") ?: return null
+    if (out.isEmpty()) return false
+    val historyDir = relativeHistoryDir()
+    return out.lineSequence().any { line ->
+      // Porcelain v1 line: two status chars + a space + the path (from index 3).
+      if (line.length < 4) return@any false
+      val path = line.substring(3)
+      historyDir == null || !(path == historyDir || path.startsWith("$historyDir/"))
+    }
+  }
+
+  /**
+   * The history dir (FS archive + git-ref cache) relative to [repoRoot]; null when not under it.
+   */
+  private fun relativeHistoryDir(): String? {
+    val historyRoot = cacheDir.parent ?: return null
+    return try {
+      repoRoot.relativize(historyRoot).toString().replace('\\', '/').takeIf {
+        it.isNotEmpty() && !it.startsWith("..")
+      }
+    } catch (_: Throwable) {
+      null
+    }
+  }
+
+  /** Fresh current branch (`symbolic-ref`), or null on detached HEAD / when git can't be run. */
+  private fun currentBranch(): String? =
+    runGit("symbolic-ref", "--short", "HEAD")?.takeIf { it.isNotEmpty() }
 
   /**
    * Commits [renders] as one batch and, under `WRITE_PUSH`, publishes it — or, when the batch
