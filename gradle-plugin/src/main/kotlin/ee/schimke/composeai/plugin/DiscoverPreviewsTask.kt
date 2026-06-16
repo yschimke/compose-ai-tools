@@ -6,11 +6,15 @@ import kotlinx.serialization.json.Json
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.file.Directory
+import org.gradle.api.file.RegularFile
 import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
@@ -33,6 +37,31 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   @get:InputFiles
   @get:PathSensitive(PathSensitivity.RELATIVE)
   abstract val classDirs: ConfigurableFileCollection
+
+  /**
+   * The module's own compiled classes laid out as directories, sourced from AGP's scoped `PROJECT`
+   * `CLASSES` artifact (`variant.artifacts.forScope(PROJECT).toGet(CLASSES, …)`). Wired by the
+   * Android backend in addition to [classDirs]; resolving the scoped artifact also creates the
+   * implicit task dependency on whichever task compiled the classes — the standalone Kotlin Gradle
+   * Plugin's `compile<Variant>Kotlin` OR AGP 9.x built-in Kotlin (`built_in_kotlinc`), whose output
+   * the legacy hardcoded `build/tmp/kotlin-classes/<variant>` directory never receives. Optional /
+   * empty on non-Android backends (desktop/JVM). See issue #1924.
+   */
+  @get:InputFiles
+  @get:Optional
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val projectClassDirs: ListProperty<Directory>
+
+  /**
+   * The module's own compiled classes packaged as jars, the jar half of AGP's scoped `PROJECT`
+   * `CLASSES` artifact (see [projectClassDirs]). Method-walked as project classes by
+   * [PreviewDiscovery] — unlike [dependencyJars] — so previews compiled into a project jar are
+   * discovered. Optional / empty on non-Android backends. See issue #1924.
+   */
+  @get:InputFiles
+  @get:Optional
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val projectClassJars: ListProperty<RegularFile>
 
   @get:InputFiles
   @get:PathSensitive(PathSensitivity.NONE)
@@ -90,9 +119,16 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
 
   @TaskAction
   fun discover() {
+    // Union the directory-scan candidates ([classDirs]) with the scoped PROJECT
+    // CLASSES directories so the module's own classes are found regardless of
+    // which compiler produced them. ClassGraph attributes each FQN to a single
+    // element and previews are deduped by id, so any overlap between the two
+    // sources is harmless. See issue #1924.
+    val scopedClassDirs = projectClassDirs.getOrElse(emptyList()).map { it.asFile }
+    val scopedClassJars = projectClassJars.getOrElse(emptyList()).map { it.asFile }
     val input =
       PreviewDiscovery.Input(
-        classDirs = classDirs.files.toList(),
+        classDirs = classDirs.files.toList() + scopedClassDirs,
         dependencyJars = dependencyJars.files.toList(),
         sourceFiles = sourceFiles.files.toList(),
         moduleName = moduleName.get(),
@@ -101,6 +137,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         failOnEmpty = failOnEmpty.get(),
         resourceDirs = resourceDirs.files.toList(),
         lottieRenderSubdir = lottieRenderSubdir.getOrElse("renders"),
+        projectClassJars = scopedClassJars,
       )
     when (val outcome = PreviewDiscovery.discover(input)) {
       is PreviewDiscovery.Outcome.Success -> {
