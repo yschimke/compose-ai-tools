@@ -13,9 +13,9 @@ version of this repo, so consumer CI isn't exposed to changes on `main`.
   with:
     distribution: temurin
     java-version: 17
-- uses: yschimke/compose-ai-tools/.github/actions/install@v0.15.11
+- uses: yschimke/compose-ai-tools/.github/actions/install@v0.15.12
   with:
-    # Literal "0.15.11", "latest", or "catalog" (read from a Gradle
+    # Literal "0.15.12", "latest", or "catalog" (read from a Gradle
     # version catalog — see catalog-path / catalog-key inputs).
     version: latest
 ```
@@ -41,11 +41,11 @@ toolchain, declare it in `gradle/libs.versions.toml` and let
 ```toml
 # gradle/libs.versions.toml
 [versions]
-composePreviewCli = "0.15.11"
+composePreviewCli = "0.15.12"
 ```
 
 ```yaml
-- uses: yschimke/compose-ai-tools/.github/actions/install@v0.15.11
+- uses: yschimke/compose-ai-tools/.github/actions/install@v0.15.12
   with:
     version: catalog   # reads composePreviewCli from libs.versions.toml
 ```

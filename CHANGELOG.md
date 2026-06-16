@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.15.12](https://github.com/yschimke/compose-ai-tools/compare/v0.15.11...v0.15.12) (2026-06-16)
+
+
+### Bug Fixes
+
+* **bundle:** pack module bytecode from the scoped PROJECT CLASSES artifact ([#1928](https://github.com/yschimke/compose-ai-tools/issues/1928)) ([d646485](https://github.com/yschimke/compose-ai-tools/commit/d64648550b1d3acb111f986629c1f24f907d7698))
+* **discovery:** match project classes by canonical path for symlinked build trees ([#1931](https://github.com/yschimke/compose-ai-tools/issues/1931)) ([8ca3063](https://github.com/yschimke/compose-ai-tools/commit/8ca306380c61b194ea75261ef08bc842935e8213))
+
 ## [0.15.11](https://github.com/yschimke/compose-ai-tools/compare/v0.15.10...v0.15.11) (2026-06-16)
 
 
