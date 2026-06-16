@@ -85,25 +85,7 @@ Cost budget for these in [`docs/TOKEN_USAGE.md`](docs/TOKEN_USAGE.md).
 
 ## Setup
 
-The plugin is published to [Maven Central](https://central.sonatype.com/artifact/ee.schimke.composeai/compose-preview-plugin)
-— no auth, no PAT.
-
-<!-- x-release-please-start-version -->
-```kotlin
-// <module>/build.gradle.kts
-plugins {
-    id("ee.schimke.composeai.preview") version "0.15.11"
-}
-```
-<!-- x-release-please-end -->
-
-Working examples: [`samples/android/build.gradle.kts`](samples/android/build.gradle.kts),
-[`samples/wear/build.gradle.kts`](samples/wear/build.gradle.kts),
-[`samples/cmp/build.gradle.kts`](samples/cmp/build.gradle.kts).
-
-### Zero-Code Integration (Alternative)
-
-You can apply the plugin dynamically without modifying the project's source code, useful for AI agents on the CLI, in CI, or when exploring the tool without committing changes. The `compose-preview` CLI ships a bundled Gradle init script and passes it via `--init-script` on every invocation, so projects that already apply `com.android.application` / `com.android.library` / `org.jetbrains.compose` pick up the preview plugin without an edit to `build.gradle.kts`:
+No build edits required. The `compose-preview` CLI ships a bundled Gradle init script and passes it via `--init-script` on every invocation, so projects that already apply `com.android.application` / `com.android.library` / `org.jetbrains.compose` pick up the preview plugin without modifying `build.gradle.kts` — useful for AI agents on the CLI, in CI, or when exploring the tool without committing changes:
 
 ```sh
 compose-preview list                # scan @Preview annotations
@@ -123,6 +105,8 @@ INIT_SCRIPT="$(compose-preview init-script --path)"
 > **VS Code users:** the [`Compose Preview` extension](vscode-extension/) already auto-injects via `--init-script` on every Gradle invocation it makes — no extra setup needed.
 
 The CLI's [auto-inject script](cli/src/main/kotlin/ee/schimke/composeai/cli/AutoInject.kt) detects projects that already declare the plugin (either literally as `id("ee.schimke.composeai.preview") version "..."` or via a `gradle/libs.versions.toml` alias resolved through `alias(libs.plugins.<x>)`) and skips the classpath injection for those builds, so mixed setups work without conflicts.
+
+The plugin is also published to [Maven Central](https://central.sonatype.com/artifact/ee.schimke.composeai/compose-preview-plugin) (no auth, no PAT) if you prefer to apply it in `build.gradle.kts` directly — see the working examples under [`samples/android/build.gradle.kts`](samples/android/build.gradle.kts), [`samples/wear/build.gradle.kts`](samples/wear/build.gradle.kts), and [`samples/cmp/build.gradle.kts`](samples/cmp/build.gradle.kts).
 
 Requires Java 17+, Gradle 8.13+, AGP 8.13.0+ (Android), Kotlin 2.0.21+,
 Compose Multiplatform 1.10.3+ (Desktop). The bottom edge of the supported
