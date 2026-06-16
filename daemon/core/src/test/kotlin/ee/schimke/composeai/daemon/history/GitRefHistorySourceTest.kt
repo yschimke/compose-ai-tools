@@ -632,68 +632,74 @@ class GitRefHistorySourceTest {
   // Publish policy / curation (#1872) — `ref` is refs/heads/preview/main ⇒ sourceBranch = "main"
   // -------------------------------------------------------------------------
 
+  // The gate reads live git state (not the cached entry.git), so these drive the real working tree:
+  // `onBranch("main")` matches sourceBranch; `dirtyWorkingTree()` makes `git status` non-empty.
+
+  private fun onBranch(name: String) {
+    runOk("git", "-C", repoRoot.toString(), "checkout", "-B", name)
+  }
+
+  private fun dirtyWorkingTree() {
+    Files.writeString(repoRoot.resolve("wip.uncommitted"), "edit-in-progress")
+  }
+
   @Test
   fun clean_on_branch_records_a_clean_render_on_the_tracked_branch() {
+    onBranch("main")
     val src = source(SyncModeOf.WRITE_LOCAL, publishPolicy = PolicyOf.CLEAN_ON_BRANCH)
-    val e =
-      entry(
-        "20260430-100000-aaaaaaaa",
-        "com.example.A",
-        "a".toByteArray(),
-        git = GitInfo(branch = "main", dirty = false),
-      )
+    val e = entry("20260430-100000-aaaaaaaa", "com.example.A", "a".toByteArray())
     assertEquals(WriteResult.WRITTEN, src.write(e, "a".toByteArray()))
     assertEquals(1, src.list(HistoryFilter()).totalCount)
   }
 
   @Test
   fun clean_on_branch_skips_a_dirty_render() {
+    onBranch("main")
+    dirtyWorkingTree()
     val src = source(SyncModeOf.WRITE_LOCAL, publishPolicy = PolicyOf.CLEAN_ON_BRANCH)
-    val e =
-      entry(
-        "20260430-100000-aaaaaaaa",
-        "com.example.A",
-        "a".toByteArray(),
-        git = GitInfo(branch = "main", dirty = true),
-      )
+    val e = entry("20260430-100000-aaaaaaaa", "com.example.A", "a".toByteArray())
     assertEquals(WriteResult.SKIPPED_DUPLICATE, src.write(e, "a".toByteArray()))
     assertEquals("dirty render kept off the branch", 0, src.list(HistoryFilter()).totalCount)
   }
 
   @Test
   fun clean_on_branch_skips_an_off_branch_render() {
+    onBranch("feature-x")
     val src = source(SyncModeOf.WRITE_LOCAL, publishPolicy = PolicyOf.CLEAN_ON_BRANCH)
-    val e =
-      entry(
-        "20260430-100000-aaaaaaaa",
-        "com.example.A",
-        "a".toByteArray(),
-        git = GitInfo(branch = "feature/x", dirty = false),
-      )
+    val e = entry("20260430-100000-aaaaaaaa", "com.example.A", "a".toByteArray())
     assertEquals(WriteResult.SKIPPED_DUPLICATE, src.write(e, "a".toByteArray()))
     assertEquals("off-branch render kept off the branch", 0, src.list(HistoryFilter()).totalCount)
   }
 
   @Test
-  fun clean_on_branch_allows_a_render_without_git_provenance() {
-    // Fake-mode / no-git renders have null provenance — nothing to curate against, so they record.
+  fun clean_on_branch_reads_live_dirtiness_not_stale_provenance() {
+    // #1922 review: a save-loop can carry a stale clean snapshot (entry.git dirty=false) into a
+    // render of a now-dirty tree. The gate must read the tree *now* and still skip it.
+    onBranch("main")
+    dirtyWorkingTree()
     val src = source(SyncModeOf.WRITE_LOCAL, publishPolicy = PolicyOf.CLEAN_ON_BRANCH)
-    val e = entry("20260430-100000-aaaaaaaa", "com.example.A", "a".toByteArray(), git = null)
-    assertEquals(WriteResult.WRITTEN, src.write(e, "a".toByteArray()))
-    assertEquals(1, src.list(HistoryFilter()).totalCount)
-  }
-
-  @Test
-  fun policy_all_records_dirty_and_off_branch_renders() {
-    val src = source(SyncModeOf.WRITE_LOCAL, publishPolicy = PolicyOf.ALL)
-    val dirtyOffBranch =
+    val staleClean =
       entry(
         "20260430-100000-aaaaaaaa",
         "com.example.A",
         "a".toByteArray(),
-        git = GitInfo(branch = "feature/x", dirty = true),
+        git = GitInfo(branch = "main", dirty = false),
       )
-    assertEquals(WriteResult.WRITTEN, src.write(dirtyOffBranch, "a".toByteArray()))
+    assertEquals(WriteResult.SKIPPED_DUPLICATE, src.write(staleClean, "a".toByteArray()))
+    assertEquals(
+      "stale-clean provenance doesn't admit a dirty render",
+      0,
+      src.list(HistoryFilter()).totalCount,
+    )
+  }
+
+  @Test
+  fun policy_all_records_dirty_and_off_branch_renders() {
+    onBranch("feature-x")
+    dirtyWorkingTree()
+    val src = source(SyncModeOf.WRITE_LOCAL, publishPolicy = PolicyOf.ALL)
+    val e = entry("20260430-100000-aaaaaaaa", "com.example.A", "a".toByteArray())
+    assertEquals(WriteResult.WRITTEN, src.write(e, "a".toByteArray()))
     assertEquals("ALL keeps today's behaviour", 1, src.list(HistoryFilter()).totalCount)
   }
 
