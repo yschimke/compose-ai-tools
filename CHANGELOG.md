@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.15.10](https://github.com/yschimke/compose-ai-tools/compare/v0.15.9...v0.15.10) (2026-06-16)
+
+
+### Features
+
+* **daemon:** curate the reporting branch by publish policy (skip dirty / off-branch renders) ([#1922](https://github.com/yschimke/compose-ai-tools/issues/1922)) ([d8dfab9](https://github.com/yschimke/compose-ai-tools/commit/d8dfab99788b6a897fbd102126bae07ccc7bb45a))
+* **daemon:** GitRefHistorySource WRITE_PUSH — publish the reporting branch to a remote ([#1918](https://github.com/yschimke/compose-ai-tools/issues/1918)) ([2d41cc0](https://github.com/yschimke/compose-ai-tools/commit/2d41cc079322ed8a1ba95227147b6b5448f87feb))
+* **vscode:** read data-product diffs from the reporting branch ([#1915](https://github.com/yschimke/compose-ai-tools/issues/1915)) ([630d127](https://github.com/yschimke/compose-ai-tools/commit/630d127d18620575da4f0673d8b555c31a89dd9b))
+
+
+### Bug Fixes
+
+* **apply:** guard against CLI/plugin version skew ([#1920](https://github.com/yschimke/compose-ai-tools/issues/1920)) ([#1921](https://github.com/yschimke/compose-ai-tools/issues/1921)) ([de9b334](https://github.com/yschimke/compose-ai-tools/commit/de9b33423990caf10f36f6381f0ef025f504348c))
+* **daemon:** read live git state for the reporting-branch curation gate ([#1923](https://github.com/yschimke/compose-ai-tools/issues/1923)) ([d13b91b](https://github.com/yschimke/compose-ai-tools/commit/d13b91b9f64c2173afafcb75becfaa589618f1b7))
+
+
+### Performance Improvements
+
+* **daemon:** debounce reporting-branch commits across a render burst ([#1919](https://github.com/yschimke/compose-ai-tools/issues/1919)) ([3ff98f0](https://github.com/yschimke/compose-ai-tools/commit/3ff98f04ba69df0d8bd761e3d551b94cd3b8f1c0))
+
 ## [0.15.9](https://github.com/yschimke/compose-ai-tools/compare/v0.15.8...v0.15.9) (2026-06-15)
 
 
