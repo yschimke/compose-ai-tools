@@ -497,8 +497,144 @@ class GitRefHistorySourceTest {
   }
 
   // -------------------------------------------------------------------------
+  // Debounce / burst coalescing (#1882)
+  // -------------------------------------------------------------------------
+
+  @Test
+  fun debounce_coalesces_a_burst_into_one_commit_flushed_on_close() {
+    // A long window that won't fire during the test — close() forces the flush, proving both
+    // coalescing (3 writes → 1 commit) and flush-on-shutdown together.
+    val src = source(SyncModeOf.WRITE_LOCAL, debounceMs = 10_000)
+    src.write(
+      entry("20260430-100000-aaaaaaaa", "com.example.A", "a".toByteArray()),
+      "a".toByteArray(),
+    )
+    src.write(
+      entry("20260430-100001-bbbbbbbb", "com.example.B", "b".toByteArray()),
+      "b".toByteArray(),
+    )
+    src.write(
+      entry("20260430-100002-cccccccc", "com.example.C", "c".toByteArray()),
+      "c".toByteArray(),
+    )
+
+    src.close() // flush the buffered batch
+
+    assertEquals("burst coalesced into a single commit", 1, refCommitCount())
+    val tree = capture("git", "-C", repoRoot.toString(), "ls-tree", "-r", "--name-only", ref)
+    assertTrue(tree.contains("com.example.A/entry.json"))
+    assertTrue(tree.contains("com.example.B/entry.json"))
+    assertTrue(tree.contains("com.example.C/entry.json"))
+  }
+
+  @Test
+  fun debounce_scheduler_flushes_after_the_window() {
+    val src = source(SyncModeOf.WRITE_LOCAL, debounceMs = 150)
+    try {
+      src.write(
+        entry("20260430-100000-aaaaaaaa", "com.example.A", "a".toByteArray()),
+        "a".toByteArray(),
+      )
+      src.write(
+        entry("20260430-100001-bbbbbbbb", "com.example.B", "b".toByteArray()),
+        "b".toByteArray(),
+      )
+      Thread.sleep(900) // > window + commit time; the daemon thread flushes on its own
+      assertEquals("scheduled flush produced one commit", 1, refCommitCount())
+      val tree = capture("git", "-C", repoRoot.toString(), "ls-tree", "-r", "--name-only", ref)
+      assertTrue(tree.contains("com.example.A/entry.json"))
+      assertTrue(tree.contains("com.example.B/entry.json"))
+    } finally {
+      src.close()
+    }
+  }
+
+  @Test
+  fun debounce_keeps_the_latest_render_for_a_repeated_preview() {
+    val src = source(SyncModeOf.WRITE_LOCAL, debounceMs = 10_000)
+    val previewId = "com.example.A"
+    src.write(entry("20260430-100000-aaaaaaaa", previewId, "v1".toByteArray()), "v1".toByteArray())
+    src.write(entry("20260430-100001-bbbbbbbb", previewId, "v2".toByteArray()), "v2".toByteArray())
+    src.close()
+
+    assertEquals(1, refCommitCount())
+    val page = src.list(HistoryFilter())
+    assertEquals(1, page.totalCount)
+    val read = src.read(page.entries[0].id, includeBytes = true)
+    assertNotNull(read)
+    assertEquals("latest render wins in the coalesced batch", "v2", String(read!!.pngBytes!!))
+  }
+
+  @Test
+  fun debounce_dedups_an_unchanged_render_returning_skipped() {
+    // A duplicate render must report SKIPPED even while debounced, so recordRender doesn't emit a
+    // phantom `historyAdded` (#1882 review).
+    val src = source(SyncModeOf.WRITE_LOCAL, debounceMs = 10_000)
+    val e = entry("20260430-100000-aaaaaaaa", "com.example.A", "a".toByteArray())
+    assertEquals(WriteResult.WRITTEN, src.write(e, "a".toByteArray()))
+    // Identical render in the same window dedups against the buffered one.
+    assertEquals(WriteResult.SKIPPED_DUPLICATE, src.write(e, "a".toByteArray()))
+    src.close()
+    assertEquals(1, refCommitCount())
+    // Once committed, an identical render dedups against the ref tip too.
+    assertEquals(WriteResult.SKIPPED_DUPLICATE, src.write(e, "a".toByteArray()))
+    src.close()
+    assertEquals(1, refCommitCount())
+  }
+
+  @Test
+  fun debounce_latest_wins_skips_a_round_trip_back_to_current() {
+    // Burst v2 then back to v1 against a branch already at v1 ⇒ no net change, no stale v2
+    // committed
+    // (#1882 review).
+    val src = source(SyncModeOf.WRITE_LOCAL, debounceMs = 10_000)
+    val previewId = "com.example.A"
+    assertEquals(
+      WriteResult.WRITTEN,
+      src.write(
+        entry("20260430-100000-aaaaaaaa", previewId, "v1".toByteArray()),
+        "v1".toByteArray(),
+      ),
+    )
+    src.close()
+    assertEquals(1, refCommitCount())
+
+    src.write(entry("20260430-100001-bbbbbbbb", previewId, "v2".toByteArray()), "v2".toByteArray())
+    src.write(entry("20260430-100002-cccccccc", previewId, "v1".toByteArray()), "v1".toByteArray())
+    src.close()
+
+    assertEquals("net-no-change burst makes no commit", 1, refCommitCount())
+    val read = src.read(src.list(HistoryFilter()).entries[0].id, includeBytes = true)
+    assertEquals("branch stays at v1", "v1", String(read!!.pngBytes!!))
+  }
+
+  @Test
+  fun debounce_write_push_pushes_the_coalesced_batch_on_close() {
+    val bare = setUpBareRemote()
+    val src = source(SyncModeOf.WRITE_PUSH, debounceMs = 10_000)
+    src.write(
+      entry("20260430-100000-aaaaaaaa", "com.example.A", "a".toByteArray()),
+      "a".toByteArray(),
+    )
+    src.write(
+      entry("20260430-100001-bbbbbbbb", "com.example.B", "b".toByteArray()),
+      "b".toByteArray(),
+    )
+    src.close()
+
+    val remoteTree = capture("git", "--git-dir=$bare", "ls-tree", "-r", "--name-only", ref)
+    assertTrue("batch pushed to the remote", remoteTree.contains("com.example.A/entry.json"))
+    assertTrue(remoteTree.contains("com.example.B/entry.json"))
+    assertEquals("no push warning on success", 0, warnCount.get())
+  }
+
+  // -------------------------------------------------------------------------
   // Helpers
   // -------------------------------------------------------------------------
+
+  /** Commit count on the reporting ref (fails if the ref doesn't exist yet). */
+  private fun refCommitCount(): Int =
+    capture("git", "-C", repoRoot.toString(), "rev-list", "--count", ref).trim().toInt()
 
   /** Creates a bare repo and wires it as `origin` of [repoRoot]; cleaned up in [tearDown]. */
   private fun setUpBareRemote(): String {
@@ -524,12 +660,14 @@ class GitRefHistorySourceTest {
   private fun source(
     syncMode: GitRefHistorySource.SyncMode,
     ref: String = this.ref,
+    debounceMs: Long = 0,
   ): GitRefHistorySource =
     GitRefHistorySource(
       repoRoot = repoRoot,
       ref = ref,
       syncMode = syncMode,
       warnEmitter = warnEmitter,
+      debounceMs = debounceMs,
     )
 
   private fun entry(

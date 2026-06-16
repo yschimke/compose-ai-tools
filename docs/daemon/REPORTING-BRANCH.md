@@ -163,8 +163,14 @@ paths, a competing writer's renders survive the replay rather than being clobber
 Credentials are the host's concern; when the push (or its fetch retry) can't reach the
 remote it degrades to a one-time warning — the local commit always stands.
 
+**Burst debounce** (#1882): under `WRITE_LOCAL` / `WRITE_PUSH`, writes are buffered for a
+short window (`composeai.daemon.gitRefHistoryDebounceMs`, default `1000`; `0` = commit per
+render) and coalesced into a **single** commit covering every preview changed in the window
+— so a discovery pass or sandbox-resume burst doesn't spam the branch with back-to-back
+commits. The latest render wins per preview, per-preview skip-if-no-diff still applies within
+the batch, and the pending batch is flushed on daemon shutdown so nothing is lost. A failing
+batch commit never affects a render; the next window retries.
+
 Still to land (follow-ups):
 
-- **Burst debounce** — batch a render burst into one commit instead of one
-  commit per render.
 - **Configurable push remote** — `WRITE_PUSH` currently pushes to `origin`.

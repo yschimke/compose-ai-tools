@@ -9,6 +9,8 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
@@ -76,6 +78,11 @@ class GitRefHistorySource(
   private val warnEmitter: (String) -> Unit = { System.err.println(it) },
   /** Git remote pushed to under [SyncMode.WRITE_PUSH]. Defaults to `origin`. */
   private val remote: String = DEFAULT_REMOTE,
+  /**
+   * Debounce window in ms for coalescing a render burst into one commit (#1882). `0` = commit per
+   * render (synchronous, today's behaviour).
+   */
+  private val debounceMs: Long = 0,
 ) : HistorySource {
 
   override val id: String = displayId
@@ -95,18 +102,13 @@ class GitRefHistorySource(
       error("GitRefHistorySource(ref=$ref) is $syncMode; writes go to a writable source.")
     }
     return try {
-      val result = writeLocal(entry, png)
-      if (syncMode == SyncMode.WRITE_PUSH) {
-        if (result == WriteResult.WRITTEN) {
-          pushWithRetry(entry, png)
-        } else {
-          // No new commit this round, but a prior push may have failed (offline / missing creds),
-          // leaving the local ref ahead of the remote. Try to publish it now so a dedup'd render
-          // doesn't strand the ref unpublished until the pixels change again.
-          publishPendingCommits()
-        }
-      }
-      result
+      // Debounced: buffer for the window; a burst coalesces into one commit on flush (#1882). The
+      // local FS source (priority 0) drives `historyAdded`, so deferring the branch commit is
+      // invisible to the consumer — but [enqueue] still resolves WRITTEN vs SKIPPED_DUPLICATE
+      // synchronously (same skip-if-no-diff the batch will apply) so a duplicate render doesn't
+      // make
+      // `recordRender` emit a phantom entry.
+      if (debounceMs > 0) enqueue(entry, png) else commitAndMaybePush(listOf(entry to png))
     } catch (t: Throwable) {
       System.err.println(
         "compose-ai-daemon: GitRefHistorySource.write($ref, ${entry.id}) failed " +
@@ -114,6 +116,103 @@ class GitRefHistorySource(
       )
       WriteResult.SKIPPED_DUPLICATE
     }
+  }
+
+  /**
+   * Commits [renders] as one batch and, under `WRITE_PUSH`, publishes it — or, when the batch
+   * dedups, still tries to push any pending local commits (#1880 review).
+   */
+  private fun commitAndMaybePush(renders: List<Pair<HistoryEntry, ByteArray>>): WriteResult {
+    val result = commitBatch(renders)
+    if (syncMode == SyncMode.WRITE_PUSH) {
+      if (result == WriteResult.WRITTEN) pushWithRetry(renders) else publishPendingCommits()
+    }
+    return result
+  }
+
+  // Debounce buffer (#1882): latest render per previewId, coalesced into one commit per window.
+  private val pendingLock = Any()
+  private val pending = LinkedHashMap<String, Pair<HistoryEntry, ByteArray>>()
+  private val flushScheduled = AtomicBoolean(false)
+  private val debounceScheduler = AtomicReference<ScheduledExecutorService?>(null)
+
+  private fun enqueue(entry: HistoryEntry, png: ByteArray): WriteResult {
+    // Resolve WRITTEN vs SKIPPED synchronously (mirrors the batch's skip-if-no-diff) against the
+    // render already buffered this window, or — failing that — the branch's committed entry. A
+    // duplicate render must return SKIPPED so `recordRender` doesn't emit a phantom `historyAdded`.
+    val changed =
+      synchronized(pendingLock) {
+        val prior = pending[entry.previewId]?.first ?: currentBranchEntry(entry.previewId)
+        val isChange = prior == null || !renderContentUnchanged(prior, entry)
+        if (isChange) pending[entry.previewId] = entry to png
+        isChange
+      }
+    if (!changed) return WriteResult.SKIPPED_DUPLICATE
+    if (flushScheduled.compareAndSet(false, true)) {
+      debounceExecutor().schedule({ runScheduledFlush() }, debounceMs, TimeUnit.MILLISECONDS)
+    }
+    return WriteResult.WRITTEN
+  }
+
+  /** The branch's current entry for [previewId] at the ref tip, or null when absent/unparseable. */
+  private fun currentBranchEntry(previewId: String): HistoryEntry? {
+    val parent =
+      runGit("rev-parse", "--verify", "--quiet", ref)?.takeIf { it.isNotEmpty() } ?: return null
+    val dir = PreviewIdSanitiser.sanitise(previewId)
+    return catFile(parent, "$dir/entry.json")?.let {
+      runCatching { JSON.decodeFromString(HistoryEntry.serializer(), it) }.getOrNull()
+    }
+  }
+
+  private fun runScheduledFlush() {
+    // Clear the flag first so writes arriving during this flush open a fresh window (no lost
+    // batch).
+    flushScheduled.set(false)
+    flushPending()
+  }
+
+  private fun debounceExecutor(): ScheduledExecutorService {
+    debounceScheduler.get()?.let {
+      return it
+    }
+    val exec = Executors.newSingleThreadScheduledExecutor { r ->
+      Thread(r, "git-ref-history-debounce").apply { isDaemon = true }
+    }
+    return if (debounceScheduler.compareAndSet(null, exec)) {
+      exec
+    } else {
+      exec.shutdownNow()
+      debounceScheduler.get()!!
+    }
+  }
+
+  /**
+   * Commits whatever is buffered as one batch (best-effort; failures are logged, never thrown, so a
+   * debounced commit can't break a render). Driven by the debounce timer and by [close] on
+   * shutdown.
+   */
+  fun flushPending() {
+    val batch =
+      synchronized(pendingLock) {
+        val drained = pending.values.toList()
+        pending.clear()
+        drained
+      }
+    if (batch.isEmpty()) return
+    try {
+      commitAndMaybePush(batch)
+    } catch (t: Throwable) {
+      System.err.println(
+        "compose-ai-daemon: GitRefHistorySource.flushPending($ref) failed " +
+          "(${t.javaClass.simpleName}: ${t.message}); next window retries"
+      )
+    }
+  }
+
+  /** Flushes any buffered renders and stops the debounce scheduler. Called on daemon shutdown. */
+  override fun close() {
+    flushPending()
+    debounceScheduler.getAndSet(null)?.shutdownNow()
   }
 
   private val pushFailedWarned = AtomicBoolean(false)
@@ -126,7 +225,7 @@ class GitRefHistorySource(
    * remote already has our content) and we stop. A non-race failure (no remote / bad credentials)
    * can't fetch either, so it falls through to a one-time warning — the local commit still stands.
    */
-  private fun pushWithRetry(entry: HistoryEntry, png: ByteArray) {
+  private fun pushWithRetry(renders: List<Pair<HistoryEntry, ByteArray>>) {
     var attempt = 1
     while (attempt <= MAX_PUSH_ATTEMPTS) {
       if (plumbingOk(emptyMap(), "push", remote, "$ref:$ref")) {
@@ -136,8 +235,8 @@ class GitRefHistorySource(
       val remoteTip = fetchRemoteTip() ?: break
       if (!plumbingOk(emptyMap(), "update-ref", ref, remoteTip)) break
       cachedEntries.set(null) // local ref moved; invalidate the read cache.
-      // Replay our render on the fetched tip. SKIPPED ⇒ the remote already carries it → done.
-      if (writeLocal(entry, png) == WriteResult.SKIPPED_DUPLICATE) return
+      // Replay our render(s) on the fetched tip. SKIPPED ⇒ the remote already carries them → done.
+      if (commitBatch(renders) == WriteResult.SKIPPED_DUPLICATE) return
       backoff(attempt)
       attempt++
     }
@@ -182,29 +281,50 @@ class GitRefHistorySource(
     }
   }
 
-  private fun writeLocal(entry: HistoryEntry, png: ByteArray): WriteResult {
+  private fun writeLocal(entry: HistoryEntry, png: ByteArray): WriteResult =
+    commitBatch(listOf(entry to png))
+
+  /** One render's branch form (pngPath pinned to the stable filename) + its sanitised dir. */
+  private class BatchChange(val dir: String, val branchEntry: HistoryEntry, val png: ByteArray)
+
+  /**
+   * Commits one or more renders into a **single** reporting-branch commit (the debounce-flush and
+   * per-render write paths both funnel through here). Per-preview skip-if-no-diff drops renders
+   * that add nothing; if every render dedups, no commit is made and [WriteResult.SKIPPED_DUPLICATE]
+   * is returned. When several previews are present (a coalesced burst) their dirs are all
+   * overwritten in the one tree and the manifest is regenerated to cover them together.
+   */
+  private fun commitBatch(renders: List<Pair<HistoryEntry, ByteArray>>): WriteResult {
+    if (renders.isEmpty()) return WriteResult.SKIPPED_DUPLICATE
     Files.createDirectories(cacheDir)
     // A non-warning probe (writers create the ref on first render; refHeadCommit() warns, which is
     // a read-side concern). Null = the ref doesn't exist yet → first commit creates it.
     val parent = runGit("rev-parse", "--verify", "--quiet", ref)?.takeIf { it.isNotEmpty() }
 
-    val dir = PreviewIdSanitiser.sanitise(entry.previewId)
-    // entry.json mirrors the sidecar but points pngPath at the branch's stable filename.
-    val branchEntry = entry.copy(pngPath = RENDER_FILENAME)
-
-    // Skip-if-no-diff (free dedup): if the preview's current branch entry has byte-identical render
-    // content — same pixels AND the same data-product snapshots — this render adds nothing, so make
-    // no commit. We compare render *content*, not the entry id/timestamp (which churn every render)
-    // or the manifest's generatedAt — otherwise an unchanged re-render would still commit.
-    if (parent != null) {
-      val current =
-        catFile(parent, "$dir/entry.json")?.let {
-          runCatching { JSON.decodeFromString(HistoryEntry.serializer(), it) }.getOrNull()
+    // Skip-if-no-diff per preview: keep only renders whose content differs from the branch's
+    // current
+    // entry for that preview. Compares render *content* (pixels + structural semantics), not the
+    // id/timestamp churn — matching `LocalFsHistorySource`. Last render wins for a repeated
+    // preview.
+    val changes = LinkedHashMap<String, BatchChange>()
+    for ((entry, png) in renders) {
+      val dir = PreviewIdSanitiser.sanitise(entry.previewId)
+      val branchEntry = entry.copy(pngPath = RENDER_FILENAME)
+      if (parent != null) {
+        val current =
+          catFile(parent, "$dir/entry.json")?.let {
+            runCatching { JSON.decodeFromString(HistoryEntry.serializer(), it) }.getOrNull()
+          }
+        if (current != null && renderContentUnchanged(current, branchEntry)) {
+          // Latest-wins: a later render for this preview that matches the ref cancels any earlier
+          // change buffered for it in this batch (e.g. v2 then back to v1 ⇒ no net change).
+          changes.remove(entry.previewId)
+          continue
         }
-      if (current != null && renderContentUnchanged(current, branchEntry)) {
-        return WriteResult.SKIPPED_DUPLICATE
       }
+      changes[entry.previewId] = BatchChange(dir, branchEntry, png)
     }
+    if (changes.isEmpty()) return WriteResult.SKIPPED_DUPLICATE
 
     val indexPath = cacheDir.resolve("write-index-${UUID.randomUUID()}.tmp")
     val baseEnv = mapOf("GIT_INDEX_FILE" to indexPath.toAbsolutePath().toString())
@@ -213,26 +333,27 @@ class GitRefHistorySource(
       if (parent != null && !plumbingOk(baseEnv, "read-tree", parent))
         return WriteResult.SKIPPED_DUPLICATE
 
-      // Overwrite the preview's directory wholesale: drop every prior path under it so a render
-      // that no longer produces a given data product doesn't leave a stale file behind.
-      if (parent != null) {
-        val existing = runGit("ls-tree", "-r", "--name-only", parent, "--", "$dir/")
-        if (existing != null) {
-          for (p in existing.split('\n').map { it.trim() }.filter { it.isNotEmpty() }) {
-            plumbingOk(baseEnv, "update-index", "--force-remove", p)
+      for (change in changes.values) {
+        // Overwrite each preview's directory wholesale: drop every prior path under it so a render
+        // that no longer produces a given data product doesn't leave a stale file behind.
+        if (parent != null) {
+          val existing = runGit("ls-tree", "-r", "--name-only", parent, "--", "${change.dir}/")
+          if (existing != null) {
+            for (p in existing.split('\n').map { it.trim() }.filter { it.isNotEmpty() }) {
+              plumbingOk(baseEnv, "update-index", "--force-remove", p)
+            }
+          }
+        }
+        for ((path, bytes) in projectFiles(change.dir, change.branchEntry, change.png)) {
+          val blob = hashObject(baseEnv, bytes) ?: return WriteResult.SKIPPED_DUPLICATE
+          if (!plumbingOk(baseEnv, "update-index", "--add", "--cacheinfo", "100644,$blob,$path")) {
+            return WriteResult.SKIPPED_DUPLICATE
           }
         }
       }
 
-      for ((path, bytes) in projectFiles(dir, branchEntry, png)) {
-        val blob = hashObject(baseEnv, bytes) ?: return WriteResult.SKIPPED_DUPLICATE
-        if (!plumbingOk(baseEnv, "update-index", "--add", "--cacheinfo", "100644,$blob,$path")) {
-          return WriteResult.SKIPPED_DUPLICATE
-        }
-      }
-
-      // Refresh the manifest (read prior, upsert this preview).
-      val manifestBytes = buildManifest(parent, branchEntry, dir)
+      // Refresh the manifest (read prior, upsert all previews in this batch).
+      val manifestBytes = buildManifest(parent, changes.values.map { it.branchEntry to it.dir })
       val manifestBlob = hashObject(baseEnv, manifestBytes) ?: return WriteResult.SKIPPED_DUPLICATE
       if (
         !plumbingOk(
@@ -247,11 +368,6 @@ class GitRefHistorySource(
       }
 
       val tree = plumbing(baseEnv, "write-tree")?.trim() ?: return WriteResult.SKIPPED_DUPLICATE
-
-      val message =
-        "compose-preview history: ${entry.previewId}\n\n" +
-          "render: ${entry.id}\n" +
-          "produced-from: ${entry.git?.commit ?: "unknown"}\n"
       val commitArgs = buildList {
         add("commit-tree")
         add(tree)
@@ -260,7 +376,7 @@ class GitRefHistorySource(
           add(parent)
         }
         add("-m")
-        add(message)
+        add(commitMessage(changes.values.map { it.branchEntry }))
       }
       val commit = plumbing(commitEnv(baseEnv), *commitArgs.toTypedArray())?.trim()
       if (commit.isNullOrEmpty()) return WriteResult.SKIPPED_DUPLICATE
@@ -280,6 +396,19 @@ class GitRefHistorySource(
       }
     }
   }
+
+  /** Commit message: one preview keeps the single-render form; a coalesced burst lists each. */
+  private fun commitMessage(entries: List<HistoryEntry>): String =
+    if (entries.size == 1) {
+      val e = entries.single()
+      "compose-preview history: ${e.previewId}\n\n" +
+        "render: ${e.id}\n" +
+        "produced-from: ${e.git?.commit ?: "unknown"}\n"
+    } else {
+      "compose-preview history: ${entries.size} previews\n\n" +
+        entries.joinToString("\n") { "render: ${it.id} (${it.previewId})" } +
+        "\n"
+    }
 
   /** The set of `(path, bytes)` this render contributes under the preview's directory. */
   private fun projectFiles(
@@ -326,9 +455,10 @@ class GitRefHistorySource(
   }
 
   /**
-   * Reads the prior manifest off [parent] (when present), upserts this preview, returns the bytes.
+   * Reads the prior manifest off [parent] (when present), upserts every preview in [changed] (a
+   * `(branchEntry, dir)` per changed preview), returns the bytes.
    */
-  private fun buildManifest(parent: String?, branchEntry: HistoryEntry, dir: String): ByteArray {
+  private fun buildManifest(parent: String?, changed: List<Pair<HistoryEntry, String>>): ByteArray {
     val prior: List<ReportingBranchPreview> =
       parent
         ?.let { catFile(it, MANIFEST_FILENAME) }
@@ -340,32 +470,36 @@ class GitRefHistorySource(
           }
         } ?: emptyList()
 
-    val dataProducts = buildList {
-      branchEntry.semantics?.let { add("compose/semantics") }
-      branchEntry.a11yHierarchy?.let { add("a11y/hierarchy") }
-      branchEntry.a11yAtf?.let { add("a11y/atf") }
-      branchEntry.a11yTouchTargets?.let { add("a11y/touchTargets") }
-      branchEntry.theme?.let { add("compose/theme") }
-    }
-    val mine =
+    val upserts = changed.map { (branchEntry, dir) ->
       ReportingBranchPreview(
         previewId = branchEntry.previewId,
         module = branchEntry.module,
         dir = dir,
         pngHash = branchEntry.pngHash,
-        dataProducts = dataProducts,
+        dataProducts = dataProductsOf(branchEntry),
       )
+    }
+    val upsertedIds = upserts.map { it.previewId }.toSet()
     val previews =
-      (prior.filterNot { it.previewId == branchEntry.previewId } + mine).sortedBy { it.previewId }
+      (prior.filterNot { it.previewId in upsertedIds } + upserts).sortedBy { it.previewId }
     val manifest =
       ReportingBranchManifest(
         formatVersion = REPORTING_BRANCH_FORMAT_VERSION,
         generatedAt = Instant.now().toString(),
-        commit = branchEntry.git?.commit,
+        commit = changed.firstOrNull()?.first?.git?.commit,
         sourceBranch = ref.removePrefix("refs/heads/preview/").removePrefix("refs/heads/"),
         previews = previews,
       )
     return MANIFEST_JSON.encodeToString(ReportingBranchManifest.serializer(), manifest).toBytes()
+  }
+
+  /** Data-product kinds present on a branch entry, for the manifest's `dataProducts` list. */
+  private fun dataProductsOf(branchEntry: HistoryEntry): List<String> = buildList {
+    branchEntry.semantics?.let { add("compose/semantics") }
+    branchEntry.a11yHierarchy?.let { add("a11y/hierarchy") }
+    branchEntry.a11yAtf?.let { add("a11y/atf") }
+    branchEntry.a11yTouchTargets?.let { add("a11y/touchTargets") }
+    branchEntry.theme?.let { add("compose/theme") }
   }
 
   override fun list(filter: HistoryFilter): HistoryListPage {
@@ -762,6 +896,18 @@ class GitRefHistorySource(
 
     /** Max push attempts before giving up (one initial + retries after fetch–rebase on a race). */
     const val MAX_PUSH_ATTEMPTS: Int = 5
+
+    /** Sysprop for the reporting-branch commit debounce window in ms (#1882). */
+    const val DEBOUNCE_PROP: String = "composeai.daemon.gitRefHistoryDebounceMs"
+
+    /** Default debounce window (ms): coalesce a render burst into one commit. `0` disables it. */
+    const val DEFAULT_DEBOUNCE_MS: Long = 1_000
+
+    /** Parses [DEBOUNCE_PROP]; unset → [DEFAULT_DEBOUNCE_MS], unparseable / negative → `0`. */
+    fun parseDebounceSysprop(propValue: String? = System.getProperty(DEBOUNCE_PROP)): Long {
+      if (propValue == null) return DEFAULT_DEBOUNCE_MS
+      return propValue.trim().toLongOrNull()?.coerceAtLeast(0) ?: 0
+    }
 
     fun defaultCacheDir(historyDir: Path): Path = historyDir.resolve(".git-ref-cache")
   }
