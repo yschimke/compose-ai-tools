@@ -2227,40 +2227,66 @@ internal object AndroidPreviewSupport {
     // (only matters for coordinate-mode re-rendering on an Android player, which isn't built yet):
     // the coordinate type is recorded as `jar` even for AAR-published deps, and Android-merged
     // resources aren't packed. `--embed-deps` sidesteps the type concern by inlining resolved jars.
-    ComposePreviewTasks.registerBundleTask(
-      project = project,
-      extension = extension,
-      previewOutputDir = previewOutputDir,
-      sourceClassDirs = sourceClassDirs,
-      resolveDependencyConfigName = { dependencyConfigName },
-      discoverTaskName = "composePreviewDiscover",
-      backendId = "android",
-      // (v6) Feed the AGP artefacts a protolayout-IR bundle carries for tile replay on a detached
-      // daemon: `unitTestConfigDir`'s `test_config.properties` names the merged resource APK +
-      // manifest, and the pack action reads those by absolute path — so union the artefacts they
-      // point at (the `apk_for_local_test` output dir + the merged manifest) into the tracked
-      // `@InputFiles` so the cacheable task re-packs when their content changes even if the paths
-      // don't.
-      androidUnitTestConfigFiles =
-        project.files(
-          unitTestConfigDir,
-          project.layout.buildDirectory.dir(
-            "intermediates/apk_for_local_test/${variantName}UnitTest"
+    val bundleTask =
+      ComposePreviewTasks.registerBundleTask(
+        project = project,
+        extension = extension,
+        previewOutputDir = previewOutputDir,
+        sourceClassDirs = sourceClassDirs,
+        resolveDependencyConfigName = { dependencyConfigName },
+        discoverTaskName = "composePreviewDiscover",
+        backendId = "android",
+        // (v6) Feed the AGP artefacts a protolayout-IR bundle carries for tile replay on a detached
+        // daemon: `unitTestConfigDir`'s `test_config.properties` names the merged resource APK +
+        // manifest, and the pack action reads those by absolute path — so union the artefacts they
+        // point at (the `apk_for_local_test` output dir + the merged manifest) into the tracked
+        // `@InputFiles` so the cacheable task re-packs when their content changes even if the paths
+        // don't.
+        androidUnitTestConfigFiles =
+          project.files(
+            unitTestConfigDir,
+            project.layout.buildDirectory.dir(
+              "intermediates/apk_for_local_test/${variantName}UnitTest"
+            ),
+            variant.artifacts.get(SingleArtifact.MERGED_MANIFEST),
           ),
-          variant.artifacts.get(SingleArtifact.MERGED_MANIFEST),
-        ),
-      // The generated library R classes the tile renderer links
-      // (`androidx.wear.protolayout.renderer.R$style`) are generated only into the unit-test merged
-      // R.jar. That jar lives on AGP's `test<Variant>UnitTest` task classpath (a raw file dep added
-      // without the `artifactType=jar` attribute, so the bundle's filtered `dependencyJars` view —
-      // and a configuration `artifactView` — drop it). Source it from the Test task's *resolved*
-      // classpath, the SAME collection `composePreviewRender` links it from (so it resolves cleanly
-      // without the `AmbiguousArtifactsFailure` a raw configuration read hits). Supplied lazily and
-      // invoked inside the bundle task's config lambda, by which point the unit-test task exists.
-      androidUnitTestRuntimeClasspath = {
-        (project.tasks.findByName("test${capVariant}UnitTest") as? Test)?.classpath
-      },
-    )
+        // The generated library R classes the tile renderer links
+        // (`androidx.wear.protolayout.renderer.R$style`) are generated only into the unit-test
+        // merged
+        // R.jar. That jar lives on AGP's `test<Variant>UnitTest` task classpath (a raw file dep
+        // added
+        // without the `artifactType=jar` attribute, so the bundle's filtered `dependencyJars` view
+        // —
+        // and a configuration `artifactView` — drop it). Source it from the Test task's *resolved*
+        // classpath, the SAME collection `composePreviewRender` links it from (so it resolves
+        // cleanly
+        // without the `AmbiguousArtifactsFailure` a raw configuration read hits). Supplied lazily
+        // and
+        // invoked inside the bundle task's config lambda, by which point the unit-test task exists.
+        androidUnitTestRuntimeClasspath = {
+          (project.tasks.findByName("test${capVariant}UnitTest") as? Test)?.classpath
+        },
+      )
+
+    // Feed the variant's OWN compiled classes into the bundle packer via AGP's scoped-artifact API,
+    // mirroring the identical `forScope(PROJECT).toGet(CLASSES, …)` wiring `composePreviewDiscover`
+    // uses (issue #1924). Discovery resolves previews from the scoped artifact, so without this the
+    // bundle's class set could be strictly narrower than the manifest discovery wrote — a preview
+    // resolved only from a scoped element (e.g. AGP 9.x built-in Kotlin output, which never lands
+    // in
+    // the hardcoded `sourceClassDirs`) would be listed in `previews.json` but missing from
+    // `classes/app.jar`, breaking detached/portable rendering of that preview (issue #1926).
+    // Resolving the artifact also wires the implicit dependency on whichever task produced the
+    // classes, so the bundle's bytecode is compiled first even when no standalone
+    // `compile<Variant>Kotlin` task exists.
+    variant.artifacts
+      .forScope(ScopedArtifacts.Scope.PROJECT)
+      .use(bundleTask)
+      .toGet(
+        ScopedArtifact.CLASSES,
+        BundlePreviewTask::projectClassJars,
+        BundlePreviewTask::projectClassDirs,
+      )
 
     // Phase 1, Stream A — preview daemon bootstrap descriptor. Registered
     // unconditionally so the VS Code extension can sniff the output file

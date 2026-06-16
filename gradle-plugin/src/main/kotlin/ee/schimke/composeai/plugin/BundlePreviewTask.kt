@@ -18,7 +18,9 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.file.Directory
 import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.RegularFile
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.MapProperty
@@ -83,6 +85,39 @@ abstract class BundlePreviewTask : DefaultTask() {
    * resources directory is taken separately via [moduleResourcesDir] when present.
    */
   @get:Classpath abstract val moduleClassDirs: ConfigurableFileCollection
+
+  /**
+   * The module's own compiled classes laid out as directories, sourced from AGP's scoped `PROJECT`
+   * `CLASSES` artifact (`variant.artifacts.forScope(PROJECT).use(bundleTask).toGet(CLASSES, …)`).
+   * Wired by the Android backend *in addition to* [moduleClassDirs], for the same reason
+   * [DiscoverPreviewsTask.projectClassDirs] is: under AGP 9.x built-in Kotlin (`built_in_kotlinc`)
+   * the compiled classes never land in the hardcoded `build/tmp/kotlin-classes/<variant>` directory
+   * the desktop/legacy path keys off. Discovery already consumes the scoped artifact (issue #1924),
+   * so packing it here keeps the bundle's class set from being *narrower* than what discovery wrote
+   * into `previews.json` — a preview whose class is resolved only from a scoped dir would otherwise
+   * appear in the manifest but be missing from `classes/app.jar` (issue #1926). These dirs are
+   * scanned for the closure walk and per-class minimization exactly like [moduleClassDirs]; any
+   * overlap dedupes by relative class path. Optional / empty on non-Android backends.
+   */
+  @get:InputFiles
+  @get:Optional
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val projectClassDirs: ListProperty<Directory>
+
+  /**
+   * The module's own compiled classes packaged as jars, the jar half of AGP's scoped `PROJECT`
+   * `CLASSES` artifact (see [projectClassDirs]). Packed as *module* classes (minimized into
+   * `classes/app.jar`), NOT recorded as third-party [dependencyJars] coordinates — they are the
+   * consumer's own bytecode and can't be re-resolved from Maven. Mirrors
+   * [DiscoverPreviewsTask.projectClassJars], which method-walks the same jars, so bundling sees the
+   * identical class set discovery does. `PROJECT`-scope `CLASSES` are directories in practice, so
+   * this is usually empty, but it's wired and packed so the two paths never diverge (issue #1926).
+   * Optional / empty on non-Android backends.
+   */
+  @get:InputFiles
+  @get:Optional
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val projectClassJars: ListProperty<RegularFile>
 
   /**
    * Consumer module's processed resources directory (e.g. `build/processedResources/jvm/main`).
@@ -279,15 +314,34 @@ abstract class BundlePreviewTask : DefaultTask() {
     val depSeedFqns = selected.map { it.className }.toSet() + replayEntrySeeds
     val packSeedFqns = selected.filter { it.id !in irByPreview }.map { it.className }.toSet()
 
-    val classDirsList = moduleClassDirs.files.filter { it.exists() && it.isDirectory }
+    // Union the legacy hardcoded `moduleClassDirs` with AGP's scoped PROJECT CLASSES (dirs + jars)
+    // so the packed class set matches discovery's, which already consumes the scoped artifact
+    // (#1924). Without this, a preview whose class is resolved only from a scoped element would be
+    // in `previews.json` but absent from `classes/app.jar` (#1926). Scoped project jars are the
+    // module's OWN bytecode, so they're packed as module classes — not recorded as dependency
+    // coordinates the way `dependencyJars` are.
+    val scopedClassDirs = projectClassDirs.getOrElse(emptyList()).map { it.asFile }
+    val scopedClassJars =
+      projectClassJars
+        .getOrElse(emptyList())
+        .map { it.asFile }
+        .filter { it.isFile && it.name.endsWith(".jar") }
+    val classDirsList =
+      (moduleClassDirs.files + scopedClassDirs).filter { it.exists() && it.isDirectory }.distinct()
     val jarsList = dependencyJars.files.filter { it.isFile && it.name.endsWith(".jar") }
-    val scanPaths = (classDirsList + jarsList).map { it.absolutePath }
+    // Scoped project jars join the closure scan so reachability is computed over them too, but they
+    // are kept separate from `jarsList` (dependency jars) so `buildDepDecisions` never mistakes the
+    // module's own jar for a third-party coordinate.
+    val scanPaths = (classDirsList + jarsList + scopedClassJars).map { it.absolutePath }
 
     val closure = closureWalk(scanPaths, depSeed = depSeedFqns, packSeed = packSeedFqns)
 
-    val moduleClassFqns = collectClassFqns(classDirsList)
+    val moduleClassFqns =
+      collectClassFqns(classDirsList) + collectClassFqnsFromJars(scopedClassJars)
     val reachableModuleClasses = moduleClassFqns intersect closure.packReachable
-    val keptModuleClassFiles = packModuleClasses(classDirsList, reachableModuleClasses)
+    val keptModuleClassFiles =
+      packModuleClasses(classDirsList, reachableModuleClasses) +
+        packModuleClassesFromJars(scopedClassJars, reachableModuleClasses)
     val appJarBytes = buildJar(keptModuleClassFiles, moduleResourcesDir.orNull?.asFile)
 
     val coordMap = dependencyCoordinates.getOrElse(emptyMap())
@@ -772,6 +826,65 @@ abstract class BundlePreviewTask : DefaultTask() {
           val rel = f.relativeTo(root).path.replace(File.separatorChar, '/')
           result += rel.removeSuffix(".class").replace('/', '.')
         }
+    }
+    return result
+  }
+
+  /**
+   * Jar-form counterpart of [collectClassFqns] for scoped PROJECT-CLASSES jars
+   * ([projectClassJars]). Returns the FQN of every `.class` entry so the caller can intersect
+   * against the closure's pack-reachable set, exactly as it does for the directory-backed module
+   * classes.
+   */
+  private fun collectClassFqnsFromJars(jars: List<File>): Set<String> {
+    val result = mutableSetOf<String>()
+    for (jar in jars) {
+      try {
+        ZipInputStream(jar.inputStream().buffered()).use { zin ->
+          while (true) {
+            val entry = zin.nextEntry ?: break
+            val name = entry.name
+            if (!entry.isDirectory && name.endsWith(".class")) {
+              result += name.removeSuffix(".class").replace('/', '.')
+            }
+            zin.closeEntry()
+          }
+        }
+      } catch (e: Exception) {
+        logger.warn("composePreviewBundle: couldn't scan $jar for module classes: ${e.message}")
+      }
+    }
+    return result
+  }
+
+  /**
+   * Jar-form counterpart of [packModuleClasses]: extracts the `.class` entries whose FQN is in
+   * [reachable] from each scoped PROJECT-CLASSES jar, keyed by entry name (the same `pkg/Foo.class`
+   * relative path the directory packer emits) so they merge cleanly into `classes/app.jar`.
+   */
+  private fun packModuleClassesFromJars(
+    jars: List<File>,
+    reachable: Set<String>,
+  ): Map<String, ByteArray> {
+    val result = LinkedHashMap<String, ByteArray>()
+    for (jar in jars) {
+      try {
+        ZipInputStream(jar.inputStream().buffered()).use { zin ->
+          while (true) {
+            val entry = zin.nextEntry ?: break
+            val name = entry.name
+            if (!entry.isDirectory && name.endsWith(".class")) {
+              val fqn = name.removeSuffix(".class").replace('/', '.')
+              if (fqn in reachable && name !in result) {
+                result[name] = zin.readBytes()
+              }
+            }
+            zin.closeEntry()
+          }
+        }
+      } catch (e: Exception) {
+        logger.warn("composePreviewBundle: couldn't pack module classes from $jar: ${e.message}")
+      }
     }
     return result
   }
