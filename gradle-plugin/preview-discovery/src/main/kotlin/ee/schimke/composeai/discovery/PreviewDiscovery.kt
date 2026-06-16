@@ -72,6 +72,18 @@ object PreviewDiscovery {
      * relative to the `compose-previews` root, so any subdir validates uniformly.
      */
     val lottieRenderSubdir: String = "renders",
+    /**
+     * JARs of compiled `.class` files belonging to the consumer module itself — the module's *own*
+     * classes packaged as a jar rather than laid out in a [classDirs] directory. Unlike
+     * [dependencyJars] these are method-walked as project classes (their `@Preview` functions are
+     * discovered) and are NOT subject to the preview-relevant name/path filter. Sourced from AGP's
+     * scoped `PROJECT` `CLASSES` artifact, which is populated regardless of whether Kotlin was
+     * compiled by the standalone Kotlin Gradle Plugin or AGP 9.x built-in Kotlin
+     * (`built_in_kotlinc`) — the legacy `build/tmp/kotlin-classes/<variant>` directory it used to
+     * read is never written under built-in Kotlin. Empty (the default) for build systems / module
+     * types that expose the module's classes only as directories. See issue #1924.
+     */
+    val projectClassJars: List<File> = emptyList(),
   )
 
   /** Outcome of a [discover] call. */
@@ -203,6 +215,16 @@ object PreviewDiscovery {
     val infoMessages = mutableListOf<String>()
 
     val existingClassDirs = input.classDirs.filter { it.exists() && it.isDirectory }
+    // The module's OWN classes, packaged as a jar (AGP scoped PROJECT CLASSES
+    // artifact). Walked as project classes like [existingClassDirs] — NOT
+    // subject to the dependency-jar preview-relevance filter below. This is the
+    // path that rescues discovery under AGP 9.x built-in Kotlin, where the
+    // module's classes never land in the legacy `build/tmp/kotlin-classes/
+    // <variant>` directory the directory scan reads. See issue #1924.
+    val existingProjectJars =
+      input.projectClassJars.filter {
+        it.exists() && it.isFile && it.name.lowercase().endsWith(".jar")
+      }
     // Match on the absolute path, not just the file name: AGP 9.x +
     // KGP 2.3 resolve AAR dependencies to `<cache>/transforms/<hash>/
     // transformed/<library>/jars/classes.jar` where the library name
@@ -220,7 +242,10 @@ object PreviewDiscovery {
               path.contains("annotation")
           }
       }
-    val classpath = existingClassDirs + filteredDependencyJars
+    // Project jars BEFORE dependency jars so a class present in both (the
+    // module's own output shadowing a stale dependency copy) is attributed by
+    // ClassGraph to the project element and method-walked.
+    val classpath = existingClassDirs + existingProjectJars + filteredDependencyJars
 
     val previews = mutableListOf<PreviewInfo>()
     // Populated only on the diagnostics path (failOnEmpty + 0 previews)
@@ -248,16 +273,21 @@ object PreviewDiscovery {
         .use { scanResult ->
           reachablePreviewFqns = PREVIEW_FQNS.filter { scanResult.getClassInfo(it) != null }
           // Project-local class FQNs — only classes loaded from the project's own
-          // class output directories, never from a dependency JAR. Powers the
+          // class output (its [classDirs] directories or its scoped PROJECT
+          // [projectClassJars]), never from a dependency JAR. Powers the
           // "is this @Composable call into project code?" filter inside
           // PreviewTargetInference; computed once per scan and passed through.
-          val classDirPaths = existingClassDirs.map { it.absolutePath }.toSet()
+          // The dependency JARs stay OUT of this set, so their classes remain on
+          // the ClassGraph classpath (for multi-preview annotation resolution)
+          // but aren't method-walked. See issue #1039 / #1924.
+          val projectElementPaths =
+            (existingClassDirs + existingProjectJars).map { it.absolutePath }.toSet()
           val projectClassFqns =
             scanResult.allClasses
               .asSequence()
               .filter { ci ->
                 val element = ci.classpathElementFile ?: return@filter false
-                element.isDirectory && element.absolutePath in classDirPaths
+                element.absolutePath in projectElementPaths
               }
               .map { it.name }
               .toSet()
@@ -342,6 +372,8 @@ object PreviewDiscovery {
           header = "composePreview: failOnEmpty diagnostics (0 previews discovered):",
           existingClassDirs = existingClassDirs,
           allClassDirs = input.classDirs,
+          projectJars = existingProjectJars,
+          allProjectJars = input.projectClassJars,
           filteredJars = filteredDependencyJars,
           allJarCount = input.dependencyJars.size,
           scanClassCount = scanClassCount,
@@ -387,6 +419,8 @@ object PreviewDiscovery {
               "(soft warning — set composePreview.failOnEmpty=true to fail the build):",
           existingClassDirs = existingClassDirs,
           allClassDirs = input.classDirs,
+          projectJars = existingProjectJars,
+          allProjectJars = input.projectClassJars,
           filteredJars = filteredDependencyJars,
           allJarCount = input.dependencyJars.size,
           scanClassCount = scanClassCount,
@@ -506,6 +540,8 @@ object PreviewDiscovery {
     header: String,
     existingClassDirs: List<File>,
     allClassDirs: List<File>,
+    projectJars: List<File>,
+    allProjectJars: List<File>,
     filteredJars: List<File>,
     allJarCount: Int,
     scanClassCount: Int,
@@ -525,6 +561,16 @@ object PreviewDiscovery {
         } else 0
       out.add("    - $dir")
       out.add("      exists=$exists isDir=$isDir classFiles=$classCount")
+    }
+    // Project-own class jars (AGP scoped PROJECT CLASSES) — the built-in-Kotlin
+    // rescue path. Listed separately from dependencyJars because these ARE
+    // method-walked. See issue #1924.
+    if (allProjectJars.isNotEmpty()) {
+      out.add("  projectClassJars (${allProjectJars.size} declared, ${projectJars.size} existing):")
+      for (jar in allProjectJars) {
+        out.add("    - $jar")
+        out.add("      exists=${jar.exists()} isFile=${jar.isFile}")
+      }
     }
     out.add(
       "  dependencyJars: $allJarCount total, ${filteredJars.size} match " +

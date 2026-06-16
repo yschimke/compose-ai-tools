@@ -1,8 +1,10 @@
 package ee.schimke.composeai.plugin
 
+import com.android.build.api.artifact.ScopedArtifact
 import com.android.build.api.artifact.SingleArtifact
 import com.android.build.api.dsl.CommonExtension
 import com.android.build.api.variant.AndroidComponentsExtension
+import com.android.build.api.variant.ScopedArtifacts
 import com.android.build.api.variant.Variant
 import ee.schimke.composeai.daemonlaunch.*
 import ee.schimke.composeai.discovery.*
@@ -610,6 +612,27 @@ internal object AndroidPreviewSupport {
           }
         }
       }
+
+    // Feed the variant's OWN compiled classes into discovery via AGP's scoped-artifact API rather
+    // than relying solely on the hardcoded `sourceClassDirs` directory candidates. The scoped
+    // PROJECT CLASSES artifact is populated regardless of whether Kotlin was compiled by the
+    // standalone Kotlin Gradle Plugin (`compile<Variant>Kotlin` → `build/tmp/kotlin-classes/…`) or
+    // by AGP 9.x built-in Kotlin (`built_in_kotlinc`, whose output never lands in the legacy
+    // directory), so discovery no longer finds 0 previews on built-in-Kotlin modules (issue #1924).
+    // Resolving the artifact also wires the implicit task dependency on whichever task produced the
+    // classes — so `composePreviewDiscover` compiles them first even when no standalone
+    // `compile<Variant>Kotlin` task exists to `dependsOn`. This is additive: `sourceClassDirs`
+    // stays
+    // wired for the KGP layout, and ClassGraph dedupes overlapping class FQNs across the two.
+    variant.artifacts
+      .forScope(ScopedArtifacts.Scope.PROJECT)
+      .use(discoverTask)
+      .toGet(
+        ScopedArtifact.CLASSES,
+        DiscoverPreviewsTask::projectClassJars,
+        DiscoverPreviewsTask::projectClassDirs,
+      )
+
     // `composePreviewCompile` — the daemon-mode save loop calls this instead of
     // `composePreviewDiscover`
     // so the recompile (and on-disk `.class` refresh) runs without re-walking the dependency-JAR
