@@ -694,6 +694,37 @@ class GitRefHistorySourceTest {
   }
 
   @Test
+  fun clean_on_branch_ignores_history_artifacts_when_checking_dirtiness() {
+    // #1923 review: HistoryManager writes the local FS archive (under .compose-preview-history/)
+    // before this git source, so a fresh `git status` sees those just-written files. If the
+    // history dir isn't gitignored that churn must NOT count as "dirty" and self-block curation —
+    // only a change to *real* source content should.
+    onBranch("main")
+    val historyDir = repoRoot.resolve(".compose-preview-history")
+    Files.createDirectories(historyDir)
+    Files.writeString(historyDir.resolve("20260430-100000-aaaaaaaa.png"), "fs-archive-render")
+    val src = source(SyncModeOf.WRITE_LOCAL, publishPolicy = PolicyOf.CLEAN_ON_BRANCH)
+    val e = entry("20260430-100000-aaaaaaaa", "com.example.A", "a".toByteArray())
+    assertEquals(WriteResult.WRITTEN, src.write(e, "a".toByteArray()))
+    assertEquals("history churn alone isn't dirty", 1, src.list(HistoryFilter()).totalCount)
+  }
+
+  @Test
+  fun clean_on_branch_skips_when_real_content_dirty_despite_history_artifacts() {
+    // The flip side: history artifacts are ignored, but a real source edit alongside them still
+    // marks the tree dirty and keeps the render off the branch.
+    onBranch("main")
+    val historyDir = repoRoot.resolve(".compose-preview-history")
+    Files.createDirectories(historyDir)
+    Files.writeString(historyDir.resolve("20260430-100000-aaaaaaaa.png"), "fs-archive-render")
+    dirtyWorkingTree()
+    val src = source(SyncModeOf.WRITE_LOCAL, publishPolicy = PolicyOf.CLEAN_ON_BRANCH)
+    val e = entry("20260430-100000-aaaaaaaa", "com.example.A", "a".toByteArray())
+    assertEquals(WriteResult.SKIPPED_DUPLICATE, src.write(e, "a".toByteArray()))
+    assertEquals("real dirty content still blocks", 0, src.list(HistoryFilter()).totalCount)
+  }
+
+  @Test
   fun policy_all_records_dirty_and_off_branch_renders() {
     onBranch("feature-x")
     dirtyWorkingTree()

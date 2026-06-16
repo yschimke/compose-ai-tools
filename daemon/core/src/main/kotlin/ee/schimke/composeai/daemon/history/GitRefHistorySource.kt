@@ -149,8 +149,38 @@ class GitRefHistorySource(
     return branch == sourceBranch
   }
 
-  /** Fresh working-tree dirtiness (`git status --porcelain`), or null when git can't be run. */
-  private fun currentDirty(): Boolean? = runGit("status", "--porcelain")?.let { it.isNotEmpty() }
+  /**
+   * Fresh working-tree dirtiness, **ignoring the history system's own artifacts** — the local FS
+   * archive and the git-ref cache both live under the history dir ([cacheDir]'s parent), and
+   * `HistoryManager` writes the FS source before this one, so if that dir isn't gitignored its
+   * just-written files would make every render look dirty and self-block curation (#1923 review). A
+   * change anywhere else marks the tree dirty. Null when git can't be run.
+   */
+  private fun currentDirty(): Boolean? {
+    val out = runGit("-c", "core.quotePath=false", "status", "--porcelain") ?: return null
+    if (out.isEmpty()) return false
+    val historyDir = relativeHistoryDir()
+    return out.lineSequence().any { line ->
+      // Porcelain v1 line: two status chars + a space + the path (from index 3).
+      if (line.length < 4) return@any false
+      val path = line.substring(3)
+      historyDir == null || !(path == historyDir || path.startsWith("$historyDir/"))
+    }
+  }
+
+  /**
+   * The history dir (FS archive + git-ref cache) relative to [repoRoot]; null when not under it.
+   */
+  private fun relativeHistoryDir(): String? {
+    val historyRoot = cacheDir.parent ?: return null
+    return try {
+      repoRoot.relativize(historyRoot).toString().replace('\\', '/').takeIf {
+        it.isNotEmpty() && !it.startsWith("..")
+      }
+    } catch (_: Throwable) {
+      null
+    }
+  }
 
   /** Fresh current branch (`symbolic-ref`), or null on detached HEAD / when git can't be run. */
   private fun currentBranch(): String? =
