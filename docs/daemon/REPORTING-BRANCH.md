@@ -163,6 +163,16 @@ paths, a competing writer's renders survive the replay rather than being clobber
 Credentials are the host's concern; when the push (or its fetch retry) can't reach the
 remote it degrades to a one-time warning — the local commit always stands.
 
+**Publish policy** (#1872 curation): the reporting branch is a *curated* record, so by default
+(`composeai.daemon.gitRefHistoryPublishPolicy=clean-on-branch`) only renders of a **clean**
+working tree (`git.dirty != true`) produced **on the branch the ref tracks** (`git.branch ==
+sourceBranch`, where `refs/heads/preview/main` → `main`) reach the branch — uncommitted or
+off-branch local states never pollute it. Renders with no git provenance (fake-mode) are
+allowed. Set the policy to `all` to record every render (the pre-curation behaviour). This gates
+*only* the reporting branch; the local FS source always captures every render as the developer's
+scratch history. (A stricter `pushed`-only mode — require the commit be reachable from the
+published branch — is a possible follow-up.)
+
 **Burst debounce** (#1882): under `WRITE_LOCAL` / `WRITE_PUSH`, writes are buffered for a
 short window (`composeai.daemon.gitRefHistoryDebounceMs`, default `1000`; `0` = commit per
 render) and coalesced into a **single** commit covering every preview changed in the window

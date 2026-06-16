@@ -513,6 +513,10 @@ class HistoryManager(
       // so the daemon mains need no change. On-demand read sources never write, so stay
       // un-debounced.
       gitRefDebounceMs: Long = GitRefHistorySource.parseDebounceSysprop(),
+      // #1872 — curation policy for the writable reporting-branch source; defaults from the
+      // sysprop.
+      gitRefPublishPolicy: GitRefHistorySource.PublishPolicy =
+        GitRefHistorySource.parsePublishPolicySysprop(),
     ): HistoryManager {
       val sources = buildList {
         if (historyDir != null) add(LocalFsHistorySource(historyDir = historyDir))
@@ -528,6 +532,7 @@ class HistoryManager(
                     ?: repoRoot.resolve(".compose-preview-history").resolve(".git-ref-cache"),
                 warnEmitter = warnEmitter,
                 debounceMs = gitRefDebounceMs,
+                publishPolicy = gitRefPublishPolicy,
               )
             )
           }

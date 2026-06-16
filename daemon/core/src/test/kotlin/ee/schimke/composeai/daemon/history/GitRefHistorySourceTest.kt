@@ -629,6 +629,75 @@ class GitRefHistorySourceTest {
   }
 
   // -------------------------------------------------------------------------
+  // Publish policy / curation (#1872) — `ref` is refs/heads/preview/main ⇒ sourceBranch = "main"
+  // -------------------------------------------------------------------------
+
+  @Test
+  fun clean_on_branch_records_a_clean_render_on_the_tracked_branch() {
+    val src = source(SyncModeOf.WRITE_LOCAL, publishPolicy = PolicyOf.CLEAN_ON_BRANCH)
+    val e =
+      entry(
+        "20260430-100000-aaaaaaaa",
+        "com.example.A",
+        "a".toByteArray(),
+        git = GitInfo(branch = "main", dirty = false),
+      )
+    assertEquals(WriteResult.WRITTEN, src.write(e, "a".toByteArray()))
+    assertEquals(1, src.list(HistoryFilter()).totalCount)
+  }
+
+  @Test
+  fun clean_on_branch_skips_a_dirty_render() {
+    val src = source(SyncModeOf.WRITE_LOCAL, publishPolicy = PolicyOf.CLEAN_ON_BRANCH)
+    val e =
+      entry(
+        "20260430-100000-aaaaaaaa",
+        "com.example.A",
+        "a".toByteArray(),
+        git = GitInfo(branch = "main", dirty = true),
+      )
+    assertEquals(WriteResult.SKIPPED_DUPLICATE, src.write(e, "a".toByteArray()))
+    assertEquals("dirty render kept off the branch", 0, src.list(HistoryFilter()).totalCount)
+  }
+
+  @Test
+  fun clean_on_branch_skips_an_off_branch_render() {
+    val src = source(SyncModeOf.WRITE_LOCAL, publishPolicy = PolicyOf.CLEAN_ON_BRANCH)
+    val e =
+      entry(
+        "20260430-100000-aaaaaaaa",
+        "com.example.A",
+        "a".toByteArray(),
+        git = GitInfo(branch = "feature/x", dirty = false),
+      )
+    assertEquals(WriteResult.SKIPPED_DUPLICATE, src.write(e, "a".toByteArray()))
+    assertEquals("off-branch render kept off the branch", 0, src.list(HistoryFilter()).totalCount)
+  }
+
+  @Test
+  fun clean_on_branch_allows_a_render_without_git_provenance() {
+    // Fake-mode / no-git renders have null provenance — nothing to curate against, so they record.
+    val src = source(SyncModeOf.WRITE_LOCAL, publishPolicy = PolicyOf.CLEAN_ON_BRANCH)
+    val e = entry("20260430-100000-aaaaaaaa", "com.example.A", "a".toByteArray(), git = null)
+    assertEquals(WriteResult.WRITTEN, src.write(e, "a".toByteArray()))
+    assertEquals(1, src.list(HistoryFilter()).totalCount)
+  }
+
+  @Test
+  fun policy_all_records_dirty_and_off_branch_renders() {
+    val src = source(SyncModeOf.WRITE_LOCAL, publishPolicy = PolicyOf.ALL)
+    val dirtyOffBranch =
+      entry(
+        "20260430-100000-aaaaaaaa",
+        "com.example.A",
+        "a".toByteArray(),
+        git = GitInfo(branch = "feature/x", dirty = true),
+      )
+    assertEquals(WriteResult.WRITTEN, src.write(dirtyOffBranch, "a".toByteArray()))
+    assertEquals("ALL keeps today's behaviour", 1, src.list(HistoryFilter()).totalCount)
+  }
+
+  // -------------------------------------------------------------------------
   // Helpers
   // -------------------------------------------------------------------------
 
@@ -657,10 +726,16 @@ class GitRefHistorySourceTest {
     val WRITE_PUSH = GitRefHistorySource.SyncMode.WRITE_PUSH
   }
 
+  private object PolicyOf {
+    val ALL = GitRefHistorySource.PublishPolicy.ALL
+    val CLEAN_ON_BRANCH = GitRefHistorySource.PublishPolicy.CLEAN_ON_BRANCH
+  }
+
   private fun source(
     syncMode: GitRefHistorySource.SyncMode,
     ref: String = this.ref,
     debounceMs: Long = 0,
+    publishPolicy: GitRefHistorySource.PublishPolicy = GitRefHistorySource.PublishPolicy.ALL,
   ): GitRefHistorySource =
     GitRefHistorySource(
       repoRoot = repoRoot,
@@ -668,6 +743,7 @@ class GitRefHistorySourceTest {
       syncMode = syncMode,
       warnEmitter = warnEmitter,
       debounceMs = debounceMs,
+      publishPolicy = publishPolicy,
     )
 
   private fun entry(
@@ -677,6 +753,7 @@ class GitRefHistorySourceTest {
     timestamp: String = "2026-04-30T10:12:34Z",
     a11yHierarchy: JsonElement? = null,
     theme: JsonElement? = null,
+    git: GitInfo? = null,
   ): HistoryEntry =
     HistoryEntry(
       id = id,
@@ -692,6 +769,7 @@ class GitRefHistorySourceTest {
       renderTookMs = 1L,
       a11yHierarchy = a11yHierarchy,
       theme = theme,
+      git = git,
     )
 
   private fun mktree(input: String): String {
