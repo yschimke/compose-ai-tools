@@ -329,7 +329,7 @@ internal object ComposePreviewTasks {
     // `artifactType=jar` attribute, so the bundle's filtered `dependencyJars` view drops it.
     androidUnitTestConfigFiles: FileCollection? = null,
     androidUnitTestRuntimeClasspath: (() -> FileCollection?)? = null,
-  ) {
+  ): TaskProvider<BundlePreviewTask> {
     val previewIdsProperty: Provider<List<String>> =
       project.providers.gradleProperty("bundlePreviewIds").map { raw ->
         BundlePreviewIds.parse(raw)
@@ -450,7 +450,7 @@ internal object ComposePreviewTasks {
         candidates.firstOrNull { it != null && it.asFile.isDirectory }
       }
 
-    project.tasks.register("composePreviewBundle", BundlePreviewTask::class.java) {
+    return project.tasks.register("composePreviewBundle", BundlePreviewTask::class.java) {
       // Skip bundling a non-renderable pure-KMP-Android module: it discovers 0 previews, and
       // BundlePreviewTask hard-fails on an empty manifest, so a build-wide `render --bundle` (which
       // appends `:<module>:composePreviewBundle` for every detected module) would fail on it even
