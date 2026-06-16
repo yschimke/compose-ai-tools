@@ -106,7 +106,7 @@ INIT_SCRIPT="$(compose-preview init-script --path)"
 
 The CLI's [auto-inject script](cli/src/main/kotlin/ee/schimke/composeai/cli/AutoInject.kt) detects projects that already declare the plugin (either literally as `id("ee.schimke.composeai.preview") version "..."` or via a `gradle/libs.versions.toml` alias resolved through `alias(libs.plugins.<x>)`) and skips the classpath injection for those builds, so mixed setups work without conflicts.
 
-The plugin is also published to [Maven Central](https://central.sonatype.com/artifact/ee.schimke.composeai/compose-preview-plugin) (no auth, no PAT) if you prefer to apply it in `build.gradle.kts` directly — see the working examples under [`samples/android/build.gradle.kts`](samples/android/build.gradle.kts), [`samples/wear/build.gradle.kts`](samples/wear/build.gradle.kts), and [`samples/cmp/build.gradle.kts`](samples/cmp/build.gradle.kts).
+The plugin is also published to [Maven Central](https://central.sonatype.com/artifact/ee.schimke.composeai/compose-preview-plugin) (no auth, no PAT). To apply it directly, add `id("ee.schimke.composeai.preview") version "<latest>"` to your `plugins { }` block, pinning the current version shown on Maven Central. The in-repo [`samples/`](samples/) build files apply it *without* a version because they resolve the plugin from this repository's own included build, so they aren't drop-in for an external project.
 
 Requires Java 17+, Gradle 8.13+, AGP 8.13.0+ (Android), Kotlin 2.0.21+,
 Compose Multiplatform 1.10.3+ (Desktop). The bottom edge of the supported
