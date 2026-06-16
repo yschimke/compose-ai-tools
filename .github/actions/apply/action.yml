@@ -22,6 +22,20 @@ inputs:
   catalog-key:
     description: '[versions] key to read (when cli-version=catalog).'
     default: 'composePreviewCli'
+  skew-check:
+    description: >
+      Guardrail against CLI / Gradle-plugin version skew (issue #1920). After
+      the CLI is installed, compare its resolved version against the plugin
+      version pinned in the consumer's checkout (version catalog `[plugins]`
+      entry or a literal `id("…") version "…"`). When the CLI is *newer* than
+      the applied plugin — the case where the newer CLI silently fails to
+      discover the older plugin and the render reports "no modules have the
+      plugin applied" — surface an actionable message instead. `fail` (default)
+      errors out fast; `warn` logs a `::warning::` and continues; `off` skips
+      the check. Only acts when a concrete plugin version is detectable and both
+      sides are clean releases, so auto-inject consumers tracking `latest` are
+      never tripped.
+    default: 'fail'
   timeout:
     description: 'CLI render timeout in seconds.'
     default: '600'
@@ -200,6 +214,7 @@ runs:
     # `skip-render: true` and pre-staged JSON; a11y / notifications fail
     # cleanly with "command not found" when selected without a CLI.
     - name: Install CLI from release
+      id: install-release
       if: steps.resolve.outputs.mode != 'skip' && inputs.cli-version != 'source' && inputs.cli-version != 'none'
       # zizmor: ignore[known-vulnerable-actions] same-repo release action trips GitHub Advisories API 403 under GITHUB_TOKEN
       uses: yschimke/compose-ai-tools/.github/actions/install@v0.11.5 # x-release-please-version
@@ -207,6 +222,27 @@ runs:
         version: ${{ inputs.cli-version }}
         catalog-path: ${{ inputs.catalog-path }}
         catalog-key: ${{ inputs.catalog-key }}
+
+    # Guardrail against CLI / plugin version skew (issue #1920). The install
+    # action resolved a concrete CLI version above; compare it against the
+    # plugin version the consumer actually pins in their checkout. A CLI newer
+    # than the applied plugin is the silent footgun that breaks discovery
+    # repo-wide on every release — fail fast here with an actionable message
+    # rather than letting the pipeline die downstream with the misleading
+    # "no modules have the plugin applied". Skipped for `source` (internal CI,
+    # no resolved release version) and `none` (no CLI installed). Pure-Python,
+    # no Gradle cost — runs before doctor so the headline is the skew, not the
+    # confusing symptom.
+    - name: Check CLI / plugin version skew
+      if: steps.resolve.outputs.mode != 'skip' && inputs.cli-version != 'source' && inputs.cli-version != 'none'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        RESOLVED_CLI_VERSION: ${{ steps.install-release.outputs.version }}
+        SKEW_MODE: ${{ inputs.skew-check }}
+        WORKSPACE: ${{ github.workspace }}
+        CATALOG_PATH: ${{ inputs.catalog-path }}
+      run: python3 "$ACTION_PATH/check-skew.py"
 
     # Surface `compose-preview doctor`'s environment + project checks at
     # the top of the run, before any pipeline starts paying Gradle cost.
