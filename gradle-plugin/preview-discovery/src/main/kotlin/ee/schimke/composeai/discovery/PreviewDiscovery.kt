@@ -210,6 +210,25 @@ object PreviewDiscovery {
   private const val ROBO_COMPOSE_PREVIEW_OPTIONS_FQN =
     "com.github.takahirom.roborazzi.annotations.RoboComposePreviewOptions"
 
+  /**
+   * Both the un-resolved ([File.getAbsolutePath]) and symlink-resolved ([File.getCanonicalPath])
+   * forms of [file], used to match a class's owning classpath element against the project's own
+   * class dirs / jars.
+   *
+   * ClassGraph canonicalises the classpath element it reports for each class (resolving symlinks),
+   * while Gradle/AGP hand discovery the location verbatim. On an overlay / symlinked build tree —
+   * e.g. the AndroidX "androidchka" overlay — the two forms differ, so a raw `absolutePath`
+   * comparison matches nothing: every class is then treated as a dependency class, never
+   * method-walked, and discovery reports `Discovered 0 preview(s)` even though the annotated
+   * classes are present in `classDirs`. Comparing on the union of both forms makes the match
+   * symlink-agnostic — it succeeds whenever either side's absolute or canonical path coincides.
+   * `canonicalPath` does I/O and can throw, so it's added best-effort. See issue #1924.
+   */
+  private fun pathMatchKeys(file: File): Set<String> = buildSet {
+    add(file.absolutePath)
+    runCatching { add(file.canonicalPath) }
+  }
+
   fun discover(input: Input): Outcome {
     val warnings = mutableListOf<String>()
     val infoMessages = mutableListOf<String>()
@@ -281,13 +300,13 @@ object PreviewDiscovery {
           // the ClassGraph classpath (for multi-preview annotation resolution)
           // but aren't method-walked. See issue #1039 / #1924.
           val projectElementPaths =
-            (existingClassDirs + existingProjectJars).map { it.absolutePath }.toSet()
+            (existingClassDirs + existingProjectJars).flatMap { pathMatchKeys(it) }.toSet()
           val projectClassFqns =
             scanResult.allClasses
               .asSequence()
               .filter { ci ->
                 val element = ci.classpathElementFile ?: return@filter false
-                element.absolutePath in projectElementPaths
+                pathMatchKeys(element).any { it in projectElementPaths }
               }
               .map { it.name }
               .toSet()
