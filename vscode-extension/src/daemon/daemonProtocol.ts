@@ -939,7 +939,7 @@ export interface HistoryReadResult {
     pngBytes?: string;
 }
 
-export type HistoryDiffMode = "metadata" | "pixel";
+export type HistoryDiffMode = "metadata" | "pixel" | "semantics" | "data";
 
 export interface HistoryDiffParams {
     from: string;
@@ -951,11 +951,22 @@ export interface HistoryDiffParams {
 }
 
 /**
- * `mode = 'metadata'` (default) is cheap: daemon hashes both PNGs and
- * returns the sidecars. Pixel-mode fields are reserved for phase H5; in
- * METADATA mode they are always undefined/null. A caller asking for
- * `mode = 'pixel'` against a current daemon receives error
- * `HistoryPixelNotImplemented` (-32012).
+ * `mode = 'metadata'` (default) is cheap: daemon hashes both PNGs and returns
+ * the sidecars; the diff/delta fields below stay undefined.
+ *
+ * `mode = 'pixel'` (H5, #1873) populates `diffPx` / `ssim` / `diffPngPath`
+ * (the marked-diff PNG written under `<historyDir>/<previewId>/.diffs/`;
+ * undefined on a dimension mismatch).
+ *
+ * `mode = 'semantics'` (#1785) populates `semanticsDelta` (`compose-semantics-diff/v1`).
+ *
+ * `mode = 'data'` (#1873) populates `dataDelta` (`history-data-diff/v1`): the
+ * data-product roll-up with optional `semantics` / `a11y` / `theme` sections,
+ * each present only when both entries carry that product.
+ *
+ * Nested payloads are typed `unknown` here (matching `fromMetadata` /
+ * `toMetadata`); the Kotlin `@Serializable` types under `schema/` are the
+ * source of truth for their shapes.
  */
 export interface HistoryDiffResult {
     pngHashChanged: boolean;
@@ -964,6 +975,10 @@ export interface HistoryDiffResult {
     diffPx?: number;
     ssim?: number;
     diffPngPath?: string;
+    /** Semantics-mode delta (`compose-semantics-diff/v1`); undefined otherwise. */
+    semanticsDelta?: unknown;
+    /** Data-mode roll-up (`history-data-diff/v1`); undefined outside `mode='data'`. */
+    dataDelta?: unknown;
 }
 
 export interface HistoryAddedParams {
