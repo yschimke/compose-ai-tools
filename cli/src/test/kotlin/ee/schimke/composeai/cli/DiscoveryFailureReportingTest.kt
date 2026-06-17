@@ -85,7 +85,15 @@ class DiscoveryFailureReportingTest {
     val msg = lines.single()
     assertTrue(msg.contains("can't see the Android Gradle Plugin"), msg)
     assertTrue(msg.contains("convention plugin"), msg)
-    assertTrue(msg.contains("ee.schimke.composeai.preview\") apply false"), msg)
+    // The remedy must put the plugin marker on the convention build's runtime classpath via an
+    // implementation dependency — `apply false` in build-logic's plugins{} block resolves it only
+    // for that build script, not for the compiled convention plugin (PR #1948 Codex review).
+    assertTrue(
+      msg.contains("implementation(\"ee.schimke.composeai.preview:") &&
+        msg.contains("ee.schimke.composeai.preview.gradle.plugin"),
+      "guidance should tell users to add the plugin marker as a build-logic dependency; got $msg",
+    )
+    assertTrue(msg.contains("pluginManager.apply(\"ee.schimke.composeai.preview\")"), msg)
     assertTrue(
       msg.contains("install/#builds-that-apply-agp-via-a-convention-plugin"),
       "guidance should link to the integration docs; got $msg",

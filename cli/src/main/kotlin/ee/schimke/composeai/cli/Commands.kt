@@ -828,10 +828,13 @@ internal fun agpClassloaderGuidance(failures: List<ProjectDiscoveryFailure>): St
     )
     appendLine()
     appendLine(
-      "Apply the plugin from your convention plugin instead: stage " +
-        "`id(\"ee.schimke.composeai.preview\") apply false` and put the plugin marker on " +
-        "build-logic's classpath, then apply it alongside AGP in the convention plugin. The CLI " +
-        "detects that and skips auto-inject automatically."
+      "Apply the plugin from your convention plugin instead: add the plugin marker to your " +
+        "build-logic build's dependencies " +
+        "(implementation(\"ee.schimke.composeai.preview:" +
+        "ee.schimke.composeai.preview.gradle.plugin:<version>\")) so it's on the convention " +
+        "plugin's runtime classpath, then pluginManager.apply(\"ee.schimke.composeai.preview\") " +
+        "alongside AGP in the convention plugin. The CLI detects that and skips auto-inject " +
+        "automatically."
     )
     append(
       "Docs: https://yschimke.github.io/compose-ai-tools/install/" +

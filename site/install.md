@@ -72,19 +72,30 @@ same classloader as AGP, where it renders correctly. The CLI then detects the
 included-build apply and skips auto-inject automatically (no
 `--no-auto-inject` needed).
 
-1. Stage the plugin in `build-logic`'s `plugins {}` block (so its marker lands
-   on the convention build's classpath) and apply it from your convention
-   plugin alongside AGP:
+1. Add the preview plugin's **marker artifact** to your `build-logic` build's
+   dependencies. This is the key step: it puts the plugin on the convention
+   build's *runtime* classpath, so the compiled convention plugin can apply it
+   by id. (Declaring it in `build-logic`'s `plugins {}` block with `apply
+   false` only resolves it for that build script — not for the convention
+   plugin applied to your app modules, which fails with `Plugin with id … not
+   found`.) The marker coordinate is `<id>:<id>.gradle.plugin:<version>`:
 
    ```kotlin
    // build-logic/.../build.gradle.kts (the convention build)
    plugins {
        `kotlin-dsl`
-       // Stage so the marker is on build-logic's classpath. `apply false`:
-       // the convention plugin applies it per-module, not build-logic itself.
-       id("ee.schimke.composeai.preview") version "<latest>" apply false
+   }
+   dependencies {
+       implementation(
+           "ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:<latest>"
+       )
    }
    ```
+
+   Make sure `build-logic`'s repositories include where the plugin is
+   published (`mavenCentral()` / `gradlePluginPortal()`).
+
+2. Apply it from your convention plugin alongside AGP:
 
    ```kotlin
    // build-logic/.../YourAndroidConventionPlugin.kt
@@ -95,7 +106,7 @@ included-build apply and skips auto-inject automatically (no
    }
    ```
 
-2. Run the CLI as usual — it sees the included build provides the plugin and
+3. Run the CLI as usual — it sees the included build provides the plugin and
    leaves your build alone:
 
    ```sh
