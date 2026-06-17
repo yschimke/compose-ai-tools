@@ -18,7 +18,14 @@ object ComposeSemanticsProduct {
   // `lineHeight`. The typography analogue of the v3 `tokens` addition, so a parity consumer can
   // compare *which face* the text is drawn in, not just how big. Still additive — the object is
   // optional, so a v4 reader parses a v5 file unchanged.
-  const val SCHEMA_VERSION: Int = 5
+  // v6 (#1903): the flat `layout*` text fields are consolidated into themed sub-objects, closing
+  // the
+  // smell #1903 flagged. `layoutFontSize` moves to `typography.fontSize`; `layoutForegroundColor` /
+  // `layoutBackgroundColor` become `textColor.{foreground,background}`; the line/overflow metrics
+  // (`layoutLineCount` / `layoutMaxLines` / `layoutOverflow` / `layoutTruncated` /
+  // `layoutDidOverflow{Width,Height}`) become the `textOverflow` object. **Breaking** — the flat
+  // fields are removed, so a v5 reader does not see them; consumers read the sub-objects instead.
+  const val SCHEMA_VERSION: Int = 6
   const val FILE: String = "compose-semantics.json"
 }
 
@@ -69,26 +76,18 @@ data class ComposeSemanticsNode(
   val label: String? = null,
   val text: String? = null,
   val layoutText: String? = null,
-  val layoutFontSize: String? = null,
   /**
-   * Resolved typographic identity of the text this node draws (issue #1934): the face, weight,
-   * style, and variable-font axes, plus letter spacing / line height. Read from the node's
-   * `TextLayoutResult` (the same `GetTextLayoutResult` semantics action `layoutFontSize` /
-   * `layoutForegroundColor` come from), so it's the typography analogue of the v3 container
-   * [tokens]. Grouped under one object rather than scattered as more flat `layout*` fields; null
-   * when the node draws no text or its style is ambiguous across spans. (The pre-existing flat
-   * `layout*` text fields stay top-level for back-compat; folding them in here is the #1903
-   * follow-up.)
+   * Resolved typographic identity of the text this node draws (issues #1934, #1903): the resolved
+   * size, face, weight, style, and variable-font axes, plus letter spacing / line height. Read from
+   * the node's `TextLayoutResult` (the `GetTextLayoutResult` semantics action). The typography
+   * analogue of the v3 container [tokens]; null when the node draws no text or its style is
+   * ambiguous across spans.
    */
   val typography: ComposeSemanticsTypography? = null,
-  val layoutForegroundColor: String? = null,
-  val layoutBackgroundColor: String? = null,
-  val layoutLineCount: Int? = null,
-  val layoutMaxLines: Int? = null,
-  val layoutOverflow: String? = null,
-  val layoutTruncated: Boolean? = null,
-  val layoutDidOverflowWidth: Boolean? = null,
-  val layoutDidOverflowHeight: Boolean? = null,
+  /** Resolved text colours (issue #1903), or null when the node draws no coloured text. */
+  val textColor: ComposeSemanticsTextColor? = null,
+  /** Resolved text line/overflow metrics (issue #1903), or null when the node draws no text. */
+  val textOverflow: ComposeSemanticsTextOverflow? = null,
   val editableText: String? = null,
   val inputText: String? = null,
   val role: String? = null,
@@ -98,24 +97,27 @@ data class ComposeSemanticsNode(
   /**
    * Resolved design-token data extracted from this node's modifiers (issue #1897).
    *
-   * The text half of the projection (`layoutForegroundColor`, `layoutFontSize`, …) describes drawn
-   * text; this carries the *container* tokens design-parity's token-compliance check compares
-   * against — resolved background/fill colour, corner radius, and padding. Null for the common case
-   * of a node that declares none of them (pure layout / text nodes).
+   * The text half of the projection (`textColor`, `typography`, …) describes drawn text; this
+   * carries the *container* tokens design-parity's token-compliance check compares against —
+   * resolved background/fill colour, corner radius, and padding. Null for the common case of a node
+   * that declares none of them (pure layout / text nodes).
    */
   val tokens: ComposeSemanticsTokens? = null,
   val children: List<ComposeSemanticsNode> = emptyList(),
 )
 
 /**
- * Resolved typographic identity of the text a semantics node draws (issue #1934) — read from the
- * node's `TextLayoutResult` (`TextLayoutResult.layoutInput.style` / its span styles), the same
- * source `layoutFontSize` / `layoutForegroundColor` come from. Each field collapses to a value only
- * when every drawn range agrees on it, so a node with mixed spans omits the ambiguous field; a node
- * that declares nothing typographic emits no `typography` object at all.
+ * Resolved typographic identity of the text a semantics node draws (issues #1934, #1903) — read
+ * from the node's `TextLayoutResult` (`TextLayoutResult.layoutInput.style` / its span styles). Each
+ * field collapses to a value only when every drawn range agrees on it, so a node with mixed spans
+ * omits the ambiguous field; a node that declares nothing typographic emits no `typography` object.
  */
 @Serializable
 data class ComposeSemanticsTypography(
+  /**
+   * Resolved text size as `"<value>sp"`, e.g. `"22.0sp"` (was the flat `layoutFontSize`, #1903).
+   */
+  val fontSize: String? = null,
   /**
    * Resolved typeface identity. For a
    * [GenericFontFamily][androidx.compose.ui.text.font.GenericFontFamily] this is its declared name
@@ -145,6 +147,41 @@ data class ComposeSemanticsTypography(
   val letterSpacing: String? = null,
   /** Resolved line height as `"<value>sp"` / `"<value>em"`. */
   val lineHeight: String? = null,
+)
+
+/**
+ * Resolved text colours of a semantics node (issue #1903) — the consolidation home for the former
+ * flat `layoutForegroundColor` / `layoutBackgroundColor`. ARGB hex (`#AARRGGBB`). Null fields where
+ * the node doesn't resolve an unambiguous colour (e.g. text usually has no own background — the
+ * surface supplies it).
+ */
+@Serializable
+data class ComposeSemanticsTextColor(
+  /** Resolved text foreground colour as ARGB hex (`#AARRGGBB`). */
+  val foreground: String? = null,
+  /** Resolved text background colour as ARGB hex (`#AARRGGBB`); usually unset. */
+  val background: String? = null,
+)
+
+/**
+ * Resolved line/overflow metrics of a text node (issue #1903) — the consolidation home for the
+ * former flat `layoutLineCount` / `layoutMaxLines` / `layoutOverflow` / `layoutTruncated` /
+ * `layoutDidOverflow{Width,Height}`, all read from the node's `TextLayoutResult`.
+ */
+@Serializable
+data class ComposeSemanticsTextOverflow(
+  /** Total laid-out line count across the node's text. */
+  val lineCount: Int? = null,
+  /** The `maxLines` constraint, when one was set (not `Int.MAX_VALUE`). */
+  val maxLines: Int? = null,
+  /** The `TextOverflow` mode (`Clip` / `Ellipsis` / `Visible`) as a string, when unambiguous. */
+  val overflow: String? = null,
+  /** Whether any laid-out text had visual overflow. */
+  val truncated: Boolean? = null,
+  /** Whether the text overflowed its width. */
+  val didOverflowWidth: Boolean? = null,
+  /** Whether the text overflowed its height. */
+  val didOverflowHeight: Boolean? = null,
 )
 
 /**

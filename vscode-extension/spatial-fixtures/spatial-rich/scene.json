@@ -162,6 +162,7 @@
     "preset": null,
     "sky": null,
     "horizon": null,
-    "floor": null
+    "floor": null,
+    "glow": null
   }
 }

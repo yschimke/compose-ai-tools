@@ -33,12 +33,12 @@ object SemanticsDiff {
       "clickable" to { it.clickable.toString() },
       "editableText" to { it.editableText },
       "inputText" to { it.inputText },
-      "layoutTruncated" to { it.layoutTruncated?.toString() },
-      "layoutOverflow" to { it.layoutOverflow },
-      "layoutLineCount" to { it.layoutLineCount?.toString() },
-      "layoutMaxLines" to { it.layoutMaxLines?.toString() },
-      "layoutDidOverflowWidth" to { it.layoutDidOverflowWidth?.toString() },
-      "layoutDidOverflowHeight" to { it.layoutDidOverflowHeight?.toString() },
+      "layoutTruncated" to { it.textOverflow?.truncated?.toString() },
+      "layoutOverflow" to { it.textOverflow?.overflow },
+      "layoutLineCount" to { it.textOverflow?.lineCount?.toString() },
+      "layoutMaxLines" to { it.textOverflow?.maxLines?.toString() },
+      "layoutDidOverflowWidth" to { it.textOverflow?.didOverflowWidth?.toString() },
+      "layoutDidOverflowHeight" to { it.textOverflow?.didOverflowHeight?.toString() },
     )
 
   fun diff(base: ComposeSemanticsPayload, head: ComposeSemanticsPayload): SemanticsDelta =

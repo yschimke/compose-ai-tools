@@ -29,7 +29,7 @@ class ComposeSemanticsDataProductRegistryTest {
     val registry = ComposeSemanticsDataProductRegistry(rootDir)
     val cap = registry.capabilities.single()
     assertEquals("compose/semantics", cap.kind)
-    assertEquals(5, cap.schemaVersion)
+    assertEquals(6, cap.schemaVersion)
     assertTrue(cap.attachable)
     assertTrue(cap.fetchable)
     assertTrue(!cap.requiresRerender)

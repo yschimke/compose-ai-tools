@@ -23,12 +23,15 @@ export interface SemanticsNode {
     clickable?: boolean;
     editableText?: string | null;
     inputText?: string | null;
-    layoutTruncated?: boolean | null;
-    layoutOverflow?: string | null;
-    layoutLineCount?: number | null;
-    layoutMaxLines?: number | null;
-    layoutDidOverflowWidth?: boolean | null;
-    layoutDidOverflowHeight?: boolean | null;
+    /** Resolved line/overflow metrics, consolidated under one object in schema v6 (#1903). */
+    textOverflow?: {
+        truncated?: boolean | null;
+        overflow?: string | null;
+        lineCount?: number | null;
+        maxLines?: number | null;
+        didOverflowWidth?: boolean | null;
+        didOverflowHeight?: boolean | null;
+    } | null;
     children?: SemanticsNode[];
 }
 
@@ -128,12 +131,12 @@ const COMPARED_FIELDS: Array<[string, Extractor]> = [
     ["clickable", (n) => String(n.clickable ?? false)],
     ["editableText", (n) => asStr(n.editableText)],
     ["inputText", (n) => asStr(n.inputText)],
-    ["layoutTruncated", (n) => asBool(n.layoutTruncated)],
-    ["layoutOverflow", (n) => asStr(n.layoutOverflow)],
-    ["layoutLineCount", (n) => asNum(n.layoutLineCount)],
-    ["layoutMaxLines", (n) => asNum(n.layoutMaxLines)],
-    ["layoutDidOverflowWidth", (n) => asBool(n.layoutDidOverflowWidth)],
-    ["layoutDidOverflowHeight", (n) => asBool(n.layoutDidOverflowHeight)],
+    ["layoutTruncated", (n) => asBool(n.textOverflow?.truncated)],
+    ["layoutOverflow", (n) => asStr(n.textOverflow?.overflow)],
+    ["layoutLineCount", (n) => asNum(n.textOverflow?.lineCount)],
+    ["layoutMaxLines", (n) => asNum(n.textOverflow?.maxLines)],
+    ["layoutDidOverflowWidth", (n) => asBool(n.textOverflow?.didOverflowWidth)],
+    ["layoutDidOverflowHeight", (n) => asBool(n.textOverflow?.didOverflowHeight)],
 ];
 
 function byRef(root: SemanticsNode): Map<string, SemanticsNode> {

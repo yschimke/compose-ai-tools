@@ -46,9 +46,8 @@ class TextStringsDataProductRegistryTest {
               "boundsInRoot": "10,20,90,40",
               "text": "Buy semantics",
               "layoutText": "Buy",
-              "layoutFontSize": "18.0sp",
-              "layoutForegroundColor": "#FF102030",
-              "layoutBackgroundColor": "#FFE0E0E0",
+              "typography": { "fontSize": "18.0sp" },
+              "textColor": { "foreground": "#FF102030", "background": "#FFE0E0E0" },
               "label": "Purchase item"
             },
             {
@@ -132,12 +131,14 @@ class TextStringsDataProductRegistryTest {
               "nodeId": "2",
               "boundsInRoot": "10,20,90,40",
               "layoutText": "A very long French label",
-              "layoutTruncated": true,
-              "layoutDidOverflowWidth": true,
-              "layoutDidOverflowHeight": false,
-              "layoutLineCount": 1,
-              "layoutMaxLines": 1,
-              "layoutOverflow": "Ellipsis"
+              "textOverflow": {
+                "truncated": true,
+                "didOverflowWidth": true,
+                "didOverflowHeight": false,
+                "lineCount": 1,
+                "maxLines": 1,
+                "overflow": "Ellipsis"
+              }
             }
           ]
         }

@@ -5,7 +5,7 @@
   "description": "Payload for the `compose/semantics` data product: the Compose semantics tree projected for a render. Kotlin source of truth: ComposeSemanticsPayload / ComposeSemanticsNode in :data-layoutinspector-core. Each node carries a stable `ref` (see #1784).",
   "x-composeai": {
     "kind": "compose/semantics",
-    "schemaVersion": 5,
+    "schemaVersion": 6,
     "kotlinType": "ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload",
     "kotlinConst": "ComposeSemanticsProduct.SCHEMA_VERSION",
     "fixture": "vscode-extension/preview-harness/fixtures/inspection-tree.json"
@@ -21,16 +21,9 @@
         "label": { "type": ["string", "null"] },
         "text": { "type": ["string", "null"] },
         "layoutText": { "type": ["string", "null"] },
-        "layoutFontSize": { "type": ["string", "null"] },
-        "typography": { "anyOf": [{ "$ref": "#/definitions/ComposeSemanticsTypography" }, { "type": "null" }], "description": "Resolved typographic identity of the text this node draws (#1934). Omitted when the node declares nothing typographic." },
-        "layoutForegroundColor": { "type": ["string", "null"] },
-        "layoutBackgroundColor": { "type": ["string", "null"] },
-        "layoutLineCount": { "type": ["integer", "null"] },
-        "layoutMaxLines": { "type": ["integer", "null"] },
-        "layoutOverflow": { "type": ["string", "null"] },
-        "layoutTruncated": { "type": ["boolean", "null"] },
-        "layoutDidOverflowWidth": { "type": ["boolean", "null"] },
-        "layoutDidOverflowHeight": { "type": ["boolean", "null"] },
+        "typography": { "anyOf": [{ "$ref": "#/definitions/ComposeSemanticsTypography" }, { "type": "null" }], "description": "Resolved typographic identity of the text this node draws — size, face, weight, style, axes (#1934, #1903). Omitted when the node declares nothing typographic." },
+        "textColor": { "anyOf": [{ "$ref": "#/definitions/ComposeSemanticsTextColor" }, { "type": "null" }], "description": "Resolved text colours (#1903). Omitted when the node draws no coloured text." },
+        "textOverflow": { "anyOf": [{ "$ref": "#/definitions/ComposeSemanticsTextOverflow" }, { "type": "null" }], "description": "Resolved text line/overflow metrics (#1903). Omitted when the node draws no text." },
         "editableText": { "type": ["string", "null"] },
         "inputText": { "type": ["string", "null"] },
         "role": { "type": ["string", "null"] },
@@ -43,8 +36,9 @@
     },
     "ComposeSemanticsTypography": {
       "type": "object",
-      "description": "Resolved typographic identity of the text a node draws (#1934), read from its TextLayoutResult. Each field is present only when every drawn range agrees on it; a node that declares nothing typographic omits the object entirely.",
+      "description": "Resolved typographic identity of the text a node draws (#1934, #1903), read from its TextLayoutResult. Each field is present only when every drawn range agrees on it; a node that declares nothing typographic omits the object entirely.",
       "properties": {
+        "fontSize": { "type": ["string", "null"], "description": "Resolved text size in sp (`22.0sp`) — the former flat `layoutFontSize` (#1903)." },
         "fontFamily": { "type": ["string", "null"], "description": "Resolved typeface identity: a GenericFontFamily's name, or a FontListFontFamily's resolved-face identity (font file path / declared name / `res/font/<id>`)." },
         "fontWeight": { "type": ["integer", "null"], "description": "Resolved font weight value (400/500/700/…)." },
         "fontStyle": { "type": ["string", "null"], "description": "Resolved font style: `normal` or `italic`." },
@@ -52,6 +46,26 @@
         "fontFeatureSettings": { "type": ["string", "null"], "description": "Resolved OpenType feature settings." },
         "letterSpacing": { "type": ["string", "null"], "description": "Resolved letter spacing in sp/em." },
         "lineHeight": { "type": ["string", "null"], "description": "Resolved line height in sp/em." }
+      }
+    },
+    "ComposeSemanticsTextColor": {
+      "type": "object",
+      "description": "Resolved text colours (#1903) — the consolidation home for the former flat `layoutForegroundColor` / `layoutBackgroundColor`. ARGB hex `#AARRGGBB`.",
+      "properties": {
+        "foreground": { "type": ["string", "null"], "description": "Resolved text foreground colour as ARGB hex `#AARRGGBB`." },
+        "background": { "type": ["string", "null"], "description": "Resolved text background colour as ARGB hex `#AARRGGBB`; usually unset." }
+      }
+    },
+    "ComposeSemanticsTextOverflow": {
+      "type": "object",
+      "description": "Resolved text line/overflow metrics (#1903) — the consolidation home for the former flat `layoutLineCount` / `layoutMaxLines` / `layoutOverflow` / `layoutTruncated` / `layoutDidOverflow{Width,Height}`.",
+      "properties": {
+        "lineCount": { "type": ["integer", "null"], "description": "Total laid-out line count." },
+        "maxLines": { "type": ["integer", "null"], "description": "The `maxLines` constraint, when set." },
+        "overflow": { "type": ["string", "null"], "description": "The TextOverflow mode (`Clip` / `Ellipsis` / `Visible`)." },
+        "truncated": { "type": ["boolean", "null"], "description": "Whether any text had visual overflow." },
+        "didOverflowWidth": { "type": ["boolean", "null"], "description": "Whether the text overflowed its width." },
+        "didOverflowHeight": { "type": ["boolean", "null"], "description": "Whether the text overflowed its height." }
       }
     },
     "ComposeSemanticsTokens": {
