@@ -73,7 +73,7 @@ For the full tool surface, URI scheme, and wire protocol see
 Point the agent at the
 [`compose-preview` skill](https://github.com/yschimke/skills/tree/main/skills/compose-preview).
 It's the install-and-iterate playbook: it checks for the CLI, bootstraps it
-via the [installer](./install/) if missing, and walks the agent through
+via the [installer](../install/) if missing, and walks the agent through
 rendering and verifying. The skill and the installer aren't alternatives —
 the installer is just the one command the skill runs to get the CLI in place.
 </content>

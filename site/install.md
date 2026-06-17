@@ -94,7 +94,7 @@ Point any agent that can fetch a URL at the
 — a complete install-and-iterate playbook. The skill checks whether the CLI
 is present and bootstraps it (via the installer above) if not, so "point the
 agent at the skill" and "run the installer" converge on the same place. See
-[Agents & MCP](./mcp/) for the agent loop the skill drives.
+[Agents & MCP](../mcp/) for the agent loop the skill drives.
 
 ## CI / GitHub Actions
 

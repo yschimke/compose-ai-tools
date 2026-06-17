@@ -16,7 +16,7 @@ interactive re-renders fast.
 A persistent preview server that replaces the per-save Gradle invocation with
 a long-lived JVM holding a hot Robolectric (Android) or Compose-Desktop
 renderer. A cold Gradle render is 10s+; a warm daemon render is a fraction of
-that. It's what the VS Code extension and the [MCP server](./mcp/) drive
+that. It's what the VS Code extension and the [MCP server](../mcp/) drive
 behind the scenes.
 
 It's configured with `composePreview.daemon { ... }` and defaults on for
@@ -31,7 +31,7 @@ server bring it up as needed.
   renders.
 - **`:daemon:desktop`** — Compose-Desktop backend; holds a warm render thread.
 - **`:mcp`** — multiplexes per-`(workspace, module)` daemons behind one MCP
-  surface (see [Agents & MCP](./mcp/)).
+  surface (see [Agents & MCP](../mcp/)).
 
 ## Going deeper
 
