@@ -923,6 +923,38 @@ class AutoInjectTest {
   }
 
   @Test
+  fun `includedBuildProvidesComposeAiPreviewPlugin detects the dep in an included-build subproject`() {
+    // Multi-project convention build: the plugin dep lives in build-logic/conventions, not the
+    // build-logic root script (PR #1939 review). The recursive scan must still find it.
+    val projectRoot = tempDir()
+    File(projectRoot, "settings.gradle.kts")
+      .writeText("pluginManagement { includeBuild(\"build-logic\") }\ninclude(\":app\")\n")
+    File(projectRoot, "build-logic").mkdirs()
+    File(projectRoot, "build-logic/build.gradle.kts").writeText("// aggregator, no deps here\n")
+    File(projectRoot, "build-logic/conventions").mkdirs()
+    File(projectRoot, "build-logic/conventions/build.gradle.kts")
+      .writeText(
+        "plugins { `kotlin-dsl` }\ndependencies { implementation(\"ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:0.15.12\") }\n"
+      )
+    assertTrue(includedBuildProvidesComposeAiPreviewPlugin(projectRoot))
+  }
+
+  @Test
+  fun `includedBuildProvidesComposeAiPreviewPlugin ignores matches under a build output dir`() {
+    // A stale copy of the coordinate under build-logic/build/ (generated output) must not count —
+    // the scan prunes output trees.
+    val projectRoot = tempDir()
+    File(projectRoot, "settings.gradle.kts")
+      .writeText("pluginManagement { includeBuild(\"build-logic\") }\ninclude(\":app\")\n")
+    File(projectRoot, "build-logic").mkdirs()
+    File(projectRoot, "build-logic/build.gradle.kts").writeText("plugins { `kotlin-dsl` }\n")
+    File(projectRoot, "build-logic/build/generated").mkdirs()
+    File(projectRoot, "build-logic/build/generated/build.gradle.kts")
+      .writeText("implementation(\"ee.schimke.composeai.preview:...\")\n")
+    assertFalse(includedBuildProvidesComposeAiPreviewPlugin(projectRoot))
+  }
+
+  @Test
   fun `includedBuildProvidesComposeAiPreviewPlugin is false with no included build at all`() {
     val projectRoot = tempDir()
     File(projectRoot, "settings.gradle.kts")

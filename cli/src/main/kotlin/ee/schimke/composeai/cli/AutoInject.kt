@@ -617,6 +617,12 @@ internal fun hasIncludedPluginBuild(
  * plugin coordinate*. Merely `includeBuild("build-logic")` without the plugin (the common shape)
  * leaves auto-inject on. Same parens-required heuristic scope as [hasIncludedPluginBuild].
  *
+ * The scan is recursive across each included build, not just its root build script: a multi-project
+ * convention build commonly declares the plugin dependency in a subproject
+ * (`build-logic/conventions/build.gradle.kts`) rather than the root (PR #1939 review). We walk
+ * every `build.gradle[.kts]` under the included build, pruning generated/output trees (`build/`,
+ * `.gradle/`, …) and bounding the traversal so a pathological tree can't stall the CLI.
+ *
  * Visible for tests.
  */
 internal fun includedBuildProvidesComposeAiPreviewPlugin(
@@ -633,15 +639,46 @@ internal fun includedBuildProvidesComposeAiPreviewPlugin(
   val includedDirs =
     includeBuildRe.findAll(stripGradleComments(settingsText)).map { it.groupValues[1] }.toList()
   if (includedDirs.isEmpty()) return false
-  val pluginRe = Regex("""ee\.schimke\.composeai\.preview""")
-  for (dir in includedDirs) {
-    val buildScript =
-      listOf(File(projectRoot, "$dir/build.gradle.kts"), File(projectRoot, "$dir/build.gradle"))
-        .firstOrNull { it.isFile } ?: continue
-    val text =
-      runCatching { fileSystem.read(buildScript.path.toPath()) { readUtf8() } }.getOrNull()
-        ?: continue
-    if (pluginRe.containsMatchIn(stripGradleComments(text))) return true
+  return includedDirs.any { dir ->
+    buildScriptsReferenceComposeAiPreview(File(projectRoot, dir), fileSystem)
+  }
+}
+
+/**
+ * Directory names never worth descending into when scanning an included build for build scripts.
+ */
+private val COMPOSE_AI_PREVIEW_SCAN_SKIP_DIRS =
+  setOf("build", ".gradle", ".git", ".idea", "node_modules")
+
+/**
+ * Walks [buildDir] for any `build.gradle[.kts]` whose (comment-stripped) text references the
+ * `ee.schimke.composeai.preview` coordinate. Iterative DFS over [fileSystem] that prunes
+ * generated/output dirs and caps the number of directories visited so it stays cheap on large or
+ * adversarial trees. Used only by [includedBuildProvidesComposeAiPreviewPlugin].
+ */
+private fun buildScriptsReferenceComposeAiPreview(
+  buildDir: File,
+  fileSystem: FileSystem,
+  maxDirs: Int = 500,
+): Boolean {
+  val coordinate = Regex("""ee\.schimke\.composeai\.preview""")
+  val root = buildDir.path.toPath()
+  if (fileSystem.metadataOrNull(root)?.isDirectory != true) return false
+  val stack = ArrayDeque<okio.Path>().apply { addLast(root) }
+  var visited = 0
+  while (stack.isNotEmpty() && visited < maxDirs) {
+    val current = stack.removeLast()
+    visited++
+    val entries = runCatching { fileSystem.list(current) }.getOrNull() ?: continue
+    for (entry in entries) {
+      val metadata = runCatching { fileSystem.metadataOrNull(entry) }.getOrNull()
+      if (metadata?.isDirectory == true) {
+        if (entry.name !in COMPOSE_AI_PREVIEW_SCAN_SKIP_DIRS) stack.addLast(entry)
+      } else if (entry.name == "build.gradle.kts" || entry.name == "build.gradle") {
+        val text = runCatching { fileSystem.read(entry) { readUtf8() } }.getOrNull() ?: continue
+        if (coordinate.containsMatchIn(stripGradleComments(text))) return true
+      }
+    }
   }
   return false
 }
