@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://schimke.ee/composeai/a11y-diff.schema.json",
+  "title": "A11yDelta",
+  "description": "Payload for the `a11y-diff/v1` derived product: the diff between two entries' ATF findings (`a11y/atf`), keyed by rule type plus the stable hierarchy `ref` from #1784 (resolved by matching the finding's bounds against the captured `a11y/hierarchy` nodes). Kotlin source of truth: A11yDelta in :daemon:core. The `schema` discriminator is always emitted (@EncodeDefault).",
+  "x-composeai": {
+    "kind": "a11y-diff/v1",
+    "schemaVersion": 1,
+    "kotlinType": "ee.schimke.composeai.daemon.history.A11yDelta",
+    "kotlinConst": "A11yDiffProduct.SCHEMA",
+    "example": "schema/examples/a11y-diff.json"
+  },
+  "definitions": {
+    "A11yFindingSummary": {
+      "type": "object",
+      "required": ["type", "level", "message"],
+      "properties": {
+        "ref": { "type": ["string", "null"] },
+        "type": { "type": "string" },
+        "level": { "type": "string" },
+        "message": { "type": "string" },
+        "boundsInScreen": { "type": ["string", "null"] }
+      }
+    },
+    "A11yFieldChange": {
+      "type": "object",
+      "required": ["field"],
+      "properties": {
+        "field": { "type": "string" },
+        "from": { "type": ["string", "null"] },
+        "to": { "type": ["string", "null"] }
+      }
+    },
+    "A11yFindingChange": {
+      "type": "object",
+      "required": ["type", "changes"],
+      "properties": {
+        "ref": { "type": ["string", "null"] },
+        "type": { "type": "string" },
+        "changes": { "type": "array", "items": { "$ref": "#/definitions/A11yFieldChange" } }
+      }
+    },
+    "A11yDelta": {
+      "type": "object",
+      "required": ["schema"],
+      "properties": {
+        "schema": { "type": "string", "const": "a11y-diff/v1" },
+        "added": { "type": "array", "items": { "$ref": "#/definitions/A11yFindingSummary" } },
+        "removed": { "type": "array", "items": { "$ref": "#/definitions/A11yFindingSummary" } },
+        "changed": { "type": "array", "items": { "$ref": "#/definitions/A11yFindingChange" } }
+      }
+    }
+  },
+  "$ref": "#/definitions/A11yDelta"
+}

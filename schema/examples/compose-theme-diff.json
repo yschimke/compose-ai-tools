@@ -1,0 +1,25 @@
+{
+  "schema": "compose-theme-diff/v1",
+  "colorScheme": [
+    { "token": "primary", "from": "0xFF6750A4", "to": "0xFFB3261E" },
+    { "token": "tertiary", "from": null, "to": "0xFF7D5260" }
+  ],
+  "shapes": [{ "token": "large", "from": "16.0dp", "to": "28.0dp" }],
+  "typography": [
+    {
+      "token": "bodyLarge",
+      "from": {
+        "fontFamily": "Roboto",
+        "fontSize": 16.0,
+        "fontSizeUnit": "sp",
+        "fontWeight": "400"
+      },
+      "to": {
+        "fontFamily": "Roboto",
+        "fontSize": 18.0,
+        "fontSizeUnit": "sp",
+        "fontWeight": "500"
+      }
+    }
+  ]
+}

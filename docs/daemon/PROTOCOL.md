@@ -432,7 +432,7 @@ Errors:
 {
   from: string;                            // entry id
   to: string;                              // entry id
-  mode?: "metadata" | "pixel" | "semantics"; // default "metadata"
+  mode?: "metadata" | "pixel" | "semantics" | "data"; // default "metadata"
 }
 
 // result
@@ -446,6 +446,8 @@ Errors:
   diffPngPath?: string;
   // Semantics-mode field (issue #1785) — null in METADATA / PIXEL modes.
   semanticsDelta?: SemanticsDelta;  // compose-semantics-diff/v1
+  // Data-mode field (issue #1873) — null outside DATA mode.
+  dataDelta?: HistoryDataDelta;     // history-data-diff/v1
 }
 ```
 
@@ -465,6 +467,16 @@ matched by each node's stable `ref`). The cheap, pixel-free regression signal �
 all three agree. Each entry's tree is snapshotted into its sidecar at record time, so the diff
 reads no PNGs. When one of the two entries has no captured semantics snapshot the call returns
 `-32013` (`HistorySemanticsNotCaptured`), distinct from `HistoryEntryNotFound`.
+
+`mode = "data"` (issue #1873) is the data-product roll-up: a single versioned `dataDelta`
+(`history-data-diff/v1`) with three optional sections — `semantics` (the same
+`compose-semantics-diff/v1` delta), `a11y` (`a11y-diff/v1`: ATF findings added / removed / changed,
+keyed by the stable hierarchy `ref` from #1784, resolved by matching the finding's bounds against
+the captured `a11y/hierarchy`), and `theme` (`compose-theme-diff/v1`: Material 3 resolved-token
+deltas). Each section is present only when **both** entries carry that product, so a `null` section
+means "not captured on both" while an empty-but-present section means "captured and identical".
+Like `semantics`, it reads the sidecar snapshots, not PNGs. Unlike `semantics` it never errors on a
+missing product — an absent product just omits its section (DATA is a best-effort roll-up).
 
 The diff resolves `from` and `to` across all configured `HistorySource`s — `from` may live in
 `LocalFsHistorySource` while `to` lives on a `preview/main` ref via `GitRefHistorySource`. This is

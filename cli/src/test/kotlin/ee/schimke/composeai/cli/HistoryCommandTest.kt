@@ -52,6 +52,8 @@ class HistoryCommandTest {
     timestamp: String,
     a11yHierarchy: Boolean = false,
     semantics: JsonElement? = null,
+    a11yAtf: JsonElement? = null,
+    theme: JsonElement? = null,
   ): String {
     val source = LocalFsHistorySource(historyDir)
     val entry =
@@ -72,10 +74,17 @@ class HistoryCommandTest {
             Json.parseToJsonElement("""{"nodes":[{"label":"x","boundsInScreen":"0,0,1,1"}]}""")
           else null,
         semantics = semantics,
+        a11yAtf = a11yAtf,
+        theme = theme,
       )
     source.write(entry, bytes)
     return id
   }
+
+  private fun themePayload(primary: String): JsonElement =
+    Json.parseToJsonElement(
+      """{"resolvedTokens":{"colorScheme":{"primary":"$primary"},"typography":{},"shapes":{}},"consumers":[]}"""
+    )
 
   private fun semanticsPayload(text: String): JsonElement =
     Json.parseToJsonElement(
@@ -214,6 +223,51 @@ class HistoryCommandTest {
     assertEquals("text", change["field"]?.jsonPrimitive?.content)
     assertEquals("Hello", change["from"]?.jsonPrimitive?.content)
     assertEquals("World", change["to"]?.jsonPrimitive?.content)
+  }
+
+  @Test
+  fun `diff --mode data rolls up semantics and theme deltas`() {
+    val from =
+      seed(
+        "20260430-100000-da7a0000",
+        "com.example.A",
+        "v1".toByteArray(),
+        "2026-04-30T10:00:00Z",
+        semantics = semanticsPayload("Hello"),
+        theme = themePayload("0xFF6750A4"),
+      )
+    val to =
+      seed(
+        "20260430-100100-da7a1111",
+        "com.example.A",
+        "v2".toByteArray(),
+        "2026-04-30T10:01:00Z",
+        semantics = semanticsPayload("World"),
+        theme = themePayload("0xFFB3261E"),
+      )
+
+    HistoryCommand(
+        listOf("diff", from, to, "--mode", "data", "--history-dir", historyDir.toString(), "--json")
+      )
+      .run()
+    val payload = Json.parseToJsonElement(output()).jsonObject
+
+    assertEquals("data", payload["mode"]?.jsonPrimitive?.content)
+    val delta = payload["dataDelta"]!!.jsonObject
+    assertEquals("history-data-diff/v1", delta["schema"]?.jsonPrimitive?.content)
+    // semantics section: text changed.
+    val semChange =
+      delta["semantics"]!!
+        .jsonObject["changed"]!!
+        .jsonArray[0]
+        .jsonObject["changes"]!!
+        .jsonArray[0]
+        .jsonObject
+    assertEquals("World", semChange["to"]?.jsonPrimitive?.content)
+    // theme section: primary colour token changed. a11y wasn't captured → section is null.
+    val themeChange = delta["theme"]!!.jsonObject["colorScheme"]!!.jsonArray[0].jsonObject
+    assertEquals("primary", themeChange["token"]?.jsonPrimitive?.content)
+    assertEquals("0xFFB3261E", themeChange["to"]?.jsonPrimitive?.content)
   }
 
   @Test

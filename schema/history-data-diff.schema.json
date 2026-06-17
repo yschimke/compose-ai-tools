@@ -1,0 +1,151 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://schimke.ee/composeai/history-data-diff.schema.json",
+  "title": "HistoryDataDelta",
+  "description": "Payload for the `history-data-diff/v1` derived product (issue #1873): the data-product diff over two history entries, rolling the `compose-semantics-diff/v1`, `a11y-diff/v1` and `compose-theme-diff/v1` sub-deltas into one versioned shape. Each section is present only when both entries carry that product. Kotlin source of truth: HistoryDataDelta in :daemon:core. Sub-delta definitions are inlined here (and mirror compose-semantics-diff / a11y-diff / compose-theme-diff). The `schema` discriminator is always emitted (@EncodeDefault).",
+  "x-composeai": {
+    "kind": "history-data-diff/v1",
+    "schemaVersion": 1,
+    "kotlinType": "ee.schimke.composeai.daemon.history.HistoryDataDelta",
+    "kotlinConst": "HistoryDataDiffProduct.SCHEMA",
+    "example": "schema/examples/history-data-diff.json"
+  },
+  "definitions": {
+    "SemanticsNodeSummary": {
+      "type": "object",
+      "required": ["ref"],
+      "properties": {
+        "ref": { "type": "string" },
+        "role": { "type": ["string", "null"] },
+        "testTag": { "type": ["string", "null"] },
+        "text": { "type": ["string", "null"] },
+        "label": { "type": ["string", "null"] }
+      }
+    },
+    "SemanticsFieldChange": {
+      "type": "object",
+      "required": ["field", "from", "to"],
+      "properties": {
+        "field": { "type": "string" },
+        "from": { "type": ["string", "null"] },
+        "to": { "type": ["string", "null"] }
+      }
+    },
+    "SemanticsNodeChange": {
+      "type": "object",
+      "required": ["ref", "changes"],
+      "properties": {
+        "ref": { "type": "string" },
+        "anchor": { "type": ["string", "null"] },
+        "changes": { "type": "array", "items": { "$ref": "#/definitions/SemanticsFieldChange" } }
+      }
+    },
+    "SemanticsDelta": {
+      "type": "object",
+      "required": ["schema"],
+      "properties": {
+        "schema": { "type": "string", "const": "compose-semantics-diff/v1" },
+        "added": { "type": "array", "items": { "$ref": "#/definitions/SemanticsNodeSummary" } },
+        "removed": { "type": "array", "items": { "$ref": "#/definitions/SemanticsNodeSummary" } },
+        "changed": { "type": "array", "items": { "$ref": "#/definitions/SemanticsNodeChange" } }
+      }
+    },
+    "A11yFindingSummary": {
+      "type": "object",
+      "required": ["type", "level", "message"],
+      "properties": {
+        "ref": { "type": ["string", "null"] },
+        "type": { "type": "string" },
+        "level": { "type": "string" },
+        "message": { "type": "string" },
+        "boundsInScreen": { "type": ["string", "null"] }
+      }
+    },
+    "A11yFieldChange": {
+      "type": "object",
+      "required": ["field"],
+      "properties": {
+        "field": { "type": "string" },
+        "from": { "type": ["string", "null"] },
+        "to": { "type": ["string", "null"] }
+      }
+    },
+    "A11yFindingChange": {
+      "type": "object",
+      "required": ["type", "changes"],
+      "properties": {
+        "ref": { "type": ["string", "null"] },
+        "type": { "type": "string" },
+        "changes": { "type": "array", "items": { "$ref": "#/definitions/A11yFieldChange" } }
+      }
+    },
+    "A11yDelta": {
+      "type": "object",
+      "required": ["schema"],
+      "properties": {
+        "schema": { "type": "string", "const": "a11y-diff/v1" },
+        "added": { "type": "array", "items": { "$ref": "#/definitions/A11yFindingSummary" } },
+        "removed": { "type": "array", "items": { "$ref": "#/definitions/A11yFindingSummary" } },
+        "changed": { "type": "array", "items": { "$ref": "#/definitions/A11yFindingChange" } }
+      }
+    },
+    "ThemeTokenChange": {
+      "type": "object",
+      "required": ["token"],
+      "properties": {
+        "token": { "type": "string" },
+        "from": { "type": ["string", "null"] },
+        "to": { "type": ["string", "null"] }
+      }
+    },
+    "TypographyToken": {
+      "type": ["object", "null"],
+      "properties": {
+        "fontFamily": { "type": ["string", "null"] },
+        "fontSize": { "type": ["number", "null"] },
+        "fontSizeUnit": { "type": ["string", "null"] },
+        "fontWeight": { "type": ["string", "null"] },
+        "fontStyle": { "type": ["string", "null"] },
+        "lineHeight": { "type": ["number", "null"] },
+        "lineHeightUnit": { "type": ["string", "null"] },
+        "letterSpacing": { "type": ["number", "null"] },
+        "letterSpacingUnit": { "type": ["string", "null"] }
+      }
+    },
+    "ThemeTypographyChange": {
+      "type": "object",
+      "required": ["token"],
+      "properties": {
+        "token": { "type": "string" },
+        "from": { "$ref": "#/definitions/TypographyToken" },
+        "to": { "$ref": "#/definitions/TypographyToken" }
+      }
+    },
+    "ThemeDelta": {
+      "type": "object",
+      "required": ["schema"],
+      "properties": {
+        "schema": { "type": "string", "const": "compose-theme-diff/v1" },
+        "colorScheme": { "type": "array", "items": { "$ref": "#/definitions/ThemeTokenChange" } },
+        "shapes": { "type": "array", "items": { "$ref": "#/definitions/ThemeTokenChange" } },
+        "typography": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ThemeTypographyChange" }
+        }
+      }
+    },
+    "HistoryDataDelta": {
+      "type": "object",
+      "required": ["schema"],
+      "properties": {
+        "schema": { "type": "string", "const": "history-data-diff/v1" },
+        "semantics": {
+          "anyOf": [{ "$ref": "#/definitions/SemanticsDelta" }, { "type": "null" }]
+        },
+        "a11y": { "anyOf": [{ "$ref": "#/definitions/A11yDelta" }, { "type": "null" }] },
+        "theme": { "anyOf": [{ "$ref": "#/definitions/ThemeDelta" }, { "type": "null" }] }
+      }
+    }
+  },
+  "$ref": "#/definitions/HistoryDataDelta"
+}

@@ -1,0 +1,29 @@
+{
+  "schema": "history-data-diff/v1",
+  "semantics": {
+    "schema": "compose-semantics-diff/v1",
+    "changed": [
+      {
+        "ref": "r/tag:greeting",
+        "anchor": "greeting",
+        "changes": [{ "field": "text", "from": "Hello", "to": "World" }]
+      }
+    ]
+  },
+  "a11y": {
+    "schema": "a11y-diff/v1",
+    "added": [
+      {
+        "ref": "a/role:Button[1]",
+        "type": "TouchTargetSizeCheck",
+        "level": "ERROR",
+        "message": "This item's size is 32x32dp. Consider making it 48x48dp.",
+        "boundsInScreen": "0,120,32,152"
+      }
+    ]
+  },
+  "theme": {
+    "schema": "compose-theme-diff/v1",
+    "colorScheme": [{ "token": "primary", "from": "0xFF6750A4", "to": "0xFFB3261E" }]
+  }
+}

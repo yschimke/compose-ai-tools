@@ -22,6 +22,9 @@ Part of the report-history epic (#1866); this directory is sub-issue #1867.
 | [`compose-semantics.schema.json`](compose-semantics.schema.json) | `compose/semantics` | 6 | `ComposeSemanticsPayload` |
 | [`compose-semantics-diff.schema.json`](compose-semantics-diff.schema.json) | `compose-semantics-diff/v1` | 1 | `SemanticsDelta` |
 | [`compose-theme.schema.json`](compose-theme.schema.json) | `compose/theme` | 2 | `ThemePayload` |
+| [`compose-theme-diff.schema.json`](compose-theme-diff.schema.json) | `compose-theme-diff/v1` | 1 | `ThemeDelta` |
+| [`a11y-diff.schema.json`](a11y-diff.schema.json) | `a11y-diff/v1` | 1 | `A11yDelta` |
+| [`history-data-diff.schema.json`](history-data-diff.schema.json) | `history-data-diff/v1` | 1 | `HistoryDataDelta` |
 | [`render-trace.schema.json`](render-trace.schema.json) | `render/trace` | 1 | `RenderTraceDataProduct` |
 | [`history-diff-regions.schema.json`](history-diff-regions.schema.json) | `history/diff/regions` | 1 | `HistoryDiffPayload` |
 
