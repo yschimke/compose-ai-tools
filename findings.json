@@ -739,7 +739,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "RedBoxPreview_Red_Box.a11y.png",
       "cleanBasename": "RedBoxPreview_Red_Box.png",
       "findings": [],
       "functionName": "RedBoxPreview",
@@ -816,6 +816,24 @@
       "module": "android",
       "previewId": "com.example.sampleandroid.SettingsListScrollGifPreviewKt.SettingsListScrollGifPreview_SettingsListScrollGif",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/SettingsListScrollGifPreview.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "SharedElementFilmstripPreview_Shared_Element_Filmstrip.a11y.png",
+      "cleanBasename": "SharedElementFilmstripPreview_Shared_Element_Filmstrip.png",
+      "findings": [
+        {
+          "boundsInScreen": "179,132,383,185",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"Aurora ridge\" is identical to that of 4 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        }
+      ],
+      "functionName": "SharedElementFilmstripPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.SharedElementFilmstripPreviewKt.SharedElementFilmstripPreview_Shared Element Filmstrip",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SharedElementFilmstripPreview.kt",
       "variant": ""
     },
     {
@@ -997,6 +1015,36 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "FontScale100Preview_Font_scale_1_0x.a11y.png",
+      "cleanBasename": "FontScale100Preview_Font_scale_1_0x.png",
+      "findings": [],
+      "functionName": "FontScale100Preview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.FontScalePreviewsKt.FontScale100Preview_Font scale 1.0x",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/FontScalePreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "FontScale150Preview_Font_scale_1_5x.a11y.png",
+      "cleanBasename": "FontScale150Preview_Font_scale_1_5x.png",
+      "findings": [],
+      "functionName": "FontScale150Preview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.FontScalePreviewsKt.FontScale150Preview_Font scale 1.5x",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/FontScalePreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "FontScale200Preview_Font_scale_2_0x.a11y.png",
+      "cleanBasename": "FontScale200Preview_Font_scale_2_0x.png",
+      "findings": [],
+      "functionName": "FontScale200Preview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.FontScalePreviewsKt.FontScale200Preview_Font scale 2.0x",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/FontScalePreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "KeyboardDemoPreview_Keyboard_Demo.a11y.png",
       "cleanBasename": "KeyboardDemoPreview_Keyboard_Demo.png",
       "findings": [],
@@ -1004,6 +1052,26 @@
       "module": "cmp",
       "previewId": "com.example.samplecmp.KeyboardDemoPreviewKt.KeyboardDemoPreview_Keyboard Demo",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/KeyboardDemoPreview.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "LottieSpinQuarterPreview.a11y.png",
+      "cleanBasename": "LottieSpinQuarterPreview.png",
+      "findings": [],
+      "functionName": "LottieSpinQuarterPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.LottiePreviewsKt.LottieSpinQuarterPreview",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/LottiePreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "LottieSpinStartPreview.a11y.png",
+      "cleanBasename": "LottieSpinStartPreview.png",
+      "findings": [],
+      "functionName": "LottieSpinStartPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.LottiePreviewsKt.LottieSpinStartPreview",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/LottiePreviews.kt",
       "variant": ""
     },
     {
@@ -1035,6 +1103,16 @@
       "previewId": "com.example.samplecmp.PinchToZoomPreviewKt.PinchToZoomPreview_Pinch To Zoom",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/PinchToZoomPreview.kt",
       "variant": ""
+    },
+    {
+      "annotatedBasename": "Pixel8SystemUiPreview_Pixel_8.a11y.png",
+      "cleanBasename": "Pixel8SystemUiPreview_Pixel_8.png",
+      "findings": [],
+      "functionName": "Pixel8SystemUiPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewsKt.Pixel8SystemUiPreview_Pixel 8",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt",
+      "variant": "pixel_8"
     },
     {
       "annotatedBasename": "RedBoxPreview_Red_Box.a11y.png",
@@ -1314,7 +1392,7 @@
       "module": "xr-glimmer",
       "previewId": "com.example.samplexrglimmer.GlimmerPreviewsKt.FocusableMenu_Glimmer \u00b7 Input",
       "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerPreviews.kt",
-      "variant": "spec:width=640,height=480,dpi=240"
+      "variant": "spec:width=960,height=720,dpi=160"
     },
     {
       "annotatedBasename": "GlimmerListItemDefault_Glimmer_Default.a11y.png",
@@ -1324,7 +1402,7 @@
       "module": "xr-glimmer",
       "previewId": "com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListItemDefault_Glimmer \u00b7 Default",
       "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt",
-      "variant": "spec:width=640,height=480,dpi=240"
+      "variant": "spec:width=960,height=720,dpi=160"
     },
     {
       "annotatedBasename": "GlimmerListItemFocused_Glimmer_Focused.a11y.png",
@@ -1334,7 +1412,7 @@
       "module": "xr-glimmer",
       "previewId": "com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListItemFocused_Glimmer \u00b7 Focused",
       "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt",
-      "variant": "spec:width=640,height=480,dpi=240"
+      "variant": "spec:width=960,height=720,dpi=160"
     },
     {
       "annotatedBasename": "GlimmerListItemPressed_Glimmer_Pressed.a11y.png",
@@ -1344,7 +1422,7 @@
       "module": "xr-glimmer",
       "previewId": "com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListItemPressed_Glimmer \u00b7 Pressed",
       "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt",
-      "variant": "spec:width=640,height=480,dpi=240"
+      "variant": "spec:width=960,height=720,dpi=160"
     },
     {
       "annotatedBasename": "GlimmerListPressedWalk_Glimmer_Pressed_Walk_FOCUS_0.a11y.png",
@@ -1354,7 +1432,7 @@
       "module": "xr-glimmer",
       "previewId": "com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListPressedWalk_Glimmer \u00b7 Pressed Walk",
       "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt",
-      "variant": "spec:width=640,height=480,dpi=240"
+      "variant": "spec:width=960,height=720,dpi=160"
     },
     {
       "annotatedBasename": "NowPlayingCard_Glimmer_Busy.a11y.png",
@@ -1364,7 +1442,37 @@
       "module": "xr-glimmer",
       "previewId": "com.example.samplexrglimmer.GlimmerPreviewsKt.NowPlayingCard_Glimmer \u00b7 Busy",
       "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerPreviews.kt",
-      "variant": "spec:width=640,height=480,dpi=240"
+      "variant": "spec:width=960,height=720,dpi=160"
+    },
+    {
+      "annotatedBasename": "NowPlayingPanelPreview_Panel_Content.a11y.png",
+      "cleanBasename": "NowPlayingPanelPreview_Panel_Content.png",
+      "findings": [],
+      "functionName": "NowPlayingPanelPreview",
+      "module": "xr-spatial",
+      "previewId": "com.example.samplexrspatial.SpatialPreviewsKt.NowPlayingPanelPreview_Panel \u00b7 Content",
+      "sourceFile": "src/main/kotlin/com/example/samplexrspatial/SpatialPreviews.kt",
+      "variant": "spec:width=1280,height=720,dpi=160"
+    },
+    {
+      "annotatedBasename": "OrbiterControlsPreview_Orbiter_TopControls.a11y.png",
+      "cleanBasename": "OrbiterControlsPreview_Orbiter_TopControls.png",
+      "findings": [],
+      "functionName": "OrbiterControlsPreview",
+      "module": "xr-spatial",
+      "previewId": "com.example.samplexrspatial.SpatialPreviewsKt.OrbiterControlsPreview_Orbiter \u00b7 TopControls",
+      "sourceFile": "src/main/kotlin/com/example/samplexrspatial/SpatialPreviews.kt",
+      "variant": "spec:width=1280,height=720,dpi=160"
+    },
+    {
+      "annotatedBasename": "SpatialElevationPreview_SpatialElevation_Panel.a11y.png",
+      "cleanBasename": "SpatialElevationPreview_SpatialElevation_Panel.png",
+      "findings": [],
+      "functionName": "SpatialElevationPreview",
+      "module": "xr-spatial",
+      "previewId": "com.example.samplexrspatial.SpatialPreviewsKt.SpatialElevationPreview_SpatialElevation \u00b7 Panel",
+      "sourceFile": "src/main/kotlin/com/example/samplexrspatial/SpatialPreviews.kt",
+      "variant": "spec:width=1280,height=720,dpi=160"
     },
     {
       "annotatedBasename": "",

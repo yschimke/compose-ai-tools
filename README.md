@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/pr`. 115 preview(s) across 13 module(s) · 9 error(s) · 3 warning(s) · 17 info._
+_Auto-generated from `compose-preview/a11y/pr`. 125 preview(s) across 14 module(s) · 9 error(s) · 3 warning(s) · 18 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -310,7 +310,7 @@ _No findings._
 
 ### `RedBoxPreview`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/RedBoxPreview_Red_Box.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/RedBoxPreview_Red_Box.a11y.png" width="400" />
 
 _No findings._
 
@@ -355,6 +355,14 @@ _No findings._
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/com.example.sampleandroid.SettingsListScrollGifPreviewKt.SettingsListScrollGifPreview_SettingsListScrollGif.a11y.png" width="400" />
 
 _No findings._
+
+### `SharedElementFilmstripPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/SharedElementFilmstripPreview_Shared_Element_Filmstrip.a11y.png" width="400" />
+
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "Aurora ridge" is identical to that of 4 other item(s). |
 
 ### `SoftKeyboardIdlePreview`
 
@@ -528,9 +536,39 @@ _No findings._
 
 _No findings._
 
+### `FontScale100Preview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/FontScale100Preview_Font_scale_1_0x.a11y.png" width="400" />
+
+_No findings._
+
+### `FontScale150Preview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/FontScale150Preview_Font_scale_1_5x.a11y.png" width="400" />
+
+_No findings._
+
+### `FontScale200Preview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/FontScale200Preview_Font_scale_2_0x.a11y.png" width="400" />
+
+_No findings._
+
 ### `KeyboardDemoPreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/KeyboardDemoPreview_Keyboard_Demo.a11y.png" width="400" />
+
+_No findings._
+
+### `LottieSpinQuarterPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/LottieSpinQuarterPreview.a11y.png" width="400" />
+
+_No findings._
+
+### `LottieSpinStartPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/LottieSpinStartPreview.a11y.png" width="400" />
 
 _No findings._
 
@@ -549,6 +587,12 @@ _No findings._
 ### `PinchToZoomPreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/PinchToZoomPreview_Pinch_To_Zoom.png" width="400" />
+
+_No findings._
+
+### `Pixel8SystemUiPreview` · `pixel_8`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/Pixel8SystemUiPreview_Pixel_8.a11y.png" width="400" />
 
 _No findings._
 
@@ -730,38 +774,58 @@ _No findings._
 
 ## xr-glimmer
 
-### `FocusableMenu` · `spec:width=640,height=480,dpi=240`
+### `FocusableMenu` · `spec:width=960,height=720,dpi=160`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/xr-glimmer/FocusableMenu_Glimmer_Input.a11y.png" width="400" />
 
 _No findings._
 
-### `GlimmerListItemDefault` · `spec:width=640,height=480,dpi=240`
+### `GlimmerListItemDefault` · `spec:width=960,height=720,dpi=160`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/xr-glimmer/GlimmerListItemDefault_Glimmer_Default.a11y.png" width="400" />
 
 _No findings._
 
-### `GlimmerListItemFocused` · `spec:width=640,height=480,dpi=240`
+### `GlimmerListItemFocused` · `spec:width=960,height=720,dpi=160`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/xr-glimmer/GlimmerListItemFocused_Glimmer_Focused.a11y.png" width="400" />
 
 _No findings._
 
-### `GlimmerListItemPressed` · `spec:width=640,height=480,dpi=240`
+### `GlimmerListItemPressed` · `spec:width=960,height=720,dpi=160`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/xr-glimmer/GlimmerListItemPressed_Glimmer_Pressed.a11y.png" width="400" />
 
 _No findings._
 
-### `GlimmerListPressedWalk` · `spec:width=640,height=480,dpi=240`
+### `GlimmerListPressedWalk` · `spec:width=960,height=720,dpi=160`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/xr-glimmer/GlimmerListPressedWalk_Glimmer_Pressed_Walk_FOCUS_0.a11y.png" width="400" />
 
 _No findings._
 
-### `NowPlayingCard` · `spec:width=640,height=480,dpi=240`
+### `NowPlayingCard` · `spec:width=960,height=720,dpi=160`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/xr-glimmer/NowPlayingCard_Glimmer_Busy.a11y.png" width="400" />
+
+_No findings._
+
+## xr-spatial
+
+### `NowPlayingPanelPreview` · `spec:width=1280,height=720,dpi=160`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/xr-spatial/NowPlayingPanelPreview_Panel_Content.a11y.png" width="400" />
+
+_No findings._
+
+### `OrbiterControlsPreview` · `spec:width=1280,height=720,dpi=160`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/xr-spatial/OrbiterControlsPreview_Orbiter_TopControls.a11y.png" width="400" />
+
+_No findings._
+
+### `SpatialElevationPreview` · `spec:width=1280,height=720,dpi=160`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/xr-spatial/SpatialElevationPreview_SpatialElevation_Panel.a11y.png" width="400" />
 
 _No findings._
