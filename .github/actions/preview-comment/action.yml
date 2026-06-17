@@ -7,7 +7,7 @@ description: >
 
 inputs:
   cli-version:
-    default: 'latest'
+    default: 'auto'
   catalog-path:
     default: 'gradle/libs.versions.toml'
   catalog-key:

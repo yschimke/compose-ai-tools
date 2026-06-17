@@ -8,7 +8,7 @@ description: >
 inputs:
   cli-version:
     description: 'Forwarded to apply.cli-version.'
-    default: 'latest'
+    default: 'auto'
   catalog-path:
     default: 'gradle/libs.versions.toml'
   catalog-key:
