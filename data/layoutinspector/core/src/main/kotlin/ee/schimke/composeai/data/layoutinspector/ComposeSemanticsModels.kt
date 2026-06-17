@@ -27,8 +27,8 @@ object ComposeSemanticsProduct {
   // fields are removed, so a v5 reader does not see them; consumers read the sub-objects instead.
   // History compatibility: stored v5 history entries still carry the flat fields, which decode away
   // (`ignoreUnknownKeys`) into the v6 model — so diffing a render across the bump won't surface
-  // changes to these text fields. That fidelity loss is a one-time artifact of the consolidation and
-  // is accepted rather than carrying a legacy decode path; entries captured at v6+ diff normally.
+  // changes to those text fields. The loss is a one-time artifact of the consolidation, accepted
+  // rather than carrying a legacy decode path; entries captured at v6+ diff normally.
   const val SCHEMA_VERSION: Int = 6
   const val FILE: String = "compose-semantics.json"
 }
