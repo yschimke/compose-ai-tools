@@ -955,6 +955,227 @@ class MultiCaptureCompareTest(unittest.TestCase):
         self.assertIn("S_SCROLL_end.png", out)
 
 
+class ABTestConfigTest(unittest.TestCase):
+    """`ABTestConfig.load` + matching are the gate for the side-by-side path."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+
+    def _write(self, payload) -> Path:
+        p = self.tmp / "abtest.json"
+        p.write_text(json.dumps(payload))
+        return p
+
+    def test_missing_file_is_empty_config(self):
+        cfg = cp.ABTestConfig.load(self.tmp / "nope.json")
+        self.assertFalse(cfg)
+        self.assertIsNone(cfg.match("app", "Fn"))
+
+    def test_malformed_and_non_dict_degrade_to_empty(self):
+        bad = self.tmp / "bad.json"
+        bad.write_text("not json {{")
+        self.assertFalse(cp.ABTestConfig.load(bad))
+        arr = self.tmp / "arr.json"
+        arr.write_text("[]")
+        self.assertFalse(cp.ABTestConfig.load(arr))
+
+    def test_groups_need_function_and_two_variants(self):
+        cfg = cp.ABTestConfig.load(self._write({"groups": [
+            {"function": "OnlyOne", "variants": ["A"]},          # too few
+            {"variants": ["A", "B"]},                            # no function
+            {"function": "Good", "variants": ["A", "B"]},        # kept
+        ]}))
+        self.assertIsNone(cfg.match("app", "OnlyOne"))
+        self.assertIsNotNone(cfg.match("app", "Good"))
+
+    def test_module_pin_scopes_the_match(self):
+        cfg = cp.ABTestConfig.load(self._write({"groups": [
+            {"function": "Fn", "module": "app", "variants": ["A", "B"]},
+        ]}))
+        self.assertIsNotNone(cfg.match("app", "Fn"))
+        self.assertIsNone(cfg.match("lib", "Fn"))
+
+    def test_unpinned_module_matches_any(self):
+        cfg = cp.ABTestConfig.load(self._write({"groups": [
+            {"function": "Fn", "variants": ["A", "B"]},
+        ]}))
+        self.assertIsNotNone(cfg.match("anything", "Fn"))
+
+    def test_row_matches_variant_by_suffix_and_fallbacks(self):
+        self.assertTrue(cp._row_matches_variant({"previewId": "K.Fn_Control"}, "Control"))
+        self.assertTrue(cp._row_matches_variant({"previewId": "K.Fn_PARAM_0"}, "PARAM_0"))
+        self.assertTrue(cp._row_matches_variant({"previewId": "K.Fn_Treatment"}, "K.Fn_Treatment"))
+        self.assertFalse(cp._row_matches_variant({"previewId": "K.Fn_Control"}, "Treatment"))
+
+
+class ABCompareTest(unittest.TestCase):
+    """End-to-end: an A/B group renders a side-by-side table instead of the
+    hero+links treatment, and only when at least one variant diffed."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+
+    def _run(self, current_payload, baselines_payload, ab_config) -> str:
+        cli_path = self.tmp / "cli.json"
+        cli_path.write_text(json.dumps(current_payload))
+        bl_path = self.tmp / "baselines.json"
+        bl_path.write_text(json.dumps(baselines_payload))
+        ab_path = self.tmp / "abtest.json"
+        ab_path.write_text(json.dumps(ab_config))
+
+        import io
+        import contextlib
+        from types import SimpleNamespace
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            cp.cmd_compare(SimpleNamespace(
+                cli_json=str(cli_path),
+                baselines=str(bl_path),
+                repo="owner/repo",
+                base_ref="deadbeef",
+                head_ref="cafef00d",
+                ab_config=str(ab_path),
+            ))
+        return buf.getvalue()
+
+    def _two_variant_payload(self, control_sha, treatment_sha):
+        return {"previews": [
+            _entry(id="K.ButtonPreview_Control", function="ButtonPreview",
+                   png="/Control.png", sha=control_sha),
+            _entry(id="K.ButtonPreview_Treatment", function="ButtonPreview",
+                   png="/Treatment.png", sha=treatment_sha),
+        ]}
+
+    def test_changed_variant_promotes_group_to_side_by_side(self):
+        out = self._run(
+            self._two_variant_payload("ctrl-sha", "new-treat-sha"),
+            {
+                "app/K.ButtonPreview_Control": {"sha256": "ctrl-sha", "functionName": "ButtonPreview"},
+                "app/K.ButtonPreview_Treatment": {"sha256": "old-treat-sha", "functionName": "ButtonPreview"},
+            },
+            {"groups": [{"function": "ButtonPreview",
+                         "variants": ["Control", "Treatment"],
+                         "label": "Button copy"}]},
+        )
+        # Side-by-side section header + both variant columns in one table row.
+        self.assertIn("### A/B Comparisons (1 group(s))", out)
+        self.assertIn("**Button copy** — `ButtonPreview` (app)", out)
+        self.assertIn("| | Control | Treatment |", out)
+        self.assertIn("| Before |", out)
+        self.assertIn("| After |", out)
+        # Both Before (base ref) and After (head ref) images resolve.
+        self.assertIn("raw.githubusercontent.com/owner/repo/deadbeef/renders/app/Control.png", out)
+        self.assertIn("raw.githubusercontent.com/owner/repo/cafef00d/renders/app/Treatment.png", out)
+        # Only the diffed variant is flagged.
+        self.assertIn("Changed: `Treatment`.", out)
+        # The A/B rows are NOT also listed in the standard Changed section.
+        self.assertNotIn("### Changed", out)
+
+    def test_unchanged_group_is_not_promoted_and_stays_silent(self):
+        # No variant changed → group drops out, comment is the empty-diff
+        # sentinel so the action's no-op gate keeps it off the PR.
+        out = self._run(
+            self._two_variant_payload("ctrl-sha", "treat-sha"),
+            {
+                "app/K.ButtonPreview_Control": {"sha256": "ctrl-sha", "functionName": "ButtonPreview"},
+                "app/K.ButtonPreview_Treatment": {"sha256": "treat-sha", "functionName": "ButtonPreview"},
+            },
+            {"groups": [{"function": "ButtonPreview", "variants": ["Control", "Treatment"]}]},
+        )
+        self.assertNotIn("A/B Comparisons", out)
+        self.assertIn("No visual changes detected.", out)
+
+    def test_new_ab_group_has_no_before_row(self):
+        # Brand-new function (no baseline at all) → After-only table.
+        out = self._run(
+            self._two_variant_payload("ctrl-sha", "treat-sha"),
+            {},
+            {"groups": [{"function": "ButtonPreview", "variants": ["Control", "Treatment"]}]},
+        )
+        self.assertIn("### A/B Comparisons (1 group(s))", out)
+        self.assertNotIn("| Before |", out)
+        self.assertIn("| After |", out)
+        self.assertIn("Changed: `Control`, `Treatment`.", out)
+
+    def test_no_config_keeps_legacy_hero_plus_links(self):
+        # Without an A/B config the same two variants collapse to the
+        # historical hero + "Other variants" layout.
+        from types import SimpleNamespace
+        import io, contextlib
+        cli_path = self.tmp / "cli.json"
+        cli_path.write_text(json.dumps(self._two_variant_payload("ctrl-sha", "new-treat-sha")))
+        bl_path = self.tmp / "baselines.json"
+        bl_path.write_text(json.dumps({
+            "app/K.ButtonPreview_Control": {"sha256": "old1", "functionName": "ButtonPreview"},
+            "app/K.ButtonPreview_Treatment": {"sha256": "old2", "functionName": "ButtonPreview"},
+        }))
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            cp.cmd_compare(SimpleNamespace(
+                cli_json=str(cli_path), baselines=str(bl_path),
+                repo="owner/repo", base_ref="deadbeef", head_ref="cafef00d",
+            ))
+        out = buf.getvalue()
+        self.assertNotIn("A/B Comparisons", out)
+        self.assertIn("### Changed", out)
+
+
+class ABGenerateGalleryTest(unittest.TestCase):
+    """`generate` renders A/B groups side-by-side at the top of the module
+    section and drops them from the standard per-preview table."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.control = self.tmp / "Control.png"
+        self.control.write_bytes(b"control-bytes")
+        self.treatment = self.tmp / "Treatment.png"
+        self.treatment.write_bytes(b"treatment-bytes")
+        self.plain = self.tmp / "Plain.png"
+        self.plain.write_bytes(b"plain-bytes")
+
+        self.cli_path = self.tmp / "cli.json"
+        self.cli_path.write_text(json.dumps({"previews": [
+            _entry(id="K.ButtonPreview_Control", module="app", function="ButtonPreview",
+                   png=str(self.control), sha="c"),
+            _entry(id="K.ButtonPreview_Treatment", module="app", function="ButtonPreview",
+                   png=str(self.treatment), sha="t"),
+            _entry(id="K.OtherPreview", module="app", function="OtherPreview",
+                   png=str(self.plain), sha="p"),
+        ]}))
+        self.out = self.tmp / "out"
+        self.ab_path = self.tmp / "abtest.json"
+        self.ab_path.write_text(json.dumps({"groups": [
+            {"function": "ButtonPreview", "variants": ["Control", "Treatment"]},
+        ]}))
+
+    def test_gallery_promotes_ab_group_and_keeps_others_in_table(self):
+        from types import SimpleNamespace
+        rc = cp.cmd_generate(SimpleNamespace(
+            cli_json=str(self.cli_path),
+            output_dir=str(self.out),
+            repo="owner/repo",
+            branch="compose-preview/main",
+            prior_baselines=None,
+            prior_renders=None,
+            ab_config=str(self.ab_path),
+        ))
+        self.assertEqual(rc, 0)
+        readme = (self.out / "README.md").read_text()
+        # A/B side-by-side block with both variants as columns.
+        self.assertIn("### A/B: `ButtonPreview`", readme)
+        self.assertIn("| Control | Treatment |", readme)
+        # The non-A/B preview still appears in the standard table.
+        self.assertIn("`OtherPreview`", readme)
+        # `ButtonPreview` appears only in the A/B heading, never as a
+        # standard per-preview table row (the variants were promoted).
+        self.assertEqual(readme.count("`ButtonPreview`"), 1)
+        self.assertNotIn("| `ButtonPreview` |", readme)
+
+
 def _resource_envelope(*resources: dict) -> dict:
     """Wrap one or more `resources` entries in the
     `compose-preview-show-resources/v1` envelope shape the CLI emits."""

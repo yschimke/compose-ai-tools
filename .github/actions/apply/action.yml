@@ -111,6 +111,16 @@ inputs:
       Override the event-based mode selector: `auto` (default), `baseline`,
       `comment`, or `skip`.
     default: 'auto'
+  ab-config:
+    description: >
+      Path (relative to the checkout) to the A/B comparison config JSON. When
+      the file exists, preview variants it nominates — two `@Preview`
+      annotations of one function (including multi-preview members) or two
+      values of a `@PreviewParameter` — render side-by-side horizontally in
+      the PR comment and baseline gallery instead of the default hero +
+      "Other variants" links. Absent file = feature off (purely additive).
+      See `.github/actions/apply/README.md` for the schema.
+    default: '.github/preview-abtest.json'
   skip-render:
     description: >
       When `true`, the compose and resources pipelines reuse pre-staged
@@ -317,6 +327,7 @@ runs:
         WANT_A11Y: ${{ steps.resolve.outputs.a11y }}
         WANT_NOTIFICATIONS: ${{ steps.resolve.outputs.notifications }}
         SKIP_RENDER: ${{ inputs.skip-render }}
+        AB_CONFIG: ${{ inputs.ab-config }}
       run: |
         set +e
         export PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
@@ -471,6 +482,7 @@ runs:
         REPO: ${{ github.repository }}
         PR_HEAD_BRANCH: 'compose-preview/pr'
         RESOURCE_HEAD_BRANCH: 'compose-preview/resources/pr'
+        AB_CONFIG: ${{ inputs.ab-config }}
       run: |
         set -euo pipefail
         # Compose comment is only meaningful when the compose pipeline
@@ -484,12 +496,21 @@ runs:
         HEAD_REF=$(cat _head_sha 2>/dev/null || echo "")
         [ -z "$HEAD_REF" ] && HEAD_REF="$PR_HEAD_BRANCH"
 
+        # A/B comparison config (default `.github/preview-abtest.json`). Pass
+        # it through only when the file exists so the compare step degrades to
+        # the historical layout for projects that don't opt in.
+        AB_ARGS=()
+        if [ -n "${AB_CONFIG:-}" ] && [ -f "$AB_CONFIG" ]; then
+          AB_ARGS=(--ab-config "$AB_CONFIG")
+        fi
+
         python3 "$ACTION_PATH/../lib/compare-previews.py" compare _previews.json \
           --baselines _baselines/baselines.json \
           --baseline-renders _baselines/renders \
           --repo "$REPO" \
           --base-ref "$BASE_REF" \
           --head-ref "$HEAD_REF" \
+          "${AB_ARGS[@]}" \
           > _comment_body.md
 
     # Sibling step for the resources comment — separately gated on
