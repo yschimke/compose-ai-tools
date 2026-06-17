@@ -161,6 +161,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `SwatchPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/SwatchPreview_Color_Swatch_Violet.png" width="150" /> |
 | `AppPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/AppPreview.png" width="150" /> |
 | `BlueBoxPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/BlueBoxPreview_Blue_Box.png" width="150" /> |
+| `Pixel8SystemUiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/Pixel8SystemUiPreview_Pixel_8.png" width="150" /> |
+| `Pixel8SystemUiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/Pixel8SystemUiPreview_Pixel_8_Night.png" width="150" /> |
 | `RedBoxPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/RedBoxPreview_Red_Box.png" width="150" /> |
 | `WallpaperDemoPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/WallpaperDemoPreview_Wallpaper_Demo.png" width="150" /> |
 | `CmpPseudoBidi` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/CmpPseudoBidi_bidi.png" width="150" /> |

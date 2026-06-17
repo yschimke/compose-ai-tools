@@ -923,6 +923,20 @@
     "sha256": "cabbf50d505f3705551f0790ceffc7ef182f10cc88951c47b148f8adf49251a2",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt"
   },
+  "samples:cmp/com.example.samplecmp.PreviewsKt.Pixel8SystemUiPreview_Pixel 8": {
+    "captureLabel": "",
+    "functionName": "Pixel8SystemUiPreview",
+    "renderBasename": "Pixel8SystemUiPreview_Pixel_8.png",
+    "sha256": "dba51851539d2afb2b813a58943390c9e8410e183d98030085f0090fe1080219",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt"
+  },
+  "samples:cmp/com.example.samplecmp.PreviewsKt.Pixel8SystemUiPreview_Pixel 8 - Night": {
+    "captureLabel": "",
+    "functionName": "Pixel8SystemUiPreview",
+    "renderBasename": "Pixel8SystemUiPreview_Pixel_8_Night.png",
+    "sha256": "f1cb13cb7d1ef2124de59ca9d2d1914d0612643c9d94faecab6ff201e2a8511c",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt"
+  },
   "samples:cmp/com.example.samplecmp.PreviewsKt.RedBoxPreview_Red Box": {
     "captureLabel": "",
     "functionName": "RedBoxPreview",
