@@ -10,12 +10,22 @@ description: >
 inputs:
   cli-version:
     description: >
-      compose-preview CLI version. Literal (e.g. "0.8.1"), "latest", "catalog",
-      "source" (build from the current checkout — internal CI only), or
-      "none" (skip CLI install entirely; pair with `skip-render: true` and
-      `only: compose,resources` for non-Gradle build systems that pre-stage
-      `_previews.json` / `_resources.json`).
-    default: 'latest'
+      compose-preview CLI version. "auto" (default), a literal (e.g. "0.8.1"),
+      "latest", "catalog", "source" (build from the current checkout — internal
+      CI only), or "none" (skip CLI install entirely; pair with
+      `skip-render: true` and `only: compose,resources` for non-Gradle build
+      systems that pre-stage `_previews.json` / `_resources.json`).
+
+      "auto" (issue #1920) makes the common path skew-proof with no extra
+      config: it sniffs the plugin version you pin in the checkout (version
+      catalog `[plugins]` entry or a literal `id("…") version "…"`) and installs
+      the CLI at *exactly* that version, so a new release can't float the CLI
+      ahead of the applied plugin and silently break discovery. When no plugin
+      pin is found — the auto-inject / zero-code path where the CLI injects a
+      matching plugin via `--init-script` — it falls back to "latest". Set
+      "latest" explicitly to keep the old floating behaviour, or "catalog" to
+      track a specific `[versions]` key via `catalog-key`.
+    default: 'auto'
   catalog-path:
     description: 'Path to the Gradle version catalog (when cli-version=catalog).'
     default: 'gradle/libs.versions.toml'
@@ -199,13 +209,47 @@ runs:
           echo "::notice::No pipeline applicable for event=$EVENT_NAME ref=$REF_NAME — skipping."
         fi
 
+    # Resolve `cli-version: auto` (the default, issue #1920) to a concrete
+    # value before any install runs. `auto` pins the CLI to the plugin version
+    # detected in the consumer's checkout so a new release can't float the CLI
+    # ahead of the applied plugin (the silent skew this issue is about); with
+    # no plugin pinned it falls back to `latest` (the auto-inject path). Every
+    # other value (`latest` / `catalog` / literal / `source` / `none`) passes
+    # straight through. Downstream steps gate on this resolved value, not the
+    # raw input, so `auto` flows into the right install branch. Pure-Python,
+    # reuses the skew guard's tested detection (single source of truth).
+    - name: Resolve CLI version
+      id: clivers
+      if: steps.resolve.outputs.mode != 'skip'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        CLI_VERSION: ${{ inputs.cli-version }}
+        WORKSPACE: ${{ github.workspace }}
+        CATALOG_PATH: ${{ inputs.catalog-path }}
+      run: |
+        set -euo pipefail
+        if [ "$CLI_VERSION" = "auto" ]; then
+          detected=$(python3 "$ACTION_PATH/check-skew.py" detect-plugin || true)
+          if [ -n "$detected" ]; then
+            eff="$detected"
+            echo "::notice::compose-preview/apply: cli-version=auto pinned the CLI to the applied plugin v${eff} (skew-proof)."
+          else
+            eff="latest"
+            echo "::notice::compose-preview/apply: cli-version=auto found no pinned plugin — using 'latest' (auto-inject path)."
+          fi
+        else
+          eff="$CLI_VERSION"
+        fi
+        echo "version=$eff" >> "$GITHUB_OUTPUT"
+
     # See preview-baselines/action.yml history for the source-vs-release
     # rationale and for why these are full `org/repo/path@ref` references
     # rather than `./.github/actions/...` (relative `./` from inside a
     # composite resolves against the consumer's $GITHUB_WORKSPACE, breaking
     # external use). Tag bumped per release by release-please.
     - name: Install CLI from source
-      if: steps.resolve.outputs.mode != 'skip' && inputs.cli-version == 'source'
+      if: steps.resolve.outputs.mode != 'skip' && steps.clivers.outputs.version == 'source'
       # zizmor: ignore[known-vulnerable-actions] same-repo release action trips GitHub Advisories API 403 under GITHUB_TOKEN
       uses: yschimke/compose-ai-tools/.github/actions/install-cli@v0.11.5 # x-release-please-version
 
@@ -215,11 +259,11 @@ runs:
     # cleanly with "command not found" when selected without a CLI.
     - name: Install CLI from release
       id: install-release
-      if: steps.resolve.outputs.mode != 'skip' && inputs.cli-version != 'source' && inputs.cli-version != 'none'
+      if: steps.resolve.outputs.mode != 'skip' && steps.clivers.outputs.version != 'source' && steps.clivers.outputs.version != 'none'
       # zizmor: ignore[known-vulnerable-actions] same-repo release action trips GitHub Advisories API 403 under GITHUB_TOKEN
       uses: yschimke/compose-ai-tools/.github/actions/install@v0.11.5 # x-release-please-version
       with:
-        version: ${{ inputs.cli-version }}
+        version: ${{ steps.clivers.outputs.version }}
         catalog-path: ${{ inputs.catalog-path }}
         catalog-key: ${{ inputs.catalog-key }}
 
@@ -234,7 +278,7 @@ runs:
     # no Gradle cost — runs before doctor so the headline is the skew, not the
     # confusing symptom.
     - name: Check CLI / plugin version skew
-      if: steps.resolve.outputs.mode != 'skip' && inputs.cli-version != 'source' && inputs.cli-version != 'none'
+      if: steps.resolve.outputs.mode != 'skip' && steps.clivers.outputs.version != 'source' && steps.clivers.outputs.version != 'none'
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -255,7 +299,7 @@ runs:
     # actionable error. A non-zero doctor surfaces as a `::warning::`
     # annotation so it's still visible in the run summary.
     - name: Run compose-preview doctor
-      if: steps.resolve.outputs.mode != 'skip' && inputs.cli-version != 'none'
+      if: steps.resolve.outputs.mode != 'skip' && steps.clivers.outputs.version != 'none'
       shell: bash
       run: |
         echo "::group::compose-preview doctor"

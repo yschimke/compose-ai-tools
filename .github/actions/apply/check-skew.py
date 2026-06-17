@@ -201,6 +201,36 @@ def parse_release(version: str) -> tuple[int, int, int] | None:
     return (int(m.group(1)), int(m.group(2)), int(m.group(3)))
 
 
+def _workspace_and_catalog() -> tuple[str, str]:
+    """Resolve the (workspace, catalog_path) pair from the environment.
+
+    Shared by the skew guard (`main`) and the `detect-plugin` resolver so both
+    read the consumer checkout the same way.
+    """
+    workspace = (
+        os.environ.get("WORKSPACE") or os.environ.get("GITHUB_WORKSPACE") or "."
+    )
+    catalog_path = os.environ.get("CATALOG_PATH") or "gradle/libs.versions.toml"
+    return workspace, catalog_path
+
+
+def detect_plugin_main() -> int:
+    """`detect-plugin` entry point: print the applied plugin version, or nothing.
+
+    Backs the `apply` action's `cli-version: auto` resolution — when a concrete
+    plugin version is pinned in the checkout the CLI is installed at exactly
+    that version (skew-proof by construction), otherwise the action falls back
+    to `latest`. Prints the bare version on stdout when found, prints nothing
+    when not, and always exits 0 (a missing pin is the expected auto-inject
+    case, not an error).
+    """
+    workspace, catalog_path = _workspace_and_catalog()
+    version = detect_plugin_version(workspace, catalog_path)
+    if version:
+        print(version)
+    return 0
+
+
 def main() -> int:
     mode = (os.environ.get("SKEW_MODE") or "fail").strip().lower()
     if mode == "off":
@@ -212,10 +242,7 @@ def main() -> int:
         # nothing to compare against.
         return 0
 
-    workspace = (
-        os.environ.get("WORKSPACE") or os.environ.get("GITHUB_WORKSPACE") or "."
-    )
-    catalog_path = os.environ.get("CATALOG_PATH") or "gradle/libs.versions.toml"
+    workspace, catalog_path = _workspace_and_catalog()
 
     plugin_raw = detect_plugin_version(workspace, catalog_path)
     if not plugin_raw:
@@ -256,4 +283,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "detect-plugin":
+        sys.exit(detect_plugin_main())
     sys.exit(main())

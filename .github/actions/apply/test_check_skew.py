@@ -11,12 +11,15 @@ from __future__ import annotations
 import importlib.util
 import io
 import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
+_SCRIPT = _HERE / "check-skew.py"
 _SPEC = importlib.util.spec_from_file_location("check_skew", _HERE / "check-skew.py")
 cs = importlib.util.module_from_spec(_SPEC)
 assert _SPEC.loader is not None
@@ -138,6 +141,62 @@ class BuildScriptDetectionTests(unittest.TestCase):
             'id("ee.schimke.composeai.preview") version "9.9.9"\n', encoding="utf-8"
         )
         self.assertIsNone(cs.plugin_version_from_build_scripts(ws))
+
+
+class DetectPluginCliTests(unittest.TestCase):
+    """The `detect-plugin` subcommand backs `cli-version: auto` resolution.
+
+    Drives the script the same way action.yml does — `python3 check-skew.py
+    detect-plugin` with WORKSPACE/CATALOG_PATH in the env — so the contract the
+    action's bash relies on (bare version on stdout, empty + rc 0 when nothing
+    is pinned) is locked in.
+    """
+
+    def _detect(self, workspace: str) -> tuple[int, str]:
+        env = dict(os.environ)
+        env["WORKSPACE"] = workspace
+        proc = subprocess.run(
+            [sys.executable, str(_SCRIPT), "detect-plugin"],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        return proc.returncode, proc.stdout.strip()
+
+    def _ws_with_catalog(self, body: str) -> str:
+        d = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__("shutil").rmtree(d, ignore_errors=True))
+        os.makedirs(os.path.join(d, "gradle"))
+        Path(os.path.join(d, "gradle", "libs.versions.toml")).write_text(
+            body, encoding="utf-8"
+        )
+        return d
+
+    def test_prints_catalog_plugin_version(self):
+        ws = self._ws_with_catalog(
+            '[plugins]\ncomposePreview = "ee.schimke.composeai.preview:0.15.8"\n'
+        )
+        rc, out = self._detect(ws)
+        self.assertEqual(rc, 0)
+        self.assertEqual(out, "0.15.8")
+
+    def test_prints_literal_build_script_version(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__("shutil").rmtree(d, ignore_errors=True))
+        Path(os.path.join(d, "build.gradle.kts")).write_text(
+            'plugins {\n  id("ee.schimke.composeai.preview") version "0.14.0"\n}\n',
+            encoding="utf-8",
+        )
+        rc, out = self._detect(d)
+        self.assertEqual(rc, 0)
+        self.assertEqual(out, "0.14.0")
+
+    def test_no_pin_prints_nothing(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__("shutil").rmtree(d, ignore_errors=True))
+        rc, out = self._detect(d)
+        self.assertEqual(rc, 0)
+        self.assertEqual(out, "")
 
 
 class MainTests(unittest.TestCase):

@@ -16,11 +16,13 @@ per-surface `preview-baselines` / `preview-comment` / `a11y-report` /
     distribution: temurin
     java-version: 17
 - uses: yschimke/compose-ai-tools/.github/actions/apply@v0.15.9
-  with:
-    cli-version: catalog          # track the plugin — see "Version skew" below
-    catalog-key: composePreviewPlugin
 ```
 <!-- x-release-please-end -->
+
+`cli-version` defaults to **`auto`**, which pins the CLI to the plugin version
+you already pin in your checkout — so the version skew described below can't
+happen on the happy path, with no extra config. See
+[Version skew](#version-skew) for what `auto` does and when to override it.
 
 On a `pull_request` this renders the PR and posts before/after comparison
 comments; on a `push` to the development branch (`main` by default) it
@@ -31,22 +33,24 @@ per-module allow/deny lists, the missing-render policy, and non-Gradle
 
 ## Version skew
 
-> **The single most common way this action breaks.** Pinning the action ref
-> (`apply@vX`) does **not** pin the CLI. `cli-version` defaults to `latest`,
-> so every new compose-ai-tools release auto-installs the newest CLI against
-> your still-pinned Gradle plugin. A CLI **newer** than the applied plugin
-> can't discover that older plugin, so the render finds zero preview modules
-> and the pipeline fails repo-wide — on a release, not on your diff — with a
-> misleading:
+> **What used to be the single most common way this action breaks.** Pinning
+> the action ref (`apply@vX`) does **not** pin the CLI. When `cli-version` was
+> `latest`, every new compose-ai-tools release auto-installed the newest CLI
+> against your still-pinned Gradle plugin. A CLI **newer** than the applied
+> plugin can't discover that older plugin, so the render finds zero preview
+> modules and the pipeline fails repo-wide — on a release, not on your diff —
+> with a misleading:
 >
 > ```
 > ✗ no modules have the compose-preview plugin applied
 > compose pipeline: No preview modules discovered ... skipping.
 > ```
 
-Pin the CLI to the **same source of truth as the plugin** so the two can't
-skew. Declare the plugin version once in your version catalog and point the
-action at it:
+**The default `cli-version: auto` removes this footgun.** It detects the plugin
+version you pin in your checkout (version-catalog `[plugins]` entry or a literal
+`id("…") version "…"` in a build script) and installs the CLI at *exactly* that
+version, so the CLI and plugin can't skew — declare the plugin version once and
+the CLI follows it for free:
 
 <!-- x-release-please-start-version -->
 ```toml
@@ -57,20 +61,23 @@ composePreviewPlugin = "0.15.9"
 [plugins]
 composePreview = { id = "ee.schimke.composeai.preview", version.ref = "composePreviewPlugin" }
 ```
-
-```yaml
-- uses: yschimke/compose-ai-tools/.github/actions/apply@v0.15.9
-  with:
-    cli-version: catalog            # reads the version below from the catalog
-    catalog-key: composePreviewPlugin
-```
 <!-- x-release-please-end -->
 
-[Renovate](https://docs.renovatebot.com/) then bumps the one `[versions]`
-entry on each release and the CLI follows automatically. (The same
-catalog/Renovate recipe is documented for the standalone
+> The `version.ref` is the plugin's own version key; `auto` reads it directly
+> off the `[plugins]` entry — no `catalog-key` needed.
+
+[Renovate](https://docs.renovatebot.com/) bumps that one `[versions]` entry on
+each release and `auto` picks it up automatically — no `cli-version` /
+`catalog-key` wiring needed. When `auto` finds **no** pinned plugin (the
+auto-inject / zero-code path, where the CLI injects a matching plugin via
+`--init-script`) it falls back to `latest`, which is correct there because the
+injected plugin always matches the installed CLI.
+
+If you want to pin the CLI to a *specific* `[versions]` key regardless of the
+plugin (e.g. a dedicated `composePreviewCli` entry), use `cli-version: catalog`
+with `catalog-key`; the same recipe is documented for the standalone
 [`install`](../install/README.md#pin-the-cli-to-a-gradle-version-catalog)
-action.)
+action. Set `cli-version: latest` to opt back into the old floating behaviour.
 
 ### Skew guardrail
 
@@ -97,8 +104,9 @@ with no plugin pinned in their build — are never tripped.
 
 | Value | Meaning |
 |---|---|
-| `latest` (current default) | Newest published release. **Skews ahead of a pinned plugin** — see above. |
-| `catalog` | Read the version from a Gradle version catalog (`catalog-path` / `catalog-key`). Recommended. |
+| `auto` (default) | Pin the CLI to the plugin version detected in the checkout (catalog `[plugins]` entry or literal `id("…") version "…"`); fall back to `latest` when no plugin is pinned. **Skew-proof on the happy path** — see above. |
+| `latest` | Newest published release. **Skews ahead of a pinned plugin** — see above. |
+| `catalog` | Read the version from a Gradle version catalog (`catalog-path` / `catalog-key`). Use to pin the CLI to a dedicated `[versions]` key. |
 | literal (e.g. `0.15.9`) | Exact release. |
 | `source` | Build from the current checkout — internal CI only. |
 | `none` | Skip CLI install (pair with `skip-render: true` for non-Gradle build systems). |
