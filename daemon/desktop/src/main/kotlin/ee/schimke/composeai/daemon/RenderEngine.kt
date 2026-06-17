@@ -494,6 +494,21 @@ class RenderEngine(
             root = root,
             density = density,
           )
+          // `layout-inspector.json` — the `layout/inspector` data product. Previously Android-only:
+          // the desktop registry advertised the kind but nothing wrote the file, so `data/fetch`
+          // degraded to `NotAvailable` (#1903). Write it from the same captured root + slot tables,
+          // through the CMP-portable `LayoutInspectorDataProducer` overload. This is the canonical
+          // home for the modifier-derived design `tokens` the producer now resolves once and
+          // mirrors
+          // onto `compose/semantics`. The Z-sorted child walk is valid here because
+          // `scene.render()` has already measured + drawn (and thus Z-sorted) the layout tree.
+          LayoutInspectorDataProducer.writeArtifacts(
+            rootDir = dataDir,
+            previewId = previewId,
+            root = root,
+            slotTables = state.slotTableCapture?.snapshot().orEmpty(),
+            density = density,
+          )
           ComposeSemanticsWireframeDataProducer.writeSvg(
             rootDir = dataDir,
             previewId = previewId,

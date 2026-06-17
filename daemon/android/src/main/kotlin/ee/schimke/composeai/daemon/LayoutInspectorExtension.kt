@@ -26,10 +26,14 @@ class LayoutInspectorExtension : PostCaptureProcessor {
     val rootDir = context.require(RenderDataArtifactContextKeys.RootDir)
     val outputBaseName = context.require(RenderDataArtifactContextKeys.OutputBaseName)
     val previewContext = context.require(RenderDataArtifactContextKeys.LayoutInspectorPreviewContext)
+    // Density (dp = px / density) only matters for resolving percent-based corner radii into dp on
+    // the per-node `tokens` the producer now carries (#1903); 1f keeps px-equals-dp captures intact.
+    val density = context.get(RenderDataArtifactContextKeys.Density) ?: 1f
     LayoutInspectorDataProducer.writeArtifacts(
       rootDir = rootDir,
       previewId = outputBaseName,
       previewContext = previewContext,
+      density = density,
     )
   }
 

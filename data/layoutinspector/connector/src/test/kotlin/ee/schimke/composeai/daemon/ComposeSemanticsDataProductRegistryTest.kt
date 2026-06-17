@@ -95,7 +95,8 @@ class ComposeSemanticsDataProductRegistryTest {
     val registry = LayoutInspectorDataProductRegistry(rootDir)
     val cap = registry.capabilities.single()
     assertEquals("layout/inspector", cap.kind)
-    assertEquals(1, cap.schemaVersion)
+    // v2 (#1903): per-node `tokens` added to LayoutInspectorNode.
+    assertEquals(2, cap.schemaVersion)
     assertTrue(cap.attachable)
     assertTrue(cap.fetchable)
     assertTrue(!cap.requiresRerender)
