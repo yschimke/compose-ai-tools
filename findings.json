@@ -819,6 +819,24 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "SharedElementFilmstripPreview_Shared_Element_Filmstrip.a11y.png",
+      "cleanBasename": "SharedElementFilmstripPreview_Shared_Element_Filmstrip.png",
+      "findings": [
+        {
+          "boundsInScreen": "179,132,383,185",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"Aurora ridge\" is identical to that of 4 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        }
+      ],
+      "functionName": "SharedElementFilmstripPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.SharedElementFilmstripPreviewKt.SharedElementFilmstripPreview_Shared Element Filmstrip",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SharedElementFilmstripPreview.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "SoftKeyboardIdlePreview_Soft_Keyboard_idle.a11y.png",
       "cleanBasename": "SoftKeyboardIdlePreview_Soft_Keyboard_idle.png",
       "findings": [],
