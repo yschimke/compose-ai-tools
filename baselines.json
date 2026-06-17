@@ -678,6 +678,41 @@
     "sha256": "7956a2c225f48f22a1768bd1a9584eb01466e4d4c5e7542c4ba2a64d4ecb06bb",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/SettingsListScrollGifPreview.kt"
   },
+  "samples:android/com.example.sampleandroid.SharedElementDebugPreviewsKt.SharedElementDebugMatchedAnimatedPreview_Shared Element Debug \u2014 Matched": {
+    "captureLabel": "",
+    "functionName": "SharedElementDebugMatchedAnimatedPreview",
+    "renderBasename": "SharedElementDebugMatchedAnimatedPreview_Shared_Element_Debug_Matched.gif",
+    "sha256": "e85d94d35b7968d2c4a82169249515c16119f4dd9ffccc5238291fc1e92a94df",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/SharedElementDebugPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.SharedElementDebugPreviewsKt.SharedElementDebugUnmatchedAnimatedPreview_Shared Element Debug \u2014 Unmatched": {
+    "captureLabel": "",
+    "functionName": "SharedElementDebugUnmatchedAnimatedPreview",
+    "renderBasename": "SharedElementDebugUnmatchedAnimatedPreview_Shared_Element_Debug_Unmatched.gif",
+    "sha256": "23e2b903e849a7083817b4bdaa6d84378a0bbf5a9cdf61c810425170f11082a3",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/SharedElementDebugPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.SharedElementFilmstripPreviewKt.SharedElementFilmstripPreview_Shared Element Filmstrip": {
+    "captureLabel": "",
+    "functionName": "SharedElementFilmstripPreview",
+    "renderBasename": "SharedElementFilmstripPreview_Shared_Element_Filmstrip.png",
+    "sha256": "a18eeaa1ff4cb421c1668a7edd09923287f2ae7af14104f2e1a6b80c32db1482",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/SharedElementFilmstripPreview.kt"
+  },
+  "samples:android/com.example.sampleandroid.SharedElementPreviewsKt.ContainerTransformAnimatedPreview_Container Transform": {
+    "captureLabel": "",
+    "functionName": "ContainerTransformAnimatedPreview",
+    "renderBasename": "ContainerTransformAnimatedPreview_Container_Transform.gif",
+    "sha256": "ebc77b2362f45138679bd956ac500490d19bb64d3fd10ef0d7bcdbbf422c917c",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/SharedElementPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.SharedElementPreviewsKt.FabToSheetAnimatedPreview_FAB To Sheet": {
+    "captureLabel": "",
+    "functionName": "FabToSheetAnimatedPreview",
+    "renderBasename": "FabToSheetAnimatedPreview_FAB_To_Sheet.gif",
+    "sha256": "89f42445c714aa7228c9253cea3de1a8e8d488f73bad4851d4955412e72d6f47",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/SharedElementPreviews.kt"
+  },
   "samples:android/com.example.sampleandroid.SoftKeyboardAnimatedPreviewKt.SoftKeyboardAnimatedPreview_Soft Keyboard \u2014 typing": {
     "captureLabel": "",
     "functionName": "SoftKeyboardAnimatedPreview",
@@ -1130,7 +1165,7 @@
     "captureLabel": "scroll long",
     "functionName": "ActivityListLongPreview",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round.png",
-    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
+    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
