@@ -111,6 +111,63 @@ with no plugin pinned in their build — are never tripped.
 | `source` | Build from the current checkout — internal CI only. |
 | `none` | Skip CLI install (pair with `skip-render: true` for non-Gradle build systems). |
 
+## A/B comparison of preview variants
+
+By default the comment and gallery show one "hero" render per function and
+collapse its other variants into "Other variants" links — a vertical, one-at-a-time
+read. When you want to compare two specific variants of the *same* function
+directly (an A/B test of a design or copy change), nominate them in a config
+file and they render **side-by-side horizontally** instead.
+
+The two variants can come from either source the discovery layer already
+distinguishes by a preview-id suffix:
+
+- **Two `@Preview` annotations** on one composable (including ones contributed
+  by a multi-preview meta-annotation), differentiated by `@Preview(name = …)`:
+
+  ```kotlin
+  @Preview(name = "Control")
+  @Preview(name = "Treatment")
+  @Composable fun ButtonPreview() { … }
+  ```
+
+- **Two values of a `@PreviewParameter`** provider (matched by the
+  `_PARAM_<index>` suffix).
+
+### Config file
+
+Drop a JSON file at `.github/preview-abtest.json` (override the path with the
+`ab-config` input). It's read by the compare (PR comment) and generate
+(baseline gallery) steps; a missing / malformed file is a no-op, so the
+feature is purely additive.
+
+```json
+{
+  "groups": [
+    {
+      "function": "ButtonPreview",
+      "module": "app",
+      "variants": ["Control", "Treatment"],
+      "label": "Button copy"
+    }
+  ]
+}
+```
+
+| Field | Required | Meaning |
+|---|---|---|
+| `function` | yes | Composable function name (not the FQN). |
+| `variants` | yes | ≥ 2 variant tokens — each the preview-id suffix (`@Preview` name, group, or `PARAM_<n>`). Columns render in this order. |
+| `module` | no | Restrict the match to one module; any module when omitted. |
+| `label` | no | Heading shown above the side-by-side table. |
+
+In the PR comment the group renders as a single table — variant tokens as
+columns, `Before` / `After` as rows — so the variants sit next to each other.
+A group is only surfaced when at least one of its variants actually changed
+(or is new), so unchanged A/B groups don't post a comment on no-op PRs. The
+non-nominated variants of the same function keep the historical "Other
+variants" treatment.
+
 ## Related actions
 
 - [`install`](../install/) — just put the CLI on `$PATH`, no pipelines.

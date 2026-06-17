@@ -390,6 +390,9 @@ def cmd_generate(args: argparse.Namespace) -> int:
     prior_renders = (
         Path(args.prior_renders) if getattr(args, "prior_renders", None) else None
     )
+    ab_config = ABTestConfig.load(
+        Path(args.ab_config) if getattr(args, "ab_config", None) else None
+    )
 
     previews = load_cli_output(cli_json)
     if not previews:
@@ -520,17 +523,45 @@ def cmd_generate(args: argparse.Namespace) -> int:
     for module, entries in sorted(by_module.items()):
         lines.append(f"## {module}")
         lines.append("")
-        lines.append("| Preview | Image |")
-        lines.append("|---------|-------|")
-        for _, info in entries:
-            label_suffix = f" · {info['captureLabel']}" if info["captureLabel"] else ""
-            fn = f"{info['functionName']}{label_suffix}"
-            img_path = f"renders/{info['module']}/{info['renderBasename']}"
-            raw_url = f"https://raw.githubusercontent.com/{repo}/{branch}/{img_path}"
-            lines.append(
-                f"| `{fn}` | <img src=\"{raw_url}\" width=\"150\" /> |"
-            )
-        lines.append("")
+
+        # A/B groups render side-by-side at the top of the module section;
+        # their member rows are then skipped from the standard per-preview
+        # table below so they aren't listed twice.
+        ab_groups, promoted = (
+            _ab_groups_in_gallery(ab_config, module, entries)
+            if ab_config
+            else ([], set())
+        )
+        for g in ab_groups:
+            if g["label"]:
+                lines.append(f"### A/B: {g['label']} (`{g['fn']}`)")
+            else:
+                lines.append(f"### A/B: `{g['fn']}`")
+            lines.append("")
+            tokens = [token for token, _k, _i in g["rows"]]
+            lines.append("| " + " | ".join(tokens) + " |")
+            lines.append("|" + "---|" * len(tokens))
+            cells = []
+            for _token, _key, info in g["rows"]:
+                img_path = f"renders/{info['module']}/{info['renderBasename']}"
+                raw_url = f"https://raw.githubusercontent.com/{repo}/{branch}/{img_path}"
+                cells.append(f'<img src="{raw_url}" width="200" />')
+            lines.append("| " + " | ".join(cells) + " |")
+            lines.append("")
+
+        standard = [(key, info) for key, info in entries if key not in promoted]
+        if standard:
+            lines.append("| Preview | Image |")
+            lines.append("|---------|-------|")
+            for _key, info in standard:
+                label_suffix = f" · {info['captureLabel']}" if info["captureLabel"] else ""
+                fn = f"{info['functionName']}{label_suffix}"
+                img_path = f"renders/{info['module']}/{info['renderBasename']}"
+                raw_url = f"https://raw.githubusercontent.com/{repo}/{branch}/{img_path}"
+                lines.append(
+                    f"| `{fn}` | <img src=\"{raw_url}\" width=\"150\" /> |"
+                )
+            lines.append("")
 
     (out_dir / "README.md").write_text("\n".join(lines) + "\n")
 
@@ -576,6 +607,231 @@ def _render_url(repo: str, ref: str, module: str, basename: str) -> str:
     )
 
 
+# ---------------------------------------------------------------------------
+# A/B comparison config
+#
+# Lets a project nominate specific preview *variants* of a single function for
+# a side-by-side horizontal comparison instead of the default
+# hero-plus-"Other variants"-links treatment. The variants can come from two
+# `@Preview` annotations (including ones contributed by a multi-preview
+# meta-annotation) or from distinct values of a `@PreviewParameter` provider —
+# in every case the discovery layer encodes the distinguishing token as the
+# preview id's suffix, which is what we match on here.
+# ---------------------------------------------------------------------------
+
+def _row_matches_variant(info: dict, token: str) -> bool:
+    """Whether a loaded CLI row belongs to the A/B variant named ``token``.
+
+    The token is matched against the preview id's variant suffix (the part
+    after the last underscore — e.g. ``Control`` in
+    ``…ButtonPreviewKt.ButtonPreview_Control``), with two looser fallbacks so
+    multi-segment suffixes (``…_PARAM_0``) and exact-id configs still resolve:
+    a trailing ``_<token>`` match and a whole-id match.
+    """
+    pid = info.get("previewId", "")
+    if _variant_label(pid) == token:
+        return True
+    if pid == token:
+        return True
+    return pid.endswith(f"_{token}")
+
+
+class ABTestConfig:
+    """A/B comparison groups loaded from a project's JSON config file.
+
+    Default location ``.github/preview-abtest.json`` (overridable via the
+    action's ``ab-config`` input). Schema::
+
+        {
+          "groups": [
+            {
+              "function": "ButtonPreview",
+              "module": "app",                       # optional; any module if omitted
+              "variants": ["Control", "Treatment"],  # >= 2 variant tokens
+              "label": "Button copy"                 # optional heading
+            }
+          ]
+        }
+
+    A discovered preview row matches a group when its ``functionName`` equals
+    ``function`` (and ``module`` matches, when the group pins one) and its
+    variant suffix is one of ``variants``. Matched variants get promoted to a
+    side-by-side horizontal layout in the PR comment and the baseline gallery
+    instead of being stacked / collapsed into "Other variants" links.
+
+    Missing / empty / malformed config is treated as "no A/B groups" — the
+    feature is strictly additive, so a broken file degrades to the historical
+    behaviour rather than failing the run.
+    """
+
+    def __init__(self, groups: list[dict]):
+        self._groups = groups
+
+    @classmethod
+    def load(cls, path: Path | None) -> "ABTestConfig":
+        if path is None or not path.exists():
+            return cls([])
+        try:
+            text = path.read_text()
+        except OSError:
+            return cls([])
+        if not text.strip():
+            return cls([])
+        try:
+            raw = json.loads(text)
+        except json.JSONDecodeError:
+            return cls([])
+        if not isinstance(raw, dict):
+            return cls([])
+        groups: list[dict] = []
+        for g in raw.get("groups", []) or []:
+            if not isinstance(g, dict):
+                continue
+            fn = g.get("function")
+            variants = g.get("variants")
+            # A group needs a target function and at least two variants to
+            # compare; anything else is silently dropped.
+            if not fn or not isinstance(variants, list) or len(variants) < 2:
+                continue
+            groups.append({
+                "function": fn,
+                "module": g.get("module"),
+                "variants": [str(v) for v in variants],
+                "label": g.get("label"),
+            })
+        return cls(groups)
+
+    def __bool__(self) -> bool:
+        return bool(self._groups)
+
+    def match(self, module: str, function_name: str) -> dict | None:
+        """First group matching ``function_name`` (and ``module`` if pinned)."""
+        for g in self._groups:
+            if g["function"] != function_name:
+                continue
+            if g["module"] is not None and g["module"] != module:
+                continue
+            return g
+        return None
+
+
+def _ab_resolve_rows(
+    group: dict, module: str, fn: str, rows: dict
+) -> list[tuple[str, str, dict]]:
+    """Resolve a group's variant tokens to concrete rendered rows, in config order.
+
+    ``rows`` is a ``key -> info`` map (the loaded CLI output or a baseline set).
+    Only rows in ``module`` / ``fn`` that produced a PNG are considered. Returns
+    ``[(token, key, info), …]`` for the tokens that resolved — order follows
+    the config so the side-by-side columns read A, B, C as authored.
+    """
+    candidates = [
+        (key, info)
+        for key, info in sorted(rows.items())
+        if info.get("module") == module
+        and info.get("functionName") == fn
+        and info.get("sha256")
+    ]
+    resolved: list[tuple[str, str, dict]] = []
+    for token in group["variants"]:
+        for key, info in candidates:
+            if _row_matches_variant(info, token):
+                resolved.append((token, key, info))
+                break
+    return resolved
+
+
+def _ab_groups_in_gallery(
+    ab_config: "ABTestConfig", module: str, entries: list[tuple[str, dict]]
+) -> tuple[list[dict], set[str]]:
+    """Find A/B groups among a module's gallery entries.
+
+    ``entries`` is the ``[(key, info), …]`` list the generate gallery builds
+    per module. Returns ``(groups, promoted_keys)`` where each group is
+    ``{label, fn, rows:[(token, key, info), …]}`` and ``promoted_keys`` are the
+    row keys that should be skipped from the standard per-preview table.
+    """
+    rows_map = {key: info for key, info in entries}
+    groups: list[dict] = []
+    promoted: set[str] = set()
+    seen: set[str] = set()
+    for _key, info in entries:
+        fn = info["functionName"]
+        if fn in seen:
+            continue
+        group = ab_config.match(module, fn)
+        if group is None:
+            continue
+        resolved = _ab_resolve_rows(group, module, fn, rows_map)
+        if len(resolved) < 2:
+            continue
+        seen.add(fn)
+        for _token, rkey, _rinfo in resolved:
+            promoted.add(rkey)
+        groups.append({"label": group.get("label"), "fn": fn, "rows": resolved})
+    return groups, promoted
+
+
+def _emit_ab_comparisons(
+    lines: list[str],
+    ab_groups: list[dict],
+    repo: str,
+    base_ref: str,
+    head_ref: str,
+) -> None:
+    """Append the side-by-side A/B section to ``lines`` (in place).
+
+    One table per group: variant tokens are the columns, and the rows are the
+    baseline (``Before``) and PR (``After``) renders so the variants sit next
+    to each other horizontally for direct comparison. The ``Before`` row is
+    omitted entirely when no variant has a baseline (a brand-new A/B group).
+    """
+    lines.append(f"### A/B Comparisons ({len(ab_groups)} group(s))")
+    lines.append("")
+    for g in ab_groups:
+        rows = g["rows"]
+        if g["label"]:
+            lines.append(f"**{g['label']}** — `{g['fn']}` ({g['module']})")
+        else:
+            lines.append(f"**`{g['fn']}`** ({g['module']})")
+        lines.append("")
+        tokens = [token for token, _k, _i, _c, _b in rows]
+        lines.append("| | " + " | ".join(tokens) + " |")
+        lines.append("|" + "---|" * (len(tokens) + 1))
+        if any(bl is not None for _t, _k, _i, _c, bl in rows):
+            before_cells = []
+            for token, _key, info, _changed, bl in rows:
+                if bl is None:
+                    before_cells.append("_new_")
+                    continue
+                basename = bl.get("renderBasename") or info["renderBasename"]
+                url = _render_url(repo, base_ref, g["module"], basename)
+                before_cells.append(f'<img src="{url}" width="200" />')
+            lines.append("| Before | " + " | ".join(before_cells) + " |")
+        after_cells = []
+        for _token, _key, info, changed, bl in rows:
+            if changed or bl is None:
+                # Changed / new variants are staged to the head renders branch
+                # by `copy-changed`, so the PR ref has their PNG.
+                url = _render_url(repo, head_ref, g["module"], info["renderBasename"])
+            else:
+                # Unchanged companion: `copy-changed` only stages new/changed
+                # PNGs, so this render was never pushed to the head ref. Its
+                # "After" pixels are byte-identical to the baseline, so point at
+                # the baseline ref to avoid a broken-image cell.
+                basename = bl.get("renderBasename") or info["renderBasename"]
+                url = _render_url(repo, base_ref, g["module"], basename)
+            after_cells.append(f'<img src="{url}" width="200" />')
+        lines.append("| After | " + " | ".join(after_cells) + " |")
+        lines.append("")
+        diffed = [
+            token for token, _k, _i, changed, bl in rows if changed or bl is None
+        ]
+        if diffed:
+            lines.append("Changed: " + ", ".join(f"`{t}`" for t in diffed) + ".")
+            lines.append("")
+
+
 def cmd_compare(args: argparse.Namespace) -> int:
     cli_json = Path(args.cli_json)
     baselines_path = Path(args.baselines)
@@ -588,6 +844,53 @@ def cmd_compare(args: argparse.Namespace) -> int:
 
     current = load_cli_output(cli_json)
     baselines = _load_baselines(baselines_path)
+    ab_config = ABTestConfig.load(
+        Path(args.ab_config) if getattr(args, "ab_config", None) else None
+    )
+
+    # --- A/B comparison groups ---
+    # Resolve these up front so their rows can be excluded from the standard
+    # new/changed/unchanged buckets (otherwise an A/B variant would be listed
+    # twice). A group is only *promoted* to the side-by-side section when at
+    # least one of its variants actually changed or is new — an all-unchanged
+    # group stays out of the comment so we don't post on no-op PRs (the
+    # empty-diff sentinel below still fires).
+    ab_groups: list[dict] = []
+    ab_keys: set[str] = set()
+    if ab_config:
+        seen_fns: set[tuple[str, str]] = set()
+        for key, info in sorted(current.items()):
+            if not info["sha256"]:
+                continue
+            gk = (info["module"], info["functionName"])
+            if gk in seen_fns:
+                continue
+            group = ab_config.match(info["module"], info["functionName"])
+            if group is None:
+                continue
+            rows = _ab_resolve_rows(group, gk[0], gk[1], current)
+            if len(rows) < 2:
+                # Need at least two variants present in this run to compare.
+                continue
+            seen_fns.add(gk)
+            resolved = []
+            has_change = False
+            for token, rkey, rinfo in rows:
+                bl = baselines.get(rkey)
+                changed = bl is not None and _is_changed(rinfo, bl, baseline_renders)
+                if changed or bl is None:
+                    has_change = True
+                resolved.append((token, rkey, rinfo, changed, bl))
+            if not has_change:
+                continue
+            for token, rkey, rinfo, changed, bl in resolved:
+                ab_keys.add(rkey)
+            ab_groups.append({
+                "label": group.get("label"),
+                "module": gk[0],
+                "fn": gk[1],
+                "rows": resolved,
+            })
 
     new: list[tuple[str, dict]] = []
     changed: list[tuple[str, dict, dict]] = []
@@ -597,6 +900,8 @@ def cmd_compare(args: argparse.Namespace) -> int:
     for key, info in sorted(current.items()):
         if not info["sha256"]:
             continue
+        if key in ab_keys:
+            continue
         if key not in baselines:
             new.append((key, info))
         elif _is_changed(info, baselines[key], baseline_renders):
@@ -605,6 +910,8 @@ def cmd_compare(args: argparse.Namespace) -> int:
             unchanged.append((key, info))
 
     for key, bl_info in sorted(baselines.items()):
+        if key in ab_keys:
+            continue
         if key not in current:
             removed.append((key, bl_info))
 
@@ -614,13 +921,16 @@ def cmd_compare(args: argparse.Namespace) -> int:
     marker = "<!-- preview-diff -->"
     lines = [marker, "## Preview Changes", ""]
 
-    if not new and not changed and not removed and not failures:
+    if not new and not changed and not removed and not failures and not ab_groups:
         lines.append("No visual changes detected.")
         lines.append("")
         if unchanged:
             lines.append(f"_{len(unchanged)} preview(s) unchanged._")
         print("\n".join(lines))
         return 0
+
+    if ab_groups:
+        _emit_ab_comparisons(lines, ab_groups, repo, base_ref, head_ref)
 
     if failures:
         lines.append(
@@ -1296,6 +1606,12 @@ def main() -> int:
     gen.add_argument("--prior-renders",
                      help="Directory containing the existing renders/<module>/<basename> "
                           "PNG tree on the baseline branch.")
+    # Same A/B config as `compare` — nominated variant groups render
+    # side-by-side at the top of their module section in the gallery README.
+    gen.add_argument("--ab-config",
+                     help="Path to the A/B comparison config JSON "
+                          "(default off; the apply action passes "
+                          ".github/preview-abtest.json when present).")
 
     cmp = sub.add_parser("compare", help="Compare CLI output against baselines")
     cmp.add_argument("cli_json", help="Path to compose-preview show --json output")
@@ -1313,6 +1629,14 @@ def main() -> int:
     # doesn't appear in the comment. Falls back to strict-bytes when omitted.
     cmp.add_argument("--baseline-renders",
                      help="Directory containing baseline PNGs (renders/<module>/<basename>)")
+    # Optional. Path to the A/B comparison config (default
+    # `.github/preview-abtest.json`, wired by the apply action). Nominated
+    # variant groups render side-by-side instead of hero+links. Missing /
+    # malformed → no A/B groups (feature is purely additive).
+    cmp.add_argument("--ab-config",
+                     help="Path to the A/B comparison config JSON "
+                          "(default off; the apply action passes "
+                          ".github/preview-abtest.json when present).")
 
     cp = sub.add_parser("copy-changed", help="Copy new/changed PNGs to output dir")
     cp.add_argument("cli_json", help="Path to compose-preview show --json output")
