@@ -47,6 +47,66 @@ Because the CLI auto-injects, projects that already apply
 work without touching `build.gradle.kts`. Projects that already declare the
 plugin are detected and left alone, so mixed setups don't conflict.
 
+## Builds that apply AGP via a convention plugin
+
+If your build supplies the Android Gradle Plugin through an **included build's
+convention plugin** — the `build-logic` / `gradle/conventions` pattern used by
+[Now in Android](https://github.com/android/nowinandroid), AndroidX, and
+similar repos — auto-inject **cannot** apply the preview plugin, and discovery
+will report `0 modules` with failures like:
+
+```
+NoClassDefFoundError: com/android/build/api/variant/AndroidComponentsExtension
+```
+
+This is a classloader limitation, not a bug. With the convention-plugin layout
+AGP is applied by the included build, so AGP's classes live on the *convention
+plugin's* classloader. Auto-inject can only add the preview plugin to each
+project's **own** buildscript classpath — a sibling classloader that can't see
+AGP — so the plugin throws the moment it touches `AndroidComponentsExtension`.
+There is no Gradle init-script API to contribute a dependency to an included
+build's classpath, so auto-inject genuinely can't reach AGP here.
+
+**Apply the plugin from your convention plugin instead.** That puts it on the
+same classloader as AGP, where it renders correctly. The CLI then detects the
+included-build apply and skips auto-inject automatically (no
+`--no-auto-inject` needed).
+
+1. Stage the plugin in `build-logic`'s `plugins {}` block (so its marker lands
+   on the convention build's classpath) and apply it from your convention
+   plugin alongside AGP:
+
+   ```kotlin
+   // build-logic/.../build.gradle.kts (the convention build)
+   plugins {
+       `kotlin-dsl`
+       // Stage so the marker is on build-logic's classpath. `apply false`:
+       // the convention plugin applies it per-module, not build-logic itself.
+       id("ee.schimke.composeai.preview") version "<latest>" apply false
+   }
+   ```
+
+   ```kotlin
+   // build-logic/.../YourAndroidConventionPlugin.kt
+   override fun apply(target: Project) = with(target) {
+       pluginManager.apply("com.android.library") // or the AGP plugin you use
+       pluginManager.apply("ee.schimke.composeai.preview")
+       // …rest of your convention…
+   }
+   ```
+
+2. Run the CLI as usual — it sees the included build provides the plugin and
+   leaves your build alone:
+
+   ```sh
+   compose-preview render
+   ```
+
+This is the explicit "apply manually via your convention plugin" integration
+mode: auto-inject is the zero-config convenience for the common
+`plugins { id("com.android.application") }` layout; the convention-plugin
+layout opts out of it by design.
+
 ## Gradle plugin (version-pinned)
 
 If you'd rather wire it into your build explicitly, the plugin is published

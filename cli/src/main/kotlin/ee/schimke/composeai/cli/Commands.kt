@@ -757,6 +757,13 @@ internal fun printDiscoveryFailures(
   err: (String) -> Unit = System.err::println,
 ) {
   if (failures.isEmpty()) return
+  // When the failures are dominated by the "auto-injected plugin can't see AGP" signature there's
+  // a single actionable cause — emit the guidance instead of N cryptic NoClassDefFoundError stacks
+  // (issue #1947).
+  agpClassloaderGuidance(failures)?.let {
+    err(it)
+    return
+  }
   err(
     "${failures.size} project(s) failed to configure during discovery and were skipped — " +
       "their previews are not listed. This is the usual cause of an empty discovery when the " +
@@ -764,6 +771,72 @@ internal fun printDiscoveryFailures(
   )
   failures.take(limit).forEach { err("  ${it.path}: ${it.message}") }
   if (failures.size > limit) err("  … and ${failures.size - limit} more")
+}
+
+/**
+ * Recognises the "auto-injected plugin can't see AGP" failure signature: a
+ * `NoClassDefFoundError` / `ClassNotFoundException` on an AGP variant-API class
+ * (`com.android.build.api.variant.*`, e.g. `AndroidComponentsExtension`). The
+ * `NoClassDefFoundError` form carries the internal name (`com/android/build/api/variant/…`) and the
+ * `ClassNotFoundException` form the dotted name, so we match either separator.
+ *
+ * This arises when AGP is supplied by an **included build's convention plugin** (the `build-logic`
+ * pattern): AGP's classes live on the convention plugin's classloader, but auto-inject puts
+ * `ee.schimke.composeai.preview` on each project's *own* buildscript classpath — a sibling
+ * classloader that can't see AGP — so the plugin's `apply()` throws the moment it touches
+ * `AndroidComponentsExtension`. See [agpClassloaderGuidance] for the user-facing remedy (issue
+ * #1947).
+ */
+internal fun isAgpClassloaderFailure(message: String): Boolean {
+  val mentionsAgpVariantApi = Regex("""com[./]android[./]build[./]api[./]variant""").containsMatchIn(message)
+  val classloaderError =
+    message.contains("NoClassDefFoundError") || message.contains("ClassNotFoundException")
+  return mentionsAgpVariantApi && classloaderError
+}
+
+/**
+ * When discovery failures are *dominated* by the AGP-classloader signature
+ * ([isAgpClassloaderFailure]), returns one actionable message explaining that auto-inject can't be
+ * made to work for the included-build / convention-plugin layout and how to apply the plugin from
+ * the convention plugin instead. Returns `null` otherwise so [printDiscoveryFailures] falls back to
+ * the per-project list — a lone AGP error amid many unrelated configuration failures shouldn't
+ * suppress the others.
+ *
+ * "Dominated" = the signature accounts for at least half the failures. Auto-inject genuinely can't
+ * reach AGP's classloader here (there is no init-script API to add a dependency to an included
+ * build's classpath), so this is a guidance fix, not a render fix (issue #1947).
+ */
+internal fun agpClassloaderGuidance(failures: List<ProjectDiscoveryFailure>): String? {
+  if (failures.isEmpty()) return null
+  val matching = failures.count { isAgpClassloaderFailure(it.message) }
+  if (matching == 0 || matching * 2 < failures.size) return null
+  return buildString {
+    appendLine(
+      "$matching of ${failures.size} project(s) failed to configure during discovery with the " +
+        "same root cause: the compose-preview plugin can't see the Android Gradle Plugin " +
+        "(NoClassDefFoundError on com.android.build.api.variant.* — AGP's variant API)."
+    )
+    appendLine()
+    appendLine(
+      "This build supplies AGP through an included build's convention plugin (the build-logic " +
+        "pattern), so AGP is loaded by the convention plugin's classloader. Auto-inject puts " +
+        "ee.schimke.composeai.preview on each project's own buildscript classpath — a sibling " +
+        "classloader that can't reach AGP — so the plugin throws the moment it touches AGP. " +
+        "There is no init-script API to add the plugin to the included build's classpath, so " +
+        "auto-inject can't fix this layout."
+    )
+    appendLine()
+    appendLine(
+      "Apply the plugin from your convention plugin instead: stage " +
+        "`id(\"ee.schimke.composeai.preview\") apply false` and put the plugin marker on " +
+        "build-logic's classpath, then apply it alongside AGP in the convention plugin. The CLI " +
+        "detects that and skips auto-inject automatically."
+    )
+    append(
+      "Docs: https://yschimke.github.io/compose-ai-tools/install/" +
+        "#builds-that-apply-agp-via-a-convention-plugin"
+    )
+  }
 }
 
 internal val NON_PNG_PREVIEW_KINDS = setOf("XR_SUBSPACE")
