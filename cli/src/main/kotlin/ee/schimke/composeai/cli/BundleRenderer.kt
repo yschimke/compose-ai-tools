@@ -372,9 +372,11 @@ class BundleRenderer(
       requireNotNull(bundleJson) { "bundle render: bundle.json missing in ${bundleFile.path}" }
     val previewsJsonNonNull =
       requireNotNull(previewsJson) { "bundle render: previews.json missing in ${bundleFile.path}" }
-    val appJarBytesNonNull =
-      requireNotNull(appJarBytes) { "bundle render: classes/app.jar missing in ${bundleFile.path}" }
-    expandJarBytes(appJarBytesNonNull, classesDir)
+    // `classes/app.jar` is absent from a fully IR-backed bundle (schema v5+), whose previews replay
+    // from `ir/` rather than from reflected consumer bytecode — renderDesktop/renderAndroid skip
+    // those IR previews. Expand the consumer classes only when the bundle actually carries them; a
+    // non-IR preview whose class is then missing fails per-preview rather than aborting the load.
+    appJarBytes?.let { expandJarBytes(it, classesDir) }
     return bundleJsonNonNull to previewsJsonNonNull
   }
 
