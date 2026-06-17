@@ -213,11 +213,13 @@ class DesktopSemanticsTokensTest {
 
     val node = root.find("h")
     assertNotNull("expected a node tagged 'h'", node)
-    assertEquals("monospace", node!!.layoutFontFamily)
-    assertEquals(700, node.layoutFontWeight)
-    assertEquals("italic", node.layoutFontStyle)
-    assertEquals("0.5sp", node.layoutLetterSpacing)
-    assertEquals("24.0sp", node.layoutLineHeight)
+    val typography = node!!.typography
+    assertNotNull("text node must carry a typography object", typography)
+    assertEquals("monospace", typography!!.fontFamily)
+    assertEquals(700, typography.fontWeight)
+    assertEquals("italic", typography.fontStyle)
+    assertEquals("0.5sp", typography.letterSpacing)
+    assertEquals("24.0sp", typography.lineHeight)
   }
 
   @Test
@@ -238,7 +240,7 @@ class DesktopSemanticsTokensTest {
 
     val node = root.find("mixed")
     assertNotNull(node)
-    assertNull("disagreeing span weights must omit the weight", node!!.layoutFontWeight)
+    assertNull("disagreeing span weights must omit the weight", node!!.typography?.fontWeight)
   }
 
   @Test
@@ -255,7 +257,7 @@ class DesktopSemanticsTokensTest {
       )
     }
 
-    assertEquals(700, root.find("span")?.layoutFontWeight)
+    assertEquals(700, root.find("span")?.typography?.fontWeight)
   }
 
   @Test
@@ -278,7 +280,7 @@ class DesktopSemanticsTokensTest {
     assertNotNull(node)
     assertNull(
       "an unstyled run + a bold span draws mixed weights, so weight must be omitted",
-      node!!.layoutFontWeight,
+      node!!.typography?.fontWeight,
     )
   }
 
@@ -290,10 +292,10 @@ class DesktopSemanticsTokensTest {
 
     val node = root.find("p")
     assertNotNull(node)
-    assertNull("inherited family must be omitted", node!!.layoutFontFamily)
-    assertNull("inherited weight must be omitted", node.layoutFontWeight)
-    assertNull("inherited style must be omitted", node.layoutFontStyle)
-    assertNull("inherited letter spacing must be omitted", node.layoutLetterSpacing)
+    assertNull(
+      "a node that declares nothing typographic must omit the typography object",
+      node!!.typography,
+    )
   }
 
   @Test

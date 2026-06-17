@@ -123,13 +123,7 @@ object ComposeSemanticsDataProducer {
       text = cfg.renderedText(),
       layoutText = layout?.text,
       layoutFontSize = layout?.fontSize,
-      layoutFontFamily = layout?.fontFamily,
-      layoutFontWeight = layout?.fontWeight,
-      layoutFontStyle = layout?.fontStyle,
-      layoutFontVariationSettings = layout?.fontVariationSettings,
-      layoutFontFeatureSettings = layout?.fontFeatureSettings,
-      layoutLetterSpacing = layout?.letterSpacing,
-      layoutLineHeight = layout?.lineHeight,
+      typography = layout?.typography(),
       layoutForegroundColor = layout?.foregroundColor,
       layoutBackgroundColor = layout?.backgroundColor,
       layoutLineCount = layout?.lineCount,
@@ -488,6 +482,33 @@ object ComposeSemanticsDataProducer {
     val didOverflowHeight: Boolean?,
   )
 
+  /**
+   * Groups the resolved typographic identity into the wire [ComposeSemanticsTypography] object
+   * (issue #1934), or null when the node declares nothing typographic — so a node omits
+   * `typography` entirely rather than carrying an all-null object, mirroring how `tokens` behaves.
+   */
+  private fun LayoutTextDetails.typography(): ComposeSemanticsTypography? =
+    if (
+      fontFamily == null &&
+        fontWeight == null &&
+        fontStyle == null &&
+        fontVariationSettings == null &&
+        fontFeatureSettings == null &&
+        letterSpacing == null &&
+        lineHeight == null
+    )
+      null
+    else
+      ComposeSemanticsTypography(
+        fontFamily = fontFamily,
+        fontWeight = fontWeight,
+        fontStyle = fontStyle,
+        fontVariationSettings = fontVariationSettings,
+        fontFeatureSettings = fontFeatureSettings,
+        letterSpacing = letterSpacing,
+        lineHeight = lineHeight,
+      )
+
   private fun androidx.compose.ui.geometry.Rect.toWireBounds(): String =
     "${left.toInt()},${top.toInt()},${right.toInt()},${bottom.toInt()}"
 }
@@ -546,6 +567,9 @@ typealias ComposeSemanticsPayload =
 typealias ComposeSemanticsNode = ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
 
 typealias ComposeSemanticsTokens = ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTokens
+
+typealias ComposeSemanticsTypography =
+  ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTypography
 
 typealias ComposeSemanticsInsets = ee.schimke.composeai.data.layoutinspector.ComposeSemanticsInsets
 

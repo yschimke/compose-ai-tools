@@ -12,12 +12,12 @@ object ComposeSemanticsProduct {
   // spacing), and `shape` (descriptor for non-dp shapes), and `cornerRadius` now resolves
   // percent/`CircleShape` corners against the node's size. Still additive — every new field is
   // optional, so a v3 reader parses a v4 file unchanged.
-  // v5 (#1934): each text node gains its resolved typographic identity beyond size/colour —
-  // `layoutFontFamily`, `layoutFontWeight`, `layoutFontStyle`, `layoutFontVariationSettings` (the
-  // variable-font axes actually applied), plus `layoutFontFeatureSettings`, `layoutLetterSpacing`,
-  // and `layoutLineHeight`. The typography analogue of the v3 `tokens` addition, so a parity
-  // consumer can compare *which face* the text is drawn in, not just how big. Still additive —
-  // every field is optional, so a v4 reader parses a v5 file unchanged.
+  // v5 (#1934): each text node gains a `typography` object — its resolved typographic identity
+  // beyond size/colour: `fontFamily`, `fontWeight`, `fontStyle`, `fontVariationSettings` (the
+  // variable-font axes actually applied), plus `fontFeatureSettings`, `letterSpacing`, and
+  // `lineHeight`. The typography analogue of the v3 `tokens` addition, so a parity consumer can
+  // compare *which face* the text is drawn in, not just how big. Still additive — the object is
+  // optional, so a v4 reader parses a v5 file unchanged.
   const val SCHEMA_VERSION: Int = 5
   const val FILE: String = "compose-semantics.json"
 }
@@ -71,37 +71,16 @@ data class ComposeSemanticsNode(
   val layoutText: String? = null,
   val layoutFontSize: String? = null,
   /**
-   * Resolved typeface identity for the text drawn by this node (issue #1934). For a
-   * [GenericFontFamily][androidx.compose.ui.text.font.GenericFontFamily] this is its declared name
-   * (`"sans-serif"`, `"monospace"`); for a
-   * [FontListFontFamily][androidx.compose.ui.text.font.FontListFontFamily] — which carries no
-   * family display name — it is the *resolved face's* stable identity (the platform font's
-   * `identity`: a file path / declared name on desktop, or `res/font/<id>` on Android), since that
-   * is the only stable per-face handle Compose exposes. Null when the node inherits the family (no
-   * explicit `fontFamily`) or the family/result is ambiguous across spans.
+   * Resolved typographic identity of the text this node draws (issue #1934): the face, weight,
+   * style, and variable-font axes, plus letter spacing / line height. Read from the node's
+   * `TextLayoutResult` (the same `GetTextLayoutResult` semantics action `layoutFontSize` /
+   * `layoutForegroundColor` come from), so it's the typography analogue of the v3 container
+   * [tokens]. Grouped under one object rather than scattered as more flat `layout*` fields; null
+   * when the node draws no text or its style is ambiguous across spans. (The pre-existing flat
+   * `layout*` text fields stay top-level for back-compat; folding them in here is the #1903
+   * follow-up.)
    */
-  val layoutFontFamily: String? = null,
-  /** Resolved font weight as its numeric value (`400`, `500`, `700`, …) (issue #1934). */
-  val layoutFontWeight: Int? = null,
-  /** Resolved font style — `"normal"` or `"italic"` (issue #1934). */
-  val layoutFontStyle: String? = null,
-  /**
-   * The variable-font axes actually applied to the resolved face (issue #1934), formatted as
-   * `"<axis> <value>"` pairs sorted by axis tag and comma-separated, e.g. `"opsz 18.0, wght
-   * 700.0"`. For a variable font the axis values (`wght`/`wdth`/`opsz`/`GRAD`/…) are what pin the
-   * rendered instance — [layoutFontWeight] alone doesn't capture `wdth`/`opsz` or custom axes. Read
-   * from the resolved [Font][androidx.compose.ui.text.font.Font]'s variation settings; null when
-   * the face declares none (the common non-variable case).
-   */
-  val layoutFontVariationSettings: String? = null,
-  /**
-   * Resolved OpenType feature settings (ligatures / figures), e.g. `"\"tnum\" 1"` (issue #1934).
-   */
-  val layoutFontFeatureSettings: String? = null,
-  /** Resolved letter spacing as `"<value>sp"` / `"<value>em"` (issue #1934). */
-  val layoutLetterSpacing: String? = null,
-  /** Resolved line height as `"<value>sp"` / `"<value>em"` (issue #1934). */
-  val layoutLineHeight: String? = null,
+  val typography: ComposeSemanticsTypography? = null,
   val layoutForegroundColor: String? = null,
   val layoutBackgroundColor: String? = null,
   val layoutLineCount: Int? = null,
@@ -126,6 +105,46 @@ data class ComposeSemanticsNode(
    */
   val tokens: ComposeSemanticsTokens? = null,
   val children: List<ComposeSemanticsNode> = emptyList(),
+)
+
+/**
+ * Resolved typographic identity of the text a semantics node draws (issue #1934) — read from the
+ * node's `TextLayoutResult` (`TextLayoutResult.layoutInput.style` / its span styles), the same
+ * source `layoutFontSize` / `layoutForegroundColor` come from. Each field collapses to a value only
+ * when every drawn range agrees on it, so a node with mixed spans omits the ambiguous field; a node
+ * that declares nothing typographic emits no `typography` object at all.
+ */
+@Serializable
+data class ComposeSemanticsTypography(
+  /**
+   * Resolved typeface identity. For a
+   * [GenericFontFamily][androidx.compose.ui.text.font.GenericFontFamily] this is its declared name
+   * (`"sans-serif"`, `"monospace"`); for a
+   * [FontListFontFamily][androidx.compose.ui.text.font.FontListFontFamily] — which carries no
+   * family display name — it is the *resolved face's* stable identity (the platform font's
+   * `identity`: a file path / declared name on desktop, or `res/font/<id>` on Android), the only
+   * stable per-face handle Compose exposes. Null when the family is inherited or ambiguous across
+   * spans.
+   */
+  val fontFamily: String? = null,
+  /** Resolved font weight as its numeric value (`400`, `500`, `700`, …). */
+  val fontWeight: Int? = null,
+  /** Resolved font style — `"normal"` or `"italic"`. */
+  val fontStyle: String? = null,
+  /**
+   * The variable-font axes actually applied to the resolved face, formatted as `"<axis> <value>"`
+   * pairs sorted by axis tag and comma-separated, e.g. `"opsz 18.0, wght 700.0"`. For a variable
+   * font the axis values (`wght`/`wdth`/`opsz`/`GRAD`/…) pin the rendered instance — [fontWeight]
+   * alone doesn't capture `wdth`/`opsz` or custom axes. Null when the face declares none (the
+   * common non-variable case).
+   */
+  val fontVariationSettings: String? = null,
+  /** Resolved OpenType feature settings (ligatures / figures), e.g. `"\"tnum\" 1"`. */
+  val fontFeatureSettings: String? = null,
+  /** Resolved letter spacing as `"<value>sp"` / `"<value>em"`. */
+  val letterSpacing: String? = null,
+  /** Resolved line height as `"<value>sp"` / `"<value>em"`. */
+  val lineHeight: String? = null,
 )
 
 /**

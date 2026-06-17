@@ -22,13 +22,7 @@
         "text": { "type": ["string", "null"] },
         "layoutText": { "type": ["string", "null"] },
         "layoutFontSize": { "type": ["string", "null"] },
-        "layoutFontFamily": { "type": ["string", "null"], "description": "Resolved typeface identity (#1934): a GenericFontFamily's name, or a FontListFontFamily's resolved-face identity (font file path / declared name / `res/font/<id>`)." },
-        "layoutFontWeight": { "type": ["integer", "null"], "description": "Resolved font weight value (400/500/700/…) (#1934)." },
-        "layoutFontStyle": { "type": ["string", "null"], "description": "Resolved font style: `normal` or `italic` (#1934)." },
-        "layoutFontVariationSettings": { "type": ["string", "null"], "description": "Variable-font axes applied to the resolved face, `<axis> <value>` pairs sorted by tag (`opsz 18.0, wght 700.0`) (#1934)." },
-        "layoutFontFeatureSettings": { "type": ["string", "null"], "description": "Resolved OpenType feature settings (#1934)." },
-        "layoutLetterSpacing": { "type": ["string", "null"], "description": "Resolved letter spacing in sp/em (#1934)." },
-        "layoutLineHeight": { "type": ["string", "null"], "description": "Resolved line height in sp/em (#1934)." },
+        "typography": { "anyOf": [{ "$ref": "#/definitions/ComposeSemanticsTypography" }, { "type": "null" }], "description": "Resolved typographic identity of the text this node draws (#1934). Omitted when the node declares nothing typographic." },
         "layoutForegroundColor": { "type": ["string", "null"] },
         "layoutBackgroundColor": { "type": ["string", "null"] },
         "layoutLineCount": { "type": ["integer", "null"] },
@@ -45,6 +39,19 @@
         "clickable": { "type": "boolean", "description": "Defaults to false; omitted when default." },
         "tokens": { "anyOf": [{ "$ref": "#/definitions/ComposeSemanticsTokens" }, { "type": "null" }], "description": "Resolved design-token data from this node's modifiers (#1897). Omitted when the node declares none." },
         "children": { "type": "array", "items": { "$ref": "#/definitions/ComposeSemanticsNode" }, "description": "Omitted when empty." }
+      }
+    },
+    "ComposeSemanticsTypography": {
+      "type": "object",
+      "description": "Resolved typographic identity of the text a node draws (#1934), read from its TextLayoutResult. Each field is present only when every drawn range agrees on it; a node that declares nothing typographic omits the object entirely.",
+      "properties": {
+        "fontFamily": { "type": ["string", "null"], "description": "Resolved typeface identity: a GenericFontFamily's name, or a FontListFontFamily's resolved-face identity (font file path / declared name / `res/font/<id>`)." },
+        "fontWeight": { "type": ["integer", "null"], "description": "Resolved font weight value (400/500/700/…)." },
+        "fontStyle": { "type": ["string", "null"], "description": "Resolved font style: `normal` or `italic`." },
+        "fontVariationSettings": { "type": ["string", "null"], "description": "Variable-font axes applied to the resolved face, `<axis> <value>` pairs sorted by tag (`opsz 18.0, wght 700.0`)." },
+        "fontFeatureSettings": { "type": ["string", "null"], "description": "Resolved OpenType feature settings." },
+        "letterSpacing": { "type": ["string", "null"], "description": "Resolved letter spacing in sp/em." },
+        "lineHeight": { "type": ["string", "null"], "description": "Resolved line height in sp/em." }
       }
     },
     "ComposeSemanticsTokens": {
