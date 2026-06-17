@@ -809,8 +809,18 @@ def _emit_ab_comparisons(
                 before_cells.append(f'<img src="{url}" width="200" />')
             lines.append("| Before | " + " | ".join(before_cells) + " |")
         after_cells = []
-        for _token, _key, info, _changed, _bl in rows:
-            url = _render_url(repo, head_ref, g["module"], info["renderBasename"])
+        for _token, _key, info, changed, bl in rows:
+            if changed or bl is None:
+                # Changed / new variants are staged to the head renders branch
+                # by `copy-changed`, so the PR ref has their PNG.
+                url = _render_url(repo, head_ref, g["module"], info["renderBasename"])
+            else:
+                # Unchanged companion: `copy-changed` only stages new/changed
+                # PNGs, so this render was never pushed to the head ref. Its
+                # "After" pixels are byte-identical to the baseline, so point at
+                # the baseline ref to avoid a broken-image cell.
+                basename = bl.get("renderBasename") or info["renderBasename"]
+                url = _render_url(repo, base_ref, g["module"], basename)
             after_cells.append(f'<img src="{url}" width="200" />')
         lines.append("| After | " + " | ".join(after_cells) + " |")
         lines.append("")

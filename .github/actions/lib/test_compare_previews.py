@@ -1073,6 +1073,12 @@ class ABCompareTest(unittest.TestCase):
         self.assertIn("Changed: `Treatment`.", out)
         # The A/B rows are NOT also listed in the standard Changed section.
         self.assertNotIn("### Changed", out)
+        # Regression: the unchanged companion (Control) is never staged to the
+        # head renders branch by `copy-changed`, so its "After" cell must point
+        # at the baseline ref, not the head ref (which would 404 / broken-image).
+        self.assertNotIn(
+            "raw.githubusercontent.com/owner/repo/cafef00d/renders/app/Control.png", out
+        )
 
     def test_unchanged_group_is_not_promoted_and_stays_silent(self):
         # No variant changed → group drops out, comment is the empty-diff
@@ -1099,6 +1105,31 @@ class ABCompareTest(unittest.TestCase):
         self.assertNotIn("| Before |", out)
         self.assertIn("| After |", out)
         self.assertIn("Changed: `Control`, `Treatment`.", out)
+
+    def test_unchanged_companion_after_cell_uses_baseline_ref(self):
+        # Control unchanged, Treatment changed. The "After" row must show both
+        # columns: Treatment from the head ref (staged by copy-changed) and
+        # Control from the baseline ref (unchanged renders are never pushed to
+        # the head branch, so linking them there would be a broken image).
+        out = self._run(
+            self._two_variant_payload("ctrl-sha", "new-treat-sha"),
+            {
+                "app/K.ButtonPreview_Control": {"sha256": "ctrl-sha", "functionName": "ButtonPreview"},
+                "app/K.ButtonPreview_Treatment": {"sha256": "old-treat-sha", "functionName": "ButtonPreview"},
+            },
+            {"groups": [{"function": "ButtonPreview", "variants": ["Control", "Treatment"]}]},
+        )
+        after_row = next(ln for ln in out.splitlines() if ln.startswith("| After |"))
+        # Treatment changed → head ref; Control unchanged → baseline ref.
+        self.assertIn(
+            "raw.githubusercontent.com/owner/repo/cafef00d/renders/app/Treatment.png", after_row
+        )
+        self.assertIn(
+            "raw.githubusercontent.com/owner/repo/deadbeef/renders/app/Control.png", after_row
+        )
+        self.assertNotIn(
+            "raw.githubusercontent.com/owner/repo/cafef00d/renders/app/Control.png", after_row
+        )
 
     def test_no_config_keeps_legacy_hero_plus_links(self):
         # Without an A/B config the same two variants collapse to the
