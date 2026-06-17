@@ -1087,6 +1087,16 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "Pixel8SystemUiPreview_Pixel_8.a11y.png",
+      "cleanBasename": "Pixel8SystemUiPreview_Pixel_8.png",
+      "findings": [],
+      "functionName": "Pixel8SystemUiPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewsKt.Pixel8SystemUiPreview_Pixel 8",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt",
+      "variant": "pixel_8"
+    },
+    {
       "annotatedBasename": "RedBoxPreview_Red_Box.a11y.png",
       "cleanBasename": "RedBoxPreview_Red_Box.png",
       "findings": [],
