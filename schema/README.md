@@ -19,7 +19,7 @@ Part of the report-history epic (#1866); this directory is sub-issue #1867.
 | [`a11y-atf.schema.json`](a11y-atf.schema.json) | `a11y/atf` | 1 | `AccessibilityFindingsPayload` |
 | [`a11y-hierarchy.schema.json`](a11y-hierarchy.schema.json) | `a11y/hierarchy` | 1 | `AccessibilityHierarchyPayload` |
 | [`a11y-touch-targets.schema.json`](a11y-touch-targets.schema.json) | `a11y/touchTargets` | 1 | `AccessibilityTouchTargetsPayload` |
-| [`compose-semantics.schema.json`](compose-semantics.schema.json) | `compose/semantics` | 2 | `ComposeSemanticsPayload` |
+| [`compose-semantics.schema.json`](compose-semantics.schema.json) | `compose/semantics` | 5 | `ComposeSemanticsPayload` |
 | [`compose-semantics-diff.schema.json`](compose-semantics-diff.schema.json) | `compose-semantics-diff/v1` | 1 | `SemanticsDelta` |
 | [`compose-theme.schema.json`](compose-theme.schema.json) | `compose/theme` | 2 | `ThemePayload` |
 | [`render-trace.schema.json`](render-trace.schema.json) | `render/trace` | 1 | `RenderTraceDataProduct` |

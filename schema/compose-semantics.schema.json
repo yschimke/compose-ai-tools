@@ -5,7 +5,7 @@
   "description": "Payload for the `compose/semantics` data product: the Compose semantics tree projected for a render. Kotlin source of truth: ComposeSemanticsPayload / ComposeSemanticsNode in :data-layoutinspector-core. Each node carries a stable `ref` (see #1784).",
   "x-composeai": {
     "kind": "compose/semantics",
-    "schemaVersion": 4,
+    "schemaVersion": 5,
     "kotlinType": "ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload",
     "kotlinConst": "ComposeSemanticsProduct.SCHEMA_VERSION",
     "fixture": "vscode-extension/preview-harness/fixtures/inspection-tree.json"
@@ -22,6 +22,13 @@
         "text": { "type": ["string", "null"] },
         "layoutText": { "type": ["string", "null"] },
         "layoutFontSize": { "type": ["string", "null"] },
+        "layoutFontFamily": { "type": ["string", "null"], "description": "Resolved typeface identity (#1934): a GenericFontFamily's name, or a FontListFontFamily's resolved-face identity (font file path / declared name / `res/font/<id>`)." },
+        "layoutFontWeight": { "type": ["integer", "null"], "description": "Resolved font weight value (400/500/700/…) (#1934)." },
+        "layoutFontStyle": { "type": ["string", "null"], "description": "Resolved font style: `normal` or `italic` (#1934)." },
+        "layoutFontVariationSettings": { "type": ["string", "null"], "description": "Variable-font axes applied to the resolved face, `<axis> <value>` pairs sorted by tag (`opsz 18.0, wght 700.0`) (#1934)." },
+        "layoutFontFeatureSettings": { "type": ["string", "null"], "description": "Resolved OpenType feature settings (#1934)." },
+        "layoutLetterSpacing": { "type": ["string", "null"], "description": "Resolved letter spacing in sp/em (#1934)." },
+        "layoutLineHeight": { "type": ["string", "null"], "description": "Resolved line height in sp/em (#1934)." },
         "layoutForegroundColor": { "type": ["string", "null"] },
         "layoutBackgroundColor": { "type": ["string", "null"] },
         "layoutLineCount": { "type": ["integer", "null"] },
