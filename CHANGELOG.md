@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.15.13](https://github.com/yschimke/compose-ai-tools/compare/v0.15.12...v0.15.13) (2026-06-17)
+
+
+### Features
+
+* A/B compare nominated preview variants side-by-side in CI ([#1937](https://github.com/yschimke/compose-ai-tools/issues/1937)) ([573000d](https://github.com/yschimke/compose-ai-tools/commit/573000d7c1275dd9072e504eb82876e6303ee9f0))
+* produce layout/inspector on desktop and unify modifier-token resolution ([#1941](https://github.com/yschimke/compose-ai-tools/issues/1941)) ([9351469](https://github.com/yschimke/compose-ai-tools/commit/935146920446c02fb233453da4ef8f5c0cdbfacb))
+* **renderer-desktop:** simulate Android system bars for showSystemUi ([#1930](https://github.com/yschimke/compose-ai-tools/issues/1930)) ([#1942](https://github.com/yschimke/compose-ai-tools/issues/1942)) ([8d1725f](https://github.com/yschimke/compose-ai-tools/commit/8d1725f9f32f97a1445ef56c744a58be6b468452))
+
+
+### Bug Fixes
+
+* **apply:** default cli-version to auto so the CLI tracks the pinned plugin ([#1920](https://github.com/yschimke/compose-ai-tools/issues/1920)) ([#1938](https://github.com/yschimke/compose-ai-tools/issues/1938)) ([2cf261d](https://github.com/yschimke/compose-ai-tools/commit/2cf261d1beb195d4194cc9422f699c1f0cf9ad1f))
+* **cli:** keep discovery working when a convention plugin supplies the preview plugin ([#1939](https://github.com/yschimke/compose-ai-tools/issues/1939)) ([ff6893e](https://github.com/yschimke/compose-ai-tools/commit/ff6893ee53371b40f71633a97f5bcbb6420504ac))
+
 ## [0.15.12](https://github.com/yschimke/compose-ai-tools/compare/v0.15.11...v0.15.12) (2026-06-16)
 
 
