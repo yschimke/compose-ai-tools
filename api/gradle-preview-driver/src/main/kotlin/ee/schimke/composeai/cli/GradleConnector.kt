@@ -53,6 +53,18 @@ class GradleConnection(
   val lastModelAccessFailure: GradleAccessFailure?
     get() = modelAccessFailure
 
+  private var discoveryFailures: List<ProjectDiscoveryFailure> = emptyList()
+
+  /**
+   * Per-project configuration failures recorded during the most recent [findPreviewModules] call —
+   * projects whose `ComposePreviewModel` couldn't be built and were therefore skipped. Lets callers
+   * explain an empty discovery ("3 modules failed to configure: …") instead of the bare "No preview
+   * modules discovered" that hid the real cause (issue #3). Empty when discovery succeeded for
+   * every project or hasn't run yet.
+   */
+  val lastDiscoveryFailures: List<ProjectDiscoveryFailure>
+    get() = discoveryFailures
+
   private val capturedTestFailures =
     Collections.synchronizedList(mutableListOf<CapturedTestFailure>())
 
@@ -387,9 +399,16 @@ class GradleConnection(
    * [lastModelAccessFailure] populated so callers can tell "no preview modules" from "couldn't talk
    * to Gradle." A generous timeout matches the old un-timed model query — discovery configures each
    * project, which can be slow on a cold daemon.
+   *
+   * Per-project configuration failures (a module the plugin applied to but that threw while its
+   * model was built) are recorded in [lastDiscoveryFailures] rather than silently dropped, so an
+   * empty result can be explained (issue #3).
    */
-  fun findPreviewModules(): List<PreviewModule> =
-    runBuildAction(DiscoverPreviewModulesAction(), timeoutSeconds = 300) ?: emptyList()
+  fun findPreviewModules(): List<PreviewModule> {
+    val result = runBuildAction(DiscoverPreviewModulesAction(), timeoutSeconds = 300)
+    discoveryFailures = result?.failures ?: emptyList()
+    return result?.modules ?: emptyList()
+  }
 
   /**
    * Resolve a single module by its Gradle path (colon-separated, with or without the leading `:`).

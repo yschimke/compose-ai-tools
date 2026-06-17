@@ -25,12 +25,15 @@ class GatherComposePreviewModelAction : BuildAction<AggregatedComposePreviewMode
   override fun execute(controller: BuildController): AggregatedComposePreviewModel {
     val build = controller.getModel(GradleBuild::class.java)
     val aggregated = linkedMapOf<String, SerializableModuleInfo>()
+    val failures = ArrayList<ProjectDiscoveryFailure>()
     var pluginVersion = ""
     for (project in build.projects) {
       val model =
         try {
           controller.findModel(project, ComposePreviewModel::class.java)
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+          // Record rather than silently drop so `doctor` can explain an empty result (issue #3).
+          failures.add(ProjectDiscoveryFailure(project.path, t.message ?: t.javaClass.name))
           null
         } ?: continue
       if (model.pluginVersion.isNotEmpty()) pluginVersion = model.pluginVersion
@@ -75,7 +78,7 @@ class GatherComposePreviewModelAction : BuildAction<AggregatedComposePreviewMode
           )
       }
     }
-    return AggregatedComposePreviewModel(pluginVersion, aggregated)
+    return AggregatedComposePreviewModel(pluginVersion, aggregated, failures)
   }
 
   /**
@@ -100,6 +103,13 @@ class GatherComposePreviewModelAction : BuildAction<AggregatedComposePreviewMode
 data class AggregatedComposePreviewModel(
   override val pluginVersion: String,
   override val modules: Map<String, SerializableModuleInfo>,
+  /**
+   * Per-project failures encountered while building each module's model — projects skipped because
+   * `findModel` threw. Carried alongside the (interface-defined) [modules] so `doctor` can explain
+   * an empty result instead of reporting a bare "no modules applied" (issue #3). Defaulted so older
+   * call sites / deserialization paths that don't set it still construct.
+   */
+  val failures: List<ProjectDiscoveryFailure> = emptyList(),
 ) : ComposePreviewModel, Serializable
 
 data class SerializableModuleInfo(

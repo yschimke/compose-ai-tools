@@ -315,6 +315,7 @@ abstract class Command(
         System.err.println(
           "Module '$explicitModule' not found or does not apply the compose-ai-tools plugin."
         )
+        printDiscoveryFailures(gradle.lastDiscoveryFailures)
         exitProcess(1)
       }
       return listOf(one)
@@ -332,6 +333,7 @@ abstract class Command(
         exitProcess(1)
       }
       System.err.println("No preview modules discovered in this project.")
+      printDiscoveryFailures(gradle.lastDiscoveryFailures)
       exitProcess(1)
     }
     if (verbose || modules.size > 1) {
@@ -741,6 +743,29 @@ abstract class Command(
  * disagree the CLI fails the job while the comparison tool reports nothing — a red check with no
  * comment explaining it.
  */
+/**
+ * Prints per-project discovery failures (modules skipped because building their
+ * `ComposePreviewModel` threw) to stderr. Called after a discovery comes back empty so the user
+ * sees *why* — not the bare "No preview modules discovered" that hid the cause (issue #3). The
+ * convention-plugin double-apply collision, an unresolved classpath dep, or a config-cache problem
+ * all show up here. No-op when there were no failures (a genuinely plugin-free build). Capped so a
+ * large multi-module build doesn't flood the terminal.
+ */
+internal fun printDiscoveryFailures(
+  failures: List<ProjectDiscoveryFailure>,
+  limit: Int = 10,
+  err: (String) -> Unit = System.err::println,
+) {
+  if (failures.isEmpty()) return
+  err(
+    "${failures.size} project(s) failed to configure during discovery and were skipped — " +
+      "their previews are not listed. This is the usual cause of an empty discovery when the " +
+      "render task itself works. Rerun with --verbose for full Gradle output."
+  )
+  failures.take(limit).forEach { err("  ${it.path}: ${it.message}") }
+  if (failures.size > limit) err("  … and ${failures.size - limit} more")
+}
+
 internal val NON_PNG_PREVIEW_KINDS = setOf("XR_SUBSPACE")
 
 /**

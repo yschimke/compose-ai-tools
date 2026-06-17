@@ -48,6 +48,14 @@ class GradlePreviewDriver(projectRoot: File, private val options: DriverOptions 
     get() = connection.lastModelAccessFailure
 
   /**
+   * Per-project configuration failures from the most recent [discoverModules] call — modules that
+   * were skipped because building their `ComposePreviewModel` threw. Lets consumers explain an
+   * empty discovery instead of reporting a bare "no modules" (issue #3).
+   */
+  val lastDiscoveryFailures: List<ProjectDiscoveryFailure>
+    get() = connection.lastDiscoveryFailures
+
+  /**
    * Find every subproject that applies the `ee.schimke.composeai.preview` plugin. Detection is via
    * the plugin's `ComposePreviewModel` Tooling-API model (see [DiscoverPreviewModulesAction])
    * rather than a task-graph scan, so it avoids realizing unrelated modules' tasks during discovery

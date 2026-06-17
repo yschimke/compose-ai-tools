@@ -865,4 +865,127 @@ class AutoInjectTest {
       "expected a stderr note about the disabled auto-inject path; got $warnings",
     )
   }
+
+  // --- Convention-plugin provision detection (issue #3) -----------------------------------------
+
+  /**
+   * Lays out the androidchka shape: root settings `includeBuild`s build-logic, whose build script
+   * stages the ee.schimke.composeai.preview plugin marker on its classpath.
+   */
+  private fun seedConventionPluginBuild(
+    projectRoot: File,
+    includeIn: String = "pluginManagement { includeBuild(\"build-logic\") }",
+    buildLogicScript: String =
+      "implementation(\"ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:0.15.12\")",
+  ) {
+    File(projectRoot, "settings.gradle.kts")
+      .writeText(
+        """
+        $includeIn
+        rootProject.name = "androidx-mini"
+        include(":app")
+        """
+          .trimIndent()
+      )
+    File(projectRoot, "build-logic").mkdirs()
+    File(projectRoot, "build-logic/build.gradle.kts")
+      .writeText(
+        """
+        plugins { `kotlin-dsl` }
+        dependencies {
+          $buildLogicScript
+        }
+        """
+          .trimIndent()
+      )
+  }
+
+  @Test
+  fun `includedBuildProvidesComposeAiPreviewPlugin detects convention-plugin classpath provision`() {
+    val projectRoot = tempDir()
+    seedConventionPluginBuild(projectRoot)
+    assertTrue(includedBuildProvidesComposeAiPreviewPlugin(projectRoot))
+  }
+
+  @Test
+  fun `includedBuildProvidesComposeAiPreviewPlugin is false when build-logic does not reference the plugin`() {
+    val projectRoot = tempDir()
+    // The exact shape of the existing "stays on when includeBuilds something else" test, now with a
+    // real build-logic dir on disk that genuinely doesn't supply the plugin.
+    File(projectRoot, "settings.gradle.kts")
+      .writeText("pluginManagement { includeBuild(\"build-logic\") }\ninclude(\":app\")\n")
+    File(projectRoot, "build-logic").mkdirs()
+    File(projectRoot, "build-logic/build.gradle.kts")
+      .writeText(
+        "plugins { `kotlin-dsl` }\ndependencies { implementation(\"com.gradleup.tapmoc:tapmoc-gradle-plugin:0.4.2\") }\n"
+      )
+    assertFalse(includedBuildProvidesComposeAiPreviewPlugin(projectRoot))
+  }
+
+  @Test
+  fun `includedBuildProvidesComposeAiPreviewPlugin is false with no included build at all`() {
+    val projectRoot = tempDir()
+    File(projectRoot, "settings.gradle.kts")
+      .writeText("rootProject.name = \"demo\"\ninclude(\":app\")\n")
+    assertFalse(includedBuildProvidesComposeAiPreviewPlugin(projectRoot))
+  }
+
+  @Test
+  fun `includedBuildProvidesComposeAiPreviewPlugin ignores a commented-out plugin reference`() {
+    val projectRoot = tempDir()
+    seedConventionPluginBuild(
+      projectRoot,
+      buildLogicScript =
+        "// implementation(\"ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:0.15.12\")",
+    )
+    assertFalse(
+      includedBuildProvidesComposeAiPreviewPlugin(projectRoot),
+      "a commented-out classpath dep must not count as provision",
+    )
+  }
+
+  @Test
+  fun `autoInjectInitScriptArgs disables auto-inject when a convention plugin supplies the plugin`() {
+    val storage = tempDir()
+    val projectRoot = tempDir()
+    seedConventionPluginBuild(projectRoot)
+    val warnings = mutableListOf<String>()
+    val out =
+      autoInjectInitScriptArgs(
+        args = emptyList(),
+        pluginVersion = "0.15.12",
+        storageDir = storage,
+        env = { null },
+        projectRoot = projectRoot,
+        stderr = { warnings += it },
+      )
+    assertTrue(
+      out.isEmpty(),
+      "expected no --init-script when a convention plugin supplies the plugin; got $out",
+    )
+    assertFalse(File(storage, INIT_SCRIPT_FILENAME).exists())
+    assertTrue(
+      warnings.any { it.contains("auto-inject disabled") && it.contains("convention plugin") },
+      "expected an explanatory stderr note; got $warnings",
+    )
+  }
+
+  @Test
+  fun `autoInjectInitScriptArgs stays on when build-logic is present but plugin-free`() {
+    val storage = tempDir()
+    val projectRoot = tempDir()
+    File(projectRoot, "settings.gradle.kts")
+      .writeText("pluginManagement { includeBuild(\"build-logic\") }\ninclude(\":app\")\n")
+    File(projectRoot, "build-logic").mkdirs()
+    File(projectRoot, "build-logic/build.gradle.kts").writeText("plugins { `kotlin-dsl` }\n")
+    val out =
+      autoInjectInitScriptArgs(
+        args = emptyList(),
+        pluginVersion = "0.15.12",
+        storageDir = storage,
+        env = { null },
+        projectRoot = projectRoot,
+      )
+    assertEquals(listOf("--init-script", File(storage, INIT_SCRIPT_FILENAME).absolutePath), out)
+  }
 }

@@ -533,7 +533,11 @@ internal fun defaultInitScriptStorageDir(version: String): File =
  * - `--no-auto-inject` in [args],
  * - `COMPOSE_PREVIEW_NO_AUTO_INJECT=1` in the environment,
  * - [projectRoot]'s `settings.gradle[.kts]` declares `includeBuild("gradle-plugin")` (the
- *   compose-ai-tools dev-loop layout — running the CLI against its own samples).
+ *   compose-ai-tools dev-loop layout — running the CLI against its own samples),
+ * - an `includeBuild(...)`'d build supplies the plugin on its classpath, i.e. the plugin is applied
+ *   by a convention plugin rather than per-module `plugins { id(...) version }` (see
+ *   [includedBuildProvidesComposeAiPreviewPlugin]) — auto-injecting a second copy would collide
+ *   with it and break discovery (issue #3).
  *
  * Failures (storage dir not writable, disk full) are swallowed with a stderr note and downgrade to
  * "no auto-inject" — the CLI continues with whatever the user has manually configured.
@@ -549,6 +553,14 @@ internal fun autoInjectInitScriptArgs(
   if ("--no-auto-inject" in args) return emptyList()
   if (env("COMPOSE_PREVIEW_NO_AUTO_INJECT") == "1") return emptyList()
   if (projectRoot != null && hasIncludedPluginBuild(projectRoot)) return emptyList()
+  if (projectRoot != null && includedBuildProvidesComposeAiPreviewPlugin(projectRoot)) {
+    stderr(
+      "compose-preview: auto-inject disabled — an included build supplies the " +
+        "ee.schimke.composeai.preview plugin (applied via a convention plugin). The CLI will use " +
+        "the plugin your build already applies. Pass --no-auto-inject to silence this note."
+    )
+    return emptyList()
+  }
   return try {
     val path = materializeInitScript(storageDir, pluginVersion)
     listOf("--init-script", path.absolutePath)
@@ -579,6 +591,59 @@ internal fun hasIncludedPluginBuild(
   return candidates.any {
     it.isFile && pattern.containsMatchIn(fileSystem.read(it.path.toPath()) { readUtf8() })
   }
+}
+
+/**
+ * True when the build's root `settings.gradle[.kts]` `includeBuild(...)`s a build whose own build
+ * script puts the `ee.schimke.composeai.preview` plugin on its classpath — i.e. the plugin is
+ * supplied (and typically applied) by a *convention plugin* in an included build, not declared
+ * per-module via `plugins { id("…") version "…" }`.
+ *
+ * Why this disables auto-inject (issue #3): auto-inject decides which projects already have the
+ * plugin by scanning *module* build scripts for a literal `id(...) version` / catalog-alias
+ * declaration ([scanForComposeAiPreviewDeclaration]). A convention-plugin apply is invisible to
+ * that scan, so auto-inject would inject a *second* copy of the plugin onto every project's
+ * buildscript classpath — colliding with the copy the included build already supplies ("plugin …
+ * already on the classpath with an unknown version", the #1855 class of failure). That fails
+ * per-project configuration, and since the Tooling-API discovery walk isolates per-project
+ * failures, the CLI silently comes back with zero modules even though the render task works. When
+ * the plugin is already provided this way the right move mirrors the
+ * `includeBuild("gradle-plugin")` opt-out: leave auto-inject off and let the convention plugin own
+ * the application. The `androidchka.extras`-style convention plugin (yschimke/androidchka, which
+ * `includeBuild`s `build-logic` and stages the plugin marker on its classpath) is the motivating
+ * case.
+ *
+ * Detection is deliberately narrow: we only skip when an included build *actually references the
+ * plugin coordinate*. Merely `includeBuild("build-logic")` without the plugin (the common shape)
+ * leaves auto-inject on. Same parens-required heuristic scope as [hasIncludedPluginBuild].
+ *
+ * Visible for tests.
+ */
+internal fun includedBuildProvidesComposeAiPreviewPlugin(
+  projectRoot: File,
+  fileSystem: FileSystem = SystemFileSystem,
+): Boolean {
+  val settingsFile =
+    listOf(File(projectRoot, "settings.gradle.kts"), File(projectRoot, "settings.gradle"))
+      .firstOrNull { it.isFile } ?: return false
+  val settingsText =
+    runCatching { fileSystem.read(settingsFile.path.toPath()) { readUtf8() } }.getOrNull()
+      ?: return false
+  val includeBuildRe = Regex("""includeBuild\s*\(\s*["']([^"']+)["']\s*\)""")
+  val includedDirs =
+    includeBuildRe.findAll(stripGradleComments(settingsText)).map { it.groupValues[1] }.toList()
+  if (includedDirs.isEmpty()) return false
+  val pluginRe = Regex("""ee\.schimke\.composeai\.preview""")
+  for (dir in includedDirs) {
+    val buildScript =
+      listOf(File(projectRoot, "$dir/build.gradle.kts"), File(projectRoot, "$dir/build.gradle"))
+        .firstOrNull { it.isFile } ?: continue
+    val text =
+      runCatching { fileSystem.read(buildScript.path.toPath()) { readUtf8() } }.getOrNull()
+        ?: continue
+    if (pluginRe.containsMatchIn(stripGradleComments(text))) return true
+  }
+  return false
 }
 
 /**
