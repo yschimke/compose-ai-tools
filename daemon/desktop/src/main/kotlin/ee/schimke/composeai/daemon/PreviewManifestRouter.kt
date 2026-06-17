@@ -133,7 +133,17 @@ class PreviewManifestRouter(
             // the resolved orientation. Other fields are honoured by `RenderEngine` directly.
             inbound["localeTag"]?.let { append("localeTag=").append(it).append(';') }
             inbound["fontScale"]?.let { append("fontScale=").append(it).append(';') }
-            inbound["uiMode"]?.let { append("uiMode=").append(it).append(';') }
+            // uiMode: an inbound override wins; otherwise derive from the manifest-declared
+            // `@Preview(uiMode = …)` so a night `showSystemUi` preview paints dark
+            // `SystemBarsFrame`
+            // chrome in the live daemon, matching the standalone Gradle renderer (which gets the
+            // raw
+            // uiMode arg). `RenderSpec.parseFromPayload` only understands `light`/`dark`, so map
+            // the
+            // night bit to a token; light/unset emits nothing (the daemon's default).
+            val effectiveUiMode =
+              inbound["uiMode"] ?: if ((resolved.uiMode and 0x30) == 0x20) "dark" else null
+            effectiveUiMode?.let { append("uiMode=").append(it).append(';') }
             inbound["orientation"]?.let { append("orientation=").append(it).append(';') }
             inbound["captureAdvanceMs"]?.let { append("captureAdvanceMs=").append(it).append(';') }
             inbound["inspectionMode"]?.let { append("inspectionMode=").append(it).append(';') }
@@ -208,6 +218,10 @@ class PreviewManifestRouter(
           backgroundColor = resolved.backgroundColor,
           device = resolved.device,
           showSystemUi = resolved.showSystemUi,
+          // Map the manifest night bit to the daemon's light/dark enum so interactive/recording
+          // sessions of a night `showSystemUi` preview also get dark chrome (issue #1930
+          // follow-up).
+          uiMode = if ((resolved.uiMode and 0x30) == 0x20) RenderSpec.SpecUiMode.DARK else null,
           wrapperClassName = resolved.wrapperClassName,
           kind = resolved.kind,
           assetPath = resolved.assetPath,
@@ -262,6 +276,12 @@ data class PreviewManifestEntry(
    * in the render body.
    */
   val showSystemUi: Boolean? = null,
+  /**
+   * Flat-schema mirror of `@Preview(uiMode = ...)`. Optional; when null the resolver consults the
+   * nested `params.uiMode`. Only the `UI_MODE_NIGHT_*` bits matter — drives dark `SystemBarsFrame`
+   * chrome for night `showSystemUi` previews (issue #1930 follow-up).
+   */
+  val uiMode: Int? = null,
   val outputBaseName: String? = null,
 ) {
   fun resolved(): ResolvedRenderParams {
@@ -273,6 +293,7 @@ data class PreviewManifestEntry(
     val backgroundColor = backgroundColor ?: p?.backgroundColor ?: 0L
     val device = device ?: p?.device
     val showSystemUi = showSystemUi ?: p?.showSystemUi ?: false
+    val uiMode = uiMode ?: p?.uiMode ?: 0
     val wrapperClassName = p?.wrapperClassName
     return ResolvedRenderParams(
       widthPx = widthPx,
@@ -282,6 +303,7 @@ data class PreviewManifestEntry(
       backgroundColor = backgroundColor,
       device = device,
       showSystemUi = showSystemUi,
+      uiMode = uiMode,
       outputBaseName = outputBaseName ?: id,
       wrapperClassName = wrapperClassName,
       kind = p?.kind,
@@ -315,6 +337,12 @@ data class PreviewParamsEntry(
    */
   val showSystemUi: Boolean = false,
   /**
+   * `@Preview(uiMode = ...)`. Only the `UI_MODE_NIGHT_*` bits are consumed — selects dark
+   * `SystemBarsFrame` chrome (and dark `LocalSystemTheme`) for night `showSystemUi` previews so the
+   * live daemon matches the standalone renderer instead of painting light chrome (issue #1930).
+   */
+  val uiMode: Int = 0,
+  /**
    * FQN of the `PreviewWrapperProvider` from `@PreviewWrapper(SomeProvider::class)` when the source
    * preview is annotated. Read at discovery time by `extractWrapperFqn` against the class-file
    * annotation tables (the upstream annotation has `AnnotationRetention.BINARY`, so
@@ -336,6 +364,7 @@ data class ResolvedRenderParams(
   val backgroundColor: Long,
   val device: String?,
   val showSystemUi: Boolean = false,
+  val uiMode: Int = 0,
   val outputBaseName: String,
   val wrapperClassName: String? = null,
   val kind: String? = null,
