@@ -13,6 +13,7 @@ import androidx.compose.ui.semantics.SemanticsConfiguration
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.Font
@@ -223,30 +224,30 @@ object ComposeSemanticsDataProducer {
         .singleOrNull()
         ?.let { "${it}sp" }
     // Typography is read per *drawn range*, not just the paragraph style: an `AnnotatedString`
-    // carries per-range overrides in `spanStyles`, so — like the colour extraction below — fold the
-    // paragraph style together with every span's effective style (span merged over paragraph). A
-    // node whose ranges disagree then collapses to null (omit the ambiguous value) instead of
-    // reporting the paragraph style as if the node were uniform.
+    // carries per-range overrides in `spanStyles`, so — like the colour extraction below — reason
+    // over every effective face the node draws (see `effectiveSpanStyles`).
+    // `distinct().singleOrNull`
+    // keeps the unset/`null` value of a range that doesn't specify the property: a node collapses
+    // to
+    // a field only when *every* drawn range agrees on one concrete value, so a mix of an unstyled
+    // (inherited-default) run and a styled span omits the field rather than reporting the span's
+    // value as if the node were uniform.
     val spans = results.flatMap { it.effectiveSpanStyles() }
     val fontFamily =
       spans
-        .mapNotNull { fontFamilyLabel(it.fontFamily, it.fontWeight, it.fontStyle) }
+        .map { fontFamilyLabel(it.fontFamily, it.fontWeight, it.fontStyle) }
         .distinct()
         .singleOrNull()
-    val fontWeight = spans.mapNotNull { it.fontWeight?.weight }.distinct().singleOrNull()
-    val fontStyle = spans.mapNotNull { fontStyleName(it.fontStyle) }.distinct().singleOrNull()
+    val fontWeight = spans.map { it.fontWeight?.weight }.distinct().singleOrNull()
+    val fontStyle = spans.map { fontStyleName(it.fontStyle) }.distinct().singleOrNull()
     val fontVariationSettings =
       spans
-        .mapNotNull { fontVariationLabel(it.fontFamily, it.fontWeight, it.fontStyle, density) }
+        .map { fontVariationLabel(it.fontFamily, it.fontWeight, it.fontStyle, density) }
         .distinct()
         .singleOrNull()
     val fontFeatureSettings =
-      spans
-        .mapNotNull { it.fontFeatureSettings?.takeIf(String::isNotBlank) }
-        .distinct()
-        .singleOrNull()
-    val letterSpacing =
-      spans.mapNotNull { it.letterSpacing.toWireTextUnit() }.distinct().singleOrNull()
+      spans.map { it.fontFeatureSettings?.takeIf(String::isNotBlank) }.distinct().singleOrNull()
+    val letterSpacing = spans.map { it.letterSpacing.toWireTextUnit() }.distinct().singleOrNull()
     // Line height is a paragraph-level property (not carried on `SpanStyle`), so read it per
     // result.
     val lineHeight =
@@ -294,19 +295,35 @@ object ComposeSemanticsDataProducer {
   }
 
   /**
-   * The effective [SpanStyle]s drawn by this result: the paragraph style (covering ranges no span
-   * overrides) plus each `spanStyle` merged over the paragraph (so a span that sets only, say,
-   * `fontWeight` still inherits the paragraph family). Lets the typography extraction reason about
-   * every face actually drawn, not just the paragraph default (issue #1934).
+   * The effective [SpanStyle]s drawn by this result: each `spanStyle` merged over the paragraph (so
+   * a span that sets only, say, `fontWeight` still inherits the paragraph family), plus the bare
+   * paragraph style **iff** some of the text is not covered by a span. An uncovered run draws at
+   * the (possibly unspecified) paragraph style, which is a distinct face from any span override and
+   * must register as ambiguity (issue #1934); but when spans tile the whole string the paragraph
+   * base draws nothing, so including it would invent a phantom face and wrongly flag a uniform node
+   * as mixed. Lets the typography extraction reason about every face actually drawn.
    */
   private fun TextLayoutResult.effectiveSpanStyles(): List<SpanStyle> {
     val paragraph = layoutInput.style.toSpanStyle()
-    val spanStyles = layoutInput.text.spanStyles
+    val annotated = layoutInput.text
+    val spanStyles = annotated.spanStyles
     if (spanStyles.isEmpty()) return listOf(paragraph)
-    return buildList {
-      add(paragraph)
-      spanStyles.forEach { add(paragraph.merge(it.item)) }
+    val merged = spanStyles.map { paragraph.merge(it.item) }
+    return if (spanStyles.coverAll(annotated.text.length)) merged else listOf(paragraph) + merged
+  }
+
+  /** Whether [spans] tile `[0, length)` with no gap — i.e. every glyph is covered by some span. */
+  private fun List<AnnotatedString.Range<SpanStyle>>.coverAll(length: Int): Boolean {
+    if (length <= 0) return true
+    var covered = 0
+    for (range in sortedBy { it.start }) {
+      val start = range.start.coerceIn(0, length)
+      val end = range.end.coerceIn(0, length)
+      if (start > covered) return false
+      if (end > covered) covered = end
+      if (covered >= length) return true
     }
+    return covered >= length
   }
 
   private fun TextLayoutResult.textColors(): List<Color> = buildList {

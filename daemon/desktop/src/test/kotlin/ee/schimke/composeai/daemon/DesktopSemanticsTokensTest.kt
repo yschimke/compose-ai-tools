@@ -259,6 +259,30 @@ class DesktopSemanticsTokensTest {
   }
 
   @Test
+  fun unstyled_run_plus_styled_span_omits_weight() {
+    // #1935 (review): when a run is left *unstyled* (drawing at the inherited default weight) and a
+    // span overrides only part to bold, the node draws mixed weights. The unstyled run must count
+    // as
+    // ambiguity, so the weight is omitted rather than reporting the span's 700 as uniform.
+    val root = buildTree {
+      Text(
+        buildAnnotatedString {
+          append("normal ")
+          withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("bold") }
+        },
+        modifier = Modifier.testTag("partial"),
+      )
+    }
+
+    val node = root.find("partial")
+    assertNotNull(node)
+    assertNull(
+      "an unstyled run + a bold span draws mixed weights, so weight must be omitted",
+      node!!.layoutFontWeight,
+    )
+  }
+
+  @Test
   fun text_omits_typographic_identity_when_inherited() {
     // Plain text with no explicit typography inherits an empty TextStyle — the identity fields must
     // stay null rather than emit defaults, so the projection carries signal only (#1934).
