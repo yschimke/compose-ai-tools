@@ -18,7 +18,14 @@ object ComposeSemanticsProduct {
 
 object LayoutInspectorProduct {
   const val KIND: String = "layout/inspector"
-  const val SCHEMA_VERSION: Int = 1
+  // v2 (#1903): each node may carry resolved design `tokens` — the modifier-derived
+  // `{backgroundColor, borderColor, cornerRadius, shape, gap, padding}` projection. This is the
+  // *canonical* home for those tokens: they come from modifiers, which `layout/inspector` already
+  // models, and the kind now ships on desktop too (the gap #1897 worked around by mirroring them
+  // onto `compose/semantics`). They stay mirrored on `compose/semantics` for the design-parity
+  // consumer; both products feed the same `ModifierTokenResolver`. Additive — older
+  // `layout-inspector.json` parses with `tokens = null`.
+  const val SCHEMA_VERSION: Int = 2
   const val FILE: String = "layout-inspector.json"
 }
 
@@ -152,6 +159,14 @@ data class LayoutInspectorNode(
   val attached: Boolean = true,
   val zIndex: Float? = null,
   val modifiers: List<LayoutInspectorModifier> = emptyList(),
+  /**
+   * Resolved design tokens for this node, derived from its [modifiers] + measure policy by the
+   * shared `ModifierTokenResolver` (issue #1903). `layout/inspector` is the canonical home for
+   * these — they are modifier-derived, and this product already models the modifier chain — while
+   * `compose/semantics` mirrors the same object (via the same resolver) for the design-parity
+   * consumer. Null for the common case of a node that declares none of them (pure layout nodes).
+   */
+  val tokens: ComposeSemanticsTokens? = null,
   val children: List<LayoutInspectorNode> = emptyList(),
 )
 

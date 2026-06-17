@@ -278,7 +278,7 @@ A `data/fetch` that needs a re-render:
 | `a11y/hierarchy` | a11y | low | `AccessibilityNode[]` (label, role, states, bounds). Each node also carries a stable, content-independent `ref` (assigned by `AccessibilityRefs` — role-anchored, disambiguated by occurrence index), the a11y analogue of `compose/semantics`' `ref` (#1784). Additive — `schemaVersion` stays 1; older `accessibility.json` parses with `ref = null`. |
 | `a11y/overlay` | a11y | low | Path to annotated PNG. Pure-image. |
 | `a11y/touchTargets` | a11y | low | 48dp + overlap detection. |
-| `layout/inspector` | default | low | Compose layout/component hierarchy with bounds, constraints, modifiers, source refs. |
+| `layout/inspector` | default | low | Compose layout/component hierarchy with bounds, constraints, modifiers, source refs. schemaVersion 2 adds per-node `tokens` — the resolved modifier-derived design tokens (`backgroundColor`, `borderColor`, `cornerRadius`, `shape`, `gap`, `padding`). This is the **canonical** home for those tokens (they come from modifiers, which this product already models); `compose/semantics` mirrors the same object, and both compute it via the shared `ModifierTokenResolver` (#1903). Additive — older files parse with `tokens = null`. |
 | `compose/semantics` | default | low | SemanticsNode projection — testTag, role, mergeMode, bounds. Each node also carries a stable, content-independent `ref` (assigned by `SemanticsRefs`) used for ref/testTag/role targeting (#1784) and as the match key for the semantics text diff (#1785). schemaVersion 3 adds per-node `tokens` — resolved container design tokens (`backgroundColor`, `cornerRadius`, `padding`) read off the node's `Modifier.background` / `clip` / `border` / `padding`, so design-parity's token-compliance check can populate `actual` for colour/spacing/radius instead of degrading to "missing from candidate" (#1897). Additive — nodes that declare none omit `tokens`, older files parse with `tokens = null`. |
 | `compose/semantics-wireframe` | default | low | Standalone 2D wireframe of the semantics tree, derived from the same captured root. SVG primary (path); baked PNG rides as a `png` extra. Depth-cycled stroke hue, accent fill/stroke for clickable stops, dashed stroke for `clearAndSet`, top-left labels. |
 | `compose/spatial-semantics` | default | low | Unified **3D-over-2D** semantics tree (`SpatialSemanticsTree`): the subspace layout with each panel carrying its 2D `compose/semantics` tree. Ordinary previews emit the degenerate single-panel case (one `panel` at identity pose); XR previews emit the real multi-panel layout. The accessibility/structure view of [SPATIAL_SEMANTICS_TREE.md](../design/SPATIAL_SEMANTICS_TREE.md) / [XR_A11Y.md](../design/xr-spatial/XR_A11Y.md). |
@@ -294,6 +294,35 @@ A `data/fetch` that needs a re-render:
 | `fonts/used` | default | low | Font families with weight/style fallback chain. |
 | `history/diff/regions` | default | low | Per-pixel bbox of changed regions vs. another history entry. |
 | `test/failure` | failed render | low | Postmortem bundle: phase, error type/message/stack, fallback fields for what's not yet captured. Fetch-only after `renderFailed`. |
+
+### Where design tokens live (issue #1903)
+
+`#1897` resolved each node's modifier-derived design tokens (`backgroundColor`,
+`borderColor`, `cornerRadius`, `shape`, `gap`, `padding`) and put them on
+`compose/semantics` as a pragmatic choice — `layout/inspector`, the product that
+actually models per-node modifiers, wasn't produced on desktop, and `#1897` was
+a desktop-backend change. `#1903` closes that gap, so the home question is now
+settled:
+
+- **One resolver.** The modifier → token projection lives in a single
+  [`ModifierTokenResolver`](../../data/layoutinspector/connector/src/main/kotlin/ee/schimke/composeai/daemon/ModifierTokenResolver.kt).
+  Both products feed it their per-node inputs (modifier chain, measure policy,
+  measured size, density) instead of each re-walking `getModifierInfo()` with a
+  private copy of the logic.
+- **Canonical home: `layout/inspector`.** Tokens are modifier-derived and
+  `layout/inspector` already carries the modifier chain, so its per-node
+  `tokens` is the canonical surface. It now ships on **both** backends.
+- **Mirror on `compose/semantics`.** The same `tokens` object stays mirrored on
+  the semantics node for the design-parity token-compliance consumer, which
+  reads `*.semantics.json` and already maps `layoutForegroundColor` →
+  `onSurface`. Keeping the mirror means that contract is untouched (the `#1903`
+  non-goal). Both surfaces are byte-identical because they share the resolver.
+- **`layout*` text fields stay on `compose/semantics`.** `layoutForegroundColor`
+  / `layoutFontSize` / `layoutLineCount` / … are **not** modifier-derived: they
+  come from the `GetTextLayoutResult` *semantics action*, so they belong with
+  the text-bearing semantics node rather than the layout tree. That keeps them
+  distinct from the (modifier-derived) container `tokens`, and leaves the
+  design-parity consumer that reads them unchanged.
 
 ## Per-backend support matrix (issue #1201)
 
@@ -311,7 +340,7 @@ Which `kind` strings each backend's `extensions/list` advertises and serves thro
 | `compose/recomposition` | ✅ producer | ✅ producer | Compose-runtime observer install on both backends (desktop in-process; Android via the in-sandbox bridge). schemaVersion 2 adds the per-scope `reason` (#1605), derived symmetrically from `onScopeInvalidated`. |
 | `displayfilter/variants` | ✅ | ✅ | Both backends, gated on `composeai.displayfilter.filters`. Producer is pure `BufferedImage` post-capture. |
 | `fonts/used` | ✅ producer | 📁 registry-only | Android: `GoogleFontInterceptor` + Typeface accounting. Desktop: registry returns `NotAvailable` until a Skia-side font producer ports. |
-| `compose/semantics` / `layout/inspector` | ✅ producer | 📁 registry-only | Android producer reads the Robolectric semantics tree. Desktop registry serves the file once a CMP-portable producer driving `LocalView` / `SemanticsOwner` lands. |
+| `compose/semantics` / `layout/inspector` | ✅ producer | ✅ producer | Android producer reads the Robolectric semantics tree. Desktop drives both from the held `ImageComposeScene`'s `semanticsOwners` unmerged root after `scene.render()`: `compose/semantics` via `ComposeSemanticsDataProducer` (#1885 follow-up), `layout/inspector` via the CMP-portable `LayoutInspectorDataProducer.writeArtifacts(root, slotTables, density)` overload — `ComposeLayoutInspector` reflects the `LayoutNode` reachable from the semantics root identically on both backends (#1903). |
 | `compose/semantics-wireframe` | ✅ producer | ✅ producer | Android via the always-on post-capture extension; desktop via the `RenderEngine` block that reads `ImageComposeScene.semanticsOwners`' unmerged root (the CMP-portable `SemanticsOwner` read the `compose/semantics` row is still waiting on). SVG is backend-agnostic; the PNG is baked by `AndroidSemanticsWireframe` / `DesktopSemanticsWireframe`. |
 | `compose/spatial-semantics` | ✅ producer | ✅ producer | Degenerate single-panel tree from the same captured root, alongside the wireframe (Android post-capture extension / desktop `RenderEngine` block). The real multi-panel XR tree is written separately by the `:renderer-xr` batch render task (`SubspaceSceneRecorder.recordTree`). Both write `compose-spatial-semantics.json`. |
 | `text/strings` | ✅ producer | 📁 registry-only | Synthesised from `compose/semantics`; ports along with that kind. |
@@ -397,7 +426,7 @@ Compose runtime, daemon, or AndroidX:
 | `fonts/used` | `:data-fonts-core` | `FontsUsedPayload`, `FontUsedEntry` |
 | `history/diff/regions` | `:data-history-core` | `HistoryDiffPayload`, `HistoryDiffRegion` |
 | `i18n/translations` | `:data-strings-core` | `I18nTranslationsPayload`, `I18nVisibleString` |
-| `layout/inspector` | `:data-layoutinspector-core` | `LayoutInspectorPayload`, `LayoutInspectorNode` |
+| `layout/inspector` | `:data-layoutinspector-core` | `LayoutInspectorPayload`, `LayoutInspectorNode` (carries resolved `tokens`: `ComposeSemanticsTokens`, the canonical modifier-derived projection) |
 | _(pseudolocale, no payload)_ | `:data-pseudolocale-core` | `Pseudolocale`, `Pseudolocalizer` |
 | `resources/used` | `:data-resources-core` | `ResourcesUsedPayload`, `ResourceUsedReference` |
 | `text/strings` | `:data-strings-core` | `TextStringsPayload`, `TextStringEntry` |
