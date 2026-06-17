@@ -193,15 +193,16 @@ class DesktopSemanticsTokensTest {
 
   @Test
   fun resolves_text_typography_identity() {
-    // #1934: a text node must surface *which face* it's drawn in — family, weight, style — plus
-    // letter spacing and line height, not just `layoutFontSize`. `FontFamily.Monospace` is a
-    // GenericFontFamily, so its stable declared name (`"monospace"`) is what's emitted.
+    // #1934: a text node must surface *which face* it's drawn in — size, family, weight, style,
+    // letter spacing, line height — all under the `typography` object (size folded in by #1903).
+    // `FontFamily.Monospace` is a GenericFontFamily, so its stable declared name is what's emitted.
     val root = buildTree {
       Text(
         "Heading",
         modifier = Modifier.testTag("h"),
         style =
           TextStyle(
+            fontSize = 18.sp,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Bold,
             fontStyle = FontStyle.Italic,
@@ -215,7 +216,8 @@ class DesktopSemanticsTokensTest {
     assertNotNull("expected a node tagged 'h'", node)
     val typography = node!!.typography
     assertNotNull("text node must carry a typography object", typography)
-    assertEquals("monospace", typography!!.fontFamily)
+    assertEquals("18.0sp", typography!!.fontSize)
+    assertEquals("monospace", typography.fontFamily)
     assertEquals(700, typography.fontWeight)
     assertEquals("italic", typography.fontStyle)
     assertEquals("0.5sp", typography.letterSpacing)

@@ -122,16 +122,9 @@ object ComposeSemanticsDataProducer {
       label = cfg.label(),
       text = cfg.renderedText(),
       layoutText = layout?.text,
-      layoutFontSize = layout?.fontSize,
       typography = layout?.typography(),
-      layoutForegroundColor = layout?.foregroundColor,
-      layoutBackgroundColor = layout?.backgroundColor,
-      layoutLineCount = layout?.lineCount,
-      layoutMaxLines = layout?.maxLines,
-      layoutOverflow = layout?.overflow,
-      layoutTruncated = layout?.truncated,
-      layoutDidOverflowWidth = layout?.didOverflowWidth,
-      layoutDidOverflowHeight = layout?.didOverflowHeight,
+      textColor = layout?.textColor(),
+      textOverflow = layout?.textOverflow(),
       editableText = cfg.getOrNull(SemanticsProperties.EditableText)?.text,
       inputText = cfg.getOrNull(SemanticsProperties.InputText)?.text,
       role = cfg.getOrNull(SemanticsProperties.Role)?.toString(),
@@ -484,12 +477,13 @@ object ComposeSemanticsDataProducer {
 
   /**
    * Groups the resolved typographic identity into the wire [ComposeSemanticsTypography] object
-   * (issue #1934), or null when the node declares nothing typographic — so a node omits
+   * (issues #1934, #1903), or null when the node declares nothing typographic — so a node omits
    * `typography` entirely rather than carrying an all-null object, mirroring how `tokens` behaves.
    */
   private fun LayoutTextDetails.typography(): ComposeSemanticsTypography? =
     if (
-      fontFamily == null &&
+      fontSize == null &&
+        fontFamily == null &&
         fontWeight == null &&
         fontStyle == null &&
         fontVariationSettings == null &&
@@ -500,6 +494,7 @@ object ComposeSemanticsDataProducer {
       null
     else
       ComposeSemanticsTypography(
+        fontSize = fontSize,
         fontFamily = fontFamily,
         fontWeight = fontWeight,
         fontStyle = fontStyle,
@@ -507,6 +502,32 @@ object ComposeSemanticsDataProducer {
         fontFeatureSettings = fontFeatureSettings,
         letterSpacing = letterSpacing,
         lineHeight = lineHeight,
+      )
+
+  /** Groups the resolved text colours (issue #1903), or null when the node resolves none. */
+  private fun LayoutTextDetails.textColor(): ComposeSemanticsTextColor? =
+    if (foregroundColor == null && backgroundColor == null) null
+    else ComposeSemanticsTextColor(foreground = foregroundColor, background = backgroundColor)
+
+  /** Groups the resolved line/overflow metrics (issue #1903), or null when the node has none. */
+  private fun LayoutTextDetails.textOverflow(): ComposeSemanticsTextOverflow? =
+    if (
+      lineCount == null &&
+        maxLines == null &&
+        overflow == null &&
+        truncated == null &&
+        didOverflowWidth == null &&
+        didOverflowHeight == null
+    )
+      null
+    else
+      ComposeSemanticsTextOverflow(
+        lineCount = lineCount,
+        maxLines = maxLines,
+        overflow = overflow,
+        truncated = truncated,
+        didOverflowWidth = didOverflowWidth,
+        didOverflowHeight = didOverflowHeight,
       )
 
   private fun androidx.compose.ui.geometry.Rect.toWireBounds(): String =
@@ -570,6 +591,12 @@ typealias ComposeSemanticsTokens = ee.schimke.composeai.data.layoutinspector.Com
 
 typealias ComposeSemanticsTypography =
   ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTypography
+
+typealias ComposeSemanticsTextColor =
+  ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTextColor
+
+typealias ComposeSemanticsTextOverflow =
+  ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTextOverflow
 
 typealias ComposeSemanticsInsets = ee.schimke.composeai.data.layoutinspector.ComposeSemanticsInsets
 

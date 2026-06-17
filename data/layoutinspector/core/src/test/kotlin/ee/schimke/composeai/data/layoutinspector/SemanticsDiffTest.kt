@@ -24,7 +24,7 @@ class SemanticsDiffTest {
       text = text,
       label = label,
       clickable = clickable,
-      layoutTruncated = layoutTruncated,
+      textOverflow = layoutTruncated?.let { ComposeSemanticsTextOverflow(truncated = it) },
       children = children,
     )
 
