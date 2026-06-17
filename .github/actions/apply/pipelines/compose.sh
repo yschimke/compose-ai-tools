@@ -76,6 +76,17 @@ fi
 
 set -e
 
+# Optional A/B comparison config. When present (default
+# `.github/preview-abtest.json`, overridable via the action's `ab-config`
+# input → AB_CONFIG env), nominated variant groups render side-by-side in the
+# gallery / PR comment. Absent file = no A/B groups, purely additive.
+AB_CONFIG="${AB_CONFIG:-.github/preview-abtest.json}"
+AB_ARGS=()
+if [ -n "$AB_CONFIG" ] && [ -f "$AB_CONFIG" ]; then
+  AB_ARGS=(--ab-config "$AB_CONFIG")
+  echo "compose pipeline: A/B comparison config found at $AB_CONFIG."
+fi
+
 if [ "$MODE" = "baseline" ]; then
   # Fetch prior baselines so per-preview flakes don't drop entries.
   mkdir -p _prior_baselines
@@ -95,7 +106,8 @@ if [ "$MODE" = "baseline" ]; then
     --repo "$REPO" \
     --branch "$BASELINE_BRANCH" \
     --prior-baselines _prior_baselines/baselines.json \
-    --prior-renders _prior_baselines/renders
+    --prior-renders _prior_baselines/renders \
+    "${AB_ARGS[@]}"
 
   # Stage the push commit MSG into the staging dir for the post-wait step.
   echo "Update preview baselines from ${GITHUB_SHA::8}" > _baselines/_push_msg

@@ -533,7 +533,11 @@ internal fun defaultInitScriptStorageDir(version: String): File =
  * - `--no-auto-inject` in [args],
  * - `COMPOSE_PREVIEW_NO_AUTO_INJECT=1` in the environment,
  * - [projectRoot]'s `settings.gradle[.kts]` declares `includeBuild("gradle-plugin")` (the
- *   compose-ai-tools dev-loop layout — running the CLI against its own samples).
+ *   compose-ai-tools dev-loop layout — running the CLI against its own samples),
+ * - an `includeBuild(...)`'d build supplies the plugin on its classpath, i.e. the plugin is applied
+ *   by a convention plugin rather than per-module `plugins { id(...) version }` (see
+ *   [includedBuildProvidesComposeAiPreviewPlugin]) — auto-injecting a second copy would collide
+ *   with it and break discovery (issue #3).
  *
  * Failures (storage dir not writable, disk full) are swallowed with a stderr note and downgrade to
  * "no auto-inject" — the CLI continues with whatever the user has manually configured.
@@ -549,6 +553,14 @@ internal fun autoInjectInitScriptArgs(
   if ("--no-auto-inject" in args) return emptyList()
   if (env("COMPOSE_PREVIEW_NO_AUTO_INJECT") == "1") return emptyList()
   if (projectRoot != null && hasIncludedPluginBuild(projectRoot)) return emptyList()
+  if (projectRoot != null && includedBuildProvidesComposeAiPreviewPlugin(projectRoot)) {
+    stderr(
+      "compose-preview: auto-inject disabled — an included build supplies the " +
+        "ee.schimke.composeai.preview plugin (applied via a convention plugin). The CLI will use " +
+        "the plugin your build already applies. Pass --no-auto-inject to silence this note."
+    )
+    return emptyList()
+  }
   return try {
     val path = materializeInitScript(storageDir, pluginVersion)
     listOf("--init-script", path.absolutePath)
@@ -579,6 +591,96 @@ internal fun hasIncludedPluginBuild(
   return candidates.any {
     it.isFile && pattern.containsMatchIn(fileSystem.read(it.path.toPath()) { readUtf8() })
   }
+}
+
+/**
+ * True when the build's root `settings.gradle[.kts]` `includeBuild(...)`s a build whose own build
+ * script puts the `ee.schimke.composeai.preview` plugin on its classpath — i.e. the plugin is
+ * supplied (and typically applied) by a *convention plugin* in an included build, not declared
+ * per-module via `plugins { id("…") version "…" }`.
+ *
+ * Why this disables auto-inject (issue #3): auto-inject decides which projects already have the
+ * plugin by scanning *module* build scripts for a literal `id(...) version` / catalog-alias
+ * declaration ([scanForComposeAiPreviewDeclaration]). A convention-plugin apply is invisible to
+ * that scan, so auto-inject would inject a *second* copy of the plugin onto every project's
+ * buildscript classpath — colliding with the copy the included build already supplies ("plugin …
+ * already on the classpath with an unknown version", the #1855 class of failure). That fails
+ * per-project configuration, and since the Tooling-API discovery walk isolates per-project
+ * failures, the CLI silently comes back with zero modules even though the render task works. When
+ * the plugin is already provided this way the right move mirrors the
+ * `includeBuild("gradle-plugin")` opt-out: leave auto-inject off and let the convention plugin own
+ * the application. The `androidchka.extras`-style convention plugin (yschimke/androidchka, which
+ * `includeBuild`s `build-logic` and stages the plugin marker on its classpath) is the motivating
+ * case.
+ *
+ * Detection is deliberately narrow: we only skip when an included build *actually references the
+ * plugin coordinate*. Merely `includeBuild("build-logic")` without the plugin (the common shape)
+ * leaves auto-inject on. Same parens-required heuristic scope as [hasIncludedPluginBuild].
+ *
+ * The scan is recursive across each included build, not just its root build script: a multi-project
+ * convention build commonly declares the plugin dependency in a subproject
+ * (`build-logic/conventions/build.gradle.kts`) rather than the root (PR #1939 review). We walk
+ * every `build.gradle[.kts]` under the included build, pruning generated/output trees (`build/`,
+ * `.gradle/`, …) and bounding the traversal so a pathological tree can't stall the CLI.
+ *
+ * Visible for tests.
+ */
+internal fun includedBuildProvidesComposeAiPreviewPlugin(
+  projectRoot: File,
+  fileSystem: FileSystem = SystemFileSystem,
+): Boolean {
+  val settingsFile =
+    listOf(File(projectRoot, "settings.gradle.kts"), File(projectRoot, "settings.gradle"))
+      .firstOrNull { it.isFile } ?: return false
+  val settingsText =
+    runCatching { fileSystem.read(settingsFile.path.toPath()) { readUtf8() } }.getOrNull()
+      ?: return false
+  val includeBuildRe = Regex("""includeBuild\s*\(\s*["']([^"']+)["']\s*\)""")
+  val includedDirs =
+    includeBuildRe.findAll(stripGradleComments(settingsText)).map { it.groupValues[1] }.toList()
+  if (includedDirs.isEmpty()) return false
+  return includedDirs.any { dir ->
+    buildScriptsReferenceComposeAiPreview(File(projectRoot, dir), fileSystem)
+  }
+}
+
+/**
+ * Directory names never worth descending into when scanning an included build for build scripts.
+ */
+private val COMPOSE_AI_PREVIEW_SCAN_SKIP_DIRS =
+  setOf("build", ".gradle", ".git", ".idea", "node_modules")
+
+/**
+ * Walks [buildDir] for any `build.gradle[.kts]` whose (comment-stripped) text references the
+ * `ee.schimke.composeai.preview` coordinate. Iterative DFS over [fileSystem] that prunes
+ * generated/output dirs and caps the number of directories visited so it stays cheap on large or
+ * adversarial trees. Used only by [includedBuildProvidesComposeAiPreviewPlugin].
+ */
+private fun buildScriptsReferenceComposeAiPreview(
+  buildDir: File,
+  fileSystem: FileSystem,
+  maxDirs: Int = 500,
+): Boolean {
+  val coordinate = Regex("""ee\.schimke\.composeai\.preview""")
+  val root = buildDir.path.toPath()
+  if (fileSystem.metadataOrNull(root)?.isDirectory != true) return false
+  val stack = ArrayDeque<okio.Path>().apply { addLast(root) }
+  var visited = 0
+  while (stack.isNotEmpty() && visited < maxDirs) {
+    val current = stack.removeLast()
+    visited++
+    val entries = runCatching { fileSystem.list(current) }.getOrNull() ?: continue
+    for (entry in entries) {
+      val metadata = runCatching { fileSystem.metadataOrNull(entry) }.getOrNull()
+      if (metadata?.isDirectory == true) {
+        if (entry.name !in COMPOSE_AI_PREVIEW_SCAN_SKIP_DIRS) stack.addLast(entry)
+      } else if (entry.name == "build.gradle.kts" || entry.name == "build.gradle") {
+        val text = runCatching { fileSystem.read(entry) { readUtf8() } }.getOrNull() ?: continue
+        if (coordinate.containsMatchIn(stripGradleComments(text))) return true
+      }
+    }
+  }
+  return false
 }
 
 /**

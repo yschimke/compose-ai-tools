@@ -7,6 +7,13 @@ description: >
 
 inputs:
   cli-version:
+    # Stays 'latest', not 'auto': this shim forwards to a *pinned, released*
+    # apply ref (`apply@vX` below, bumped by release-please), which may predate
+    # the `auto` resolver and would pass `auto` straight to install as a literal
+    # version (→ 404 on `vauto/...tar.gz`). The released apply still carries the
+    # #1920 skew guardrail, so pinned-plugin consumers get a fail-fast message
+    # rather than a silent break. New consumers should call `apply` directly,
+    # where `auto` is the default.
     default: 'latest'
   catalog-path:
     default: 'gradle/libs.versions.toml'

@@ -410,15 +410,32 @@ class DoctorCommand(
     }
 
     if (model.modules.isEmpty()) {
+      // Per-project model-build failures are the usual reason discovery comes back empty while the
+      // render task works (issue #3) — surface them so the user isn't left guessing.
+      val failureDetail =
+        model.failures
+          .takeIf { it.isNotEmpty() }
+          ?.let { fs ->
+            "${fs.size} project(s) failed to configure during discovery and were skipped: " +
+              fs.take(10).joinToString("; ") { "${it.path}: ${it.message}" } +
+              if (fs.size > 10) " (… and ${fs.size - 10} more)" else ""
+          }
       addCheck(
         DoctorCheck(
           id = "project.plugin-applied",
           category = "project",
           status = "error",
           message = "no modules have the compose-preview plugin applied",
+          detail = failureDetail,
           remediation =
             DoctorRemediation(
-              summary = "Apply the plugin in your module's `plugins { }` block.",
+              summary =
+                if (failureDetail != null)
+                  "Projects failed to configure during discovery — rerun with --verbose for full " +
+                    "Gradle output. If the plugin is applied via a convention plugin, the CLI now " +
+                    "skips auto-inject automatically; otherwise apply it in your module's " +
+                    "`plugins { }` block."
+                else "Apply the plugin in your module's `plugins { }` block.",
               commands =
                 listOf(
                   "id(\"ee.schimke.composeai.preview\") version \"$recommendedPluginVersion\""

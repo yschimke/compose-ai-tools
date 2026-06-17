@@ -134,10 +134,11 @@ class DiscoverPreviewModulesActionTest {
         }
       }
 
-    val modules = DiscoverPreviewModulesAction().execute(controller)
+    val result = DiscoverPreviewModulesAction().execute(controller)
 
-    assertEquals(listOf("ui"), modules.map { it.gradlePath })
-    assertEquals(File("/tmp/root/ui"), modules.single().projectDir)
+    assertEquals(listOf("ui"), result.modules.map { it.gradlePath })
+    assertEquals(File("/tmp/root/ui"), result.modules.single().projectDir)
+    assertTrue(result.failures.isEmpty(), "no module threw; got ${result.failures}")
   }
 
   @Test
@@ -154,9 +155,17 @@ class DiscoverPreviewModulesActionTest {
         }
       }
 
-    val modules = DiscoverPreviewModulesAction().execute(controller)
+    val result = DiscoverPreviewModulesAction().execute(controller)
 
-    assertEquals(listOf("ui"), modules.map { it.gradlePath })
+    assertEquals(listOf("ui"), result.modules.map { it.gradlePath })
+    // The poisoned module is no longer dropped silently — its failure is recorded so the CLI can
+    // surface it (issue #3).
+    assertTrue(
+      result.failures.any {
+        it.path == ":native-cli" && it.message.contains("toolchain download blocked")
+      },
+      "expected the poisoned module's failure to be recorded; got ${result.failures}",
+    )
   }
 
   @Test
@@ -164,8 +173,8 @@ class DiscoverPreviewModulesActionTest {
     val root = project(":", File("/tmp/root"))
     val controller = controller(build(listOf(root))) { model(":") }
 
-    val modules = DiscoverPreviewModulesAction().execute(controller)
+    val result = DiscoverPreviewModulesAction().execute(controller)
 
-    assertTrue(modules.isEmpty())
+    assertTrue(result.modules.isEmpty())
   }
 }

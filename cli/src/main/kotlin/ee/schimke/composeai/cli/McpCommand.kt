@@ -147,6 +147,7 @@ internal class McpCommand(
           if (moduleFilter.isEmpty()) "no modules apply the compose-preview plugin"
           else "none of --module ${moduleFilter.joinToString(",")} apply the plugin"
         System.err.println("compose-preview mcp install: $msg")
+        printDiscoveryFailures(driver.lastDiscoveryFailures)
         exitProcess(2)
       }
 
@@ -377,6 +378,7 @@ internal class McpCommand(
 
       if (modules.isEmpty()) {
         System.err.println("compose-preview mcp doctor: no matching modules apply the plugin")
+        printDiscoveryFailures(driver.lastDiscoveryFailures)
         exitProcess(2)
       }
 
