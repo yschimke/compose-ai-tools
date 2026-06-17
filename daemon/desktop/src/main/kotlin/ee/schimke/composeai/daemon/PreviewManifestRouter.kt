@@ -123,6 +123,10 @@ class PreviewManifestRouter(
             effectiveDevice
               ?.takeIf { it.isNotBlank() }
               ?.let { append("device=").append(it).append(';') }
+            // `@Preview(showSystemUi = ...)` (issue #1930) — forwarded so the render body wraps the
+            // composition in the synthetic `SystemBarsFrame`. Only emitted when set; absent keeps
+            // the chrome-less default.
+            if (resolved.showSystemUi) append("showSystemUi=true;")
             // PROTOCOL.md § 5 (`renderNow.overrides`) — locale / fontScale / uiMode / orientation
             // pass straight through. `orientation = landscape` is applied above as a swap of the
             // forwarded widthPx/heightPx; the token still rides along so downstream consumers see
@@ -203,6 +207,7 @@ class PreviewManifestRouter(
           showBackground = resolved.showBackground,
           backgroundColor = resolved.backgroundColor,
           device = resolved.device,
+          showSystemUi = resolved.showSystemUi,
           wrapperClassName = resolved.wrapperClassName,
           kind = resolved.kind,
           assetPath = resolved.assetPath,
@@ -251,6 +256,12 @@ data class PreviewManifestEntry(
    * qualifier; the desktop path ignores it (no circular crop on JVM rendering).
    */
   val device: String? = null,
+  /**
+   * Flat-schema mirror of `@Preview(showSystemUi = ...)` (issue #1930). Optional; when null the
+   * resolver consults the nested `params.showSystemUi`. Drives the synthetic `SystemBarsFrame` wrap
+   * in the render body.
+   */
+  val showSystemUi: Boolean? = null,
   val outputBaseName: String? = null,
 ) {
   fun resolved(): ResolvedRenderParams {
@@ -261,6 +272,7 @@ data class PreviewManifestEntry(
     val showBackground = showBackground ?: p?.showBackground ?: true
     val backgroundColor = backgroundColor ?: p?.backgroundColor ?: 0L
     val device = device ?: p?.device
+    val showSystemUi = showSystemUi ?: p?.showSystemUi ?: false
     val wrapperClassName = p?.wrapperClassName
     return ResolvedRenderParams(
       widthPx = widthPx,
@@ -269,6 +281,7 @@ data class PreviewManifestEntry(
       showBackground = showBackground,
       backgroundColor = backgroundColor,
       device = device,
+      showSystemUi = showSystemUi,
       outputBaseName = outputBaseName ?: id,
       wrapperClassName = wrapperClassName,
       kind = p?.kind,
@@ -296,6 +309,12 @@ data class PreviewParamsEntry(
   /** For `kind="LOTTIE"`: the classpath-relative Lottie asset path. */
   val assetPath: String? = null,
   /**
+   * `@Preview(showSystemUi = ...)` (issue #1930). Drives the synthetic `SystemBarsFrame` wrap so
+   * the daemon's desktop capture draws Android phone chrome to match the Android / standalone
+   * renderers.
+   */
+  val showSystemUi: Boolean = false,
+  /**
    * FQN of the `PreviewWrapperProvider` from `@PreviewWrapper(SomeProvider::class)` when the source
    * preview is annotated. Read at discovery time by `extractWrapperFqn` against the class-file
    * annotation tables (the upstream annotation has `AnnotationRetention.BINARY`, so
@@ -316,6 +335,7 @@ data class ResolvedRenderParams(
   val showBackground: Boolean,
   val backgroundColor: Long,
   val device: String?,
+  val showSystemUi: Boolean = false,
   val outputBaseName: String,
   val wrapperClassName: String? = null,
   val kind: String? = null,

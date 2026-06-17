@@ -43,6 +43,14 @@ import org.jetbrains.skia.EncodedImageFormat
  * no resource-qualifier system, so it's threaded through `Density(density, fontScale)` (and
  * re-provided as `LocalDensity`); omit or pass `1.0` for the no-op default.
  *
+ * Args 22–24 carry `@Preview(showSystemUi = ...)` support (issue #1930). When [showSystemUi] is
+ * `true` and the capture is phone-shape (not a round/Wear device, not a tile), the renderer wraps
+ * the composition in [SystemBarsFrame] — a synthetic status bar + gesture-nav pill that *simulates*
+ * Android phone chrome on this non-Android backend, matching what the Android/Robolectric renderer
+ * draws for the same `@Preview`. Arg 23 (`uiMode`) is the `@Preview(uiMode = …)` int (only the
+ * `UI_MODE_NIGHT_*` bits matter — dark chrome on a night capture); arg 24 (`device`) is the raw
+ * device string used only to skip round/Wear surfaces. All default to "no system UI".
+ *
  * The optional 9th argument is the FQN of a `PreviewWrapperProvider` (Compose 1.11+); pass an empty
  * string or omit to skip wrapping.
  *
@@ -137,6 +145,13 @@ fun main(args: Array<String>) {
   // unparseable falls back to 1.0f (no-op) so older callers and the LOTTIE path keep their
   // behaviour.
   val fontScale = args.getOrNull(20)?.toFloatOrNull()?.takeIf { it > 0f } ?: 1.0f
+  // Args 22–24 — `@Preview(showSystemUi = ...)` (issue #1930). When showSystemUi is set on a
+  // phone-shape capture the renderer wraps the composition in [SystemBarsFrame] (synthetic Android
+  // chrome). uiMode supplies the night bit for dark chrome; device is consulted only to skip
+  // round/Wear surfaces. All optional — missing/blank keeps the chrome-less default.
+  val showSystemUi = args.getOrNull(21)?.toBoolean() ?: false
+  val uiMode = args.getOrNull(22)?.toIntOrNull() ?: 0
+  val device = args.getOrNull(23)?.takeIf { it.isNotBlank() }
   if (previewKind == "LOTTIE") {
     val assetPath = args.getOrNull(19)?.takeIf { it.isNotBlank() }
     val sidecar = errorSidecarFor(outputFile)
@@ -272,6 +287,9 @@ fun main(args: Array<String>) {
             previewArgs,
             localeTag,
             fontScale,
+            showSystemUi,
+            uiMode,
+            device,
           )
         }
       } else {
@@ -290,6 +308,9 @@ fun main(args: Array<String>) {
           previewArgs,
           localeTag,
           fontScale,
+          showSystemUi,
+          uiMode,
+          device,
         )
       }
       // Display filters — post-capture colour-matrix variants (grayscale / invert / daltonizer
@@ -508,6 +529,9 @@ private fun renderPreview(
   previewArgs: List<Any?>,
   localeTag: String?,
   fontScale: Float = 1.0f,
+  showSystemUi: Boolean = false,
+  uiMode: Int = 0,
+  device: String? = null,
   fileSystem: FileSystem = SystemFileSystem,
 ) {
   val clazz = Class.forName(className)
@@ -614,10 +638,25 @@ private fun renderPreview(
       // `@PreviewWrapper(Provider::class)` — instantiate the provider reflectively
       // so the renderer stays compatible with apps on stable Compose (no
       // `PreviewWrapperProvider` on classpath).
-      if (wrapperClassName != null) {
-        InvokeWrappedComposable(wrapperClassName, body)
+      val wrapped: @Composable () -> Unit = {
+        if (wrapperClassName != null) {
+          InvokeWrappedComposable(wrapperClassName, body)
+        } else {
+          body()
+        }
+      }
+      // `@Preview(showSystemUi = true)` on a phone-shape capture wraps the composition in the
+      // synthetic [SystemBarsFrame] (issue #1930). Desktop/Skiko has no Android SystemUI process,
+      // so without this the canvas comes back at the right device size but chrome-less; the frame
+      // simulates the status + gesture-nav bars to match the Android renderer. showSystemUi pins
+      // both axes to the device frame (no wrap-content crop), so wrapping outside `body` is safe.
+      // kind is always COMPOSE here — LOTTIE short-circuits in main() before reaching
+      // renderPreview,
+      // and desktop never produces TILE captures — so the gate reduces to showSystemUi + non-round.
+      if (shouldApplySystemBars(showSystemUi, device, kind = null)) {
+        SystemBarsFrame(uiMode = uiMode) { wrapped() }
       } else {
-        body()
+        wrapped()
       }
     }
   }
