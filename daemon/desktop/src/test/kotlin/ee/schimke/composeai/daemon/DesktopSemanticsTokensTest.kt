@@ -21,8 +21,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -181,6 +189,113 @@ class DesktopSemanticsTokensTest {
       buildTree(density = 2.5f) { Box(Modifier.testTag("avatar").size(36.dp).clip(CircleShape)) }
 
     assertEquals("18.0dp", root.find("avatar")?.tokens?.cornerRadius)
+  }
+
+  @Test
+  fun resolves_text_typography_identity() {
+    // #1934: a text node must surface *which face* it's drawn in — family, weight, style — plus
+    // letter spacing and line height, not just `layoutFontSize`. `FontFamily.Monospace` is a
+    // GenericFontFamily, so its stable declared name (`"monospace"`) is what's emitted.
+    val root = buildTree {
+      Text(
+        "Heading",
+        modifier = Modifier.testTag("h"),
+        style =
+          TextStyle(
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold,
+            fontStyle = FontStyle.Italic,
+            letterSpacing = 0.5.sp,
+            lineHeight = 24.sp,
+          ),
+      )
+    }
+
+    val node = root.find("h")
+    assertNotNull("expected a node tagged 'h'", node)
+    val typography = node!!.typography
+    assertNotNull("text node must carry a typography object", typography)
+    assertEquals("monospace", typography!!.fontFamily)
+    assertEquals(700, typography.fontWeight)
+    assertEquals("italic", typography.fontStyle)
+    assertEquals("0.5sp", typography.letterSpacing)
+    assertEquals("24.0sp", typography.lineHeight)
+  }
+
+  @Test
+  fun mixed_span_weights_omit_the_ambiguous_value() {
+    // #1934 (review): per-range typography lives in `AnnotatedString.spanStyles`. When the ranges
+    // disagree — a normal run and a bold run — the node isn't uniform, so the weight must be
+    // omitted
+    // rather than reporting the paragraph style as if it were the whole node.
+    val root = buildTree {
+      Text(
+        buildAnnotatedString {
+          withStyle(SpanStyle(fontWeight = FontWeight.Normal)) { append("normal ") }
+          withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("bold") }
+        },
+        modifier = Modifier.testTag("mixed"),
+      )
+    }
+
+    val node = root.find("mixed")
+    assertNotNull(node)
+    assertNull("disagreeing span weights must omit the weight", node!!.typography?.fontWeight)
+  }
+
+  @Test
+  fun span_only_typography_is_captured() {
+    // The other half of the review: when the whole run's weight comes from a span (not the
+    // paragraph
+    // style), it must still be read — folding span styles in is what surfaces it.
+    val root = buildTree {
+      Text(
+        buildAnnotatedString {
+          withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("all bold") }
+        },
+        modifier = Modifier.testTag("span"),
+      )
+    }
+
+    assertEquals(700, root.find("span")?.typography?.fontWeight)
+  }
+
+  @Test
+  fun unstyled_run_plus_styled_span_omits_weight() {
+    // #1935 (review): when a run is left *unstyled* (drawing at the inherited default weight) and a
+    // span overrides only part to bold, the node draws mixed weights. The unstyled run must count
+    // as
+    // ambiguity, so the weight is omitted rather than reporting the span's 700 as uniform.
+    val root = buildTree {
+      Text(
+        buildAnnotatedString {
+          append("normal ")
+          withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("bold") }
+        },
+        modifier = Modifier.testTag("partial"),
+      )
+    }
+
+    val node = root.find("partial")
+    assertNotNull(node)
+    assertNull(
+      "an unstyled run + a bold span draws mixed weights, so weight must be omitted",
+      node!!.typography?.fontWeight,
+    )
+  }
+
+  @Test
+  fun text_omits_typographic_identity_when_inherited() {
+    // Plain text with no explicit typography inherits an empty TextStyle — the identity fields must
+    // stay null rather than emit defaults, so the projection carries signal only (#1934).
+    val root = buildTree { Text("plain", modifier = Modifier.testTag("p")) }
+
+    val node = root.find("p")
+    assertNotNull(node)
+    assertNull(
+      "a node that declares nothing typographic must omit the typography object",
+      node!!.typography,
+    )
   }
 
   @Test

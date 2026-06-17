@@ -13,7 +13,18 @@ import androidx.compose.ui.semantics.SemanticsConfiguration
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontListFontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontVariation
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.GenericFontFamily
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.TextUnitType
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
@@ -104,7 +115,7 @@ object ComposeSemanticsDataProducer {
 
   private fun SemanticsNode.toWireNode(density: Float): ComposeSemanticsNode {
     val cfg = config
-    val layout = cfg.layoutDetails()
+    val layout = cfg.layoutDetails(density)
     return ComposeSemanticsNode(
       nodeId = id.toString(),
       boundsInRoot = boundsInRoot.toWireBounds(),
@@ -112,6 +123,7 @@ object ComposeSemanticsDataProducer {
       text = cfg.renderedText(),
       layoutText = layout?.text,
       layoutFontSize = layout?.fontSize,
+      typography = layout?.typography(),
       layoutForegroundColor = layout?.foregroundColor,
       layoutBackgroundColor = layout?.backgroundColor,
       layoutLineCount = layout?.lineCount,
@@ -181,7 +193,7 @@ object ComposeSemanticsDataProducer {
   private fun SemanticsConfiguration.renderedText(): String? =
     getOrNull(SemanticsProperties.Text)?.joinToString(" ") { it.text }?.takeIf { it.isNotBlank() }
 
-  private fun SemanticsConfiguration.layoutDetails(): LayoutTextDetails? {
+  private fun SemanticsConfiguration.layoutDetails(density: Float): LayoutTextDetails? {
     val action = getOrNull(SemanticsActions.GetTextLayoutResult)?.action ?: return null
     val results = mutableListOf<TextLayoutResult>()
     val ok =
@@ -205,6 +217,38 @@ object ComposeSemanticsDataProducer {
         .distinct()
         .singleOrNull()
         ?.let { "${it}sp" }
+    // Typography is read per *drawn range*, not just the paragraph style: an `AnnotatedString`
+    // carries per-range overrides in `spanStyles`, so — like the colour extraction below — reason
+    // over every effective face the node draws (see `effectiveSpanStyles`).
+    // `distinct().singleOrNull`
+    // keeps the unset/`null` value of a range that doesn't specify the property: a node collapses
+    // to
+    // a field only when *every* drawn range agrees on one concrete value, so a mix of an unstyled
+    // (inherited-default) run and a styled span omits the field rather than reporting the span's
+    // value as if the node were uniform.
+    val spans = results.flatMap { it.effectiveSpanStyles() }
+    val fontFamily =
+      spans
+        .map { fontFamilyLabel(it.fontFamily, it.fontWeight, it.fontStyle) }
+        .distinct()
+        .singleOrNull()
+    val fontWeight = spans.map { it.fontWeight?.weight }.distinct().singleOrNull()
+    val fontStyle = spans.map { fontStyleName(it.fontStyle) }.distinct().singleOrNull()
+    val fontVariationSettings =
+      spans
+        .map { fontVariationLabel(it.fontFamily, it.fontWeight, it.fontStyle, density) }
+        .distinct()
+        .singleOrNull()
+    val fontFeatureSettings =
+      spans.map { it.fontFeatureSettings?.takeIf(String::isNotBlank) }.distinct().singleOrNull()
+    val letterSpacing = spans.map { it.letterSpacing.toWireTextUnit() }.distinct().singleOrNull()
+    // Line height is a paragraph-level property (not carried on `SpanStyle`), so read it per
+    // result.
+    val lineHeight =
+      results
+        .mapNotNull { it.layoutInput.style.lineHeight.toWireTextUnit() }
+        .distinct()
+        .singleOrNull()
     val truncated = results.any { it.hasVisualOverflow }
     val didOverflowWidth = results.any { it.didOverflowWidth }
     val didOverflowHeight = results.any { it.didOverflowHeight }
@@ -224,6 +268,13 @@ object ComposeSemanticsDataProducer {
     return LayoutTextDetails(
       text = text,
       fontSize = fontSize,
+      fontFamily = fontFamily,
+      fontWeight = fontWeight,
+      fontStyle = fontStyle,
+      fontVariationSettings = fontVariationSettings,
+      fontFeatureSettings = fontFeatureSettings,
+      letterSpacing = letterSpacing,
+      lineHeight = lineHeight,
       foregroundColor =
         unambiguousColor(results.flatMap { it.textColors() })?.let(::colorToWireString),
       backgroundColor =
@@ -235,6 +286,38 @@ object ComposeSemanticsDataProducer {
       didOverflowWidth = didOverflowWidth.takeIf { results.isNotEmpty() },
       didOverflowHeight = didOverflowHeight.takeIf { results.isNotEmpty() },
     )
+  }
+
+  /**
+   * The effective [SpanStyle]s drawn by this result: each `spanStyle` merged over the paragraph (so
+   * a span that sets only, say, `fontWeight` still inherits the paragraph family), plus the bare
+   * paragraph style **iff** some of the text is not covered by a span. An uncovered run draws at
+   * the (possibly unspecified) paragraph style, which is a distinct face from any span override and
+   * must register as ambiguity (issue #1934); but when spans tile the whole string the paragraph
+   * base draws nothing, so including it would invent a phantom face and wrongly flag a uniform node
+   * as mixed. Lets the typography extraction reason about every face actually drawn.
+   */
+  private fun TextLayoutResult.effectiveSpanStyles(): List<SpanStyle> {
+    val paragraph = layoutInput.style.toSpanStyle()
+    val annotated = layoutInput.text
+    val spanStyles = annotated.spanStyles
+    if (spanStyles.isEmpty()) return listOf(paragraph)
+    val merged = spanStyles.map { paragraph.merge(it.item) }
+    return if (spanStyles.coverAll(annotated.text.length)) merged else listOf(paragraph) + merged
+  }
+
+  /** Whether [spans] tile `[0, length)` with no gap — i.e. every glyph is covered by some span. */
+  private fun List<AnnotatedString.Range<SpanStyle>>.coverAll(length: Int): Boolean {
+    if (length <= 0) return true
+    var covered = 0
+    for (range in sortedBy { it.start }) {
+      val start = range.start.coerceIn(0, length)
+      val end = range.end.coerceIn(0, length)
+      if (start > covered) return false
+      if (end > covered) covered = end
+      if (covered >= length) return true
+    }
+    return covered >= length
   }
 
   private fun TextLayoutResult.textColors(): List<Color> = buildList {
@@ -253,9 +336,142 @@ object ComposeSemanticsDataProducer {
   private fun colorToWireString(color: Color): String =
     "#${String.format(Locale.US, "%08X", color.toArgb())}"
 
+  /**
+   * Resolved typeface identity for the [family] drawn at [weight]/[style] (issue #1934). A
+   * [GenericFontFamily] reports its declared name (`"sans-serif"`, `"monospace"`); a
+   * [FontListFontFamily] — which carries no family display name — reports the resolved face's
+   * stable [identity][fontIdentity] (the matched [Font]'s `identity` / `res/font/<id>`), the only
+   * stable per-face handle Compose exposes. Null when the range inherits its family (no explicit
+   * `fontFamily`).
+   */
+  private fun fontFamilyLabel(
+    family: FontFamily?,
+    weight: FontWeight?,
+    style: FontStyle?,
+  ): String? =
+    when (family) {
+      null -> null
+      is GenericFontFamily -> family.name.takeIf { it.isNotBlank() }
+      is FontListFontFamily -> matchingFont(family, weight, style)?.let(::fontIdentity)
+      else -> family.toString().takeIf { it.isNotBlank() }
+    }
+
+  private fun fontStyleName(style: FontStyle?): String? =
+    when (style) {
+      null -> null
+      FontStyle.Italic -> "italic"
+      else -> "normal"
+    }
+
+  /**
+   * The variable-font axes actually applied to the face [family] resolves to at [weight]/[style]
+   * (issue #1934), formatted as `"<axis> <value>"` pairs sorted by axis tag, e.g. `"opsz 18.0, wght
+   * 700.0"`. Only a [FontListFontFamily] carries per-[Font] variation settings; the matched font's
+   * `getVariationSettings()` is read reflectively (it lives on the platform `Font` subtypes, not
+   * the `Font` interface) so this module stays platform-agnostic. [density] resolves the few axes
+   * whose value is density-dependent. Null when the face declares no axes (the common non-variable
+   * case).
+   */
+  private fun fontVariationLabel(
+    family: FontFamily?,
+    weight: FontWeight?,
+    style: FontStyle?,
+    density: Float,
+  ): String? {
+    val fontList = family as? FontListFontFamily ?: return null
+    val font = matchingFont(fontList, weight, style) ?: return null
+    val settings =
+      runCatching {
+          font.javaClass.methods
+            .firstOrNull { it.name == "getVariationSettings" && it.parameterCount == 0 }
+            ?.invoke(font) as? FontVariation.Settings
+        }
+        .getOrNull() ?: return null
+    val resolveDensity = Density(density)
+    return settings.settings
+      .mapNotNull { setting ->
+        runCatching { "${setting.axisName} ${roundAxis(setting.toVariationValue(resolveDensity))}" }
+          .getOrNull()
+      }
+      .distinct()
+      .sorted()
+      .joinToString(", ")
+      .takeIf { it.isNotBlank() }
+  }
+
+  /** Round a variable-font axis value to 2 decimals so it reads cleanly (`700.0`, not `699.99`). */
+  private fun roundAxis(value: Float): Float = (value * 100f).roundToInt() / 100f
+
+  /**
+   * The [Font] in [family] that matches the requested [weight]/[style], so the family label and
+   * variation axes describe the face Compose actually resolves — not an arbitrary entry. Mirrors
+   * the font resolver: prefer faces whose style (italic/normal) matches, then pick the nearest
+   * available weight by the CSS font-matching rule ([chooseWeight]) rather than declaration order,
+   * so a family shipping e.g. weights 300/700 resolves a requested 600 to 700 (as Compose does)
+   * instead of the first face. `Font.style` is a name-mangled value-class getter, so it is read
+   * reflectively.
+   */
+  private fun matchingFont(
+    family: FontListFontFamily,
+    weight: FontWeight?,
+    style: FontStyle?,
+  ): Font? {
+    val fonts = family.fonts
+    if (fonts.isEmpty()) return null
+    val targetWeight = weight?.weight ?: FontWeight.Normal.weight
+    val italic = style == FontStyle.Italic
+    val candidates = fonts.filter { it.isItalic() == italic }.ifEmpty { fonts }
+    val chosenWeight = chooseWeight(candidates.map { it.weight.weight }, targetWeight)
+    return candidates.firstOrNull { it.weight.weight == chosenWeight } ?: candidates.firstOrNull()
+  }
+
+  private fun Font.isItalic(): Boolean =
+    runCatching {
+        javaClass.methods
+          .firstOrNull { it.name.startsWith("getStyle") && it.parameterCount == 0 }
+          ?.invoke(this) as? Int
+      }
+      .getOrNull() == 1
+
+  /**
+   * Stable identity for a resolved [Font]: the platform font's `identity` (a file path / declared
+   * name on desktop), falling back to `res/font/<id>` for an Android `ResourceFont`. Both getters
+   * live on platform-specific subtypes, so they are read reflectively. Null when neither resolves.
+   */
+  private fun fontIdentity(font: Font): String? =
+    runCatching {
+        font.javaClass.methods
+          .firstOrNull { it.name == "getIdentity" && it.parameterCount == 0 }
+          ?.invoke(font) as? String
+      }
+      .getOrNull()
+      ?.takeIf { it.isNotBlank() }
+      ?: runCatching {
+          font.javaClass.methods
+            .firstOrNull { it.name == "getResId" && it.parameterCount == 0 }
+            ?.invoke(font) as? Int
+        }
+        .getOrNull()
+        ?.let { "res/font/$it" }
+
+  /** A resolved [TextUnit] as `"<value>sp"` / `"<value>em"`; null for unspecified / other types. */
+  private fun TextUnit.toWireTextUnit(): String? =
+    when (type) {
+      TextUnitType.Sp -> "${value}sp"
+      TextUnitType.Em -> "${value}em"
+      else -> null
+    }
+
   private data class LayoutTextDetails(
     val text: String?,
     val fontSize: String?,
+    val fontFamily: String?,
+    val fontWeight: Int?,
+    val fontStyle: String?,
+    val fontVariationSettings: String?,
+    val fontFeatureSettings: String?,
+    val letterSpacing: String?,
+    val lineHeight: String?,
     val foregroundColor: String?,
     val backgroundColor: String?,
     val lineCount: Int?,
@@ -265,6 +481,33 @@ object ComposeSemanticsDataProducer {
     val didOverflowWidth: Boolean?,
     val didOverflowHeight: Boolean?,
   )
+
+  /**
+   * Groups the resolved typographic identity into the wire [ComposeSemanticsTypography] object
+   * (issue #1934), or null when the node declares nothing typographic — so a node omits
+   * `typography` entirely rather than carrying an all-null object, mirroring how `tokens` behaves.
+   */
+  private fun LayoutTextDetails.typography(): ComposeSemanticsTypography? =
+    if (
+      fontFamily == null &&
+        fontWeight == null &&
+        fontStyle == null &&
+        fontVariationSettings == null &&
+        fontFeatureSettings == null &&
+        letterSpacing == null &&
+        lineHeight == null
+    )
+      null
+    else
+      ComposeSemanticsTypography(
+        fontFamily = fontFamily,
+        fontWeight = fontWeight,
+        fontStyle = fontStyle,
+        fontVariationSettings = fontVariationSettings,
+        fontFeatureSettings = fontFeatureSettings,
+        letterSpacing = letterSpacing,
+        lineHeight = lineHeight,
+      )
 
   private fun androidx.compose.ui.geometry.Rect.toWireBounds(): String =
     "${left.toInt()},${top.toInt()},${right.toInt()},${bottom.toInt()}"
@@ -298,12 +541,35 @@ fun ComposeSemanticsNode.toProbeNodes(): List<RecordingProbeNode> = buildList {
   visit(this@toProbeNodes)
 }
 
+/**
+ * The weight from [available] that the CSS / Compose font-matching algorithm resolves a [target]
+ * weight to (issue #1934): an exact match if present, otherwise the nearest available weight by the
+ * CSS rule — for `[400, 500]` prefer weights in `[target, 500]` ascending, then lighter descending,
+ * then heavier ascending; below 400 prefer lighter then heavier; above 500 prefer heavier then
+ * lighter. Returns null only for an empty list. Extracted (and `internal`) so the rule can be unit
+ * tested without constructing real `Font` instances.
+ */
+internal fun chooseWeight(available: List<Int>, target: Int): Int? {
+  if (available.isEmpty()) return null
+  if (target in available) return target
+  val lighter = available.filter { it < target }.maxOrNull()
+  val heavier = available.filter { it > target }.minOrNull()
+  return when {
+    target < 400 -> lighter ?: heavier
+    target > 500 -> heavier ?: lighter
+    else -> available.filter { it in target..500 }.minOrNull() ?: lighter ?: heavier
+  }
+}
+
 typealias ComposeSemanticsPayload =
   ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 
 typealias ComposeSemanticsNode = ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
 
 typealias ComposeSemanticsTokens = ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTokens
+
+typealias ComposeSemanticsTypography =
+  ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTypography
 
 typealias ComposeSemanticsInsets = ee.schimke.composeai.data.layoutinspector.ComposeSemanticsInsets
 
