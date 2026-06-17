@@ -57,9 +57,7 @@ class DiscoveryFailureReportingTest {
     assertTrue(isAgpClassloaderFailure(noClassDefFound))
     // NoClassDefFoundError alone (internal slash name).
     assertTrue(
-      isAgpClassloaderFailure(
-        "NoClassDefFoundError: com/android/build/api/variant/Variant"
-      )
+      isAgpClassloaderFailure("NoClassDefFoundError: com/android/build/api/variant/Variant")
     )
     // ClassNotFoundException alone (dotted name).
     assertTrue(
@@ -74,15 +72,12 @@ class DiscoveryFailureReportingTest {
       "the #1855 double-apply collision is a different cause and must not be misclassified",
     )
     // AGP class mentioned without a classloader error → not this signature.
-    assertTrue(
-      !isAgpClassloaderFailure("com.android.build.api.variant.Variant misconfigured")
-    )
+    assertTrue(!isAgpClassloaderFailure("com.android.build.api.variant.Variant misconfigured"))
   }
 
   @Test
   fun `emits the convention-plugin guidance instead of the raw stack list when dominated by AGP`() {
-    val failures =
-      (1..59).map { ProjectDiscoveryFailure(":module$it", noClassDefFound) }
+    val failures = (1..59).map { ProjectDiscoveryFailure(":module$it", noClassDefFound) }
     val lines = mutableListOf<String>()
     printDiscoveryFailures(failures, err = { lines += it })
     // One guidance block, not 59 NoClassDefFoundError lines.

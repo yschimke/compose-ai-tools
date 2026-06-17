@@ -774,21 +774,22 @@ internal fun printDiscoveryFailures(
 }
 
 /**
- * Recognises the "auto-injected plugin can't see AGP" failure signature: a
- * `NoClassDefFoundError` / `ClassNotFoundException` on an AGP variant-API class
- * (`com.android.build.api.variant.*`, e.g. `AndroidComponentsExtension`). The
- * `NoClassDefFoundError` form carries the internal name (`com/android/build/api/variant/…`) and the
- * `ClassNotFoundException` form the dotted name, so we match either separator.
+ * Recognises the "auto-injected plugin can't see AGP" failure signature: a `NoClassDefFoundError` /
+ * `ClassNotFoundException` on an AGP variant-API class (`com.android.build.api.variant.*`, e.g.
+ * `AndroidComponentsExtension`). The `NoClassDefFoundError` form carries the internal name
+ * (`com/android/build/api/variant/…`) and the `ClassNotFoundException` form the dotted name, so we
+ * match either separator.
  *
  * This arises when AGP is supplied by an **included build's convention plugin** (the `build-logic`
  * pattern): AGP's classes live on the convention plugin's classloader, but auto-inject puts
  * `ee.schimke.composeai.preview` on each project's *own* buildscript classpath — a sibling
  * classloader that can't see AGP — so the plugin's `apply()` throws the moment it touches
- * `AndroidComponentsExtension`. See [agpClassloaderGuidance] for the user-facing remedy (issue
- * #1947).
+ * `AndroidComponentsExtension`. See [agpClassloaderGuidance] for the user-facing remedy
+ * (issue #1947).
  */
 internal fun isAgpClassloaderFailure(message: String): Boolean {
-  val mentionsAgpVariantApi = Regex("""com[./]android[./]build[./]api[./]variant""").containsMatchIn(message)
+  val mentionsAgpVariantApi =
+    Regex("""com[./]android[./]build[./]api[./]variant""").containsMatchIn(message)
   val classloaderError =
     message.contains("NoClassDefFoundError") || message.contains("ClassNotFoundException")
   return mentionsAgpVariantApi && classloaderError
