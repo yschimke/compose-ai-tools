@@ -123,13 +123,27 @@ class PreviewManifestRouter(
             effectiveDevice
               ?.takeIf { it.isNotBlank() }
               ?.let { append("device=").append(it).append(';') }
+            // `@Preview(showSystemUi = ...)` (issue #1930) — forwarded so the render body wraps the
+            // composition in the synthetic `SystemBarsFrame`. Only emitted when set; absent keeps
+            // the chrome-less default.
+            if (resolved.showSystemUi) append("showSystemUi=true;")
             // PROTOCOL.md § 5 (`renderNow.overrides`) — locale / fontScale / uiMode / orientation
             // pass straight through. `orientation = landscape` is applied above as a swap of the
             // forwarded widthPx/heightPx; the token still rides along so downstream consumers see
             // the resolved orientation. Other fields are honoured by `RenderEngine` directly.
             inbound["localeTag"]?.let { append("localeTag=").append(it).append(';') }
             inbound["fontScale"]?.let { append("fontScale=").append(it).append(';') }
-            inbound["uiMode"]?.let { append("uiMode=").append(it).append(';') }
+            // uiMode: an inbound override wins; otherwise derive from the manifest-declared
+            // `@Preview(uiMode = …)` so a night `showSystemUi` preview paints dark
+            // `SystemBarsFrame`
+            // chrome in the live daemon, matching the standalone Gradle renderer (which gets the
+            // raw
+            // uiMode arg). `RenderSpec.parseFromPayload` only understands `light`/`dark`, so map
+            // the
+            // night bit to a token; light/unset emits nothing (the daemon's default).
+            val effectiveUiMode =
+              inbound["uiMode"] ?: if ((resolved.uiMode and 0x30) == 0x20) "dark" else null
+            effectiveUiMode?.let { append("uiMode=").append(it).append(';') }
             inbound["orientation"]?.let { append("orientation=").append(it).append(';') }
             inbound["captureAdvanceMs"]?.let { append("captureAdvanceMs=").append(it).append(';') }
             inbound["inspectionMode"]?.let { append("inspectionMode=").append(it).append(';') }
@@ -203,6 +217,11 @@ class PreviewManifestRouter(
           showBackground = resolved.showBackground,
           backgroundColor = resolved.backgroundColor,
           device = resolved.device,
+          showSystemUi = resolved.showSystemUi,
+          // Map the manifest night bit to the daemon's light/dark enum so interactive/recording
+          // sessions of a night `showSystemUi` preview also get dark chrome (issue #1930
+          // follow-up).
+          uiMode = if ((resolved.uiMode and 0x30) == 0x20) RenderSpec.SpecUiMode.DARK else null,
           wrapperClassName = resolved.wrapperClassName,
           kind = resolved.kind,
           assetPath = resolved.assetPath,
@@ -251,6 +270,18 @@ data class PreviewManifestEntry(
    * qualifier; the desktop path ignores it (no circular crop on JVM rendering).
    */
   val device: String? = null,
+  /**
+   * Flat-schema mirror of `@Preview(showSystemUi = ...)` (issue #1930). Optional; when null the
+   * resolver consults the nested `params.showSystemUi`. Drives the synthetic `SystemBarsFrame` wrap
+   * in the render body.
+   */
+  val showSystemUi: Boolean? = null,
+  /**
+   * Flat-schema mirror of `@Preview(uiMode = ...)`. Optional; when null the resolver consults the
+   * nested `params.uiMode`. Only the `UI_MODE_NIGHT_*` bits matter — drives dark `SystemBarsFrame`
+   * chrome for night `showSystemUi` previews (issue #1930 follow-up).
+   */
+  val uiMode: Int? = null,
   val outputBaseName: String? = null,
 ) {
   fun resolved(): ResolvedRenderParams {
@@ -261,6 +292,8 @@ data class PreviewManifestEntry(
     val showBackground = showBackground ?: p?.showBackground ?: true
     val backgroundColor = backgroundColor ?: p?.backgroundColor ?: 0L
     val device = device ?: p?.device
+    val showSystemUi = showSystemUi ?: p?.showSystemUi ?: false
+    val uiMode = uiMode ?: p?.uiMode ?: 0
     val wrapperClassName = p?.wrapperClassName
     return ResolvedRenderParams(
       widthPx = widthPx,
@@ -269,6 +302,8 @@ data class PreviewManifestEntry(
       showBackground = showBackground,
       backgroundColor = backgroundColor,
       device = device,
+      showSystemUi = showSystemUi,
+      uiMode = uiMode,
       outputBaseName = outputBaseName ?: id,
       wrapperClassName = wrapperClassName,
       kind = p?.kind,
@@ -296,6 +331,18 @@ data class PreviewParamsEntry(
   /** For `kind="LOTTIE"`: the classpath-relative Lottie asset path. */
   val assetPath: String? = null,
   /**
+   * `@Preview(showSystemUi = ...)` (issue #1930). Drives the synthetic `SystemBarsFrame` wrap so
+   * the daemon's desktop capture draws Android phone chrome to match the Android / standalone
+   * renderers.
+   */
+  val showSystemUi: Boolean = false,
+  /**
+   * `@Preview(uiMode = ...)`. Only the `UI_MODE_NIGHT_*` bits are consumed — selects dark
+   * `SystemBarsFrame` chrome (and dark `LocalSystemTheme`) for night `showSystemUi` previews so the
+   * live daemon matches the standalone renderer instead of painting light chrome (issue #1930).
+   */
+  val uiMode: Int = 0,
+  /**
    * FQN of the `PreviewWrapperProvider` from `@PreviewWrapper(SomeProvider::class)` when the source
    * preview is annotated. Read at discovery time by `extractWrapperFqn` against the class-file
    * annotation tables (the upstream annotation has `AnnotationRetention.BINARY`, so
@@ -316,6 +363,8 @@ data class ResolvedRenderParams(
   val showBackground: Boolean,
   val backgroundColor: Long,
   val device: String?,
+  val showSystemUi: Boolean = false,
+  val uiMode: Int = 0,
   val outputBaseName: String,
   val wrapperClassName: String? = null,
   val kind: String? = null,

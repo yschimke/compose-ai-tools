@@ -280,6 +280,14 @@ abstract class RenderPreviewsTask : DefaultTask() {
           // annotation default / no-op; omitting it keeps older callers at 1.0 on the renderer
           // side.
           preview.params.fontScale.toString(),
+          // 22nd–24th — `@Preview(showSystemUi = ...)` (issue #1930). When set on a phone-shape
+          // capture, DesktopRendererMain wraps the composition in the synthetic `SystemBarsFrame`
+          // (status bar + gesture-nav pill) so the desktop capture matches the Android renderer
+          // instead of coming back chrome-less. uiMode carries the night bit for dark chrome;
+          // device is forwarded only so the renderer can skip round/Wear surfaces.
+          preview.params.showSystemUi.toString(),
+          preview.params.uiMode.toString(),
+          preview.params.device.orEmpty(),
         )
     }
   }

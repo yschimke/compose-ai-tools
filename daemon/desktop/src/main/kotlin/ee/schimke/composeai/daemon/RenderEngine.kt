@@ -360,10 +360,35 @@ class RenderEngine(
                 }
               }
             }
+            // `@Preview(showSystemUi = true)` (issue #1930) — wrap the composition in the synthetic
+            // [ee.schimke.composeai.renderer.SystemBarsFrame] so the daemon's desktop capture draws
+            // the same Android phone chrome (status bar + gesture-nav pill) the Android renderer
+            // and
+            // the standalone `:renderer-desktop` path do, instead of a chrome-less surface. Dark
+            // chrome follows the resolved [RenderSpec.uiMode]; skipped for round/Wear devices.
+            val framed: @Composable () -> Unit = {
+              if (
+                ee.schimke.composeai.renderer.shouldApplySystemBars(
+                  showSystemUi = spec.showSystemUi,
+                  device = spec.device,
+                  kind = spec.kind,
+                )
+              ) {
+                ee.schimke.composeai.renderer.SystemBarsFrame(
+                  // 0x20 == Configuration.UI_MODE_NIGHT_YES — the only bit SystemBarsFrame
+                  // inspects.
+                  uiMode = if (spec.uiMode == RenderSpec.SpecUiMode.DARK) 0x20 else 0
+                ) {
+                  content()
+                }
+              } else {
+                content()
+              }
+            }
             if (slotTableCapture != null) {
-              InspectablePreviewContent(slotTableCapture, content)
+              InspectablePreviewContent(slotTableCapture, framed)
             } else {
-              content()
+              framed()
             }
           }
         }
@@ -960,6 +985,14 @@ data class RenderSpec(
    * payload can drive both backends.
    */
   val device: String? = null,
+  /**
+   * `@Preview(showSystemUi = ...)` (issue #1930). When `true` on a phone-shape capture the render
+   * body wraps the composition in `:renderer-desktop`'s `SystemBarsFrame` — a synthetic status bar
+   * + gesture-nav pill that simulates Android phone chrome on this non-Android backend, matching
+   *   what the Android renderer draws so a single design reference matches either candidate.
+   *   Skipped for round/Wear [device]s. Dark chrome follows [uiMode].
+   */
+  val showSystemUi: Boolean = false,
   /** Stem used for the output PNG filename (e.g. "preview-A" → "<outputDir>/preview-A.png"). */
   val outputBaseName: String = "${className.substringAfterLast('.')}-$functionName",
   /**
@@ -1062,6 +1095,7 @@ data class RenderSpec(
         showBackground = map["showBackground"]?.toBoolean() ?: defaults.showBackground,
         backgroundColor = map["backgroundColor"]?.toLongOrNull() ?: defaults.backgroundColor,
         device = map["device"]?.takeIf { it.isNotBlank() } ?: defaults.device,
+        showSystemUi = map["showSystemUi"]?.toBoolean() ?: defaults.showSystemUi,
         outputBaseName = map["outputBaseName"] ?: defaults.outputBaseName,
         localeTag = map["localeTag"]?.takeIf { it.isNotBlank() },
         fontScale = map["fontScale"]?.toFloatOrNull(),
