@@ -86,7 +86,7 @@ class DiscoverPreviewModulesIntegrationTest {
       .use { connection ->
         // The fix: completes without realizing :native's poison task.
         val discovered = connection.action(DiscoverPreviewModulesAction()).run()
-        assertEquals(emptyList(), discovered.map { it.gradlePath })
+        assertEquals(emptyList(), discovered.modules.map { it.gradlePath })
 
         // Control: the old `GradleProject` discovery path realizes the task graph and dies.
         val failure =
