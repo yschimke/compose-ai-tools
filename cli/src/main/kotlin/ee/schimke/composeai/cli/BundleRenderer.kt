@@ -84,11 +84,23 @@ class BundleRenderer(
     val classesDir = workDir.resolve("classes").apply { mkdirs() }
     val libsDir = workDir.resolve("libs").apply { mkdirs() }
     val zipBytes = BundleReader.extractZipBytes(bundleFile)
-    val (bundleJsonBytes, previewsJsonBytes) = expandAppJarAndReadManifests(zipBytes, classesDir)
+    val (bundleJsonBytes, previewsJsonBytes, hasAppJar) =
+      expandAppJarAndReadManifests(zipBytes, classesDir)
     val libJars = BundleReader.extractEmbeddedLibs(zipBytes, libsDir)
 
     val manifest = BUNDLE_JSON.decodeFromString(BundleReader.Manifest.serializer(), bundleJsonBytes)
     val previews = MANIFEST_JSON.decodeFromString(PreviewManifest.serializer(), previewsJsonBytes)
+
+    // A preview that isn't replayed from an intermediate representation needs its class from
+    // `classes/app.jar`; a fully IR-backed bundle legitimately omits it. Re-impose the fast-fail
+    // for a class-backed (or mixed) bundle that's missing the jar, rather than letting the renderer
+    // start against an empty classes dir — or, for android, trip its sidecar/SDK checks first.
+    if (!hasAppJar) {
+      val irIds = manifest.intermediateRepresentations.map { it.previewId }.toSet()
+      check(previews.previews.all { it.id in irIds }) {
+        "bundle render: classes/app.jar missing in ${bundleFile.path}"
+      }
+    }
 
     return when (manifest.backend) {
       "desktop" -> renderDesktop(classesDir, libJars, manifest, previews)
@@ -353,7 +365,7 @@ class BundleRenderer(
   private fun expandAppJarAndReadManifests(
     zipBytes: ByteArray,
     classesDir: File,
-  ): Pair<String, String> {
+  ): Triple<String, String, Boolean> {
     var bundleJson: String? = null
     var previewsJson: String? = null
     var appJarBytes: ByteArray? = null
@@ -372,10 +384,12 @@ class BundleRenderer(
       requireNotNull(bundleJson) { "bundle render: bundle.json missing in ${bundleFile.path}" }
     val previewsJsonNonNull =
       requireNotNull(previewsJson) { "bundle render: previews.json missing in ${bundleFile.path}" }
-    val appJarBytesNonNull =
-      requireNotNull(appJarBytes) { "bundle render: classes/app.jar missing in ${bundleFile.path}" }
-    expandJarBytes(appJarBytesNonNull, classesDir)
-    return bundleJsonNonNull to previewsJsonNonNull
+    // `classes/app.jar` is absent from a fully IR-backed bundle (schema v5+), whose previews replay
+    // from `ir/` rather than from reflected consumer bytecode. Expand the consumer classes only
+    // when the bundle carries them; the caller validates that a class-backed preview isn't left
+    // without its jar.
+    appJarBytes?.let { expandJarBytes(it, classesDir) }
+    return Triple(bundleJsonNonNull, previewsJsonNonNull, appJarBytes != null)
   }
 
   /**

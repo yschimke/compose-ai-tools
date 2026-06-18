@@ -68,7 +68,19 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
     val libsDir = workDir.resolve("libs").apply { mkdirs() }
     val previewsJson = workDir.resolve("previews.json")
     val zipBytes = BundleReader.extractZipBytes(file)
-    expandAppJarAndManifest(zipBytes, classesDir, previewsJson, file)
+    val manifest = BundleReader.readMetadata(file).manifest
+    // A fully IR-backed bundle (schema v5+) drops its consumer classes — its previews replay from
+    // `ir/` (extracted below), so `classes/app.jar` is legitimately absent. A mixed bundle that
+    // still has a class-backed preview must carry it, so gate on whether any preview id is NOT
+    // covered by an intermediate representation rather than merely "has some IR".
+    val irPreviewIds = manifest.intermediateRepresentations.mapTo(mutableSetOf()) { it.previewId }
+    expandAppJarAndManifest(
+      zipBytes,
+      classesDir,
+      previewsJson,
+      file,
+      requireAppJar = manifest.previewIds.any { it !in irPreviewIds },
+    )
     // Consumer classpath for the daemon's `userClassDirs` holder (dirs-before-jars ordered, see
     // UserClassLoaderHolder) — the extracted app classes plus the bundle's third-party deps. NOT
     // the
@@ -76,7 +88,6 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
     // bundles) and `maven` coordinates resolved from local repos (the default detached bundles). A
     // resolver miss or hash mismatch warns but never fails — same contract as `bundle render`.
     val libJars = BundleReader.extractEmbeddedLibs(zipBytes, libsDir)
-    val manifest = BundleReader.readMetadata(file).manifest
     val mavenCoords = manifest.classpath.filterIsInstance<BundleReader.ClasspathEntry.Maven>()
     val resolvedJars =
       CoordinateResolver(warn = { System.err.println("[bundle-daemon] $it") })
@@ -482,6 +493,7 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
     classesDir: File,
     previewsJson: File,
     bundleFile: File,
+    requireAppJar: Boolean,
   ) {
     var sawAppJar = false
     var sawPreviewsJson = false
@@ -502,7 +514,7 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
         zin.closeEntry()
       }
     }
-    require(sawAppJar) {
+    require(sawAppJar || !requireAppJar) {
       "bundle daemon: classes/app.jar missing in ${bundleFile.path} — not a packed bundle"
     }
     require(sawPreviewsJson) {

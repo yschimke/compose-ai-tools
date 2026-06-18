@@ -123,7 +123,6 @@ fun loadBundle(bundleFile: Path): LoadedBundle {
   }
   val bundleJsonNonNull = requireNotNull(bundleJson) { "bundle.json missing in $bundleFile" }
   val previewsJsonNonNull = requireNotNull(previewsJson) { "previews.json missing in $bundleFile" }
-  check(SystemFileSystem.exists(appJarPath)) { "classes/app.jar missing in $bundleFile" }
 
   val bundleManifest = JSON.decodeFromString(BundleManifest.serializer(), bundleJsonNonNull)
   val previewManifest = JSON.decodeFromString(PreviewManifest.serializer(), previewsJsonNonNull)
@@ -131,6 +130,17 @@ fun loadBundle(bundleFile: Path): LoadedBundle {
     SystemFileSystem.deleteRecursively(workDir)
     throw IllegalStateException("bundle has no previews: $bundleFile")
   }
+
+  // `classes/app.jar` carries the consumer module's bytecode, but a preview replayed from a
+  // captured intermediate representation (schema v5+, `ir/<id>.<ext>`) intentionally drops its
+  // enclosing class at pack time — so a fully IR-backed bundle (e.g. a Remote Compose `.rc` bundle)
+  // legitimately ships without an app.jar. Only insist on it when a preview still needs its class
+  // loaded; before this, every such bundle had to carry a dummy jar purely to clear the check.
+  val hasAppJar = SystemFileSystem.exists(appJarPath)
+  val irPreviewIds =
+    bundleManifest.intermediateRepresentations.mapTo(mutableSetOf()) { it.previewId }
+  val needsAppJar = previewManifest.previews.any { it.id !in irPreviewIds }
+  check(hasAppJar || !needsAppJar) { "classes/app.jar missing in $bundleFile" }
 
   // Default (coordinate-mode) bundles reference their deps by `maven` coordinate rather than
   // carrying them; resolve those from the machine's local Maven / Gradle caches (warn-not-fail) so
@@ -146,7 +156,7 @@ fun loadBundle(bundleFile: Path): LoadedBundle {
   // URLClassLoader is a hard `java.io.File` boundary (it wants `file:` URLs) — bridge each Okio
   // path to a File here.
   val classpathUrls =
-    (listOf(appJarPath) + libJarFiles.values + resolvedCoordJars).map {
+    (listOfNotNull(appJarPath.takeIf { hasAppJar }) + libJarFiles.values + resolvedCoordJars).map {
       it.toFile().toURI().toURL()
     }
   val classLoader = URLClassLoader(classpathUrls.toTypedArray(), parentLoader)

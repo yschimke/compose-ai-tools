@@ -48,6 +48,48 @@ class BundleLoaderTest {
   }
 
   @Test
+  fun `loadBundle accepts an IR-backed bundle with no app jar`() {
+    // A fully IR-backed bundle (e.g. a Remote Compose `.rc` bundle) drops its consumer classes at
+    // pack time and replays from `ir/`, so it carries no `classes/app.jar`. The loader must accept
+    // it rather than crash on the existence check — issue #1946 (no more dummy jar workaround).
+    val bundle =
+      writeMinimalBundle(
+        includeAppJarEntry = false,
+        intermediateRepresentations =
+          listOf(
+            BundleIr(
+              previewId = "test.PreviewsKt.MissingPreview",
+              format = "remotecompose",
+              path = "ir/test.PreviewsKt.MissingPreview.rc",
+            )
+          ),
+      )
+
+    val loaded = loadBundle(bundle.path.toPath())
+    try {
+      assertThat(loaded.bundleManifest.intermediateRepresentations).hasSize(1)
+      assertThat(loaded.previewManifest.previews).hasSize(1)
+      assertThat(loaded.coverPreview.info.id).isEqualTo("test.PreviewsKt.MissingPreview")
+    } finally {
+      loaded.close()
+    }
+  }
+
+  @Test
+  fun `loadBundle rejects a class-backed bundle missing app jar`() {
+    // No IR declared and no `classes/app.jar` entry: a genuinely malformed bundle. The existence
+    // check still guards this case so the failure is a clear message rather than a later
+    // class-not-found per preview.
+    val bundle = writeMinimalBundle(includeAppJarEntry = false)
+
+    val ex =
+      runCatching { loadBundle(bundle.path.toPath()) }.exceptionOrNull()
+        ?: error("expected loadBundle to throw when app.jar is absent and no IR is declared")
+    assertThat(ex).isInstanceOf(IllegalStateException::class.java)
+    assertThat(ex).hasMessageThat().contains("classes/app.jar missing")
+  }
+
+  @Test
   fun `loadBundle rejects non-bundle files`() {
     val txt = tempDir.newFile("not-a-bundle.txt").apply { writeText("hello world") }
 
@@ -150,6 +192,8 @@ class BundleLoaderTest {
     resolution: String = "coordinates",
     extraClasspath: List<ClasspathEntry> = emptyList(),
     libs: Map<String, ByteArray> = emptyMap(),
+    includeAppJarEntry: Boolean = true,
+    intermediateRepresentations: List<BundleIr> = emptyList(),
   ): File {
     val zipBytes = ByteArrayOutputStream()
     ZipOutputStream(zipBytes).use { zip ->
@@ -174,6 +218,7 @@ class BundleLoaderTest {
             modulePath = ":test",
             producedBy = "test-suite",
             resolution = resolution,
+            intermediateRepresentations = intermediateRepresentations,
           ),
         )
       zip.putNextEntry(ZipEntry("bundle.json"))
@@ -203,17 +248,21 @@ class BundleLoaderTest {
       // classes/app.jar: empty by default (exercises the class-not-found branch). When
       // [includeAppClass] is set, carry the preview's owner class so resolution succeeds and the
       // owner class is loaded by the bundle's own URLClassLoader.
-      val appJarBytes = ByteArrayOutputStream()
-      ZipOutputStream(appJarBytes).use { appJar ->
-        if (includeAppClass) {
-          appJar.putNextEntry(ZipEntry("test/PreviewsKt.class"))
-          appJar.write(minimalClassBytes("test.PreviewsKt"))
-          appJar.closeEntry()
+      // Omit the entry entirely when [includeAppJarEntry] is false — mirrors an IR-backed bundle
+      // that ships no consumer bytecode (and no dummy jar) at all.
+      if (includeAppJarEntry) {
+        val appJarBytes = ByteArrayOutputStream()
+        ZipOutputStream(appJarBytes).use { appJar ->
+          if (includeAppClass) {
+            appJar.putNextEntry(ZipEntry("test/PreviewsKt.class"))
+            appJar.write(minimalClassBytes("test.PreviewsKt"))
+            appJar.closeEntry()
+          }
         }
+        zip.putNextEntry(ZipEntry("classes/app.jar"))
+        zip.write(appJarBytes.toByteArray())
+        zip.closeEntry()
       }
-      zip.putNextEntry(ZipEntry("classes/app.jar"))
-      zip.write(appJarBytes.toByteArray())
-      zip.closeEntry()
 
       for ((path, bytes) in libs) {
         zip.putNextEntry(ZipEntry(path))
