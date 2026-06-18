@@ -1,0 +1,35 @@
+{
+  "schema": "a11y-diff/v1",
+  "added": [
+    {
+      "ref": "a/role:Button[1]",
+      "type": "TouchTargetSizeCheck",
+      "level": "ERROR",
+      "message": "This item's size is 32x32dp. Consider making it 48x48dp.",
+      "boundsInScreen": "0,120,32,152"
+    }
+  ],
+  "removed": [
+    {
+      "ref": "a/role:Image[0]",
+      "type": "SpeakableTextPresentCheck",
+      "level": "WARNING",
+      "message": "View is missing speakable text.",
+      "boundsInScreen": "0,0,48,48"
+    }
+  ],
+  "changed": [
+    {
+      "ref": "a/role:Button[0]",
+      "type": "TextContrastCheck",
+      "changes": [
+        { "field": "level", "from": "WARNING", "to": "ERROR" },
+        {
+          "field": "message",
+          "from": "Contrast ratio 3.8 is below 4.5.",
+          "to": "Contrast ratio 2.1 is below 4.5."
+        }
+      ]
+    }
+  ]
+}

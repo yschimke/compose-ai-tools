@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://schimke.ee/composeai/compose-theme-diff.schema.json",
+  "title": "ThemeDelta",
+  "description": "Payload for the `compose-theme-diff/v1` derived product: the diff between two `compose/theme` payloads' resolved Material 3 tokens (issue #1873), keyed by token name. Kotlin source of truth: ThemeDelta in :data-theme-core. The `schema` discriminator is always emitted (@EncodeDefault).",
+  "x-composeai": {
+    "kind": "compose-theme-diff/v1",
+    "schemaVersion": 1,
+    "kotlinType": "ee.schimke.composeai.data.theme.ThemeDelta",
+    "kotlinConst": "ThemeDiffProduct.SCHEMA",
+    "example": "schema/examples/compose-theme-diff.json"
+  },
+  "definitions": {
+    "ThemeTokenChange": {
+      "type": "object",
+      "required": ["token"],
+      "properties": {
+        "token": { "type": "string" },
+        "from": { "type": ["string", "null"] },
+        "to": { "type": ["string", "null"] }
+      }
+    },
+    "TypographyToken": {
+      "type": ["object", "null"],
+      "properties": {
+        "fontFamily": { "type": ["string", "null"] },
+        "fontSize": { "type": ["number", "null"] },
+        "fontSizeUnit": { "type": ["string", "null"] },
+        "fontWeight": { "type": ["string", "null"] },
+        "fontStyle": { "type": ["string", "null"] },
+        "lineHeight": { "type": ["number", "null"] },
+        "lineHeightUnit": { "type": ["string", "null"] },
+        "letterSpacing": { "type": ["number", "null"] },
+        "letterSpacingUnit": { "type": ["string", "null"] }
+      }
+    },
+    "ThemeTypographyChange": {
+      "type": "object",
+      "required": ["token"],
+      "properties": {
+        "token": { "type": "string" },
+        "from": { "$ref": "#/definitions/TypographyToken" },
+        "to": { "$ref": "#/definitions/TypographyToken" }
+      }
+    },
+    "ThemeDelta": {
+      "type": "object",
+      "required": ["schema"],
+      "properties": {
+        "schema": { "type": "string", "const": "compose-theme-diff/v1" },
+        "colorScheme": { "type": "array", "items": { "$ref": "#/definitions/ThemeTokenChange" } },
+        "shapes": { "type": "array", "items": { "$ref": "#/definitions/ThemeTokenChange" } },
+        "typography": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ThemeTypographyChange" }
+        }
+      }
+    }
+  },
+  "$ref": "#/definitions/ThemeDelta"
+}

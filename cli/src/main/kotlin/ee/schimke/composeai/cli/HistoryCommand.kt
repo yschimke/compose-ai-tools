@@ -1,6 +1,8 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.daemon.history.GitRefHistorySource
+import ee.schimke.composeai.daemon.history.HistoryDataDelta
+import ee.schimke.composeai.daemon.history.HistoryDataDiff
 import ee.schimke.composeai.daemon.history.HistoryDiffArtifacts
 import ee.schimke.composeai.daemon.history.HistoryEntry
 import ee.schimke.composeai.daemon.history.HistoryFilter
@@ -169,9 +171,9 @@ class HistoryCommand(private val args: List<String>) {
   private fun diff() {
     val json = "--json" in args
     val mode = args.flagValue("--mode") ?: "metadata"
-    if (mode != "metadata" && mode != "pixel" && mode != "semantics") {
+    if (mode != "metadata" && mode != "pixel" && mode != "semantics" && mode != "data") {
       System.err.println(
-        "history diff: unknown --mode '$mode'. Use metadata (default), pixel, or semantics."
+        "history diff: unknown --mode '$mode'. Use metadata (default), pixel, semantics, or data."
       )
       exitProcess(1)
     }
@@ -293,6 +295,37 @@ class HistoryCommand(private val args: List<String>) {
 
       println("diff ${from.id} → ${to.id}  (preview ${from.previewId})")
       println(formatSemanticsDeltaHuman(delta).prependIndent("  "))
+      return
+    }
+
+    if (mode == "data") {
+      // Data-product roll-up (semantics + a11y + theme), computed locally via the shared
+      // HistoryDataDiff — the same code the daemon's `history/diff mode=data` runs, reading the
+      // snapshots frozen in each entry's sidecar (no PNGs, no daemon round-trip).
+      val delta =
+        try {
+          HistoryDataDiff.diff(from, to)
+        } catch (t: Throwable) {
+          System.err.println("history diff: data diff failed: ${t.message}")
+          exitProcess(2)
+        }
+
+      if (json) {
+        val payload =
+          HistoryDiffResponse(
+            schema = HISTORY_SCHEMA,
+            mode = "data",
+            pngHashChanged = pngHashChanged,
+            from = leanEntryJson(from),
+            to = leanEntryJson(to),
+            dataDelta = OUT.encodeToJsonElement(HistoryDataDelta.serializer(), delta),
+          )
+        println(OUT.encodeToString(HistoryDiffResponse.serializer(), payload))
+        return
+      }
+
+      println("diff ${from.id} → ${to.id}  (preview ${from.previewId})")
+      println(formatDataDeltaHuman(delta).prependIndent("  "))
       return
     }
 
@@ -441,7 +474,7 @@ class HistoryCommand(private val args: List<String>) {
       Subcommands:
         list                 List history entries (newest first)
         read <entryId>       Show one entry's metadata (and optionally its PNG / data)
-        diff <fromId> <toId> Compare two entries (metadata | pixel | semantics)
+        diff <fromId> <toId> Compare two entries (metadata | pixel | semantics | data)
         help                 Show this help message
 
       Source:
@@ -458,9 +491,10 @@ class HistoryCommand(private val args: List<String>) {
         --inline       Include base64 PNG bytes (--json)
 
       diff options:
-        --mode metadata|pixel|semantics
+        --mode metadata|pixel|semantics|data
                                pixel reports diffPx + ssim and writes a marked-diff PNG;
-                               semantics diffs the captured compose/semantics trees
+                               semantics diffs the captured compose/semantics trees;
+                               data rolls semantics + a11y + theme into one versioned delta
         --out <path>           (pixel) write the marked-diff PNG here instead of <preview>/.diffs/
 
       Common:
@@ -537,4 +571,60 @@ internal data class HistoryDiffResponse(
   // Semantics-mode field (`--mode semantics`); null otherwise. The typed compose-semantics-diff/v1
   // delta of the two entries' captured trees.
   val semanticsDelta: JsonElement? = null,
+  // Data-mode field (`--mode data`); null otherwise. The versioned history-data-diff/v1 roll-up
+  // (semantics + a11y + theme) of the two entries' captured data products.
+  val dataDelta: JsonElement? = null,
 )
+
+/**
+ * Renders a [HistoryDataDelta] for the terminal — one block per compared product. Sections that
+ * weren't compared (the product wasn't captured on both entries) are reported as such, distinct
+ * from a compared-but-unchanged section, so a reviewer can tell "no a11y data" from "a11y
+ * unchanged".
+ */
+internal fun formatDataDeltaHuman(delta: HistoryDataDelta): String =
+  buildString {
+      appendLine("semantics:")
+      appendLine(
+        when (val s = delta.semantics) {
+          null -> "  (not captured on both entries)"
+          else -> formatSemanticsDeltaHuman(s).prependIndent("  ")
+        }
+      )
+      appendLine("a11y:")
+      val a = delta.a11y
+      if (a == null) {
+        appendLine("  (not captured on both entries)")
+      } else if (a.isEmpty) {
+        appendLine("  No a11y finding changes.")
+      } else {
+        appendLine(
+          "  ${a.added.size} added, ${a.removed.size} removed, ${a.changed.size} changed".trimEnd()
+        )
+        a.removed.forEach {
+          appendLine("    - ${it.level} ${it.type}${it.ref?.let { r -> " @$r" } ?: ""}")
+        }
+        a.added.forEach {
+          appendLine("    + ${it.level} ${it.type}${it.ref?.let { r -> " @$r" } ?: ""}")
+        }
+        a.changed.forEach { change ->
+          appendLine("    ~ ${change.type}${change.ref?.let { r -> " @$r" } ?: ""}")
+          change.changes.forEach { f ->
+            appendLine("        ${f.field}: ${f.from ?: "∅"} → ${f.to ?: "∅"}")
+          }
+        }
+      }
+      appendLine("theme:")
+      val t = delta.theme
+      if (t == null) {
+        appendLine("  (not captured on both entries)")
+      } else if (t.isEmpty) {
+        appendLine("  No theme token changes.")
+      } else {
+        (t.colorScheme + t.shapes).forEach { tok ->
+          appendLine("    ~ ${tok.token}: ${tok.from ?: "∅"} → ${tok.to ?: "∅"}")
+        }
+        t.typography.forEach { tok -> appendLine("    ~ ${tok.token} (typography changed)") }
+      }
+    }
+    .trimEnd()

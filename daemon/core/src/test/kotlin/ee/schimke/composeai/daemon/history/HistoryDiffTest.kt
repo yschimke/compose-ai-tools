@@ -467,6 +467,124 @@ class HistoryDiffTest {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // DATA mode (issue #1873) — the data-product roll-up (semantics + a11y + theme). Entries are
+  // seeded with the captured snapshots directly via `recordRender(...)`, the same way the render
+  // path freezes them off the data-product registry.
+  // -------------------------------------------------------------------------
+
+  @Test(timeout = 30_000)
+  fun data_mode_rolls_up_semantics_a11y_and_theme() {
+    runWith { _, manager, send, receive ->
+      val from =
+        manager.recordRender(
+          "preview-A",
+          "bytes-1".toByteArray(),
+          trigger = "renderNow",
+          renderTookMs = 1,
+          semantics = semanticsPayload(testTag = "greeting", text = "Hello"),
+          a11yAtf = findingsPayload("TextContrastCheck", "WARNING", "0,0,48,48"),
+          a11yHierarchy = hierarchyPayload("a/role:Button[0]", "0,0,48,48"),
+          theme = themePayload(primary = "0xFF6750A4"),
+        )!!
+      val to =
+        manager.recordRender(
+          "preview-A",
+          "bytes-2".toByteArray(),
+          trigger = "renderNow",
+          renderTookMs = 1,
+          semantics = semanticsPayload(testTag = "greeting", text = "World"),
+          a11yAtf = findingsPayload("TextContrastCheck", "ERROR", "0,0,48,48"),
+          a11yHierarchy = hierarchyPayload("a/role:Button[0]", "0,0,48,48"),
+          theme = themePayload(primary = "0xFFB3261E"),
+        )!!
+
+      val resp = diffRoundTrip(send, receive, from = from.id, to = to.id, mode = "data")
+      val data = resp["result"]!!.jsonObject["dataDelta"]!!.jsonObject
+      assertEquals("history-data-diff/v1", data["schema"]!!.jsonPrimitive.content)
+
+      // semantics: text changed on the same ref.
+      val semChange =
+        data["semantics"]!!
+          .jsonObject["changed"]!!
+          .jsonArray
+          .single()
+          .jsonObject["changes"]!!
+          .jsonArray
+          .single()
+          .jsonObject
+      assertEquals("text", semChange["field"]!!.jsonPrimitive.content)
+      assertEquals("World", semChange["to"]!!.jsonPrimitive.content)
+
+      // a11y: the contrast finding's level changed, keyed by the stable hierarchy ref.
+      val a11yChange = data["a11y"]!!.jsonObject["changed"]!!.jsonArray.single().jsonObject
+      assertEquals("a/role:Button[0]", a11yChange["ref"]!!.jsonPrimitive.content)
+      val levelChange =
+        a11yChange["changes"]!!
+          .jsonArray
+          .map { it.jsonObject }
+          .single { it["field"]!!.jsonPrimitive.content == "level" }
+      assertEquals("ERROR", levelChange["to"]!!.jsonPrimitive.content)
+
+      // theme: the primary colour token changed.
+      val themeChange = data["theme"]!!.jsonObject["colorScheme"]!!.jsonArray.single().jsonObject
+      assertEquals("primary", themeChange["token"]!!.jsonPrimitive.content)
+      assertEquals("0xFFB3261E", themeChange["to"]!!.jsonPrimitive.content)
+    }
+  }
+
+  @Test(timeout = 30_000)
+  fun data_mode_omits_uncaptured_sections() {
+    runWith { _, manager, send, receive ->
+      // Only theme captured on both sides; semantics + a11y were never computed.
+      val from =
+        manager.recordRender(
+          "preview-A",
+          "bytes-1".toByteArray(),
+          trigger = "renderNow",
+          renderTookMs = 1,
+          theme = themePayload(primary = "0xFF6750A4"),
+        )!!
+      val to =
+        manager.recordRender(
+          "preview-A",
+          "bytes-2".toByteArray(),
+          trigger = "renderNow",
+          renderTookMs = 1,
+          theme = themePayload(primary = "0xFFB3261E"),
+        )!!
+
+      val resp = diffRoundTrip(send, receive, from = from.id, to = to.id, mode = "data")
+      val data = resp["result"]!!.jsonObject["dataDelta"]!!.jsonObject
+      // Sections for products absent on both entries are omitted (null, encodeDefaults=false).
+      assertTrue("semantics omitted", data["semantics"] == null)
+      assertTrue("a11y omitted", data["a11y"] == null)
+      assertEquals(
+        "0xFFB3261E",
+        data["theme"]!!
+          .jsonObject["colorScheme"]!!
+          .jsonArray
+          .single()
+          .jsonObject["to"]!!
+          .jsonPrimitive
+          .content,
+      )
+    }
+  }
+
+  private fun findingsPayload(type: String, level: String, bounds: String): JsonElement =
+    json.parseToJsonElement(
+      """{"findings":[{"level":"$level","type":"$type","message":"contrast","boundsInScreen":"$bounds"}]}"""
+    )
+
+  private fun hierarchyPayload(ref: String, bounds: String): JsonElement =
+    json.parseToJsonElement("""{"nodes":[{"label":"x","ref":"$ref","boundsInScreen":"$bounds"}]}""")
+
+  private fun themePayload(primary: String): JsonElement =
+    json.parseToJsonElement(
+      """{"resolvedTokens":{"colorScheme":{"primary":"$primary"},"typography":{},"shapes":{}},"consumers":[]}"""
+    )
+
   /** True when a delta list field is absent (omitted because empty) or present-but-empty. */
   private fun emptyOrAbsent(element: JsonElement?): Boolean =
     element == null || element.jsonArray.isEmpty()

@@ -126,6 +126,7 @@ tasks.register("functionalTestWithAndroid") {
 //       api :daemon:core
 //         api :renderer-xr-client (daemon-core fronts the native XR render server — RENDERER_SERVICE)
 //         api :data-layoutinspector-core (semantics models + differ for `history/diff mode=semantics`, #1785)
+//         api :data-theme-core (theme-token models + differ for `history/diff mode=data`, #1873)
 //     implementation :lottie-preview-runtime (Compottie-backed kind=LOTTIE render path)
 //   plus :common-io (the Okio file-IO foundation those modules read/write through).
 val bundleRenderFunctionalTestPublishTargets =
@@ -140,6 +141,7 @@ val bundleRenderFunctionalTestPublishTargets =
     ":daemon:core",
     ":renderer-xr-client",
     ":data-layoutinspector-core",
+    ":data-theme-core",
     ":lottie-preview-runtime",
     ":common-io",
   )

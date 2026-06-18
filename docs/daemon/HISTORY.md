@@ -177,11 +177,12 @@ match the `ref` it was listed from), mirroring `history/list`.
 ### `history/diff` (§ H3)
 
 ```ts
-params: { from: string; to: string; mode?: "metadata" | "pixel" | "semantics"; ref? }
+params: { from: string; to: string; mode?: "metadata" | "pixel" | "semantics" | "data"; ref? }
 result: {
   pngHashChanged: boolean;
   diffPx?: number; ssim?: number; diffPngPath?: string;  // pixel mode only
   semanticsDelta?: SemanticsDelta;                        // semantics mode only
+  dataDelta?: HistoryDataDelta;                           // data mode only
   fromMetadata: HistoryEntry;
   toMetadata: HistoryEntry;
 }
@@ -204,6 +205,15 @@ snapshotted into its sidecar at record time (see `HistoryEntry.semantics`
 below), so the diff is deterministic and reads no PNGs. The same differ
 (`SemanticsDiff`) backs `compose-preview diff-semantics` and the MCP
 `diff_semantics` tool, so all three surfaces agree.
+`mode = "data"` (issue #1873) is the data-product roll-up: one versioned
+`HistoryDataDelta` (`history-data-diff/v1`) carrying optional `semantics`
+(the `compose-semantics-diff/v1` delta), `a11y` (`a11y-diff/v1`: ATF findings
+added / removed / changed, keyed by the stable hierarchy `ref` from #1784) and
+`theme` (`compose-theme-diff/v1`: Material 3 resolved-token deltas). Each
+section is populated only when **both** entries carry that product (a `null`
+section ⇒ "not captured on both"; an empty-but-present section ⇒ "captured and
+identical"). Like semantics it reads the sidecar snapshots, not PNGs; unlike
+semantics it never errors on a missing product — the section is simply omitted.
 
 `ref?` (H10-read) resolves both `from` and `to` from that on-demand reporting
 branch instead of the configured sources — one ref per diff request (both sides

@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon.protocol
 
+import ee.schimke.composeai.daemon.history.HistoryDataDelta
 import ee.schimke.composeai.data.layoutinspector.SemanticsDelta
 import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
 import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
@@ -1749,6 +1750,11 @@ enum class HistoryDiffMode {
   // pixel-free regression signal. Populates `semanticsDelta`; requires both entries to carry a
   // captured semantics snapshot (else `ERR_HISTORY_SEMANTICS_NOT_CAPTURED`).
   @SerialName("semantics") SEMANTICS,
+  // Data-product diff (issue #1873) — rolls the captured `compose/semantics`, `a11y/atf` and
+  // `compose/theme` snapshots into one versioned `dataDelta`. A section is present only when both
+  // entries carry that product. Superset of SEMANTICS; SEMANTICS stays for the narrow tree-only
+  // case (and its dedicated `ERR_HISTORY_SEMANTICS_NOT_CAPTURED` contract).
+  @SerialName("data") DATA,
 }
 
 @Serializable
@@ -1776,6 +1782,9 @@ data class HistoryDiffResult(
   // Semantics-mode field (issue #1785) — the typed structural delta of the two entries'
   // `compose/semantics` trees. Null in METADATA / PIXEL modes by design.
   val semanticsDelta: SemanticsDelta? = null,
+  // Data-mode field (issue #1873) — the versioned data-product delta (semantics + a11y + theme).
+  // Null outside DATA mode by design.
+  val dataDelta: HistoryDataDelta? = null,
 )
 
 // ---------------------------------------------------------------------------

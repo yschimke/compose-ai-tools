@@ -28,6 +28,12 @@ dependencies {
   // renderer-agnostic daemon classpath.
   api(project(":data-layoutinspector-core"))
 
+  // Theme-token models + structural differ (issue #1873). `api`, not `implementation`: the
+  // published `HistoryDataDelta.theme` field is a `ThemeDelta`, so the type is part of this
+  // module's compile ABI. Pure-JVM core module (no Compose/Android) — safe on the
+  // renderer-agnostic daemon classpath, same as `:data-layoutinspector-core`.
+  api(project(":data-theme-core"))
+
   // Okio-based file IO (`SystemFileSystem`) for data-product reads, history sidecars, bundle IR
   // replay, and forensics dumps. `implementation` — Okio stays an internal detail; daemon/core's
   // public surface keeps its java.io.File signatures.

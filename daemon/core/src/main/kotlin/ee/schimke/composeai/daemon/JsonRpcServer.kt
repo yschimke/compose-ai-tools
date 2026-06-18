@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.history.HistoryDataDiff
 import ee.schimke.composeai.daemon.history.HistoryDiffArtifacts
 import ee.schimke.composeai.daemon.history.HistoryEntry
 import ee.schimke.composeai.daemon.history.HistoryFilter
@@ -1493,8 +1494,11 @@ class JsonRpcServer(
    * pixel-mode fields stay null there by design. PIXEL mode (H5, issue #1873) decodes both archived
    * frames and populates `diffPx` + `ssim` + `diffPngPath` (a marked-diff PNG written under
    * `<historyDir>/<previewId>/.diffs/`) via [HistoryImageDiff]. SEMANTICS mode (issue #1785) adds
-   * `semanticsDelta`, the typed structural diff of the two entries' captured semantics trees. The
-   * `-32012` "pixel not implemented" sentinel is retired now that H5 has landed.
+   * `semanticsDelta`, the typed structural diff of the two entries' captured semantics trees. DATA
+   * mode (issue #1873) rolls the captured `compose/semantics`, `a11y/atf` and `compose/theme`
+   * snapshots into one versioned `dataDelta` via [HistoryDataDiff] — each section present only when
+   * both entries carry that product. The `-32012` "pixel not implemented" sentinel is retired now
+   * that H5 has landed.
    */
   private fun handleHistoryDiff(req: JsonRpcRequest) {
     val params =
@@ -1611,6 +1615,34 @@ class JsonRpcServer(
           fromMetadata = encodeHistoryEntry(from.entry),
           toMetadata = encodeHistoryEntry(to.entry),
           semanticsDelta = delta,
+        )
+      sendResponse(req.id, encode(HistoryDiffResult.serializer(), result))
+      return
+    }
+    // DATA mode (issue #1873) — the data-product diff. Like SEMANTICS, it reads the snapshots
+    // frozen
+    // in each entry's sidecar (no PNG bytes), so it works the same off the local FS or a reporting
+    // ref. Sections (semantics / a11y / theme) are populated only when both entries carry that
+    // product; an absent product simply leaves its section null rather than erroring — DATA is a
+    // best-effort roll-up, not the strict single-product SEMANTICS contract.
+    if (params.mode == HistoryDiffMode.DATA) {
+      val delta =
+        try {
+          HistoryDataDiff.diff(from.entry, to.entry, json)
+        } catch (t: Throwable) {
+          sendErrorResponse(
+            id = req.id,
+            code = ERR_INTERNAL,
+            message = "history/diff: data diff failed: ${t.message}",
+          )
+          return
+        }
+      val result =
+        HistoryDiffResult(
+          pngHashChanged = from.entry.pngHash != to.entry.pngHash,
+          fromMetadata = encodeHistoryEntry(from.entry),
+          toMetadata = encodeHistoryEntry(to.entry),
+          dataDelta = delta,
         )
       sendResponse(req.id, encode(HistoryDiffResult.serializer(), result))
       return
