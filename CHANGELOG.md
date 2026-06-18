@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.16.0](https://github.com/yschimke/compose-ai-tools/compare/v0.15.13...v0.16.0) (2026-06-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* **compose/semantics:** consolidate flat layout* text fields into themed sub-objects ([#1945](https://github.com/yschimke/compose-ai-tools/issues/1945))
+
+### Features
+
+* **cli:** guide convention-plugin builds when auto-inject can't see AGP ([#1948](https://github.com/yschimke/compose-ai-tools/issues/1948)) ([9e36505](https://github.com/yschimke/compose-ai-tools/commit/9e365053410c3460b152a231062b777dcce44164))
+* **compose/semantics:** consolidate flat layout* text fields into themed sub-objects ([#1945](https://github.com/yschimke/compose-ai-tools/issues/1945)) ([d45889d](https://github.com/yschimke/compose-ai-tools/commit/d45889dc29a491d62d4f8e45e9948bf7b996ecad))
+* **compose/semantics:** emit per-node font identity (family/weight/style/variation) ([#1935](https://github.com/yschimke/compose-ai-tools/issues/1935)) ([5e814a4](https://github.com/yschimke/compose-ai-tools/commit/5e814a43659d449f28e977342e57c7e26a1d65c6))
+* **daemon/history:** history/diff data mode — a11y/semantics/theme diff ([#1873](https://github.com/yschimke/compose-ai-tools/issues/1873)) ([#1949](https://github.com/yschimke/compose-ai-tools/issues/1949)) ([f5f079c](https://github.com/yschimke/compose-ai-tools/commit/f5f079c5c5634c5fe42287647a7a4640ef7f3081))
+* **samples:** shared-element transitions + Compose 1.11 visual-debug previews ([#1944](https://github.com/yschimke/compose-ai-tools/issues/1944)) ([167f213](https://github.com/yschimke/compose-ai-tools/commit/167f2134b08f23211f43127656812fd12808de06))
+
+
+### Bug Fixes
+
+* **bundle:** don't require classes/app.jar in IR-backed bundles ([#1950](https://github.com/yschimke/compose-ai-tools/issues/1950)) ([129a447](https://github.com/yschimke/compose-ai-tools/commit/129a4470430b06e8afcf4a915c671bf268b016cc))
+
 ## [0.15.13](https://github.com/yschimke/compose-ai-tools/compare/v0.15.12...v0.15.13) (2026-06-17)
 
 
