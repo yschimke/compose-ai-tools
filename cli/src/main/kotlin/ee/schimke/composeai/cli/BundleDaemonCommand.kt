@@ -70,14 +70,16 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
     val zipBytes = BundleReader.extractZipBytes(file)
     val manifest = BundleReader.readMetadata(file).manifest
     // A fully IR-backed bundle (schema v5+) drops its consumer classes — its previews replay from
-    // `ir/` (extracted below), so `classes/app.jar` is legitimately absent and need not be
-    // required. Classic class-backed bundles must still carry it.
+    // `ir/` (extracted below), so `classes/app.jar` is legitimately absent. A mixed bundle that
+    // still has a class-backed preview must carry it, so gate on whether any preview id is NOT
+    // covered by an intermediate representation rather than merely "has some IR".
+    val irPreviewIds = manifest.intermediateRepresentations.mapTo(mutableSetOf()) { it.previewId }
     expandAppJarAndManifest(
       zipBytes,
       classesDir,
       previewsJson,
       file,
-      requireAppJar = manifest.intermediateRepresentations.isEmpty(),
+      requireAppJar = manifest.previewIds.any { it !in irPreviewIds },
     )
     // Consumer classpath for the daemon's `userClassDirs` holder (dirs-before-jars ordered, see
     // UserClassLoaderHolder) — the extracted app classes plus the bundle's third-party deps. NOT
