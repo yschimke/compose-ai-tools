@@ -17,6 +17,11 @@ event's `tMs`:
 | `assert.notVisible` | the `target` matches no node          | the target matches ≥ 1 node         |
 | `assert.textEquals` | the `target` resolves and its text == the expected string | the text differs, or the target matches 0 / >1 nodes |
 | `assert.a11y`       | the held scene has no ATF findings at the threshold | an ATF error (or warning, at `warnings`) is present |
+| `assert.pixels`     | the recorded frame at this `tMs` matches the baseline PNG within tolerance | the frame drifts beyond tolerance, or the baseline / frame is missing |
+
+`assert.pixels` carries no `target` either — it pins the **rendered frame** against a committed
+baseline PNG whose path rides the existing `inputText` field. See
+[Pixel assertions](#pixel-assertions-assertpixels) below.
 
 `assert.a11y` carries no `target` — it checks the **whole held scene**. Its severity threshold rides
 the existing `inputText` field (`errors`, the default, or `warnings`); `errors` fails only on ATF
@@ -59,10 +64,10 @@ recording as a gating check.
 
 ### Backend support
 
-| Backend | `assert.visible` / `assert.notVisible` | `assert.textEquals` | `assert.a11y` |
-|---------|----------------------------------------|---------------------|---------------|
-| Desktop | ✅ (resolved against the live unmerged semantics tree) | ✅ | ❌ — desktop a11y is overlay-only (no ATF findings); not advertised |
-| Android | ✅ (resolved against the probe-semantics snapshot, by `testTag` only) | ❌ — `record_preview` rejects it | ✅ (ATF against the held View hierarchy) |
+| Backend | `assert.visible` / `assert.notVisible` | `assert.textEquals` | `assert.a11y` | `assert.pixels` |
+|---------|----------------------------------------|---------------------|---------------|-----------------|
+| Desktop | ✅ (resolved against the live unmerged semantics tree) | ✅ | ❌ — desktop a11y is overlay-only (no ATF findings); not advertised | ✅ (diffs the frame it wrote against the baseline) |
+| Android | ✅ (resolved against the probe-semantics snapshot, by `testTag` only) | ❌ — `record_preview` rejects it | ✅ (ATF against the held View hierarchy) | ❌ — not advertised yet (follow-up) |
 
 Desktop advertises `RecordingScriptDataExtensions.assertionDescriptor` (all three) and resolves via
 `state.scene.composeSemanticsRoot()`. Android (issue #1964) advertises the narrower
@@ -107,6 +112,45 @@ event's `tMs`, so the check is coupled to the rendered scene rather than to a se
   `captureProbeSemantics`. The verdict (`evaluateA11yAssertion`) is pure and lives in `:daemon:core`,
   so it's unit-tested without a Robolectric scene.
 
+### Pixel assertions (`assert.pixels`)
+
+`assert.pixels` (issue #1967) gates a recording on a **golden image** — the Robo / screenshot-test
+"diff against a baseline" model, applied to a recorded frame. It diffs the frame the recording wrote
+at the event's `tMs` against a committed baseline PNG, failing when the diff exceeds tolerance.
+
+```json
+[
+  { "tMs": 0,    "kind": "input.click",   "target": { "testTag": "submit" } },
+  { "tMs": 500,  "kind": "assert.pixels", "inputText": "submitted.png" }
+]
+```
+
+```
+compose-preview record --preview MyForm --script form.json --out form.gif --baseline-dir baselines/
+# diffs frame@500ms against baselines/submitted.png; exits 2 if it drifts beyond tolerance
+```
+
+- **Reuses `PixelDiff`.** The comparison is the same `PixelDiff` comparator (per-pixel +
+  aggregate-fraction + absolute-cap tolerance) the preview-review pipeline uses — no new comparator.
+  Tolerance is `PixelDiffTolerance.DEFAULT` today; a per-event override is a follow-up. A baseline
+  whose dimensions differ from the frame fails as a dimension mismatch.
+- **Baseline path rides `inputText`** (no new wire field, like `assert.textEquals`). The CLI's
+  `--baseline-dir` makes relative paths absolute before the script is posted, so resolution is
+  independent of the daemon's working directory; the daemon reads the PNG off the shared local
+  filesystem.
+- **Evaluated in a post-playback pass.** The frame an `assert.pixels` event compares is rendered
+  *after* the event is dispatched, so the desktop session defers the diff: it reserves the evidence
+  slot during dispatch (a placeholder that fails closed) and runs the diff once every frame is on
+  disk. On failure it writes `actual.png` / `expected.png` / `diff.png` next to the encoded output so
+  the drift is inspectable without re-running.
+- **Fail-closed.** A missing baseline, a missing recorded frame, or a dimension mismatch is `FAILED`,
+  never a silent pass — the script asked to pin pixels.
+- **Desktop-only today.** The desktop session reads the frame PNGs it writes; the Android backend
+  writes frames the same way, so extending `assert.pixels` there is a mechanical follow-up, but it's
+  not advertised yet so `record_preview` rejects it on Android. The pure verdict (`pixelAssertVerdict`)
+  lives in `:daemon:desktop` (it needs `PixelDiff` from `:daemon:harness`, which `:daemon:core` can't
+  depend on) and is unit-tested from raw PNG bytes.
+
 ## What we borrowed (and what we deliberately didn't)
 
 Comparison with the emulator-driven UI-test tools this is modelled on:
@@ -118,6 +162,7 @@ Comparison with the emulator-driven UI-test tools this is modelled on:
 | Deterministic virtual clock (vs. emulator wall-clock + idling resources) | Already present | Recordings tick on `frameIndex * 1e9 / fps`; no flakiness, no `IdlingResource` needed — the scene can't run ahead of the script. |
 | Same artifact for human review + machine gate (Maestro recordings, Robo crawl reports) | **Shipped** | One GIF/APNG/MP4 doubles as the visual record and, via assertions, the pass/fail signal. |
 | Assert exact text / value (Maestro `assertTrue`, Espresso `withText`) | **Shipped** | `assert.textEquals` compares the resolved node's `text` to the expected string in the existing `inputText` field. |
+| Golden-image / screenshot diff (Robo, Paparazzi/Roborazzi) | **Shipped (desktop)** | `assert.pixels` diffs the recorded frame against a committed baseline PNG via `PixelDiff`. |
 | Crawl / auto-explore (Robo, Monkey) | Roadmap, narrow | A preview is a single held scene, not an app graph — "crawl" reduces to "fan a tap over every clickable semantics node and snapshot," which the probe machinery could drive. Useful as a smoke check, not a crawl. |
 
 ### Other emulator-test techniques worth borrowing
@@ -137,25 +182,31 @@ land (each is a separate follow-up, not in this PR):
   [above](#accessibility-assertions-asserta11y). Runs ATF against the held View hierarchy and fails
   the recording on findings at the chosen threshold. Desktop has no ATF backend, so it stays
   Android-only for now.
-- **Pixel / golden assertions** — Robo and screenshot tests diff against a baseline. The preview
-  pipeline already has the visual-diff bot + `baselines.json`; an `assert.pixels` event diffing the
-  current frame against a committed PNG would fold golden-image checks into the same script.
+- **Pixel / golden assertions** — **Shipped (desktop)** as `assert.pixels`, see
+  [above](#pixel-assertions-assertpixels). Diffs the recorded frame against a committed baseline PNG
+  via `PixelDiff`. Android is a mechanical follow-up (it writes frames the same way; just not
+  advertised yet).
 
 ## Code map
 
 - Status + evidence: `RecordingScriptEventStatus.FAILED`, `failedEvidence(...)`
   (`daemon/core/.../RecordingScriptHandlerRegistry.kt`).
 - Event kinds + descriptors: `RecordingScriptDataExtensions.ASSERT_VISIBLE_EVENT` /
-  `ASSERT_NOT_VISIBLE_EVENT` / `ASSERT_TEXT_EQUALS_EVENT` / `ASSERT_A11Y_EVENT`; `assertionDescriptor`
-  (desktop, all three text/visibility), `assertionVisibilityDescriptor` (Android, visibility only),
-  and `assertionA11yDescriptor` (Android, a11y) (`data/render/core/.../DataExtensionPlan.kt`).
-- Verdict logic (pure, unit-tested, shared by both backends): `evaluateVisibilityAssertion` /
-  `evaluateTextEqualsAssertion` / `resolvedNodeText` / `evaluateA11yAssertion` + `A11yAssertThreshold`
-  (`daemon/core/.../RecordingAssertions.kt`).
+  `ASSERT_NOT_VISIBLE_EVENT` / `ASSERT_TEXT_EQUALS_EVENT` / `ASSERT_A11Y_EVENT` / `ASSERT_PIXELS_EVENT`;
+  `assertionDescriptor` (desktop — visibility, text, **and pixels**), `assertionVisibilityDescriptor`
+  (Android, visibility only), and `assertionA11yDescriptor` (Android, a11y)
+  (`data/render/core/.../DataExtensionPlan.kt`).
+- Verdict logic (pure, unit-tested): `evaluateVisibilityAssertion` / `evaluateTextEqualsAssertion` /
+  `resolvedNodeText` / `evaluateA11yAssertion` + `A11yAssertThreshold`
+  (`daemon/core/.../RecordingAssertions.kt`); `pixelAssertVerdict` (golden-image, reuses `PixelDiff`)
+  (`daemon/desktop/.../PixelAssertions.kt`).
 - Handler wiring: `DesktopRecordingSession.assertVisibilityHandler` /
   `assertTextEqualsHandler` (advertised by `DesktopHost`); `AndroidRecordingSession`'s
   `assertVisibilityHandler` resolving against `captureProbeSemantics()` and `assertA11yHandler`
   resolving against `captureA11yFindings()` — the latter bridged by the `CaptureA11yFindings`
   interactive command running `AccessibilityChecker.check` sandbox-side in `RobolectricHost`
   (advertised by `RobolectricHost`).
-- CLI gate: `RecordPreviewCommand` — fails any non-`APPLIED` `assert.*` evidence, prints each, exits 2.
+- Pixel-assert wiring: `DesktopRecordingSession.evaluatePixelAssert` (post-playback diff of the
+  written `frame-NNNNN.png` against the baseline, writes `actual/expected/diff.png` on failure).
+- CLI gate: `RecordPreviewCommand` — `--baseline-dir` resolves `assert.pixels` baseline paths; fails
+  any non-`APPLIED` `assert.*` evidence, prints each, exits 2.

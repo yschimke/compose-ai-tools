@@ -17,6 +17,7 @@ import androidx.compose.ui.scene.ComposeScenePointer
 import ee.schimke.composeai.cli.AccessibilityNode
 import ee.schimke.composeai.cli.TalkBackOverlayFrames
 import ee.schimke.composeai.cli.TalkBackTraversal
+import ee.schimke.composeai.daemon.harness.PixelDiff
 import ee.schimke.composeai.daemon.protocol.RecordingFormat
 import ee.schimke.composeai.daemon.protocol.RecordingInputParams
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
@@ -207,19 +208,35 @@ class DesktopRecordingSession(
     val startNs = System.nanoTime()
     var nextEventIdx = 0
     val evidence = mutableListOf<RecordingScriptEvidence>()
+    // `assert.pixels` events are evaluated in a post-loop pass: the frame they compare against is
+    // the one rendered *after* this dispatch pass, so we can't diff it while dispatching. Each
+    // pending entry reserves its evidence slot (placeholder below) so timeline order is preserved.
+    val pendingPixels = mutableListOf<PendingPixelAssert>()
     for (frameIndex in 0 until totalFrames) {
       val tNanos: Long = frameIndex.toLong() * 1_000_000_000L / fps.toLong()
       val tMs: Long = tNanos / 1_000_000L
 
       while (nextEventIdx < sortedEvents.size && sortedEvents[nextEventIdx].tMs <= tMs) {
         val e = sortedEvents[nextEventIdx]
-        val ctx = SimpleRecordingDispatchContext(tNanos = tNanos, tMs = tMs)
-        evidence.add(scriptHandlers.dispatch(e, ctx))
+        if (e.kind == RecordingScriptDataExtensions.ASSERT_PIXELS_EVENT) {
+          // Defer to the post-loop diff. The placeholder is FAILED so a (bug) skipped finalization
+          // fails closed rather than reporting a false pass.
+          pendingPixels.add(PendingPixelAssert(evidence.size, frameIndex, e))
+          evidence.add(failedEvidence(e, "assert.pixels: not evaluated"))
+        } else {
+          val ctx = SimpleRecordingDispatchContext(tNanos = tNanos, tMs = tMs)
+          evidence.add(scriptHandlers.dispatch(e, ctx))
+        }
         nextEventIdx++
       }
 
       val image = state.scene.render(nanoTime = tNanos)
       writeFramePng(image, frameIndex, virtualTimeMs = tMs)
+    }
+    // Post-loop: every frame is now on disk, so diff each deferred assert.pixels against its
+    // baseline.
+    for (p in pendingPixels) {
+      evidence[p.evidenceIndex] = evaluatePixelAssert(p.event, p.frameIndex)
     }
     val tookMs = (System.nanoTime() - startNs) / 1_000_000L
     System.err.println(
@@ -235,6 +252,60 @@ class DesktopRecordingSession(
       frameHeightPx = frameHeightPx,
       scriptEvents = evidence,
     )
+  }
+
+  /**
+   * A deferred `assert.pixels` event (issue #1967): the diff against the recorded frame at
+   * [frameIndex] is run after the playback loop has written every frame, and the result replaces
+   * the placeholder evidence at [evidenceIndex] so the event keeps its timeline position.
+   */
+  private data class PendingPixelAssert(
+    val evidenceIndex: Int,
+    val frameIndex: Int,
+    val event: RecordingScriptEvent,
+  )
+
+  /**
+   * Golden-image assertion (issue #1967): diff the recorded `frame-NNNNN.png` for [frameIndex]
+   * against the committed baseline PNG named by the event's `inputText` (resolved CLI-side against
+   * `--baseline-dir`). The pure verdict lives in [pixelAssertVerdict] (reusing `:daemon:harness`'s
+   * `PixelDiff`); this wrapper does the file IO, turns the verdict into `RecordingScriptEvidence`,
+   * and on failure writes actual/expected/diff PNGs next to the encoded output so the drift is
+   * inspectable without re-running.
+   */
+  private fun evaluatePixelAssert(
+    event: RecordingScriptEvent,
+    frameIndex: Int,
+  ): RecordingScriptEvidence {
+    val baselinePath =
+      event.inputText
+        ?: return failedEvidence(
+          event,
+          "assert.pixels requires the baseline PNG path in the 'inputText' field",
+        )
+    val baselineBytes = File(baselinePath).takeIf { it.isFile }?.readBytes()
+    val frameFile = File(framesDir, "frame-${"%05d".format(frameIndex)}.png")
+    val actualBytes = frameFile.takeIf { it.isFile }?.readBytes()
+    return when (val verdict = pixelAssertVerdict(actualBytes, baselineBytes)) {
+      AssertionVerdict.Passed ->
+        appliedEvidence(event, "assert.pixels matched baseline '${File(baselinePath).name}'")
+      is AssertionVerdict.Failed -> {
+        if (actualBytes != null && baselineBytes != null) {
+          // Best-effort diagnostics — never let an artefact-write failure mask the real verdict.
+          try {
+            val diffDir =
+              File(encodedDir, "pixel-diff-${"%05d".format(frameIndex)}").apply { mkdirs() }
+            PixelDiff.writeDiffArtefacts(actualBytes, baselineBytes, diffDir)
+          } catch (t: Throwable) {
+            System.err.println(
+              "compose-ai-daemon: assert.pixels diff-artefact write failed for frame " +
+                "$frameIndex: ${t.javaClass.simpleName}: ${t.message}"
+            )
+          }
+        }
+        failedEvidence(event, verdict.reason)
+      }
+    }
   }
 
   /**
