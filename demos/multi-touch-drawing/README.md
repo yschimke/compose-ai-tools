@@ -41,6 +41,15 @@ blank scene (a fast flick, then a stationary hold):
 
 Captured by `TouchOverlayFlingLongPressRecordingTest`.
 
+`overlay-consumption.gif` shows the consumed-vs-unconsumed up marker. A tap
+on a dead (non-interactive) area is consumed by nothing, so it gets the
+distinct **red dashed-ring + ✕ "unhandled"** marker; a tap on a
+`clickable` area is consumed, so it gets the ordinary up flash. Consumed is
+the rule, unhandled is the exception — the overlay reports not just *where*
+a touch landed but *whether the UI took it*, read from
+`PointerInputChange.isConsumed` on the Final pass. Captured by
+`TouchOverlayConsumptionRecordingTest`.
+
 ## How this was captured
 
 One command, no daemon / MCP knowledge — drive the **already-compiled**
