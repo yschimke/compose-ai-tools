@@ -10,6 +10,7 @@
       "include-component-in-tag": false,
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": true,
+      "exclude-paths": ["clients"],
       "extra-files": [
         ".github/actions/install/README.md",
         "vscode-extension/README.md",
@@ -34,11 +35,11 @@
       "extra-files": [
         {
           "type": "generic",
-          "path": "clients/mobile/build.gradle.kts"
+          "path": "mobile/build.gradle.kts"
         },
         {
           "type": "generic",
-          "path": "clients/wear/build.gradle.kts"
+          "path": "wear/build.gradle.kts"
         }
       ]
     }
