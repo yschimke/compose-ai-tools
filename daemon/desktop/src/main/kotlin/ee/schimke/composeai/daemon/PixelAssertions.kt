@@ -1,8 +1,5 @@
 package ee.schimke.composeai.daemon
 
-import ee.schimke.composeai.daemon.harness.PixelDiff
-import ee.schimke.composeai.daemon.harness.PixelDiffTolerance
-
 /**
  * Pure verdict logic for the `assert.pixels` recording event (issue #1967): diff a recorded frame
  * against a committed baseline PNG and decide pass/fail, reusing the [PixelDiff] comparator that

@@ -138,18 +138,21 @@ compose-preview record --preview MyForm --script form.json --out form.gif --base
   `--baseline-dir` makes relative paths absolute before the script is posted, so resolution is
   independent of the daemon's working directory; the daemon reads the PNG off the shared local
   filesystem.
-- **Evaluated in a post-playback pass.** The frame an `assert.pixels` event compares is rendered
-  *after* the event is dispatched, so the desktop session defers the diff: it reserves the evidence
-  slot during dispatch (a placeholder that fails closed) and runs the diff once every frame is on
-  disk. On failure it writes `actual.png` / `expected.png` / `diff.png` next to the encoded output so
-  the drift is inspectable without re-running.
-- **Fail-closed.** A missing baseline, a missing recorded frame, or a dimension mismatch is `FAILED`,
-  never a silent pass — the script asked to pin pixels.
-- **Desktop-only today.** The desktop session reads the frame PNGs it writes; the Android backend
-  writes frames the same way, so extending `assert.pixels` there is a mechanical follow-up, but it's
-  not advertised yet so `record_preview` rejects it on Android. The pure verdict (`pixelAssertVerdict`)
-  lives in `:daemon:desktop` (it needs `PixelDiff` from `:daemon:harness`, which `:daemon:core` can't
-  depend on) and is unit-tested from raw PNG bytes.
+- **Snapshotted at the event's position.** An `assert.pixels` event freezes the frame **at its own
+  point in the timeline** — rendered at the frame bucket's instant but *before* any later events that
+  share the same bucket are dispatched — so the golden check observes the UI as of the assertion, not
+  after a same-bucket input. Absent later same-bucket events the snapshot is byte-identical to the
+  on-disk frame a baseline is captured from. Only the diff itself is deferred to a post-playback pass
+  (to keep evidence in timeline order); on failure it writes `actual.png` / `expected.png` /
+  `diff.png` next to the encoded output so the drift is inspectable without re-running.
+- **Fail-closed.** A missing baseline or a dimension mismatch is `FAILED`, never a silent pass — the
+  script asked to pin pixels.
+- **Desktop-only today.** The Android backend renders frames the same way, so extending
+  `assert.pixels` there is a mechanical follow-up, but it's not advertised yet so `record_preview`
+  rejects it on Android. The pure verdict (`pixelAssertVerdict`) lives in `:daemon:desktop` and is
+  unit-tested from raw PNG bytes; it reuses the `PixelDiff` comparator, which this change relocated
+  from the (unpublished) `:daemon:harness` into the published `:daemon:core` so the released
+  `daemon-desktop` runtime can depend on it.
 
 ## What we borrowed (and what we deliberately didn't)
 
