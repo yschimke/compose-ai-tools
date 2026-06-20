@@ -72,8 +72,9 @@ import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExten
  *   the count drops back below two. The caliper's magnitude ring is measured against it, so it
  *   reports the gesture's own spread rather than the content's (unobservable, possibly clamped)
  *   zoom.
- * - `presses: MutableMap<Long, PressState>` — per-pointer down position/time + slop-travel and
- *   long-press latch flags. Drives the long-press progress arc and its one-shot confirm pulse.
+ * - `presses: MutableMap<Long, PressState>` — per-pointer down position/time plus a disqualified
+ *   flag (set on slop travel *or* when the gesture becomes multi-touch) and a one-shot long-press
+ *   latch. Drives the long-press progress arc and its confirm pulse.
  * - `flings: MutableList<Fling>` — release velocity vectors, emitted when a pointer lifts faster
  *   than [FLING_MIN_SPEED_PX_PER_MS] and pruned over [FLING_LIFETIME_MS].
  *
@@ -131,7 +132,7 @@ class TouchOverlayExtension :
             val press = presses[id]
             if (
               press != null &&
-                !press.movedPastSlop &&
+                !press.disqualified &&
                 !press.longPressFired &&
                 nowMs - press.downAtMs >= LONG_PRESS_MS
             ) {
@@ -179,9 +180,9 @@ class TouchOverlayExtension :
                   } else {
                     // Subsequent move — once it travels past slop it can't be a long-press.
                     val press = presses[id]
-                    if (press != null && !press.movedPastSlop) {
+                    if (press != null && !press.disqualified) {
                       if ((change.position - press.downAt).getDistance() > slop) {
-                        press.movedPastSlop = true
+                        press.disqualified = true
                       }
                     }
                   }
@@ -192,9 +193,15 @@ class TouchOverlayExtension :
                   // Latch the starting finger spread the moment the second pointer joins, so the
                   // caliper has a reference to measure the pinch against. Re-tries until non-zero
                   // in case both fingers momentarily land on the same point.
-                  if (activePointers.size >= 2 && pinchBaselineSpan == 0f) {
-                    val pts = activePointers.values.toList()
-                    pinchBaselineSpan = (pts[0] - pts[1]).getDistance()
+                  if (activePointers.size >= 2) {
+                    // A second finger means no in-flight press is a lone stationary pointer any
+                    // more — disqualify them all so no long-press fires after a pinch / two-finger
+                    // gesture, even once it drops back to a single finger.
+                    presses.values.forEach { it.disqualified = true }
+                    if (pinchBaselineSpan == 0f) {
+                      val pts = activePointers.values.toList()
+                      pinchBaselineSpan = (pts[0] - pts[1]).getDistance()
+                    }
                   }
                 } else {
                   // Up event for this id → drop the ring, emit a fading UP pulse at the final
@@ -254,7 +261,7 @@ class TouchOverlayExtension :
         if (activePointers.size == 1) {
           val (id, pos) = activePointers.entries.first()
           val press = presses[id]
-          if (press != null && !press.movedPastSlop) {
+          if (press != null && !press.disqualified) {
             val held = nowMs - press.downAtMs
             if (held in LONG_PRESS_ARC_DELAY_MS until LONG_PRESS_MS) {
               val progress =
@@ -458,9 +465,14 @@ class TouchOverlayExtension :
 
   private data class Fling(val position: Offset, val velocity: Offset, val emittedAtMs: Long)
 
-  /** Mutable per-pointer press bookkeeping (slop tracking + one-shot long-press latch). */
+  /**
+   * Mutable per-pointer press bookkeeping. [disqualified] flips true once the press can no longer
+   * be a long-press — either it travelled past slop, or the gesture became multi-touch (a
+   * long-press is a lone stationary finger). [longPressFired] is the one-shot latch for its confirm
+   * pulse.
+   */
   private class PressState(val downAt: Offset, val downAtMs: Long) {
-    var movedPastSlop: Boolean = false
+    var disqualified: Boolean = false
     var longPressFired: Boolean = false
   }
 
