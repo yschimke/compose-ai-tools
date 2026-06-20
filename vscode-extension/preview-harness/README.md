@@ -115,6 +115,32 @@ To preview interactively, serve the extension root and open
 npx --yes http-server -c-1 .       # from vscode-extension/
 ```
 
+## Page fixtures (standalone HTML surfaces)
+
+Some web surfaces aren't the `<preview-app>` panel — e.g. the
+`compose-preview serve` landing + viewer pages, which are self-contained HTML
+documents produced by `ServeWeb` in `:cli`. Those are captured by
+[`pages-snapshot.spec.mjs`](pages-snapshot.spec.mjs), which reuses the same
+approach (Playwright + `_server.mjs` + `out/<fixture>.<theme>.png` → the generic
+`vscode-preview-diff.py` bot) but a different invocation: it navigates straight
+to the committed HTML and drives theme via `prefers-color-scheme` emulation
+rather than booting `scenario.html` and replaying messages.
+
+- Fixtures live in [`fixtures/pages/`](fixtures/pages/) as committed `*.html`
+  (plus `_render-placeholder.png`, served for the daemon's `/render` endpoint
+  which has no backend here). They're auto-discovered — drop a `.html` in and
+  it's captured.
+- The serve pages are generated from production `ServeWeb` by the Kotlin golden
+  test `ServeWebFixtureTest`, which also fails CI if the committed HTML drifts
+  from `ServeWeb`. Refresh after a serve-UI change with:
+
+  ```sh
+  UPDATE_SERVE_WEB_FIXTURES=true ./gradlew :cli:test --tests '*ServeWebFixtureTest*'
+  ```
+
+The `snapshot` path filter in `harness:snapshot` matches this spec too, so these
+land in `out/` alongside the panel fixtures and need no separate CI wiring.
+
 ## Wire-side contract
 
 ```sh

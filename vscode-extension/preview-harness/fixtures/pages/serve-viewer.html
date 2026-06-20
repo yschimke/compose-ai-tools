@@ -1,0 +1,128 @@
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Profile screen — compose-preview</title>
+        <style>:root { color-scheme: light dark; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 24px; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  color: #1b1b1f; background: #fafafb; }
+a { color: #5b5bd6; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.cp-head { margin: 0 0 4px; font-size: 1.2rem; font-weight: 600; }
+.cp-sub { margin: 0 0 20px; font-size: 0.82rem; color: #6b6b70; }
+.cp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+.cp-card { border: 1px solid #e3e3e8; border-radius: 10px; overflow: hidden; background: #fff;
+  display: block; color: inherit; }
+.cp-imgwrap { display: flex; align-items: center; justify-content: center; min-height: 140px;
+  background: repeating-conic-gradient(#f4f4f6 0% 25%, #fff 0% 50%) 50% / 16px 16px; padding: 8px; }
+.cp-imgwrap img { max-width: 100%; height: auto; display: block; }
+.cp-meta { padding: 8px 10px; font-size: 0.82rem; }
+.cp-label { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-id { color: #6b6b70; font-size: 0.7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-viewer { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+.cp-stage { flex: 1 1 360px; min-width: 280px; border: 1px solid #e3e3e8; border-radius: 10px;
+  background: repeating-conic-gradient(#f4f4f6 0% 25%, #fff 0% 50%) 50% / 16px 16px; padding: 12px;
+  display: flex; align-items: center; justify-content: center; min-height: 320px; }
+.cp-stage img { max-width: 100%; height: auto; }
+.cp-controls { flex: 0 0 240px; display: flex; flex-direction: column; gap: 14px; }
+.cp-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; }
+.cp-controls input, .cp-controls select { padding: 5px 6px; font-size: 0.85rem; }
+.cp-status { font-size: 0.75rem; color: #6b6b70; min-height: 1em; }
+@media (prefers-color-scheme: dark) {
+  body { color: #e6e6e9; background: #161618; }
+  .cp-sub, .cp-id, .cp-status { color: #a0a0a8; }
+  .cp-card, .cp-stage { border-color: #34343a; }
+  .cp-card { background: #1d1d20; }
+  .cp-imgwrap, .cp-stage { background: repeating-conic-gradient(#26262b 0% 25%, #1d1d20 0% 50%) 50% / 16px 16px; }
+}</style>
+      </head>
+      <body>
+              <p class="cp-head"><a href="/?token=demo-token-fixture">← previews</a></p>
+      <p class="cp-sub" title="com.example.ProfileScreenPreview">Profile screen</p>
+      <div class="cp-viewer" data-preview-id="com.example.ProfileScreenPreview" data-mode="snapshot" data-modes="snapshot,live">
+        <div class="cp-stage"><img id="cp-img" alt="Profile screen"></div>
+        <div class="cp-controls">
+          <label>Theme
+            <select id="cp-uiMode">
+              <option value="">(default)</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </label>
+          <label>Device
+            <select id="cp-device">
+              <option value="">(default)</option>
+              <option value="id:pixel_5">Pixel 5</option>
+<option value="id:pixel_7">Pixel 7</option>
+<option value="id:pixel_tablet">Pixel Tablet</option>
+<option value="id:pixel_fold">Pixel Fold</option>
+<option value="id:wearos_small_round">Wear OS (small round)</option>
+<option value="id:tv_1080p">TV 1080p</option>
+            </select>
+          </label>
+          <label>Locale (BCP-47)
+            <input id="cp-localeTag" type="text" placeholder="e.g. ar, ja-JP" autocomplete="off">
+          </label>
+          <label>Font scale: <span id="cp-fontScale-val">default</span>
+            <input id="cp-fontScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0">
+          </label>
+          <label>Orientation
+            <select id="cp-orientation">
+              <option value="">(default)</option>
+              <option value="portrait">Portrait</option>
+              <option value="landscape">Landscape</option>
+            </select>
+          </label>
+          <div class="cp-status" id="cp-status"></div>
+        </div>
+      </div>
+      <script>(function () {
+  "use strict";
+  var root = document.querySelector(".cp-viewer");
+  var img = document.getElementById("cp-img");
+  var status = document.getElementById("cp-status");
+  var previewId = root.getAttribute("data-preview-id");
+  var token = new URLSearchParams(location.search).get("token") || "";
+  // The selects + text input are opt-in (empty value = "use the preview's default"). The font
+  // scale slider has no empty state, so it's gated separately: we only send fontScale once the
+  // user moves it (see fontScaleTouched), otherwise the slider's standing 1.0 would override a
+  // preview's declared default font scale and the first render wouldn't match the thumbnail.
+  var fields = ["uiMode", "device", "localeTag", "orientation"];
+  var fs = document.getElementById("cp-fontScale");
+  var fsVal = document.getElementById("cp-fontScale-val");
+  var fontScaleTouched = false;
+
+  function renderUrl() {
+    var q = "token=" + encodeURIComponent(token);
+    fields.forEach(function (f) {
+      var el = document.getElementById("cp-" + f);
+      if (el && el.value) q += "&" + f + "=" + encodeURIComponent(el.value);
+    });
+    if (fontScaleTouched && fs) q += "&fontScale=" + encodeURIComponent(fs.value);
+    return "/render/" + encodeURIComponent(previewId) + ".png?" + q;
+  }
+  function refresh() {
+    status.textContent = "rendering…";
+    var url = renderUrl();
+    var next = new Image();
+    next.onload = function () { img.src = url; status.textContent = ""; };
+    next.onerror = function () { status.textContent = "render failed"; };
+    next.src = url;
+  }
+  if (fs) {
+    fs.addEventListener("input", function () {
+      fsVal.textContent = fs.value;
+      fontScaleTouched = true;
+      refresh();
+    });
+  }
+  fields.forEach(function (f) {
+    var el = document.getElementById("cp-" + f);
+    if (el) el.addEventListener("change", refresh);
+  });
+  refresh();
+})();</script>
+      </body>
+    </html>

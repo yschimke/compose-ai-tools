@@ -1,0 +1,102 @@
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>:samples:cmp — compose-preview</title>
+        <style>:root { color-scheme: light dark; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 24px; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  color: #1b1b1f; background: #fafafb; }
+a { color: #5b5bd6; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.cp-head { margin: 0 0 4px; font-size: 1.2rem; font-weight: 600; }
+.cp-sub { margin: 0 0 20px; font-size: 0.82rem; color: #6b6b70; }
+.cp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+.cp-card { border: 1px solid #e3e3e8; border-radius: 10px; overflow: hidden; background: #fff;
+  display: block; color: inherit; }
+.cp-imgwrap { display: flex; align-items: center; justify-content: center; min-height: 140px;
+  background: repeating-conic-gradient(#f4f4f6 0% 25%, #fff 0% 50%) 50% / 16px 16px; padding: 8px; }
+.cp-imgwrap img { max-width: 100%; height: auto; display: block; }
+.cp-meta { padding: 8px 10px; font-size: 0.82rem; }
+.cp-label { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-id { color: #6b6b70; font-size: 0.7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-viewer { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+.cp-stage { flex: 1 1 360px; min-width: 280px; border: 1px solid #e3e3e8; border-radius: 10px;
+  background: repeating-conic-gradient(#f4f4f6 0% 25%, #fff 0% 50%) 50% / 16px 16px; padding: 12px;
+  display: flex; align-items: center; justify-content: center; min-height: 320px; }
+.cp-stage img { max-width: 100%; height: auto; }
+.cp-controls { flex: 0 0 240px; display: flex; flex-direction: column; gap: 14px; }
+.cp-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; }
+.cp-controls input, .cp-controls select { padding: 5px 6px; font-size: 0.85rem; }
+.cp-status { font-size: 0.75rem; color: #6b6b70; min-height: 1em; }
+@media (prefers-color-scheme: dark) {
+  body { color: #e6e6e9; background: #161618; }
+  .cp-sub, .cp-id, .cp-status { color: #a0a0a8; }
+  .cp-card, .cp-stage { border-color: #34343a; }
+  .cp-card { background: #1d1d20; }
+  .cp-imgwrap, .cp-stage { background: repeating-conic-gradient(#26262b 0% 25%, #1d1d20 0% 50%) 50% / 16px 16px; }
+}</style>
+      </head>
+      <body>
+                <p class="cp-head">:samples:cmp</p>
+        <p class="cp-sub">6 preview(s) · click one to view with overrides ·
+          <a href="/bundle.zip?token=demo-token-fixture">download all (.zip)</a></p>
+        <div class="cp-grid">
+        <a class="cp-card" href="/p/com.example.ButtonPreview?token=demo-token-fixture">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="Button" src="/render/com.example.ButtonPreview.png?token=demo-token-fixture">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="com.example.ButtonPreview">Button</div>
+    <div class="cp-id">com.example.ButtonPreview</div>
+  </div>
+</a>
+<a class="cp-card" href="/p/com.example.CardPreview?token=demo-token-fixture">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="Card" src="/render/com.example.CardPreview.png?token=demo-token-fixture">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="com.example.CardPreview">Card</div>
+    <div class="cp-id">com.example.CardPreview</div>
+  </div>
+</a>
+<a class="cp-card" href="/p/com.example.DialogPreview?token=demo-token-fixture">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="Dialog" src="/render/com.example.DialogPreview.png?token=demo-token-fixture">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="com.example.DialogPreview">Dialog</div>
+    <div class="cp-id">com.example.DialogPreview</div>
+  </div>
+</a>
+<a class="cp-card" href="/p/com.example.ListScreenPreview?token=demo-token-fixture">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="List screen" src="/render/com.example.ListScreenPreview.png?token=demo-token-fixture">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="com.example.ListScreenPreview">List screen</div>
+    <div class="cp-id">com.example.ListScreenPreview</div>
+  </div>
+</a>
+<a class="cp-card" href="/p/com.example.ProfileScreenPreview?token=demo-token-fixture">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="Profile screen" src="/render/com.example.ProfileScreenPreview.png?token=demo-token-fixture">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="com.example.ProfileScreenPreview">Profile screen</div>
+    <div class="cp-id">com.example.ProfileScreenPreview</div>
+  </div>
+</a>
+<a class="cp-card" href="/p/com.example.SettingsScreenPreview?token=demo-token-fixture">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="Settings screen" src="/render/com.example.SettingsScreenPreview.png?token=demo-token-fixture">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="com.example.SettingsScreenPreview">Settings screen</div>
+    <div class="cp-id">com.example.SettingsScreenPreview</div>
+  </div>
+</a>
+        </div>
+      </body>
+    </html>
