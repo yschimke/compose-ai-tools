@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/pr`. 138 preview(s) across 14 module(s) · 10 error(s) · 3 warning(s) · 18 info._
+_Auto-generated from `compose-preview/a11y/pr`. 136 preview(s) across 14 module(s) · 10 error(s) · 3 warning(s) · 18 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -186,18 +186,6 @@ _No findings._
 ### `KeyboardDemoPreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/KeyboardDemoPreview_Keyboard_Demo.a11y.png" width="400" />
-
-_No findings._
-
-### `LauncherModeHomeScreenPreview`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/LauncherModeHomeScreenPreview_Launcher_mode_4_2_on_home_screen.a11y.png" width="400" />
-
-_No findings._
-
-### `LauncherModeResizePreview`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/LauncherModeResizePreview_Launcher_mode_resize_on_home_screen_RESIZE_1x1.a11y.png" width="400" />
 
 _No findings._
 
