@@ -389,6 +389,14 @@ include(":data-displayfilter-connector")
 
 project(":data-displayfilter-connector").projectDir = file("data/displayfilter/connector")
 
+include(":data-deviceframe-core")
+
+project(":data-deviceframe-core").projectDir = file("data/deviceframe/core")
+
+include(":data-deviceframe-connector")
+
+project(":data-deviceframe-connector").projectDir = file("data/deviceframe/connector")
+
 include(":data-permissions-core")
 
 project(":data-permissions-core").projectDir = file("data/permissions/core")

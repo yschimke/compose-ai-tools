@@ -39,6 +39,9 @@ import ee.schimke.composeai.daemon.protocol.AmbientStateOverride
 import ee.schimke.composeai.daemon.protocol.LauncherResizeOrder
 import ee.schimke.composeai.daemon.protocol.LauncherWidgetOverride
 import ee.schimke.composeai.daemon.protocol.LauncherWidgetSize
+import ee.schimke.composeai.daemon.CachedDeviceArtSource
+import ee.schimke.composeai.daemon.DeviceFrameConfig
+import ee.schimke.composeai.daemon.DeviceFrameDataProducer
 import ee.schimke.composeai.daemon.DisplayFilterConfig
 import ee.schimke.composeai.daemon.DisplayFilterDataProducer
 import ee.schimke.composeai.daemon.protocol.FocusOverride
@@ -1172,6 +1175,32 @@ abstract class RobolectricRenderTestBase(
                             } catch (t: Throwable) {
                                 System.err.println(
                                     "RobolectricRenderTest: displayfilter write failed for " +
+                                        "${preview.id}: ${t.javaClass.simpleName}: ${t.message}",
+                                )
+                            }
+                        }
+
+                        // Device frame — composite the capture into a real device-art bezel
+                        // (round Wear watch, phone) with hardware buttons. Gated on
+                        // `composeai.deviceframe.device`; same data dir + best-effort try/catch
+                        // discipline as the display-filter block above so a fetch/compose failure
+                        // never invalidates the just-captured PNG.
+                        val deviceFrame = DeviceFrameConfig.fromSystemProperties()
+                        if (deviceFrame != null) {
+                            try {
+                                val frameDataDir =
+                                    (outputDir.parentFile ?: outputDir).resolve("data")
+                                DeviceFrameDataProducer.writeArtifacts(
+                                    rootDir = frameDataDir,
+                                    previewId = preview.id,
+                                    pngFile = outputFile,
+                                    device = preview.params.device,
+                                    settings = deviceFrame,
+                                    source = CachedDeviceArtSource(deviceFrame.cacheDir),
+                                )
+                            } catch (t: Throwable) {
+                                System.err.println(
+                                    "RobolectricRenderTest: deviceframe write failed for " +
                                         "${preview.id}: ${t.javaClass.simpleName}: ${t.message}",
                                 )
                             }
