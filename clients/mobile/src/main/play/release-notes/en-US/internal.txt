@@ -1,0 +1,1 @@
+Initial internal build of the Compose Session Viewer: open a session link, stream live frames, and forward input back to the running composition.

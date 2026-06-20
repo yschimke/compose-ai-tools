@@ -18,6 +18,10 @@ plugins {
   // with "Cannot set the value of task ':daemon:android:dropMavenCentral
   // Deployment' property 'buildService'".
   alias(libs.plugins.maven.publish) apply false
+  // Gradle Play Publisher — applied by the `:clients:mobile` / `:clients:wear` session-viewer apps
+  // for release publishing to the Play internal track. Declared here `apply false` so the plugin
+  // resolves once on the root classpath, mirroring the other Android plugins above.
+  alias(libs.plugins.play.publisher) apply false
 }
 
 // The per-project conventions that used to live here in an `allprojects {}` block (ktfmt +

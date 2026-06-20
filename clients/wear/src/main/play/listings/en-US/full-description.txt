@@ -1,0 +1,9 @@
+Session Viewer for Wear OS connects to a compose-preview serve session and paints the rendered Compose UI on your watch.
+
+Open a session link forwarded from your phone (or discovered on your network) and the watch streams live frames from the server. Taps and rotary-bezel turns are forwarded back into the running composition, so a Wear preview behaves like a real, interactive app on the wrist.
+
+• Open straight from a composeai:// link
+• Live frame streaming over a WebSocket lane
+• Forward taps and rotary scroll back to the composition
+
+Companion Wear client for the compose-ai-tools "serve" feature, aimed at developers and designers reviewing Wear OS Compose UI on real hardware.

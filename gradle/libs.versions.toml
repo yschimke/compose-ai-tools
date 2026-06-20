@@ -16,6 +16,9 @@ kotlin = "2.3.21"
 kotlinCoreLibraries = "2.0.21"
 agp = "9.2.1"
 ktfmt = "0.26.0"
+# Gradle Play Publisher (Triplet) — drives `:clients:*` release publishing to the Play internal
+# track + Play Store listing assets (`src/main/play/...`). Only the session-viewer client apps use it.
+play-publisher = "4.0.0"
 tapmoc = "0.4.2"
 robolectric = "4.16.1"
 roborazzi = "1.63.0"
@@ -307,3 +310,4 @@ tapmoc = { id = "com.gradleup.tapmoc", version.ref = "tapmoc" }
 # Metro compiler plugin — `:samples:android-metro-viewmodel` applies this to
 # get `@DependencyGraph` / `@Inject` / `@ContributesIntoMap` codegen.
 metro = { id = "dev.zacsweers.metro", version.ref = "metro" }
+play-publisher = { id = "com.github.triplet.play", version.ref = "play-publisher" }
