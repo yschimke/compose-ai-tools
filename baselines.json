@@ -678,6 +678,20 @@
     "sha256": "7956a2c225f48f22a1768bd1a9584eb01466e4d4c5e7542c4ba2a64d4ecb06bb",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/SettingsListScrollGifPreview.kt"
   },
+  "samples:android/com.example.sampleandroid.ShaderPreviewsKt.RuntimeShaderAnimatedBlobPreview_Runtime Shader \u2014 Animated Blob (AGSL)": {
+    "captureLabel": "",
+    "functionName": "RuntimeShaderAnimatedBlobPreview",
+    "renderBasename": "RuntimeShaderAnimatedBlobPreview_Runtime_Shader_Animated_Blob_AGSL.gif",
+    "sha256": "4e31c874fed8bb8143fbe804009567a5eba2c8871ca4fe6f74f3b3202dfbe2b7",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/ShaderPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.ShaderPreviewsKt.RuntimeShaderGradientBlobPreview_Runtime Shader \u2014 Gradient Blob (AGSL)": {
+    "captureLabel": "",
+    "functionName": "RuntimeShaderGradientBlobPreview",
+    "renderBasename": "RuntimeShaderGradientBlobPreview_Runtime_Shader_Gradient_Blob_AGSL.png",
+    "sha256": "79eaaf5290a9993d873215163db90d2bb6a9ef153c1a1514af09a6de50432b7b",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/ShaderPreviews.kt"
+  },
   "samples:android/com.example.sampleandroid.SharedElementDebugPreviewsKt.SharedElementDebugMatchedAnimatedPreview_Shared Element Debug \u2014 Matched": {
     "captureLabel": "",
     "functionName": "SharedElementDebugMatchedAnimatedPreview",
@@ -1014,6 +1028,20 @@
     "sha256": "df71c44b8ee4bd79dc28aa517a31d64a10936e8a108056ca9d774993a667a057",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/ScrollingPreviews.kt"
   },
+  "samples:cmp/com.example.samplecmp.ShaderPreviewsKt.RuntimeShaderAnimatedBlobPreview_Runtime Shader \u2014 Animated Blob": {
+    "captureLabel": "",
+    "functionName": "RuntimeShaderAnimatedBlobPreview",
+    "renderBasename": "RuntimeShaderAnimatedBlobPreview_Runtime_Shader_Animated_Blob.gif",
+    "sha256": "96c6d2a06c75bcd79cac4b3f29c19cf395e9dd45310d4a62afb9cc3672378d72",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/ShaderPreviews.kt"
+  },
+  "samples:cmp/com.example.samplecmp.ShaderPreviewsKt.RuntimeShaderGradientBlobPreview_Runtime Shader \u2014 Gradient Blob": {
+    "captureLabel": "",
+    "functionName": "RuntimeShaderGradientBlobPreview",
+    "renderBasename": "RuntimeShaderGradientBlobPreview_Runtime_Shader_Gradient_Blob.png",
+    "sha256": "6cc4aae724129b4f04900588489c2d0bdeb6496e0e4844d87922eed1771b02f5",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/ShaderPreviews.kt"
+  },
   "samples:cmp/lottie__lottie_spin": {
     "captureLabel": "",
     "functionName": "lottie/spin.json",
@@ -1165,7 +1193,7 @@
     "captureLabel": "scroll long",
     "functionName": "ActivityListLongPreview",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round.png",
-    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
+    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
