@@ -486,6 +486,26 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "LauncherModeHomeScreenPreview_Launcher_mode_4_2_on_home_screen.a11y.png",
+      "cleanBasename": "LauncherModeHomeScreenPreview_Launcher_mode_4_2_on_home_screen.png",
+      "findings": [],
+      "functionName": "LauncherModeHomeScreenPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.LauncherModeHomeScreenPreview_Launcher mode \u2014 4\u00d72 on home screen",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "LauncherModeResizePreview_Launcher_mode_resize_on_home_screen_RESIZE_1x1.a11y.png",
+      "cleanBasename": "LauncherModeResizePreview_Launcher_mode_resize_on_home_screen_RESIZE_1x1.png",
+      "findings": [],
+      "functionName": "LauncherModeResizePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.LauncherModeResizePreview_Launcher mode \u2014 resize on home screen",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "LauncherWidget1x1Preview_Launcher_widget_1_1.a11y.png",
       "cleanBasename": "LauncherWidget1x1Preview_Launcher_widget_1_1.png",
       "findings": [],
