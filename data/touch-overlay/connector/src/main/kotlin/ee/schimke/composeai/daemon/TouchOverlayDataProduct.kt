@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.render.extensions.DataExtension
@@ -38,10 +39,13 @@ import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExten
  * alpha-fading disc + outline ring) wherever a touch went down or came up, and a two-finger pinch
  * "caliper" (dashed rubber-band + centroid magnitude ring + directional chevrons) whenever ≥ 2
  * pointers are down. A lone finger held in place past a timeout grows a long-press progress arc and
- * a confirm flash; a fast release emits a fling velocity arrow. Activated for live recording
- * sessions (and any one-shot render that flips `renderNow.overrides.touchOverlay`) so the agent
- * reviewing the captured APNG / mp4 can see exactly where each finger landed, when, and what
- * happened next.
+ * a confirm flash; a fast release emits a fling velocity arrow. Releases are colour-coded by
+ * whether the composition actually consumed the pointer: an ordinary (consumed) lift is the amber
+ * up flash, while a release that nothing collected — observed via [PointerInputChange.isConsumed]
+ * on the Final pass — is drawn as the distinct red dashed-ring + ✕ "unhandled" marker, so a touch
+ * that fell through reads as the exception. Activated for live recording sessions (and any one-shot
+ * render that flips `renderNow.overrides.touchOverlay`) so the agent reviewing the captured APNG /
+ * mp4 can see exactly where each finger landed, when, and what happened next.
  *
  * **Why an around-composable, not a PNG post-processor.** A first cut of this lived in
  * [DesktopRecordingSession.writeFramePng] as a Skia overlay drawn after `scene.render()`. The
@@ -57,7 +61,7 @@ import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExten
  *   withFrameNanos { … } }`, so the overlay advances at the same virtual time as the rest of the
  *   composition (scripted recordings tick at `recordingFps`; live recordings tick at wall-clock).
  *
- * **State model.** Six pieces of [remember]-scoped state:
+ * **State model.** Seven pieces of [remember]-scoped state:
  * - `activePointers: MutableMap<Long, Offset>` — per-id `PointerId.value` → current natural-px
  *   position. `Press` / `Move` add/update entries, `Release` removes them.
  * - `trail: MutableList<TrailSample>` — recent `(id, position, ms)` samples per pointer. Every
@@ -77,6 +81,8 @@ import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExten
  *   latch. Drives the long-press progress arc and its confirm pulse.
  * - `flings: MutableList<Fling>` — release velocity vectors, emitted when a pointer lifts faster
  *   than [FLING_MIN_SPEED_PX_PER_MS] and pruned over [FLING_LIFETIME_MS].
+ * - `consumedEver: MutableMap<Long, Boolean>` — per-pointer "did anything downstream consume this?"
+ *   accumulated on the Final pass and read at release to pick the UP vs UNHANDLED up-marker.
  *
  * **Pointer pass.** The observer uses [PointerEventPass.Initial] so it sees events BEFORE the inner
  * content does, and never calls `.consume()` — the inner composition still receives every touch.
@@ -106,6 +112,9 @@ class TouchOverlayExtension :
     val presses = remember { mutableStateMapOf<Long, PressState>() }
     // Release "fling" markers: a velocity vector emitted when a pointer lifts fast enough.
     val flings = remember { mutableStateListOf<Fling>() }
+    // Per-pointer "did the composition consume this pointer at any point?" — set on the Final pass,
+    // read when the pointer lifts so an unconsumed (fell-through) release is marked distinctly.
+    val consumedEver = remember { mutableStateMapOf<Long, Boolean>() }
     var nowMs by remember { mutableLongStateOf(0L) }
     // Span between the two pointers at the instant the pinch began (1→2 pressed transition). The
     // caliper's magnitude ring is measured against this, so it shows how far the *gesture* has
@@ -150,6 +159,9 @@ class TouchOverlayExtension :
           val slop = viewConfiguration.touchSlop
           awaitPointerEventScope {
             while (true) {
+              // Releases found on the Initial pass, held until the Final pass reveals whether the
+              // pointer was consumed (→ UP) or fell through unhandled (→ UNHANDLED).
+              val released = mutableMapOf<Long, Pair<Offset, Long>>()
               // Initial pass so we see events BEFORE the inner content. We never call `consume()`
               // so the inner composition (the user's @Preview, with its own
               // `Modifier.transformable` / `Modifier.clickable` / etc.) still receives the full
@@ -177,6 +189,8 @@ class TouchOverlayExtension :
                     pulses.add(Pulse(change.position, eventMs, PulseKind.DOWN))
                     // Start tracking this press for the long-press affordance.
                     presses[id] = PressState(change.position, eventMs)
+                    // New press → assume unconsumed until the Final pass proves otherwise.
+                    consumedEver[id] = false
                   } else {
                     // Subsequent move — once it travels past slop it can't be a long-press.
                     val press = presses[id]
@@ -210,7 +224,10 @@ class TouchOverlayExtension :
                   // release per id, so a non-pressed event for a tracked id is unambiguously the
                   // up.
                   if (activePointers.remove(id) != null) {
-                    pulses.add(Pulse(change.position, eventMs, PulseKind.UP))
+                    // The up marker's kind (ordinary UP vs UNHANDLED) depends on whether anything
+                    // consumed this pointer, which is only settled after the Final pass — so defer
+                    // the pulse and resolve it below.
+                    released[id] = change.position to eventMs
                     // Final trail sample at the lift point so the whoosh reaches the release, then
                     // ages out like the rest. Added BEFORE the fling calc so the release point is
                     // the freshest sample feeding the velocity estimate.
@@ -226,6 +243,21 @@ class TouchOverlayExtension :
                     if (activePointers.size < 2) pinchBaselineSpan = 0f
                   }
                 }
+              }
+              // Final pass (after children): record whether each change was consumed. We never
+              // consume ourselves — this is read-only. Any gesture detector in the content
+              // (clickable / draggable / transformable / …) that claimed the event has set
+              // `isConsumed` by now.
+              val finalEvent = awaitPointerEvent(PointerEventPass.Final)
+              for (change in finalEvent.changes) {
+                if (change.isConsumed) consumedEver[change.id.value] = true
+              }
+              // Resolve deferred releases: a pointer the composition consumed at any point gets the
+              // ordinary UP pulse; one nothing ever collected gets the distinct UNHANDLED marker.
+              for ((id, posMs) in released) {
+                val kind = if (consumedEver[id] == true) PulseKind.UP else PulseKind.UNHANDLED
+                pulses.add(Pulse(posMs.first, posMs.second, kind))
+                consumedEver.remove(id)
               }
             }
           }
@@ -329,11 +361,41 @@ class TouchOverlayExtension :
           val progress = (age.toFloat() / PULSE_LIFETIME_MS.toFloat()).coerceIn(0f, 1f)
           val radius =
             PULSE_START_RADIUS_PX + (PULSE_END_RADIUS_PX - PULSE_START_RADIUS_PX) * progress
+          if (pulse.kind == PulseKind.UNHANDLED) {
+            // The exception: a release nothing in the composition consumed. A dashed red ring + an
+            // ✕ at the lift point so "this gesture fell through" stands out next to the ordinary
+            // (consumed) up flashes. Consumed releases draw the normal solid up pulse below.
+            val color = UNHANDLED_COLOR.copy(alpha = 1f - progress)
+            drawCircle(
+              color = color,
+              radius = radius,
+              center = pulse.position,
+              style =
+                Stroke(width = 2f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 5f))),
+            )
+            val arm = UNHANDLED_X_ARM_PX
+            drawLine(
+              color = color,
+              start = Offset(pulse.position.x - arm, pulse.position.y - arm),
+              end = Offset(pulse.position.x + arm, pulse.position.y + arm),
+              strokeWidth = 2.5f,
+              cap = StrokeCap.Round,
+            )
+            drawLine(
+              color = color,
+              start = Offset(pulse.position.x - arm, pulse.position.y + arm),
+              end = Offset(pulse.position.x + arm, pulse.position.y - arm),
+              strokeWidth = 2.5f,
+              cap = StrokeCap.Round,
+            )
+            continue
+          }
           val baseColor =
             when (pulse.kind) {
               PulseKind.DOWN -> PULSE_DOWN
               PulseKind.UP -> PULSE_UP
               PulseKind.LONG_PRESS -> LONG_PRESS_COLOR
+              PulseKind.UNHANDLED -> UNHANDLED_COLOR // handled above; keeps the `when` exhaustive
             }
           // Translucent filled disc that fades as it expands — the "alpha tap circle". Gives a tap
           // (down + up with no travel, hence no ring and no trail) a clear flash on its own.
@@ -482,6 +544,8 @@ class TouchOverlayExtension :
     DOWN,
     UP,
     LONG_PRESS,
+    /** A release nothing in the composition consumed — the "fell through" exception. */
+    UNHANDLED,
   }
 
   companion object {
@@ -528,6 +592,9 @@ class TouchOverlayExtension :
     private const val LONG_PRESS_ARC_DELAY_MS: Long = 150L
     private const val LONG_PRESS_ARC_GAP_PX: Float = 6f
 
+    // Half-length of the ✕ arms drawn at an unconsumed (fell-through) release.
+    private const val UNHANDLED_X_ARM_PX: Float = 7f
+
     private val ACTIVE_FILL: Color = Color(0x4000BCD4)
     private val ACTIVE_STROKE: Color = Color(0xFF00BCD4)
     private val TRAIL_COLOR: Color = Color(0xFF00BCD4)
@@ -539,6 +606,7 @@ class TouchOverlayExtension :
     private val PULSE_UP: Color = Color(0xFFFFC107) // amber — drag end
     private val FLING_COLOR: Color = Color(0xFF00C853) // green — fast release
     private val LONG_PRESS_COLOR: Color = Color(0xFFFF5722) // deep orange — press-and-hold
+    private val UNHANDLED_COLOR: Color = Color(0xFFF44336) // red — release nothing consumed
   }
 }
 
