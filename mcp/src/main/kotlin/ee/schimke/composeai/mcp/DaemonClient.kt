@@ -22,6 +22,8 @@ import ee.schimke.composeai.daemon.protocol.HistoryReadParams
 import ee.schimke.composeai.daemon.protocol.HistoryReadResultDto
 import ee.schimke.composeai.daemon.protocol.InitializeParams
 import ee.schimke.composeai.daemon.protocol.InitializeResult
+import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
+import ee.schimke.composeai.daemon.protocol.InteractiveInputParams
 import ee.schimke.composeai.daemon.protocol.JsonRpcNotification
 import ee.schimke.composeai.daemon.protocol.JsonRpcRequest
 import ee.schimke.composeai.daemon.protocol.Options
@@ -40,6 +42,10 @@ import ee.schimke.composeai.daemon.protocol.RenderNowResult
 import ee.schimke.composeai.daemon.protocol.RenderTier
 import ee.schimke.composeai.daemon.protocol.SetFocusParams
 import ee.schimke.composeai.daemon.protocol.SetVisibleParams
+import ee.schimke.composeai.daemon.protocol.StreamCodec
+import ee.schimke.composeai.daemon.protocol.StreamStartParams
+import ee.schimke.composeai.daemon.protocol.StreamStartResult
+import ee.schimke.composeai.daemon.protocol.StreamStopParams
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.IOException
@@ -470,6 +476,79 @@ class DaemonClient(
     val resultElem = response["result"] ?: error("recording/encode: no result — full=$response")
     return json.decodeFromJsonElement(RecordingEncodeResult.serializer(), resultElem)
   }
+
+  /**
+   * Drives `stream/start`: opens a held interactive session and attaches a frame-stream consumer.
+   * The daemon then pushes `streamFrame` notifications (observed via [onNotification]) carrying
+   * inline base64 frames keyed by the returned [StreamStartResult.frameStreamId]. Throws (via
+   * [sendAndAwait] / the error branch) when the daemon doesn't implement streaming — callers fall
+   * back to per-frame renders.
+   */
+  fun streamStart(
+    previewId: String,
+    codec: StreamCodec? = null,
+    maxFps: Int? = null,
+    overrides: PreviewOverrides? = null,
+    timeout: Duration = 30.seconds,
+  ): StreamStartResult {
+    val id = nextId.getAndIncrement()
+    val params =
+      StreamStartParams(
+        previewId = previewId,
+        codec = codec,
+        maxFps = maxFps,
+        overrides = overrides,
+      )
+    val request =
+      JsonRpcRequest(
+        id = id,
+        method = "stream/start",
+        params = json.encodeToJsonElement(StreamStartParams.serializer(), params),
+      )
+    val response = sendAndAwait(id, request, timeout)
+    val errorElem = response["error"] as? JsonObject
+    if (errorElem != null) {
+      val message = errorElem["message"]?.jsonPrimitive?.contentOrNull ?: "stream/start failed"
+      error(message)
+    }
+    val resultElem = response["result"] ?: error("stream/start: no result — full=$response")
+    return json.decodeFromJsonElement(StreamStartResult.serializer(), resultElem)
+  }
+
+  /** Drives `stream/stop` (notification — no response). Tears down the held stream. */
+  fun streamStop(frameStreamId: String) =
+    sendNotification(
+      "stream/stop",
+      json.encodeToJsonElement(StreamStopParams.serializer(), StreamStopParams(frameStreamId)),
+    )
+
+  /**
+   * Drives `interactive/input` (notification — fire-and-forget) against a held stream's
+   * [frameStreamId]; the daemon dispatches the input into the live composition and emits the
+   * resulting `streamFrame`.
+   */
+  fun interactiveInput(
+    frameStreamId: String,
+    kind: InteractiveInputKind,
+    pixelX: Int? = null,
+    pixelY: Int? = null,
+    scrollDeltaY: Float? = null,
+    keyCode: String? = null,
+  ) =
+    sendNotification(
+      "interactive/input",
+      json.encodeToJsonElement(
+        InteractiveInputParams.serializer(),
+        InteractiveInputParams(
+          frameStreamId = frameStreamId,
+          kind = kind,
+          pixelX = pixelX,
+          pixelY = pixelY,
+          scrollDeltaY = scrollDeltaY,
+          keyCode = keyCode,
+        ),
+      ),
+    )
 
   /**
    * Sends `shutdown` (drains in-flight renders) then `exit`. Does not wait for process exit — the

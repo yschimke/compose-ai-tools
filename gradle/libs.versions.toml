@@ -195,6 +195,9 @@ ktor-client-websockets = { module = "io.ktor:ktor-client-websockets", version.re
 # can't skew and re-trip the strict slf4j pin in :cli (see cli/build.gradle.kts constraints).
 ktor-server-core = { module = "io.ktor:ktor-server-core", version.ref = "ktor" }
 ktor-server-cio = { module = "io.ktor:ktor-server-cio", version.ref = "ktor" }
+# WebSockets plugin for the embedded server — backs the `serve` streamed-frame lane (`/ws/{id}`).
+# Same `ktor` version ref so it can't skew the slf4j pin in :cli.
+ktor-server-websockets = { module = "io.ktor:ktor-server-websockets", version.ref = "ktor" }
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 jmdns = { module = "org.jmdns:jmdns", version.ref = "jmdns" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }

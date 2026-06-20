@@ -923,6 +923,38 @@ class AutoInjectTest {
   }
 
   @Test
+  fun `includedBuildProvidesComposeAiPreviewPlugin is false when build-logic supplies only the config-only plugin`() {
+    // A convention build that stages ONLY the configuration-only plugin marker
+    // (`ee.schimke.composeai.preview.config.gradle.plugin`) does not supply the rendering runtime.
+    // The runtime id `ee.schimke.composeai.preview` is a prefix of the config id, so a naive
+    // substring scan would false-positive here and wrongly disable auto-inject — leaving the build
+    // with the config DSL but no render tasks. Auto-inject must stay ON so the CLI injects the
+    // runtime.
+    val projectRoot = tempDir()
+    seedConventionPluginBuild(
+      projectRoot,
+      buildLogicScript =
+        "implementation(\"ee.schimke.composeai.preview.config:ee.schimke.composeai.preview.config.gradle.plugin:0.15.12\")",
+    )
+    assertFalse(includedBuildProvidesComposeAiPreviewPlugin(projectRoot))
+  }
+
+  @Test
+  fun `includedBuildProvidesComposeAiPreviewPlugin still detects runtime when both plugins are referenced`() {
+    // A convention build that supplies BOTH the config-only plugin and the runtime must still be
+    // detected as providing the runtime (the `.config` exclusion must not swallow a real runtime
+    // reference sitting alongside it).
+    val projectRoot = tempDir()
+    seedConventionPluginBuild(
+      projectRoot,
+      buildLogicScript =
+        "implementation(\"ee.schimke.composeai.preview.config:ee.schimke.composeai.preview.config.gradle.plugin:0.15.12\")\n" +
+          "  implementation(\"ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:0.15.12\")",
+    )
+    assertTrue(includedBuildProvidesComposeAiPreviewPlugin(projectRoot))
+  }
+
+  @Test
   fun `includedBuildProvidesComposeAiPreviewPlugin detects the dep in an included-build subproject`() {
     // Multi-project convention build: the plugin dep lives in build-logic/conventions, not the
     // build-logic root script (PR #1939 review). The recursive scan must still find it.
