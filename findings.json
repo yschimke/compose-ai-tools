@@ -769,6 +769,16 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "",
+      "cleanBasename": "RuntimeShaderGradientBlobPreview_Runtime_Shader_Gradient_Blob_AGSL.png",
+      "findings": [],
+      "functionName": "RuntimeShaderGradientBlobPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.ShaderPreviewsKt.RuntimeShaderGradientBlobPreview_Runtime Shader \u2014 Gradient Blob (AGSL)",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/ShaderPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "SemanticsClickableButtonPreview.a11y.png",
       "cleanBasename": "SemanticsClickableButtonPreview.png",
       "findings": [],
@@ -1122,6 +1132,16 @@
       "module": "cmp",
       "previewId": "com.example.samplecmp.PreviewsKt.RedBoxPreview_Red Box",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "RuntimeShaderGradientBlobPreview_Runtime_Shader_Gradient_Blob.png",
+      "findings": [],
+      "functionName": "RuntimeShaderGradientBlobPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.ShaderPreviewsKt.RuntimeShaderGradientBlobPreview_Runtime Shader \u2014 Gradient Blob",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/ShaderPreviews.kt",
       "variant": ""
     },
     {

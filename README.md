@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 125 preview(s) across 14 module(s) · 9 error(s) · 3 warning(s) · 18 info._
+_Auto-generated from `compose-preview/a11y/main`. 127 preview(s) across 14 module(s) · 9 error(s) · 3 warning(s) · 18 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -326,6 +326,12 @@ _No findings._
 
 _No findings._
 
+### `RuntimeShaderGradientBlobPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/RuntimeShaderGradientBlobPreview_Runtime_Shader_Gradient_Blob_AGSL.png" width="400" />
+
+_No findings._
+
 ### `SemanticsClickableButtonPreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/SemanticsClickableButtonPreview.a11y.png" width="400" />
@@ -599,6 +605,12 @@ _No findings._
 ### `RedBoxPreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/RedBoxPreview_Red_Box.a11y.png" width="400" />
+
+_No findings._
+
+### `RuntimeShaderGradientBlobPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/RuntimeShaderGradientBlobPreview_Runtime_Shader_Gradient_Blob.png" width="400" />
 
 _No findings._
 
