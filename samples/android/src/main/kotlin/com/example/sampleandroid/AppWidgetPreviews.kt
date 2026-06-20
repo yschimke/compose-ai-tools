@@ -235,6 +235,59 @@ fun LauncherWidgetResize1x1To4x2Preview() {
 }
 
 // ---------------------------------------------------------------------------
+// Launcher-mode samples
+//
+// `launcherMode = true` swaps the bare cell-sized box for a simulated full-device launcher home
+// screen (wallpaper, status bar, weather header, app-icon grid + dock) with the widget placed on
+// the home screen at its resolved cell footprint. The surrounding `@Preview(widthDp, heightDp)`
+// gives the home screen a phone-shaped canvas to fill; the same weather-widget body as the samples
+// above is reused unchanged — turning the mode on is all it takes for an existing widget preview to
+// render on a real-looking home screen.
+// ---------------------------------------------------------------------------
+
+/**
+ * The 4×2 weather widget shown on a simulated launcher home screen. Same widget body as
+ * [LauncherWidget4x2Preview]; `launcherMode = true` wraps it in the launcher chrome and the
+ * phone-shaped `@Preview` window gives that chrome a full device to fill.
+ */
+@Preview(name = "Launcher mode — 4×2 on home screen", widthDp = 411, heightDp = 914, showBackground = true)
+@LauncherWidgetPreview(width = 4, height = 2, launcherMode = true)
+@Composable
+fun LauncherModeHomeScreenPreview() {
+  AppWidgetContent { context ->
+    RemoteViews(context.packageName, R.layout.widget_weather).apply {
+      setTextViewText(R.id.widget_title, "San Francisco")
+      setTextViewText(R.id.widget_temperature, "67°")
+      setTextViewText(R.id.widget_condition, "Partly cloudy · H 70° / L 55°")
+    }
+  }
+}
+
+/**
+ * The `1×1 → 4×2` resize walk, each stop rendered on the launcher home screen — a flipbook of the
+ * widget being resized on a real-looking device. PNGs land at `renders/<id>_RESIZE_<w>x<h>.png`.
+ */
+@Preview(name = "Launcher mode — resize on home screen", widthDp = 411, heightDp = 914, showBackground = true)
+@LauncherWidgetResize(
+  fromWidth = 1,
+  fromHeight = 1,
+  toWidth = 4,
+  toHeight = 2,
+  resizeOrder = LauncherWidgetResizeOrder.WidthFirst,
+  launcherMode = true,
+)
+@Composable
+fun LauncherModeResizePreview() {
+  AppWidgetContent { context ->
+    RemoteViews(context.packageName, R.layout.widget_weather).apply {
+      setTextViewText(R.id.widget_title, "Resize walk")
+      setTextViewText(R.id.widget_temperature, "67°")
+      setTextViewText(R.id.widget_condition, "Partly cloudy")
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Native `@androidx.glance.preview.Preview` discovery
 //
 // Same Glance composable body as the `GlanceWeatherWidgetPreview` above, but the function is

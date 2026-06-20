@@ -51,6 +51,14 @@ annotation class LauncherWidgetResize(
    * to pick up. Defaults to [DEFAULT_LAUNCHER_WIDGET_RESIZE_FRAME_DELAY_MS] ≈ 600ms.
    */
   val frameDelayMs: Int = DEFAULT_LAUNCHER_WIDGET_RESIZE_FRAME_DELAY_MS,
+  /**
+   * When `true`, every stop on the resize walk is rendered *inside a simulated launcher home
+   * screen* (wallpaper, status bar, weather, app grid, dock) with the widget at that stop's cell
+   * footprint — a flipbook of the widget being resized on a real-looking home screen. Pair it with
+   * a phone-shaped `@Preview` so each frame is a full-device shot. Defaults to `false` (bare
+   * cell-sized stops). Same flag as [LauncherWidgetPreview.launcherMode].
+   */
+  val launcherMode: Boolean = false,
 )
 
 /**

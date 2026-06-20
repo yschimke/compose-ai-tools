@@ -248,6 +248,13 @@ data class LauncherWidgetCapture(
    * captures; the value is identical across every stop in the same walk by construction.
    */
   val frameDelayMs: Int? = null,
+  /**
+   * Carried through from `@LauncherWidgetPreview.launcherMode` /
+   * `@LauncherWidgetResize.launcherMode` — `true` renders the widget inside the simulated launcher
+   * home screen rather than as a bare cell-sized box. The renderer maps it onto
+   * `LauncherWidgetOverride.launcherMode`.
+   */
+  val launcherMode: Boolean = false,
 )
 
 /** Mirror of `LauncherResizeOrder` in `:daemon:core`. */

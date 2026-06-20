@@ -58,14 +58,20 @@ class LauncherWidgetExtension(private val override: LauncherWidgetOverride) :
   override fun AroundComposable(content: @Composable () -> Unit) {
     val resolved = override.resolve()
     val widthDp =
-      (resolved.cellSizeDp * resolved.cells.width +
-          resolved.cellSpacingDp * maxOf(0, resolved.cells.width - 1))
-        .dp
+      resolved.cellSizeDp * resolved.cells.width +
+        resolved.cellSpacingDp * maxOf(0, resolved.cells.width - 1)
     val heightDp =
-      (resolved.cellSizeDp * resolved.cells.height +
-          resolved.cellSpacingDp * maxOf(0, resolved.cells.height - 1))
-        .dp
-    Box(modifier = Modifier.size(widthDp, heightDp), content = { content() })
+      resolved.cellSizeDp * resolved.cells.height +
+        resolved.cellSpacingDp * maxOf(0, resolved.cells.height - 1)
+    if (resolved.launcherMode) {
+      // Launcher mode: place the widget on a simulated full-device home screen (wallpaper, status
+      // bar, weather header, app-icon grid, dock) at its resolved cell footprint. The chrome fills
+      // whatever canvas the render is given, so a phone-shaped sandbox yields a full-device shot.
+      LauncherHomeScreen(widgetWidthDp = widthDp, widgetHeightDp = heightDp, content = content)
+    } else {
+      // Default: bare cell-sized container, the widget at the exact dp footprint the grid assigns.
+      Box(modifier = Modifier.size(widthDp.dp, heightDp.dp), content = { content() })
+    }
   }
 
   companion object {
@@ -100,6 +106,7 @@ internal data class ResolvedLauncherWidget(
   val cells: LauncherWidgetSize,
   val cellSizeDp: Int,
   val cellSpacingDp: Int,
+  val launcherMode: Boolean,
 )
 
 internal fun LauncherWidgetOverride.resolve(): ResolvedLauncherWidget {
@@ -117,6 +124,7 @@ internal fun LauncherWidgetOverride.resolve(): ResolvedLauncherWidget {
     cells = clamped,
     cellSizeDp = (cellSizeDp ?: DEFAULT_CELL_SIZE_DP).coerceAtLeast(0),
     cellSpacingDp = (cellSpacingDp ?: DEFAULT_CELL_SPACING_DP).coerceAtLeast(0),
+    launcherMode = launcherMode == true,
   )
 }
 
@@ -294,6 +302,7 @@ class LauncherWidgetDataProductRegistry : DataProductRegistry {
         resizeOrder = applied?.resizeOrder,
         supportedCells = metadata?.supportedCells,
         resizeAxes = metadata?.resizeAxes ?: LauncherResizeAxes.BOTH,
+        launcherMode = resolved?.launcherMode == true,
       ),
     )
   }

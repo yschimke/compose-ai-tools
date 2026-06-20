@@ -1230,6 +1230,7 @@ object PreviewDiscovery {
               cellSpacingDp = effectiveLauncherWidgetResize.cellSpacingDp,
               resizeOrder = effectiveLauncherWidgetResize.resizeOrder,
               frameDelayMs = effectiveLauncherWidgetResize.frameDelayMs,
+              launcherMode = effectiveLauncherWidgetResize.launcherMode,
             ),
           ambient = effectiveAmbient,
           renderOutput = "renders/${previewId}_RESIZE_${w}x${h}.png",
@@ -1576,6 +1577,7 @@ object PreviewDiscovery {
     val cellSpacingDp: Int?,
     val resizeOrder: LauncherWidgetCaptureResizeOrder,
     val frameDelayMs: Int,
+    val launcherMode: Boolean,
   )
 
   /**
@@ -1647,6 +1649,7 @@ object PreviewDiscovery {
       runCatching { LauncherWidgetCaptureResizeOrder.valueOf(orderName) }
         .getOrDefault(LauncherWidgetCaptureResizeOrder.WidthFirst)
     val frameDelay = (pv.getValue("frameDelayMs") as? Int)?.coerceAtLeast(0) ?: 600
+    val launcherMode = (pv.getValue("launcherMode") as? Boolean) ?: false
     return LauncherWidgetResizeSpec(
       from = fromWidth to fromHeight,
       to = toWidth to toHeight,
@@ -1654,6 +1657,7 @@ object PreviewDiscovery {
       cellSpacingDp = optionalInt("cellSpacingDp"),
       resizeOrder = order,
       frameDelayMs = frameDelay,
+      launcherMode = launcherMode,
     )
   }
 
@@ -1677,6 +1681,7 @@ object PreviewDiscovery {
     val order =
       runCatching { LauncherWidgetCaptureResizeOrder.valueOf(orderName) }
         .getOrDefault(LauncherWidgetCaptureResizeOrder.WidthFirst)
+    val launcherMode = (pv.getValue("launcherMode") as? Boolean) ?: false
     return LauncherWidgetCapture(
       width = width,
       height = height,
@@ -1687,6 +1692,7 @@ object PreviewDiscovery {
       maxWidth = optionalInt("maxWidth"),
       maxHeight = optionalInt("maxHeight"),
       resizeOrder = order,
+      launcherMode = launcherMode,
     )
   }
 

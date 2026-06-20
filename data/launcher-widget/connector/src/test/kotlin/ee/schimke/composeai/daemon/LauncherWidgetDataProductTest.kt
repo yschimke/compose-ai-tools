@@ -90,6 +90,20 @@ class LauncherWidgetDataProductTest {
   }
 
   @Test
+  fun resolve_launcher_mode_defaults_off_and_honours_the_flag() {
+    assertEquals(
+      false,
+      LauncherWidgetOverride(cells = LauncherWidgetSize(2, 2)).resolve().launcherMode,
+    )
+    assertEquals(
+      true,
+      LauncherWidgetOverride(cells = LauncherWidgetSize(2, 2), launcherMode = true)
+        .resolve()
+        .launcherMode,
+    )
+  }
+
+  @Test
   fun resolve_rejects_inverted_bounds() {
     val override =
       LauncherWidgetOverride(
@@ -273,6 +287,42 @@ class LauncherWidgetDataProductTest {
     assertEquals(8, payload["cellSpacingDp"]!!.jsonPrimitive.content.toInt())
     assertEquals(312, payload["widthDp"]!!.jsonPrimitive.content.toInt())
     assertEquals(152, payload["heightDp"]!!.jsonPrimitive.content.toInt())
+  }
+
+  @Test
+  fun registry_on_render_echoes_launcher_mode_flag() {
+    val registry = LauncherWidgetDataProductRegistry()
+    registry.onRender(
+      "preview-1",
+      stubRenderResult(),
+      PreviewOverrides(
+        launcherWidget =
+          LauncherWidgetOverride(cells = LauncherWidgetSize(4, 2), launcherMode = true)
+      ),
+      previewContext = null,
+    )
+    val outcome =
+      registry.fetch("preview-1", "compose/launcher-widget", null, true)
+        as DataProductRegistry.Outcome.Ok
+    assertEquals(
+      true,
+      outcome.result.payload!!.jsonObject["launcherMode"]!!.jsonPrimitive.content.toBoolean(),
+    )
+
+    // Default render without the flag reports false.
+    registry.onRender(
+      "preview-2",
+      stubRenderResult(),
+      PreviewOverrides(launcherWidget = LauncherWidgetOverride(cells = LauncherWidgetSize(2, 2))),
+      previewContext = null,
+    )
+    val plain =
+      registry.fetch("preview-2", "compose/launcher-widget", null, true)
+        as DataProductRegistry.Outcome.Ok
+    assertEquals(
+      false,
+      plain.result.payload!!.jsonObject["launcherMode"]!!.jsonPrimitive.content.toBoolean(),
+    )
   }
 
   @Test
