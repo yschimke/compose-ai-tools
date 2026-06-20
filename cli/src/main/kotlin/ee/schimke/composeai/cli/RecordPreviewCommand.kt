@@ -6,14 +6,18 @@ import ee.schimke.composeai.daemon.protocol.RecordingFormat
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvidence
+import ee.schimke.composeai.render.session.DataProductException
 import ee.schimke.composeai.render.session.RenderSession
 import ee.schimke.composeai.render.session.RenderSessionConfig
 import ee.schimke.composeai.render.session.RenderSessionException
 import ee.schimke.composeai.render.session.subprocess.SubprocessRenderSessions
 import java.io.File
 import kotlin.system.exitProcess
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import okio.Path.Companion.toPath
 
 /**
@@ -49,6 +53,12 @@ import okio.Path.Companion.toPath
  * ```json
  * { "tMs": 1500, "kind": "assert.visible", "target": { "text": "Submit" } }
  * ```
+ *
+ * **Accessibility gate.** `--fail-on a11y[=errors|warnings]` (issue #1966) fetches the preview's
+ * `a11y/atf` findings through the same session after recording and exits non-zero if the threshold
+ * is tripped — the Espresso/ATF "fail on a11y violations" model, bundled into the record command.
+ * ATF findings are Android-produced; on a desktop preview the findings are empty and the gate is a
+ * no-op (with a clear note).
  */
 class RecordPreviewCommand(args: List<String>) : Command(args) {
 
@@ -70,6 +80,25 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
       .flatMap { it.split(',', ';') }
       .map { it.trim() }
       .filter { it.isNotEmpty() }
+
+  /**
+   * `--fail-on a11y[=errors|warnings]` (issue #1966) — after recording, fetch the preview's
+   * `a11y/atf` findings through the open session and exit non-zero if the chosen threshold is
+   * tripped. `null` (the default) leaves a11y gating off. `failOn` is the base [Command] flag,
+   * reused here. ATF findings are Android-produced; on a desktop preview the findings are empty
+   * (documented in [RecordA11yGate]).
+   */
+  private val a11yThreshold: A11yThreshold? = parseFailOnA11y(failOn)
+
+  private fun parseFailOnA11y(raw: String?): A11yThreshold? {
+    val v = raw?.trim()?.lowercase()?.ifEmpty { null } ?: return null
+    if (v != "a11y" && !v.startsWith("a11y=")) {
+      fail("unsupported --fail-on '$raw'; expected a11y, a11y=errors, or a11y=warnings")
+    }
+    val token = v.substringAfter('=', "errors")
+    return A11yThreshold.parse(token)
+      ?: fail("unsupported --fail-on a11y level '$token'; use errors or warnings")
+  }
 
   override fun run() {
     val previewRef = requireFlag(previewRef, "--preview", "a preview reference")
@@ -170,7 +199,9 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
         } catch (e: RenderSessionException) {
           fail(encodeFailureMessage(format, e))
         }
-      RecordingOutcome(scriptEvents = stopped.scriptEvents, encoded = encoded)
+      // a11y gate (issue #1966): fetch the preview's ATF findings through the still-open session.
+      val a11yGate = a11yThreshold?.let { fetchA11yGate(live, target.previewId, it) }
+      RecordingOutcome(scriptEvents = stopped.scriptEvents, encoded = encoded, a11yGate = a11yGate)
     }
 
     val outFile = copyArtifact(outcome.encoded.videoPath, outPath)
@@ -196,6 +227,7 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
         it.status == RecordingScriptEventStatus.FAILED ||
           (it.kind.startsWith("assert.") && it.status != RecordingScriptEventStatus.APPLIED)
       }
+    val a11yTripped = outcome.a11yGate?.tripped == true
     if (failures.isNotEmpty()) {
       System.err.println(
         "compose-preview record: ${failures.size} assertion(s) failed for ${target.previewId}:"
@@ -208,14 +240,76 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
           "  - [t=${f.tMs}ms] ${f.kind}$statusNote: ${f.message ?: "assertion not met"}"
         )
       }
+    }
+    outcome.a11yGate?.let { gate ->
+      if (gate.tripped) {
+        System.err.println(
+          "compose-preview record: a11y check failed for ${target.previewId} — ${gate.summary()}"
+        )
+      } else if (verbose) {
+        System.err.println("[record] a11y check passed — ${gate.summary()}")
+      }
+    }
+    if (failures.isNotEmpty() || a11yTripped) {
       exitProcess(2)
+    }
+  }
+
+  /**
+   * Fetch the preview's `a11y/atf` findings through the open session and evaluate the gate. Reuses
+   * the daemon's existing a11y data product (the same one `compose-preview a11y` drives). Returns
+   * `null` when the backend can't produce ATF findings (e.g. a desktop preview — overlay-only a11y,
+   * no ATF) so the caller doesn't trip the gate on a backend that legitimately has nothing to
+   * check.
+   */
+  private fun fetchA11yGate(
+    session: RenderSession,
+    previewId: String,
+    threshold: A11yThreshold,
+  ): A11yGateResult? {
+    // The daemon registers `a11y` as inactive metadata; enable it so `data/fetch` for `a11y/atf`
+    // resolves instead of returning "kind not advertised". Non-fatal — we still try the fetch.
+    runCatching { session.enableExtensions(listOf("a11y")) }
+      .onFailure {
+        if (verbose) System.err.println("[record] extensions/enable a11y: ${it.message}")
+      }
+    val payload =
+      try {
+        session.fetchData(previewId, ATF_KIND, inline = true, timeout = 120.seconds).payload
+      } catch (e: DataProductException) {
+        System.err.println(
+          "compose-preview record: a11y gating produced no findings for $previewId " +
+            "(${e.wireMessage}). ATF findings come from the Android backend; a desktop preview has " +
+            "no ATF data, so --fail-on a11y can't gate it."
+        )
+        return null
+      } catch (e: RenderSessionException) {
+        System.err.println("compose-preview record: a11y fetch failed: ${e.message}")
+        return null
+      }
+    val findings = payload?.let(::parseA11yFindings).orEmpty()
+    return evaluateA11yGate(findings, threshold)
+  }
+
+  private fun parseA11yFindings(payload: JsonElement): List<AccessibilityFinding> {
+    val obj = payload as? JsonObject ?: return emptyList()
+    val findings = obj["findings"] ?: return emptyList()
+    return try {
+      json.decodeFromJsonElement(ListSerializer(AccessibilityFinding.serializer()), findings)
+    } catch (_: Exception) {
+      emptyList()
     }
   }
 
   private data class RecordingOutcome(
     val scriptEvents: List<RecordingScriptEvidence>,
     val encoded: RecordingEncodeResult,
+    val a11yGate: A11yGateResult?,
   )
+
+  private companion object {
+    private const val ATF_KIND = "a11y/atf"
+  }
 
   private data class ResolvedModule(val projectDir: File, val previewId: String)
 
