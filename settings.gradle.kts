@@ -324,6 +324,10 @@ include(":data-ambient-connector")
 
 project(":data-ambient-connector").projectDir = file("data/ambient/connector")
 
+include(":data-shared-element-core")
+
+project(":data-shared-element-core").projectDir = file("data/shared-element/core")
+
 include(":data-focus-core")
 
 project(":data-focus-core").projectDir = file("data/focus/core")
