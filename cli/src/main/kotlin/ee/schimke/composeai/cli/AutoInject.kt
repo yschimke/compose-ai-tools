@@ -652,16 +652,24 @@ private val COMPOSE_AI_PREVIEW_SCAN_SKIP_DIRS =
 
 /**
  * Walks [buildDir] for any `build.gradle[.kts]` whose (comment-stripped) text references the
- * `ee.schimke.composeai.preview` coordinate. Iterative DFS over [fileSystem] that prunes
- * generated/output dirs and caps the number of directories visited so it stays cheap on large or
- * adversarial trees. Used only by [includedBuildProvidesComposeAiPreviewPlugin].
+ * **runtime** `ee.schimke.composeai.preview` plugin coordinate. Iterative DFS over [fileSystem]
+ * that prunes generated/output dirs and caps the number of directories visited so it stays cheap on
+ * large or adversarial trees. Used only by [includedBuildProvidesComposeAiPreviewPlugin].
+ *
+ * The negative lookahead excludes the **configuration-only** plugin
+ * (`ee.schimke.composeai.preview.config` / `…preview.config.gradle.plugin`), of which the runtime
+ * id is a prefix. A convention build that supplies only the config-only plugin does NOT supply the
+ * runtime — auto-inject must stay ON so the CLI still injects the runtime; treating it as
+ * convention-provided would wrongly disable injection and leave the build with no render tasks. The
+ * config impl artifact (`compose-preview-config`) contains no `ee.schimke.composeai.preview`
+ * substring, so only the dotted-id forms need excluding.
  */
 private fun buildScriptsReferenceComposeAiPreview(
   buildDir: File,
   fileSystem: FileSystem,
   maxDirs: Int = 500,
 ): Boolean {
-  val coordinate = Regex("""ee\.schimke\.composeai\.preview""")
+  val coordinate = Regex("""ee\.schimke\.composeai\.preview(?!\.config)""")
   val root = buildDir.path.toPath()
   if (fileSystem.metadataOrNull(root)?.isDirectory != true) return false
   val stack = ArrayDeque<okio.Path>().apply { addLast(root) }
