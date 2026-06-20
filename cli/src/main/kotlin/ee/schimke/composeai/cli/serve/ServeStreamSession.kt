@@ -63,9 +63,21 @@ class ServeStreamSession(
       send(ServeStreamProtocol.errorMessage("cannot switch to preview: ${message.previewId}"))
       return
     }
+    // Validate before committing either field: a bad override must leave the current preview +
+    // overrides intact (so later requestFrame keeps working), mirroring setOverrides / the live
+    // lane.
+    val nextOverrides = message.overrides ?: overrides
+    val parsed =
+      when (val p = ServeOverrides.parse(nextOverrides)) {
+        is OverrideParse.Invalid -> {
+          send(ServeStreamProtocol.errorMessage(p.message))
+          return
+        }
+        is OverrideParse.Ok -> p.overrides
+      }
     previewId = message.previewId
-    message.overrides?.let { overrides = it }
-    renderCurrent()
+    overrides = nextOverrides
+    sendFrame(parsed)
   }
 
   private fun renderCurrent() {

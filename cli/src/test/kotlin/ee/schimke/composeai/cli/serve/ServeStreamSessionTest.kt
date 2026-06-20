@@ -119,6 +119,22 @@ class ServeStreamSessionTest {
   }
 
   @Test
+  fun `switch with invalid overrides errors and keeps the working view`() {
+    host().use { h ->
+      val sent = CopyOnWriteArrayList<String>()
+      val session = ServeStreamSession(h, previewId, emptyMap(), sent::add)
+      session.onOpen()
+      session.onClientMessage(
+        """{"type":"switch","previewId":"$previewId","overrides":{"uiMode":"chartreuse"}}"""
+      )
+      assertEquals("error", typeOf(sent.last()))
+      // The bad override must not poison the session — the previous view still renders.
+      session.onClientMessage("""{"type":"requestFrame"}""")
+      assertEquals("frame", typeOf(sent.last()))
+    }
+  }
+
+  @Test
   fun `unsupported message yields an error`() {
     host().use { h ->
       val sent = CopyOnWriteArrayList<String>()

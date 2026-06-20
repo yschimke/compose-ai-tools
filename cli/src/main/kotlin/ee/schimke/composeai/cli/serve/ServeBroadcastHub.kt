@@ -100,8 +100,12 @@ class ServeBroadcastHub(private val opener: StreamOpener) {
 
     /** Add a watcher and replay the current picture to it. Caller holds [lock]. */
     fun addWatcher(onFrame: (StreamFrameParams) -> Unit): StreamHandle {
-      lastPainted?.let(onFrame)
+      // Register *before* replaying: onUpstreamFrame is lock-free, so a frame painted between the
+      // replay and the add would otherwise reach neither the live fan-out (not yet a watcher) nor
+      // the replay (already read) and leave a static preview blank. Registering first means the
+      // worst case is a harmless duplicate of the current frame (newest-wins paint), never a miss.
       watchers.add(onFrame)
+      lastPainted?.let(onFrame)
       return object : StreamHandle {
         private val closed = AtomicBoolean(false)
 
