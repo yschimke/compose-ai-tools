@@ -120,4 +120,32 @@ class ComposePreviewConfigPluginFunctionalTest {
     assertThat(result.output).doesNotContain("composePreviewRender")
     assertThat(result.output).doesNotContain("composePreviewDiscover")
   }
+
+  @Test
+  fun `configuration cache is stored then reused across runs`() {
+    val projectDir = createConfigOnlyProject()
+
+    // First run stores the entry. `--info` surfaces the "stored" / "Reusing" lines; a CC invariant
+    // violation during config (e.g. capturing `project` into a task action) would instead print
+    // "discarded" or fail outright — both caught by the assertions below. The gradle.properties for
+    // this project also enables Isolated Projects, so this doubles as an IP-safety assertion.
+    val first =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewApplied", "--info")
+        .withPluginClasspath()
+        .build()
+    assertThat(first.output).contains("Configuration cache entry stored")
+
+    val second =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewApplied", "--info")
+        .withPluginClasspath()
+        .build()
+    assertThat(second.output).contains("Reusing configuration cache")
+    // A clean reuse means config-time code (extension creation + convention wiring + task
+    // registration) never ran again — exactly what a config-cache-safe plugin must guarantee.
+    assertThat(second.task(":composePreviewApplied")?.outcome).isEqualTo(TaskOutcome.UP_TO_DATE)
+  }
 }
