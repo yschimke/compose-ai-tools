@@ -43,6 +43,10 @@ class ServeStreamSession(
           }
         }
       ServeStreamProtocol.ClientMessage.RequestFrame -> renderCurrent()
+      is ServeStreamProtocol.ClientMessage.Input ->
+        // The snapshot fallback can't dispatch input into a live composition — only the daemon
+        // stream lane ([ServeLiveSession]) can. Report it rather than silently dropping.
+        send(ServeStreamProtocol.errorMessage("input requires a live stream"))
       is ServeStreamProtocol.ClientMessage.Unsupported ->
         send(ServeStreamProtocol.errorMessage(message.reason))
     }

@@ -77,18 +77,35 @@ class ServeHttpServer(
                 call.request.queryParameters[key]?.let { key to it }
               }
               .toMap()
-          val session =
-            ServeStreamSession(renderHost, previewId, initialOverrides) { text ->
-              // Non-suspending hand-off to the socket; drop frames a slow client can't keep up
-              // with.
-              outgoing.trySend(Frame.Text(text))
+          // Non-suspending hand-off to the socket; drop frames a slow client can't keep up with.
+          val send: (String) -> Unit = { text -> outgoing.trySend(Frame.Text(text)) }
+          // Prefer the daemon's live stream lane (frames pushed, input dispatched); fall back to
+          // the
+          // snapshot re-render lane when the backend doesn't support streaming.
+          val live =
+            withContext(Dispatchers.IO) {
+              ServeLiveSession.tryStart(renderHost, previewId, initialOverrides, send)
             }
-          // Renders block (renderNow + await); keep them off the socket's event-loop thread.
-          withContext(Dispatchers.IO) { session.onOpen() }
-          for (frame in incoming) {
-            if (frame is Frame.Text) {
-              val text = frame.readText()
-              withContext(Dispatchers.IO) { session.onClientMessage(text) }
+          if (live != null) {
+            try {
+              for (frame in incoming) {
+                if (frame is Frame.Text) {
+                  val text = frame.readText()
+                  withContext(Dispatchers.IO) { live.onClientMessage(text) }
+                }
+              }
+            } finally {
+              withContext(Dispatchers.IO) { live.close() }
+            }
+          } else {
+            val session = ServeStreamSession(renderHost, previewId, initialOverrides, send)
+            // Renders block (renderNow + await); keep them off the socket's event-loop thread.
+            withContext(Dispatchers.IO) { session.onOpen() }
+            for (frame in incoming) {
+              if (frame is Frame.Text) {
+                val text = frame.readText()
+                withContext(Dispatchers.IO) { session.onClientMessage(text) }
+              }
             }
           }
         }

@@ -13,6 +13,7 @@ import ee.schimke.composeai.daemon.protocol.HistoryListParams
 import ee.schimke.composeai.daemon.protocol.HistoryListResult
 import ee.schimke.composeai.daemon.protocol.HistoryReadResultDto
 import ee.schimke.composeai.daemon.protocol.InitializeResult
+import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RecordingEncodeResult
 import ee.schimke.composeai.daemon.protocol.RecordingFormat
@@ -21,6 +22,8 @@ import ee.schimke.composeai.daemon.protocol.RecordingStartResult
 import ee.schimke.composeai.daemon.protocol.RecordingStopResult
 import ee.schimke.composeai.daemon.protocol.RenderNowResult
 import ee.schimke.composeai.daemon.protocol.RenderTier
+import ee.schimke.composeai.daemon.protocol.StreamCodec
+import ee.schimke.composeai.daemon.protocol.StreamStartResult
 import ee.schimke.composeai.mcp.DaemonClient
 import ee.schimke.composeai.mcp.DataProductWireException
 import ee.schimke.composeai.render.session.DataProductException
@@ -214,6 +217,47 @@ class DaemonClientRenderSession(
   ): RecordingEncodeResult {
     checkOpen()
     return client.recordingEncode(recordingId = recordingId, format = format, timeout = timeout)
+  }
+
+  override fun streamStart(
+    previewId: String,
+    codec: StreamCodec?,
+    maxFps: Int?,
+    overrides: PreviewOverrides?,
+    timeout: Duration,
+  ): StreamStartResult {
+    checkOpen()
+    return client.streamStart(
+      previewId = previewId,
+      codec = codec,
+      maxFps = maxFps,
+      overrides = overrides,
+      timeout = timeout,
+    )
+  }
+
+  override fun streamStop(frameStreamId: String) {
+    checkOpen()
+    client.streamStop(frameStreamId)
+  }
+
+  override fun interactiveInput(
+    frameStreamId: String,
+    kind: InteractiveInputKind,
+    pixelX: Int?,
+    pixelY: Int?,
+    scrollDeltaY: Float?,
+    keyCode: String?,
+  ) {
+    checkOpen()
+    client.interactiveInput(
+      frameStreamId = frameStreamId,
+      kind = kind,
+      pixelX = pixelX,
+      pixelY = pixelY,
+      scrollDeltaY = scrollDeltaY,
+      keyCode = keyCode,
+    )
   }
 
   override fun onNotification(listener: NotificationListener): AutoCloseable {

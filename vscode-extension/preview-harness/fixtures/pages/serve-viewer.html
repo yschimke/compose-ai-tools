@@ -122,15 +122,25 @@ a:hover { text-decoration: underline; }
     next.onerror = function () { status.textContent = "render failed"; };
     next.src = url;
   }
-  function drawFrame(b64) {
+  function drawFrame(b64, codec) {
     var im = new Image();
     im.onload = function () {
       canvas.width = im.naturalWidth;
       canvas.height = im.naturalHeight;
       canvas.getContext("2d").drawImage(im, 0, 0);
     };
-    im.src = "data:image/png;base64," + b64;
+    im.src = "data:image/" + (codec || "png") + ";base64," + b64;
   }
+  // Forward clicks on the live canvas as input (image-natural pixels). No-op on the snapshot
+  // lane (it has no live stream and reports "input requires a live stream").
+  canvas.addEventListener("click", function (ev) {
+    if (!ws || ws.readyState !== 1 || !canvas.width) return;
+    var rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    var px = Math.round((ev.clientX - rect.left) / rect.width * canvas.width);
+    var py = Math.round((ev.clientY - rect.top) / rect.height * canvas.height);
+    ws.send(JSON.stringify({ type: "input", kind: "click", pixelX: px, pixelY: py }));
+  });
   function openStream() {
     root.setAttribute("data-mode", "live");
     img.hidden = true;
@@ -142,7 +152,7 @@ a:hover { text-decoration: underline; }
     ws.onmessage = function (ev) {
       var m;
       try { m = JSON.parse(ev.data); } catch (e) { return; }
-      if (m.type === "frame") { drawFrame(m.dataBase64); status.textContent = ""; }
+      if (m.type === "frame") { drawFrame(m.dataBase64, m.codec); status.textContent = ""; }
       else if (m.type === "error") { status.textContent = m.message || "error"; }
     };
     ws.onerror = function () { status.textContent = "stream error"; };

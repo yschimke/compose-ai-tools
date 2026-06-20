@@ -1,0 +1,116 @@
+package ee.schimke.composeai.cli.serve
+
+import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.daemon.protocol.StreamFrameParams
+
+/**
+ * One **live** streamed-frame connection backed by the daemon's `stream/start` +
+ * `interactive/input` protocol (tier-2). Frames are *pushed* by the daemon (animations,
+ * recomposition, input results) — not re-requested per client message — and decoded inline (no
+ * disk), which is the real upgrade over the [ServeStreamSession] snapshot fallback.
+ *
+ * Created via [tryStart], which returns `null` when the backend doesn't support streaming so the
+ * WebSocket route can fall back to [ServeStreamSession]. Like that class it's transport-agnostic:
+ * frames + errors go out through the [send] callback, so it's unit-testable without a socket.
+ */
+class ServeLiveSession
+private constructor(
+  private val renderHost: ServeRenderHost,
+  private val previewId: String,
+  private var overrides: Map<String, String>,
+  private val send: (String) -> Unit,
+) {
+  @Volatile private var handle: StreamHandle? = null
+
+  /** Handle one client text message: forward input, restart the stream on new overrides, etc. */
+  fun onClientMessage(text: String) {
+    when (val message = ServeStreamProtocol.parseClient(text)) {
+      is ServeStreamProtocol.ClientMessage.SetOverrides ->
+        when (val parsed = ServeOverrides.parse(message.overrides)) {
+          is OverrideParse.Invalid -> send(ServeStreamProtocol.errorMessage(parsed.message))
+          is OverrideParse.Ok -> {
+            // stream/start fixes overrides for the held session, so an override change restarts it.
+            overrides = message.overrides
+            restart(parsed.overrides)
+          }
+        }
+      is ServeStreamProtocol.ClientMessage.Input -> dispatchInput(message)
+      // Frames are pushed by the daemon; an explicit refresh is a no-op on the live lane.
+      ServeStreamProtocol.ClientMessage.RequestFrame -> Unit
+      is ServeStreamProtocol.ClientMessage.Unsupported ->
+        send(ServeStreamProtocol.errorMessage(message.reason))
+    }
+  }
+
+  /** Tear down the daemon stream. Idempotent. */
+  fun close() {
+    handle?.close()
+    handle = null
+  }
+
+  private fun dispatchInput(input: ServeStreamProtocol.ClientMessage.Input) {
+    val kind = parseKind(input.kind)
+    if (kind == null) {
+      send(ServeStreamProtocol.errorMessage("unknown input kind: ${input.kind}"))
+      return
+    }
+    handle?.input(
+      kind = kind,
+      pixelX = input.pixelX,
+      pixelY = input.pixelY,
+      scrollDeltaY = input.scrollDeltaY,
+      keyCode = input.keyCode,
+    )
+  }
+
+  private fun restart(parsed: PreviewOverrides) {
+    handle?.close()
+    handle =
+      renderHost.startStream(previewId, parsed, ::onFrame)
+        ?: run {
+          send(ServeStreamProtocol.errorMessage("live stream ended"))
+          null
+        }
+  }
+
+  private fun onFrame(frame: StreamFrameParams) {
+    // `unchanged` heartbeats carry no payload — nothing to paint.
+    val payload = frame.payloadBase64 ?: return
+    val codec = frame.codec?.name?.lowercase() ?: "png"
+    send(ServeStreamProtocol.frameMessage(frame.seq, frame.widthPx, frame.heightPx, payload, codec))
+  }
+
+  companion object {
+    /** Wire spellings of the input kinds a browser can produce. */
+    private fun parseKind(wire: String): InteractiveInputKind? =
+      when (wire) {
+        "click" -> InteractiveInputKind.CLICK
+        "pointerDown" -> InteractiveInputKind.POINTER_DOWN
+        "pointerMove" -> InteractiveInputKind.POINTER_MOVE
+        "pointerUp" -> InteractiveInputKind.POINTER_UP
+        "rotaryScroll" -> InteractiveInputKind.ROTARY_SCROLL
+        "keyDown" -> InteractiveInputKind.KEY_DOWN
+        "keyUp" -> InteractiveInputKind.KEY_UP
+        else -> null
+      }
+
+    /**
+     * Try to open a daemon-backed live stream. Returns `null` when streaming is unsupported, so the
+     * caller falls back to the snapshot lane. An invalid initial-overrides query degrades to the
+     * preview's defaults (the bad value would otherwise block the whole live session at connect).
+     */
+    fun tryStart(
+      renderHost: ServeRenderHost,
+      previewId: String,
+      overrides: Map<String, String>,
+      send: (String) -> Unit,
+    ): ServeLiveSession? {
+      val initial =
+        (ServeOverrides.parse(overrides) as? OverrideParse.Ok)?.overrides ?: PreviewOverrides()
+      val session = ServeLiveSession(renderHost, previewId, overrides, send)
+      session.handle = renderHost.startStream(previewId, initial, session::onFrame) ?: return null
+      return session
+    }
+  }
+}

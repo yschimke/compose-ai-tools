@@ -33,6 +33,19 @@ object ServeStreamProtocol {
     /** Re-render and push a frame at the current overrides. */
     data object RequestFrame : ClientMessage
 
+    /**
+     * A user input event to dispatch into a live (daemon-streamed) composition. [kind] is the wire
+     * spelling of an `InteractiveInputKind` (`click`, `pointerDown`, …); coordinates are
+     * image-natural pixels. Ignored by the snapshot fallback lane (which can't accept input).
+     */
+    data class Input(
+      val kind: String,
+      val pixelX: Int?,
+      val pixelY: Int?,
+      val scrollDeltaY: Float?,
+      val keyCode: String?,
+    ) : ClientMessage
+
     /** Unrecognised message; [reason] is echoed back as an error rather than crashing the lane. */
     data class Unsupported(val reason: String) : ClientMessage
   }
@@ -58,6 +71,14 @@ object ServeStreamProtocol {
           ClientMessage.SetOverrides(overrides.toMap())
         }
         "requestFrame" -> ClientMessage.RequestFrame
+        "input" ->
+          ClientMessage.Input(
+            kind = (obj["kind"] as? JsonPrimitive)?.contentOrNull ?: "",
+            pixelX = (obj["pixelX"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull(),
+            pixelY = (obj["pixelY"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull(),
+            scrollDeltaY = (obj["scrollDeltaY"] as? JsonPrimitive)?.contentOrNull?.toFloatOrNull(),
+            keyCode = (obj["keyCode"] as? JsonPrimitive)?.contentOrNull,
+          )
         else -> ClientMessage.Unsupported("unknown message type: $type")
       }
     } catch (e: Exception) {
@@ -65,15 +86,28 @@ object ServeStreamProtocol {
     }
   }
 
-  /** A rendered frame: PNG bytes base64-encoded, with pixel size and a per-connection [seq]. */
-  fun frameMessage(seq: Long, widthPx: Int, heightPx: Int, png: ByteArray): String {
+  /** A rendered frame from raw PNG bytes (snapshot lane) — base64-encodes them as a `png` frame. */
+  fun frameMessage(seq: Long, widthPx: Int, heightPx: Int, png: ByteArray): String =
+    frameMessage(seq, widthPx, heightPx, Base64.getEncoder().encodeToString(png), "png")
+
+  /**
+   * A rendered frame from an already-base64 payload (live daemon-stream lane), tagged with [codec]
+   * (`png`/`webp`) so the browser builds the right `data:` URL. Pixel size + per-connection [seq].
+   */
+  fun frameMessage(
+    seq: Long,
+    widthPx: Int,
+    heightPx: Int,
+    dataBase64: String,
+    codec: String,
+  ): String {
     val obj = buildJsonObject {
       put("type", "frame")
       put("seq", seq)
-      put("codec", "png")
+      put("codec", codec)
       put("widthPx", widthPx)
       put("heightPx", heightPx)
-      put("dataBase64", Base64.getEncoder().encodeToString(png))
+      put("dataBase64", dataBase64)
     }
     return obj.toString()
   }
