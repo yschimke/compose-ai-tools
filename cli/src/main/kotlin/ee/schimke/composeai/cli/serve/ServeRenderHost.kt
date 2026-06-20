@@ -82,6 +82,8 @@ class ServeRenderHost
 internal constructor(
   private val session: RenderSession,
   val previews: List<ServePreview>,
+  /** Human label for this tenant (e.g. the module's Gradle path); shown in the served pages. */
+  val label: String = "",
   private val fileSystem: FileSystem = SystemFileSystem,
   private val onLog: (String) -> Unit = {},
   private val renderTimeoutSeconds: Long = RENDER_TIMEOUT_SECONDS,
@@ -370,6 +372,7 @@ internal constructor(
       workspaceRoot: File,
       workspaceName: String,
       previews: List<ServePreview>,
+      label: String = "",
       onLog: (String) -> Unit = {},
       factory: RenderSessionFactory = SubprocessRenderSessions,
     ): ServeRenderHost {
@@ -382,7 +385,7 @@ internal constructor(
             logSink = onLog,
           )
         )
-      return ServeRenderHost(session = session, previews = previews, onLog = onLog)
+      return ServeRenderHost(session = session, previews = previews, label = label, onLog = onLog)
     }
   }
 }
