@@ -567,6 +567,20 @@ data class PreviewOverrides(
    */
   val touchOverlay: Boolean? = null,
   /**
+   * Opt-in TalkBack focus visualization for recording sessions (issue #1956). When `true`, each
+   * captured frame is composited with [TalkBackFocusOverlay]: a green focus rectangle around the
+   * node TalkBack is currently stopped on, faint traversal-order numbers on every focus stop, and a
+   * caption card showing the composed announcement (`TalkBackUtterance`) — so a silent capture
+   * still conveys what TalkBack would say. The focus walk advances one stop per dwell window
+   * (`TalkBackOverlayFrames`), turning the frame sequence into an animated TalkBack walk in the
+   * recorded APNG / mp4 / GIF. The focus stops and announcements come from the same per-frame
+   * semantics the a11y data product already extracts, so the rectangle, the number, and the words
+   * always agree. Mirrors [touchOverlay] as a strictly opt-in, default-`null` flag so existing
+   * pixel-exact captures stay byte-identical; backends without per-frame semantics extraction
+   * ignore it.
+   */
+  val talkBack: Boolean? = null,
+  /**
    * Optional soft-keyboard (IME) override. Drives the connector-side `KeyboardOverrideExtension`
    * (see `:data-keyboard-connector`). The around-composable mirrors the consumer's normal IME
    * behaviour — `LocalSoftwareKeyboardController.show()/hide()`, focused `BasicTextField`s, and

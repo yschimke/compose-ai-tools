@@ -21,12 +21,14 @@ import ee.schimke.composeai.data.render.extensions.RecordingScriptEventDescripto
  * daemon's `dataExtensions` when the a11y preview extension is enabled — same gate as the a11y
  * preview-extension publishers.
  *
- * **Single descriptor, mixed support.** All 19 a11y actions live in one
+ * **Single descriptor, mixed support.** All 22 a11y actions live in one
  * `DataExtensionDescriptor(id = "a11y", ...)`. Each event carries its own `supported` flag —
- * 12 wired ids ride on `SemanticsActions` constants and report `supported = true`; the remaining 7
+ * 13 wired ids ride on `SemanticsActions` constants and report `supported = true`; the remaining 9
  * (`clearFocus`, `accessibilityFocus`, `clearAccessibilityFocus`, `select`, `clearSelection`,
- * `nextAtGranularity`, `previousAtGranularity`) report `supported = false` because Compose
- * doesn't expose a clean `SemanticsActions` equivalent today. Agents calling `list_data_products`
+ * `nextAtGranularity`, `previousAtGranularity`, plus the TalkBack linear-navigation `next` /
+ * `previous` from issue #1956) report `supported = false` because Compose doesn't expose a clean
+ * `SemanticsActions` equivalent today (the traversal computation behind `next` / `previous` ships
+ * in `TalkBackTraversal`, but the host-side focus-state dispatch is still roadmap). Agents calling `list_data_products`
  * see one `a11y` extension with the full surface; the per-event flag is the source of truth for
  * "can `record_preview` accept this kind right now."
  */
@@ -53,9 +55,15 @@ object AccessibilityRecordingScriptEvents {
   const val ACTION_NEXT_AT_GRANULARITY: String = "a11y.action.nextAtGranularity"
   const val ACTION_PREVIOUS_AT_GRANULARITY: String = "a11y.action.previousAtGranularity"
 
+  // TalkBack linear-navigation verbs (issue #1956). `activate` is wired (the focused control's
+  // OnClick); `next` / `previous` advance focus through the merged-semantics traversal order.
+  const val ACTION_NEXT: String = "a11y.action.next"
+  const val ACTION_PREVIOUS: String = "a11y.action.previous"
+  const val ACTION_ACTIVATE: String = "a11y.action.activate"
+
   /**
-   * Single `a11y` data-extension descriptor advertising all 19 actions. Wired ids appear with
-   * `supported = true`; the remaining 7 carry `supported = false` so agents see the full
+   * Single `a11y` data-extension descriptor advertising all 22 actions. Wired ids appear with
+   * `supported = true`; the remaining 9 carry `supported = false` so agents see the full
    * accessibility action surface (planned + shipped) in one extension entry.
    *
    * Each `supported = true` entry corresponds to a `when` arm in
@@ -149,7 +157,30 @@ object AccessibilityRecordingScriptEvents {
             "Scroll right",
             "Scrolls the targeted scrollable right by one viewport-width via SemanticsActions.ScrollBy(+width, 0).",
           ),
+          supportedEvent(
+            ACTION_ACTIVATE,
+            "Activate",
+            "Activates the targeted accessibility node via SemanticsActions.OnClick — TalkBack's " +
+              "double-tap-to-activate verb. Pairs with next/previous for a scripted TalkBack walk " +
+              "(issue #1956).",
+          ),
           // --- Roadmap (supported = false) ---
+          unsupportedEvent(
+            ACTION_NEXT,
+            "Next (linear navigation)",
+            "Moves TalkBack focus to the next focus stop in traversal order (issue #1956). The " +
+              "deterministic traversal computation ships in TalkBackTraversal (data-a11y-core, " +
+              "unit-tested) and drives the live TalkBack focus overlay's auto-advance; the " +
+              "remaining work is the host-side focus-state dispatch over the live Compose " +
+              "semantics tree. Tracked as roadmap.",
+          ),
+          unsupportedEvent(
+            ACTION_PREVIOUS,
+            "Previous (linear navigation)",
+            "Counterpart to next — moves TalkBack focus to the previous focus stop in traversal " +
+              "order (issue #1956). Same TalkBackTraversal core; host-side focus-state dispatch is " +
+              "tracked as roadmap.",
+          ),
           unsupportedEvent(
             ACTION_CLEAR_FOCUS,
             "Clear focus",

@@ -2961,7 +2961,10 @@ open class RobolectricHost(
       val target =
         nodes.minByOrNull { node -> node.boundsInRoot.width * node.boundsInRoot.height } ?: nodes[0]
       return when (cmd.actionKind) {
-        "click" -> invokeLambdaAction(rule, target, SemanticsActions.OnClick)
+        "click",
+        // TalkBack's "double-tap to activate" verb (issue #1956): activating the focused control
+        // is its OnClick, same as a tap — distinct script vocabulary, same semantic action.
+        "activate" -> invokeLambdaAction(rule, target, SemanticsActions.OnClick)
         "longClick" -> invokeLambdaAction(rule, target, SemanticsActions.OnLongClick)
         "focus" -> invokeLambdaAction(rule, target, SemanticsActions.RequestFocus)
         "expand" -> invokeLambdaAction(rule, target, SemanticsActions.Expand)

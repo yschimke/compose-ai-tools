@@ -12,7 +12,7 @@ import org.junit.Test
 class AccessibilityRecordingScriptEventsTest {
 
   @Test
-  fun `descriptor advertises a11y as one extension with all 19 actions`() {
+  fun `descriptor advertises a11y as one extension with all 22 actions`() {
     val descriptor = AccessibilityRecordingScriptEvents.descriptor
     assertEquals("a11y", descriptor.id.value)
     val ids = descriptor.recordingScriptEvents.map { it.id }.toSet()
@@ -30,6 +30,7 @@ class AccessibilityRecordingScriptEventsTest {
         AccessibilityRecordingScriptEvents.ACTION_SCROLL_DOWN,
         AccessibilityRecordingScriptEvents.ACTION_SCROLL_LEFT,
         AccessibilityRecordingScriptEvents.ACTION_SCROLL_RIGHT,
+        AccessibilityRecordingScriptEvents.ACTION_ACTIVATE,
         AccessibilityRecordingScriptEvents.ACTION_CLEAR_FOCUS,
         AccessibilityRecordingScriptEvents.ACTION_ACCESSIBILITY_FOCUS,
         AccessibilityRecordingScriptEvents.ACTION_CLEAR_ACCESSIBILITY_FOCUS,
@@ -37,6 +38,8 @@ class AccessibilityRecordingScriptEventsTest {
         AccessibilityRecordingScriptEvents.ACTION_CLEAR_SELECTION,
         AccessibilityRecordingScriptEvents.ACTION_NEXT_AT_GRANULARITY,
         AccessibilityRecordingScriptEvents.ACTION_PREVIOUS_AT_GRANULARITY,
+        AccessibilityRecordingScriptEvents.ACTION_NEXT,
+        AccessibilityRecordingScriptEvents.ACTION_PREVIOUS,
       )
     assertEquals(expectedIds, ids)
   }
@@ -57,6 +60,7 @@ class AccessibilityRecordingScriptEventsTest {
         AccessibilityRecordingScriptEvents.ACTION_SCROLL_DOWN,
         AccessibilityRecordingScriptEvents.ACTION_SCROLL_LEFT,
         AccessibilityRecordingScriptEvents.ACTION_SCROLL_RIGHT,
+        AccessibilityRecordingScriptEvents.ACTION_ACTIVATE,
       )
     val actuallySupported =
       AccessibilityRecordingScriptEvents.descriptor.recordingScriptEvents
@@ -81,6 +85,8 @@ class AccessibilityRecordingScriptEventsTest {
         AccessibilityRecordingScriptEvents.ACTION_CLEAR_SELECTION,
         AccessibilityRecordingScriptEvents.ACTION_NEXT_AT_GRANULARITY,
         AccessibilityRecordingScriptEvents.ACTION_PREVIOUS_AT_GRANULARITY,
+        AccessibilityRecordingScriptEvents.ACTION_NEXT,
+        AccessibilityRecordingScriptEvents.ACTION_PREVIOUS,
       )
     val actuallyUnsupported =
       AccessibilityRecordingScriptEvents.descriptor.recordingScriptEvents

@@ -80,11 +80,26 @@ object FfmpegEncoder {
    * [out] using [format] at [fps] frames per second. Throws on any non-zero exit, missing binary
    * (when [available] reports false at call time), or timeout — callers map these to a tool-level
    * error so the agent sees the real failure instead of an empty file on disk.
+   *
+   * [audioTrack] is an optional pre-rendered audio file muxed in as a second input — the TalkBack
+   * spoken-announcement track (issue #1956, Phase 4). When `null` (the default and the only path
+   * for every existing caller) the command is byte-identical to the video-only encoder. Audio is
+   * only meaningful for MP4 / WEBM; APNG / GIF have no audio track, so [DesktopRecordingSession]
+   * passes it only down the ffmpeg path.
    */
-  fun encodeFromPngFrames(framesDir: File, fps: Int, format: RecordingFormatChoice, out: File) {
+  fun encodeFromPngFrames(
+    framesDir: File,
+    fps: Int,
+    format: RecordingFormatChoice,
+    out: File,
+    audioTrack: File? = null,
+  ) {
     require(fps in 1..120) { "FfmpegEncoder: fps=$fps out of range [1, 120]" }
     require(framesDir.isDirectory) {
       "FfmpegEncoder: framesDir does not exist or is not a directory: ${framesDir.absolutePath}"
+    }
+    require(audioTrack == null || audioTrack.isFile) {
+      "FfmpegEncoder: audioTrack does not exist or is not a file: ${audioTrack?.absolutePath}"
     }
     if (!available()) {
       error("FfmpegEncoder: ffmpeg not found on PATH; install ffmpeg or use RecordingFormat.APNG")
@@ -93,50 +108,7 @@ object FfmpegEncoder {
     out.parentFile?.mkdirs()
     if (out.exists()) out.delete()
 
-    val args = mutableListOf("ffmpeg", "-y", "-framerate", fps.toString())
-    args.add("-i")
-    args.add(File(framesDir, "frame-%05d.png").absolutePath)
-    when (format) {
-      RecordingFormatChoice.MP4 -> {
-        // H.264 + yuv420p for universal player compatibility (mobile + QuickTime require yuv420p
-        // even though libx264's default profile would otherwise pick yuv444). `-movflags
-        // +faststart` shifts the moov atom to the start of the file so streaming players can
-        // begin playback before downloading the trailer; cheap on small clips, useful when the
-        // file is served via HTTP from the daemon's history dir.
-        args.addAll(
-          listOf(
-            "-c:v",
-            "libx264",
-            "-pix_fmt",
-            "yuv420p",
-            "-preset",
-            "veryfast",
-            "-movflags",
-            "+faststart",
-          )
-        )
-      }
-      RecordingFormatChoice.WEBM -> {
-        // VP9 with the row-multithread + tile-columns combo most modern guides recommend for
-        // sub-720p content. `-deadline good -cpu-used 4` is the speed/quality middle ground —
-        // matching libx264's `veryfast`. Default WebM container.
-        args.addAll(
-          listOf(
-            "-c:v",
-            "libvpx-vp9",
-            "-pix_fmt",
-            "yuv420p",
-            "-deadline",
-            "good",
-            "-cpu-used",
-            "4",
-            "-row-mt",
-            "1",
-          )
-        )
-      }
-    }
-    args.add(out.absolutePath)
+    val args = buildArgs(framesDir, fps, format, out, audioTrack)
 
     val pb = ProcessBuilder(args).redirectErrorStream(true)
     val proc = pb.start()
@@ -186,6 +158,83 @@ object FfmpegEncoder {
         "FfmpegEncoder: ffmpeg ${format.name.lowercase()} produced no output at ${out.absolutePath}"
       )
     }
+  }
+
+  /**
+   * Builds the full `ffmpeg` argv for [encodeFromPngFrames]. Extracted (and `internal`) so the
+   * codec / mux flags — especially the optional [audioTrack] muxing — can be unit-tested without
+   * shelling out. When [audioTrack] is non-null a second `-i` input is added, encoded to the
+   * container's standard audio codec (AAC for MP4, Opus for WEBM), and explicitly mapped alongside
+   * the video stream. `-af apad` pads short audio with trailing silence and `-shortest` clamps long
+   * audio, so the output is exactly the video duration in both directions — a TTS track that ends
+   * before the last frame never truncates the video.
+   */
+  internal fun buildArgs(
+    framesDir: File,
+    fps: Int,
+    format: RecordingFormatChoice,
+    out: File,
+    audioTrack: File?,
+  ): List<String> {
+    val args = mutableListOf("ffmpeg", "-y", "-framerate", fps.toString())
+    args.add("-i")
+    args.add(File(framesDir, "frame-%05d.png").absolutePath)
+    if (audioTrack != null) {
+      args.add("-i")
+      args.add(audioTrack.absolutePath)
+    }
+    when (format) {
+      RecordingFormatChoice.MP4 -> {
+        // H.264 + yuv420p for universal player compatibility (mobile + QuickTime require yuv420p
+        // even though libx264's default profile would otherwise pick yuv444). `-movflags
+        // +faststart` shifts the moov atom to the start of the file so streaming players can
+        // begin playback before downloading the trailer; cheap on small clips, useful when the
+        // file is served via HTTP from the daemon's history dir.
+        args.addAll(
+          listOf(
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-preset",
+            "veryfast",
+            "-movflags",
+            "+faststart",
+          )
+        )
+        if (audioTrack != null) args.addAll(listOf("-c:a", "aac"))
+      }
+      RecordingFormatChoice.WEBM -> {
+        // VP9 with the row-multithread + tile-columns combo most modern guides recommend for
+        // sub-720p content. `-deadline good -cpu-used 4` is the speed/quality middle ground —
+        // matching libx264's `veryfast`. Default WebM container.
+        args.addAll(
+          listOf(
+            "-c:v",
+            "libvpx-vp9",
+            "-pix_fmt",
+            "yuv420p",
+            "-deadline",
+            "good",
+            "-cpu-used",
+            "4",
+            "-row-mt",
+            "1",
+          )
+        )
+        if (audioTrack != null) args.addAll(listOf("-c:a", "libopus"))
+      }
+    }
+    if (audioTrack != null) {
+      // Map video from input 0 and audio from input 1 explicitly. `-af apad` pads the audio with
+      // trailing silence so a TTS track that ends before the last frame never becomes the shortest
+      // stream; `-shortest` then clamps the output to the video length. Together they hold the
+      // result to exactly the video duration whether the audio runs short (silence-padded) or long
+      // (truncated) — so trailing frames are never dropped.
+      args.addAll(listOf("-map", "0:v:0", "-map", "1:a:0", "-af", "apad", "-shortest"))
+    }
+    args.add(out.absolutePath)
+    return args
   }
 
   /**
