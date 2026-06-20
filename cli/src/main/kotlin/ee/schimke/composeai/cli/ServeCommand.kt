@@ -218,11 +218,18 @@ class ServeCommand(args: List<String>) : Command(args) {
       findProjectRoot() ?: module.projectDir.absoluteFile.parentFile ?: module.projectDir
     val relativePath =
       module.projectDir.absoluteFile.relativeToOrNull(repoRoot.absoluteFile)?.path ?: ""
+    // Match the bootstrap args the normal build path (Command.withGradle) applies, so a worktree
+    // build sees the auto-injected plugin and the right variant — otherwise composePreviewDiscover
+    // can run without the plugin/tasks or against the wrong variant and every ?session=<rev> fails.
+    val bootstrapArgs =
+      autoInjectInitScriptArgs(args, projectRoot = repoRoot) +
+        variantGradleArgs() +
+        gradleArgsWithForce()
     return ServeRevisionFactory(
       worktrees = worktrees,
       builder =
         GradleRevisionBuilder(
-          extraArgs = gradleArgsWithForce(),
+          extraArgs = bootstrapArgs,
           onLog = { System.err.println("[serve build] $it") },
         ),
       module = ServeModuleRef(module.gradlePath, relativePath),

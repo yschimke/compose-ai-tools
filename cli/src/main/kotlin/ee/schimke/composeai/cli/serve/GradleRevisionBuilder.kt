@@ -57,14 +57,23 @@ class GradleRevisionBuilder(
           .directory(worktreeDir)
           .redirectErrorStream(true)
           .start()
-      process.inputStream.bufferedReader().forEachLine { onLog("[gradle] $it") }
+      // Drain output on a daemon thread: a stalled build that never closes stdout (dependency
+      // resolution, a held lock) would otherwise block here forever and the waitFor timeout would
+      // never be reached — hanging the request while it holds the registry build lock.
+      // destroyForcibly() on timeout closes the stream, ending this thread.
+      val drain =
+        Thread { process.inputStream.bufferedReader().forEachLine { onLog("[gradle] $it") } }
+          .apply {
+            isDaemon = true
+            start()
+          }
       if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
         process.destroyForcibly()
         onLog("serve: gradle build timed out after ${timeoutSeconds}s")
-        false
-      } else {
-        process.exitValue() == 0
+        return false
       }
+      drain.join(DRAIN_FLUSH_MILLIS) // let any buffered tail flush to the log
+      process.exitValue() == 0
     } catch (e: Exception) {
       onLog("serve: gradle build failed to launch (${e.message})")
       false
@@ -73,5 +82,6 @@ class GradleRevisionBuilder(
 
   private companion object {
     const val DEFAULT_TIMEOUT_SECONDS = 600L
+    const val DRAIN_FLUSH_MILLIS = 2000L
   }
 }
