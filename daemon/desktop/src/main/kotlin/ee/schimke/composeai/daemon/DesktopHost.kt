@@ -137,10 +137,11 @@ open class DesktopHost(
     get() = previewSpecResolver != null
 
   /**
-   * RECORDING.md § "encoded formats" — `apng` is always available (pure-JVM [ApngEncoder]); `mp4`
-   * and `webm` are added when [FfmpegEncoder.available] succeeds at the host's first probe. Empty
-   * list when [supportsRecording] is `false` so clients consistently see "no formats" rather than
-   * the misleading "apng available" + "but recording itself disabled" combination.
+   * RECORDING.md § "encoded formats" — `apng` and `gif` are always available (both pure-JVM:
+   * [ApngEncoder] and [GifEncoder]); `mp4` and `webm` are added when [FfmpegEncoder.available]
+   * succeeds at the host's first probe. Empty list when [supportsRecording] is `false` so clients
+   * consistently see "no formats" rather than the misleading "apng available" + "but recording
+   * itself disabled" combination.
    */
   override val supportedRecordingFormats: List<String>
     get() =
@@ -148,6 +149,7 @@ open class DesktopHost(
       else
         buildList {
           add("apng")
+          add("gif")
           if (FfmpegEncoder.available()) {
             add("mp4")
             add("webm")

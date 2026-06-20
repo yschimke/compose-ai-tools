@@ -38,6 +38,13 @@ fun main(args: Array<String>) {
       "--with",
       "--missing-renders",
       "--variant",
+      "--preview",
+      "--script",
+      "--out",
+      "--format",
+      "--fps",
+      "--scale",
+      "--overrides",
     )
   var commandIndex = -1
   var i = 0
@@ -74,6 +81,7 @@ fun main(args: Array<String>) {
     "list" -> ListCommand(allArgs).run()
     "render" -> RenderCommand(allArgs).run()
     "render-matrix" -> RenderMatrixCommand(allArgs).run()
+    "record" -> RecordPreviewCommand(allArgs).run()
     "a11y" -> A11yCommand(allArgs).run()
     "diff-semantics" -> SemanticsDiffCommand(allArgs).run()
     "history" -> HistoryCommand(allArgs).run()
@@ -116,6 +124,14 @@ private fun printUsage() {
       render-matrix    Render one preview across a cross-product of display axes
                        (--device/--locale/--ui-mode/--font-scale); per-cell hashes +
                        optional --contact-sheet grid PNG.
+      record           Record a scripted session against an already-compiled @Preview into a
+                       GIF/APNG/MP4/WebM. One command, no daemon/MCP knowledge:
+                         compose-preview record --preview <ref> --script <file.json> --out <file>
+                       --preview takes an id, a `Class.function` reference, or a unique substring;
+                       --script is a JSON array of RecordingScriptEvent (tap/drag/pinch/keys, the
+                       same vocabulary MCP record_preview uses). The encoder is picked from the
+                       --out extension unless --format is given. gif/apng are always available
+                       (pure-JVM); mp4/webm need ffmpeg on PATH.
       a11y             Render previews with the a11y data extension on and
                        print ATF findings (thin wrapper over `--with-extension a11y`)
       diff-semantics   Diff two compose/semantics trees (base vs head) and report what
@@ -158,6 +174,17 @@ private fun printUsage() {
       --brief              JSON only: drop functionName/className/sourceFile/params
       --changed-only       JSON only (show, a11y): drop previews with no changed capture
       --output <path>      Copy matched preview PNG to this path (render)
+      --preview <ref>      record: preview to record — an id, a `Class.function` reference, or a
+                           unique substring of an id
+      --script <path>      record: JSON array of RecordingScriptEvent driving the session
+      --out <path>         record: write the encoded recording here (extension auto-selects the
+                           format unless --format is set)
+      --format <fmt>       record: gif | apng | mp4 | webm. gif/apng always available (pure-JVM);
+                           mp4/webm need ffmpeg on PATH
+      --fps <n>            record: frames per second of the virtual playback clock (default 30)
+      --scale <f>          record: capture scale multiplier (default 1.0)
+      --overrides <k=v,…>  record: per-render overrides, e.g. touchOverlay=true (also device,
+                           localeTag, fontScale, density, widthPx, heightPx, inspectionMode)
       --bundle             render: after rendering, pack each module's previews into a portable
                            PNG+ZIP bundle at <module>/build/compose-previews/bundle.png. Opt-in —
                            adds a classpath closure walk + jar minimization on top of the render.

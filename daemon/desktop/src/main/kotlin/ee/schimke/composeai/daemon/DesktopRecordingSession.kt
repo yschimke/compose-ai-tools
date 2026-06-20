@@ -671,18 +671,10 @@ class DesktopRecordingSession(
     return when (format) {
       RecordingFormat.APNG -> {
         val target = File(encodedDir, "$recordingId.apng")
-        val frames =
-          (0 until r.frameCount).map { i ->
-            File(framesDir, "frame-${"%05d".format(i)}.png").also {
-              check(it.isFile) {
-                "DesktopRecordingSession.encode: missing frame PNG ${it.absolutePath}"
-              }
-            }
-          }
         // Frame delay in millis = 1000/fps. APNG carries delay as a numerator/denominator fraction
         // so we keep the exact rate by passing the fps as denominator and `1` as numerator.
         ApngEncoder.encodeFromPngFrames(
-          frames = frames,
+          frames = framePngs(r.frameCount),
           delayNumerator = 1,
           delayDenominator = fps.toShort(),
           loopCount = 0, // 0 = infinite
@@ -694,12 +686,34 @@ class DesktopRecordingSession(
           sizeBytes = target.length(),
         )
       }
+      RecordingFormat.GIF -> {
+        val target = File(encodedDir, "$recordingId.gif")
+        GifEncoder.encodeFromPngFrames(frames = framePngs(r.frameCount), fps = fps, out = target)
+        EncodedRecording(
+          videoPath = target.absolutePath,
+          mimeType = "image/gif",
+          sizeBytes = target.length(),
+        )
+      }
       RecordingFormat.MP4 ->
         encodeViaFfmpeg(FfmpegEncoder.RecordingFormatChoice.MP4, "mp4", "video/mp4")
       RecordingFormat.WEBM ->
         encodeViaFfmpeg(FfmpegEncoder.RecordingFormatChoice.WEBM, "webm", "video/webm")
     }
   }
+
+  /**
+   * The contiguous per-frame PNGs `frame-00000.png`..`frame-NNNNN.png` the playback loop wrote, in
+   * order. Shared by the [ApngEncoder] and [GifEncoder] paths (the ffmpeg path globs the directory
+   * itself via the `frame-%05d.png` pattern). Each frame is asserted present so a truncated
+   * recording surfaces a clear error rather than a half-encoded file.
+   */
+  private fun framePngs(frameCount: Int): List<File> =
+    (0 until frameCount).map { i ->
+      File(framesDir, "frame-${"%05d".format(i)}.png").also {
+        check(it.isFile) { "DesktopRecordingSession.encode: missing frame PNG ${it.absolutePath}" }
+      }
+    }
 
   private fun encodeViaFfmpeg(
     choice: FfmpegEncoder.RecordingFormatChoice,

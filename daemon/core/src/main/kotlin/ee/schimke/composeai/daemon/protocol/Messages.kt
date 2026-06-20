@@ -2130,15 +2130,18 @@ data class RecordingStopResult(
  * `protocolVersion` per PROTOCOL.md § 7.
  */
 /**
- * v1 ships APNG (pure-JVM, no native deps); v2 adds [MP4] and [WEBM] via optional `ffmpeg`
- * shell-out. Daemons advertise the formats they actually support via
- * `ServerCapabilities.recordingFormats` so clients can grey out unavailable options without
- * round-tripping a request that would only fail. The enum stays open per PROTOCOL.md § 7 — adding a
- * new variant is additive and does not bump `protocolVersion`.
+ * v1 ships APNG (pure-JVM, no native deps); [GIF] is likewise pure-JVM (the bundled `javax.imageio`
+ * GIF writer, so it's "always available" alongside APNG) and is the friendliest format for inline
+ * playback in chat / GitHub comments. v2 adds [MP4] and [WEBM] via optional `ffmpeg` shell-out.
+ * Daemons advertise the formats they actually support via `ServerCapabilities.recordingFormats` so
+ * clients can grey out unavailable options without round-tripping a request that would only fail.
+ * The enum stays open per PROTOCOL.md § 7 — adding a new variant is additive and does not bump
+ * `protocolVersion`.
  */
 @Serializable
 enum class RecordingFormat {
   @SerialName("apng") APNG,
+  @SerialName("gif") GIF,
   @SerialName("mp4") MP4,
   @SerialName("webm") WEBM,
 }
@@ -2153,7 +2156,9 @@ data class RecordingEncodeParams(
 data class RecordingEncodeResult(
   /** Absolute path of the encoded video file. */
   val videoPath: String,
-  /** MIME type — `image/apng` for APNG; `video/mp4` / `video/webm` once v2 lands those. */
+  /**
+   * MIME type — `image/apng` for APNG, `image/gif` for GIF; `video/mp4` / `video/webm` for those.
+   */
   val mimeType: String,
   val sizeBytes: Long,
 )

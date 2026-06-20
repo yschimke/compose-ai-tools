@@ -244,9 +244,10 @@ open class RobolectricHost(
     get() = supportsInteractive
 
   /**
-   * RECORDING.md § "encoded formats" — APNG always available (pure-JVM `ApngEncoder`); MP4 / WEBM
-   * appear when an `ffmpeg` binary is on the daemon's PATH. Empty list when [supportsRecording] is
-   * false so clients consistently see "no formats" rather than "apng but recording disabled".
+   * RECORDING.md § "encoded formats" — APNG and GIF always available (pure-JVM `ApngEncoder` /
+   * `GifEncoder`); MP4 / WEBM appear when an `ffmpeg` binary is on the daemon's PATH. Empty list
+   * when [supportsRecording] is false so clients consistently see "no formats" rather than "apng but
+   * recording disabled".
    */
   override val supportedRecordingFormats: List<String>
     get() =
@@ -254,6 +255,7 @@ open class RobolectricHost(
       else
         buildList {
           add("apng")
+          add("gif")
           if (FfmpegEncoder.available()) {
             add("mp4")
             add("webm")
