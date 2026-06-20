@@ -34,6 +34,13 @@ object ServeStreamProtocol {
     data object RequestFrame : ClientMessage
 
     /**
+     * Switch the connection to a different preview without reconnecting. [overrides] is optional —
+     * when omitted the current overrides carry over. Lets one socket walk a module's previews (the
+     * "switch previews" lane) instead of opening a new `/ws/{id}` per preview.
+     */
+    data class Switch(val previewId: String, val overrides: Map<String, String>?) : ClientMessage
+
+    /**
      * A user input event to dispatch into a live (daemon-streamed) composition. [kind] is the wire
      * spelling of an `InteractiveInputKind` (`click`, `pointerDown`, …); coordinates are
      * image-natural pixels. Ignored by the snapshot fallback lane (which can't accept input).
@@ -72,6 +79,16 @@ object ServeStreamProtocol {
           ClientMessage.SetOverrides(overrides.toMap())
         }
         "requestFrame" -> ClientMessage.RequestFrame
+        "switch" -> {
+          val previewId = (obj["previewId"] as? JsonPrimitive)?.contentOrNull
+          // An override block is optional; when present it follows the same shape as setOverrides.
+          val overrides =
+            (obj["overrides"] as? JsonObject)?.entries?.mapNotNull { (k, v) ->
+              (v as? JsonPrimitive)?.contentOrNull?.let { k to it }
+            }
+          if (previewId.isNullOrBlank()) ClientMessage.Unsupported("switch missing previewId")
+          else ClientMessage.Switch(previewId, overrides?.toMap())
+        }
         "input" ->
           ClientMessage.Input(
             kind = (obj["kind"] as? JsonPrimitive)?.contentOrNull ?: "",

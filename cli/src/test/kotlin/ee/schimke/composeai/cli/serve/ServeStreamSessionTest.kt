@@ -88,6 +88,37 @@ class ServeStreamSessionTest {
   }
 
   @Test
+  fun `switch re-renders a different preview on the snapshot lane`() {
+    val blue = "com.example.Blue"
+    ServeRenderHost(
+        session = FakeRenderSession(newRenderRoot()),
+        previews = listOf(ServePreview(previewId, "Red"), ServePreview(blue, "Blue")),
+        renderTimeoutSeconds = 30,
+      )
+      .use { h ->
+        val sent = CopyOnWriteArrayList<String>()
+        val session = ServeStreamSession(h, previewId, emptyMap(), sent::add)
+        session.onOpen()
+        session.onClientMessage("""{"type":"switch","previewId":"$blue"}""")
+        assertEquals(2, sent.size)
+        assertEquals("frame", typeOf(sent.last()))
+      }
+  }
+
+  @Test
+  fun `switch to an unknown preview errors and keeps the current one`() {
+    host().use { h ->
+      val sent = CopyOnWriteArrayList<String>()
+      val session = ServeStreamSession(h, previewId, emptyMap(), sent::add)
+      session.onOpen()
+      session.onClientMessage("""{"type":"switch","previewId":"com.example.Missing"}""")
+      assertEquals("error", typeOf(sent.last()))
+      session.onClientMessage("""{"type":"requestFrame"}""")
+      assertEquals("frame", typeOf(sent.last()))
+    }
+  }
+
+  @Test
   fun `unsupported message yields an error`() {
     host().use { h ->
       val sent = CopyOnWriteArrayList<String>()

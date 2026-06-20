@@ -69,6 +69,30 @@ class ServeStreamProtocolTest {
   }
 
   @Test
+  fun `parses switch with and without overrides`() {
+    val plain =
+      ServeStreamProtocol.parseClient("""{"type":"switch","previewId":"com.example.Blue"}""")
+    assertTrue(plain is ServeStreamProtocol.ClientMessage.Switch, "got $plain")
+    assertEquals("com.example.Blue", plain.previewId)
+    assertEquals(null, plain.overrides, "omitted overrides should carry the current ones over")
+
+    val withOverrides =
+      ServeStreamProtocol.parseClient(
+        """{"type":"switch","previewId":"com.example.Blue","overrides":{"uiMode":"dark"}}"""
+      )
+    assertTrue(withOverrides is ServeStreamProtocol.ClientMessage.Switch, "got $withOverrides")
+    assertEquals(mapOf("uiMode" to "dark"), withOverrides.overrides)
+  }
+
+  @Test
+  fun `switch without a previewId is Unsupported`() {
+    assertTrue(
+      ServeStreamProtocol.parseClient("""{"type":"switch"}""")
+        is ServeStreamProtocol.ClientMessage.Unsupported
+    )
+  }
+
+  @Test
   fun `unknown type and malformed json are Unsupported, never thrown`() {
     assertTrue(
       ServeStreamProtocol.parseClient("""{"type":"wat"}""")

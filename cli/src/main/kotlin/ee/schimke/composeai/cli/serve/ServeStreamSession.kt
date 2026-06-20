@@ -19,10 +19,11 @@ import java.util.concurrent.atomic.AtomicLong
  */
 class ServeStreamSession(
   private val renderHost: ServeRenderHost,
-  private val previewId: String,
+  previewId: String,
   initialOverrides: Map<String, String> = emptyMap(),
   private val send: (String) -> Unit,
 ) {
+  private var previewId: String = previewId
   private var overrides: Map<String, String> = initialOverrides
   private val seq = AtomicLong(0)
 
@@ -43,6 +44,7 @@ class ServeStreamSession(
           }
         }
       ServeStreamProtocol.ClientMessage.RequestFrame -> renderCurrent()
+      is ServeStreamProtocol.ClientMessage.Switch -> switchTo(message)
       is ServeStreamProtocol.ClientMessage.Input ->
         // The snapshot fallback can't dispatch input into a live composition — only the daemon
         // stream lane ([ServeLiveSession]) can. Report it rather than silently dropping.
@@ -50,6 +52,20 @@ class ServeStreamSession(
       is ServeStreamProtocol.ClientMessage.Unsupported ->
         send(ServeStreamProtocol.errorMessage(message.reason))
     }
+  }
+
+  /**
+   * Switch this connection to another preview (optionally with new overrides) and re-render. An
+   * unknown preview is reported and the current one is kept, mirroring the live lane's behaviour.
+   */
+  private fun switchTo(message: ServeStreamProtocol.ClientMessage.Switch) {
+    if (renderHost.previews.none { it.id == message.previewId }) {
+      send(ServeStreamProtocol.errorMessage("cannot switch to preview: ${message.previewId}"))
+      return
+    }
+    previewId = message.previewId
+    message.overrides?.let { overrides = it }
+    renderCurrent()
   }
 
   private fun renderCurrent() {

@@ -115,6 +115,11 @@ internal constructor(
   // one outstanding event per timed-out render here before honouring a fresh one.
   private val staleRenders = ConcurrentHashMap<String, Int>()
 
+  // Fans one upstream daemon stream out to all watchers of the same preview/overrides/codec/fps, so
+  // many browsers cost one held session instead of one each. Built on [startStream]; shared because
+  // there's one host per server.
+  private val broadcast = ServeBroadcastHub(::startStream)
+
   private val closed = AtomicBoolean(false)
   private val notificationHandle: AutoCloseable = session.onNotification { method, params ->
     if (method != "renderFinished" || params == null) return@onNotification
@@ -314,6 +319,27 @@ internal constructor(
       }
     }
   }
+
+  /**
+   * Join the shared live stream for [previewId] (tier-2), opening one upstream daemon stream per
+   * distinct preview + overrides + codec + fps and fanning its frames out to every watcher. This is
+   * the multi-client front door to [startStream]: prefer it over [startStream] for client
+   * connections so N viewers of the same preview ride one held session. Returns `null` when
+   * streaming is unsupported (caller falls back to the snapshot lane).
+   */
+  fun subscribeStream(
+    previewId: String,
+    overrides: PreviewOverrides,
+    codec: StreamCodec? = null,
+    maxFps: Int? = null,
+    onFrame: (StreamFrameParams) -> Unit,
+  ): StreamHandle? {
+    check(!closed.get()) { "ServeRenderHost is closed" }
+    return broadcast.subscribe(previewId, overrides, codec, maxFps, onFrame)
+  }
+
+  /** Live shared upstream streams (one per distinct preview/overrides/codec/fps). Diagnostics. */
+  fun activeStreamCount(): Int = broadcast.activeStreamCount()
 
   override fun close() {
     if (!closed.compareAndSet(false, true)) return
