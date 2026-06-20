@@ -34,7 +34,8 @@ object ServeWeb {
     .cp-stage { flex: 1 1 360px; min-width: 280px; border: 1px solid #e3e3e8; border-radius: 10px;
       background: repeating-conic-gradient(#f4f4f6 0% 25%, #fff 0% 50%) 50% / 16px 16px; padding: 12px;
       display: flex; align-items: center; justify-content: center; min-height: 320px; }
-    .cp-stage img { max-width: 100%; height: auto; }
+    .cp-stage img, .cp-stage canvas { max-width: 100%; height: auto; }
+    .cp-live-row { flex-direction: row !important; align-items: center; gap: 6px !important; }
     .cp-controls { flex: 0 0 240px; display: flex; flex-direction: column; gap: 14px; }
     .cp-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; }
     .cp-controls input, .cp-controls select { padding: 5px 6px; font-size: 0.85rem; }
@@ -106,8 +107,9 @@ object ServeWeb {
       <p class="cp-head"><a href="/?token=$tokenQ">← previews</a></p>
       <p class="cp-sub" title="$idText">$label</p>
       <div class="cp-viewer" data-preview-id="$idText" data-mode="snapshot" data-modes="$modes">
-        <div class="cp-stage"><img id="cp-img" alt="$label"></div>
+        <div class="cp-stage"><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas></div>
         <div class="cp-controls">
+          <label class="cp-live-row"><input id="cp-live" type="checkbox"> Live (stream)</label>
           <label>Theme
             <select id="cp-uiMode">
               <option value="">(default)</option>
@@ -144,9 +146,13 @@ object ServeWeb {
   }
 
   /**
-   * Viewer JS: read the token from the URL, rebuild the `/render` URL from the controls on every
-   * change, and swap `img.src`. Snapshot transport only today; the `data-mode` hook is where the
-   * future `live` (CMP→JS) path branches.
+   * Viewer JS. Two transports behind one set of controls (the `data-mode` seam):
+   * - **snapshot** (default): rebuild the `/render` URL from the controls and swap `img.src`.
+   * - **live** (tier-2 streaming spike): when "Live (stream)" is on, open the `/ws/{id}` WebSocket,
+   *   paint pushed PNG frames onto a `<canvas>`, and send `setOverrides` as controls change.
+   *
+   * Override collection ([overrides]) is shared by both, so an opt-in field stays opt-in either way
+   * (notably fontScale, which is only sent once the slider is moved).
    */
   private fun viewerScript(): String =
     """
@@ -154,47 +160,100 @@ object ServeWeb {
       "use strict";
       var root = document.querySelector(".cp-viewer");
       var img = document.getElementById("cp-img");
+      var canvas = document.getElementById("cp-canvas");
       var status = document.getElementById("cp-status");
+      var live = document.getElementById("cp-live");
       var previewId = root.getAttribute("data-preview-id");
       var token = new URLSearchParams(location.search).get("token") || "";
       // The selects + text input are opt-in (empty value = "use the preview's default"). The font
       // scale slider has no empty state, so it's gated separately: we only send fontScale once the
-      // user moves it (see fontScaleTouched), otherwise the slider's standing 1.0 would override a
+      // user moves it (fontScaleTouched), otherwise the slider's standing 1.0 would override a
       // preview's declared default font scale and the first render wouldn't match the thumbnail.
       var fields = ["uiMode", "device", "localeTag", "orientation"];
       var fs = document.getElementById("cp-fontScale");
       var fsVal = document.getElementById("cp-fontScale-val");
       var fontScaleTouched = false;
+      var ws = null;
 
-      function renderUrl() {
-        var q = "token=" + encodeURIComponent(token);
+      function overrides() {
+        var o = {};
         fields.forEach(function (f) {
           var el = document.getElementById("cp-" + f);
-          if (el && el.value) q += "&" + f + "=" + encodeURIComponent(el.value);
+          if (el && el.value) o[f] = el.value;
         });
-        if (fontScaleTouched && fs) q += "&fontScale=" + encodeURIComponent(fs.value);
-        return "/render/" + encodeURIComponent(previewId) + ".png?" + q;
+        if (fontScaleTouched && fs) o.fontScale = fs.value;
+        return o;
       }
-      function refresh() {
+      function query() {
+        var o = overrides();
+        var q = "token=" + encodeURIComponent(token);
+        Object.keys(o).forEach(function (k) { q += "&" + k + "=" + encodeURIComponent(o[k]); });
+        return q;
+      }
+      function refreshSnapshot() {
         status.textContent = "rendering…";
-        var url = renderUrl();
+        var url = "/render/" + encodeURIComponent(previewId) + ".png?" + query();
         var next = new Image();
         next.onload = function () { img.src = url; status.textContent = ""; };
         next.onerror = function () { status.textContent = "render failed"; };
         next.src = url;
       }
+      function drawFrame(b64) {
+        var im = new Image();
+        im.onload = function () {
+          canvas.width = im.naturalWidth;
+          canvas.height = im.naturalHeight;
+          canvas.getContext("2d").drawImage(im, 0, 0);
+        };
+        im.src = "data:image/png;base64," + b64;
+      }
+      function openStream() {
+        root.setAttribute("data-mode", "live");
+        img.hidden = true;
+        canvas.hidden = false;
+        status.textContent = "connecting…";
+        var proto = location.protocol === "https:" ? "wss:" : "ws:";
+        ws = new WebSocket(proto + "//" + location.host + "/ws/" +
+          encodeURIComponent(previewId) + "?" + query());
+        ws.onmessage = function (ev) {
+          var m;
+          try { m = JSON.parse(ev.data); } catch (e) { return; }
+          if (m.type === "frame") { drawFrame(m.dataBase64); status.textContent = ""; }
+          else if (m.type === "error") { status.textContent = m.message || "error"; }
+        };
+        ws.onerror = function () { status.textContent = "stream error"; };
+        ws.onclose = function () { ws = null; };
+      }
+      function closeStream() {
+        root.setAttribute("data-mode", "snapshot");
+        if (ws) { ws.close(); ws = null; }
+        canvas.hidden = true;
+        img.hidden = false;
+      }
+      function onControlsChanged() {
+        if (live.checked && ws && ws.readyState === 1) {
+          ws.send(JSON.stringify({ type: "setOverrides", overrides: overrides() }));
+        } else if (!live.checked) {
+          refreshSnapshot();
+        }
+      }
+
+      live.addEventListener("change", function () {
+        if (live.checked) openStream();
+        else { closeStream(); refreshSnapshot(); }
+      });
       if (fs) {
         fs.addEventListener("input", function () {
           fsVal.textContent = fs.value;
           fontScaleTouched = true;
-          refresh();
+          onControlsChanged();
         });
       }
       fields.forEach(function (f) {
         var el = document.getElementById("cp-" + f);
-        if (el) el.addEventListener("change", refresh);
+        if (el) el.addEventListener("change", onControlsChanged);
       });
-      refresh();
+      refreshSnapshot();
     })();
     """
       .trimIndent()

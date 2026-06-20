@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli.serve
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
@@ -11,6 +12,12 @@ import io.ktor.server.response.respondText
 import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
+import io.ktor.server.websocket.WebSockets
+import io.ktor.server.websocket.webSocket
+import io.ktor.websocket.CloseReason
+import io.ktor.websocket.Frame
+import io.ktor.websocket.close
+import io.ktor.websocket.readText
 import java.net.InetAddress
 import java.net.ServerSocket
 import kotlinx.coroutines.Dispatchers
@@ -26,7 +33,8 @@ import kotlinx.serialization.json.Json
  *
  * Endpoints (all token-gated except `/healthz`):
  * - `GET /` landing page, `GET /p/{id}` viewer page,
- * - `GET /render/{id}.png` PNG bytes, `GET /api/previews` JSON, `GET /healthz` liveness.
+ * - `GET /render/{id}.png` PNG bytes, `GET /api/previews` JSON, `GET /healthz` liveness,
+ * - `GET /bundle.zip` portable bundle, `WS /ws/{id}` streamed-frame lane (tier-2 spike).
  *
  * A bad/missing token returns **404** (not 401) so the server's existence isn't confirmed to a
  * scanner; the token is compared in constant time ([ServeUrls.tokensMatch]).
@@ -44,9 +52,46 @@ class ServeHttpServer(
 
   private val server: EmbeddedServer<*, *> =
     embeddedServer(CIO, host = host, port = port) {
+      install(WebSockets)
       routing {
         // `/healthz` is the only ungated route — liveness only, leaks nothing.
         get("/healthz") { call.respondText("ok") }
+
+        // Tier-2 streaming spike: a persistent frame lane. The browser opens this, receives PNG
+        // frames as JSON ([ServeStreamProtocol]), and sends override/refresh messages back; each
+        // drives a re-render through the shared [ServeRenderHost]. Token is checked post-handshake
+        // (can't 404 after upgrade) — a bad token closes immediately.
+        webSocket("/ws/{name}") {
+          val provided = call.request.queryParameters["token"] ?: call.request.headers[TOKEN_HEADER]
+          if (!ServeUrls.tokensMatch(token, provided)) {
+            close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "unauthorized"))
+            return@webSocket
+          }
+          val previewId = call.parameters["name"]
+          if (previewId == null || renderHost.previews.none { it.id == previewId }) {
+            close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "no such preview"))
+            return@webSocket
+          }
+          val initialOverrides =
+            ServeOverrides.SUPPORTED_KEYS.mapNotNull { key ->
+                call.request.queryParameters[key]?.let { key to it }
+              }
+              .toMap()
+          val session =
+            ServeStreamSession(renderHost, previewId, initialOverrides) { text ->
+              // Non-suspending hand-off to the socket; drop frames a slow client can't keep up
+              // with.
+              outgoing.trySend(Frame.Text(text))
+            }
+          // Renders block (renderNow + await); keep them off the socket's event-loop thread.
+          withContext(Dispatchers.IO) { session.onOpen() }
+          for (frame in incoming) {
+            if (frame is Frame.Text) {
+              val text = frame.readText()
+              withContext(Dispatchers.IO) { session.onClientMessage(text) }
+            }
+          }
+        }
 
         get("/") {
           if (rejectBadToken()) return@get
