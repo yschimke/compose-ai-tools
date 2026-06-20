@@ -64,10 +64,21 @@ object ComposePreviewDsl {
    */
   fun registerAppliedTaskIfAbsent(project: Project, version: String) {
     if (project.tasks.findByName(APPLIED_TASK_NAME) != null) return
+    // Idempotent — returns the extension already created above (config plugin) or by the runtime
+    // plugin, so the marker records the same `composePreview { }` values the render path reads.
+    val extension = createOrFindExtension(project)
     project.tasks.register(APPLIED_TASK_NAME, ComposePreviewAppliedTask::class.java) {
       pluginVersion.set(version)
       modulePath.set(project.path)
       moduleName.set(project.name)
+      // Lazy provider wiring: the value is read at task execution, so for the full runtime plugin
+      // it
+      // reflects the AGP-resolved variant snapped into `composePreview.variant` during
+      // `onVariants`,
+      // and for the config-only plugin it reflects the configured value or the `"debug"`
+      // convention.
+      variant.set(extension.variant)
+      previewsEnabled.set(extension.enabled)
       outputFile.set(project.layout.buildDirectory.file("compose-previews/applied.json"))
       group = "compose preview"
       description =

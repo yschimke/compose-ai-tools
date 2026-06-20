@@ -33,6 +33,8 @@ class ComposePreviewConfigPluginFunctionalTest {
     val pluginVersion: String,
     val modulePath: String,
     val moduleName: String,
+    val variant: String,
+    val enabled: Boolean,
   )
 
   private fun createConfigOnlyProject(): File {
@@ -101,6 +103,11 @@ class ComposePreviewConfigPluginFunctionalTest {
     assertThat(parsed.modulePath).isEqualTo(":")
     assertThat(parsed.moduleName).isEqualTo("config-only-test")
     assertThat(parsed.pluginVersion).isNotEmpty()
+    // The marker records the configured render intent — `composePreview { variant.set("release") }`
+    // from the build script above — even though no rendering runtime is present. `enabled` defaults
+    // to its `true` convention.
+    assertThat(parsed.variant).isEqualTo("release")
+    assertThat(parsed.enabled).isTrue()
   }
 
   @Test
