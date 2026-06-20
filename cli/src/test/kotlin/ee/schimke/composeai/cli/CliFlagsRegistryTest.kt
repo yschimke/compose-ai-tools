@@ -49,13 +49,18 @@ class CliFlagsRegistryTest {
     // Regression: a global-position value flag that used to be unclassified mis-detected its value
     // as the command.
     assertEquals(2, CliFlags.findCommandIndex(arrayOf("--since", "2024", "history", "list")))
+    // --force takes a required reason; the space form must skip the reason (ForceFlagTest pins that
+    // `--force <reason>` is supported), or the reason is mistaken for the command.
+    assertEquals(2, CliFlags.findCommandIndex(arrayOf("--force", "edit didn't reflect", "render")))
+    // Attached form is a single argv token, so it's skipped like any other flag.
+    assertEquals(1, CliFlags.findCommandIndex(arrayOf("--force=stale", "render")))
   }
 
   @Test
-  fun `findCommandIndex treats attached and optional flags as non-consuming`() {
-    // --images is optional-value: a bare token after it is the command, not its value.
+  fun `findCommandIndex treats optional-value flags as non-consuming`() {
+    // --images is optional-value (bare --images means auto): a bare token after it is the command,
+    // not its value.
     assertEquals(1, CliFlags.findCommandIndex(arrayOf("--images", "show")))
-    assertEquals(1, CliFlags.findCommandIndex(arrayOf("--force=stale", "render")))
   }
 
   @Test

@@ -7,9 +7,12 @@ package ee.schimke.composeai.cli
  * Command detection scans argv left-to-right for the first bare (non-`-`) token. A flag that takes
  * its value as the *following* token (`--module foo`) must be listed in [VALUE_FLAGS] so the scan
  * skips the value — otherwise the value is mistaken for the command (`compose-preview --module show
- * list` would pick `show`). Flags whose value is attached (`--images=kitty`) or optional
- * (`--images`, `--force=<reason>`) must NOT be listed: they never consume a following token, so a
- * bare token after them is the command.
+ * list` would pick `show`). Flags whose value is genuinely *optional* (`--images`, which means
+ * "auto" with no value) must NOT be listed: they never consume a following token, so a bare token
+ * after them is the command. A flag whose value is required but may be written attached
+ * (`--force=<reason>`) still belongs in [VALUE_FLAGS] — the attached form is a single argv token
+ * the scan skips anyway, and the space form (`--force <reason>`, supported by `flagValue` and
+ * `ForceFlagTest`) must skip the reason so it isn't mistaken for the command.
  *
  * The invariant — every flag read through the shared [flagValue]/[flagValuesAll] helpers is
  * classified here as either value-consuming or attached/optional — is enforced by
@@ -53,6 +56,10 @@ internal object CliFlags {
       "--port",
       "--token",
       "--export",
+      // Required-reason escape hatch. Usually written attached (`--force=<reason>`), but the space
+      // form `--force <reason>` is supported (ForceFlagTest), so the reason must be skipped or it's
+      // mistaken for the command.
+      "--force",
       // Read via flagValue() but previously absent from the command-detection skip set, so a
       // global-position `--since 2024 history list` mis-detected `2024` as the command.
       "--agent",
@@ -83,7 +90,7 @@ internal object CliFlags {
    * the following token. Listed only so `CliFlagsRegistryTest` can tell them apart from a missing
    * [VALUE_FLAGS] entry — they are intentionally excluded from command-detection skipping.
    */
-  val ATTACHED_OR_OPTIONAL_FLAGS: Set<String> = setOf("--images", "--force")
+  val ATTACHED_OR_OPTIONAL_FLAGS: Set<String> = setOf("--images")
 
   /**
    * Index of the subcommand token in [args], or `-1` if argv is entirely flags and their values.
