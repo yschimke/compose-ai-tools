@@ -1209,6 +1209,7 @@ class DaemonMcpServer(
                       }
                     },
                     "touchOverlay":{"type":"boolean","description":"Opt-in touch-event visualization (Android 'Show touches' style) for live/recording sessions."},
+                    "talkBack":{"type":"boolean","description":"Opt-in TalkBack focus-overlay visualization for recordings: a green focus rectangle, traversal-order badges, and the spoken-announcement caption, walked through the screen's focus stops."},
                     "permissions":{
                       "type":"object",
                       "description":"Android runtime-permissions override. Seeds Robolectric's grant state so checkSelfPermission reads see the requested values. Android-only; desktop ignores it.",
@@ -2478,6 +2479,7 @@ class DaemonMcpServer(
       check("focus", overrides.focus != null)
       check("keyboard", overrides.keyboard != null)
       check("touchOverlay", overrides.touchOverlay != null)
+      check("talkBack", overrides.talkBack != null)
       check("launcherWidget", overrides.launcherWidget != null)
       check("permissions", overrides.permissions != null)
       check("remoteCompose", overrides.remoteCompose != null)
@@ -2576,6 +2578,7 @@ class DaemonMcpServer(
       focus = nested("focus", FocusOverride.serializer()),
       keyboard = nested("keyboard", KeyboardOverride.serializer()),
       touchOverlay = bool("touchOverlay"),
+      talkBack = bool("talkBack"),
       permissions = nested("permissions", PermissionsOverride.serializer()),
       remoteCompose = nested("remoteCompose", RemoteComposeOverride.serializer()),
       launcherWidget = nested("launcherWidget", LauncherWidgetOverride.serializer()),
