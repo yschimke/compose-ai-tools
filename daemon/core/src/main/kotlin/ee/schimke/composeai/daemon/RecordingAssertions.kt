@@ -87,3 +87,51 @@ fun resolvedNodeText(node: ComposeSemanticsNode): String? {
   node.children.forEach(::collect)
   return parts.joinToString("\n").ifEmpty { null }
 }
+
+/** Threshold for `assert.a11y`: fail on ATF errors only, or on warnings (and errors) too. */
+enum class A11yAssertThreshold {
+  ERRORS,
+  WARNINGS;
+
+  companion object {
+    /** Parse the wire token (`errors` / `warnings`, singular accepted); defaults to [ERRORS]. */
+    fun parseOrDefault(token: String?): A11yAssertThreshold =
+      when (token?.trim()?.lowercase()) {
+        "warnings",
+        "warning" -> WARNINGS
+        else -> ERRORS
+      }
+  }
+}
+
+/**
+ * Evaluate an `assert.a11y` assertion (issue #1966). Counts ATF findings by severity and decides
+ * the verdict at the chosen [threshold]: `ERRORS` fails on any `ERROR` finding; `WARNINGS` fails on
+ * any `ERROR` *or* `WARNING`. `INFO` findings never fail. Pure (operates on the core-level
+ * [RecordingA11yFinding][ee.schimke.composeai.daemon.protocol.RecordingA11yFinding] projection) so
+ * it's unit-testable without standing up a Robolectric scene.
+ */
+fun evaluateA11yAssertion(
+  findings: List<ee.schimke.composeai.daemon.protocol.RecordingA11yFinding>,
+  threshold: A11yAssertThreshold,
+): AssertionVerdict {
+  val errors = findings.count { it.level.equals("ERROR", ignoreCase = true) }
+  val warnings = findings.count { it.level.equals("WARNING", ignoreCase = true) }
+  val tripped =
+    when (threshold) {
+      A11yAssertThreshold.ERRORS -> errors > 0
+      A11yAssertThreshold.WARNINGS -> errors + warnings > 0
+    }
+  if (!tripped) {
+    return AssertionVerdict.Passed
+  }
+  val gated = findings.filter {
+    it.level.equals("ERROR", ignoreCase = true) ||
+      (threshold == A11yAssertThreshold.WARNINGS && it.level.equals("WARNING", ignoreCase = true))
+  }
+  val detail = gated.take(5).joinToString("; ") { "${it.type}: ${it.message}" }
+  return AssertionVerdict.Failed(
+    "assert.a11y: $errors error(s), $warnings warning(s) at threshold " +
+      "${threshold.name.lowercase()} — $detail"
+  )
+}
