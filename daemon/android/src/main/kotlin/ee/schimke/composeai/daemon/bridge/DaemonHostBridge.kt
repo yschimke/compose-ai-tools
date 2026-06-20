@@ -617,6 +617,21 @@ sealed interface InteractiveCommand {
   ) : InteractiveCommand
 
   /**
+   * Run ATF against the held composition for an `assert.a11y` recording-script point (issue #1966).
+   * Mirrors [CaptureProbeSemantics]: the sandbox-side handler gets the held rule's root `View`, runs
+   * `AccessibilityChecker.check`, and serialises the findings as an `AccessibilityFindingsPayload`
+   * JSON string into [replyFindingsJson] (so only a String crosses the sandbox/host boundary — the
+   * ATF / Compose types never leak across). Read-only against the held composition. Throwables ride
+   * [replyError]; the host's `captureA11yFindings` rethrows on the caller thread.
+   */
+  data class CaptureA11yFindings(
+    override val streamId: String,
+    val replyLatch: CountDownLatch,
+    val replyError: AtomicReference<Throwable?>,
+    val replyFindingsJson: AtomicReference<String?>,
+  ) : InteractiveCommand
+
+  /**
    * Lifecycle dispatch: move the held activity to the named lifecycle state via
    * `ActivityScenario.moveToState(...)`. Used by `record_preview`'s `lifecycle.event` script
    * events to drive `onPause` / `onResume` / `onStop` on the held composition.

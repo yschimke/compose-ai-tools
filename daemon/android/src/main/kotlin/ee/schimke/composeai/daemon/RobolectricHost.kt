@@ -291,6 +291,7 @@ open class RobolectricHost(
       listOf(
         RecordingScriptDataExtensions.recordingDescriptor,
         RecordingScriptDataExtensions.assertionVisibilityDescriptor,
+        RecordingScriptDataExtensions.assertionA11yDescriptor,
         InputTouchRecordingScriptEvents.descriptor,
         InputKeyboardRecordingScriptEvents.supportedDescriptor,
         InputRsbRecordingScriptEvents.descriptor,
@@ -2316,6 +2317,30 @@ open class RobolectricHost(
                         .getOrNull()
                     cmd.replyNodesJson.set(
                       root?.let { ComposeSemanticsDataProducer.probeNodesJson(it) }
+                    )
+                  } catch (t: Throwable) {
+                    cmd.replyError.set(t)
+                  } finally {
+                    cmd.replyLatch.countDown()
+                  }
+                }
+                is InteractiveCommand.CaptureA11yFindings -> {
+                  try {
+                    // Run ATF against the held composition's root View for an `assert.a11y` script
+                    // point (#1966). Same View the one-shot RenderEngine a11y path uses; crosses the
+                    // sandbox boundary as a JSON string (do-not-acquire) so the ATF / Compose types
+                    // never leak across to the host.
+                    val view = interactiveTargetView(rule)
+                    val findings =
+                      ee.schimke.composeai.renderer.AccessibilityChecker.check(
+                        start.outputBaseName,
+                        view,
+                      )
+                    cmd.replyFindingsJson.set(
+                      Json.encodeToString(
+                        ee.schimke.composeai.renderer.AccessibilityFindingsPayload.serializer(),
+                        ee.schimke.composeai.renderer.AccessibilityFindingsPayload(findings),
+                      )
                     )
                   } catch (t: Throwable) {
                     cmd.replyError.set(t)

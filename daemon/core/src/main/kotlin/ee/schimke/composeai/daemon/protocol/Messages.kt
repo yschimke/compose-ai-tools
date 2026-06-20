@@ -2106,6 +2106,17 @@ data class RecordingProbeNode(
   val clickable: Boolean = false,
 )
 
+/**
+ * One accessibility finding captured at an `assert.a11y` recording-script point (issue #1966). A
+ * renderer-agnostic, core-level projection of the Android ATF `AccessibilityFinding` (which lives
+ * in `:data-a11y-core`, a dependency `:daemon:core` deliberately doesn't take) — just the fields
+ * the assertion threshold + evidence message need. [level] is the ATF severity (`"ERROR"` /
+ * `"WARNING"` / `"INFO"`); [type] is the check class name; [message] is the human-readable
+ * violation.
+ */
+@Serializable
+data class RecordingA11yFinding(val level: String, val type: String, val message: String)
+
 @Serializable
 data class RecordingScriptEvidence(
   val tMs: Long,

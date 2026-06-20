@@ -155,6 +155,147 @@ class AndroidRecordingSessionTest {
     assertEquals(RecordingScriptEventStatus.FAILED, asserts[5].status)
   }
 
+  /**
+   * Issue #1966 — `assert.a11y` runs Android ATF against the held composition and fails the recording
+   * when findings breach the threshold (`inputText`: `errors` default | `warnings`). Verdict comes
+   * from the shared `evaluateA11yAssertion`; capture rides the `captureA11yFindings` bridge, faked
+   * here with canned findings so no Robolectric + ATF run is needed. `null` findings (backend can't
+   * run ATF) fail with a clear reason rather than silently passing.
+   */
+  @Test
+  fun scriptedA11yAssertionsResolveAgainstCapturedFindings() {
+    val framesDir = tempFolder.newFolder("a11y-frames")
+    val encodedDir = tempFolder.newFolder("a11y-encoded")
+    val sourcePng = File(tempFolder.newFolder("a11y-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+
+    fun a11yEvent(inputText: String? = null) =
+      RecordingScriptEvent(tMs = 0L, kind = "assert.a11y", inputText = inputText)
+
+    fun finding(level: String) =
+      ee.schimke.composeai.daemon.protocol.RecordingA11yFinding(
+        level = level,
+        type = "TouchTargetSizeCheck",
+        message = "target too small",
+      )
+
+    // Clean scene: no findings → APPLIED at both thresholds.
+    run {
+      val interactive = RecordingDeltaSession(sourcePng).apply { a11yFindingsResult = emptyList() }
+      val session =
+        AndroidRecordingSession(
+          previewId = INTERACTIVE_PREVIEW_ID,
+          recordingId = "test-rec-a11y-clean",
+          fps = FPS,
+          scale = 1.0f,
+          interactive = interactive,
+          framesDir = framesDir,
+          encodedDir = encodedDir,
+        )
+      session.postScript(listOf(a11yEvent(), a11yEvent("warnings")))
+      val asserts = session.stop().scriptEvents.filter { it.kind == "assert.a11y" }
+      assertEquals(2, asserts.size)
+      assertEquals(RecordingScriptEventStatus.APPLIED, asserts[0].status)
+      assertEquals(RecordingScriptEventStatus.APPLIED, asserts[1].status)
+    }
+
+    // A WARNING-only scene: passes at the default `errors` threshold, fails at `warnings`.
+    run {
+      val interactive =
+        RecordingDeltaSession(sourcePng).apply { a11yFindingsResult = listOf(finding("WARNING")) }
+      val session =
+        AndroidRecordingSession(
+          previewId = INTERACTIVE_PREVIEW_ID,
+          recordingId = "test-rec-a11y-warn",
+          fps = FPS,
+          scale = 1.0f,
+          interactive = interactive,
+          framesDir = framesDir,
+          encodedDir = encodedDir,
+        )
+      session.postScript(listOf(a11yEvent(), a11yEvent("warnings")))
+      val asserts = session.stop().scriptEvents.filter { it.kind == "assert.a11y" }
+      assertEquals(RecordingScriptEventStatus.APPLIED, asserts[0].status)
+      assertEquals(RecordingScriptEventStatus.FAILED, asserts[1].status)
+    }
+
+    // An ERROR scene: fails at the default `errors` threshold, with the rule type in the message.
+    run {
+      val interactive =
+        RecordingDeltaSession(sourcePng).apply { a11yFindingsResult = listOf(finding("ERROR")) }
+      val session =
+        AndroidRecordingSession(
+          previewId = INTERACTIVE_PREVIEW_ID,
+          recordingId = "test-rec-a11y-err",
+          fps = FPS,
+          scale = 1.0f,
+          interactive = interactive,
+          framesDir = framesDir,
+          encodedDir = encodedDir,
+        )
+      session.postScript(listOf(a11yEvent()))
+      val asserts = session.stop().scriptEvents.filter { it.kind == "assert.a11y" }
+      assertEquals(RecordingScriptEventStatus.FAILED, asserts[0].status)
+      assertTrue(
+        "failure message should name the breaching rule; got ${asserts[0].message}",
+        asserts[0].message?.contains("TouchTargetSizeCheck") == true,
+      )
+    }
+
+    // Capture unavailable (null): the check the user asked for can't run → FAILED, not a silent pass.
+    run {
+      val interactive = RecordingDeltaSession(sourcePng).apply { a11yFindingsResult = null }
+      val session =
+        AndroidRecordingSession(
+          previewId = INTERACTIVE_PREVIEW_ID,
+          recordingId = "test-rec-a11y-null",
+          fps = FPS,
+          scale = 1.0f,
+          interactive = interactive,
+          framesDir = framesDir,
+          encodedDir = encodedDir,
+        )
+      session.postScript(listOf(a11yEvent()))
+      val asserts = session.stop().scriptEvents.filter { it.kind == "assert.a11y" }
+      assertEquals(RecordingScriptEventStatus.FAILED, asserts[0].status)
+      assertTrue(
+        "null capture should explain unavailability; got ${asserts[0].message}",
+        asserts[0].message?.contains("unavailable") == true,
+      )
+    }
+
+    // ATF throws (e.g. unsupported View state): must record FAILED evidence, NOT abort the recording
+    // — the recording must still stop cleanly with frames + the failed assert (issue #1966 review).
+    run {
+      val interactive =
+        RecordingDeltaSession(sourcePng).apply {
+          a11yCaptureError = IllegalStateException("unsupported View state")
+        }
+      val session =
+        AndroidRecordingSession(
+          previewId = INTERACTIVE_PREVIEW_ID,
+          recordingId = "test-rec-a11y-throw",
+          fps = FPS,
+          scale = 1.0f,
+          interactive = interactive,
+          framesDir = framesDir,
+          encodedDir = encodedDir,
+        )
+      session.postScript(listOf(a11yEvent()))
+      val result = session.stop()
+      val asserts = result.scriptEvents.filter { it.kind == "assert.a11y" }
+      assertEquals(RecordingScriptEventStatus.FAILED, asserts[0].status)
+      assertTrue(
+        "a capture throw should surface the error in the evidence; got ${asserts[0].message}",
+        asserts[0].message?.contains("unsupported View state") == true,
+      )
+    }
+  }
+
   @Test
   fun liveRecordingRoutesQueuedInputThroughTheSameRegistryAsScripted() {
     // Live mode used to call a separate `dispatchLiveInput` ladder; now both paths funnel through
@@ -1779,6 +1920,28 @@ class AndroidRecordingSessionTest {
 
     override fun captureProbeSemantics():
       List<ee.schimke.composeai.daemon.protocol.RecordingProbeNode>? = probeNodesResult
+
+    /**
+     * Canned ATF findings returned by [captureA11yFindings]. Lets the `assert.a11y` handler test
+     * (issue #1966) exercise threshold evaluation against a known finding set without standing up a
+     * real Robolectric sandbox + ATF run. `null` simulates a backend that can't run the check.
+     */
+    var a11yFindingsResult:
+      List<ee.schimke.composeai.daemon.protocol.RecordingA11yFinding>? =
+      null
+
+    /**
+     * When set, [captureA11yFindings] throws this instead of returning — simulating ATF blowing up
+     * while building/checking the held View hierarchy. The handler must map it to FAILED evidence,
+     * not let it abort `recording/stop` (issue #1966 review).
+     */
+    var a11yCaptureError: Throwable? = null
+
+    override fun captureA11yFindings():
+      List<ee.schimke.composeai.daemon.protocol.RecordingA11yFinding>? {
+      a11yCaptureError?.let { throw it }
+      return a11yFindingsResult
+    }
 
     override fun dispatchSemanticsAction(
       actionKind: String,

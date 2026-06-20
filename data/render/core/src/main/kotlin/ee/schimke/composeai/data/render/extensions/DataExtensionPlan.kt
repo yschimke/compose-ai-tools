@@ -279,6 +279,15 @@ object RecordingScriptDataExtensions {
   const val ASSERT_TEXT_EQUALS_EVENT: String = "assert.textEquals"
 
   /**
+   * `assert.a11y` — runs the Android Accessibility Test Framework (ATF) against the **held
+   * recording scene** at the script point and fails the recording when findings exceed the
+   * threshold (issue #1966). Android-only: ATF runs against a `View` hierarchy, which desktop's
+   * `ImageComposeScene` doesn't have. The threshold rides the event's `inputText` field (`errors`
+   * default / `warnings`).
+   */
+  const val ASSERT_A11Y_EVENT: String = "assert.a11y"
+
+  /**
    * `recording.probe` descriptor with `supported = true`. Returned from each
    * `RenderHost.recordingScriptEventDescriptors()` that wires a real probe handler in its
    * recording-session registry (today: both desktop and android backends).
@@ -362,6 +371,28 @@ object RecordingScriptDataExtensions {
             summary = "Fails the recording if the target (testTag) matches any node.",
             supported = true,
           ),
+        ),
+    )
+
+  /**
+   * `assert.a11y` descriptor. Advertised only by the Android backend ([RobolectricHost]), which can
+   * run ATF against the held composition's `View` hierarchy; desktop omits it so `record_preview`
+   * rejects `assert.a11y` up front for desktop daemons rather than letting it silently no-op.
+   */
+  val assertionA11yDescriptor: DataExtensionDescriptor =
+    DataExtensionDescriptor(
+      id = DataExtensionId("assertion-a11y"),
+      displayName = "Recording accessibility assertions",
+      recordingScriptEvents =
+        listOf(
+          RecordingScriptEventDescriptor(
+            id = ASSERT_A11Y_EVENT,
+            displayName = "Assert accessibility",
+            summary =
+              "Runs ATF against the held scene and fails the recording when findings exceed the " +
+                "threshold (inputText: errors | warnings).",
+            supported = true,
+          )
         ),
     )
 
