@@ -32,6 +32,22 @@ internal enum class A11yThreshold {
   }
 }
 
+/**
+ * What happened when the record command tried to gate on a11y. Lets the caller fail *closed*: a
+ * producer error ([EvaluationFailed]) must fail the command, while a backend that legitimately has
+ * no ATF data ([NotApplicable], e.g. desktop) must not.
+ */
+internal sealed interface A11yGateOutcome {
+  /** The gate ran; [result] carries the verdict. */
+  data class Evaluated(val result: A11yGateResult) : A11yGateOutcome
+
+  /** The backend produces no ATF findings here (desktop overlay-only / kind not advertised). */
+  data class NotApplicable(val reason: String) : A11yGateOutcome
+
+  /** The a11y producer errored, so the requested check could not run — the caller fails closed. */
+  data class EvaluationFailed(val reason: String) : A11yGateOutcome
+}
+
 /** Outcome of the a11y gate: per-severity counts plus whether the [threshold] was tripped. */
 internal data class A11yGateResult(
   val errorCount: Int,

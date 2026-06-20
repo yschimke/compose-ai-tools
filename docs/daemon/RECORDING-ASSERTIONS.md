@@ -99,9 +99,16 @@ land (each is a separate follow-up, not in this PR):
 - **Retry / flake quarantine** — emulator suites re-run flaky tests. Here it's mostly moot: the
   virtual clock makes a scripted recording deterministic frame-for-frame, so a flaky assertion is a
   real bug, not a timing race. Worth a note in docs rather than a retry knob.
-- **Accessibility assertions** — Espresso/ATF fail a test on a11y violations. The daemon already
-  produces `a11y/atf` findings; an `assert.a11y` event (or a `--fail-on a11y` flag on `record`)
-  would let a scripted walk gate on them — pairs naturally with the TalkBack spec (#1955's sibling).
+- **Accessibility assertions** — Espresso/ATF fail a test on a11y violations. **Shipped (partial):**
+  `compose-preview record --fail-on a11y[=errors|warnings]` (#1966) fetches the preview's `a11y/atf`
+  findings through the session after recording and exits non-zero if the threshold is tripped. ATF
+  findings are **Android-produced** (the framework runs against a `View` hierarchy); a desktop
+  preview is overlay-only, so the gate is a no-op there. **Limitation:** it gates the preview's a11y
+  via a fresh `data/fetch` (best-effort re-rendered in the recorded `--overrides` config); it is
+  *not* per-step a11y of a specific post-interaction frame — that's the future `assert.a11y` script
+  event, which would evaluate against the held recording scene. The flag **fails closed**: if the
+  a11y producer errors (vs. legitimately having no data), the command fails rather than exit 0 on an
+  unevaluated check. Pairs naturally with the TalkBack spec (#1955's sibling).
 - **Pixel / golden assertions** — Robo and screenshot tests diff against a baseline. The preview
   pipeline already has the visual-diff bot + `baselines.json`; an `assert.pixels` event diffing the
   current frame against a committed PNG would fold golden-image checks into the same script.
