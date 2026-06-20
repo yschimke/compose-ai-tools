@@ -21,7 +21,10 @@ The `target` is the existing `SemanticsInputTarget` (`ref` / `testTag` / `role`+
 handle `input.click` and the rest of the recording vocabulary already resolve, so assertions and
 input share one resolver (`SemanticsTargets.resolve`). No new target shape, no new finder.
 `assert.textEquals` carries its expected string in the **existing `inputText` field** (reused from
-`uia.inputText`), so it adds no new wire field either.
+`uia.inputText`), so it adds no new wire field either. It compares against the resolved node's own
+text, or — for a tag-on-the-container shape like `Button(Modifier.testTag("submit")) { Text("Submit") }`
+— the **merged text of its descendants**, mirroring Compose's merged semantics so the check sees what
+the user sees.
 
 A failed assertion produces `RecordingScriptEvidence` with the new
 `RecordingScriptEventStatus.FAILED` status (distinct from `UNSUPPORTED` — the daemon *did* evaluate

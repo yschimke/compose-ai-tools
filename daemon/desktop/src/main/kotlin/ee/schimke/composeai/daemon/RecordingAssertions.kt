@@ -1,5 +1,7 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
+
 /**
  * Pure decision logic for the Maestro-style `assert.visible` / `assert.notVisible` /
  * `assert.textEquals` recording events. Kept free of any Compose / Skiko dependency so it's
@@ -57,3 +59,30 @@ internal fun evaluateTextEqualsAssertion(
       "assert.textEquals: $targetLabel text was ${actual?.let { "\"$it\"" } ?: "<none>"} " +
         "but expected \"$expected\""
     )
+
+/**
+ * The text to compare a resolved node against for `assert.textEquals`. Prefers the node's own
+ * `text`; when it has none, falls back to the **merged** text of its descendants.
+ *
+ * `composeSemanticsRoot()` builds the UNMERGED semantics tree, so a common shape like
+ * `Button(Modifier.testTag("submit")) { Text("Submit") }` resolves the tag-bearing container —
+ * whose own `text` is null — while the visible text sits on a descendant node. Compose's merged
+ * semantics concatenates that descendant text into the parent; mirror it here (depth-first,
+ * newline-joined, the same separator Compose uses) so the assertion sees what the user sees rather
+ * than `<none>`. Pure (operates on the [ComposeSemanticsNode] model, no scene) so it's
+ * unit-testable directly.
+ */
+internal fun resolvedNodeText(node: ComposeSemanticsNode): String? {
+  node.text
+    ?.takeIf { it.isNotEmpty() }
+    ?.let {
+      return it
+    }
+  val parts = mutableListOf<String>()
+  fun collect(n: ComposeSemanticsNode) {
+    n.text?.takeIf { it.isNotEmpty() }?.let { parts.add(it) }
+    n.children.forEach(::collect)
+  }
+  node.children.forEach(::collect)
+  return parts.joinToString("\n").ifEmpty { null }
+}

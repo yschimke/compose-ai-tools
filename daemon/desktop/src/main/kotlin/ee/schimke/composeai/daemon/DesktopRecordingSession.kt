@@ -506,7 +506,8 @@ class DesktopRecordingSession(
       when (val res = SemanticsTargets.resolve(root, target)) {
         is TargetResolution.Resolved -> {
           when (
-            val verdict = evaluateTextEqualsAssertion(expected, res.node.text, target.toString())
+            val verdict =
+              evaluateTextEqualsAssertion(expected, resolvedNodeText(res.node), target.toString())
           ) {
             AssertionVerdict.Passed -> appliedEvidence(event, "${event.kind} satisfied")
             is AssertionVerdict.Failed -> failedEvidence(event, verdict.reason)
