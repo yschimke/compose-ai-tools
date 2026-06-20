@@ -53,11 +53,21 @@ recording as a gating check.
 
 ### Backend support
 
-Desktop today. The desktop host advertises the `assertion` data extension
-(`RecordingScriptDataExtensions.assertionDescriptor`) and wires the handlers in
-`DesktopRecordingSession`. Android is a follow-up: its probe-semantics snapshot doesn't yet carry
-the refs the resolver needs, so `RobolectricHost` omits the descriptor and the MCP layer rejects
-`assert.*` for Android daemons up front rather than silently no-op'ing.
+| Backend | `assert.visible` / `assert.notVisible` | `assert.textEquals` |
+|---------|----------------------------------------|---------------------|
+| Desktop | ✅ (resolved against the live unmerged semantics tree) | ✅ |
+| Android | ✅ (resolved against the probe-semantics snapshot, by `testTag` / `role`+`text`) | ❌ — `record_preview` rejects it |
+
+Desktop advertises `RecordingScriptDataExtensions.assertionDescriptor` (all three) and resolves via
+`state.scene.composeSemanticsRoot()`. Android (issue #1964) advertises the narrower
+`assertionVisibilityDescriptor` and resolves visibility against the already-bridged
+`captureProbeSemantics()` snapshot — the same path the `recording.probe` event uses, so no new
+sandbox command is needed. The pure verdict logic (`evaluateVisibilityAssertion`) lives in
+`:daemon:core` so both backends share one implementation.
+
+**Android limitations (today):** `ref`-based targets fail with a clear message — the probe snapshot
+carries no refs — so use `testTag` or `role`+`text`. `assert.textEquals` isn't advertised on Android
+(its flat probe snapshot can't do the merged-descendant text fallback the desktop tree gives).
 
 ## What we borrowed (and what we deliberately didn't)
 
@@ -96,11 +106,14 @@ land (each is a separate follow-up, not in this PR):
 
 - Status + evidence: `RecordingScriptEventStatus.FAILED`, `failedEvidence(...)`
   (`daemon/core/.../RecordingScriptHandlerRegistry.kt`).
-- Event kinds + descriptor: `RecordingScriptDataExtensions.ASSERT_VISIBLE_EVENT` /
-  `ASSERT_NOT_VISIBLE_EVENT` / `assertionDescriptor`
+- Event kinds + descriptors: `RecordingScriptDataExtensions.ASSERT_VISIBLE_EVENT` /
+  `ASSERT_NOT_VISIBLE_EVENT` / `ASSERT_TEXT_EQUALS_EVENT`; `assertionDescriptor` (desktop, all three)
+  and `assertionVisibilityDescriptor` (Android, visibility only)
   (`data/render/core/.../DataExtensionPlan.kt`).
-- Verdict logic (pure, unit-tested): `evaluateVisibilityAssertion` / `evaluateTextEqualsAssertion`
-  (`daemon/desktop/.../RecordingAssertions.kt`).
-- Handler wiring: `DesktopRecordingSession.assertVisibilityHandler`; advertised by
-  `DesktopHost.recordingScriptEventDescriptors`.
-- CLI gate: `RecordPreviewCommand` — scans returned evidence for `FAILED`, prints each, exits 2.
+- Verdict logic (pure, unit-tested, shared by both backends): `evaluateVisibilityAssertion` /
+  `evaluateTextEqualsAssertion` / `resolvedNodeText` (`daemon/core/.../RecordingAssertions.kt`).
+- Handler wiring: `DesktopRecordingSession.assertVisibilityHandler` /
+  `assertTextEqualsHandler` (advertised by `DesktopHost`); `AndroidRecordingSession`'s
+  `assertVisibilityHandler` resolving against `captureProbeSemantics()` (advertised by
+  `RobolectricHost`).
+- CLI gate: `RecordPreviewCommand` — fails any non-`APPLIED` `assert.*` evidence, prints each, exits 2.

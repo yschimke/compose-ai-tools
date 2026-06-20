@@ -7,8 +7,10 @@ import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.InteractiveInputParams
 import ee.schimke.composeai.daemon.protocol.RecordingFormat
 import ee.schimke.composeai.daemon.protocol.RecordingInputParams
+import ee.schimke.composeai.daemon.protocol.RecordingProbeNode
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvidence
+import ee.schimke.composeai.daemon.protocol.SemanticsInputTarget
 import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
@@ -293,6 +295,18 @@ class AndroidRecordingSession(
           val probeNodes = interactive.captureProbeSemantics()
           appliedEvidence(e, "probe marker reached", probeSemantics = probeNodes)
         })
+        // Assertions (issue #1964) — `assert.visible` / `assert.notVisible` resolved against the
+        // probe semantics snapshot. Reuses the same `captureProbeSemantics` bridge the probe event
+        // uses, so no new sandbox command is needed. Verdict logic is the shared, backend-agnostic
+        // `evaluateVisibilityAssertion` in `:daemon:core`.
+        put(
+          RecordingScriptDataExtensions.ASSERT_VISIBLE_EVENT,
+          assertVisibilityHandler(expectVisible = true),
+        )
+        put(
+          RecordingScriptDataExtensions.ASSERT_NOT_VISIBLE_EVENT,
+          assertVisibilityHandler(expectVisible = false),
+        )
         // Accessibility-driven dispatch — every `a11y.action.<name>` id with a clean Compose
         // SemanticsActions equivalent registers here. Each handler shares the same shape:
         // resolve a node by `nodeContentDescription`, route through
@@ -344,6 +358,61 @@ class AndroidRecordingSession(
       },
       observers = dispatchObservers,
     )
+
+  /**
+   * Maestro-style visibility assertion on the Android backend. Resolves the event's target against
+   * the **probe semantics snapshot** ([InteractiveSession.captureProbeSemantics], already bridged
+   * across the sandbox/host classloader boundary) and records APPLIED / FAILED via the shared
+   * [evaluateVisibilityAssertion]. Matching is by `testTag` or `role`+`text`.
+   *
+   * `ref`-based targets aren't resolvable here — the probe snapshot carries no refs (issue #1964) —
+   * so they fail with a clear message rather than silently mis-resolving; `testTag` and `role`+`text`
+   * (the common cases) work. A missing/empty target is itself a failed assertion.
+   */
+  private fun assertVisibilityHandler(expectVisible: Boolean): RecordingScriptEventHandler =
+    RecordingScriptEventHandler { event, _ ->
+      val target =
+        event.target
+          ?: return@RecordingScriptEventHandler failedEvidence(
+            event,
+            "${event.kind} requires a 'target' (testTag or role+text) to assert on",
+          )
+      if (!target.ref.isNullOrBlank()) {
+        return@RecordingScriptEventHandler failedEvidence(
+          event,
+          "${event.kind}: ref targets aren't supported on the Android recording backend yet " +
+            "(the probe snapshot carries no refs); use testTag or role+text",
+        )
+      }
+      if (target.testTag.isNullOrBlank() && target.role == null && target.text == null) {
+        return@RecordingScriptEventHandler failedEvidence(
+          event,
+          "${event.kind} target has no resolvable field; set testTag, role, or text",
+        )
+      }
+      val probeNodes = interactive.captureProbeSemantics().orEmpty()
+      val matchCount = probeNodes.count { it.matchesTarget(target) }
+      when (
+        val verdict = evaluateVisibilityAssertion(expectVisible, matchCount, target.toString())
+      ) {
+        AssertionVerdict.Passed -> appliedEvidence(event, "${event.kind} satisfied")
+        is AssertionVerdict.Failed -> failedEvidence(event, verdict.reason)
+      }
+    }
+
+  /**
+   * Match a flat probe node against a wire target by `testTag` (exact) or `role`+`text` (each field
+   * matched only when the target sets it; `text` also matches the node's content description, the
+   * a11y label). Mirrors the desktop `SemanticsTargets` matcher's intent over the slimmer probe-node
+   * projection.
+   */
+  private fun RecordingProbeNode.matchesTarget(target: SemanticsInputTarget): Boolean {
+    val tag = target.testTag
+    if (!tag.isNullOrBlank()) return testTag == tag
+    val roleOk = target.role == null || role == target.role
+    val textOk = target.text == null || text == target.text || contentDescription == target.text
+    return roleOk && textOk
+  }
 
   /**
    * Forward an input event through the held-rule loop. Mirrors the live tick path's

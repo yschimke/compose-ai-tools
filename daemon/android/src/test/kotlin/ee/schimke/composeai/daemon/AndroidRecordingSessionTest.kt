@@ -3,7 +3,9 @@ package ee.schimke.composeai.daemon
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RecordingFormat
+import ee.schimke.composeai.daemon.protocol.RecordingProbeNode
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
+import ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus
 import ee.schimke.composeai.daemon.protocol.SemanticsInputTarget
 import ee.schimke.composeai.daemon.protocol.SemanticsTargetCandidate
 import ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedCode
@@ -84,6 +86,68 @@ class AndroidRecordingSessionTest {
     assertEquals(listOf(0L, 33L, 33L, 34L), interactive.renderAdvances)
     assertEquals(1, interactive.dispatchCount)
     assertEquals(true, interactive.closed)
+  }
+
+  /**
+   * Issue #1964 — `assert.visible` / `assert.notVisible` resolve against the probe semantics
+   * snapshot ([InteractiveSession.captureProbeSemantics]) by testTag, producing APPLIED / FAILED
+   * evidence via the shared `evaluateVisibilityAssertion`. `ref` targets fail with a clear message
+   * (the probe snapshot carries no refs). Uses the fake [RecordingDeltaSession] with canned probe
+   * nodes, so no Robolectric sandbox is needed.
+   */
+  @Test
+  fun scriptedVisibilityAssertionsResolveAgainstProbeSnapshot() {
+    val framesDir = tempFolder.newFolder("assert-frames")
+    val encodedDir = tempFolder.newFolder("assert-encoded")
+    val sourcePng = File(tempFolder.newFolder("assert-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    val interactive =
+      RecordingDeltaSession(sourcePng).apply {
+        probeNodesResult =
+          listOf(
+            RecordingProbeNode(testTag = "target-box", clickable = true),
+            RecordingProbeNode(text = "Hello"),
+          )
+      }
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-assert",
+        fps = FPS,
+        scale = 1.0f,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    fun assertEvent(kind: String, target: SemanticsInputTarget) =
+      RecordingScriptEvent(tMs = 0L, kind = kind, target = target)
+
+    session.postScript(
+      listOf(
+        assertEvent("assert.visible", SemanticsInputTarget(testTag = "target-box")), // APPLIED
+        assertEvent("assert.visible", SemanticsInputTarget(testTag = "nope")), // FAILED
+        assertEvent("assert.notVisible", SemanticsInputTarget(testTag = "nope")), // APPLIED
+        assertEvent("assert.notVisible", SemanticsInputTarget(testTag = "target-box")), // FAILED
+        assertEvent("assert.visible", SemanticsInputTarget(ref = "r1")), // FAILED (no refs)
+      )
+    )
+    val result = session.stop()
+    val asserts = result.scriptEvents.filter { it.kind.startsWith("assert.") }
+    assertEquals(5, asserts.size)
+    assertEquals(RecordingScriptEventStatus.APPLIED, asserts[0].status)
+    assertEquals(RecordingScriptEventStatus.FAILED, asserts[1].status)
+    assertEquals(RecordingScriptEventStatus.APPLIED, asserts[2].status)
+    assertEquals(RecordingScriptEventStatus.FAILED, asserts[3].status)
+    assertEquals(RecordingScriptEventStatus.FAILED, asserts[4].status)
+    assertTrue(
+      "ref target should explain it's unsupported; got ${asserts[4].message}",
+      asserts[4].message?.contains("ref") == true,
+    )
   }
 
   @Test
@@ -1624,6 +1688,19 @@ class AndroidRecordingSessionTest {
         throw SemanticsTargetUnresolvedException(it, "target did not resolve to a node")
       }
     }
+
+    /**
+     * Canned probe semantics returned by [captureProbeSemantics]. Lets the assertion-handler test
+     * (issue #1964) exercise `assert.visible` / `assert.notVisible` resolution against a known
+     * snapshot without standing up a real Robolectric sandbox — the same trick [dispatchTargetMiss]
+     * uses for the target-miss path.
+     */
+    var probeNodesResult:
+      List<ee.schimke.composeai.daemon.protocol.RecordingProbeNode>? =
+      null
+
+    override fun captureProbeSemantics():
+      List<ee.schimke.composeai.daemon.protocol.RecordingProbeNode>? = probeNodesResult
 
     override fun dispatchSemanticsAction(
       actionKind: String,

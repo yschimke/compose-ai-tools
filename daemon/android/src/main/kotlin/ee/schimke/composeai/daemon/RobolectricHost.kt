@@ -289,6 +289,7 @@ open class RobolectricHost(
     if (supportsRecording)
       listOf(
         RecordingScriptDataExtensions.recordingDescriptor,
+        RecordingScriptDataExtensions.assertionVisibilityDescriptor,
         InputTouchRecordingScriptEvents.descriptor,
         InputKeyboardRecordingScriptEvents.supportedDescriptor,
         InputRsbRecordingScriptEvents.descriptor,
