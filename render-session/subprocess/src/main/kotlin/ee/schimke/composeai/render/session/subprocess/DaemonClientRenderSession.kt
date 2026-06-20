@@ -246,6 +246,7 @@ class DaemonClientRenderSession(
     kind: InteractiveInputKind,
     pixelX: Int?,
     pixelY: Int?,
+    pointerId: Int?,
     scrollDeltaY: Float?,
     keyCode: String?,
   ) {
@@ -255,6 +256,7 @@ class DaemonClientRenderSession(
       kind = kind,
       pixelX = pixelX,
       pixelY = pixelY,
+      pointerId = pointerId,
       scrollDeltaY = scrollDeltaY,
       keyCode = keyCode,
     )

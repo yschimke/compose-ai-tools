@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamFrameParams
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.render.session.RenderSession
@@ -33,6 +34,7 @@ interface StreamHandle : AutoCloseable {
     kind: InteractiveInputKind,
     pixelX: Int? = null,
     pixelY: Int? = null,
+    pointerId: Int? = null,
     scrollDeltaY: Float? = null,
     keyCode: String? = null,
   )
@@ -210,6 +212,8 @@ internal constructor(
   fun startStream(
     previewId: String,
     overrides: PreviewOverrides,
+    codec: StreamCodec? = null,
+    maxFps: Int? = null,
     onFrame: (StreamFrameParams) -> Unit,
   ): StreamHandle? {
     check(!closed.get()) { "ServeRenderHost is closed" }
@@ -246,7 +250,12 @@ internal constructor(
 
     val result =
       try {
-        session.streamStart(previewId = previewId, overrides = overrides)
+        session.streamStart(
+          previewId = previewId,
+          codec = codec,
+          maxFps = maxFps,
+          overrides = overrides,
+        )
       } catch (e: Exception) {
         // UnsupportedOperationException (no streaming on this backend) or a daemon error — degrade.
         onLog("stream/start unavailable for $previewId (${e.message}); falling back to snapshots")
@@ -280,12 +289,21 @@ internal constructor(
         kind: InteractiveInputKind,
         pixelX: Int?,
         pixelY: Int?,
+        pointerId: Int?,
         scrollDeltaY: Float?,
         keyCode: String?,
       ) {
         if (handleClosed.get()) return
         runCatching {
-          session.interactiveInput(frameStreamId, kind, pixelX, pixelY, scrollDeltaY, keyCode)
+          session.interactiveInput(
+            frameStreamId,
+            kind,
+            pixelX,
+            pixelY,
+            pointerId,
+            scrollDeltaY,
+            keyCode,
+          )
         }
       }
 

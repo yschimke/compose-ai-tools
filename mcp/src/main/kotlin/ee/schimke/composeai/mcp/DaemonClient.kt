@@ -532,6 +532,7 @@ class DaemonClient(
     kind: InteractiveInputKind,
     pixelX: Int? = null,
     pixelY: Int? = null,
+    pointerId: Int? = null,
     scrollDeltaY: Float? = null,
     keyCode: String? = null,
   ) =
@@ -544,6 +545,7 @@ class DaemonClient(
           kind = kind,
           pixelX = pixelX,
           pixelY = pixelY,
+          pointerId = pointerId,
           scrollDeltaY = scrollDeltaY,
           keyCode = keyCode,
         ),

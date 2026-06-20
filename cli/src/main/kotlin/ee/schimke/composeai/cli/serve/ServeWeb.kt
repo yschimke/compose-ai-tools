@@ -148,8 +148,9 @@ object ServeWeb {
   /**
    * Viewer JS. Two transports behind one set of controls (the `data-mode` seam):
    * - **snapshot** (default): rebuild the `/render` URL from the controls and swap `img.src`.
-   * - **live** (tier-2 streaming spike): when "Live (stream)" is on, open the `/ws/{id}` WebSocket,
-   *   paint pushed PNG frames onto a `<canvas>`, and send `setOverrides` as controls change.
+   * - **live** (tier-2): when "Live (stream)" is on, open the `/ws/{id}` WebSocket, paint pushed
+   *   frames onto a `<canvas>`, send `setOverrides` as controls change, and forward pointer drags,
+   *   wheel scroll, and keyboard into the held composition as `input` messages.
    *
    * Override collection ([overrides]) is shared by both, so an opt-in field stays opt-in either way
    * (notably fontScale, which is only sent once the slider is moved).
@@ -207,24 +208,118 @@ object ServeWeb {
         };
         im.src = "data:image/" + (codec || "png") + ";base64," + b64;
       }
-      // Forward clicks on the live canvas as input (image-natural pixels). No-op on the snapshot
-      // lane (it has no live stream and reports "input requires a live stream").
-      canvas.addEventListener("click", function (ev) {
-        if (!ws || ws.readyState !== 1 || !canvas.width) return;
+      // --- Live input forwarding (no-op on the snapshot lane). Coordinates are image-natural
+      // pixels; pointer events are grouped by pointerId so Compose's gesture pipeline tracks drags
+      // and multi-touch. Keys map to Android KEYCODE_* decimal strings (the daemon's wire format).
+      function liveActive() { return ws && ws.readyState === 1 && canvas.width; }
+      function sendInput(msg) {
+        if (liveActive()) ws.send(JSON.stringify(Object.assign({ type: "input" }, msg)));
+      }
+      function pixel(ev) {
         var rect = canvas.getBoundingClientRect();
-        if (!rect.width || !rect.height) return;
-        var px = Math.round((ev.clientX - rect.left) / rect.width * canvas.width);
-        var py = Math.round((ev.clientY - rect.top) / rect.height * canvas.height);
-        ws.send(JSON.stringify({ type: "input", kind: "click", pixelX: px, pixelY: py }));
+        if (!rect.width || !rect.height) return null;
+        return {
+          x: Math.round((ev.clientX - rect.left) / rect.width * canvas.width),
+          y: Math.round((ev.clientY - rect.top) / rect.height * canvas.height),
+        };
+      }
+      // Per-pointer state. The pointerDown is *deferred* until the first move so a tap with no drag
+      // becomes a single `click` (matching the daemon's CLICK fast-path, which renders between press
+      // and release — a batched down+up can race Modifier.clickable). pointermove is coalesced to one
+      // send per pointerId per animation frame, so a fast drag doesn't flood the lane and concurrent
+      // fingers don't overwrite each other (multi-touch).
+      var pointers = {};           // pointerId -> { x, y, moved }
+      var pendingMoves = {};       // pointerId -> pointerMove message
+      var moveScheduled = false;
+      function flushMoves() {
+        moveScheduled = false;
+        var snapshot = pendingMoves;
+        pendingMoves = {};
+        Object.keys(snapshot).forEach(function (id) { sendInput(snapshot[id]); });
+      }
+      canvas.addEventListener("pointerdown", function (ev) {
+        if (!liveActive()) return;
+        var p = pixel(ev); if (!p) return;
+        canvas.focus();
+        try { canvas.setPointerCapture(ev.pointerId); } catch (e) {}
+        pointers[ev.pointerId] = { x: p.x, y: p.y, moved: false };
       });
+      canvas.addEventListener("pointermove", function (ev) {
+        if (!liveActive() || ev.buttons === 0) return; // only while pressed (a drag)
+        var st = pointers[ev.pointerId]; if (!st) return;
+        var p = pixel(ev); if (!p) return;
+        if (!st.moved) {
+          // First movement → this is a drag: emit the deferred press at the original point.
+          st.moved = true;
+          sendInput({ kind: "pointerDown", pixelX: st.x, pixelY: st.y, pointerId: ev.pointerId });
+        }
+        pendingMoves[ev.pointerId] =
+          { kind: "pointerMove", pixelX: p.x, pixelY: p.y, pointerId: ev.pointerId };
+        if (!moveScheduled) { moveScheduled = true; requestAnimationFrame(flushMoves); }
+      });
+      function endPointer(ev) {
+        var st = pointers[ev.pointerId]; if (!st) return;
+        delete pointers[ev.pointerId];
+        var p = pixel(ev) || { x: st.x, y: st.y };
+        if (st.moved) {
+          flushMoves();
+          sendInput({ kind: "pointerUp", pixelX: p.x, pixelY: p.y, pointerId: ev.pointerId });
+        } else {
+          // No drag → a tap. Send a single CLICK (the daemon renders between press and release).
+          sendInput({ kind: "click", pixelX: st.x, pixelY: st.y, pointerId: ev.pointerId });
+        }
+      }
+      canvas.addEventListener("pointerup", endPointer);
+      canvas.addEventListener("pointercancel", endPointer);
+      canvas.addEventListener("wheel", function (ev) {
+        if (!liveActive()) return;
+        var p = pixel(ev); if (!p) return;
+        ev.preventDefault();
+        // Both daemon dispatchers drop non-key input without a position, so include the pixel.
+        sendInput({ kind: "rotaryScroll", pixelX: p.x, pixelY: p.y, scrollDeltaY: ev.deltaY });
+      }, { passive: false });
+      // Keyboard: focus the canvas (tabindex) to type. Maps the common keys to Android keycodes;
+      // unmapped keys are dropped (the daemon ignores codes outside its translation table anyway).
+      canvas.tabIndex = 0;
+      function androidKeycode(k) {
+        if (k.length === 1) {
+          var c = k.toLowerCase();
+          if (c >= "a" && c <= "z") return String(29 + (c.charCodeAt(0) - 97)); // KEYCODE_A = 29
+          if (c >= "0" && c <= "9") return String(7 + (c.charCodeAt(0) - 48)); // KEYCODE_0 = 7
+          if (k === " ") return "62"; // SPACE
+        }
+        switch (k) {
+          case "Enter": return "66";
+          case "Backspace": return "67";
+          case "Tab": return "61";
+          case "Escape": return "111";
+          case "Delete": return "112";
+          case "ArrowUp": return "19";
+          case "ArrowDown": return "20";
+          case "ArrowLeft": return "21";
+          case "ArrowRight": return "22";
+          default: return null;
+        }
+      }
+      function keyInput(kind, ev) {
+        if (!liveActive()) return;
+        var code = androidKeycode(ev.key);
+        if (code === null) return;
+        ev.preventDefault();
+        sendInput({ kind: kind, keyCode: code });
+      }
+      canvas.addEventListener("keydown", function (ev) { keyInput("keyDown", ev); });
+      canvas.addEventListener("keyup", function (ev) { keyInput("keyUp", ev); });
       function openStream() {
         root.setAttribute("data-mode", "live");
         img.hidden = true;
         canvas.hidden = false;
         status.textContent = "connecting…";
         var proto = location.protocol === "https:" ? "wss:" : "ws:";
+        // Request WebP frames (smaller; the browser decodes them via the data URL, and the daemon
+        // downgrades to PNG when it can't encode WebP — each frame carries its actual codec).
         ws = new WebSocket(proto + "//" + location.host + "/ws/" +
-          encodeURIComponent(previewId) + "?" + query());
+          encodeURIComponent(previewId) + "?" + query() + "&codec=webp");
         ws.onmessage = function (ev) {
           var m;
           try { m = JSON.parse(ev.data); } catch (e) { return; }

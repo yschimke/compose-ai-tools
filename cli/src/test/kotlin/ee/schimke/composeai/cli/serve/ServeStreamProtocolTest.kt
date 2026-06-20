@@ -46,6 +46,29 @@ class ServeStreamProtocolTest {
   }
 
   @Test
+  fun `parses input with pointerId, scroll delta and keyCode`() {
+    val drag =
+      ServeStreamProtocol.parseClient(
+        """{"type":"input","kind":"pointerMove","pixelX":3,"pixelY":4,"pointerId":2}"""
+      )
+    assertTrue(drag is ServeStreamProtocol.ClientMessage.Input, "got $drag")
+    assertEquals("pointerMove", drag.kind)
+    assertEquals(2, drag.pointerId)
+
+    val scroll =
+      ServeStreamProtocol.parseClient(
+        """{"type":"input","kind":"rotaryScroll","scrollDeltaY":-8.5}"""
+      )
+    assertTrue(scroll is ServeStreamProtocol.ClientMessage.Input, "got $scroll")
+    assertEquals(-8.5f, scroll.scrollDeltaY)
+
+    val key =
+      ServeStreamProtocol.parseClient("""{"type":"input","kind":"keyDown","keyCode":"66"}""")
+    assertTrue(key is ServeStreamProtocol.ClientMessage.Input, "got $key")
+    assertEquals("66", key.keyCode)
+  }
+
+  @Test
   fun `unknown type and malformed json are Unsupported, never thrown`() {
     assertTrue(
       ServeStreamProtocol.parseClient("""{"type":"wat"}""")

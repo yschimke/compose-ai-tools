@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamFrameParams
 
 /**
@@ -19,6 +20,8 @@ private constructor(
   private val renderHost: ServeRenderHost,
   private val previewId: String,
   private var overrides: Map<String, String>,
+  private val codec: StreamCodec?,
+  private val maxFps: Int?,
   private val send: (String) -> Unit,
 ) {
   @Volatile private var handle: StreamHandle? = null
@@ -59,6 +62,7 @@ private constructor(
       kind = kind,
       pixelX = input.pixelX,
       pixelY = input.pixelY,
+      pointerId = input.pointerId,
       scrollDeltaY = input.scrollDeltaY,
       keyCode = input.keyCode,
     )
@@ -67,7 +71,7 @@ private constructor(
   private fun restart(parsed: PreviewOverrides) {
     handle?.close()
     handle =
-      renderHost.startStream(previewId, parsed, ::onFrame)
+      renderHost.startStream(previewId, parsed, codec, maxFps, ::onFrame)
         ?: run {
           send(ServeStreamProtocol.errorMessage("live stream ended"))
           null
@@ -104,12 +108,15 @@ private constructor(
       renderHost: ServeRenderHost,
       previewId: String,
       overrides: Map<String, String>,
+      codec: StreamCodec? = null,
+      maxFps: Int? = null,
       send: (String) -> Unit,
     ): ServeLiveSession? {
       val initial =
         (ServeOverrides.parse(overrides) as? OverrideParse.Ok)?.overrides ?: PreviewOverrides()
-      val session = ServeLiveSession(renderHost, previewId, overrides, send)
-      session.handle = renderHost.startStream(previewId, initial, session::onFrame) ?: return null
+      val session = ServeLiveSession(renderHost, previewId, overrides, codec, maxFps, send)
+      session.handle =
+        renderHost.startStream(previewId, initial, codec, maxFps, session::onFrame) ?: return null
       return session
     }
   }

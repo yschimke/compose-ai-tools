@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
+import ee.schimke.composeai.daemon.protocol.StreamCodec
 import java.io.File
 import java.util.Base64
 import java.util.concurrent.CopyOnWriteArrayList
@@ -37,7 +38,7 @@ class ServeLiveSessionTest {
     val session = FakeRenderSession(newRenderRoot(), streaming = true)
     host(session).use { h ->
       val sent = CopyOnWriteArrayList<String>()
-      assertNotNull(ServeLiveSession.tryStart(h, previewId, emptyMap(), sent::add))
+      assertNotNull(ServeLiveSession.tryStart(h, previewId, emptyMap(), send = sent::add))
       val fsid = assertNotNull(session.lastFrameStreamId)
       val payload = Base64.getEncoder().encodeToString("xy".toByteArray())
 
@@ -52,11 +53,31 @@ class ServeLiveSessionTest {
   }
 
   @Test
+  fun `requested codec is forwarded to stream start and webp frames keep their codec`() {
+    val session = FakeRenderSession(newRenderRoot(), streaming = true)
+    host(session).use { h ->
+      val sent = CopyOnWriteArrayList<String>()
+      assertNotNull(
+        ServeLiveSession.tryStart(h, previewId, emptyMap(), StreamCodec.WEBP, null, sent::add)
+      )
+      assertEquals(StreamCodec.WEBP, session.lastCodec)
+      session.emitStreamFrame(
+        assertNotNull(session.lastFrameStreamId),
+        seq = 1,
+        payloadBase64 = "AA",
+        codec = StreamCodec.WEBP,
+      )
+      val obj = Json.parseToJsonElement(sent.last()).jsonObject
+      assertEquals("webp", obj.getValue("codec").jsonPrimitive.content)
+    }
+  }
+
+  @Test
   fun `unchanged heartbeat frames (no payload) are not forwarded`() {
     val session = FakeRenderSession(newRenderRoot(), streaming = true)
     host(session).use { h ->
       val sent = CopyOnWriteArrayList<String>()
-      assertNotNull(ServeLiveSession.tryStart(h, previewId, emptyMap(), sent::add))
+      assertNotNull(ServeLiveSession.tryStart(h, previewId, emptyMap(), send = sent::add))
       session.emitStreamFrame(
         assertNotNull(session.lastFrameStreamId),
         seq = 0,
@@ -81,11 +102,46 @@ class ServeLiveSessionTest {
   }
 
   @Test
+  fun `pointer drag, scroll and key inputs are forwarded with their fields`() {
+    val session = FakeRenderSession(newRenderRoot(), streaming = true)
+    host(session).use { h ->
+      val live = assertNotNull(ServeLiveSession.tryStart(h, previewId, emptyMap()) {})
+      live.onClientMessage(
+        """{"type":"input","kind":"pointerDown","pixelX":3,"pixelY":4,"pointerId":1}"""
+      )
+      live.onClientMessage(
+        """{"type":"input","kind":"pointerMove","pixelX":7,"pixelY":9,"pointerId":1}"""
+      )
+      live.onClientMessage(
+        """{"type":"input","kind":"pointerUp","pixelX":7,"pixelY":9,"pointerId":1}"""
+      )
+      live.onClientMessage("""{"type":"input","kind":"rotaryScroll","scrollDeltaY":-12.5}""")
+      live.onClientMessage("""{"type":"input","kind":"keyDown","keyCode":"66"}""")
+
+      val kinds = session.interactiveInputs.map { it.kind }
+      assertEquals(
+        listOf(
+          InteractiveInputKind.POINTER_DOWN,
+          InteractiveInputKind.POINTER_MOVE,
+          InteractiveInputKind.POINTER_UP,
+          InteractiveInputKind.ROTARY_SCROLL,
+          InteractiveInputKind.KEY_DOWN,
+        ),
+        kinds,
+      )
+      assertEquals(1, session.interactiveInputs[0].pointerId)
+      assertEquals(-12.5f, session.interactiveInputs[3].scrollDeltaY)
+      assertEquals("66", session.interactiveInputs[4].keyCode)
+    }
+  }
+
+  @Test
   fun `an unknown input kind yields an error and dispatches nothing`() {
     val session = FakeRenderSession(newRenderRoot(), streaming = true)
     host(session).use { h ->
       val sent = CopyOnWriteArrayList<String>()
-      val live = assertNotNull(ServeLiveSession.tryStart(h, previewId, emptyMap(), sent::add))
+      val live =
+        assertNotNull(ServeLiveSession.tryStart(h, previewId, emptyMap(), send = sent::add))
       live.onClientMessage("""{"type":"input","kind":"telepathy"}""")
       assertEquals("error", typeOf(sent.last()))
       assertTrue(session.interactiveInputs.isEmpty())

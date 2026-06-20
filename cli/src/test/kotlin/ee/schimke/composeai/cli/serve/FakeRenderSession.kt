@@ -75,10 +75,23 @@ internal class FakeRenderSession(
   var lastFrameStreamId: String? = null
     private set
 
+  @Volatile
+  var lastCodec: StreamCodec? = null
+    private set
+
+  @Volatile
+  var lastMaxFps: Int? = null
+    private set
+
   private val streamJson = Json { ignoreUnknownKeys = true }
 
   /** Fire a `streamFrame` notification to registered listeners (test driver for the live lane). */
-  fun emitStreamFrame(frameStreamId: String, seq: Long, payloadBase64: String?) {
+  fun emitStreamFrame(
+    frameStreamId: String,
+    seq: Long,
+    payloadBase64: String?,
+    codec: StreamCodec = StreamCodec.PNG,
+  ) {
     val params =
       streamJson
         .encodeToJsonElement(
@@ -89,7 +102,7 @@ internal class FakeRenderSession(
             ptsMillis = 0,
             widthPx = 2,
             heightPx = 2,
-            codec = StreamCodec.PNG,
+            codec = codec,
             payloadBase64 = payloadBase64,
           ),
         )
@@ -236,11 +249,13 @@ internal class FakeRenderSession(
     if (!streaming) throw UnsupportedOperationException("streaming not supported")
     val fsid = "fs-${streamStarts.incrementAndGet()}"
     lastFrameStreamId = fsid
+    lastCodec = codec
+    lastMaxFps = maxFps
     // Model a daemon that emits the initial keyframe before the RPC response returns.
     emitKeyframeOnStart?.let { emitStreamFrame(fsid, seq = 0, payloadBase64 = it) }
     return StreamStartResult(
       frameStreamId = fsid,
-      codec = StreamCodec.PNG,
+      codec = codec ?: StreamCodec.PNG,
       heldSession = heldSession,
     )
   }
@@ -254,6 +269,7 @@ internal class FakeRenderSession(
     kind: InteractiveInputKind,
     pixelX: Int?,
     pixelY: Int?,
+    pointerId: Int?,
     scrollDeltaY: Float?,
     keyCode: String?,
   ) {
@@ -263,6 +279,7 @@ internal class FakeRenderSession(
         kind = kind,
         pixelX = pixelX,
         pixelY = pixelY,
+        pointerId = pointerId,
         scrollDeltaY = scrollDeltaY,
         keyCode = keyCode,
       )

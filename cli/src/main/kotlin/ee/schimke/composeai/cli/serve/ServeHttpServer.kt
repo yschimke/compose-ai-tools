@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.daemon.protocol.StreamCodec
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.install
@@ -79,12 +80,28 @@ class ServeHttpServer(
               .toMap()
           // Non-suspending hand-off to the socket; drop frames a slow client can't keep up with.
           val send: (String) -> Unit = { text -> outgoing.trySend(Frame.Text(text)) }
+          // Optional stream tuning: codec (WebP is ~30–60% smaller; the daemon downgrades to PNG if
+          // it can't encode WebP) and an fps cap.
+          val codec =
+            when (call.request.queryParameters["codec"]?.lowercase()) {
+              "webp" -> StreamCodec.WEBP
+              "png" -> StreamCodec.PNG
+              else -> null
+            }
+          val maxFps = call.request.queryParameters["maxFps"]?.toIntOrNull()?.takeIf { it > 0 }
           // Prefer the daemon's live stream lane (frames pushed, input dispatched); fall back to
           // the
           // snapshot re-render lane when the backend doesn't support streaming.
           val live =
             withContext(Dispatchers.IO) {
-              ServeLiveSession.tryStart(renderHost, previewId, initialOverrides, send)
+              ServeLiveSession.tryStart(
+                renderHost,
+                previewId,
+                initialOverrides,
+                codec,
+                maxFps,
+                send,
+              )
             }
           if (live != null) {
             try {

@@ -255,6 +255,7 @@ interface RenderSession : AutoCloseable {
     kind: InteractiveInputKind,
     pixelX: Int? = null,
     pixelY: Int? = null,
+    pointerId: Int? = null,
     scrollDeltaY: Float? = null,
     keyCode: String? = null,
   ): Unit = throw UnsupportedOperationException("streaming not supported")
