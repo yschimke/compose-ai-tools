@@ -43,3 +43,20 @@ renders either a committed `.glb` path or a catalog URL:
 ```bash
 python3 render_glb_preview.py <DeviceModelCatalog url> out.png
 ```
+
+## `iphone.preview.png` — rendered preview of a runtime device model
+
+A two-angle render of the [`DeviceModelCatalog.IPHONE`](../../../../data/deviceframe/core/src/main/kotlin/ee/schimke/composeai/data/deviceframe/DeviceModelCatalog.kt)
+model with the spatial `now-playing` panel composited onto its display face,
+committed as visual evidence that the viewer works on a real device shape. The
+**model GLB itself is not committed** — only this rendered image is.
+
+- **Model:** *"Apple iPhone 11 Pro"* by **OneSteven**
+  (<https://sketchfab.com/Steven007>), via
+  [Sketchfab](https://sketchfab.com/3d-models/apple-iphone-11-pro-e88c8489a48b494bb4db178c2907f737).
+- **License:** [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/).
+  This rendered image is a derivative shared under the same terms; the
+  NonCommercial + ShareAlike conditions of the upstream model apply.
+- **Trademark:** "Apple" and "iPhone" are trademarks of Apple Inc. This model is
+  a third-party likeness, not an Apple asset.
+- **Reproduce:** `python3 render_glb_preview.py <DeviceModelCatalog.IPHONE url> iphone.preview.png`.
