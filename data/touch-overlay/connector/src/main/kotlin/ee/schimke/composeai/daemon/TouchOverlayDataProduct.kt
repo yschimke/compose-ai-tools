@@ -15,6 +15,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -28,10 +29,11 @@ import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExten
 
 /**
  * `AroundComposable` extension that overlays an "MotionEvent-style" visualization of pointer events
- * on top of a held-scene preview — a translucent ring at every currently-pressed pointer plus a
- * short-lived expanding pulse wherever a touch went down or came up. Activated for live recording
- * sessions (and any one-shot render that flips `renderNow.overrides.touchOverlay`) so the agent
- * reviewing the captured APNG / mp4 can see exactly where each finger landed, when, and what
+ * on top of a held-scene preview — a translucent ring at every currently-pressed pointer, a fading
+ * "whoosh" motion trail behind each moving pointer, plus a short-lived expanding pulse (a filled,
+ * alpha-fading disc + outline ring) wherever a touch went down or came up. Activated for live
+ * recording sessions (and any one-shot render that flips `renderNow.overrides.touchOverlay`) so the
+ * agent reviewing the captured APNG / mp4 can see exactly where each finger landed, when, and what
  * happened next.
  *
  * **Why an around-composable, not a PNG post-processor.** A first cut of this lived in
@@ -48,9 +50,13 @@ import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExten
  *   withFrameNanos { … } }`, so the overlay advances at the same virtual time as the rest of the
  *   composition (scripted recordings tick at `recordingFps`; live recordings tick at wall-clock).
  *
- * **State model.** Two pieces of [remember]-scoped state:
+ * **State model.** Three pieces of [remember]-scoped state:
  * - `activePointers: MutableMap<Long, Offset>` — per-id `PointerId.value` → current natural-px
  *   position. `Press` / `Move` add/update entries, `Release` removes them.
+ * - `trail: MutableList<TrailSample>` — recent `(id, position, ms)` samples per pointer. Every
+ *   down/move/up appends one; the `LaunchedEffect` loop prunes samples older than
+ *   [TRAIL_LIFETIME_MS]. Drawn as a tapering, age-faded comet so a fast drag leaves a "whoosh"
+ *   streak while a stationary tap (one sample, no segments) leaves nothing.
  * - `pulses: MutableList<Pulse>` — short-lived dispatch markers. Each pulse carries the position,
  *   the frame-clock ms at which it was emitted, and its kind (DOWN vs UP) for colour. The
  *   `LaunchedEffect` loop also prunes expired pulses so the buffer stays bounded across long
@@ -77,6 +83,7 @@ class TouchOverlayExtension :
   @Composable
   override fun AroundComposable(content: @Composable () -> Unit) {
     val activePointers = remember { mutableStateMapOf<Long, Offset>() }
+    val trail = remember { mutableStateListOf<TrailSample>() }
     val pulses = remember { mutableStateListOf<Pulse>() }
     var nowMs by remember { mutableLongStateOf(0L) }
 
@@ -90,6 +97,7 @@ class TouchOverlayExtension :
           // Remove expired pulses in-place. `removeAll` walks once; ok for the small list size
           // (typically < 32 pulses live at any time given the 400ms lifetime).
           pulses.removeAll { nowMs - it.emittedAtMs >= PULSE_LIFETIME_MS }
+          trail.removeAll { nowMs - it.emittedAtMs >= TRAIL_LIFETIME_MS }
         }
       }
     }
@@ -126,6 +134,9 @@ class TouchOverlayExtension :
                     pulses.add(Pulse(change.position, eventMs, PulseKind.DOWN))
                   }
                   activePointers[id] = change.position
+                  // Append a trail sample on every down + move so the comet follows the finger. A
+                  // tap yields a single sample (no segment); a drag yields a fading streak.
+                  trail.add(TrailSample(id, change.position, eventMs))
                 } else {
                   // Up event for this id → drop the ring, emit a fading UP pulse at the final
                   // position. Using `change.previousPressed` (which we'd need to check via the
@@ -134,6 +145,9 @@ class TouchOverlayExtension :
                   // up.
                   if (activePointers.remove(id) != null) {
                     pulses.add(Pulse(change.position, eventMs, PulseKind.UP))
+                    // Final trail sample at the lift point so the whoosh reaches the release, then
+                    // ages out like the rest.
+                    trail.add(TrailSample(id, change.position, eventMs))
                   }
                 }
               }
@@ -143,6 +157,27 @@ class TouchOverlayExtension :
     ) {
       content()
       Canvas(modifier = Modifier.fillMaxSize()) {
+        // Motion "whoosh" trail, drawn first so it sits under the rings/pulses. Per-pointer comet:
+        // consecutive samples joined by a line whose width + alpha taper with the newer endpoint's
+        // age, so the head (most recent) is thick and bright and the tail fades to nothing.
+        for ((_, samples) in trail.groupBy { it.id }) {
+          if (samples.size < 2) continue
+          val ordered = samples.sortedBy { it.emittedAtMs }
+          for (i in 0 until ordered.size - 1) {
+            val to = ordered[i + 1]
+            val age = (nowMs - to.emittedAtMs).coerceAtLeast(0L)
+            val freshness = (1f - age.toFloat() / TRAIL_LIFETIME_MS.toFloat()).coerceIn(0f, 1f)
+            if (freshness <= 0f) continue
+            drawLine(
+              color = TRAIL_COLOR.copy(alpha = freshness * TRAIL_MAX_ALPHA),
+              start = ordered[i].position,
+              end = to.position,
+              strokeWidth =
+                TRAIL_MIN_WIDTH_PX + (TRAIL_MAX_WIDTH_PX - TRAIL_MIN_WIDTH_PX) * freshness,
+              cap = StrokeCap.Round,
+            )
+          }
+        }
         // Persistent rings for every active pointer. Two layers (translucent fill + saturated
         // stroke) plus a crosshair so the dispatch point inside the ring is exact.
         for ((_, pos) in activePointers) {
@@ -181,6 +216,13 @@ class TouchOverlayExtension :
               PulseKind.DOWN -> PULSE_DOWN
               PulseKind.UP -> PULSE_UP
             }
+          // Translucent filled disc that fades as it expands — the "alpha tap circle". Gives a tap
+          // (down + up with no travel, hence no ring and no trail) a clear flash on its own.
+          drawCircle(
+            color = baseColor.copy(alpha = (1f - progress) * PULSE_FILL_ALPHA),
+            radius = radius,
+            center = pulse.position,
+          )
           drawCircle(
             color = baseColor.copy(alpha = (1f - progress) * baseColor.alpha),
             radius = radius,
@@ -191,6 +233,8 @@ class TouchOverlayExtension :
       }
     }
   }
+
+  private data class TrailSample(val id: Long, val position: Offset, val emittedAtMs: Long)
 
   private data class Pulse(val position: Offset, val emittedAtMs: Long, val kind: PulseKind)
 
@@ -209,9 +253,19 @@ class TouchOverlayExtension :
     private const val PULSE_START_RADIUS_PX: Float = 16f
     private const val PULSE_END_RADIUS_PX: Float = 36f
     private const val PULSE_LIFETIME_MS: Long = 400L
+    // Peak alpha of the filled tap disc at age 0; fades linearly to 0 over PULSE_LIFETIME_MS.
+    private const val PULSE_FILL_ALPHA: Float = 0.30f
+
+    // Motion-trail tuning. Short lifetime so a quick drag reads as a streak, not a smear; width +
+    // alpha taper from head to tail give it the "whoosh" comet look.
+    private const val TRAIL_LIFETIME_MS: Long = 300L
+    private const val TRAIL_MAX_WIDTH_PX: Float = 7f
+    private const val TRAIL_MIN_WIDTH_PX: Float = 1.5f
+    private const val TRAIL_MAX_ALPHA: Float = 0.55f
 
     private val ACTIVE_FILL: Color = Color(0x4000BCD4)
     private val ACTIVE_STROKE: Color = Color(0xFF00BCD4)
+    private val TRAIL_COLOR: Color = Color(0xFF00BCD4)
     private val CROSSHAIR: Color = Color.White
     private val PULSE_DOWN: Color = Color(0xFFFF9800) // orange — drag start
     private val PULSE_UP: Color = Color(0xFFFFC107) // amber — drag end
