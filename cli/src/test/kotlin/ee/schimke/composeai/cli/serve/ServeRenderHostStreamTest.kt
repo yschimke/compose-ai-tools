@@ -71,4 +71,27 @@ class ServeRenderHostStreamTest {
       assertNull(h.startStream("com.example.Missing", PreviewOverrides()) {})
     }
   }
+
+  @Test
+  fun `a keyframe emitted before stream-start returns is not lost`() {
+    // The daemon's frame loop can emit the initial keyframe before stream/start's RPC response —
+    // the listener must already be registered (and buffer it) so it isn't dropped.
+    val session =
+      FakeRenderSession(newRenderRoot(), streaming = true, emitKeyframeOnStart = "KEYFRAME")
+    host(session).use { h ->
+      val frames = CopyOnWriteArrayList<StreamFrameParams>()
+      assertNotNull(h.startStream(previewId, PreviewOverrides()) { frames.add(it) })
+      assertEquals(1, frames.size, "the pre-response keyframe must be replayed, not lost")
+      assertEquals(0L, frames[0].seq)
+    }
+  }
+
+  @Test
+  fun `no held session falls back (null) and stops the stream`() {
+    val session = FakeRenderSession(newRenderRoot(), streaming = true, heldSession = false)
+    host(session).use { h ->
+      assertNull(h.startStream(previewId, PreviewOverrides()) {})
+      assertEquals(1, session.streamStops.size, "the frameless stream must be torn down")
+    }
+  }
 }

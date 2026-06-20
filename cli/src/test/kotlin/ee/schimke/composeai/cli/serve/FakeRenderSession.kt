@@ -56,6 +56,12 @@ internal class FakeRenderSession(
   private val renderHook: ((call: Int, emit: (ByteArray) -> Unit) -> Unit)? = null,
   /** When false (default), the streaming methods throw (mimicking a non-streaming backend). */
   private val streaming: Boolean = false,
+  /**
+   * `StreamStartResult.heldSession` value when [streaming]; false models a non-interactive host.
+   */
+  private val heldSession: Boolean = true,
+  /** When set, [streamStart] emits a keyframe with this base64 payload *before* it returns. */
+  private val emitKeyframeOnStart: String? = null,
 ) : RenderSession {
   val renderCount = AtomicInteger(0)
   private val listeners = CopyOnWriteArrayList<NotificationListener>()
@@ -230,7 +236,13 @@ internal class FakeRenderSession(
     if (!streaming) throw UnsupportedOperationException("streaming not supported")
     val fsid = "fs-${streamStarts.incrementAndGet()}"
     lastFrameStreamId = fsid
-    return StreamStartResult(frameStreamId = fsid, codec = StreamCodec.PNG, heldSession = true)
+    // Model a daemon that emits the initial keyframe before the RPC response returns.
+    emitKeyframeOnStart?.let { emitStreamFrame(fsid, seq = 0, payloadBase64 = it) }
+    return StreamStartResult(
+      frameStreamId = fsid,
+      codec = StreamCodec.PNG,
+      heldSession = heldSession,
+    )
   }
 
   override fun streamStop(frameStreamId: String) {

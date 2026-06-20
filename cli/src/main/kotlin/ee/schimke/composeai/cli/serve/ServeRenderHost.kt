@@ -202,9 +202,10 @@ internal constructor(
    * Try to open a daemon-backed live stream for [previewId] (tier-2). On success the daemon pushes
    * `streamFrame` notifications; each is decoded and handed to [onFrame], and the returned
    * [StreamHandle] forwards input + tears the stream down on close. Returns **null** when streaming
-   * is unsupported (older daemon / backend without held compositions) so the caller falls back to
-   * the [render]-per-frame lane. Independent of the snapshot render lock — a held stream runs
-   * concurrently with snapshot renders.
+   * is unsupported (older daemon / backend without held compositions, or a `stream/start` that
+   * couldn't allocate a held session) so the caller falls back to the [render]-per-frame lane.
+   * Independent of the snapshot render lock — a held stream runs concurrently with snapshot
+   * renders.
    */
   fun startStream(
     previewId: String,
@@ -214,16 +215,12 @@ internal constructor(
     check(!closed.get()) { "ServeRenderHost is closed" }
     if (previewId !in previewIds) return null
 
-    val result =
-      try {
-        session.streamStart(previewId = previewId, overrides = overrides)
-      } catch (e: Exception) {
-        // UnsupportedOperationException (no streaming on this backend) or a daemon error — degrade.
-        onLog("stream/start unavailable for $previewId (${e.message}); falling back to snapshots")
-        return null
-      }
-
-    val frameStreamId = result.frameStreamId
+    // Register the listener BEFORE stream/start: the daemon's frame loop can emit the initial
+    // keyframe before the RPC response returns, and missing it leaves static previews blank (later
+    // frames are payload-less `unchanged` heartbeats). We don't know the frameStreamId yet, so
+    // buffer frames until it's known, then replay the matching ones.
+    val frameStreamIdRef = AtomicReference<String?>(null)
+    val pending = ArrayList<StreamFrameParams>()
     val listener = session.onNotification { method, params ->
       if (method != "streamFrame" || params == null) return@onNotification
       val frame =
@@ -232,8 +229,49 @@ internal constructor(
         } catch (_: Exception) {
           return@onNotification
         }
-      if (frame.frameStreamId == frameStreamId) onFrame(frame)
+      val known = frameStreamIdRef.get()
+      if (known != null) {
+        if (frame.frameStreamId == known) onFrame(frame)
+        return@onNotification
+      }
+      // id not yet known — buffer under lock, re-checking in case it was just set.
+      synchronized(pending) {
+        if (frameStreamIdRef.get() == null) {
+          pending.add(frame)
+          return@onNotification
+        }
+      }
+      if (frame.frameStreamId == frameStreamIdRef.get()) onFrame(frame)
     }
+
+    val result =
+      try {
+        session.streamStart(previewId = previewId, overrides = overrides)
+      } catch (e: Exception) {
+        // UnsupportedOperationException (no streaming on this backend) or a daemon error — degrade.
+        onLog("stream/start unavailable for $previewId (${e.message}); falling back to snapshots")
+        runCatching { listener.close() }
+        return null
+      }
+
+    if (!result.heldSession) {
+      // The daemon accepted stream/start but couldn't hold an interactive session, so it won't run
+      // the live frame loop — fall back to the snapshot lane rather than open a frameless stream.
+      onLog("stream/start for $previewId has no held session; falling back to snapshots")
+      runCatching { listener.close() }
+      runCatching { session.streamStop(result.frameStreamId) }
+      return null
+    }
+
+    val frameStreamId = result.frameStreamId
+    // Publish the id and replay any frames that arrived before it was known.
+    val replay: List<StreamFrameParams>
+    synchronized(pending) {
+      frameStreamIdRef.set(frameStreamId)
+      replay = pending.filter { it.frameStreamId == frameStreamId }
+      pending.clear()
+    }
+    replay.forEach(onFrame)
 
     return object : StreamHandle {
       private val handleClosed = AtomicBoolean(false)
