@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/pr`. 138 preview(s) across 14 module(s) · 10 error(s) · 3 warning(s) · 18 info._
+_Auto-generated from `compose-preview/a11y/pr`. 145 preview(s) across 15 module(s) · 10 error(s) · 4 warning(s) · 18 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -736,6 +736,34 @@ _No findings._
 
 _No findings._
 
+## mobile
+
+### `ConnectScreenDiscoveredPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/mobile/ConnectScreenDiscoveredPreview_Connect_discovered.a11y.png" width="400" />
+
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | WARNING | DuplicateSpeakableTextCheck | android.view.View | This clickable item's speakable text: "Use this server" is identical to that of 1 other item(s). |
+
+### `ConnectScreenEmptyPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/mobile/ConnectScreenEmptyPreview_Connect_empty.a11y.png" width="400" />
+
+_No findings._
+
+### `ConnectingOverlayPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/mobile/ConnectingOverlayPreview_Status_connecting.a11y.png" width="400" />
+
+_No findings._
+
+### `FailedOverlayPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/mobile/FailedOverlayPreview_Status_failed.a11y.png" width="400" />
+
+_No findings._
+
 ## remotecompose
 
 ### `RemoteButtonEnabledPreview`
@@ -849,6 +877,24 @@ _No findings._
 ### `CircularProgressIndicatorPreview` · `wearos_large_round`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/CircularProgressIndicatorPreview_Devices_Large_Round.png" width="400" />
+
+_No findings._
+
+### `WearConnectPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/WearConnectPreview_Wear_connect.a11y.png" width="400" />
+
+_No findings._
+
+### `WearConnectingPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/WearConnectingPreview_Wear_connecting.a11y.png" width="400" />
+
+_No findings._
+
+### `WearFailedPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/WearFailedPreview_Wear_failed.a11y.png" width="400" />
 
 _No findings._
 
