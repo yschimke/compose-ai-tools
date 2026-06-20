@@ -337,9 +337,12 @@ object RecordingScriptDataExtensions {
   /**
    * Visibility-only assertion descriptor for backends that wire `assert.visible` /
    * `assert.notVisible` but not yet `assert.textEquals` — the Android backend today, which resolves
-   * visibility against its flat probe-semantics snapshot (issue #1964) but doesn't carry the tree
-   * the text fallback needs. `record_preview` rejects `assert.textEquals` up front for such daemons
-   * rather than letting it silently no-op.
+   * visibility against its flat probe-semantics snapshot (issue #1964). That snapshot only supports
+   * `testTag` targets: it can't reliably match `role`+`text` (a `Button { Text(...) }` emits the
+   * role and text on separate flat nodes, so checking both on one node matches nothing) and carries
+   * no refs. So `record_preview` advertises only these two events here, and the handler rejects
+   * non-`testTag` targets rather than risk a false pass; `assert.textEquals` isn't advertised at
+   * all.
    */
   val assertionVisibilityDescriptor: DataExtensionDescriptor =
     DataExtensionDescriptor(
@@ -350,13 +353,13 @@ object RecordingScriptDataExtensions {
           RecordingScriptEventDescriptor(
             id = ASSERT_VISIBLE_EVENT,
             displayName = "Assert visible",
-            summary = "Fails the recording unless the target (testTag/role+text) matches a node.",
+            summary = "Fails the recording unless the target (testTag) matches a node.",
             supported = true,
           ),
           RecordingScriptEventDescriptor(
             id = ASSERT_NOT_VISIBLE_EVENT,
             displayName = "Assert not visible",
-            summary = "Fails the recording if the target matches any node.",
+            summary = "Fails the recording if the target (testTag) matches any node.",
             supported = true,
           ),
         ),

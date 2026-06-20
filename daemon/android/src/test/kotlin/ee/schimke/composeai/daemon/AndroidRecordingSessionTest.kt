@@ -134,20 +134,25 @@ class AndroidRecordingSessionTest {
         assertEvent("assert.notVisible", SemanticsInputTarget(testTag = "nope")), // APPLIED
         assertEvent("assert.notVisible", SemanticsInputTarget(testTag = "target-box")), // FAILED
         assertEvent("assert.visible", SemanticsInputTarget(ref = "r1")), // FAILED (no refs)
+        // role+text isn't resolvable against a flat probe snapshot; must FAIL, never silently pass.
+        assertEvent("assert.notVisible", SemanticsInputTarget(role = "Button", text = "Hello")),
       )
     )
     val result = session.stop()
     val asserts = result.scriptEvents.filter { it.kind.startsWith("assert.") }
-    assertEquals(5, asserts.size)
+    assertEquals(6, asserts.size)
     assertEquals(RecordingScriptEventStatus.APPLIED, asserts[0].status)
     assertEquals(RecordingScriptEventStatus.FAILED, asserts[1].status)
     assertEquals(RecordingScriptEventStatus.APPLIED, asserts[2].status)
     assertEquals(RecordingScriptEventStatus.FAILED, asserts[3].status)
     assertEquals(RecordingScriptEventStatus.FAILED, asserts[4].status)
     assertTrue(
-      "ref target should explain it's unsupported; got ${asserts[4].message}",
-      asserts[4].message?.contains("ref") == true,
+      "non-testTag target should explain it resolves by testTag; got ${asserts[4].message}",
+      asserts[4].message?.contains("testTag") == true,
     )
+    // The dangerous case: a role+text assert.notVisible must NOT pass just because the flat snapshot
+    // can't see a role+text node — it fails as unsupported instead of silently passing.
+    assertEquals(RecordingScriptEventStatus.FAILED, asserts[5].status)
   }
 
   @Test

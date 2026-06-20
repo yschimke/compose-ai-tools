@@ -56,7 +56,7 @@ recording as a gating check.
 | Backend | `assert.visible` / `assert.notVisible` | `assert.textEquals` |
 |---------|----------------------------------------|---------------------|
 | Desktop | ✅ (resolved against the live unmerged semantics tree) | ✅ |
-| Android | ✅ (resolved against the probe-semantics snapshot, by `testTag` / `role`+`text`) | ❌ — `record_preview` rejects it |
+| Android | ✅ (resolved against the probe-semantics snapshot, by `testTag` only) | ❌ — `record_preview` rejects it |
 
 Desktop advertises `RecordingScriptDataExtensions.assertionDescriptor` (all three) and resolves via
 `state.scene.composeSemanticsRoot()`. Android (issue #1964) advertises the narrower
@@ -65,9 +65,13 @@ Desktop advertises `RecordingScriptDataExtensions.assertionDescriptor` (all thre
 sandbox command is needed. The pure verdict logic (`evaluateVisibilityAssertion`) lives in
 `:daemon:core` so both backends share one implementation.
 
-**Android limitations (today):** `ref`-based targets fail with a clear message — the probe snapshot
-carries no refs — so use `testTag` or `role`+`text`. `assert.textEquals` isn't advertised on Android
-(its flat probe snapshot can't do the merged-descendant text fallback the desktop tree gives).
+**Android limitations (today):** assertions resolve by **`testTag` only**. The probe snapshot is a
+flat node list, so a `role`+`text` target can't be matched reliably — a `Button { Text("Add") }`
+emits the `role` on the button and the `text` on a separate child, so checking both on one node
+matches nothing and would make `assert.notVisible` *wrongly pass* while the control is on screen.
+`ref` (no refs in the snapshot) and `role`+`text` both fail with a clear message rather than risk a
+false pass; `assert.textEquals` isn't advertised at all. Enriching the snapshot to support
+`role`+`text` is a follow-up.
 
 ## What we borrowed (and what we deliberately didn't)
 
