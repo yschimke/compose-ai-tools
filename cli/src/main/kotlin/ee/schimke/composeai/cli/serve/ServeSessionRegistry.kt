@@ -8,29 +8,31 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 /**
- * Builds (forks) a tenant's render host on demand. The fork — discover/build a module, launch a
- * daemon, open a [ServeRenderHost] — happens behind this seam, so the registry and HTTP layer stay
- * transport- and policy-agnostic and tests can inject a fake.
+ * Builds (forks) a tenant's *session state* on demand — the expensive discover/build step. The fork
+ * happens behind this seam, so the registry and HTTP layer stay transport- and policy-agnostic and
+ * tests can inject a fake. Returns `null` when no such session can be created.
  */
 fun interface ServeSessionFactory {
-  /** Open a render host for [sessionId], or return `null` when no such session can be created. */
-  fun create(sessionId: String): ServeRenderHost?
+  fun create(sessionId: String): ServeSessionState?
 }
 
 /**
- * Multi-tenant registry of [ServeRenderHost]s behind **one** HTTP server, so a shared server fronts
- * many sessions instead of spawning a server per module. Sessions are created lazily via [factory]
- * (the fork-behind-the-API seam) on first use, cached by id, and idle-evicted: an unpinned host
- * with no live streams that hasn't been touched within [idleTimeoutMillis] is closed and its daemon
- * subprocess released.
+ * Multi-tenant registry of serve sessions behind **one** HTTP server, so a shared server fronts
+ * many sessions instead of spawning a server per module.
  *
- * Pre-seeded sessions ([register]) — e.g. the CLI's primary module — are **pinned** and never
- * evicted.
+ * Sessions follow an **Activity-style lifecycle** so daemons don't run forever:
+ * - **created** lazily via [factory] (the expensive build) on first use, keyed by id;
+ * - **opened** into a live daemon-backed [ServeRenderHost] via [open] (cheap — relaunches from the
+ *   built descriptor);
+ * - **suspended** when idle ([suspendIdle]): the daemon subprocess is closed but the cheap
+ *   [ServeSessionState] is kept, so the session can be **resumed** on the next request by
+ *   re-[open]ing from that state — no rebuild.
  *
- * Concurrency-safe: [acquire] forks at most once per id even under racing callers, and eviction
- * never closes a host that still has watchers ([ServeRenderHost.activeStreamCount]).
+ * A session is never suspended while it has an open [lease] (e.g. a live WebSocket) or active
+ * streams. Concurrency-safe: at most one build per id under racing callers.
  */
 class ServeSessionRegistry(
+  private val open: (ServeSessionState) -> ServeRenderHost?,
   private val factory: ServeSessionFactory = ServeSessionFactory { null },
   private val idleTimeoutMillis: Long = DEFAULT_IDLE_TIMEOUT_MILLIS,
   reaperIntervalMillis: Long = idleTimeoutMillis,
@@ -38,16 +40,15 @@ class ServeSessionRegistry(
 ) : AutoCloseable {
 
   private class Entry(
-    val host: ServeRenderHost,
-    val pinned: Boolean,
+    val state: ServeSessionState,
+    /** The live daemon host, or null while suspended. */
+    @Volatile var host: ServeRenderHost?,
     @Volatile var lastAccess: Long,
-    /**
-     * Open long-lived holders (e.g. WebSocket connections) pinning this session against eviction.
-     */
+    /** Open long-lived holders (e.g. WebSocket connections) keeping this session resident. */
     @Volatile var leases: Int = 0,
   )
 
-  /** A live hold on a session that keeps it from being reaped until [close] (idempotent). */
+  /** A live hold on a session that keeps it from being suspended until [close] (idempotent). */
   class Lease internal constructor(val host: ServeRenderHost, private val onRelease: () -> Unit) :
     AutoCloseable {
     private val released = AtomicBoolean(false)
@@ -61,8 +62,9 @@ class ServeSessionRegistry(
   private val sessions = HashMap<String, Entry>()
   private var closed = false
 
-  // A daemon reaper sweeps idle sessions. Disabled (null) when either knob is non-positive — tests
-  // drive eviction directly with a fake clock instead.
+  // A daemon reaper suspends idle sessions. Disabled (null) when either knob is non-positive —
+  // tests
+  // drive suspension directly with a fake clock instead.
   private val reaper: ScheduledExecutorService? =
     if (idleTimeoutMillis > 0 && reaperIntervalMillis > 0) {
       Executors.newSingleThreadScheduledExecutor { r ->
@@ -70,7 +72,7 @@ class ServeSessionRegistry(
         }
         .also {
           it.scheduleWithFixedDelay(
-            { runCatching { evictIdle() } },
+            { runCatching { suspendIdle() } },
             reaperIntervalMillis,
             reaperIntervalMillis,
             TimeUnit.MILLISECONDS,
@@ -81,48 +83,41 @@ class ServeSessionRegistry(
     }
 
   /**
-   * Pin an externally-opened [host] under [sessionId] (never evicted). Replaces any prior entry.
+   * Seed a session from already-known [state] (e.g. the CLI's current checkout), optionally with an
+   * already-open [host]. Replaces any prior entry. The session participates in suspend/resume like
+   * a forked one — its daemon is released when idle and reopened from [state] on demand.
    */
-  fun register(sessionId: String, host: ServeRenderHost) {
+  fun register(sessionId: String, state: ServeSessionState, host: ServeRenderHost? = null) {
     lock.withLock {
       check(!closed) { "ServeSessionRegistry is closed" }
-      sessions[sessionId] = Entry(host, pinned = true, lastAccess = clock())
+      sessions[sessionId] = Entry(state, host, lastAccess = clock())
     }
   }
 
   /**
-   * The host for [sessionId], forking one via [factory] on a miss. Returns `null` when the session
-   * doesn't exist and can't be created, so the caller can 404. Touches the session's idle clock.
+   * The live host for [sessionId] — resuming a suspended session or forking a new one via
+   * [factory]. Returns `null` when the session can't be created/opened, so the caller can 404.
+   * Touches the idle clock.
    */
   fun acquire(sessionId: String): ServeRenderHost? = lock.withLock {
     check(!closed) { "ServeSessionRegistry is closed" }
-    sessions[sessionId]?.let {
-      it.lastAccess = clock()
-      return it.host
-    }
-    // Hold the lock across the fork so racing first-callers for one id can't fork twice. A fork is
-    // slow, but a shared dev/CI server has few tenants and correctness beats fork concurrency.
-    val host = factory.create(sessionId) ?: return null
-    sessions[sessionId] = Entry(host, pinned = false, lastAccess = clock())
-    host
+    val entry = entryFor(sessionId) ?: return null
+    entry.lastAccess = clock()
+    liveHost(entry)
   }
 
   /**
-   * Acquire [sessionId] (forking on a miss) and hold it open for the returned [Lease]'s lifetime,
-   * so a long-lived connection — including a WebSocket on the snapshot fallback lane that opens no
-   * `stream/start` — isn't reaped mid-connection. Returns `null` when the session can't be created;
-   * the holder must [Lease.close] when the connection ends.
+   * Acquire [sessionId] and hold it resident for the returned [Lease]'s lifetime, so a long-lived
+   * connection — including a WebSocket on the snapshot fallback lane that opens no stream — isn't
+   * suspended mid-connection. Returns `null` when the session can't be created/opened.
    */
   fun lease(sessionId: String): Lease? = lock.withLock {
     check(!closed) { "ServeSessionRegistry is closed" }
-    val entry =
-      sessions[sessionId]
-        ?: (factory.create(sessionId)?.let { host ->
-          Entry(host, pinned = false, lastAccess = clock()).also { sessions[sessionId] = it }
-        } ?: return null)
+    val entry = entryFor(sessionId) ?: return null
     entry.lastAccess = clock()
+    val host = liveHost(entry) ?: return null
     entry.leases++
-    Lease(entry.host) {
+    Lease(host) {
       lock.withLock {
         entry.leases--
         entry.lastAccess = clock() // start the idle clock fresh once the holder leaves
@@ -130,38 +125,66 @@ class ServeSessionRegistry(
     }
   }
 
-  /** Close unpinned, watcher-free sessions idle past the timeout. Returns the count evicted. */
-  fun evictIdle(): Int = lock.withLock {
+  /** Suspend (close the daemon of, keep the state of) resident sessions idle past the timeout. */
+  fun suspendIdle(): Int = lock.withLock {
     if (closed) return 0
     val now = clock()
-    val dead = sessions.filterValues {
-      !it.pinned &&
-        it.leases == 0 &&
-        it.host.activeStreamCount() == 0 &&
-        now - it.lastAccess >= idleTimeoutMillis
+    var suspended = 0
+    for (entry in sessions.values) {
+      val host = entry.host ?: continue
+      if (
+        entry.leases == 0 &&
+          host.activeStreamCount() == 0 &&
+          now - entry.lastAccess >= idleTimeoutMillis
+      ) {
+        entry.host = null
+        runCatching { host.close() }
+        suspended++
+      }
     }
-    dead.forEach { (id, entry) ->
-      sessions.remove(id)
-      runCatching { entry.host.close() }
-    }
-    dead.size
+    suspended
   }
 
-  /** Number of live sessions (pinned + forked). */
+  /** Total known sessions (resident + suspended). */
   fun activeCount(): Int = lock.withLock { sessions.size }
 
+  /** Sessions with a live daemon right now (resident, not suspended). */
+  fun residentCount(): Int = lock.withLock { sessions.values.count { it.host != null } }
+
   override fun close() {
-    val toClose = lock.withLock {
+    val hosts = lock.withLock {
       if (closed) return
       closed = true
-      sessions.values.toList().also { sessions.clear() }
+      sessions.values.mapNotNull { it.host }.also { sessions.clear() }
     }
     reaper?.shutdownNow()
-    toClose.forEach { runCatching { it.host.close() } }
+    hosts.forEach { runCatching { it.close() } }
+  }
+
+  /** Existing entry, or one forked via [factory]. Caller holds [lock]. */
+  private fun entryFor(sessionId: String): Entry? {
+    sessions[sessionId]?.let {
+      return it
+    }
+    // Hold the lock across the build so racing first-callers for one id can't build twice. A build
+    // is
+    // slow, but a shared dev/CI server has few tenants and correctness beats build concurrency.
+    val state = factory.create(sessionId) ?: return null
+    return Entry(state, host = null, lastAccess = clock()).also { sessions[sessionId] = it }
+  }
+
+  /** The entry's live host, resuming (re-opening) from its state if it was suspended. */
+  private fun liveHost(entry: Entry): ServeRenderHost? {
+    entry.host?.let {
+      return it
+    }
+    val resumed = open(entry.state) ?: return null
+    entry.host = resumed
+    return resumed
   }
 
   private companion object {
-    /** Default idle window before an unused forked session's daemon is released. */
+    /** Default idle window before a resident session's daemon is suspended. */
     const val DEFAULT_IDLE_TIMEOUT_MILLIS = 10 * 60 * 1000L
   }
 }

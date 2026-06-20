@@ -7,6 +7,7 @@ import ee.schimke.composeai.cli.serve.ServeMdnsAdvertiser
 import ee.schimke.composeai.cli.serve.ServePreview
 import ee.schimke.composeai.cli.serve.ServeRenderHost
 import ee.schimke.composeai.cli.serve.ServeSessionRegistry
+import ee.schimke.composeai.cli.serve.ServeSessionState
 import ee.schimke.composeai.cli.serve.ServeUrls
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.render.session.RenderSessionException
@@ -110,11 +111,33 @@ class ServeCommand(args: List<String>) : Command(args) {
     }
 
     val token = tokenOverride ?: ServeUrls.generateToken()
-    // One shared server fronts a session registry rather than a single host: the current module is
-    // the pinned default session, and additional tenants (e.g. other modules / PR revisions) can be
-    // forked behind the registry's factory in future without spawning another server.
-    val registry = ServeSessionRegistry()
-    registry.register(module.gradlePath, renderHost)
+    // One shared server fronts a session registry rather than a single host. The current checkout
+    // is
+    // the default session; the registry suspends idle daemons and resumes them on demand from their
+    // saved state, so a long-lived server doesn't keep daemons running forever.
+    val openHost: (ServeSessionState) -> ServeRenderHost? = { state ->
+      runCatching {
+          ServeRenderHost.open(
+            descriptorPath = state.descriptor,
+            workspaceRoot = state.workspaceRoot,
+            workspaceName = state.workspaceName,
+            previews = state.previews,
+            label = state.label,
+            onLog = { System.err.println("[daemon serve] $it") },
+          )
+        }
+        .getOrNull()
+    }
+    val registry = ServeSessionRegistry(open = openHost)
+    val defaultState =
+      ServeSessionState(
+        descriptor = descriptor,
+        workspaceRoot = module.projectDir,
+        workspaceName = module.projectDir.name,
+        previews = previews,
+        label = module.gradlePath,
+      )
+    registry.register(module.gradlePath, defaultState, host = renderHost)
     val server =
       ServeHttpServer(
         host = host,
