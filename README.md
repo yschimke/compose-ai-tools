@@ -95,6 +95,20 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![remotecompose-state/dark](renders/remotecompose-state.dark.png) |
 | `light` | ![remotecompose-state/light](renders/remotecompose-state.light.png) |
 
+## serve-landing
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing/dark](renders/serve-landing.dark.png) |
+| `light` | ![serve-landing/light](renders/serve-landing.light.png) |
+
+## serve-viewer
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer/dark](renders/serve-viewer.dark.png) |
+| `light` | ![serve-viewer/light](renders/serve-viewer.light.png) |
+
 ## spatial-semantics
 
 | Theme | Capture |
