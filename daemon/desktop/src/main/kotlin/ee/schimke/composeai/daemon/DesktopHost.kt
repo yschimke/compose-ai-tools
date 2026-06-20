@@ -216,6 +216,9 @@ open class DesktopHost(
     // not silently ignored. Pseudolocale is driven by `localeTag` (no separate field).
     add("keyboard")
     add("touchOverlay")
+    // Issue #1956 — `overrides.talkBack` drives the per-frame TalkBack focus overlay composited in
+    // DesktopRecordingSession.writeTalkBackFrame.
+    add("talkBack")
     add("launcherWidget")
   }
 

@@ -34,6 +34,7 @@ data class PreviewOverrideBaseSpec(
   val ambient: AmbientOverride? = null,
   val focus: FocusOverride? = null,
   val touchOverlay: Boolean? = null,
+  val talkBack: Boolean? = null,
   val permissions: PermissionsOverride? = null,
   val remoteCompose: RemoteComposeOverride? = null,
   val launcherWidget: LauncherWidgetOverride? = null,
@@ -54,6 +55,7 @@ data class MergedPreviewOverrides(
   val ambient: AmbientOverride?,
   val focus: FocusOverride?,
   val touchOverlay: Boolean?,
+  val talkBack: Boolean?,
   val permissions: PermissionsOverride?,
   val remoteCompose: RemoteComposeOverride?,
   val launcherWidget: LauncherWidgetOverride?,
@@ -79,6 +81,7 @@ data class MergedPreviewOverrides(
         ambient == null &&
         focus == null &&
         touchOverlay != true &&
+        talkBack != true &&
         permissions == null &&
         remoteCompose == null &&
         launcherWidget == null &&
@@ -93,6 +96,7 @@ data class MergedPreviewOverrides(
       focus = focus,
       localeTag = if (isPseudolocale) localeTag else null,
       touchOverlay = touchOverlay,
+      talkBack = talkBack,
       permissions = permissions,
       remoteCompose = remoteCompose,
       launcherWidget = launcherWidget,
@@ -140,6 +144,7 @@ fun mergePreviewOverrides(
       ambient = base.ambient,
       focus = base.focus,
       touchOverlay = base.touchOverlay,
+      talkBack = base.talkBack,
       permissions = base.permissions,
       remoteCompose = base.remoteCompose,
       launcherWidget = base.launcherWidget,
@@ -169,6 +174,7 @@ fun mergePreviewOverrides(
     ambient = overrides.ambient ?: base.ambient,
     focus = overrides.focus ?: base.focus,
     touchOverlay = overrides.touchOverlay ?: base.touchOverlay,
+    talkBack = overrides.talkBack ?: base.talkBack,
     permissions = overrides.permissions ?: base.permissions,
     remoteCompose = overrides.remoteCompose ?: base.remoteCompose,
     launcherWidget = overrides.launcherWidget ?: base.launcherWidget,
