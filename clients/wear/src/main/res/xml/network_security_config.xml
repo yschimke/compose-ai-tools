@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+      The watch connects to `compose-preview serve` over plaintext ws:// on the trusted LAN (the
+      token in the link is the gate, not TLS). Serve binds to arbitrary private IPs, so cleartext
+      can't be scoped to a fixed host and is permitted app-wide. A `wss://` link still uses TLS.
+    -->
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

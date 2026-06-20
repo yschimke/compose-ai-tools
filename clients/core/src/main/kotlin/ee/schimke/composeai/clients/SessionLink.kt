@@ -3,7 +3,6 @@ package ee.schimke.composeai.clients
 import java.net.URI
 import java.net.URLDecoder
 import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
 
 /**
  * A parsed "open this session" link — everything a client needs to connect to a `compose-preview
@@ -217,12 +216,14 @@ data class SessionLink(
         .toMap()
     }
 
+    // The `String` charset overloads work on every Android API level; the `Charset` overloads are
+    // API 33+ (java.net since Java 10), which would crash on older devices the apps still target.
     private fun encodeSegment(s: String): String =
-      URLEncoder.encode(s, StandardCharsets.UTF_8).replace("+", "%20").replace("%7E", "~")
+      URLEncoder.encode(s, "UTF-8").replace("+", "%20").replace("%7E", "~")
 
-    private fun encodeQuery(s: String): String = URLEncoder.encode(s, StandardCharsets.UTF_8)
+    private fun encodeQuery(s: String): String = URLEncoder.encode(s, "UTF-8")
 
     private fun decode(s: String): String =
-      runCatching { URLDecoder.decode(s, StandardCharsets.UTF_8) }.getOrDefault(s)
+      runCatching { URLDecoder.decode(s, "UTF-8") }.getOrDefault(s)
   }
 }

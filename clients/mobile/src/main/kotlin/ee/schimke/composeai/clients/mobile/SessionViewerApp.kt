@@ -20,6 +20,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -73,6 +74,9 @@ fun SessionScreen(
   val frame by client.frame.collectAsState()
 
   LaunchedEffect(link) { client.connect(link) }
+  // Close the WebSocket when the screen leaves or the link changes (a new link `remember`s a fresh
+  // client), so we don't leak the old session's coroutine + server-side hold.
+  DisposableEffect(link) { onDispose { client.close("left session screen") } }
 
   Box(Modifier.fillMaxSize().background(Color.Black)) {
     FrameCanvas(frame = frame, modifier = Modifier.fillMaxSize(), onInput = { client.send(it) })

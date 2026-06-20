@@ -54,17 +54,28 @@ fun FrameCanvas(frame: StreamFrame?, modifier: Modifier = Modifier, onInput: (In
         }
       }
       .pointerInput(frame?.seq, viewSize) {
+        // Track the last position so drag end/cancel can emit the matching pointerUp — without it a
+        // remote component that captured the press stays stuck down until a session reset.
+        var last: Pair<Int, Int>? = null
+        fun up() {
+          last?.let { (px, py) ->
+            onInput(InputEvent(InputEvent.Kind.POINTER_UP, pixelX = px, pixelY = py))
+          }
+          last = null
+        }
         detectDragGestures(
           onDragStart = { offset ->
-            toFramePixels(offset.x, offset.y)?.let { (px, py) ->
-              onInput(InputEvent(InputEvent.Kind.POINTER_DOWN, pixelX = px, pixelY = py))
+            toFramePixels(offset.x, offset.y)?.let {
+              last = it
+              onInput(InputEvent(InputEvent.Kind.POINTER_DOWN, pixelX = it.first, pixelY = it.second))
             }
           },
-          onDragEnd = {},
-          onDragCancel = {},
+          onDragEnd = { up() },
+          onDragCancel = { up() },
         ) { change, _ ->
-          toFramePixels(change.position.x, change.position.y)?.let { (px, py) ->
-            onInput(InputEvent(InputEvent.Kind.POINTER_MOVE, pixelX = px, pixelY = py))
+          toFramePixels(change.position.x, change.position.y)?.let {
+            last = it
+            onInput(InputEvent(InputEvent.Kind.POINTER_MOVE, pixelX = it.first, pixelY = it.second))
           }
         }
       }

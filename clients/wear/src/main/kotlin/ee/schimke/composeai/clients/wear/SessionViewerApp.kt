@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -58,6 +59,8 @@ fun SessionScreen(
   val frame by client.frame.collectAsState()
 
   LaunchedEffect(link) { client.connect(link) }
+  // Close the WebSocket when the screen leaves or the link changes, so the session doesn't leak.
+  DisposableEffect(link) { onDispose { client.close("left session screen") } }
 
   Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
     FrameCanvas(frame = frame, modifier = Modifier.fillMaxSize(), onInput = { client.send(it) })

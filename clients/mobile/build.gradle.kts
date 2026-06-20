@@ -23,6 +23,9 @@ android {
 
   defaultConfig {
     applicationId = "ee.schimke.composeai.clients.mobile"
+    // 26+ so the frame decoder's `java.util.Base64` (API 26+) is available without core-library
+    // desugaring — `:clients:core` is a plain-JVM module packaged into this app.
+    minSdk = 26
     targetSdk = 36
     versionCode = 1
     versionName = "0.1"
