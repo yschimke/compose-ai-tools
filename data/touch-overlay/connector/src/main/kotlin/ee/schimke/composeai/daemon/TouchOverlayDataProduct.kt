@@ -251,9 +251,13 @@ class TouchOverlayExtension :
                       flings.add(Fling(change.position, v, eventMs))
                     }
                     presses.remove(id)
-                    // Pinch ended once we're back under two fingers — forget the baseline so the
-                    // next pinch latches its own.
-                    if (activePointers.size < 2) pinchBaselineSpan = 0f
+                    // Any lift changes the active set, so the latched two-finger baseline (span /
+                    // centroid / angle) is stale — clear it. The next move with ≥ 2 fingers
+                    // re-latches against the pointers that actually remain, so a 3→2 transition
+                    // (e.g. A+B+C then lift A) measures the new B+C pair instead of A+B's baseline.
+                    pinchBaselineSpan = 0f
+                    pinchBaselineCentroid = Offset.Zero
+                    pinchBaselineAngle = 0f
                   }
                 }
               }
