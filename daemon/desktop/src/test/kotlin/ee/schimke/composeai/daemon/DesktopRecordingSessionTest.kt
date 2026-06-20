@@ -953,6 +953,87 @@ class DesktopRecordingSessionTest {
     }
   }
 
+  /**
+   * `assert.textEquals` (issue #1965) resolves the target node and compares its text to the
+   * expected string carried in the event's `inputText` field. Reuses the `TaggedTextSquare` fixture
+   * whose `Text("Hello")` carries `testTag("greeting")`: an exact match is APPLIED; a wrong
+   * expected value or a missing tag is FAILED.
+   */
+  @Test
+  fun scripted_text_equals_assertion_passes_on_match_and_fails_on_mismatch() {
+    val outputDir = tempFolder.newFolder("text-assert-recording-renders")
+    val recordingsRoot = tempFolder.newFolder("text-assert-recordings-root")
+    savedRecordingsDir = System.getProperty(DesktopHost.RECORDINGS_DIR_PROP)
+    System.setProperty(DesktopHost.RECORDINGS_DIR_PROP, recordingsRoot.absolutePath)
+
+    val previewId = "tagged-text-square"
+    val engine = RenderEngine(outputDir = outputDir)
+    val host =
+      DesktopHost(
+        engine = engine,
+        previewSpecResolver = { id ->
+          if (id == previewId) {
+            RenderSpec(
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "TaggedTextSquare",
+              widthPx = 64,
+              heightPx = 64,
+              density = 1.0f,
+              outputBaseName = "tagged-text-square-rec",
+            )
+          } else null
+        },
+      )
+    host.start()
+    try {
+      val session =
+        host.acquireRecordingSession(
+          previewId = previewId,
+          recordingId = "test-rec-text-assert",
+          classLoader =
+            DesktopRecordingSessionTest::class.java.classLoader
+              ?: ClassLoader.getSystemClassLoader(),
+          fps = FPS,
+          scale = 1.0f,
+          overrides = null,
+        )
+      try {
+        fun textAssert(tMs: Long, tag: String, expected: String) =
+          RecordingScriptEvent(
+            tMs = tMs,
+            kind = "assert.textEquals",
+            target = ee.schimke.composeai.daemon.protocol.SemanticsInputTarget(testTag = tag),
+            inputText = expected,
+          )
+        session.postScript(
+          listOf(
+            textAssert(0L, "greeting", "Hello"), // matches → APPLIED
+            textAssert(0L, "greeting", "Goodbye"), // wrong text → FAILED
+            textAssert(0L, "missing", "Hello"), // no such node → FAILED
+          )
+        )
+        val result = session.stop()
+        val asserts = result.scriptEvents.filter { it.kind == "assert.textEquals" }
+        assertEquals(3, asserts.size)
+        assertEquals(RecordingScriptEventStatus.APPLIED, asserts[0].status)
+        assertEquals(RecordingScriptEventStatus.FAILED, asserts[1].status)
+        assertTrue(
+          "mismatch evidence should report the actual text; got ${asserts[1].message}",
+          asserts[1].message?.contains("Hello") == true,
+        )
+        assertEquals(RecordingScriptEventStatus.FAILED, asserts[2].status)
+        assertNotNull(
+          "unresolved target should carry candidates",
+          asserts[2].targetUnresolvedReason,
+        )
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
   private fun readPng(file: File): java.awt.image.BufferedImage {
     assertTrue("rendered PNG must exist on disk: ${file.absolutePath}", file.exists())
     assertTrue("rendered PNG must be non-empty", file.length() > 0)

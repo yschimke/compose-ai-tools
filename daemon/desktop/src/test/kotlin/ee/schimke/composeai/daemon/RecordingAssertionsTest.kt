@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -52,4 +53,75 @@ class RecordingAssertionsTest {
     assertTrue((verdict as AssertionVerdict.Failed).reason.contains("assert.notVisible"))
     assertTrue(verdict.reason.contains("text=Error"))
   }
+
+  @Test
+  fun assert_text_equals_passes_on_exact_match() {
+    assertEquals(
+      AssertionVerdict.Passed,
+      evaluateTextEqualsAssertion(expected = "Hello", actual = "Hello", "tag=greeting"),
+    )
+  }
+
+  @Test
+  fun assert_text_equals_fails_on_mismatch_and_reports_both() {
+    val verdict =
+      evaluateTextEqualsAssertion(expected = "Hello", actual = "Goodbye", "tag=greeting")
+    assertTrue(verdict is AssertionVerdict.Failed)
+    val reason = (verdict as AssertionVerdict.Failed).reason
+    assertTrue("reports actual", reason.contains("Goodbye"))
+    assertTrue("reports expected", reason.contains("Hello"))
+  }
+
+  @Test
+  fun assert_text_equals_fails_when_node_has_no_text() {
+    val verdict = evaluateTextEqualsAssertion(expected = "Hello", actual = null, "tag=greeting")
+    assertTrue(verdict is AssertionVerdict.Failed)
+    assertTrue((verdict as AssertionVerdict.Failed).reason.contains("<none>"))
+  }
+
+  @Test
+  fun resolved_node_text_uses_own_text_when_present() {
+    val node = node(testTag = "greeting", text = "Hello")
+    assertEquals("Hello", resolvedNodeText(node))
+  }
+
+  @Test
+  fun resolved_node_text_falls_back_to_descendant_text() {
+    // `Button(Modifier.testTag("submit")) { Text("Submit") }`: the tag-bearing container has no
+    // text
+    // of its own in the unmerged tree; the visible text lives on a child node.
+    val container = node(testTag = "submit", text = null, children = listOf(node(text = "Submit")))
+    assertEquals("Submit", resolvedNodeText(container))
+  }
+
+  @Test
+  fun resolved_node_text_joins_multiple_descendant_texts() {
+    val container =
+      node(
+        testTag = "row",
+        text = null,
+        children = listOf(node(text = "Hello"), node(text = "World")),
+      )
+    assertEquals("Hello\nWorld", resolvedNodeText(container))
+  }
+
+  @Test
+  fun resolved_node_text_is_null_when_nothing_has_text() {
+    assertEquals(null, resolvedNodeText(node(testTag = "empty", text = null)))
+  }
+
+  private var nodeCounter = 0
+
+  private fun node(
+    testTag: String? = null,
+    text: String? = null,
+    children: List<ComposeSemanticsNode> = emptyList(),
+  ): ComposeSemanticsNode =
+    ComposeSemanticsNode(
+      nodeId = "n${nodeCounter++}",
+      boundsInRoot = "",
+      testTag = testTag,
+      text = text,
+      children = children,
+    )
 }

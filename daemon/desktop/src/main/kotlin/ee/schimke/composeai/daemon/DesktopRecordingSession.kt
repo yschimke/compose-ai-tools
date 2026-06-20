@@ -318,6 +318,7 @@ class DesktopRecordingSession(
           RecordingScriptDataExtensions.ASSERT_NOT_VISIBLE_EVENT,
           assertVisibilityHandler(expectVisible = false),
         )
+        put(RecordingScriptDataExtensions.ASSERT_TEXT_EQUALS_EVENT, assertTextEqualsHandler())
         put(
           RecordingScriptDataExtensions.PROBE_EVENT,
           RecordingScriptEventHandler { e, _ ->
@@ -466,6 +467,76 @@ class DesktopRecordingSession(
             } else null
           failedEvidence(event, verdict.reason, targetUnresolvedReason = reason)
         }
+      }
+    }
+
+  /**
+   * `assert.textEquals` — resolve the event's [RecordingScriptEvent.target] to a single node and
+   * fail unless that node's text equals the expected string carried in the event's existing
+   * `inputText` field (reused rather than adding a new wire field). A missing target/expected, or a
+   * target that matches no node (or more than one, so "the text" is ambiguous), is a failed
+   * assertion. The string comparison itself lives in the pure [evaluateTextEqualsAssertion].
+   */
+  private fun assertTextEqualsHandler(): RecordingScriptEventHandler =
+    RecordingScriptEventHandler { event, _ ->
+      val expected =
+        event.inputText
+          ?: return@RecordingScriptEventHandler failedEvidence(
+            event,
+            "${event.kind} requires the expected text in the 'inputText' field",
+          )
+      val wireTarget =
+        event.target
+          ?: return@RecordingScriptEventHandler failedEvidence(
+            event,
+            "${event.kind} requires a 'target' (ref / testTag / role+text) to assert on",
+          )
+      val target =
+        wireTarget.toSemanticsTarget()
+          ?: return@RecordingScriptEventHandler failedEvidence(
+            event,
+            "${event.kind} target has no resolvable field; set ref, testTag, role, or text",
+          )
+      val root =
+        state.scene.composeSemanticsRoot()
+          ?: return@RecordingScriptEventHandler failedEvidence(
+            event,
+            "${event.kind}: nothing rendered yet, so $target resolved to no node",
+          )
+      when (val res = SemanticsTargets.resolve(root, target)) {
+        is TargetResolution.Resolved -> {
+          when (
+            val verdict =
+              evaluateTextEqualsAssertion(expected, resolvedNodeText(res.node), target.toString())
+          ) {
+            AssertionVerdict.Passed -> appliedEvidence(event, "${event.kind} satisfied")
+            is AssertionVerdict.Failed -> failedEvidence(event, verdict.reason)
+          }
+        }
+        TargetResolution.NotFound ->
+          failedEvidence(
+            event,
+            "${event.kind}: $target matched no node",
+            targetUnresolvedReason =
+              semanticsTargetUnresolvedReason(
+                SemanticsTargetUnresolvedCode.NO_MATCH,
+                wireTarget,
+                matchCount = 0,
+                candidates = SemanticsTargets.targetableNodes(root),
+              ),
+          )
+        is TargetResolution.Ambiguous ->
+          failedEvidence(
+            event,
+            "${event.kind}: $target matched ${res.candidates.size} nodes; narrow it to assert text",
+            targetUnresolvedReason =
+              semanticsTargetUnresolvedReason(
+                SemanticsTargetUnresolvedCode.AMBIGUOUS,
+                wireTarget,
+                matchCount = res.candidates.size,
+                candidates = res.candidates,
+              ),
+          )
       }
     }
 

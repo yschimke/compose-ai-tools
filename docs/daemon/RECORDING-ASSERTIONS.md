@@ -15,10 +15,16 @@ event's `tMs`:
 |---------------------|---------------------------------------|-------------------------------------|
 | `assert.visible`    | the `target` matches ≥ 1 node         | the target matches no node          |
 | `assert.notVisible` | the `target` matches no node          | the target matches ≥ 1 node         |
+| `assert.textEquals` | the `target` resolves and its text == the expected string | the text differs, or the target matches 0 / >1 nodes |
 
 The `target` is the existing `SemanticsInputTarget` (`ref` / `testTag` / `role`+`text`) — the same
 handle `input.click` and the rest of the recording vocabulary already resolve, so assertions and
 input share one resolver (`SemanticsTargets.resolve`). No new target shape, no new finder.
+`assert.textEquals` carries its expected string in the **existing `inputText` field** (reused from
+`uia.inputText`), so it adds no new wire field either. It compares against the resolved node's own
+text, or — for a tag-on-the-container shape like `Button(Modifier.testTag("submit")) { Text("Submit") }`
+— the **merged text of its descendants**, mirroring Compose's merged semantics so the check sees what
+the user sees.
 
 A failed assertion produces `RecordingScriptEvidence` with the new
 `RecordingScriptEventStatus.FAILED` status (distinct from `UNSUPPORTED` — the daemon *did* evaluate
@@ -63,7 +69,7 @@ Comparison with the emulator-driven UI-test tools this is modelled on:
 | Driving by stable handle, not coordinates (Maestro `id:`/text, Espresso `withTag`) | Already present | `SemanticsInputTarget` predates this PR; assertions reuse it. |
 | Deterministic virtual clock (vs. emulator wall-clock + idling resources) | Already present | Recordings tick on `frameIndex * 1e9 / fps`; no flakiness, no `IdlingResource` needed — the scene can't run ahead of the script. |
 | Same artifact for human review + machine gate (Maestro recordings, Robo crawl reports) | **Shipped** | One GIF/APNG/MP4 doubles as the visual record and, via assertions, the pass/fail signal. |
-| Assert exact text / value (Maestro `assertTrue`, Espresso `withText`) | Roadmap | `assert.textEquals` against the resolved node's `text`. Held off v1 to keep the wire shape additive. |
+| Assert exact text / value (Maestro `assertTrue`, Espresso `withText`) | **Shipped** | `assert.textEquals` compares the resolved node's `text` to the expected string in the existing `inputText` field. |
 | Crawl / auto-explore (Robo, Monkey) | Roadmap, narrow | A preview is a single held scene, not an app graph — "crawl" reduces to "fan a tap over every clickable semantics node and snapshot," which the probe machinery could drive. Useful as a smoke check, not a crawl. |
 
 ### Other emulator-test techniques worth borrowing
@@ -93,7 +99,7 @@ land (each is a separate follow-up, not in this PR):
 - Event kinds + descriptor: `RecordingScriptDataExtensions.ASSERT_VISIBLE_EVENT` /
   `ASSERT_NOT_VISIBLE_EVENT` / `assertionDescriptor`
   (`data/render/core/.../DataExtensionPlan.kt`).
-- Verdict logic (pure, unit-tested): `evaluateVisibilityAssertion`
+- Verdict logic (pure, unit-tested): `evaluateVisibilityAssertion` / `evaluateTextEqualsAssertion`
   (`daemon/desktop/.../RecordingAssertions.kt`).
 - Handler wiring: `DesktopRecordingSession.assertVisibilityHandler`; advertised by
   `DesktopHost.recordingScriptEventDescriptors`.
