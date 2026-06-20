@@ -49,18 +49,12 @@ pluginManagement {
 }
 ```
 
-…or via a version catalog (`gradle/libs.versions.toml`):
-
-```toml
-[plugins]
-composePreviewConfig = { id = "ee.schimke.composeai.preview.config", version = "<version>" }
-```
-
-Then in each module that should carry preview configuration, apply it **without** a version:
+Then in each module that should carry preview configuration, apply it **without** a version — the
+version is resolved from the central `pluginManagement` pin above:
 
 ```kotlin
 plugins {
-  id("ee.schimke.composeai.preview.config")          // or: alias(libs.plugins.composePreviewConfig)
+  id("ee.schimke.composeai.preview.config")   // no version here — resolved from pluginManagement
 }
 
 composePreview {
@@ -71,6 +65,12 @@ composePreview {
 
 Look up the latest version on
 [Maven Central](https://central.sonatype.com/artifact/ee.schimke.composeai/compose-preview-config).
+
+> **Don't apply it through a version-catalog `alias(...)` in a module's `plugins { }` block.** A
+> catalog plugin entry carries a version, so `alias(libs.plugins.composePreviewConfig)` *requests*
+> that version in the module — which is exactly the versioned per-module apply that collides with the
+> CLI-injected runtime (see [below](#avoid-a-per-module-version)). Pin the version once in
+> `pluginManagement { plugins { … } }` and apply the bare `id(...)` per module instead.
 
 ## How the CLI picks it up
 
@@ -104,16 +104,18 @@ block:
 ```kotlin
 // ⚠️ avoid
 plugins {
-  id("ee.schimke.composeai.preview.config") version "<version>"   // don't pin the version here
+  id("ee.schimke.composeai.preview.config") version "<version>"        // don't pin the version here
+  // alias(libs.plugins.composePreviewConfig)  // ⚠️ same problem — a catalog alias requests a version
 }
 ```
 
 When the CLI auto-injects the runtime plugin, `compose-preview-config` is pulled onto that module's
-buildscript classpath transitively. Gradle's `plugins { }` DSL rejects `id(...) version "..."` for a
-plugin that is *also* on the buildscript classpath ("the plugin is already on the classpath with an
-unknown version, so compatibility cannot be checked"). Pinning the version **centrally**
-(`pluginManagement` / version catalog) and applying it **version-less** per module sidesteps this —
-applying a classpath plugin by id with no requested version is allowed.
+buildscript classpath transitively. Gradle's `plugins { }` DSL rejects a *versioned* request
+(`id(...) version "..."`, or `alias(libs.plugins.…)` — a catalog alias always carries a version) for
+a plugin that is *also* on the buildscript classpath ("the plugin is already on the classpath with an
+unknown version, so compatibility cannot be checked"). Pinning the version **centrally** in
+`pluginManagement { plugins { … } }` and applying the bare `id(...)` **without a version** per module
+sidesteps this — applying a classpath plugin by id with no requested version is allowed.
 
 ## What lands in the marker
 
