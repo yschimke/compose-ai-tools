@@ -311,6 +311,14 @@ class DesktopRecordingSession(
         put(InputKeyboardRecordingScriptEvents.KEY_DOWN_EVENT, keyHandler(KeyEventType.KeyDown))
         put(InputKeyboardRecordingScriptEvents.KEY_UP_EVENT, keyHandler(KeyEventType.KeyUp))
         put(
+          RecordingScriptDataExtensions.ASSERT_VISIBLE_EVENT,
+          assertVisibilityHandler(expectVisible = true),
+        )
+        put(
+          RecordingScriptDataExtensions.ASSERT_NOT_VISIBLE_EVENT,
+          assertVisibilityHandler(expectVisible = false),
+        )
+        put(
           RecordingScriptDataExtensions.PROBE_EVENT,
           RecordingScriptEventHandler { e, _ ->
             // Snapshot the live semantics at the probe (issue #1786) so the codegen path can diff
@@ -401,6 +409,65 @@ class DesktopRecordingSession(
         )
     }
   }
+
+  /**
+   * Maestro-style visibility assertion. Resolves the event's [RecordingScriptEvent.target] against
+   * the held scene's live semantics tree (the same resolver the tap path uses) and records
+   * [appliedEvidence] when the condition holds or [failedEvidence] (status `FAILED`) when it
+   * doesn't. A missing/empty `target` is itself a failed assertion — the script asked to check
+   * something it never named. The verdict logic lives in the pure [evaluateVisibilityAssertion] so
+   * it's testable without a scene; this handler only does the resolution + evidence wiring.
+   */
+  private fun assertVisibilityHandler(expectVisible: Boolean): RecordingScriptEventHandler =
+    RecordingScriptEventHandler { event, _ ->
+      val wireTarget =
+        event.target
+          ?: return@RecordingScriptEventHandler failedEvidence(
+            event,
+            "${event.kind} requires a 'target' (ref / testTag / role+text) to assert on",
+          )
+      val target =
+        wireTarget.toSemanticsTarget()
+          ?: return@RecordingScriptEventHandler failedEvidence(
+            event,
+            "${event.kind} target has no resolvable field; set ref, testTag, role, or text",
+          )
+      val root = state.scene.composeSemanticsRoot()
+      var matchCount = 0
+      var candidates: List<ComposeSemanticsNode> = emptyList()
+      if (root != null) {
+        when (val res = SemanticsTargets.resolve(root, target)) {
+          is TargetResolution.Resolved -> matchCount = 1
+          TargetResolution.NotFound -> {
+            matchCount = 0
+            candidates = SemanticsTargets.targetableNodes(root)
+          }
+          is TargetResolution.Ambiguous -> {
+            matchCount = res.candidates.size
+            candidates = res.candidates
+          }
+        }
+      }
+      when (
+        val verdict = evaluateVisibilityAssertion(expectVisible, matchCount, target.toString())
+      ) {
+        AssertionVerdict.Passed -> appliedEvidence(event, "${event.kind} satisfied")
+        is AssertionVerdict.Failed -> {
+          // Attach the candidate list when the target was expected but absent, so the agent sees
+          // what *is* on screen without re-rendering — same affordance the tap-miss path gives.
+          val reason =
+            if (expectVisible && root != null) {
+              semanticsTargetUnresolvedReason(
+                SemanticsTargetUnresolvedCode.NO_MATCH,
+                wireTarget,
+                matchCount = matchCount,
+                candidates = candidates,
+              )
+            } else null
+          failedEvidence(event, verdict.reason, targetUnresolvedReason = reason)
+        }
+      }
+    }
 
   private fun clickHandler(): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, ctx ->

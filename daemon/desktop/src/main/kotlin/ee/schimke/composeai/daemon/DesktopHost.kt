@@ -172,6 +172,7 @@ open class DesktopHost(
     if (supportsRecording)
       listOf(
         RecordingScriptDataExtensions.recordingDescriptor,
+        RecordingScriptDataExtensions.assertionDescriptor,
         InputTouchRecordingScriptEvents.descriptor,
         InputKeyboardRecordingScriptEvents.supportedDescriptor,
       )

@@ -150,3 +150,28 @@ fun unsupportedEvidence(
     unsupportedReason = unsupportedReason,
     targetUnresolvedReason = targetUnresolvedReason,
   )
+
+/**
+ * Build an [RecordingScriptEvidence] for an assertion event whose condition was **not** met (status
+ * [RecordingScriptEventStatus.FAILED]). The daemon understood and evaluated the event — this is a
+ * test-style failure, not a dispatch gap, so it's distinct from [unsupportedEvidence]. The required
+ * [message] states the unmet condition; optional [targetUnresolvedReason] carries the matched-count
+ * + candidate nodes so the agent can see what *was* present without re-rendering.
+ */
+fun failedEvidence(
+  event: RecordingScriptEvent,
+  message: String,
+  targetUnresolvedReason: ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedReason? =
+    null,
+): RecordingScriptEvidence =
+  RecordingScriptEvidence(
+    tMs = event.tMs,
+    kind = event.kind,
+    status = RecordingScriptEventStatus.FAILED,
+    label = event.label,
+    checkpointId = event.checkpointId,
+    lifecycleEvent = event.lifecycleEvent,
+    tags = event.tags,
+    message = message,
+    targetUnresolvedReason = targetUnresolvedReason,
+  )

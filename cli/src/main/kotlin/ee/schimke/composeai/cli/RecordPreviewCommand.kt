@@ -1,8 +1,11 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.daemon.protocol.RecordingEncodeResult
 import ee.schimke.composeai.daemon.protocol.RecordingFormat
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
+import ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus
+import ee.schimke.composeai.daemon.protocol.RecordingScriptEvidence
 import ee.schimke.composeai.render.session.RenderSession
 import ee.schimke.composeai.render.session.RenderSessionConfig
 import ee.schimke.composeai.render.session.RenderSessionException
@@ -37,6 +40,15 @@ import okio.Path.Companion.toPath
  * emit through MCP `record_preview` (`input.pointerDown` / `pointerMove` / `pointerUp` / `click`,
  * `input.keyDown` / `keyUp`, `recording.probe`, …). Recordings tick on a virtual clock keyed to
  * `fps`, so the same script reproduces the same frames every run.
+ *
+ * **Assertions.** The script can also carry Maestro-style `assert.visible` / `assert.notVisible`
+ * events, each with a `target` (ref / testTag / role+text). They resolve against the live semantics
+ * tree at their `tMs`; if any assertion isn't met the command still writes the recording (the
+ * frames show why it failed) but exits non-zero (code 2), turning a recording into a check CI can
+ * gate on:
+ * ```json
+ * { "tMs": 1500, "kind": "assert.visible", "target": { "text": "Submit" } }
+ * ```
  */
 class RecordPreviewCommand(args: List<String>) : Command(args) {
 
@@ -139,7 +151,7 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
         fail("failed to open render session: ${e.message ?: e.javaClass.simpleName}")
       }
 
-    val encoded = session.use { live ->
+    val outcome = session.use { live ->
       val started =
         live.recordingStart(target.previewId, fps = fps, scale = scale, overrides = overrides)
       if (events.isNotEmpty()) {
@@ -152,19 +164,41 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
             "(${stopped.frameWidthPx}x${stopped.frameHeightPx}px)"
         )
       }
-      try {
-        live.recordingEncode(started.recordingId, format = format)
-      } catch (e: RenderSessionException) {
-        fail(encodeFailureMessage(format, e))
-      }
+      val encoded =
+        try {
+          live.recordingEncode(started.recordingId, format = format)
+        } catch (e: RenderSessionException) {
+          fail(encodeFailureMessage(format, e))
+        }
+      RecordingOutcome(scriptEvents = stopped.scriptEvents, encoded = encoded)
     }
 
-    val outFile = copyArtifact(encoded.videoPath, outPath)
+    val outFile = copyArtifact(outcome.encoded.videoPath, outPath)
     println(
       "Recorded ${target.previewId} → ${outFile.path} " +
-        "(${format.name.lowercase()}, ${encoded.sizeBytes} bytes)"
+        "(${format.name.lowercase()}, ${outcome.encoded.sizeBytes} bytes)"
     )
+
+    // Gate on assertions last, after the artifact is on disk — a failing recording is still worth
+    // keeping (the captured frames show *why* the assertion failed). A non-zero exit lets CI /
+    // agents
+    // treat a recording as a check, the way Maestro's `assertVisible` fails a flow.
+    val failures = outcome.scriptEvents.filter { it.status == RecordingScriptEventStatus.FAILED }
+    if (failures.isNotEmpty()) {
+      System.err.println(
+        "compose-preview record: ${failures.size} assertion(s) failed for ${target.previewId}:"
+      )
+      for (f in failures) {
+        System.err.println("  - [t=${f.tMs}ms] ${f.kind}: ${f.message ?: "assertion not met"}")
+      }
+      exitProcess(2)
+    }
   }
+
+  private data class RecordingOutcome(
+    val scriptEvents: List<RecordingScriptEvidence>,
+    val encoded: RecordingEncodeResult,
+  )
 
   private data class ResolvedModule(val projectDir: File, val previewId: String)
 

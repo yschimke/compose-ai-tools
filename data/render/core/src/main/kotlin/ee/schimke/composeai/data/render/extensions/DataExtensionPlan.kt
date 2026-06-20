@@ -263,6 +263,15 @@ object RecordingScriptDataExtensions {
   const val PREVIEW_RELOAD_EVENT: String = "preview.reload"
 
   /**
+   * Assertion script events (Maestro-style `assertVisible` / `assertNotVisible`). Each resolves the
+   * event's `target` (ref / testTag / role+text) against the held scene's live semantics tree and
+   * records [ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.FAILED] evidence when
+   * the condition isn't met — turning a recording into a check the `record` command can gate on.
+   */
+  const val ASSERT_VISIBLE_EVENT: String = "assert.visible"
+  const val ASSERT_NOT_VISIBLE_EVENT: String = "assert.notVisible"
+
+  /**
    * `recording.probe` descriptor with `supported = true`. Returned from each
    * `RenderHost.recordingScriptEventDescriptors()` that wires a real probe handler in its
    * recording-session registry (today: both desktop and android backends).
@@ -279,6 +288,34 @@ object RecordingScriptDataExtensions {
             summary = "Records a named point in the recording timeline.",
             supported = true,
           )
+        ),
+    )
+
+  /**
+   * `assert.*` descriptor. Advertised (`supported = true`) only by hosts that wire the assertion
+   * handlers in their recording-session registry — desktop today; Android is a follow-up (its
+   * semantics snapshot doesn't yet carry the refs the resolver needs). Hosts that don't wire them
+   * simply omit this descriptor, so the MCP layer rejects `assert.*` up front for those daemons.
+   */
+  val assertionDescriptor: DataExtensionDescriptor =
+    DataExtensionDescriptor(
+      id = DataExtensionId("assertion"),
+      displayName = "Recording assertions",
+      recordingScriptEvents =
+        listOf(
+          RecordingScriptEventDescriptor(
+            id = ASSERT_VISIBLE_EVENT,
+            displayName = "Assert visible",
+            summary =
+              "Fails the recording unless the target (ref/testTag/role+text) matches a node.",
+            supported = true,
+          ),
+          RecordingScriptEventDescriptor(
+            id = ASSERT_NOT_VISIBLE_EVENT,
+            displayName = "Assert not visible",
+            summary = "Fails the recording if the target matches any node.",
+            supported = true,
+          ),
         ),
     )
 

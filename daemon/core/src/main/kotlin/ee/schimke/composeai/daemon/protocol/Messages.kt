@@ -1932,6 +1932,13 @@ data class RecordingInputParams(
 enum class RecordingScriptEventStatus {
   @SerialName("applied") APPLIED,
   @SerialName("unsupported") UNSUPPORTED,
+  /**
+   * The event ran but its assertion was not satisfied (e.g. `assert.visible` matched no node).
+   * Distinct from [UNSUPPORTED] — the daemon understood and evaluated the event; the UI just didn't
+   * meet the asserted condition. Tooling that gates on assertions (the `record` command's non-zero
+   * exit) keys off this status; a failed assertion is a test failure, not a dispatch gap.
+   */
+  @SerialName("failed") FAILED,
 }
 
 /** One scripted input/control event on the virtual timeline. */
