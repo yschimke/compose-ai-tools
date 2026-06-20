@@ -29,6 +29,11 @@ jobs:
     outputs:
       release_created: ${{ steps.rp.outputs.release_created }}
       tag_name: ${{ steps.rp.outputs.tag_name }}
+      # The `clients` component (mobile + wear apps) is a separate manifest package, so its
+      # outputs are path-prefixed (`clients--…`). It releases on its own `clients-v*` tag,
+      # independent of the root `v*` line above.
+      clients_release_created: ${{ steps.rp.outputs['clients--release_created'] }}
+      clients_tag_name: ${{ steps.rp.outputs['clients--tag_name'] }}
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: rp
@@ -55,3 +60,16 @@ jobs:
     secrets: inherit
     permissions:
       contents: write   # needed by the called workflow's `release` job
+
+  # Build + publish the mobile / wear client apps when the `clients` component is released.
+  # Same GITHUB_TOKEN-doesn't-trigger-workflows reason as above: invoked via workflow_call rather
+  # than relying on the `clients-v*` tag push.
+  release-clients:
+    needs: release-please
+    if: needs.release-please.outputs.clients_release_created == 'true'
+    uses: ./.github/workflows/clients-release.yml
+    with:
+      tag: ${{ needs.release-please.outputs.clients_tag_name }}
+    secrets: inherit
+    permissions:
+      contents: write

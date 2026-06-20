@@ -7,12 +7,19 @@ The setup mirrors [`yschimke/homeassistant-remotecompose`][harc]'s release pipel
 
 ## How a release happens
 
-1. Push a `clients-v<version>` tag (e.g. `clients-v0.1.0`), or run the
-   **Release client apps** workflow manually with a tag input.
-2. CI decodes the signing keystore, runs
-   `:clients:{mobile,wear}:assembleRelease` + `bundleRelease`, then
-   `:clients:{mobile,wear}:publishBundle` to push each AAB to Play's internal
-   track as a **draft**, and attaches the APKs/AABs to the GitHub release.
+**Normal path — release-please.** The apps are a `clients` release-please component
+(separate from the root `v*` line). Conventional commits touching `clients/**`
+keep a release PR updated; merging it bumps the `appVersionName` in both modules,
+tags `clients-v<version>`, and `release-please.yml` calls the publish workflow via
+`workflow_call`. One button, no manual tag.
+
+**Escape hatches.** Push a `clients-v<version>` tag by hand, or run the **Release
+client apps** workflow manually with a tag input.
+
+The publish job decodes the signing keystore, runs
+`:clients:{mobile,wear}:assembleRelease` + `bundleRelease`, then
+`:clients:{mobile,wear}:publishBundle` to push each AAB to Play's internal track
+as a **draft**, and attaches the APKs/AABs to the GitHub release.
 
 Without the secrets below the job still runs — it assembles **unsigned** release
 APKs and skips signing + Play (each step gates on its own secret), so PRs and
@@ -70,11 +77,12 @@ release.
 
 ## Versioning
 
-Each module's `versionName` is a single constant in its `build.gradle.kts`;
-`versionCode` is packed from it (`MAJOR*10000 + MINOR*100 + PATCH`). Bump the
-constant and tag. Wiring the version into release-please (as HARC does, with an
-`x-release-please-version` marker) is a sensible follow-up but intentionally not
-done here — the apps version independently from the published Gradle artifacts.
+Each module's `versionName` is a single constant in its `build.gradle.kts`, carrying
+the `// x-release-please-version` marker so release-please bumps it; `versionCode` is
+packed from it (`MAJOR*10000 + MINOR*100 + PATCH`). The apps version independently
+from the published Gradle artifacts (the root `v*` line) via the `clients` component
+and `clients-v*` tags. For a manual one-off, edit the constant and push a
+`clients-v<version>` tag.
 
 [gpp]: https://github.com/Triple-T/gradle-play-publisher
 [harc]: https://github.com/yschimke/homeassistant-remotecompose
