@@ -66,11 +66,17 @@ class FfmpegEncoderArgsTest {
     val inputs = args.withIndex().filter { it.value == "-i" }.map { it.index }
     assertEquals("expected two -i inputs (frames + audio)", 2, inputs.size)
     assertEquals(audio.absolutePath, args[inputs[1] + 1])
-    // AAC for the MP4 container, explicit maps, shortest clamp.
+    // AAC for the MP4 container, explicit maps, apad+shortest hold the output to the video length.
     assertTrue(containsSeq(args, listOf("-c:a", "aac")))
     assertTrue(containsSeq(args, listOf("-map", "0:v:0")))
     assertTrue(containsSeq(args, listOf("-map", "1:a:0")))
+    // `-af apad` pads short audio so the video is never truncated; `-shortest` clamps long audio.
+    assertTrue(
+      "short audio must be padded, not truncate the video",
+      containsSeq(args, listOf("-af", "apad")),
+    )
     assertTrue(args.contains("-shortest"))
+    assertTrue("apad must precede -shortest", args.indexOf("apad") < args.indexOf("-shortest"))
     assertEquals("output stays last", out.absolutePath, args.last())
   }
 

@@ -165,8 +165,9 @@ object FfmpegEncoder {
    * codec / mux flags — especially the optional [audioTrack] muxing — can be unit-tested without
    * shelling out. When [audioTrack] is non-null a second `-i` input is added, encoded to the
    * container's standard audio codec (AAC for MP4, Opus for WEBM), and explicitly mapped alongside
-   * the video stream; `-shortest` clamps the result to the video length so a slightly-longer TTS
-   * track doesn't extend the clip past its last frame.
+   * the video stream. `-af apad` pads short audio with trailing silence and `-shortest` clamps long
+   * audio, so the output is exactly the video duration in both directions — a TTS track that ends
+   * before the last frame never truncates the video.
    */
   internal fun buildArgs(
     framesDir: File,
@@ -225,9 +226,12 @@ object FfmpegEncoder {
       }
     }
     if (audioTrack != null) {
-      // Map the video from input 0 and the audio from input 1 explicitly, and clamp to the video
-      // duration so the encode ends with the last frame even if the audio track runs slightly long.
-      args.addAll(listOf("-map", "0:v:0", "-map", "1:a:0", "-shortest"))
+      // Map video from input 0 and audio from input 1 explicitly. `-af apad` pads the audio with
+      // trailing silence so a TTS track that ends before the last frame never becomes the shortest
+      // stream; `-shortest` then clamps the output to the video length. Together they hold the
+      // result to exactly the video duration whether the audio runs short (silence-padded) or long
+      // (truncated) — so trailing frames are never dropped.
+      args.addAll(listOf("-map", "0:v:0", "-map", "1:a:0", "-af", "apad", "-shortest"))
     }
     args.add(out.absolutePath)
     return args
