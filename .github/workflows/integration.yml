@@ -157,6 +157,16 @@ jobs:
             ref: main
             workdir: ComposeStarter
             module: app
+            # PR-blocking sample. All matrix cells run on the daily cron (drift
+            # signal against live upstream repos); on `pull_request` only the
+            # cells flagged `pr_blocking: true` do their build/discover/render
+            # work (gated at step level — see the `Discover`/`Verify`/`Render`
+            # steps below). The other cells still spin up but skip the expensive
+            # gradle steps, so their check still reports (branch-protection-safe)
+            # while ~5 external builds drop off the PR critical path. This cell is
+            # the widest coverage: full render pipeline + daemon round-trip +
+            # IP/CC end-to-end.
+            pr_blocking: true
             # ComposeStarter enables isolated-projects + configuration-cache. The plugin used to
             # need `-Dorg.gradle.unsafe.isolated-projects=false -Dorg.gradle.isolated-projects
             # =false --no-configuration-cache` here because of `rootProject.findProject` walks +
@@ -235,6 +245,8 @@ jobs:
             ref: main
             workdir: .
             module: app
+            # PR-blocking sample: a large modern single-module app.
+            pr_blocking: true
             # No opt-outs after #1546's IP-cleanup pass (#1549 tracks the cross-project-metadata
             # follow-up). Re-add specific flags here (with a fresh comment naming the regression)
             # if the consumer's build surfaces a new CC / IP gap.
@@ -272,6 +284,9 @@ jobs:
             repo: android/nowinandroid
             ref: main
             workdir: .
+            # PR-blocking sample: flavored multi-module discovery (guards the
+            # #1546 variant-matching fix against a large real project).
+            pr_blocking: true
             # `:app` declares productFlavors `demo` / `prod` with build types
             # `debug` / `release`, so its variants are `demoDebug`, `prodDebug`,
             # `demoRelease`, `prodRelease` — no plain `debug`. `:app-nia-catalog`
@@ -708,7 +723,11 @@ jobs:
         run: ${{ matrix.pre_gradle_script }}
 
       - name: Discover previews via Gradle
-        if: ${{ !matrix.use_cli }}
+        # On PRs only `pr_blocking` cells do the expensive gradle work; the rest
+        # are covered by the daily cron + push-to-main. `matrix` is available at
+        # step level (unlike at `jobs.<id>.if`), so the cell still reports its
+        # check — it just skips the build.
+        if: ${{ !matrix.use_cli && (github.event_name != 'pull_request' || matrix.pr_blocking) }}
         working-directory: external/${{ matrix.workdir }}
         env:
           COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
@@ -722,7 +741,7 @@ jobs:
             --stacktrace
 
       - name: CLI — list previews (${{ matrix.module }})
-        if: matrix.use_cli
+        if: ${{ matrix.use_cli && (github.event_name != 'pull_request' || matrix.pr_blocking) }}
         working-directory: external/${{ matrix.workdir }}
         env:
           COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
@@ -735,6 +754,9 @@ jobs:
           compose-preview list --module "${{ matrix.module }}"
 
       - name: Verify previews.json was produced
+        # Skip the assertion on cells whose discovery was skipped above, else it
+        # would fail on a missing manifest.
+        if: ${{ github.event_name != 'pull_request' || matrix.pr_blocking }}
         working-directory: external/${{ matrix.workdir }}
         run: |
           set -euo pipefail
@@ -756,7 +778,7 @@ jobs:
           fi
 
       - name: Render previews via Gradle
-        if: ${{ matrix.render && !matrix.use_cli }}
+        if: ${{ matrix.render && !matrix.use_cli && (github.event_name != 'pull_request' || matrix.pr_blocking) }}
         working-directory: external/${{ matrix.workdir }}
         env:
           COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
@@ -771,7 +793,7 @@ jobs:
             --stacktrace
 
       - name: CLI — render previews (${{ matrix.module }})
-        if: ${{ matrix.render && matrix.use_cli }}
+        if: ${{ matrix.render && matrix.use_cli && (github.event_name != 'pull_request' || matrix.pr_blocking) }}
         working-directory: external/${{ matrix.workdir }}
         env:
           COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
@@ -783,7 +805,7 @@ jobs:
           compose-preview render --module "${{ matrix.module }}"
 
       - name: Verify PNGs were produced
-        if: matrix.render
+        if: ${{ matrix.render && (github.event_name != 'pull_request' || matrix.pr_blocking) }}
         working-directory: external/${{ matrix.workdir }}
         run: |
           set -euo pipefail
@@ -801,7 +823,7 @@ jobs:
           printf '  %s\n' "${pngs[@]}"
 
       - name: Render XR subspace previews (composePreviewRenderXr)
-        if: matrix.render_xr
+        if: ${{ matrix.render_xr && (github.event_name != 'pull_request' || matrix.pr_blocking) }}
         working-directory: external/${{ matrix.workdir }}
         env:
           COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
@@ -818,7 +840,7 @@ jobs:
             --stacktrace
 
       - name: Verify XR scene.json was produced
-        if: matrix.render_xr
+        if: ${{ matrix.render_xr && (github.event_name != 'pull_request' || matrix.pr_blocking) }}
         working-directory: external/${{ matrix.workdir }}
         run: |
           set -euo pipefail
@@ -1068,7 +1090,7 @@ jobs:
           retention-days: 7
 
       - name: Verify at least one TILE preview was rendered
-        if: matrix.render && matrix.require_tile_render
+        if: ${{ matrix.render && matrix.require_tile_render && (github.event_name != 'pull_request' || matrix.pr_blocking) }}
         working-directory: external/${{ matrix.workdir }}
         run: |
           set -euo pipefail
