@@ -142,6 +142,32 @@ class PreviewOverrideMergeTest {
   }
 
   @Test
+  fun `talkBack override merges into the bag and flows through toExtensionOverrides`() {
+    // Issue #1956 — the TalkBack focus overlay is opt-in via overrides.talkBack; it must survive
+    // the
+    // merge → toExtensionOverrides projection so DesktopRecordingSession can read it off the spec.
+    val base =
+      PreviewOverrideBaseSpec(
+        widthPx = 320,
+        heightPx = 480,
+        density = 2.0f,
+        device = null,
+        localeTag = null,
+        fontScale = null,
+        uiMode = null,
+        orientation = null,
+        inspectionMode = null,
+      )
+
+    val merged = mergePreviewOverrides(base, PreviewOverrides(talkBack = true))
+    assertEquals(true, merged.talkBack)
+    assertEquals(true, merged.toExtensionOverrides()?.talkBack)
+
+    // Default (unset) stays off and projects to an empty bag.
+    assertNull(mergePreviewOverrides(base, PreviewOverrides()).toExtensionOverrides())
+  }
+
+  @Test
   fun `remoteCompose override merges into the bag and flows through toExtensionOverrides`() {
     val base =
       PreviewOverrideBaseSpec(

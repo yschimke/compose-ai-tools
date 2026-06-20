@@ -1549,7 +1549,8 @@ class DaemonMcpServerTest {
     // through renderNow.overrides. A backend that advertises them (Android-shaped) accepts the
     // call and the daemon observes the typed fields.
     factory.daemonConfigurer = { d ->
-      d.advertisedSupportedOverrides = listOf("focus", "keyboard", "permissions", "touchOverlay")
+      d.advertisedSupportedOverrides =
+        listOf("focus", "keyboard", "permissions", "touchOverlay", "talkBack")
       d.autoRenderPngPath = { _ ->
         java.io.File.createTempFile("preview", ".png").also { it.deleteOnExit() }.absolutePath
       }
@@ -1575,6 +1576,7 @@ class DaemonMcpServerTest {
           }
           putJsonObject("keyboard") { put("visible", true) }
           put("touchOverlay", true)
+          put("talkBack", true)
           putJsonObject("permissions") {
             putJsonObject("grants") { put("android.permission.CAMERA", "granted") }
           }
@@ -1589,6 +1591,7 @@ class DaemonMcpServerTest {
     assertThat(observed.focus?.overlay).isTrue()
     assertThat(observed.keyboard?.visible).isTrue()
     assertThat(observed.touchOverlay).isTrue()
+    assertThat(observed.talkBack).isTrue()
     assertThat(observed.permissions?.grants)
       .containsEntry(
         "android.permission.CAMERA",

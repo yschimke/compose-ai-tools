@@ -312,6 +312,7 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
       overrides =
         when (key) {
           "touchOverlay" -> overrides.copy(touchOverlay = value.toBooleanFlag(key))
+          "talkBack" -> overrides.copy(talkBack = value.toBooleanFlag(key))
           "inspectionMode" -> overrides.copy(inspectionMode = value.toBooleanFlag(key))
           "device" -> overrides.copy(device = value)
           "localeTag" -> overrides.copy(localeTag = value)

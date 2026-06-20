@@ -14,6 +14,9 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.scene.ComposeScenePointer
+import ee.schimke.composeai.cli.AccessibilityNode
+import ee.schimke.composeai.cli.TalkBackOverlayFrames
+import ee.schimke.composeai.cli.TalkBackTraversal
 import ee.schimke.composeai.daemon.protocol.RecordingFormat
 import ee.schimke.composeai.daemon.protocol.RecordingInputParams
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
@@ -24,8 +27,13 @@ import ee.schimke.composeai.data.layoutinspector.SemanticsTargets
 import ee.schimke.composeai.data.layoutinspector.TargetResolution
 import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
 import ee.schimke.composeai.io.SystemFileSystem
+import java.awt.RenderingHints
+import java.awt.image.BufferedImage
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.concurrent.ConcurrentLinkedQueue
+import javax.imageio.ImageIO
 import okio.FileSystem
 import okio.Path.Companion.toPath
 import org.jetbrains.skia.EncodedImageFormat
@@ -916,6 +924,14 @@ class DesktopRecordingSession(
     @Suppress("UNUSED_PARAMETER") virtualTimeMs: Long,
   ) {
     val outFile = File(framesDir, "frame-${"%05d".format(frameIndex)}.png")
+    // TalkBack focus overlay (issue #1956): when opted in, composite the focus walk onto this frame
+    // before encoding. Done in natural pixel space (node bounds are source-bitmap px), then scaled
+    // if needed — separate from the plain encode path below so a non-talkBack recording stays
+    // byte-identical.
+    if (state.spec.overrides?.talkBack == true) {
+      writeTalkBackFrame(image, frameIndex, outFile)
+      return
+    }
     val bytes =
       if (scale == 1.0f && image.width == frameWidthPx && image.height == frameHeightPx) {
         // Fast path: no scaling needed, encode the held scene's Image directly.
@@ -949,6 +965,66 @@ class DesktopRecordingSession(
         }
       }
     fileSystem.write(outFile.path.toPath()) { write(bytes) }
+  }
+
+  /**
+   * Composite the TalkBack focus overlay onto [image] and write the result to [outFile]. Extracts
+   * this frame's accessibility nodes from the live semantics tree, picks the focus stop the walk
+   * has reached at [frameIndex] ([TalkBackOverlayFrames]), draws the overlay in natural pixel space
+   * via [DesktopTalkBackFocusOverlay], then scales to the recording's frame size if `scale != 1.0`.
+   * If there are no focus stops (or anything fails) the frame is written unchanged.
+   */
+  private fun writeTalkBackFrame(image: Image, frameIndex: Int, outFile: File) {
+    val naturalBytes =
+      image.encodeToData(EncodedImageFormat.PNG)?.bytes
+        ?: error("encodeToData(PNG) returned null at frame $frameIndex (talkBack)")
+    val nodes = extractTalkBackNodes()
+    val stopCount = TalkBackTraversal.focusStops(nodes).size
+    val focusedStop = TalkBackOverlayFrames.focusedStopForFrame(frameIndex, fps, stopCount)
+    val overlaidNatural =
+      if (stopCount > 0) {
+        DesktopTalkBackFocusOverlay.overlayPngBytes(naturalBytes, nodes, focusedStop)
+          ?: naturalBytes
+      } else {
+        naturalBytes
+      }
+    val finalBytes =
+      if (scale == 1.0f && image.width == frameWidthPx && image.height == frameHeightPx) {
+        overlaidNatural
+      } else {
+        scalePngBytes(overlaidNatural, frameWidthPx, frameHeightPx)
+      }
+    fileSystem.write(outFile.path.toPath()) { write(finalBytes) }
+  }
+
+  /** This frame's accessibility nodes from the held scene's live semantics tree (pre-order). */
+  private fun extractTalkBackNodes(): List<AccessibilityNode> {
+    val root =
+      state.scene.semanticsOwners.firstOrNull()?.unmergedRootSemanticsNode ?: return emptyList()
+    return DesktopAccessibilityNodeExtractor.extractNodes(root)
+  }
+
+  /**
+   * Bilinear-scale PNG [bytes] to [w]×[h] via AWT (the overlay path's scaler; matches the recording
+   * size).
+   */
+  private fun scalePngBytes(bytes: ByteArray, w: Int, h: Int): ByteArray {
+    val src = ImageIO.read(ByteArrayInputStream(bytes)) ?: return bytes
+    val dst = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
+    val g = dst.createGraphics()
+    try {
+      g.setRenderingHint(
+        RenderingHints.KEY_INTERPOLATION,
+        RenderingHints.VALUE_INTERPOLATION_BILINEAR,
+      )
+      g.drawImage(src, 0, 0, w, h, null)
+    } finally {
+      g.dispose()
+    }
+    return ByteArrayOutputStream().use { out ->
+      ImageIO.write(dst, "png", out)
+      out.toByteArray()
+    }
   }
 
   private fun sceneOffset(px: Int, py: Int): androidx.compose.ui.geometry.Offset {
