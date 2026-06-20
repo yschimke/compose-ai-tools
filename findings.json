@@ -486,6 +486,26 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "LauncherModeHomeScreenPreview_Launcher_mode_4_2_on_home_screen.a11y.png",
+      "cleanBasename": "LauncherModeHomeScreenPreview_Launcher_mode_4_2_on_home_screen.png",
+      "findings": [],
+      "functionName": "LauncherModeHomeScreenPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.LauncherModeHomeScreenPreview_Launcher mode \u2014 4\u00d72 on home screen",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "LauncherModeResizePreview_Launcher_mode_resize_on_home_screen_RESIZE_1x1.a11y.png",
+      "cleanBasename": "LauncherModeResizePreview_Launcher_mode_resize_on_home_screen_RESIZE_1x1.png",
+      "findings": [],
+      "functionName": "LauncherModeResizePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.LauncherModeResizePreview_Launcher mode \u2014 resize on home screen",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "LauncherWidget1x1Preview_Launcher_widget_1_1.a11y.png",
       "cleanBasename": "LauncherWidget1x1Preview_Launcher_widget_1_1.png",
       "findings": [],
@@ -829,6 +849,46 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "",
+      "cleanBasename": "ShaderFbmPreview_Shader_Gallery_fBm_Clouds_AGSL.png",
+      "findings": [],
+      "functionName": "ShaderFbmPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.ShaderGalleryPreviewsKt.ShaderFbmPreview_Shader Gallery \u2014 fBm Clouds (AGSL)",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/ShaderGalleryPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "ShaderJuliaPreview_Shader_Gallery_Julia_Set_AGSL.png",
+      "findings": [],
+      "functionName": "ShaderJuliaPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.ShaderGalleryPreviewsKt.ShaderJuliaPreview_Shader Gallery \u2014 Julia Set (AGSL)",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/ShaderGalleryPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "ShaderRaymarchPreview_Shader_Gallery_Raymarch_SDF_AGSL.png",
+      "findings": [],
+      "functionName": "ShaderRaymarchPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.ShaderGalleryPreviewsKt.ShaderRaymarchPreview_Shader Gallery \u2014 Raymarch SDF (AGSL)",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/ShaderGalleryPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "ShaderRenderEffectPreview_Shader_Gallery_RenderEffect_Distort_AGSL.a11y.png",
+      "cleanBasename": "ShaderRenderEffectPreview_Shader_Gallery_RenderEffect_Distort_AGSL.png",
+      "findings": [],
+      "functionName": "ShaderRenderEffectPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.ShaderGalleryPreviewsKt.ShaderRenderEffectPreview_Shader Gallery \u2014 RenderEffect Distort (AGSL)",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/ShaderGalleryPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "SharedElementFilmstripPreview_Shared_Element_Filmstrip.a11y.png",
       "cleanBasename": "SharedElementFilmstripPreview_Shared_Element_Filmstrip.png",
       "findings": [
@@ -1156,6 +1216,46 @@
     },
     {
       "annotatedBasename": "",
+      "cleanBasename": "ShaderFbmPreview_Shader_Gallery_fBm_Clouds.png",
+      "findings": [],
+      "functionName": "ShaderFbmPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.ShaderGalleryPreviewsKt.ShaderFbmPreview_Shader Gallery \u2014 fBm Clouds",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/ShaderGalleryPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "ShaderJuliaPreview_Shader_Gallery_Julia_Set.png",
+      "findings": [],
+      "functionName": "ShaderJuliaPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.ShaderGalleryPreviewsKt.ShaderJuliaPreview_Shader Gallery \u2014 Julia Set",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/ShaderGalleryPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "ShaderRaymarchPreview_Shader_Gallery_Raymarch_SDF.png",
+      "findings": [],
+      "functionName": "ShaderRaymarchPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.ShaderGalleryPreviewsKt.ShaderRaymarchPreview_Shader Gallery \u2014 Raymarch SDF",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/ShaderGalleryPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "ShaderRenderEffectPreview_Shader_Gallery_RenderEffect_Distort.a11y.png",
+      "cleanBasename": "ShaderRenderEffectPreview_Shader_Gallery_RenderEffect_Distort.png",
+      "findings": [],
+      "functionName": "ShaderRenderEffectPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.ShaderGalleryPreviewsKt.ShaderRenderEffectPreview_Shader Gallery \u2014 RenderEffect Distort",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/ShaderGalleryPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
       "cleanBasename": "",
       "findings": [],
       "functionName": "SwatchPreview",
@@ -1293,6 +1393,24 @@
       "functionName": "RemoteButtonWithShapePreview",
       "module": "remotecompose",
       "previewId": "com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithShapePreview",
+      "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "RemoteShaderGradientPreview.a11y.png",
+      "cleanBasename": "RemoteShaderGradientPreview.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,525,525",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "RemoteShaderGradientPreview",
+      "module": "remotecompose",
+      "previewId": "com.example.sampleremotecompose.PreviewsKt.RemoteShaderGradientPreview",
       "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt",
       "variant": ""
     },
