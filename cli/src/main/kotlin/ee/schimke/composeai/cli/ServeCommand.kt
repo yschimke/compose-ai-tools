@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli
 import ee.schimke.composeai.cli.serve.RenderOutcome
 import ee.schimke.composeai.cli.serve.ServeBundle
 import ee.schimke.composeai.cli.serve.ServeHttpServer
+import ee.schimke.composeai.cli.serve.ServeMdnsAdvertiser
 import ee.schimke.composeai.cli.serve.ServePreview
 import ee.schimke.composeai.cli.serve.ServeRenderHost
 import ee.schimke.composeai.cli.serve.ServeUrls
@@ -116,11 +117,28 @@ class ServeCommand(args: List<String>) : Command(args) {
         moduleLabel = module.gradlePath,
       )
 
+    // Advertise on the LAN over mDNS when bound to a reachable interface (`--lan`), so the mobile /
+    // wear session-viewer clients can discover this server without a typed URL. Best-effort: a null
+    // advertiser (no multicast / sandbox) just means discovery stays dark — the server is fine.
+    val advertiser =
+      if (ServeUrls.isExposed(host)) {
+        ServeMdnsAdvertiser.start(
+          moduleLabel = module.gradlePath,
+          port = server.port,
+          previewIds = previews.map { it.id },
+          secure = false,
+          onLog = { System.err.println("[serve] $it") },
+        )
+      } else {
+        null
+      }
+
     val done = CountDownLatch(1)
     Runtime.getRuntime()
       .addShutdownHook(
         Thread {
           System.err.println("\nserve: shutting down…")
+          runCatching { advertiser?.close() }
           runCatching { server.stop() }
           runCatching { renderHost.close() }
           done.countDown()

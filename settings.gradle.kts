@@ -74,6 +74,15 @@ includeBuild("gradle-plugin")
 
 include(":cli")
 
+// Mobile + Wear "session viewer" client apps and their shared engine. `:clients:core` is the
+// pure-JVM streamed-frame client (connects to `compose-preview serve`'s `WS /ws/{previewId}` lane,
+// decodes pushed frames, forwards pointer/key input, parses the tapped session link + the mDNS
+// discovery contract). `:clients:mobile` / `:clients:wear` are the Android / Wear OS shells on top.
+// Co-located with the service they consume (the `serve` server lives in `:cli`).
+include(":clients:core")
+include(":clients:mobile")
+include(":clients:wear")
+
 // Alternative interactive CLI built on Jake Wharton's Mosaic. Renders a navigable preview
 // browser (list + image + a11y panel) to the terminal, with sticky live-mode that re-renders
 // on external file edits (vim in another terminal, VS Code, etc.). Separate module so the

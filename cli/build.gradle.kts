@@ -127,6 +127,10 @@ dependencies {
   // Okio-based file IO (`SystemFileSystem` + suspend helpers) the CLI commands read/write through.
   implementation(project(":common-io"))
 
+  // mDNS/DNS-SD advertiser for `serve --lan` — publishes `_composeai._tcp` so the mobile/wear
+  // session-viewer clients (`:clients:*`) discover the server on the LAN without a typed URL.
+  implementation(libs.jmdns)
+
   implementation(libs.kotlinx.serialization.json)
 
   // Semantics text-diff engine + payload model for the `diff-semantics` command (issue #1785).

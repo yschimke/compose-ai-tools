@@ -178,16 +178,25 @@ mosaic = "0.18.0-1"
 # compatible with Kotlin 2.3 / coroutines 1.11; OkHttp 5.x is the stable engine backing it.
 ktor = "3.5.0"
 okhttp = "5.3.2"
+# Pure-Java mDNS/DNS-SD (Bonjour) responder used by `compose-preview serve --lan` to advertise the
+# `_composeai._tcp` service the mobile/wear clients browse for. No slf4j dep (uses java.util.logging),
+# so it doesn't perturb the strict slf4j pin in :cli.
+jmdns = "3.5.12"
 
 [libraries]
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
+# WebSocket client plugin for the streamed-frame lane the mobile/wear session-viewer clients consume
+# (`:clients:core`). Runs over the OkHttp engine so one engine serves both the existing bundle
+# downloader and the new live-frame transport; same `ktor` version ref as the server above.
+ktor-client-websockets = { module = "io.ktor:ktor-client-websockets", version.ref = "ktor" }
 # Embedded Ktor server (CIO engine — pure-Kotlin/coroutines, no Netty) backing the
 # `compose-preview serve` LAN preview server. Same `ktor` version ref as the client so the two
 # can't skew and re-trip the strict slf4j pin in :cli (see cli/build.gradle.kts constraints).
 ktor-server-core = { module = "io.ktor:ktor-server-core", version.ref = "ktor" }
 ktor-server-cio = { module = "io.ktor:ktor-server-cio", version.ref = "ktor" }
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+jmdns = { module = "org.jmdns:jmdns", version.ref = "jmdns" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 classgraph = { module = "io.github.classgraph:classgraph", version.ref = "classgraph" }
 compose-bom-stable = { module = "androidx.compose:compose-bom", version.ref = "compose-bom-stable" }
