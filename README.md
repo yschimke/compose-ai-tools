@@ -2,6 +2,23 @@
 
 Auto-generated from `main`. Browse inline or compare against PR branches.
 
+## clients:mobile
+
+| Preview | Image |
+|---------|-------|
+| `ConnectScreenDiscoveredPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/clients:mobile/ConnectScreenDiscoveredPreview_Connect_discovered.png" width="150" /> |
+| `ConnectScreenEmptyPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/clients:mobile/ConnectScreenEmptyPreview_Connect_empty.png" width="150" /> |
+| `ConnectingOverlayPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/clients:mobile/ConnectingOverlayPreview_Status_connecting.png" width="150" /> |
+| `FailedOverlayPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/clients:mobile/FailedOverlayPreview_Status_failed.png" width="150" /> |
+
+## clients:wear
+
+| Preview | Image |
+|---------|-------|
+| `WearConnectPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/clients:wear/WearConnectPreview_Wear_connect.png" width="150" /> |
+| `WearConnectingPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/clients:wear/WearConnectingPreview_Wear_connecting.png" width="150" /> |
+| `WearFailedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/clients:wear/WearFailedPreview_Wear_failed.png" width="150" /> |
+
 ## samples:android
 
 | Preview | Image |
