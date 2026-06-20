@@ -48,6 +48,30 @@ class ServeStreamProtocolTest {
   }
 
   @Test
+  fun `well-formed JSON of the wrong shape never throws`() {
+    // type is not a string → unknown type → Unsupported (not a ClassCastException).
+    assertTrue(
+      ServeStreamProtocol.parseClient("""{"type":{}}""")
+        is ServeStreamProtocol.ClientMessage.Unsupported
+    )
+    // a non-object root.
+    assertTrue(
+      ServeStreamProtocol.parseClient("[]") is ServeStreamProtocol.ClientMessage.Unsupported
+    )
+    // overrides as an array → degrade to empty, don't throw.
+    val arr = ServeStreamProtocol.parseClient("""{"type":"setOverrides","overrides":[]}""")
+    assertTrue(arr is ServeStreamProtocol.ClientMessage.SetOverrides, "got $arr")
+    assertTrue(arr.overrides.isEmpty())
+    // a non-string override value is skipped, valid ones kept.
+    val mixed =
+      ServeStreamProtocol.parseClient(
+        """{"type":"setOverrides","overrides":{"uiMode":"dark","bad":{}}}"""
+      )
+    assertTrue(mixed is ServeStreamProtocol.ClientMessage.SetOverrides, "got $mixed")
+    assertEquals(mapOf("uiMode" to "dark"), mixed.overrides)
+  }
+
+  @Test
   fun `frame message carries seq, size, codec and base64 payload`() {
     val png = byteArrayOf(1, 2, 3, 4, 5)
     val obj = Json.parseToJsonElement(ServeStreamProtocol.frameMessage(7, 320, 640, png)).jsonObject

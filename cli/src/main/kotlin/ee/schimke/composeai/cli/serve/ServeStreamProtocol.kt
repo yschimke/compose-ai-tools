@@ -2,10 +2,11 @@ package ee.schimke.composeai.cli.serve
 
 import java.util.Base64
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
@@ -38,24 +39,29 @@ object ServeStreamProtocol {
 
   private val json = Json { ignoreUnknownKeys = true }
 
-  /** Parse a client text frame. Never throws — bad input becomes [ClientMessage.Unsupported]. */
+  /**
+   * Parse a client text frame. Never throws — malformed JSON *and* well-formed JSON of the wrong
+   * shape (`{"type":{}}`, `{"overrides":[]}`, a non-string override value) both become
+   * [ClientMessage.Unsupported] or degrade gracefully, so a bad message reports a non-fatal error
+   * rather than tearing down the live stream. All element access uses `as?` and is guarded by a
+   * catch-all for defence in depth.
+   */
   fun parseClient(text: String): ClientMessage {
-    val obj =
-      try {
-        json.parseToJsonElement(text).jsonObject
-      } catch (e: Exception) {
-        return ClientMessage.Unsupported("invalid JSON: ${e.message}")
+    return try {
+      val obj = json.parseToJsonElement(text).jsonObject
+      when (val type = (obj["type"] as? JsonPrimitive)?.contentOrNull) {
+        "setOverrides" -> {
+          val overrides =
+            (obj["overrides"] as? JsonObject)?.entries?.mapNotNull { (k, v) ->
+              (v as? JsonPrimitive)?.contentOrNull?.let { k to it }
+            } ?: emptyList()
+          ClientMessage.SetOverrides(overrides.toMap())
+        }
+        "requestFrame" -> ClientMessage.RequestFrame
+        else -> ClientMessage.Unsupported("unknown message type: $type")
       }
-    return when (val type = obj["type"]?.jsonPrimitive?.contentOrNull) {
-      "setOverrides" -> {
-        val overrides =
-          obj["overrides"]?.jsonObject?.entries?.mapNotNull { (k, v) ->
-            v.jsonPrimitive.contentOrNull?.let { k to it }
-          } ?: emptyList()
-        ClientMessage.SetOverrides(overrides.toMap())
-      }
-      "requestFrame" -> ClientMessage.RequestFrame
-      else -> ClientMessage.Unsupported("unknown message type: $type")
+    } catch (e: Exception) {
+      ClientMessage.Unsupported("malformed message: ${e.message}")
     }
   }
 
