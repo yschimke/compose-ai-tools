@@ -50,6 +50,14 @@ a touch landed but *whether the UI took it*, read from
 `PointerInputChange.isConsumed` on the Final pass. Captured by
 `TouchOverlayConsumptionRecordingTest`.
 
+`overlay-multifinger.gif` covers the multi-finger caliper. With **two**
+fingers the caliper adds a **rotation arc** (angle turned since the
+gesture began) and a **pan arrow** (centroid travel) to the existing zoom
+magnitude ring; with **three or more** it draws a dashed **convex-hull**
+outline instead (rotation/pan are ill-defined past a pair). Either way a
+small **dot badge** reports the live pointer count. Captured by
+`TouchOverlayMultiFingerRecordingTest`.
+
 ## How this was captured
 
 One command, no daemon / MCP knowledge — drive the **already-compiled**
