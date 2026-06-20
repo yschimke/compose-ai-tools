@@ -23,12 +23,12 @@ import ee.schimke.composeai.data.render.extensions.RecordingScriptEventDescripto
  *
  * **Single descriptor, mixed support.** All 22 a11y actions live in one
  * `DataExtensionDescriptor(id = "a11y", ...)`. Each event carries its own `supported` flag —
- * 13 wired ids ride on `SemanticsActions` constants and report `supported = true`; the remaining 9
- * (`clearFocus`, `accessibilityFocus`, `clearAccessibilityFocus`, `select`, `clearSelection`,
- * `nextAtGranularity`, `previousAtGranularity`, plus the TalkBack linear-navigation `next` /
- * `previous` from issue #1956) report `supported = false` because Compose doesn't expose a clean
- * `SemanticsActions` equivalent today (the traversal computation behind `next` / `previous` ships
- * in `TalkBackTraversal`, but the host-side focus-state dispatch is still roadmap). Agents calling `list_data_products`
+ * 15 wired ids report `supported = true` — 13 ride on `SemanticsActions` constants, plus the
+ * TalkBack linear-navigation `next` / `previous` (issue #1956), which advance a host-side focus
+ * cursor through the merged focus stops (`TalkBackTraversal`). The remaining 7 (`clearFocus`,
+ * `accessibilityFocus`, `clearAccessibilityFocus`, `select`, `clearSelection`, `nextAtGranularity`,
+ * `previousAtGranularity`) report `supported = false` because Compose doesn't expose a clean
+ * equivalent today. Agents calling `list_data_products`
  * see one `a11y` extension with the full surface; the per-event flag is the source of truth for
  * "can `record_preview` accept this kind right now."
  */
@@ -63,7 +63,7 @@ object AccessibilityRecordingScriptEvents {
 
   /**
    * Single `a11y` data-extension descriptor advertising all 22 actions. Wired ids appear with
-   * `supported = true`; the remaining 9 carry `supported = false` so agents see the full
+   * `supported = true`; the remaining 7 carry `supported = false` so agents see the full
    * accessibility action surface (planned + shipped) in one extension entry.
    *
    * Each `supported = true` entry corresponds to a `when` arm in
@@ -164,23 +164,22 @@ object AccessibilityRecordingScriptEvents {
               "double-tap-to-activate verb. Pairs with next/previous for a scripted TalkBack walk " +
               "(issue #1956).",
           ),
-          // --- Roadmap (supported = false) ---
-          unsupportedEvent(
+          supportedEvent(
             ACTION_NEXT,
             "Next (linear navigation)",
-            "Moves TalkBack focus to the next focus stop in traversal order (issue #1956). The " +
-              "deterministic traversal computation ships in TalkBackTraversal (data-a11y-core, " +
-              "unit-tested) and drives the live TalkBack focus overlay's auto-advance; the " +
-              "remaining work is the host-side focus-state dispatch over the live Compose " +
-              "semantics tree. Tracked as roadmap.",
+            "Moves TalkBack focus to the next focus stop in traversal order (issue #1956). Advances " +
+              "a host-side focus cursor through the merged focus stops (TalkBackTraversal) and " +
+              "requests focus on the new stop; no target node required. Returns end-of-screen " +
+              "(no wrap) once past the last stop.",
           ),
-          unsupportedEvent(
+          supportedEvent(
             ACTION_PREVIOUS,
             "Previous (linear navigation)",
             "Counterpart to next — moves TalkBack focus to the previous focus stop in traversal " +
-              "order (issue #1956). Same TalkBackTraversal core; host-side focus-state dispatch is " +
-              "tracked as roadmap.",
+              "order (issue #1956). Same host-side focus cursor; returns end-of-screen before the " +
+              "first stop.",
           ),
+          // --- Roadmap (supported = false) ---
           unsupportedEvent(
             ACTION_CLEAR_FOCUS,
             "Clear focus",

@@ -457,6 +457,72 @@ class AndroidRecordingSessionTest {
   }
 
   @Test
+  fun a11yNextPreviousRouteThroughDispatchWithoutATargetNode() {
+    // #1956: a11y.action.next / .previous carry no target node — they route through
+    // dispatchSemanticsAction(direction, "") (the host advances its focus cursor) and report
+    // applied evidence when focus moved, unsupported (end of screen) when it didn't.
+    val framesDir = tempFolder.newFolder("a11y-nav-frames")
+    val encodedDir = tempFolder.newFolder("a11y-nav-encoded")
+    val sourcePng = File(tempFolder.newFolder("a11y-nav-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    // First next/previous move (true); the third call hits the boundary (false).
+    val interactive =
+      RecordingDeltaSession(sourcePng).apply { semanticsActionResults = ArrayDeque(listOf(true, true, false)) }
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-a11y-nav",
+        fps = FPS,
+        scale = 1.0f,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    try {
+      session.postScript(
+        listOf(
+          RecordingScriptEvent(tMs = 0L, kind = "a11y.action.next"),
+          RecordingScriptEvent(tMs = 30L, kind = "a11y.action.previous"),
+          RecordingScriptEvent(tMs = 60L, kind = "a11y.action.next"),
+        )
+      )
+      val result = session.stop()
+
+      // No pointer dispatch, and each nav routed with an empty content description.
+      assertEquals(0, interactive.dispatchCount)
+      assertEquals(
+        listOf("next" to "", "previous" to "", "next" to ""),
+        interactive.semanticsActionCalls,
+      )
+      assertEquals(3, result.scriptEvents.size)
+      assertEquals(
+        ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.APPLIED,
+        result.scriptEvents[0].status,
+      )
+      assertEquals(
+        ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.APPLIED,
+        result.scriptEvents[1].status,
+      )
+      // The boundary call is surfaced as unsupported with an end-of-screen reason.
+      assertEquals(
+        ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.UNSUPPORTED,
+        result.scriptEvents[2].status,
+      )
+      assertTrue(
+        "boundary evidence should explain end of screen; got '${result.scriptEvents[2].message}'",
+        (result.scriptEvents[2].message ?: "").contains("end of screen"),
+      )
+    } finally {
+      session.close()
+    }
+  }
+
+  @Test
   fun a11yActionClickReportsUnsupportedWhenNoNodeMatches() {
     // When `dispatchSemanticsAction` returns false (no matching node, or matched node didn't
     // expose OnClick), the handler must surface a specific unsupported reason — not let the agent
@@ -1604,6 +1670,13 @@ class AndroidRecordingSessionTest {
     var semanticsActionResult: Boolean? = null
 
     /**
+     * When non-null, [dispatchSemanticsAction] pops the next result from this queue per call (used by
+     * the next/previous test to model a focus walk that hits a boundary on its last step). Takes
+     * precedence over [semanticsActionResult]; falls back to it once exhausted.
+     */
+    var semanticsActionResults: ArrayDeque<Boolean>? = null
+
+    /**
      * When non-null, [dispatchLifecycle] returns this value verbatim and records the call into
      * [lifecycleCalls]. When null (the default), the inherited interface-level default (`return
      * false`) is used so existing tests don't have to opt in.
@@ -1630,6 +1703,7 @@ class AndroidRecordingSessionTest {
       nodeContentDescription: String,
     ): Boolean {
       semanticsActionCalls += actionKind to nodeContentDescription
+      semanticsActionResults?.let { if (it.isNotEmpty()) return it.removeFirst() }
       val override = semanticsActionResult
       return override ?: super.dispatchSemanticsAction(actionKind, nodeContentDescription)
     }

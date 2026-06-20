@@ -306,6 +306,13 @@ class AndroidRecordingSession(
         for (action in A11Y_SEMANTIC_ACTIONS) {
           put("a11y.action.$action", a11ySemanticsActionHandler(action))
         }
+        // TalkBack linear-navigation verbs (issue #1956). Unlike the content-description-targeted
+        // actions above, `next` / `previous` carry no target node — they advance the host-side
+        // focus cursor through the merged focus stops in traversal order. Routed through the same
+        // dispatchSemanticsAction bridge (the host branches on the action kind), so they share the
+        // settle window but skip the nodeContentDescription requirement.
+        put(AccessibilityRecordingScriptEvents.ACTION_NEXT, a11yNavigationHandler("next"))
+        put(AccessibilityRecordingScriptEvents.ACTION_PREVIOUS, a11yNavigationHandler("previous"))
         // UIAutomator-shaped dispatch — every `uia.<actionKind>` id reads the event's `selector`
         // JsonObject (multi-axis BySelector predicate), encodes it as a JSON string, and routes
         // through `interactive.dispatchUiAutomator(actionKind, selectorJson, useUnmergedTree,
@@ -423,6 +430,26 @@ class AndroidRecordingSession(
         unsupportedEvidence(
           event,
           "no node with contentDescription='$description' exposes the '$actionKind' semantic",
+        )
+      }
+    }
+
+  /**
+   * Handler for the `a11y.action.next` / `a11y.action.previous` linear-navigation verbs (issue
+   * #1956). No target node — moves the host-side TalkBack focus cursor through the merged focus
+   * stops in traversal order via `interactive.dispatchSemanticsAction(direction, "")`. `matched` is
+   * `true` when focus moved, `false` at a list boundary (end of screen — no wrap), surfaced as
+   * applied / unsupported evidence respectively.
+   */
+  private fun a11yNavigationHandler(direction: String): RecordingScriptEventHandler =
+    RecordingScriptEventHandler { event, _ ->
+      val moved = interactive.dispatchSemanticsAction(direction, "")
+      if (moved) {
+        appliedEvidence(event, "TalkBack focus moved to the $direction focus stop")
+      } else {
+        unsupportedEvidence(
+          event,
+          "no further focus stop in the '$direction' direction (end of screen)",
         )
       }
     }
