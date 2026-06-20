@@ -18,6 +18,9 @@ import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
+import ee.schimke.composeai.daemon.CachedDeviceArtSource
+import ee.schimke.composeai.daemon.DeviceFrameConfig
+import ee.schimke.composeai.daemon.DeviceFrameDataProducer
 import ee.schimke.composeai.daemon.DisplayFilterConfig
 import ee.schimke.composeai.daemon.DisplayFilterDataProducer
 import ee.schimke.composeai.io.SystemFileSystem
@@ -360,6 +363,28 @@ fun main(args: Array<String>) {
         } catch (t: Throwable) {
           System.err.println(
             "DesktopRendererMain: displayfilter write failed for ${targetFile.name}: " +
+              "${t.javaClass.simpleName}: ${t.message}"
+          )
+        }
+      }
+      // Device frame — composite the render into a real device-art bezel (round Wear watch, phone)
+      // with hardware buttons. Gated on `composeai.deviceframe.device`; same data dir + best-effort
+      // try/catch discipline as the display-filter block above.
+      val deviceFrame = DeviceFrameConfig.fromSystemProperties()
+      if (deviceFrame != null) {
+        try {
+          val dataDir = (targetFile.parentFile?.parentFile ?: targetFile.parentFile).resolve("data")
+          DeviceFrameDataProducer.writeArtifacts(
+            rootDir = dataDir,
+            previewId = targetFile.nameWithoutExtension,
+            pngFile = targetFile,
+            device = device,
+            settings = deviceFrame,
+            source = CachedDeviceArtSource(deviceFrame.cacheDir),
+          )
+        } catch (t: Throwable) {
+          System.err.println(
+            "DesktopRendererMain: deviceframe write failed for ${targetFile.name}: " +
               "${t.javaClass.simpleName}: ${t.message}"
           )
         }

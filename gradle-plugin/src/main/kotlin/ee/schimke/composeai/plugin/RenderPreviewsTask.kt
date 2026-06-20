@@ -52,6 +52,14 @@ abstract class RenderPreviewsTask : DefaultTask() {
    */
   @get:Input abstract val displayFilterFilters: Property<String>
 
+  /**
+   * Device-frame selection (`auto`, a Device Art Generator id, or empty to disable) forwarded as
+   * `composeai.deviceframe.device` to the desktop renderer subprocess. See
+   * [AndroidPreviewSupport.resolveDeviceFrameDevice]. Marked `@Input` so a selection change drives
+   * re-render.
+   */
+  @get:Input abstract val deviceFrameDevice: Property<String>
+
   @get:Classpath abstract val renderClasspath: ConfigurableFileCollection
 
   @get:OutputDirectory abstract val outputDir: DirectoryProperty
@@ -146,6 +154,18 @@ abstract class RenderPreviewsTask : DefaultTask() {
     // directory so Gradle tracks the written artifacts for caching / up-to-date checks.
     val previewsRoot = outDir.parentFile
 
+    // Device frame — prefetch the needed bezels (Ktor/OkHttp, here in the Gradle JVM) into the
+    // shared cache before launching renderer subprocesses, which only read that cache. See
+    // DeviceArtPrefetch for why fetching can't live on the render classpath.
+    val frameDevice = deviceFrameDevice.get()
+    if (frameDevice.isNotBlank()) {
+      DeviceArtPrefetch.prefetchInto(
+        cacheDir = DeviceArtPrefetch.defaultCacheDir(),
+        artIds = DeviceArtPrefetch.artIdsFor(frameDevice),
+        logger = logger,
+      )
+    }
+
     for (preview in manifest.previews) {
       val spec =
         DeviceDimensions.resolveForRender(
@@ -232,6 +252,16 @@ abstract class RenderPreviewsTask : DefaultTask() {
       // DisplayFilterDataProducer.writeArtifacts after each render. Empty string is fine —
       // DisplayFilterConfig.parseFilters treats blank input as "feature disabled".
       systemProperty("composeai.displayfilter.filters", displayFilterFilters.get())
+      // Forward the device-frame selection + the prefetch cache dir so DesktopRendererMain can
+      // composite the render into a device-art bezel (reading the cache the task action filled).
+      // Empty string disables it (DeviceFrameConfig treats blank as "off").
+      systemProperty("composeai.deviceframe.device", deviceFrameDevice.get())
+      if (deviceFrameDevice.get().isNotBlank()) {
+        systemProperty(
+          "composeai.deviceframe.cacheDir",
+          DeviceArtPrefetch.defaultCacheDir().absolutePath,
+        )
+      }
       args =
         listOf(
           preview.className,

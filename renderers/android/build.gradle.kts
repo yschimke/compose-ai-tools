@@ -91,6 +91,10 @@ dependencies {
   // per-filter variants alongside the base capture. Same dep on the daemon side; the producer is
   // renderer-agnostic (BufferedImage / ImageIO).
   implementation(project(":data-displayfilter-connector"))
+  // Device-frame connector — RobolectricRenderTest reads `composeai.deviceframe.device` after each
+  // successful capture and calls `DeviceFrameDataProducer.writeArtifacts(...)` to composite the PNG
+  // into a real device-art bezel. Renderer-agnostic (BufferedImage / ImageIO + Ktor/OkHttp fetch).
+  implementation(project(":data-deviceframe-connector"))
 
   implementation(libs.robolectric)
   implementation(libs.junit)
