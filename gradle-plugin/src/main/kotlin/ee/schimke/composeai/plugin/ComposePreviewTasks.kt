@@ -243,6 +243,7 @@ internal object ComposePreviewTasks {
         renderBackend.set("desktop")
         tier.set(tierProperty(project))
         displayFilterFilters.set(AndroidPreviewSupport.resolveDisplayFilterFilters(project))
+        deviceFrameDevice.set(AndroidPreviewSupport.resolveDeviceFrameDevice(project))
         renderClasspath.from(sourceClassDirs)
         // Consumer's processed resources so previews can load classpath assets (Lottie `.json`,
         // fonts, images) at render time. Depend on the resource-processing task that stages them.

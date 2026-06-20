@@ -1,0 +1,6 @@
+back.png is the "wear_round" frame from the Android Device Art Generator
+(https://developer.android.com/distribute/marketing-tools/device-art-generator),
+© Google, licensed under CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/).
+
+Committed here solely as a test fixture for DeviceFrameCompositorTest. All other
+device-art frames are fetched on demand at render time, not committed.

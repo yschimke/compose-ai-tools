@@ -1843,6 +1843,26 @@ internal object AndroidPreviewSupport {
         jvmArgumentProviders.add(
           DisplayFilterSystemPropsProvider(filters = resolveDisplayFilterFilters(project))
         )
+        // Device frame — same lazy-input pattern. RobolectricRenderTest reads
+        // `composeai.deviceframe.device` after each capture and composites the PNG into a real
+        // device-art bezel when set.
+        jvmArgumentProviders.add(
+          DeviceFrameSystemPropsProvider(device = resolveDeviceFrameDevice(project))
+        )
+        // Fill the device-art cache before the Robolectric render runs — Ktor/OkHttp here in the
+        // Gradle JVM, never on the render classpath. CC-safe: the doFirst captures only the
+        // resolved provider, not the Project.
+        val deviceFrameForPrefetch = resolveDeviceFrameDevice(project)
+        doFirst {
+          val selection = deviceFrameForPrefetch.get()
+          if (selection.isNotBlank()) {
+            DeviceArtPrefetch.prefetchInto(
+              cacheDir = DeviceArtPrefetch.defaultCacheDir(),
+              artIds = DeviceArtPrefetch.artIdsFor(selection),
+              logger = logger,
+            )
+          }
+        }
         // Render-tier filter — fed via the same lazy `@Input` provider
         // pattern so VS Code can flip `-PcomposePreview.tier=fast` on
         // every save without paying a config-cache reconfigure. Renderer
@@ -2180,6 +2200,7 @@ internal object AndroidPreviewSupport {
         renderBackend.set("desktop")
         tier.set(resolveTier(project))
         displayFilterFilters.set(resolveDisplayFilterFilters(project))
+        deviceFrameDevice.set(resolveDeviceFrameDevice(project))
         includeKinds.add(PreviewKind.LOTTIE.name)
         // Lazy artifact view (not the raw `Configuration`) so the @Classpath collection stays
         // config-cache serializable — same rationale as the desktop validate guards (issue #1796).
@@ -2539,6 +2560,40 @@ internal object AndroidPreviewSupport {
     project: org.gradle.api.Project
   ): org.gradle.api.provider.Provider<String> =
     project.providers.gradleProperty("composePreview.displayFilter.filters").orElse("")
+
+  /**
+   * Forwards the `composePreview.deviceFrame.device` Gradle property as the
+   * `composeai.deviceframe.device` system property on the spawned renderer JVM, using the same
+   * execution-time `CommandLineArgumentProvider` shape as [DisplayFilterSystemPropsProvider] so
+   * toggling `-PcomposePreview.deviceFrame.device=auto` doesn't invalidate the configuration cache.
+   * Empty / unset is forwarded as an empty string; `DeviceFrameConfig.fromSystemProperties()`
+   * treats blank input as "feature disabled".
+   */
+  internal class DeviceFrameSystemPropsProvider(
+    @get:org.gradle.api.tasks.Input val device: org.gradle.api.provider.Provider<String>
+  ) : org.gradle.process.CommandLineArgumentProvider {
+    override fun asArguments(): Iterable<String> {
+      val d = device.get()
+      if (d.isBlank()) return listOf("-Dcomposeai.deviceframe.device=")
+      // Point the renderer at the cache the Test task's doFirst prefetch fills (Ktor/OkHttp can't
+      // run on the Robolectric render classpath — docs/RENDERER_COMPATIBILITY.md).
+      return listOf(
+        "-Dcomposeai.deviceframe.device=$d",
+        "-Dcomposeai.deviceframe.cacheDir=${DeviceArtPrefetch.defaultCacheDir().absolutePath}",
+      )
+    }
+  }
+
+  /**
+   * Lazy `Provider<String>` for the device-frame selection (`auto`, a Device Art Generator id like
+   * `wear_round` / `pixel_5`, or empty to disable). Reads
+   * `-PcomposePreview.deviceFrame.device=...`; defaults to empty (feature off) so existing builds
+   * are unaffected.
+   */
+  internal fun resolveDeviceFrameDevice(
+    project: org.gradle.api.Project
+  ): org.gradle.api.provider.Provider<String> =
+    project.providers.gradleProperty("composePreview.deviceFrame.device").orElse("")
 
   /**
    * Java-resource *source* roots scanned for Lottie assets in an Android module, and linked onto
