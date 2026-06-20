@@ -183,13 +183,30 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
     // keeping (the captured frames show *why* the assertion failed). A non-zero exit lets CI /
     // agents
     // treat a recording as a check, the way Maestro's `assertVisible` fails a flow.
-    val failures = outcome.scriptEvents.filter { it.status == RecordingScriptEventStatus.FAILED }
+    //
+    // Two failure shapes count: a FAILED assertion (the condition was evaluated and not met), and
+    // an
+    // `assert.*` event that came back anything other than APPLIED — most commonly UNSUPPORTED on a
+    // backend that doesn't advertise assertions (e.g. Android today). An assertion that never ran
+    // is
+    // NOT a pass; treating it as one would let a CI recording exit 0 while silently skipping the
+    // check it was written to enforce.
+    val failures =
+      outcome.scriptEvents.filter {
+        it.status == RecordingScriptEventStatus.FAILED ||
+          (it.kind.startsWith("assert.") && it.status != RecordingScriptEventStatus.APPLIED)
+      }
     if (failures.isNotEmpty()) {
       System.err.println(
         "compose-preview record: ${failures.size} assertion(s) failed for ${target.previewId}:"
       )
       for (f in failures) {
-        System.err.println("  - [t=${f.tMs}ms] ${f.kind}: ${f.message ?: "assertion not met"}")
+        val statusNote =
+          if (f.status == RecordingScriptEventStatus.UNSUPPORTED) " (unsupported by this backend)"
+          else ""
+        System.err.println(
+          "  - [t=${f.tMs}ms] ${f.kind}$statusNote: ${f.message ?: "assertion not met"}"
+        )
       }
       exitProcess(2)
     }
