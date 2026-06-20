@@ -131,7 +131,9 @@ private fun printUsage() {
                        --script is a JSON array of RecordingScriptEvent (tap/drag/pinch/keys, the
                        same vocabulary MCP record_preview uses). The encoder is picked from the
                        --out extension unless --format is given. gif/apng are always available
-                       (pure-JVM); mp4/webm need ffmpeg on PATH.
+                       (pure-JVM); mp4/webm need ffmpeg on PATH. Scripts may include Maestro-style
+                       assert.visible / assert.notVisible events (with a target); a failed assertion
+                       still writes the recording but exits non-zero (code 2).
       a11y             Render previews with the a11y data extension on and
                        print ATF findings (thin wrapper over `--with-extension a11y`)
       diff-semantics   Diff two compose/semantics trees (base vs head) and report what

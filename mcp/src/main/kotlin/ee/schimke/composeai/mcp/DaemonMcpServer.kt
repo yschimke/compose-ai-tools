@@ -4062,6 +4062,7 @@ class DaemonMcpServer(
     when (this) {
       RecordingScriptEventStatus.APPLIED -> "applied"
       RecordingScriptEventStatus.UNSUPPORTED -> "unsupported"
+      RecordingScriptEventStatus.FAILED -> "failed"
     }
 
   /**

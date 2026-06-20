@@ -863,6 +863,96 @@ class DesktopRecordingSessionTest {
     }
   }
 
+  /**
+   * Assertion events (`assert.visible` / `assert.notVisible`) resolve their semantic `target`
+   * against the held scene's live semantics tree and record APPLIED when the condition holds,
+   * FAILED when it doesn't. Reuses the `target-box`-tagged fixture: a tag that exists is visible
+   * (and not not-visible); a tag that doesn't is the inverse. A failed `assert.visible` also
+   * carries the candidate list so the agent sees what *is* on screen.
+   */
+  @Test
+  fun scripted_visibility_assertions_pass_and_fail_against_live_semantics() {
+    val outputDir = tempFolder.newFolder("assert-recording-renders")
+    val recordingsRoot = tempFolder.newFolder("assert-recordings-root")
+    savedRecordingsDir = System.getProperty(DesktopHost.RECORDINGS_DIR_PROP)
+    System.setProperty(DesktopHost.RECORDINGS_DIR_PROP, recordingsRoot.absolutePath)
+
+    val engine = RenderEngine(outputDir = outputDir)
+    val host =
+      DesktopHost(
+        engine = engine,
+        previewSpecResolver = { previewId ->
+          if (previewId == TAGGED_TARGET_PREVIEW_ID) {
+            RenderSpec(
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "TaggedClickTargetSquare",
+              widthPx = 64,
+              heightPx = 64,
+              density = 1.0f,
+              outputBaseName = "assert-target-square-rec",
+            )
+          } else null
+        },
+      )
+    host.start()
+    try {
+      val session =
+        host.acquireRecordingSession(
+          previewId = TAGGED_TARGET_PREVIEW_ID,
+          recordingId = "test-rec-assert",
+          classLoader =
+            DesktopRecordingSessionTest::class.java.classLoader
+              ?: ClassLoader.getSystemClassLoader(),
+          fps = FPS,
+          scale = 1.0f,
+          overrides = null,
+        )
+      try {
+        fun assertEvent(tMs: Long, kind: String, tag: String) =
+          RecordingScriptEvent(
+            tMs = tMs,
+            kind = kind,
+            target = ee.schimke.composeai.daemon.protocol.SemanticsInputTarget(testTag = tag),
+          )
+        session.postScript(
+          listOf(
+            assertEvent(0L, "assert.visible", "target-box"), // present → APPLIED
+            assertEvent(0L, "assert.visible", "does-not-exist"), // absent → FAILED + candidates
+            assertEvent(0L, "assert.notVisible", "does-not-exist"), // absent → APPLIED
+            assertEvent(0L, "assert.notVisible", "target-box"), // present → FAILED
+          )
+        )
+        val result = session.stop()
+        val asserts = result.scriptEvents.filter { it.kind.startsWith("assert.") }
+        assertEquals("expected four assertion evidences", 4, asserts.size)
+
+        val visiblePresent = asserts[0]
+        assertEquals(RecordingScriptEventStatus.APPLIED, visiblePresent.status)
+
+        val visibleAbsent = asserts[1]
+        assertEquals(RecordingScriptEventStatus.FAILED, visibleAbsent.status)
+        assertNotNull(
+          "failed assert.visible should carry candidates",
+          visibleAbsent.targetUnresolvedReason,
+        )
+        assertTrue(
+          "candidates must list the target-box that exists; got ${visibleAbsent.targetUnresolvedReason?.candidates}",
+          visibleAbsent.targetUnresolvedReason!!.candidates.any { it.testTag == "target-box" },
+        )
+
+        val notVisibleAbsent = asserts[2]
+        assertEquals(RecordingScriptEventStatus.APPLIED, notVisibleAbsent.status)
+
+        val notVisiblePresent = asserts[3]
+        assertEquals(RecordingScriptEventStatus.FAILED, notVisiblePresent.status)
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
   private fun readPng(file: File): java.awt.image.BufferedImage {
     assertTrue("rendered PNG must exist on disk: ${file.absolutePath}", file.exists())
     assertTrue("rendered PNG must be non-empty", file.length() > 0)
