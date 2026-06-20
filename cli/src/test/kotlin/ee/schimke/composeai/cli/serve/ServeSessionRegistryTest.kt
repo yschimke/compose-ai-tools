@@ -120,6 +120,30 @@ class ServeSessionRegistryTest {
   }
 
   @Test
+  fun `a leased session is not evicted until the lease closes`() {
+    val clock = AtomicLong(0)
+    val factory = CountingFactory()
+    ServeSessionRegistry(
+        factory,
+        idleTimeoutMillis = 100,
+        reaperIntervalMillis = 0,
+        clock = clock::get,
+      )
+      .use { reg ->
+        val lease = assertNotNull(reg.lease("s"))
+        clock.set(10_000)
+        assertEquals(
+          0,
+          reg.evictIdle(),
+          "an open lease keeps the session alive past the idle window",
+        )
+        lease.close()
+        clock.set(10_200) // idle again past the window now that the holder is gone
+        assertEquals(1, reg.evictIdle(), "after the lease closes the idle session is reaped")
+      }
+  }
+
+  @Test
   fun `close releases every host`() {
     val factory = CountingFactory()
     val reg = ServeSessionRegistry(factory, reaperIntervalMillis = 0)

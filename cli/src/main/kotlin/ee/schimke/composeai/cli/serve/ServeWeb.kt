@@ -50,9 +50,24 @@ object ServeWeb {
     """
       .trimIndent()
 
+  /**
+   * Query string carrying the token and — only for a non-default tenant ([sessionId] non-null) —
+   * the `session` id, so generated links stay on the same tenant. A null [sessionId] (the default
+   * session) keeps URLs token-only.
+   */
+  private fun queryString(token: String, sessionId: String?): String {
+    val t = "token=" + WebEscaping.urlEncodeSegment(token)
+    return if (sessionId == null) t else t + "&session=" + WebEscaping.urlEncodeSegment(sessionId)
+  }
+
   /** Landing page: the module's preview list, each card linking to its viewer. */
-  fun landingPage(moduleLabel: String, previews: List<ServePreview>, token: String): String {
-    val tokenQ = WebEscaping.urlEncodeSegment(token)
+  fun landingPage(
+    moduleLabel: String,
+    previews: List<ServePreview>,
+    token: String,
+    sessionId: String? = null,
+  ): String {
+    val q = queryString(token, sessionId)
     val cards =
       if (previews.isEmpty()) {
         "<p class=\"cp-sub\">No previews discovered in this module.</p>"
@@ -62,9 +77,9 @@ object ServeWeb {
           val label = WebEscaping.htmlEscape(p.label)
           val idText = WebEscaping.htmlEscape(p.id)
           """
-          <a class="cp-card" href="/p/$idSeg?token=$tokenQ">
+          <a class="cp-card" href="/p/$idSeg?$q">
             <div class="cp-imgwrap">
-              <img loading="lazy" alt="$label" src="/render/$idSeg.png?token=$tokenQ">
+              <img loading="lazy" alt="$label" src="/render/$idSeg.png?$q">
             </div>
             <div class="cp-meta">
               <div class="cp-label" title="$idText">$label</div>
@@ -81,7 +96,7 @@ object ServeWeb {
         """
         <p class="cp-head">${WebEscaping.htmlEscape(moduleLabel)}</p>
         <p class="cp-sub">${previews.size} preview(s) · click one to view with overrides ·
-          <a href="/bundle.zip?token=$tokenQ">download all (.zip)</a></p>
+          <a href="/bundle.zip?$q">download all (.zip)</a></p>
         <div class="cp-grid">
         $cards
         </div>
@@ -91,9 +106,9 @@ object ServeWeb {
   }
 
   /** Viewer page for one preview: an `<img>` driven by the override controls. */
-  fun viewerPage(preview: ServePreview, token: String): String {
+  fun viewerPage(preview: ServePreview, token: String, sessionId: String? = null): String {
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
-    val tokenQ = WebEscaping.urlEncodeSegment(token)
+    val q = queryString(token, sessionId)
     val label = WebEscaping.htmlEscape(preview.label)
     val idText = WebEscaping.htmlEscape(preview.id)
     val modes = preview.modes.joinToString(",") { it.wire }
@@ -104,7 +119,7 @@ object ServeWeb {
       }
     val body =
       """
-      <p class="cp-head"><a href="/?token=$tokenQ">← previews</a></p>
+      <p class="cp-head"><a href="/?$q">← previews</a></p>
       <p class="cp-sub" title="$idText">$label</p>
       <div class="cp-viewer" data-preview-id="$idText" data-mode="snapshot" data-modes="$modes">
         <div class="cp-stage"><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas></div>
@@ -166,6 +181,8 @@ object ServeWeb {
       var live = document.getElementById("cp-live");
       var previewId = root.getAttribute("data-preview-id");
       var token = new URLSearchParams(location.search).get("token") || "";
+      // Carry the tenant through follow-up requests so a non-default ?session= stays on its module.
+      var session = new URLSearchParams(location.search).get("session") || "";
       // The selects + text input are opt-in (empty value = "use the preview's default"). The font
       // scale slider has no empty state, so it's gated separately: we only send fontScale once the
       // user moves it (fontScaleTouched), otherwise the slider's standing 1.0 would override a
@@ -188,6 +205,7 @@ object ServeWeb {
       function query() {
         var o = overrides();
         var q = "token=" + encodeURIComponent(token);
+        if (session) q += "&session=" + encodeURIComponent(session);
         Object.keys(o).forEach(function (k) { q += "&" + k + "=" + encodeURIComponent(o[k]); });
         return q;
       }

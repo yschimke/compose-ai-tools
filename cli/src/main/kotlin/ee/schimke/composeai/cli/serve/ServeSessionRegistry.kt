@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli.serve
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
@@ -40,7 +41,21 @@ class ServeSessionRegistry(
     val host: ServeRenderHost,
     val pinned: Boolean,
     @Volatile var lastAccess: Long,
+    /**
+     * Open long-lived holders (e.g. WebSocket connections) pinning this session against eviction.
+     */
+    @Volatile var leases: Int = 0,
   )
+
+  /** A live hold on a session that keeps it from being reaped until [close] (idempotent). */
+  class Lease internal constructor(val host: ServeRenderHost, private val onRelease: () -> Unit) :
+    AutoCloseable {
+    private val released = AtomicBoolean(false)
+
+    override fun close() {
+      if (released.compareAndSet(false, true)) onRelease()
+    }
+  }
 
   private val lock = ReentrantLock()
   private val sessions = HashMap<String, Entry>()
@@ -92,12 +107,38 @@ class ServeSessionRegistry(
     host
   }
 
+  /**
+   * Acquire [sessionId] (forking on a miss) and hold it open for the returned [Lease]'s lifetime,
+   * so a long-lived connection — including a WebSocket on the snapshot fallback lane that opens no
+   * `stream/start` — isn't reaped mid-connection. Returns `null` when the session can't be created;
+   * the holder must [Lease.close] when the connection ends.
+   */
+  fun lease(sessionId: String): Lease? = lock.withLock {
+    check(!closed) { "ServeSessionRegistry is closed" }
+    val entry =
+      sessions[sessionId]
+        ?: (factory.create(sessionId)?.let { host ->
+          Entry(host, pinned = false, lastAccess = clock()).also { sessions[sessionId] = it }
+        } ?: return null)
+    entry.lastAccess = clock()
+    entry.leases++
+    Lease(entry.host) {
+      lock.withLock {
+        entry.leases--
+        entry.lastAccess = clock() // start the idle clock fresh once the holder leaves
+      }
+    }
+  }
+
   /** Close unpinned, watcher-free sessions idle past the timeout. Returns the count evicted. */
   fun evictIdle(): Int = lock.withLock {
     if (closed) return 0
     val now = clock()
     val dead = sessions.filterValues {
-      !it.pinned && it.host.activeStreamCount() == 0 && now - it.lastAccess >= idleTimeoutMillis
+      !it.pinned &&
+        it.leases == 0 &&
+        it.host.activeStreamCount() == 0 &&
+        now - it.lastAccess >= idleTimeoutMillis
     }
     dead.forEach { (id, entry) ->
       sessions.remove(id)

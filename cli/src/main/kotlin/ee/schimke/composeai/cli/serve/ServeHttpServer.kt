@@ -73,67 +73,75 @@ class ServeHttpServer(
             return@webSocket
           }
           val sessionId = call.request.queryParameters["session"] ?: defaultSessionId
-          val renderHost = withContext(Dispatchers.IO) { sessions.acquire(sessionId) }
-          if (renderHost == null) {
+          // Lease (not just acquire) the tenant for the socket's whole life: a fallback-lane socket
+          // opens no stream, so without a lease the reaper could close its host mid-connection.
+          val lease = withContext(Dispatchers.IO) { sessions.lease(sessionId) }
+          if (lease == null) {
             close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "no such session"))
             return@webSocket
           }
-          val previewId = call.parameters["name"]
-          if (previewId == null || renderHost.previews.none { it.id == previewId }) {
-            close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "no such preview"))
-            return@webSocket
-          }
-          val initialOverrides =
-            ServeOverrides.SUPPORTED_KEYS.mapNotNull { key ->
-                call.request.queryParameters[key]?.let { key to it }
+          try {
+            val renderHost = lease.host
+            val previewId = call.parameters["name"]
+            if (previewId == null || renderHost.previews.none { it.id == previewId }) {
+              close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "no such preview"))
+              return@webSocket
+            }
+            val initialOverrides =
+              ServeOverrides.SUPPORTED_KEYS.mapNotNull { key ->
+                  call.request.queryParameters[key]?.let { key to it }
+                }
+                .toMap()
+            // Non-suspending hand-off to the socket; drop frames a slow client can't keep up with.
+            val send: (String) -> Unit = { text -> outgoing.trySend(Frame.Text(text)) }
+            // Optional stream tuning: codec (WebP is ~30–60% smaller; the daemon downgrades to PNG
+            // if
+            // it can't encode WebP) and an fps cap.
+            val codec =
+              when (call.request.queryParameters["codec"]?.lowercase()) {
+                "webp" -> StreamCodec.WEBP
+                "png" -> StreamCodec.PNG
+                else -> null
               }
-              .toMap()
-          // Non-suspending hand-off to the socket; drop frames a slow client can't keep up with.
-          val send: (String) -> Unit = { text -> outgoing.trySend(Frame.Text(text)) }
-          // Optional stream tuning: codec (WebP is ~30–60% smaller; the daemon downgrades to PNG if
-          // it can't encode WebP) and an fps cap.
-          val codec =
-            when (call.request.queryParameters["codec"]?.lowercase()) {
-              "webp" -> StreamCodec.WEBP
-              "png" -> StreamCodec.PNG
-              else -> null
-            }
-          val maxFps = call.request.queryParameters["maxFps"]?.toIntOrNull()?.takeIf { it > 0 }
-          // Prefer the daemon's live stream lane (frames pushed, input dispatched); fall back to
-          // the
-          // snapshot re-render lane when the backend doesn't support streaming.
-          val live =
-            withContext(Dispatchers.IO) {
-              ServeLiveSession.tryStart(
-                renderHost,
-                previewId,
-                initialOverrides,
-                codec,
-                maxFps,
-                send,
-              )
-            }
-          if (live != null) {
-            try {
+            val maxFps = call.request.queryParameters["maxFps"]?.toIntOrNull()?.takeIf { it > 0 }
+            // Prefer the daemon's live stream lane (frames pushed, input dispatched); fall back to
+            // the
+            // snapshot re-render lane when the backend doesn't support streaming.
+            val live =
+              withContext(Dispatchers.IO) {
+                ServeLiveSession.tryStart(
+                  renderHost,
+                  previewId,
+                  initialOverrides,
+                  codec,
+                  maxFps,
+                  send,
+                )
+              }
+            if (live != null) {
+              try {
+                for (frame in incoming) {
+                  if (frame is Frame.Text) {
+                    val text = frame.readText()
+                    withContext(Dispatchers.IO) { live.onClientMessage(text) }
+                  }
+                }
+              } finally {
+                withContext(Dispatchers.IO) { live.close() }
+              }
+            } else {
+              val session = ServeStreamSession(renderHost, previewId, initialOverrides, send)
+              // Renders block (renderNow + await); keep them off the socket's event-loop thread.
+              withContext(Dispatchers.IO) { session.onOpen() }
               for (frame in incoming) {
                 if (frame is Frame.Text) {
                   val text = frame.readText()
-                  withContext(Dispatchers.IO) { live.onClientMessage(text) }
+                  withContext(Dispatchers.IO) { session.onClientMessage(text) }
                 }
               }
-            } finally {
-              withContext(Dispatchers.IO) { live.close() }
             }
-          } else {
-            val session = ServeStreamSession(renderHost, previewId, initialOverrides, send)
-            // Renders block (renderNow + await); keep them off the socket's event-loop thread.
-            withContext(Dispatchers.IO) { session.onOpen() }
-            for (frame in incoming) {
-              if (frame is Frame.Text) {
-                val text = frame.readText()
-                withContext(Dispatchers.IO) { session.onClientMessage(text) }
-              }
-            }
+          } finally {
+            lease.close()
           }
         }
 
@@ -141,7 +149,12 @@ class ServeHttpServer(
           if (rejectBadToken()) return@get
           val renderHost = resolveHost() ?: return@get
           call.respondText(
-            ServeWeb.landingPage(renderHost.label, renderHost.previews, token),
+            ServeWeb.landingPage(
+              renderHost.label,
+              renderHost.previews,
+              token,
+              call.request.queryParameters["session"],
+            ),
             ContentType.Text.Html,
           )
         }
@@ -192,7 +205,10 @@ class ServeHttpServer(
             call.respondText("no such preview", status = HttpStatusCode.NotFound)
             return@get
           }
-          call.respondText(ServeWeb.viewerPage(preview, token), ContentType.Text.Html)
+          call.respondText(
+            ServeWeb.viewerPage(preview, token, call.request.queryParameters["session"]),
+            ContentType.Text.Html,
+          )
         }
 
         get("/render/{name}") {
