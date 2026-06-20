@@ -7,11 +7,15 @@ import androidx.compose.remote.creation.compose.layout.RemoteAlignment
 import androidx.compose.remote.creation.compose.layout.RemoteBox
 import androidx.compose.remote.creation.compose.layout.RemoteComposable
 import androidx.compose.remote.creation.compose.modifier.RemoteModifier
+import androidx.compose.remote.creation.compose.modifier.background
 import androidx.compose.remote.creation.compose.modifier.fillMaxSize
+import androidx.compose.remote.creation.compose.shaders.RemoteBrush
+import androidx.compose.remote.creation.compose.shaders.linearGradient
 import androidx.compose.remote.creation.compose.shapes.RemoteRoundedCornerShape
 import androidx.compose.remote.creation.compose.state.RemoteColor
 import androidx.compose.remote.creation.compose.state.rb
 import androidx.compose.remote.creation.compose.state.rdp
+import androidx.compose.remote.creation.compose.state.rememberNamedRemoteColor
 import androidx.compose.remote.creation.compose.state.rememberNamedRemoteString
 import androidx.compose.remote.creation.compose.state.rf
 import androidx.compose.remote.creation.compose.state.rs
@@ -92,6 +96,40 @@ fun RemoteButtonWithShape() {
         modifier = RemoteModifier.buttonSizeModifier(),
         shape = RemoteRoundedCornerShape(4.rdp),
         content = { RemoteText("Custom shape".rs) },
+    )
+}
+
+/**
+ * A Remote Compose **shader** component: a full-size box painted with a [RemoteBrush] gradient
+ * shader (Remote Compose's `shaders` package — `RemoteLinearGradient`/`RemoteRadialGradient`/etc.
+ * are the document-level equivalents of Compose's `Brush.linearGradient`). The gradient serialises
+ * into the `RemoteDocument` byte stream and is rasterised by the player, not by an app-side
+ * `ShaderBrush`.
+ *
+ * **Shader control** — the middle gradient stop is a [rememberNamedRemoteColor] binding named
+ * `shaderColor`, so the panel-side Remote Compose editor (or any caller seeding
+ * `renderNow.overrides.remoteCompose.namedValues = {"shaderColor": ColorValue(...)}`) recolours the
+ * shader live, without rebuilding the document — the same override path
+ * [RemoteButtonWithNamedLabel]'s string label uses, here driving a shader uniform. Without an
+ * override the default cyan stop shows, so the preview is a useful static capture in
+ * `composePreviewRenderAll` runs.
+ */
+@Composable
+@RemoteComposable
+fun RemoteShaderGradient() {
+    val shaderColor = rememberNamedRemoteColor("shaderColor", Color(0xFF7DE2FF))
+    val brush =
+        RemoteBrush.linearGradient(
+            listOf(
+                RemoteColor(Color(0xFF101820)),
+                shaderColor,
+                RemoteColor(Color(0xFFFFB86C)),
+            )
+        )
+    RemoteBox(
+        modifier = RemoteModifier.fillMaxSize().background(brush),
+        contentAlignment = RemoteAlignment.Center,
+        content = { RemoteText("Shader".rs) },
     )
 }
 
