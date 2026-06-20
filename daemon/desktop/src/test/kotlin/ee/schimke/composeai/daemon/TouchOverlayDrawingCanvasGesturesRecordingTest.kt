@@ -341,30 +341,33 @@ class TouchOverlayDrawingCanvasGesturesRecordingTest {
     private const val POINTER_A = 1
     private const val POINTER_B = 2
 
-    // Timeline (ms) — kept on the frame grid (multiples of STEP_MS = 33ms):
-    //   0–66    tap         (down @ 0, up @ 66)
-    //   66–330  settle      (let circle render + camera idle before drag)
-    //   330–660 drag        (down @ 330, moves every 33ms, up @ 660)
-    //   660–924 settle      (let stroke render + lift)
-    //   924–1452 pinch      (both down @ 924, moves outward, both up @ 1452)
-    //   1452+ tail          (one more rendered frame after final commit)
+    // Timeline (ms) — kept on the frame grid (multiples of STEP_MS = 33ms). Each phase runs for
+    // twice its original duration so the captured demo plays back at half speed while staying a
+    // smooth 30fps (we sample the same parametric gesture paths more finely rather than holding
+    // frames). The gestures, coords, and colours are identical to the 1.5s version — only longer:
+    //   0–132    tap         (down @ 0, up @ 132)
+    //   132–660  settle      (let circle render + camera idle before drag)
+    //   660–1320 drag        (down @ 660, moves every 33ms, up @ 1320)
+    //   1320–1848 settle     (let stroke render + lift)
+    //   1848–2904 pinch      (both down @ 1848, moves outward, both up @ 2904)
+    //   2904+ tail           (one more rendered frame after final commit)
     private const val TAP_START_MS = 0L
-    private const val TAP_END_MS = 66L
+    private const val TAP_END_MS = 132L
     private const val TAP_X = 60
     private const val TAP_Y = 70
 
-    private const val DRAG_START_MS = 330L
-    private const val DRAG_END_MS = 660L
+    private const val DRAG_START_MS = 660L
+    private const val DRAG_END_MS = 1320L
     private const val DRAG_FROM_X = 30
     private const val DRAG_TO_X = 210
     private const val DRAG_Y_CENTER = 140
     private const val DRAG_Y_AMPLITUDE = 18
 
-    private const val PINCH_START_MS = 924L
-    private const val PINCH_END_MS = 1452L
+    private const val PINCH_START_MS = 1848L
+    private const val PINCH_END_MS = 2904L
 
-    private const val TOTAL_DURATION_MS = 1452L
-    private const val MIN_FRAMES = 30
+    private const val TOTAL_DURATION_MS = 2904L
+    private const val MIN_FRAMES = 60
   }
 }
 

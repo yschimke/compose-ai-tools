@@ -1,6 +1,6 @@
 # Multi-touch drawing canvas
 
-`drawing-canvas-gestures.gif` is a recorded ~1.5 s session against
+`drawing-canvas-gestures.gif` is a recorded ~3 s session against
 `MultiTouchDrawingPreview` showing all three of its gestures:
 
 | Phase   | What's dispatched                                   | What the canvas does               |
@@ -23,8 +23,8 @@ not just the daemon's dispatch but the composition's reception.
 # → build/touch-overlay-artifacts/drawing-canvas-gestures.gif
 ```
 
-The test scripts a tap (0–66 ms) → drag (330–660 ms) → pinch
-(924–1452 ms) timeline through `DesktopRecordingSession.postScript`,
+The test scripts a tap (0–132 ms) → drag (660–1320 ms) → pinch
+(1848–2904 ms) timeline through `DesktopRecordingSession.postScript`,
 encodes the captured frames as both APNG (primary) and GIF (this
 artifact), and asserts that:
 
