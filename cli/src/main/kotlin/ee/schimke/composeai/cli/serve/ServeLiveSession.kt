@@ -18,7 +18,7 @@ import ee.schimke.composeai.daemon.protocol.StreamFrameParams
 class ServeLiveSession
 private constructor(
   private val renderHost: ServeRenderHost,
-  private val previewId: String,
+  private var previewId: String,
   private var overrides: Map<String, String>,
   private val codec: StreamCodec?,
   private val maxFps: Int?,
@@ -39,6 +39,7 @@ private constructor(
           }
         }
       is ServeStreamProtocol.ClientMessage.Input -> dispatchInput(message)
+      is ServeStreamProtocol.ClientMessage.Switch -> switchTo(message)
       // Frames are pushed by the daemon; an explicit refresh is a no-op on the live lane.
       ServeStreamProtocol.ClientMessage.RequestFrame -> Unit
       is ServeStreamProtocol.ClientMessage.Unsupported ->
@@ -71,11 +72,38 @@ private constructor(
   private fun restart(parsed: PreviewOverrides) {
     handle?.close()
     handle =
-      renderHost.startStream(previewId, parsed, codec, maxFps, ::onFrame)
+      renderHost.subscribeStream(previewId, parsed, codec, maxFps, ::onFrame)
         ?: run {
           send(ServeStreamProtocol.errorMessage("live stream ended"))
           null
         }
+  }
+
+  /**
+   * Move this connection to a different preview (optionally with new overrides) without
+   * reconnecting. The new stream is opened *before* the old one is dropped, so a switch to a
+   * missing preview (or a backend that can't stream it) reports an error and leaves the current
+   * view intact rather than going blank.
+   */
+  private fun switchTo(message: ServeStreamProtocol.ClientMessage.Switch) {
+    val nextOverrides = message.overrides ?: overrides
+    val parsed =
+      when (val p = ServeOverrides.parse(nextOverrides)) {
+        is OverrideParse.Invalid -> {
+          send(ServeStreamProtocol.errorMessage(p.message))
+          return
+        }
+        is OverrideParse.Ok -> p.overrides
+      }
+    val next = renderHost.subscribeStream(message.previewId, parsed, codec, maxFps, ::onFrame)
+    if (next == null) {
+      send(ServeStreamProtocol.errorMessage("cannot switch to preview: ${message.previewId}"))
+      return
+    }
+    handle?.close()
+    handle = next
+    previewId = message.previewId
+    overrides = nextOverrides
   }
 
   private fun onFrame(frame: StreamFrameParams) {
@@ -116,7 +144,8 @@ private constructor(
         (ServeOverrides.parse(overrides) as? OverrideParse.Ok)?.overrides ?: PreviewOverrides()
       val session = ServeLiveSession(renderHost, previewId, overrides, codec, maxFps, send)
       session.handle =
-        renderHost.startStream(previewId, initial, codec, maxFps, session::onFrame) ?: return null
+        renderHost.subscribeStream(previewId, initial, codec, maxFps, session::onFrame)
+          ?: return null
       return session
     }
   }

@@ -89,6 +89,8 @@ a:hover { text-decoration: underline; }
   var live = document.getElementById("cp-live");
   var previewId = root.getAttribute("data-preview-id");
   var token = new URLSearchParams(location.search).get("token") || "";
+  // Carry the tenant through follow-up requests so a non-default ?session= stays on its module.
+  var session = new URLSearchParams(location.search).get("session") || "";
   // The selects + text input are opt-in (empty value = "use the preview's default"). The font
   // scale slider has no empty state, so it's gated separately: we only send fontScale once the
   // user moves it (fontScaleTouched), otherwise the slider's standing 1.0 would override a
@@ -111,6 +113,7 @@ a:hover { text-decoration: underline; }
   function query() {
     var o = overrides();
     var q = "token=" + encodeURIComponent(token);
+    if (session) q += "&session=" + encodeURIComponent(session);
     Object.keys(o).forEach(function (k) { q += "&" + k + "=" + encodeURIComponent(o[k]); });
     return q;
   }

@@ -27,15 +27,20 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * The embedded Ktor (CIO) HTTP server fronting a [ServeRenderHost]. Thin IO shell: a token gate,
- * the five routes, and the query-param → [ServeOverrides] → render → PNG glue. All shared,
- * concurrency safe state lives in [ServeRenderHost]; this class adds none of its own per-request
- * state, so it serves any number of clients.
+ * The embedded Ktor (CIO) HTTP server fronting a [ServeSessionRegistry]. Thin IO shell: a token
+ * gate, the routes, and the query-param → [ServeOverrides] → render → PNG glue. All shared,
+ * concurrency-safe state lives in the per-tenant [ServeRenderHost]s; this class adds none of its
+ * own per-request state, so it serves any number of clients.
+ *
+ * **Multi-tenant:** one server fronts many sessions instead of one per module. Every route resolves
+ * a [ServeRenderHost] from the registry by the request's `?session=` (falling back to
+ * [defaultSessionId]); the registry forks the tenant behind its factory on first use. Unknown
+ * sessions 404 like a bad token.
  *
  * Endpoints (all token-gated except `/healthz`):
  * - `GET /` landing page, `GET /p/{id}` viewer page,
  * - `GET /render/{id}.png` PNG bytes, `GET /api/previews` JSON, `GET /healthz` liveness,
- * - `GET /bundle.zip` portable bundle, `WS /ws/{id}` streamed-frame lane (tier-2 spike).
+ * - `GET /bundle.zip` portable bundle, `WS /ws/{id}` streamed-frame lane.
  *
  * A bad/missing token returns **404** (not 401) so the server's existence isn't confirmed to a
  * scanner; the token is compared in constant time ([ServeUrls.tokensMatch]).
@@ -44,8 +49,8 @@ class ServeHttpServer(
   private val host: String,
   requestedPort: Int,
   private val token: String,
-  private val renderHost: ServeRenderHost,
-  private val moduleLabel: String,
+  private val sessions: ServeSessionRegistry,
+  private val defaultSessionId: String,
   portRange: Int = DEFAULT_PORT_RANGE,
 ) {
   /** The actual bound port — may differ from the requested one if it was taken (auto-picked). */
@@ -58,88 +63,108 @@ class ServeHttpServer(
         // `/healthz` is the only ungated route — liveness only, leaks nothing.
         get("/healthz") { call.respondText("ok") }
 
-        // Tier-2 streaming spike: a persistent frame lane. The browser opens this, receives PNG
-        // frames as JSON ([ServeStreamProtocol]), and sends override/refresh messages back; each
-        // drives a re-render through the shared [ServeRenderHost]. Token is checked post-handshake
-        // (can't 404 after upgrade) — a bad token closes immediately.
+        // A persistent frame lane. The browser opens this, receives frames as JSON
+        // ([ServeStreamProtocol]), and sends override / switch / input messages back. Token is
+        // checked post-handshake (can't 404 after upgrade) — a bad token closes immediately.
         webSocket("/ws/{name}") {
           val provided = call.request.queryParameters["token"] ?: call.request.headers[TOKEN_HEADER]
           if (!ServeUrls.tokensMatch(token, provided)) {
             close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "unauthorized"))
             return@webSocket
           }
-          val previewId = call.parameters["name"]
-          if (previewId == null || renderHost.previews.none { it.id == previewId }) {
-            close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "no such preview"))
+          val sessionId = call.request.queryParameters["session"] ?: defaultSessionId
+          // Lease (not just acquire) the tenant for the socket's whole life: a fallback-lane socket
+          // opens no stream, so without a lease the reaper could close its host mid-connection.
+          val lease = withContext(Dispatchers.IO) { sessions.lease(sessionId) }
+          if (lease == null) {
+            close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "no such session"))
             return@webSocket
           }
-          val initialOverrides =
-            ServeOverrides.SUPPORTED_KEYS.mapNotNull { key ->
-                call.request.queryParameters[key]?.let { key to it }
+          try {
+            val renderHost = lease.host
+            val previewId = call.parameters["name"]
+            if (previewId == null || renderHost.previews.none { it.id == previewId }) {
+              close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "no such preview"))
+              return@webSocket
+            }
+            val initialOverrides =
+              ServeOverrides.SUPPORTED_KEYS.mapNotNull { key ->
+                  call.request.queryParameters[key]?.let { key to it }
+                }
+                .toMap()
+            // Non-suspending hand-off to the socket; drop frames a slow client can't keep up with.
+            val send: (String) -> Unit = { text -> outgoing.trySend(Frame.Text(text)) }
+            // Optional stream tuning: codec (WebP is ~30–60% smaller; the daemon downgrades to PNG
+            // if
+            // it can't encode WebP) and an fps cap.
+            val codec =
+              when (call.request.queryParameters["codec"]?.lowercase()) {
+                "webp" -> StreamCodec.WEBP
+                "png" -> StreamCodec.PNG
+                else -> null
               }
-              .toMap()
-          // Non-suspending hand-off to the socket; drop frames a slow client can't keep up with.
-          val send: (String) -> Unit = { text -> outgoing.trySend(Frame.Text(text)) }
-          // Optional stream tuning: codec (WebP is ~30–60% smaller; the daemon downgrades to PNG if
-          // it can't encode WebP) and an fps cap.
-          val codec =
-            when (call.request.queryParameters["codec"]?.lowercase()) {
-              "webp" -> StreamCodec.WEBP
-              "png" -> StreamCodec.PNG
-              else -> null
-            }
-          val maxFps = call.request.queryParameters["maxFps"]?.toIntOrNull()?.takeIf { it > 0 }
-          // Prefer the daemon's live stream lane (frames pushed, input dispatched); fall back to
-          // the
-          // snapshot re-render lane when the backend doesn't support streaming.
-          val live =
-            withContext(Dispatchers.IO) {
-              ServeLiveSession.tryStart(
-                renderHost,
-                previewId,
-                initialOverrides,
-                codec,
-                maxFps,
-                send,
-              )
-            }
-          if (live != null) {
-            try {
+            val maxFps = call.request.queryParameters["maxFps"]?.toIntOrNull()?.takeIf { it > 0 }
+            // Prefer the daemon's live stream lane (frames pushed, input dispatched); fall back to
+            // the
+            // snapshot re-render lane when the backend doesn't support streaming.
+            val live =
+              withContext(Dispatchers.IO) {
+                ServeLiveSession.tryStart(
+                  renderHost,
+                  previewId,
+                  initialOverrides,
+                  codec,
+                  maxFps,
+                  send,
+                )
+              }
+            if (live != null) {
+              try {
+                for (frame in incoming) {
+                  if (frame is Frame.Text) {
+                    val text = frame.readText()
+                    withContext(Dispatchers.IO) { live.onClientMessage(text) }
+                  }
+                }
+              } finally {
+                withContext(Dispatchers.IO) { live.close() }
+              }
+            } else {
+              val session = ServeStreamSession(renderHost, previewId, initialOverrides, send)
+              // Renders block (renderNow + await); keep them off the socket's event-loop thread.
+              withContext(Dispatchers.IO) { session.onOpen() }
               for (frame in incoming) {
                 if (frame is Frame.Text) {
                   val text = frame.readText()
-                  withContext(Dispatchers.IO) { live.onClientMessage(text) }
+                  withContext(Dispatchers.IO) { session.onClientMessage(text) }
                 }
               }
-            } finally {
-              withContext(Dispatchers.IO) { live.close() }
             }
-          } else {
-            val session = ServeStreamSession(renderHost, previewId, initialOverrides, send)
-            // Renders block (renderNow + await); keep them off the socket's event-loop thread.
-            withContext(Dispatchers.IO) { session.onOpen() }
-            for (frame in incoming) {
-              if (frame is Frame.Text) {
-                val text = frame.readText()
-                withContext(Dispatchers.IO) { session.onClientMessage(text) }
-              }
-            }
+          } finally {
+            lease.close()
           }
         }
 
         get("/") {
           if (rejectBadToken()) return@get
+          val renderHost = resolveHost() ?: return@get
           call.respondText(
-            ServeWeb.landingPage(moduleLabel, renderHost.previews, token),
+            ServeWeb.landingPage(
+              renderHost.label,
+              renderHost.previews,
+              token,
+              call.request.queryParameters["session"],
+            ),
             ContentType.Text.Html,
           )
         }
 
         get("/api/previews") {
           if (rejectBadToken()) return@get
+          val renderHost = resolveHost() ?: return@get
           val dto =
             PreviewsResponse(
-              module = moduleLabel,
+              module = renderHost.label,
               previews =
                 renderHost.previews.map { p ->
                   PreviewDto(id = p.id, label = p.label, modes = p.modes.map { it.wire })
@@ -153,6 +178,7 @@ class ServeHttpServer(
 
         get("/bundle.zip") {
           if (rejectBadToken()) return@get
+          val renderHost = resolveHost() ?: return@get
           // Render the whole module once (cache-backed) into the portable WebEmbed gallery and
           // stream it as a zip — the same render output as the live links, downloadable offline.
           val zip =
@@ -160,8 +186,8 @@ class ServeHttpServer(
               val built =
                 ServeBundle.build(
                   previews = renderHost.previews,
-                  title = moduleLabel,
-                  modulePath = moduleLabel,
+                  title = renderHost.label,
+                  modulePath = renderHost.label,
                 ) { preview ->
                   (renderHost.render(preview.id, PreviewOverrides()) as? RenderOutcome.Ok)?.png
                 }
@@ -172,17 +198,22 @@ class ServeHttpServer(
 
         get("/p/{name}") {
           if (rejectBadToken()) return@get
+          val renderHost = resolveHost() ?: return@get
           val previewId = call.parameters["name"]
           val preview = previewId?.let { id -> renderHost.previews.firstOrNull { it.id == id } }
           if (preview == null) {
             call.respondText("no such preview", status = HttpStatusCode.NotFound)
             return@get
           }
-          call.respondText(ServeWeb.viewerPage(preview, token), ContentType.Text.Html)
+          call.respondText(
+            ServeWeb.viewerPage(preview, token, call.request.queryParameters["session"]),
+            ContentType.Text.Html,
+          )
         }
 
         get("/render/{name}") {
           if (rejectBadToken()) return@get
+          val renderHost = resolveHost() ?: return@get
           val previewId = call.parameters["name"]?.removeSuffix(".png")
           if (previewId.isNullOrBlank()) {
             call.respondText("missing preview id", status = HttpStatusCode.BadRequest)
@@ -221,6 +252,18 @@ class ServeHttpServer(
   /** Stop with a short grace period. Idempotent enough for a shutdown hook. */
   fun stop() {
     server.stop(gracePeriodMillis = 500, timeoutMillis = 2000)
+  }
+
+  /**
+   * Resolve the tenant for this request: `?session=` (else [defaultSessionId]) through the
+   * registry, which forks it on first use. Responds 404 and returns null when the session can't be
+   * created.
+   */
+  private suspend fun RoutingContext.resolveHost(): ServeRenderHost? {
+    val sessionId = call.request.queryParameters["session"] ?: defaultSessionId
+    val renderHost = withContext(Dispatchers.IO) { sessions.acquire(sessionId) }
+    if (renderHost == null) call.respondText("not found", status = HttpStatusCode.NotFound)
+    return renderHost
   }
 
   /**

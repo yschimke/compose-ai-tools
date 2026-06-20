@@ -164,6 +164,73 @@ class ServeLiveSessionTest {
   }
 
   @Test
+  fun `two live sessions for the same preview share one daemon stream`() {
+    val session = FakeRenderSession(newRenderRoot(), streaming = true)
+    host(session).use { h ->
+      val a = CopyOnWriteArrayList<String>()
+      val b = CopyOnWriteArrayList<String>()
+      assertNotNull(ServeLiveSession.tryStart(h, previewId, emptyMap(), send = a::add))
+      assertNotNull(ServeLiveSession.tryStart(h, previewId, emptyMap(), send = b::add))
+
+      assertEquals(1, session.streamStarts.get(), "two clients should ride one daemon stream/start")
+      assertEquals(1, h.activeStreamCount())
+
+      // One upstream frame fans out to both clients.
+      session.emitStreamFrame(
+        assertNotNull(session.lastFrameStreamId),
+        seq = 4,
+        payloadBase64 = "AA",
+      )
+      assertEquals(1, a.size)
+      assertEquals(1, b.size)
+    }
+  }
+
+  @Test
+  fun `switch moves the connection to another preview`() {
+    val session = FakeRenderSession(newRenderRoot(), streaming = true)
+    val blue = "com.example.Blue"
+    ServeRenderHost(
+        session,
+        listOf(ServePreview(previewId, "Red"), ServePreview(blue, "Blue")),
+        renderTimeoutSeconds = 30,
+      )
+      .use { h ->
+        val live = assertNotNull(ServeLiveSession.tryStart(h, previewId, emptyMap()) {})
+        val firstFsid = assertNotNull(session.lastFrameStreamId)
+        assertEquals(1, session.streamStarts.get())
+
+        live.onClientMessage("""{"type":"switch","previewId":"$blue"}""")
+
+        assertEquals(2, session.streamStarts.get(), "switch opens a stream for the new preview")
+        assertEquals(
+          listOf(firstFsid),
+          session.streamStops,
+          "the previous preview's stream is dropped",
+        )
+      }
+  }
+
+  @Test
+  fun `switching to an unknown preview errors and keeps the current stream`() {
+    val session = FakeRenderSession(newRenderRoot(), streaming = true)
+    host(session).use { h ->
+      val sent = CopyOnWriteArrayList<String>()
+      val live =
+        assertNotNull(ServeLiveSession.tryStart(h, previewId, emptyMap(), send = sent::add))
+      val fsid = assertNotNull(session.lastFrameStreamId)
+
+      live.onClientMessage("""{"type":"switch","previewId":"com.example.Missing"}""")
+
+      assertEquals("error", typeOf(sent.last()))
+      assertTrue(session.streamStops.isEmpty(), "a failed switch must not drop the working stream")
+      // The original stream is still live.
+      session.emitStreamFrame(fsid, seq = 1, payloadBase64 = "AA")
+      assertEquals("frame", typeOf(sent.last()))
+    }
+  }
+
+  @Test
   fun `closing the live session stops the stream`() {
     val session = FakeRenderSession(newRenderRoot(), streaming = true)
     host(session).use { h ->

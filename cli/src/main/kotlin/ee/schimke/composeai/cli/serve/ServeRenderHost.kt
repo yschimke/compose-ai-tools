@@ -82,6 +82,8 @@ class ServeRenderHost
 internal constructor(
   private val session: RenderSession,
   val previews: List<ServePreview>,
+  /** Human label for this tenant (e.g. the module's Gradle path); shown in the served pages. */
+  val label: String = "",
   private val fileSystem: FileSystem = SystemFileSystem,
   private val onLog: (String) -> Unit = {},
   private val renderTimeoutSeconds: Long = RENDER_TIMEOUT_SECONDS,
@@ -114,6 +116,11 @@ internal constructor(
   // order per session (the S4 harness tests assert none are lost / reordered), so we drain exactly
   // one outstanding event per timed-out render here before honouring a fresh one.
   private val staleRenders = ConcurrentHashMap<String, Int>()
+
+  // Fans one upstream daemon stream out to all watchers of the same preview/overrides/codec/fps, so
+  // many browsers cost one held session instead of one each. Built on [startStream]; shared because
+  // there's one host per server.
+  private val broadcast = ServeBroadcastHub(::startStream)
 
   private val closed = AtomicBoolean(false)
   private val notificationHandle: AutoCloseable = session.onNotification { method, params ->
@@ -315,6 +322,27 @@ internal constructor(
     }
   }
 
+  /**
+   * Join the shared live stream for [previewId] (tier-2), opening one upstream daemon stream per
+   * distinct preview + overrides + codec + fps and fanning its frames out to every watcher. This is
+   * the multi-client front door to [startStream]: prefer it over [startStream] for client
+   * connections so N viewers of the same preview ride one held session. Returns `null` when
+   * streaming is unsupported (caller falls back to the snapshot lane).
+   */
+  fun subscribeStream(
+    previewId: String,
+    overrides: PreviewOverrides,
+    codec: StreamCodec? = null,
+    maxFps: Int? = null,
+    onFrame: (StreamFrameParams) -> Unit,
+  ): StreamHandle? {
+    check(!closed.get()) { "ServeRenderHost is closed" }
+    return broadcast.subscribe(previewId, overrides, codec, maxFps, onFrame)
+  }
+
+  /** Live shared upstream streams (one per distinct preview/overrides/codec/fps). Diagnostics. */
+  fun activeStreamCount(): Int = broadcast.activeStreamCount()
+
   override fun close() {
     if (!closed.compareAndSet(false, true)) return
     try {
@@ -344,6 +372,7 @@ internal constructor(
       workspaceRoot: File,
       workspaceName: String,
       previews: List<ServePreview>,
+      label: String = "",
       onLog: (String) -> Unit = {},
       factory: RenderSessionFactory = SubprocessRenderSessions,
     ): ServeRenderHost {
@@ -356,7 +385,7 @@ internal constructor(
             logSink = onLog,
           )
         )
-      return ServeRenderHost(session = session, previews = previews, onLog = onLog)
+      return ServeRenderHost(session = session, previews = previews, label = label, onLog = onLog)
     }
   }
 }
