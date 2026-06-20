@@ -1736,7 +1736,7 @@ class DaemonMcpServer(
                 "uri":{"type":"string","description":"compose-preview://<workspace>/<module>/<fqn>?config=<qualifier>"},
                 "fps":{"type":"integer","description":"Frames per second of the virtual clock. Default 30; range [1, 120]."},
                 "scale":{"type":"number","description":"Output-frame size multiplier. Default 1.0; range (0, 8]. Pointer coords stay in image-natural pixel space."},
-                "format":{"type":"string","enum":["apng","mp4","webm"],"description":"Encoded video format. Default 'apng' (always available, pure-JVM). 'mp4' and 'webm' require an ffmpeg binary on the daemon's PATH; check ServerCapabilities.recordingFormats first or expect a clean rejection if unavailable."},
+                "format":{"type":"string","enum":["apng","gif","mp4","webm"],"description":"Encoded recording format. Default 'apng'. 'apng' and 'gif' are always available (pure-JVM); 'gif' is the friendliest for inline playback in chat / GitHub comments. 'mp4' and 'webm' require an ffmpeg binary on the daemon's PATH; check ServerCapabilities.recordingFormats first or expect a clean rejection if unavailable."},
                 "observe":{"type":"string","enum":["frames","media"],"description":"Observation level (issue #1860). Default 'frames' returns the structured per-frame observation — per-frame sha256 + changed-pixel counts, changedFrameCount, and the on-disk frame/video paths — with NO inline media (token-frugal; recording bytes scale with fps × duration). 'media' also returns the encoded APNG/MP4/WebM bytes inline (APNG as an image block, mp4/webm as an embedded resource). The artifact is on disk at 'videoPath' regardless of this flag."},
                 "emitTest":{"type":"boolean","description":"Default false. When true, also return a runnable Compose UI test generated from this interaction (issue #1786) as an extra text block — each event with a testTag/role/text target becomes an onNodeWith…().performClick() step, and each recording.probe is diffed against the previous probe's captured semantics into assertExists()/assertDoesNotExist() assertions (a TODO stub when nothing assertable was captured). Write it to src/test and review the inferred probe assertions."},
                 "events":{
@@ -3641,11 +3641,12 @@ class DaemonMcpServer(
       when (formatStr) {
         null,
         "apng" -> RecordingFormat.APNG
+        "gif" -> RecordingFormat.GIF
         "mp4" -> RecordingFormat.MP4
         "webm" -> RecordingFormat.WEBM
         else ->
           return errorCallToolResult(
-            "record_preview: unsupported 'format' '$formatStr' — supported: apng, mp4, webm"
+            "record_preview: unsupported 'format' '$formatStr' — supported: apng, gif, mp4, webm"
           )
       }
     // Issue #1860: token-frugal default. `frames` returns the structured per-frame observation
@@ -3693,6 +3694,7 @@ class DaemonMcpServer(
     val formatWire =
       when (format) {
         RecordingFormat.APNG -> "apng"
+        RecordingFormat.GIF -> "gif"
         RecordingFormat.MP4 -> "mp4"
         RecordingFormat.WEBM -> "webm"
       }

@@ -583,6 +583,7 @@ class FakeDaemon : DaemonSpawn {
         val recordingId = params?.get("recordingId")?.jsonPrimitive?.contentOrNull ?: ""
         val format =
           when (params?.get("format")?.jsonPrimitive?.contentOrNull) {
+            "gif" -> ee.schimke.composeai.daemon.protocol.RecordingFormat.GIF
             "mp4" -> ee.schimke.composeai.daemon.protocol.RecordingFormat.MP4
             "webm" -> ee.schimke.composeai.daemon.protocol.RecordingFormat.WEBM
             null,
@@ -593,6 +594,7 @@ class FakeDaemon : DaemonSpawn {
         val (extension, mime) =
           when (format) {
             ee.schimke.composeai.daemon.protocol.RecordingFormat.APNG -> "apng" to "image/apng"
+            ee.schimke.composeai.daemon.protocol.RecordingFormat.GIF -> "gif" to "image/gif"
             ee.schimke.composeai.daemon.protocol.RecordingFormat.MP4 -> "mp4" to "video/mp4"
             ee.schimke.composeai.daemon.protocol.RecordingFormat.WEBM -> "webm" to "video/webm"
           }

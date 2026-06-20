@@ -775,16 +775,8 @@ class AndroidRecordingSession(
     return when (format) {
       RecordingFormat.APNG -> {
         val target = File(encodedDir, "$recordingId.apng")
-        val frames =
-          (0 until r.frameCount).map { i ->
-            File(framesDir, "frame-${"%05d".format(i)}.png").also {
-              check(it.isFile) {
-                "AndroidRecordingSession.encode: missing frame PNG ${it.absolutePath}"
-              }
-            }
-          }
         ApngEncoder.encodeFromPngFrames(
-          frames = frames,
+          frames = framePngs(r.frameCount),
           delayNumerator = 1,
           delayDenominator = fps.toShort(),
           loopCount = 0,
@@ -796,12 +788,29 @@ class AndroidRecordingSession(
           sizeBytes = target.length(),
         )
       }
+      RecordingFormat.GIF -> {
+        val target = File(encodedDir, "$recordingId.gif")
+        GifEncoder.encodeFromPngFrames(frames = framePngs(r.frameCount), fps = fps, out = target)
+        EncodedRecording(
+          videoPath = target.absolutePath,
+          mimeType = "image/gif",
+          sizeBytes = target.length(),
+        )
+      }
       RecordingFormat.MP4 ->
         encodeViaFfmpeg(FfmpegEncoder.RecordingFormatChoice.MP4, "mp4", "video/mp4")
       RecordingFormat.WEBM ->
         encodeViaFfmpeg(FfmpegEncoder.RecordingFormatChoice.WEBM, "webm", "video/webm")
     }
   }
+
+  /** Contiguous per-frame PNGs, asserted present, shared by the [ApngEncoder] / [GifEncoder] paths. */
+  private fun framePngs(frameCount: Int): List<File> =
+    (0 until frameCount).map { i ->
+      File(framesDir, "frame-${"%05d".format(i)}.png").also {
+        check(it.isFile) { "AndroidRecordingSession.encode: missing frame PNG ${it.absolutePath}" }
+      }
+    }
 
   private fun encodeViaFfmpeg(
     choice: FfmpegEncoder.RecordingFormatChoice,
