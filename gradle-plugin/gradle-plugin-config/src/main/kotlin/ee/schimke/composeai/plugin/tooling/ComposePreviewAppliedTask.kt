@@ -24,18 +24,27 @@ import org.gradle.api.tasks.TaskAction
  * [ComposePreviewModel] Tooling API directly the way the CLI does. A task that writes a small JSON
  * is the cheapest authoritative bridge.
  *
+ * The marker also records the configured render *intent* — the `composePreview { variant; enabled
+ * }` values. This matters specifically for the **configuration-only** plugin: it deliberately does
+ * not register the heavy [ComposePreviewModel] Tooling builder (no AGP / classpath resolution), so
+ * for a config-only build the marker is the only runtime-free record of what was configured.
+ * Consumers that want richer per-module state (resolved dependency versions, compat findings) still
+ * go through the Tooling model, which the full runtime plugin registers.
+ *
  * JSON shape (schema `compose-preview-applied/v1`):
  *
  *     {
  *       "schema": "compose-preview-applied/v1",
  *       "pluginVersion": "0.7.1",
  *       "modulePath": ":wearApp",
- *       "moduleName": "wearApp"
+ *       "moduleName": "wearApp",
+ *       "variant": "debug",
+ *       "enabled": true
  *     }
  *
- * Kept deliberately minimal — downstream tools only need "does the plugin apply here?". If more
- * per-module metadata is needed later, extend the Tooling-API [ComposePreviewModel] rather than
- * widening the marker.
+ * `variant` / `enabled` were added under the same `v1` schema: the additions are backwards
+ * compatible (the VS Code reader pins to `v1` and ignores unknown keys), so bumping the schema
+ * would needlessly break existing readers.
  */
 @CacheableTask
 abstract class ComposePreviewAppliedTask : DefaultTask() {
@@ -45,6 +54,17 @@ abstract class ComposePreviewAppliedTask : DefaultTask() {
   @get:Input abstract val modulePath: Property<String>
 
   @get:Input abstract val moduleName: Property<String>
+
+  /** Configured `composePreview.variant` (or its convention default). */
+  @get:Input abstract val variant: Property<String>
+
+  /**
+   * Configured `composePreview.enabled` (or its convention default). Named `previewsEnabled` rather
+   * than `enabled` because every Gradle `Task` already exposes a final `enabled` boolean
+   * (`Task.setEnabled`), which the input would clash with — Gradle can't decorate an abstract
+   * `getEnabled()` over it. Serialized into the marker's `enabled` JSON field.
+   */
+  @get:Input abstract val previewsEnabled: Property<Boolean>
 
   @get:OutputFile abstract val outputFile: RegularFileProperty
 
@@ -58,6 +78,8 @@ abstract class ComposePreviewAppliedTask : DefaultTask() {
         pluginVersion = pluginVersion.get(),
         modulePath = modulePath.get(),
         moduleName = moduleName.get(),
+        variant = variant.get(),
+        enabled = previewsEnabled.get(),
       )
     out.writeText(JSON.encodeToString(marker))
   }
@@ -77,4 +99,6 @@ internal data class AppliedMarker(
   val pluginVersion: String,
   val modulePath: String,
   val moduleName: String,
+  val variant: String,
+  val enabled: Boolean,
 )
