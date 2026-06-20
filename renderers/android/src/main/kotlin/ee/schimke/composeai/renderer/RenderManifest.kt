@@ -129,6 +129,11 @@ data class LauncherWidgetCapture(
      * future GIF-stitch pass. `null` when the capture didn't originate from a resize walk.
      */
     val frameDelayMs: Int? = null,
+    /**
+     * `true` renders the widget inside the simulated launcher home screen rather than as a bare
+     * cell-sized box. Maps onto `LauncherWidgetOverride.launcherMode`.
+     */
+    val launcherMode: Boolean = false,
 )
 
 /**

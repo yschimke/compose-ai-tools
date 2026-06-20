@@ -1018,6 +1018,15 @@ enum class LauncherResizeOrder {
  * @property resizeOrder hint for a future daemon-side resize-loop orchestrator on how to walk
  *   intermediate stops between two sizes. The single-shot around-composable ignores this field — it
  *   always snaps to [cells].
+ * @property launcherMode when `true`, the connector renders the widget *inside a simulated launcher
+ *   home screen* — a wallpaper, status bar, weather header, app-icon grid and dock — with the
+ *   widget placed on the home screen at its resolved cell footprint, instead of returning the bare
+ *   cell-sized `Box`. Lets a held widget preview be reviewed the way it would actually appear on a
+ *   device home screen. The cell footprint (and any resize walk) drives the size of the widget *on*
+ *   that home screen, so an existing widget preview "just works" — turning the flag on swaps the
+ *   bare cell box for the full-device launcher chrome. `null` / `false` keeps the original
+ *   cell-sized behaviour. Drive a full-device capture by pairing it with a phone-shaped sandbox
+ *   (`widthPx`/`heightPx` or `device`); the chrome fills whatever canvas the render is given.
  */
 @Serializable
 data class LauncherWidgetOverride(
@@ -1027,6 +1036,7 @@ data class LauncherWidgetOverride(
   val minCells: LauncherWidgetSize? = null,
   val maxCells: LauncherWidgetSize? = null,
   val resizeOrder: LauncherResizeOrder? = null,
+  val launcherMode: Boolean? = null,
 )
 
 /**
@@ -1088,6 +1098,13 @@ data class LauncherWidgetPayload(
    * picker uses this to grey out axis-locked drag handles.
    */
   val resizeAxes: LauncherResizeAxes = LauncherResizeAxes.BOTH,
+  /**
+   * Echo of [LauncherWidgetOverride.launcherMode] — `true` when this capture was rendered inside
+   * the simulated launcher home screen rather than as a bare cell-sized box. Clients can use it to
+   * label a card "launcher mode" and to interpret the widget's footprint as a region *within* a
+   * device screenshot rather than the whole render.
+   */
+  val launcherMode: Boolean = false,
 )
 
 /**

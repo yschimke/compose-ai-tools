@@ -59,6 +59,15 @@ annotation class LauncherWidgetPreview(
    * this field is plumbed through the manifest so a loop driver can read it later.
    */
   val resizeOrder: LauncherWidgetResizeOrder = LauncherWidgetResizeOrder.WidthFirst,
+  /**
+   * When `true`, render the widget *inside a simulated launcher home screen* — wallpaper, status
+   * bar, weather header, app-icon grid and dock — with the widget placed on the home screen at the
+   * [width] × [height] cell footprint, instead of as a bare cell-sized box. Pair it with a
+   * phone-shaped `@Preview(widthDp = …, heightDp = …)` (or `device = …`) so the chrome fills a
+   * full-device canvas; the cell footprint then sizes the widget *on* that home screen. Defaults to
+   * `false` (the original bare cell-sized behaviour).
+   */
+  val launcherMode: Boolean = false,
 )
 
 /**

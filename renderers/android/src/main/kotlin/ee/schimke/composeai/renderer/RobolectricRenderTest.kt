@@ -2176,6 +2176,7 @@ private fun LauncherWidgetCapture.toLauncherWidgetOverride(): LauncherWidgetOver
                 LauncherWidgetCaptureResizeOrder.WidthFirst -> LauncherResizeOrder.WIDTH_FIRST
                 LauncherWidgetCaptureResizeOrder.HeightFirst -> LauncherResizeOrder.HEIGHT_FIRST
             },
+        launcherMode = launcherMode,
     )
 
 /**
