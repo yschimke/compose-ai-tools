@@ -5,6 +5,15 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Nightly full run. The heavy "anti-bit-rot" jobs below (XR composite render,
+  # the two bundle E2Es, agent-audit-samples) are drift detectors that rarely
+  # fail on an ordinary code PR but cost 6–12 min each and dominate the PR
+  # critical path. They're gated off `pull_request` (see the per-job `if:`s) and
+  # instead run here nightly + on every push to main (i.e. immediately
+  # post-merge), so a regression is still caught within minutes of landing
+  # without making every PR wait on them.
+  schedule:
+    - cron: "23 4 * * *"
 
 # Workflow-level default: minimum viable scope. Individual jobs can widen if
 # they need it (none here do — all jobs are read-only builds + artifact upload,
@@ -174,7 +183,10 @@ jobs:
   # rot. The graceful no-binary path is covered by the plugin unit/functional tests.
   render-xr-composite:
     name: Render XR composite (sample)
-    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    # Heavy (builds the native clang compositor + Xvfb render, ~6 min). Drift
+    # detector, not a PR gate — runs on push-to-main + nightly, skipped on PRs
+    # (a skipped required check counts as passing for branch protection).
+    if: ${{ github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -322,7 +334,10 @@ jobs:
 
   bundle-render:
     name: Bundle Render E2E
-    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    # Heavy E2E (~7 min, cold-starts Compose Desktop per preview). Drift
+    # detector — runs on push-to-main + nightly, skipped on PRs (skipped
+    # required check == passing).
+    if: ${{ github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -354,7 +369,10 @@ jobs:
 
   android-bundle-daemon-e2e:
     name: Android Bundle Daemon E2E
-    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    # Heavy E2E (~9 min, cold-starts a daemon JVM per bundle). Drift detector —
+    # runs on push-to-main + nightly, skipped on PRs (skipped required check ==
+    # passing).
+    if: ${{ github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -413,7 +431,10 @@ jobs:
 
   agent-audit-samples:
     name: Agent Audit Samples
-    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    # Longest single job (~12 min; one external-fetched audit script). Drift
+    # detector — runs on push-to-main + nightly, skipped on PRs (skipped
+    # required check == passing).
+    if: ${{ github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
