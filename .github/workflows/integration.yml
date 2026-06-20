@@ -637,7 +637,12 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Apply consumer patches (idempotent)
-        if: matrix.patch_file != ''
+        # Skip on PRs for non-pr_blocking cells too: a stale upstream patch makes
+        # `git apply` exit 1, which would otherwise block unrelated PRs via a
+        # non-representative drift cell. The discover/render steps that consume
+        # the patch are already PR-gated the same way, so there's nothing to
+        # patch for on a skipped cell. (Drift still surfaces on cron/push.)
+        if: ${{ matrix.patch_file != '' && (github.event_name != 'pull_request' || matrix.pr_blocking) }}
         # Runs from the external checkout root so each patch's
         # repo-root-relative paths (e.g. AdaptiveJetStream/jetstream/...)
         # line up with `git apply -p1`. The bundle was extracted into
@@ -667,7 +672,7 @@ jobs:
           done
 
       - name: Add preview-annotations dependency for the XR overlay
-        if: matrix.render_xr
+        if: ${{ matrix.render_xr && (github.event_name != 'pull_request' || matrix.pr_blocking) }}
         # The @XrSubspacePreview overlay needs the preview-annotations artifact
         # (which defines @XrSubspacePreview) on the module's compile classpath.
         # That's an ordinary library dependency, not plugin configuration: the
@@ -718,7 +723,7 @@ jobs:
           PY
 
       - name: Repo-specific pre-Gradle patches
-        if: matrix.pre_gradle_script != ''
+        if: ${{ matrix.pre_gradle_script != '' && (github.event_name != 'pull_request' || matrix.pr_blocking) }}
         working-directory: external/${{ matrix.workdir }}
         run: ${{ matrix.pre_gradle_script }}
 
