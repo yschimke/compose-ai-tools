@@ -499,18 +499,52 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
+      # Path filter at STEP level, not a trigger `paths:` filter: this is a
+      # required check, so a `paths:`-filtered workflow that didn't run would
+      # leave it stuck pending and block the merge. Instead the job always runs
+      # (so the required check always reports), and the npm steps below only
+      # execute when the PR touches the extension. The TS unit/integration tests
+      # can't be affected by anything outside `vscode-extension/`, so skipping
+      # them on unrelated PRs is safe. Pushes to main + the nightly run always
+      # execute the full suite.
+      - name: Detect vscode-extension changes
+        id: changes
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MERGE_SHA: ${{ github.sha }}
+        run: |
+          set -uo pipefail
+          # Fail open: any problem computing the diff -> run the full suite.
+          git fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
+          if ! changed=$(git diff --name-only "$BASE_SHA" "$MERGE_SHA" 2>/dev/null); then
+            echo "::warning::Could not diff against base; running VS Code Extension Tests to be safe."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if printf '%s\n' "$changed" | grep -qE '^vscode-extension/'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No vscode-extension/** changes in this PR — skipping the npm build/test steps (this required check still reports)."
+          fi
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        if: ${{ github.event_name != 'pull_request' || steps.changes.outputs.run == 'true' }}
         with:
           node-version: 20
       - name: Install dependencies
+        if: ${{ github.event_name != 'pull_request' || steps.changes.outputs.run == 'true' }}
         working-directory: vscode-extension
         run: npm ci
       - name: Compile
+        if: ${{ github.event_name != 'pull_request' || steps.changes.outputs.run == 'true' }}
         working-directory: vscode-extension
         run: npm run compile
       - name: Run unit tests
+        if: ${{ github.event_name != 'pull_request' || steps.changes.outputs.run == 'true' }}
         working-directory: vscode-extension
         run: npm test
       - name: Run integration tests (xvfb)
+        if: ${{ github.event_name != 'pull_request' || steps.changes.outputs.run == 'true' }}
         working-directory: vscode-extension
         run: xvfb-run -a npm run test:electron
