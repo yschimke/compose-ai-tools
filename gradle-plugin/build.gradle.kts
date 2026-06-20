@@ -47,12 +47,11 @@ dependencies {
   // ASM walks the preview method's bytecode to extract @Composable call targets — ClassGraph only
   // surfaces annotations + signatures, not method-body invocations. Used by PreviewTargetInference.
   implementation(libs.asm)
-  // Ktor over the OkHttp engine — repo-standard HTTP stack — to prefetch device-art bezels into the
-  // renderer's disk cache (DeviceArtPrefetch). Lives in the plugin (Gradle daemon JVM), NOT the
-  // render subprocess: Ktor's transitive coroutines bump would skew Compose there
-  // (runBlockingK$default NoSuchMethodError; docs/RENDERER_COMPATIBILITY.md).
-  implementation(libs.ktor.client.core)
-  implementation(libs.ktor.client.okhttp)
+  // OkHttp directly (NOT Ktor) to prefetch device-art bezels into the renderer's disk cache
+  // (DeviceArtPrefetch). Ktor 3.x needs kotlinx-coroutines >= 1.10, but the Gradle daemon classpath
+  // ships an older coroutines and Ktor fails at runtime with `Job.invokeOnCompletion$default
+  // NoSuchMethodError`; OkHttp carries no coroutines dependency, so it runs cleanly here.
+  implementation(libs.okhttp)
   compileOnly("com.android.tools.build:gradle:${libs.versions.agp.get()}")
 
   testImplementation(libs.junit)
