@@ -335,6 +335,37 @@ object RecordingScriptDataExtensions {
     )
 
   /**
+   * Visibility-only assertion descriptor for backends that wire `assert.visible` /
+   * `assert.notVisible` but not yet `assert.textEquals` — the Android backend today, which resolves
+   * visibility against its flat probe-semantics snapshot (issue #1964). That snapshot only supports
+   * `testTag` targets: it can't reliably match `role`+`text` (a `Button { Text(...) }` emits the
+   * role and text on separate flat nodes, so checking both on one node matches nothing) and carries
+   * no refs. So `record_preview` advertises only these two events here, and the handler rejects
+   * non-`testTag` targets rather than risk a false pass; `assert.textEquals` isn't advertised at
+   * all.
+   */
+  val assertionVisibilityDescriptor: DataExtensionDescriptor =
+    DataExtensionDescriptor(
+      id = DataExtensionId("assertion"),
+      displayName = "Recording assertions",
+      recordingScriptEvents =
+        listOf(
+          RecordingScriptEventDescriptor(
+            id = ASSERT_VISIBLE_EVENT,
+            displayName = "Assert visible",
+            summary = "Fails the recording unless the target (testTag) matches a node.",
+            supported = true,
+          ),
+          RecordingScriptEventDescriptor(
+            id = ASSERT_NOT_VISIBLE_EVENT,
+            displayName = "Assert not visible",
+            summary = "Fails the recording if the target (testTag) matches any node.",
+            supported = true,
+          ),
+        ),
+    )
+
+  /**
    * Renderer-agnostic roadmap descriptors. New entries land here when an event has a
    * renderer-agnostic dispatch story but no host has wired it yet. Advertised by every daemon so
    * `list_data_products` surfaces the planned surface area, but `supported = false` everywhere —
