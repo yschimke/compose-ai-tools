@@ -1,10 +1,11 @@
 package ee.schimke.composeai.daemon
 
 /**
- * Pure decision logic for the Maestro-style `assert.visible` / `assert.notVisible` recording
- * events. Kept free of any Compose / Skiko dependency so it's unit-testable without standing up a
- * held scene: the [DesktopRecordingSession] handler resolves the event's target against the live
- * semantics tree, reduces it to a [matchCount], and asks this function for the verdict.
+ * Pure decision logic for the Maestro-style `assert.visible` / `assert.notVisible` /
+ * `assert.textEquals` recording events. Kept free of any Compose / Skiko dependency so it's
+ * unit-testable without standing up a held scene: the [DesktopRecordingSession] handler resolves
+ * the event's target against the live semantics tree, reduces it to a [matchCount] (or the resolved
+ * node's text), and asks these functions for the verdict.
  *
  * **Semantics (matching Maestro).** `assertVisible` passes when *at least one* node matches the
  * target — multiple matches still count as "present". `assertNotVisible` passes only when *zero*
@@ -37,3 +38,22 @@ internal fun evaluateVisibilityAssertion(
         "assert.notVisible: $matchCount node(s) matched $targetLabel but none were expected"
       )
   }
+
+/**
+ * Evaluate an `assert.textEquals` assertion against the **resolved** node's text. [expected] is the
+ * string the script asked for (the event's `inputText`); [actual] is the resolved node's `text`
+ * (`null` when the node carries no text). [targetLabel] renders the target for the failure message.
+ * The target-resolution failure (no match / ambiguous) is handled by the caller before this runs —
+ * this is purely the string comparison.
+ */
+internal fun evaluateTextEqualsAssertion(
+  expected: String,
+  actual: String?,
+  targetLabel: String,
+): AssertionVerdict =
+  if (actual == expected) AssertionVerdict.Passed
+  else
+    AssertionVerdict.Failed(
+      "assert.textEquals: $targetLabel text was ${actual?.let { "\"$it\"" } ?: "<none>"} " +
+        "but expected \"$expected\""
+    )

@@ -86,6 +86,18 @@ fun ThemedAttributionText() {
 }
 
 /**
+ * Fixture for `assert.textEquals` (issue #1965). The `Text` carries both a `testTag` and its text
+ * on the same semantics node, so a script can resolve it by `testTag("greeting")` and assert the
+ * resolved node's text equals `"Hello"`.
+ */
+@Composable
+fun TaggedTextSquare() {
+  Box(modifier = Modifier.fillMaxSize().background(Color(0xFFEF5350))) {
+    Text(text = "Hello", modifier = Modifier.testTag("greeting"))
+  }
+}
+
+/**
  * Fixture for the B-desktop.1.6 cancellation-invariant regression test. Sleeps for ~500ms inside
  * the composition body so the test can race a `host.shutdown(...)` call against an in-flight render
  * and assert the render still completes (per

@@ -272,6 +272,13 @@ object RecordingScriptDataExtensions {
   const val ASSERT_NOT_VISIBLE_EVENT: String = "assert.notVisible"
 
   /**
+   * `assert.textEquals` — resolves the event's `target` and fails unless the resolved node's text
+   * equals the expected string carried in the event's existing `inputText` field (no new wire
+   * field). The Maestro `assertVisible: "text"` / Espresso `withText` equivalent.
+   */
+  const val ASSERT_TEXT_EQUALS_EVENT: String = "assert.textEquals"
+
+  /**
    * `recording.probe` descriptor with `supported = true`. Returned from each
    * `RenderHost.recordingScriptEventDescriptors()` that wires a real probe handler in its
    * recording-session registry (today: both desktop and android backends).
@@ -314,6 +321,14 @@ object RecordingScriptDataExtensions {
             id = ASSERT_NOT_VISIBLE_EVENT,
             displayName = "Assert not visible",
             summary = "Fails the recording if the target matches any node.",
+            supported = true,
+          ),
+          RecordingScriptEventDescriptor(
+            id = ASSERT_TEXT_EQUALS_EVENT,
+            displayName = "Assert text equals",
+            summary =
+              "Fails the recording unless the target node's text equals the expected " +
+                "string (carried in the event's inputText field).",
             supported = true,
           ),
         ),

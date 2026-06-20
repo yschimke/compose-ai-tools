@@ -52,4 +52,29 @@ class RecordingAssertionsTest {
     assertTrue((verdict as AssertionVerdict.Failed).reason.contains("assert.notVisible"))
     assertTrue(verdict.reason.contains("text=Error"))
   }
+
+  @Test
+  fun assert_text_equals_passes_on_exact_match() {
+    assertEquals(
+      AssertionVerdict.Passed,
+      evaluateTextEqualsAssertion(expected = "Hello", actual = "Hello", "tag=greeting"),
+    )
+  }
+
+  @Test
+  fun assert_text_equals_fails_on_mismatch_and_reports_both() {
+    val verdict =
+      evaluateTextEqualsAssertion(expected = "Hello", actual = "Goodbye", "tag=greeting")
+    assertTrue(verdict is AssertionVerdict.Failed)
+    val reason = (verdict as AssertionVerdict.Failed).reason
+    assertTrue("reports actual", reason.contains("Goodbye"))
+    assertTrue("reports expected", reason.contains("Hello"))
+  }
+
+  @Test
+  fun assert_text_equals_fails_when_node_has_no_text() {
+    val verdict = evaluateTextEqualsAssertion(expected = "Hello", actual = null, "tag=greeting")
+    assertTrue(verdict is AssertionVerdict.Failed)
+    assertTrue((verdict as AssertionVerdict.Failed).reason.contains("<none>"))
+  }
 }
