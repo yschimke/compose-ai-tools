@@ -721,7 +721,7 @@ abstract class Command(
     }
   }
 
-  private fun findProjectRoot(): File? {
+  protected fun findProjectRoot(): File? {
     var dir: File? = File(".").absoluteFile
     while (dir != null) {
       if (File(dir, "gradlew").exists()) return dir

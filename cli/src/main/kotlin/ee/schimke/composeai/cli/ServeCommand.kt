@@ -1,11 +1,16 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.cli.serve.GitWorktrees
+import ee.schimke.composeai.cli.serve.GradleRevisionBuilder
 import ee.schimke.composeai.cli.serve.RenderOutcome
 import ee.schimke.composeai.cli.serve.ServeBundle
 import ee.schimke.composeai.cli.serve.ServeHttpServer
 import ee.schimke.composeai.cli.serve.ServeMdnsAdvertiser
+import ee.schimke.composeai.cli.serve.ServeModuleRef
 import ee.schimke.composeai.cli.serve.ServePreview
 import ee.schimke.composeai.cli.serve.ServeRenderHost
+import ee.schimke.composeai.cli.serve.ServeRevisionFactory
+import ee.schimke.composeai.cli.serve.ServeSessionFactory
 import ee.schimke.composeai.cli.serve.ServeSessionRegistry
 import ee.schimke.composeai.cli.serve.ServeSessionState
 import ee.schimke.composeai.cli.serve.ServeUrls
@@ -39,6 +44,13 @@ class ServeCommand(args: List<String>) : Command(args) {
   private val tokenOverride: String? = args.flagValue("--token")?.takeIf { it.isNotBlank() }
   private val exportPath: String? = args.flagValue("--export")?.takeIf { it.isNotBlank() }
   private val inlineBundle: Boolean = "--inline" in args
+
+  /**
+   * Project mode: besides the current checkout (the default session), fork a daemon-backed session
+   * per git revision requested via `?session=<rev>`, each built in its own worktree and suspended /
+   * resumed by the registry. Off by default (just the current module).
+   */
+  private val revisions: Boolean = "--revisions" in args
 
   override fun run() {
     if ("--help" in args || "-h" in args) {
@@ -128,7 +140,12 @@ class ServeCommand(args: List<String>) : Command(args) {
         }
         .getOrNull()
     }
-    val registry = ServeSessionRegistry(open = openHost)
+    // Project mode forks a session per git revision behind the registry's factory; off by default
+    // the factory yields nothing, so only the pinned current checkout is served.
+    val worktrees: GitWorktrees? = if (revisions) openWorktrees(module) else null
+    val factory =
+      if (worktrees != null) revisionFactory(module, worktrees) else ServeSessionFactory { null }
+    val registry = ServeSessionRegistry(open = openHost, factory = factory)
     val defaultState =
       ServeSessionState(
         descriptor = descriptor,
@@ -171,6 +188,7 @@ class ServeCommand(args: List<String>) : Command(args) {
           runCatching { advertiser?.close() }
           runCatching { server.stop() }
           runCatching { registry.close() }
+          runCatching { worktrees?.close() }
           done.countDown()
         }
       )
@@ -178,6 +196,38 @@ class ServeCommand(args: List<String>) : Command(args) {
     server.start()
     printBanner(module.gradlePath, server.port, token, previews.size)
     done.await()
+  }
+
+  /** Open the worktree manager rooted at the repo (project mode). */
+  private fun openWorktrees(module: PreviewModule): GitWorktrees {
+    val repoRoot =
+      findProjectRoot() ?: module.projectDir.absoluteFile.parentFile ?: module.projectDir
+    return GitWorktrees(
+      repoRoot = repoRoot,
+      cacheRoot = File(repoRoot, "build/serve-worktrees"),
+      onLog = { System.err.println("[serve worktree] $it") },
+    )
+  }
+
+  /** The project-mode factory: a git revision (`?session=<rev>`) → a built [ServeSessionState]. */
+  private fun revisionFactory(
+    module: PreviewModule,
+    worktrees: GitWorktrees,
+  ): ServeRevisionFactory {
+    val repoRoot =
+      findProjectRoot() ?: module.projectDir.absoluteFile.parentFile ?: module.projectDir
+    val relativePath =
+      module.projectDir.absoluteFile.relativeToOrNull(repoRoot.absoluteFile)?.path ?: ""
+    return ServeRevisionFactory(
+      worktrees = worktrees,
+      builder =
+        GradleRevisionBuilder(
+          extraArgs = gradleArgsWithForce(),
+          onLog = { System.err.println("[serve build] $it") },
+        ),
+      module = ServeModuleRef(module.gradlePath, relativePath),
+      onLog = { System.err.println("[serve] $it") },
+    )
   }
 
   /**
@@ -294,6 +344,9 @@ class ServeCommand(args: List<String>) : Command(args) {
                           GET /bundle.zip.
         --inline          With --export, bake the PNGs into the gallery for a single self-contained
                           index.html (vs. separate previews/<id>.png files).
+        --revisions       Project mode: also serve other git revisions of this repo on demand. A
+                          request with ?session=<rev> checks that revision out into a worktree,
+                          builds it, and serves it as its own session (suspended/resumed when idle).
 
       The shareable link carries an unguessable token; requests without it get 404.
       """
