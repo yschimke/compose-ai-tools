@@ -13,6 +13,7 @@ import ee.schimke.composeai.daemon.protocol.HistoryListParams
 import ee.schimke.composeai.daemon.protocol.HistoryListResult
 import ee.schimke.composeai.daemon.protocol.HistoryReadResultDto
 import ee.schimke.composeai.daemon.protocol.InitializeResult
+import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RecordingEncodeResult
 import ee.schimke.composeai.daemon.protocol.RecordingFormat
@@ -21,6 +22,8 @@ import ee.schimke.composeai.daemon.protocol.RecordingStartResult
 import ee.schimke.composeai.daemon.protocol.RecordingStopResult
 import ee.schimke.composeai.daemon.protocol.RenderNowResult
 import ee.schimke.composeai.daemon.protocol.RenderTier
+import ee.schimke.composeai.daemon.protocol.StreamCodec
+import ee.schimke.composeai.daemon.protocol.StreamStartResult
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -218,6 +221,43 @@ interface RenderSession : AutoCloseable {
     format: RecordingFormat = RecordingFormat.APNG,
     timeout: Duration = 60.seconds,
   ): RecordingEncodeResult
+
+  // ---------------------------------------------------------------------------
+  // Streaming (optional — daemon `stream/start` + `streamFrame` + `interactive/input`).
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Start a held streamed-frame session for one preview (daemon `stream/start`). The renderer then
+   * pushes `streamFrame` notifications — observe via [onNotification] — carrying inline base64
+   * frames keyed by [StreamStartResult.frameStreamId]. The default throws
+   * [UnsupportedOperationException]; callers that want graceful degradation catch it (or any
+   * failure) and fall back to [renderNow]-per-frame. Only the subprocess/daemon backend overrides
+   * this.
+   */
+  fun streamStart(
+    previewId: String,
+    codec: StreamCodec? = null,
+    maxFps: Int? = null,
+    overrides: PreviewOverrides? = null,
+    timeout: Duration = 30.seconds,
+  ): StreamStartResult = throw UnsupportedOperationException("streaming not supported")
+
+  /** Stop a held stream (daemon `stream/stop`, fire-and-forget). Default throws. */
+  fun streamStop(frameStreamId: String): Unit =
+    throw UnsupportedOperationException("streaming not supported")
+
+  /**
+   * Dispatch an input event into a held stream's live composition (daemon `interactive/input`,
+   * fire-and-forget); the resulting frame arrives as a `streamFrame`. Default throws.
+   */
+  fun interactiveInput(
+    frameStreamId: String,
+    kind: InteractiveInputKind,
+    pixelX: Int? = null,
+    pixelY: Int? = null,
+    scrollDeltaY: Float? = null,
+    keyCode: String? = null,
+  ): Unit = throw UnsupportedOperationException("streaming not supported")
 
   // ---------------------------------------------------------------------------
   // Notifications.

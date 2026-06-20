@@ -145,6 +145,8 @@ dependencies {
   // so the strict slf4j pin in the `constraints {}` block below covers the server too.
   implementation(libs.ktor.server.core)
   implementation(libs.ktor.server.cio)
+  // WebSockets plugin: the `serve` streamed-frame lane (`/ws/{id}`) — tier-2 streaming spike.
+  implementation(libs.ktor.server.websockets)
 
   // Bundle the MCP server so `compose-preview mcp serve` can invoke it in-process —
   // the consumer install story stays a single tarball + a single launcher.
