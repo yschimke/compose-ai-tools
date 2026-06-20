@@ -31,6 +31,16 @@ read each overlay effect on its own, with no canvas shapes competing:
 Captured by `TouchOverlayShowcaseRecordingTest` — same harness, same
 script, empty content.
 
+`overlay-fling-longpress.gif` covers the two release/timing effects on a
+blank scene (a fast flick, then a stationary hold):
+
+| Gesture    | Overlay effect |
+|------------|----------------|
+| Fling      | green **velocity arrow** from the release point, length ∝ speed (a flick reads differently from a placed drag) |
+| Long-press | deep-orange radial **progress arc** that fills to the hold timeout, then a confirm flash; quick taps lift before it starts |
+
+Captured by `TouchOverlayFlingLongPressRecordingTest`.
+
 ## How this was captured
 
 ```
