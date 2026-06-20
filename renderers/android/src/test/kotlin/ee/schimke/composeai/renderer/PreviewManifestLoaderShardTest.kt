@@ -40,7 +40,7 @@ class PreviewManifestLoaderShardTest {
             captures = emptyList(),
             dataProducts =
                 listOf(
-                    RenderPreviewDataProduct(
+                    RenderPreviewArtifact(
                         kind = "render/scroll/long",
                         output = "data/render-scroll-long/$id.png",
                         cost = cost,

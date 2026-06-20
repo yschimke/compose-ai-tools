@@ -176,10 +176,13 @@ data class RenderPreviewEntry(
      */
     val captures: List<RenderPreviewCapture> = listOf(RenderPreviewCapture()),
     /**
-     * Annotation-sourced products available for this preview. These are rendered as data-product
-     * artefacts, not as primary screenshots in the preview capture list.
+     * Annotation-sourced *rendered artefacts* for this preview — secondary images (each with a
+     * `kind`, an output PNG, and a render cost), as opposed to the primary screenshots in
+     * [captures]. NOT the daemon's structured "data products" (a11y findings, semantics trees);
+     * those are JSON produced by the daemon's `DataProductRegistry`, never by this render manifest.
+     * See [RenderPreviewArtifact]. The wire field name stays `dataProducts` for back-compat.
      */
-    val dataProducts: List<RenderPreviewDataProduct> = emptyList(),
+    val dataProducts: List<RenderPreviewArtifact> = emptyList(),
 )
 
 @Serializable
@@ -200,8 +203,17 @@ data class RenderPreviewCapture(
     val cost: Float = 1.0f,
 )
 
+/**
+ * A secondary *rendered artefact* of a preview produced by the standalone render path: a `kind`-
+ * tagged image with its own output PNG and render [cost], distinct from the primary [captures].
+ *
+ * Renamed from `RenderPreviewDataProduct` to stop colliding with the daemon's structured "data
+ * products" (a11y / semantics / theme JSON over the daemon protocol) — different concept, same old
+ * name. The Kotlin class name isn't serialized, so this rename is wire-neutral; the owning field is
+ * still [RenderPreviewEntry.dataProducts] to keep the manifest JSON unchanged.
+ */
 @Serializable
-data class RenderPreviewDataProduct(
+data class RenderPreviewArtifact(
     val kind: String,
     val advanceTimeMillis: Long? = null,
     val scroll: ScrollCapture? = null,

@@ -562,7 +562,7 @@ abstract class RobolectricRenderTestBase(
         return File(outputDir, leafName)
     }
 
-    private fun outputFileFor(product: RenderPreviewDataProduct, outputDir: File): File {
+    private fun outputFileFor(product: RenderPreviewArtifact, outputDir: File): File {
         val rootDir = outputDir.parentFile ?: outputDir
         return File(rootDir, product.output)
     }
@@ -582,7 +582,7 @@ abstract class RobolectricRenderTestBase(
     }
 
     private data class ProductRenderJob(
-        val product: RenderPreviewDataProduct,
+        val product: RenderPreviewArtifact,
         override val outputFile: File,
     ) : RenderJob {
         override val advanceTimeMillis: Long? = product.advanceTimeMillis
