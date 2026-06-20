@@ -906,6 +906,8 @@ class AndroidRecordingSession(
         "scrollDown",
         "scrollLeft",
         "scrollRight",
+        // TalkBack's double-tap-to-activate verb (issue #1956) — OnClick on the resolved node.
+        "activate",
       )
   }
 }
