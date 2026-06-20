@@ -33,6 +33,21 @@ _NUMCOMP = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4, "MAT4": 16}
 
 
 def _load_glb(path):
+    if path.startswith(("http://", "https://")):
+        # Runtime-fetched device models (see DeviceModelCatalog) are referenced by
+        # URL, never committed: download to a temp cache and render from there.
+        import hashlib
+        import os
+        import tempfile
+        import urllib.request
+        cache = os.path.join(tempfile.gettempdir(), "device-models",
+                             hashlib.sha1(path.encode()).hexdigest()[:12] + ".glb")
+        if not os.path.exists(cache):
+            os.makedirs(os.path.dirname(cache), exist_ok=True)
+            req = urllib.request.Request(path, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                open(cache, "wb").write(resp.read())
+        path = cache
     raw = open(path, "rb").read()
     if raw[:4] != b"glTF":
         raise ValueError("not a glTF-binary")
@@ -191,6 +206,23 @@ def _composite_screen(img, zbuf, rot, size, corners, uv, texture, bezel):
         img[y0:y1 + 1, x0:x1 + 1][upd] = sample[upd]
 
 
+def _orient_device(verts):
+    """Canonicalise axis order so a slab-shaped device stands upright with its
+    display face toward +Z (longest extent -> Y, thinnest -> Z). Chunky/round
+    models (e.g. the avocado, already canonical) pass through unchanged."""
+    ext = verts.max(0) - verts.min(0)
+    order = np.argsort(ext)[::-1]  # axis indices: long, mid, thin
+    if ext[order[2]] / ext[order[0]] >= 0.6:
+        return verts
+    perm = np.zeros((3, 3))
+    perm[0, order[1]] = 1  # mid  -> X (width)
+    perm[1, order[0]] = 1  # long -> Y (height)
+    perm[2, order[2]] = 1  # thin -> Z (toward camera)
+    if np.linalg.det(perm) < 0:
+        perm[2, order[2]] = -1  # keep right-handed; don't mirror the normals
+    return verts @ perm.T
+
+
 def _screen_on(verts, texture, normal="+z"):
     """A screen quad on the model's front face, sized to the texture aspect."""
     texture = np.asarray(texture)
@@ -211,11 +243,16 @@ def _screen_on(verts, texture, normal="+z"):
     return dict(corners=corners, uv=uv, texture=np.asarray(texture), bezel=bezel)
 
 
-def main(glb, out, screen_png="../../../../docs/design/xr-spatial/now-playing.png"):
-    gltf, bin_ = _load_glb(glb)
+def main(model, out, screen_png="../../../../docs/design/xr-spatial/now-playing.png",
+         colour=None):
+    # `model` is a committed .glb path or a runtime-fetched URL (DeviceModelCatalog).
+    gltf, bin_ = _load_glb(model)
     verts, faces = _mesh(gltf, bin_)
+    verts = _orient_device(verts)
     centre = (verts.max(0) + verts.min(0)) / 2
     verts = (verts - centre) / np.abs(verts - centre).max()
+    if colour is None:
+        colour = (0.62, 0.78, 0.40) if "avocado" in model else (0.30, 0.32, 0.36)
 
     screen = None
     if screen_png:
@@ -224,14 +261,14 @@ def main(glb, out, screen_png="../../../../docs/design/xr-spatial/now-playing.pn
         tex = Image.alpha_composite(flat, tex).convert("RGB")  # transparent -> white
         screen = _screen_on(verts, tex)
 
-    a = _render(verts, faces, np.radians(-26), np.radians(14), screen)
-    b = _render(verts, faces, np.radians(30), np.radians(18), screen)
+    a = _render(verts, faces, np.radians(-26), np.radians(14), screen, colour=colour)
+    b = _render(verts, faces, np.radians(30), np.radians(18), screen, colour=colour)
     combo = Image.new("RGB", (a.width + b.width + 20, a.height), (255, 255, 255))
     combo.paste(a, (0, 0))
     combo.paste(b, (a.width + 20, 0))
     combo.save(out)
     note = "device screen composited" if screen else "geometry only"
-    print(f"{glb}: {len(verts)} verts / {len(faces)} tris ({note}) -> {out}")
+    print(f"{model}: {len(verts)} verts / {len(faces)} tris ({note}) -> {out}")
 
 
 if __name__ == "__main__":
