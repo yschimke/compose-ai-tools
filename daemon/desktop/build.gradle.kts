@@ -50,11 +50,6 @@ dependencies {
   // core module re-exposes kotlinx-serialization-json as `api`, so we don't
   // re-declare it here.
   implementation(project(":daemon:core"))
-  // `assert.pixels` (issue #1967) reuses the `PixelDiff` golden-image comparator.
-  // `:daemon:harness`'s
-  // production classpath depends only on `:daemon:core` + `:common-io`, so this edge introduces no
-  // cycle (harness's dependency on `:daemon:desktop` is test-only).
-  implementation(project(":daemon:harness"))
   implementation(project(":common-io"))
   implementation(project(":data-render-connector"))
   implementation(project(":data-history-connector"))

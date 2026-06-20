@@ -1,4 +1,4 @@
-package ee.schimke.composeai.daemon.harness
+package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.io.SystemFileSystem
 import java.awt.image.BufferedImage

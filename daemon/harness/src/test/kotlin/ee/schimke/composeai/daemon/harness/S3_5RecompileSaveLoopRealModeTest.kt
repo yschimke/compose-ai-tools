@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon.harness
 
+import ee.schimke.composeai.daemon.PixelDiff
 import ee.schimke.composeai.daemon.protocol.FileKind
 import ee.schimke.composeai.daemon.protocol.RenderTier
 import java.io.File

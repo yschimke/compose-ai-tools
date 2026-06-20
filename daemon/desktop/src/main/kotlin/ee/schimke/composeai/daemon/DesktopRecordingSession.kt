@@ -17,7 +17,6 @@ import androidx.compose.ui.scene.ComposeScenePointer
 import ee.schimke.composeai.cli.AccessibilityNode
 import ee.schimke.composeai.cli.TalkBackOverlayFrames
 import ee.schimke.composeai.cli.TalkBackTraversal
-import ee.schimke.composeai.daemon.harness.PixelDiff
 import ee.schimke.composeai.daemon.protocol.RecordingFormat
 import ee.schimke.composeai.daemon.protocol.RecordingInputParams
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
@@ -219,9 +218,17 @@ class DesktopRecordingSession(
       while (nextEventIdx < sortedEvents.size && sortedEvents[nextEventIdx].tMs <= tMs) {
         val e = sortedEvents[nextEventIdx]
         if (e.kind == RecordingScriptDataExtensions.ASSERT_PIXELS_EVENT) {
-          // Defer to the post-loop diff. The placeholder is FAILED so a (bug) skipped finalization
-          // fails closed rather than reporting a false pass.
-          pendingPixels.add(PendingPixelAssert(evidence.size, frameIndex, e))
+          // Snapshot the frame *now* — at this event's position in the timeline, before any later
+          // events sharing this frame bucket are dispatched — so the golden check observes the UI
+          // as
+          // of the assertion's position, not after a same-bucket input. Rendered at the bucket's
+          // tNanos (the instant the written frame uses), so absent later same-bucket events the
+          // snapshot is byte-identical to the on-disk frame a baseline is captured from. Only the
+          // diff is deferred (post-loop), to keep evidence ordering; the pixels are frozen here.
+          // The
+          // placeholder is FAILED so a (bug) skipped finalization fails closed.
+          val snapshot = frameBytes(state.scene.render(nanoTime = tNanos), frameIndex)
+          pendingPixels.add(PendingPixelAssert(evidence.size, snapshot, e))
           evidence.add(failedEvidence(e, "assert.pixels: not evaluated"))
         } else {
           val ctx = SimpleRecordingDispatchContext(tNanos = tNanos, tMs = tMs)
@@ -233,10 +240,9 @@ class DesktopRecordingSession(
       val image = state.scene.render(nanoTime = tNanos)
       writeFramePng(image, frameIndex, virtualTimeMs = tMs)
     }
-    // Post-loop: every frame is now on disk, so diff each deferred assert.pixels against its
-    // baseline.
+    // Post-loop: diff each deferred assert.pixels' frozen snapshot against its baseline.
     for (p in pendingPixels) {
-      evidence[p.evidenceIndex] = evaluatePixelAssert(p.event, p.frameIndex)
+      evidence[p.evidenceIndex] = evaluatePixelAssert(p.event, p.snapshotPng)
     }
     val tookMs = (System.nanoTime() - startNs) / 1_000_000L
     System.err.println(
@@ -255,27 +261,29 @@ class DesktopRecordingSession(
   }
 
   /**
-   * A deferred `assert.pixels` event (issue #1967): the diff against the recorded frame at
-   * [frameIndex] is run after the playback loop has written every frame, and the result replaces
-   * the placeholder evidence at [evidenceIndex] so the event keeps its timeline position.
+   * A deferred `assert.pixels` event (issue #1967): [snapshotPng] is the frame frozen at the
+   * event's timeline position during playback; the diff against the baseline is run after the loop
+   * and its result replaces the placeholder evidence at [evidenceIndex] so the event keeps its
+   * position. Not a `data class` — it holds a `ByteArray` and is only ever appended to a list (no
+   * equality needed).
    */
-  private data class PendingPixelAssert(
+  private class PendingPixelAssert(
     val evidenceIndex: Int,
-    val frameIndex: Int,
+    val snapshotPng: ByteArray,
     val event: RecordingScriptEvent,
   )
 
   /**
-   * Golden-image assertion (issue #1967): diff the recorded `frame-NNNNN.png` for [frameIndex]
-   * against the committed baseline PNG named by the event's `inputText` (resolved CLI-side against
-   * `--baseline-dir`). The pure verdict lives in [pixelAssertVerdict] (reusing `:daemon:harness`'s
-   * `PixelDiff`); this wrapper does the file IO, turns the verdict into `RecordingScriptEvidence`,
-   * and on failure writes actual/expected/diff PNGs next to the encoded output so the drift is
-   * inspectable without re-running.
+   * Golden-image assertion (issue #1967): diff the [actualPng] snapshot (frozen at the event's
+   * position in [stopScripted]) against the committed baseline PNG named by the event's `inputText`
+   * (resolved CLI-side against `--baseline-dir`). The pure verdict lives in [pixelAssertVerdict]
+   * (reusing the `PixelDiff` comparator); this wrapper reads the baseline, turns the verdict into
+   * `RecordingScriptEvidence`, and on failure writes actual/expected/diff PNGs next to the encoded
+   * output so the drift is inspectable without re-running.
    */
   private fun evaluatePixelAssert(
     event: RecordingScriptEvent,
-    frameIndex: Int,
+    actualPng: ByteArray,
   ): RecordingScriptEvidence {
     val baselinePath =
       event.inputText
@@ -284,22 +292,19 @@ class DesktopRecordingSession(
           "assert.pixels requires the baseline PNG path in the 'inputText' field",
         )
     val baselineBytes = File(baselinePath).takeIf { it.isFile }?.readBytes()
-    val frameFile = File(framesDir, "frame-${"%05d".format(frameIndex)}.png")
-    val actualBytes = frameFile.takeIf { it.isFile }?.readBytes()
-    return when (val verdict = pixelAssertVerdict(actualBytes, baselineBytes)) {
+    return when (val verdict = pixelAssertVerdict(actualPng, baselineBytes)) {
       AssertionVerdict.Passed ->
         appliedEvidence(event, "assert.pixels matched baseline '${File(baselinePath).name}'")
       is AssertionVerdict.Failed -> {
-        if (actualBytes != null && baselineBytes != null) {
+        if (baselineBytes != null) {
           // Best-effort diagnostics — never let an artefact-write failure mask the real verdict.
           try {
-            val diffDir =
-              File(encodedDir, "pixel-diff-${"%05d".format(frameIndex)}").apply { mkdirs() }
-            PixelDiff.writeDiffArtefacts(actualBytes, baselineBytes, diffDir)
+            val diffDir = File(encodedDir, "pixel-diff-t${event.tMs}ms").apply { mkdirs() }
+            PixelDiff.writeDiffArtefacts(actualPng, baselineBytes, diffDir)
           } catch (t: Throwable) {
             System.err.println(
-              "compose-ai-daemon: assert.pixels diff-artefact write failed for frame " +
-                "$frameIndex: ${t.javaClass.simpleName}: ${t.message}"
+              "compose-ai-daemon: assert.pixels diff-artefact write failed at t=${event.tMs}ms: " +
+                "${t.javaClass.simpleName}: ${t.message}"
             )
           }
         }
@@ -995,57 +1000,67 @@ class DesktopRecordingSession(
     @Suppress("UNUSED_PARAMETER") virtualTimeMs: Long,
   ) {
     val outFile = File(framesDir, "frame-${"%05d".format(frameIndex)}.png")
-    // TalkBack focus overlay (issue #1956): when opted in, composite the focus walk onto this frame
-    // before encoding. Done in natural pixel space (node bounds are source-bitmap px), then scaled
-    // if needed — separate from the plain encode path below so a non-talkBack recording stays
-    // byte-identical.
-    if (state.spec.overrides?.talkBack == true) {
-      writeTalkBackFrame(image, frameIndex, outFile)
-      return
-    }
-    val bytes =
-      if (scale == 1.0f && image.width == frameWidthPx && image.height == frameHeightPx) {
-        // Fast path: no scaling needed, encode the held scene's Image directly.
-        image.encodeToData(EncodedImageFormat.PNG)?.bytes
-          ?: error("encodeToData(PNG) returned null at frame $frameIndex")
-      } else {
-        // Scaled path: draw the natural-size Image onto a `frameWidthPx × frameHeightPx` raster
-        // surface and encode the snapshot. `LINEAR` sampling is the right default for both up- and
-        // down-scaling: cheaper than CATMULL_ROM, no aliasing for typical UI content, matches what
-        // browsers do for `<img>` rendering. We don't expose the sampling mode on the wire — if a
-        // caller wants pixel-perfect upscale they can pass `scale = 1.0` and resample client-side.
-        val surface = Surface.makeRasterN32Premul(frameWidthPx, frameHeightPx)
-        try {
-          surface.canvas.drawImageRect(
-            image = image,
-            src = Rect.makeWH(image.width.toFloat(), image.height.toFloat()),
-            dst = Rect.makeWH(frameWidthPx.toFloat(), frameHeightPx.toFloat()),
-            samplingMode = SamplingMode.LINEAR,
-            paint = null,
-            strict = true,
-          )
-          val snap = surface.makeImageSnapshot()
-          try {
-            snap.encodeToData(EncodedImageFormat.PNG)?.bytes
-              ?: error("encodeToData(PNG) returned null at frame $frameIndex (scaled)")
-          } finally {
-            snap.close()
-          }
-        } finally {
-          surface.close()
-        }
-      }
-    fileSystem.write(outFile.path.toPath()) { write(bytes) }
+    fileSystem.write(outFile.path.toPath()) { write(frameBytes(image, frameIndex)) }
   }
+
+  /**
+   * The exact PNG bytes the recording emits for [frameIndex] — the single source of truth shared by
+   * the frame write ([writeFramePng]) and the `assert.pixels` snapshot ([stopScripted]), so the
+   * golden check compares the same image that lands in the output. When `overrides.talkBack` is set
+   * the TalkBack focus overlay is composited in (issue #1956); otherwise it's the plain scaled
+   * encode.
+   */
+  private fun frameBytes(image: Image, frameIndex: Int): ByteArray =
+    if (state.spec.overrides?.talkBack == true) talkBackFrameBytes(image, frameIndex)
+    else encodeScaledPng(image)
+
+  /**
+   * Encode [image] to PNG bytes at the recording's frame size — the shared scale/encode path used
+   * by the plain (non-TalkBack) frame write and by the `assert.pixels` snapshot
+   * ([evaluatePixelAssert]). `scale == 1.0` (and a natural-size image) short-circuits to encoding
+   * the held scene's `Image` directly; otherwise the natural-size image is drawn into a
+   * `frameWidthPx × frameHeightPx` raster surface (LINEAR sampling) and that snapshot is encoded.
+   */
+  private fun encodeScaledPng(image: Image): ByteArray =
+    if (scale == 1.0f && image.width == frameWidthPx && image.height == frameHeightPx) {
+      // Fast path: no scaling needed, encode the held scene's Image directly.
+      image.encodeToData(EncodedImageFormat.PNG)?.bytes ?: error("encodeToData(PNG) returned null")
+    } else {
+      // Scaled path: draw the natural-size Image onto a `frameWidthPx × frameHeightPx` raster
+      // surface and encode the snapshot. `LINEAR` sampling is the right default for both up- and
+      // down-scaling: cheaper than CATMULL_ROM, no aliasing for typical UI content, matches what
+      // browsers do for `<img>` rendering. We don't expose the sampling mode on the wire — if a
+      // caller wants pixel-perfect upscale they can pass `scale = 1.0` and resample client-side.
+      val surface = Surface.makeRasterN32Premul(frameWidthPx, frameHeightPx)
+      try {
+        surface.canvas.drawImageRect(
+          image = image,
+          src = Rect.makeWH(image.width.toFloat(), image.height.toFloat()),
+          dst = Rect.makeWH(frameWidthPx.toFloat(), frameHeightPx.toFloat()),
+          samplingMode = SamplingMode.LINEAR,
+          paint = null,
+          strict = true,
+        )
+        val snap = surface.makeImageSnapshot()
+        try {
+          snap.encodeToData(EncodedImageFormat.PNG)?.bytes
+            ?: error("encodeToData(PNG) returned null (scaled)")
+        } finally {
+          snap.close()
+        }
+      } finally {
+        surface.close()
+      }
+    }
 
   /**
    * Composite the TalkBack focus overlay onto [image] and write the result to [outFile]. Extracts
    * this frame's accessibility nodes from the live semantics tree, picks the focus stop the walk
    * has reached at [frameIndex] ([TalkBackOverlayFrames]), draws the overlay in natural pixel space
    * via [DesktopTalkBackFocusOverlay], then scales to the recording's frame size if `scale != 1.0`.
-   * If there are no focus stops (or anything fails) the frame is written unchanged.
+   * If there are no focus stops (or anything fails) the frame is the scene unchanged.
    */
-  private fun writeTalkBackFrame(image: Image, frameIndex: Int, outFile: File) {
+  private fun talkBackFrameBytes(image: Image, frameIndex: Int): ByteArray {
     val naturalBytes =
       image.encodeToData(EncodedImageFormat.PNG)?.bytes
         ?: error("encodeToData(PNG) returned null at frame $frameIndex (talkBack)")
@@ -1059,13 +1074,11 @@ class DesktopRecordingSession(
       } else {
         naturalBytes
       }
-    val finalBytes =
-      if (scale == 1.0f && image.width == frameWidthPx && image.height == frameHeightPx) {
-        overlaidNatural
-      } else {
-        scalePngBytes(overlaidNatural, frameWidthPx, frameHeightPx)
-      }
-    fileSystem.write(outFile.path.toPath()) { write(finalBytes) }
+    return if (scale == 1.0f && image.width == frameWidthPx && image.height == frameHeightPx) {
+      overlaidNatural
+    } else {
+      scalePngBytes(overlaidNatural, frameWidthPx, frameHeightPx)
+    }
   }
 
   /** This frame's accessibility nodes from the held scene's live semantics tree (pre-order). */
