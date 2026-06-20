@@ -2,6 +2,7 @@ package ee.schimke.composeai.daemon
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
@@ -101,6 +102,16 @@ class TalkBackHostNavigationTest {
     val move = TalkBackHostNavigation.move(mergedNodes(), "previous", null)
     assertTrue(move.matched)
     assertEquals("Last", textOf(move))
+  }
+
+  @Test
+  fun `an unlabeled editable node is a focus stop`() {
+    // #1956 review: a node with no label and no OnClick is still a TalkBack stop when it carries
+    // edit semantics. An empty BasicTextField (SetText + EditableText, no contentDescription) must
+    // be walked — the old label-or-OnClick predicate dropped it.
+    composeRule.setContent { BasicTextField(value = "", onValueChange = {}) }
+    composeRule.waitForIdle()
+    assertTrue(TalkBackHostNavigation.move(mergedNodes(), "next", null).matched)
   }
 
   @Test

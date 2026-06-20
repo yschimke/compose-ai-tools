@@ -41,9 +41,7 @@ internal object TalkBackHostNavigation {
       semantics
         .sortedWith(compareBy({ it.boundsInRoot.top }, { it.boundsInRoot.left }))
         .map { it to it.toFocusStop() }
-        .filter { (sn, an) ->
-          an.label.isNotEmpty() || sn.config.getOrNull(SemanticsActions.OnClick) != null
-        }
+        .filter { (sn, an) -> an.label.isNotEmpty() || sn.isStateOnlyFocusStop() }
     if (stops.isEmpty()) return Move(matched = false, cursor = currentCursor, focusTarget = null)
     val nodes = AccessibilityRefs.assign(stops.map { it.second })
     val target =
@@ -52,6 +50,27 @@ internal object TalkBackHostNavigation {
     if (target == null) return Move(matched = false, cursor = currentCursor, focusTarget = null)
     val idx = nodes.indexOfFirst { it.ref == target.ref }
     return Move(matched = true, cursor = target.ref, focusTarget = stops.getOrNull(idx)?.first)
+  }
+
+  /**
+   * Whether a node with no label is still a TalkBack focus stop because it carries actionable /
+   * stateful semantics — an empty edit field (`SetText` / `EditableText`), an unlabeled scrollable
+   * (`ScrollBy` / a scroll-axis range), a clickable, a toggle, or a slider. Mirrors the desktop
+   * accessibility extractor's state-based keep filter so the cursor order matches the a11y hierarchy
+   * (a bare `Role` with nothing else is *not* a stop — e.g. an undescribed Image — matching the
+   * hierarchy, which only surfaces a roled node when it's also actionable / labelled).
+   */
+  private fun SemanticsNode.isStateOnlyFocusStop(): Boolean {
+    val cfg = config
+    return cfg.contains(SemanticsActions.OnClick) ||
+      cfg.contains(SemanticsActions.OnLongClick) ||
+      cfg.contains(SemanticsActions.SetText) ||
+      cfg.getOrNull(SemanticsProperties.EditableText) != null ||
+      cfg.contains(SemanticsActions.ScrollBy) ||
+      cfg.getOrNull(SemanticsProperties.HorizontalScrollAxisRange) != null ||
+      cfg.getOrNull(SemanticsProperties.VerticalScrollAxisRange) != null ||
+      cfg.getOrNull(SemanticsProperties.ToggleableState) != null ||
+      cfg.getOrNull(SemanticsProperties.ProgressBarRangeInfo) != null
   }
 
   /** Project a merged [SemanticsNode] to the a11y-core node model used by [TalkBackTraversal]. */
