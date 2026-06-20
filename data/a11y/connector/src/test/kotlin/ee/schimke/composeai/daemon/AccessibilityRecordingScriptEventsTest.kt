@@ -61,6 +61,8 @@ class AccessibilityRecordingScriptEventsTest {
         AccessibilityRecordingScriptEvents.ACTION_SCROLL_LEFT,
         AccessibilityRecordingScriptEvents.ACTION_SCROLL_RIGHT,
         AccessibilityRecordingScriptEvents.ACTION_ACTIVATE,
+        AccessibilityRecordingScriptEvents.ACTION_NEXT,
+        AccessibilityRecordingScriptEvents.ACTION_PREVIOUS,
       )
     val actuallySupported =
       AccessibilityRecordingScriptEvents.descriptor.recordingScriptEvents
@@ -85,8 +87,6 @@ class AccessibilityRecordingScriptEventsTest {
         AccessibilityRecordingScriptEvents.ACTION_CLEAR_SELECTION,
         AccessibilityRecordingScriptEvents.ACTION_NEXT_AT_GRANULARITY,
         AccessibilityRecordingScriptEvents.ACTION_PREVIOUS_AT_GRANULARITY,
-        AccessibilityRecordingScriptEvents.ACTION_NEXT,
-        AccessibilityRecordingScriptEvents.ACTION_PREVIOUS,
       )
     val actuallyUnsupported =
       AccessibilityRecordingScriptEvents.descriptor.recordingScriptEvents

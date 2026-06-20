@@ -8,6 +8,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasRequestFocusAction
@@ -2068,6 +2069,12 @@ open class RobolectricHost(
             // panel-side frame stream, so we tear down the prior install on overwrite.
             val recompositionHandles =
               java.util.concurrent.ConcurrentHashMap<String, () -> Unit>()
+            // TalkBack focus cursor for this held session (issue #1956). Tracks the
+            // accessibility-hierarchy `ref` of the node TalkBack is currently stopped on; the
+            // `a11y.action.next` / `previous` arms advance it through the merged focus stops in
+            // traversal order. Null = no focus yet (a `next` enters at the first stop, `previous`
+            // at the last). Held-session scoped so it resets cleanly between recordings.
+            val a11yFocusCursor = AtomicReference<String?>(null)
             setupTrace.section("compose:setContent") {
               rule.setContent {
                 androidx.compose.runtime.key(reloadCounter.intValue) {
@@ -2244,7 +2251,14 @@ open class RobolectricHost(
                 }
                 is InteractiveCommand.DispatchSemanticsAction -> {
                   try {
-                    val matched = performSemanticsActionByContentDescription(rule, cmd)
+                    val matched =
+                      if (cmd.actionKind == "next" || cmd.actionKind == "previous") {
+                        // TalkBack linear navigation moves the session focus cursor rather than
+                        // resolving a node by content description (issue #1956).
+                        performTalkBackNavigation(rule, cmd.actionKind, a11yFocusCursor)
+                      } else {
+                        performSemanticsActionByContentDescription(rule, cmd)
+                      }
                     cmd.replyMatched.set(matched)
                     if (matched) {
                       // Match the input-dispatch settle pattern so a screen-reader-driven click
@@ -2979,6 +2993,42 @@ open class RobolectricHost(
         "scrollRight" -> invokeScrollBy(rule, target, dx = target.size.width.toFloat(), dy = 0f)
         else -> false
       }
+    }
+
+    /**
+     * TalkBack linear navigation (issue #1956): advance the held session's focus [cursor] to the
+     * next / previous focus stop in traversal order and request focus on it.
+     *
+     * Builds the focus-stop list from the merged semantics tree — each merged node that carries a
+     * label or a click action is a screen-reader stop, mirroring the desktop extractor's keep
+     * filter — sorted into reading order (top-to-bottom, then left-to-right) and stamped with the
+     * same role-anchored refs [AccessibilityRefs] assigns to the a11y hierarchy. The shared
+     * [TalkBackTraversal] then walks them: `null` cursor enters at the first stop (`next`) or last
+     * (`previous`); a boundary returns `false` (TalkBack announces "end of screen" rather than
+     * wrapping). Focus is requested best-effort — a stop that isn't input-focusable (a heading
+     * `Text`) still advances the cursor.
+     */
+    private fun performTalkBackNavigation(
+      rule:
+        androidx.compose.ui.test.junit4.AndroidComposeTestRule<
+          *,
+          androidx.activity.ComponentActivity,
+        >,
+      direction: String,
+      cursor: AtomicReference<String?>,
+    ): Boolean {
+      val semantics =
+        rule
+          .onAllNodes(SemanticsMatcher("any node") { true }, useUnmergedTree = false)
+          .fetchSemanticsNodes(atLeastOneRootRequired = false)
+      val move = TalkBackHostNavigation.move(semantics, direction, cursor.get())
+      cursor.set(move.cursor)
+      // Move input focus to the stop so the focus highlight follows the cursor. Best-effort: a stop
+      // with no RequestFocus action (e.g. a heading Text) still counts as a successful move.
+      move.focusTarget?.config?.getOrNull(SemanticsActions.RequestFocus)?.action?.let { act ->
+        rule.runOnUiThread { act.invoke() }
+      }
+      return move.matched
     }
 
     /**
