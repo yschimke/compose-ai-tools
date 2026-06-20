@@ -19,7 +19,7 @@ composePreview {
 }
 
 // Version source of truth; `versionCode` packs MAJOR.MINOR.PATCH into a monotonic int.
-val appVersionName = "0.1.0"
+val appVersionName = "0.1.0" // x-release-please-version
 val appVersionCode =
   appVersionName
     .split(".", "-")
@@ -57,7 +57,14 @@ android {
 
   buildTypes {
     getByName("release") {
-      isMinifyEnabled = false
+      // R8 shrink + resource shrink; shared keep rules in ../proguard-rules.pro (see
+      // :clients:mobile).
+      isMinifyEnabled = true
+      isShrinkResources = true
+      proguardFiles(
+        getDefaultProguardFile("proguard-android-optimize.txt"),
+        file("../proguard-rules.pro"),
+      )
       if (releaseKeystorePath != null) signingConfig = signingConfigs.getByName("release")
     }
   }

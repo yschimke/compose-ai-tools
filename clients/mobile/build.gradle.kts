@@ -21,9 +21,10 @@ composePreview {
   sdkVersion.set(35)
 }
 
-// Single source of truth for the app version. Bump on release; `versionCode` packs
-// MAJOR.MINOR.PATCH into a monotonic int (caps minor/patch at 99).
-val appVersionName = "0.1.0"
+// Single source of truth for the app version — bumped by release-please (the `clients` component;
+// see the `x-release-please-version` marker). `versionCode` packs MAJOR.MINOR.PATCH into a
+// monotonic int (caps minor/patch at 99).
+val appVersionName = "0.1.0" // x-release-please-version
 val appVersionCode =
   appVersionName
     .split(".", "-")
@@ -65,9 +66,15 @@ android {
 
   buildTypes {
     getByName("release") {
-      // Left unminified for now: the streamed-frame stack (kotlinx-serialization, Ktor) needs keep
-      // rules before R8 can shrink safely. Enable with the matching rules in a follow-up.
-      isMinifyEnabled = false
+      // R8 full-mode shrink + obfuscate + resource shrink. Keep rules live in the shared
+      // ../proguard-rules.pro (the streamed-frame stack is reflection-free; the rules are mostly
+      // -dontwarn for Ktor/OkHttp optional providers).
+      isMinifyEnabled = true
+      isShrinkResources = true
+      proguardFiles(
+        getDefaultProguardFile("proguard-android-optimize.txt"),
+        file("../proguard-rules.pro"),
+      )
       if (releaseKeystorePath != null) signingConfig = signingConfigs.getByName("release")
     }
   }
