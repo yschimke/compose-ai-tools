@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.16.1](https://github.com/yschimke/compose-ai-tools/compare/v0.16.0...v0.16.1) (2026-06-20)
+
+
+### Features
+
+* **a11y:** render the TalkBack focus overlay in desktop recordings ([#1956](https://github.com/yschimke/compose-ai-tools/issues/1956)) ([#1973](https://github.com/yschimke/compose-ai-tools/issues/1973)) ([4abaab1](https://github.com/yschimke/compose-ai-tools/commit/4abaab1e57a42fd0bb9236cfbdf97db9e26b1ad7))
+* **a11y:** scriptable TalkBack next/previous focus navigation ([#1956](https://github.com/yschimke/compose-ai-tools/issues/1956)) ([#1976](https://github.com/yschimke/compose-ai-tools/issues/1976)) ([b0ca2b2](https://github.com/yschimke/compose-ai-tools/commit/b0ca2b26196b30529cea08f10c7f63277dbe6d0f))
+* **a11y:** TalkBack visualization, utterance composition + scriptable verbs ([#1956](https://github.com/yschimke/compose-ai-tools/issues/1956)) ([#1962](https://github.com/yschimke/compose-ai-tools/issues/1962)) ([a7bc439](https://github.com/yschimke/compose-ai-tools/commit/a7bc43900cdb6ac36951d6b09d5c59b86f361613))
+* add launcher mode for widget previews ([#1971](https://github.com/yschimke/compose-ai-tools/issues/1971)) ([8c4e066](https://github.com/yschimke/compose-ai-tools/commit/8c4e066dd4689cc323c0cc8364126f04749d7a19))
+* **clients:** mobile + wear session-viewer clients for the serve stream lane ([#1997](https://github.com/yschimke/compose-ai-tools/issues/1997)) ([20d24e0](https://github.com/yschimke/compose-ai-tools/commit/20d24e07b0282a6ef04c529fd2e6b3df13774523))
+* **cli:** group non-core commands under inspect/capture/share/setup ([#2009](https://github.com/yschimke/compose-ai-tools/issues/2009)) ([4f0e489](https://github.com/yschimke/compose-ai-tools/commit/4f0e4895f8406a355fe8672d13838743f0a7830e))
+* **cli:** richer interactive input for serve live lane (drag, scroll, keyboard) ([#2003](https://github.com/yschimke/compose-ai-tools/issues/2003)) ([790b494](https://github.com/yschimke/compose-ai-tools/commit/790b494a12b0892515c04064f1dbaefca68782e3))
+* **cli:** serve — LAN preview server + portable bundle (Remote Sessions tier 1) ([#1982](https://github.com/yschimke/compose-ai-tools/issues/1982)) ([c205613](https://github.com/yschimke/compose-ai-tools/commit/c20561318f30d0d370a137629f1d4f6ffa826170))
+* **cli:** serve streamed-frame lane over WebSocket (tier-2 spike) ([#1989](https://github.com/yschimke/compose-ai-tools/issues/1989)) ([4eb5c11](https://github.com/yschimke/compose-ai-tools/commit/4eb5c11bb74214b7b8c8c27e205565b18c817c68))
+* composite previews into real device-art bezels ([#1981](https://github.com/yschimke/compose-ai-tools/issues/1981)) ([cbd61d0](https://github.com/yschimke/compose-ai-tools/commit/cbd61d057a0ae8d79076267af5c6ad2c61195482))
+* **data:** add compose/shared-element data-product core model ([#1974](https://github.com/yschimke/compose-ai-tools/issues/1974)) ([7d3fbfa](https://github.com/yschimke/compose-ai-tools/commit/7d3fbfa50fe5177be42ff06b76da59338431426d))
+* **gradle-plugin:** add configuration-only preview plugin and shared DSL module ([#1985](https://github.com/yschimke/compose-ai-tools/issues/1985)) ([f89f25a](https://github.com/yschimke/compose-ai-tools/commit/f89f25a551e1293c39a6cd13fe48de073a2c7b00))
+* **gradle-plugin:** record configured variant + enabled in the applied marker ([#2001](https://github.com/yschimke/compose-ai-tools/issues/2001)) ([508d655](https://github.com/yschimke/compose-ai-tools/commit/508d655fe2bc1d4add6908d6e8f4d8d6428b991a))
+* **recording:** add `compose-preview record` command and first-class GIF format ([#1960](https://github.com/yschimke/compose-ai-tools/issues/1960)) ([6097a58](https://github.com/yschimke/compose-ai-tools/commit/6097a58228de4f139f3de109aee907926ab053c4))
+* **recording:** assert.a11y gates a recording on ATF findings ([#1966](https://github.com/yschimke/compose-ai-tools/issues/1966)) ([#1983](https://github.com/yschimke/compose-ai-tools/issues/1983)) ([1912da9](https://github.com/yschimke/compose-ai-tools/commit/1912da9a4f340f428fbdb4d39cd11d4ae1e60b5c))
+* **recording:** assert.pixels golden-image check against a committed baseline ([#1967](https://github.com/yschimke/compose-ai-tools/issues/1967)) ([#1987](https://github.com/yschimke/compose-ai-tools/issues/1987)) ([2a5dcdc](https://github.com/yschimke/compose-ai-tools/commit/2a5dcdc8f4b1c2849a0e3139a9d7f8a92c992808))
+* **recording:** assert.textEquals — assert a resolved node's text ([#1972](https://github.com/yschimke/compose-ai-tools/issues/1972)) ([773c654](https://github.com/yschimke/compose-ai-tools/commit/773c654dcecdbd4f7cfecae09b3b1571d278012f))
+* **recording:** assert.visible / assert.notVisible script events that fail the recording ([#1963](https://github.com/yschimke/compose-ai-tools/issues/1963)) ([e71fc64](https://github.com/yschimke/compose-ai-tools/commit/e71fc647776a6248f9d24d8e6494702145cd33b9))
+* **recording:** wire assert.visible / assert.notVisible on the Android backend ([#1977](https://github.com/yschimke/compose-ai-tools/issues/1977)) ([fd4a985](https://github.com/yschimke/compose-ai-tools/commit/fd4a985f3a18dcbf098dbe90399035504df8bbd1))
+* **samples:** cover runtime shaders (SkSL + AGSL) in the preview pipeline ([#1952](https://github.com/yschimke/compose-ai-tools/issues/1952)) ([61f06ec](https://github.com/yschimke/compose-ai-tools/commit/61f06ec355af49f981fa19dc145f5871794dddac))
+* **samples:** Remote Compose gradient-shader preview with a named-color control ([#1961](https://github.com/yschimke/compose-ai-tools/issues/1961)) ([3d4f89a](https://github.com/yschimke/compose-ai-tools/commit/3d4f89a8101b55db0a89deb5e1bc006854f8d4e6))
+* **samples:** shader feature-survey gallery (SkSL + AGSL, still + animated) ([#1958](https://github.com/yschimke/compose-ai-tools/issues/1958)) ([110b1e5](https://github.com/yschimke/compose-ai-tools/commit/110b1e5d574a85b6c2e4fee2e1236fedd44207d9))
+* **touch-overlay:** fling velocity arrow + long-press progress ring ([#1959](https://github.com/yschimke/compose-ai-tools/issues/1959)) ([2235dee](https://github.com/yschimke/compose-ai-tools/commit/2235dee524a7da98cc0d0c9d9e28460ae2f4bd43))
+* **touch-overlay:** mark releases the composition didn't consume ([#1970](https://github.com/yschimke/compose-ai-tools/issues/1970)) ([4020383](https://github.com/yschimke/compose-ai-tools/commit/40203831ca74c0653f2a43af2801bb00cf2d22ee))
+* **touch-overlay:** richer tap / drag / pinch gesture overlay ([#1954](https://github.com/yschimke/compose-ai-tools/issues/1954)) ([6cbe14c](https://github.com/yschimke/compose-ai-tools/commit/6cbe14c3cb7601b05cc3f34c2006fbfcef07afdc))
+* **touch-overlay:** two-finger rotation + pan, N-touch hull + count badge ([#1978](https://github.com/yschimke/compose-ai-tools/issues/1978)) ([03a7691](https://github.com/yschimke/compose-ai-tools/commit/03a7691598e8a3d2b9f6ad0ad756f40d2cf22559))
+* **xr-composite:** map the preview onto the device surface in the GLB preview ([#1996](https://github.com/yschimke/compose-ai-tools/issues/1996)) ([e1efc93](https://github.com/yschimke/compose-ai-tools/commit/e1efc93e6d87d7b826a48ad99c28a8b9081a6e4b))
+
+
+### Bug Fixes
+
+* **cli:** derive command detection from a guarded flag registry ([#2006](https://github.com/yschimke/compose-ai-tools/issues/2006)) ([6512aa3](https://github.com/yschimke/compose-ai-tools/commit/6512aa3e794104911fefd96d3718c0dc7c9cf2ec))
+* **cli:** keep auto-inject on when only the config-only plugin is convention-supplied ([#1992](https://github.com/yschimke/compose-ai-tools/issues/1992)) ([44b809b](https://github.com/yschimke/compose-ai-tools/commit/44b809b8855f883188ceb07eafdae2f643e1bf94))
+* make device-frame prefetch work and un-break Bundle Render E2E ([#1984](https://github.com/yschimke/compose-ai-tools/issues/1984)) ([983ec6a](https://github.com/yschimke/compose-ai-tools/commit/983ec6aeef52bc72efa12e4921e4f45ecdecb4f0))
+* **recording:** publish-safe PixelDiff + snapshot assert.pixels at event position ([#1967](https://github.com/yschimke/compose-ai-tools/issues/1967)) ([#1990](https://github.com/yschimke/compose-ai-tools/issues/1990)) ([556d6e4](https://github.com/yschimke/compose-ai-tools/commit/556d6e4dfa5f75fcd56c084eafae75b2fad65211))
+
 ## [0.16.0](https://github.com/yschimke/compose-ai-tools/compare/v0.15.13...v0.16.0) (2026-06-18)
 
 
