@@ -1,5 +1,11 @@
 package com.example.samplecmp
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -21,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ee.schimke.composeai.preview.AnimatedPreview
 import org.jetbrains.skia.ImageFilter
 import org.jetbrains.skia.RuntimeEffect
 import org.jetbrains.skia.RuntimeShaderBuilder
@@ -69,6 +77,32 @@ private fun ShaderCard(sksl: String) {
     modifier =
       Modifier.size(sizeDp).background(remember(sksl, px) { shaderBrush(sksl, px, px, FIXED_TIME) })
   )
+}
+
+/**
+ * Animated twin of [ShaderCard]: a `rememberInfiniteTransition` ramps `iTime` from `0` to `2π`
+ * every 2s, captured as a GIF by the desktop `@AnimatedPreview` path. Reading `time` in composition
+ * rebuilds the shader with the new phase each frame. Only used with programs that loop seamlessly
+ * over a `2π` `iTime` (the raymarch light + wobble, the Julia `c`-orbit, the fBm domain orbit).
+ */
+@Composable
+private fun AnimatedShaderCard(sksl: String) {
+  val sizeDp = 240.dp
+  val px = with(LocalDensity.current) { sizeDp.toPx() }
+  val transition = rememberInfiniteTransition(label = "shader-time")
+  val time by
+    transition.animateFloat(
+      initialValue = 0f,
+      targetValue = (2.0 * Math.PI).toFloat(),
+      animationSpec =
+        infiniteRepeatable(tween(durationMillis = 2000, easing = LinearEasing), RepeatMode.Restart),
+      label = "iTime",
+    )
+  val effect = remember(sksl) { RuntimeEffect.makeForShader(sksl) }
+  val builder = remember(effect) { RuntimeShaderBuilder(effect) }
+  builder.uniform("iResolution", px, px)
+  builder.uniform("iTime", time)
+  Box(modifier = Modifier.size(sizeDp).background(ShaderBrush(builder.makeShader())))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -154,7 +188,8 @@ private val FBM_SKSL =
 
   half4 main(float2 fragCoord) {
     float2 uv = fragCoord / iResolution;
-    float2 p = uv * 4.0 + float2(iTime * 0.2, 0.0);
+    // Periodic domain orbit (not a linear drift) so an iTime sweep of 0..2π loops seamlessly.
+    float2 p = uv * 4.0 + 0.6 * float2(cos(iTime), sin(iTime));
     float v = fbm(p + fbm(p));
     float3 sky = float3(0.15, 0.25, 0.45);
     float3 cloud = float3(1.0, 0.98, 0.95);
@@ -200,6 +235,26 @@ private val JULIA_SKSL =
 @Preview(name = "Shader Gallery — Julia Set")
 @Composable
 fun ShaderJuliaPreview() = ShaderCard(JULIA_SKSL)
+
+// ---------------------------------------------------------------------------------------------
+// Animated companions — the three procedural fills above, looped as GIFs via @AnimatedPreview.
+// Each program is already periodic in `iTime` (raymarch light + wobble, Julia c-orbit, fBm domain
+// orbit), so a 0..2π ramp produces a seamless 2s loop.
+// ---------------------------------------------------------------------------------------------
+@Preview(name = "Shader Gallery — Raymarch SDF (animated)")
+@AnimatedPreview(durationMs = 2000, frameIntervalMs = 50, showCurves = false)
+@Composable
+fun ShaderRaymarchAnimatedPreview() = AnimatedShaderCard(RAYMARCH_SKSL)
+
+@Preview(name = "Shader Gallery — fBm Clouds (animated)")
+@AnimatedPreview(durationMs = 2000, frameIntervalMs = 50, showCurves = false)
+@Composable
+fun ShaderFbmAnimatedPreview() = AnimatedShaderCard(FBM_SKSL)
+
+@Preview(name = "Shader Gallery — Julia Set (animated)")
+@AnimatedPreview(durationMs = 2000, frameIntervalMs = 50, showCurves = false)
+@Composable
+fun ShaderJuliaAnimatedPreview() = AnimatedShaderCard(JULIA_SKSL)
 
 // ---------------------------------------------------------------------------------------------
 // 4. Content-sampling RenderEffect — `uniform shader content` distorts the real composable beneath

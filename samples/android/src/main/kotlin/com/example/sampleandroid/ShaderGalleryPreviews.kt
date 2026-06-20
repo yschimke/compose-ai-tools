@@ -4,6 +4,12 @@ import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
 import android.os.Build
 import androidx.annotation.RequiresApi
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,8 +19,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.asComposeRenderEffect
@@ -24,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ee.schimke.composeai.preview.AnimatedPreview
 
 /**
  * AGSL feature-survey gallery — the Android twins of `:samples:cmp` `ShaderGalleryPreviews.kt`. Same
@@ -66,6 +75,39 @@ private fun ShaderCard(agsl: String) {
       ShaderBrush(shader)
     }
   Box(modifier = Modifier.size(sizeDp).background(brush))
+}
+
+/**
+ * Animated twin of [ShaderCard]: a `rememberInfiniteTransition` ramps `iTime` from `0` to `2π` every
+ * 2s, captured as a GIF by the Robolectric `@AnimatedPreview` path. Reading `time` in composition
+ * resets the uniform each frame. Only used with programs that loop seamlessly over a `2π` `iTime`.
+ */
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+@Composable
+private fun AnimatedShaderCard(agsl: String) {
+  val sizeDp = 240.dp
+  val px = with(LocalDensity.current) { sizeDp.toPx() }
+  val transition = rememberInfiniteTransition(label = "shader-time")
+  val time by
+    transition.animateFloat(
+      initialValue = 0f,
+      targetValue = (2.0 * Math.PI).toFloat(),
+      animationSpec =
+        infiniteRepeatable(tween(durationMillis = 2000, easing = LinearEasing), RepeatMode.Restart),
+      label = "iTime",
+    )
+  val shader = remember(agsl) { RuntimeShader(agsl) }
+  Box(
+    modifier =
+      Modifier.size(sizeDp).drawWithCache {
+        shader.setFloatUniform("iResolution", size.width, size.height)
+        val brush = ShaderBrush(shader)
+        onDrawBehind {
+          shader.setFloatUniform("iTime", time)
+          drawRect(brush)
+        }
+      }
+  )
 }
 
 // 1. Raymarched SDF sphere with a single light — bounded for-loop, 3D vector math, normals.
@@ -147,7 +189,8 @@ private const val FBM_AGSL =
 
   half4 main(float2 fragCoord) {
     float2 uv = fragCoord / iResolution;
-    float2 p = uv * 4.0 + float2(iTime * 0.2, 0.0);
+    // Periodic domain orbit (not a linear drift) so an iTime sweep of 0..2π loops seamlessly.
+    float2 p = uv * 4.0 + 0.6 * float2(cos(iTime), sin(iTime));
     float v = fbm(p + fbm(p));
     float3 sky = float3(0.15, 0.25, 0.45);
     float3 cloud = float3(1.0, 0.98, 0.95);
@@ -191,6 +234,26 @@ private const val JULIA_AGSL =
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @Composable
 fun ShaderJuliaPreview() = ShaderCard(JULIA_AGSL)
+
+// Animated companions — looped as GIFs via @AnimatedPreview. Each program is periodic in iTime
+// (raymarch light + wobble, Julia c-orbit, fBm domain orbit), so a 0..2π ramp is a seamless 2s loop.
+@Preview(name = "Shader Gallery — Raymarch SDF (animated, AGSL)")
+@AnimatedPreview(durationMs = 2000, frameIntervalMs = 50, showCurves = false)
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+@Composable
+fun ShaderRaymarchAnimatedPreview() = AnimatedShaderCard(RAYMARCH_AGSL)
+
+@Preview(name = "Shader Gallery — fBm Clouds (animated, AGSL)")
+@AnimatedPreview(durationMs = 2000, frameIntervalMs = 50, showCurves = false)
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+@Composable
+fun ShaderFbmAnimatedPreview() = AnimatedShaderCard(FBM_AGSL)
+
+@Preview(name = "Shader Gallery — Julia Set (animated, AGSL)")
+@AnimatedPreview(durationMs = 2000, frameIntervalMs = 50, showCurves = false)
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+@Composable
+fun ShaderJuliaAnimatedPreview() = AnimatedShaderCard(JULIA_AGSL)
 
 // 4. Content-sampling RenderEffect — `uniform shader content` distorts the real composable beneath
 //    it via Modifier.graphicsLayer { renderEffect = ... } +
