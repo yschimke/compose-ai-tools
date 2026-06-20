@@ -13,6 +13,8 @@ import ee.schimke.composeai.daemon.protocol.HistoryListParams
 import ee.schimke.composeai.daemon.protocol.HistoryListResult
 import ee.schimke.composeai.daemon.protocol.HistoryReadResultDto
 import ee.schimke.composeai.daemon.protocol.InitializeResult
+import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
+import ee.schimke.composeai.daemon.protocol.InteractiveInputParams
 import ee.schimke.composeai.daemon.protocol.Manifest
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RecordingEncodeResult
@@ -24,14 +26,19 @@ import ee.schimke.composeai.daemon.protocol.RejectedRender
 import ee.schimke.composeai.daemon.protocol.RenderNowResult
 import ee.schimke.composeai.daemon.protocol.RenderTier
 import ee.schimke.composeai.daemon.protocol.ServerCapabilities
+import ee.schimke.composeai.daemon.protocol.StreamCodec
+import ee.schimke.composeai.daemon.protocol.StreamFrameParams
+import ee.schimke.composeai.daemon.protocol.StreamStartResult
 import ee.schimke.composeai.render.session.NotificationListener
 import ee.schimke.composeai.render.session.RenderSession
 import ee.schimke.composeai.render.session.RenderSessionBackend
 import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 
 /**
@@ -47,10 +54,42 @@ internal class FakeRenderSession(
   private val renderRoot: File,
   private val rejectAll: Boolean = false,
   private val renderHook: ((call: Int, emit: (ByteArray) -> Unit) -> Unit)? = null,
+  /** When false (default), the streaming methods throw (mimicking a non-streaming backend). */
+  private val streaming: Boolean = false,
 ) : RenderSession {
   val renderCount = AtomicInteger(0)
   private val listeners = CopyOnWriteArrayList<NotificationListener>()
   private val counter = AtomicInteger(0)
+
+  // Streaming spies (only meaningful when streaming = true).
+  val streamStarts = AtomicInteger(0)
+  val interactiveInputs = CopyOnWriteArrayList<InteractiveInputParams>()
+  val streamStops = CopyOnWriteArrayList<String>()
+  @Volatile
+  var lastFrameStreamId: String? = null
+    private set
+
+  private val streamJson = Json { ignoreUnknownKeys = true }
+
+  /** Fire a `streamFrame` notification to registered listeners (test driver for the live lane). */
+  fun emitStreamFrame(frameStreamId: String, seq: Long, payloadBase64: String?) {
+    val params =
+      streamJson
+        .encodeToJsonElement(
+          StreamFrameParams.serializer(),
+          StreamFrameParams(
+            frameStreamId = frameStreamId,
+            seq = seq,
+            ptsMillis = 0,
+            widthPx = 2,
+            heightPx = 2,
+            codec = StreamCodec.PNG,
+            payloadBase64 = payloadBase64,
+          ),
+        )
+        .jsonObject
+    listeners.forEach { it.onNotification("streamFrame", params) }
+  }
 
   private fun emitFinished(id: String, bytes: ByteArray) {
     renderRoot.mkdirs()
@@ -180,6 +219,43 @@ internal class FakeRenderSession(
     format: RecordingFormat,
     timeout: kotlin.time.Duration,
   ): RecordingEncodeResult = error("unused")
+
+  override fun streamStart(
+    previewId: String,
+    codec: StreamCodec?,
+    maxFps: Int?,
+    overrides: PreviewOverrides?,
+    timeout: kotlin.time.Duration,
+  ): StreamStartResult {
+    if (!streaming) throw UnsupportedOperationException("streaming not supported")
+    val fsid = "fs-${streamStarts.incrementAndGet()}"
+    lastFrameStreamId = fsid
+    return StreamStartResult(frameStreamId = fsid, codec = StreamCodec.PNG, heldSession = true)
+  }
+
+  override fun streamStop(frameStreamId: String) {
+    streamStops.add(frameStreamId)
+  }
+
+  override fun interactiveInput(
+    frameStreamId: String,
+    kind: InteractiveInputKind,
+    pixelX: Int?,
+    pixelY: Int?,
+    scrollDeltaY: Float?,
+    keyCode: String?,
+  ) {
+    interactiveInputs.add(
+      InteractiveInputParams(
+        frameStreamId = frameStreamId,
+        kind = kind,
+        pixelX = pixelX,
+        pixelY = pixelY,
+        scrollDeltaY = scrollDeltaY,
+        keyCode = keyCode,
+      )
+    )
+  }
 
   override fun onNotification(listener: NotificationListener): AutoCloseable {
     listeners.add(listener)

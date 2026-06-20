@@ -1,6 +1,8 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.daemon.protocol.StreamFrameParams
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.render.session.RenderSession
 import ee.schimke.composeai.render.session.RenderSessionConfig
@@ -16,10 +18,25 @@ import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import okio.FileSystem
 import okio.Path.Companion.toPath
+
+/**
+ * A live daemon-backed frame stream. Forward input into the held composition via [input]; [close]
+ * tears the stream down. Obtained from [ServeRenderHost.startStream].
+ */
+interface StreamHandle : AutoCloseable {
+  fun input(
+    kind: InteractiveInputKind,
+    pixelX: Int? = null,
+    pixelY: Int? = null,
+    scrollDeltaY: Float? = null,
+    keyCode: String? = null,
+  )
+}
 
 /** One servable preview: its id, a human label, and which delivery modes it supports. */
 data class ServePreview(
@@ -69,6 +86,9 @@ internal constructor(
 ) : AutoCloseable {
 
   private val previewIds: Set<String> = previews.map { it.id }.toHashSet()
+
+  // Decodes streamFrame notification params for the live-stream lane (startStream).
+  private val streamJson = Json { ignoreUnknownKeys = true }
 
   // Bounded LRU of rendered PNGs keyed by ServeOverrides.cacheKey. A dev-facing server fronting one
   // module won't accumulate many distinct (preview × overrides) combos, so a small cap is plenty.
@@ -175,6 +195,67 @@ internal constructor(
 
       cache.put(key, bytes)
       RenderOutcome.Ok(bytes)
+    }
+  }
+
+  /**
+   * Try to open a daemon-backed live stream for [previewId] (tier-2). On success the daemon pushes
+   * `streamFrame` notifications; each is decoded and handed to [onFrame], and the returned
+   * [StreamHandle] forwards input + tears the stream down on close. Returns **null** when streaming
+   * is unsupported (older daemon / backend without held compositions) so the caller falls back to
+   * the [render]-per-frame lane. Independent of the snapshot render lock — a held stream runs
+   * concurrently with snapshot renders.
+   */
+  fun startStream(
+    previewId: String,
+    overrides: PreviewOverrides,
+    onFrame: (StreamFrameParams) -> Unit,
+  ): StreamHandle? {
+    check(!closed.get()) { "ServeRenderHost is closed" }
+    if (previewId !in previewIds) return null
+
+    val result =
+      try {
+        session.streamStart(previewId = previewId, overrides = overrides)
+      } catch (e: Exception) {
+        // UnsupportedOperationException (no streaming on this backend) or a daemon error — degrade.
+        onLog("stream/start unavailable for $previewId (${e.message}); falling back to snapshots")
+        return null
+      }
+
+    val frameStreamId = result.frameStreamId
+    val listener = session.onNotification { method, params ->
+      if (method != "streamFrame" || params == null) return@onNotification
+      val frame =
+        try {
+          streamJson.decodeFromJsonElement(StreamFrameParams.serializer(), params)
+        } catch (_: Exception) {
+          return@onNotification
+        }
+      if (frame.frameStreamId == frameStreamId) onFrame(frame)
+    }
+
+    return object : StreamHandle {
+      private val handleClosed = AtomicBoolean(false)
+
+      override fun input(
+        kind: InteractiveInputKind,
+        pixelX: Int?,
+        pixelY: Int?,
+        scrollDeltaY: Float?,
+        keyCode: String?,
+      ) {
+        if (handleClosed.get()) return
+        runCatching {
+          session.interactiveInput(frameStreamId, kind, pixelX, pixelY, scrollDeltaY, keyCode)
+        }
+      }
+
+      override fun close() {
+        if (!handleClosed.compareAndSet(false, true)) return
+        runCatching { listener.close() }
+        runCatching { session.streamStop(frameStreamId) }
+      }
     }
   }
 

@@ -36,6 +36,16 @@ class ServeStreamProtocolTest {
   }
 
   @Test
+  fun `parses input with pixel coordinates`() {
+    val msg =
+      ServeStreamProtocol.parseClient("""{"type":"input","kind":"click","pixelX":10,"pixelY":20}""")
+    assertTrue(msg is ServeStreamProtocol.ClientMessage.Input, "got $msg")
+    assertEquals("click", msg.kind)
+    assertEquals(10, msg.pixelX)
+    assertEquals(20, msg.pixelY)
+  }
+
+  @Test
   fun `unknown type and malformed json are Unsupported, never thrown`() {
     assertTrue(
       ServeStreamProtocol.parseClient("""{"type":"wat"}""")
