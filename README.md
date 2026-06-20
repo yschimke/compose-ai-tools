@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/pr`. 125 preview(s) across 14 module(s) · 9 error(s) · 3 warning(s) · 18 info._
+_Auto-generated from `compose-preview/a11y/pr`. 136 preview(s) across 14 module(s) · 10 error(s) · 3 warning(s) · 18 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -326,6 +326,12 @@ _No findings._
 
 _No findings._
 
+### `RuntimeShaderGradientBlobPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/RuntimeShaderGradientBlobPreview_Runtime_Shader_Gradient_Blob_AGSL.png" width="400" />
+
+_No findings._
+
 ### `SemanticsClickableButtonPreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/SemanticsClickableButtonPreview.a11y.png" width="400" />
@@ -353,6 +359,30 @@ _No findings._
 ### `SettingsListScrollGifPreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/com.example.sampleandroid.SettingsListScrollGifPreviewKt.SettingsListScrollGifPreview_SettingsListScrollGif.a11y.png" width="400" />
+
+_No findings._
+
+### `ShaderFbmPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/ShaderFbmPreview_Shader_Gallery_fBm_Clouds_AGSL.png" width="400" />
+
+_No findings._
+
+### `ShaderJuliaPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/ShaderJuliaPreview_Shader_Gallery_Julia_Set_AGSL.png" width="400" />
+
+_No findings._
+
+### `ShaderRaymarchPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/ShaderRaymarchPreview_Shader_Gallery_Raymarch_SDF_AGSL.png" width="400" />
+
+_No findings._
+
+### `ShaderRenderEffectPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/ShaderRenderEffectPreview_Shader_Gallery_RenderEffect_Distort_AGSL.a11y.png" width="400" />
 
 _No findings._
 
@@ -602,9 +632,39 @@ _No findings._
 
 _No findings._
 
+### `RuntimeShaderGradientBlobPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/RuntimeShaderGradientBlobPreview_Runtime_Shader_Gradient_Blob.png" width="400" />
+
+_No findings._
+
 ### `ScrollingListPreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/com.example.samplecmp.ScrollingPreviewsKt.ScrollingListPreview_Scrolling List.a11y.png" width="400" />
+
+_No findings._
+
+### `ShaderFbmPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/ShaderFbmPreview_Shader_Gallery_fBm_Clouds.png" width="400" />
+
+_No findings._
+
+### `ShaderJuliaPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/ShaderJuliaPreview_Shader_Gallery_Julia_Set.png" width="400" />
+
+_No findings._
+
+### `ShaderRaymarchPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/ShaderRaymarchPreview_Shader_Gallery_Raymarch_SDF.png" width="400" />
+
+_No findings._
+
+### `ShaderRenderEffectPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/ShaderRenderEffectPreview_Shader_Gallery_RenderEffect_Distort.a11y.png" width="400" />
 
 _No findings._
 
@@ -693,6 +753,14 @@ _No findings._
 ### `RemoteButtonWithShapePreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/remotecompose/RemoteButtonWithShapePreview.a11y.png" width="400" />
+
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | ERROR | SpeakableTextPresentCheck | androidx.compose.remote.player.view.RemoteComposePlayer | This item may not have a label readable by screen readers. |
+
+### `RemoteShaderGradientPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/remotecompose/RemoteShaderGradientPreview.a11y.png" width="400" />
 
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
