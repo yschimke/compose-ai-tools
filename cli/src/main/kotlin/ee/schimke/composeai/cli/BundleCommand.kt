@@ -52,14 +52,19 @@ import okio.source
 class BundleCommand(args: List<String>) : Command(args) {
 
   override fun run() {
-    val sub = args.firstOrNull { !it.startsWith("-") }
+    // Find the subcommand skipping any leading valued flags (`bundle --module :app pack`), then
+    // hand the subcommand its args with only the subcommand token removed (the leading flags stay).
+    val subIndex = CliFlags.firstPositionalIndex(args)
+    val sub = if (subIndex >= 0) args[subIndex] else null
+    val subArgs =
+      if (subIndex >= 0) args.toMutableList().apply { removeAt(subIndex) } else emptyList()
     when (sub) {
-      "pack" -> PackSubcommand(args.drop(args.indexOf(sub) + 1)).run()
-      "inspect" -> InspectSubcommand(args.drop(args.indexOf(sub) + 1)).run()
-      "extract" -> ExtractSubcommand(args.drop(args.indexOf(sub) + 1)).run()
-      "embed" -> EmbedSubcommand(args.drop(args.indexOf(sub) + 1)).run()
-      "render" -> RenderSubcommand(args.drop(args.indexOf(sub) + 1)).run()
-      "daemon" -> BundleDaemonCommand(args.drop(args.indexOf(sub) + 1)).run()
+      "pack" -> PackSubcommand(subArgs).run()
+      "inspect" -> InspectSubcommand(subArgs).run()
+      "extract" -> ExtractSubcommand(subArgs).run()
+      "embed" -> EmbedSubcommand(subArgs).run()
+      "render" -> RenderSubcommand(subArgs).run()
+      "daemon" -> BundleDaemonCommand(subArgs).run()
       null,
       "help",
       "--help",

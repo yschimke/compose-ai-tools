@@ -44,15 +44,13 @@ import kotlinx.serialization.json.JsonElement
 class HistoryCommand(private val args: List<String>) {
 
   fun run() {
-    when (args.firstOrNull { !it.startsWith("-") } ?: "help") {
+    when (CliFlags.firstPositional(args) ?: "help") {
       "list" -> list()
       "read" -> read()
       "diff" -> diff()
       "help" -> printUsage()
       else -> {
-        System.err.println(
-          "Unknown history subcommand: ${args.firstOrNull { !it.startsWith("-") }}"
-        )
+        System.err.println("Unknown history subcommand: ${CliFlags.firstPositional(args)}")
         printUsage()
         exitProcess(1)
       }

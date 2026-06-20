@@ -93,6 +93,17 @@ internal object CliFlags {
   val ATTACHED_OR_OPTIONAL_FLAGS: Set<String> = setOf("--images")
 
   /**
+   * The first positional token in [args] — the bare token that isn't the value of a value-consuming
+   * flag — or `null` if there is none. Used by commands with a nested positional subcommand
+   * (`bundle pack`, `history list`) so a leading `--module :app` isn't mistaken for the subcommand.
+   */
+  fun firstPositional(args: List<String>): String? =
+    firstPositionalIndex(args).let { if (it >= 0) args[it] else null }
+
+  /** Index of [firstPositional] in [args], or `-1`. */
+  fun firstPositionalIndex(args: List<String>): Int = findCommandIndex(args.toTypedArray())
+
+  /**
    * Index of the subcommand token in [args], or `-1` if argv is entirely flags and their values.
    * The first bare (non-`-`) token that isn't the value of a [VALUE_FLAGS] flag.
    */
