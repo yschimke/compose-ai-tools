@@ -223,37 +223,60 @@ object ServeWeb {
           y: Math.round((ev.clientY - rect.top) / rect.height * canvas.height),
         };
       }
-      // Coalesce pointermove to one send per animation frame so a fast drag doesn't flood the lane.
-      var pendingMove = null, moveScheduled = false;
-      function flushMove() {
+      // Per-pointer state. The pointerDown is *deferred* until the first move so a tap with no drag
+      // becomes a single `click` (matching the daemon's CLICK fast-path, which renders between press
+      // and release — a batched down+up can race Modifier.clickable). pointermove is coalesced to one
+      // send per pointerId per animation frame, so a fast drag doesn't flood the lane and concurrent
+      // fingers don't overwrite each other (multi-touch).
+      var pointers = {};           // pointerId -> { x, y, moved }
+      var pendingMoves = {};       // pointerId -> pointerMove message
+      var moveScheduled = false;
+      function flushMoves() {
         moveScheduled = false;
-        if (pendingMove) { sendInput(pendingMove); pendingMove = null; }
+        var snapshot = pendingMoves;
+        pendingMoves = {};
+        Object.keys(snapshot).forEach(function (id) { sendInput(snapshot[id]); });
       }
       canvas.addEventListener("pointerdown", function (ev) {
         if (!liveActive()) return;
         var p = pixel(ev); if (!p) return;
         canvas.focus();
         try { canvas.setPointerCapture(ev.pointerId); } catch (e) {}
-        sendInput({ kind: "pointerDown", pixelX: p.x, pixelY: p.y, pointerId: ev.pointerId });
+        pointers[ev.pointerId] = { x: p.x, y: p.y, moved: false };
       });
       canvas.addEventListener("pointermove", function (ev) {
         if (!liveActive() || ev.buttons === 0) return; // only while pressed (a drag)
+        var st = pointers[ev.pointerId]; if (!st) return;
         var p = pixel(ev); if (!p) return;
-        pendingMove = { kind: "pointerMove", pixelX: p.x, pixelY: p.y, pointerId: ev.pointerId };
-        if (!moveScheduled) { moveScheduled = true; requestAnimationFrame(flushMove); }
+        if (!st.moved) {
+          // First movement → this is a drag: emit the deferred press at the original point.
+          st.moved = true;
+          sendInput({ kind: "pointerDown", pixelX: st.x, pixelY: st.y, pointerId: ev.pointerId });
+        }
+        pendingMoves[ev.pointerId] =
+          { kind: "pointerMove", pixelX: p.x, pixelY: p.y, pointerId: ev.pointerId };
+        if (!moveScheduled) { moveScheduled = true; requestAnimationFrame(flushMoves); }
       });
       function endPointer(ev) {
-        if (!liveActive()) return;
-        var p = pixel(ev); if (!p) return;
-        flushMove();
-        sendInput({ kind: "pointerUp", pixelX: p.x, pixelY: p.y, pointerId: ev.pointerId });
+        var st = pointers[ev.pointerId]; if (!st) return;
+        delete pointers[ev.pointerId];
+        var p = pixel(ev) || { x: st.x, y: st.y };
+        if (st.moved) {
+          flushMoves();
+          sendInput({ kind: "pointerUp", pixelX: p.x, pixelY: p.y, pointerId: ev.pointerId });
+        } else {
+          // No drag → a tap. Send a single CLICK (the daemon renders between press and release).
+          sendInput({ kind: "click", pixelX: st.x, pixelY: st.y, pointerId: ev.pointerId });
+        }
       }
       canvas.addEventListener("pointerup", endPointer);
       canvas.addEventListener("pointercancel", endPointer);
       canvas.addEventListener("wheel", function (ev) {
         if (!liveActive()) return;
+        var p = pixel(ev); if (!p) return;
         ev.preventDefault();
-        sendInput({ kind: "rotaryScroll", scrollDeltaY: ev.deltaY });
+        // Both daemon dispatchers drop non-key input without a position, so include the pixel.
+        sendInput({ kind: "rotaryScroll", pixelX: p.x, pixelY: p.y, scrollDeltaY: ev.deltaY });
       }, { passive: false });
       // Keyboard: focus the canvas (tabindex) to type. Maps the common keys to Android keycodes;
       // unmapped keys are dropped (the daemon ignores codes outside its translation table anyway).
