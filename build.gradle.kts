@@ -128,6 +128,8 @@ tasks.register("functionalTestWithAndroid") {
 //         api :data-layoutinspector-core (semantics models + differ for `history/diff mode=semantics`, #1785)
 //         api :data-theme-core (theme-token models + differ for `history/diff mode=data`, #1873)
 //     implementation :lottie-preview-runtime (Compottie-backed kind=LOTTIE render path)
+//     implementation :data-deviceframe-connector (post-capture device-art bezel compositing)
+//       api :data-deviceframe-core (the pure-AWT catalog + compositor it re-exports)
 //   plus :common-io (the Okio file-IO foundation those modules read/write through).
 val bundleRenderFunctionalTestPublishTargets =
   listOf(
@@ -143,6 +145,8 @@ val bundleRenderFunctionalTestPublishTargets =
     ":data-layoutinspector-core",
     ":data-theme-core",
     ":lottie-preview-runtime",
+    ":data-deviceframe-connector",
+    ":data-deviceframe-core",
     ":common-io",
   )
 
