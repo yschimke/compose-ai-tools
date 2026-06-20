@@ -1,0 +1,89 @@
+# Throwaway probe: can a CI runner (open network) fetch a CC0 device GLB to
+# bundle for the 3D device-shape viewer? My sandbox egress can't reach the
+# model hosts, so we test it here. Delete once the model source is settled.
+name: Device model probe
+
+on:
+  push:
+    branches: [agent/device-shape-overrides]
+    paths: ['.github/workflows/device-model-probe.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe candidate CC0 model sources
+        env:
+          POLY_PIZZA_API_KEY: ${{ secrets.POLY_PIZZA_API_KEY }}
+        run: |
+          set -uo pipefail
+          out=probe-out
+          mkdir -p "$out"
+          summary() { echo "$1" | tee -a "$GITHUB_STEP_SUMMARY"; }
+
+          glb_magic() {
+            # GLB files start with the ASCII bytes "glTF" (0x67 0x6C 0x54 0x46)
+            [ -s "$1" ] && [ "$(head -c4 "$1" | tr -d '\0')" = "glTF" ]
+          }
+
+          probe() { # name  url  [extra curl args...]
+            local name="$1" url="$2"; shift 2
+            local f="$out/$name.bin"
+            local meta http ct final
+            meta=$(curl -sS -L -A "Mozilla/5.0" "$@" \
+                     -o "$f" \
+                     -w '%{http_code}|%{content_type}|%{size_download}|%{url_effective}' \
+                     --max-time 60 "$url" 2>"$out/$name.err" || echo "000|curl-error||")
+            http=${meta%%|*}; rest=${meta#*|}; ct=${rest%%|*}; rest=${rest#*|}
+            size=${rest%%|*}; final=${rest#*|}
+            local verdict="other"
+            if glb_magic "$f"; then verdict="✅ VALID GLB"; else verdict="not-a-glb"; fi
+            summary "| \`$name\` | $http | $verdict | ${size}B | $ct | ${final} |"
+            echo "::group::$name details"; echo "url=$url final=$final http=$http ct=$ct size=$size"
+            head -c 200 "$f" | tr -d '\0' | sed 's/[^[:print:]]/./g'; echo
+            [ -s "$out/$name.err" ] && { echo "-- stderr --"; cat "$out/$name.err"; }
+            echo "::endgroup::"
+          }
+
+          summary "## Device model probe"
+          summary ""
+          summary "| source | http | verdict | size | content-type | final url |"
+          summary "|---|---|---|---|---|---|"
+
+          # 1. CONTROL — known-good CC0 GLB on a reachable host. Proves the probe
+          #    logic + that *bundling a fetched CC0 GLB* works end to end.
+          probe khronos-box \
+            "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/BoxTextured/glTF-Binary/BoxTextured.glb"
+
+          # 2. poly.pizza public API WITHOUT a key — does it 401? (tells us whether
+          #    a POLY_PIZZA_API_KEY secret is required to reach real device models)
+          probe polypizza-api-nokey \
+            "https://api.poly.pizza/v1.1/search/smartwatch"
+
+          # 3. poly.pizza public API WITH key, if the secret is configured.
+          if [ -n "${POLY_PIZZA_API_KEY:-}" ]; then
+            probe polypizza-api-key \
+              "https://api.poly.pizza/v1.1/search/smartwatch" \
+              -H "x-auth-token: $POLY_PIZZA_API_KEY"
+          else
+            summary "| \`polypizza-api-key\` | — | secret POLY_PIZZA_API_KEY not set | — | — | — |"
+          fi
+
+          # 4. poly.pizza website search (no key) — is a direct GLB link discoverable?
+          probe polypizza-web "https://poly.pizza/search/smartwatch"
+
+          echo
+          echo "=== artifacts that validated as GLB ==="
+          for f in "$out"/*.bin; do glb_magic "$f" && echo "  $f ($(wc -c <"$f") bytes)"; done || true
+
+      - name: Upload probe artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: device-model-probe
+          path: probe-out/
+          if-no-files-found: warn
