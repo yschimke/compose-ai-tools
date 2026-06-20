@@ -42,6 +42,14 @@ dependencies {
   // descriptor from pre-resolved inputs. See contrib/README.md.
   api(project(":daemon-launch-builder"))
 
+  // Configuration-only plugin + shared `composePreview { }` DSL surface (`PreviewExtension`,
+  // `DaemonExtension`, the `composePreviewApplied` marker task). This runtime plugin reuses those
+  // types and registers tasks against them via the create-or-find helpers in `ComposePreviewDsl`,
+  // so the config-only plugin and this runtime plugin coexist in one build (consumer commits config
+  // without pinning a runtime; the CLI injects this plugin at its own version). `api` because the
+  // extension types are part of this plugin's public DSL surface.
+  api(project(":gradle-plugin-config"))
+
   implementation(libs.classgraph)
   implementation(libs.kotlinx.serialization.json)
   // ASM walks the preview method's bytecode to extract @Composable call targets — ClassGraph only
@@ -231,6 +239,11 @@ composeAiMavenPublishing {
 // pull every subproject along for the ride, otherwise `compose-preview-plugin` ships with a
 // dangling `api(":preview-discovery")` dep that downstream consumers can't resolve.
 //
+// Every `api(project(...))` dep above must have a matching edge here. `:gradle-plugin-config`
+// especially: it carries the shared `composePreview { }` DSL types, so a runtime plugin published
+// without it leaves CLI / VS Code auto-injection unable to resolve the plugin from Maven /
+// mavenLocal (the published POM's `api` dep on `compose-preview-config` would dangle).
+//
 // `tasks.matching {}` is lazy and tolerates the Central tasks being registered later in
 // configuration (vanniktech wires them in an `afterEvaluate`); the dependency edge is
 // attached the moment the matching task is added, before the task graph is computed.
@@ -241,5 +254,6 @@ listOf("publishToMavenLocal", "publishToMavenCentral", "publishAndReleaseToMaven
     .configureEach {
       dependsOn(":preview-discovery:$taskName")
       dependsOn(":daemon-launch-builder:$taskName")
+      dependsOn(":gradle-plugin-config:$taskName")
     }
 }

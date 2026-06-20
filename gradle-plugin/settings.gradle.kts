@@ -20,3 +20,5 @@ rootProject.name = "gradle-plugin"
 include(":preview-discovery")
 
 include(":daemon-launch-builder")
+
+include(":gradle-plugin-config")

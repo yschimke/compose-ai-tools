@@ -1,6 +1,5 @@
 package ee.schimke.composeai.plugin
 
-import ee.schimke.composeai.plugin.tooling.ComposePreviewAppliedTask
 import ee.schimke.composeai.plugin.tooling.ComposePreviewModelBuilder
 import javax.inject.Inject
 import org.gradle.api.GradleException
@@ -27,39 +26,12 @@ constructor(
     GradleVersionCheck.problem(GradleVersion.current())?.let { throw GradleException(it) }
     warnIfIsolatedProjectsEnabled(project)
 
-    val extension = project.extensions.create("composePreview", PreviewExtension::class.java)
-
-    // `-PcomposePreview.variant=<name>` overrides the convention so consumers can pin
-    // a variant per-run (e.g. `compose-preview --variant demoDebug list` on a flavored
-    // app) without editing build files. The convention chain is read at .get() time, so
-    // an explicit `composePreview { variant = "x" }` in the build script still wins
-    // (Property.set beats convention).
-    extension.variant.convention(
-      project.providers.gradleProperty("composePreview.variant").orElse("debug")
-    )
-
-    // `-PcomposePreview.enforcePreviewToolingDependency=false` lets a one-off CLI run
-    // bypass the per-module preview-tooling gate without editing build files — the
-    // CMP-Android escape hatch (issue #241 / #1549). Same convention shape as
-    // `failOnEmpty` / `variant`: gradle property first, fall back to `true`.
-    extension.enforcePreviewToolingDependency.convention(
-      project.providers
-        .gradleProperty("composePreview.enforcePreviewToolingDependency")
-        .map { it.toBooleanStrictOrNull() ?: true }
-        .orElse(true)
-    )
-
-    // `-PcomposePreview.failOnMissingPreviewTooling=true` opts a single CLI run into the
-    // task-time validator that hard-fails `composePreviewRender` when the resolved runtime
-    // classpath has no preview-tooling coord. Default `false` — aggregator modules that pass
-    // the tier-2 over-approximation but legitimately host no `@Preview` shouldn't fail the
-    // build; let `composePreviewDiscover` find zero and no-op instead.
-    extension.failOnMissingPreviewTooling.convention(
-      project.providers
-        .gradleProperty("composePreview.failOnMissingPreviewTooling")
-        .map { it.toBooleanStrictOrNull() ?: false }
-        .orElse(false)
-    )
+    // Create-or-find: the config-only plugin (`ee.schimke.composeai.preview.config`) may already
+    // have registered the `composePreview` extension and its convention chain. Reuse it so the two
+    // plugins coexist and user-written `composePreview { … }` config flows into one set of
+    // `Property` objects. Convention wiring (`-PcomposePreview.variant=…` etc.) lives in
+    // [ComposePreviewDsl.createOrFindExtension].
+    val extension = ComposePreviewDsl.createOrFindExtension(project)
 
     // ToolingModelBuilderRegistry is a build-scoped service — registering
     // from any applying project makes the model available on every
@@ -83,15 +55,10 @@ constructor(
     // authoritatively. Independent of `composePreviewDiscover` so it runs even
     // in modules that never compile previews (e.g. library modules whose
     // only preview usage is compile-time annotations).
-    project.tasks.register("composePreviewApplied", ComposePreviewAppliedTask::class.java) {
-      pluginVersion.set(PluginVersion.value)
-      modulePath.set(project.path)
-      moduleName.set(project.name)
-      outputFile.set(project.layout.buildDirectory.file("compose-previews/applied.json"))
-      group = "compose preview"
-      description =
-        "Write a marker JSON advertising that this module applies the Compose Preview plugin."
-    }
+    //
+    // Register-if-absent: the config-only plugin may already have registered this
+    // marker (its primary job is to make a module discoverable). See [ComposePreviewDsl].
+    ComposePreviewDsl.registerAppliedTaskIfAbsent(project, PluginVersion.value)
 
     // `pluginManager.withPlugin` replaces the old `project.afterEvaluate { ... }`
     // block. `afterEvaluate` is discouraged under Gradle's Isolated Projects mode
