@@ -87,3 +87,18 @@ fun RemoteButtonWithBorderPreview() {
 fun RemoteButtonWithNamedLabelPreview() {
     Container { RemoteButtonWithNamedLabel() }
 }
+
+/**
+ * Preview for [RemoteShaderGradient] — a Remote Compose gradient-**shader** fill. Uses the same
+ * `@PreviewWrapper(RemotePreviewWrapper::class)` path as the named-label preview so the connector's
+ * substitution wires the `shaderColor` named value into the running player: the default render shows
+ * the static gradient, and `renderNow.overrides.remoteCompose.namedValues = {"shaderColor": ...}`
+ * recolours the shader live. This is the "shader control" surfaced through the existing
+ * named-value override mechanism rather than a new control type.
+ */
+@Preview(showBackground = true, widthDp = 200, heightDp = 200)
+@PreviewWrapper(RemotePreviewWrapper::class)
+@Composable
+fun RemoteShaderGradientPreview() {
+    Container { RemoteShaderGradient() }
+}
