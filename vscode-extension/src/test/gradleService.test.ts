@@ -500,6 +500,72 @@ describe("GradleService", () => {
         );
 
         it(
+            "surfaces configured variant and enabled from the marker",
+            withTempDir((dir, api) => {
+                fs.mkdirSync(path.join(dir, "app"));
+                fs.writeFileSync(
+                    path.join(dir, "app", "build.gradle.kts"),
+                    'plugins { id("my-convention-plugin") }',
+                );
+                const markerDir = path.join(
+                    dir,
+                    "app",
+                    "build",
+                    "compose-previews",
+                );
+                fs.mkdirSync(markerDir, { recursive: true });
+                fs.writeFileSync(
+                    path.join(markerDir, "applied.json"),
+                    '{"schema":"compose-preview-applied/v1","modulePath":":app","moduleName":"app","pluginVersion":"0.7.2","variant":"demoRelease","enabled":false}',
+                );
+
+                const service = new GradleService(dir, api);
+                assert.deepStrictEqual(service.findPreviewModules(), [
+                    {
+                        projectDir: "app",
+                        modulePath: ":app",
+                        variant: "demoRelease",
+                        enabled: false,
+                    },
+                ]);
+            }),
+        );
+
+        it(
+            "omits variant/enabled when the marker does not carry them",
+            withTempDir((dir, api) => {
+                // A marker written before the fields existed: the shape must
+                // stay exactly { projectDir, modulePath } so callers comparing
+                // module identity aren't disturbed.
+                fs.mkdirSync(path.join(dir, "legacy"));
+                fs.writeFileSync(
+                    path.join(dir, "legacy", "build.gradle.kts"),
+                    'plugins { id("my-convention-plugin") }',
+                );
+                const markerDir = path.join(
+                    dir,
+                    "legacy",
+                    "build",
+                    "compose-previews",
+                );
+                fs.mkdirSync(markerDir, { recursive: true });
+                fs.writeFileSync(
+                    path.join(markerDir, "applied.json"),
+                    '{"schema":"compose-preview-applied/v1","modulePath":":legacy","moduleName":"legacy","pluginVersion":"0.7.2"}',
+                );
+
+                const service = new GradleService(dir, api);
+                const [info] = service.findPreviewModules();
+                assert.deepStrictEqual(info, {
+                    projectDir: "legacy",
+                    modulePath: ":legacy",
+                });
+                assert.ok(!("variant" in info));
+                assert.ok(!("enabled" in info));
+            }),
+        );
+
+        it(
             "unions marker-detected and scan-detected modules",
             withTempDir((dir, api) => {
                 fs.mkdirSync(path.join(dir, "app"));
