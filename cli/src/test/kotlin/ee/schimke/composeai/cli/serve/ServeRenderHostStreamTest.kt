@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamFrameParams
 import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
@@ -83,6 +84,16 @@ class ServeRenderHostStreamTest {
       assertNotNull(h.startStream(previewId, PreviewOverrides()) { frames.add(it) })
       assertEquals(1, frames.size, "the pre-response keyframe must be replayed, not lost")
       assertEquals(0L, frames[0].seq)
+    }
+  }
+
+  @Test
+  fun `codec and maxFps are forwarded to stream start`() {
+    val session = FakeRenderSession(newRenderRoot(), streaming = true)
+    host(session).use { h ->
+      assertNotNull(h.startStream(previewId, PreviewOverrides(), StreamCodec.WEBP, 30) {})
+      assertEquals(StreamCodec.WEBP, session.lastCodec)
+      assertEquals(30, session.lastMaxFps)
     }
   }
 

@@ -239,8 +239,10 @@ a:hover { text-decoration: underline; }
     canvas.hidden = false;
     status.textContent = "connecting…";
     var proto = location.protocol === "https:" ? "wss:" : "ws:";
+    // Request WebP frames (smaller; the browser decodes them via the data URL, and the daemon
+    // downgrades to PNG when it can't encode WebP — each frame carries its actual codec).
     ws = new WebSocket(proto + "//" + location.host + "/ws/" +
-      encodeURIComponent(previewId) + "?" + query());
+      encodeURIComponent(previewId) + "?" + query() + "&codec=webp");
     ws.onmessage = function (ev) {
       var m;
       try { m = JSON.parse(ev.data); } catch (e) { return; }
