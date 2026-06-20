@@ -68,7 +68,7 @@ fun main(args: Array<String>) {
 
   if (commandIndex < 0) {
     if ("--help" in args || "-h" in args) {
-      printUsage()
+      printUsage(full = "--all" in args)
       exitProcess(0)
     }
     System.err.println("No command specified.")
@@ -100,7 +100,7 @@ fun main(args: Array<String>) {
     "update" -> UpdateCommand(allArgs).run()
     "init-script" -> InitScriptCommand(allArgs).run()
     "version" -> println("compose-preview $BUNDLE_VERSION")
-    "help" -> printUsage()
+    "help" -> printUsage(full = "--all" in allArgs)
     else -> {
       System.err.println("Unknown command: $command")
       printUsage()
@@ -109,7 +109,46 @@ fun main(args: Array<String>) {
   }
 }
 
-private fun printUsage() {
+/**
+ * Tiered help. The default (`full = false`) prints a short core view — the headline render-to-PNG
+ * commands plus the handful most users reach for — and points at `help --all` for the rest. The
+ * full reference (`help --all`, `--help --all`) is the complete command + flag catalogue. The
+ * 160-line reference had become a manual; keeping it behind `--all` stops it from being the first
+ * thing a new user hits.
+ */
+private fun printUsage(full: Boolean = false) {
+  if (full) {
+    printFullUsage()
+    return
+  }
+  println(
+    """
+    compose-preview — Compose Preview CLI
+
+    Usage: compose-preview [options] <command> [options]
+
+    Core commands:
+      render           Render every @Preview to PNG; --output copies one match to disk
+      show             Discover + render previews; print id, path, sha256, changed flag
+      list             List discovered previews
+      show-resources   Render Android XML resource previews (vector / adaptive-icon / …)
+      doctor           Verify Java 17 + Compose/AGP environment before editing Gradle files
+      mcp              MCP server lifecycle for agents: serve | install | doctor
+      version          Print the installed bundle version and exit
+      help             Show this message (`help --all` for every command + flag)
+
+    More commands: render-matrix, record, a11y, diff-semantics, history, extensions,
+      profile, devices, serve, share-preview, bundle, update, init-script.
+      Run `compose-preview help --all` for the full command + flag reference.
+
+    Common options: --module <name>, --filter <pattern>, --id <exact>, --json,
+      --output <path>, --verbose/-v. Full list under `help --all`.
+    """
+      .trimIndent()
+  )
+}
+
+private fun printFullUsage() {
   println(
     """
     compose-preview — Compose Preview CLI
@@ -219,10 +258,10 @@ private fun printUsage() {
                            Enable a data extension for this run (repeatable; comma-separated
                            values accepted). Forwards as `-PcomposePreview.activeExtensions
                            =<comma-list>`. The `a11y` command is a thin wrapper that always
-                           sets `--with-extension a11y`. Note: a11y data products are now
-                           daemon-only; `compose-preview a11y` will require a temporary
-                           daemon spin-up (TODO follow-up; today the command runs but produces
-                           no findings).
+                           sets `--with-extension a11y`. Note: a11y data products are
+                           daemon-produced — `compose-preview a11y` spins up a short-lived
+                           daemon, fetches ATF findings, writes accessibility.json, then shuts
+                           it down. It exits non-zero when ATF data is unavailable.
       --force=<reason>     Sanctioned escape hatch when a render looks stale: passes
                            --rerun-tasks to Gradle so every input task re-executes. Does NOT
                            run :clean and does NOT touch build/classes/. Each use is logged
