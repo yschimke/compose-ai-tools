@@ -166,10 +166,12 @@ private fun printFullUsage() {
       version          Print the installed bundle version and exit
       help             Show this help message
 
-    MCP-first workflows:
-      Structured data products, extension command routing, live preview state, and history
-      inspection are exposed through MCP (`compose-preview mcp install|serve`) rather than the
-      main cold-shell CLI.
+    For agents (MCP):
+      `compose-preview mcp install|serve` drives the same renders as a push-based, token-frugal
+      loop and adds structured data products — accessibility, semantics, layout trees,
+      recomposition, live preview state, history. Those data products are also reachable one-shot
+      from the commands above (a11y, diff-semantics, history, extensions, record), so MCP is the
+      richer surface for an agent loop, not the only way to get the data.
 
     Options:
       --module <name>      Target module (default: auto-detect all)
