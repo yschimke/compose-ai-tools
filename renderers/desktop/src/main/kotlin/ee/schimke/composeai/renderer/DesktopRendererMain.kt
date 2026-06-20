@@ -152,6 +152,14 @@ fun main(args: Array<String>) {
   val showSystemUi = args.getOrNull(21)?.toBoolean() ?: false
   val uiMode = args.getOrNull(22)?.toIntOrNull() ?: 0
   val device = args.getOrNull(23)?.takeIf { it.isNotBlank() }
+  // Args 25–27 — `@AnimatedPreview` window. A positive `animDurationMs` is the animation intent; it
+  // dispatches to [renderAnimatedPreview] (paused-clock GIF) ahead of the scroll / single-frame
+  // paths. `0` (the default for non-animated previews) leaves the existing behaviour untouched.
+  // Mutually exclusive with `@ScrollingPreview` in discovery, so no precedence ambiguity in
+  // practice; the renderer still checks animation first defensively.
+  val animDurationMs = args.getOrNull(24)?.toIntOrNull()?.takeIf { it > 0 } ?: 0
+  val animFrameIntervalMs = args.getOrNull(25)?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+  val animShowCurves = args.getOrNull(26)?.toBoolean() ?: false
   if (previewKind == "LOTTIE") {
     val assetPath = args.getOrNull(19)?.takeIf { it.isNotBlank() }
     val sidecar = errorSidecarFor(outputFile)
@@ -248,7 +256,28 @@ fun main(args: Array<String>) {
       // VS Code would surface yesterday's exception as if it were current.
       val sidecar = errorSidecarFor(targetFile)
       if (sidecar.exists()) sidecar.delete()
-      if (scrollDispatchMode != null) {
+      if (animDurationMs > 0) {
+        // `@AnimatedPreview` — advance a paused clock across the window and encode a GIF. Always
+        // produces output (an animation has no "no scrollable" decline path), so no fallback to the
+        // single-frame render is needed.
+        renderAnimatedPreview(
+          className = className,
+          functionName = functionName,
+          widthPx = widthPx,
+          heightPx = heightPx,
+          density = density,
+          showBackground = showBackground,
+          backgroundColor = backgroundColor,
+          outputFile = targetFile,
+          wrapperClassName = wrapperClassName,
+          previewArgs = previewArgs,
+          localeTag = localeTag,
+          durationMs = animDurationMs,
+          frameIntervalMs = animFrameIntervalMs,
+          showCurves = animShowCurves,
+          fontScale = fontScale,
+        )
+      } else if (scrollDispatchMode != null) {
         // @ScrollingPreview(modes = [LONG, GIF]) — drive the dedicated scroll path. Falls
         // through to the default single-frame render on "no scrollable found" so a misuse
         // produces SOMETHING on disk rather than a missing file.
