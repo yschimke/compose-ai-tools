@@ -174,6 +174,48 @@
     "sha256": "a540022f2ad90812de25bcfb46d31b1877b02e3cbff1dd2ba33f67523ab06688",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt"
   },
+  "samples:android/com.example.sampleandroid.AppWidgetPreviewsKt.LauncherModeHomeScreenPreview_Launcher mode \u2014 4\u00d72 on home screen": {
+    "captureLabel": "",
+    "functionName": "LauncherModeHomeScreenPreview",
+    "renderBasename": "LauncherModeHomeScreenPreview_Launcher_mode_4_2_on_home_screen.png",
+    "sha256": "d1db1dfda4d20a3aa4e68fd502f41f78d0ccb9c9b48690fe45783ead17fcb918",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.AppWidgetPreviewsKt.LauncherModeResizePreview_Launcher mode \u2014 resize on home screen": {
+    "captureLabel": "",
+    "functionName": "LauncherModeResizePreview",
+    "renderBasename": "LauncherModeResizePreview_Launcher_mode_resize_on_home_screen_RESIZE_1x1.png",
+    "sha256": "797b30a7380c321795426357a11a077c21b7da0d6245533fa00213cb7a99d078",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.AppWidgetPreviewsKt.LauncherModeResizePreview_Launcher mode \u2014 resize on home screen#1": {
+    "captureLabel": "",
+    "functionName": "LauncherModeResizePreview",
+    "renderBasename": "LauncherModeResizePreview_Launcher_mode_resize_on_home_screen_RESIZE_2x1.png",
+    "sha256": "797b30a7380c321795426357a11a077c21b7da0d6245533fa00213cb7a99d078",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.AppWidgetPreviewsKt.LauncherModeResizePreview_Launcher mode \u2014 resize on home screen#2": {
+    "captureLabel": "",
+    "functionName": "LauncherModeResizePreview",
+    "renderBasename": "LauncherModeResizePreview_Launcher_mode_resize_on_home_screen_RESIZE_3x1.png",
+    "sha256": "797b30a7380c321795426357a11a077c21b7da0d6245533fa00213cb7a99d078",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.AppWidgetPreviewsKt.LauncherModeResizePreview_Launcher mode \u2014 resize on home screen#3": {
+    "captureLabel": "",
+    "functionName": "LauncherModeResizePreview",
+    "renderBasename": "LauncherModeResizePreview_Launcher_mode_resize_on_home_screen_RESIZE_4x1.png",
+    "sha256": "797b30a7380c321795426357a11a077c21b7da0d6245533fa00213cb7a99d078",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.AppWidgetPreviewsKt.LauncherModeResizePreview_Launcher mode \u2014 resize on home screen#4": {
+    "captureLabel": "",
+    "functionName": "LauncherModeResizePreview",
+    "renderBasename": "LauncherModeResizePreview_Launcher_mode_resize_on_home_screen_RESIZE_4x2.png",
+    "sha256": "797b30a7380c321795426357a11a077c21b7da0d6245533fa00213cb7a99d078",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt"
+  },
   "samples:android/com.example.sampleandroid.AppWidgetPreviewsKt.LauncherWidget1x1Preview_Launcher widget \u2014 1\u00d71": {
     "captureLabel": "",
     "functionName": "LauncherWidget1x1Preview",
@@ -678,6 +720,55 @@
     "sha256": "7956a2c225f48f22a1768bd1a9584eb01466e4d4c5e7542c4ba2a64d4ecb06bb",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/SettingsListScrollGifPreview.kt"
   },
+  "samples:android/com.example.sampleandroid.ShaderGalleryPreviewsKt.ShaderFbmAnimatedPreview_Shader Gallery \u2014 fBm Clouds (animated, AGSL)": {
+    "captureLabel": "",
+    "functionName": "ShaderFbmAnimatedPreview",
+    "renderBasename": "ShaderFbmAnimatedPreview_Shader_Gallery_fBm_Clouds_animated_AGSL.gif",
+    "sha256": "16547542f89d2677e0d74770210907e5f6db456da83280173ea3befe7d049d46",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/ShaderGalleryPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.ShaderGalleryPreviewsKt.ShaderFbmPreview_Shader Gallery \u2014 fBm Clouds (AGSL)": {
+    "captureLabel": "",
+    "functionName": "ShaderFbmPreview",
+    "renderBasename": "ShaderFbmPreview_Shader_Gallery_fBm_Clouds_AGSL.png",
+    "sha256": "57db905949950900540cd7f12f33c8770cc7eec8670c512344cc353127b77325",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/ShaderGalleryPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.ShaderGalleryPreviewsKt.ShaderJuliaAnimatedPreview_Shader Gallery \u2014 Julia Set (animated, AGSL)": {
+    "captureLabel": "",
+    "functionName": "ShaderJuliaAnimatedPreview",
+    "renderBasename": "ShaderJuliaAnimatedPreview_Shader_Gallery_Julia_Set_animated_AGSL.gif",
+    "sha256": "e873586b1ef8a09d7ef101618f8c6e6e50d11cdd96f3377ba3b50e5a9becfced",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/ShaderGalleryPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.ShaderGalleryPreviewsKt.ShaderJuliaPreview_Shader Gallery \u2014 Julia Set (AGSL)": {
+    "captureLabel": "",
+    "functionName": "ShaderJuliaPreview",
+    "renderBasename": "ShaderJuliaPreview_Shader_Gallery_Julia_Set_AGSL.png",
+    "sha256": "eea0d88fc3e039c507711f6868d6c6f4910eb9177b95c07ac8131736bc3eec83",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/ShaderGalleryPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.ShaderGalleryPreviewsKt.ShaderRaymarchAnimatedPreview_Shader Gallery \u2014 Raymarch SDF (animated, AGSL)": {
+    "captureLabel": "",
+    "functionName": "ShaderRaymarchAnimatedPreview",
+    "renderBasename": "ShaderRaymarchAnimatedPreview_Shader_Gallery_Raymarch_SDF_animated_AGSL.gif",
+    "sha256": "92080b25a43fc1adb0ab54092f922bd44867d0a08302b777945a2bcb70a3d572",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/ShaderGalleryPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.ShaderGalleryPreviewsKt.ShaderRaymarchPreview_Shader Gallery \u2014 Raymarch SDF (AGSL)": {
+    "captureLabel": "",
+    "functionName": "ShaderRaymarchPreview",
+    "renderBasename": "ShaderRaymarchPreview_Shader_Gallery_Raymarch_SDF_AGSL.png",
+    "sha256": "9f3ff1e1fdcba9d5c6d85f12ab32252a6b28297e1a40354766c0d4dc8207d225",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/ShaderGalleryPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.ShaderGalleryPreviewsKt.ShaderRenderEffectPreview_Shader Gallery \u2014 RenderEffect Distort (AGSL)": {
+    "captureLabel": "",
+    "functionName": "ShaderRenderEffectPreview",
+    "renderBasename": "ShaderRenderEffectPreview_Shader_Gallery_RenderEffect_Distort_AGSL.png",
+    "sha256": "2b9c4124ea747508c5664371a50a86c637c04a173e323e1edd5aeb1ad24ce253",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/ShaderGalleryPreviews.kt"
+  },
   "samples:android/com.example.sampleandroid.ShaderPreviewsKt.RuntimeShaderAnimatedBlobPreview_Runtime Shader \u2014 Animated Blob (AGSL)": {
     "captureLabel": "",
     "functionName": "RuntimeShaderAnimatedBlobPreview",
@@ -1028,6 +1119,55 @@
     "sha256": "df71c44b8ee4bd79dc28aa517a31d64a10936e8a108056ca9d774993a667a057",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/ScrollingPreviews.kt"
   },
+  "samples:cmp/com.example.samplecmp.ShaderGalleryPreviewsKt.ShaderFbmAnimatedPreview_Shader Gallery \u2014 fBm Clouds (animated)": {
+    "captureLabel": "",
+    "functionName": "ShaderFbmAnimatedPreview",
+    "renderBasename": "ShaderFbmAnimatedPreview_Shader_Gallery_fBm_Clouds_animated.gif",
+    "sha256": "f7d28f7d85179eea5894cbe9fbc371eae617b56bd5f449be6b266025d0b3952d",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/ShaderGalleryPreviews.kt"
+  },
+  "samples:cmp/com.example.samplecmp.ShaderGalleryPreviewsKt.ShaderFbmPreview_Shader Gallery \u2014 fBm Clouds": {
+    "captureLabel": "",
+    "functionName": "ShaderFbmPreview",
+    "renderBasename": "ShaderFbmPreview_Shader_Gallery_fBm_Clouds.png",
+    "sha256": "83b74c9f6b283303eb3f747482b7af117c1e050a65a39d0657246ee822e2cb05",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/ShaderGalleryPreviews.kt"
+  },
+  "samples:cmp/com.example.samplecmp.ShaderGalleryPreviewsKt.ShaderJuliaAnimatedPreview_Shader Gallery \u2014 Julia Set (animated)": {
+    "captureLabel": "",
+    "functionName": "ShaderJuliaAnimatedPreview",
+    "renderBasename": "ShaderJuliaAnimatedPreview_Shader_Gallery_Julia_Set_animated.gif",
+    "sha256": "13d5421cf9eae7714c8b600e06bb6dcdb04ec027d23ceb03e04eec89ea195c09",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/ShaderGalleryPreviews.kt"
+  },
+  "samples:cmp/com.example.samplecmp.ShaderGalleryPreviewsKt.ShaderJuliaPreview_Shader Gallery \u2014 Julia Set": {
+    "captureLabel": "",
+    "functionName": "ShaderJuliaPreview",
+    "renderBasename": "ShaderJuliaPreview_Shader_Gallery_Julia_Set.png",
+    "sha256": "69e50960aefeac76d75634410f77cd510cd5456eb014e0c165a394c2825b181e",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/ShaderGalleryPreviews.kt"
+  },
+  "samples:cmp/com.example.samplecmp.ShaderGalleryPreviewsKt.ShaderRaymarchAnimatedPreview_Shader Gallery \u2014 Raymarch SDF (animated)": {
+    "captureLabel": "",
+    "functionName": "ShaderRaymarchAnimatedPreview",
+    "renderBasename": "ShaderRaymarchAnimatedPreview_Shader_Gallery_Raymarch_SDF_animated.gif",
+    "sha256": "40bc9683053c935060981f752a1aef727ebd44ea8797776916b6e01fa54d6015",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/ShaderGalleryPreviews.kt"
+  },
+  "samples:cmp/com.example.samplecmp.ShaderGalleryPreviewsKt.ShaderRaymarchPreview_Shader Gallery \u2014 Raymarch SDF": {
+    "captureLabel": "",
+    "functionName": "ShaderRaymarchPreview",
+    "renderBasename": "ShaderRaymarchPreview_Shader_Gallery_Raymarch_SDF.png",
+    "sha256": "de6c0883be57e9425cadee12de9ca7b9aa26152d7dc8c68eedf535de8fc6274c",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/ShaderGalleryPreviews.kt"
+  },
+  "samples:cmp/com.example.samplecmp.ShaderGalleryPreviewsKt.ShaderRenderEffectPreview_Shader Gallery \u2014 RenderEffect Distort": {
+    "captureLabel": "",
+    "functionName": "ShaderRenderEffectPreview",
+    "renderBasename": "ShaderRenderEffectPreview_Shader_Gallery_RenderEffect_Distort.png",
+    "sha256": "174dea3853cc92c455010b3d4443a669c5ffa3ecd96c368664bc31a8a58bdaff",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/ShaderGalleryPreviews.kt"
+  },
   "samples:cmp/com.example.samplecmp.ShaderPreviewsKt.RuntimeShaderAnimatedBlobPreview_Runtime Shader \u2014 Animated Blob": {
     "captureLabel": "",
     "functionName": "RuntimeShaderAnimatedBlobPreview",
@@ -1117,6 +1257,13 @@
     "functionName": "RemoteButtonWithShapePreview",
     "renderBasename": "RemoteButtonWithShapePreview.png",
     "sha256": "5e60f8a1f84b2815f4c352a60294384158046b8c1df9583b95f5e8f379ff586a",
+    "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
+  },
+  "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteShaderGradientPreview": {
+    "captureLabel": "",
+    "functionName": "RemoteShaderGradientPreview",
+    "renderBasename": "RemoteShaderGradientPreview.png",
+    "sha256": "fc0ba94173d63faadf5a83c702072ddaee1bdf1a4c893ae3a69c40161363ed0c",
     "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
   },
   "samples:sdk-matrix/com.example.sdkmatrix.MatrixPreviewKt.SdkMatrixPreview_SdkMatrixPreview": {

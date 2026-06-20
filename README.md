@@ -9,6 +9,12 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `FadeInBoxAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/FadeInBoxAnimatedPreview.gif" width="150" /> |
 | `RevealLabelAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/RevealLabelAnimatedPreview.gif" width="150" /> |
 | `GlanceWeatherWidgetPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/GlanceWeatherWidgetPreview_Glance_widget_4_2.png" width="150" /> |
+| `LauncherModeHomeScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/LauncherModeHomeScreenPreview_Launcher_mode_4_2_on_home_screen.png" width="150" /> |
+| `LauncherModeResizePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/LauncherModeResizePreview_Launcher_mode_resize_on_home_screen_RESIZE_1x1.png" width="150" /> |
+| `LauncherModeResizePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/LauncherModeResizePreview_Launcher_mode_resize_on_home_screen_RESIZE_2x1.png" width="150" /> |
+| `LauncherModeResizePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/LauncherModeResizePreview_Launcher_mode_resize_on_home_screen_RESIZE_3x1.png" width="150" /> |
+| `LauncherModeResizePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/LauncherModeResizePreview_Launcher_mode_resize_on_home_screen_RESIZE_4x1.png" width="150" /> |
+| `LauncherModeResizePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/LauncherModeResizePreview_Launcher_mode_resize_on_home_screen_RESIZE_4x2.png" width="150" /> |
 | `LauncherWidget1x1Preview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/LauncherWidget1x1Preview_Launcher_widget_1_1.png" width="150" /> |
 | `LauncherWidget4x2Preview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/LauncherWidget4x2Preview_Launcher_widget_4_2.png" width="150" /> |
 | `LauncherWidgetClampedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/LauncherWidgetClampedPreview_Launcher_widget_clamped_to_4_5.png" width="150" /> |
@@ -81,6 +87,13 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `SemanticsMergeDescendantsPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/SemanticsMergeDescendantsPreview.png" width="150" /> |
 | `SemanticsTestTagPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/SemanticsTestTagPreview.png" width="150" /> |
 | `SettingsListScrollGifPreview · scroll gif` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/SettingsListScrollGifPreview_SettingsListScrollGif.gif" width="150" /> |
+| `ShaderFbmAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ShaderFbmAnimatedPreview_Shader_Gallery_fBm_Clouds_animated_AGSL.gif" width="150" /> |
+| `ShaderFbmPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ShaderFbmPreview_Shader_Gallery_fBm_Clouds_AGSL.png" width="150" /> |
+| `ShaderJuliaAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ShaderJuliaAnimatedPreview_Shader_Gallery_Julia_Set_animated_AGSL.gif" width="150" /> |
+| `ShaderJuliaPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ShaderJuliaPreview_Shader_Gallery_Julia_Set_AGSL.png" width="150" /> |
+| `ShaderRaymarchAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ShaderRaymarchAnimatedPreview_Shader_Gallery_Raymarch_SDF_animated_AGSL.gif" width="150" /> |
+| `ShaderRaymarchPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ShaderRaymarchPreview_Shader_Gallery_Raymarch_SDF_AGSL.png" width="150" /> |
+| `ShaderRenderEffectPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ShaderRenderEffectPreview_Shader_Gallery_RenderEffect_Distort_AGSL.png" width="150" /> |
 | `RuntimeShaderAnimatedBlobPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/RuntimeShaderAnimatedBlobPreview_Runtime_Shader_Animated_Blob_AGSL.gif" width="150" /> |
 | `RuntimeShaderGradientBlobPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/RuntimeShaderGradientBlobPreview_Runtime_Shader_Gradient_Blob_AGSL.png" width="150" /> |
 | `SharedElementDebugMatchedAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/SharedElementDebugMatchedAnimatedPreview_Shared_Element_Debug_Matched.gif" width="150" /> |
@@ -176,6 +189,13 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `CmpPseudoDefault` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/CmpPseudoDefault_default.png" width="150" /> |
 | `ScrollingListPreview · scroll long` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ScrollingListPreview_Scrolling_List_SCROLL_long.png" width="150" /> |
 | `ScrollingListPreview · scroll gif` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ScrollingListPreview_Scrolling_List_SCROLL_gif.gif" width="150" /> |
+| `ShaderFbmAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ShaderFbmAnimatedPreview_Shader_Gallery_fBm_Clouds_animated.gif" width="150" /> |
+| `ShaderFbmPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ShaderFbmPreview_Shader_Gallery_fBm_Clouds.png" width="150" /> |
+| `ShaderJuliaAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ShaderJuliaAnimatedPreview_Shader_Gallery_Julia_Set_animated.gif" width="150" /> |
+| `ShaderJuliaPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ShaderJuliaPreview_Shader_Gallery_Julia_Set.png" width="150" /> |
+| `ShaderRaymarchAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ShaderRaymarchAnimatedPreview_Shader_Gallery_Raymarch_SDF_animated.gif" width="150" /> |
+| `ShaderRaymarchPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ShaderRaymarchPreview_Shader_Gallery_Raymarch_SDF.png" width="150" /> |
+| `ShaderRenderEffectPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ShaderRenderEffectPreview_Shader_Gallery_RenderEffect_Distort.png" width="150" /> |
 | `RuntimeShaderAnimatedBlobPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/RuntimeShaderAnimatedBlobPreview_Runtime_Shader_Animated_Blob.gif" width="150" /> |
 | `RuntimeShaderGradientBlobPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/RuntimeShaderGradientBlobPreview_Runtime_Shader_Gradient_Blob.png" width="150" /> |
 | `lottie/spin.json` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/lottie__lottie_spin.png" width="150" /> |
@@ -206,6 +226,7 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `RemoteButtonWithBorderPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteButtonWithBorderPreview.png" width="150" /> |
 | `RemoteButtonWithNamedLabelPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteButtonWithNamedLabelPreview.png" width="150" /> |
 | `RemoteButtonWithShapePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteButtonWithShapePreview.png" width="150" /> |
+| `RemoteShaderGradientPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteShaderGradientPreview.png" width="150" /> |
 
 ## samples:sdk-matrix
 
