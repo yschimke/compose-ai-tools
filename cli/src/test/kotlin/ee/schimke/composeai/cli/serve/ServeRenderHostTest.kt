@@ -113,6 +113,41 @@ class ServeRenderHostTest {
   }
 
   @Test
+  fun `a late renderFinished from a timed-out render does not corrupt the next render`() {
+    // Render 1 emits nothing → it times out (the daemon still owes a late renderFinished). Render 2
+    // (the daemon catching up) emits the timed-out render's STALE event first, then its own FRESH
+    // event. The stale one must be drained, not cached/served under render 2's override key.
+    val session =
+      FakeSession(
+        newRenderRoot(),
+        renderHook = { call, emit ->
+          if (call == 2) {
+            emit("STALE".toByteArray())
+            emit("FRESH".toByteArray())
+          }
+          // call 1: emit nothing → render times out
+        },
+      )
+    ServeRenderHost(
+        session = session,
+        previews = listOf(ServePreview(previewId, "Red")),
+        renderTimeoutSeconds = 1,
+      )
+      .use { h ->
+        val first = h.render(previewId, PreviewOverrides(uiMode = UiMode.LIGHT))
+        assertTrue(first is RenderOutcome.Failed, "first render should time out, got $first")
+
+        val second = h.render(previewId, PreviewOverrides(uiMode = UiMode.DARK))
+        assertTrue(second is RenderOutcome.Ok, "second render should succeed, got $second")
+        assertEquals(
+          "FRESH",
+          second.png.decodeToString(),
+          "stale event from the timed-out render must not be served for the new overrides",
+        )
+      }
+  }
+
+  @Test
   fun `a rejected render surfaces as Failed`() {
     val session = FakeSession(newRenderRoot(), rejectAll = true)
     host(session).use { h ->
@@ -125,12 +160,31 @@ class ServeRenderHostTest {
 
   /**
    * Minimal [RenderSession]: writes a PNG whose bytes encode the overrides, emits renderFinished.
+   *
+   * [renderHook] (when set) overrides the default emit-immediately behaviour: it receives the
+   * 1-based call index and an `emit` that writes given bytes to a fresh PNG and fires
+   * `renderFinished` for the preview. A hook that emits nothing models a render that times out (the
+   * daemon owes a late event), letting tests drive the stale-event path.
    */
-  private class FakeSession(private val renderRoot: File, private val rejectAll: Boolean = false) :
-    RenderSession {
+  private class FakeSession(
+    private val renderRoot: File,
+    private val rejectAll: Boolean = false,
+    private val renderHook: ((call: Int, emit: (ByteArray) -> Unit) -> Unit)? = null,
+  ) : RenderSession {
     val renderCount = AtomicInteger(0)
     private val listeners = CopyOnWriteArrayList<NotificationListener>()
     private val counter = AtomicInteger(0)
+
+    private fun emitFinished(id: String, bytes: ByteArray) {
+      renderRoot.mkdirs()
+      val file =
+        File(renderRoot, "$id-${counter.incrementAndGet()}.png").apply { writeBytes(bytes) }
+      val params = buildJsonObject {
+        put("id", id)
+        put("pngPath", file.absolutePath)
+      }
+      listeners.forEach { it.onNotification("renderFinished", params) }
+    }
 
     override val workspaceRoot: String = renderRoot.absolutePath
     override val modulePath: String = ":sample"
@@ -163,22 +217,18 @@ class ServeRenderHostTest {
       overrides: PreviewOverrides?,
       timeout: kotlin.time.Duration,
     ): RenderNowResult {
-      renderCount.incrementAndGet()
+      val call = renderCount.incrementAndGet()
       val id = previewIds.single()
       if (rejectAll) {
         return RenderNowResult(queued = emptyList(), rejected = listOf(RejectedRender(id, "nope")))
       }
-      val content = "png:${overrides?.uiMode}:${overrides?.localeTag}:${overrides?.device}"
-      renderRoot.mkdirs()
-      val file =
-        File(renderRoot, "$id-${counter.incrementAndGet()}.png").apply {
-          writeBytes(content.toByteArray())
-        }
-      val params = buildJsonObject {
-        put("id", id)
-        put("pngPath", file.absolutePath)
+      val hook = renderHook
+      if (hook != null) {
+        hook(call) { bytes -> emitFinished(id, bytes) }
+      } else {
+        val content = "png:${overrides?.uiMode}:${overrides?.localeTag}:${overrides?.device}"
+        emitFinished(id, content.toByteArray())
       }
-      listeners.forEach { it.onNotification("renderFinished", params) }
       return RenderNowResult(queued = previewIds, rejected = emptyList())
     }
 

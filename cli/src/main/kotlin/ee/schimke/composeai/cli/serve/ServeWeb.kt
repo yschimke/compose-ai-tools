@@ -124,7 +124,7 @@ object ServeWeb {
           <label>Locale (BCP-47)
             <input id="cp-localeTag" type="text" placeholder="e.g. ar, ja-JP" autocomplete="off">
           </label>
-          <label>Font scale: <span id="cp-fontScale-val">1.0</span>
+          <label>Font scale: <span id="cp-fontScale-val">default</span>
             <input id="cp-fontScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0">
           </label>
           <label>Orientation
@@ -157,7 +157,14 @@ object ServeWeb {
       var status = document.getElementById("cp-status");
       var previewId = root.getAttribute("data-preview-id");
       var token = new URLSearchParams(location.search).get("token") || "";
-      var fields = ["uiMode", "device", "localeTag", "fontScale", "orientation"];
+      // The selects + text input are opt-in (empty value = "use the preview's default"). The font
+      // scale slider has no empty state, so it's gated separately: we only send fontScale once the
+      // user moves it (see fontScaleTouched), otherwise the slider's standing 1.0 would override a
+      // preview's declared default font scale and the first render wouldn't match the thumbnail.
+      var fields = ["uiMode", "device", "localeTag", "orientation"];
+      var fs = document.getElementById("cp-fontScale");
+      var fsVal = document.getElementById("cp-fontScale-val");
+      var fontScaleTouched = false;
 
       function renderUrl() {
         var q = "token=" + encodeURIComponent(token);
@@ -165,6 +172,7 @@ object ServeWeb {
           var el = document.getElementById("cp-" + f);
           if (el && el.value) q += "&" + f + "=" + encodeURIComponent(el.value);
         });
+        if (fontScaleTouched && fs) q += "&fontScale=" + encodeURIComponent(fs.value);
         return "/render/" + encodeURIComponent(previewId) + ".png?" + q;
       }
       function refresh() {
@@ -175,9 +183,13 @@ object ServeWeb {
         next.onerror = function () { status.textContent = "render failed"; };
         next.src = url;
       }
-      var fs = document.getElementById("cp-fontScale");
-      var fsVal = document.getElementById("cp-fontScale-val");
-      if (fs) fs.addEventListener("input", function () { fsVal.textContent = fs.value; });
+      if (fs) {
+        fs.addEventListener("input", function () {
+          fsVal.textContent = fs.value;
+          fontScaleTouched = true;
+          refresh();
+        });
+      }
       fields.forEach(function (f) {
         var el = document.getElementById("cp-" + f);
         if (el) el.addEventListener("change", refresh);

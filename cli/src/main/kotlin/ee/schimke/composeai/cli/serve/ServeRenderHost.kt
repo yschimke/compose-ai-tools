@@ -8,6 +8,7 @@ import ee.schimke.composeai.render.session.RenderSessionException
 import ee.schimke.composeai.render.session.RenderSessionFactory
 import ee.schimke.composeai.render.session.subprocess.SubprocessRenderSessions
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -82,10 +83,26 @@ internal constructor(
   private val pendingPreviewId = AtomicReference<String?>(null)
   private val pendingPngPath = AtomicReference<String?>(null)
 
+  // Count of timed-out renders per preview id whose `renderFinished` is still outstanding. A render
+  // that timed out releases the lock, but the daemon still emits that render's `renderFinished`
+  // later; since the notification carries only the preview id (no per-render correlation id), a
+  // stale event for the same id would otherwise complete the *next* same-id render's latch and
+  // cache
+  // the wrong PNG under the new override key. The daemon delivers `renderFinished` reliably and in
+  // order per session (the S4 harness tests assert none are lost / reordered), so we drain exactly
+  // one outstanding event per timed-out render here before honouring a fresh one.
+  private val staleRenders = ConcurrentHashMap<String, Int>()
+
   private val closed = AtomicBoolean(false)
   private val notificationHandle: AutoCloseable = session.onNotification { method, params ->
     if (method != "renderFinished" || params == null) return@onNotification
     val id = params["id"]?.jsonPrimitive?.contentOrNull ?: return@onNotification
+    // Drain the late event of a previously timed-out render (FIFO: it arrives before the current
+    // render's own event) so it can't complete a fresh same-id render's latch with a stale PNG.
+    if ((staleRenders[id] ?: 0) > 0) {
+      staleRenders.compute(id) { _, v -> ((v ?: 0) - 1).takeIf { it > 0 } }
+      return@onNotification
+    }
     if (id != pendingPreviewId.get()) return@onNotification
     // `unchanged` renders still carry a (re-used) pngPath, so this captures bytes either way.
     params["pngPath"]?.jsonPrimitive?.contentOrNull?.let { pendingPngPath.set(it) }
@@ -136,6 +153,9 @@ internal constructor(
         }
 
       if (!latch.await(renderTimeoutSeconds, TimeUnit.SECONDS)) {
+        // The daemon still owes this queued render a `renderFinished`; record it so the late event
+        // is drained instead of completing a future same-id render with a stale PNG.
+        staleRenders.merge(previewId, 1, Int::plus)
         val reason = "timed out after ${renderTimeoutSeconds}s waiting for render"
         onLog(reason)
         return@withLock RenderOutcome.Failed(reason)
