@@ -2,6 +2,37 @@ package ee.schimke.composeai.cli
 
 import kotlin.system.exitProcess
 
+/**
+ * Flat command dispatch table — the single source of truth for which verbs exist and how each is
+ * constructed. [CliRouter] decides *what* to run (including group routing and back-compat aliases);
+ * this map turns that decision into a command invocation. `CliRouterTest` pins that the keys here
+ * match [CliRouter.KNOWN_FLAT], so the router and the dispatcher can't drift.
+ */
+internal val COMMANDS: Map<String, (List<String>) -> Unit> =
+  mapOf(
+    "show" to { a -> ShowCommand(a).run() },
+    "show-resources" to { a -> ShowResourcesCommand(a).run() },
+    "list" to { a -> ListCommand(a).run() },
+    "render" to { a -> RenderCommand(a).run() },
+    "render-matrix" to { a -> RenderMatrixCommand(a).run() },
+    "record" to { a -> RecordPreviewCommand(a).run() },
+    "a11y" to { a -> A11yCommand(a).run() },
+    "diff-semantics" to { a -> SemanticsDiffCommand(a).run() },
+    "history" to { a -> HistoryCommand(a).run() },
+    "extensions" to { a -> ExtensionsCommand(a).run() },
+    "profile" to { a -> ProfileCommand(a).run() },
+    "doctor" to { a -> DoctorCommand(a).run() },
+    "devices" to { a -> DevicesCommand(a).run() },
+    "serve" to { a -> ServeCommand(a).run() },
+    "share-preview" to { a -> SharePreviewCommand(a).run() },
+    "bundle" to { a -> BundleCommand(a).run() },
+    "mcp" to { a -> McpCommand(a).run() },
+    "update" to { a -> UpdateCommand(a).run() },
+    "init-script" to { a -> InitScriptCommand(a).run() },
+    "version" to { _ -> println("compose-preview $BUNDLE_VERSION") },
+    "help" to { a -> printUsage(full = "--all" in a) },
+  )
+
 fun main(args: Array<String>) {
   if (args.isEmpty()) {
     printUsage()
@@ -16,52 +47,42 @@ fun main(args: Array<String>) {
     exitProcess(0)
   }
 
-  // Find the command — first bare token that isn't the value of a value-consuming flag. The
-  // classification of which flags consume the following token lives in [CliFlags] (single source of
-  // truth, guarded by CliFlagsRegistryTest).
-  val commandIndex = CliFlags.findCommandIndex(args)
-
-  if (commandIndex < 0) {
-    if ("--help" in args || "-h" in args) {
-      printUsage(full = "--all" in args)
-      exitProcess(0)
+  when (val route = CliRouter.route(args)) {
+    is CliRouter.Route.Run -> COMMANDS.getValue(route.command).invoke(route.args)
+    is CliRouter.Route.GroupUsage -> {
+      printGroupUsage(route.group)
+      exitProcess(if (route.isError) 1 else 0)
     }
-    System.err.println("No command specified.")
-    printUsage()
-    exitProcess(1)
-  }
-
-  val command = args[commandIndex]
-  val allArgs = args.toMutableList().apply { removeAt(commandIndex) }
-
-  when (command) {
-    "show" -> ShowCommand(allArgs).run()
-    "show-resources" -> ShowResourcesCommand(allArgs).run()
-    "list" -> ListCommand(allArgs).run()
-    "render" -> RenderCommand(allArgs).run()
-    "render-matrix" -> RenderMatrixCommand(allArgs).run()
-    "record" -> RecordPreviewCommand(allArgs).run()
-    "a11y" -> A11yCommand(allArgs).run()
-    "diff-semantics" -> SemanticsDiffCommand(allArgs).run()
-    "history" -> HistoryCommand(allArgs).run()
-    "extensions" -> ExtensionsCommand(allArgs).run()
-    "profile" -> ProfileCommand(allArgs).run()
-    "doctor" -> DoctorCommand(allArgs).run()
-    "devices" -> DevicesCommand(allArgs).run()
-    "serve" -> ServeCommand(allArgs).run()
-    "share-preview" -> SharePreviewCommand(allArgs).run()
-    "bundle" -> BundleCommand(allArgs).run()
-    "mcp" -> McpCommand(allArgs).run()
-    "update" -> UpdateCommand(allArgs).run()
-    "init-script" -> InitScriptCommand(allArgs).run()
-    "version" -> println("compose-preview $BUNDLE_VERSION")
-    "help" -> printUsage(full = "--all" in allArgs)
-    else -> {
-      System.err.println("Unknown command: $command")
+    is CliRouter.Route.TopUsage -> printUsage(full = route.full)
+    CliRouter.Route.NoCommand -> {
+      System.err.println("No command specified.")
+      printUsage()
+      exitProcess(1)
+    }
+    is CliRouter.Route.Unknown -> {
+      System.err.println("Unknown command: ${route.command}")
       printUsage()
       exitProcess(1)
     }
   }
+}
+
+/**
+ * Print a single group's command listing (`compose-preview <group>` with no/unknown subcommand).
+ */
+private fun printGroupUsage(group: String) {
+  val subs = CliRouter.subcommandsOf(group)
+  println(
+    """
+    compose-preview $group — ${subs.joinToString(", ")}
+
+    Usage: compose-preview $group <command> [options]
+           (each is also callable directly, e.g. `compose-preview ${subs.firstOrNull() ?: ""}`)
+
+    Run `compose-preview help --all` for the full command + flag reference.
+    """
+      .trimIndent()
+  )
 }
 
 /**
@@ -92,9 +113,12 @@ private fun printUsage(full: Boolean = false) {
       version          Print the installed bundle version and exit
       help             Show this message (`help --all` for every command + flag)
 
-    More commands: render-matrix, record, a11y, diff-semantics, history, extensions,
-      profile, devices, serve, share-preview, bundle, update, init-script.
-      Run `compose-preview help --all` for the full command + flag reference.
+    Command groups (each command is also callable directly by its name):
+      inspect   a11y · diff-semantics · devices · extensions · history · profile
+      capture   render-matrix · record · bundle
+      share     serve · share-preview
+      setup     update · init-script
+    Run `compose-preview <group>` to list a group, or `help --all` for every command + flag.
 
     Common options: --module <name>, --filter <pattern>, --id <exact>, --json,
       --output <path>, --verbose/-v. Full list under `help --all`.
@@ -109,6 +133,9 @@ private fun printFullUsage() {
     compose-preview — Compose Preview CLI
 
     Usage: compose-preview [options] <command> [options]
+
+    Commands are grouped (inspect · capture · share · setup); run `compose-preview <group>` to
+    list one. Every command below is also reachable as `compose-preview <group> <command>`.
 
     Commands:
       show             Discover and render previews; print id, path, sha256, changed flag

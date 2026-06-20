@@ -69,6 +69,16 @@ class CliFlagsRegistryTest {
     assertEquals(-1, CliFlags.findCommandIndex(arrayOf("--module", ":app")))
   }
 
+  @Test
+  fun `firstPositional skips leading valued flags so nested subcommands resolve`() {
+    // The grouped form `capture --module :app bundle pack` hands BundleCommand
+    // ["--module", ":app", "pack"]; its subcommand is `pack`, not the flag value `:app`.
+    assertEquals("pack", CliFlags.firstPositional(listOf("--module", ":app", "pack")))
+    assertEquals(2, CliFlags.firstPositionalIndex(listOf("--module", ":app", "pack")))
+    assertEquals("list", CliFlags.firstPositional(listOf("list", "--json")))
+    assertEquals(null, CliFlags.firstPositional(listOf("--module", ":app")))
+  }
+
   private val sourceDir: File
     get() = File(repoRoot(), "cli/src/main/kotlin/ee/schimke/composeai/cli")
 
