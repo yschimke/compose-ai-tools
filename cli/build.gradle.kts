@@ -139,6 +139,13 @@ dependencies {
   implementation(libs.ktor.client.okhttp)
   implementation(libs.okhttp)
 
+  // Embedded Ktor server (CIO engine) backing `compose-preview serve` — the LAN preview server
+  // that fronts a long-lived render session over HTTP. CIO is pure-Kotlin/coroutines (no Netty),
+  // keeping the transitive + logging surface minimal. Same `ktor` version ref as the client above,
+  // so the strict slf4j pin in the `constraints {}` block below covers the server too.
+  implementation(libs.ktor.server.core)
+  implementation(libs.ktor.server.cio)
+
   // Bundle the MCP server so `compose-preview mcp serve` can invoke it in-process —
   // the consumer install story stays a single tarball + a single launcher.
   implementation(project(":mcp"))
@@ -178,7 +185,8 @@ dependencies {
     implementation("org.slf4j:slf4j-api") {
       version { strictly("2.0.17") }
       because(
-        "gradle-tooling-api 9.5.1 strictly requires slf4j-api 2.0.17; ktor 3.5.0 pulls 2.0.18"
+        "gradle-tooling-api 9.5.1 strictly requires slf4j-api 2.0.17; ktor 3.5.0 client+server " +
+          "pull 2.0.18"
       )
     }
   }

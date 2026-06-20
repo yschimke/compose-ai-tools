@@ -45,6 +45,9 @@ fun main(args: Array<String>) {
       "--fps",
       "--scale",
       "--overrides",
+      "--host",
+      "--port",
+      "--token",
     )
   var commandIndex = -1
   var i = 0
@@ -89,6 +92,7 @@ fun main(args: Array<String>) {
     "profile" -> ProfileCommand(allArgs).run()
     "doctor" -> DoctorCommand(allArgs).run()
     "devices" -> DevicesCommand(allArgs).run()
+    "serve" -> ServeCommand(allArgs).run()
     "share-preview" -> SharePreviewCommand(allArgs).run()
     "bundle" -> BundleCommand(allArgs).run()
     "mcp" -> McpCommand(allArgs).run()
@@ -148,6 +152,10 @@ private fun printUsage() {
                        `ReportCommand`; later flags override profile fields.
       doctor           Verify Java 17 + Compose/AGP environment before editing Gradle files
       devices          List known @Preview(device=...) ids and resolved geometry
+      serve            Start a local HTTP server that renders one module's previews on demand and
+                       serves them as PNGs with overrides, so you can open or share a network-local
+                       link to a specific preview. Read-only; loopback by default, --lan to expose.
+                       The shareable link carries an unguessable token (see `serve --help`).
       share-preview    Share rendered previews (a markdown report + images, or a directory of
                        PNGs) somewhere openable. Picks the mechanism by what's available: a gist
                        when the GitHub CLI is installed + authenticated, otherwise a push to a
