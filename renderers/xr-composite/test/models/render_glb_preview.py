@@ -199,6 +199,7 @@ def _composite_screen(img, zbuf, rot, size, corners, uv, texture, bezel=None):
     if bezel is not None:
         _quad(img, zbuf, rot, size, bezel, np.array([18.0, 18.0, 22.0]))  # dark bezel
     th, tw = texture.shape[:2]
+    has_alpha = texture.shape[-1] == 4  # RGBA -> transparent corners show the body
     qx, qy, qz = _project(corners, rot, size)
     for tri in ((0, 1, 2), (0, 2, 3)):
         i = list(tri)
@@ -223,8 +224,10 @@ def _composite_screen(img, zbuf, rot, size, corners, uv, texture, bezel=None):
         sample = texture[ty, tx]
         zsub = zbuf[y0:y1 + 1, x0:x1 + 1]
         upd = inside & (z >= zsub)
+        if has_alpha:
+            upd = upd & (sample[..., 3] >= 128)
         zsub[upd] = z[upd]
-        img[y0:y1 + 1, x0:x1 + 1][upd] = sample[upd]
+        img[y0:y1 + 1, x0:x1 + 1][upd] = sample[..., :3][upd]
 
 
 def _orient_device(verts):
@@ -244,15 +247,24 @@ def _orient_device(verts):
     return verts @ perm.T
 
 
-def _portrait_screen(panel, aspect):
+def _portrait_screen(panel, aspect, radius_frac=0.055):
     """Lay the (landscape) preview panel into a portrait phone-screen image of
-    the given width/height `aspect`."""
+    the given width/height `aspect`, with rounded corners (transparent outside)
+    so the display matches the device's rounded glass instead of being a square
+    sticker."""
+    from PIL import ImageDraw
     height = 1024
     width = max(1, int(round(height * aspect)))
     screen = Image.new("RGB", (width, height), (248, 247, 250))
     panel_h = max(1, int(round(width * panel.height / panel.width)))
-    screen.paste(panel.resize((width, panel_h)), (0, int(height * 0.05)))
-    return screen
+    screen.paste(panel.resize((width, panel_h)), (0, int(height * 0.06)))
+    mask = Image.new("L", (width, height), 0)
+    ImageDraw.Draw(mask).rounded_rectangle(
+        [0, 0, width - 1, height - 1],
+        radius=int(min(width, height) * radius_frac), fill=255)
+    rgba = screen.convert("RGBA")
+    rgba.putalpha(mask)
+    return rgba
 
 
 def _screen_fill_face(verts, panel, bezel_frac=0.05):
