@@ -48,6 +48,7 @@ fun main(args: Array<String>) {
       "--host",
       "--port",
       "--token",
+      "--export",
     )
   var commandIndex = -1
   var i = 0

@@ -1,9 +1,12 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.cli.serve.RenderOutcome
+import ee.schimke.composeai.cli.serve.ServeBundle
 import ee.schimke.composeai.cli.serve.ServeHttpServer
 import ee.schimke.composeai.cli.serve.ServePreview
 import ee.schimke.composeai.cli.serve.ServeRenderHost
 import ee.schimke.composeai.cli.serve.ServeUrls
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.render.session.RenderSessionException
 import java.io.File
 import java.util.concurrent.CountDownLatch
@@ -31,6 +34,8 @@ class ServeCommand(args: List<String>) : Command(args) {
     }
   private val requestedPort: Int = args.flagValue("--port")?.toIntOrNull() ?: DEFAULT_PORT
   private val tokenOverride: String? = args.flagValue("--token")?.takeIf { it.isNotBlank() }
+  private val exportPath: String? = args.flagValue("--export")?.takeIf { it.isNotBlank() }
+  private val inlineBundle: Boolean = "--inline" in args
 
   override fun run() {
     if ("--help" in args || "-h" in args) {
@@ -91,6 +96,15 @@ class ServeCommand(args: List<String>) : Command(args) {
         System.err.println("serve: failed to open render session (${e.message})")
         exitProcess(2)
       }
+
+    // `--export` reuses the same render session to write a portable bundle (a WebEmbed gallery +
+    // the rendered PNGs) and exits — no server. The live link and the offline bundle are then the
+    // same render output.
+    if (exportPath != null) {
+      exportBundle(renderHost, module.gradlePath, exportPath)
+      renderHost.close()
+      return
+    }
 
     val token = tokenOverride ?: ServeUrls.generateToken()
     val server =
@@ -168,6 +182,46 @@ class ServeCommand(args: List<String>) : Command(args) {
     System.err.println("  Press Ctrl-C to stop.")
   }
 
+  /**
+   * Render every preview once through the held session and write a portable bundle to [path] — a
+   * `.zip` when the path ends in `.zip`, otherwise a directory. `--inline` bakes the PNGs into the
+   * gallery for a single self-contained `index.html`.
+   */
+  private fun exportBundle(host: ServeRenderHost, moduleLabel: String, path: String) {
+    val built =
+      ServeBundle.build(
+        previews = host.previews,
+        title = moduleLabel,
+        modulePath = moduleLabel,
+        inline = inlineBundle,
+      ) { preview ->
+        when (val outcome = host.render(preview.id, PreviewOverrides())) {
+          is RenderOutcome.Ok -> outcome.png
+          is RenderOutcome.Failed -> {
+            System.err.println("serve: ${preview.id} failed to render (${outcome.reason})")
+            null
+          }
+          RenderOutcome.NotFound -> null
+        }
+      }
+
+    val target = File(path)
+    if (path.endsWith(".zip", ignoreCase = true)) {
+      target.absoluteFile.parentFile?.mkdirs()
+      target.writeBytes(ServeBundle.zip(built.files))
+    } else {
+      target.mkdirs()
+      ServeBundle.writeDir(built.files, target)
+    }
+
+    System.err.println(
+      "serve: wrote bundle to ${target.path} " +
+        "(${built.renderedCount}/${built.previewCount} previews" +
+        (if (built.failed.isEmpty()) "" else ", ${built.failed.size} failed") +
+        ")"
+    )
+  }
+
   private fun printUsage() {
     println(
       """
@@ -186,6 +240,12 @@ class ServeCommand(args: List<String>) : Command(args) {
                           connect. Prints the token-gated network URL and a security warning.
         --port <n>        Preferred port (default $DEFAULT_PORT; auto-picks the next free one).
         --token <value>   Use a fixed token instead of a freshly generated one (stable links).
+        --export <path>   Don't serve: render every preview once and write a portable bundle (a
+                          self-contained web gallery + PNGs) to <path>. A '.zip' path writes a zip;
+                          any other path writes a directory. The live server also offers this at
+                          GET /bundle.zip.
+        --inline          With --export, bake the PNGs into the gallery for a single self-contained
+                          index.html (vs. separate previews/<id>.png files).
 
       The shareable link carries an unguessable token; requests without it get 404.
       """

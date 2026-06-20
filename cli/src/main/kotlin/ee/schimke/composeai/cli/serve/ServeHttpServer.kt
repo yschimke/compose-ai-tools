@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.cio.CIO
@@ -69,6 +70,25 @@ class ServeHttpServer(
             JSON.encodeToString(PreviewsResponse.serializer(), dto),
             ContentType.Application.Json,
           )
+        }
+
+        get("/bundle.zip") {
+          if (rejectBadToken()) return@get
+          // Render the whole module once (cache-backed) into the portable WebEmbed gallery and
+          // stream it as a zip — the same render output as the live links, downloadable offline.
+          val zip =
+            withContext(Dispatchers.IO) {
+              val built =
+                ServeBundle.build(
+                  previews = renderHost.previews,
+                  title = moduleLabel,
+                  modulePath = moduleLabel,
+                ) { preview ->
+                  (renderHost.render(preview.id, PreviewOverrides()) as? RenderOutcome.Ok)?.png
+                }
+              ServeBundle.zip(built.files)
+            }
+          call.respondBytes(zip, ContentType.Application.Zip)
         }
 
         get("/p/{name}") {

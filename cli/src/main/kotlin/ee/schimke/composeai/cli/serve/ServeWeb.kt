@@ -79,7 +79,8 @@ object ServeWeb {
       body =
         """
         <p class="cp-head">${WebEscaping.htmlEscape(moduleLabel)}</p>
-        <p class="cp-sub">${previews.size} preview(s) · click one to view with overrides</p>
+        <p class="cp-sub">${previews.size} preview(s) · click one to view with overrides ·
+          <a href="/bundle.zip?token=$tokenQ">download all (.zip)</a></p>
         <div class="cp-grid">
         $cards
         </div>
