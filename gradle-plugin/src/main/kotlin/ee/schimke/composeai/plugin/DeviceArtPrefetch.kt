@@ -1,20 +1,18 @@
 package ee.schimke.composeai.plugin
 
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.okhttp.OkHttp
-import io.ktor.client.request.get
-import io.ktor.client.statement.readRawBytes
-import io.ktor.http.isSuccess
 import java.io.File
-import kotlinx.coroutines.runBlocking
+import java.time.Duration
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.gradle.api.logging.Logger
 
 /**
  * Downloads device-art bezel layers into the on-disk cache the renderer reads
- * (`ee.schimke.composeai.daemon.CachedDeviceArtSource`). Runs in the Gradle daemon JVM via **Ktor
- * over the OkHttp engine** — the repo-standard HTTP stack — deliberately *off* the render
- * subprocess, whose classpath can't carry Ktor's `kotlinx-coroutines` without skewing Compose
- * (`runBlockingK$default NoSuchMethodError`; see docs/RENDERER_COMPATIBILITY.md).
+ * (`ee.schimke.composeai.daemon.CachedDeviceArtSource`). Runs in the Gradle daemon JVM via **OkHttp
+ * directly** — deliberately *off* the render subprocess (whose classpath can't carry an HTTP
+ * client's `kotlinx-coroutines` without skewing Compose). Not Ktor: Ktor 3.x needs coroutines >=
+ * 1.10, but the Gradle daemon ships an older coroutines and Ktor fails with
+ * `Job.invokeOnCompletion$default NoSuchMethodError`; OkHttp has no coroutines dependency.
  *
  * The frame → layers table is a small mirror of `DeviceArtCatalog` (the renderer-side source of
  * truth) kept here so the plugin build doesn't take a cross-build project dependency. Keep the two
@@ -61,27 +59,45 @@ object DeviceArtPrefetch {
   ) {
     val needed = artIds.filter { FRAMES.containsKey(it) }
     if (needed.isEmpty()) return
-    HttpClient(OkHttp).use { client ->
-      runBlocking {
-        for (artId in needed) {
-          for (resource in FRAMES.getValue(artId)) {
-            val dest = File(File(cacheDir, artId), "port_$resource.png")
-            if (dest.isFile && dest.length() > 0) continue
-            try {
-              val response = client.get("$baseUrl/$artId/port_$resource.png")
-              if (!response.status.isSuccess()) {
-                logger?.info(
-                  "device-art prefetch: HTTP ${response.status.value} for $artId/$resource"
-                )
-                continue
-              }
-              val bytes = response.readRawBytes()
-              dest.parentFile?.mkdirs()
-              dest.writeBytes(bytes)
-            } catch (t: Throwable) {
-              logger?.info("device-art prefetch failed for $artId/$resource: ${t.message}")
+    // OkHttp directly (synchronous), NOT Ktor: Ktor 3.x needs kotlinx-coroutines >= 1.10, but the
+    // Gradle daemon classpath ships an older coroutines and Ktor blows up with
+    // `Job.invokeOnCompletion$default NoSuchMethodError`. OkHttp has no coroutines dependency, so
+    // it
+    // works in both the Gradle JVM here and (if ever needed) the render subprocess.
+    val timeout = Duration.ofSeconds(20)
+    val client =
+      OkHttpClient.Builder()
+        .connectTimeout(timeout)
+        .readTimeout(timeout)
+        .callTimeout(timeout)
+        .retryOnConnectionFailure(true)
+        .build()
+    for (artId in needed) {
+      for (resource in FRAMES.getValue(artId)) {
+        val dest = File(File(cacheDir, artId), "port_$resource.png")
+        if (dest.isFile && dest.length() > 0) continue
+        try {
+          val request =
+            Request.Builder()
+              .url("$baseUrl/$artId/port_$resource.png")
+              .header("User-Agent", "compose-preview-device-frame")
+              .build()
+          client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+              logger?.warn("device-art prefetch: HTTP ${response.code} for $artId/$resource")
+              return@use
             }
+            val bytes = response.body.bytes()
+            dest.parentFile?.mkdirs()
+            dest.writeBytes(bytes)
           }
+        } catch (t: Throwable) {
+          // Visible by default: a silent prefetch failure means previews render un-framed with no
+          // hint why.
+          logger?.warn(
+            "device-art prefetch failed for $artId/$resource: " +
+              "${t.javaClass.simpleName}: ${t.message}"
+          )
         }
       }
     }
