@@ -172,14 +172,14 @@
     "serve-viewer.dark.png": {
       "fixture": "serve-viewer",
       "theme": "dark",
-      "sha256": "f24f09e78c6e52383a0ef3c1bbe9d1e58c3e29791f6e9ded2c75f6c013f96d66",
-      "size": 23336
+      "sha256": "af35042fabad4c40d70a9d5d3aca61fde64af52287d4f71c5e7408f714fb4527",
+      "size": 24734
     },
     "serve-viewer.light.png": {
       "fixture": "serve-viewer",
       "theme": "light",
-      "sha256": "42c447a77f560103101b02b8ef5bcfdabc9be202958c354dcbc664a512a5ad9d",
-      "size": 23065
+      "sha256": "f86f50d46e1c87da3ea392ff26185bc4def2c6a363a209f39eb45c29fd4a7da6",
+      "size": 24395
     },
     "spatial-semantics.dark.png": {
       "fixture": "spatial-semantics",
