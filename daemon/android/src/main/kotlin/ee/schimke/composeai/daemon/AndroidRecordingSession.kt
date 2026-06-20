@@ -419,12 +419,22 @@ class AndroidRecordingSession(
    * threshold carried in `event.inputText` (`errors` default | `warnings`). The verdict logic is the
    * shared, backend-agnostic [evaluateA11yAssertion] in `:daemon:core`. A null capture means the
    * backend can't run ATF (no held View / unsupported) — recorded as FAILED with a clear reason
-   * rather than a silent pass, since the user explicitly asked for the check.
+   * rather than a silent pass, since the user explicitly asked for the check. An ATF *throw* (e.g. an
+   * unsupported View state while building or checking the hierarchy) is mapped to the same FAILED
+   * evidence rather than rethrown: the advertised contract is "un-runnable check → FAILED", and a
+   * rethrow would abort `recording/stop` entirely, leaving the caller with no frames and no evidence.
    */
   private fun assertA11yHandler(): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, _ ->
       val findings =
-        interactive.captureA11yFindings()
+        try {
+          interactive.captureA11yFindings()
+        } catch (t: Throwable) {
+          return@RecordingScriptEventHandler failedEvidence(
+            event,
+            "${event.kind}: accessibility capture failed to run — ${t.message ?: t::class.simpleName}",
+          )
+        }
           ?: return@RecordingScriptEventHandler failedEvidence(
             event,
             "${event.kind}: accessibility capture is unavailable on this backend",

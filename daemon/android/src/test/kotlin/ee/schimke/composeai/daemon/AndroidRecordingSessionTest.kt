@@ -267,6 +267,33 @@ class AndroidRecordingSessionTest {
         asserts[0].message?.contains("unavailable") == true,
       )
     }
+
+    // ATF throws (e.g. unsupported View state): must record FAILED evidence, NOT abort the recording
+    // — the recording must still stop cleanly with frames + the failed assert (issue #1966 review).
+    run {
+      val interactive =
+        RecordingDeltaSession(sourcePng).apply {
+          a11yCaptureError = IllegalStateException("unsupported View state")
+        }
+      val session =
+        AndroidRecordingSession(
+          previewId = INTERACTIVE_PREVIEW_ID,
+          recordingId = "test-rec-a11y-throw",
+          fps = FPS,
+          scale = 1.0f,
+          interactive = interactive,
+          framesDir = framesDir,
+          encodedDir = encodedDir,
+        )
+      session.postScript(listOf(a11yEvent()))
+      val result = session.stop()
+      val asserts = result.scriptEvents.filter { it.kind == "assert.a11y" }
+      assertEquals(RecordingScriptEventStatus.FAILED, asserts[0].status)
+      assertTrue(
+        "a capture throw should surface the error in the evidence; got ${asserts[0].message}",
+        asserts[0].message?.contains("unsupported View state") == true,
+      )
+    }
   }
 
   @Test
@@ -1903,8 +1930,18 @@ class AndroidRecordingSessionTest {
       List<ee.schimke.composeai.daemon.protocol.RecordingA11yFinding>? =
       null
 
+    /**
+     * When set, [captureA11yFindings] throws this instead of returning — simulating ATF blowing up
+     * while building/checking the held View hierarchy. The handler must map it to FAILED evidence,
+     * not let it abort `recording/stop` (issue #1966 review).
+     */
+    var a11yCaptureError: Throwable? = null
+
     override fun captureA11yFindings():
-      List<ee.schimke.composeai.daemon.protocol.RecordingA11yFinding>? = a11yFindingsResult
+      List<ee.schimke.composeai.daemon.protocol.RecordingA11yFinding>? {
+      a11yCaptureError?.let { throw it }
+      return a11yFindingsResult
+    }
 
     override fun dispatchSemanticsAction(
       actionKind: String,
