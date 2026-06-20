@@ -16,55 +16,10 @@ fun main(args: Array<String>) {
     exitProcess(0)
   }
 
-  // Find the command — first non-flag argument that isn't a flag's value.
-  // Flags that take values: --module, --filter, --id, --output, --timeout, --plugin-version
-  val valuedFlags =
-    setOf(
-      "--module",
-      "--filter",
-      "--id",
-      "--output",
-      "--timeout",
-      "--plugin-version",
-      "--fail-on",
-      "--desc",
-      "--mechanism",
-      "--branch",
-      "--remote",
-      "--pr-number",
-      "--message",
-      "--raw-base",
-      "--with-extension",
-      "--with",
-      "--missing-renders",
-      "--variant",
-      "--preview",
-      "--script",
-      "--out",
-      "--format",
-      "--fps",
-      "--scale",
-      "--overrides",
-      "--host",
-      "--port",
-      "--token",
-      "--export",
-    )
-  var commandIndex = -1
-  var i = 0
-  while (i < args.size) {
-    val arg = args[i]
-    if (arg in valuedFlags) {
-      i += 2 // skip flag and its value
-      continue
-    }
-    if (arg.startsWith("-")) {
-      i++
-      continue
-    }
-    commandIndex = i
-    break
-  }
+  // Find the command — first bare token that isn't the value of a value-consuming flag. The
+  // classification of which flags consume the following token lives in [CliFlags] (single source of
+  // truth, guarded by CliFlagsRegistryTest).
+  val commandIndex = CliFlags.findCommandIndex(args)
 
   if (commandIndex < 0) {
     if ("--help" in args || "-h" in args) {
