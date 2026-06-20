@@ -193,6 +193,19 @@ interface InteractiveSession : AutoCloseable {
   fun captureProbeSemantics(): List<ee.schimke.composeai.daemon.protocol.RecordingProbeNode>? = null
 
   /**
+   * Run the Android Accessibility Test Framework (ATF) against the held composition for an
+   * `assert.a11y` recording-script point (issue #1966), returning the findings projected into
+   * core-level [RecordingA11yFinding][ee.schimke.composeai.daemon.protocol.RecordingA11yFinding]s.
+   * Unlike the post-hoc `data/fetch` path, this evaluates the **live held scene** at the script's
+   * `tMs`, so it gates the actual recorded / post-interaction state.
+   *
+   * Default returns `null` so non-Android hosts (desktop's `ImageComposeScene` has no `View`
+   * hierarchy, and ATF runs only against Android Views) cleanly surface "a11y capture unavailable"
+   * — the `assert.a11y` handler then reports unsupported rather than blowing up the session.
+   */
+  fun captureA11yFindings(): List<ee.schimke.composeai.daemon.protocol.RecordingA11yFinding>? = null
+
+  /**
    * Lifecycle dispatch: move the held activity (or per-host equivalent) to the named lifecycle
    * state, exercising `onPause` / `onResume` / `onStop` etc. on the way. Used by `record_preview`'s
    * `lifecycle.event` script events to verify that a preview survives a pause-resume cycle or a

@@ -305,6 +305,13 @@ class AndroidRecordingSession(
           RecordingScriptDataExtensions.ASSERT_NOT_VISIBLE_EVENT,
           assertVisibilityHandler(expectVisible = false),
         )
+        // Accessibility assertion (issue #1966) — `assert.a11y` runs Android ATF against the held
+        // composition's View hierarchy and fails the recording when findings breach the threshold.
+        // Render-coupled (evaluated against the same scene being recorded) and Android-only; the
+        // desktop backend advertises no descriptor for it. `inputText` selects the threshold
+        // (`errors` default | `warnings`). Verdict logic is the shared `evaluateA11yAssertion` in
+        // `:daemon:core`; capture rides the `captureA11yFindings` bridge.
+        put(RecordingScriptDataExtensions.ASSERT_A11Y_EVENT, assertA11yHandler())
         // Accessibility-driven dispatch — every `a11y.action.<name>` id with a clean Compose
         // SemanticsActions equivalent registers here. Each handler shares the same shape:
         // resolve a node by `nodeContentDescription`, route through
@@ -400,6 +407,40 @@ class AndroidRecordingSession(
       when (
         val verdict = evaluateVisibilityAssertion(expectVisible, matchCount, target.toString())
       ) {
+        AssertionVerdict.Passed -> appliedEvidence(event, "${event.kind} satisfied")
+        is AssertionVerdict.Failed -> failedEvidence(event, verdict.reason)
+      }
+    }
+
+  /**
+   * Accessibility assertion on the Android backend (issue #1966). Runs Android ATF
+   * (`AccessibilityChecker.check`) against the held composition's View hierarchy via
+   * [InteractiveSession.captureA11yFindings], then fails the recording when the findings breach the
+   * threshold carried in `event.inputText` (`errors` default | `warnings`). The verdict logic is the
+   * shared, backend-agnostic [evaluateA11yAssertion] in `:daemon:core`. A null capture means the
+   * backend can't run ATF (no held View / unsupported) — recorded as FAILED with a clear reason
+   * rather than a silent pass, since the user explicitly asked for the check. An ATF *throw* (e.g. an
+   * unsupported View state while building or checking the hierarchy) is mapped to the same FAILED
+   * evidence rather than rethrown: the advertised contract is "un-runnable check → FAILED", and a
+   * rethrow would abort `recording/stop` entirely, leaving the caller with no frames and no evidence.
+   */
+  private fun assertA11yHandler(): RecordingScriptEventHandler =
+    RecordingScriptEventHandler { event, _ ->
+      val findings =
+        try {
+          interactive.captureA11yFindings()
+        } catch (t: Throwable) {
+          return@RecordingScriptEventHandler failedEvidence(
+            event,
+            "${event.kind}: accessibility capture failed to run — ${t.message ?: t::class.simpleName}",
+          )
+        }
+          ?: return@RecordingScriptEventHandler failedEvidence(
+            event,
+            "${event.kind}: accessibility capture is unavailable on this backend",
+          )
+      val threshold = A11yAssertThreshold.parseOrDefault(event.inputText)
+      when (val verdict = evaluateA11yAssertion(findings, threshold)) {
         AssertionVerdict.Passed -> appliedEvidence(event, "${event.kind} satisfied")
         is AssertionVerdict.Failed -> failedEvidence(event, verdict.reason)
       }

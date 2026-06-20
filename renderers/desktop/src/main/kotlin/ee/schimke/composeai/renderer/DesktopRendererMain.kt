@@ -373,7 +373,13 @@ fun main(args: Array<String>) {
       val deviceFrame = DeviceFrameConfig.fromSystemProperties()
       if (deviceFrame != null) {
         try {
-          val dataDir = (targetFile.parentFile?.parentFile ?: targetFile.parentFile).resolve("data")
+          // Resolve the previews-root `data/` dir. For a normal `renders/<id>.png` capture that's
+          // the sibling `data/`; for a data-product output already under `data/<kind>/<id>.png`
+          // (LONG/GIF scroll products) the grandparent IS `data/`, so don't nest a second `data/`.
+          val captureDir = targetFile.parentFile
+          val dataDir =
+            if (captureDir?.parentFile?.name == "data") captureDir.parentFile!!
+            else (captureDir?.parentFile ?: captureDir ?: targetFile).resolve("data")
           DeviceFrameDataProducer.writeArtifacts(
             rootDir = dataDir,
             previewId = targetFile.nameWithoutExtension,

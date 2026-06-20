@@ -490,6 +490,53 @@ internal constructor(
   }
 
   /**
+   * Override of [InteractiveSession.captureA11yFindings] (#1966). Enqueues an
+   * [InteractiveCommand.CaptureA11yFindings] envelope; the sandbox-side loop runs Android ATF
+   * (`AccessibilityChecker.check`) against the held composition's View hierarchy and hands the
+   * findings back through [InteractiveCommand.CaptureA11yFindings.replyFindingsJson] as a serialized
+   * [ee.schimke.composeai.renderer.AccessibilityFindingsPayload]. Read-only — no dispatch, no settle
+   * tick. The host re-projects to the core [ee.schimke.composeai.daemon.protocol.RecordingA11yFinding]
+   * so `:daemon:core` stays free of the a11y dependency.
+   */
+  override fun captureA11yFindings():
+    List<ee.schimke.composeai.daemon.protocol.RecordingA11yFinding>? {
+    if (closed) return null
+    lastUsedAtMs.set(System.currentTimeMillis())
+    val replyLatch = CountDownLatch(1)
+    val replyError = AtomicReference<Throwable?>(null)
+    val replyFindingsJson = AtomicReference<String?>(null)
+    slot.interactiveCommands.put(
+      InteractiveCommand.CaptureA11yFindings(
+        streamId = streamId,
+        replyLatch = replyLatch,
+        replyError = replyError,
+        replyFindingsJson = replyFindingsJson,
+      )
+    )
+    if (!replyLatch.await(DISPATCH_TIMEOUT_SEC, TimeUnit.SECONDS)) {
+      error(
+        "AndroidInteractiveSession.captureA11yFindings timed out after " +
+          "${DISPATCH_TIMEOUT_SEC}s for stream '$streamId'. Held-rule loop may be stuck."
+      )
+    }
+    replyError.get()?.let { throw it }
+    return replyFindingsJson.get()?.let { json ->
+      Json.decodeFromString(
+          ee.schimke.composeai.renderer.AccessibilityFindingsPayload.serializer(),
+          json,
+        )
+        .findings
+        .map {
+          ee.schimke.composeai.daemon.protocol.RecordingA11yFinding(
+            level = it.level,
+            type = it.type,
+            message = it.message,
+          )
+        }
+    }
+  }
+
+  /**
    * Override of [InteractiveSession.dispatchLifecycle]. Enqueues a
    * [InteractiveCommand.DispatchLifecycle] envelope through the bridge; the sandbox-side loop in
    * [RobolectricHost.SandboxRunner.runHeldInteractiveSession] resolves the wire-name string to a

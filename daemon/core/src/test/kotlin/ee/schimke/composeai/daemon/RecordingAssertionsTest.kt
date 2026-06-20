@@ -110,6 +110,68 @@ class RecordingAssertionsTest {
     assertEquals(null, resolvedNodeText(node(testTag = "empty", text = null)))
   }
 
+  // assert.a11y (issue #1966) — threshold parsing + verdict evaluation.
+
+  @Test
+  fun a11y_threshold_parses_errors_by_default() {
+    assertEquals(A11yAssertThreshold.ERRORS, A11yAssertThreshold.parseOrDefault(null))
+    assertEquals(A11yAssertThreshold.ERRORS, A11yAssertThreshold.parseOrDefault("errors"))
+    assertEquals(A11yAssertThreshold.ERRORS, A11yAssertThreshold.parseOrDefault("nonsense"))
+    assertEquals(A11yAssertThreshold.WARNINGS, A11yAssertThreshold.parseOrDefault(" WARNINGS "))
+    assertEquals(A11yAssertThreshold.WARNINGS, A11yAssertThreshold.parseOrDefault("warning"))
+  }
+
+  @Test
+  fun a11y_passes_when_no_findings() {
+    assertEquals(
+      AssertionVerdict.Passed,
+      evaluateA11yAssertion(emptyList(), A11yAssertThreshold.WARNINGS),
+    )
+  }
+
+  @Test
+  fun a11y_errors_threshold_ignores_warnings_and_info() {
+    val findings = listOf(a11y("WARNING"), a11y("INFO"))
+    assertEquals(
+      AssertionVerdict.Passed,
+      evaluateA11yAssertion(findings, A11yAssertThreshold.ERRORS),
+    )
+  }
+
+  @Test
+  fun a11y_errors_threshold_fails_on_an_error() {
+    val verdict = evaluateA11yAssertion(listOf(a11y("ERROR")), A11yAssertThreshold.ERRORS)
+    assertTrue(verdict is AssertionVerdict.Failed)
+    val reason = (verdict as AssertionVerdict.Failed).reason
+    assertTrue(reason.contains("1 error"))
+    assertTrue(reason.contains("TouchTargetSizeCheck"))
+  }
+
+  @Test
+  fun a11y_warnings_threshold_fails_on_a_warning() {
+    val verdict = evaluateA11yAssertion(listOf(a11y("WARNING")), A11yAssertThreshold.WARNINGS)
+    assertTrue(verdict is AssertionVerdict.Failed)
+    assertTrue((verdict as AssertionVerdict.Failed).reason.contains("1 warning"))
+  }
+
+  @Test
+  fun a11y_failure_detail_caps_at_five_violations() {
+    val findings = List(8) { a11y("ERROR", message = "v$it") }
+    val reason =
+      (evaluateA11yAssertion(findings, A11yAssertThreshold.ERRORS) as AssertionVerdict.Failed)
+        .reason
+    // Detail lists at most 5 of the breaching findings; the count still reports all 8.
+    assertEquals(5, reason.split("TouchTargetSizeCheck:").size - 1)
+    assertTrue(reason.contains("8 error"))
+  }
+
+  private fun a11y(level: String, message: String = "too small") =
+    ee.schimke.composeai.daemon.protocol.RecordingA11yFinding(
+      level = level,
+      type = "TouchTargetSizeCheck",
+      message = message,
+    )
+
   private var nodeCounter = 0
 
   private fun node(

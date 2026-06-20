@@ -24,9 +24,9 @@ fun interface DeviceArtSource {
  * The renderer deliberately does **no** network IO: it rides on the render subprocess classpath,
  * where an HTTP client like Ktor would drag a `kotlinx-coroutines` version that skews Compose
  * (`runBlockingK$default NoSuchMethodError` — see docs/RENDERER_COMPATIBILITY.md). Fetching is done
- * off the subprocess by `DeviceArtPrefetch` (Ktor/OkHttp) in the Gradle plugin, which fills this
- * cache before the render runs. A cache miss returns null, so framing degrades to "no frame" rather
- * than breaking the render.
+ * off the subprocess by `DeviceArtPrefetch` (OkHttp) in the Gradle plugin, which fills this cache
+ * before the render runs. A cache miss returns null, so framing degrades to "no frame" rather than
+ * breaking the render.
  */
 class CachedDeviceArtSource(
   cacheDir: String?,

@@ -72,11 +72,12 @@ runs; pre-seed `cacheDir` with `<artId>/port_<resource>.png` files for fully off
   (shadow → back → screen, anti-aliased rounded-rect/circle clip → notch redraw → glare). Runs
   unchanged on the Robolectric host JVM and the Desktop renderer.
 - [`DeviceArtPrefetch`](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/DeviceArtPrefetch.kt)
-  — downloads the bezel layers into the on-disk cache **before** the render runs, via **Ktor over
-  the OkHttp engine**, in the Gradle daemon JVM. It lives in the plugin, not the renderer, on
-  purpose: the render subprocess classpath can't carry Ktor's transitive `kotlinx-coroutines`
-  without skewing Compose (`runBlockingK$default NoSuchMethodError` — see
-  [RENDERER_COMPATIBILITY.md](RENDERER_COMPATIBILITY.md)).
+  — downloads the bezel layers into the on-disk cache **before** the render runs, via **OkHttp**
+  (synchronous), in the Gradle daemon JVM. It lives in the plugin, not the renderer, on purpose: an
+  HTTP client can't sit on the render subprocess classpath without skewing Compose's
+  `kotlinx-coroutines` (`runBlockingK$default NoSuchMethodError` — see
+  [RENDERER_COMPATIBILITY.md](RENDERER_COMPATIBILITY.md)). OkHttp (not Ktor) because Ktor 3.x needs
+  coroutines ≥ 1.10 while the Gradle daemon ships an older one.
 - [`CachedDeviceArtSource`](../data/deviceframe/connector/src/main/kotlin/ee/schimke/composeai/daemon/DeviceArtSource.kt)
   — the renderer-side layer source. Reads the prefetched cache only (no HTTP libs on the render
   classpath); a cache miss degrades to "no frame".

@@ -1192,7 +1192,11 @@ abstract class RobolectricRenderTestBase(
                                     (outputDir.parentFile ?: outputDir).resolve("data")
                                 DeviceFrameDataProducer.writeArtifacts(
                                     rootDir = frameDataDir,
-                                    previewId = preview.id,
+                                    // Key on the capture's file stem, not preview.id: a preview can
+                                    // emit several captures (manual-clock fan-out, TOP/END scroll,
+                                    // focus/animated) and preview.id would make later captures
+                                    // overwrite earlier framed siblings. Matches the desktop path.
+                                    previewId = outputFile.nameWithoutExtension,
                                     pngFile = outputFile,
                                     device = preview.params.device,
                                     settings = deviceFrame,
