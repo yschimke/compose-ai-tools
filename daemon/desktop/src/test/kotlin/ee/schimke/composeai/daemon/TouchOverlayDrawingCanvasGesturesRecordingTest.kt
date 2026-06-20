@@ -159,11 +159,17 @@ class TouchOverlayDrawingCanvasGesturesRecordingTest {
           cyanMatch > 0.0005,
         )
 
-        // Tap assertion — the post-tap frame (right after the first sub-gesture finishes) should
-        // already have pink-circle pixels committed by the canvas.
+        // Tap assertion — sample a frame late in the post-tap settle window (just before the drag
+        // begins). The committed pink circle is permanent, but the overlay's alpha tap flash sits
+        // on top of it for PULSE_LIFETIME_MS after the lift, so an immediate post-tap frame would
+        // measure the flash colour, not the circle. By DRAG_START the flash has faded and the
+        // circle is unoccluded.
         val postTapFrame =
           TouchOverlayTestSupport.readPng(
-            File(result.framesDir, "frame-${"%05d".format((TAP_END_MS / STEP_MS + 1).toInt())}.png")
+            File(
+              result.framesDir,
+              "frame-${"%05d".format((DRAG_START_MS / STEP_MS - 1).toInt())}.png",
+            )
           )
         val pinkMatch =
           TouchOverlayTestSupport.pixelMatchPctApprox(
