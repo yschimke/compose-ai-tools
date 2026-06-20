@@ -288,6 +288,15 @@ object RecordingScriptDataExtensions {
   const val ASSERT_A11Y_EVENT: String = "assert.a11y"
 
   /**
+   * `assert.pixels` — golden-image assertion (issue #1967). Diffs the recorded frame at the event's
+   * `tMs` against a committed baseline PNG and fails the recording when the diff exceeds tolerance,
+   * reusing the `PixelDiff` comparator from `:daemon:harness`. The baseline path rides the event's
+   * existing `inputText` field (no new wire field), resolved by the CLI against `--baseline-dir`.
+   * Desktop-only today (it reads the frames the desktop session wrote); Android is a follow-up.
+   */
+  const val ASSERT_PIXELS_EVENT: String = "assert.pixels"
+
+  /**
    * `recording.probe` descriptor with `supported = true`. Returned from each
    * `RenderHost.recordingScriptEventDescriptors()` that wires a real probe handler in its
    * recording-session registry (today: both desktop and android backends).
@@ -338,6 +347,14 @@ object RecordingScriptDataExtensions {
             summary =
               "Fails the recording unless the target node's text equals the expected " +
                 "string (carried in the event's inputText field).",
+            supported = true,
+          ),
+          RecordingScriptEventDescriptor(
+            id = ASSERT_PIXELS_EVENT,
+            displayName = "Assert pixels",
+            summary =
+              "Fails the recording unless the recorded frame at this tMs matches the baseline " +
+                "PNG (path in the event's inputText field) within PixelDiff tolerance.",
             supported = true,
           ),
         ),

@@ -184,6 +184,101 @@ class DesktopRecordingSessionTest {
     }
   }
 
+  /**
+   * Issue #1967 — `assert.pixels` diffs the recorded frame at its `tMs` against a committed
+   * baseline PNG (path in `inputText`), reusing `PixelDiff`. Captures a baseline from a first
+   * deterministic render, then asserts: a matching baseline → APPLIED; a same-size but
+   * different-coloured baseline → FAILED with a pixel-diff message. The diff runs in the session's
+   * post-playback pass.
+   */
+  @Test
+  fun assert_pixels_matches_baseline_and_fails_on_drift() {
+    val outputDir = tempFolder.newFolder("assert-pixels-renders")
+    val recordingsRoot = tempFolder.newFolder("assert-pixels-recordings-root")
+    savedRecordingsDir = System.getProperty(DesktopHost.RECORDINGS_DIR_PROP)
+    System.setProperty(DesktopHost.RECORDINGS_DIR_PROP, recordingsRoot.absolutePath)
+
+    val engine = RenderEngine(outputDir = outputDir)
+    val host =
+      DesktopHost(
+        engine = engine,
+        previewSpecResolver = { previewId ->
+          if (previewId == FIXTURE_PREVIEW_ID) {
+            RenderSpec(
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "TristateClickSquare",
+              widthPx = COMPONENT_WIDTH_PX,
+              heightPx = COMPONENT_HEIGHT_PX,
+              density = 1.0f,
+              outputBaseName = "tristate-click-square",
+            )
+          } else null
+        },
+      )
+    host.start()
+    try {
+      val cl =
+        DesktopRecordingSessionTest::class.java.classLoader ?: ClassLoader.getSystemClassLoader()
+      val baselineDir = tempFolder.newFolder("baselines")
+
+      // Phase A: capture frame 0 (deterministic — no clicks → state 0) as the golden baseline.
+      val baselineFile = File(baselineDir, "frame0.png")
+      host.acquireRecordingSession(FIXTURE_PREVIEW_ID, "rec-baseline", cl, FPS, 1.0f, null).use { s
+        ->
+        s.postScript(listOf(RecordingScriptEvent(tMs = 0L, kind = "recording.probe")))
+        val r = s.stop()
+        File(r.framesDir, "frame-00000.png").copyTo(baselineFile, overwrite = true)
+      }
+      assertTrue("baseline frame captured", baselineFile.isFile && baselineFile.length() > 0)
+
+      // A same-dimension but different-coloured baseline for the failure case.
+      val wrongBaseline = File(baselineDir, "wrong.png")
+      ImageIO.write(
+        java.awt.image
+          .BufferedImage(
+            COMPONENT_WIDTH_PX,
+            COMPONENT_HEIGHT_PX,
+            java.awt.image.BufferedImage.TYPE_INT_RGB,
+          )
+          .apply { for (y in 0 until height) for (x in 0 until width) setRGB(x, y, 0x123456) },
+        "png",
+        wrongBaseline,
+      )
+
+      // Phase B: assert.pixels against the matching baseline → APPLIED.
+      val pass = recordSingleAssertPixels(host, cl, "rec-pass", baselineFile.absolutePath)
+      assertEquals(
+        "matching baseline should pass; got ${pass.status} / ${pass.message}",
+        RecordingScriptEventStatus.APPLIED,
+        pass.status,
+      )
+
+      // Phase C: assert.pixels against the mismatching baseline → FAILED with a pixel-diff message.
+      val fail = recordSingleAssertPixels(host, cl, "rec-fail", wrongBaseline.absolutePath)
+      assertEquals(
+        "drifted baseline should fail; got ${fail.status} / ${fail.message}",
+        RecordingScriptEventStatus.FAILED,
+        fail.status,
+      )
+      assertTrue(
+        "failure message should name the assertion; got ${fail.message}",
+        fail.message?.contains("assert.pixels") == true,
+      )
+
+      // A missing baseline path fails closed rather than silently passing.
+      val missing =
+        recordSingleAssertPixels(
+          host,
+          cl,
+          "rec-missing",
+          File(baselineDir, "nope.png").absolutePath,
+        )
+      assertEquals(RecordingScriptEventStatus.FAILED, missing.status)
+    } finally {
+      host.shutdown()
+    }
+  }
+
   @Test
   fun scale_changes_output_frame_size_but_not_pointer_coords() {
     val outputDir = tempFolder.newFolder("scale-engine-renders")
@@ -1033,6 +1128,26 @@ class DesktopRecordingSessionTest {
       host.shutdown()
     }
   }
+
+  /**
+   * Drive a one-event `assert.pixels` recording against the fixture and return the single
+   * assertion's evidence. The baseline path rides the event's `inputText` (issue #1967), as the CLI
+   * would resolve it against `--baseline-dir`.
+   */
+  private fun recordSingleAssertPixels(
+    host: DesktopHost,
+    classLoader: ClassLoader,
+    recordingId: String,
+    baselinePath: String,
+  ): ee.schimke.composeai.daemon.protocol.RecordingScriptEvidence =
+    host
+      .acquireRecordingSession(FIXTURE_PREVIEW_ID, recordingId, classLoader, FPS, 1.0f, null)
+      .use { s ->
+        s.postScript(
+          listOf(RecordingScriptEvent(tMs = 0L, kind = "assert.pixels", inputText = baselinePath))
+        )
+        s.stop().scriptEvents.single { it.kind == "assert.pixels" }
+      }
 
   private fun readPng(file: File): java.awt.image.BufferedImage {
     assertTrue("rendered PNG must exist on disk: ${file.absolutePath}", file.exists())

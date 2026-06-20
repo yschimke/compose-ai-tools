@@ -71,6 +71,12 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
       .map { it.trim() }
       .filter { it.isNotEmpty() }
 
+  /**
+   * Directory holding committed baseline PNGs for `assert.pixels` events (issue #1967). Relative
+   * `inputText` baseline paths are resolved against it; defaults to the current directory.
+   */
+  private val baselineDir: String? = args.flagValue("--baseline-dir")
+
   override fun run() {
     val previewRef = requireFlag(previewRef, "--preview", "a preview reference")
     val scriptPath = requireFlag(scriptPath, "--script", "a session-script JSON file")
@@ -80,7 +86,7 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
     if (!scriptFile.isFile) {
       fail("script file not found: ${scriptFile.absolutePath}")
     }
-    val events = parseScript(scriptFile)
+    val events = resolveBaselines(parseScript(scriptFile))
     if (events.isEmpty()) {
       System.err.println(
         "compose-preview record: warning — script '$scriptPath' contained no events; " +
@@ -232,6 +238,23 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
         "could not parse script '${scriptFile.path}' as a JSON array of RecordingScriptEvent: " +
           (e.message ?: e.javaClass.simpleName)
       )
+    }
+  }
+
+  /**
+   * Resolve `assert.pixels` baseline paths (issue #1967). The baseline PNG path rides each event's
+   * existing `inputText` field; the daemon reads it off the shared local filesystem. Relative paths
+   * are made absolute against `--baseline-dir` (default: the current directory) so resolution is
+   * independent of the daemon's working directory. Absolute paths and non-pixel events pass through
+   * unchanged. (`"assert.pixels"` mirrors `RecordingScriptDataExtensions.ASSERT_PIXELS_EVENT`; the
+   * literal avoids pulling `:data-render-core` onto the CLI classpath.)
+   */
+  private fun resolveBaselines(events: List<RecordingScriptEvent>): List<RecordingScriptEvent> {
+    val base = File(baselineDir ?: ".")
+    return events.map { e ->
+      val path = e.inputText
+      if (e.kind != "assert.pixels" || path.isNullOrBlank() || File(path).isAbsolute) e
+      else e.copy(inputText = File(base, path).absolutePath)
     }
   }
 
