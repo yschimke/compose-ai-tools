@@ -11,12 +11,15 @@ in any headless container. It only needs numpy + Pillow:
     pip install numpy pillow
     python3 render_glb_preview.py avocado-cc0.glb avocado-cc0.preview.png
 
-The model stands in as a *device*: a preview "screen" image is composited onto
-its front face (anchored in model space, so it tilts with the model and is
-occluded by the geometry via the shared z-buffer) — the same idea as the
-xr-composite renderer painting a Compose preview onto a device panel. Pass a
-screen texture as the third arg; defaults to the spatial now-playing panel.
-Two front-ish orbit angles are rendered side by side.
+The model stands in as a *device* showing a preview. Slab-shaped models (a
+phone) get the preview as a portrait screen inset flush into the front face;
+other models (the avocado) get it as a planar decal projected onto — and
+shaded with — the curved surface. Either way it tilts with the model and is
+occluded by the geometry via the shared z-buffer, the same idea as the
+xr-composite renderer painting a Compose preview onto a device. The screen
+texture defaults to the spatial now-playing panel. A committed `.glb` path or a
+runtime DeviceModelCatalog URL may be given; two orbit angles are rendered side
+by side.
 """
 import json
 import struct
@@ -113,7 +116,7 @@ def _rot(yaw, pitch):
 
 
 def _render(verts, faces, yaw, pitch, screen=None, size=720,
-            colour=(0.62, 0.78, 0.40)):
+            colour=(0.62, 0.78, 0.40), decal=None):
     rot = _rot(yaw, pitch)
     proj = verts @ rot.T
     light = np.array([0.4, 0.7, 0.6])
@@ -122,6 +125,10 @@ def _render(verts, faces, yaw, pitch, screen=None, size=720,
     zbuf = np.full((size, size), -1e9)
     sx, sy_, sz = _project(verts, rot, size)
     base = np.asarray(colour)
+    duv = dtex = None
+    if decal is not None:
+        duv, dtex = decal["uv"], decal["texture"]
+        dth, dtw = dtex.shape[:2]
 
     for a, b, c in faces:
         normal = np.cross(proj[b] - proj[a], proj[c] - proj[a])
@@ -145,8 +152,21 @@ def _render(verts, faces, yaw, pitch, screen=None, size=720,
         z = l1 * zs[0] + l2 * zs[1] + l3 * zs[2]
         zsub = zbuf[y0:y1 + 1, x0:x1 + 1]
         upd = inside & (z > zsub)
+        # Flat-shaded base, with an optional decal projected onto the front-facing
+        # (model +Z) triangles so the preview is painted onto the surface and
+        # follows its curvature.
+        region = np.empty((y1 - y0 + 1, x1 - x0 + 1, 3))
+        region[:] = col
+        if duv is not None and np.cross(verts[b] - verts[a], verts[c] - verts[a])[2] > 0:
+            u = l1 * duv[a, 0] + l2 * duv[b, 0] + l3 * duv[c, 0]
+            v = l1 * duv[a, 1] + l2 * duv[b, 1] + l3 * duv[c, 1]
+            on = inside & (u >= 0) & (u <= 1) & (v >= 0) & (v <= 1)
+            if on.any():
+                tx = np.clip((u * (dtw - 1)).astype(int), 0, dtw - 1)
+                ty = np.clip((v * (dth - 1)).astype(int), 0, dth - 1)
+                region[on] = np.clip((dtex[ty, tx] * shade)[on], 0, 255)
         zsub[upd] = z[upd]
-        img[y0:y1 + 1, x0:x1 + 1][upd] = col
+        img[y0:y1 + 1, x0:x1 + 1][upd] = region[upd]
 
     if screen is not None:
         _composite_screen(img, zbuf, rot, size, **screen)
@@ -174,9 +194,10 @@ def _quad(img, zbuf, rot, size, corners, shade):
         img[y0:y1 + 1, x0:x1 + 1][upd] = shade
 
 
-def _composite_screen(img, zbuf, rot, size, corners, uv, texture, bezel):
+def _composite_screen(img, zbuf, rot, size, corners, uv, texture, bezel=None):
     """Paint `texture` onto a model-space quad (the device's "screen")."""
-    _quad(img, zbuf, rot, size, bezel, np.array([18.0, 18.0, 22.0]))  # dark bezel
+    if bezel is not None:
+        _quad(img, zbuf, rot, size, bezel, np.array([18.0, 18.0, 22.0]))  # dark bezel
     th, tw = texture.shape[:2]
     qx, qy, qz = _project(corners, rot, size)
     for tri in ((0, 1, 2), (0, 2, 3)):
@@ -223,6 +244,50 @@ def _orient_device(verts):
     return verts @ perm.T
 
 
+def _portrait_screen(panel, aspect):
+    """Lay the (landscape) preview panel into a portrait phone-screen image of
+    the given width/height `aspect`."""
+    height = 1024
+    width = max(1, int(round(height * aspect)))
+    screen = Image.new("RGB", (width, height), (248, 247, 250))
+    panel_h = max(1, int(round(width * panel.height / panel.width)))
+    screen.paste(panel.resize((width, panel_h)), (0, int(height * 0.05)))
+    return screen
+
+
+def _screen_fill_face(verts, panel, bezel_frac=0.05):
+    """A phone-style screen: a portrait display inset into (and flush with) the
+    device's front face, filled with the preview content. Reads as a real screen
+    rather than a panel floating in front of the device."""
+    xmin, ymin, _ = verts.min(0)
+    xmax, ymax, zmax = verts.max(0)
+    margin = min(xmax - xmin, ymax - ymin) * bezel_frac
+    x0, x1 = xmin + margin, xmax - margin
+    y0, y1 = ymin + margin, ymax - margin
+    zf = zmax + 0.004  # flush on the face, a hair proud so it isn't z-fought
+    corners = np.array([[x0, y1, zf], [x1, y1, zf], [x1, y0, zf], [x0, y0, zf]])
+    uv = np.array([[0, 0], [1, 0], [1, 1], [0, 1]], float)
+    tex = _portrait_screen(panel, (x1 - x0) / (y1 - y0))
+    return dict(corners=corners, uv=uv, texture=np.asarray(tex), bezel=None)
+
+
+def _decal_on(verts, panel, cover=0.92):
+    """Planar decal: project `panel` orthographically onto the model's front (+Z)
+    face, preserving the panel's aspect, returning per-vertex UVs + the texture.
+    Used for non-slab models (e.g. the avocado) so the preview is painted onto the
+    curved surface instead of floating in front of it."""
+    xmin, ymin, _ = verts.min(0)
+    xmax, ymax, _ = verts.max(0)
+    cx, cy = (xmin + xmax) / 2, (ymin + ymax) / 2
+    fw, fh = (xmax - xmin) * cover, (ymax - ymin) * cover
+    aspect = panel.width / panel.height
+    rw, rh = (fh * aspect, fh) if fw / fh > aspect else (fw, fw / aspect)
+    x_left, y_top = cx - rw / 2, cy + rh / 2
+    u = (verts[:, 0] - x_left) / rw
+    v = (y_top - verts[:, 1]) / rh
+    return dict(uv=np.stack([u, v], 1), texture=np.asarray(panel.convert("RGB")))
+
+
 def _screen_on(verts, texture, normal="+z"):
     """A screen quad on the model's front face, sized to the texture aspect."""
     texture = np.asarray(texture)
@@ -254,20 +319,27 @@ def main(model, out, screen_png="../../../../docs/design/xr-spatial/now-playing.
     if colour is None:
         colour = (0.62, 0.78, 0.40) if "avocado" in model else (0.30, 0.32, 0.36)
 
-    screen = None
+    ext = verts.max(0) - verts.min(0)
+    order = np.argsort(ext)[::-1]
+    is_phone = ext[order[2]] / ext[order[0]] < 0.25  # thin slab -> real screen
+
+    screen = decal = None
     if screen_png:
         tex = Image.open(screen_png).convert("RGBA")
         flat = Image.new("RGBA", tex.size, (255, 255, 255, 255))
         tex = Image.alpha_composite(flat, tex).convert("RGB")  # transparent -> white
-        screen = _screen_on(verts, tex)
+        if is_phone:
+            screen = _screen_fill_face(verts, tex)  # inset display, flush in bezel
+        else:
+            decal = _decal_on(verts, tex)  # painted onto the curved surface
 
-    a = _render(verts, faces, np.radians(-26), np.radians(14), screen, colour=colour)
-    b = _render(verts, faces, np.radians(30), np.radians(18), screen, colour=colour)
+    a = _render(verts, faces, np.radians(-26), np.radians(14), screen, colour=colour, decal=decal)
+    b = _render(verts, faces, np.radians(30), np.radians(18), screen, colour=colour, decal=decal)
     combo = Image.new("RGB", (a.width + b.width + 20, a.height), (255, 255, 255))
     combo.paste(a, (0, 0))
     combo.paste(b, (a.width + 20, 0))
     combo.save(out)
-    note = "device screen composited" if screen else "geometry only"
+    note = "screen decal" if decal else "device screen" if screen else "geometry only"
     print(f"{model}: {len(verts)} verts / {len(faces)} tris ({note}) -> {out}")
 
 
