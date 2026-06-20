@@ -165,6 +165,15 @@ export interface ModuleInfo {
      *  `:samples:wear`). Used as the prefix for every gradle task name and
      *  as the cache / lookup key. */
     readonly modulePath: string;
+    /** Configured `composePreview.variant` recorded in the module's
+     *  `applied.json` marker, when present. Lets module-aware UI show the
+     *  committed render intent without querying the Tooling model. `undefined`
+     *  for modules discovered via the build-script scan fallback (no marker
+     *  yet) or markers written before the field existed. */
+    readonly variant?: string;
+    /** Configured `composePreview.enabled` recorded in the marker, when
+     *  present. Same provenance/caveats as [variant]. */
+    readonly enabled?: boolean;
 }
 
 /** Synthesises a Gradle project path from a workspace-relative directory.
@@ -179,13 +188,19 @@ const APPLIED_MARKER_SCHEMA = "compose-preview-applied/v1";
 interface AppliedMarker {
     readonly schema: string;
     readonly modulePath: string;
+    /** Configured `composePreview.variant`. Optional: markers written before
+     *  the field existed omit it, so readers must tolerate its absence. */
+    readonly variant?: string;
+    /** Configured `composePreview.enabled`. Optional, same as [variant]. */
+    readonly enabled?: boolean;
 }
 
 /**
  * Reads a `build/compose-previews/applied.json` marker and returns the
- * canonical `modulePath` recorded there, or `null` if the file is missing,
- * malformed, or has an unrecognised schema. Callers fall back to the
- * projectDir-derived path on `null`.
+ * canonical `modulePath` recorded there (plus the configured `variant` /
+ * `enabled` intent when present), or `null` if the file is missing, malformed,
+ * or has an unrecognised schema. Callers fall back to the projectDir-derived
+ * path on `null`.
  */
 function readAppliedMarker(file: string): AppliedMarker | null {
     let raw: string;
@@ -201,7 +216,18 @@ function readAppliedMarker(file: string): AppliedMarker | null {
             typeof parsed.modulePath === "string" &&
             parsed.modulePath.startsWith(":")
         ) {
-            return { schema: parsed.schema, modulePath: parsed.modulePath };
+            return {
+                schema: parsed.schema,
+                modulePath: parsed.modulePath,
+                variant:
+                    typeof parsed.variant === "string"
+                        ? parsed.variant
+                        : undefined,
+                enabled:
+                    typeof parsed.enabled === "boolean"
+                        ? parsed.enabled
+                        : undefined,
+            };
         }
     } catch {
         /* fall through */
@@ -1080,12 +1106,33 @@ export class GradleService {
                 let recorded = false;
                 if (fs.existsSync(marker)) {
                     const parsed = readAppliedMarker(marker);
+                    const modulePath =
+                        parsed?.modulePath ??
+                        modulePathFromProjectDir(childRel);
+                    // Only attach variant/enabled when the marker actually
+                    // carries them — an `undefined`-valued key is still an own
+                    // property, which would change the shape callers (and
+                    // tests) compare against for markerless / legacy modules.
                     found.set(childRel, {
                         projectDir: childRel,
-                        modulePath:
-                            parsed?.modulePath ??
-                            modulePathFromProjectDir(childRel),
+                        modulePath,
+                        ...(parsed?.variant !== undefined
+                            ? { variant: parsed.variant }
+                            : {}),
+                        ...(parsed?.enabled !== undefined
+                            ? { enabled: parsed.enabled }
+                            : {}),
                     });
+                    // Surface a committed non-default render intent in the
+                    // output channel — the marker is the only runtime-free
+                    // record of it (the config-only plugin registers no Tooling
+                    // model). Skipped for the `debug` default so typical setups
+                    // stay quiet.
+                    if (parsed?.variant && parsed.variant !== "debug") {
+                        this.logger.appendLine(
+                            `compose-preview: ${modulePath} configured for variant '${parsed.variant}'`,
+                        );
+                    }
                     recorded = true;
                 }
                 if (!recorded) {
