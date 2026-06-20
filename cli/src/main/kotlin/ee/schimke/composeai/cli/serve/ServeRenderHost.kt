@@ -33,6 +33,7 @@ interface StreamHandle : AutoCloseable {
     kind: InteractiveInputKind,
     pixelX: Int? = null,
     pixelY: Int? = null,
+    pointerId: Int? = null,
     scrollDeltaY: Float? = null,
     keyCode: String? = null,
   )
@@ -280,12 +281,21 @@ internal constructor(
         kind: InteractiveInputKind,
         pixelX: Int?,
         pixelY: Int?,
+        pointerId: Int?,
         scrollDeltaY: Float?,
         keyCode: String?,
       ) {
         if (handleClosed.get()) return
         runCatching {
-          session.interactiveInput(frameStreamId, kind, pixelX, pixelY, scrollDeltaY, keyCode)
+          session.interactiveInput(
+            frameStreamId,
+            kind,
+            pixelX,
+            pixelY,
+            pointerId,
+            scrollDeltaY,
+            keyCode,
+          )
         }
       }
 

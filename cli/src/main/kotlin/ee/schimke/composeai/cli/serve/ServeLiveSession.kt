@@ -59,6 +59,7 @@ private constructor(
       kind = kind,
       pixelX = input.pixelX,
       pixelY = input.pixelY,
+      pointerId = input.pointerId,
       scrollDeltaY = input.scrollDeltaY,
       keyCode = input.keyCode,
     )

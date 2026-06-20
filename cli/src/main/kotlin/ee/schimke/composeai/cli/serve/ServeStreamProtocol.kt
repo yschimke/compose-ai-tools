@@ -42,6 +42,7 @@ object ServeStreamProtocol {
       val kind: String,
       val pixelX: Int?,
       val pixelY: Int?,
+      val pointerId: Int?,
       val scrollDeltaY: Float?,
       val keyCode: String?,
     ) : ClientMessage
@@ -76,6 +77,7 @@ object ServeStreamProtocol {
             kind = (obj["kind"] as? JsonPrimitive)?.contentOrNull ?: "",
             pixelX = (obj["pixelX"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull(),
             pixelY = (obj["pixelY"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull(),
+            pointerId = (obj["pointerId"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull(),
             scrollDeltaY = (obj["scrollDeltaY"] as? JsonPrimitive)?.contentOrNull?.toFloatOrNull(),
             keyCode = (obj["keyCode"] as? JsonPrimitive)?.contentOrNull,
           )

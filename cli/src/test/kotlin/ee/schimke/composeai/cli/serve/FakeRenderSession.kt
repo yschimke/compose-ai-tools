@@ -254,6 +254,7 @@ internal class FakeRenderSession(
     kind: InteractiveInputKind,
     pixelX: Int?,
     pixelY: Int?,
+    pointerId: Int?,
     scrollDeltaY: Float?,
     keyCode: String?,
   ) {
@@ -263,6 +264,7 @@ internal class FakeRenderSession(
         kind = kind,
         pixelX = pixelX,
         pixelY = pixelY,
+        pointerId = pointerId,
         scrollDeltaY = scrollDeltaY,
         keyCode = keyCode,
       )

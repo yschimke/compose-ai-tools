@@ -81,6 +81,40 @@ class ServeLiveSessionTest {
   }
 
   @Test
+  fun `pointer drag, scroll and key inputs are forwarded with their fields`() {
+    val session = FakeRenderSession(newRenderRoot(), streaming = true)
+    host(session).use { h ->
+      val live = assertNotNull(ServeLiveSession.tryStart(h, previewId, emptyMap()) {})
+      live.onClientMessage(
+        """{"type":"input","kind":"pointerDown","pixelX":3,"pixelY":4,"pointerId":1}"""
+      )
+      live.onClientMessage(
+        """{"type":"input","kind":"pointerMove","pixelX":7,"pixelY":9,"pointerId":1}"""
+      )
+      live.onClientMessage(
+        """{"type":"input","kind":"pointerUp","pixelX":7,"pixelY":9,"pointerId":1}"""
+      )
+      live.onClientMessage("""{"type":"input","kind":"rotaryScroll","scrollDeltaY":-12.5}""")
+      live.onClientMessage("""{"type":"input","kind":"keyDown","keyCode":"66"}""")
+
+      val kinds = session.interactiveInputs.map { it.kind }
+      assertEquals(
+        listOf(
+          InteractiveInputKind.POINTER_DOWN,
+          InteractiveInputKind.POINTER_MOVE,
+          InteractiveInputKind.POINTER_UP,
+          InteractiveInputKind.ROTARY_SCROLL,
+          InteractiveInputKind.KEY_DOWN,
+        ),
+        kinds,
+      )
+      assertEquals(1, session.interactiveInputs[0].pointerId)
+      assertEquals(-12.5f, session.interactiveInputs[3].scrollDeltaY)
+      assertEquals("66", session.interactiveInputs[4].keyCode)
+    }
+  }
+
+  @Test
   fun `an unknown input kind yields an error and dispatches nothing`() {
     val session = FakeRenderSession(newRenderRoot(), streaming = true)
     host(session).use { h ->
