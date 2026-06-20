@@ -114,9 +114,10 @@ class TouchOverlayFlingLongPressRecordingTest {
         val result = session.stop()
 
         // Sample two frames after the second finger lifts (≈ 760ms onward) — neither may contain
-        // long-press deep-orange. Without the multi-touch disqualification this fires here.
-        val afterLift = orangeOrGreenAt(result, ms = 820L, rgb = 0xFF5722)
-        val nearEnd = orangeOrGreenAt(result, ms = 960L, rgb = 0xFF5722)
+        // long-press deep-orange. Without the multi-touch disqualification this fires here. A tight
+        // tolerance keeps the unconsumed-release red ✕ (0xF44336, near deep-orange) from counting.
+        val afterLift = orangeOrGreenAt(result, ms = 820L, rgb = 0xFF5722, tol = 15)
+        val nearEnd = orangeOrGreenAt(result, ms = 960L, rgb = 0xFF5722, tol = 15)
         assertTrue(
           "no long-press should fire after a two-finger gesture; got $afterLift / $nearEnd",
           afterLift < 0.0002 && nearEnd < 0.0002,
@@ -168,12 +169,12 @@ class TouchOverlayFlingLongPressRecordingTest {
       overrides = PreviewOverrides(touchOverlay = true),
     )
 
-  /** Fraction of [rgb] pixels (tolerance 50) in the frame nearest [ms] of the recording. */
-  private fun orangeOrGreenAt(result: RecordingResult, ms: Long, rgb: Int): Double {
+  /** Fraction of [rgb] pixels (within [tol] per channel) in the frame nearest [ms]. */
+  private fun orangeOrGreenAt(result: RecordingResult, ms: Long, rgb: Int, tol: Int = 50): Double {
     val index = (ms / STEP_MS).toInt().coerceIn(0, result.frameCount - 1)
     val frame =
       TouchOverlayTestSupport.readPng(File(result.framesDir, "frame-${"%05d".format(index)}.png"))
-    return TouchOverlayTestSupport.pixelMatchPctApprox(frame, rgb, perChannelTolerance = 50)
+    return TouchOverlayTestSupport.pixelMatchPctApprox(frame, rgb, perChannelTolerance = tol)
   }
 
   /** A fast swipe-and-release (fling) followed by a stationary hold (long-press). */

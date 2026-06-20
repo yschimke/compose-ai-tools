@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -37,9 +38,11 @@ import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExten
  * on top of a held-scene preview — a translucent ring at every currently-pressed pointer, a fading
  * "whoosh" motion trail behind each moving pointer, a short-lived expanding pulse (a filled,
  * alpha-fading disc + outline ring) wherever a touch went down or came up, and a two-finger pinch
- * "caliper" (dashed rubber-band + centroid magnitude ring + directional chevrons) whenever ≥ 2
- * pointers are down. A lone finger held in place past a timeout grows a long-press progress arc and
- * a confirm flash; a fast release emits a fling velocity arrow. Releases are colour-coded by
+ * "caliper" (dashed rubber-band + centroid magnitude ring + directional chevrons, plus a rotation
+ * arc and a pan arrow relative to the gesture's start) whenever exactly two pointers are down;
+ * three or more draw a convex-hull outline instead, and any multi-touch shows a dot badge of the
+ * live pointer count. A lone finger held in place past a timeout grows a long-press progress arc
+ * and a confirm flash; a fast release emits a fling velocity arrow. Releases are colour-coded by
  * whether the composition actually consumed the pointer: an ordinary (consumed) lift is the amber
  * up flash, while a release that nothing collected — observed via [PointerInputChange.isConsumed]
  * on the Final pass — is drawn as the distinct red dashed-ring + ✕ "unhandled" marker, so a touch
@@ -72,10 +75,11 @@ import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExten
  *   the frame-clock ms at which it was emitted, and its kind (DOWN vs UP) for colour. The
  *   `LaunchedEffect` loop also prunes expired pulses so the buffer stays bounded across long
  *   recordings.
- * - `pinchBaselineSpan: Float` — finger spread latched when the second pointer lands, cleared when
- *   the count drops back below two. The caliper's magnitude ring is measured against it, so it
- *   reports the gesture's own spread rather than the content's (unobservable, possibly clamped)
- *   zoom.
+ * - `pinchBaselineSpan: Float` (+ `pinchBaselineCentroid`, `pinchBaselineAngle`) — finger spread,
+ *   centroid, and pair angle latched when the second pointer lands, cleared when the count drops
+ *   back below two. The caliper measures its magnitude ring, pan arrow, and rotation arc against
+ *   these, so it reports the gesture's own change rather than the content's (unobservable, possibly
+ *   clamped) transform.
  * - `presses: MutableMap<Long, PressState>` — per-pointer down position/time plus a disqualified
  *   flag (set on slop travel *or* when the gesture becomes multi-touch) and a one-shot long-press
  *   latch. Drives the long-press progress arc and its confirm pulse.
@@ -121,6 +125,11 @@ class TouchOverlayExtension :
     // spread — not the content's (possibly clamped) zoom, which the overlay can't see anyway. 0
     // means "no pinch in progress".
     var pinchBaselineSpan by remember { mutableFloatStateOf(0f) }
+    // Centroid + pair angle latched alongside the span (at the 1→2 transition) so the two-finger
+    // caliper can also report pan (centroid travel) and rotation (angle turned) since the gesture
+    // began.
+    var pinchBaselineCentroid by remember { mutableStateOf(Offset.Zero) }
+    var pinchBaselineAngle by remember { mutableFloatStateOf(0f) }
 
     // Pulse fade timer + buffer trim. Read of `nowMs` inside the draw scope below subscribes that
     // scope to this state, so updating `nowMs` invalidates the Canvas and re-paints the fade. The
@@ -215,6 +224,10 @@ class TouchOverlayExtension :
                     if (pinchBaselineSpan == 0f) {
                       val pts = activePointers.values.toList()
                       pinchBaselineSpan = (pts[0] - pts[1]).getDistance()
+                      pinchBaselineCentroid =
+                        Offset((pts[0].x + pts[1].x) / 2f, (pts[0].y + pts[1].y) / 2f)
+                      pinchBaselineAngle =
+                        kotlin.math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x)
                     }
                   }
                 } else {
@@ -238,9 +251,13 @@ class TouchOverlayExtension :
                       flings.add(Fling(change.position, v, eventMs))
                     }
                     presses.remove(id)
-                    // Pinch ended once we're back under two fingers — forget the baseline so the
-                    // next pinch latches its own.
-                    if (activePointers.size < 2) pinchBaselineSpan = 0f
+                    // Any lift changes the active set, so the latched two-finger baseline (span /
+                    // centroid / angle) is stale — clear it. The next move with ≥ 2 fingers
+                    // re-latches against the pointers that actually remain, so a 3→2 transition
+                    // (e.g. A+B+C then lift A) measures the new B+C pair instead of A+B's baseline.
+                    pinchBaselineSpan = 0f
+                    pinchBaselineCentroid = Offset.Zero
+                    pinchBaselineAngle = 0f
                   }
                 }
               }
@@ -336,14 +353,24 @@ class TouchOverlayExtension :
             strokeWidth = 1.5f,
           )
         }
-        // Two-finger pinch caliper. Drawn over the rings so the measurement reads on top of the
-        // dispatch points it spans. Only meaningful with ≥ 2 active pointers.
-        if (activePointers.size >= 2) {
-          val pts = activePointers.values.toList()
-          val span = (pts[0] - pts[1]).getDistance()
+        // Multi-finger overlays, drawn over the rings. Two fingers → the pinch caliper (zoom
+        // magnitude + rotation arc + pan arrow); three or more → a convex-hull outline (rotation /
+        // pan are ill-defined past a pair). A small dot badge reports the live pointer count.
+        val activePts = activePointers.values.toList()
+        if (activePts.size == 2) {
+          val span = (activePts[0] - activePts[1]).getDistance()
           val ratio = if (pinchBaselineSpan > 0f) span / pinchBaselineSpan else 1f
-          drawPinchCaliper(pts[0], pts[1], ratio)
+          drawPinchCaliper(
+            activePts[0],
+            activePts[1],
+            ratio,
+            pinchBaselineCentroid,
+            pinchBaselineAngle,
+          )
+        } else if (activePts.size >= 3) {
+          drawMultiTouchHull(activePts)
         }
+        if (activePts.size >= 2) drawPointerCountBadge(activePts)
         // Fling vectors: a fading arrow from each fast release, length ∝ speed (clamped). Reads as
         // "the finger was flicked, not placed" — the bit a still drag-release frame can't show.
         for (fling in flings) {
@@ -422,7 +449,13 @@ class TouchOverlayExtension :
    * (`ratio ≥ 1`, zooming in) and inward while they close (zooming out). Deliberately a measurement
    * metaphor over the gesture itself rather than a floating zoom badge over the content.
    */
-  private fun DrawScope.drawPinchCaliper(p0: Offset, p1: Offset, ratio: Float) {
+  private fun DrawScope.drawPinchCaliper(
+    p0: Offset,
+    p1: Offset,
+    ratio: Float,
+    baselineCentroid: Offset,
+    baselineAngle: Float,
+  ) {
     val axis = p1 - p0
     val len = axis.getDistance()
     if (len < 1f) return
@@ -483,6 +516,125 @@ class TouchOverlayExtension :
       drawLine(PINCH_COLOR, wingA, tip, strokeWidth = 2f, cap = StrokeCap.Round)
       drawLine(PINCH_COLOR, wingB, tip, strokeWidth = 2f, cap = StrokeCap.Round)
     }
+
+    // Pan: an arrow from where the two-finger centroid started to where it is now, shown once it
+    // has travelled past a small threshold.
+    if (
+      baselineCentroid != Offset.Zero && (centroid - baselineCentroid).getDistance() > PAN_MIN_PX
+    ) {
+      drawArrow(baselineCentroid, centroid, PINCH_COLOR.copy(alpha = 0.8f))
+    }
+
+    // Rotation: an arc at the centroid spanning the angle the finger pair has turned through since
+    // the gesture began, with an arrowhead for direction.
+    val currentAngle = kotlin.math.atan2(p1.y - p0.y, p1.x - p0.x)
+    var deltaDeg = Math.toDegrees((currentAngle - baselineAngle).toDouble()).toFloat()
+    deltaDeg = ((deltaDeg + 180f).mod(360f)) - 180f // normalise to (-180, 180]
+    if (kotlin.math.abs(deltaDeg) > PINCH_ROT_MIN_DEG) {
+      val startDeg = Math.toDegrees(baselineAngle.toDouble()).toFloat()
+      val r = PINCH_ROT_RADIUS_PX
+      drawArc(
+        color = PINCH_COLOR,
+        startAngle = startDeg,
+        sweepAngle = deltaDeg,
+        useCenter = false,
+        topLeft = Offset(centroid.x - r, centroid.y - r),
+        size = Size(r * 2f, r * 2f),
+        style = Stroke(width = 2.5f, cap = StrokeCap.Round),
+      )
+      val endRad = Math.toRadians((startDeg + deltaDeg).toDouble())
+      val end =
+        Offset(
+          centroid.x + r * kotlin.math.cos(endRad).toFloat(),
+          centroid.y + r * kotlin.math.sin(endRad).toFloat(),
+        )
+      val sign = if (deltaDeg >= 0f) 1f else -1f
+      val tangent =
+        Offset(-kotlin.math.sin(endRad).toFloat() * sign, kotlin.math.cos(endRad).toFloat() * sign)
+      drawArrowHead(end, tangent, PINCH_COLOR)
+    }
+  }
+
+  /** Convex-hull outline + centroid dot for a 3+ finger gesture. */
+  private fun DrawScope.drawMultiTouchHull(points: List<Offset>) {
+    val hull = convexHull(points)
+    if (hull.size >= 2) {
+      for (i in hull.indices) {
+        drawLine(
+          color = PINCH_COLOR.copy(alpha = 0.9f),
+          start = hull[i],
+          end = hull[(i + 1) % hull.size],
+          strokeWidth = 2f,
+          pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f)),
+          cap = StrokeCap.Round,
+        )
+      }
+    }
+    drawCircle(PINCH_COLOR, radius = 3f, center = centroidOf(points))
+  }
+
+  /** A small row of dots under the centroid reporting how many fingers are down. */
+  private fun DrawScope.drawPointerCountBadge(points: List<Offset>) {
+    val c = centroidOf(points)
+    val n = points.size
+    val totalWidth = (n - 1) * COUNT_DOT_GAP_PX
+    val y = c.y + COUNT_BADGE_OFFSET_PX
+    for (i in 0 until n) {
+      val x = c.x - totalWidth / 2f + i * COUNT_DOT_GAP_PX
+      drawCircle(PINCH_COLOR, radius = COUNT_DOT_RADIUS_PX, center = Offset(x, y))
+    }
+  }
+
+  private fun DrawScope.drawArrow(from: Offset, to: Offset, color: Color) {
+    drawLine(color, from, to, strokeWidth = 2.5f, cap = StrokeCap.Round)
+    val v = to - from
+    val len = v.getDistance()
+    if (len >= 1f) drawArrowHead(to, Offset(v.x / len, v.y / len), color)
+  }
+
+  private fun DrawScope.drawArrowHead(tip: Offset, dir: Offset, color: Color) {
+    val perpX = -dir.y
+    val perpY = dir.x
+    val a = ARROW_HEAD_PX
+    val w1 = Offset(tip.x - dir.x * a + perpX * a * 0.6f, tip.y - dir.y * a + perpY * a * 0.6f)
+    val w2 = Offset(tip.x - dir.x * a - perpX * a * 0.6f, tip.y - dir.y * a - perpY * a * 0.6f)
+    drawLine(color, tip, w1, strokeWidth = 2.5f, cap = StrokeCap.Round)
+    drawLine(color, tip, w2, strokeWidth = 2.5f, cap = StrokeCap.Round)
+  }
+
+  private fun centroidOf(points: List<Offset>): Offset {
+    var sx = 0f
+    var sy = 0f
+    for (p in points) {
+      sx += p.x
+      sy += p.y
+    }
+    return Offset(sx / points.size, sy / points.size)
+  }
+
+  /**
+   * Andrew's monotone-chain convex hull, counter-clockwise. Returns the input as-is for < 3 pts.
+   */
+  private fun convexHull(points: List<Offset>): List<Offset> {
+    if (points.size < 3) return points
+    val pts = points.sortedWith(compareBy({ it.x }, { it.y }))
+    fun cross(o: Offset, a: Offset, b: Offset): Float =
+      (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
+    val lower = ArrayList<Offset>()
+    for (p in pts) {
+      while (lower.size >= 2 && cross(lower[lower.size - 2], lower[lower.size - 1], p) <= 0f) {
+        lower.removeAt(lower.size - 1)
+      }
+      lower.add(p)
+    }
+    val upper = ArrayList<Offset>()
+    for (p in pts.asReversed()) {
+      while (upper.size >= 2 && cross(upper[upper.size - 2], upper[upper.size - 1], p) <= 0f) {
+        upper.removeAt(upper.size - 1)
+      }
+      upper.add(p)
+    }
+    return lower.dropLast(1) + upper.dropLast(1)
   }
 
   /**
@@ -575,6 +727,14 @@ class TouchOverlayExtension :
     private const val PINCH_BASE_RADIUS_PX: Float = 14f
     private const val PINCH_MIN_RADIUS_PX: Float = 7f
     private const val PINCH_MAX_RADIUS_PX: Float = 40f
+    // Rotation arc + pan/rotation arrowheads, and the pointer-count dot badge.
+    private const val PINCH_ROT_RADIUS_PX: Float = 24f
+    private const val PINCH_ROT_MIN_DEG: Float = 6f
+    private const val PAN_MIN_PX: Float = 8f
+    private const val ARROW_HEAD_PX: Float = 7f
+    private const val COUNT_DOT_RADIUS_PX: Float = 2.5f
+    private const val COUNT_DOT_GAP_PX: Float = 7f
+    private const val COUNT_BADGE_OFFSET_PX: Float = 30f
 
     // Fling: min release speed (px/ms) to draw a vector, the projection horizon mapping speed →
     // arrow length, the clamped length range, arrowhead size, and how long the marker lingers.
