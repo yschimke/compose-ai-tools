@@ -15,6 +15,22 @@ Lining up the rings with the resulting circle / stroke / scale change
 is the visual proof that the gesture pipeline is wired end-to-end —
 not just the daemon's dispatch but the composition's reception.
 
+## Overlay effects in isolation
+
+`overlay-effects-only.gif` runs the *same* tap → drag → pinch script
+against a blank scene (`BlankShowcaseFixture` draws only a flat
+background), so the touch overlay is the only thing on screen. Use it to
+read each overlay effect on its own, with no canvas shapes competing:
+
+| Phase | Overlay effect |
+|-------|----------------|
+| Tap   | translucent **alpha flash** disc that fades as it expands |
+| Drag  | active ring + crosshair trailing a tapering, fading **"whoosh"** comet |
+| Pinch | purple **caliper**: dashed rubber-band + end-ticks, a centre magnitude ring vs a faint reference ring, and chevrons that fan outward (zoom in) / inward (zoom out) |
+
+Captured by `TouchOverlayShowcaseRecordingTest` — same harness, same
+script, empty content.
+
 ## How this was captured
 
 ```
