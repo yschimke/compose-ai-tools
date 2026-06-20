@@ -187,6 +187,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
           heightPx = heightPx,
           outputFile = outputFile,
           scroll = capture.scroll,
+          animation = capture.animation,
         )
       }
 
@@ -222,6 +223,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
     heightPx: Int,
     outputFile: java.io.File,
     scroll: ScrollCapture?,
+    animation: AnimationCapture? = null,
   ) {
     execOperations.javaexec {
       classpath = renderClasspath
@@ -288,6 +290,15 @@ abstract class RenderPreviewsTask : DefaultTask() {
           preview.params.showSystemUi.toString(),
           preview.params.uiMode.toString(),
           preview.params.device.orEmpty(),
+          // 25th–27th — `@AnimatedPreview` window. `0` durationMs signals "no animation intent"
+          // (the renderer falls through to scroll / single-frame). A positive durationMs dispatches
+          // to `renderAnimatedPreview` (a `runSkikoComposeUiTest` paused-clock loop that advances
+          // `mainClock` by frameIntervalMs across the window and encodes the frames as a GIF) —
+          // the desktop counterpart of the Android renderer's `@AnimatedPreview` path. `showCurves`
+          // is forwarded for parity; the desktop path emits a screenshot-only GIF (no curve strip).
+          (animation?.durationMs ?: 0).toString(),
+          (animation?.frameIntervalMs ?: 0).toString(),
+          (animation?.showCurves ?: false).toString(),
         )
     }
   }
