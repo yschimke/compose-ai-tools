@@ -42,6 +42,14 @@ dependencies {
   // descriptor from pre-resolved inputs. See contrib/README.md.
   api(project(":daemon-launch-builder"))
 
+  // Configuration-only plugin + shared `composePreview { }` DSL surface (`PreviewExtension`,
+  // `DaemonExtension`, the `composePreviewApplied` marker task). This runtime plugin reuses those
+  // types and registers tasks against them via the create-or-find helpers in `ComposePreviewDsl`,
+  // so the config-only plugin and this runtime plugin coexist in one build (consumer commits config
+  // without pinning a runtime; the CLI injects this plugin at its own version). `api` because the
+  // extension types are part of this plugin's public DSL surface.
+  api(project(":gradle-plugin-config"))
+
   implementation(libs.classgraph)
   implementation(libs.kotlinx.serialization.json)
   // ASM walks the preview method's bytecode to extract @Composable call targets — ClassGraph only

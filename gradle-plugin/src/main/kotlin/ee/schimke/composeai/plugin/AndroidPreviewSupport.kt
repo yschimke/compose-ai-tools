@@ -2630,9 +2630,9 @@ internal object AndroidPreviewSupport {
     // rejects.
     val generic = extension.previewExtensions.extensions.findByName("composeAiTrace")
     val genericAllChecks =
-      generic?.allChecksEnabled ?: project.providers.provider<Boolean> { false }
+      generic?.allChecksEnabledProvider ?: project.providers.provider<Boolean> { false }
     val configuredAllChecks =
-      typed.allChecksEnabled.zip(genericAllChecks) { typedEnabled, genericEnabled ->
+      typed.allChecksEnabledProvider.zip(genericAllChecks) { typedEnabled, genericEnabled ->
         typedEnabled || genericEnabled
       }
     val genericChecks =

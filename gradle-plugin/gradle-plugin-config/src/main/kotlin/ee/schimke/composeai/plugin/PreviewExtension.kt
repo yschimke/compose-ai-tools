@@ -9,6 +9,7 @@ import org.gradle.api.NamedDomainObjectContainer
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
+import org.gradle.api.provider.Provider
 
 abstract class PreviewExtension @Inject constructor(private val objects: ObjectFactory) {
   val variant: Property<String> = objects.property(String::class.java).convention("debug")
@@ -257,6 +258,14 @@ constructor(private val extensionName: String, objects: ObjectFactory) : Named {
   /** Internal state behind [enableAllChecks]. Default: false. */
   internal val allChecksEnabled: Property<Boolean> =
     objects.property(Boolean::class.java).convention(false)
+
+  /**
+   * Read-only view of [enableAllChecks] state. Exposed for the runtime plugin (`:gradle-plugin`, a
+   * separate module from this shared DSL artifact) to fold into its resolver chain without widening
+   * the consumer-facing DSL to a settable `Property`.
+   */
+  val allChecksEnabledProvider: Provider<Boolean>
+    get() = allChecksEnabled
 
   /** Enable every check/data product this preview extension provides. */
   fun enableAllChecks() {
