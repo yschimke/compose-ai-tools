@@ -6,6 +6,7 @@ import ee.schimke.composeai.cli.serve.ServeHttpServer
 import ee.schimke.composeai.cli.serve.ServeMdnsAdvertiser
 import ee.schimke.composeai.cli.serve.ServePreview
 import ee.schimke.composeai.cli.serve.ServeRenderHost
+import ee.schimke.composeai.cli.serve.ServeSessionRegistry
 import ee.schimke.composeai.cli.serve.ServeUrls
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.render.session.RenderSessionException
@@ -91,6 +92,7 @@ class ServeCommand(args: List<String>) : Command(args) {
           workspaceRoot = module.projectDir,
           workspaceName = module.projectDir.name,
           previews = previews,
+          label = module.gradlePath,
           onLog = { System.err.println("[daemon serve] $it") },
         )
       } catch (e: RenderSessionException) {
@@ -108,13 +110,18 @@ class ServeCommand(args: List<String>) : Command(args) {
     }
 
     val token = tokenOverride ?: ServeUrls.generateToken()
+    // One shared server fronts a session registry rather than a single host: the current module is
+    // the pinned default session, and additional tenants (e.g. other modules / PR revisions) can be
+    // forked behind the registry's factory in future without spawning another server.
+    val registry = ServeSessionRegistry()
+    registry.register(module.gradlePath, renderHost)
     val server =
       ServeHttpServer(
         host = host,
         requestedPort = requestedPort,
         token = token,
-        renderHost = renderHost,
-        moduleLabel = module.gradlePath,
+        sessions = registry,
+        defaultSessionId = module.gradlePath,
       )
 
     // Advertise on the LAN over mDNS when bound to a reachable interface (`--lan`), so the mobile /
@@ -140,7 +147,7 @@ class ServeCommand(args: List<String>) : Command(args) {
           System.err.println("\nserve: shutting down…")
           runCatching { advertiser?.close() }
           runCatching { server.stop() }
-          runCatching { renderHost.close() }
+          runCatching { registry.close() }
           done.countDown()
         }
       )
