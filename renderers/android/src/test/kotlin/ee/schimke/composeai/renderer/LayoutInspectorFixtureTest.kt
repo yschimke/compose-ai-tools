@@ -107,11 +107,13 @@ class LayoutInspectorFixtureTest {
   }
 
   @Test
-  fun `registry capability advertises layout-inspector at schema 1 and path transport`() {
+  fun `registry capability advertises layout-inspector at its current schema and path transport`() {
     val registry = LayoutInspectorDataProductRegistry(rootDir)
     val cap = registry.capabilities.single()
     assertEquals("layout/inspector", cap.kind)
-    assertEquals(1, cap.schemaVersion)
+    // Assert against the producer's constant rather than a literal so a deliberate schema bump
+    // (e.g. #1941 / #1945) updates the contract in one place instead of rotting this test.
+    assertEquals(LayoutInspectorDataProducer.SCHEMA_VERSION, cap.schemaVersion)
     assertTrue(cap.attachable)
     assertTrue(cap.fetchable)
   }
