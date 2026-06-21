@@ -14,8 +14,18 @@ class ServeBundleHostTest {
     val dir = java.nio.file.Files.createTempDirectory("bundle").toFile().also { it.deleteOnExit() }
     File(dir, "index.html").writeText("<html></html>")
     val previewsDir = File(dir, "previews").apply { mkdirs() }
-    previews.forEach { (id, png) -> File(previewsDir, "$id.png").writeBytes(png) }
+    previews.forEach { (id, png) ->
+      File(previewsDir, "$id.png").apply { parentFile?.mkdirs() }.writeBytes(png)
+    }
     return dir
+  }
+
+  @Test
+  fun `nested preview ids (with slashes) are discovered and rendered`() {
+    val host = ServeBundleHost(bundle("group/com.example.Red" to byteArrayOf(4, 2)), label = "b")
+    assertEquals(listOf("group/com.example.Red"), host.previews.map { it.id })
+    val ok = host.render("group/com.example.Red", PreviewOverrides()) as RenderOutcome.Ok
+    assertTrue(byteArrayOf(4, 2).contentEquals(ok.png))
   }
 
   @Test
