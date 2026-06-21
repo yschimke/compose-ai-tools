@@ -45,7 +45,8 @@ class RenderSessionFrameSource(
   private val lock = Any()
   private var currentPreviewId: String? = null
   private var currentStreamId: String? = null
-  private var a11ySubscribed = false
+  /** The preview id the a11y data product is currently subscribed on, or `null` if none. */
+  private var a11yPreviewId: String? = null
 
   private val frameSubscription = session.onNotification { method, params ->
     if (method == "streamFrame" && params != null) onStreamFrame(params)
@@ -91,14 +92,19 @@ class RenderSessionFrameSource(
   /**
    * TalkBack has no direct render override; instead we subscribe the a11y data product so the
    * daemon computes accessibility findings for the shown preview while a screen reader is "on" (and
-   * drop it when off). Best-effort — guarded so an older daemon without the kind degrades silently.
+   * drop it when off). Daemon subscriptions are keyed by `(previewId, kind)`, so we track *which*
+   * preview is subscribed — launching a different preview while TalkBack stays on moves the
+   * subscription to the new preview (dropping the old one). Best-effort — guarded so an older
+   * daemon without the kind degrades silently.
    */
   private fun applyA11y(snapshot: DeviceSettings, previewId: String) {
-    if (snapshot.talkBack == a11ySubscribed) return
-    a11ySubscribed = snapshot.talkBack
-    runCatching {
-      if (snapshot.talkBack) session.subscribeData(previewId, A11Y_KIND)
-      else session.unsubscribeData(previewId, A11Y_KIND)
+    val desired = if (snapshot.talkBack) previewId else null
+    synchronized(lock) {
+      val previous = a11yPreviewId
+      if (desired == previous) return
+      if (previous != null) runCatching { session.unsubscribeData(previous, A11Y_KIND) }
+      if (desired != null) runCatching { session.subscribeData(desired, A11Y_KIND) }
+      a11yPreviewId = desired
     }
   }
 
@@ -115,7 +121,11 @@ class RenderSessionFrameSource(
   override fun close() {
     frameSubscription.close()
     settingsSubscription.close()
-    synchronized(lock) { currentStreamId?.let { runCatching { session.streamStop(it) } } }
+    synchronized(lock) {
+      currentStreamId?.let { runCatching { session.streamStop(it) } }
+      a11yPreviewId?.let { runCatching { session.unsubscribeData(it, A11Y_KIND) } }
+      a11yPreviewId = null
+    }
   }
 
   private companion object {
