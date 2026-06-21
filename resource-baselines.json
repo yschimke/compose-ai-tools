@@ -770,7 +770,7 @@
     "renderBasename": "resources/mipmap/ic_launcher_round_xhdpi_LEGACY.png",
     "resourceId": "mipmap/ic_launcher_round",
     "resourceType": "ADAPTIVE_ICON",
-    "sha256": "fc32a038c29385f0c06c707b10538b0fdb83f75ae35723c0bcb5e3322a222235",
+    "sha256": "eb2e7b849fe85d2c5eff6ecd5e7c7f96ad8ce26b23cd4663d5ec03219bca4b18",
     "shape": null
   },
   "samples/wear::mipmap/ic_launcher_round::renders/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_circle.png": {
@@ -815,7 +815,7 @@
     "renderBasename": "resources/mipmap/ic_launcher_round_xhdpi_SHAPE_rounded_square_themed-dark.png",
     "resourceId": "mipmap/ic_launcher_round",
     "resourceType": "ADAPTIVE_ICON",
-    "sha256": "53f8404e59bd129ac7b9d188884eac8b6dbca52807016bf1acd0d014b0e48723",
+    "sha256": "278947a935b7b930ed681c501bcee45794631b98788ddd43ae711b75b8886249",
     "shape": "ROUNDED_SQUARE"
   },
   "samples/wear::mipmap/ic_launcher_round::renders/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_rounded_square_themed-light.png": {
@@ -833,7 +833,7 @@
     "renderBasename": "resources/mipmap/ic_launcher_round_xhdpi_SHAPE_square.png",
     "resourceId": "mipmap/ic_launcher_round",
     "resourceType": "ADAPTIVE_ICON",
-    "sha256": "8978cf2b4807377cfc75514f931db0b62a04c504fbcde31e7b66d185ff84de4c",
+    "sha256": "127aafae3176d8503731d9c18c33e1ec3007ef2ddab1f60138ac44ca40df3d13",
     "shape": "SQUARE"
   },
   "samples/wear::mipmap/ic_launcher_round::renders/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_square_themed-dark.png": {
@@ -842,7 +842,7 @@
     "renderBasename": "resources/mipmap/ic_launcher_round_xhdpi_SHAPE_square_themed-dark.png",
     "resourceId": "mipmap/ic_launcher_round",
     "resourceType": "ADAPTIVE_ICON",
-    "sha256": "b7b70dcba0a16e3d2f92ac1a1ae7b8dc709dba0c9b0883ca66af22f38371d625",
+    "sha256": "726571baf35e1cd7fc32f1ae291c23bd18dc8a47abdf14a2fbd07c93bd587eb5",
     "shape": "SQUARE"
   },
   "samples/wear::mipmap/ic_launcher_round::renders/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_square_themed-light.png": {
@@ -851,7 +851,7 @@
     "renderBasename": "resources/mipmap/ic_launcher_round_xhdpi_SHAPE_square_themed-light.png",
     "resourceId": "mipmap/ic_launcher_round",
     "resourceType": "ADAPTIVE_ICON",
-    "sha256": "e93e063e09f2796e359afd878fdb286f09bb4879a7c2a2a6486e872fefc18b45",
+    "sha256": "ec25b2bdc5440c140fbdedb31fcb089f620eaea5d84ca11339fa9e87569bd7c3",
     "shape": "SQUARE"
   },
   "samples/wear::mipmap/ic_launcher_round::renders/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_squircle.png": {
