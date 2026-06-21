@@ -20,6 +20,12 @@ class GradleRevisionBuilder(
 ) : RevisionBuilder {
 
   override fun build(worktreeDir: File, module: ServeModuleRef): BuiltRevision? {
+    // SECURITY (RCE): this runs the *checked-out revision's* own `./gradlew` (and its build
+    // scripts), so a client that can name a resolvable revision via `?session=<rev>` in project
+    // mode
+    // gets arbitrary code execution as the server user. Fail closed until project mode gates which
+    // revisions may be built (e.g. an allowlist of trusted refs) and isolates the build.
+    TODO("secure this")
     val moduleDir = File(worktreeDir, module.relativePath)
     val gradlew = File(worktreeDir, "gradlew")
     if (!gradlew.canExecute()) {
