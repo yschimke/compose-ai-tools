@@ -125,9 +125,18 @@ Studio's embedded view + a screenshot video stream:
 - `sendKey` / `sendTouch` — mapped onto `RenderSession` interactive input where
   available (future: full pointer routing).
 
-The proto is vendored (not a runtime dep on the SDK) and compiled with the
-protobuf Gradle plugin + grpc-kotlin. Generated sources land under `build/` so
-ktfmt never sees them.
+The proto is vendored (not a runtime dep on the SDK). Square **Wire** generates
+the message classes (pure-Kotlin codegen, no `protoc`); the gRPC service is bound
+by hand into grpc-netty via grpc-java's `ServerCalls` + a small Wire
+`MethodDescriptor.Marshaller` (Wire dropped its own server-side gRPC artifact
+after 4.9.11). Generated sources land under `build/` so ktfmt never sees them.
+
+The vendored proto is a *subset* of the canonical `emulator_controller.proto`,
+but the field **numbers and types** of the messages it defines are kept
+wire-compatible with the real schema (cross-checked against `google-deepmind/
+android_env`, AOSP `external/qemu`, and `yschimke/emulator-tools`) so a real
+Studio client decodes our responses — e.g. `EmulatorStatus.booted = 3`,
+`Image.image = 4`. Fields we don't model are omitted, not renumbered.
 
 ## Frame source
 

@@ -1,11 +1,12 @@
 // Vendored SUBSET of the Android emulator's `android.emulation.control.EmulatorController` gRPC API
 // (the surface Android Studio's embedded "Running Devices" view + screenshot video stream consume).
 //
-// This is a faithful-shaped subset sufficient for: identity/liveness, display geometry, a single
-// screenshot, the continuous screenshot ("video") stream, and key/touch injection. It is NOT the
-// complete shipping proto. Field numbers mirror the real proto's intent but should be reconciled
-// against the canonical `emulator_controller.proto` from the emulator SDK before relying on
-// byte-level interop with a specific Android Studio build. See docs/fake-emulator/DESIGN.md.
+// This is a subset — not every message/field of the shipping proto — but the field NUMBERS and types
+// of the messages it does define are kept wire-compatible with the canonical
+// `emulator_controller.proto` (see google-deepmind/android_env, AOSP external/qemu, and the
+// maintainer's yschimke/emulator-tools), so a real Studio client decodes our responses correctly.
+// Fields/messages we don't need (e.g. ImageFormat.transport/foldedDisplay, EmulatorStatus.vmConfig)
+// are omitted, not renumbered — omission is wire-compatible.
 syntax = "proto3";
 
 package android.emulation.control;
@@ -38,10 +39,26 @@ service EmulatorController {
   rpc sendTouch(TouchEvent) returns (google.protobuf.Empty) {}
 }
 
+// Generic key/value pair + list, used by EmulatorStatus.hardwareConfig.
+message Entry {
+  string key = 1;
+  string value = 2;
+}
+
+message EntryList {
+  repeated Entry entry = 1;
+}
+
 message EmulatorStatus {
-  int64 uptime = 1;
-  bool booted = 2;
-  map<string, string> hardwareConfig = 3;
+  // The emulator version string.
+  string version = 1;
+  // The time the emulator has been active, in ms.
+  uint64 uptime = 2;
+  // True if the device has completed booting.
+  bool booted = 3;
+  // Field 4 (VmConfiguration vmConfig) is intentionally omitted — we don't model it.
+  // The hardware configuration as key/value pairs.
+  EntryList hardwareConfig = 5;
 }
 
 message VmRunState {
@@ -52,16 +69,15 @@ message VmRunState {
     PAUSED = 3;
     SAVE_VM = 4;
     SHUTDOWN = 5;
-    TERMINATE = 6;
-    RESET = 7;
-    INTERNAL_ERROR = 8;
+    TERMINATE = 7;
+    RESET = 9;
+    INTERNAL_ERROR = 10;
   }
   RunState state = 1;
 }
 
 message DisplayConfigurations {
   repeated DisplayConfiguration displays = 1;
-  uint32 maxDisplays = 2;
 }
 
 message DisplayConfiguration {
@@ -69,7 +85,7 @@ message DisplayConfiguration {
   uint32 height = 2;
   uint32 dpi = 3;
   uint32 flags = 4;
-  uint32 display = 6;
+  uint32 display = 5;
 }
 
 message Rotation {
@@ -91,30 +107,41 @@ message ImageFormat {
     RGBA8888 = 1;
     RGB888 = 2;
   }
-  ImgFormat format = 2;
-  Rotation rotation = 3;
-  uint32 width = 4;
-  uint32 height = 5;
-  uint32 display = 6;
+  ImgFormat format = 1;
+  Rotation rotation = 2;
+  uint32 width = 3;
+  uint32 height = 4;
+  uint32 display = 5;
+  // Fields 6 (transport) and 7 (foldedDisplay) are omitted — we don't model them.
 }
 
 message Image {
   ImageFormat format = 1;
-  uint32 seq = 2;
-  bytes image = 3;
-  uint64 timestampUs = 4;
+  uint32 width = 2 [deprecated = true]; // width is contained in format.
+  uint32 height = 3 [deprecated = true]; // height is contained in format.
+  bytes image = 4;
+  uint32 seq = 5;
+  uint64 timestampUs = 6;
 }
 
 message KeyboardEvent {
+  enum KeyCodeType {
+    Usb = 0;
+    Evdev = 1;
+    XKB = 2;
+    Win = 3;
+    Mac = 4;
+  }
   enum KeyEventType {
     keydown = 0;
     keyup = 1;
     keypress = 2;
   }
-  KeyEventType eventType = 1;
-  int32 keyCode = 2;
-  string key = 5;
-  string text = 6;
+  KeyCodeType codeType = 1;
+  KeyEventType eventType = 2;
+  int32 keyCode = 3;
+  string key = 4;
+  string text = 5;
 }
 
 message Touch {
@@ -124,6 +151,7 @@ message Touch {
   int32 pressure = 4;
   int32 touch_major = 5;
   int32 touch_minor = 6;
+  // Field 7 (EventExpiration expiration) is omitted.
 }
 
 message TouchEvent {

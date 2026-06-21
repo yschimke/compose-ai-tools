@@ -3,6 +3,8 @@ package ee.schimke.composeai.fakeemulator.grpc
 import android.emulation.control.DisplayConfiguration
 import android.emulation.control.DisplayConfigurations
 import android.emulation.control.EmulatorStatus
+import android.emulation.control.Entry
+import android.emulation.control.EntryList
 import android.emulation.control.Image
 import android.emulation.control.ImageFormat
 import android.emulation.control.KeyboardEvent
@@ -91,13 +93,17 @@ class EmulatorControllerService(
 
   private fun status(): EmulatorStatus =
     EmulatorStatus(
+      version = "compose-preview-fake-emulator",
       uptime = (System.nanoTime() - startNanos) / 1_000_000,
       booted = true,
       hardwareConfig =
-        mapOf(
-          "hw.lcd.width" to frameSource.display.width.toString(),
-          "hw.lcd.height" to frameSource.display.height.toString(),
-          "hw.lcd.density" to frameSource.display.densityDpi.toString(),
+        EntryList(
+          entry =
+            listOf(
+              Entry(key = "hw.lcd.width", value_ = frameSource.display.width.toString()),
+              Entry(key = "hw.lcd.height", value_ = frameSource.display.height.toString()),
+              Entry(key = "hw.lcd.density", value_ = frameSource.display.densityDpi.toString()),
+            )
         ),
     )
 
@@ -111,8 +117,7 @@ class EmulatorControllerService(
             dpi = frameSource.display.densityDpi,
             display = 0,
           )
-        ),
-      maxDisplays = 1,
+        )
     )
 
   private fun currentImage(): Image {

@@ -9,7 +9,11 @@ import java.nio.charset.StandardCharsets
 class EmulatorAdbServices(private val interpreter: ShellInterpreter) : AdbServiceResolver {
   override fun resolve(destination: String): AdbService? =
     when {
+      // `adb shell` (legacy + shell,v2) and `adb exec-out <cmd>` (which opens `exec:<cmd>`). Both
+      // run a command; ShellService emits framed output only for shell,v2 — `exec:`/`shell:` are
+      // raw, which is exactly what `exec-out screencap -p > screen.png` needs.
       destination.startsWith("shell") -> ShellService(interpreter, destination)
+      destination.startsWith("exec:") -> ShellService(interpreter, destination)
       destination.startsWith("sync:") -> SyncService()
       // framebuffer:/reverse:/jdwp:/tcp: aren't implemented — screencap is the screenshot path.
       else -> null
