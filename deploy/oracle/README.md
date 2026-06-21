@@ -67,8 +67,8 @@ Endpoints (token via `?token=` or `X-Compose-Preview-Token`):
 ```bash
 sudo docker compose logs -f preview      # server logs
 sudo docker compose restart preview      # restart the renderer
-sudo docker compose pull && \
-  sudo docker compose up -d --build      # rebuild after a git pull
+sudo docker compose up -d --build        # rebuild + recreate after a git pull
+sudo docker compose pull caddy           # refresh just the proxy image (optional)
 sudo docker compose down                 # stop everything
 cat .env                                  # recover the token
 ```

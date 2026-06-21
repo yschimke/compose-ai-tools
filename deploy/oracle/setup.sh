@@ -31,7 +31,9 @@ fi
 # --- Docker -----------------------------------------------------------------
 if ! command -v docker >/dev/null 2>&1; then
   echo "==> Installing Docker (get.docker.com handles arm64 + Ubuntu/Oracle Linux)"
-  curl -fsSL https://get.docker.com | sh
+  # The installer does package-manager writes, so it needs root — the default OCI
+  # SSH user (ubuntu/opc) is unprivileged. Pipe into `sudo sh`, not bare `sh`.
+  curl -fsSL https://get.docker.com | sudo sh
   sudo systemctl enable --now docker
 fi
 # Compose v2 plugin check.
