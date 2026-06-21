@@ -113,17 +113,29 @@ catalog lists us and knows where our gRPC lives.
 
 ## Emulator gRPC (`:fake-emulator-grpc`)
 
-A subset of `android.emulation.control.EmulatorController` sufficient for
-Studio's embedded view + a screenshot video stream:
+The (near-complete) `android.emulation.control.EmulatorController` surface Android
+Studio's embedded "Running Devices" view + the emulator Extended Controls drive —
+implemented so Studio never hits `UNIMPLEMENTED`:
 
-- `getStatus`, `getVmConfiguration` — identity / liveness.
-- `getDisplayConfigurations` — our display size (from the `FrameSource`).
-- `getScreenshot` — one frame (PNG) from the `FrameSource`.
-- `streamScreenshot` — the **video** stream: a server-streaming RPC that
-  forwards every `FrameSource` frame as an `Image` message. This is the same
-  frame feed the ADB `screencap` path serves, just pushed continuously.
-- `sendKey` / `sendTouch` — mapped onto `RenderSession` interactive input where
-  available (future: full pointer routing).
+- **Identity / VM / display** — `getStatus`, `getVmState` / `setVmState`,
+  `getDisplayConfigurations` / `setDisplayConfigurations` (size/density from — and
+  back into — the shared settings).
+- **Screenshots** — `getScreenshot` (one PNG) and `streamScreenshot`, the
+  **video** lane: a server-streaming RPC forwarding every `FrameSource` frame as
+  an `Image`. Same feed the ADB `screencap` path serves, pushed continuously.
+- **Input** — `sendKey` / `sendTouch` / `sendMouse` forward to injectable callbacks.
+- **Rotation / posture** — `setPhysicalModel(ROTATION)` and `setPosture` drive the
+  shared `DeviceSettingsController`, so the preview re-renders rotated/folded;
+  `getPhysicalModel` / `streamPhysicalModel` and `streamNotification` report it
+  (including `adb`-driven rotation — the two paths share one state).
+- **Clipboard** — `get/set/streamClipboard` over an in-memory clipboard.
+- **Extended controls** — `get/setBattery`, `get/setGps`, `get/set/streamSensor`,
+  `sendFingerprint`, `sendPhone` / `sendSms` — in-memory state / sensible defaults.
+- **Audio / logcat / virtual-scene camera** — accepted (empty streams / no-ops).
+
+Studio's `setPhysicalModel(ROTATION)` and an `adb shell settings put system
+user_rotation` both land on the same `DeviceSettingsController.rotation`, so the
+preview rotates the same way regardless of which control the user used.
 
 The proto is vendored (not a runtime dep on the SDK). Square **Wire** generates
 the message classes (pure-Kotlin codegen, no `protoc`); the gRPC service is bound
@@ -137,6 +149,32 @@ wire-compatible with the real schema (cross-checked against `google-deepmind/
 android_env`, AOSP `external/qemu`, and `yschimke/emulator-tools`) so a real
 Studio client decodes our responses — e.g. `EmulatorStatus.booted = 3`,
 `Image.image = 4`. Fields we don't model are omitted, not renumbered.
+
+## Device settings → preview overrides
+
+Android Studio's emulator UI toggles are mostly `adb shell` commands, not gRPC.
+The fake shell interprets the ones that map onto a render override and records
+them in the shared `DeviceSettingsController`; the app maps `DeviceSettings` →
+`PreviewOverrides` and re-opens the held stream (override changes restart the
+stream — the same pattern the `serve` live lane uses), so the preview re-renders
+under whatever the user flipped:
+
+| Studio toggle        | `adb shell`                                             | `DeviceSettings` → `PreviewOverrides` |
+|----------------------|--------------------------------------------------------|---------------------------------------|
+| Dark / light theme   | `cmd uimode night yes\|no`                              | `uiMode`                              |
+| Font size            | `settings put system font_scale <f>`                   | `fontScale`                           |
+| Display density      | `wm density <dpi>\|reset`                               | `density` (`dpi/160`)                 |
+| Display size         | `wm size <WxH>\|reset`                                  | `widthPx` / `heightPx`                |
+| Rotation             | `settings put system user_rotation <0-3>`              | `orientation` (+ gRPC physical model) |
+| App locale           | `cmd locale set-app-locales … --locales <tag>`         | `localeTag`                           |
+| **TalkBack**         | `settings put secure {accessibility_enabled, enabled_accessibility_services}` | a11y data-product subscription (overlay render: follow-up) |
+| Color correction     | `settings put secure accessibility_display_{inversion,daltonizer}…` | `colorMode` (render override: follow-up) |
+| Layout bounds        | `setprop debug.layout true`                            | `showLayoutBounds` (follow-up)        |
+
+Mapped end-to-end today: theme, font scale, density, size, rotation, locale.
+TalkBack toggles the a11y data product (a real daemon effect); color
+correction / layout bounds / posture are captured in `DeviceSettings` and await a
+matching render override.
 
 ## Frame source
 
