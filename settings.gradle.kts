@@ -493,6 +493,30 @@ include(":render-cli")
 
 project(":render-cli").projectDir = file("render-session/cli")
 
+// Fake Android emulator — impersonates a running emulator (ADB device transport, emulator console,
+// emulator gRPC control + screenshot video) so the compose-preview render pipeline can be driven by
+// `adb` / Android Studio and a preview launched via the `am start … PreviewActivity` intent. See
+// docs/fake-emulator/DESIGN.md. Split so the verifiable, dependency-light ADB core stays free of the
+// protobuf/grpc toolchain and the render classpath.
+//
+//  * `:fake-emulator-core` — pure-Kotlin ADB transport + console + screencap + the `am start`
+//    preview-launch parser + the FrameSource/PreviewLauncher SPIs + the Studio discovery writer.
+//    `dadb`-tested.
+//  * `:fake-emulator-grpc` — the `EmulatorController` gRPC subset + screenshot stream (vendored
+//    proto; protobuf/grpc codegen lives only here).
+//  * `:fake-emulator` — runnable launcher wiring core + gRPC + a RenderSession-backed FrameSource.
+include(":fake-emulator-core")
+
+project(":fake-emulator-core").projectDir = file("fake-emulator/core")
+
+include(":fake-emulator-grpc")
+
+project(":fake-emulator-grpc").projectDir = file("fake-emulator/grpc")
+
+include(":fake-emulator")
+
+project(":fake-emulator").projectDir = file("fake-emulator/app")
+
 // JDK 21+ samples. Each module here pulls in tooling whose own gradle plugin
 // is compiled to Java 21 bytecode and therefore can't load on this repo's
 // default JDK 17 build daemon (see `gradle/gradle-daemon-jvm.properties`,
