@@ -1,0 +1,23 @@
+# Caddy reverse proxy for the compose-preview server.
+#
+# {$DOMAIN} is read from the environment (set in .env via docker-compose). With a
+# public DNS A record pointing at the VM, Caddy provisions and renews a Let's
+# Encrypt certificate automatically — no manual cert handling.
+#
+# The app's token (?token= / X-Compose-Preview-Token) remains the auth gate; this
+# block only adds TLS and forwards to the internal server.
+{$DOMAIN} {
+	encode zstd gzip
+
+	reverse_proxy preview:8080 {
+		# Renders can take a few seconds on a cold daemon; don't cut them short.
+		transport http {
+			read_timeout 120s
+		}
+	}
+
+	# Optional hardening: uncomment to drop requests with no token early, before
+	# they reach the app. The app still enforces it either way.
+	# @notoken not query token=* header X-Compose-Preview-Token *
+	# respond @notoken 404
+}

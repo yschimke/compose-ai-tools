@@ -1,0 +1,49 @@
+# Docker Compose stack for hosting compose-preview on an Oracle Cloud
+# Always Free Ampere A1 (aarch64) VM.
+#
+# Two services:
+#   - preview: the desktop-only render server, built from the same image as the
+#     Cloud Run deployment (deploy/cloudrun/Dockerfile). Not published to the
+#     host — only Caddy reaches it over the internal compose network.
+#   - caddy:   reverse proxy terminating TLS. With a real DOMAIN it fetches a
+#     Let's Encrypt cert automatically; the app's token stays the auth gate.
+#
+# Config comes from a .env file (setup.sh writes one): DOMAIN, SERVE_TOKEN.
+services:
+  preview:
+    build:
+      # Build context is the repo root (two levels up); reuse the Cloud Run image.
+      context: ../..
+      dockerfile: deploy/cloudrun/Dockerfile
+    image: compose-preview:local
+    restart: always
+    environment:
+      # Always-on free box: keep the server warm (no idle exit).
+      SERVE_MODULE: ":samples:cmp"
+      SERVE_IDLE_EXIT: "0"
+      SERVE_TOKEN: "${SERVE_TOKEN:?set SERVE_TOKEN in .env}"
+      PORT: "8080"
+    expose:
+      - "8080"
+    # One warm Desktop daemon is comfortable well under the A1's 24 GiB; this
+    # cap just keeps a single render storm from eating the whole box.
+    mem_limit: 6g
+
+  caddy:
+    image: caddy:2
+    restart: always
+    depends_on:
+      - preview
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: "${DOMAIN:?set DOMAIN in .env}"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
