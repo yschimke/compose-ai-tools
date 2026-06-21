@@ -8,7 +8,7 @@ import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
-import io.ktor.server.request.receive
+import io.ktor.server.request.receiveStream
 import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.RoutingContext
@@ -21,6 +21,8 @@ import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.net.InetAddress
 import java.net.ServerSocket
 import kotlinx.coroutines.Dispatchers
@@ -79,7 +81,23 @@ class ServeHttpServer(
               return@post
             }
             val url = call.request.queryParameters["url"]
-            val body = if (url == null) call.receive<ByteArray>() else null
+            // Cap the uploaded body as it streams in — receiving it whole into memory first would
+            // let a client OOM the server regardless of the store's later extraction cap.
+            val body =
+              if (url == null) {
+                withContext(Dispatchers.IO) {
+                  call.receiveStream().use { readCapped(it, MAX_UPLOAD_BYTES) }
+                }
+                  ?: run {
+                    call.respondText(
+                      "bundle exceeds ${MAX_UPLOAD_BYTES / (1024 * 1024)}MB",
+                      status = HttpStatusCode.PayloadTooLarge,
+                    )
+                    return@post
+                  }
+              } else {
+                null
+              }
             val result =
               withContext(Dispatchers.IO) {
                 if (url != null) store.addFromUrl(name, url) else store.add(name, body!!)
@@ -335,7 +353,27 @@ class ServeHttpServer(
     const val TOKEN_HEADER: String = "X-Compose-Preview-Token"
     private const val DEFAULT_PORT_RANGE = 32
 
+    /** Max accepted upload-body size for `POST /bundles` (matches the store's extraction cap). */
+    private const val MAX_UPLOAD_BYTES = 100L * 1024 * 1024
+
     private val JSON = Json { encodeDefaults = true }
+
+    /**
+     * Read [input] fully, or `null` once it exceeds [max] bytes (without buffering past the cap).
+     */
+    private fun readCapped(input: InputStream, max: Long): ByteArray? {
+      val out = ByteArrayOutputStream()
+      val buffer = ByteArray(64 * 1024)
+      var total = 0L
+      while (true) {
+        val n = input.read(buffer)
+        if (n < 0) break
+        total += n
+        if (total > max) return null
+        out.write(buffer, 0, n)
+      }
+      return out.toByteArray()
+    }
 
     /**
      * Pick a bindable port: try [requested], then increment up to [range] times when it's taken.
