@@ -1,0 +1,13 @@
+# Keep the Docker build context (and thus the image) lean. Build outputs and
+# caches are regenerated inside the image; .git / IDE / node_modules are noise.
+.git
+**/build/
+**/.gradle/
+**/node_modules/
+**/.idea/
+**/*.iml
+deploy/cloudrun/README.md
+vscode-extension/out/
+vscode-extension/.vscode-test/
+site/build/
+**/.DS_Store
