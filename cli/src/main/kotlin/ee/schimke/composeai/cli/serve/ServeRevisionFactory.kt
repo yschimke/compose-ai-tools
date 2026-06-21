@@ -16,9 +16,13 @@ data class BuiltRevision(
 
 /**
  * Builds [module] inside an already-checked-out [worktreeDir]; null when the build/discovery fails.
+ *
+ * [isSecurityChecked] is a required, greppable audit marker (no runtime enforcement): the caller
+ * passes `true` only once the revision has cleared policy (here: [GitWorktrees]' ref allowlist),
+ * because building runs the checked-out revision's own Gradle = code execution.
  */
 fun interface RevisionBuilder {
-  fun build(worktreeDir: File, module: ServeModuleRef): BuiltRevision?
+  fun build(worktreeDir: File, module: ServeModuleRef, isSecurityChecked: Boolean): BuiltRevision?
 }
 
 /**
@@ -40,21 +44,20 @@ class ServeRevisionFactory(
 ) : ServeSessionFactory {
 
   override fun create(sessionId: String): ServeSessionState? {
-    // SECURITY (RCE): a client-supplied `?session=<rev>` reaches here in project mode. Fail closed
-    // *before* worktrees.prepare() — which would `git worktree add` an arbitrary fetched revision
-    // (and downstream run its build, RCE) — until revision policy (allowlist of trusted refs) and
-    // build isolation are in place. The builder's exec point is also guarded as defence in depth.
-    TODO("secure this")
     val rev = sessionId.trim()
     if (rev.isEmpty()) return null
+    // worktrees.prepare() enforces the ref allowlist (SECURITY/RCE): it only checks out a revision
+    // reachable from an operator-trusted ref, so an arbitrary client-supplied `?session=<rev>` is
+    // refused before any checkout. A null here means "not resolvable or not allowed".
     val worktree =
       worktrees.prepare(rev)
         ?: run {
-          onLog("serve: could not check out revision '$rev'")
+          onLog("serve: revision '$rev' is unavailable (unresolvable or not allowed)")
           return null
         }
+    // isSecurityChecked = true: the rev passed the allowlist above, so building it is sanctioned.
     val built =
-      builder.build(worktree, module)
+      builder.build(worktree, module, isSecurityChecked = true)
         ?: run {
           onLog("serve: build/discovery failed for ${module.gradlePath} at '$rev'")
           return null

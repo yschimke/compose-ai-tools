@@ -30,6 +30,19 @@ data class GitResult(val exitCode: Int, val stdout: String) {
 class GitWorktrees(
   private val repoRoot: File,
   private val cacheRoot: File,
+  /**
+   * Refs whose history a requested revision must be reachable from to be served. Empty = nothing is
+   * allowed (project mode fails closed): a client-supplied `?session=<rev>` is only checked out
+   * when it's an ancestor of one of these operator-trusted refs, so arbitrary fetched PR/fork
+   * commits can't be materialized or (downstream) built.
+   *
+   * A short name like `main` or `origin/main` is **qualified** to `refs/heads/…` / `refs/remotes/…`
+   * before the ancestry check (see [qualify]): gitrevisions resolves an ambiguous `<name>` as
+   * `refs/tags/<name>` *before* the branch, so a same-named malicious tag could otherwise satisfy
+   * the allowlist for commits reachable only from that tag. Tags are never auto-matched — to allow
+   * one, pass it fully qualified as `refs/tags/<name>`.
+   */
+  private val allowedRefs: List<String> = emptyList(),
   private val git: GitRunner = RealGitRunner,
   private val onLog: (String) -> Unit = {},
 ) : AutoCloseable {
@@ -39,10 +52,14 @@ class GitWorktrees(
 
   /**
    * Resolve [rev] to a commit and ensure a worktree for it exists; returns the worktree directory,
-   * or `null` when the revision can't be resolved or the worktree can't be created.
+   * or `null` when the revision can't be resolved, isn't allowed by policy, or can't be created.
    */
   fun prepare(rev: String): File? = lock.withLock {
     val sha = resolve(rev) ?: return null
+    if (!isAllowed(sha)) {
+      onLog("serve: revision '$rev' ($sha) is not reachable from an allowed ref; refusing")
+      return null
+    }
     val dir = File(cacheRoot, sha)
     // A `.git` file/dir in the worktree means it's already a valid checkout — reuse it.
     if (File(dir, ".git").exists()) {
@@ -59,6 +76,28 @@ class GitWorktrees(
     prepared.add(dir)
     dir
   }
+
+  /** True when [sha] is reachable from (an ancestor of, or equal to) at least one allowed ref. */
+  private fun isAllowed(sha: String): Boolean = allowedRefs.any { ref ->
+    val qualified = qualify(ref) ?: return@any false
+    git.run(repoRoot, listOf("merge-base", "--is-ancestor", sha, "$qualified^{commit}")).ok
+  }
+
+  /**
+   * Qualify an allowlist [ref] to an unambiguous fully-qualified ref, or null if it doesn't exist.
+   * A `refs/…` ref is verified as-is (so a tag can be allowed explicitly via `refs/tags/<name>`); a
+   * short name is tried as a branch then a remote-tracking branch only — never a tag — so a
+   * same-named tag can't hijack the allowlist.
+   */
+  private fun qualify(ref: String): String? {
+    val candidates =
+      if (ref.startsWith("refs/")) listOf(ref) else listOf("refs/heads/$ref", "refs/remotes/$ref")
+    return candidates.firstOrNull { exists(it) }
+  }
+
+  /** True when [fullRef] resolves to a commit. */
+  private fun exists(fullRef: String): Boolean =
+    git.run(repoRoot, listOf("rev-parse", "--verify", "--quiet", "$fullRef^{commit}")).ok
 
   /** Resolve [rev] to a full commit sha, or null when it isn't a valid revision. */
   private fun resolve(rev: String): String? {
