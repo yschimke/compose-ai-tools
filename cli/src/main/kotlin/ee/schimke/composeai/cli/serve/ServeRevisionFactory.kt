@@ -40,6 +40,11 @@ class ServeRevisionFactory(
 ) : ServeSessionFactory {
 
   override fun create(sessionId: String): ServeSessionState? {
+    // SECURITY (RCE): a client-supplied `?session=<rev>` reaches here in project mode. Fail closed
+    // *before* worktrees.prepare() — which would `git worktree add` an arbitrary fetched revision
+    // (and downstream run its build, RCE) — until revision policy (allowlist of trusted refs) and
+    // build isolation are in place. The builder's exec point is also guarded as defence in depth.
+    TODO("secure this")
     val rev = sessionId.trim()
     if (rev.isEmpty()) return null
     val worktree =
