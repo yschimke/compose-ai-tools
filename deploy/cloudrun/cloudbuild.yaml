@@ -10,12 +10,18 @@ substitutions:
   _REGION: us-central1
   _REPO: compose-preview
   _SERVICE: compose-preview
-  _IMAGE: ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/compose-preview:${SHORT_SHA}
+  # Tagged with $BUILD_ID (always populated, including for manual `gcloud builds
+  # submit` storage-source builds — unlike $SHORT_SHA, which is empty unless the
+  # build is commit-triggered).
+  _IMAGE: ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/compose-preview:${BUILD_ID}
 
 options:
   machineType: E2_HIGHCPU_8
   # The build runs a full Gradle build + a warm render; give it room and time.
   diskSizeGb: 100
+  # Required for manual builds: _IMAGE references other substitutions, which only
+  # resolve when dynamic substitutions are on (auto-on for triggers, opt-in here).
+  dynamicSubstitutions: true
 
 timeout: 3600s
 
