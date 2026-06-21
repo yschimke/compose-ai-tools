@@ -1,0 +1,132 @@
+// Vendored SUBSET of the Android emulator's `android.emulation.control.EmulatorController` gRPC API
+// (the surface Android Studio's embedded "Running Devices" view + screenshot video stream consume).
+//
+// This is a faithful-shaped subset sufficient for: identity/liveness, display geometry, a single
+// screenshot, the continuous screenshot ("video") stream, and key/touch injection. It is NOT the
+// complete shipping proto. Field numbers mirror the real proto's intent but should be reconciled
+// against the canonical `emulator_controller.proto` from the emulator SDK before relying on
+// byte-level interop with a specific Android Studio build. See docs/fake-emulator/DESIGN.md.
+syntax = "proto3";
+
+package android.emulation.control;
+
+option java_multiple_files = true;
+option java_package = "android.emulation.control";
+option java_outer_classname = "EmulatorControllerProto";
+
+import "google/protobuf/empty.proto";
+
+service EmulatorController {
+  // Identity + liveness.
+  rpc getStatus(google.protobuf.Empty) returns (EmulatorStatus) {}
+
+  // VM run state (run / pause / shutdown).
+  rpc getVmState(google.protobuf.Empty) returns (VmRunState) {}
+  rpc setVmState(VmRunState) returns (google.protobuf.Empty) {}
+
+  // Display geometry.
+  rpc getDisplayConfigurations(google.protobuf.Empty) returns (DisplayConfigurations) {}
+
+  // One screenshot.
+  rpc getScreenshot(ImageFormat) returns (Image) {}
+
+  // The "video" lane: a server-streaming feed of frames as they are produced.
+  rpc streamScreenshot(ImageFormat) returns (stream Image) {}
+
+  // Input injection.
+  rpc sendKey(KeyboardEvent) returns (google.protobuf.Empty) {}
+  rpc sendTouch(TouchEvent) returns (google.protobuf.Empty) {}
+}
+
+message EmulatorStatus {
+  int64 uptime = 1;
+  bool booted = 2;
+  map<string, string> hardwareConfig = 3;
+}
+
+message VmRunState {
+  enum RunState {
+    UNKNOWN = 0;
+    RUNNING = 1;
+    RESTORE_VM = 2;
+    PAUSED = 3;
+    SAVE_VM = 4;
+    SHUTDOWN = 5;
+    TERMINATE = 6;
+    RESET = 7;
+    INTERNAL_ERROR = 8;
+  }
+  RunState state = 1;
+}
+
+message DisplayConfigurations {
+  repeated DisplayConfiguration displays = 1;
+  uint32 maxDisplays = 2;
+}
+
+message DisplayConfiguration {
+  uint32 width = 1;
+  uint32 height = 2;
+  uint32 dpi = 3;
+  uint32 flags = 4;
+  uint32 display = 6;
+}
+
+message Rotation {
+  enum SkinRotation {
+    PORTRAIT = 0;
+    LANDSCAPE = 1;
+    REVERSE_PORTRAIT = 2;
+    REVERSE_LANDSCAPE = 3;
+  }
+  SkinRotation rotation = 1;
+  double xAxis = 2;
+  double yAxis = 3;
+  double zAxis = 4;
+}
+
+message ImageFormat {
+  enum ImgFormat {
+    PNG = 0;
+    RGBA8888 = 1;
+    RGB888 = 2;
+  }
+  ImgFormat format = 2;
+  Rotation rotation = 3;
+  uint32 width = 4;
+  uint32 height = 5;
+  uint32 display = 6;
+}
+
+message Image {
+  ImageFormat format = 1;
+  uint32 seq = 2;
+  bytes image = 3;
+  uint64 timestampUs = 4;
+}
+
+message KeyboardEvent {
+  enum KeyEventType {
+    keydown = 0;
+    keyup = 1;
+    keypress = 2;
+  }
+  KeyEventType eventType = 1;
+  int32 keyCode = 2;
+  string key = 5;
+  string text = 6;
+}
+
+message Touch {
+  int32 x = 1;
+  int32 y = 2;
+  int32 identifier = 3;
+  int32 pressure = 4;
+  int32 touch_major = 5;
+  int32 touch_minor = 6;
+}
+
+message TouchEvent {
+  repeated Touch touches = 1;
+  int32 display = 2;
+}

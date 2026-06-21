@@ -185,8 +185,29 @@ okhttp = "5.3.2"
 # `_composeai._tcp` service the mobile/wear clients browse for. No slf4j dep (uses java.util.logging),
 # so it doesn't perturb the strict slf4j pin in :cli.
 jmdns = "3.5.12"
+# dadb — Maestro's pure-Kotlin ADB client. Speaks the device transport protocol (CNXN/OPEN/…)
+# DIRECTLY to a device's adbd over TCP, with no `adb` binary or real device required. Used as a
+# `testImplementation` in `:fake-emulator-core` to drive the fake emulator's ADB server end-to-end
+# (connect handshake, `shell,v2`, `screencap`, the `am start … PreviewActivity` preview-launch
+# intent) in a hermetic unit test.
+dadb = "1.2.10"
+# gRPC + Wire — only `:fake-emulator-grpc`, which serves a subset of the Android emulator's
+# `android.emulation.control.EmulatorController` gRPC API (the surface Studio's embedded "Running
+# Devices" view + screenshot video stream consume) from a vendored `emulator_controller.proto`.
+# Kept out of every other module so the codegen toolchain stays contained. Square Wire generates the
+# protobuf message classes (pure-Kotlin codegen — no `protoc` — `rpcRole = none`, messages only); the
+# gRPC server is bound by hand into grpc-netty via grpc-java's `ServerCalls` + a tiny Wire
+# `MethodDescriptor.Marshaller`. (Wire dropped its own server-side gRPC artifact after 4.9.11.)
+grpc = "1.69.0"
+wire = "6.4.0"
 
 [libraries]
+dadb = { module = "dev.mobile:dadb", version.ref = "dadb" }
+# grpc-stub carries ServerCalls + StreamObserver + MethodDescriptor (grpc-api is transitive);
+# grpc-netty-shaded is the server transport.
+grpc-stub = { module = "io.grpc:grpc-stub", version.ref = "grpc" }
+grpc-netty-shaded = { module = "io.grpc:grpc-netty-shaded", version.ref = "grpc" }
+wire-runtime = { module = "com.squareup.wire:wire-runtime", version.ref = "wire" }
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
 # WebSocket client plugin for the streamed-frame lane the mobile/wear session-viewer clients consume
@@ -311,3 +332,6 @@ tapmoc = { id = "com.gradleup.tapmoc", version.ref = "tapmoc" }
 # get `@DependencyGraph` / `@Inject` / `@ContributesIntoMap` codegen.
 metro = { id = "dev.zacsweers.metro", version.ref = "metro" }
 play-publisher = { id = "com.github.triplet.play", version.ref = "play-publisher" }
+# Square Wire — pure-Kotlin protobuf codegen for `:fake-emulator-grpc` (no protoc binary; friendlier
+# with the repo's strict configuration cache). Generates the emulator-control message classes.
+wire = { id = "com.squareup.wire", version.ref = "wire" }
