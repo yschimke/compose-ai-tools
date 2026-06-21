@@ -1,0 +1,120 @@
+package ee.schimke.composeai.cli.serve
+
+import java.io.ByteArrayInputStream
+import java.io.File
+import java.net.URI
+import java.util.zip.ZipInputStream
+
+/**
+ * Runtime ingestion of **client-provided** portable bundles for the shared/public mode: a client
+ * uploads a bundle zip (or points at a URL of one — a CI "build results" artifact), and the store
+ * unpacks it and registers a read-only [ServeBundleHost] session via [register]. This is what makes
+ * a deployed public server useful without it building anything: clients contribute pre-rendered
+ * results and get a shareable `?session=<name>` link back.
+ *
+ * Safety: only `previews/<id>.png` entries are extracted (everything else in the zip is ignored),
+ * each written under a per-bundle directory with a zip-slip containment check, and the total
+ * extracted size is capped. [fetch] (the URL case) is injected so it can be stubbed in tests and
+ * gated/over policy in production (SSRF: a public server fetching arbitrary URLs).
+ */
+class ServeBundleStore(
+  private val root: File,
+  private val register: (name: String, host: ServeBundleHost) -> Unit,
+  private val fetch: (String) -> ByteArray? = ::httpFetch,
+  private val maxBytes: Long = DEFAULT_MAX_BYTES,
+) {
+
+  sealed interface Result {
+    data class Ok(val name: String, val previewCount: Int) : Result
+
+    data class Failed(val reason: String) : Result
+  }
+
+  /** Unpack [zipBytes] under [name] and register it as a bundle session. */
+  fun add(name: String, zipBytes: ByteArray): Result {
+    val safe = sanitizeName(name) ?: return Result.Failed("invalid bundle name: '$name'")
+    val dir = File(root, safe)
+    dir.deleteRecursively()
+    val count =
+      try {
+        extractPreviews(zipBytes, dir)
+      } catch (e: Exception) {
+        dir.deleteRecursively()
+        return Result.Failed("could not unpack bundle: ${e.message}")
+      }
+    if (count == 0) {
+      dir.deleteRecursively()
+      return Result.Failed("bundle had no previews/*.png entries")
+    }
+    val host = ServeBundleHost(dir, safe)
+    register(safe, host)
+    return Result.Ok(safe, host.previews.size)
+  }
+
+  /** Fetch a bundle zip from [url] (the "link to build results" case), then [add] it. */
+  fun addFromUrl(name: String, url: String): Result {
+    val bytes =
+      try {
+        fetch(url)
+      } catch (e: Exception) {
+        return Result.Failed("could not fetch $url: ${e.message}")
+      } ?: return Result.Failed("could not fetch $url")
+    return add(name, bytes)
+  }
+
+  /** Extract only `previews/<id>.png` entries into [dir] (zip-slip safe, size-capped). */
+  private fun extractPreviews(zipBytes: ByteArray, dir: File): Int {
+    val rootPath = dir.canonicalFile.toPath()
+    var count = 0
+    var total = 0L
+    ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
+      var entry = zin.nextEntry
+      while (entry != null) {
+        val name = entry.name.replace('\\', '/')
+        val segments = name.split("/")
+        val keep =
+          !entry.isDirectory &&
+            name.startsWith("$PREVIEWS_SUBDIR/") &&
+            name.endsWith(PNG_SUFFIX) &&
+            ".." !in segments
+        if (keep) {
+          val target = File(dir, name)
+          // Zip-slip guard: the resolved path must stay under the bundle dir.
+          if (target.canonicalFile.toPath().startsWith(rootPath)) {
+            val bytes = zin.readBytes()
+            total += bytes.size
+            check(total <= maxBytes) { "bundle exceeds ${maxBytes / (1024 * 1024)}MB" }
+            target.parentFile?.mkdirs()
+            target.writeBytes(bytes)
+            count++
+          }
+        }
+        zin.closeEntry()
+        entry = zin.nextEntry
+      }
+    }
+    return count
+  }
+
+  companion object {
+    private const val PREVIEWS_SUBDIR = "previews"
+    private const val PNG_SUFFIX = ".png"
+    private const val DEFAULT_MAX_BYTES = 100L * 1024 * 1024 // 100 MB
+
+    /** A session name safe to use as a path segment + URL value; null if it can't be made safe. */
+    fun sanitizeName(name: String): String? {
+      val trimmed = name.trim()
+      return trimmed.takeIf { it.isNotEmpty() && it.matches(Regex("[A-Za-z0-9._@-]{1,128}")) }
+    }
+
+    /** Default URL fetcher: http/https only, capped + time-bounded. SSRF is the operator's call. */
+    private fun httpFetch(url: String): ByteArray? {
+      val uri = URI(url)
+      if (uri.scheme?.lowercase() !in setOf("http", "https")) return null
+      val conn = uri.toURL().openConnection()
+      conn.connectTimeout = 10_000
+      conn.readTimeout = 30_000
+      return conn.getInputStream().use { it.readBytes() }
+    }
+  }
+}

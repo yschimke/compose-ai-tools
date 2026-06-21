@@ -8,10 +8,12 @@ import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
+import io.ktor.server.request.receive
 import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.get
+import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import io.ktor.server.websocket.WebSockets
 import io.ktor.server.websocket.webSocket
@@ -51,6 +53,8 @@ class ServeHttpServer(
   private val token: String,
   private val sessions: ServeSessionRegistry,
   private val defaultSessionId: String,
+  /** When non-null, enables `POST /bundles/{name}` for clients to contribute bundles at runtime. */
+  private val bundleStore: ServeBundleStore? = null,
   portRange: Int = DEFAULT_PORT_RANGE,
 ) {
   /** The actual bound port — may differ from the requested one if it was taken (auto-picked). */
@@ -62,6 +66,43 @@ class ServeHttpServer(
       routing {
         // `/healthz` is the only ungated route — liveness only, leaks nothing.
         get("/healthz") { call.respondText("ok") }
+
+        // Shared/public mode ingestion: a client contributes a pre-rendered bundle (upload the zip
+        // as the body, or pass `?url=` to a build-results artifact) and gets back a ?session= link.
+        // Only registered when the operator opts in (a bundle store is supplied).
+        bundleStore?.let { store ->
+          post("/bundles/{name}") {
+            if (rejectBadToken()) return@post
+            val name = call.parameters["name"]
+            if (name.isNullOrBlank()) {
+              call.respondText("missing bundle name", status = HttpStatusCode.BadRequest)
+              return@post
+            }
+            val url = call.request.queryParameters["url"]
+            val body = if (url == null) call.receive<ByteArray>() else null
+            val result =
+              withContext(Dispatchers.IO) {
+                if (url != null) store.addFromUrl(name, url) else store.add(name, body!!)
+              }
+            when (result) {
+              is ServeBundleStore.Result.Ok ->
+                call.respondText(
+                  JSON.encodeToString(
+                    BundleAcceptedResponse.serializer(),
+                    BundleAcceptedResponse(
+                      session = result.name,
+                      previews = result.previewCount,
+                      path = "/?session=${result.name}",
+                    ),
+                  ),
+                  ContentType.Application.Json,
+                  HttpStatusCode.Created,
+                )
+              is ServeBundleStore.Result.Failed ->
+                call.respondText(result.reason, status = HttpStatusCode.BadRequest)
+            }
+          }
+        }
 
         // A persistent frame lane. The browser opens this, receives frames as JSON
         // ([ServeStreamProtocol]), and sends override / switch / input messages back. Token is
@@ -329,3 +370,12 @@ private data class PreviewsResponse(
 
 @Serializable
 private data class PreviewDto(val id: String, val label: String, val modes: List<String>)
+
+@Serializable
+private data class BundleAcceptedResponse(
+  val schema: String = "compose-preview-serve/bundle/v1",
+  val session: String,
+  val previews: Int,
+  /** Relative viewer link for the new session (append your token). */
+  val path: String,
+)

@@ -5,6 +5,7 @@ import ee.schimke.composeai.cli.serve.GradleRevisionBuilder
 import ee.schimke.composeai.cli.serve.RenderOutcome
 import ee.schimke.composeai.cli.serve.ServeBundle
 import ee.schimke.composeai.cli.serve.ServeBundleHost
+import ee.schimke.composeai.cli.serve.ServeBundleStore
 import ee.schimke.composeai.cli.serve.ServeHost
 import ee.schimke.composeai.cli.serve.ServeHttpServer
 import ee.schimke.composeai.cli.serve.ServeMdnsAdvertiser
@@ -76,6 +77,13 @@ class ServeCommand(args: List<String>) : Command(args) {
    * or build — the bundle's `previews/<id>.png` files are served directly.
    */
   private val bundlesDir: String? = args.flagValue("--bundles")?.takeIf { it.isNotBlank() }
+
+  /**
+   * Shared/public mode ingestion: enable `POST /bundles/{name}` so clients can contribute bundles
+   * at runtime — upload a zip, or pass `?url=` to a build-results artifact. Off by default;
+   * intended for a deployed shared instance (combine with `--lan` + a strong `--token`).
+   */
+  private val acceptBundles: Boolean = "--accept-bundles" in args
 
   override fun run() {
     if ("--help" in args || "-h" in args) {
@@ -187,6 +195,21 @@ class ServeCommand(args: List<String>) : Command(args) {
     registerBundles().forEach { (id, bundleHost) ->
       registry.register(id, host = bundleHost, pinned = true)
     }
+    // Runtime ingestion (--accept-bundles): clients POST a bundle (or a ?url= to one) and it's
+    // registered as a pinned session. Unpacked under a temp dir for this server's lifetime.
+    val bundleStore =
+      if (acceptBundles) {
+        val uploads =
+          java.nio.file.Files.createTempDirectory("serve-uploads").toFile().also {
+            it.deleteOnExit()
+          }
+        ServeBundleStore(
+          root = uploads,
+          register = { id, bundleHost -> registry.register(id, host = bundleHost, pinned = true) },
+        )
+      } else {
+        null
+      }
     val server =
       ServeHttpServer(
         host = host,
@@ -194,6 +217,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         token = token,
         sessions = registry,
         defaultSessionId = module.gradlePath,
+        bundleStore = bundleStore,
       )
 
     // Advertise on the LAN over mDNS when bound to a reachable interface (`--lan`), so the mobile /
@@ -455,6 +479,10 @@ class ServeCommand(args: List<String>) : Command(args) {
         --bundles <dir>   Shared mode: also host pre-rendered portable bundles (no build/daemon). A
                           bundle dir, or a directory of them, is served read-only — each reachable at
                           ?session=<bundle-name>. Bundles are what --export / GET /bundle.zip produce.
+        --accept-bundles  Shared mode (public): enable POST /bundles/<name> so clients can contribute
+                          bundles at runtime — upload the zip as the body, or pass ?url=<link> to a
+                          build-results artifact. Pair with --lan + a strong --token for a shared
+                          instance; the server then fetches the URL you give it (SSRF — trust the token).
 
       The shareable link carries an unguessable token; requests without it get 404.
       """
