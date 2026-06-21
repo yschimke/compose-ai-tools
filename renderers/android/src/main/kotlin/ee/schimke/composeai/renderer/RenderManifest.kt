@@ -183,7 +183,18 @@ data class RenderPreviewEntry(
      * See [RenderPreviewArtifact]. The wire field name stays `dataProducts` for back-compat.
      */
     val dataProducts: List<RenderPreviewArtifact> = emptyList(),
-)
+) {
+    /**
+     * Concise, stable label — the (already-unique, fan-out-suffixed) preview [id]. This is
+     * load-bearing, not cosmetic: [RobolectricRenderTest]'s `@Parameters(name = "{0}")` names each
+     * parameterized case by this `toString()`, and Gradle's JUnit XML writer turns that name into a
+     * `TEST-<name>.xml` filename. The data-class default dumped every field (params, captures,
+     * dataProducts), producing ~600-char names that overflow the filesystem's 255-byte filename
+     * limit (`FileNotFoundException: … (File name too long)`) on the per-case-file reporting path.
+     * The `id` keeps test reports readable while staying well under the limit.
+     */
+    override fun toString(): String = id
+}
 
 @Serializable
 data class RenderPreviewCapture(
