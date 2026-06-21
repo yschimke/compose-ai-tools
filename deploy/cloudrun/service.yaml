@@ -1,0 +1,70 @@
+# Cloud Run service (Knative) manifest for the Compose preview server.
+#
+# Apply with:
+#   gcloud run services replace deploy/cloudrun/service.yaml --region <REGION>
+#
+# Placeholders to substitute before applying (deploy.sh does this for you):
+#   PROJECT_ID, REGION, IMAGE  — e.g. REGION/.../compose-preview:latest
+#
+# Sizing rationale (see README.md): one warm Desktop render daemon is comfortable
+# at 2 vCPU / 4Gi. Cost is bounded by min-scale 0 (scale to zero when idle) and
+# max-scale 1 (a single instance can't fan out a surprise bill). The 3600s timeout
+# is the hard ceiling on any one request/WebSocket session.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: compose-preview
+  labels:
+    app: compose-preview
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "1"
+        # Request-based billing (CPU only billed while a request is in flight) is
+        # the cheapest default and pairs with scale-to-zero. If warm-daemon
+        # responsiveness between requests matters more than cost, flip this to
+        # "false" (instance-based billing — CPU always allocated) and consider
+        # minScale "1".
+        run.googleapis.com/cpu-throttling: "true"
+        run.googleapis.com/startup-cpu-boost: "true"
+    spec:
+      # Cap simultaneous renders. The daemon serialises renders anyway; a low
+      # ceiling keeps tail latency and memory predictable on one instance.
+      containerConcurrency: 4
+      timeoutSeconds: 3600
+      containers:
+        - image: IMAGE
+          ports:
+            - name: http1
+              containerPort: 8080
+          env:
+            - name: SERVE_MODULE
+              value: ":samples:cmp"
+            - name: SERVE_IDLE_EXIT
+              value: "900"
+            # The shared auth token, sourced from Secret Manager (see deploy.sh,
+            # which creates the `compose-preview-token` secret).
+            - name: SERVE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: compose-preview-token
+                  key: latest
+          resources:
+            limits:
+              cpu: "2"
+              memory: 4Gi
+          startupProbe:
+            # `serve` binds its HTTP port only after the initial (incremental,
+            # warmed) Gradle build + daemon launch finishes, so /healthz answering
+            # is an accurate "ready" signal. Allow a generous window for it.
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 30
+            timeoutSeconds: 5

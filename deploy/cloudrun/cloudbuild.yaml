@@ -1,0 +1,67 @@
+# Cloud Build pipeline: build the image, push to Artifact Registry, deploy to
+# Cloud Run. Run from the repo root so the build context is the whole repo:
+#
+#   gcloud builds submit --config deploy/cloudrun/cloudbuild.yaml \
+#     --substitutions=_REGION=us-central1,_REPO=compose-preview
+#
+# Prereqs (one-time): an Artifact Registry Docker repo named $_REPO in $_REGION,
+# and the `compose-preview-token` secret in Secret Manager. deploy.sh sets both up.
+substitutions:
+  _REGION: us-central1
+  _REPO: compose-preview
+  _SERVICE: compose-preview
+  # Tagged with $BUILD_ID (always populated, including for manual `gcloud builds
+  # submit` storage-source builds — unlike $SHORT_SHA, which is empty unless the
+  # build is commit-triggered).
+  _IMAGE: ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/compose-preview:${BUILD_ID}
+
+options:
+  machineType: E2_HIGHCPU_8
+  # The build runs a full Gradle build + a warm render; give it room and time.
+  diskSizeGb: 100
+  # Required for manual builds: _IMAGE references other substitutions, which only
+  # resolve when dynamic substitutions are on (auto-on for triggers, opt-in here).
+  dynamicSubstitutions: true
+
+timeout: 3600s
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - deploy/cloudrun/Dockerfile
+      - -t
+      - ${_IMAGE}
+      - .
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args: ["push", "${_IMAGE}"]
+
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_IMAGE}
+      - --region=${_REGION}
+      - --platform=managed
+      - --cpu=2
+      - --memory=4Gi
+      - --min-instances=0
+      - --max-instances=1
+      - --concurrency=4
+      - --timeout=3600
+      - --port=8080
+      - --set-env-vars=SERVE_MODULE=:samples:cmp,SERVE_IDLE_EXIT=900
+      - --set-secrets=SERVE_TOKEN=compose-preview-token:latest
+      # Drop --no-allow-unauthenticated if you front it with IAM instead of the
+      # app token. As written the app token is the only gate (public ingress).
+      - --allow-unauthenticated
+
+images:
+  - ${_IMAGE}
