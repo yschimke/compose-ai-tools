@@ -1,0 +1,100 @@
+package ee.schimke.composeai.cli.serve
+
+import java.io.File
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
+
+/**
+ * Runs a `git` subcommand in [workdir]. Injected so [GitWorktrees] is testable without a real repo.
+ */
+fun interface GitRunner {
+  fun run(workdir: File, args: List<String>): GitResult
+}
+
+data class GitResult(val exitCode: Int, val stdout: String) {
+  val ok: Boolean
+    get() = exitCode == 0
+}
+
+/**
+ * Manages git **worktrees** for serving multiple revisions of one repo from a single server. Each
+ * resolved commit gets one detached worktree under [cacheRoot] (`<cacheRoot>/<sha>`), reused on
+ * later requests — so a revision is checked out at most once. Resolution + add are serialised so
+ * two concurrent first-requests for the same revision don't race to add the same worktree.
+ *
+ * Worktrees share the repo's object store, so they're cheap; they outlive the [ServeRenderHost]s
+ * built from them (the registry evicts hosts, not checkouts) and are cleaned up on [close] / `git
+ * worktree prune`.
+ */
+class GitWorktrees(
+  private val repoRoot: File,
+  private val cacheRoot: File,
+  private val git: GitRunner = RealGitRunner,
+  private val onLog: (String) -> Unit = {},
+) : AutoCloseable {
+
+  private val lock = ReentrantLock()
+  private val prepared = HashSet<File>()
+
+  /**
+   * Resolve [rev] to a commit and ensure a worktree for it exists; returns the worktree directory,
+   * or `null` when the revision can't be resolved or the worktree can't be created.
+   */
+  fun prepare(rev: String): File? = lock.withLock {
+    val sha = resolve(rev) ?: return null
+    val dir = File(cacheRoot, sha)
+    // A `.git` file/dir in the worktree means it's already a valid checkout — reuse it.
+    if (File(dir, ".git").exists()) {
+      prepared.add(dir)
+      return dir
+    }
+    cacheRoot.mkdirs()
+    val add =
+      git.run(repoRoot, listOf("worktree", "add", "--detach", "--force", dir.absolutePath, sha))
+    if (!add.ok) {
+      onLog("serve: 'git worktree add' failed for $sha")
+      return null
+    }
+    prepared.add(dir)
+    dir
+  }
+
+  /** Resolve [rev] to a full commit sha, or null when it isn't a valid revision. */
+  private fun resolve(rev: String): String? {
+    val res = git.run(repoRoot, listOf("rev-parse", "--verify", "--quiet", "$rev^{commit}"))
+    val sha = res.stdout.trim()
+    return if (res.ok && sha.isNotEmpty()) sha else null
+  }
+
+  /** Remove the worktrees this instance created and prune stale registrations. Best-effort. */
+  override fun close() {
+    val dirs = lock.withLock { prepared.toList().also { prepared.clear() } }
+    dirs.forEach { dir ->
+      runCatching { git.run(repoRoot, listOf("worktree", "remove", "--force", dir.absolutePath)) }
+    }
+    runCatching { git.run(repoRoot, listOf("worktree", "prune")) }
+  }
+
+  /** Default [GitRunner] backed by the `git` CLI. */
+  object RealGitRunner : GitRunner {
+    override fun run(workdir: File, args: List<String>): GitResult {
+      return try {
+        val process =
+          ProcessBuilder(listOf("git") + args).directory(workdir).redirectErrorStream(true).start()
+        val output = process.inputStream.bufferedReader().readText()
+        val finished = process.waitFor(GIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        if (!finished) {
+          process.destroyForcibly()
+          GitResult(exitCode = -1, stdout = output)
+        } else {
+          GitResult(exitCode = process.exitValue(), stdout = output)
+        }
+      } catch (e: Exception) {
+        GitResult(exitCode = -1, stdout = e.message ?: "")
+      }
+    }
+
+    private const val GIT_TIMEOUT_SECONDS = 120L
+  }
+}

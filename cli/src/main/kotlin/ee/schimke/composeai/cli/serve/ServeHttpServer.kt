@@ -147,96 +147,101 @@ class ServeHttpServer(
 
         get("/") {
           if (rejectBadToken()) return@get
-          val renderHost = resolveHost() ?: return@get
-          call.respondText(
-            ServeWeb.landingPage(
-              renderHost.label,
-              renderHost.previews,
-              token,
-              call.request.queryParameters["session"],
-            ),
-            ContentType.Text.Html,
-          )
+          withLeasedSession { renderHost ->
+            call.respondText(
+              ServeWeb.landingPage(
+                renderHost.label,
+                renderHost.previews,
+                token,
+                call.request.queryParameters["session"],
+              ),
+              ContentType.Text.Html,
+            )
+          }
         }
 
         get("/api/previews") {
           if (rejectBadToken()) return@get
-          val renderHost = resolveHost() ?: return@get
-          val dto =
-            PreviewsResponse(
-              module = renderHost.label,
-              previews =
-                renderHost.previews.map { p ->
-                  PreviewDto(id = p.id, label = p.label, modes = p.modes.map { it.wire })
-                },
+          withLeasedSession { renderHost ->
+            val dto =
+              PreviewsResponse(
+                module = renderHost.label,
+                previews =
+                  renderHost.previews.map { p ->
+                    PreviewDto(id = p.id, label = p.label, modes = p.modes.map { it.wire })
+                  },
+              )
+            call.respondText(
+              JSON.encodeToString(PreviewsResponse.serializer(), dto),
+              ContentType.Application.Json,
             )
-          call.respondText(
-            JSON.encodeToString(PreviewsResponse.serializer(), dto),
-            ContentType.Application.Json,
-          )
+          }
         }
 
         get("/bundle.zip") {
           if (rejectBadToken()) return@get
-          val renderHost = resolveHost() ?: return@get
-          // Render the whole module once (cache-backed) into the portable WebEmbed gallery and
-          // stream it as a zip — the same render output as the live links, downloadable offline.
-          val zip =
-            withContext(Dispatchers.IO) {
-              val built =
-                ServeBundle.build(
-                  previews = renderHost.previews,
-                  title = renderHost.label,
-                  modulePath = renderHost.label,
-                ) { preview ->
-                  (renderHost.render(preview.id, PreviewOverrides()) as? RenderOutcome.Ok)?.png
-                }
-              ServeBundle.zip(built.files)
-            }
-          call.respondBytes(zip, ContentType.Application.Zip)
+          withLeasedSession { renderHost ->
+            // Render the whole module once (cache-backed) into the portable WebEmbed gallery and
+            // stream it as a zip — the same render output as the live links, downloadable offline.
+            val zip =
+              withContext(Dispatchers.IO) {
+                val built =
+                  ServeBundle.build(
+                    previews = renderHost.previews,
+                    title = renderHost.label,
+                    modulePath = renderHost.label,
+                  ) { preview ->
+                    (renderHost.render(preview.id, PreviewOverrides()) as? RenderOutcome.Ok)?.png
+                  }
+                ServeBundle.zip(built.files)
+              }
+            call.respondBytes(zip, ContentType.Application.Zip)
+          }
         }
 
         get("/p/{name}") {
           if (rejectBadToken()) return@get
-          val renderHost = resolveHost() ?: return@get
-          val previewId = call.parameters["name"]
-          val preview = previewId?.let { id -> renderHost.previews.firstOrNull { it.id == id } }
-          if (preview == null) {
-            call.respondText("no such preview", status = HttpStatusCode.NotFound)
-            return@get
+          withLeasedSession { renderHost ->
+            val previewId = call.parameters["name"]
+            val preview = previewId?.let { id -> renderHost.previews.firstOrNull { it.id == id } }
+            if (preview == null) {
+              call.respondText("no such preview", status = HttpStatusCode.NotFound)
+              return@withLeasedSession
+            }
+            call.respondText(
+              ServeWeb.viewerPage(preview, token, call.request.queryParameters["session"]),
+              ContentType.Text.Html,
+            )
           }
-          call.respondText(
-            ServeWeb.viewerPage(preview, token, call.request.queryParameters["session"]),
-            ContentType.Text.Html,
-          )
         }
 
         get("/render/{name}") {
           if (rejectBadToken()) return@get
-          val renderHost = resolveHost() ?: return@get
-          val previewId = call.parameters["name"]?.removeSuffix(".png")
-          if (previewId.isNullOrBlank()) {
-            call.respondText("missing preview id", status = HttpStatusCode.BadRequest)
-            return@get
-          }
-          val overrideParams =
-            ServeOverrides.SUPPORTED_KEYS.mapNotNull { key ->
-                call.request.queryParameters[key]?.let { key to it }
-              }
-              .toMap()
-          when (val parsed = ServeOverrides.parse(overrideParams)) {
-            is OverrideParse.Invalid ->
-              call.respondText(parsed.message, status = HttpStatusCode.BadRequest)
-            is OverrideParse.Ok -> {
-              // The render is blocking (renderNow + await); keep it off the request dispatcher.
-              val outcome =
-                withContext(Dispatchers.IO) { renderHost.render(previewId, parsed.overrides) }
-              when (outcome) {
-                is RenderOutcome.Ok -> call.respondBytes(outcome.png, ContentType.Image.PNG)
-                RenderOutcome.NotFound ->
-                  call.respondText("no such preview", status = HttpStatusCode.NotFound)
-                is RenderOutcome.Failed ->
-                  call.respondText(outcome.reason, status = HttpStatusCode.InternalServerError)
+          withLeasedSession { renderHost ->
+            val previewId = call.parameters["name"]?.removeSuffix(".png")
+            if (previewId.isNullOrBlank()) {
+              call.respondText("missing preview id", status = HttpStatusCode.BadRequest)
+              return@withLeasedSession
+            }
+            val overrideParams =
+              ServeOverrides.SUPPORTED_KEYS.mapNotNull { key ->
+                  call.request.queryParameters[key]?.let { key to it }
+                }
+                .toMap()
+            when (val parsed = ServeOverrides.parse(overrideParams)) {
+              is OverrideParse.Invalid ->
+                call.respondText(parsed.message, status = HttpStatusCode.BadRequest)
+              is OverrideParse.Ok -> {
+                // The render is blocking (renderNow + await); keep it off the request dispatcher.
+                val outcome =
+                  withContext(Dispatchers.IO) { renderHost.render(previewId, parsed.overrides) }
+                when (outcome) {
+                  is RenderOutcome.Ok -> call.respondBytes(outcome.png, ContentType.Image.PNG)
+                  RenderOutcome.NotFound ->
+                    call.respondText("no such preview", status = HttpStatusCode.NotFound)
+                  is RenderOutcome.Failed ->
+                    call.respondText(outcome.reason, status = HttpStatusCode.InternalServerError)
+                }
               }
             }
           }
@@ -255,15 +260,23 @@ class ServeHttpServer(
   }
 
   /**
-   * Resolve the tenant for this request: `?session=` (else [defaultSessionId]) through the
-   * registry, which forks it on first use. Responds 404 and returns null when the session can't be
-   * created.
+   * Resolve the tenant for this request (`?session=`, else [defaultSessionId]) and run [block] with
+   * its host while holding a [ServeSessionRegistry.Lease] for the request's whole duration — so the
+   * reaper can't suspend the daemon mid-request (e.g. a long `/bundle.zip` that renders every
+   * preview). Responds 404 when the session can't be created/opened. The lease is always released.
    */
-  private suspend fun RoutingContext.resolveHost(): ServeRenderHost? {
+  private suspend fun RoutingContext.withLeasedSession(block: suspend (ServeRenderHost) -> Unit) {
     val sessionId = call.request.queryParameters["session"] ?: defaultSessionId
-    val renderHost = withContext(Dispatchers.IO) { sessions.acquire(sessionId) }
-    if (renderHost == null) call.respondText("not found", status = HttpStatusCode.NotFound)
-    return renderHost
+    val lease = withContext(Dispatchers.IO) { sessions.lease(sessionId) }
+    if (lease == null) {
+      call.respondText("not found", status = HttpStatusCode.NotFound)
+      return
+    }
+    try {
+      block(lease.host)
+    } finally {
+      withContext(Dispatchers.IO) { lease.close() }
+    }
   }
 
   /**
