@@ -19,14 +19,23 @@ import okhttp3.Request
  *
  * Safety: only `previews/<id>.png` entries are extracted (everything else in the zip is ignored),
  * each written under a per-bundle directory with a zip-slip containment check, and the total
- * extracted size is capped. [fetch] (the URL case) is injected so it can be stubbed in tests and
- * gated/over policy in production (SSRF: a public server fetching arbitrary URLs).
+ * extracted size is capped. The URL case ([addFromUrl]) is an **SSRF** surface — a public server
+ * fetching arbitrary URLs could be steered at internal metadata/services — so it is gated by
+ * [allowedHosts]: only a URL whose host is on that operator-supplied allowlist is fetched, and an
+ * empty allowlist refuses every URL (fail closed). [fetch] is injected so it can be stubbed in
+ * tests; the host gate runs in [addFromUrl] regardless of which fetcher is wired.
  */
 class ServeBundleStore(
   private val root: File,
   private val register: (name: String, host: ServeBundleHost) -> Unit,
   private val fetch: (String) -> ByteArray? = ::httpFetch,
   private val maxBytes: Long = DEFAULT_MAX_BYTES,
+  /**
+   * SSRF allowlist for [addFromUrl]: hostnames (case-insensitive, exact match) a `?url=` fetch is
+   * permitted to reach. Empty = no URL fetch is allowed (fail closed), so enabling
+   * `--accept-bundles` alone never lets a client make the server fetch an arbitrary address.
+   */
+  private val allowedHosts: List<String> = emptyList(),
 ) {
 
   sealed interface Result {
@@ -35,8 +44,15 @@ class ServeBundleStore(
     data class Failed(val reason: String) : Result
   }
 
-  /** Unpack [zipBytes] under [name] and register it as a bundle session. */
-  fun add(name: String, zipBytes: ByteArray): Result {
+  /**
+   * Unpack [zipBytes] under [name] and register it as a bundle session.
+   *
+   * [isSecurityChecked] is a required, greppable audit marker (no runtime enforcement): the caller
+   * passes `true` only once the request has cleared policy (here: token-gated `POST /bundles`). The
+   * unpack itself is defended in depth — name sanitisation, zip-slip containment, size cap — but
+   * the marker records that the *entry point* was authorised before risky bytes were processed.
+   */
+  fun add(name: String, zipBytes: ByteArray, isSecurityChecked: Boolean): Result {
     val safe = sanitizeName(name) ?: return Result.Failed("invalid bundle name: '$name'")
     val dir = File(root, safe)
     dir.deleteRecursively()
@@ -56,15 +72,41 @@ class ServeBundleStore(
     return Result.Ok(safe, host.previews.size)
   }
 
-  /** Fetch a bundle zip from [url] (the "link to build results" case), then [add] it. */
-  fun addFromUrl(name: String, url: String): Result {
+  /**
+   * Fetch a bundle zip from [url] (the "link to build results" case), then [add] it.
+   *
+   * SSRF gate: the URL must be http/https and its host must be on [allowedHosts] (empty = refuse
+   * everything), checked here before [fetch] runs, so a client can't steer the server at an
+   * internal address. [isSecurityChecked] is the same documented audit marker as [add] — the caller
+   * asserts the entry point was authorised (token-gated). The host allowlist is the actual SSRF
+   * enforcement.
+   */
+  fun addFromUrl(name: String, url: String, isSecurityChecked: Boolean): Result {
+    if (!isAllowedUrl(url)) {
+      return Result.Failed(
+        "refusing to fetch $url: host is not on the --accept-bundles-from allowlist"
+      )
+    }
     val bytes =
       try {
         fetch(url)
       } catch (e: Exception) {
         return Result.Failed("could not fetch $url: ${e.message}")
       } ?: return Result.Failed("could not fetch $url")
-    return add(name, bytes)
+    return add(name, bytes, isSecurityChecked = isSecurityChecked)
+  }
+
+  /** True when [url] is http/https and its host is on the [allowedHosts] SSRF allowlist. */
+  private fun isAllowedUrl(url: String): Boolean {
+    val uri =
+      try {
+        URI(url)
+      } catch (e: Exception) {
+        return false
+      }
+    if (uri.scheme?.lowercase() !in setOf("http", "https")) return false
+    val host = uri.host?.lowercase() ?: return false
+    return allowedHosts.any { it.equals(host, ignoreCase = true) }
   }
 
   /** Extract only `previews/<id>.png` entries into [dir] (zip-slip safe, size-capped). */

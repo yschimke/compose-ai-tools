@@ -100,7 +100,12 @@ class ServeHttpServer(
               }
             val result =
               withContext(Dispatchers.IO) {
-                if (url != null) store.addFromUrl(name, url) else store.add(name, body!!)
+                // isSecurityChecked = true: this route is token-gated (rejectBadToken above) and
+                // the
+                // store still defends in depth (name sanitisation, zip-slip, size cap; SSRF host
+                // allowlist for the url case). The marker records the entry point was authorised.
+                if (url != null) store.addFromUrl(name, url, isSecurityChecked = true)
+                else store.add(name, body!!, isSecurityChecked = true)
               }
             when (result) {
               is ServeBundleStore.Result.Ok ->

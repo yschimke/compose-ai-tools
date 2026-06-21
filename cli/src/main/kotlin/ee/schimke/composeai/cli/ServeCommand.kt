@@ -85,6 +85,18 @@ class ServeCommand(args: List<String>) : Command(args) {
    */
   private val acceptBundles: Boolean = "--accept-bundles" in args
 
+  /**
+   * SSRF allowlist for `POST /bundles/{name}?url=` fetches: comma-separated hostnames the server
+   * may fetch a bundle from. Empty = no URL fetch is allowed (fail closed), so `--accept-bundles`
+   * alone only accepts uploads; a host must be explicitly trusted before the server will reach out.
+   */
+  private val acceptBundlesFrom: List<String> =
+    args
+      .flagValue("--accept-bundles-from")
+      ?.split(",")
+      ?.map { it.trim() }
+      ?.filter { it.isNotEmpty() } ?: emptyList()
+
   override fun run() {
     if ("--help" in args || "-h" in args) {
       printUsage()
@@ -203,9 +215,16 @@ class ServeCommand(args: List<String>) : Command(args) {
           java.nio.file.Files.createTempDirectory("serve-uploads").toFile().also {
             it.deleteOnExit()
           }
+        if (acceptBundlesFrom.isEmpty()) {
+          System.err.println(
+            "serve: --accept-bundles accepts uploads only; no ?url= host is allowed (SSRF fail " +
+              "closed). Pass --accept-bundles-from <host>[,<host>…] to permit URL fetches."
+          )
+        }
         ServeBundleStore(
           root = uploads,
           register = { id, bundleHost -> registry.register(id, host = bundleHost, pinned = true) },
+          allowedHosts = acceptBundlesFrom,
         )
       } else {
         null
@@ -482,7 +501,11 @@ class ServeCommand(args: List<String>) : Command(args) {
         --accept-bundles  Shared mode (public): enable POST /bundles/<name> so clients can contribute
                           bundles at runtime — upload the zip as the body, or pass ?url=<link> to a
                           build-results artifact. Pair with --lan + a strong --token for a shared
-                          instance; the server then fetches the URL you give it (SSRF — trust the token).
+                          instance. Uploads only by default; ?url= fetches need --accept-bundles-from.
+        --accept-bundles-from <host>[,<host>…]
+                          SSRF allowlist for POST /bundles?url=: hostnames the server may fetch a
+                          bundle from. Omitted/empty = no URL fetch is allowed (fail closed), so a
+                          client can't steer the server at an arbitrary or internal address.
 
       The shareable link carries an unguessable token; requests without it get 404.
       """

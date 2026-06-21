@@ -57,6 +57,7 @@ internal object CliFlags {
       "--token",
       "--export",
       "--bundles",
+      "--accept-bundles-from",
       // Required-reason escape hatch. Usually written attached (`--force=<reason>`), but the space
       // form `--force <reason>` is supported (ForceFlagTest), so the reason must be skipped or it's
       // mistaken for the command.
