@@ -30,6 +30,13 @@ data class GitResult(val exitCode: Int, val stdout: String) {
 class GitWorktrees(
   private val repoRoot: File,
   private val cacheRoot: File,
+  /**
+   * Refs (branches/tags) whose history a requested revision must be reachable from to be served.
+   * Empty = nothing is allowed (project mode fails closed): a client-supplied `?session=<rev>` is
+   * only checked out when it's an ancestor of one of these operator-trusted refs, so arbitrary
+   * fetched PR/fork commits can't be materialized or (downstream) built.
+   */
+  private val allowedRefs: List<String> = emptyList(),
   private val git: GitRunner = RealGitRunner,
   private val onLog: (String) -> Unit = {},
 ) : AutoCloseable {
@@ -39,10 +46,14 @@ class GitWorktrees(
 
   /**
    * Resolve [rev] to a commit and ensure a worktree for it exists; returns the worktree directory,
-   * or `null` when the revision can't be resolved or the worktree can't be created.
+   * or `null` when the revision can't be resolved, isn't allowed by policy, or can't be created.
    */
   fun prepare(rev: String): File? = lock.withLock {
     val sha = resolve(rev) ?: return null
+    if (!isAllowed(sha)) {
+      onLog("serve: revision '$rev' ($sha) is not reachable from an allowed ref; refusing")
+      return null
+    }
     val dir = File(cacheRoot, sha)
     // A `.git` file/dir in the worktree means it's already a valid checkout — reuse it.
     if (File(dir, ".git").exists()) {
@@ -59,6 +70,12 @@ class GitWorktrees(
     prepared.add(dir)
     dir
   }
+
+  /** True when [sha] is reachable from (an ancestor of, or equal to) at least one allowed ref. */
+  private fun isAllowed(sha: String): Boolean =
+    allowedRefs.any { ref ->
+      git.run(repoRoot, listOf("merge-base", "--is-ancestor", sha, "$ref^{commit}")).ok
+    }
 
   /** Resolve [rev] to a full commit sha, or null when it isn't a valid revision. */
   private fun resolve(rev: String): String? {

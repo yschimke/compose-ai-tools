@@ -59,6 +59,16 @@ class ServeCommand(args: List<String>) : Command(args) {
   private val revisions: Boolean = "--revisions" in args
 
   /**
+   * Project mode revision policy (SECURITY/RCE): comma-separated refs whose history a requested
+   * `?session=<rev>` must be reachable from to be checked out and built. Empty = nothing builds
+   * (fail closed), since building runs that revision's Gradle. e.g. `--revisions-allow
+   * main,release`.
+   */
+  private val revisionAllowRefs: List<String> =
+    args.flagValue("--revisions-allow")?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
+      ?: emptyList()
+
+  /**
    * Ephemeral mode: shut the whole server down once it's been idle — no open connections and no
    * requests — for [idleExitSeconds]. `--exit-when-idle` uses the default window;
    * `--exit-when-idle=<seconds>` sets it (a short value ≈ "exit shortly after the last client
@@ -306,13 +316,20 @@ class ServeCommand(args: List<String>) : Command(args) {
     return exec
   }
 
-  /** Open the worktree manager rooted at the repo (project mode). */
+  /** Open the worktree manager rooted at the repo (project mode), gated to the allowed refs. */
   private fun openWorktrees(module: PreviewModule): GitWorktrees {
     val repoRoot =
       findProjectRoot() ?: module.projectDir.absoluteFile.parentFile ?: module.projectDir
+    if (revisionAllowRefs.isEmpty()) {
+      System.err.println(
+        "serve: --revisions has no --revisions-allow refs; no revision will build (fail closed). " +
+          "Pass --revisions-allow <ref>[,<ref>…] (e.g. main,release/*) to enable trusted revs."
+      )
+    }
     return GitWorktrees(
       repoRoot = repoRoot,
       cacheRoot = File(repoRoot, "build/serve-worktrees"),
+      allowedRefs = revisionAllowRefs,
       onLog = { System.err.println("[serve worktree] $it") },
     )
   }
@@ -491,6 +508,11 @@ class ServeCommand(args: List<String>) : Command(args) {
         --revisions       Project mode: also serve other git revisions of this repo on demand. A
                           request with ?session=<rev> checks that revision out into a worktree,
                           builds it, and serves it as its own session (suspended/resumed when idle).
+        --revisions-allow <ref>[,<ref>…]
+                          Project mode SECURITY gate: only revisions reachable from these trusted
+                          refs (e.g. main,release) are checked out and built — building runs that
+                          revision's own Gradle (code execution). Omitted/empty = nothing builds
+                          (fail closed), so arbitrary ?session=<rev> can't run code on the server.
         --exit-when-idle[=<seconds>]
                           Ephemeral mode: shut the server down once it's been idle (no open
                           connections and no requests) for <seconds> (default ${DEFAULT_IDLE_EXIT_SECONDS}s). Use a small
