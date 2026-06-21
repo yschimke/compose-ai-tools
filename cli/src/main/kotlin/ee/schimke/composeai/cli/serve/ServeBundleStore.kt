@@ -5,7 +5,10 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
 import java.net.URI
+import java.util.concurrent.TimeUnit
 import java.util.zip.ZipInputStream
+import okhttp3.OkHttpClient
+import okhttp3.Request
 
 /**
  * Runtime ingestion of **client-provided** portable bundles for the shared/public mode: a client
@@ -128,14 +131,21 @@ class ServeBundleStore(
       return trimmed.takeIf { it.matches(Regex("[A-Za-z0-9._@-]{1,128}")) }
     }
 
+    private val httpClient: OkHttpClient by lazy {
+      OkHttpClient.Builder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .build()
+    }
+
     /** Default URL fetcher: http/https only, capped + time-bounded. SSRF is the operator's call. */
     private fun httpFetch(url: String): ByteArray? {
-      val uri = URI(url)
-      if (uri.scheme?.lowercase() !in setOf("http", "https")) return null
-      val conn = uri.toURL().openConnection()
-      conn.connectTimeout = 10_000
-      conn.readTimeout = 30_000
-      return conn.getInputStream().use { readCapped(it, DEFAULT_MAX_BYTES) }
+      if (URI(url).scheme?.lowercase() !in setOf("http", "https")) return null
+      httpClient.newCall(Request.Builder().url(url).build()).execute().use { response ->
+        if (!response.isSuccessful) return null
+        val body = response.body ?: return null
+        return readCapped(body.byteStream(), DEFAULT_MAX_BYTES)
+      }
     }
 
     /**
