@@ -177,6 +177,26 @@ class ServeSessionRegistryTest {
   }
 
   @Test
+  fun `idleMillis is null while leased and grows from the last activity otherwise`() {
+    val clock = AtomicLong(1_000)
+    ServeSessionRegistry(
+        open = Opener(),
+        factory = CountingFactory(),
+        reaperIntervalMillis = 0,
+        clock = clock::get,
+      )
+      .use { reg ->
+        val lease = assertNotNull(reg.lease("a"))
+        clock.set(5_000)
+        assertNull(reg.idleMillis(), "an open lease means the server is busy, not idle")
+
+        lease.close() // records activity at t=5_000
+        clock.set(8_500)
+        assertEquals(3_500L, reg.idleMillis(), "idle counts from the last activity once unleased")
+      }
+  }
+
+  @Test
   fun `close releases every resident host and rejects further acquire`() {
     val reg =
       ServeSessionRegistry(open = Opener(), factory = CountingFactory(), reaperIntervalMillis = 0)

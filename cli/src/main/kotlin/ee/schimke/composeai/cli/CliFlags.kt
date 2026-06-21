@@ -90,7 +90,7 @@ internal object CliFlags {
    * the following token. Listed only so `CliFlagsRegistryTest` can tell them apart from a missing
    * [VALUE_FLAGS] entry — they are intentionally excluded from command-detection skipping.
    */
-  val ATTACHED_OR_OPTIONAL_FLAGS: Set<String> = setOf("--images")
+  val ATTACHED_OR_OPTIONAL_FLAGS: Set<String> = setOf("--images", "--exit-when-idle")
 
   /**
    * The first positional token in [args] — the bare token that isn't the value of a value-consuming

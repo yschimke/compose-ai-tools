@@ -18,6 +18,9 @@ import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.render.session.RenderSessionException
 import java.io.File
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
 
 /**
@@ -51,6 +54,19 @@ class ServeCommand(args: List<String>) : Command(args) {
    * resumed by the registry. Off by default (just the current module).
    */
   private val revisions: Boolean = "--revisions" in args
+
+  /**
+   * Ephemeral mode: shut the whole server down once it's been idle — no open connections and no
+   * requests — for [idleExitSeconds]. `--exit-when-idle` uses the default window;
+   * `--exit-when-idle=<seconds>` sets it (a short value ≈ "exit shortly after the last client
+   * disconnects"). Off by default (runs until Ctrl-C).
+   */
+  private val exitWhenIdle: Boolean = args.any {
+    it == "--exit-when-idle" || it.startsWith("--exit-when-idle=")
+  }
+  private val idleExitSeconds: Long =
+    args.flagValue("--exit-when-idle")?.toLongOrNull()?.takeIf { it > 0 }
+      ?: DEFAULT_IDLE_EXIT_SECONDS
 
   override fun run() {
     if ("--help" in args || "-h" in args) {
@@ -195,7 +211,40 @@ class ServeCommand(args: List<String>) : Command(args) {
 
     server.start()
     printBanner(module.gradlePath, server.port, token, previews.size)
+    val watchdog = if (exitWhenIdle) startIdleWatchdog(registry, done) else null
     done.await()
+    watchdog?.shutdownNow()
+  }
+
+  /**
+   * Poll the registry's server-level idle time; when it crosses [idleExitSeconds] with no open
+   * connections, release [done] so [run] returns and the process exits (the shutdown hook tears the
+   * server + daemons down). Returns the scheduler so the caller can stop it.
+   */
+  private fun startIdleWatchdog(
+    registry: ServeSessionRegistry,
+    done: CountDownLatch,
+  ): ScheduledExecutorService {
+    val timeoutMillis = idleExitSeconds * 1000
+    val interval = (timeoutMillis / 4).coerceIn(1_000, 30_000)
+    val exec = Executors.newSingleThreadScheduledExecutor { r ->
+      Thread(r, "serve-idle-watchdog").apply { isDaemon = true }
+    }
+    exec.scheduleWithFixedDelay(
+      {
+        val idle = registry.idleMillis()
+        if (idle != null && idle >= timeoutMillis) {
+          System.err.println(
+            "serve: idle ${idle / 1000}s (--exit-when-idle=${idleExitSeconds}s) — shutting down."
+          )
+          done.countDown()
+        }
+      },
+      interval,
+      interval,
+      TimeUnit.MILLISECONDS,
+    )
+    return exec
   }
 
   /** Open the worktree manager rooted at the repo (project mode). */
@@ -354,6 +403,10 @@ class ServeCommand(args: List<String>) : Command(args) {
         --revisions       Project mode: also serve other git revisions of this repo on demand. A
                           request with ?session=<rev> checks that revision out into a worktree,
                           builds it, and serves it as its own session (suspended/resumed when idle).
+        --exit-when-idle[=<seconds>]
+                          Ephemeral mode: shut the server down once it's been idle (no open
+                          connections and no requests) for <seconds> (default ${DEFAULT_IDLE_EXIT_SECONDS}s). Use a small
+                          value to exit shortly after the last client disconnects.
 
       The shareable link carries an unguessable token; requests without it get 404.
       """
@@ -363,5 +416,6 @@ class ServeCommand(args: List<String>) : Command(args) {
 
   private companion object {
     const val DEFAULT_PORT = 8723
+    const val DEFAULT_IDLE_EXIT_SECONDS = 60L
   }
 }

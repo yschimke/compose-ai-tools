@@ -62,6 +62,10 @@ class ServeSessionRegistry(
   private val sessions = HashMap<String, Entry>()
   private var closed = false
 
+  // Wall-clock of the most recent acquire/lease/release across all sessions — the basis for the
+  // server-level idle check ([idleMillis]) that the ephemeral exit-when-idle watchdog reads.
+  @Volatile private var lastActivity: Long = clock()
+
   // A daemon reaper suspends idle sessions. Disabled (null) when either knob is non-positive —
   // tests
   // drive suspension directly with a fake clock instead.
@@ -103,6 +107,7 @@ class ServeSessionRegistry(
     check(!closed) { "ServeSessionRegistry is closed" }
     val entry = entryFor(sessionId) ?: return null
     entry.lastAccess = clock()
+    lastActivity = clock()
     liveHost(entry)
   }
 
@@ -115,14 +120,25 @@ class ServeSessionRegistry(
     check(!closed) { "ServeSessionRegistry is closed" }
     val entry = entryFor(sessionId) ?: return null
     entry.lastAccess = clock()
+    lastActivity = clock()
     val host = liveHost(entry) ?: return null
     entry.leases++
     Lease(host) {
       lock.withLock {
         entry.leases--
         entry.lastAccess = clock() // start the idle clock fresh once the holder leaves
+        lastActivity = clock()
       }
     }
+  }
+
+  /**
+   * Milliseconds the *whole server* has been idle, or `null` when it's busy (any session has an
+   * open lease — e.g. a live WebSocket). Idle counts from the last acquire/lease/release; with no
+   * leases and no requests it grows unbounded. Drives the ephemeral "exit when idle" watchdog.
+   */
+  fun idleMillis(now: Long = clock()): Long? = lock.withLock {
+    if (sessions.values.any { it.leases > 0 }) null else now - lastActivity
   }
 
   /** Suspend (close the daemon of, keep the state of) resident sessions idle past the timeout. */
