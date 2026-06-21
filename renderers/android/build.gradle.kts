@@ -19,6 +19,8 @@ android {
 
 dependencies {
   implementation(project(":common-io"))
+  // Google Fonts CSS/TTF fetch in GoogleFontInterceptor (replaces java.net.HttpURLConnection).
+  implementation(libs.okhttp)
   // D2.2 — `AccessibilityChecker`, `AccessibilityOverlay`, and the
   // `AccessibilityFinding` / `AccessibilityNode` / `AccessibilityEntry` model classes used to
   // live in this module. They moved to `:data-a11y-core` (published as

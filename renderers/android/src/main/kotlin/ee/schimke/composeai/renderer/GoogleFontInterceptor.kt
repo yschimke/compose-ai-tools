@@ -5,10 +5,11 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 import androidx.compose.ui.text.font.FontWeight
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
 import java.net.URLDecoder
 import java.net.URLEncoder
+import java.util.concurrent.TimeUnit
+import okhttp3.OkHttpClient
+import okhttp3.Request
 
 /**
  * Cache and CSS-API helpers that underpin [ShadowFontsContractCompat].
@@ -235,25 +236,22 @@ internal fun pickClosestTruetypeUrl(css: String, requestedWeight: Int): String? 
         ?.groupValues?.get(2)
 }
 
-private fun httpGet(url: String, userAgent: String): String? = runCatching {
-    val conn = openConnection(url, userAgent)
-    conn.inputStream.use { it.readBytes().toString(Charsets.UTF_8) }
-}.getOrNull()
+private val fontHttpClient: OkHttpClient by lazy {
+    OkHttpClient.Builder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .build()
+}
+
+private fun httpGet(url: String, userAgent: String): String? =
+    httpGetBytes(url, userAgent)?.toString(Charsets.UTF_8)
 
 private fun httpGetBytes(url: String, userAgent: String): ByteArray? = runCatching {
-    val conn = openConnection(url, userAgent)
-    conn.inputStream.use { it.readBytes() }
+    val request = Request.Builder().url(url).header("User-Agent", userAgent).build()
+    fontHttpClient.newCall(request).execute().use { response ->
+        if (response.isSuccessful) response.body?.bytes() else null
+    }
 }.getOrNull()
-
-private fun openConnection(url: String, userAgent: String): HttpURLConnection {
-    val conn = URL(url).openConnection() as HttpURLConnection
-    conn.requestMethod = "GET"
-    conn.connectTimeout = 10_000
-    conn.readTimeout = 15_000
-    conn.setRequestProperty("User-Agent", userAgent)
-    conn.instanceFollowRedirects = true
-    return conn
-}
 
 /**
  * Parses the `FontRequest.query` wire format that Compose's `GoogleFont.kt`
