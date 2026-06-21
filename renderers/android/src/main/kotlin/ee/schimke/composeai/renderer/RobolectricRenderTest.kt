@@ -1733,9 +1733,7 @@ private fun handleGifCaptureInternal(
 
         if (frameFiles.isEmpty()) return false
 
-        val frames = frameFiles.map {
-            javax.imageio.ImageIO.read(it) ?: error("Failed to read GIF frame PNG: $it")
-        }
+        val frames = frameFiles.map { FramePngReader.decode(it, role = "scroll GIF") }
         val written = ScrollGifEncoder.encode(
             frames = frames,
             outputFile = outputFile,
@@ -1957,9 +1955,7 @@ private fun handleAnimatedCapture(
 
         if (frameFiles.isEmpty()) return false
 
-        val rawFrames = frameFiles.map {
-            javax.imageio.ImageIO.read(it) ?: error("Failed to read animation frame PNG: $it")
-        }
+        val rawFrames = frameFiles.map { FramePngReader.decode(it, role = "animation") }
         // Drop tracks that never visibly changed across the captured
         // window. AnimatedVisibility, AnimatedContent, and a few other
         // composables register internal book-keeping animations
@@ -2076,9 +2072,7 @@ private fun handleFocusGifCapture(
             frameFiles += frameFile
         }
 
-        val frames = frameFiles.map {
-            javax.imageio.ImageIO.read(it) ?: error("Failed to read focus frame PNG: $it")
-        }
+        val frames = frameFiles.map { FramePngReader.decode(it, role = "focus GIF") }
         // Hold the first and last frames a touch longer so the viewer reads the starting
         // and ending focus state before the loop restarts — mirrors @AnimatedPreview.
         val frameDelays = IntArray(frames.size) { i ->
