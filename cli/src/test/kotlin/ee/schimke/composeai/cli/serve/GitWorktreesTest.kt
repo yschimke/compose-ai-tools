@@ -14,13 +14,18 @@ class GitWorktreesTest {
     java.nio.file.Files.createTempDirectory(prefix).toFile().also { it.deleteOnExit() }
 
   /**
-   * Records git invocations and simulates rev-parse + worktree add (creating a `.git` marker).
-   * [ancestorOf] decides `merge-base --is-ancestor <sha> <ref>^{commit}`: it returns the set of refs
-   * the resolved sha is reachable from, so the allowlist gate can be exercised without a real repo.
+   * Records git invocations and simulates the three calls [GitWorktrees] makes:
+   * - `rev-parse <rev>^{commit}` resolves a requested revision to [resolveSha];
+   * - `rev-parse <refs/…>^{commit}` (ref qualification) succeeds only for refs in [existingRefs];
+   * - `merge-base --is-ancestor <sha> <ref>^{commit}` succeeds only for refs in [ancestorRefs].
+   *
+   * Refs are modelled fully-qualified so the qualification gate (short name → `refs/heads`/
+   * `refs/remotes`, never `refs/tags`) can be exercised without a real repo.
    */
   private class FakeGit(
     var resolveSha: String? = "abc123def",
-    val ancestorOf: Set<String> = emptySet(),
+    val existingRefs: Set<String> = setOf("refs/heads/main", "refs/heads/release"),
+    val ancestorRefs: Set<String> = emptySet(),
   ) : GitRunner {
     val calls = CopyOnWriteArrayList<List<String>>()
 
@@ -29,12 +34,17 @@ class GitWorktreesTest {
     override fun run(workdir: File, args: List<String>): GitResult {
       calls.add(args)
       return when {
-        args.take(1) == listOf("rev-parse") ->
-          resolveSha?.let { GitResult(0, "$it\n") } ?: GitResult(1, "")
+        args.take(1) == listOf("rev-parse") -> {
+          val token = args.last().removeSuffix("^{commit}")
+          if (token.startsWith("refs/")) {
+            if (token in existingRefs) GitResult(0, "$token\n") else GitResult(1, "")
+          } else {
+            resolveSha?.let { GitResult(0, "$it\n") } ?: GitResult(1, "")
+          }
+        }
         args.take(2) == listOf("merge-base", "--is-ancestor") -> {
-          // args: [merge-base, --is-ancestor, <sha>, <ref>^{commit}]
           val ref = args[3].removeSuffix("^{commit}")
-          if (ref in ancestorOf) GitResult(0, "") else GitResult(1, "")
+          if (ref in ancestorRefs) GitResult(0, "") else GitResult(1, "")
         }
         args.take(2) == listOf("worktree", "add") -> {
           val dir = File(args[args.size - 2])
@@ -49,7 +59,7 @@ class GitWorktreesTest {
 
   @Test
   fun `prepare resolves the commit and adds a worktree once, reusing it after`() {
-    val git = FakeGit(ancestorOf = setOf("main"))
+    val git = FakeGit(ancestorRefs = setOf("refs/heads/main"))
     val cache = tempDir("wt-cache")
     GitWorktrees(
         repoRoot = tempDir("repo"),
@@ -72,7 +82,7 @@ class GitWorktreesTest {
 
   @Test
   fun `prepare returns null when the revision cannot be resolved`() {
-    val git = FakeGit(resolveSha = null, ancestorOf = setOf("main"))
+    val git = FakeGit(resolveSha = null, ancestorRefs = setOf("refs/heads/main"))
     GitWorktrees(
         repoRoot = tempDir("repo"),
         cacheRoot = tempDir("wt-cache"),
@@ -81,14 +91,18 @@ class GitWorktreesTest {
       )
       .use { wt ->
         assertNull(wt.prepare("does-not-exist"))
-        assertEquals(0, git.count(listOf("worktree", "add")), "no worktree added for a bad revision")
+        assertEquals(
+          0,
+          git.count(listOf("worktree", "add")),
+          "no worktree added for a bad revision",
+        )
       }
   }
 
   @Test
   fun `prepare refuses a revision not reachable from any allowed ref`() {
-    // Resolves fine, but the sha is an ancestor of 'feature', which is not in the allowlist.
-    val git = FakeGit(ancestorOf = setOf("feature"))
+    // Resolves fine, but the sha is reachable only from 'feature', which is not in the allowlist.
+    val git = FakeGit(ancestorRefs = setOf("refs/heads/feature"))
     GitWorktrees(
         repoRoot = tempDir("repo"),
         cacheRoot = tempDir("wt-cache"),
@@ -103,8 +117,8 @@ class GitWorktreesTest {
 
   @Test
   fun `prepare fails closed when no refs are allowed`() {
-    // Even a resolvable sha that is an ancestor of refs is refused when the allowlist is empty.
-    val git = FakeGit(ancestorOf = setOf("main"))
+    // Even a resolvable sha that is reachable from refs is refused when the allowlist is empty.
+    val git = FakeGit(ancestorRefs = setOf("refs/heads/main"))
     GitWorktrees(
         repoRoot = tempDir("repo"),
         cacheRoot = tempDir("wt-cache"),
@@ -119,7 +133,7 @@ class GitWorktreesTest {
 
   @Test
   fun `prepare allows a revision reachable from any one of several allowed refs`() {
-    val git = FakeGit(ancestorOf = setOf("release"))
+    val git = FakeGit(ancestorRefs = setOf("refs/heads/release"))
     GitWorktrees(
         repoRoot = tempDir("repo"),
         cacheRoot = tempDir("wt-cache"),
@@ -130,8 +144,40 @@ class GitWorktreesTest {
   }
 
   @Test
+  fun `prepare does not let a same-named tag satisfy a short branch allowlist`() {
+    // Only a TAG 'main' exists (no refs/heads/main), and the sha is reachable from it. A short
+    // allowlist entry 'main' must qualify to a branch/remote only, so this is refused — closing the
+    // tag-shadowing hole where gitrevisions resolves refs/tags/<name> before the branch.
+    val git =
+      FakeGit(existingRefs = setOf("refs/tags/main"), ancestorRefs = setOf("refs/tags/main"))
+    GitWorktrees(
+        repoRoot = tempDir("repo"),
+        cacheRoot = tempDir("wt-cache"),
+        allowedRefs = listOf("main"),
+        git = git,
+      )
+      .use { wt ->
+        assertNull(wt.prepare("deadbeef"))
+        assertEquals(0, git.count(listOf("worktree", "add")))
+      }
+  }
+
+  @Test
+  fun `prepare honours an explicitly fully-qualified tag ref`() {
+    // An operator can still opt a tag in deliberately by qualifying it as refs/tags/<name>.
+    val git = FakeGit(existingRefs = setOf("refs/tags/v1"), ancestorRefs = setOf("refs/tags/v1"))
+    GitWorktrees(
+        repoRoot = tempDir("repo"),
+        cacheRoot = tempDir("wt-cache"),
+        allowedRefs = listOf("refs/tags/v1"),
+        git = git,
+      )
+      .use { wt -> assertNotNull(wt.prepare("deadbeef")) }
+  }
+
+  @Test
   fun `close removes the worktrees it created`() {
-    val git = FakeGit(ancestorOf = setOf("main"))
+    val git = FakeGit(ancestorRefs = setOf("refs/heads/main"))
     GitWorktrees(
         repoRoot = tempDir("repo"),
         cacheRoot = tempDir("wt-cache"),
