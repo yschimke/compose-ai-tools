@@ -4,6 +4,8 @@ import ee.schimke.composeai.cli.serve.GitWorktrees
 import ee.schimke.composeai.cli.serve.GradleRevisionBuilder
 import ee.schimke.composeai.cli.serve.RenderOutcome
 import ee.schimke.composeai.cli.serve.ServeBundle
+import ee.schimke.composeai.cli.serve.ServeBundleHost
+import ee.schimke.composeai.cli.serve.ServeHost
 import ee.schimke.composeai.cli.serve.ServeHttpServer
 import ee.schimke.composeai.cli.serve.ServeMdnsAdvertiser
 import ee.schimke.composeai.cli.serve.ServeModuleRef
@@ -67,6 +69,13 @@ class ServeCommand(args: List<String>) : Command(args) {
   private val idleExitSeconds: Long =
     args.flagValue("--exit-when-idle")?.toLongOrNull()?.takeIf { it > 0 }
       ?: DEFAULT_IDLE_EXIT_SECONDS
+
+  /**
+   * Shared mode: a directory of pre-rendered portable bundles (or a single bundle) to host
+   * read-only alongside the live session, each reachable at `?session=<bundle-name>`. No checkout
+   * or build — the bundle's `previews/<id>.png` files are served directly.
+   */
+  private val bundlesDir: String? = args.flagValue("--bundles")?.takeIf { it.isNotBlank() }
 
   override fun run() {
     if ("--help" in args || "-h" in args) {
@@ -143,7 +152,7 @@ class ServeCommand(args: List<String>) : Command(args) {
     // is
     // the default session; the registry suspends idle daemons and resumes them on demand from their
     // saved state, so a long-lived server doesn't keep daemons running forever.
-    val openHost: (ServeSessionState) -> ServeRenderHost? = { state ->
+    val openHost: (ServeSessionState) -> ServeHost? = { state ->
       runCatching {
           ServeRenderHost.open(
             descriptorPath = state.descriptor,
@@ -171,6 +180,13 @@ class ServeCommand(args: List<String>) : Command(args) {
         label = module.gradlePath,
       )
     registry.register(module.gradlePath, defaultState, host = renderHost)
+    // Shared mode: register any pre-rendered portable bundles under `--bundles <dir>` as read-only
+    // sessions (no daemon), reachable at ?session=<bundle-name>. Pinned — a bundle host is cheap
+    // and
+    // has nothing to reclaim, so it's never suspended.
+    registerBundles().forEach { (id, bundleHost) ->
+      registry.register(id, host = bundleHost, pinned = true)
+    }
     val server =
       ServeHttpServer(
         host = host,
@@ -284,6 +300,35 @@ class ServeCommand(args: List<String>) : Command(args) {
       module = ServeModuleRef(module.gradlePath, relativePath),
       onLog = { System.err.println("[serve] $it") },
     )
+  }
+
+  /**
+   * Discover portable bundles under `--bundles`. A directory that itself looks like a bundle is
+   * served under its own name; otherwise each immediate sub-directory that looks like a bundle
+   * becomes a session keyed by its name.
+   */
+  private fun registerBundles(): Map<String, ServeBundleHost> {
+    val root = bundlesDir?.let { File(it) }?.takeIf { it.isDirectory } ?: return emptyMap()
+    val result = LinkedHashMap<String, ServeBundleHost>()
+    if (ServeBundleHost.looksLikeBundle(root)) {
+      result[root.name] = ServeBundleHost(root, root.name)
+    } else {
+      root
+        .listFiles { f -> f.isDirectory }
+        ?.sortedBy { it.name }
+        ?.forEach { sub ->
+          if (ServeBundleHost.looksLikeBundle(sub))
+            result[sub.name] = ServeBundleHost(sub, sub.name)
+        }
+    }
+    if (result.isEmpty()) {
+      System.err.println("serve: --bundles ${root.path} held no bundles (previews/*.png).")
+    } else {
+      System.err.println(
+        "serve: serving ${result.size} bundle session(s): ${result.keys.joinToString(", ")}"
+      )
+    }
+    return result
   }
 
   /**
@@ -407,6 +452,9 @@ class ServeCommand(args: List<String>) : Command(args) {
                           Ephemeral mode: shut the server down once it's been idle (no open
                           connections and no requests) for <seconds> (default ${DEFAULT_IDLE_EXIT_SECONDS}s). Use a small
                           value to exit shortly after the last client disconnects.
+        --bundles <dir>   Shared mode: also host pre-rendered portable bundles (no build/daemon). A
+                          bundle dir, or a directory of them, is served read-only — each reachable at
+                          ?session=<bundle-name>. Bundles are what --export / GET /bundle.zip produce.
 
       The shareable link carries an unguessable token; requests without it get 404.
       """

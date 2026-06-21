@@ -265,7 +265,7 @@ class ServeHttpServer(
    * reaper can't suspend the daemon mid-request (e.g. a long `/bundle.zip` that renders every
    * preview). Responds 404 when the session can't be created/opened. The lease is always released.
    */
-  private suspend fun RoutingContext.withLeasedSession(block: suspend (ServeRenderHost) -> Unit) {
+  private suspend fun RoutingContext.withLeasedSession(block: suspend (ServeHost) -> Unit) {
     val sessionId = call.request.queryParameters["session"] ?: defaultSessionId
     val lease = withContext(Dispatchers.IO) { sessions.lease(sessionId) }
     if (lease == null) {
