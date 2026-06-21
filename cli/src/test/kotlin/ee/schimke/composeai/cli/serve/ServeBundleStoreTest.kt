@@ -56,6 +56,19 @@ class ServeBundleStoreTest {
     val zip = zipOf("previews/p.png" to byteArrayOf(1))
     assertTrue(store().add("../etc", zip) is ServeBundleStore.Result.Failed)
     assertTrue(store().add("a/b", zip) is ServeBundleStore.Result.Failed)
+    // Dot-only names match the char class but would delete the upload root / its parent.
+    assertTrue(store().add(".", zip) is ServeBundleStore.Result.Failed)
+    assertTrue(store().add("..", zip) is ServeBundleStore.Result.Failed)
+    assertTrue(store().add("...", zip) is ServeBundleStore.Result.Failed)
+  }
+
+  @Test
+  fun `a bundle larger than the cap is rejected`() {
+    val store =
+      ServeBundleStore(tempRoot(), register = { n, h -> registered[n] = h }, maxBytes = 1_000)
+    val zip = zipOf("previews/p.png" to ByteArray(4_000))
+    assertTrue(store.add("big", zip) is ServeBundleStore.Result.Failed)
+    assertTrue(registered.isEmpty())
   }
 
   @Test

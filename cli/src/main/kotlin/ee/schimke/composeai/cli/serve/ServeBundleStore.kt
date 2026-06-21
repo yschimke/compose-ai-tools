@@ -1,7 +1,9 @@
 package ee.schimke.composeai.cli.serve
 
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.InputStream
 import java.net.URI
 import java.util.zip.ZipInputStream
 
@@ -81,11 +83,10 @@ class ServeBundleStore(
           val target = File(dir, name)
           // Zip-slip guard: the resolved path must stay under the bundle dir.
           if (target.canonicalFile.toPath().startsWith(rootPath)) {
-            val bytes = zin.readBytes()
-            total += bytes.size
-            check(total <= maxBytes) { "bundle exceeds ${maxBytes / (1024 * 1024)}MB" }
             target.parentFile?.mkdirs()
-            target.writeBytes(bytes)
+            // Copy in bounded chunks so a huge / zip-bomb entry can't be fully allocated before the
+            // cap rejects it — abort the moment the running total crosses maxBytes.
+            total += copyCapped(zin, target, remaining = maxBytes - total)
             count++
           }
         }
@@ -96,6 +97,22 @@ class ServeBundleStore(
     return count
   }
 
+  /** Stream [input] into [target], throwing once more than [remaining] bytes have been written. */
+  private fun copyCapped(input: InputStream, target: File, remaining: Long): Long {
+    var written = 0L
+    val buffer = ByteArray(64 * 1024)
+    target.outputStream().use { out ->
+      while (true) {
+        val n = input.read(buffer)
+        if (n < 0) break
+        written += n
+        check(written <= remaining) { "bundle exceeds ${maxBytes / (1024 * 1024)}MB" }
+        out.write(buffer, 0, n)
+      }
+    }
+    return written
+  }
+
   companion object {
     private const val PREVIEWS_SUBDIR = "previews"
     private const val PNG_SUFFIX = ".png"
@@ -104,7 +121,11 @@ class ServeBundleStore(
     /** A session name safe to use as a path segment + URL value; null if it can't be made safe. */
     fun sanitizeName(name: String): String? {
       val trimmed = name.trim()
-      return trimmed.takeIf { it.isNotEmpty() && it.matches(Regex("[A-Za-z0-9._@-]{1,128}")) }
+      // Reject empty and dot-only names ('.', '..', '...') even though they match the char class:
+      // File(root, ".")/File(root, "..") resolve to the upload root or its parent, and add() calls
+      // deleteRecursively() on that path before unpacking — which would wipe the wrong directory.
+      if (trimmed.isEmpty() || trimmed.all { it == '.' }) return null
+      return trimmed.takeIf { it.matches(Regex("[A-Za-z0-9._@-]{1,128}")) }
     }
 
     /** Default URL fetcher: http/https only, capped + time-bounded. SSRF is the operator's call. */
@@ -114,7 +135,24 @@ class ServeBundleStore(
       val conn = uri.toURL().openConnection()
       conn.connectTimeout = 10_000
       conn.readTimeout = 30_000
-      return conn.getInputStream().use { it.readBytes() }
+      return conn.getInputStream().use { readCapped(it, DEFAULT_MAX_BYTES) }
+    }
+
+    /**
+     * Read at most [max] bytes into memory, aborting (not buffering further) once it's exceeded.
+     */
+    private fun readCapped(input: InputStream, max: Long): ByteArray {
+      val out = ByteArrayOutputStream()
+      val buffer = ByteArray(64 * 1024)
+      var total = 0L
+      while (true) {
+        val n = input.read(buffer)
+        if (n < 0) break
+        total += n
+        require(total <= max) { "remote bundle exceeds ${max / (1024 * 1024)}MB" }
+        out.write(buffer, 0, n)
+      }
+      return out.toByteArray()
     }
   }
 }
