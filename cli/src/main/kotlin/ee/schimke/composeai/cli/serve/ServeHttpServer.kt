@@ -8,10 +8,12 @@ import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
+import io.ktor.server.request.receiveStream
 import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.get
+import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import io.ktor.server.websocket.WebSockets
 import io.ktor.server.websocket.webSocket
@@ -19,6 +21,8 @@ import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.net.InetAddress
 import java.net.ServerSocket
 import kotlinx.coroutines.Dispatchers
@@ -51,6 +55,8 @@ class ServeHttpServer(
   private val token: String,
   private val sessions: ServeSessionRegistry,
   private val defaultSessionId: String,
+  /** When non-null, enables `POST /bundles/{name}` for clients to contribute bundles at runtime. */
+  private val bundleStore: ServeBundleStore? = null,
   portRange: Int = DEFAULT_PORT_RANGE,
 ) {
   /** The actual bound port — may differ from the requested one if it was taken (auto-picked). */
@@ -62,6 +68,64 @@ class ServeHttpServer(
       routing {
         // `/healthz` is the only ungated route — liveness only, leaks nothing.
         get("/healthz") { call.respondText("ok") }
+
+        // Shared/public mode ingestion: a client contributes a pre-rendered bundle (upload the zip
+        // as the body, or pass `?url=` to a build-results artifact) and gets back a ?session= link.
+        // Only registered when the operator opts in (a bundle store is supplied).
+        bundleStore?.let { store ->
+          post("/bundles/{name}") {
+            if (rejectBadToken()) return@post
+            val name = call.parameters["name"]
+            if (name.isNullOrBlank()) {
+              call.respondText("missing bundle name", status = HttpStatusCode.BadRequest)
+              return@post
+            }
+            val url = call.request.queryParameters["url"]
+            // Cap the uploaded body as it streams in — receiving it whole into memory first would
+            // let a client OOM the server regardless of the store's later extraction cap.
+            val body =
+              if (url == null) {
+                withContext(Dispatchers.IO) {
+                  call.receiveStream().use { readCapped(it, MAX_UPLOAD_BYTES) }
+                }
+                  ?: run {
+                    call.respondText(
+                      "bundle exceeds ${MAX_UPLOAD_BYTES / (1024 * 1024)}MB",
+                      status = HttpStatusCode.PayloadTooLarge,
+                    )
+                    return@post
+                  }
+              } else {
+                null
+              }
+            val result =
+              withContext(Dispatchers.IO) {
+                // isSecurityChecked = true: this route is token-gated (rejectBadToken above) and
+                // the
+                // store still defends in depth (name sanitisation, zip-slip, size cap; SSRF host
+                // allowlist for the url case). The marker records the entry point was authorised.
+                if (url != null) store.addFromUrl(name, url, isSecurityChecked = true)
+                else store.add(name, body!!, isSecurityChecked = true)
+              }
+            when (result) {
+              is ServeBundleStore.Result.Ok ->
+                call.respondText(
+                  JSON.encodeToString(
+                    BundleAcceptedResponse.serializer(),
+                    BundleAcceptedResponse(
+                      session = result.name,
+                      previews = result.previewCount,
+                      path = "/?session=${result.name}",
+                    ),
+                  ),
+                  ContentType.Application.Json,
+                  HttpStatusCode.Created,
+                )
+              is ServeBundleStore.Result.Failed ->
+                call.respondText(result.reason, status = HttpStatusCode.BadRequest)
+            }
+          }
+        }
 
         // A persistent frame lane. The browser opens this, receives frames as JSON
         // ([ServeStreamProtocol]), and sends override / switch / input messages back. Token is
@@ -294,7 +358,27 @@ class ServeHttpServer(
     const val TOKEN_HEADER: String = "X-Compose-Preview-Token"
     private const val DEFAULT_PORT_RANGE = 32
 
+    /** Max accepted upload-body size for `POST /bundles` (matches the store's extraction cap). */
+    private const val MAX_UPLOAD_BYTES = 100L * 1024 * 1024
+
     private val JSON = Json { encodeDefaults = true }
+
+    /**
+     * Read [input] fully, or `null` once it exceeds [max] bytes (without buffering past the cap).
+     */
+    private fun readCapped(input: InputStream, max: Long): ByteArray? {
+      val out = ByteArrayOutputStream()
+      val buffer = ByteArray(64 * 1024)
+      var total = 0L
+      while (true) {
+        val n = input.read(buffer)
+        if (n < 0) break
+        total += n
+        if (total > max) return null
+        out.write(buffer, 0, n)
+      }
+      return out.toByteArray()
+    }
 
     /**
      * Pick a bindable port: try [requested], then increment up to [range] times when it's taken.
@@ -329,3 +413,12 @@ private data class PreviewsResponse(
 
 @Serializable
 private data class PreviewDto(val id: String, val label: String, val modes: List<String>)
+
+@Serializable
+private data class BundleAcceptedResponse(
+  val schema: String = "compose-preview-serve/bundle/v1",
+  val session: String,
+  val previews: Int,
+  /** Relative viewer link for the new session (append your token). */
+  val path: String,
+)
