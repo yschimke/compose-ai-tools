@@ -2,6 +2,8 @@ package ee.schimke.composeai.fakeemulator.app
 
 import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamFrameParams
+import ee.schimke.composeai.fakeemulator.DeviceSettings
+import ee.schimke.composeai.fakeemulator.DeviceSettingsController
 import ee.schimke.composeai.fakeemulator.DisplaySize
 import ee.schimke.composeai.fakeemulator.EmulatorFrame
 import ee.schimke.composeai.fakeemulator.FrameSource
@@ -20,40 +22,83 @@ import kotlinx.serialization.json.JsonObject
  * both the [FrameSource] the ADB `screencap` + gRPC screenshot lanes read and the [PreviewLauncher]
  * the `am start … PreviewActivity` intent drives:
  *
- * 1. `launch(request)` maps the composable FQN to a preview id and calls
- *    [RenderSession.streamStart].
- * 2. The daemon then pushes `streamFrame` notifications; we decode each into an [EmulatorFrame] and
+ * 1. `launch(request)` maps the composable FQN to a preview id and opens a held stream.
+ * 2. The daemon pushes `streamFrame` notifications; we decode each into an [EmulatorFrame] and
  *    publish it — so the launched preview's pixels become the emulator screen.
+ * 3. When Android Studio flips a device toggle (dark theme, font size, density, rotation, …) it
+ *    arrives as a [DeviceSettings] change; we re-open the held stream with the mapped
+ *    [PreviewOverrides][ee.schimke.composeai.daemon.protocol.PreviewOverrides] so the preview
+ *    re-renders under that override. (`stream/start` fixes overrides for the held session, so an
+ *    override change is a restart — same pattern as the `serve` live lane.)
  *
  * This is the "wire to serve/daemon" path: no new streaming machinery, just the existing
- * held-stream frame feed re-published as a device display.
+ * held-stream frame feed re-published as a device display, re-parameterised by Studio's settings.
  */
 class RenderSessionFrameSource(
   private val session: RenderSession,
   override val display: DisplaySize,
+  private val settings: DeviceSettingsController,
   private val json: Json = Json { ignoreUnknownKeys = true },
 ) : FrameSource, PreviewLauncher, AutoCloseable {
   private val delegate = MutableFrameSource(display)
   private val seq = AtomicLong(0)
-  @Volatile private var currentStreamId: String? = null
+  private val lock = Any()
+  private var currentPreviewId: String? = null
+  private var currentStreamId: String? = null
+  private var a11ySubscribed = false
 
-  private val subscription = session.onNotification { method, params ->
+  private val frameSubscription = session.onNotification { method, params ->
     if (method == "streamFrame" && params != null) onStreamFrame(params)
   }
+
+  // Re-render the held preview whenever Studio changes a device setting.
+  private val settingsSubscription = settings.addListener { onSettingsChanged(it) }
 
   override fun latest(): EmulatorFrame? = delegate.latest()
 
   override fun subscribe(sink: (EmulatorFrame) -> Unit): AutoCloseable = delegate.subscribe(sink)
 
   override fun launch(request: PreviewLaunchRequest): PreviewLaunchResult {
-    val previewId = previewIdFor(request)
+    val previewId = request.composableFqn
     return try {
-      currentStreamId?.let { runCatching { session.streamStop(it) } }
-      val result = session.streamStart(previewId, codec = StreamCodec.PNG)
-      currentStreamId = result.frameStreamId
+      synchronized(lock) {
+        currentPreviewId = previewId
+        restartStream(previewId)
+      }
+      applyA11y(settings.current, previewId)
       PreviewLaunchResult.Launched
     } catch (e: Exception) {
       PreviewLaunchResult.Rejected(e.message ?: "stream start failed for $previewId")
+    }
+  }
+
+  private fun onSettingsChanged(snapshot: DeviceSettings) {
+    val previewId = synchronized(lock) { currentPreviewId } ?: return
+    synchronized(lock) { runCatching { restartStream(previewId) } }
+    applyA11y(snapshot, previewId)
+  }
+
+  /**
+   * Caller holds [lock]. Stops any current held stream and opens a new one with current overrides.
+   */
+  private fun restartStream(previewId: String) {
+    currentStreamId?.let { runCatching { session.streamStop(it) } }
+    val overrides = settings.current.toPreviewOverrides().takeUnless { it.isEmpty() }
+    currentStreamId =
+      session.streamStart(previewId, codec = StreamCodec.PNG, overrides = overrides).frameStreamId
+  }
+
+  /**
+   * TalkBack has no direct render override; instead we subscribe the a11y data product so the
+   * daemon computes accessibility findings for the shown preview while a screen reader is "on" (and
+   * drop it when off). Best-effort — guarded so an older daemon without the kind degrades silently.
+   */
+  private fun applyA11y(snapshot: DeviceSettings, previewId: String) {
+    if (snapshot.talkBack == a11ySubscribed) return
+    a11ySubscribed = snapshot.talkBack
+    runCatching {
+      if (snapshot.talkBack) session.subscribeData(previewId, A11Y_KIND)
+      else session.unsubscribeData(previewId, A11Y_KIND)
     }
   }
 
@@ -61,23 +106,19 @@ class RenderSessionFrameSource(
     val frame =
       runCatching { json.decodeFromJsonElement(StreamFrameParams.serializer(), params) }.getOrNull()
         ?: return
-    if (frame.frameStreamId != currentStreamId) return
+    if (frame.frameStreamId != synchronized(lock) { currentStreamId }) return
     val payload = frame.payloadBase64 ?: return // unchanged-heartbeat: nothing to paint
     val bytes = runCatching { Base64.getDecoder().decode(payload) }.getOrNull() ?: return
     delegate.push(EmulatorFrame(frame.widthPx, frame.heightPx, bytes, seq.incrementAndGet()))
   }
 
   override fun close() {
-    subscription.close()
-    currentStreamId?.let { runCatching { session.streamStop(it) } }
+    frameSubscription.close()
+    settingsSubscription.close()
+    synchronized(lock) { currentStreamId?.let { runCatching { session.streamStop(it) } } }
   }
 
   private companion object {
-    /**
-     * The preview id is, by convention in this repo, the `className.functionName` FQN — which is
-     * exactly what the `composable` intent extra carries. Use it directly; a richer mapping
-     * (manifest lookup, parameter-provider suffixes) is future work.
-     */
-    fun previewIdFor(request: PreviewLaunchRequest): String = request.composableFqn
+    const val A11Y_KIND = "a11y/atf"
   }
 }

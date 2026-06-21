@@ -207,6 +207,9 @@ dadb = { module = "dev.mobile:dadb", version.ref = "dadb" }
 # grpc-netty-shaded is the server transport.
 grpc-stub = { module = "io.grpc:grpc-stub", version.ref = "grpc" }
 grpc-netty-shaded = { module = "io.grpc:grpc-netty-shaded", version.ref = "grpc" }
+# In-process transport — used only by `:fake-emulator-grpc` tests to exercise the EmulatorController
+# binding end-to-end (server + client) without a socket.
+grpc-inprocess = { module = "io.grpc:grpc-inprocess", version.ref = "grpc" }
 wire-runtime = { module = "com.squareup.wire:wire-runtime", version.ref = "wire" }
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }

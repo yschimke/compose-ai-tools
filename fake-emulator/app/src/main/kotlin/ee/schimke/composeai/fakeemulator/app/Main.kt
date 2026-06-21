@@ -1,5 +1,6 @@
 package ee.schimke.composeai.fakeemulator.app
 
+import ee.schimke.composeai.fakeemulator.DeviceSettingsController
 import ee.schimke.composeai.fakeemulator.DisplaySize
 import ee.schimke.composeai.fakeemulator.FakeEmulator
 import ee.schimke.composeai.fakeemulator.FakeEmulatorConfig
@@ -31,6 +32,10 @@ fun main(args: Array<String>) {
   val options = Options.parse(args)
   val display = DisplaySize(options.width, options.height, options.dpi)
 
+  // One shared settings model: the ADB shell + the gRPC controller mutate it; the render bridge
+  // observes it and re-renders the preview under Studio's toggles.
+  val settings = DeviceSettingsController()
+
   val frameSource: FrameSource
   val launcher: PreviewLauncher
   val extraClose: AutoCloseable
@@ -38,7 +43,7 @@ fun main(args: Array<String>) {
   if (options.descriptor != null) {
     val session =
       SubprocessRenderSessions.open(RenderSessionConfig(descriptorPath = File(options.descriptor)))
-    val bridge = RenderSessionFrameSource(session, display)
+    val bridge = RenderSessionFrameSource(session, display, settings)
     frameSource = bridge
     launcher = bridge
     extraClose = AutoCloseable {
@@ -53,9 +58,8 @@ fun main(args: Array<String>) {
     extraClose = AutoCloseable {}
   }
 
-  val grpc =
-    FakeEmulatorGrpcServer(options.grpcPort, EmulatorControllerService(frameSource).bindService())
-      .start()
+  val controllerService = EmulatorControllerService(frameSource, settings)
+  val grpc = FakeEmulatorGrpcServer(options.grpcPort, controllerService.bindService()).start()
 
   val emulator =
     FakeEmulator(
@@ -70,6 +74,7 @@ fun main(args: Array<String>) {
         ),
         frameSource = frameSource,
         previewLauncher = launcher,
+        settings = settings,
       )
       .start()
 
@@ -84,6 +89,7 @@ fun main(args: Array<String>) {
       Thread {
         runCatching { emulator.close() }
         runCatching { grpc.close() }
+        runCatching { controllerService.close() }
         runCatching { extraClose.close() }
       }
     )

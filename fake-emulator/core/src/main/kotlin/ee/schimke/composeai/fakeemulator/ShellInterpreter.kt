@@ -4,17 +4,24 @@ import java.nio.charset.StandardCharsets
 
 /**
  * The fake emulator's tiny shell. A real device runs thousands of commands; we answer only the few
- * that matter for **device detection** (`getprop`, `wm size`, `echo`, `id`) and **preview launch**
- * (`am start … PreviewActivity`), plus `screencap` for screenshots. Everything else returns empty
- * output with exit 0 so detection scripts don't choke.
+ * that matter for **device detection** (`getprop`, `wm size`, `echo`, `id`), **preview launch**
+ * (`am start … PreviewActivity`), `screencap` for screenshots, and the **device-settings** commands
+ * Android Studio issues to drive its emulator UI toggles (`cmd uimode night`, `settings put system
+ * font_scale`, `wm density|size`, TalkBack via `settings put secure …accessibility…`, color
+ * correction, locale, layout bounds) — each translated into a [DeviceSettings] change so the app
+ * can re-render the preview under that override. Everything else returns empty output with exit 0.
  */
 class ShellInterpreter(
   private val properties: Map<String, String>,
   private val frameSource: FrameSource,
   private val previewLauncher: PreviewLauncher,
+  private val settings: DeviceSettingsController = DeviceSettingsController(),
 ) {
   /** stdout/stderr are raw bytes because `screencap -p` returns binary PNG. */
   class Result(val stdout: ByteArray, val stderr: ByteArray = ByteArray(0), val exitCode: Int = 0)
+
+  /** Backing store for `settings get/put/delete`, keyed `<namespace>.<key>`. */
+  private val settingsStore = java.util.concurrent.ConcurrentHashMap<String, String>()
 
   fun execute(commandLine: String): Result {
     val tokens = tokenize(commandLine)
@@ -24,6 +31,9 @@ class ShellInterpreter(
       "am" -> am(tokens.drop(1))
       "screencap" -> screencap(tokens.drop(1))
       "wm" -> wm(tokens.drop(1))
+      "cmd" -> cmd(tokens.drop(1))
+      "settings" -> settingsCmd(tokens.drop(1))
+      "setprop" -> setprop(tokens.drop(1))
       "echo" -> ok(tokens.drop(1).joinToString(" ") + "\n")
       "id" -> ok("uid=0(root) gid=0(root) groups=0(root) context=u:r:su:s0\n")
       "true" -> ok("")
@@ -80,14 +90,162 @@ class ShellInterpreter(
   }
 
   private fun wm(args: List<String>): Result {
-    if (args.firstOrNull() == "size") {
-      return ok("Physical size: ${frameSource.display.width}x${frameSource.display.height}\n")
+    when (args.firstOrNull()) {
+      "size" -> {
+        val arg = args.getOrNull(1)
+        return when {
+          arg == null -> {
+            val w = settings.current.widthPx ?: frameSource.display.width
+            val h = settings.current.heightPx ?: frameSource.display.height
+            ok("Physical size: ${w}x${h}\n")
+          }
+          arg == "reset" -> {
+            settings.update { it.copy(widthPx = null, heightPx = null) }
+            ok("")
+          }
+          else -> {
+            val wh = parseSize(arg)
+            if (wh != null) settings.update { it.copy(widthPx = wh.first, heightPx = wh.second) }
+            ok("")
+          }
+        }
+      }
+      "density" -> {
+        val arg = args.getOrNull(1)
+        return when {
+          arg == null ->
+            ok(
+              "Physical density: ${settings.current.densityDpi ?: frameSource.display.densityDpi}\n"
+            )
+          arg == "reset" -> {
+            settings.update { it.copy(densityDpi = null) }
+            ok("")
+          }
+          else -> {
+            arg.toIntOrNull()?.let { dpi -> settings.update { s -> s.copy(densityDpi = dpi) } }
+            ok("")
+          }
+        }
+      }
+      else -> return ok("")
     }
-    if (args.firstOrNull() == "density") {
-      return ok("Physical density: ${frameSource.display.densityDpi}\n")
+  }
+
+  /** `cmd uimode night yes|no|auto`, `cmd locale set-app-locales … --locales <tag>`. */
+  private fun cmd(args: List<String>): Result {
+    when (args.firstOrNull()) {
+      "uimode" ->
+        if (args.getOrNull(1) == "night") {
+          val mode =
+            when (args.getOrNull(2)) {
+              "yes" -> UiMode.DARK
+              "no" -> UiMode.LIGHT
+              else -> UiMode.UNSET // "auto"/"custom"
+            }
+          settings.update { it.copy(uiMode = mode) }
+          return ok("Night mode: ${args.getOrNull(2) ?: "auto"}\n")
+        }
+      "locale" ->
+        if (args.getOrNull(1) == "set-app-locales") {
+          val idx = args.indexOf("--locales")
+          val tag = args.getOrNull(idx + 1)?.takeIf { idx >= 0 }?.substringBefore(',')
+          if (!tag.isNullOrBlank()) settings.update { it.copy(localeTag = tag) }
+          return ok("")
+        }
     }
     return ok("")
   }
+
+  /** `settings put|get|delete <namespace> <key> [value]`. */
+  private fun settingsCmd(args: List<String>): Result {
+    val verb = args.getOrNull(0)
+    val namespace = args.getOrNull(1)
+    val key = args.getOrNull(2)
+    return when (verb) {
+      "put" -> {
+        val value = args.getOrNull(3) ?: return ok("")
+        if (namespace != null && key != null) {
+          settingsStore["$namespace.$key"] = value
+          applySetting(namespace, key, value)
+        }
+        ok("")
+      }
+      "delete" -> {
+        if (namespace != null && key != null) {
+          settingsStore.remove("$namespace.$key")
+          applySetting(namespace, key, null)
+        }
+        ok("")
+      }
+      "get" -> ok((settingsStore["$namespace.$key"] ?: "null") + "\n")
+      else -> ok("")
+    }
+  }
+
+  private fun setprop(args: List<String>): Result {
+    val key = args.getOrNull(0)
+    val value = args.getOrNull(1) ?: ""
+    if (key == "debug.layout") settings.update { it.copy(showLayoutBounds = truthy(value)) }
+    return ok("")
+  }
+
+  /** Map one changed `settings` key onto the [DeviceSettings] field it drives. */
+  private fun applySetting(namespace: String, key: String, value: String?) {
+    when (namespace to key) {
+      "system" to "font_scale" -> settings.update { it.copy(fontScale = value?.toFloatOrNull()) }
+      "system" to "user_rotation" ->
+        settings.update {
+          it.copy(rotation = RotationQuadrant.fromUserRotation(value?.toIntOrNull() ?: 0))
+        }
+      "system" to "system_locales" ->
+        settings.update { it.copy(localeTag = value?.substringBefore(',')?.ifBlank { null }) }
+      // Accessibility (TalkBack) + color correction are computed from several secure keys.
+      "secure" to "accessibility_enabled",
+      "secure" to "enabled_accessibility_services",
+      "secure" to "accessibility_display_inversion_enabled",
+      "secure" to "accessibility_display_daltonizer_enabled",
+      "secure" to "accessibility_display_daltonizer" ->
+        settings.update { it.copy(talkBack = computeTalkBack(), colorMode = computeColorMode()) }
+    }
+  }
+
+  private fun computeTalkBack(): Boolean {
+    val enabled = settingsStore["secure.accessibility_enabled"] == "1"
+    val services = settingsStore["secure.enabled_accessibility_services"].orEmpty()
+    val hasReader =
+      services.isNotBlank() &&
+        services != "null" &&
+        services.contains("talkback", ignoreCase = true)
+    return enabled && hasReader
+  }
+
+  private fun computeColorMode(): ColorMode {
+    if (settingsStore["secure.accessibility_display_inversion_enabled"] == "1")
+      return ColorMode.INVERTED
+    if (settingsStore["secure.accessibility_display_daltonizer_enabled"] != "1")
+      return ColorMode.NONE
+    return when (settingsStore["secure.accessibility_display_daltonizer"]) {
+      "0" -> ColorMode.PROTANOMALY
+      "1" -> ColorMode.DEUTERANOMALY
+      "2" -> ColorMode.TRITANOMALY
+      "12",
+      "11" -> ColorMode.GRAYSCALE
+      else -> ColorMode.DEUTERANOMALY
+    }
+  }
+
+  private fun parseSize(value: String): Pair<Int, Int>? {
+    val parts = value.split('x', 'X')
+    if (parts.size != 2) return null
+    val w = parts[0].trim().toIntOrNull() ?: return null
+    val h = parts[1].trim().toIntOrNull() ?: return null
+    return w to h
+  }
+
+  private fun truthy(value: String): Boolean =
+    value.equals("true", ignoreCase = true) ||
+      value == "1" ||
+      value.equals("yes", ignoreCase = true)
 
   private fun ok(text: String) = Result(text.toByteArray(StandardCharsets.UTF_8))
 

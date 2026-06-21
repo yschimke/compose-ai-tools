@@ -34,6 +34,12 @@ class FakeEmulator(
   private val config: FakeEmulatorConfig,
   val frameSource: FrameSource,
   private val previewLauncher: PreviewLauncher = PreviewLauncher.NOOP,
+  /**
+   * Render-relevant device settings the ADB shell mutates (and the gRPC controller shares). The app
+   * observes this to re-render the preview under Studio's UI toggles. Defaults to a fresh
+   * controller.
+   */
+  val settings: DeviceSettingsController = DeviceSettingsController(),
   private val discovery: DiscoveryRegistration = DiscoveryRegistration(),
 ) : AutoCloseable {
   private var console: EmulatorConsole? = null
@@ -62,7 +68,7 @@ class FakeEmulator(
       LinkedHashMap(DeviceProperties.defaults(serial, config.display)).apply {
         putAll(config.propertyOverrides)
       }
-    val interpreter = ShellInterpreter(properties, frameSource, previewLauncher)
+    val interpreter = ShellInterpreter(properties, frameSource, previewLauncher, settings)
     val resolver = EmulatorAdbServices(interpreter)
     val banner = AdbBanner.build(properties)
     adbServer = AdbTransportServer(config.adbPort, banner, resolver).also { it.start() }
