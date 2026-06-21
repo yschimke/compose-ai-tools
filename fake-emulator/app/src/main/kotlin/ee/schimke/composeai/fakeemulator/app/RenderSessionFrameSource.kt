@@ -31,8 +31,14 @@ import kotlinx.serialization.json.JsonObject
  *    re-renders under that override. (`stream/start` fixes overrides for the held session, so an
  *    override change is a restart — same pattern as the `serve` live lane.)
  *
- * This is the "wire to serve/daemon" path: no new streaming machinery, just the existing
- * held-stream frame feed re-published as a device display, re-parameterised by Studio's settings.
+ * ## Threading
+ *
+ * The daemon reader thread delivers both `streamFrame` notifications **and** the responses to
+ * synchronous RPCs (`streamStart` / `streamStop` / `subscribeData` / …). So [onStreamFrame] (which
+ * runs on that reader thread) must never block on the lock we hold while issuing those RPCs — doing
+ * so would stall the reader and the RPC would sit until its timeout. We therefore keep
+ * [currentStreamId] `@Volatile` and read it lock-free in [onStreamFrame], and serialise the launch
+ * / settings-driven restarts under a separate [opLock] the reader never touches.
  */
 class RenderSessionFrameSource(
   private val session: RenderSession,
@@ -42,10 +48,18 @@ class RenderSessionFrameSource(
 ) : FrameSource, PreviewLauncher, AutoCloseable {
   private val delegate = MutableFrameSource(display)
   private val seq = AtomicLong(0)
-  private val lock = Any()
+
+  /**
+   * Serialises launch / settings-driven restarts + a11y subscription changes. Deliberately NOT
+   * acquired by [onStreamFrame], so holding it across the synchronous stream / data RPCs can't
+   * deadlock the daemon reader thread that delivers those RPCs' responses.
+   */
+  private val opLock = Any()
+
+  /** Read lock-free by [onStreamFrame] on the daemon reader thread; written under [opLock]. */
+  @Volatile private var currentStreamId: String? = null
   private var currentPreviewId: String? = null
-  private var currentStreamId: String? = null
-  private var a11ySubscribed = false
+  private var a11yPreviewId: String? = null
 
   private val frameSubscription = session.onNotification { method, params ->
     if (method == "streamFrame" && params != null) onStreamFrame(params)
@@ -61,11 +75,11 @@ class RenderSessionFrameSource(
   override fun launch(request: PreviewLaunchRequest): PreviewLaunchResult {
     val previewId = request.composableFqn
     return try {
-      synchronized(lock) {
+      synchronized(opLock) {
         currentPreviewId = previewId
         restartStream(previewId)
+        applyA11y(settings.current, previewId)
       }
-      applyA11y(settings.current, previewId)
       PreviewLaunchResult.Launched
     } catch (e: Exception) {
       PreviewLaunchResult.Rejected(e.message ?: "stream start failed for $previewId")
@@ -73,13 +87,16 @@ class RenderSessionFrameSource(
   }
 
   private fun onSettingsChanged(snapshot: DeviceSettings) {
-    val previewId = synchronized(lock) { currentPreviewId } ?: return
-    synchronized(lock) { runCatching { restartStream(previewId) } }
-    applyA11y(snapshot, previewId)
+    synchronized(opLock) {
+      val previewId = currentPreviewId ?: return
+      runCatching { restartStream(previewId) }
+      applyA11y(snapshot, previewId)
+    }
   }
 
   /**
-   * Caller holds [lock]. Stops any current held stream and opens a new one with current overrides.
+   * Caller holds [opLock]. Stops any current held stream and opens a new one with current
+   * overrides. The RPCs run under [opLock] — safe because the reader thread never contends on it.
    */
   private fun restartStream(previewId: String) {
     currentStreamId?.let { runCatching { session.streamStop(it) } }
@@ -89,24 +106,27 @@ class RenderSessionFrameSource(
   }
 
   /**
-   * TalkBack has no direct render override; instead we subscribe the a11y data product so the
-   * daemon computes accessibility findings for the shown preview while a screen reader is "on" (and
-   * drop it when off). Best-effort — guarded so an older daemon without the kind degrades silently.
+   * Caller holds [opLock]. TalkBack has no direct render override; instead we subscribe the a11y
+   * data product so the daemon computes accessibility findings for the shown preview while a screen
+   * reader is "on" (and drop it when off). Daemon subscriptions are keyed by `(previewId, kind)`,
+   * so we track *which* preview is subscribed — launching a different preview while TalkBack stays
+   * on moves the subscription to the new preview (dropping the old one). Best-effort — guarded so
+   * an older daemon without the kind degrades silently.
    */
   private fun applyA11y(snapshot: DeviceSettings, previewId: String) {
-    if (snapshot.talkBack == a11ySubscribed) return
-    a11ySubscribed = snapshot.talkBack
-    runCatching {
-      if (snapshot.talkBack) session.subscribeData(previewId, A11Y_KIND)
-      else session.unsubscribeData(previewId, A11Y_KIND)
-    }
+    val desired = if (snapshot.talkBack) previewId else null
+    if (desired == a11yPreviewId) return
+    a11yPreviewId?.let { runCatching { session.unsubscribeData(it, A11Y_KIND) } }
+    desired?.let { runCatching { session.subscribeData(it, A11Y_KIND) } }
+    a11yPreviewId = desired
   }
 
   private fun onStreamFrame(params: JsonObject) {
     val frame =
       runCatching { json.decodeFromJsonElement(StreamFrameParams.serializer(), params) }.getOrNull()
         ?: return
-    if (frame.frameStreamId != synchronized(lock) { currentStreamId }) return
+    if (frame.frameStreamId != currentStreamId)
+      return // volatile read — no lock on the reader thread
     val payload = frame.payloadBase64 ?: return // unchanged-heartbeat: nothing to paint
     val bytes = runCatching { Base64.getDecoder().decode(payload) }.getOrNull() ?: return
     delegate.push(EmulatorFrame(frame.widthPx, frame.heightPx, bytes, seq.incrementAndGet()))
@@ -115,7 +135,11 @@ class RenderSessionFrameSource(
   override fun close() {
     frameSubscription.close()
     settingsSubscription.close()
-    synchronized(lock) { currentStreamId?.let { runCatching { session.streamStop(it) } } }
+    synchronized(opLock) {
+      currentStreamId?.let { runCatching { session.streamStop(it) } }
+      a11yPreviewId?.let { runCatching { session.unsubscribeData(it, A11Y_KIND) } }
+      a11yPreviewId = null
+    }
   }
 
   private companion object {
