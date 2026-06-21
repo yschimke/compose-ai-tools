@@ -18,7 +18,7 @@ import java.util.concurrent.atomic.AtomicLong
  * also arrive *unprompted* as the composition changes) without changing [send]'s wire shape.
  */
 class ServeStreamSession(
-  private val renderHost: ServeRenderHost,
+  private val renderHost: ServeHost,
   previewId: String,
   initialOverrides: Map<String, String> = emptyMap(),
   private val send: (String) -> Unit,

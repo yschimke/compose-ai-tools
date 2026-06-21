@@ -159,7 +159,8 @@ class ServeSessionRegistryTest {
       )
       .use { reg ->
         val host = assertNotNull(reg.acquire("a"))
-        val handle = assertNotNull(host.subscribeStream(previewId, PreviewOverrides()) {})
+        val handle =
+          assertNotNull(host.subscribeStream(previewId, PreviewOverrides(), null, null) {})
         clock.set(10_000)
         assertEquals(0, reg.suspendIdle(), "a host with a live watcher must stay resident")
         handle.close()

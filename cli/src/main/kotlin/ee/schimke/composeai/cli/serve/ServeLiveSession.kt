@@ -17,7 +17,7 @@ import ee.schimke.composeai.daemon.protocol.StreamFrameParams
  */
 class ServeLiveSession
 private constructor(
-  private val renderHost: ServeRenderHost,
+  private val renderHost: ServeHost,
   private var previewId: String,
   private var overrides: Map<String, String>,
   private val codec: StreamCodec?,
@@ -133,7 +133,7 @@ private constructor(
      * preview's defaults (the bad value would otherwise block the whole live session at connect).
      */
     fun tryStart(
-      renderHost: ServeRenderHost,
+      renderHost: ServeHost,
       previewId: String,
       overrides: Map<String, String>,
       codec: StreamCodec? = null,

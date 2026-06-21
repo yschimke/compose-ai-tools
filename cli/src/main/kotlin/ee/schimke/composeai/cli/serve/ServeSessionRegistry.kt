@@ -32,7 +32,7 @@ fun interface ServeSessionFactory {
  * streams. Concurrency-safe: at most one build per id under racing callers.
  */
 class ServeSessionRegistry(
-  private val open: (ServeSessionState) -> ServeRenderHost?,
+  private val open: (ServeSessionState) -> ServeHost?,
   private val factory: ServeSessionFactory = ServeSessionFactory { null },
   private val idleTimeoutMillis: Long = DEFAULT_IDLE_TIMEOUT_MILLIS,
   reaperIntervalMillis: Long = idleTimeoutMillis,
@@ -40,16 +40,19 @@ class ServeSessionRegistry(
 ) : AutoCloseable {
 
   private class Entry(
-    val state: ServeSessionState,
-    /** The live daemon host, or null while suspended. */
-    @Volatile var host: ServeRenderHost?,
+    /** How to (re)open the host on resume; null for pinned sessions that are never suspended. */
+    val state: ServeSessionState?,
+    /** The live host, or null while suspended. */
+    @Volatile var host: ServeHost?,
+    /** Pinned sessions (e.g. static bundle hosts — no daemon to reclaim) are never suspended. */
+    val pinned: Boolean,
     @Volatile var lastAccess: Long,
     /** Open long-lived holders (e.g. WebSocket connections) keeping this session resident. */
     @Volatile var leases: Int = 0,
   )
 
   /** A live hold on a session that keeps it from being suspended until [close] (idempotent). */
-  class Lease internal constructor(val host: ServeRenderHost, private val onRelease: () -> Unit) :
+  class Lease internal constructor(val host: ServeHost, private val onRelease: () -> Unit) :
     AutoCloseable {
     private val released = AtomicBoolean(false)
 
@@ -91,10 +94,15 @@ class ServeSessionRegistry(
    * already-open [host]. Replaces any prior entry. The session participates in suspend/resume like
    * a forked one — its daemon is released when idle and reopened from [state] on demand.
    */
-  fun register(sessionId: String, state: ServeSessionState, host: ServeRenderHost? = null) {
+  fun register(
+    sessionId: String,
+    state: ServeSessionState? = null,
+    host: ServeHost? = null,
+    pinned: Boolean = false,
+  ) {
     lock.withLock {
       check(!closed) { "ServeSessionRegistry is closed" }
-      sessions[sessionId] = Entry(state, host, lastAccess = clock())
+      sessions[sessionId] = Entry(state, host, pinned, lastAccess = clock())
     }
   }
 
@@ -103,7 +111,7 @@ class ServeSessionRegistry(
    * [factory]. Returns `null` when the session can't be created/opened, so the caller can 404.
    * Touches the idle clock.
    */
-  fun acquire(sessionId: String): ServeRenderHost? = lock.withLock {
+  fun acquire(sessionId: String): ServeHost? = lock.withLock {
     check(!closed) { "ServeSessionRegistry is closed" }
     val entry = entryFor(sessionId) ?: return null
     entry.lastAccess = clock()
@@ -149,7 +157,8 @@ class ServeSessionRegistry(
     for (entry in sessions.values) {
       val host = entry.host ?: continue
       if (
-        entry.leases == 0 &&
+        !entry.pinned &&
+          entry.leases == 0 &&
           host.activeStreamCount() == 0 &&
           now - entry.lastAccess >= idleTimeoutMillis
       ) {
@@ -186,15 +195,18 @@ class ServeSessionRegistry(
     // is
     // slow, but a shared dev/CI server has few tenants and correctness beats build concurrency.
     val state = factory.create(sessionId) ?: return null
-    return Entry(state, host = null, lastAccess = clock()).also { sessions[sessionId] = it }
+    return Entry(state, host = null, pinned = false, lastAccess = clock()).also {
+      sessions[sessionId] = it
+    }
   }
 
   /** The entry's live host, resuming (re-opening) from its state if it was suspended. */
-  private fun liveHost(entry: Entry): ServeRenderHost? {
+  private fun liveHost(entry: Entry): ServeHost? {
     entry.host?.let {
       return it
     }
-    val resumed = open(entry.state) ?: return null
+    val state = entry.state ?: return null
+    val resumed = open(state) ?: return null
     entry.host = resumed
     return resumed
   }

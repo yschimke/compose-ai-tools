@@ -81,13 +81,13 @@ sealed interface RenderOutcome {
 class ServeRenderHost
 internal constructor(
   private val session: RenderSession,
-  val previews: List<ServePreview>,
+  override val previews: List<ServePreview>,
   /** Human label for this tenant (e.g. the module's Gradle path); shown in the served pages. */
-  val label: String = "",
+  override val label: String = "",
   private val fileSystem: FileSystem = SystemFileSystem,
   private val onLog: (String) -> Unit = {},
   private val renderTimeoutSeconds: Long = RENDER_TIMEOUT_SECONDS,
-) : AutoCloseable {
+) : ServeHost {
 
   private val previewIds: Set<String> = previews.map { it.id }.toHashSet()
 
@@ -139,7 +139,7 @@ internal constructor(
   }
 
   /** Render [previewId] at [overrides], serving a cached result when one exists. Thread-safe. */
-  fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
+  override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
     check(!closed.get()) { "ServeRenderHost is closed" }
     if (previewId !in previewIds) return RenderOutcome.NotFound
 
@@ -329,11 +329,11 @@ internal constructor(
    * connections so N viewers of the same preview ride one held session. Returns `null` when
    * streaming is unsupported (caller falls back to the snapshot lane).
    */
-  fun subscribeStream(
+  override fun subscribeStream(
     previewId: String,
     overrides: PreviewOverrides,
-    codec: StreamCodec? = null,
-    maxFps: Int? = null,
+    codec: StreamCodec?,
+    maxFps: Int?,
     onFrame: (StreamFrameParams) -> Unit,
   ): StreamHandle? {
     check(!closed.get()) { "ServeRenderHost is closed" }
@@ -341,7 +341,7 @@ internal constructor(
   }
 
   /** Live shared upstream streams (one per distinct preview/overrides/codec/fps). Diagnostics. */
-  fun activeStreamCount(): Int = broadcast.activeStreamCount()
+  override fun activeStreamCount(): Int = broadcast.activeStreamCount()
 
   override fun close() {
     if (!closed.compareAndSet(false, true)) return
