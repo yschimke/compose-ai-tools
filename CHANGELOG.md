@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.2](https://github.com/yschimke/compose-ai-tools/compare/v0.16.1...v0.16.2) (2026-06-22)
+
+
+### Bug Fixes
+
+* **release:** don't let clients-v* releases claim GitHub "latest" ([#2045](https://github.com/yschimke/compose-ai-tools/issues/2045)) ([c1077b6](https://github.com/yschimke/compose-ai-tools/commit/c1077b68d0adb916409d09baa78e28ee5dfb3a81))
+
 ## [0.16.1](https://github.com/yschimke/compose-ai-tools/compare/v0.16.0...v0.16.1) (2026-06-22)
 
 
