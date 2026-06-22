@@ -1166,11 +1166,27 @@ export interface RecordingStartResult {
     recordingId: string;
 }
 
+/**
+ * Stable handle for the node an interaction targets, resolved server-side against the live
+ * semantics tree (issue #1784). Set exactly one of `ref` / `testTag` / (`role` and/or `text`).
+ * The daemon back-resolves panel pixel clicks into one of these for the captured live script
+ * (issue #2047) so a recorded session is coordinate-free.
+ */
+export interface SemanticsInputTarget {
+    ref?: string;
+    testTag?: string;
+    role?: string;
+    text?: string;
+}
+
 export interface RecordingInputParams {
     recordingId: string;
     kind: InteractiveInputKind;
     pixelX?: number;
     pixelY?: number;
+    /** Optional semantic handle — lets an agent drive a live recording by ref/testTag/role+text. */
+    target?: SemanticsInputTarget;
+    pointerId?: number;
     scrollDeltaY?: number;
     keyCode?: string;
 }
@@ -1180,6 +1196,9 @@ export interface RecordingScriptEvent {
     kind: string;
     pixelX?: number;
     pixelY?: number;
+    /** Coordinate-free handle the live tick loop resolved this event's pixel to (issue #2047). */
+    target?: SemanticsInputTarget;
+    pointerId?: number;
     scrollDeltaY?: number;
     keyCode?: string;
     label?: string;
@@ -1210,6 +1229,28 @@ export interface RecordingStopResult {
     frameWidthPx: number;
     frameHeightPx: number;
     scriptEvents?: RecordingScriptEvidence[];
+    /**
+     * Coordinate-free timeline captured from a `live = true` recording (the record-live bridge,
+     * issue #2047). Empty/absent for scripted recordings. Feeds `recording/generateTest`.
+     */
+    capturedScript?: RecordingScriptEvent[];
+}
+
+/**
+ * `recording/generateTest` request (issue #2047) — turn a captured live timeline into a runnable
+ * Compose UI test. The daemon resolves the composable's real function name from its preview catalog.
+ */
+export interface RecordingGenerateTestParams {
+    previewId: string;
+    events: RecordingScriptEvent[];
+    className?: string;
+    methodName?: string;
+    composableInvocation?: string;
+    packageName?: string;
+}
+
+export interface RecordingGenerateTestResult {
+    source: string;
 }
 
 export interface RecordingEncodeParams {

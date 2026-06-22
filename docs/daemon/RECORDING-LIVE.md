@@ -53,12 +53,29 @@ Pure structural containers (a ref but nothing targetable) are never hit targets.
 | Desktop | ✅ coordinate-free, via the held `ImageComposeScene`'s `composeSemanticsRoot()` |
 | Android | ⬜ default empty for now (Android live recording is a follow-up; interactive needs `sandboxCount ≥ 2`) |
 
+## From timeline to test
+
+`recording/generateTest` turns a captured timeline into a runnable Compose UI
+test without a client porting [`RecordingTestGenerator`](../../daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/RecordingTestGenerator.kt)
+to its own language. The client sends `{ previewId, events }`; the daemon
+resolves the composable's real function name from its preview catalog
+(`previewIndex.byId` — load-bearing for named/variant previews, whose synthetic
+id is not the function name), derives the class/method names, and returns the
+generated source. Identifier overrides (`className`, `methodName`,
+`composableInvocation`, `packageName`) win over the derived defaults. Wire
+contract: [`RecordingGenerateTestParams` / `RecordingGenerateTestResult`](../../daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/protocol/Messages.kt).
+
 ## Surfaces
 
-- **Daemon** (this change) — `recording/stop` returns `capturedScript`. Wire
-  contract: [`RecordingStopResult.capturedScript`](../../daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/protocol/Messages.kt).
-- **VS Code** (follow-up) — a Record toggle on a LIVE card drives a live
-  recording, then offers "save script" / "generate test" from `capturedScript`.
+- **Daemon** — `recording/stop` returns `capturedScript`; `recording/generateTest`
+  turns it into a test. Wire contract:
+  [`RecordingStopResult.capturedScript`](../../daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/protocol/Messages.kt).
+- **VS Code** — the panel's Record toggle (`focusToolbar` REC button) already
+  drives a parallel live recording while a card is LIVE; on stop, when the
+  session captured a coordinate-free timeline, the extension offers **Generate
+  test** and opens the generated source in an untitled Kotlin editor for review
+  (`handleSetRecording` → `generateRecordingTest` in `extension.ts`). No new
+  webview chrome — the affordance is a native notification + editor.
 - **MCP / web** (follow-up) — a live-interaction tool so an agent can blaze one
   input at a time (observe `compose/semantics` → act by handle → repeat) and get
   the captured script + generated test at stop.

@@ -2197,6 +2197,33 @@ data class RecordingStopResult(
 )
 
 /**
+ * `recording/generateTest` request (issue #2047) — turn a captured live-recording timeline into a
+ * runnable Compose UI test, so a client holding a [RecordingStopResult.capturedScript] (the VS Code
+ * Record toggle) can offer "generate test" without porting `RecordingTestGenerator` to its own
+ * language. The daemon resolves the composable's real function name from its preview catalog (so
+ * the generated `setContent { … }` compiles for named/variant previews, whose synthetic id is not
+ * the function name), deriving the rest; any non-null identifier override below wins over the
+ * derived default.
+ */
+@Serializable
+data class RecordingGenerateTestParams(
+  /** Preview the recording was driven against. Used to resolve the composable's function name. */
+  val previewId: String,
+  /** The captured timeline — typically [RecordingStopResult.capturedScript]. */
+  val events: List<RecordingScriptEvent>,
+  /** Override the generated class name. Default `Generated<Preview>Test`. */
+  val className: String? = null,
+  /** Override the generated `@Test` method name. Default `<preview>Interaction`. */
+  val methodName: String? = null,
+  /** Override the `setContent { … }` call. Default `<FunctionName>()` from the catalog. */
+  val composableInvocation: String? = null,
+  /** Override the generated file's package. Default the preview class's package. */
+  val packageName: String? = null,
+)
+
+@Serializable data class RecordingGenerateTestResult(val source: String)
+
+/**
  * v1 supports only animated PNG (pure JVM, no native deps, plays in every browser/webview). mp4 /
  * webm via `ffmpeg` shell-out land in v2 — the enum is open so new values don't bump
  * `protocolVersion` per PROTOCOL.md § 7.

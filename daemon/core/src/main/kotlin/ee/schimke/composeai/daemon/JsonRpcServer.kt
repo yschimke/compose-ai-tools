@@ -707,6 +707,7 @@ class JsonRpcServer(
       "recording/start" -> handleRecordingStart(req)
       "recording/stop" -> handleRecordingStop(req)
       "recording/encode" -> handleRecordingEncode(req)
+      "recording/generateTest" -> handleRecordingGenerateTest(req)
       else ->
         sendErrorResponse(
           id = req.id,
@@ -3224,6 +3225,61 @@ class JsonRpcServer(
       )
       .apply { isDaemon = true }
       .start()
+  }
+
+  /**
+   * `recording/generateTest` (issue #2047) — turn a captured live-recording timeline into a
+   * runnable Compose UI test, so the VS Code Record toggle (and any other client holding a
+   * [RecordingStopResult.capturedScript]) can offer "generate test" without porting
+   * [RecordingTestGenerator] to TypeScript. The daemon resolves the composable's real function name
+   * from its [previewIndex] (load-bearing for named/variant previews, whose synthetic id isn't the
+   * function name) and falls back to a sanitised heuristic when the id isn't in the catalog.
+   * Explicit identifier overrides on the params win over the derived defaults.
+   */
+  private fun handleRecordingGenerateTest(req: JsonRpcRequest) {
+    val params =
+      try {
+        decodeParams(
+          req.params,
+          ee.schimke.composeai.daemon.protocol.RecordingGenerateTestParams.serializer(),
+        )
+      } catch (e: Throwable) {
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_INVALID_PARAMS,
+          message = "invalid recording/generateTest params: ${e.message}",
+        )
+        return
+      }
+    try {
+      val info = previewIndex.byId(params.previewId)
+      val spec =
+        RecordingTestGenerator.defaultSpec(
+          previewId = params.previewId,
+          functionName = info?.methodName,
+          classFqn = info?.className,
+          events = params.events,
+          classNameOverride = params.className,
+          methodNameOverride = params.methodName,
+          composableInvocationOverride = params.composableInvocation,
+          packageNameOverride = params.packageName,
+        )
+      sendResponse(
+        req.id,
+        encode(
+          ee.schimke.composeai.daemon.protocol.RecordingGenerateTestResult.serializer(),
+          ee.schimke.composeai.daemon.protocol.RecordingGenerateTestResult(
+            source = RecordingTestGenerator.generate(spec)
+          ),
+        ),
+      )
+    } catch (t: Throwable) {
+      sendErrorResponse(
+        id = req.id,
+        code = ERR_INTERNAL,
+        message = "recording/generateTest: ${t.javaClass.simpleName}: ${t.message}",
+      )
+    }
   }
 
   private fun handleRecordingEncode(req: JsonRpcRequest) {
