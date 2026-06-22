@@ -19,7 +19,7 @@
 # ---------------------------------------------------------------------------
 # Stage 1: build the CLI distribution and warm the render path.
 # ---------------------------------------------------------------------------
-FROM eclipse-temurin:17-jdk AS build
+FROM eclipse-temurin:25.0.2_10-jdk AS build
 
 ENV GRADLE_USER_HOME=/root/.gradle \
     SERVE_MODULE=:samples:cmp
@@ -48,7 +48,7 @@ RUN ./gradlew --no-daemon :cli:installDist \
 # ---------------------------------------------------------------------------
 # Stage 2: runtime.
 # ---------------------------------------------------------------------------
-FROM eclipse-temurin:17-jdk AS runtime
+FROM eclipse-temurin:25.0.2_10-jdk AS runtime
 
 # Skiko (Compose Desktop's renderer) needs fontconfig + freetype to lay out and
 # rasterize text, and at least one font family for non-empty glyphs. Without
