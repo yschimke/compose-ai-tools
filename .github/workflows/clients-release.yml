@@ -141,6 +141,13 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.TAG_NAME }}
+          # The mobile/wear apps are a side artifact line, not the headline
+          # release. Never let a `clients-v*` release claim GitHub's "latest"
+          # pointer: `/releases/latest` must keep resolving to the CLI's `v*`
+          # release, which is what the `curl | bash` installer parses a version
+          # from (a `clients-v…` tag has no `…/v…` to strip, so it can't). With
+          # this release excluded, GitHub recomputes "latest" back to the CLI.
+          make_latest: false
           files: |
             _release/*.apk
             _release/*.aab
