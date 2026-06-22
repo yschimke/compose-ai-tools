@@ -122,6 +122,12 @@ data class RecordingResult(
   val frameWidthPx: Int,
   val frameHeightPx: Int,
   val scriptEvents: List<RecordingScriptEvidence> = emptyList(),
+  /**
+   * Coordinate-free timeline captured from a `live = true` recording (the record-live bridge,
+   * issue #2047). Empty for scripted recordings. See [RecordingStopResult.capturedScript] for the
+   * wire contract — this is its in-process source.
+   */
+  val capturedScript: List<RecordingScriptEvent> = emptyList(),
 )
 
 /** Metadata returned by [RecordingSession.encode]. */

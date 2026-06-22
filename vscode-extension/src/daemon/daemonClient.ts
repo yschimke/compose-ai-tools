@@ -40,6 +40,8 @@ import {
     PROTOCOL_VERSION,
     RecordingEncodeParams,
     RecordingEncodeResult,
+    RecordingGenerateTestParams,
+    RecordingGenerateTestResult,
     RecordingInputParams,
     RecordingStartParams,
     RecordingStartResult,
@@ -386,6 +388,15 @@ export class DaemonClient {
         params: RecordingEncodeParams,
     ): Promise<RecordingEncodeResult> {
         return this.request<RecordingEncodeResult>("recording/encode", params);
+    }
+
+    recordingGenerateTest(
+        params: RecordingGenerateTestParams,
+    ): Promise<RecordingGenerateTestResult> {
+        return this.request<RecordingGenerateTestResult>(
+            "recording/generateTest",
+            params,
+        );
     }
 
     /** Drains in-flight renders, then resolves. Daemon will not exit until `exit` fires. */

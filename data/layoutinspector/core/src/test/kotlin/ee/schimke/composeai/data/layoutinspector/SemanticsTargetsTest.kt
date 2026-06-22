@@ -102,4 +102,52 @@ class SemanticsTargetsTest {
     val root = node(children = (1..10).map { node(role = "Button", text = "B$it") })
     assertEquals(3, SemanticsTargets.targetableNodes(root, limit = 3).size)
   }
+
+  // --- nodeAt: pixel → strongest stable handle (issue #2047, record-live bridge) ---
+
+  @Test
+  fun nodeAtPrefersTestTag() {
+    val root = node(children = listOf(node(bounds = "100,40,140,80", testTag = "submit")))
+    assertEquals(SemanticsTarget.Tag("submit"), SemanticsTargets.nodeAt(root, 120, 60))
+  }
+
+  @Test
+  fun nodeAtFallsBackToTextThenRef() {
+    val textRoot = node(children = listOf(node(bounds = "0,0,50,20", text = "Save")))
+    assertEquals(SemanticsTarget.RoleText(text = "Save"), SemanticsTargets.nodeAt(textRoot, 25, 10))
+
+    // A node with no testTag/text/label but a real position still gets a replayable ref handle.
+    val refRoot = node(children = listOf(node(bounds = "0,0,50,20", role = "Button")))
+    val hit = SemanticsTargets.nodeAt(refRoot, 25, 10)
+    assertTrue("expected a ref handle, got $hit", hit is SemanticsTarget.Ref)
+  }
+
+  @Test
+  fun nodeAtPicksDeepestSmallestNodeUnderPoint() {
+    // A small tagged child sits inside a larger tagged container; a click inside the child should
+    // resolve to the child (smallest area), matching what a real pointer lands on.
+    val root =
+      node(
+        bounds = "0,0,200,200",
+        testTag = "screen",
+        children =
+          listOf(
+            node(
+              bounds = "0,0,200,100",
+              testTag = "card",
+              children = listOf(node(bounds = "10,10,40,40", testTag = "icon")),
+            )
+          ),
+      )
+    assertEquals(SemanticsTarget.Tag("icon"), SemanticsTargets.nodeAt(root, 25, 25))
+    // A point inside the card but outside the icon resolves to the card.
+    assertEquals(SemanticsTarget.Tag("card"), SemanticsTargets.nodeAt(root, 150, 50))
+  }
+
+  @Test
+  fun nodeAtReturnsNullWhenNoTargetableNodeContainsThePoint() {
+    val root = node(bounds = "0,0,200,200", children = listOf(node(bounds = "0,0,40,40")))
+    // (180,180) is inside the bare root but no targetable node covers it.
+    assertEquals(null, SemanticsTargets.nodeAt(root, 180, 180))
+  }
 }

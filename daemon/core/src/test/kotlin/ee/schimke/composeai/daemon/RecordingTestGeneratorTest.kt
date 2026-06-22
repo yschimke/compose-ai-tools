@@ -274,4 +274,67 @@ class RecordingTestGeneratorTest {
     assertTrue("click (tMs=0) must precede keyDown (tMs=500)\n$source", clickIdx in 0 until keyIdx)
     assertTrue(source, source.contains("// input.keyDown — not yet generated"))
   }
+
+  // --- defaultSpec: identifier derivation for the record-live bridge (issue #2047) ---
+
+  @Test
+  fun defaultSpecUsesCatalogFunctionNameAndPackage() {
+    val spec =
+      RecordingTestGenerator.defaultSpec(
+        previewId = "com.example.WeatherForecast_Light",
+        functionName = "WeatherForecast",
+        classFqn = "com.example.WeatherScreenKt",
+        events =
+          listOf(
+            RecordingScriptEvent(
+              tMs = 0L,
+              kind = "input.click",
+              target = SemanticsInputTarget(testTag = "refresh"),
+            )
+          ),
+      )
+    assertEquals("GeneratedWeatherForecastTest", spec.className)
+    assertEquals("weatherForecastInteraction", spec.methodName)
+    // Load-bearing for named/variant previews: invocation is the real function, not the id suffix.
+    assertEquals("WeatherForecast()", spec.composableInvocation)
+    assertEquals("com.example", spec.packageName)
+
+    val source = RecordingTestGenerator.generate(spec)
+    assertTrue(source, source.contains("setContent { WeatherForecast() }"))
+    assertTrue(source, source.contains("onNodeWithTag(\"refresh\").performClick()"))
+  }
+
+  @Test
+  fun defaultSpecFallsBackToSanitizedPreviewIdWhenCatalogMisses() {
+    val spec =
+      RecordingTestGenerator.defaultSpec(
+        previewId = "com.example.TogglePreview#dark",
+        functionName = null,
+        classFqn = null,
+        events = emptyList(),
+      )
+    assertEquals("GeneratedTogglePreviewTest", spec.className)
+    assertEquals("togglePreviewInteraction", spec.methodName)
+    assertEquals("TogglePreview()", spec.composableInvocation)
+    assertEquals(null, spec.packageName)
+  }
+
+  @Test
+  fun defaultSpecHonoursExplicitOverrides() {
+    val spec =
+      RecordingTestGenerator.defaultSpec(
+        previewId = "com.example.Foo",
+        functionName = "Foo",
+        classFqn = "com.example.FooKt",
+        events = emptyList(),
+        classNameOverride = "MyTest",
+        methodNameOverride = "myFlow",
+        composableInvocationOverride = "Foo(modifier = Modifier)",
+        packageNameOverride = "com.acme.test",
+      )
+    assertEquals("MyTest", spec.className)
+    assertEquals("myFlow", spec.methodName)
+    assertEquals("Foo(modifier = Modifier)", spec.composableInvocation)
+    assertEquals("com.acme.test", spec.packageName)
+  }
 }

@@ -2,6 +2,8 @@ package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.RecordingInputParams
+import ee.schimke.composeai.daemon.protocol.SemanticsInputTarget
+import ee.schimke.composeai.data.layoutinspector.SemanticsTarget
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Test
@@ -102,5 +104,43 @@ class DesktopRecordingSessionLiveInputTest {
     assertEquals("input.keyDown", keyEvent.kind)
     assertEquals(1.5f, scrollEvent.scrollDeltaY!!, 0.0001f)
     assertEquals("input.rotaryScroll", scrollEvent.kind)
+  }
+
+  @Test
+  fun `toScriptEvent threads a semantic target through for agent-driven live recordings`() {
+    // The record-live bridge (issue #2047): an agent driving a live recording by handle posts a
+    // target on the wire, which must survive into the captured script verbatim (no pixel math).
+    val byHandle =
+      RecordingInputParams(
+        recordingId = "live-rec",
+        kind = InteractiveInputKind.CLICK,
+        target = SemanticsInputTarget(testTag = "submit"),
+      )
+
+    val event = byHandle.toScriptEvent(tMs = 5L)
+
+    assertEquals(SemanticsInputTarget(testTag = "submit"), event.target)
+    assertEquals(null, event.pixelX)
+    assertEquals("input.click", event.kind)
+  }
+
+  @Test
+  fun `toInputTarget projects each resolved handle variant onto the wire target`() {
+    assertEquals(
+      SemanticsInputTarget(testTag = "submit"),
+      SemanticsTarget.Tag("submit").toInputTarget(),
+    )
+    assertEquals(
+      SemanticsInputTarget(text = "Save"),
+      SemanticsTarget.RoleText(text = "Save").toInputTarget(),
+    )
+    assertEquals(
+      SemanticsInputTarget(role = "Button", text = "Save"),
+      SemanticsTarget.RoleText(role = "Button", text = "Save").toInputTarget(),
+    )
+    assertEquals(
+      SemanticsInputTarget(ref = "r/role:Button"),
+      SemanticsTarget.Ref("r/role:Button").toInputTarget(),
+    )
   }
 }

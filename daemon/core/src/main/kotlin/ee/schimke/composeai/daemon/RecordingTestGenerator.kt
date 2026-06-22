@@ -54,6 +54,54 @@ object RecordingTestGenerator {
   /** Wrap raw events as all-applied steps — for callers without recording evidence. */
   fun stepsOf(events: List<RecordingScriptEvent>): List<Step> = events.map { Step(it) }
 
+  /**
+   * Build a [Spec] for a recording captured against [previewId] (issue #2047, the record-live
+   * bridge), deriving sensible identifiers so a client holding only the captured timeline (the VS
+   * Code Record toggle) gets a compilable test without authoring names by hand.
+   *
+   * [functionName] / [classFqn] come from the daemon's preview catalog when available —
+   * load-bearing for named/variant previews, whose synthetic id (`…WeatherForecast_Light`) is not
+   * the function name. When the id isn't in the catalog, the base name is sanitised out of
+   * [previewId]. Any `*Override` wins over the derived default, so a caller that knows better can
+   * pin exact names. Events are wrapped as all-applied steps (panel clicks dispatched); callers
+   * with per-event evidence build [Step]s themselves and call [generate] directly.
+   */
+  fun defaultSpec(
+    previewId: String,
+    functionName: String?,
+    classFqn: String?,
+    events: List<RecordingScriptEvent>,
+    classNameOverride: String? = null,
+    methodNameOverride: String? = null,
+    composableInvocationOverride: String? = null,
+    packageNameOverride: String? = null,
+  ): Spec {
+    val base = sanitizeIdentifier(functionName ?: previewId.substringAfterLast('.')) ?: "Preview"
+    val pascal = base.replaceFirstChar { it.uppercaseChar() }
+    val camel = base.replaceFirstChar { it.lowercaseChar() }
+    val derivedPackage =
+      classFqn?.substringBeforeLast('.', missingDelimiterValue = "")?.takeIf { it.isNotBlank() }
+    return Spec(
+      className = classNameOverride?.takeIf { it.isNotBlank() } ?: "Generated${pascal}Test",
+      methodName = methodNameOverride?.takeIf { it.isNotBlank() } ?: "${camel}Interaction",
+      composableInvocation = composableInvocationOverride?.takeIf { it.isNotBlank() } ?: "$base()",
+      packageName = packageNameOverride?.takeIf { it.isNotBlank() } ?: derivedPackage,
+      steps = stepsOf(events),
+    )
+  }
+
+  /**
+   * Reduce an arbitrary string to a legal Kotlin identifier (letters/digits/underscore, not
+   * starting with a digit) or `null` when nothing usable remains. Strips the variant suffix marker
+   * (`#…`) and any FQN/package punctuation a synthetic preview id carries.
+   */
+  private fun sanitizeIdentifier(raw: String): String? {
+    val cleaned =
+      raw.substringAfterLast('.').substringBefore('#').filter { it.isLetterOrDigit() || it == '_' }
+    val trimmed = cleaned.trimStart { it.isDigit() }
+    return trimmed.takeIf { it.isNotBlank() }
+  }
+
   fun generate(spec: Spec): String = buildString {
     val sortedSteps = spec.steps.sortedBy { it.event.tMs }
     // Probe snapshots opt the assertion finders/imports in; without any, the output stays

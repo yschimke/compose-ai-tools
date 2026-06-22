@@ -1934,6 +1934,18 @@ data class RecordingInputParams(
   val pixelX: Int? = null,
   val pixelY: Int? = null,
   /**
+   * Stable semantic handle for the node this input targets (issue #1784), mirroring
+   * [InteractiveInputParams.target]. Lets an agent driving a `live = true` recording act by ref /
+   * testTag / role+text instead of pixel coordinates; the daemon resolves it to the node's centre.
+   * When set, the captured-script timeline ([RecordingStopResult.capturedScript]) records the
+   * handle verbatim — already coordinate-free. When null and [pixelX]/[pixelY] are set, the live
+   * tick loop resolves the pixel back to the node it hit and records *that* handle, so panel clicks
+   * also produce a coordinate-free, replayable script (the record-live bridge). Explicit pixels
+   * still win for the actual dispatch when both are present (the escape hatch for canvas /
+   * custom-drawn surfaces).
+   */
+  val target: SemanticsInputTarget? = null,
+  /**
    * Per-pointer identifier for multi-touch dispatch in live recordings — distinct pointers (e.g. a
    * two-finger pinch) share the current virtual `tMs` boundary while carrying their own id.
    * Defaults to `0` for backwards compatibility, so existing single-pointer scripts (the vast
@@ -2171,7 +2183,45 @@ data class RecordingStopResult(
   val frameHeightPx: Int,
   /** Per-script-event execution evidence for input, lifecycle, state, and probe events. */
   val scriptEvents: List<RecordingScriptEvidence> = emptyList(),
+  /**
+   * The coordinate-free timeline captured from a `live = true` recording (the record-live bridge,
+   * issue #2047) — empty for scripted recordings, where the client already holds the events it
+   * posted via `recording/script`. Each entry is the [RecordingScriptEvent] the live tick loop
+   * dispatched, with pixel coordinates resolved back to the stable semantic handle of the node they
+   * hit (see [RecordingInputParams.target]). This is the Trailblaze "blaze live, capture as you go"
+   * artifact: it feeds `RecordingTestGenerator` directly so an exploratory live session becomes a
+   * durable Compose UI test, and can be replayed verbatim as a `recording/script` timeline. Paired
+   * with [scriptEvents] (same order) for per-event applied/unsupported status.
+   */
+  val capturedScript: List<RecordingScriptEvent> = emptyList(),
 )
+
+/**
+ * `recording/generateTest` request (issue #2047) — turn a captured live-recording timeline into a
+ * runnable Compose UI test, so a client holding a [RecordingStopResult.capturedScript] (the VS Code
+ * Record toggle) can offer "generate test" without porting `RecordingTestGenerator` to its own
+ * language. The daemon resolves the composable's real function name from its preview catalog (so
+ * the generated `setContent { … }` compiles for named/variant previews, whose synthetic id is not
+ * the function name), deriving the rest; any non-null identifier override below wins over the
+ * derived default.
+ */
+@Serializable
+data class RecordingGenerateTestParams(
+  /** Preview the recording was driven against. Used to resolve the composable's function name. */
+  val previewId: String,
+  /** The captured timeline — typically [RecordingStopResult.capturedScript]. */
+  val events: List<RecordingScriptEvent>,
+  /** Override the generated class name. Default `Generated<Preview>Test`. */
+  val className: String? = null,
+  /** Override the generated `@Test` method name. Default `<preview>Interaction`. */
+  val methodName: String? = null,
+  /** Override the `setContent { … }` call. Default `<FunctionName>()` from the catalog. */
+  val composableInvocation: String? = null,
+  /** Override the generated file's package. Default the preview class's package. */
+  val packageName: String? = null,
+)
+
+@Serializable data class RecordingGenerateTestResult(val source: String)
 
 /**
  * v1 supports only animated PNG (pure JVM, no native deps, plays in every browser/webview). mp4 /

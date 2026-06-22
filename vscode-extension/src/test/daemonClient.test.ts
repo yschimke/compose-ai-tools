@@ -229,6 +229,43 @@ describe("DaemonClient", () => {
         client.exit();
     });
 
+    it("recordingGenerateTest sends a request carrying the captured timeline and awaits the source", async () => {
+        const { toServer, toClient } = bidiPair();
+        const frames = captureFrames(toServer);
+        const client = new DaemonClient(toServer, toClient, {});
+        const promise = client.recordingGenerateTest({
+            previewId: "com.example.TogglePreview",
+            events: [
+                {
+                    tMs: 0,
+                    kind: "input.click",
+                    target: { testTag: "submit" },
+                },
+            ],
+        });
+        const sent = (await frames.take()) as JsonRpcRequest;
+        assert.strictEqual(sent.method, "recording/generateTest");
+        assert.deepStrictEqual(sent.params, {
+            previewId: "com.example.TogglePreview",
+            events: [
+                { tMs: 0, kind: "input.click", target: { testTag: "submit" } },
+            ],
+        });
+        toClient.write(
+            encodeFrame({
+                jsonrpc: "2.0",
+                id: sent.id,
+                result: { source: "class GeneratedTogglePreviewTest {}" },
+            }),
+        );
+        const result = await promise;
+        assert.strictEqual(
+            result.source,
+            "class GeneratedTogglePreviewTest {}",
+        );
+        client.exit();
+    });
+
     it("interactiveStop emits a notification (no id) carrying the stream id", async () => {
         const { toServer, toClient } = bidiPair();
         const frames = captureFrames(toServer);

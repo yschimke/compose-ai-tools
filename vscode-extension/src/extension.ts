@@ -67,7 +67,9 @@ import {
 import {
     DataProductAttachment,
     DiscoveryUpdatedParams,
+    RecordingScriptEvent,
 } from "./daemon/daemonProtocol";
+import type { DaemonClient } from "./daemon/daemonClient";
 import {
     A11Y_OVERLAY_KINDS,
     DaemonScheduler,
@@ -7730,13 +7732,25 @@ async function handleSetRecording(
                 recordingId,
                 format: encodeFormat,
             });
+            const captured = stopped.capturedScript ?? [];
             logLine(
                 `[recording] saved ${previewId}: ${encoded.videoPath} ` +
-                    `(${stopped.frameCount} frames, ${stopped.durationMs}ms)`,
+                    `(${stopped.frameCount} frames, ${stopped.durationMs}ms, ` +
+                    `${captured.length} captured step(s))`,
             );
-            void vscode.window.showInformationMessage(
+            // Record-live bridge (issue #2047): when the live session captured a coordinate-free
+            // timeline, offer to turn it into a runnable Compose UI test. The GIF/APNG is still the
+            // primary artifact; codegen is an opt-in follow-up action so the common "just record a
+            // clip" flow is unchanged.
+            const generateTest =
+                captured.length > 0 ? "Generate test" : undefined;
+            const choice = await vscode.window.showInformationMessage(
                 `Compose preview recording saved: ${encoded.videoPath}`,
+                ...(generateTest ? [generateTest] : []),
             );
+            if (choice === generateTest && generateTest) {
+                await generateRecordingTest(client, previewId, captured);
+            }
         } catch (err) {
             logLine(
                 `[recording] stop failed for ${previewId}: ${(err as Error).message}`,
@@ -7774,6 +7788,37 @@ async function handleSetRecording(
         panel?.postMessage({ command: "clearRecording", previewId });
         void vscode.window.showErrorMessage(
             `Compose preview recording failed: ${(err as Error).message}`,
+        );
+    }
+}
+
+/**
+ * Record-live bridge (issue #2047): ask the daemon to turn a captured coordinate-free timeline into
+ * a Compose UI test, then open it in an untitled Kotlin editor for the author to review and Save As.
+ * Untitled (rather than writing into the workspace) keeps the action reversible — nothing lands on
+ * disk without the author's explicit save — and sidesteps guessing the module's test source root.
+ */
+async function generateRecordingTest(
+    client: DaemonClient,
+    previewId: string,
+    events: RecordingScriptEvent[],
+): Promise<void> {
+    try {
+        const { source } = await client.recordingGenerateTest({
+            previewId,
+            events,
+        });
+        const doc = await vscode.workspace.openTextDocument({
+            language: "kotlin",
+            content: source,
+        });
+        await vscode.window.showTextDocument(doc, { preview: false });
+    } catch (err) {
+        logLine(
+            `[recording] generateTest failed for ${previewId}: ${(err as Error).message}`,
+        );
+        void vscode.window.showErrorMessage(
+            `Compose preview: could not generate test: ${(err as Error).message}`,
         );
     }
 }

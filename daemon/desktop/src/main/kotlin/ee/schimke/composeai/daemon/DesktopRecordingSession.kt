@@ -21,8 +21,10 @@ import ee.schimke.composeai.daemon.protocol.RecordingFormat
 import ee.schimke.composeai.daemon.protocol.RecordingInputParams
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvidence
+import ee.schimke.composeai.daemon.protocol.SemanticsInputTarget
 import ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedCode
 import ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedReason
+import ee.schimke.composeai.data.layoutinspector.SemanticsTarget
 import ee.schimke.composeai.data.layoutinspector.SemanticsTargets
 import ee.schimke.composeai.data.layoutinspector.TargetResolution
 import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
@@ -91,6 +93,11 @@ class DesktopRecordingSession(
   // ConcurrentLinkedQueue so postInput callers (notification handler thread) and the tick
   // thread don't contend on a lock — adds and polls are wait-free.
   private val liveInputs = ConcurrentLinkedQueue<RecordingInputParams>()
+
+  // Coordinate-free timeline captured from live inputs (the record-live bridge, issue #2047).
+  // Appended by the tick thread as it dispatches each input; read by stopLive() after the join.
+  // Guarded for the belt-and-suspenders case where a reader races the tick thread's last append.
+  private val capturedLiveScript = mutableListOf<RecordingScriptEvent>()
 
   @Volatile private var stopped: Boolean = false
 
@@ -358,6 +365,7 @@ class DesktopRecordingSession(
       framesDir = framesDir.absolutePath,
       frameWidthPx = frameWidthPx,
       frameHeightPx = frameHeightPx,
+      capturedScript = synchronized(capturedLiveScript) { capturedLiveScript.toList() },
     )
   }
 
@@ -834,6 +842,31 @@ class DesktopRecordingSession(
    * the same nanoTime) so `Modifier.clickable {}` and other tap-gesture-detecting modifiers see a
    * clean down→up sequence.
    */
+  /**
+   * Record one dispatched live input into the coordinate-free [capturedLiveScript] (issue #2047 —
+   * the record-live bridge). When the event already carries a semantic
+   * [RecordingScriptEvent.target] (an agent drove the live recording by handle), keep it verbatim.
+   * Otherwise, when it carries pixel coordinates, resolve them back to the stable handle of the
+   * node under that point against the held scene's live semantics tree and record *that* — dropping
+   * the pixels — so a panel click also becomes a coordinate-free, layout-resilient step. Falls back
+   * to the raw pixel event when no targetable node is hit (canvas / custom-drawn surfaces) so the
+   * timeline still reflects what happened. Non-pointer events (keys) pass through unchanged.
+   */
+  private fun captureLiveEvent(event: RecordingScriptEvent) {
+    val px = event.pixelX
+    val py = event.pixelY
+    val resolved =
+      if (event.target == null && px != null && py != null) {
+        val handle = state.scene.composeSemanticsRoot()?.let { SemanticsTargets.nodeAt(it, px, py) }
+        if (handle != null)
+          event.copy(target = handle.toInputTarget(), pixelX = null, pixelY = null)
+        else event
+      } else {
+        event
+      }
+    synchronized(capturedLiveScript) { capturedLiveScript.add(resolved) }
+  }
+
   private fun runLiveTickLoop() {
     liveStartNs = System.nanoTime()
     val frameIntervalNs: Long = 1_000_000_000L / fps.toLong()
@@ -852,7 +885,9 @@ class DesktopRecordingSession(
         val ctx = SimpleRecordingDispatchContext(tNanos = tNanos, tMs = tMs)
         while (true) {
           val next = liveInputs.poll() ?: break
-          scriptHandlers.dispatch(next.toScriptEvent(tMs), ctx)
+          val scriptEvent = next.toScriptEvent(tMs)
+          scriptHandlers.dispatch(scriptEvent, ctx)
+          captureLiveEvent(scriptEvent)
         }
 
         val image = state.scene.render(nanoTime = tNanos)
@@ -1138,7 +1173,19 @@ internal fun RecordingInputParams.toScriptEvent(tMs: Long): RecordingScriptEvent
     kind = kind.wireName(),
     pixelX = pixelX,
     pixelY = pixelY,
+    target = target,
     pointerId = pointerId,
     scrollDeltaY = scrollDeltaY,
     keyCode = keyCode,
   )
+
+/**
+ * Project a resolved [SemanticsTarget] (from [SemanticsTargets.nodeAt]) onto the wire-level
+ * [SemanticsInputTarget] recorded in the coordinate-free captured script (issue #2047).
+ */
+internal fun SemanticsTarget.toInputTarget(): SemanticsInputTarget =
+  when (this) {
+    is SemanticsTarget.Tag -> SemanticsInputTarget(testTag = testTag)
+    is SemanticsTarget.RoleText -> SemanticsInputTarget(role = role, text = text)
+    is SemanticsTarget.Ref -> SemanticsInputTarget(ref = ref)
+  }

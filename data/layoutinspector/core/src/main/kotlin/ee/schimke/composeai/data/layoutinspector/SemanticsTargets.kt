@@ -54,6 +54,67 @@ object SemanticsTargets {
       .sortedByDescending { it.testTag != null }
       .take(limit)
 
+  /**
+   * Pixel→handle resolution for the record-live bridge (issue #2047): given a point in the
+   * root-pixel space of [ComposeSemanticsNode.boundsInRoot] (the same space `interactive/input` /
+   * `recording/input` pixel coordinates arrive in), return the strongest *stable* handle for the
+   * node under that point, or `null` when no targetable node contains it.
+   *
+   * "Strongest" mirrors [RecordingTestGenerator]'s finder preference so the captured handle
+   * round-trips into a clean Compose-test selector: [SemanticsTarget.Tag] (`testTag`) first, then
+   * [SemanticsTarget.RoleText] (visible text / label), then [SemanticsTarget.Ref] (the stable ref —
+   * always replayable, even when the node carries no human-readable handle). Among overlapping
+   * targetable nodes the **smallest-area** one wins — the deepest / topmost hit, matching what a
+   * real pointer would land on rather than an enclosing container.
+   *
+   * Reassigns refs defensively (same contract as [resolve]) so a raw tree still yields a stable
+   * ref.
+   */
+  fun nodeAt(root: ComposeSemanticsNode, x: Int, y: Int): SemanticsTarget? {
+    val hit =
+      SemanticsRefs.assign(root)
+        .flatten()
+        .mapNotNull { node ->
+          val bounds = SemanticsBounds.parse(node.boundsInRoot) ?: return@mapNotNull null
+          if (x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom) {
+            return@mapNotNull null
+          }
+          val handle = strongestHandle(node) ?: return@mapNotNull null
+          handle to bounds.area
+        }
+        .minByOrNull { (_, area) -> area }
+    return hit?.first
+  }
+
+  /**
+   * The strongest stable handle for one node, or `null` when it carries nothing worth pinning.
+   * Order matches [nodeAt]'s contract: `testTag` → visible text/label → `ref`. The `ref` fallback
+   * fires only for genuinely interactive nodes (`clickable` or carrying a `role`) — every node has
+   * a ref after [SemanticsRefs.assign], so without this guard a click on inert padding would
+   * resolve to an enclosing structural container. This mirrors [targetableNodes]' targetability
+   * filter.
+   */
+  private fun strongestHandle(node: ComposeSemanticsNode): SemanticsTarget? {
+    node.testTag
+      ?.takeIf { it.isNotBlank() }
+      ?.let {
+        return SemanticsTarget.Tag(it)
+      }
+    (node.text ?: node.label ?: node.layoutText)
+      ?.takeIf { it.isNotBlank() }
+      ?.let {
+        return SemanticsTarget.RoleText(text = it)
+      }
+    if (node.clickable || node.role != null) {
+      node.ref
+        ?.takeIf { it.isNotBlank() }
+        ?.let {
+          return SemanticsTarget.Ref(it)
+        }
+    }
+    return null
+  }
+
   private fun resolvedAt(node: ComposeSemanticsNode): TargetResolution {
     val bounds = SemanticsBounds.parse(node.boundsInRoot)
     return if (bounds == null) TargetResolution.NotFound
@@ -118,6 +179,10 @@ data class SemanticsBounds(val left: Int, val top: Int, val right: Int, val bott
 
   val centerY: Int
     get() = (top + bottom) / 2
+
+  /** Bounding-box area in px²; used to pick the deepest/topmost node under a point in [nodeAt]. */
+  val area: Long
+    get() = (right - left).toLong().coerceAtLeast(0) * (bottom - top).toLong().coerceAtLeast(0)
 
   companion object {
     fun parse(wire: String): SemanticsBounds? {
