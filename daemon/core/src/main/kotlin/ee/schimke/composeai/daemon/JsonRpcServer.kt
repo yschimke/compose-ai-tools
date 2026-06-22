@@ -3205,6 +3205,7 @@ class JsonRpcServer(
                   frameWidthPx = r.frameWidthPx,
                   frameHeightPx = r.frameHeightPx,
                   scriptEvents = r.scriptEvents,
+                  capturedScript = r.capturedScript,
                 ),
               ),
             )
