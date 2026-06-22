@@ -89,7 +89,7 @@ jobs:
           - { label: "jdk21 / compileSdk=37 / target=37 / min=24 / auto / robolectric=4.17-SNAPSHOT", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 24, sdkVersion: "", robolectric: "4.17-SNAPSHOT", maxSupportedSdk: "37", expect: fail, expectedReason: "UnknownSdk" }
           - { label: "jdk21 / compileSdk=37 / target=37 / min=36 / auto / robolectric=4.17-SNAPSHOT", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 36, sdkVersion: "", robolectric: "4.17-SNAPSHOT", maxSupportedSdk: "37", expect: fail, expectedReason: "UnknownSdk" }
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
 
@@ -219,7 +219,7 @@ jobs:
     needs: matrix
     if: always()
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
 
