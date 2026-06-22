@@ -136,7 +136,10 @@ const COMPARED_FIELDS: Array<[string, Extractor]> = [
     ["layoutLineCount", (n) => asNum(n.textOverflow?.lineCount)],
     ["layoutMaxLines", (n) => asNum(n.textOverflow?.maxLines)],
     ["layoutDidOverflowWidth", (n) => asBool(n.textOverflow?.didOverflowWidth)],
-    ["layoutDidOverflowHeight", (n) => asBool(n.textOverflow?.didOverflowHeight)],
+    [
+        "layoutDidOverflowHeight",
+        (n) => asBool(n.textOverflow?.didOverflowHeight),
+    ],
 ];
 
 function byRef(root: SemanticsNode): Map<string, SemanticsNode> {
