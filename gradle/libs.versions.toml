@@ -1,5 +1,5 @@
 [versions]
-kotlin = "2.3.21"
+kotlin = "2.4.0"
 # Kotlin language/api floor for published modules. Set lower than `kotlin`
 # so consumers on an older Kotlin can still link against our artifacts —
 # tapmoc enforces this and fails the build if a transitive API dep raises
@@ -21,7 +21,7 @@ ktfmt = "0.26.0"
 play-publisher = "4.0.0"
 tapmoc = "0.4.2"
 robolectric = "4.16.1"
-roborazzi = "1.63.0"
+roborazzi = "1.64.0"
 classgraph = "4.8.184"
 # Stable BOM line — what samples use and what `composePreviewRender` /
 # `Compare previews` is exercised against. Renovate updates this freely;
@@ -51,7 +51,7 @@ compose-multiplatform-material3 = "1.9.0"
 # `compose-multiplatform = 1.10.3`); 2.2.x jumps to foundation 1.11.0, which would drag a
 # *newer* Compose onto the renderer classpath — the failure direction `docs/RENDERER_COMPATIBILITY.md`
 # warns about. Bump only in lockstep with `compose-multiplatform`.
-compottie = "2.1.0"
+compottie = "2.2.2"
 activity-compose = "1.13.0"
 # `androidx.navigation:navigation-compose` — used only by the
 # `:samples:android` NavHost preview that exercises the daemon's
@@ -113,8 +113,8 @@ horologist = "0.7.15"
 #    `wear-compose-remote alpha04` pair broke CI (Kotlin compile + daemon-
 #    harness render), so the pair is held at the last green pre-bump versions
 #    until a mutually-rebuilt pair is verified together.
-compose-remote = "1.0.0-alpha010"
-wear-compose-remote = "1.0.0-alpha03"
+compose-remote = "1.0.0-alpha12"
+wear-compose-remote = "1.0.0-alpha05"
 # Pre-release compose-ui artifacts used by `:samples:remotecompose`, which
 # deliberately diverges from `compose-bom-stable` (1.10.x) to track what
 # wear-compose-remote-material3 alpha pulls in transitively — compose 1.11.0+
@@ -167,7 +167,7 @@ material-kolor = "4.0.5"
 # subtree (see `settings.gradle.kts`) — the rest of the repo can keep
 # building under JDK 17. Kotlin 2.3.21 is supported per Metro's
 # compatibility table (`docs/compatibility.md` upstream).
-metro = "1.1.1"
+metro = "1.2.1"
 # Jake Wharton's Mosaic — Compose-based TUI library, used by the `:tui-cli` module.
 # 0.18.0-1 is a release published by the fork at `yschimke/mosaic@compose-ai-tools` under the
 # `ee.schimke.composeai.mosaic` group, which adds the `RawText` + `Image` composables proposed
@@ -180,11 +180,11 @@ mosaic = "0.18.0-1"
 # Ktor HTTP client (+ OkHttp engine) for downloading bundles given a URL. Ktor 3.x is current and
 # compatible with Kotlin 2.3 / coroutines 1.11; OkHttp 5.x is the stable engine backing it.
 ktor = "3.5.0"
-okhttp = "5.3.2"
+okhttp = "5.4.0"
 # Pure-Java mDNS/DNS-SD (Bonjour) responder used by `compose-preview serve --lan` to advertise the
 # `_composeai._tcp` service the mobile/wear clients browse for. No slf4j dep (uses java.util.logging),
 # so it doesn't perturb the strict slf4j pin in :cli.
-jmdns = "3.5.12"
+jmdns = "3.6.3"
 # dadb — Maestro's pure-Kotlin ADB client. Speaks the device transport protocol (CNXN/OPEN/…)
 # DIRECTLY to a device's adbd over TCP, with no `adb` binary or real device required. Used as a
 # `testImplementation` in `:fake-emulator-core` to drive the fake emulator's ADB server end-to-end
@@ -198,7 +198,7 @@ dadb = "1.2.10"
 # protobuf message classes (pure-Kotlin codegen — no `protoc` — `rpcRole = none`, messages only); the
 # gRPC server is bound by hand into grpc-netty via grpc-java's `ServerCalls` + a tiny Wire
 # `MethodDescriptor.Marshaller`. (Wire dropped its own server-side gRPC artifact after 4.9.11.)
-grpc = "1.69.0"
+grpc = "1.82.0"
 wire = "6.4.0"
 
 [libraries]
