@@ -26,7 +26,6 @@ import androidx.wear.compose.material3.OutlinedButton
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.SwitchButton
 import androidx.wear.compose.material3.Text
-import androidx.wear.compose.material3.TimeText
 import androidx.wear.compose.material3.TitleCard
 
 // ---------------------------------------------------------------------------
@@ -58,7 +57,10 @@ fun ChildButtonSticker() = WearSticker { ChildButton(onClick = {}) { Text("Child
 @Composable
 fun EdgeButtonSticker() =
   MaterialTheme {
-    AppScaffold(timeText = { TimeText() }) {
+    // No TimeText: it renders the live wall clock, which would make the sticker
+    // non-deterministic (and churn the weekly design-artifacts bundle). The edge
+    // slot is what this sticker documents.
+    AppScaffold(timeText = {}) {
       ScreenScaffold(
         scrollState = rememberLazyListState(),
         edgeButton = {
