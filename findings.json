@@ -1383,6 +1383,16 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "CheckboxUnchecked_Dark.a11y.png",
+      "cleanBasename": "CheckboxUnchecked_Dark.png",
+      "findings": [],
+      "functionName": "CheckboxUnchecked",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.CheckboxUnchecked_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "CircularProgressSticker_Dark.a11y.png",
       "cleanBasename": "CircularProgressSticker_Dark.png",
       "findings": [],
@@ -1443,6 +1453,26 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "FilledButtonFocused_Dark.a11y.png",
+      "cleanBasename": "FilledButtonFocused_Dark.png",
+      "findings": [],
+      "functionName": "FilledButtonFocused",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonFocused_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "FilledButtonPressed_Dark.a11y.png",
+      "cleanBasename": "FilledButtonPressed_Dark.png",
+      "findings": [],
+      "functionName": "FilledButtonPressed",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonPressed_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "FilledCardSticker_Dark.a11y.png",
       "cleanBasename": "FilledCardSticker_Dark.png",
       "findings": [],
@@ -1473,12 +1503,32 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "FilterChipUnselected_Dark.a11y.png",
+      "cleanBasename": "FilterChipUnselected_Dark.png",
+      "findings": [],
+      "functionName": "FilterChipUnselected",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.FilterChipUnselected_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "LinearProgressSticker_Dark.a11y.png",
       "cleanBasename": "LinearProgressSticker_Dark.png",
       "findings": [],
       "functionName": "LinearProgressSticker",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.LinearProgressSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "OutlinedButtonDisabled_Dark.a11y.png",
+      "cleanBasename": "OutlinedButtonDisabled_Dark.png",
+      "findings": [],
+      "functionName": "OutlinedButtonDisabled",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.OutlinedButtonDisabled_Dark",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -1523,12 +1573,40 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "SegmentedToggle_Dark.a11y.png",
+      "cleanBasename": "SegmentedToggle_Dark.png",
+      "findings": [
+        {
+          "boundsInScreen": "164,43,279,169",
+          "level": "ERROR",
+          "message": "This item's width is 44dp. Consider making the width of this touch target 48dp or larger.",
+          "type": "TouchTargetSizeCheck",
+          "viewDescription": "android.view.View"
+        }
+      ],
+      "functionName": "SegmentedToggle",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.SegmentedToggle_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "SliderMid_Dark.a11y.png",
       "cleanBasename": "SliderMid_Dark.png",
       "findings": [],
       "functionName": "SliderMid",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.SliderMid_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "SwitchOff_Dark.a11y.png",
+      "cleanBasename": "SwitchOff_Dark.png",
+      "findings": [],
+      "functionName": "SwitchOff",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.SwitchOff_Dark",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -1573,6 +1651,36 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "ButtonDisabled_Devices_Large_Round.a11y.png",
+      "cleanBasename": "ButtonDisabled_Devices_Large_Round.png",
+      "findings": [],
+      "functionName": "ButtonDisabled",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonDisabled_Devices - Large Round",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "ButtonFocused_Devices_Large_Round.a11y.png",
+      "cleanBasename": "ButtonFocused_Devices_Large_Round.png",
+      "findings": [],
+      "functionName": "ButtonFocused",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonFocused_Devices - Large Round",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "ButtonPressed_Devices_Large_Round.a11y.png",
+      "cleanBasename": "ButtonPressed_Devices_Large_Round.png",
+      "findings": [],
+      "functionName": "ButtonPressed",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonPressed_Devices - Large Round",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "variant": "wearos_large_round"
+    },
+    {
       "annotatedBasename": "CardSticker_Devices_Large_Round.a11y.png",
       "cleanBasename": "CardSticker_Devices_Large_Round.png",
       "findings": [],
@@ -1589,6 +1697,16 @@
       "functionName": "CheckboxButtonChecked",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CheckboxButtonChecked_Devices - Large Round",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "CheckboxButtonUnchecked_Devices_Large_Round.a11y.png",
+      "cleanBasename": "CheckboxButtonUnchecked_Devices_Large_Round.png",
+      "findings": [],
+      "functionName": "CheckboxButtonUnchecked",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CheckboxButtonUnchecked_Devices - Large Round",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": "wearos_large_round"
     },
@@ -1659,6 +1777,16 @@
       "functionName": "OutlinedButtonSticker",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.OutlinedButtonSticker_Devices - Large Round",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "SwitchButtonOff_Devices_Large_Round.a11y.png",
+      "cleanBasename": "SwitchButtonOff_Devices_Large_Round.png",
+      "findings": [],
+      "functionName": "SwitchButtonOff",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOff_Devices - Large Round",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": "wearos_large_round"
     },

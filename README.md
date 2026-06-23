@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 179 preview(s) across 17 module(s) · 10 error(s) · 4 warning(s) · 18 info._
+_Auto-generated from `compose-preview/a11y/main`. 191 preview(s) across 17 module(s) · 11 error(s) · 4 warning(s) · 18 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -724,6 +724,12 @@ _No findings._
 
 _No findings._
 
+### `CheckboxUnchecked`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/CheckboxUnchecked_Dark.a11y.png" width="400" />
+
+_No findings._
+
 ### `CircularProgressSticker`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/CircularProgressSticker_Dark.a11y.png" width="400" />
@@ -760,6 +766,18 @@ _No findings._
 
 _No findings._
 
+### `FilledButtonFocused`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/FilledButtonFocused_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `FilledButtonPressed`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/FilledButtonPressed_Dark.a11y.png" width="400" />
+
+_No findings._
+
 ### `FilledCardSticker`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/FilledCardSticker_Dark.a11y.png" width="400" />
@@ -778,9 +796,21 @@ _No findings._
 
 _No findings._
 
+### `FilterChipUnselected`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/FilterChipUnselected_Dark.a11y.png" width="400" />
+
+_No findings._
+
 ### `LinearProgressSticker`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/LinearProgressSticker_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `OutlinedButtonDisabled`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/OutlinedButtonDisabled_Dark.a11y.png" width="400" />
 
 _No findings._
 
@@ -808,9 +838,23 @@ _No findings._
 
 _No findings._
 
+### `SegmentedToggle`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/SegmentedToggle_Dark.a11y.png" width="400" />
+
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | ERROR | TouchTargetSizeCheck | android.view.View | This item's width is 44dp. Consider making the width of this touch target 48dp or larger. |
+
 ### `SliderMid`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/SliderMid_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `SwitchOff`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/SwitchOff_Dark.a11y.png" width="400" />
 
 _No findings._
 
@@ -840,6 +884,24 @@ _No findings._
 
 ## design-catalog-wear-m3
 
+### `ButtonDisabled` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/ButtonDisabled_Devices_Large_Round.a11y.png" width="400" />
+
+_No findings._
+
+### `ButtonFocused` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/ButtonFocused_Devices_Large_Round.a11y.png" width="400" />
+
+_No findings._
+
+### `ButtonPressed` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/ButtonPressed_Devices_Large_Round.a11y.png" width="400" />
+
+_No findings._
+
 ### `CardSticker` · `wearos_large_round`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/CardSticker_Devices_Large_Round.a11y.png" width="400" />
@@ -849,6 +911,12 @@ _No findings._
 ### `CheckboxButtonChecked` · `wearos_large_round`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/CheckboxButtonChecked_Devices_Large_Round.a11y.png" width="400" />
+
+_No findings._
+
+### `CheckboxButtonUnchecked` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/CheckboxButtonUnchecked_Devices_Large_Round.a11y.png" width="400" />
 
 _No findings._
 
@@ -891,6 +959,12 @@ _No findings._
 ### `OutlinedButtonSticker` · `wearos_large_round`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/OutlinedButtonSticker_Devices_Large_Round.a11y.png" width="400" />
+
+_No findings._
+
+### `SwitchButtonOff` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/SwitchButtonOff_Devices_Large_Round.a11y.png" width="400" />
 
 _No findings._
 
