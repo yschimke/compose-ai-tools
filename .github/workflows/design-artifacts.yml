@@ -48,35 +48,19 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/install-cli
 
-      # The export engine + driver live in design-parity; build it from source.
-      # Clone it with `git` rather than actions/checkout (whose repo-metadata API
-      # lookup 404s on a separate repo under this repo-scoped token). The token
-      # goes in the URL because the runner forces credential lookup even for a
-      # public repo (anonymous clone fails with "could not read Username"); any
-      # valid token can read a public repo over git, so the repo-scoped
-      # GITHUB_TOKEN works here.
-      - name: Check out design-parity (export engine + driver)
-        env:
-          DP_REF: main
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          git clone --depth 1 --branch "$DP_REF" \
-            "https://x-access-token:${GH_TOKEN}@github.com/yschimke/design-parity.git" \
-            design-parity
-          # Scrub the token from the clone's config: the authenticated URL is
-          # persisted as remote.origin.url, and the next steps run npm ci / build
-          # from this clone with a contents:write token in reach. We never push or
-          # pull design-parity again, so drop the remote before any of its code runs.
-          git -C design-parity remote remove origin
+      # The export engine lives in the (private) design-parity repo, but its
+      # building blocks are published to npm. The driver
+      # (scripts/design-artifacts/) pins @design-parity/candidate +
+      # @design-parity/catalog-export, so we install them from npm rather than
+      # cloning design-parity: the workflow's GITHUB_TOKEN is scoped to this repo
+      # only and can't read the private design-parity repo, and a public-npm
+      # install needs no cross-repo secret.
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 22
-      - name: Build design-parity
-        working-directory: design-parity
-        run: |
-          npm ci
-          npm run build
+      - name: Install export engine (pinned npm packages)
+        working-directory: scripts/design-artifacts
+        run: npm ci
 
       - name: Render catalog bundle
         env:
@@ -94,14 +78,13 @@ jobs:
       # so a transient render failure can't force-push a degraded bundle over a
       # good delivery branch.
       - name: Generate importable catalog
-        working-directory: design-parity
         env:
           SYSTEM: ${{ matrix.system }}
           SPEC: ${{ matrix.spec }}
         run: |
           set -euo pipefail
-          node scripts/generate-design-catalog.mjs \
-            --spec "$GITHUB_WORKSPACE/$SPEC" \
+          node scripts/design-artifacts/generate-design-catalog.mjs \
+            --spec "$SPEC" \
             --renders "$GITHUB_WORKSPACE/$SYSTEM-bundle.png" \
             --out "$GITHUB_WORKSPACE/out" \
             --renderer "$(compose-preview --version | head -1)"
