@@ -1,0 +1,74 @@
+{
+  "$comment": "Phase-0 catalog spec for Compose Material 3. Code-led: this declares the component inventory, grouping, captions, primary modes, and breakpoints the sticker sheet covers, plus the published-kit frame each component seeds from. The kit reference is for the one-off import only — our render is authoritative. Consumed by @design-parity/catalog-export to populate ComponentSource group/caption/reference.",
+  "system": "compose-m3",
+  "title": "Compose Material 3",
+  "library": [
+    "androidx.compose.material3:material3",
+    "androidx.compose.material3.adaptive:adaptive (planned)"
+  ],
+  "module": "samples:design-catalog-m3",
+  "modes": ["light", "dark"],
+  "breakpoints": [
+    { "size": "compact", "widthDp": 412 },
+    { "size": "medium", "widthDp": 700 },
+    { "size": "expanded", "widthDp": 960 }
+  ],
+  "referenceKits": [
+    "https://www.figma.com/community/file/1035203688168086460/material-3-design-kit",
+    "https://www.figma.com/community/file/1228357783685927211/material-design-3-components"
+  ],
+  "groups": [
+    {
+      "name": "Buttons",
+      "components": [
+        { "componentId": "Button/Filled", "preview": "FilledButton", "caption": "Highest emphasis; the primary action." },
+        { "componentId": "Button/Tonal", "preview": "FilledTonalButtonSticker", "caption": "Secondary, still prominent." },
+        { "componentId": "Button/Outlined", "preview": "OutlinedButtonSticker", "caption": "Medium emphasis on a busy surface." },
+        { "componentId": "Button/Elevated", "preview": "ElevatedButtonSticker", "caption": "Outlined alternative needing separation." },
+        { "componentId": "Button/Text", "preview": "TextButtonSticker", "caption": "Lowest emphasis; inline actions." },
+        { "componentId": "Button/Filled-Disabled", "preview": "FilledButtonDisabled", "caption": "Disabled state." }
+      ]
+    },
+    {
+      "name": "Selection",
+      "components": [
+        { "componentId": "Checkbox/Checked", "preview": "CheckboxChecked" },
+        { "componentId": "Switch/On", "preview": "SwitchOn" },
+        { "componentId": "RadioButton/Selected", "preview": "RadioSelected" },
+        { "componentId": "Slider", "preview": "SliderMid" },
+        { "componentId": "Chip/Filter-Selected", "preview": "FilterChipSelected" },
+        { "componentId": "Chip/Assist", "preview": "AssistChipSticker" }
+      ]
+    },
+    {
+      "name": "Containment",
+      "components": [
+        { "componentId": "Card/Elevated", "preview": "ElevatedCardSticker" },
+        { "componentId": "Card/Outlined", "preview": "OutlinedCardSticker" },
+        { "componentId": "Card/Filled", "preview": "FilledCardSticker" },
+        { "componentId": "FAB", "preview": "FabSticker" }
+      ]
+    },
+    {
+      "name": "Communication",
+      "components": [
+        { "componentId": "Progress/Linear", "preview": "LinearProgressSticker" },
+        { "componentId": "Progress/Circular", "preview": "CircularProgressSticker" },
+        { "componentId": "Badge", "preview": "BadgeSticker" }
+      ]
+    },
+    {
+      "name": "Text fields",
+      "components": [
+        { "componentId": "TextField/Filled", "preview": "TextFieldSticker" },
+        { "componentId": "TextField/Outlined", "preview": "OutlinedTextFieldSticker" }
+      ]
+    },
+    {
+      "name": "Text options",
+      "components": [
+        { "componentId": "Text/MaxLines-Truncated", "preview": "TextMaxLinesTruncated", "caption": "maxLines=2 + ellipsis overflow — exercises the textOverflow product." }
+      ]
+    }
+  ]
+}
