@@ -35,8 +35,39 @@ import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
-import { loadPreviewBundle } from "@design-parity/candidate";
+import { readPreviewBundle, bundleToCandidates } from "@design-parity/candidate";
 import { buildCatalog, writeCatalog } from "@design-parity/catalog-export";
+
+/**
+ * Read a preview bundle into CandidateRenders, resolving each candidate's
+ * componentId to its `@Preview` functionName so the join folds theme/size
+ * variants (see the vendored join below).
+ *
+ * Split out of `loadPreviewBundle` to sanitize params first: the published
+ * `@design-parity/core` normalizeSize (≤ 0.1.21) throws on a `null` `widthDp`,
+ * which a `@Preview` with no pinned width serializes as JSON `null` (e.g. the
+ * compose-m3 stickers; the wear catalog pins a device width and is unaffected).
+ * Dropping the null width/height params is equivalent to "unset" and avoids the
+ * crash. Fixed upstream (design-parity normalizeSize null-guard); once that
+ * ships to npm and the pin is bumped, this can revert to a plain
+ * `loadPreviewBundle(path, resolver)`.
+ */
+async function loadCandidates(path) {
+  const bundle = await readPreviewBundle(path);
+  for (const preview of bundle.previews) {
+    sanitizeNullSizes(preview.params);
+    for (const capture of preview.captures ?? []) sanitizeNullSizes(capture.params);
+  }
+  return bundleToCandidates(bundle, (entry) => entry.functionName ?? entry.id);
+}
+
+/** Drop `widthDp`/`heightDp` when serialized as JSON null so the published
+ *  normalizeSize doesn't `.trim()` a null. */
+function sanitizeNullSizes(params) {
+  if (!params) return;
+  if (params.widthDp == null) delete params.widthDp;
+  if (params.heightDp == null) delete params.heightDp;
+}
 
 // --- vendored from design-parity packages/catalog-export/src/spec.ts ----------
 // Pure join of rendered CandidateRenders to a catalog spec, wrapping the
@@ -161,10 +192,11 @@ const rendersPath = resolve(values.renders);
 const outPath = resolve(values.out);
 
 const spec = JSON.parse(await readFile(specPath, "utf8"));
-// Resolve each candidate's componentId to its `@Preview` function name so the
-// join folds a function's theme/size multipreview variants (whose ids differ
-// only by an appended `_<mode>`) onto one component. See the vendored join above.
-const candidates = await loadPreviewBundle(rendersPath, (entry) => entry.functionName ?? entry.id);
+// Read candidates with componentId resolved to the `@Preview` function name so
+// the join folds a function's theme/size multipreview variants (whose ids differ
+// only by an appended `_<mode>`) onto one component. See `loadCandidates` (which
+// also works around the published null-widthDp crash) and the vendored join.
+const candidates = await loadCandidates(rendersPath);
 
 const { catalog, missing, withoutSemantics } = catalogFromCandidates(candidates, spec, {
   ...(values.renderer ? { renderer: values.renderer } : {}),
