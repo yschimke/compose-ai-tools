@@ -699,6 +699,13 @@
     "sha256": "31f75b1fadb4bd5212ac12334ae24ea740b84e2641510bf0d9af4489af76ffc3",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/PseudolocalePreviews.kt"
   },
+  "samples:android/com.example.sampleandroid.RippleStatePreviewsKt.PressedButtonPreview_Pressed": {
+    "captureLabel": "",
+    "functionName": "PressedButtonPreview",
+    "renderBasename": "PressedButtonPreview_Pressed.png",
+    "sha256": "af715d6507705f4e622c24160c820e24fdd4f698a73150d7c6ba244875e30050",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/RippleStatePreviews.kt"
+  },
   "samples:android/com.example.sampleandroid.ScrollPreviewsKt.RedToBlueEndThenGifPreview_EndThenGif": {
     "captureLabel": "scroll end",
     "functionName": "RedToBlueEndThenGifPreview",
@@ -2033,7 +2040,7 @@
     "captureLabel": "scroll long",
     "functionName": "ActivityListLongPreview",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round.png",
-    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
+    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {

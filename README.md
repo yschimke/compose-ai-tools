@@ -94,6 +94,7 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `PseudoSampleAccent` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/PseudoSampleAccent_accent.png" width="150" /> |
 | `PseudoSampleBidi` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/PseudoSampleBidi_bidi.png" width="150" /> |
 | `PseudoSampleDefault` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/PseudoSampleDefault_default.png" width="150" /> |
+| `PressedButtonPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/PressedButtonPreview_Pressed.png" width="150" /> |
 | `RedToBlueEndThenGifPreview · scroll end` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/RedToBlueEndThenGifPreview_EndThenGif.png" width="150" /> |
 | `RedToBlueEndThenGifPreview · scroll gif` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/RedToBlueEndThenGifPreview_EndThenGif_SCROLL_gif.gif" width="150" /> |
 | `RedToBlueScrollGifPreview · scroll gif` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/RedToBlueScrollGifPreview_ScrollGif.gif" width="150" /> |
