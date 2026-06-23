@@ -3,20 +3,18 @@ package com.example.designcatalogwearm3
 import androidx.compose.foundation.interaction.FocusInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
+import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.Card
@@ -56,9 +54,13 @@ fun OutlinedButtonSticker() =
 @Composable
 fun ChildButtonSticker() = WearSticker { ChildButton(onClick = {}) { Text("Child") } }
 
-// EdgeButton is anchored to the bottom edge of the round screen via
-// ScreenScaffold(edgeButton = …) — its shape *is* that placement, so it gets a
-// real scaffold (not the centered WearSticker frame) to seed the right geometry.
+// EdgeButton hugs the bottom edge of the round screen via the
+// ScreenScaffold(edgeButton = …) slot — its curved shape *is* that placement.
+// ScreenScaffold reveals the edge button from its scroll state, so the content
+// must be a real `TransformingLazyColumn` bound to the same state (a static Box
+// leaves the scaffold with no list to anchor, and the button never draws — the
+// shape this sticker exists to document). Mirrors the official Wear M3
+// `ScreenScaffold` + `TransformingLazyColumn` sample (see samples/wear).
 @CatalogWearModes
 @Composable
 fun EdgeButtonSticker() =
@@ -67,17 +69,19 @@ fun EdgeButtonSticker() =
     // non-deterministic (and churn the weekly design-artifacts bundle). The edge
     // slot is what this sticker documents.
     AppScaffold(timeText = {}) {
+      val listState = rememberTransformingLazyColumnState()
       ScreenScaffold(
-        scrollState = rememberLazyListState(),
+        scrollState = listState,
         edgeButton = {
           EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) { Text("Start") }
-        }
+        },
       ) { contentPadding ->
-        Box(
-          Modifier.fillMaxSize().padding(contentPadding),
-          contentAlignment = Alignment.Center,
+        TransformingLazyColumn(
+          state = listState,
+          contentPadding = contentPadding,
+          modifier = Modifier.fillMaxSize(),
         ) {
-          ListHeader { Text("Workout") }
+          item { ListHeader { Text("Workout") } }
         }
       }
     }
