@@ -183,6 +183,11 @@ include(":samples:sdk-matrix")
 
 include(":samples:wear")
 
+// Wear Compose Material 3 **design catalog** — one `@Preview` per component in its
+// primary (round size) modes, exported as a sticker sheet (see
+// `docs/design/DESIGN_CATALOGS.md` and the M3 sibling `:samples:design-catalog-m3`).
+include(":samples:design-catalog-wear-m3")
+
 include(":samples:xr-glimmer")
 
 include(":samples:xr-spatial")

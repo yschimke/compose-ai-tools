@@ -1,0 +1,51 @@
+{
+  "$comment": "Phase-0 catalog spec for Wear Compose Material 3. Code-led: the render is authoritative; the kit references are for the one-off seed import only. Wear is dark-first, so the primary modes are the round size breakpoints (small/large round) rather than light/dark.",
+  "system": "wear-m3",
+  "title": "Wear Compose Material 3",
+  "library": ["androidx.wear.compose:compose-material3"],
+  "module": "samples:design-catalog-wear-m3",
+  "modes": ["smallRound", "largeRound"],
+  "referenceKits": [
+    "https://www.figma.com/community/file/1506418396052412186/m3-wear-os-apps-design-kit",
+    "https://www.figma.com/community/file/1507852095734722321/m3-wear-os-tiles-design-kit"
+  ],
+  "groups": [
+    {
+      "name": "Buttons",
+      "components": [
+        { "componentId": "Button/Filled", "preview": "FilledButton" },
+        { "componentId": "Button/Tonal", "preview": "FilledTonalButtonSticker" },
+        { "componentId": "Button/Outlined", "preview": "OutlinedButtonSticker" },
+        { "componentId": "Button/Child", "preview": "ChildButtonSticker" },
+        { "componentId": "EdgeButton", "preview": "EdgeButtonSticker", "caption": "Screen-hugging bottom action unique to Wear." }
+      ]
+    },
+    {
+      "name": "Selection",
+      "components": [
+        { "componentId": "SwitchButton/On", "preview": "SwitchButtonOn" },
+        { "componentId": "CheckboxButton/Checked", "preview": "CheckboxButtonChecked" }
+      ]
+    },
+    {
+      "name": "Containment",
+      "components": [
+        { "componentId": "Card", "preview": "CardSticker" },
+        { "componentId": "TitleCard", "preview": "TitleCardSticker" },
+        { "componentId": "ListHeader", "preview": "ListHeaderSticker" }
+      ]
+    },
+    {
+      "name": "Communication",
+      "components": [
+        { "componentId": "Progress/Circular", "preview": "CircularProgressSticker" }
+      ]
+    },
+    {
+      "name": "Text options",
+      "components": [
+        { "componentId": "Text/MaxLines-Truncated", "preview": "TextMaxLinesTruncated", "caption": "maxLines=2 + ellipsis on a round screen." }
+      ]
+    }
+  ]
+}
