@@ -807,6 +807,16 @@
       "variant": "pixel_8"
     },
     {
+      "annotatedBasename": "PressedButtonPreview_Pressed.a11y.png",
+      "cleanBasename": "PressedButtonPreview_Pressed.png",
+      "findings": [],
+      "functionName": "PressedButtonPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.RippleStatePreviewsKt.PressedButtonPreview_Pressed",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/RippleStatePreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "PseudoSampleAccent_accent.a11y.png",
       "cleanBasename": "PseudoSampleAccent_accent.png",
       "findings": [],

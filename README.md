@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 191 preview(s) across 17 module(s) · 11 error(s) · 4 warning(s) · 18 info._
+_Auto-generated from `compose-preview/a11y/main`. 192 preview(s) across 17 module(s) · 11 error(s) · 4 warning(s) · 18 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -299,6 +299,12 @@ _No findings._
 ### `Pixel8SystemUiPreview` · `pixel_8`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/Pixel8SystemUiPreview_Pixel_8.a11y.png" width="400" />
+
+_No findings._
+
+### `PressedButtonPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/PressedButtonPreview_Pressed.a11y.png" width="400" />
 
 _No findings._
 
