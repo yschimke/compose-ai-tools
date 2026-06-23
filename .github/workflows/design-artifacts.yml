@@ -73,6 +73,12 @@ jobs:
           compose-preview bundle pack --module "$MODULE" --with-semantics \
             -o "$GITHUB_WORKSPACE/$SYSTEM-bundle.png"
 
+      # The exporter gates on a complete render: `bundle pack --with-semantics`
+      # is best-effort (exits 0 even if the daemon failed or captured zero
+      # semantics), so the driver exits non-zero when any preview is missing or
+      # lacks semantics. With `set -e` that fails the job before the publish step,
+      # so a transient render failure can't force-push a degraded bundle over a
+      # good delivery branch.
       - name: Generate importable catalog
         working-directory: design-parity
         env:
