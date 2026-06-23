@@ -58,9 +58,28 @@ fun OutlinedButtonSticker() =
 @Composable
 fun ChildButtonSticker() = WearSticker { ChildButton(onClick = {}) { Text("Child") } }
 
-// A short workout menu the EdgeButton sticker scrolls through so the list
-// overflows the viewport — see [EdgeButtonSticker].
-private val edgeButtonMenu = listOf("Run", "Walk", "Cycle", "Swim", "Yoga", "Row")
+// A workout menu the EdgeButton sticker scrolls through. It's deliberately long
+// (≈ the proven samples/wear fixture): the content must overflow the viewport by
+// a few screens so that, scrolled to the end, the list fills the space above the
+// edge button and the button settles at its own EdgeButtonSize.Large height —
+// too few items leave slack the scaffold lets the button expand into.
+private val edgeButtonMenu =
+  listOf(
+    "Run",
+    "Walk",
+    "Cycle",
+    "Swim",
+    "Yoga",
+    "Row",
+    "Hike",
+    "Strength",
+    "Pilates",
+    "Elliptical",
+    "Stretch",
+    "Boxing",
+    "Dance",
+    "Climb",
+  )
 
 // EdgeButton hugs the bottom edge of the round screen via the
 // ScreenScaffold(edgeButton = …) slot — its curved shape *is* that placement, so
