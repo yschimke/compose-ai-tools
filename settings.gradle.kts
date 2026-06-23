@@ -166,6 +166,11 @@ project(":lottie-preview-runtime").projectDir = file("runtimes/lottie")
 
 include(":samples:android")
 
+// Compose Material 3 **design catalog** — one `@Preview` per component in its
+// primary modes, authored so the renderer can export the module as an importable
+// sticker sheet (see `docs/design/DESIGN_CATALOGS.md`).
+include(":samples:design-catalog-m3")
+
 include(":samples:android-alpha")
 
 include(":samples:android-library")

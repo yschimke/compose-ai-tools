@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Preview-only module: no launcher activity. The components are exercised
+  exclusively through `@Preview` rendering, so the manifest only needs an
+  `<application>` for the Android application plugin to build.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="Design Catalog M3" />
+</manifest>
