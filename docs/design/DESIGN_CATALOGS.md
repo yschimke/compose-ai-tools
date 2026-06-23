@@ -38,7 +38,9 @@ captions, primary modes, breakpoints, and the seed-kit frame per component).
 ## Rendering a catalog
 
 ```sh
-compose-preview show --module design-catalog-m3 \
+# --module is the Gradle path (leading colon optional), not the bare name —
+# the resolver maps it to a directory (`samples/design-catalog-m3`).
+compose-preview show --module samples:design-catalog-m3 \
   --with-extension a11y,theme,semantics,semantics-wireframe --json \
   > /tmp/m3-show.json
 ```

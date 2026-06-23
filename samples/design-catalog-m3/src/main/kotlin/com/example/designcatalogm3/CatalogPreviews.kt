@@ -2,6 +2,7 @@
 
 package com.example.designcatalogm3
 
+import android.content.res.Configuration
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -162,6 +163,13 @@ fun OutlinedTextFieldSticker() =
 // ---------------------------------------------------------------------------
 
 @Preview(name = "Light", showBackground = true, group = "modes", widthDp = 160)
+@Preview(
+  name = "Dark",
+  showBackground = true,
+  group = "modes",
+  widthDp = 160,
+  uiMode = Configuration.UI_MODE_NIGHT_YES,
+)
 @Composable
 fun TextMaxLinesTruncated() =
   CatalogSticker {

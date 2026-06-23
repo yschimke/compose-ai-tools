@@ -6,7 +6,7 @@
     "androidx.compose.material3:material3",
     "androidx.compose.material3.adaptive:adaptive (planned)"
   ],
-  "module": "design-catalog-m3",
+  "module": "samples:design-catalog-m3",
   "modes": ["light", "dark"],
   "breakpoints": [
     { "size": "compact", "widthDp": 412 },
