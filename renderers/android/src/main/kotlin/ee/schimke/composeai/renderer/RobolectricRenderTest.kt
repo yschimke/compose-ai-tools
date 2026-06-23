@@ -2079,6 +2079,16 @@ private fun handleFocusGifCapture(
             // crossfades to the new highlight before the frame is captured.
             rule.mainClock.advanceTimeBy(FocusController.SETTLE_MS)
             rule.mainClock.advanceTimeBy(focusGif.frameDelayMs.toLong())
+            // Same platform-ripple settling as the static per-PNG focus block: a
+            // pressed step's Material state layer is a platform `RippleDrawable`
+            // animated on the Android looper, not Compose's `mainClock`, so the
+            // advances above never progress it. Idle the looper for pressed frames so
+            // the ripple settles before capture; gated per-step so non-pressed frames
+            // keep their deterministic timing.
+            if (step.pressed) {
+                org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
+                    .idleFor(java.time.Duration.ofMillis(FocusController.SETTLE_MS))
+            }
             val frameFile = File(framesDir, "frame_$i.png")
             rule.onRoot()
                 .captureRoboImage(file = frameFile, roborazziOptions = frameRoborazziOptions)
