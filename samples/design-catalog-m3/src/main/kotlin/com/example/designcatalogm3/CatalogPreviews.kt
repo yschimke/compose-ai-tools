@@ -3,6 +3,9 @@
 package com.example.designcatalogm3
 
 import android.content.res.Configuration
+import androidx.compose.foundation.interaction.FocusInteraction
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -23,13 +26,19 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -178,4 +187,75 @@ fun TextMaxLinesTruncated() =
       maxLines = 2,
       overflow = TextOverflow.Ellipsis,
     )
+  }
+
+// ---------------------------------------------------------------------------
+// States — interaction (pressed / focused), disabled, and toggle off↔on.
+// A held interaction is seeded into the InteractionSource so the static capture
+// shows that state's resting state-layer (the design contract for the state),
+// not the default resting button.
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun pressedSource(): MutableInteractionSource {
+  val source = remember { MutableInteractionSource() }
+  LaunchedEffect(source) { source.emit(PressInteraction.Press(Offset.Zero)) }
+  return source
+}
+
+@Composable
+private fun focusedSource(): MutableInteractionSource {
+  val source = remember { MutableInteractionSource() }
+  LaunchedEffect(source) { source.emit(FocusInteraction.Focus()) }
+  return source
+}
+
+@CatalogModes
+@Composable
+fun FilledButtonPressed() =
+  CatalogSticker { Button(onClick = {}, interactionSource = pressedSource()) { Text("Pressed") } }
+
+@CatalogModes
+@Composable
+fun FilledButtonFocused() =
+  CatalogSticker { Button(onClick = {}, interactionSource = focusedSource()) { Text("Focused") } }
+
+@CatalogModes
+@Composable
+fun OutlinedButtonDisabled() =
+  CatalogSticker { OutlinedButton(onClick = {}, enabled = false) { Text("Disabled") } }
+
+@CatalogModes
+@Composable
+fun SwitchOff() = CatalogSticker { Switch(checked = false, onCheckedChange = {}) }
+
+@CatalogModes
+@Composable
+fun CheckboxUnchecked() = CatalogSticker { Checkbox(checked = false, onCheckedChange = {}) }
+
+@CatalogModes
+@Composable
+fun FilterChipUnselected() =
+  CatalogSticker { FilterChip(selected = false, onClick = {}, label = { Text("Filter") }) }
+
+@CatalogModes
+@Composable
+fun SegmentedToggle() =
+  CatalogSticker {
+    SingleChoiceSegmentedButtonRow {
+      SegmentedButton(
+        selected = true,
+        onClick = {},
+        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+      ) {
+        Text("On")
+      }
+      SegmentedButton(
+        selected = false,
+        onClick = {},
+        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+      ) {
+        Text("Off")
+      }
+    }
   }

@@ -65,6 +65,18 @@
       ]
     },
     {
+      "name": "States",
+      "components": [
+        { "componentId": "Button/Filled-Pressed", "preview": "FilledButtonPressed", "caption": "Held PressInteraction → pressed state layer." },
+        { "componentId": "Button/Filled-Focused", "preview": "FilledButtonFocused", "caption": "Held FocusInteraction → focus state layer." },
+        { "componentId": "Button/Outlined-Disabled", "preview": "OutlinedButtonDisabled" },
+        { "componentId": "Switch/Off", "preview": "SwitchOff" },
+        { "componentId": "Checkbox/Unchecked", "preview": "CheckboxUnchecked" },
+        { "componentId": "Chip/Filter-Unselected", "preview": "FilterChipUnselected" },
+        { "componentId": "SegmentedButton", "preview": "SegmentedToggle", "caption": "Single-choice toggle: selected + unselected segments." }
+      ]
+    },
+    {
       "name": "Text options",
       "components": [
         { "componentId": "Text/MaxLines-Truncated", "preview": "TextMaxLinesTruncated", "caption": "maxLines=2 + ellipsis overflow — exercises the textOverflow product." }

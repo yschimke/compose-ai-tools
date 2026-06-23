@@ -42,6 +42,16 @@
       ]
     },
     {
+      "name": "States",
+      "components": [
+        { "componentId": "Button/Pressed", "preview": "ButtonPressed", "caption": "Held PressInteraction → pressed state layer." },
+        { "componentId": "Button/Focused", "preview": "ButtonFocused", "caption": "Held FocusInteraction → focus indicator (rotary / D-pad)." },
+        { "componentId": "Button/Disabled", "preview": "ButtonDisabled" },
+        { "componentId": "SwitchButton/Off", "preview": "SwitchButtonOff" },
+        { "componentId": "CheckboxButton/Unchecked", "preview": "CheckboxButtonUnchecked" }
+      ]
+    },
+    {
       "name": "Text options",
       "components": [
         { "componentId": "Text/MaxLines-Truncated", "preview": "TextMaxLinesTruncated", "caption": "maxLines=2 + ellipsis on a round screen." }
