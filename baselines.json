@@ -1613,14 +1613,14 @@
     "captureLabel": "",
     "functionName": "EdgeButtonSticker",
     "renderBasename": "EdgeButtonSticker_Devices_Large_Round.png",
-    "sha256": "9e73ad96ce067106233aebc159929b9bdf31e49908cbaba3419ad70311cec8bc",
+    "sha256": "c72b52df3070e8406de81f810aab1972b8c4324a814011816fcdf52ed551bcf2",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Devices - Small Round": {
     "captureLabel": "",
     "functionName": "EdgeButtonSticker",
     "renderBasename": "EdgeButtonSticker_Devices_Small_Round.png",
-    "sha256": "2fc4bbcf7a5331fec24e420365c5d10bd854b968863b2e17a03418d0bac21d76",
+    "sha256": "0f6263f3dc61de0038b77641eb6a990f74cfb8b23fb883d4561df8c4bef6239a",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.FilledButton_Devices - Large Round": {
