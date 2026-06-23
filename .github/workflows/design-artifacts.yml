@@ -1,0 +1,112 @@
+name: Design Artifacts
+
+# Weekly job: render each design-catalog module and publish its importable
+# sticker-sheet bundle (catalog.json + DTCG tokens + Figma variables + PNGs) to a
+# clean `design-artifacts/<system>` branch a designer can pull into Figma /
+# Stitch / Claude Design. The render is the source of truth — these branches are
+# regenerated from the committed @Preview catalogs every Monday.
+#
+# Pipeline: compose-preview bundle pack  →  @design-parity/catalog-export driver
+#           →  force-push out/ to design-artifacts/<system>.
+
+on:
+  schedule:
+    # Mondays 06:00 UTC.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: design-artifacts-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    name: ${{ matrix.system }}
+    # Don't run on forks — the publish step pushes branches into this repo.
+    if: ${{ github.repository == 'yschimke/compose-ai-tools' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - system: compose-m3
+            module: 'samples:design-catalog-m3'
+            spec: 'samples/design-catalog-m3/catalog.spec.json'
+          - system: wear-m3
+            module: 'samples:design-catalog-wear-m3'
+            spec: 'samples/design-catalog-wear-m3/catalog.spec.json'
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      # JDK + Gradle, then build the compose-preview CLI from this checkout so the
+      # render matches the in-repo plugin/renderer schema.
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/install-cli
+
+      # The export engine + driver live in design-parity; build it from source
+      # (the @design-parity/catalog-export package isn't on npm yet).
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: yschimke/design-parity
+          path: design-parity
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+      - name: Build design-parity
+        working-directory: design-parity
+        run: |
+          npm ci
+          npm run build
+
+      - name: Render catalog bundle
+        env:
+          MODULE: ${{ matrix.module }}
+          SYSTEM: ${{ matrix.system }}
+        run: |
+          set -euo pipefail
+          compose-preview bundle pack --module "$MODULE" --with-semantics \
+            -o "$GITHUB_WORKSPACE/$SYSTEM-bundle.png"
+
+      # The exporter gates on a complete render: `bundle pack --with-semantics`
+      # is best-effort (exits 0 even if the daemon failed or captured zero
+      # semantics), so the driver exits non-zero when any preview is missing or
+      # lacks semantics. With `set -e` that fails the job before the publish step,
+      # so a transient render failure can't force-push a degraded bundle over a
+      # good delivery branch.
+      - name: Generate importable catalog
+        working-directory: design-parity
+        env:
+          SYSTEM: ${{ matrix.system }}
+          SPEC: ${{ matrix.spec }}
+        run: |
+          set -euo pipefail
+          node scripts/generate-design-catalog.mjs \
+            --spec "$GITHUB_WORKSPACE/$SPEC" \
+            --renders "$GITHUB_WORKSPACE/$SYSTEM-bundle.png" \
+            --out "$GITHUB_WORKSPACE/out" \
+            --renderer "$(compose-preview --version | head -1)"
+
+      - name: Publish to design-artifacts/${{ matrix.system }}
+        env:
+          SYSTEM: ${{ matrix.system }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/out"
+          git init -q
+          git checkout -q -b "design-artifacts/$SYSTEM"
+          # Generated delivery branch — attributed to the repo owner, not a bot
+          # (mirrors the release job's human-authorship rule).
+          git config user.name 'Yuri Schimke'
+          git config user.email 'yuri@schimke.ee'
+          git add -A
+          git commit -q -m "chore(design-artifacts): regenerate $SYSTEM catalog ($(date -u +%F))"
+          git push --force \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "HEAD:refs/heads/design-artifacts/$SYSTEM"
