@@ -1,5 +1,8 @@
 package com.example.designcatalogwearm3
 
+import androidx.compose.foundation.interaction.FocusInteraction
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -7,8 +10,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material3.AppScaffold
@@ -137,4 +143,53 @@ fun TextMaxLinesTruncated() =
       maxLines = 2,
       overflow = TextOverflow.Ellipsis,
     )
+  }
+
+// ---------------------------------------------------------------------------
+// States — interaction (pressed / focused; focus matters on Wear for rotary /
+// D-pad), disabled, and toggle off↔on. A held interaction is seeded into the
+// InteractionSource so the static capture shows that state's resting state-layer.
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun pressedSource(): MutableInteractionSource {
+  val source = remember { MutableInteractionSource() }
+  LaunchedEffect(source) { source.emit(PressInteraction.Press(Offset.Zero)) }
+  return source
+}
+
+@Composable
+private fun focusedSource(): MutableInteractionSource {
+  val source = remember { MutableInteractionSource() }
+  LaunchedEffect(source) { source.emit(FocusInteraction.Focus()) }
+  return source
+}
+
+@CatalogWearModes
+@Composable
+fun ButtonPressed() =
+  WearSticker { Button(onClick = {}, interactionSource = pressedSource()) { Text("Pressed") } }
+
+@CatalogWearModes
+@Composable
+fun ButtonFocused() =
+  WearSticker { Button(onClick = {}, interactionSource = focusedSource()) { Text("Focused") } }
+
+@CatalogWearModes
+@Composable
+fun ButtonDisabled() =
+  WearSticker { Button(onClick = {}, enabled = false) { Text("Disabled") } }
+
+@CatalogWearModes
+@Composable
+fun SwitchButtonOff() =
+  WearSticker {
+    SwitchButton(checked = false, onCheckedChange = {}, label = { Text("Wifi") })
+  }
+
+@CatalogWearModes
+@Composable
+fun CheckboxButtonUnchecked() =
+  WearSticker {
+    CheckboxButton(checked = false, onCheckedChange = {}, label = { Text("Sync") })
   }
