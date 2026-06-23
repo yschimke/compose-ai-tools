@@ -28,12 +28,25 @@ and breakpoints that matter.
 | Module | System | Status |
 | --- | --- | --- |
 | `samples/design-catalog-m3` | Compose Material 3 (+ Adaptive, planned) | ✅ template |
-| `samples/design-catalog-wear-m3` | Wear Compose M3 | planned |
+| `samples/design-catalog-wear-m3` | Wear Compose M3 | ✅ |
 | `samples/design-catalog-glimmer` | Glimmer (Android XR) | planned (see `samples/xr-glimmer`) |
 | `samples/design-catalog-glance` | Glance app widgets + Wear widgets | planned |
 
 Each module carries a `catalog.spec.json` (the Phase-0 inventory: groups,
 captions, primary modes, breakpoints, and the seed-kit frame per component).
+
+## Weekly delivery branches
+
+The [`design-artifacts`](../../.github/workflows/design-artifacts.yml) workflow
+runs every Monday (and on demand via `workflow_dispatch`): it renders each
+catalog module with `compose-preview bundle pack --with-semantics`, runs the
+`@design-parity/catalog-export` driver
+(`scripts/generate-design-catalog.mjs`), and force-pushes the importable bundle
+to a clean **`design-artifacts/<system>`** branch — `design-artifacts/compose-m3`,
+`design-artifacts/wear-m3`, … — that a designer pulls into Figma / Stitch /
+Claude Design. The branch holds only the generated bundle (`catalog.json`,
+`tokens.dtcg.json`, `figma-variables.json`, `images/`), regenerated from the
+code each week so it never drifts.
 
 ## Rendering a catalog
 
