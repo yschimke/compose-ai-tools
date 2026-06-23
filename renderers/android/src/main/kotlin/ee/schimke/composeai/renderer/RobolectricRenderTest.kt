@@ -972,6 +972,19 @@ abstract class RobolectricRenderTestBase(
                         }
                         rule.mainClock.advanceTimeBy(FocusController.SETTLE_MS)
                         currentTime += FocusController.SETTLE_MS
+
+                        // Material's ripple / pressed state layer is a platform `RippleDrawable`
+                        // animated on the Android looper / `Choreographer`, not Compose's
+                        // `mainClock` — so the advance above never progresses it. Idle the main
+                        // looper by the same window so the platform animation settles (the pressed
+                        // ripple reaches full expansion) before `captureRoboImage`. Gated to
+                        // pressed focus captures so ordinary renders keep their existing
+                        // deterministic timing; the Android clock and Compose's `mainClock` are
+                        // independent, so this advances only platform animations.
+                        if (focus.pressed) {
+                            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
+                                .idleFor(java.time.Duration.ofMillis(FocusController.SETTLE_MS))
+                        }
                     }
 
                     // @ScrollingPreview(END): drive the first scrollable on the
