@@ -31,12 +31,14 @@
  * The caller (the weekly workflow) commits the result to the system's
  * `design-artifacts/<system>` branch.
  */
-import { readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { readFile, writeFile } from "node:fs/promises";
+import { dirname, resolve, join } from "node:path";
 import { parseArgs } from "node:util";
 
 import { readPreviewBundle, bundleToCandidates } from "@design-parity/candidate";
 import { buildCatalog, writeCatalog } from "@design-parity/catalog-export";
+
+import { renderIndexHtml } from "./render-index-html.mjs";
 
 /**
  * Read a preview bundle into CandidateRenders, resolving each candidate's
@@ -225,6 +227,13 @@ if (!values["allow-incomplete"] && (missing.length > 0 || withoutSemantics.lengt
 const sourceRoot = rendersPath.endsWith(".zip") ? dirname(rendersPath) : rendersPath;
 const result = await writeCatalog(catalog, outPath, { sourceRoot });
 
+// Browsable index next to catalog.json + images/ — a designer can open this
+// straight from the branch to skim every component (and its a11y greenlines)
+// before importing the tokens/images into a design tool.
+const indexPath = join(outPath, "index.html");
+await writeFile(indexPath, renderIndexHtml(catalog), "utf8");
+
 console.log(
   `[${spec.system}] ${catalog.components.length} component(s), ${result.imageCount} image(s) → ${result.manifestPath}`,
 );
+console.log(`[${spec.system}] index → ${indexPath}`);
