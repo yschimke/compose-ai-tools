@@ -1658,242 +1658,179 @@
     "sha256": "196e3b787a0def87a13f9bea9d2d26d0caa2cbb427a06fd590219ef5b16d4978",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonDisabled_Devices - Large Round": {
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.BlankListLayout_Extra Large Round": {
+    "captureLabel": "scroll end",
+    "functionName": "BlankListLayout",
+    "renderBasename": "BlankListLayout_Extra_Large_Round.png",
+    "sha256": "d1bcfde50e70d32499bf9aad52227d6625dd883f340644c281ea867e5b8c5ee3",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.BlankListLayout_Large Round": {
+    "captureLabel": "scroll end",
+    "functionName": "BlankListLayout",
+    "renderBasename": "BlankListLayout_Large_Round.png",
+    "sha256": "e45975bf66c7b9c6882761ee31beffb0fe32ebc673579ab41eade9fb46376b7a",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.BlankListLayout_Small Round": {
+    "captureLabel": "scroll end",
+    "functionName": "BlankListLayout",
+    "renderBasename": "BlankListLayout_Small_Round.png",
+    "sha256": "d9da8f3838efa2f5c08b694a7dfab2c42494c84d7d175831ff9f0686c063068c",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonDisabled": {
     "captureLabel": "",
     "functionName": "ButtonDisabled",
-    "renderBasename": "ButtonDisabled_Devices_Large_Round.png",
-    "sha256": "4aaee3d144dbc4617ac49ce208785d7e7ab0ccd39a6b55ab9394c0e6e9829cf4",
+    "renderBasename": "ButtonDisabled.png",
+    "sha256": "dc59926661c4f1c6f39f5eb22b81876dfd1e0c1f9831f4c65a5f9d74314e0fea",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonDisabled_Devices - Small Round": {
-    "captureLabel": "",
-    "functionName": "ButtonDisabled",
-    "renderBasename": "ButtonDisabled_Devices_Small_Round.png",
-    "sha256": "49dd0da5dc8e2c55768c8892d3ce362aa2816835bceb169499db931ac49a83c5",
-    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
-  },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonFocused_Devices - Large Round": {
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonFocused": {
     "captureLabel": "",
     "functionName": "ButtonFocused",
-    "renderBasename": "ButtonFocused_Devices_Large_Round.png",
-    "sha256": "88e01331cbaa8e4e1821280005b25dedbde32d96e0c6705456c941b748f28796",
+    "renderBasename": "ButtonFocused.png",
+    "sha256": "ac1bebbb6d657f92b97f84731858ae7e29829fa2f51f8bbf39db53016089ac47",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonFocused_Devices - Small Round": {
-    "captureLabel": "",
-    "functionName": "ButtonFocused",
-    "renderBasename": "ButtonFocused_Devices_Small_Round.png",
-    "sha256": "c7d19c026612af54f34fe1102a0de5d4fa90389023f8886200e858b86286f599",
-    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
-  },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonPressed_Devices - Large Round": {
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonPressed": {
     "captureLabel": "",
     "functionName": "ButtonPressed",
-    "renderBasename": "ButtonPressed_Devices_Large_Round.png",
-    "sha256": "13124ae50a18fa415c1b56f4844751b81562e41ce97ff024b476fcb0620e1699",
+    "renderBasename": "ButtonPressed.png",
+    "sha256": "8a4113bca6e7340bba25853c696edb9737d273f8bb4f09b84a861127fbfb9f38",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonPressed_Devices - Small Round": {
-    "captureLabel": "",
-    "functionName": "ButtonPressed",
-    "renderBasename": "ButtonPressed_Devices_Small_Round.png",
-    "sha256": "c64de9b9e0e869765ffd772f6e9ac2686f06577f1d57cbb88bd72943174c0b24",
-    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
-  },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.CardSticker_Devices - Large Round": {
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.CardSticker": {
     "captureLabel": "",
     "functionName": "CardSticker",
-    "renderBasename": "CardSticker_Devices_Large_Round.png",
-    "sha256": "545aaf1e76d7a454d043e00203797efb1d8b704ed5b838ea38b51a7df932c0b4",
+    "renderBasename": "CardSticker.png",
+    "sha256": "ced4fb845fd2e495ee68a19dac5269f45eabd635b00c45937d1824632f4b9b2e",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.CardSticker_Devices - Small Round": {
-    "captureLabel": "",
-    "functionName": "CardSticker",
-    "renderBasename": "CardSticker_Devices_Small_Round.png",
-    "sha256": "3080ce4e16128efff2cbfd97abeb93ce4f433d22229711335a49c7447215e8c2",
-    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
-  },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.CheckboxButtonChecked_Devices - Large Round": {
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.CheckboxButtonChecked": {
     "captureLabel": "",
     "functionName": "CheckboxButtonChecked",
-    "renderBasename": "CheckboxButtonChecked_Devices_Large_Round.png",
-    "sha256": "70ad13b0536826fa8b61ed9f53d0ada3b2371174e47f30eaed8e86d3151845e2",
+    "renderBasename": "CheckboxButtonChecked.png",
+    "sha256": "65631a758780a30a8714048145871be44c1f540c6996040940d4590a6d962439",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.CheckboxButtonChecked_Devices - Small Round": {
-    "captureLabel": "",
-    "functionName": "CheckboxButtonChecked",
-    "renderBasename": "CheckboxButtonChecked_Devices_Small_Round.png",
-    "sha256": "c8196c5ba16f8677424bd1f2ffc606fe7f57c7a351efc18da1151da16ab8cd2b",
-    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
-  },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.CheckboxButtonUnchecked_Devices - Large Round": {
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.CheckboxButtonUnchecked": {
     "captureLabel": "",
     "functionName": "CheckboxButtonUnchecked",
-    "renderBasename": "CheckboxButtonUnchecked_Devices_Large_Round.png",
-    "sha256": "8097a815edcc943e9812fff08dd19063340187797680f1564e181583be8ed277",
+    "renderBasename": "CheckboxButtonUnchecked.png",
+    "sha256": "e67a0b359b156ef77bef29d6af5b2edbe2468cfc1d4c76fe68dcc9fceb99dd61",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.CheckboxButtonUnchecked_Devices - Small Round": {
-    "captureLabel": "",
-    "functionName": "CheckboxButtonUnchecked",
-    "renderBasename": "CheckboxButtonUnchecked_Devices_Small_Round.png",
-    "sha256": "a7aca899d1a96199d3bbaf280e182c4ff89efde1aa911696b35bf338e3c8afc6",
-    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
-  },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ChildButtonSticker_Devices - Large Round": {
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ChildButtonSticker": {
     "captureLabel": "",
     "functionName": "ChildButtonSticker",
-    "renderBasename": "ChildButtonSticker_Devices_Large_Round.png",
-    "sha256": "6954f72901100a20120c1377e7ddc325834dd4162c5c6c92d21bcd16c0aff220",
+    "renderBasename": "ChildButtonSticker.png",
+    "sha256": "3262464b1928307eae3d95d4be666b2c7be3f7aac06a6cf1b93448093ce80eb1",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ChildButtonSticker_Devices - Small Round": {
-    "captureLabel": "",
-    "functionName": "ChildButtonSticker",
-    "renderBasename": "ChildButtonSticker_Devices_Small_Round.png",
-    "sha256": "53f0dd6f0fcf0206fa68347d6d0634d68a7a58c4a655f898651be396488769d6",
-    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
-  },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.CircularProgressSticker_Devices - Large Round": {
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.CircularProgressSticker": {
     "captureLabel": "",
     "functionName": "CircularProgressSticker",
-    "renderBasename": "CircularProgressSticker_Devices_Large_Round.png",
-    "sha256": "f7b713c9b82ba26eaaec3005910cca0b7f5f85d35ef90a5ae0aed8520ce91a0e",
+    "renderBasename": "CircularProgressSticker.png",
+    "sha256": "3672656f9dc85dfe5389d63b707b17d700885fca26574eb1e7eca6498d6530f9",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.CircularProgressSticker_Devices - Small Round": {
-    "captureLabel": "",
-    "functionName": "CircularProgressSticker",
-    "renderBasename": "CircularProgressSticker_Devices_Small_Round.png",
-    "sha256": "2a4005bdf50f70859074b3713d373cebd4af2e70a9e4fb6e1631d34e727c988e",
-    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
-  },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Devices - Large Round": {
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Extra Large Round": {
     "captureLabel": "scroll end",
     "functionName": "EdgeButtonSticker",
-    "renderBasename": "EdgeButtonSticker_Devices_Large_Round.png",
-    "sha256": "28a48a776959c5b7b170b089aaf71455cc715b980bb82a32de7b045321a1bac9",
+    "renderBasename": "EdgeButtonSticker_Extra_Large_Round.png",
+    "sha256": "2f7e1a8121198aa46d40376d6e210061afd80ff5dcf74e4c0f796eba3c8a47e4",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Devices - Small Round": {
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Large Round": {
     "captureLabel": "scroll end",
     "functionName": "EdgeButtonSticker",
-    "renderBasename": "EdgeButtonSticker_Devices_Small_Round.png",
-    "sha256": "533879f677fb819263ea6af06626c05912698ab5c7596c7fc49318540c5677a6",
+    "renderBasename": "EdgeButtonSticker_Large_Round.png",
+    "sha256": "0cf3bf50a9377911d56d35223682b07f67bbfd804ab44c5f5d234f20f072d854",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.FilledButton_Devices - Large Round": {
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Small Round": {
+    "captureLabel": "scroll end",
+    "functionName": "EdgeButtonSticker",
+    "renderBasename": "EdgeButtonSticker_Small_Round.png",
+    "sha256": "ee8be9612959dfde3a7e8ecc3daf35411aee5c0042daf39b72d9ae61468add0b",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.FilledButton": {
     "captureLabel": "",
     "functionName": "FilledButton",
-    "renderBasename": "FilledButton_Devices_Large_Round.png",
-    "sha256": "7e25dabb9d460955edfc68018618c5d64ccf9320a3db33ac87ffe1da4152dfd2",
+    "renderBasename": "FilledButton.png",
+    "sha256": "87137377fcce11dbde02258724778122ae5e5e00b4f84f444dc6ca3d078e2c91",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.FilledButton_Devices - Small Round": {
-    "captureLabel": "",
-    "functionName": "FilledButton",
-    "renderBasename": "FilledButton_Devices_Small_Round.png",
-    "sha256": "c181aa40bed7c64eea709360f58785928d0ee7019917cbb3992bf8daa6f7bdeb",
-    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
-  },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.FilledTonalButtonSticker_Devices - Large Round": {
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.FilledTonalButtonSticker": {
     "captureLabel": "",
     "functionName": "FilledTonalButtonSticker",
-    "renderBasename": "FilledTonalButtonSticker_Devices_Large_Round.png",
-    "sha256": "071c87ebab478bbd4b3081809e09727068827512f783fb4f0603f2c6f65235c2",
+    "renderBasename": "FilledTonalButtonSticker.png",
+    "sha256": "ea61684ee49bbfa300cf389913d218bfd5649378ca527fb1906a1b0c8c00f548",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.FilledTonalButtonSticker_Devices - Small Round": {
-    "captureLabel": "",
-    "functionName": "FilledTonalButtonSticker",
-    "renderBasename": "FilledTonalButtonSticker_Devices_Small_Round.png",
-    "sha256": "22311e2a8780d5be030f353922e169c4849a9c0950f8e7887a7a0584a8387871",
-    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
-  },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ListHeaderSticker_Devices - Large Round": {
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ListHeaderSticker": {
     "captureLabel": "",
     "functionName": "ListHeaderSticker",
-    "renderBasename": "ListHeaderSticker_Devices_Large_Round.png",
-    "sha256": "b3058af877d13db0682f7895b27deef36eb7b88341ce282122bc566e01cd79a6",
+    "renderBasename": "ListHeaderSticker.png",
+    "sha256": "4b2163794a51a6d787b6a73db1efcc59cb5e1a28d68556920ddf2ebcfa1ceb29",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ListHeaderSticker_Devices - Small Round": {
-    "captureLabel": "",
-    "functionName": "ListHeaderSticker",
-    "renderBasename": "ListHeaderSticker_Devices_Small_Round.png",
-    "sha256": "f9a9f77f4098f10f2060cf79ace6622094f6f676c79740e653e8f81c243c5665",
-    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
-  },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.OutlinedButtonSticker_Devices - Large Round": {
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.OutlinedButtonSticker": {
     "captureLabel": "",
     "functionName": "OutlinedButtonSticker",
-    "renderBasename": "OutlinedButtonSticker_Devices_Large_Round.png",
-    "sha256": "ec39687bd5a01f92bfc03ad957784be33325151e846ae15dbe8dccf28a1e5c6b",
+    "renderBasename": "OutlinedButtonSticker.png",
+    "sha256": "38990af2e331c1fb28d7f1235789be0fe78b204fbac32d72103cef246503f475",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.OutlinedButtonSticker_Devices - Small Round": {
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Extra Large Round": {
     "captureLabel": "",
-    "functionName": "OutlinedButtonSticker",
-    "renderBasename": "OutlinedButtonSticker_Devices_Small_Round.png",
-    "sha256": "ccc3ca057321b6ab000f9f3de70a99bfbed143a4d8a0c9782c030384ad0bdc61",
+    "functionName": "ScalingListSticker",
+    "renderBasename": "ScalingListSticker_Extra_Large_Round.png",
+    "sha256": "9cb31fea9c6e36f940286e6bd18957dfa15fdf9f1af02c47eb512af151d0bca2",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOff_Devices - Large Round": {
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Large Round": {
+    "captureLabel": "",
+    "functionName": "ScalingListSticker",
+    "renderBasename": "ScalingListSticker_Large_Round.png",
+    "sha256": "d8227724931b783c733d33ec680db13e7745c899f242f171bd9bf3c451ed1652",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Small Round": {
+    "captureLabel": "",
+    "functionName": "ScalingListSticker",
+    "renderBasename": "ScalingListSticker_Small_Round.png",
+    "sha256": "20d8a8afe4e03f42129beb280669adfa23416bbef9a3c2ebdc0f464f6c874620",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOff": {
     "captureLabel": "",
     "functionName": "SwitchButtonOff",
-    "renderBasename": "SwitchButtonOff_Devices_Large_Round.png",
-    "sha256": "e371a8d4e108df5952224437390713cc7b656fec0d5680fe22890133b254e23c",
+    "renderBasename": "SwitchButtonOff.png",
+    "sha256": "0860a794a8087203bb1a5e11092b05127f2e8a83fe051824806680cf606aabc3",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOff_Devices - Small Round": {
-    "captureLabel": "",
-    "functionName": "SwitchButtonOff",
-    "renderBasename": "SwitchButtonOff_Devices_Small_Round.png",
-    "sha256": "91d73311ca59aad819d547f860725ebe75af1e807ce9ef3ea12496f2d9e04d4e",
-    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
-  },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOn_Devices - Large Round": {
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOn": {
     "captureLabel": "",
     "functionName": "SwitchButtonOn",
-    "renderBasename": "SwitchButtonOn_Devices_Large_Round.png",
-    "sha256": "5565cc90e498f5adbf3e27df57e937e5139a4e555a769f414e282f683fda8c4e",
+    "renderBasename": "SwitchButtonOn.png",
+    "sha256": "97281eb4f2a0c604bbbae6ca9ca1c7d0b68e1f37c20b6c48b7bea0e82f0430c3",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOn_Devices - Small Round": {
-    "captureLabel": "",
-    "functionName": "SwitchButtonOn",
-    "renderBasename": "SwitchButtonOn_Devices_Small_Round.png",
-    "sha256": "1edae97777b42ffb1dbc21cb643b8b7285132adb16d8a32cc2f038f4c99d3ae4",
-    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
-  },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.TextMaxLinesTruncated_Devices - Large Round": {
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.TextMaxLinesTruncated": {
     "captureLabel": "",
     "functionName": "TextMaxLinesTruncated",
-    "renderBasename": "TextMaxLinesTruncated_Devices_Large_Round.png",
-    "sha256": "e2e1c6bf8ac72b2d53f15917bbc58cbb1cd78fc263c448ff5bee6c39a07660ca",
+    "renderBasename": "TextMaxLinesTruncated.png",
+    "sha256": "b509a768f367ab8162ed810803c7ec22aac0727c6fffa564b5d0a7ad187d6449",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.TextMaxLinesTruncated_Devices - Small Round": {
-    "captureLabel": "",
-    "functionName": "TextMaxLinesTruncated",
-    "renderBasename": "TextMaxLinesTruncated_Devices_Small_Round.png",
-    "sha256": "16f7ea4e1eaa411afed2ee630a2a939c27b10b4282d4590afb570b4419a77e2b",
-    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
-  },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.TitleCardSticker_Devices - Large Round": {
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.TitleCardSticker": {
     "captureLabel": "",
     "functionName": "TitleCardSticker",
-    "renderBasename": "TitleCardSticker_Devices_Large_Round.png",
-    "sha256": "2142e0c0df74de93ae5b295091bfb5ad6b0154f184d06c2313ae1c02188dcc3c",
-    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
-  },
-  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.TitleCardSticker_Devices - Small Round": {
-    "captureLabel": "",
-    "functionName": "TitleCardSticker",
-    "renderBasename": "TitleCardSticker_Devices_Small_Round.png",
-    "sha256": "6cb7f11af379ddbc69807b2938fae4cdbefbc025c2cf2213c930562ff8822564",
+    "renderBasename": "TitleCardSticker.png",
+    "sha256": "6bc3a3bd28945423f5dd16c6f466df0abcb6bdd9a45902dea4740f6f1c5f9e10",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:desktop-daemon-bench/com.example.desktopdaemonbench.BenchPreviewsKt.BlueLabelPreview_BlueLabel": {
@@ -2040,7 +1977,7 @@
     "captureLabel": "scroll long",
     "functionName": "ActivityListLongPreview",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round.png",
-    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
+    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
