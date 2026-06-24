@@ -180,6 +180,49 @@ fun ScalingListSticker() =
   }
 
 // ---------------------------------------------------------------------------
+// Layout templates — a blank skeleton of the common Wear list screen at every
+// breakpoint: empty ListHeader + TitleCard slots and an empty EdgeButton, no
+// content. Apps adopt the responsive structure (screen margins, slot sizing,
+// edge-button placement) at each size; the export's redlines annotate the slot
+// bounds/padding so the layout reads as a real spec, not just a picture.
+// ---------------------------------------------------------------------------
+
+@CatalogWearBreakpoints
+@Composable
+fun BlankListLayout() =
+  FullScreenWear {
+    val listState = rememberTransformingLazyColumnState()
+    val spec = rememberTransformationSpec()
+    ScreenScaffold(
+      scrollState = listState,
+      edgeButton = { EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) {} },
+    ) { contentPadding ->
+      TransformingLazyColumn(
+        state = listState,
+        contentPadding = contentPadding,
+        modifier = Modifier.fillMaxSize(),
+      ) {
+        item {
+          ListHeader(
+            modifier = Modifier.transformedHeight(this, spec),
+            transformation = SurfaceTransformation(spec),
+          ) {
+            Text("")
+          }
+        }
+        items(4) {
+          TitleCard(
+            onClick = {},
+            title = { Text("") },
+            modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+            transformation = SurfaceTransformation(spec),
+          ) {}
+        }
+      }
+    }
+  }
+
+// ---------------------------------------------------------------------------
 // Selection controls.
 // ---------------------------------------------------------------------------
 
