@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
+import ee.schimke.composeai.data.layoutinspector.LayoutInspectorProduct
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.render.session.RenderSession
 import ee.schimke.composeai.render.session.RenderSessionConfig
@@ -86,7 +87,10 @@ internal class DaemonSemanticsFetcher(
       // leave
       // us reading cross-run data. Safe because `bundle pack` spawns a fresh, cold daemon that
       // always renders (no warm cache to serve "unchanged").
-      for (previewId in previewIds) sidecarFile(projectDir, previewId).delete()
+      for (previewId in previewIds) {
+        sidecarFile(projectDir, previewId).delete()
+        layoutSidecarFile(projectDir, previewId).delete()
+      }
 
       val pending = ConcurrentHashMap.newKeySet<String>().apply { addAll(previewIds) }
       val latch = CountDownLatch(previewIds.size)
@@ -126,6 +130,7 @@ internal class DaemonSemanticsFetcher(
         }
 
       val byId = LinkedHashMap<String, ByteArray>()
+      val layoutById = LinkedHashMap<String, ByteArray>()
       for (previewId in previewIds) {
         val file = sidecarFile(projectDir, previewId)
         if (file.isFile && file.length() > 0) {
@@ -133,20 +138,36 @@ internal class DaemonSemanticsFetcher(
         } else {
           onLog("no ${ComposeSemanticsProduct.FILE} for '$previewId'")
         }
+        // The layout-inspector tree (full LayoutNode walk with per-node bounds + resolved tokens)
+        // is baked by the same always-on daemon render; carry it too so consumers can build
+        // slot-level redlines/wireframes the a11y semantics tree can't express (issue: layout
+        // wireframes). Best-effort — absent for a render that produced no tree.
+        val layout = layoutSidecarFile(projectDir, previewId)
+        if (layout.isFile && layout.length() > 0) {
+          layoutById[previewId] = fileSystem.read(layout.path.toPath()) { readByteArray() }
+        }
       }
-      Outcome.Ok(semanticsById = byId)
+      Outcome.Ok(semanticsById = byId, layoutById = layoutById)
     }
   }
 
   private fun sidecarFile(projectDir: File, previewId: String): File =
     File(projectDir, "build/compose-previews/data/$previewId/${ComposeSemanticsProduct.FILE}")
 
+  private fun layoutSidecarFile(projectDir: File, previewId: String): File =
+    File(projectDir, "build/compose-previews/data/$previewId/${LayoutInspectorProduct.FILE}")
+
   sealed interface Outcome {
     /**
      * Session opened and renders attempted. [semanticsById] holds one entry per preview whose
-     * `compose-semantics.json` materialised — possibly empty if every render failed.
+     * `compose-semantics.json` materialised — possibly empty if every render failed. [layoutById]
+     * holds the matching `layout-inspector.json` (the full LayoutNode tree) for each preview that
+     * produced one; a preview may have semantics but no layout tree, or vice versa.
      */
-    data class Ok(val semanticsById: Map<String, ByteArray>) : Outcome
+    data class Ok(
+      val semanticsById: Map<String, ByteArray>,
+      val layoutById: Map<String, ByteArray> = emptyMap(),
+    ) : Outcome
 
     data class DescriptorMissing(val expected: File) : Outcome
 
