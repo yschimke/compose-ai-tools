@@ -1129,6 +1129,13 @@ abstract class RobolectricRenderTestBase(
                                     "@ScrollingPreview on '${preview.id}' but no scrollable " +
                                         "composable found on axis ${scroll.axis} — capturing initial frame.",
                                 )
+                            } else {
+                                // Let animations that begin once the scroll lands settle to their
+                                // resting state before capture — notably Wear `ScreenScaffold`'s
+                                // `EdgeButton`, which reveals/expands on reaching the end. Without
+                                // this, END snapshots the button mid-reveal (overscroll-stretched).
+                                // Mirrors the LONG final-frame path (see [handleLongCapture]).
+                                settlePostScrollAnimations(rule)
                             }
                         }
                         onRoot.captureRoboImage(
