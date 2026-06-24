@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 192 preview(s) across 17 module(s) · 11 error(s) · 4 warning(s) · 18 info._
+_Auto-generated from `compose-preview/a11y/main`. 191 preview(s) across 17 module(s) · 11 error(s) · 4 warning(s) · 18 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -935,12 +935,6 @@ _No findings._
 ### `CircularProgressSticker` · `wearos_large_round`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/CircularProgressSticker_Devices_Large_Round.png" width="400" />
-
-_No findings._
-
-### `EdgeButtonSticker` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/EdgeButtonSticker_Devices_Large_Round.a11y.png" width="400" />
 
 _No findings._
 
