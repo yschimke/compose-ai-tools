@@ -11,6 +11,8 @@
  * from the branch checkout. No external assets, no script — just inline CSS.
  */
 
+import { renderWireframeSvg, slug } from "./render-wireframe-svg.mjs";
+
 /** Minimal HTML-escape for text interpolated into the page. */
 function esc(s) {
   return String(s ?? "").replace(
@@ -19,12 +21,10 @@ function esc(s) {
   );
 }
 
-/** A stable anchor/id fragment from arbitrary text. */
-function slug(s) {
-  return String(s ?? "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
+/** A link to the component's editable wireframe SVG, when one was generated. */
+function wireframeLink(component) {
+  if (!renderWireframeSvg(component)) return "";
+  return `<a class="wf" href="wireframes/${slug(component.componentId)}.svg" target="_blank" rel="noopener">wireframe ↗</a>`;
 }
 
 /** One representative image per component — the first `ideal` variant (largest
@@ -60,7 +60,7 @@ function componentCard(component) {
   ${figure}
   <div class="meta">
     <h3>${esc(id)}</h3>
-    <div class="sub">${esc(dims)}</div>
+    <div class="sub">${esc(dims)}${wireframeLink(component)}</div>
     ${greenlineChips(component)}
   </div>
 </article>`;
@@ -162,7 +162,9 @@ export function renderIndexHtml(catalog) {
   .shot--missing { color:var(--muted); font-style:italic; }
   .meta { padding:10px 12px 12px; border-top:1px solid var(--line); }
   .meta h3 { margin:0; font-size:13px; font-weight:600; word-break:break-word; }
-  .meta .sub { color:var(--muted); font-size:12px; margin-top:2px; }
+  .meta .sub { color:var(--muted); font-size:12px; margin-top:2px; display:flex; justify-content:space-between; gap:8px; }
+  .meta .sub .wf { color:#7dd87d; text-decoration:none; white-space:nowrap; }
+  .meta .sub .wf:hover { text-decoration:underline; }
   .greenlines { margin-top:8px; display:flex; flex-wrap:wrap; gap:4px; }
   .chip { font-size:11px; padding:1px 7px; border-radius:999px; border:1px solid var(--accent); color:var(--accent); }
   .chip--warn { border-color:#e0c060; color:#e0c060; }
