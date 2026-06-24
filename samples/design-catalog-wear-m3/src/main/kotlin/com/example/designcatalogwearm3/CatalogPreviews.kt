@@ -30,9 +30,12 @@ import androidx.wear.compose.material3.ListHeader
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.OutlinedButton
 import androidx.wear.compose.material3.ScreenScaffold
+import androidx.wear.compose.material3.SurfaceTransformation
 import androidx.wear.compose.material3.SwitchButton
 import androidx.wear.compose.material3.Text
 import androidx.wear.compose.material3.TitleCard
+import androidx.wear.compose.material3.lazy.rememberTransformationSpec
+import androidx.wear.compose.material3.lazy.transformedHeight
 import ee.schimke.composeai.preview.ScrollMode
 import ee.schimke.composeai.preview.ScrollingPreview
 
@@ -58,41 +61,37 @@ fun OutlinedButtonSticker() =
 @Composable
 fun ChildButtonSticker() = WearSticker { ChildButton(onClick = {}) { Text("Child") } }
 
-// A workout menu the EdgeButton sticker scrolls through. It's deliberately long
-// (≈ the proven samples/wear fixture): the content must overflow the viewport by
-// a few screens so that, scrolled to the end, the list fills the space above the
-// edge button and the button settles at its own EdgeButtonSize.Large height —
-// too few items leave slack the scaffold lets the button expand into.
-private val edgeButtonMenu =
+// A workout history the EdgeButton sticker scrolls through. Long enough to
+// overflow the viewport by a few screens so, scrolled to the end, the list fills
+// the space above the edge button.
+private val edgeButtonHistory =
   listOf(
-    "Run",
-    "Walk",
-    "Cycle",
-    "Swim",
-    "Yoga",
-    "Row",
-    "Hike",
-    "Strength",
-    "Pilates",
-    "Elliptical",
-    "Stretch",
-    "Boxing",
-    "Dance",
-    "Climb",
+    "Morning run" to "5.2 km · 28 min",
+    "Heart rate" to "72 bpm",
+    "Sleep" to "7h 14m",
+    "Steps" to "6,482",
+    "Calories" to "412 kcal",
+    "Cycle" to "18 km · 41 min",
+    "Swim" to "1.2 km · 32 min",
+    "Hike" to "9.4 km · 1h 52m",
+    "Strength" to "45 min",
+    "Stretch" to "12 min",
+    "Yoga" to "30 min",
+    "Row" to "2.0 km · 9 min",
   )
 
 // EdgeButton hugs the bottom edge of the round screen via the
 // ScreenScaffold(edgeButton = …) slot — its curved shape *is* that placement, so
-// it's placed in a real ScreenScaffold + TransformingLazyColumn (the official
-// Wear M3 pattern, as in samples/wear) rather than a centred frame.
+// it's placed in a real ScreenScaffold + TransformingLazyColumn with the Wear M3
+// scaling transformation (SurfaceTransformation), exactly mirroring the official
+// samples/wear ActivityListScreen so the button measures at its resting size.
 //
 // ScreenScaffold reveals the edge button from its scroll state: at the resting
-// top it's collapsed/hidden, and it expands to EdgeButtonSize.Large only once the
-// list settles at the bottom. A static capture freezes the hidden initial frame
-// (the renderer pauses the clock), so the sticker uses @ScrollingPreview(END) —
-// scroll to the end of an overflowing list, then capture the single settled
-// frame with the button fully revealed. The overflow content also keeps the
-// button at its standard height instead of stretching to fill an empty viewport.
+// top it's collapsed, expanding only once the list settles at the bottom. A
+// static capture freezes the hidden initial frame (the renderer pauses the
+// clock), so the sticker uses @ScrollingPreview(END) — scroll the overflowing
+// list to the end (the renderer now settles post-scroll animations, so the
+// EdgeButton reveal lands at rest) and capture the single settled frame.
 @CatalogWearModes
 @ScrollingPreview(modes = [ScrollMode.END])
 @Composable
@@ -103,6 +102,7 @@ fun EdgeButtonSticker() =
     // slot is what this sticker documents.
     AppScaffold(timeText = {}) {
       val listState = rememberTransformingLazyColumnState()
+      val spec = rememberTransformationSpec()
       ScreenScaffold(
         scrollState = listState,
         edgeButton = {
@@ -114,9 +114,22 @@ fun EdgeButtonSticker() =
           contentPadding = contentPadding,
           modifier = Modifier.fillMaxSize(),
         ) {
-          item { ListHeader { Text("Workout") } }
-          items(edgeButtonMenu) { label ->
-            Button(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text(label) }
+          item {
+            ListHeader(
+              modifier = Modifier.transformedHeight(this, spec),
+              transformation = SurfaceTransformation(spec),
+            ) {
+              Text("Workout")
+            }
+          }
+          items(edgeButtonHistory) { (title, subtitle) ->
+            TitleCard(
+              onClick = {},
+              title = { Text(title) },
+              subtitle = { Text(subtitle) },
+              modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+              transformation = SurfaceTransformation(spec),
+            )
           }
         }
       }
