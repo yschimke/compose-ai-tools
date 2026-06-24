@@ -127,7 +127,8 @@ class BundleSemanticsInjectTest {
         ),
       )
 
-    val written = injectLayoutIntoBundle(file, mapOf("a" to """{"root":{"component":"Box"}}""".toByteArray()))
+    val written =
+      injectLayoutIntoBundle(file, mapOf("a" to """{"root":{"component":"Box"}}""".toByteArray()))
 
     assertEquals(1, written)
     val names = entries(BundleReader.extractZipBytes(file))

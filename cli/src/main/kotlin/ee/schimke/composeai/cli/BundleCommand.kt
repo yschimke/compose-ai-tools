@@ -637,10 +637,9 @@ internal const val BUNDLE_SEMANTICS_SUFFIX: String = ".semantics.json"
 
 /**
  * Suffix for the per-preview layout-inspector blob carried beside `previews/<id>.png`. The payload
- * is the `layout/inspector`
- * [ee.schimke.composeai.data.layoutinspector.LayoutInspectorPayload] tree — the full LayoutNode walk
- * with per-node bounds and resolved design tokens — so a consumer can build slot-level
- * redlines/wireframes the (a11y-shaped) semantics tree can't express.
+ * is the `layout/inspector` [ee.schimke.composeai.data.layoutinspector.LayoutInspectorPayload] tree
+ * — the full LayoutNode walk with per-node bounds and resolved design tokens — so a consumer can
+ * build slot-level redlines/wireframes the (a11y-shaped) semantics tree can't express.
  */
 internal const val BUNDLE_LAYOUT_SUFFIX: String = ".layout.json"
 
@@ -674,9 +673,9 @@ internal fun injectLayoutIntoBundle(
 /**
  * Inject `previews/<id><suffix>` entries (id → bytes) into [bundleFile]'s zip portion **in place**,
  * preserving the leading PNG cover and every existing entry. Re-injecting replaces any prior entry
- * for the same id+suffix, so a second pack is idempotent. New entries are pinned to the DOS epoch so
- * the enriched bundle stays byte-stable. Written via a temp sibling + atomic move so a failure never
- * truncates the bundle. Returns the number of entries written.
+ * for the same id+suffix, so a second pack is idempotent. New entries are pinned to the DOS epoch
+ * so the enriched bundle stays byte-stable. Written via a temp sibling + atomic move so a failure
+ * never truncates the bundle. Returns the number of entries written.
  */
 internal fun injectSidecarsIntoBundle(
   bundleFile: File,
