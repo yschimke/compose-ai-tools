@@ -187,7 +187,13 @@ fun ScalingListSticker() =
 // bounds/padding so the layout reads as a real spec, not just a picture.
 // ---------------------------------------------------------------------------
 
+// @ScrollingPreview(END): like EdgeButtonSticker, the ScreenScaffold edge button
+// is collapsed at the resting top and only reveals once the list settles at the
+// bottom — so the skeleton scrolls to the end (the renderer settles the reveal)
+// to actually show the edge-button slot. The slot count overflows the viewport on
+// every breakpoint so the button lands at its resting size.
 @CatalogWearBreakpoints
+@ScrollingPreview(modes = [ScrollMode.END])
 @Composable
 fun BlankListLayout() =
   FullScreenWear {
@@ -210,7 +216,7 @@ fun BlankListLayout() =
             Text("")
           }
         }
-        items(4) {
+        items(10) {
           TitleCard(
             onClick = {},
             title = { Text("") },
