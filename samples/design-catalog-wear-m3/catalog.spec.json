@@ -42,6 +42,12 @@
       ]
     },
     {
+      "name": "Layouts",
+      "components": [
+        { "componentId": "Layout/List", "preview": "BlankListLayout", "caption": "Blank list-screen skeleton at each breakpoint — adopt the responsive structure (margins, slots, edge button)." }
+      ]
+    },
+    {
       "name": "Communication",
       "components": [
         { "componentId": "Progress/Circular", "preview": "CircularProgressSticker" }
