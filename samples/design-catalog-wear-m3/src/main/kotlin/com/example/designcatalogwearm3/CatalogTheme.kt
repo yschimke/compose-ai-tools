@@ -59,14 +59,31 @@ fun FullScreenWear(content: @Composable () -> Unit) {
 /**
  * Full-screen **size-breakpoint** multipreview: the three round Wear screen sizes
  * a layout must adapt to — 192 dp (small round), 227 dp (large round), and 244 dp
- * (the largest round). 192/227 reuse the Wear tooling's device ids; 244 is an
- * explicit round `spec:` at the same 2.0× density. Stack on a full-screen
- * component (placed via [FullScreenWear] + `ScreenScaffold`) to capture it black
- * on the device shape at each breakpoint — mirrors how the official Wear samples
- * verify a screen across sizes.
+ * (the largest round) — each black on the device shape. Stack on a full-screen
+ * component (placed via [FullScreenWear] + `ScreenScaffold`) to capture it at each
+ * breakpoint, mirroring how the official Wear samples verify a screen across sizes.
+ *
+ * All three are **direct** `@Preview`s rather than the nested `@WearPreviewSmallRound`
+ * / `@WearPreviewLargeRound` aliases: `PreviewDiscovery.resolveMultiPreview` returns
+ * an annotation class's direct previews without recursing into nested multipreviews,
+ * so a mix would silently drop the nested 192/227 and render only 244. 192/227 use
+ * the Wear device ids (192×192 / 227×227 @ 2.0×, round); 244 is an explicit round
+ * `spec:` at the same density.
  */
-@WearPreviewSmallRound
-@WearPreviewLargeRound
+@Preview(
+  name = "Small Round",
+  group = "Devices - Small Round",
+  device = "id:wearos_small_round",
+  showBackground = true,
+  backgroundColor = 0xFF000000,
+)
+@Preview(
+  name = "Large Round",
+  group = "Devices - Large Round",
+  device = "id:wearos_large_round",
+  showBackground = true,
+  backgroundColor = 0xFF000000,
+)
 @Preview(
   name = "Extra Large Round",
   group = "Devices - Extra Large Round",
