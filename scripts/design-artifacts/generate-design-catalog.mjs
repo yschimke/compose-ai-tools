@@ -278,6 +278,10 @@ const fnByComponentId = new Map(
 );
 const wireframesDir = join(outPath, "wireframes");
 await mkdir(wireframesDir, { recursive: true });
+// The slugs we actually wrote a wireframe for — passed to the index renderer so
+// its `wireframe ↗` link reflects what exists (a layout-only wireframe has no
+// greenlines, so the index can't re-derive the link from the a11y predicate).
+const wireframeSlugs = new Set();
 let wireframeCount = 0;
 let layoutWireframeCount = 0;
 for (const component of catalog.components) {
@@ -291,6 +295,7 @@ for (const component of catalog.components) {
   if (!svg) svg = renderWireframeSvg(component); // greenline fallback
   if (!svg) continue;
   await writeFile(join(wireframesDir, `${slug(component.componentId)}.svg`), svg, "utf8");
+  wireframeSlugs.add(slug(component.componentId));
   wireframeCount += 1;
 }
 
@@ -298,7 +303,7 @@ for (const component of catalog.components) {
 // straight from the branch to skim every component (its a11y greenlines and the
 // editable wireframe) before importing the tokens/images into a design tool.
 const indexPath = join(outPath, "index.html");
-await writeFile(indexPath, renderIndexHtml(catalog), "utf8");
+await writeFile(indexPath, renderIndexHtml(catalog, { wireframeSlugs }), "utf8");
 
 console.log(
   `[${spec.system}] ${catalog.components.length} component(s), ${result.imageCount} image(s), ` +

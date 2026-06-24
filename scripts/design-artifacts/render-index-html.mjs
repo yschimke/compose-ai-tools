@@ -21,9 +21,18 @@ function esc(s) {
   );
 }
 
-/** A link to the component's editable wireframe SVG, when one was generated. */
-function wireframeLink(component) {
-  if (!renderWireframeSvg(component)) return "";
+/**
+ * A link to the component's editable wireframe SVG, when one was written. The
+ * driver writes a wireframe from the layout-inspector tree *or* the a11y
+ * greenlines, so the link must reflect what was actually written — keyed by the
+ * `wireframeSlugs` set the driver passes. Falls back to the greenline predicate
+ * when no set is supplied (e.g. a standalone call), preserving prior behaviour.
+ */
+function wireframeLink(component, wireframeSlugs) {
+  const has = wireframeSlugs
+    ? wireframeSlugs.has(slug(component.componentId))
+    : Boolean(renderWireframeSvg(component));
+  if (!has) return "";
   return `<a class="wf" href="wireframes/${slug(component.componentId)}.svg" target="_blank" rel="noopener">wireframe ↗</a>`;
 }
 
@@ -49,7 +58,7 @@ function greenlineChips(component) {
   return `<div class="greenlines" title="accessibility greenlines">${chips}</div>`;
 }
 
-function componentCard(component) {
+function componentCard(component, wireframeSlugs) {
   const img = heroImage(component);
   const id = component.componentId ?? "(unnamed)";
   const dims = img ? `${img.width}×${img.height}` : "";
@@ -60,7 +69,7 @@ function componentCard(component) {
   ${figure}
   <div class="meta">
     <h3>${esc(id)}</h3>
-    <div class="sub">${esc(dims)}${wireframeLink(component)}</div>
+    <div class="sub">${esc(dims)}${wireframeLink(component, wireframeSlugs)}</div>
     ${greenlineChips(component)}
   </div>
 </article>`;
@@ -69,10 +78,14 @@ function componentCard(component) {
 /**
  * Render the catalog to a complete HTML document.
  * @param {object} catalog the in-memory catalog (system, title, components, …)
+ * @param {object} [opts] { wireframeSlugs?: Set<string> } — the slugs the driver
+ *   actually wrote a wireframe for (layout-inspector or greenline), so the
+ *   `wireframe ↗` link reflects what exists rather than re-deriving it.
  * @returns {string} a self-contained index.html
  */
-export function renderIndexHtml(catalog) {
+export function renderIndexHtml(catalog, opts = {}) {
   const components = catalog.components ?? [];
+  const wireframeSlugs = opts.wireframeSlugs;
 
   // Group preserving first-seen group order.
   const groupOrder = [];
@@ -104,7 +117,10 @@ export function renderIndexHtml(catalog) {
 
   const main = groupOrder
     .map((g) => {
-      const cards = byGroup.get(g).map(componentCard).join("\n");
+      const cards = byGroup
+        .get(g)
+        .map((c) => componentCard(c, wireframeSlugs))
+        .join("\n");
       return `<section class="group" id="g-${slug(g)}">
       <h2>${esc(g)}</h2>
       <div class="grid">${cards}</div>
