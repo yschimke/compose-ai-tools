@@ -17,7 +17,6 @@ import androidx.compose.ui.unit.dp
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
-import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.Card
 import androidx.wear.compose.material3.CheckboxButton
@@ -27,7 +26,6 @@ import androidx.wear.compose.material3.EdgeButton
 import androidx.wear.compose.material3.EdgeButtonSize
 import androidx.wear.compose.material3.FilledTonalButton
 import androidx.wear.compose.material3.ListHeader
-import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.OutlinedButton
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.SurfaceTransformation
@@ -82,55 +80,100 @@ private val edgeButtonHistory =
 
 // EdgeButton hugs the bottom edge of the round screen via the
 // ScreenScaffold(edgeButton = …) slot — its curved shape *is* that placement, so
-// it's placed in a real ScreenScaffold + TransformingLazyColumn with the Wear M3
-// scaling transformation (SurfaceTransformation), exactly mirroring the official
-// samples/wear ActivityListScreen so the button measures at its resting size.
+// it's a full-screen component: placed via [FullScreenWear] + a real
+// ScreenScaffold + TransformingLazyColumn with the Wear M3 scaling transformation
+// (SurfaceTransformation), mirroring samples/wear's ActivityListScreen so the
+// button measures at its resting size, and captured at every size breakpoint.
 //
 // ScreenScaffold reveals the edge button from its scroll state: at the resting
 // top it's collapsed, expanding only once the list settles at the bottom. A
 // static capture freezes the hidden initial frame (the renderer pauses the
 // clock), so the sticker uses @ScrollingPreview(END) — scroll the overflowing
-// list to the end (the renderer now settles post-scroll animations, so the
-// EdgeButton reveal lands at rest) and capture the single settled frame.
-@CatalogWearModes
+// list to the end (the renderer settles post-scroll animations, so the EdgeButton
+// reveal lands at rest) and capture the single settled frame.
+@CatalogWearBreakpoints
 @ScrollingPreview(modes = [ScrollMode.END])
 @Composable
 fun EdgeButtonSticker() =
-  MaterialTheme {
-    // No TimeText: it renders the live wall clock, which would make the sticker
-    // non-deterministic (and churn the weekly design-artifacts bundle). The edge
-    // slot is what this sticker documents.
-    AppScaffold(timeText = {}) {
-      val listState = rememberTransformingLazyColumnState()
-      val spec = rememberTransformationSpec()
-      ScreenScaffold(
-        scrollState = listState,
-        edgeButton = {
-          EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) { Text("Start") }
-        },
-      ) { contentPadding ->
-        TransformingLazyColumn(
-          state = listState,
-          contentPadding = contentPadding,
-          modifier = Modifier.fillMaxSize(),
-        ) {
-          item {
-            ListHeader(
-              modifier = Modifier.transformedHeight(this, spec),
-              transformation = SurfaceTransformation(spec),
-            ) {
-              Text("Workout")
-            }
+  FullScreenWear {
+    val listState = rememberTransformingLazyColumnState()
+    val spec = rememberTransformationSpec()
+    ScreenScaffold(
+      scrollState = listState,
+      edgeButton = {
+        EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) { Text("Start") }
+      },
+    ) { contentPadding ->
+      TransformingLazyColumn(
+        state = listState,
+        contentPadding = contentPadding,
+        modifier = Modifier.fillMaxSize(),
+      ) {
+        item {
+          ListHeader(
+            modifier = Modifier.transformedHeight(this, spec),
+            transformation = SurfaceTransformation(spec),
+          ) {
+            Text("Workout")
           }
-          items(edgeButtonHistory) { (title, subtitle) ->
-            TitleCard(
-              onClick = {},
-              title = { Text(title) },
-              subtitle = { Text(subtitle) },
-              modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-              transformation = SurfaceTransformation(spec),
-            )
+        }
+        items(edgeButtonHistory) { (title, subtitle) ->
+          TitleCard(
+            onClick = {},
+            title = { Text(title) },
+            subtitle = { Text(subtitle) },
+            modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+            transformation = SurfaceTransformation(spec),
+          )
+        }
+      }
+    }
+  }
+
+// ---------------------------------------------------------------------------
+// Lists — the Wear M3 scaling TransformingLazyColumn. Items scale + fade toward
+// the curved top/bottom edges via the SurfaceTransformation, the signature Wear
+// list treatment. Full-screen, captured at every size breakpoint.
+// ---------------------------------------------------------------------------
+
+private val scalingListItems =
+  listOf(
+    "Morning run" to "5.2 km · 28 min",
+    "Heart rate" to "72 bpm",
+    "Sleep" to "7h 14m",
+    "Steps" to "6,482",
+    "Calories" to "412 kcal",
+    "Cycle" to "18 km · 41 min",
+  )
+
+@CatalogWearBreakpoints
+@Composable
+fun ScalingListSticker() =
+  FullScreenWear {
+    val listState = rememberTransformingLazyColumnState()
+    val spec = rememberTransformationSpec()
+    ScreenScaffold(scrollState = listState) { contentPadding ->
+      TransformingLazyColumn(
+        state = listState,
+        contentPadding = contentPadding,
+        modifier = Modifier.fillMaxSize(),
+      ) {
+        item {
+          ListHeader(
+            modifier = Modifier.transformedHeight(this, spec),
+            transformation = SurfaceTransformation(spec),
+          ) {
+            Text("Activity")
           }
+        }
+        items(scalingListItems) { (title, subtitle) ->
+          TitleCard(
+            onClick = {},
+            title = { Text(title) },
+            subtitle = { Text(subtitle) },
+            modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+            transformation = SurfaceTransformation(spec),
+          )
         }
       }
     }

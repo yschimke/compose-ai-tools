@@ -36,6 +36,12 @@
       ]
     },
     {
+      "name": "Lists",
+      "components": [
+        { "componentId": "TransformingLazyColumn", "preview": "ScalingListSticker", "caption": "Scaling list — items scale + fade toward the curved edges (SurfaceTransformation)." }
+      ]
+    },
+    {
       "name": "Communication",
       "components": [
         { "componentId": "Progress/Circular", "preview": "CircularProgressSticker" }
