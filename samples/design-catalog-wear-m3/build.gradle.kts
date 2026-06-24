@@ -47,5 +47,9 @@ dependencies {
   implementation(libs.wear.compose.foundation)
   implementation(libs.wear.compose.ui.tooling)
   implementation(libs.compose.ui.tooling.preview)
+  // @ScrollingPreview(END) — full-screen Wear components (EdgeButton, scaling
+  // lists) reveal their bottom-anchored chrome only after the scroll settles, so
+  // the catalog captures them scrolled to the end rather than at the resting top.
+  implementation(project(":preview-annotations"))
   debugImplementation("androidx.compose.ui:ui-tooling")
 }
