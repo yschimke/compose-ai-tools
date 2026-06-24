@@ -1661,164 +1661,174 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "ButtonDisabled_Devices_Large_Round.a11y.png",
-      "cleanBasename": "ButtonDisabled_Devices_Large_Round.png",
+      "annotatedBasename": "ButtonDisabled.a11y.png",
+      "cleanBasename": "ButtonDisabled.png",
       "findings": [],
       "functionName": "ButtonDisabled",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonDisabled_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonDisabled",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
-      "annotatedBasename": "ButtonFocused_Devices_Large_Round.a11y.png",
-      "cleanBasename": "ButtonFocused_Devices_Large_Round.png",
+      "annotatedBasename": "ButtonFocused.a11y.png",
+      "cleanBasename": "ButtonFocused.png",
       "findings": [],
       "functionName": "ButtonFocused",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonFocused_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonFocused",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
-      "annotatedBasename": "ButtonPressed_Devices_Large_Round.a11y.png",
-      "cleanBasename": "ButtonPressed_Devices_Large_Round.png",
+      "annotatedBasename": "ButtonPressed.a11y.png",
+      "cleanBasename": "ButtonPressed.png",
       "findings": [],
       "functionName": "ButtonPressed",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonPressed_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonPressed",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
-      "annotatedBasename": "CardSticker_Devices_Large_Round.a11y.png",
-      "cleanBasename": "CardSticker_Devices_Large_Round.png",
+      "annotatedBasename": "CardSticker.a11y.png",
+      "cleanBasename": "CardSticker.png",
       "findings": [],
       "functionName": "CardSticker",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CardSticker_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CardSticker",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
-      "annotatedBasename": "CheckboxButtonChecked_Devices_Large_Round.a11y.png",
-      "cleanBasename": "CheckboxButtonChecked_Devices_Large_Round.png",
+      "annotatedBasename": "CheckboxButtonChecked.a11y.png",
+      "cleanBasename": "CheckboxButtonChecked.png",
       "findings": [],
       "functionName": "CheckboxButtonChecked",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CheckboxButtonChecked_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CheckboxButtonChecked",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
-      "annotatedBasename": "CheckboxButtonUnchecked_Devices_Large_Round.a11y.png",
-      "cleanBasename": "CheckboxButtonUnchecked_Devices_Large_Round.png",
+      "annotatedBasename": "CheckboxButtonUnchecked.a11y.png",
+      "cleanBasename": "CheckboxButtonUnchecked.png",
       "findings": [],
       "functionName": "CheckboxButtonUnchecked",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CheckboxButtonUnchecked_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CheckboxButtonUnchecked",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
-      "annotatedBasename": "ChildButtonSticker_Devices_Large_Round.a11y.png",
-      "cleanBasename": "ChildButtonSticker_Devices_Large_Round.png",
+      "annotatedBasename": "ChildButtonSticker.a11y.png",
+      "cleanBasename": "ChildButtonSticker.png",
       "findings": [],
       "functionName": "ChildButtonSticker",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ChildButtonSticker_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ChildButtonSticker",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "CircularProgressSticker_Devices_Large_Round.png",
+      "cleanBasename": "CircularProgressSticker.png",
       "findings": [],
       "functionName": "CircularProgressSticker",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CircularProgressSticker_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CircularProgressSticker",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
-      "annotatedBasename": "FilledButton_Devices_Large_Round.a11y.png",
-      "cleanBasename": "FilledButton_Devices_Large_Round.png",
+      "annotatedBasename": "FilledButton.a11y.png",
+      "cleanBasename": "FilledButton.png",
       "findings": [],
       "functionName": "FilledButton",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.FilledButton_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.FilledButton",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
-      "annotatedBasename": "FilledTonalButtonSticker_Devices_Large_Round.a11y.png",
-      "cleanBasename": "FilledTonalButtonSticker_Devices_Large_Round.png",
+      "annotatedBasename": "FilledTonalButtonSticker.a11y.png",
+      "cleanBasename": "FilledTonalButtonSticker.png",
       "findings": [],
       "functionName": "FilledTonalButtonSticker",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.FilledTonalButtonSticker_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.FilledTonalButtonSticker",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
-      "annotatedBasename": "ListHeaderSticker_Devices_Large_Round.a11y.png",
-      "cleanBasename": "ListHeaderSticker_Devices_Large_Round.png",
+      "annotatedBasename": "ListHeaderSticker.a11y.png",
+      "cleanBasename": "ListHeaderSticker.png",
       "findings": [],
       "functionName": "ListHeaderSticker",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ListHeaderSticker_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ListHeaderSticker",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
-      "annotatedBasename": "OutlinedButtonSticker_Devices_Large_Round.a11y.png",
-      "cleanBasename": "OutlinedButtonSticker_Devices_Large_Round.png",
+      "annotatedBasename": "OutlinedButtonSticker.a11y.png",
+      "cleanBasename": "OutlinedButtonSticker.png",
       "findings": [],
       "functionName": "OutlinedButtonSticker",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.OutlinedButtonSticker_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.OutlinedButtonSticker",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "ScalingListSticker_Large_Round.a11y.png",
+      "cleanBasename": "ScalingListSticker_Large_Round.png",
+      "findings": [],
+      "functionName": "ScalingListSticker",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Large Round",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "SwitchButtonOff_Devices_Large_Round.a11y.png",
-      "cleanBasename": "SwitchButtonOff_Devices_Large_Round.png",
+      "annotatedBasename": "SwitchButtonOff.a11y.png",
+      "cleanBasename": "SwitchButtonOff.png",
       "findings": [],
       "functionName": "SwitchButtonOff",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOff_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOff",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
-      "annotatedBasename": "SwitchButtonOn_Devices_Large_Round.a11y.png",
-      "cleanBasename": "SwitchButtonOn_Devices_Large_Round.png",
+      "annotatedBasename": "SwitchButtonOn.a11y.png",
+      "cleanBasename": "SwitchButtonOn.png",
       "findings": [],
       "functionName": "SwitchButtonOn",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOn_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOn",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
-      "annotatedBasename": "TextMaxLinesTruncated_Devices_Large_Round.a11y.png",
-      "cleanBasename": "TextMaxLinesTruncated_Devices_Large_Round.png",
+      "annotatedBasename": "TextMaxLinesTruncated.a11y.png",
+      "cleanBasename": "TextMaxLinesTruncated.png",
       "findings": [],
       "functionName": "TextMaxLinesTruncated",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TextMaxLinesTruncated_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TextMaxLinesTruncated",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
-      "annotatedBasename": "TitleCardSticker_Devices_Large_Round.a11y.png",
-      "cleanBasename": "TitleCardSticker_Devices_Large_Round.png",
+      "annotatedBasename": "TitleCardSticker.a11y.png",
+      "cleanBasename": "TitleCardSticker.png",
       "findings": [],
       "functionName": "TitleCardSticker",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TitleCardSticker_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TitleCardSticker",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
       "annotatedBasename": "BlueLabelPreview_BlueLabel.a11y.png",

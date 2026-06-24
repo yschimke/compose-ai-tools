@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 191 preview(s) across 17 module(s) · 11 error(s) · 4 warning(s) · 18 info._
+_Auto-generated from `compose-preview/a11y/main`. 192 preview(s) across 17 module(s) · 11 error(s) · 4 warning(s) · 18 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -890,99 +890,105 @@ _No findings._
 
 ## design-catalog-wear-m3
 
-### `ButtonDisabled` · `wearos_large_round`
+### `ButtonDisabled`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/ButtonDisabled_Devices_Large_Round.a11y.png" width="400" />
-
-_No findings._
-
-### `ButtonFocused` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/ButtonFocused_Devices_Large_Round.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/ButtonDisabled.a11y.png" width="400" />
 
 _No findings._
 
-### `ButtonPressed` · `wearos_large_round`
+### `ButtonFocused`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/ButtonPressed_Devices_Large_Round.a11y.png" width="400" />
-
-_No findings._
-
-### `CardSticker` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/CardSticker_Devices_Large_Round.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/ButtonFocused.a11y.png" width="400" />
 
 _No findings._
 
-### `CheckboxButtonChecked` · `wearos_large_round`
+### `ButtonPressed`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/CheckboxButtonChecked_Devices_Large_Round.a11y.png" width="400" />
-
-_No findings._
-
-### `CheckboxButtonUnchecked` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/CheckboxButtonUnchecked_Devices_Large_Round.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/ButtonPressed.a11y.png" width="400" />
 
 _No findings._
 
-### `ChildButtonSticker` · `wearos_large_round`
+### `CardSticker`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/ChildButtonSticker_Devices_Large_Round.a11y.png" width="400" />
-
-_No findings._
-
-### `CircularProgressSticker` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/CircularProgressSticker_Devices_Large_Round.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/CardSticker.a11y.png" width="400" />
 
 _No findings._
 
-### `FilledButton` · `wearos_large_round`
+### `CheckboxButtonChecked`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/FilledButton_Devices_Large_Round.a11y.png" width="400" />
-
-_No findings._
-
-### `FilledTonalButtonSticker` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/FilledTonalButtonSticker_Devices_Large_Round.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/CheckboxButtonChecked.a11y.png" width="400" />
 
 _No findings._
 
-### `ListHeaderSticker` · `wearos_large_round`
+### `CheckboxButtonUnchecked`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/ListHeaderSticker_Devices_Large_Round.a11y.png" width="400" />
-
-_No findings._
-
-### `OutlinedButtonSticker` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/OutlinedButtonSticker_Devices_Large_Round.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/CheckboxButtonUnchecked.a11y.png" width="400" />
 
 _No findings._
 
-### `SwitchButtonOff` · `wearos_large_round`
+### `ChildButtonSticker`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/SwitchButtonOff_Devices_Large_Round.a11y.png" width="400" />
-
-_No findings._
-
-### `SwitchButtonOn` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/SwitchButtonOn_Devices_Large_Round.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/ChildButtonSticker.a11y.png" width="400" />
 
 _No findings._
 
-### `TextMaxLinesTruncated` · `wearos_large_round`
+### `CircularProgressSticker`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/TextMaxLinesTruncated_Devices_Large_Round.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/CircularProgressSticker.png" width="400" />
 
 _No findings._
 
-### `TitleCardSticker` · `wearos_large_round`
+### `FilledButton`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/TitleCardSticker_Devices_Large_Round.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/FilledButton.a11y.png" width="400" />
+
+_No findings._
+
+### `FilledTonalButtonSticker`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/FilledTonalButtonSticker.a11y.png" width="400" />
+
+_No findings._
+
+### `ListHeaderSticker`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/ListHeaderSticker.a11y.png" width="400" />
+
+_No findings._
+
+### `OutlinedButtonSticker`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/OutlinedButtonSticker.a11y.png" width="400" />
+
+_No findings._
+
+### `ScalingListSticker` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/ScalingListSticker_Large_Round.a11y.png" width="400" />
+
+_No findings._
+
+### `SwitchButtonOff`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/SwitchButtonOff.a11y.png" width="400" />
+
+_No findings._
+
+### `SwitchButtonOn`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/SwitchButtonOn.a11y.png" width="400" />
+
+_No findings._
+
+### `TextMaxLinesTruncated`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/TextMaxLinesTruncated.a11y.png" width="400" />
+
+_No findings._
+
+### `TitleCardSticker`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/TitleCardSticker.a11y.png" width="400" />
 
 _No findings._
 
