@@ -67,6 +67,25 @@ Feed the result through `@design-parity/catalog-export` to produce the importabl
 bundle, and commit it to the system's `design-artifacts/<system>` delivery
 branch.
 
+## Wireframes
+
+Each component ships an **editable SVG wireframe** (`wireframes/<slug>.svg`,
+linked from `index.html`) so a developer can adopt the structure in a vector
+tool instead of tracing a screenshot. It is built from the **layout-inspector
+tree** (`previews/<id>.layout.json`, carried by `bundle pack --with-semantics`):
+a walk of every `LayoutNode`, so it captures the slot containers and each node's
+resolved design tokens — background / border colour, per-corner radius, padding —
+not just the a11y controls. Where a render carried no tree, the driver falls back
+to the older a11y-greenline wireframe (touch-target rects only).
+
+The difference is the slots. For an M3 `SegmentedButton` the a11y wireframe (#2)
+can only draw the two radio touch targets; the layout wireframe (#3) draws the
+real pill shape, the selected-segment fill, and labels each region with its
+resolved token:
+
+![Rendered preview vs semantics wireframe vs layout-inspector wireframe, for
+SegmentedButton and AssistChip](layout-wireframe-evidence.png)
+
 ## Adding a component
 
 1. Author a `@Composable` wrapped in the module's sticker theme, annotated with
