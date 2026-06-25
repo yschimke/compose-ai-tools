@@ -39,6 +39,7 @@ import { readPreviewBundle, bundleToCandidates } from "@design-parity/candidate"
 import { buildCatalog, writeCatalog } from "@design-parity/catalog-export";
 
 import { renderIndexHtml } from "./render-index-html.mjs";
+import { renderReadmeMd } from "./render-readme-md.mjs";
 import { renderWireframeSvg, slug } from "./render-wireframe-svg.mjs";
 import { renderLayoutWireframeSvg } from "./render-layout-wireframe-svg.mjs";
 
@@ -305,9 +306,20 @@ for (const component of catalog.components) {
 const indexPath = join(outPath, "index.html");
 await writeFile(indexPath, renderIndexHtml(catalog, { wireframeSlugs }), "utf8");
 
+// Branch landing page: htmlpreview link to index.html + a summary table. Written
+// into out/ so the publish step's force-push republishes it every run — the
+// README rides along with each regeneration instead of being clobbered.
+const readmePath = join(outPath, "README.md");
+await writeFile(
+  readmePath,
+  renderReadmeMd(catalog, { imageCount: result.imageCount, wireframeCount }),
+  "utf8",
+);
+
 console.log(
   `[${spec.system}] ${catalog.components.length} component(s), ${result.imageCount} image(s), ` +
     `${wireframeCount} wireframe(s) (${layoutWireframeCount} from layout-inspector, ` +
     `${wireframeCount - layoutWireframeCount} greenline) → ${result.manifestPath}`,
 );
 console.log(`[${spec.system}] index → ${indexPath}`);
+console.log(`[${spec.system}] readme → ${readmePath}`);
