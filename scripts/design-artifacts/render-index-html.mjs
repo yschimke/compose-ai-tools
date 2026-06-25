@@ -128,12 +128,16 @@ export function renderIndexHtml(catalog, opts = {}) {
     })
     .join("\n");
 
-  const title = catalog.title ?? catalog.system ?? "Design catalog";
+  // buildCatalog() returns { meta, components }; writeCatalog() flattens meta
+  // into catalog.json. Normalise so the header works on either shape.
+  const meta = catalog.meta ?? catalog;
+  const library = [].concat(meta.library ?? []).filter(Boolean);
+  const title = meta.title ?? meta.system ?? "Design catalog";
   const subtitleParts = [
-    catalog.system && `system <code>${esc(catalog.system)}</code>`,
-    catalog.library && esc(catalog.library),
-    catalog.renderer && `rendered by ${esc(catalog.renderer)}`,
-    catalog.generatedAt && `${esc(catalog.generatedAt)}`,
+    meta.system && `system <code>${esc(meta.system)}</code>`,
+    library.length && esc(library.join(", ")),
+    meta.renderer && `rendered by ${esc(meta.renderer)}`,
+    meta.generatedAt && `${esc(meta.generatedAt)}`,
     `${components.length} components`,
   ].filter(Boolean);
 
