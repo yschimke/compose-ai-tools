@@ -115,6 +115,35 @@ class BundleSemanticsInjectTest {
   }
 
   @Test
+  fun `injects layout sidecars beside semantics without disturbing either`() {
+    val cover = png(4, 8)
+    val file =
+      polyglot(
+        cover,
+        linkedMapOf(
+          "bundle.json" to "{}".toByteArray(),
+          "previews/a.png" to cover,
+          "previews/a.semantics.json" to """{"root":{"nodeId":"1"}}""".toByteArray(),
+        ),
+      )
+
+    val written =
+      injectLayoutIntoBundle(file, mapOf("a" to """{"root":{"component":"Box"}}""".toByteArray()))
+
+    assertEquals(1, written)
+    val names = entries(BundleReader.extractZipBytes(file))
+    // Semantics blob untouched; the layout tree lands beside it under the .layout.json suffix.
+    assertEquals(
+      """{"root":{"nodeId":"1"}}""",
+      names.getValue("previews/a.semantics.json").toString(Charsets.UTF_8),
+    )
+    assertEquals(
+      """{"root":{"component":"Box"}}""",
+      names.getValue("previews/a.layout.json").toString(Charsets.UTF_8),
+    )
+  }
+
+  @Test
   fun `re-injection replaces a stale semantics entry without duplicating it`() {
     val cover = png()
     val file =

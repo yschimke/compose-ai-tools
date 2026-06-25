@@ -109,9 +109,12 @@ class BundleCommand(args: List<String>) : Command(args) {
                             re-rendering. Off by default.
         --with-semantics    Carry each preview's semantics tree (per-node bounds, label/text, and
                             resolved foreground/background colours) as previews/<id>.semantics.json —
-                            the shape design-parity reads for contrast/a11y + token checks. Produced
-                            by a short-lived daemon render (no separate --with-extension pass needed).
-                            Off by default; ignored with --no-render.
+                            the shape design-parity reads for contrast/a11y + token checks. Also
+                            carries the layout-inspector tree (full LayoutNode walk with per-node
+                            bounds + resolved design tokens) as previews/<id>.layout.json, for
+                            slot-level redlines/wireframes. Produced by a short-lived daemon render
+                            (no separate --with-extension pass needed). Off by default; ignored with
+                            --no-render.
 
       Inspect / extract / render flags:
         -o, --output <dir>  Directory to extract / render into. Default: alongside the bundle.
@@ -297,9 +300,18 @@ private class PackSubcommand(private val args: List<String>) {
         }
         val written = injectSemanticsIntoBundle(bundleFile, outcome.semanticsById)
         val missing = previewIds.size - written
-        return "  semantics:     $written / ${previewIds.size} preview(s) carried as " +
-          "previews/<id>$BUNDLE_SEMANTICS_SUFFIX" +
-          if (missing > 0) " ($missing without a captured tree)" else ""
+        // The layout-inspector tree rides alongside the semantics blob (best-effort): a preview
+        // that produced a tree gets `previews/<id>.layout.json` so a consumer can build slot-level
+        // redlines/wireframes. Injected after semantics so its byte count is reflected too.
+        val layoutWritten = injectLayoutIntoBundle(bundleFile, outcome.layoutById)
+        val semanticsLine =
+          "  semantics:     $written / ${previewIds.size} preview(s) carried as " +
+            "previews/<id>$BUNDLE_SEMANTICS_SUFFIX" +
+            if (missing > 0) " ($missing without a captured tree)" else ""
+        return if (layoutWritten > 0)
+          "$semanticsLine\n  layout:        $layoutWritten / ${previewIds.size} preview(s) carried " +
+            "as previews/<id>$BUNDLE_LAYOUT_SUFFIX"
+        else semanticsLine
       }
       is DaemonSemanticsFetcher.Outcome.DescriptorMissing ->
         System.err.println(
@@ -624,6 +636,14 @@ internal const val BUNDLE_PREVIEWS_DIR: String = "previews"
 internal const val BUNDLE_SEMANTICS_SUFFIX: String = ".semantics.json"
 
 /**
+ * Suffix for the per-preview layout-inspector blob carried beside `previews/<id>.png`. The payload
+ * is the `layout/inspector` [ee.schimke.composeai.data.layoutinspector.LayoutInspectorPayload] tree
+ * — the full LayoutNode walk with per-node bounds and resolved design tokens — so a consumer can
+ * build slot-level redlines/wireframes the (a11y-shaped) semantics tree can't express.
+ */
+internal const val BUNDLE_LAYOUT_SUFFIX: String = ".layout.json"
+
+/**
  * Inject `previews/<id>.semantics.json` entries (id → `compose-semantics.json` bytes) into
  * [bundleFile]'s zip portion **in place**, preserving the leading PNG cover and every existing
  * entry. Re-injecting replaces any prior semantics entry for the same id, so a second
@@ -635,19 +655,43 @@ internal fun injectSemanticsIntoBundle(
   bundleFile: File,
   semanticsById: Map<String, ByteArray>,
   fileSystem: FileSystem = SystemFileSystem,
+): Int = injectSidecarsIntoBundle(bundleFile, semanticsById, BUNDLE_SEMANTICS_SUFFIX, fileSystem)
+
+/**
+ * Inject `previews/<id>.layout.json` entries (id → `layout-inspector.json` bytes) into [bundleFile]
+ * — the full LayoutNode tree (per-node bounds + resolved design tokens) the daemon bakes alongside
+ * the semantics blob. Carried so consumers can build slot-level redlines/wireframes the a11y
+ * semantics tree can't express. Same in-place, idempotent, byte-stable contract as
+ * [injectSemanticsIntoBundle]. Returns the number of entries written.
+ */
+internal fun injectLayoutIntoBundle(
+  bundleFile: File,
+  layoutById: Map<String, ByteArray>,
+  fileSystem: FileSystem = SystemFileSystem,
+): Int = injectSidecarsIntoBundle(bundleFile, layoutById, BUNDLE_LAYOUT_SUFFIX, fileSystem)
+
+/**
+ * Inject `previews/<id><suffix>` entries (id → bytes) into [bundleFile]'s zip portion **in place**,
+ * preserving the leading PNG cover and every existing entry. Re-injecting replaces any prior entry
+ * for the same id+suffix, so a second pack is idempotent. New entries are pinned to the DOS epoch
+ * so the enriched bundle stays byte-stable. Written via a temp sibling + atomic move so a failure
+ * never truncates the bundle. Returns the number of entries written.
+ */
+internal fun injectSidecarsIntoBundle(
+  bundleFile: File,
+  byId: Map<String, ByteArray>,
+  suffix: String,
+  fileSystem: FileSystem = SystemFileSystem,
 ): Int {
-  if (semanticsById.isEmpty()) return 0
+  if (byId.isEmpty()) return 0
   val full = fileSystem.read(bundleFile.path.toPath()) { readByteArray() }
   val zip = BundleReader.extractZipBytes(bundleFile)
   // The appended zip is a suffix of the file; everything before it is the leading PNG cover.
   val prefix = full.copyOfRange(0, full.size - zip.size)
-  val entries =
-    semanticsById.entries.associate { (id, bytes) ->
-      "$BUNDLE_PREVIEWS_DIR/$id$BUNDLE_SEMANTICS_SUFFIX" to bytes
-    }
+  val entries = byId.entries.associate { (id, bytes) -> "$BUNDLE_PREVIEWS_DIR/$id$suffix" to bytes }
   val newZip = addOrReplaceZipEntries(zip, entries)
 
-  val tmp = File(bundleFile.parentFile, "${bundleFile.name}.semantics-tmp")
+  val tmp = File(bundleFile.parentFile, "${bundleFile.name}.sidecar-tmp")
   fileSystem.write(tmp.path.toPath()) {
     write(prefix)
     write(newZip)

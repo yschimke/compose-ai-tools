@@ -40,6 +40,7 @@ import { buildCatalog, writeCatalog } from "@design-parity/catalog-export";
 
 import { renderIndexHtml } from "./render-index-html.mjs";
 import { renderWireframeSvg, slug } from "./render-wireframe-svg.mjs";
+import { renderLayoutWireframeSvg } from "./render-layout-wireframe-svg.mjs";
 
 /**
  * Read a preview bundle into CandidateRenders, resolving each candidate's
@@ -61,7 +62,40 @@ async function loadCandidates(path) {
     sanitizeNullSizes(preview.params);
     for (const capture of preview.captures ?? []) sanitizeNullSizes(capture.params);
   }
-  return bundleToCandidates(bundle, (entry) => entry.functionName ?? entry.id);
+  const candidates = bundleToCandidates(bundle, (entry) => entry.functionName ?? entry.id);
+  // Keep the bundle around: its raw `entries` carry the per-preview
+  // `previews/<id>.layout.json` (the layout-inspector tree) the layout wireframe
+  // is built from — a sidecar `bundleToCandidates` doesn't surface.
+  return { candidates, bundle };
+}
+
+/**
+ * Build a `functionName → { layout, density }` lookup from the bundle's raw
+ * entries. The layout-inspector tree (`previews/<id>.layout.json`) is carried by
+ * `bundle pack --with-semantics`; it's keyed by the full preview id, so we prefer
+ * each function's light variant (matching the catalog's light-themed sticker +
+ * semantics) and fall back to whatever variant carried a tree. `density` (from the
+ * preview's params) converts the tree's dp tokens to the px space its bounds live
+ * in. Functions with no carried tree are simply absent — the wireframe falls back
+ * to the a11y-greenline renderer for them.
+ */
+function layoutByFunction(bundle) {
+  const out = new Map();
+  const prefer = (id) => /(_|\b)light$/i.test(id);
+  for (const preview of bundle.previews) {
+    const bytes = bundle.entries?.[`previews/${preview.id}.layout.json`];
+    if (!bytes) continue;
+    const fn = preview.functionName ?? preview.id;
+    if (out.has(fn) && !prefer(preview.id)) continue;
+    let tree;
+    try {
+      tree = JSON.parse(new TextDecoder().decode(bytes)).root;
+    } catch {
+      continue;
+    }
+    if (tree) out.set(fn, { layout: tree, density: preview.params?.density ?? 1 });
+  }
+  return out;
 }
 
 /** Drop `widthDp`/`heightDp` when serialized as JSON null so the published
@@ -199,7 +233,7 @@ const spec = JSON.parse(await readFile(specPath, "utf8"));
 // the join folds a function's theme/size multipreview variants (whose ids differ
 // only by an appended `_<mode>`) onto one component. See `loadCandidates` (which
 // also works around the published null-widthDp crash) and the vendored join.
-const candidates = await loadCandidates(rendersPath);
+const { candidates, bundle } = await loadCandidates(rendersPath);
 
 const { catalog, missing, withoutSemantics } = catalogFromCandidates(candidates, spec, {
   ...(values.renderer ? { renderer: values.renderer } : {}),
@@ -228,17 +262,40 @@ if (!values["allow-incomplete"] && (missing.length > 0 || withoutSemantics.lengt
 const sourceRoot = rendersPath.endsWith(".zip") ? dirname(rendersPath) : rendersPath;
 const result = await writeCatalog(catalog, outPath, { sourceRoot });
 
-// Editable SVG wireframes next to the raster PNGs: one labelled rect per
-// semantic region, in any-vector-tool-editable form, so a developer can adopt
-// the structure rather than trace a screenshot. Written under wireframes/<slug>.svg;
+// Editable SVG wireframes next to the raster PNGs: one labelled shape per layout
+// region, in any-vector-tool-editable form, so a developer can adopt the
+// structure rather than trace a screenshot. Written under wireframes/<slug>.svg;
 // the index links them. Components with no drawable regions are skipped.
+//
+// Source preference: the layout-inspector tree (`previews/<id>.layout.json`,
+// carried by `bundle pack --with-semantics`) — it walks every LayoutNode, so it
+// captures the slot containers + resolved design tokens (background / border /
+// corner / padding) a redline needs. Where no tree was carried, fall back to the
+// a11y-greenline wireframe (touch-target rects only).
+const layoutByFn = layoutByFunction(bundle);
+const fnByComponentId = new Map(
+  spec.groups.flatMap((g) => g.components.map((c) => [c.componentId, c.preview])),
+);
 const wireframesDir = join(outPath, "wireframes");
 await mkdir(wireframesDir, { recursive: true });
+// The slugs we actually wrote a wireframe for — passed to the index renderer so
+// its `wireframe ↗` link reflects what exists (a layout-only wireframe has no
+// greenlines, so the index can't re-derive the link from the a11y predicate).
+const wireframeSlugs = new Set();
 let wireframeCount = 0;
+let layoutWireframeCount = 0;
 for (const component of catalog.components) {
-  const svg = renderWireframeSvg(component);
+  const fn = fnByComponentId.get(component.componentId);
+  const carried = fn ? layoutByFn.get(fn) : undefined;
+  let svg = null;
+  if (carried) {
+    svg = renderLayoutWireframeSvg({ ...component, layout: carried.layout }, { density: carried.density });
+    if (svg) layoutWireframeCount += 1;
+  }
+  if (!svg) svg = renderWireframeSvg(component); // greenline fallback
   if (!svg) continue;
   await writeFile(join(wireframesDir, `${slug(component.componentId)}.svg`), svg, "utf8");
+  wireframeSlugs.add(slug(component.componentId));
   wireframeCount += 1;
 }
 
@@ -246,9 +303,11 @@ for (const component of catalog.components) {
 // straight from the branch to skim every component (its a11y greenlines and the
 // editable wireframe) before importing the tokens/images into a design tool.
 const indexPath = join(outPath, "index.html");
-await writeFile(indexPath, renderIndexHtml(catalog), "utf8");
+await writeFile(indexPath, renderIndexHtml(catalog, { wireframeSlugs }), "utf8");
 
 console.log(
-  `[${spec.system}] ${catalog.components.length} component(s), ${result.imageCount} image(s), ${wireframeCount} wireframe(s) → ${result.manifestPath}`,
+  `[${spec.system}] ${catalog.components.length} component(s), ${result.imageCount} image(s), ` +
+    `${wireframeCount} wireframe(s) (${layoutWireframeCount} from layout-inspector, ` +
+    `${wireframeCount - layoutWireframeCount} greenline) → ${result.manifestPath}`,
 );
 console.log(`[${spec.system}] index → ${indexPath}`);
