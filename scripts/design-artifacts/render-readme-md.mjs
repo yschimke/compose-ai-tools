@@ -13,9 +13,13 @@
 
 const DEFAULT_REPO = "yschimke/compose-ai-tools";
 
-/** Escape the few characters that would break a Markdown table cell. */
+/** Escape the few characters that would break a Markdown table cell. Backslash
+ *  first, so a literal `\` in the input can't combine with the escapes we add. */
 function cell(s) {
-  return String(s ?? "").replace(/\|/g, "\\|").replace(/\n/g, "<br>");
+  return String(s ?? "")
+    .replace(/\\/g, "\\\\")
+    .replace(/\|/g, "\\|")
+    .replace(/\n/g, "<br>");
 }
 
 /** Component counts per group, ordered most-populous first (stable on ties). */
