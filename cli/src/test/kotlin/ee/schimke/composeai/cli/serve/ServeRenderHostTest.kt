@@ -84,6 +84,19 @@ class ServeRenderHostTest {
   }
 
   @Test
+  fun `a coalesced override render is retried until accepted, not failed`() {
+    // The daemon coalesce-rejects an override-bearing render whose previewId is already in flight,
+    // expecting the client to resubmit. ServeRenderHost must retry rather than surface a 500.
+    val session = FakeRenderSession(newRenderRoot(), coalescedOverrideRejections = 2)
+    host(session).use { h ->
+      val outcome = h.render(previewId, PreviewOverrides(uiMode = UiMode.DARK))
+      assertTrue(outcome is RenderOutcome.Ok, "coalesced rejections must be retried until accepted")
+      // 2 coalesced rejections + 1 accepted render = 3 renderNow calls.
+      assertEquals(3, session.renderCount.get())
+    }
+  }
+
+  @Test
   fun `a late renderFinished from a timed-out render does not corrupt the next render`() {
     // Render 1 emits nothing → it times out (the daemon still owes a late renderFinished). Render 2
     // (the daemon catching up) emits the timed-out render's STALE event first, then its own FRESH
