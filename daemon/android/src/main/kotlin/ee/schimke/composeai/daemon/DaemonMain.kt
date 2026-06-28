@@ -439,6 +439,27 @@ fun main(args: Array<String>) {
               ),
           )
         }
+        tryAdd("data/overrides") {
+          // Plain-Compose named overrides (`previewOverride*` knobs: label, list length, indexed
+          // per-item values). Same shape as the touch-overlay / launcher-widget registrations: the
+          // planner is wired into `RobolectricHost.previewOverrideExtensions` (always-on, so
+          // `LocalPreviewOverrideHost` is installed on every render and seeds apply), while this entry
+          // carries the discoverable descriptor and the `compose/overrides` data product registry that
+          // captures the preview's declared knobs. Same portable connector is registered on
+          // `:daemon:desktop`.
+          Extension(
+            id = "data/overrides",
+            displayName = "Named preview overrides",
+            dataProductRegistry = PreviewOverridesDataProductRegistry(),
+            dataExtensionDescriptors =
+              listOf(
+                DataExtensionDescriptor(
+                  id = PreviewOverridesOverrideExtension.ID,
+                  displayName = "Named preview overrides",
+                )
+              ),
+          )
+        }
         tryAdd("data/launcher-widget") {
           // Launcher-widget container-size override — same shape as the touch-overlay registration
           // above. The actual planner is wired into `RobolectricHost.previewOverrideExtensions`;

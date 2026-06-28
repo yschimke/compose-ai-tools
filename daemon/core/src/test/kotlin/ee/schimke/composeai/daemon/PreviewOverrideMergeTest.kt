@@ -5,6 +5,7 @@ import ee.schimke.composeai.daemon.protocol.FocusOverride
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PermissionGrantStateOverride
 import ee.schimke.composeai.daemon.protocol.PermissionsOverride
+import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
 import ee.schimke.composeai.daemon.protocol.RemoteComposeProfile
@@ -227,5 +228,39 @@ class PreviewOverrideMergeTest {
       "non-pseudo locales must not project into the extension bag — the renderer applies them via qualifiers / LocaleList directly",
       realLocale,
     )
+  }
+
+  @Test
+  fun `namedOverrides per-key merge over base and flow through toExtensionOverrides`() {
+    val base =
+      PreviewOverrideBaseSpec(
+        widthPx = 320,
+        heightPx = 480,
+        density = 2.0f,
+        device = null,
+        localeTag = null,
+        fontScale = null,
+        uiMode = null,
+        orientation = null,
+        inspectionMode = null,
+        namedOverrides =
+          mapOf(
+            "rowCount" to PreviewOverrideValue.IntValue(3),
+            "label" to PreviewOverrideValue.StringValue("base"),
+          ),
+      )
+
+    // A follow-up render that only edits `label` must keep `rowCount` (per-key merge, not replace).
+    val merged =
+      mergePreviewOverrides(
+        base,
+        PreviewOverrides(
+          namedOverrides = mapOf("label" to PreviewOverrideValue.StringValue("edited"))
+        ),
+      )
+
+    assertEquals(PreviewOverrideValue.StringValue("edited"), merged.namedOverrides?.get("label"))
+    assertEquals(PreviewOverrideValue.IntValue(3), merged.namedOverrides?.get("rowCount"))
+    assertEquals(merged.namedOverrides, merged.toExtensionOverrides()?.namedOverrides)
   }
 }

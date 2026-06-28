@@ -7,6 +7,7 @@ import ee.schimke.composeai.daemon.protocol.LauncherWidgetOverride
 import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PermissionsOverride
+import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
 import ee.schimke.composeai.daemon.protocol.UiMode
@@ -38,6 +39,7 @@ data class PreviewOverrideBaseSpec(
   val permissions: PermissionsOverride? = null,
   val remoteCompose: RemoteComposeOverride? = null,
   val launcherWidget: LauncherWidgetOverride? = null,
+  val namedOverrides: Map<String, PreviewOverrideValue>? = null,
 )
 
 data class MergedPreviewOverrides(
@@ -59,6 +61,7 @@ data class MergedPreviewOverrides(
   val permissions: PermissionsOverride?,
   val remoteCompose: RemoteComposeOverride?,
   val launcherWidget: LauncherWidgetOverride?,
+  val namedOverrides: Map<String, PreviewOverrideValue>?,
 ) {
   /**
    * Project the merged overrides down to a [PreviewOverrides] bag that only carries fields
@@ -85,6 +88,7 @@ data class MergedPreviewOverrides(
         permissions == null &&
         remoteCompose == null &&
         launcherWidget == null &&
+        namedOverrides.isNullOrEmpty() &&
         !isPseudolocale
     ) {
       return null
@@ -100,6 +104,7 @@ data class MergedPreviewOverrides(
       permissions = permissions,
       remoteCompose = remoteCompose,
       launcherWidget = launcherWidget,
+      namedOverrides = namedOverrides,
     )
   }
 }
@@ -148,6 +153,7 @@ fun mergePreviewOverrides(
       permissions = base.permissions,
       remoteCompose = base.remoteCompose,
       launcherWidget = base.launcherWidget,
+      namedOverrides = base.namedOverrides,
     )
   }
   val deviceOverride = overrides.device?.takeIf { it.isNotBlank() }
@@ -178,5 +184,11 @@ fun mergePreviewOverrides(
     permissions = overrides.permissions ?: base.permissions,
     remoteCompose = overrides.remoteCompose ?: base.remoteCompose,
     launcherWidget = overrides.launcherWidget ?: base.launcherWidget,
+    // Per-key merge (not whole-map replace): editing one knob in a follow-up render must not drop
+    // the
+    // others the caller already set. Override entries win over base entries with the same key.
+    namedOverrides =
+      if (base.namedOverrides == null && overrides.namedOverrides == null) null
+      else (base.namedOverrides ?: emptyMap()) + (overrides.namedOverrides ?: emptyMap()),
   )
 }
