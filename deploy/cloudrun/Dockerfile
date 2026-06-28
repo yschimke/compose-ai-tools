@@ -4,8 +4,9 @@
 #
 # What this serves: a long-lived HTTP server that renders the @Preview functions
 # of one Compose Multiplatform *Desktop* module (`:samples:cmp` by default) on
-# demand and returns PNGs. Desktop rendering uses Skiko software rasterization —
-# no Android SDK, no GPU, no X server.
+# demand and returns PNGs. Desktop rendering uses Skiko on a CPU raster surface —
+# no GPU and no X server/Xvfb, but Skiko's native lib is still dynamically linked
+# against libGL.so.1, so Mesa's software GL must be present (see the base stage).
 #
 # Why a fat image: `compose-preview serve` builds its module through the Gradle
 # Tooling API at startup and keeps a warm render daemon. So the runtime needs the
@@ -17,12 +18,29 @@
 # JDK with none of the JDK-17-vs-21 gymnastics docs/CLOUD-TESTING.md describes.
 
 # ---------------------------------------------------------------------------
+# Stage 0: base — JDK plus the native libraries Skiko needs to render.
+# ---------------------------------------------------------------------------
+# Both the build-stage warm render and the runtime server invoke Skiko, so the
+# native deps must live in BOTH — hence a shared base. Skiko dlopens libskiko,
+# which links libGL.so.1 (provided by Mesa here) and libX11 (pulled in by
+# libglx-mesa0); fontconfig + freetype + a font family give non-empty text. We
+# rasterize on the CPU, so LIBGL_ALWAYS_SOFTWARE=1 forces Mesa's software path
+# (no GPU on the host). This mirrors what the repo's own CI installs for headless
+# desktop renders (.github/workflows/ci.yml).
+FROM eclipse-temurin:17.0.18_8-jdk AS base
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      libfreetype6 libfontconfig1 fontconfig fonts-dejavu-core \
+      libgl1-mesa-dri libglx-mesa0 \
+ && rm -rf /var/lib/apt/lists/*
+ENV LIBGL_ALWAYS_SOFTWARE=1 \
+    GRADLE_USER_HOME=/root/.gradle \
+    SERVE_MODULE=:samples:cmp
+
+# ---------------------------------------------------------------------------
 # Stage 1: build the CLI distribution and warm the render path.
 # ---------------------------------------------------------------------------
-FROM eclipse-temurin:17.0.18_8-jdk AS build
-
-ENV GRADLE_USER_HOME=/root/.gradle \
-    SERVE_MODULE=:samples:cmp
+FROM base AS build
 
 WORKDIR /app
 
@@ -48,21 +66,9 @@ RUN ./gradlew --no-daemon :cli:installDist \
 # ---------------------------------------------------------------------------
 # Stage 2: runtime.
 # ---------------------------------------------------------------------------
-FROM eclipse-temurin:17.0.18_8-jdk AS runtime
+FROM base AS runtime
 
-# Skiko (Compose Desktop's renderer) needs fontconfig + freetype to lay out and
-# rasterize text, and at least one font family for non-empty glyphs. Without
-# these, text in rendered previews comes out blank.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-      libfreetype6 libfontconfig1 fontconfig fonts-dejavu-core \
- && rm -rf /var/lib/apt/lists/*
-
-ENV GRADLE_USER_HOME=/root/.gradle \
-    SERVE_MODULE=:samples:cmp \
-    # Scale-to-zero friendliness: shut the server down after this many idle
-    # seconds so Cloud Run's instance can be reclaimed. Tune via env / service.yaml.
-    SERVE_IDLE_EXIT=900 \
+ENV SERVE_IDLE_EXIT=900 \
     # JVM heap ceiling for the CLI process; the render daemon is a child JVM.
     JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70"
 
