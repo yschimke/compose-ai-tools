@@ -6,6 +6,11 @@
 **/node_modules/
 **/.idea/
 **/*.iml
+# Never bake deploy secrets into the image. setup.sh writes deploy/<target>/.env
+# with the generated SERVE_TOKEN; the build context is the repo root, so without
+# this the token would land in image layers. The token still reaches the
+# container at runtime via compose `environment:`, so excluding it is safe.
+**/.env
 deploy/cloudrun/README.md
 vscode-extension/out/
 vscode-extension/.vscode-test/
