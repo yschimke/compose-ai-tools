@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli.serve
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
@@ -25,6 +26,8 @@ import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.net.InetAddress
 import java.net.ServerSocket
+import java.util.concurrent.Semaphore
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -58,9 +61,18 @@ class ServeHttpServer(
   /** When non-null, enables `POST /bundles/{name}` for clients to contribute bundles at runtime. */
   private val bundleStore: ServeBundleStore? = null,
   portRange: Int = DEFAULT_PORT_RANGE,
+  /**
+   * Max renders in flight across the HTTP `/render` lane. Defaults to the host's CPU count so a
+   * small box (1–2 vCPU) sheds a render storm instead of thrashing; excess requests wait briefly
+   * for a slot, then get `503 + Retry-After`. Renders also serialise inside [ServeRenderHost], so
+   * this is a load-shedding bound on concurrent HTTP work, not a parallel-render knob.
+   */
+  maxConcurrentRenders: Int = Runtime.getRuntime().availableProcessors().coerceAtLeast(1),
 ) {
   /** The actual bound port — may differ from the requested one if it was taken (auto-picked). */
   val port: Int = pickPort(host, requestedPort, portRange)
+
+  private val renderSemaphore = Semaphore(maxConcurrentRenders.coerceAtLeast(1))
 
   private val server: EmbeddedServer<*, *> =
     embeddedServer(CIO, host = host, port = port) {
@@ -297,9 +309,29 @@ class ServeHttpServer(
                 call.respondText(parsed.message, status = HttpStatusCode.BadRequest)
               is OverrideParse.Ok -> {
                 // The render is blocking (renderNow + await); keep it off the request dispatcher.
+                // Cap concurrent renders (default = CPU count) so a small box sheds a storm instead
+                // of thrashing: wait briefly for a slot, else 503 + Retry-After. A null outcome
+                // signals the wait timed out.
                 val outcome =
-                  withContext(Dispatchers.IO) { renderHost.render(previewId, parsed.overrides) }
+                  withContext(Dispatchers.IO) {
+                    if (!renderSemaphore.tryAcquire(RENDER_QUEUE_WAIT_SECONDS, TimeUnit.SECONDS)) {
+                      null
+                    } else {
+                      try {
+                        renderHost.render(previewId, parsed.overrides)
+                      } finally {
+                        renderSemaphore.release()
+                      }
+                    }
+                  }
                 when (outcome) {
+                  null -> {
+                    call.response.headers.append(HttpHeaders.RetryAfter, "2")
+                    call.respondText(
+                      "render queue saturated; retry shortly",
+                      status = HttpStatusCode.ServiceUnavailable,
+                    )
+                  }
                   is RenderOutcome.Ok -> call.respondBytes(outcome.png, ContentType.Image.PNG)
                   RenderOutcome.NotFound ->
                     call.respondText("no such preview", status = HttpStatusCode.NotFound)
@@ -357,6 +389,11 @@ class ServeHttpServer(
   companion object {
     const val TOKEN_HEADER: String = "X-Compose-Preview-Token"
     private const val DEFAULT_PORT_RANGE = 32
+
+    /**
+     * How long a `/render` request waits for a concurrency slot before getting 503 + Retry-After.
+     */
+    private const val RENDER_QUEUE_WAIT_SECONDS = 30L
 
     /** Max accepted upload-body size for `POST /bundles` (matches the store's extraction cap). */
     private const val MAX_UPLOAD_BYTES = 100L * 1024 * 1024

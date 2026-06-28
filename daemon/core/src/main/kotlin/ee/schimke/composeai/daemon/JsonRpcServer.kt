@@ -1219,6 +1219,10 @@ class JsonRpcServer(
     // that skip, so a truly-redundant frame still emits no `historyAdded` and adds no sidecar.
     recordHistoryForRender(previewId = previewId, result = result, finished = finished)
     inFlightRenders.remove(result.id)
+    // Cleared only after the frame's history/data-product snapshot above, so the next same-preview
+    // render can't overwrite per-preview artifacts before this frame's sidecar is recorded. The
+    // brief window where this flag stays set after renderFinished is covered by the serve host's
+    // bounded coalesced-retry (ServeRenderHost), so no client loses a render to it.
     previewIdsWithOverridesInFlight.remove(previewId)
     // D3 — wake any `data/fetch` waiter that queued this render. The waiter re-invokes
     // `dataProducts.fetch` to materialise the payload. We complete the future regardless of

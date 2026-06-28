@@ -62,8 +62,14 @@ internal class FakeRenderSession(
   private val heldSession: Boolean = true,
   /** When set, [streamStart] emits a keyframe with this base64 payload *before* it returns. */
   private val emitKeyframeOnStart: String? = null,
+  /**
+   * Reject the first N override-bearing [renderNow]s with the daemon's `coalesced` reason (then
+   * serve normally), modelling the override-in-flight coalescing the serve host must retry through.
+   */
+  private val coalescedOverrideRejections: Int = 0,
 ) : RenderSession {
   val renderCount = AtomicInteger(0)
+  private val coalesceRemaining = AtomicInteger(coalescedOverrideRejections)
   private val listeners = CopyOnWriteArrayList<NotificationListener>()
   private val counter = AtomicInteger(0)
 
@@ -155,6 +161,18 @@ internal class FakeRenderSession(
     val id = previewIds.single()
     if (rejectAll) {
       return RenderNowResult(queued = emptyList(), rejected = listOf(RejectedRender(id, "nope")))
+    }
+    if (overrides != null && coalesceRemaining.getAndUpdate { (it - 1).coerceAtLeast(0) } > 0) {
+      return RenderNowResult(
+        queued = emptyList(),
+        rejected =
+          listOf(
+            RejectedRender(
+              id,
+              "coalesced: override-bearing render already in flight for this previewId",
+            )
+          ),
+      )
     }
     val hook = renderHook
     if (hook != null) {

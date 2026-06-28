@@ -87,6 +87,7 @@ internal constructor(
   private val fileSystem: FileSystem = SystemFileSystem,
   private val onLog: (String) -> Unit = {},
   private val renderTimeoutSeconds: Long = RENDER_TIMEOUT_SECONDS,
+  private val frameRenderTimeoutSeconds: Long = FRAME_RENDER_TIMEOUT_SECONDS,
 ) : ServeHost {
 
   private val previewIds: Set<String> = previews.map { it.id }.toHashSet()
@@ -116,6 +117,12 @@ internal constructor(
   // order per session (the S4 harness tests assert none are lost / reordered), so we drain exactly
   // one outstanding event per timed-out render here before honouring a fresh one.
   private val staleRenders = ConcurrentHashMap<String, Int>()
+
+  // The first render after the session opens pays Skiko/JVM cold start, so it gets the generous
+  // [renderTimeoutSeconds] budget; once one render has succeeded, each subsequent frame is capped
+  // at
+  // [frameRenderTimeoutSeconds] so a single wedged render can't hold the only render slot.
+  private val warmedUp = AtomicBoolean(false)
 
   // Fans one upstream daemon stream out to all watchers of the same preview/overrides/codec/fps, so
   // many browsers cost one held session instead of one each. Built on [startStream]; shared because
@@ -154,40 +161,59 @@ internal constructor(
         return@withLock RenderOutcome.Ok(it)
       }
 
-      val latch = CountDownLatch(1)
-      pendingLatch.set(latch)
-      pendingPreviewId.set(previewId)
-      pendingPngPath.set(null)
+      // The daemon coalesces an override-bearing `renderNow` whose previewId already has one in
+      // flight, expecting the client to resubmit once it clears. Because the daemon clears that
+      // flag
+      // on (just after) `renderFinished`, the very next serialised render here can momentarily race
+      // the not-yet-cleared flag and get rejected. Honour the daemon's retry contract with a
+      // bounded
+      // backoff instead of surfacing it to the browser as a 500.
+      var attempt = 0
+      while (true) {
+        val latch = CountDownLatch(1)
+        pendingLatch.set(latch)
+        pendingPreviewId.set(previewId)
+        pendingPngPath.set(null)
 
-      val ack =
-        try {
-          session.renderNow(
-            previewIds = listOf(previewId),
-            reason = "serve",
-            overrides = overrides,
-            timeout = RENDER_ACK_TIMEOUT,
-          )
-        } catch (e: RenderSessionException) {
-          val reason = "renderNow failed: ${e.message}"
+        val ack =
+          try {
+            session.renderNow(
+              previewIds = listOf(previewId),
+              reason = "serve",
+              overrides = overrides,
+              timeout = RENDER_ACK_TIMEOUT,
+            )
+          } catch (e: RenderSessionException) {
+            val reason = "renderNow failed: ${e.message}"
+            onLog(reason)
+            return@withLock RenderOutcome.Failed(reason)
+          }
+
+        val rejected = ack.rejected.firstOrNull { it.id == previewId }
+        if (rejected != null) {
+          if (rejected.reason.startsWith("coalesced") && attempt++ < MAX_COALESCED_RETRIES) {
+            Thread.sleep(COALESCED_RETRY_BACKOFF_MS)
+            continue
+          }
+          val reason = "render rejected: ${rejected.reason}"
           onLog(reason)
           return@withLock RenderOutcome.Failed(reason)
         }
 
-      ack.rejected
-        .firstOrNull { it.id == previewId }
-        ?.let {
-          val reason = "render rejected: ${it.reason}"
+        // Cold start gets the generous budget; every frame after the first is capped so a wedged
+        // render can't pin the slot.
+        val budget = if (warmedUp.get()) frameRenderTimeoutSeconds else renderTimeoutSeconds
+        if (!latch.await(budget, TimeUnit.SECONDS)) {
+          // The daemon still owes this queued render a `renderFinished`; record it so the late
+          // event
+          // is drained instead of completing a future same-id render with a stale PNG.
+          staleRenders.merge(previewId, 1, Int::plus)
+          val reason = "timed out after ${budget}s waiting for render"
           onLog(reason)
           return@withLock RenderOutcome.Failed(reason)
         }
-
-      if (!latch.await(renderTimeoutSeconds, TimeUnit.SECONDS)) {
-        // The daemon still owes this queued render a `renderFinished`; record it so the late event
-        // is drained instead of completing a future same-id render with a stale PNG.
-        staleRenders.merge(previewId, 1, Int::plus)
-        val reason = "timed out after ${renderTimeoutSeconds}s waiting for render"
-        onLog(reason)
-        return@withLock RenderOutcome.Failed(reason)
+        warmedUp.set(true)
+        break
       }
 
       val path = pendingPngPath.get()
@@ -357,8 +383,19 @@ internal constructor(
     /** RPC ack budget for the (fast, queue-only) `renderNow` call itself. */
     private val RENDER_ACK_TIMEOUT = 60.seconds
 
-    /** Per-render budget for the queued render to emit `renderFinished` (first pays cold start). */
+    /** Cold-start render budget — the first render pays Skiko/JVM warm-up. */
     private const val RENDER_TIMEOUT_SECONDS = 180L
+
+    /** Per-frame render budget once warm; a wedged render can't hold the slot past this. */
+    private const val FRAME_RENDER_TIMEOUT_SECONDS = 10L
+
+    /**
+     * Bounded retries when the daemon coalesces an override-bearing render already in flight. The
+     * window only needs to outlast the daemon clearing its in-flight flag right after
+     * `renderFinished`, so a handful of short backoffs is ample.
+     */
+    private const val MAX_COALESCED_RETRIES = 50
+    private const val COALESCED_RETRY_BACKOFF_MS = 100L
 
     private const val MAX_CACHE_ENTRIES = 256
 
