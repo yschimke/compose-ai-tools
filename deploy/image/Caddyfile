@@ -1,0 +1,15 @@
+# Caddy reverse proxy for the prebuilt preview-host image.
+#
+# {$DOMAIN} comes from .env via docker-compose. With a public DNS A record
+# pointing at the host, Caddy provisions + renews a Let's Encrypt cert
+# automatically. The app's token (?token= / X-Compose-Preview-Token) stays the
+# auth gate; this only adds TLS and forwards to the internal server.
+{$DOMAIN} {
+	encode zstd gzip
+
+	reverse_proxy preview:8080 {
+		transport http {
+			read_timeout 120s
+		}
+	}
+}
