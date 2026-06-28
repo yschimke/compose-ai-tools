@@ -18,3 +18,7 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "preview-host"
+
+// The previews live in a non-root subproject: the CLI's module discovery drops
+// the Gradle root project, so a root-only project would render nothing.
+include(":app")

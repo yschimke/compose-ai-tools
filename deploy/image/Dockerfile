@@ -31,7 +31,10 @@ FROM base AS build
 ARG CP_VERSION
 WORKDIR /opt
 # Download + unpack the released distribution (bin/compose-preview + lib dirs).
-RUN curl -fsSL -o /tmp/cp.tgz \
+# --retry-all-errors + a long window waits out the release-asset upload race: on a
+# fresh `v*` release the GitHub Release exists before release.yml finishes pushing
+# the tarball, so the first GETs can 404. Retry every 30s for up to ~10 min.
+RUN curl -fsSL --retry 20 --retry-delay 30 --retry-all-errors -o /tmp/cp.tgz \
       "https://github.com/yschimke/compose-ai-tools/releases/download/v${CP_VERSION}/compose-preview-${CP_VERSION}.tar.gz" \
  && tar -xzf /tmp/cp.tgz -C /opt \
  && rm /tmp/cp.tgz \
