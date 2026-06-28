@@ -1,0 +1,2 @@
+# setup.sh writes this with a generated token — never commit it.
+.env

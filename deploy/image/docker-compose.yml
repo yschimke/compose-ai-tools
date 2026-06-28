@@ -1,0 +1,38 @@
+# Instant deploy: pull the prebuilt preview-host image (no build) behind Caddy.
+#
+# Set DOMAIN + SERVE_TOKEN in .env (setup.sh writes one), then:
+#   docker compose up -d
+#
+# Pin a version with IMAGE_TAG=0.16.1 in .env; defaults to :latest.
+services:
+  preview:
+    image: "ghcr.io/yschimke/compose-preview-host:${IMAGE_TAG:-latest}"
+    restart: always
+    pull_policy: always
+    environment:
+      SERVE_TOKEN: "${SERVE_TOKEN:?set SERVE_TOKEN in .env}"
+      SERVE_IDLE_EXIT: "0"
+      PORT: "8080"
+    expose:
+      - "8080"
+    # The baked warm cache makes renders incremental; this just caps a render storm.
+    mem_limit: 4g
+
+  caddy:
+    image: caddy:2
+    restart: always
+    depends_on:
+      - preview
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: "${DOMAIN:?set DOMAIN in .env}"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
