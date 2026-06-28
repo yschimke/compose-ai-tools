@@ -22,8 +22,10 @@
 # ---------------------------------------------------------------------------
 # Both the build-stage warm render and the runtime server invoke Skiko, so the
 # native deps must live in BOTH — hence a shared base. Skiko dlopens libskiko,
-# which links libGL.so.1 (provided by Mesa here) and libX11 (pulled in by
-# libglx-mesa0); fontconfig + freetype + a font family give non-empty text. We
+# which links libGL.so.1 (owned by libgl1 — install it explicitly; the mesa
+# packages don't pull it on a minimal base) and libX11 (pulled in by
+# libglx-mesa0, which with libgl1-mesa-dri provides Mesa's software GLX/DRI);
+# fontconfig + freetype + a font family give non-empty text. We
 # rasterize on the CPU, so LIBGL_ALWAYS_SOFTWARE=1 forces Mesa's software path
 # (no GPU on the host). This mirrors what the repo's own CI installs for headless
 # desktop renders (.github/workflows/ci.yml).
@@ -31,7 +33,7 @@ FROM eclipse-temurin:17.0.18_8-jdk AS base
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       libfreetype6 libfontconfig1 fontconfig fonts-dejavu-core \
-      libgl1-mesa-dri libglx-mesa0 \
+      libgl1 libglx-mesa0 libgl1-mesa-dri \
  && rm -rf /var/lib/apt/lists/*
 ENV LIBGL_ALWAYS_SOFTWARE=1 \
     GRADLE_USER_HOME=/root/.gradle \
