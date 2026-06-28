@@ -1180,10 +1180,6 @@ class JsonRpcServer(
     val isUnchanged =
       frameHash != null && lastFrameHashes[previewId] == frameHash && firstRenderFinishedSeen.get()
     val outboundFinished = if (isUnchanged) finished.copy(unchanged = true) else finished
-    // Clear the override-in-flight flag BEFORE announcing renderFinished so a client that resubmits
-    // the instant it sees the notification (e.g. the serve HTTP lane re-requesting the same <img>)
-    // can't lose a race against the not-yet-cleared flag and get its render coalesced-rejected.
-    previewIdsWithOverridesInFlight.remove(previewId)
     sendNotification("renderFinished", encode(RenderFinishedParams.serializer(), outboundFinished))
     // Live-frame streaming (`composestream/1`). The streaming layer is a *consumer* of the
     // renderFinished above, not a replacement for it: legacy clients keep painting via
@@ -1223,7 +1219,11 @@ class JsonRpcServer(
     // that skip, so a truly-redundant frame still emits no `historyAdded` and adds no sidecar.
     recordHistoryForRender(previewId = previewId, result = result, finished = finished)
     inFlightRenders.remove(result.id)
-    // previewIdsWithOverridesInFlight is cleared above, before renderFinished is sent.
+    // Cleared only after the frame's history/data-product snapshot above, so the next same-preview
+    // render can't overwrite per-preview artifacts before this frame's sidecar is recorded. The
+    // brief window where this flag stays set after renderFinished is covered by the serve host's
+    // bounded coalesced-retry (ServeRenderHost), so no client loses a render to it.
+    previewIdsWithOverridesInFlight.remove(previewId)
     // D3 — wake any `data/fetch` waiter that queued this render. The waiter re-invokes
     // `dataProducts.fetch` to materialise the payload. We complete the future regardless of
     // dedup (`unchanged: true`): the producer's payload may have changed even when the bytes
