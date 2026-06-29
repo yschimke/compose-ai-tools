@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.16.5](https://github.com/yschimke/compose-ai-tools/compare/v0.16.4...v0.16.5) (2026-06-29)
+
+
+### Features
+
+* **deploy:** public preview-server profile for preview.coo.ee ([#2101](https://github.com/yschimke/compose-ai-tools/issues/2101)) ([71d82be](https://github.com/yschimke/compose-ai-tools/commit/71d82be4595bb990f8820dd30dfb46965f36bedd))
+* **design-artifacts:** publish the CMP Wasm app into the catalog branch ([#2102](https://github.com/yschimke/compose-ai-tools/issues/2102)) ([5c0f405](https://github.com/yschimke/compose-ai-tools/commit/5c0f405cc400d2d77e4bc842dc07c23fd577e716))
+* **serve:** carry the CMP Wasm app on the trusted catalog branch + cache it ([#2099](https://github.com/yschimke/compose-ai-tools/issues/2099)) ([7efa49f](https://github.com/yschimke/compose-ai-tools/commit/7efa49fe3d1449d654682d7197285df6e896f517))
+
 ## [0.16.4](https://github.com/yschimke/compose-ai-tools/compare/v0.16.3...v0.16.4) (2026-06-29)
 
 
