@@ -20,6 +20,7 @@ class ServeCatalogStoreTest {
     Files.createTempDirectory("catalog").toFile().also { it.deleteOnExit() }
 
   private val registered = LinkedHashMap<String, ServeBundleHost>()
+  private val registeredWasm = LinkedHashMap<String, File>()
 
   private fun png(): ByteArray =
     ByteArrayOutputStream()
@@ -54,6 +55,7 @@ class ServeCatalogStoreTest {
       register = { n, h -> registered[n] = h },
       trust = trust,
       fetch = fetch,
+      registerWasm = { s, d -> registeredWasm[s] = d },
     )
 
   @Test
@@ -103,5 +105,41 @@ class ServeCatalogStoreTest {
     val result = store(TrustStore.EMPTY, fetch = { null }).load("compose-m3")
     assertTrue(result is ServeCatalogStore.Result.Failed)
     assertTrue(registered.isEmpty())
+  }
+
+  @Test
+  fun `a catalog webRender fetches the wasm app from the branch and registers its dir`() {
+    // catalog.json declaring a compose-wasm app under web/wasm/, including a traversal entry that
+    // must be rejected.
+    val withWasm =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3","components":[
+        {"componentId":"Button/Filled","images":[
+          {"path":"images/button-filled/ideal__default__dark.png","theme":"dark"}]}],
+       "webRender":{"kind":"compose-wasm","path":"web/wasm/",
+         "files":["index.html","composeApp.wasm","skiko.wasm","../../escape.html"]}}
+      """
+        .trimIndent()
+    val fetch: (String) -> ByteArray? = { url ->
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> withWasm.toByteArray()
+        url.endsWith(".png") -> png()
+        url.contains("/web/wasm/") -> "x".toByteArray()
+        else -> null
+      }
+    }
+    store(TrustStore.EMPTY, fetch).load("compose-m3")
+
+    val wasmDir = registeredWasm.getValue("compose-m3")
+    assertTrue(File(wasmDir, "index.html").isFile, "index.html landed")
+    assertTrue(File(wasmDir, "composeApp.wasm").isFile && File(wasmDir, "skiko.wasm").isFile)
+    // The `../../escape.html` traversal entry must not write outside web/wasm/.
+    assertTrue(!File(wasmDir.parentFile.parentFile, "escape.html").exists(), "traversal rejected")
+  }
+
+  @Test
+  fun `no webRender means no wasm dir is registered`() {
+    store(TrustStore.EMPTY).load("compose-m3")
+    assertTrue(registeredWasm.isEmpty())
   }
 }

@@ -56,9 +56,19 @@ PNG** is the universal fallback when an image is needed. Remote Compose / Protol
 data-only* formats — the safest uploads.
 
 The CMP-Wasm tier is built (`:samples:cmp-wasm-catalog`, see
-[`wasm-cmp-spike.md`](wasm-cmp-spike.md)): with `--wasm-dir <system>=<dist>`, a CMP catalog session's
-viewer shows a **"Run in browser (Wasm)"** toggle that mounts the M3 components client-side in a
-sandboxed iframe — no server round-trip, so safe even for an unverified session.
+[`wasm-cmp-spike.md`](wasm-cmp-spike.md)): a CMP catalog session's viewer shows a **"Run in browser
+(Wasm)"** toggle that mounts the M3 components client-side in a sandboxed iframe — no server
+round-trip, so safe even for an unverified session. The app is sourced two ways:
+
+- **From the trusted branch (default).** When the `design-artifacts/<system>` catalog declares a
+  `webRender` (a `web/wasm/` app committed to the branch), `--catalogs` fetches it alongside
+  `catalog.json` + `images/` and serves it at `/wasm/<system>/` — **trusted by the same branch
+  origin**, no local build needed.
+- **From a local build.** `--wasm-dir <system>=<dist>` points at a `wasmCatalogDist` output, which
+  overrides the branch app for that system (handy when iterating locally).
+
+The `/wasm/` assets are sent with `Cache-Control` + an `ETag`, so the heavy skiko + app wasm (≈ 8 MB
+gzipped) is cached and revalidated cheaply (304) instead of re-downloaded each viewer load.
 
 ## Running one
 
@@ -66,8 +76,7 @@ sandboxed iframe — no server round-trip, so safe even for an unverified sessio
 compose-preview serve \
   --module :samples:design-catalog-m3 \   # a base module is the default session
   --public \                              # open every route (no token)
-  --catalogs compose-m3,wear-m3 \         # serve the published design systems
-  --wasm-dir compose-m3=build/wasmDist \  # in-browser CMP tier (./gradlew :samples:cmp-wasm-catalog:wasmCatalogDist)
+  --catalogs compose-m3,wear-m3 \         # serve the published design systems (Wasm app rides the branch)
   --accept-bundles \                      # accept client bundle uploads
   --trust-store trust/producers.json \    # who we trust
   --host 0.0.0.0 --port 8080

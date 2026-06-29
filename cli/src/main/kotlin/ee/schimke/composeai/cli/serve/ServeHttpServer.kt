@@ -10,6 +10,7 @@ import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.request.receiveStream
+import io.ktor.server.response.respond
 import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.RoutingContext
@@ -125,12 +126,23 @@ class ServeHttpServer(
               call.respondText("not found", status = HttpStatusCode.NotFound)
               return@get
             }
-            val bytes = withContext(Dispatchers.IO) { file.readBytes() }
             // The viewer mounts this app in a `sandbox="allow-scripts"` iframe, which has an opaque
             // (null) origin — so the app's own ES-module + wasm fetches count as cross-origin and
             // need CORS. `*` is safe: these are public static client assets with no session data,
             // and keeping the strong sandbox (no `allow-same-origin`) isolates even untrusted wasm.
             call.response.headers.append(HttpHeaders.AccessControlAllowOrigin, "*")
+            // Cache the heavy payload (skiko + app wasm ≈ 8 MB gzipped). The filenames aren't
+            // content-hashed, so pair a moderate max-age with a size+mtime ETag: within the window
+            // the browser serves from cache (no request); after it, a conditional request gets a
+            // cheap 304 instead of re-downloading megabytes.
+            val etag = "\"${file.length().toString(16)}-${file.lastModified().toString(16)}\""
+            call.response.headers.append(HttpHeaders.CacheControl, "public, max-age=3600")
+            call.response.headers.append(HttpHeaders.ETag, etag)
+            if (call.request.headers[HttpHeaders.IfNoneMatch] == etag) {
+              call.respond(HttpStatusCode.NotModified)
+              return@get
+            }
+            val bytes = withContext(Dispatchers.IO) { file.readBytes() }
             call.respondBytes(bytes, wasmContentType(file.name))
           }
         }

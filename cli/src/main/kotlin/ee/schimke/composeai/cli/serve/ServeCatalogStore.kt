@@ -35,6 +35,13 @@ class ServeCatalogStore(
   private val branchPrefix: String = DEFAULT_BRANCH_PREFIX,
   private val fetch: (String) -> ByteArray? = ::httpFetch,
   private val maxImages: Int = DEFAULT_MAX_IMAGES,
+  /**
+   * Called when the catalog declares an in-browser Wasm app (`webRender` in `catalog.json`) and its
+   * files were fetched: the system id → the local directory the app was written to. The server then
+   * serves it at `/wasm/<system>/`, so the **CMP-Wasm tier rides the same trusted branch as the
+   * catalog** — a deployed public server needs no local `--wasm-dir` build, just `--catalogs`.
+   */
+  private val registerWasm: (system: String, dir: File) -> Unit = { _, _ -> },
 ) {
 
   sealed interface Result {
@@ -90,6 +97,14 @@ class ServeCatalogStore(
       return Result.Failed(system, "catalog had no usable images")
     }
 
+    // Optional in-browser Wasm tier: when the catalog declares a `compose-wasm` webRender, fetch
+    // its
+    // app files from the same branch into `<dir>/web/wasm/` and register that as the system's Wasm
+    // dir. Best-effort — a fetch failure just leaves the catalog without the in-browser tier (the
+    // PNG + data tiers still serve). The file list is enumerated by the trusted catalog, not the
+    // client, and each file is path-contained + size-capped like the images.
+    fetchWasmApp(catalog.webRender, base, dir, safe)
+
     val verdict =
       if (trust.trustsBranch(repo, branch))
         BundleVerifier.Verdict.Trusted(listOf(BundleVerifier.Basis.Branch(repo, branch)))
@@ -99,18 +114,64 @@ class ServeCatalogStore(
     return Result.Ok(safe, host.previews.size, BundleVerifier.summary(verdict))
   }
 
-  /** Minimal mirror of the `design-parity-catalog/v1` schema — only the image paths are needed. */
-  @Serializable private data class Catalog(val components: List<Component> = emptyList())
+  /**
+   * Fetch a `compose-wasm` [WebRender] app's files from [base] into `<dir>/web/wasm/` and register
+   * the dir. The file list comes from the trusted [render] (not a client); each entry is confined
+   * to the declared `path`, rejected on traversal, and size-capped by [fetch]. Needs at least an
+   * `index.html` to be usable. No-op for a null / non-`compose-wasm` descriptor.
+   */
+  private fun fetchWasmApp(render: WebRender?, base: String, dir: File, system: String) {
+    if (render == null || render.kind != WEB_RENDER_COMPOSE_WASM) return
+    val prefix = render.path.trim('/')
+    if (prefix.isEmpty() || render.files.isEmpty()) return
+    val wasmDir = File(dir, WEB_WASM_DIR)
+    val wasmRoot = wasmDir.canonicalFile.toPath()
+    var written = 0
+    for (name in render.files.take(MAX_WASM_FILES)) {
+      val rel = name.trim('/')
+      if (rel.isEmpty() || ".." in rel.split("/")) continue
+      val target = File(wasmDir, rel)
+      if (!target.canonicalFile.toPath().startsWith(wasmRoot)) continue
+      val bytes = runCatching { fetch("$base$prefix/$rel") }.getOrNull() ?: continue
+      target.parentFile?.mkdirs()
+      target.writeBytes(bytes)
+      written++
+    }
+    if (written > 0 && File(wasmDir, "index.html").isFile) registerWasm(system, wasmDir)
+  }
+
+  /**
+   * Minimal mirror of the `design-parity-catalog/v1` schema — only the bits we serve are needed.
+   */
+  @Serializable
+  private data class Catalog(
+    val components: List<Component> = emptyList(),
+    /** Optional in-browser render descriptor (the CMP-Wasm app carried in the branch). */
+    val webRender: WebRender? = null,
+  )
 
   @Serializable private data class Component(val images: List<Image> = emptyList())
 
   @Serializable private data class Image(val path: String)
+
+  /**
+   * `catalog.json`'s `webRender`: an app under [path] (e.g. `web/wasm/`) with its [files] listed.
+   */
+  @Serializable
+  private data class WebRender(
+    val kind: String = "",
+    val path: String = "",
+    val files: List<String> = emptyList(),
+  )
 
   companion object {
     const val DEFAULT_REPO = "yschimke/compose-ai-tools"
     const val DEFAULT_BRANCH_PREFIX = "design-artifacts/"
     const val CATALOG_FILE = "catalog.json"
     const val IMAGES_DIR = "images"
+    const val WEB_WASM_DIR = "web/wasm"
+    const val WEB_RENDER_COMPOSE_WASM = "compose-wasm"
+    private const val MAX_WASM_FILES = 64
 
     /**
      * The single-path-segment preview id for a catalog image path. The serve routes (`/p/{name}`,
