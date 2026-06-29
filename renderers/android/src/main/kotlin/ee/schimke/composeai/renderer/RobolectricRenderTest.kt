@@ -88,6 +88,13 @@ private fun ScrollAxis.toProductAxis(): ProductScrollAxis =
     }
 
 /**
+ * Encoder for the `renders/<stem>.overrides.json` sidecar (the `compose/overrides` payload). File-level
+ * so the render class's `writeOverridesSidecar` can reach it. `encodeDefaults = true` to match the
+ * desktop renderer's sidecar writer so the format is identical across backends.
+ */
+private val overridesSidecarJson = Json { encodeDefaults = true }
+
+/**
  * Loads the previews manifest and returns the subset assigned to `shardIndex`
  * out of `shardCount` shards. Generated shard subclasses delegate their
  * `@Parameters` method here (see the plugin's `generateShardTests` task).
@@ -480,6 +487,9 @@ abstract class RobolectricRenderTestBase(
         // Arm the IR channel for this preview so a Remote Compose / protolayout producer can offer
         // its captured intermediate representation during composition; drained post-render below.
         ee.schimke.composeai.data.render.IrSidecarChannel.setCurrentPreviewId(preview.id)
+        // Drop any named-override knobs a prior preview declared so this preview's `previewOverride*`
+        // lookups accumulate a clean set (drained into the overrides sidecar below).
+        ee.schimke.composeai.overrides.PreviewOverrideController.clearDeclarations()
         try {
             renderDefault(
                 params = params,
@@ -495,6 +505,9 @@ abstract class RobolectricRenderTestBase(
             // Render succeeded: if the preview's flavour captured an IR, write it beside the PNG as
             // the `renders/<stem>.<ext>` sidecar `BundlePreviewTask.resolvePreviewIr` packs.
             writeIrSidecar(pngFile, preview.id)
+            // Write the editable knobs the preview declared via `previewOverride*` as the
+            // `renders/<stem>.overrides.json` sidecar `BundlePreviewTask.resolvePreviewOverrides` packs.
+            writeOverridesSidecar(pngFile)
         } catch (e: Throwable) {
             System.err.println(
                 "Render failed for ${preview.className}.${preview.functionName}: ${e.message}"
@@ -549,6 +562,42 @@ abstract class RobolectricRenderTestBase(
             }
         } catch (e: Throwable) {
             System.err.println("Failed to write IR sidecar for $previewId: ${e.message}")
+        }
+    }
+
+    /**
+     * Write the editable knobs the preview declared via `previewOverride*` during the just-finished
+     * render as the `renders/<stem>.overrides.json` sidecar `BundlePreviewTask.resolvePreviewOverrides`
+     * packs. An empty set deletes any stale sidecar so a preview that stopped declaring knobs doesn't
+     * keep an old one. Best-effort — a write failure must not derail the PNG render path. The
+     * `overrides.json` suffix is kept in lockstep with `PreviewBundleFormat.BUNDLE_OVERRIDES_SIDECAR_EXT`.
+     */
+    private fun writeOverridesSidecar(pngFile: File) {
+        val declarations =
+            ee.schimke.composeai.overrides.PreviewOverrideController.declarations()
+        val dir = pngFile.parentFile ?: return
+        val sidecar = File(dir, "${pngFile.nameWithoutExtension}.overrides.json")
+        try {
+            if (declarations.isEmpty()) {
+                if (sidecar.isFile && !sidecar.delete()) {
+                    System.err.println(
+                        "Failed to delete stale overrides sidecar: ${sidecar.absolutePath}"
+                    )
+                }
+                return
+            }
+            val payload =
+                ee.schimke.composeai.data.overrides.PreviewOverridesPayload(
+                    declarations = declarations
+                )
+            sidecar.writeText(
+                overridesSidecarJson.encodeToString(
+                    ee.schimke.composeai.data.overrides.PreviewOverridesPayload.serializer(),
+                    payload,
+                )
+            )
+        } catch (e: Throwable) {
+            System.err.println("Failed to write overrides sidecar: ${e.message}")
         }
     }
 
@@ -1653,7 +1702,9 @@ private fun handleGifCaptureInternal(
 
     fun captureFrame(delayMs: Int) {
         val frameFile = File(framesDir, "frame_${frameFiles.size}.png")
-        rule.onRoot().captureRoboImage(file = frameFile, roborazziOptions = frameRoborazziOptions)
+        captureDecodableFrame(frameFile, role = "scroll GIF") { f ->
+            rule.onRoot().captureRoboImage(file = f, roborazziOptions = frameRoborazziOptions)
+        }
         frameFiles += frameFile
         frameDelays += delayMs
     }
@@ -1840,6 +1891,57 @@ private const val MAX_TAIL_FLINGS = 4
 private const val TAIL_FLING_EPSILON_PX = 1f
 
 /**
+ * How many times the multi-frame capture paths re-issue a single frame's
+ * `captureRoboImage` when the written PNG won't decode — one initial attempt
+ * plus retries.
+ */
+internal const val FRAME_CAPTURE_ATTEMPTS = 3
+
+/**
+ * Capture one GIF frame to [file] and re-capture if the written PNG won't
+ * decode.
+ *
+ * Robolectric's NATIVE graphics backend very occasionally flushes a per-frame
+ * PNG whose 8-byte signature and IEND trailer are both intact but whose
+ * interior IDAT stream `ImageIO` then refuses ("ImageIO could not read it") — a
+ * transient encode glitch under the rapid write cadence of the multi-frame
+ * paths (`@AnimatedPreview` GIF, scroll GIF, focus GIF). A single such frame
+ * turns an otherwise-green multi-frame render red even though re-issuing the
+ * capture at the same clock state re-encodes the identical frame cleanly — see
+ * the Compose Preview `ShaderRaymarchAnimatedPreview … frame_39 … ImageIO could
+ * not read it` failure.
+ *
+ * [capture] writes [file] (overwriting any prior attempt); [FramePngReader]
+ * then validates it. A frame that still won't decode after
+ * [FRAME_CAPTURE_ATTEMPTS] re-throws the last decode error, so a genuinely
+ * undecodable frame keeps the render red with the same diagnostic as before —
+ * the retry only absorbs a glitch that clears on a fresh encode.
+ */
+internal fun captureDecodableFrame(
+    file: File,
+    role: String,
+    capture: (File) -> Unit,
+) {
+    var lastFailure: IllegalStateException? = null
+    repeat(FRAME_CAPTURE_ATTEMPTS) { attempt ->
+        capture(file)
+        try {
+            FramePngReader.decode(file, role = role)
+            return
+        } catch (e: IllegalStateException) {
+            lastFailure = e
+            System.err.println(
+                "$role: captured frame ${file.name} did not decode " +
+                    "(attempt ${attempt + 1}/$FRAME_CAPTURE_ATTEMPTS); re-capturing. " +
+                    "Cause: ${e.message}",
+            )
+        }
+    }
+    throw lastFailure
+        ?: IllegalStateException("Failed to capture a decodable frame: ${file.path}")
+}
+
+/**
  * Handles `@AnimatedPreview` captures.
  *
  * Single-pass with an inline measure step:
@@ -1943,7 +2045,9 @@ private fun handleAnimatedCapture(
 
     fun captureFrame(virtualTimeMs: Long) {
         val frameFile = File(framesDir, "frame_${frameFiles.size}.png")
-        rule.onRoot().captureRoboImage(file = frameFile, roborazziOptions = frameRoborazziOptions)
+        captureDecodableFrame(frameFile, role = "animation") { f ->
+            rule.onRoot().captureRoboImage(file = f, roborazziOptions = frameRoborazziOptions)
+        }
         frameFiles += frameFile
         frameTimes += virtualTimeMs
 
@@ -2097,8 +2201,9 @@ private fun handleFocusGifCapture(
                     .idleFor(java.time.Duration.ofMillis(FocusController.SETTLE_MS))
             }
             val frameFile = File(framesDir, "frame_$i.png")
-            rule.onRoot()
-                .captureRoboImage(file = frameFile, roborazziOptions = frameRoborazziOptions)
+            captureDecodableFrame(frameFile, role = "focus GIF") { f ->
+                rule.onRoot().captureRoboImage(file = f, roborazziOptions = frameRoborazziOptions)
+            }
             frameFiles += frameFile
         }
 

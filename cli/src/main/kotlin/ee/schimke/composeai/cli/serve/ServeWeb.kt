@@ -40,10 +40,13 @@ object ServeWeb {
     .cp-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; }
     .cp-controls input, .cp-controls select { padding: 5px 6px; font-size: 0.85rem; }
     .cp-status { font-size: 0.75rem; color: #6b6b70; min-height: 1em; }
+    .cp-knobs { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .cp-knobs-head { font-size: 0.72rem; color: #6b6b70; }
+    .cp-knobs input:disabled { opacity: 0.7; }
     @media (prefers-color-scheme: dark) {
       body { color: #e6e6e9; background: #161618; }
       .cp-sub, .cp-id, .cp-status { color: #a0a0a8; }
-      .cp-card, .cp-stage { border-color: #34343a; }
+      .cp-card, .cp-stage, .cp-knobs { border-color: #34343a; }
       .cp-card { background: #1d1d20; }
       .cp-imgwrap, .cp-stage { background: repeating-conic-gradient(#26262b 0% 25%, #1d1d20 0% 50%) 50% / 16px 16px; }
     }
@@ -106,7 +109,12 @@ object ServeWeb {
   }
 
   /** Viewer page for one preview: an `<img>` driven by the override controls. */
-  fun viewerPage(preview: ServePreview, token: String, sessionId: String? = null): String {
+  fun viewerPage(
+    preview: ServePreview,
+    token: String,
+    sessionId: String? = null,
+    canApplyOverrides: Boolean = false,
+  ): String {
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
     val q = queryString(token, sessionId)
     val label = WebEscaping.htmlEscape(preview.label)
@@ -151,6 +159,7 @@ object ServeWeb {
               <option value="landscape">Landscape</option>
             </select>
           </label>
+          ${overrideKnobsHtml(preview, canApplyOverrides)}
           <div class="cp-status" id="cp-status"></div>
         </div>
       </div>
@@ -397,6 +406,65 @@ object ServeWeb {
     </html>
     """
       .trimIndent() + "\n"
+
+  /**
+   * Renders the preview's author-declared editable knobs (the `compose/overrides` payload carried
+   * in a bundle's `previews/<id>.overrides.json`) as a labelled control list. Indexed knobs
+   * (per-item values on a repeated component) are grouped under their base key with a `#<index>`
+   * suffix. The controls are disabled when [canApplyOverrides] is false — a static bundle replays
+   * baked PNGs and can't re-render — with a one-line note explaining why; the live daemon-backed
+   * re-render loop for these knobs is a follow-up. Empty string when the preview declared no knobs
+   * (the common case).
+   */
+  private fun overrideKnobsHtml(preview: ServePreview, canApplyOverrides: Boolean): String {
+    if (preview.overrides.isEmpty()) return ""
+    val rows =
+      preview.overrides.joinToString("\n") { d ->
+        val name = if (d.index == null) d.key else "${d.key} #${d.index}"
+        val label = WebEscaping.htmlEscape(name)
+        val value = WebEscaping.htmlEscape(overrideValueText(d.current ?: d.default))
+        val inputType =
+          when (d.type) {
+            "int",
+            "float" -> "number"
+            "color" -> "text"
+            else -> "text"
+          }
+        // Disabled regardless of host for now: a bundle can't re-render, and the live re-render
+        // wiring
+        // for named overrides is a follow-up. The control still shows *what* is editable + its
+        // value.
+        """
+        <label>${label}
+          <input type="$inputType" value="$value" disabled>
+        </label>
+        """
+          .trimIndent()
+      }
+    val note =
+      if (canApplyOverrides) "Declared overrides (live editing coming soon)."
+      else "Declared overrides — static bundle, values are baked in."
+    return """
+      <div class="cp-knobs">
+        <div class="cp-knobs-head">$note</div>
+        $rows
+      </div>
+      """
+      .trimIndent()
+  }
+
+  /** Human text for a [ee.schimke.composeai.daemon.protocol.PreviewOverrideValue] in the viewer. */
+  private fun overrideValueText(
+    v: ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
+  ): String =
+    when (v) {
+      is ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.StringValue -> v.value
+      is ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.IntValue -> v.value.toString()
+      is ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.FloatValue -> v.value.toString()
+      is ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.BooleanValue ->
+        v.value.toString()
+      is ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.ColorValue -> v.argb
+    }
 
   /**
    * A small built-in device menu for the viewer dropdown. Pairs are `device-token` → display name;

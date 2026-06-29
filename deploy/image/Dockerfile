@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.24
+# syntax=docker/dockerfile:1.25
 
 # Fast, prebuilt-friendly image for `compose-preview serve`.
 #
@@ -14,7 +14,7 @@ ARG CP_VERSION=0.16.1
 # Stage 0: base — JDK + Skiko's native deps (same rationale as the cloudrun image:
 # libGL via libgl1, Mesa software GLX/DRI, fonts; force software GL).
 # ---------------------------------------------------------------------------
-FROM eclipse-temurin:17.0.18_8-jdk AS base
+FROM eclipse-temurin:17.0.19_10-jdk AS base
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       libfreetype6 libfontconfig1 fontconfig fonts-dejavu-core \

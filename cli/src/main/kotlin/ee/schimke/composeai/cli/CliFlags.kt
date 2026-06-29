@@ -58,7 +58,16 @@ internal object CliFlags {
       "--export",
       "--bundles",
       "--accept-bundles-from",
+      "--trust-store",
       "--revisions-allow",
+      // bundle sign / verify / keygen (producer trust)
+      "--key",
+      "--key-id",
+      "--producer",
+      "--provenance-identity",
+      "--provenance-type",
+      "--trust",
+      "--origin",
       // Required-reason escape hatch. Usually written attached (`--force=<reason>`), but the space
       // form `--force <reason>` is supported (ForceFlagTest), so the reason must be skipped or it's
       // mistaken for the command.

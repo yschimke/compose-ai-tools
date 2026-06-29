@@ -465,6 +465,19 @@ abstract class BundlePreviewTask : DefaultTask() {
       resolvePreviewPng(preview)?.let { previewPngs[preview.id] = it }
     }
 
+    // (v8) Per-preview override sidecars: the editable knobs a preview declared via
+    // `previewOverride*`,
+    // captured during the render as `renders/<stem>.overrides.json`. Packed verbatim under
+    // `previews/<id>.overrides.json` so a detached viewer can present the controls. Absent for
+    // previews
+    // that declared none.
+    val overrideFiles = LinkedHashMap<String, ByteArray>()
+    for (preview in selected) {
+      resolvePreviewOverrides(preview)?.let {
+        overrideFiles["$BUNDLE_PREVIEWS_DIR/${preview.id}.$BUNDLE_OVERRIDES_SIDECAR_EXT"] = it
+      }
+    }
+
     val filteredManifest =
       if (includeDataExtensions.getOrElse(false)) {
         // When carrying extension data, rewrite the bundled manifest's `dataExtensionReports` to
@@ -493,6 +506,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         previewPngs = previewPngs,
         irFiles = irZipFiles,
         dataExtensionFiles = dataExtensionZipFiles,
+        overrideFiles = overrideFiles,
       )
 
     // The cover (first selected preview) forms the polyglot's leading bytes. Reuse its baked PNG
@@ -623,6 +637,23 @@ abstract class BundlePreviewTask : DefaultTask() {
    * `@PreviewParameter` variants (a tile / remote document is a single artefact), so unlike the PNG
    * path there's no sibling search.
    */
+  /**
+   * Look for the per-preview override sidecar the render step wrote next to [preview]'s PNG
+   * (`renders/<stem>.overrides.json`) — the serialized `compose/overrides` payload of the editable
+   * knobs the preview declared via `previewOverride*`. Resolution mirrors [resolvePreviewIr]: the
+   * stem comes from the primary capture's `renderOutput`, the file lives under [rendersDir].
+   * Returns the raw bytes (copied verbatim into the bundle — the producer never parses them) or
+   * `null` when the preview declared no knobs (the common case).
+   */
+  private fun resolvePreviewOverrides(preview: PreviewInfo): ByteArray? {
+    val rendersRoot = rendersDir.orNull?.asFile ?: return null
+    val rel =
+      preview.captures.firstOrNull()?.renderOutput?.takeIf { it.isNotEmpty() } ?: return null
+    val stem = rel.substringAfterLast('/').removeSuffix(".png")
+    val f = File(rendersRoot, "$stem.$BUNDLE_OVERRIDES_SIDECAR_EXT")
+    return if (f.isFile && f.length() > 0) f.readBytes() else null
+  }
+
   private fun resolvePreviewIr(preview: PreviewInfo): ResolvedIr? {
     // kind=LOTTIE: the IR is the discovered asset file itself (no render-time capture). Read it
     // straight off the module resources by the path discovery recorded, so the bundle carries the
@@ -1045,6 +1076,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     previewPngs: Map<String, ByteArray>,
     irFiles: Map<String, ByteArray>,
     dataExtensionFiles: Map<String, ByteArray>,
+    overrideFiles: Map<String, ByteArray>,
   ): ByteArray {
     val baos = ByteArrayOutputStream()
     ZipOutputStream(baos).use { zip ->
@@ -1052,6 +1084,8 @@ abstract class BundlePreviewTask : DefaultTask() {
       zip.writeFile("previews.json", previewsJson.toByteArray(Charsets.UTF_8))
       // One baked PNG per selected preview under the well-known `previews/` directory.
       previewPngs.forEach { (id, bytes) -> zip.writeFile("$BUNDLE_PREVIEWS_DIR/$id.png", bytes) }
+      // (v8) Per-preview override sidecars under `previews/<id>.overrides.json`.
+      overrideFiles.forEach { (path, bytes) -> zip.writeFile(path, bytes) }
       // Captured IR bytes (Remote Compose doc / protolayout proto) under `ir/`.
       irFiles.forEach { (path, bytes) -> zip.writeFile(path, bytes) }
       // (v7) Optional per-extension data reports under `extensions/<id>.json`.

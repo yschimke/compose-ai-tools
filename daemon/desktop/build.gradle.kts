@@ -75,6 +75,10 @@ dependencies {
   // `:daemon:android` (the extension's source is pure Compose foundation/runtime — portable).
   // Activated by `renderNow.overrides.touchOverlay = true` or for live recording sessions.
   implementation(project(":data-touch-overlay-connector"))
+  // Plain-Compose named-override connector — same portable module `:daemon:android` consumes. Seeds
+  // `renderNow.overrides.namedOverrides` into the `previewOverride*` lookups and produces the
+  // `compose/overrides` data product (the preview's declared editable knobs).
+  implementation(project(":data-preview-overrides-connector"))
   // Launcher-widget container-size connector — same module Android consumes. The around-composable
   // wraps the preview body in a sized `Box` matching the clamped whole-cell footprint, driven
   // from `renderNow.overrides.launcherWidget`.
