@@ -74,10 +74,20 @@ class ServeCatalogStoreTest {
     )
     val host = registered.getValue("compose-m3")
     assertTrue(host.trust is BundleVerifier.Verdict.Trusted)
-    // The traversal entry (../../etc/passwd.png) is rejected; only the two image-dir PNGs land.
+    // The traversal entry (../../etc/passwd.png) is rejected; only the two image-dir PNGs land, and
+    // their ids are flattened to a single route-safe segment (the subdir '/' → '__') so /p/{name}
+    // and /render/{name}.png can actually open them.
     assertEquals(
-      setOf("button-filled/ideal__default__dark", "button-filled/ideal__default__light"),
+      setOf("button-filled__ideal__default__dark", "button-filled__ideal__default__light"),
       host.previews.map { it.id }.toSet(),
+    )
+  }
+
+  @Test
+  fun `preview ids are flattened to a single route-safe segment`() {
+    assertEquals(
+      "button-filled__ideal__default__dark",
+      ServeCatalogStore.previewIdFor("images/button-filled/ideal__default__dark.png"),
     )
   }
 

@@ -77,7 +77,7 @@ class ServeCatalogStore(
         val segments = path.split("/")
         if (!path.startsWith("$IMAGES_DIR/") || !path.endsWith(".png") || ".." in segments) continue
         val bytes = runCatching { fetch(base + path) }.getOrNull() ?: continue
-        val id = path.removePrefix("$IMAGES_DIR/").removeSuffix(".png")
+        val id = previewIdFor(path)
         val target = File(previewsDir, "$id.png")
         if (!target.canonicalFile.toPath().startsWith(previewsRoot)) continue
         target.parentFile?.mkdirs()
@@ -111,6 +111,19 @@ class ServeCatalogStore(
     const val DEFAULT_BRANCH_PREFIX = "design-artifacts/"
     const val CATALOG_FILE = "catalog.json"
     const val IMAGES_DIR = "images"
+
+    /**
+     * The single-path-segment preview id for a catalog image path. The serve routes (`/p/{name}`,
+     * `/render/{name}.png`, `/ws/{name}`) capture one segment, so a catalog image's subdirectory
+     * `/` (e.g. `images/button-filled/ideal__default__dark.png`) must be flattened or the preview
+     * is listed but can't be opened/rendered. We drop the `images/` prefix + `.png` suffix and
+     * replace `/` with `__` (the same separator the variant keys already use), giving a stable,
+     * route-safe id like `button-filled__ideal__default__dark`. The design-parity catalog exporter
+     * derives the `livePreview` deep link the same way so the link resolves to this id.
+     */
+    fun previewIdFor(imagePath: String): String =
+      imagePath.removePrefix("$IMAGES_DIR/").removeSuffix(".png").replace("/", "__")
+
     private const val DEFAULT_MAX_IMAGES = 1000
     private const val MAX_FETCH_BYTES = 25L * 1024 * 1024 // 25 MB per file
 
