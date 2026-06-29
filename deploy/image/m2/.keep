@@ -1,0 +1,4 @@
+Placeholder so the Dockerfile `COPY m2/` always has a directory.
+CI (preview-host-image.yml) drops the published `ee` Maven tree here from the
+`preview-host-maven` artifact; locally it stays empty and the warm render
+resolves from Maven Central.

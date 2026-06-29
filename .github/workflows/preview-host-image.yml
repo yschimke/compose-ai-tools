@@ -56,33 +56,56 @@ jobs:
           v="${RAW_VERSION#v}"
           echo "version=${v}" >> "$GITHUB_OUTPUT"
 
-      # Smooth out the release race. When this is chained right after release.yml
-      # (release-please cuts a release), the image's two inputs publish on their
-      # own clocks: the CLI tarball uploads to the GitHub Release after the tag,
-      # and the Gradle plugin reaches Maven Central only after the slow per-OS
-      # viewer builds gate `publish-gradle-plugin` AND Central finishes syncing.
-      # The warm render needs the plugin, so build would fail on a propagation
-      # race. Poll both until resolvable (HEAD, ~60 min ceiling) before building,
-      # so the whole release → image → Watchtower chain is hands-off.
-      - name: Wait for the released artifacts to be resolvable
+      # Seed Maven local from the same release run so the warm render resolves the
+      # plugin + runtime modules from local jars instead of waiting on Central.
+      # release.yml's publish-gradle-plugin job uploads `preview-host-maven` (the
+      # published `ee` tree) within THIS run, so download-artifact finds it on the
+      # release-chain path. On manual workflow_dispatch / on:release there's no such
+      # upstream artifact — continue-on-error leaves the dir empty and the Dockerfile
+      # falls back to Central (the warm-render retry loop rides out propagation lag).
+      # The dir always exists (.keep) so the Dockerfile's `COPY m2/` never fails.
+      - name: Prepare local Maven dir
+        run: |
+          mkdir -p deploy/image/m2
+          touch deploy/image/m2/.keep
+      - name: Download published modules (same-run release chain)
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: preview-host-maven
+          path: deploy/image/m2-dl
+      - name: Unpack published modules into the build context
+        run: |
+          if [ -f deploy/image/m2-dl/maven-local-ee.tgz ]; then
+            tar -xzf deploy/image/m2-dl/maven-local-ee.tgz -C deploy/image/m2
+            echo "seeded Maven local with $(find deploy/image/m2/ee -name '*.jar' 2>/dev/null | wc -l) jars"
+          else
+            echo "no preview-host-maven artifact — Dockerfile will resolve from Maven Central."
+          fi
+
+      # Smooth out the release race for the CLI TARBALL (a GitHub Release asset
+      # release.yml uploads after the tag — always needed, m2 or not). The plugin no
+      # longer gates this poll: on the release chain it comes from the local m2 above,
+      # and on the manual path the Dockerfile's warm-render retry handles Central lag.
+      # 1-byte range GET, ~60 min ceiling.
+      - name: Wait for the released CLI tarball to be resolvable
         env:
           V: ${{ steps.ver.outputs.version }}
         run: |
           set -u
-          plugin="https://repo.maven.apache.org/maven2/ee/schimke/composeai/preview/ee.schimke.composeai.preview.gradle.plugin/${V}/ee.schimke.composeai.preview.gradle.plugin-${V}.pom"
           tarball="https://github.com/${GITHUB_REPOSITORY}/releases/download/v${V}/compose-preview-${V}.tar.gz"
           # 1-byte range GET: cheap (never pulls the 180 MB tarball), no HEAD
           # dependency — 200 (range ignored) or 206 (partial) both mean "present".
           ok() { c=$(curl -sSL -o /dev/null -w '%{http_code}' -r 0-0 "$1" 2>/dev/null); [ "$c" = "200" ] || [ "$c" = "206" ]; }
           for i in $(seq 1 40); do
-            if ok "$plugin" && ok "$tarball"; then
-              echo "plugin + CLI ${V} are resolvable — building."
+            if ok "$tarball"; then
+              echo "CLI ${V} tarball is resolvable — building."
               exit 0
             fi
-            echo "waiting for plugin/CLI ${V} to publish (attempt ${i}/40)…"
+            echo "waiting for CLI ${V} tarball to publish (attempt ${i}/40)…"
             sleep 90
           done
-          echo "::error::plugin/CLI ${V} not resolvable after ~60 min — re-run later." >&2
+          echo "::error::CLI ${V} tarball not resolvable after ~60 min — re-run later." >&2
           exit 1
 
       - uses: docker/setup-buildx-action@v3
