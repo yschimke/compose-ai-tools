@@ -33,6 +33,14 @@ Empty store ⇒ trust nothing (fail-closed). See [`trust/producers.json`](../tru
 the starter, and `compose-preview bundle keygen | sign | verify` to mint a key, sign a bundle, and
 check a verdict.
 
+The landing + viewer pages **badge** the session's verdict — green ✓ for a trusted
+signature/branch/provenance, amber ⚠ for `unverified` (a live daemon-backed module carries no
+badge):
+
+![Trusted session badge on the landing page](images/serve-trust-badge-trusted.png)
+
+![Unverified session badge on the viewer page](images/serve-trust-badge-unverified.png)
+
 ### Format (each its own renderer; none executes code on the server)
 
 | Format | In-browser | Server render | Data-only / safe | Server render needs trust |

@@ -62,9 +62,16 @@ class ServeWebFixtureTest {
       System.getenv("UPDATE_SERVE_WEB_FIXTURES") == "true" ||
         System.getProperty("updateServeWebFixtures") == "true"
 
-    val landing = ServeWeb.landingPage(moduleLabel, previews, token)
+    // Render the fixtures with a producer-trust badge so the visual-diff harness captures it: a
+    // trusted (signature) landing and an unverified viewer exercise both badge styles.
+    val landing =
+      ServeWeb.landingPage(moduleLabel, previews, token, trust = "signature:compose-ai-tools-ci")
     val viewer =
-      ServeWeb.viewerPage(previews.first { it.id.endsWith("ProfileScreenPreview") }, token)
+      ServeWeb.viewerPage(
+        previews.first { it.id.endsWith("ProfileScreenPreview") },
+        token,
+        trust = "unverified",
+      )
 
     if (update) {
       pagesDir.mkdirs()
@@ -80,6 +87,20 @@ class ServeWebFixtureTest {
       File(pagesDir, "_render-placeholder.png").isFile,
       "missing _render-placeholder.png — regenerate with UPDATE_SERVE_WEB_FIXTURES=true",
     )
+  }
+
+  @Test
+  fun `trust badge renders trusted and unverified variants and is absent for a live module`() {
+    val trusted = ServeWeb.landingPage(moduleLabel, previews, token, trust = "branch:repo@b")
+    assertTrue(trusted.contains("cp-badge--trusted"), "expected a trusted badge")
+    assertTrue(trusted.contains("✓ branch:repo@b"))
+
+    val unverified = ServeWeb.viewerPage(previews.first(), token, trust = "unverified")
+    assertTrue(unverified.contains("cp-badge--unverified"), "expected an unverified badge")
+
+    // A live daemon-backed module carries no trust verdict → no badge element (the CSS still
+    // defines `.cp-badge`, so check for the rendered `class="cp-badge…` span, not the bare string).
+    assertTrue(!ServeWeb.landingPage(moduleLabel, previews, token).contains("class=\"cp-badge"))
   }
 
   private fun assertGolden(file: File, rendered: String) {

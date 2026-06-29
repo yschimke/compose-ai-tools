@@ -239,6 +239,7 @@ class ServeHttpServer(
                 renderHost.previews,
                 token,
                 call.request.queryParameters["session"],
+                trust = (renderHost as? ServeBundleHost)?.let { BundleVerifier.summary(it.trust) },
               ),
               ContentType.Text.Html,
             )
@@ -302,6 +303,7 @@ class ServeHttpServer(
                 token,
                 call.request.queryParameters["session"],
                 canApplyOverrides = renderHost.canApplyOverrides,
+                trust = (renderHost as? ServeBundleHost)?.let { BundleVerifier.summary(it.trust) },
               ),
               ContentType.Text.Html,
             )

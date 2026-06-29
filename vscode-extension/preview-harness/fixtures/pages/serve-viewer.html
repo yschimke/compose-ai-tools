@@ -12,6 +12,10 @@ a { color: #5b5bd6; text-decoration: none; }
 a:hover { text-decoration: underline; }
 .cp-head { margin: 0 0 4px; font-size: 1.2rem; font-weight: 600; }
 .cp-sub { margin: 0 0 20px; font-size: 0.82rem; color: #6b6b70; }
+.cp-badge { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px;
+  font-size: 0.7rem; font-weight: 600; vertical-align: middle; white-space: nowrap; }
+.cp-badge--trusted { background: #e7f4ea; color: #1e7a34; border: 1px solid #b6e0c2; }
+.cp-badge--unverified { background: #fdf0e3; color: #8a5300; border: 1px solid #f0d3a8; }
 .cp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
 .cp-card { border: 1px solid #e3e3e8; border-radius: 10px; overflow: hidden; background: #fff;
   display: block; color: inherit; }
@@ -40,10 +44,12 @@ a:hover { text-decoration: underline; }
   .cp-card, .cp-stage, .cp-knobs { border-color: #34343a; }
   .cp-card { background: #1d1d20; }
   .cp-imgwrap, .cp-stage { background: repeating-conic-gradient(#26262b 0% 25%, #1d1d20 0% 50%) 50% / 16px 16px; }
+  .cp-badge--trusted { background: #14361f; color: #6cd98a; border-color: #2c6b40; }
+  .cp-badge--unverified { background: #3a2a12; color: #e6b067; border-color: #6b4f24; }
 }</style>
       </head>
       <body>
-              <p class="cp-head"><a href="/?token=demo-token-fixture">← previews</a></p>
+              <p class="cp-head"><a href="/?token=demo-token-fixture">← previews</a> <span class="cp-badge cp-badge--unverified" title="producer trust: unverified">⚠ unverified</span></p>
       <p class="cp-sub" title="com.example.ProfileScreenPreview">Profile screen</p>
       <div class="cp-viewer" data-preview-id="com.example.ProfileScreenPreview" data-mode="snapshot" data-modes="snapshot,live">
         <div class="cp-stage"><img id="cp-img" alt="Profile screen"><canvas id="cp-canvas" hidden></canvas></div>
