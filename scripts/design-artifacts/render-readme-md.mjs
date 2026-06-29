@@ -11,6 +11,8 @@
  * the README survives branch regeneration instead of being clobbered.
  */
 
+import { DEFAULT_PREVIEW_BASE, liveSessionUrl } from "./live-preview.mjs";
+
 const DEFAULT_REPO = "yschimke/compose-ai-tools";
 
 /** Escape the few characters that would break a Markdown table cell. Backslash
@@ -34,7 +36,7 @@ function groupCounts(components) {
 
 /**
  * @param {object} catalog the in-memory catalog (system, title, library, …)
- * @param {object} opts { imageCount, wireframeCount, repo? }
+ * @param {object} opts { imageCount, wireframeCount, repo?, previewBase? }
  * @returns {string} README.md contents
  */
 export function renderReadmeMd(catalog, opts = {}) {
@@ -47,6 +49,8 @@ export function renderReadmeMd(catalog, opts = {}) {
   const title = meta.title ?? system;
   const branch = `design-artifacts/${system}`;
   const indexUrl = `https://htmlpreview.github.io/?https://github.com/${repo}/blob/${branch}/index.html`;
+  const previewBase = opts.previewBase ?? DEFAULT_PREVIEW_BASE;
+  const liveUrl = liveSessionUrl(previewBase, system);
 
   const imageCount = opts.imageCount ?? components.reduce((n, c) => n + (c.images?.length ?? 0), 0);
   const wireframeCount = opts.wireframeCount ?? 0;
@@ -78,7 +82,7 @@ export function renderReadmeMd(catalog, opts = {}) {
     [`\`index.html\``, `Self-contained gallery — [open via htmlpreview](${indexUrl})`],
     [
       `\`catalog.json\``,
-      `Machine-readable catalog (\`${schema}\`): components, variants, design tokens, greenlines`,
+      `Machine-readable catalog (\`${schema}\`): components, variants, design tokens, greenlines, and per-variant \`livePreview\` deep links`,
     ],
     [`\`images/\``, "Rendered PNGs — the source of truth for each variant"],
     [`\`wireframes/\``, "One editable SVG per component (layout-inspector tree → token-styled shapes)"],
@@ -99,6 +103,16 @@ Figma / Stitch / Claude Design.
 
 A self-contained gallery — one card per component with its rendered PNG,
 dimensions, accessibility greenlines, and a link to an editable SVG wireframe.
+
+## 🎛 Customise live
+
+**[▶ Open this catalog in the live preview server](${liveUrl})**
+
+The same rendered components, served live by \`compose-preview serve --catalogs ${system}\` —
+open one, then change the theme, locale, font scale, or device and watch it
+re-render. Every entry in \`catalog.json\` carries a per-variant \`livePreview\`
+deep link to its exact preview on the same server, so browsing this branch and
+customising the live render are two ends of one workflow.
 
 ## At a glance
 
@@ -122,6 +136,7 @@ ${files}
 
 - **Figma / Stitch / Claude Design** — import \`catalog.json\` + \`images/\` as a sticker sheet.
 - **Browse** — open \`index.html\` through htmlpreview (link above), or clone the branch and open it locally.
+- **Customise** — open the [live preview server](${liveUrl}) (or any image's \`livePreview\` link in \`catalog.json\`) to re-render a component under different themes / locales / devices.
 - **Adopt structure** — the \`wireframes/*.svg\` are plain vector files; drop one into any editor to start from the real layout instead of tracing a screenshot.
 
 ## Provenance
