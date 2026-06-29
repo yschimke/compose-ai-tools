@@ -109,6 +109,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-viewer/dark](renders/serve-viewer.dark.png) |
 | `light` | ![serve-viewer/light](renders/serve-viewer.light.png) |
 
+## serve-viewer-wasm
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-wasm/dark](renders/serve-viewer-wasm.dark.png) |
+| `light` | ![serve-viewer-wasm/light](renders/serve-viewer-wasm.light.png) |
+
 ## spatial-semantics
 
 | Theme | Capture |
