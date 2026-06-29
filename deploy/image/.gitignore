@@ -1,2 +1,8 @@
 # setup.sh writes this with a generated token — never commit it.
 .env
+
+# CI seeds the local Maven tree here from the `preview-host-maven` artifact.
+# Keep the dir (so the Dockerfile COPY works) but never commit the jars.
+m2/*
+!m2/.keep
+m2-dl/

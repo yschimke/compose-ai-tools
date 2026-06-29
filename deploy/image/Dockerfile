@@ -43,6 +43,17 @@ ENV PATH="/opt/compose-preview/bin:${PATH}"
 
 WORKDIR /project
 COPY sample-project/ /project/
+
+# Seed Maven local from the same release run (preview-host-image.yml downloads the
+# `preview-host-maven` artifact published by release.yml into deploy/image/m2/).
+# With COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1 the CLI's auto-inject seeds
+# mavenLocal() additively, so the warm render resolves the plugin + runtime modules
+# from these local jars and never has to wait on Maven Central propagation. The dir
+# always exists (.keep); on the manual workflow_dispatch path it's empty and the
+# render falls back to Central via the retry loop below.
+COPY m2/ /root/.m2/repository/
+ENV COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1
+
 # Warm render: builds the module via the project's Gradle wrapper, pulling the
 # published plugin + Compose from Maven, then renders every preview once. Populates
 # ~/.gradle + /project/build so the runtime container starts warm. A long --timeout
@@ -73,13 +84,16 @@ RUN ln -s "/opt/compose-preview-${CP_VERSION}" /opt/compose-preview
 ENV PATH="/opt/compose-preview/bin:${PATH}" \
     SERVE_IDLE_EXIT=0 \
     SERVE_TIMEOUT=1800 \
+    COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1 \
     JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70"
 
 WORKDIR /project
 # Carry the project + warmed Gradle cache + module build outputs so the first
-# runtime render is incremental, not a cold rebuild.
+# runtime render is incremental, not a cold rebuild. Carry Maven local too so a
+# cold runtime re-resolve still finds the plugin without reaching Central.
 COPY --from=build /project /project
 COPY --from=build /root/.gradle /root/.gradle
+COPY --from=build /root/.m2 /root/.m2
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

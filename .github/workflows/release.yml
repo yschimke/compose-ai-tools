@@ -114,6 +114,26 @@ jobs:
           ./gradlew \
             :gradle-plugin:publishAndReleaseToMavenCentral \
             publishAndReleaseToMavenCentral
+      # Stage the same modules into Maven local and ship them as a build artifact.
+      # The prebuilt preview-host image (preview-host-image.yml) downloads this and
+      # warm-renders against it, so the image build resolves the plugin + runtime
+      # modules from local jars INSTEAD of waiting on Maven Central propagation.
+      # Same `publish*` task set, so the local repo carries exactly what Central got
+      # (plugin marker + renderer-*/data-*/daemon-*/preview-annotations/mcp).
+      - name: Stage published modules into Maven local for the prebuilt image
+        run: |
+          ./gradlew \
+            :gradle-plugin:publishToMavenLocal \
+            publishToMavenLocal
+          # Tar just the `ee` tree we publish — never the rest of ~/.m2 (transitive
+          # deps the image's Gradle cache resolves on its own).
+          tar -czf maven-local-ee.tgz -C "${HOME}/.m2/repository" ee
+      - name: Upload Maven local artifact for the prebuilt image
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-host-maven
+          path: maven-local-ee.tgz
+          retention-days: 7
 
   # Build the runnable applications shipped on each GitHub Release: the CLI
   # (`compose-preview-*`), the standalone MCP server (`compose-preview-mcp-*`),
