@@ -92,6 +92,17 @@
       "allowedVersions": "/^2\\.0\\.17$/"
     },
     {
+      "description": "compottie: pin to the 2.1.x line. `:lottie-preview-runtime` is built against JetBrains Compose foundation 1.10.1 (matching `compose-multiplatform = 1.10.x`); compottie 2.2.x targets foundation 1.11.0 and drags a newer Compose onto the renderer classpath — the skew `docs/RENDERER_COMPATIBILITY.md` warns about. Bump only in lockstep with `compose-multiplatform`; see gradle/libs.versions.toml.",
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchDepNames": [
+        "io.github.alexzhirkevich:compottie"
+      ],
+      "matchCurrentValue": "/^2\\.1\\./",
+      "allowedVersions": "/^2\\.1\\./"
+    },
+    {
       "description": "VS Code API floor declarations — bumping these drops support for older editors, must be a manual decision.",
       "matchFileNames": [
         "vscode-extension/package.json"

@@ -21,13 +21,13 @@ ktfmt = "0.26.0"
 play-publisher = "4.0.0"
 tapmoc = "0.4.2"
 robolectric = "4.16.1"
-roborazzi = "1.63.0"
+roborazzi = "1.64.0"
 classgraph = "4.8.184"
 # Stable BOM line — what samples use and what `composePreviewRender` /
 # `Compare previews` is exercised against. Renovate updates this freely;
 # the variant below (`compose-bom-compat`) is the older line that
 # renderer-android compiles its public API against.
-compose-bom-stable = "2026.05.01"
+compose-bom-stable = "2026.06.00"
 # renderer-android compiles its public API surface against this OLDER BOM so
 # the emitted bytecode only references Compose 1.9.x method signatures.
 # AndroidX honours binary-backward-compatibility within a major version, so
@@ -83,7 +83,17 @@ xr-glimmer = "1.0.0-alpha14"
 # 2D Home-Space fallback of these composables through the Android Robolectric
 # pipeline (see docs/design/XR_SPATIAL_PREVIEW.md). Alpha14 was published
 # 2026-05-19.
-xr-compose = "1.0.0-alpha14"
+xr-compose = "1.0.0-alpha15"
+# XR `*-testing` fakes injected onto the offline render/test classpath (the
+# Robolectric `composePreviewRenderXr` path + `:renderer-xr` / sample tests).
+# Single source of truth: the plugin bakes these into a generated resource (see
+# `gradle-plugin/build.gradle.kts`) so the hard injection in
+# `AndroidPreviewSupport.kt` can't drift from the catalog. The runtime/scenecore
+# alpha line runs one ahead of the compose/arcore line — bump together with
+# `xr-compose`.
+xr-runtime-testing = "1.0.0-alpha15"
+xr-scenecore-testing = "1.0.0-alpha16"
+xr-arcore-testing = "1.0.0-alpha15"
 # `androidx.wear:wear` carries `androidx.wear.ambient.AmbientLifecycleObserver` —
 # the AOSP entry point both horologist's `AmbientAware` and direct subscribers
 # wrap. Used only by `:data-ambient-connector` (the Robolectric shadow + state
@@ -120,14 +130,14 @@ wear-compose-remote = "1.0.0-alpha03"
 # wear-compose-remote-material3 alpha pulls in transitively — compose 1.11.0+
 # is the first release that ships `PreviewWrapper`. Renovate updates this
 # freely; the sample is meant to ride the latest prerelease compose.
-compose-ui-prerelease = "1.11.2"
+compose-ui-prerelease = "1.11.3"
 kotlinx-coroutines = "1.11.0"
 kotlinx-serialization = "1.11.0"
 mcp-kotlin-sdk = "0.13.0"
 okio = "3.17.0"
 junit = "4.13.2"
 truth = "1.4.5"
-maven-publish = "0.36.0"
+maven-publish = "0.37.0"
 # Google's host-side screenshot testing plugin (Layoutlib-backed). Used only
 # by `:samples:android-screenshot-test`, which exercises our co-existence
 # path: our renderer discovers previews in the `screenshotTest` source set
@@ -180,11 +190,11 @@ mosaic = "0.18.0-1"
 # Ktor HTTP client (+ OkHttp engine) for downloading bundles given a URL. Ktor 3.x is current and
 # compatible with Kotlin 2.3 / coroutines 1.11; OkHttp 5.x is the stable engine backing it.
 ktor = "3.5.0"
-okhttp = "5.3.2"
+okhttp = "5.4.0"
 # Pure-Java mDNS/DNS-SD (Bonjour) responder used by `compose-preview serve --lan` to advertise the
 # `_composeai._tcp` service the mobile/wear clients browse for. No slf4j dep (uses java.util.logging),
 # so it doesn't perturb the strict slf4j pin in :cli.
-jmdns = "3.5.12"
+jmdns = "3.6.3"
 # dadb — Maestro's pure-Kotlin ADB client. Speaks the device transport protocol (CNXN/OPEN/…)
 # DIRECTLY to a device's adbd over TCP, with no `adb` binary or real device required. Used as a
 # `testImplementation` in `:fake-emulator-core` to drive the fake emulator's ADB server end-to-end
@@ -198,7 +208,7 @@ dadb = "1.2.10"
 # protobuf message classes (pure-Kotlin codegen — no `protoc` — `rpcRole = none`, messages only); the
 # gRPC server is bound by hand into grpc-netty via grpc-java's `ServerCalls` + a tiny Wire
 # `MethodDescriptor.Marshaller`. (Wire dropped its own server-side gRPC artifact after 4.9.11.)
-grpc = "1.69.0"
+grpc = "1.82.0"
 wire = "6.4.0"
 
 [libraries]
@@ -267,7 +277,9 @@ xr-compose-testing = { module = "androidx.xr.compose:compose-testing", version.r
 # `rotateToLookAtUser` (the "face the viewer" billboard modifier reads the head
 # pose from an `ArDevice` perception job). Pinned literally like the other XR
 # `*-testing` artifacts; bump alongside `xr-compose`.
-xr-arcore-testing = { module = "androidx.xr.arcore:arcore-testing", version = "1.0.0-alpha14" }
+xr-arcore-testing = { module = "androidx.xr.arcore:arcore-testing", version.ref = "xr-arcore-testing" }
+xr-runtime-testing = { module = "androidx.xr.runtime:runtime-testing", version.ref = "xr-runtime-testing" }
+xr-scenecore-testing = { module = "androidx.xr.scenecore:scenecore-testing", version.ref = "xr-scenecore-testing" }
 wear-tooling-preview = { module = "androidx.wear:wear-tooling-preview", version.ref = "wear-tooling-preview" }
 wear = { module = "androidx.wear:wear", version.ref = "wear" }
 horologist-compose-layout = { module = "com.google.android.horologist:horologist-compose-layout", version.ref = "horologist" }

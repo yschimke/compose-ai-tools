@@ -16,7 +16,6 @@ import androidx.xr.compose.subspace.layout.rotateToLookAtUser
 import androidx.xr.compose.subspace.layout.width
 import androidx.xr.compose.subspace.semantics.testTag
 import androidx.xr.compose.testing.onSubspaceNodeWithTag
-import androidx.xr.compose.testing.session
 import androidx.xr.runtime.Config as XrConfig
 import androidx.xr.runtime.DeviceTrackingMode
 import androidx.xr.runtime.Session
@@ -91,7 +90,9 @@ class RotateToLookAtUserPoseTest {
     check(created is SessionCreateSuccess) { "Could not create offline XR Session: $created" }
     val session = created.session
     session.configure(XrConfig(deviceTracking = DeviceTrackingMode.SPATIAL_LAST_KNOWN))
-    rule.session = session // Subspace's getOrCreateSession reuses this (decor-view tag) session.
+    // Subspace's getOrCreateSession reuses this session via the decor-view tag (alpha15 dropped the
+    // `AndroidComposeTestRule.session` extension, so write the tag directly).
+    rule.activity.window.decorView.setTag(androidx.xr.compose.R.id.compose_xr_session, session)
 
     val arDeviceClass = Class.forName("androidx.xr.arcore.ArDevice")
     val arDevice = arDeviceClass.getMethod("getInstance", Session::class.java).invoke(null, session)

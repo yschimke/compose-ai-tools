@@ -1442,15 +1442,15 @@ internal object AndroidPreviewSupport {
       }
       project.dependencies.add(
         rendererConfig.name,
-        "androidx.xr.runtime:runtime-testing:1.0.0-alpha14",
+        "androidx.xr.runtime:runtime-testing:${XrFakeVersions.runtimeTesting}",
       )
       project.dependencies.add(
         rendererConfig.name,
-        "androidx.xr.scenecore:scenecore-testing:1.0.0-alpha15",
+        "androidx.xr.scenecore:scenecore-testing:${XrFakeVersions.scenecoreTesting}",
       )
       project.dependencies.add(
         rendererConfig.name,
-        "androidx.xr.compose:compose-testing:1.0.0-alpha14",
+        "androidx.xr.compose:compose-testing:${XrFakeVersions.compose}",
       )
       // Fake ARCore perception runtime so `rotateToLookAtUser` (the billboard modifier, which reads
       // the head pose from an `ArDevice`) renders offline. `:renderer-xr`'s `FakeXrHeadPose` seeds
@@ -1459,7 +1459,7 @@ internal object AndroidPreviewSupport {
       // ships in `:renderer-xr`'s main resources, alongside the scene/rendering fakes.
       project.dependencies.add(
         rendererConfig.name,
-        "androidx.xr.arcore:arcore-testing:1.0.0-alpha14",
+        "androidx.xr.arcore:arcore-testing:${XrFakeVersions.arcoreTesting}",
       )
     }
 

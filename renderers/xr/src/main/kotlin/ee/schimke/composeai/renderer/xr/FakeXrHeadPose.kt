@@ -2,7 +2,6 @@ package ee.schimke.composeai.renderer.xr
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
-import androidx.xr.compose.testing.session
 import androidx.xr.runtime.Config
 import androidx.xr.runtime.DeviceTrackingMode
 import androidx.xr.runtime.Session
@@ -72,7 +71,9 @@ public object FakeXrHeadPose {
     setSessionConfig(session, Config(deviceTracking = DeviceTrackingMode.SPATIAL_LAST_KNOWN))
 
     // Make Subspace's getOrCreateSession reuse THIS session (it reads the decor-view tag first).
-    rule.session = session
+    // alpha15 dropped the `AndroidComposeTestRule.session` test extension; write the same
+    // `androidx.xr.compose` R.id.compose_xr_session decor-view tag it used to set.
+    rule.activity.window.decorView.setTag(androidx.xr.compose.R.id.compose_xr_session, session)
 
     seedHeadPose(session, headPose)
     return session

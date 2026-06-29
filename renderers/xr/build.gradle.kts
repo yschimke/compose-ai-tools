@@ -89,8 +89,8 @@ dependencies {
   testImplementation(libs.xr.compose.testing)
   testImplementation("androidx.compose.ui:ui-test-junit4")
   testImplementation("androidx.compose.ui:ui-test-manifest")
-  testImplementation("androidx.xr.runtime:runtime-testing:1.0.0-alpha14")
-  testImplementation("androidx.xr.scenecore:scenecore-testing:1.0.0-alpha15")
+  testImplementation(libs.xr.runtime.testing)
+  testImplementation(libs.xr.scenecore.testing)
   // Fake ARCore perception runtime (settable `FakeRuntimeArDevice` head pose) so the recorder tests
   // can drive `rotateToLookAtUser` offline via FakeXrHeadPose; registered for `ServiceLoader` in
   // src/main/resources/META-INF/services. Test-only (and added to the render task classpath by the
