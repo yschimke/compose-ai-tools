@@ -3,7 +3,7 @@
 # Set DOMAIN + SERVE_TOKEN in .env (setup.sh writes one), then:
 #   docker compose up -d
 #
-# Pin a version with IMAGE_TAG=0.16.1 in .env (a bare tag); defaults to the latest tag.
+# Pin a version with IMAGE_TAG=0.16.5 in .env (a bare tag); defaults to the latest tag.
 #
 # Auto-updates: the optional `watchtower` service (below) watches the :latest tag
 # and pulls + recreates `preview` when a new release image is published. Leave

@@ -33,7 +33,7 @@ workflow builds and pushes to GHCR. Trigger it either way:
 
 - **On a CLI release** (`v*` tag) — automatic; bundles that version + tags `latest`.
 - **Manually** — Actions → *Publish preview-host image* → run with a `cli_version`
-  (e.g. `0.16.1`).
+  (e.g. `0.16.5`).
 
 First publish makes the GHCR package; set it **public** (Packages → settings) if
 you want hosts to pull without auth.
@@ -52,7 +52,7 @@ DOMAIN=preview.example.com ./setup.sh
 `docker compose pull && up -d` — **no build**. It prints your
 `https://preview.example.com/?token=<TOKEN>` link once Caddy has a cert.
 
-Pin a version with `IMAGE_TAG=0.16.1` in `.env` (a bare tag; defaults to the
+Pin a version with `IMAGE_TAG=0.16.5` in `.env` (a bare tag; defaults to the
 `latest` tag when unset).
 
 ## Auto-updates (Watchtower)

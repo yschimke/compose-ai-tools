@@ -61,6 +61,21 @@ jobs:
     permissions:
       contents: write   # needed by the called workflow's `release` job
 
+  # Publish the prebuilt preview-host image (deploy/image) for the released CLI.
+  # Same workflow_call chaining as `release`: a bot-created release won't fire
+  # preview-host-image.yml's own `on: release` trigger. `needs: release` so the
+  # CLI tarball the image downloads is already uploaded to the Release.
+  preview-host-image:
+    needs: [release-please, release]
+    if: needs.release-please.outputs.release_created == 'true'
+    uses: ./.github/workflows/preview-host-image.yml
+    with:
+      cli_version: ${{ needs.release-please.outputs.tag_name }}
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+
   # Build + publish the mobile / wear client apps when the `clients` component is released.
   # Same GITHUB_TOKEN-doesn't-trigger-workflows reason as above: invoked via workflow_call rather
   # than relying on the `clients-v*` tag push.

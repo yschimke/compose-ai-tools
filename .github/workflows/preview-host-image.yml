@@ -13,9 +13,20 @@ on:
   workflow_dispatch:
     inputs:
       cli_version:
-        description: Released compose-preview version to bundle (no leading v)
+        description: Released compose-preview version to bundle (leading v optional)
         required: true
-        default: "0.16.1"
+        default: "0.16.5"
+  # Called from release-please.yml when a CLI release is cut. A bot-created
+  # release won't fire the `release` trigger below (the GITHUB_TOKEN-doesn't-
+  # trigger-workflows limitation the rest of the release chain already works
+  # around), so the reliable path is this workflow_call after release.yml.
+  workflow_call:
+    inputs:
+      cli_version:
+        description: Released compose-preview version to bundle (leading v optional)
+        required: true
+        type: string
+  # Kept as a manual escape hatch for human-published releases (which DO fire it).
   release:
     types: [published]
 
@@ -28,6 +39,7 @@ jobs:
     # Only CLI releases (tags like v0.16.1) — skip clients-v* and manual non-v tags.
     if: >-
       github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'workflow_call' ||
       startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-latest
     steps:
@@ -35,13 +47,13 @@ jobs:
 
       - name: Resolve bundled CLI version
         id: ver
+        env:
+          # release event → the tag; workflow_call / workflow_dispatch → the
+          # input (the `inputs` context covers both). Strip a leading `v` either
+          # way so a `v0.16.5` tag and a bare `0.16.5` input both work.
+          RAW_VERSION: ${{ github.event.release.tag_name || inputs.cli_version }}
         run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
-            v="${{ github.event.release.tag_name }}"
-            v="${v#v}"
-          else
-            v="${{ github.event.inputs.cli_version }}"
-          fi
+          v="${RAW_VERSION#v}"
           echo "version=${v}" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v3

@@ -33,9 +33,10 @@ services:
       PORT: "8080"
     expose:
       - "8080"
-    # One warm Desktop daemon fits comfortably under 8 GB; this cap just keeps a
-    # single render storm from eating the whole box. Lower to ~3g on a 4 GB VM.
-    mem_limit: 6g
+    # One warm Desktop daemon fits comfortably in a few GB; this cap just keeps a
+    # single render storm from eating the whole box. Default sized for a 4 GB VM;
+    # raise to ~6g on an 8 GB box if renders get OOM-killed under load.
+    mem_limit: 3g
 
   caddy:
     image: caddy:2
