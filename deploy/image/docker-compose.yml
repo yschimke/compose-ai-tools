@@ -4,6 +4,10 @@
 #   docker compose up -d
 #
 # Pin a version with IMAGE_TAG=0.16.1 in .env; defaults to :latest.
+#
+# Auto-updates: the optional `watchtower` service (below) watches the :latest tag
+# and pulls + recreates `preview` when a new release image is published. Leave
+# IMAGE_TAG at :latest for that to work. See README.md ("Auto-updates").
 services:
   preview:
     image: "ghcr.io/yschimke/compose-preview-host:${IMAGE_TAG:-latest}"
@@ -17,6 +21,21 @@ services:
       - "8080"
     # The baked warm cache makes renders incremental; this just caps a render storm.
     mem_limit: 4g
+    # Opt this service in to Watchtower auto-updates (caddy is intentionally left out).
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+
+  # Auto-update: poll GHCR for a new :latest digest and recreate `preview` when the
+  # release workflow publishes one. --label-enable scopes it to the labelled service
+  # above; --cleanup prunes the superseded image. Comment this service out to manage
+  # updates manually (docker compose pull && up -d). For a private GHCR package, mount
+  # a registry config: `- ~/.docker/config.json:/config.json:ro`. See README.md.
+  watchtower:
+    image: containrrr/watchtower
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --label-enable --cleanup --interval 3600
 
   caddy:
     image: caddy:2
