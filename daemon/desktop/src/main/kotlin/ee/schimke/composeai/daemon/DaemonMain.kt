@@ -676,10 +676,14 @@ internal fun buildDesktopExtensions(
     )
   }
   tryAdd("data/overrides") {
-    // Plain-Compose named overrides — the opt-in `previewOverride*` knobs a preview declares (label,
-    // list length, per-item indexed values, …). The planner is always-on so `LocalPreviewOverrideHost`
-    // is installed on every render; the data product surfaces the declared knobs as `compose/overrides`
-    // so a client (and, carried into a bundle, a detached viewer) can present editable controls. Same
+    // Plain-Compose named overrides — the opt-in `previewOverride*` knobs a preview declares
+    // (label,
+    // list length, per-item indexed values, …). The planner is always-on so
+    // `LocalPreviewOverrideHost`
+    // is installed on every render; the data product surfaces the declared knobs as
+    // `compose/overrides`
+    // so a client (and, carried into a bundle, a detached viewer) can present editable controls.
+    // Same
     // portable connector is registered on `:daemon:android`.
     Extension(
       id = "data/overrides",
