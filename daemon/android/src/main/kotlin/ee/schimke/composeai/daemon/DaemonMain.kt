@@ -444,21 +444,21 @@ fun main(args: Array<String>) {
           // per-item values). The planner is wired into `RobolectricHost.previewOverrideExtensions`
           // (always-on, so `LocalPreviewOverrideHost` is installed on every render and
           // `renderNow.overrides.namedOverrides` seeds apply); this entry carries the discoverable
-          // descriptor.
+          // descriptor plus the `compose/overrides` data-product registry.
           //
-          // **No `compose/overrides` data-product registry on Android (unlike `:daemon:desktop`).**
           // The `previewOverride*` lookups record their declarations into the process-static
-          // `PreviewOverrideController` *inside the Robolectric sandbox classloader*, but a host-side
-          // registry runs in the host classloader and would read a different (empty) copy of that
-          // static — Robolectric re-loads project classes per sandbox (see `DaemonHostBridge`'s
-          // do-not-acquire rationale). So `data/fetch?kind=compose/overrides` is desktop-only until a
-          // sandbox→host bridge for the declarations lands. This does **not** affect bundle carriage:
-          // the standalone Robolectric render in `RobolectricRenderTest.writeOverridesSidecar` reads
-          // the controller from *within* the same sandbox, so `previews/<id>.overrides.json` is
-          // captured correctly on Android too.
+          // `PreviewOverrideController` *inside the Robolectric sandbox classloader*, a different
+          // copy from the host-classloader registry here. `SandboxPreviewOverridesBridge` (a
+          // do-not-acquire singleton, like `SandboxPermissionsBridge`) carries the declarations
+          // across the boundary: the controller forwards each declared knob as JSON, and
+          // `PreviewOverridesDataProductRegistry.onRender` reads them back by previewId — so
+          // `data/fetch?kind=compose/overrides` works on Android, matching desktop. (Bundle carriage
+          // never needed the bridge: `RobolectricRenderTest.writeOverridesSidecar` reads the
+          // controller from *within* the same sandbox.)
           Extension(
             id = "data/overrides",
             displayName = "Named preview overrides",
+            dataProductRegistry = PreviewOverridesDataProductRegistry(),
             dataExtensionDescriptors =
               listOf(
                 DataExtensionDescriptor(

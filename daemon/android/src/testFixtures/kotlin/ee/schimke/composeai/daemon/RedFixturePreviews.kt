@@ -55,6 +55,22 @@ fun RedSquare() {
   Box(modifier = Modifier.fillMaxSize().background(Color(0xFFEF5350)))
 }
 
+/**
+ * Fixture for `PreviewOverridesDataFetchE2ETest`: declares two opt-in `previewOverride*` knobs (a
+ * colour `fill` and a string `label`) so a render through the sandbox records them into the
+ * sandbox-classloader `PreviewOverrideController`. The test then asserts the host-side
+ * `compose/overrides` data product surfaces them via `data/fetch` — i.e. that
+ * `SandboxPreviewOverridesBridge` carried the declarations across the classloader boundary. The
+ * `fill` knob drives the rendered colour, so a seeded override also visibly changes the pixels.
+ */
+@Composable
+fun OverridableSquare() {
+  val fill =
+    ee.schimke.composeai.overrides.previewOverrideColor("fill", default = Color(0xFFEF5350))
+  ee.schimke.composeai.overrides.previewOverrideString("label", default = "hi")
+  Box(modifier = Modifier.fillMaxSize().background(fill))
+}
+
 @Composable
 fun BlueSquare() {
   Box(modifier = Modifier.fillMaxSize().background(Color(0xFF42A5F5)))

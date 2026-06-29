@@ -233,6 +233,10 @@ dependencies {
   "testFixturesImplementation"(libs.compose.foundation)
   "testFixturesImplementation"(libs.compose.material3)
   "testFixturesImplementation"(libs.compose.ui)
+  // `previewOverride*` — the fixture `OverridableSquare` declares editable knobs so
+  // `PreviewOverridesDataFetchE2ETest` can prove the sandbox→host bridge surfaces them via
+  // `data/fetch?kind=compose/overrides`.
+  "testFixturesImplementation"(project(":data-preview-overrides-runtime"))
 }
 
 // D-harness.v2 — the spawned daemon's runtime classpath is built from the daemon module's
