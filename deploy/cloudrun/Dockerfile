@@ -59,7 +59,10 @@ COPY . /app
 # NOTE: deliberately no BuildKit cache mount here — the warmed Gradle cache must
 # land in a real image layer so `COPY --from=build /root/.gradle` carries it into
 # the runtime image (cache-mount contents are not persisted into layers).
-RUN ./gradlew --no-daemon :cli:installDist \
+# `:samples:cmp-wasm-catalog:wasmCatalogDist` assembles the in-browser CMP app
+# (build/wasmDist) so the from-source public server can serve it via
+# `--wasm-dir` without a CLI release or a populated design-artifacts branch.
+RUN ./gradlew --no-daemon :cli:installDist :samples:cmp-wasm-catalog:wasmCatalogDist \
  && ./cli/build/install/compose-preview/bin/compose-preview serve \
         --module "${SERVE_MODULE}" \
         --export /tmp/warm-bundle \

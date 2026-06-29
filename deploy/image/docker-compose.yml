@@ -14,9 +14,28 @@ services:
     restart: always
     pull_policy: always
     environment:
-      SERVE_TOKEN: "${SERVE_TOKEN:?set SERVE_TOKEN in .env}"
+      # Public preview server by default (preview.coo.ee): open, serving our
+      # published design systems. The in-browser CMP Wasm tier rides --catalogs —
+      # `serve` fetches each system's web/wasm/ from the trusted branch (the
+      # prebuilt image has no catalog modules to build a local app from), so this
+      # needs a CLI release that carries the branch-fetch + an up-to-date
+      # design-artifacts/<system> branch. For a token-gated box instead, set
+      # SERVE_PUBLIC=0 and SERVE_TOKEN in .env.
+      SERVE_PUBLIC: "${SERVE_PUBLIC:-1}"
+      SERVE_CATALOGS: "${SERVE_CATALOGS:-compose-m3,wear-m3}"
+      # Optional: badge the catalogs as Trusted(Branch) instead of Unverified.
+      # Mount your trust store (see the volume below) and point this at it.
+      SERVE_TRUST_STORE: "${SERVE_TRUST_STORE:-}"
+      # Unused in public mode; required only when SERVE_PUBLIC=0.
+      SERVE_TOKEN: "${SERVE_TOKEN:-}"
       SERVE_IDLE_EXIT: "0"
       PORT: "8080"
+    # Uncomment to badge our published catalogs as trusted (download it onto the
+    # host first: curl -o producers.json \
+    #   https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/trust/producers.json
+    # then set SERVE_TRUST_STORE=/trust/producers.json in .env).
+    # volumes:
+    #   - ./producers.json:/trust/producers.json:ro
     expose:
       - "8080"
     # The baked warm cache makes renders incremental; this just caps a render storm.
