@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.16.6](https://github.com/yschimke/compose-ai-tools/compare/v0.16.5...v0.16.6) (2026-06-29)
+
+
+### Features
+
+* **serve:** add /version endpoint and a public-mode about intro ([#2108](https://github.com/yschimke/compose-ai-tools/issues/2108)) ([91170e8](https://github.com/yschimke/compose-ai-tools/commit/91170e883cf70fed6b157b064432187fd2379abc))
+
+
+### Bug Fixes
+
+* **release:** seed the prebuilt image from same-run Maven artifacts ([#2107](https://github.com/yschimke/compose-ai-tools/issues/2107)) ([2017a46](https://github.com/yschimke/compose-ai-tools/commit/2017a4656c9c31fb651bc56fdefb92d13f88d178))
+* **release:** wait for published artifacts before building the host image ([#2105](https://github.com/yschimke/compose-ai-tools/issues/2105)) ([55b2cf5](https://github.com/yschimke/compose-ai-tools/commit/55b2cf52045b6b30981ea5377ce5566aac3ddb9d))
+
 ## [0.16.5](https://github.com/yschimke/compose-ai-tools/compare/v0.16.4...v0.16.5) (2026-06-29)
 
 
