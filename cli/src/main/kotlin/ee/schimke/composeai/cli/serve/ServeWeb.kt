@@ -408,12 +408,13 @@ object ServeWeb {
       .trimIndent() + "\n"
 
   /**
-   * Renders the preview's author-declared editable knobs (the `compose/overrides` payload carried in a
-   * bundle's `previews/<id>.overrides.json`) as a labelled control list. Indexed knobs (per-item values
-   * on a repeated component) are grouped under their base key with a `#<index>` suffix. The controls are
-   * disabled when [canApplyOverrides] is false — a static bundle replays baked PNGs and can't re-render —
-   * with a one-line note explaining why; the live daemon-backed re-render loop for these knobs is a
-   * follow-up. Empty string when the preview declared no knobs (the common case).
+   * Renders the preview's author-declared editable knobs (the `compose/overrides` payload carried
+   * in a bundle's `previews/<id>.overrides.json`) as a labelled control list. Indexed knobs
+   * (per-item values on a repeated component) are grouped under their base key with a `#<index>`
+   * suffix. The controls are disabled when [canApplyOverrides] is false — a static bundle replays
+   * baked PNGs and can't re-render — with a one-line note explaining why; the live daemon-backed
+   * re-render loop for these knobs is a follow-up. Empty string when the preview declared no knobs
+   * (the common case).
    */
   private fun overrideKnobsHtml(preview: ServePreview, canApplyOverrides: Boolean): String {
     if (preview.overrides.isEmpty()) return ""
@@ -429,8 +430,10 @@ object ServeWeb {
             "color" -> "text"
             else -> "text"
           }
-        // Disabled regardless of host for now: a bundle can't re-render, and the live re-render wiring
-        // for named overrides is a follow-up. The control still shows *what* is editable + its value.
+        // Disabled regardless of host for now: a bundle can't re-render, and the live re-render
+        // wiring
+        // for named overrides is a follow-up. The control still shows *what* is editable + its
+        // value.
         """
         <label>${label}
           <input type="$inputType" value="$value" disabled>
@@ -458,7 +461,8 @@ object ServeWeb {
       is ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.StringValue -> v.value
       is ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.IntValue -> v.value.toString()
       is ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.FloatValue -> v.value.toString()
-      is ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.BooleanValue -> v.value.toString()
+      is ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.BooleanValue ->
+        v.value.toString()
       is ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.ColorValue -> v.argb
     }
 

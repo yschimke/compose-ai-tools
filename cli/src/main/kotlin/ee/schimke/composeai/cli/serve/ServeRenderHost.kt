@@ -48,9 +48,9 @@ data class ServePreview(
   val modes: List<PreviewMode> = listOf(PreviewMode.SNAPSHOT),
   /**
    * The author-declared editable knobs this preview exposed via `previewOverride*` (the
-   * `compose/overrides` payload). Populated from a bundle's `previews/<id>.overrides.json` sidecar so
-   * the viewer can present editable controls (label / list length / per-item indexed values). Empty
-   * when the preview declared none (or the host doesn't carry them).
+   * `compose/overrides` payload). Populated from a bundle's `previews/<id>.overrides.json` sidecar
+   * so the viewer can present editable controls (label / list length / per-item indexed values).
+   * Empty when the preview declared none (or the host doesn't carry them).
    */
   val overrides: List<ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration> = emptyList(),
 )

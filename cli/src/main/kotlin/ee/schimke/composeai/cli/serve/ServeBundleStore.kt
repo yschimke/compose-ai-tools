@@ -119,8 +119,10 @@ class ServeBundleStore(
       while (entry != null) {
         val name = entry.name.replace('\\', '/')
         val segments = name.split("/")
-        // Keep the baked PNGs (the servable images) and, since v8, the per-preview override sidecars
-        // (`previews/<id>.overrides.json`) so a served bundle can present its declared editable knobs.
+        // Keep the baked PNGs (the servable images) and, since v8, the per-preview override
+        // sidecars
+        // (`previews/<id>.overrides.json`) so a served bundle can present its declared editable
+        // knobs.
         val underPreviews = name.startsWith("$PREVIEWS_SUBDIR/") && ".." !in segments
         val isPng = underPreviews && name.endsWith(PNG_SUFFIX)
         val isOverrides = underPreviews && name.endsWith(OVERRIDES_SUFFIX)

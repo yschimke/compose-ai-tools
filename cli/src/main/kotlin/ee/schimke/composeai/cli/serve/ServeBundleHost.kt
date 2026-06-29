@@ -35,8 +35,8 @@ class ServeBundleHost(private val bundleDir: File, override val label: String) :
   /**
    * Read the editable knobs carried for [id] in the bundle's `previews/<id>.overrides.json` sidecar
    * (the `compose/overrides` payload the producer packed). Absent / unreadable → no knobs. The host
-   * can't re-render (it replays baked PNGs), so [canApplyOverrides] stays false and the viewer shows
-   * these as disabled, informational controls.
+   * can't re-render (it replays baked PNGs), so [canApplyOverrides] stays false and the viewer
+   * shows these as disabled, informational controls.
    */
   private fun readOverrides(
     id: String

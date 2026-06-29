@@ -19,10 +19,10 @@ import ee.schimke.composeai.overrides.previewOverrideString
 
 /**
  * Demonstrates the opt-in named-override surface (`previewOverride*`): a whole-screen list whose
- * **title**, **accent colour**, **item count**, and **per-row label** are all editable. The item count
- * is an ordinary int knob fed into `repeat(...)`; the row label is an *indexed* knob so each row gets
- * its own editable value. A daemon (or a served bundle) can seed replacements for any of these and the
- * declared set travels in the bundle as `previews/<id>.overrides.json`.
+ * **title**, **accent colour**, **item count**, and **per-row label** are all editable. The item
+ * count is an ordinary int knob fed into `repeat(...)`; the row label is an *indexed* knob so each
+ * row gets its own editable value. A daemon (or a served bundle) can seed replacements for any of
+ * these and the declared set travels in the bundle as `previews/<id>.overrides.json`.
  */
 @Preview(name = "Overridable List", showBackground = true)
 @Composable
@@ -36,9 +36,7 @@ fun OverridableListPreview() {
       Text(title, style = MaterialTheme.typography.titleLarge, color = accent)
       repeat(itemCount) { i ->
         val label = previewOverrideString("rowLabel", default = "Item ${i + 1}", index = i)
-        Card(modifier = Modifier.fillMaxWidth()) {
-          Text(label, modifier = Modifier.padding(12.dp))
-        }
+        Card(modifier = Modifier.fillMaxWidth()) { Text(label, modifier = Modifier.padding(12.dp)) }
       }
     }
   }

@@ -1,13 +1,20 @@
-// `:data-preview-overrides-runtime` — the consumer-facing opt-in API for plain-Compose named overrides.
-// A preview author adds this as `implementation(...)` and wraps editable values in `previewOverride*`
-// keyed lookups (`previewOverrideString("label", "Tap me")`, `previewOverrideInt("rowCount", 3)`, indexed
-// per-item knobs for repeated components). Each lookup returns the daemon-seeded value (or the author
-// default) and records its declaration into the process-static `PreviewOverrideController` so a producer
+// `:data-preview-overrides-runtime` — the consumer-facing opt-in API for plain-Compose named
+// overrides.
+// A preview author adds this as `implementation(...)` and wraps editable values in
+// `previewOverride*`
+// keyed lookups (`previewOverrideString("label", "Tap me")`, `previewOverrideInt("rowCount", 3)`,
+// indexed
+// per-item knobs for repeated components). Each lookup returns the daemon-seeded value (or the
+// author
+// default) and records its declaration into the process-static `PreviewOverrideController` so a
+// producer
 // can enumerate "what is editable" on the preview.
 //
 // Compose Multiplatform JVM (works for both Android and CMP-desktop previews). Compose itself is
-// `compileOnly`: the consumer brings its own Compose (androidx OR jetbrains — same FQNs), so this artifact
-// never forces a Compose flavour onto a consumer's classpath. Mirrors the `compileOnly` Compose pattern in
+// `compileOnly`: the consumer brings its own Compose (androidx OR jetbrains — same FQNs), so this
+// artifact
+// never forces a Compose flavour onto a consumer's classpath. Mirrors the `compileOnly` Compose
+// pattern in
 // `:data-remotecompose-connector`.
 
 plugins {
@@ -23,7 +30,8 @@ dependencies {
   // consumer test or the connector can refer to them without a second dependency.
   api(project(":data-preview-overrides-core"))
 
-  // Compose runtime (`@Composable`, `compositionLocalOf`, `SideEffect`) + UI (`Color`, `toArgb`, `Dp`).
+  // Compose runtime (`@Composable`, `compositionLocalOf`, `SideEffect`) + UI (`Color`, `toArgb`,
+  // `Dp`).
   // `compileOnly` — the consumer supplies the matching Compose at runtime.
   compileOnly(libs.jetbrains.compose.runtime)
   compileOnly(libs.jetbrains.compose.ui)

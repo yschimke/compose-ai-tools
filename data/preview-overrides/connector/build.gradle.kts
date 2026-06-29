@@ -1,9 +1,13 @@
-// `:data-preview-overrides-connector` — daemon-side glue for the plain-Compose named-override surface.
+// `:data-preview-overrides-connector` — daemon-side glue for the plain-Compose named-override
+// surface.
 // Mirrors `:data-touch-overlay-connector` (a shared Compose Multiplatform module consumed by BOTH
 // `:daemon:desktop` and `:daemon:android`) because nothing here is backend-specific: it seeds the
-// process-static `PreviewOverrideController` from `renderNow.overrides.namedOverrides`, installs the
-// `LocalPreviewOverrideHost` composition local, and produces the `compose/overrides` data product (the
-// set of editable knobs the preview declared). Unlike `:data-remotecompose-connector` there is no alpha
+// process-static `PreviewOverrideController` from `renderNow.overrides.namedOverrides`, installs
+// the
+// `LocalPreviewOverrideHost` composition local, and produces the `compose/overrides` data product
+// (the
+// set of editable knobs the preview declared). Unlike `:data-remotecompose-connector` there is no
+// alpha
 // runtime to gate on, so a single shared module suffices.
 
 plugins {
