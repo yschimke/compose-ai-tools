@@ -9,16 +9,19 @@ import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.overrides.PreviewOverridesPayload
 import ee.schimke.composeai.data.overrides.PreviewOverridesProduct
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.extensions.DataExtension
 import ee.schimke.composeai.data.render.extensions.DataExtensionCapability
 import ee.schimke.composeai.data.render.extensions.DataExtensionConstraints
+import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
 import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
-import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExtension
+import ee.schimke.composeai.data.render.extensions.compose.AroundComposableHook
+import ee.schimke.composeai.data.render.extensions.compose.ExtensionComposeContext
 import ee.schimke.composeai.overrides.ControllerPreviewOverrideHost
 import ee.schimke.composeai.overrides.LocalPreviewOverrideHost
 import ee.schimke.composeai.overrides.PreviewOverrideController
@@ -45,21 +48,37 @@ import kotlinx.serialization.json.JsonElement
  */
 class PreviewOverridesOverrideExtension(
   private val seed: Map<String, PreviewOverrideValue>? = null
-) :
-  AroundComposableExtension(
-    id = ID,
-    constraints =
-      DataExtensionConstraints(
-        phase = DataExtensionPhase.OuterEnvironment,
-        provides = setOf(DataExtensionCapability(PreviewOverridesProduct.KIND)),
-      ),
-  ) {
+) : AroundComposableHook {
+
+  override val id: DataExtensionId = ID
+
+  override val hooks: Set<DataExtensionHookKind> = setOf(DataExtensionHookKind.AroundComposable)
+
+  override val constraints: DataExtensionConstraints =
+    DataExtensionConstraints(
+      phase = DataExtensionPhase.OuterEnvironment,
+      provides = setOf(DataExtensionCapability(PreviewOverridesProduct.KIND)),
+    )
+
   @Composable
-  override fun AroundComposable(content: @Composable () -> Unit) {
+  override fun Around(context: ExtensionComposeContext, content: @Composable () -> Unit) {
+    // Stamp the active previewId before content composes so the sandbox-side `record` forwards land
+    // in this preview's bridge scope, not a concurrently-rendering preview's (pooled sandboxes).
+    // Plain call (not a SideEffect) so it runs during composition, ahead of any `previewOverride*`
+    // lookup in `content()`.
+    PreviewOverrideController.beginRender(context.previewId)
     DisposableEffect(seed) {
       PreviewOverrideController.set(seed)
+      // Reset the bridge scope at render *start* (not on dispose): a render's declarations must
+      // survive until the host-side registry reads them post-render. `clearDeclarations` resets
+      // this
+      // preview's bridge entries, then the `record` SideEffects repopulate them. On dispose only
+      // the
+      // seed is cleared (mirrors `PermissionsOverrideExtension`) — disposing the bridge here would
+      // race the host's `data/fetch` read and drop the declarations (caught by
+      // `PreviewOverridesDataFetchE2ETest`).
       PreviewOverrideController.clearDeclarations()
-      onDispose { PreviewOverrideController.resetForNewSession() }
+      onDispose { PreviewOverrideController.set(null) }
     }
     CompositionLocalProvider(LocalPreviewOverrideHost provides ControllerPreviewOverrideHost) {
       content()
@@ -77,7 +96,8 @@ class PreviewOverridesOverrideExtension(
  * composition local is installed on every render — a preview that only later begins calling
  * `previewOverride*` still finds the host wired without needing a fresh override.
  */
-class PreviewOverridesPreviewOverrideExtension : DataExtension<PreviewOverrides> {
+class PreviewOverridesPreviewOverrideExtension :
+  DataExtension<PreviewOverrides>, AlwaysOnPreviewOverrideExtension {
   override val id: DataExtensionId = PreviewOverridesOverrideExtension.ID
 
   override fun plan(request: PreviewOverrides): PlannedDataExtension =
@@ -150,12 +170,95 @@ class PreviewOverridesDataProductRegistry : DataProductRegistry {
     overrides: PreviewOverrides?,
     previewContext: PreviewContext?,
   ) {
-    val declarations = PreviewOverrideController.declarations()
+    // Read the declarations the sandbox stamped under the render's own previewId (the exact key the
+    // controller's bridge forward used); fall back to the registry's `previewId` argument when no
+    // context is attached (connector-only tests, where the bridge is absent and the in-CL
+    // controller
+    // answers). Mirrors `PermissionsDataProductRegistry.onRender`.
+    val scope = previewContext?.previewId ?: previewId
+    val declarations = readDeclarationsAcrossClassloaders(scope)
     if (declarations.isEmpty()) {
       latest.remove(previewId)
       return
     }
     latest[previewId] = PreviewOverridesPayload(declarations = declarations)
+  }
+
+  /**
+   * Read the declared knobs with cross-classloader awareness. On the Android daemon the registry
+   * runs in the host classloader while `previewOverride*`-driven `record` writes land in the
+   * *sandbox* classloader's [PreviewOverrideController] static state — a different `static` per
+   * classloader, so the host-CL controller's `declarations()` is empty even though knobs were
+   * declared. The do-not-acquire `SandboxPreviewOverridesBridge` is shared across the boundary, so
+   * we prefer it when reachable (its JSON snapshot is decoded back into typed declarations). The
+   * fallback to [PreviewOverrideController.declarations] keeps connector-only unit tests and the
+   * desktop daemon (no sandbox, no bridge) working unchanged — there the in-CL controller IS the
+   * source of truth.
+   */
+  private fun readDeclarationsAcrossClassloaders(scope: String): List<PreviewOverrideDeclaration> {
+    val bridge = SandboxPreviewOverridesBridgeReader.tryLoad()
+    val controllerDeclarations = PreviewOverrideController.declarations()
+    if (bridge == null) return controllerDeclarations
+    val bridgeJson = bridge.snapshot(scope)
+    if (bridgeJson.isEmpty()) return controllerDeclarations
+    return bridgeJson.mapNotNull { entry ->
+      try {
+        json.decodeFromString(PreviewOverrideDeclaration.serializer(), entry)
+      } catch (_: Exception) {
+        null
+      }
+    }
+  }
+
+  /**
+   * Reflective lookup of `ee.schimke.composeai.daemon.bridge.SandboxPreviewOverridesBridge`. Cached
+   * per JVM. `null` means the bridge isn't on the classpath (connector-only unit tests; the desktop
+   * daemon) — the registry falls back to the in-classloader controller state. Mirrors
+   * `PermissionsDataProductRegistry`'s `SandboxPermissionsBridgeReader`.
+   */
+  private class SandboxPreviewOverridesBridgeReader(
+    private val snapshotMethod: java.lang.reflect.Method
+  ) {
+    fun snapshot(scope: String): List<String> =
+      try {
+        @Suppress("UNCHECKED_CAST") (snapshotMethod.invoke(null, scope) as Array<String>).toList()
+      } catch (_: ReflectiveOperationException) {
+        emptyList()
+      }
+
+    companion object {
+      private const val BRIDGE_FQN: String =
+        "ee.schimke.composeai.daemon.bridge.SandboxPreviewOverridesBridge"
+
+      @Volatile private var resolved: SandboxPreviewOverridesBridgeReader? = null
+      @Volatile private var resolutionAttempted: Boolean = false
+
+      fun tryLoad(): SandboxPreviewOverridesBridgeReader? {
+        if (resolutionAttempted) return resolved
+        synchronized(this) {
+          if (resolutionAttempted) return resolved
+          val r =
+            try {
+              val cls =
+                Class.forName(
+                  BRIDGE_FQN,
+                  true,
+                  PreviewOverridesDataProductRegistry::class.java.classLoader,
+                )
+              SandboxPreviewOverridesBridgeReader(
+                snapshotMethod = cls.getMethod("snapshot", String::class.java)
+              )
+            } catch (_: ClassNotFoundException) {
+              null
+            } catch (_: NoSuchMethodException) {
+              null
+            }
+          resolved = r
+          resolutionAttempted = true
+          return r
+        }
+      }
+    }
   }
 
   companion object {
@@ -165,6 +268,7 @@ class PreviewOverridesDataProductRegistry : DataProductRegistry {
     private val json = Json {
       encodeDefaults = true
       prettyPrint = false
+      ignoreUnknownKeys = true
     }
   }
 }
