@@ -119,12 +119,12 @@ class ServeBundleStore(
       while (entry != null) {
         val name = entry.name.replace('\\', '/')
         val segments = name.split("/")
-        val keep =
-          !entry.isDirectory &&
-            name.startsWith("$PREVIEWS_SUBDIR/") &&
-            name.endsWith(PNG_SUFFIX) &&
-            ".." !in segments
-        if (keep) {
+        // Keep the baked PNGs (the servable images) and, since v8, the per-preview override sidecars
+        // (`previews/<id>.overrides.json`) so a served bundle can present its declared editable knobs.
+        val underPreviews = name.startsWith("$PREVIEWS_SUBDIR/") && ".." !in segments
+        val isPng = underPreviews && name.endsWith(PNG_SUFFIX)
+        val isOverrides = underPreviews && name.endsWith(OVERRIDES_SUFFIX)
+        if (!entry.isDirectory && (isPng || isOverrides)) {
           val target = File(dir, name)
           // Zip-slip guard: the resolved path must stay under the bundle dir.
           if (target.canonicalFile.toPath().startsWith(rootPath)) {
@@ -132,7 +132,9 @@ class ServeBundleStore(
             // Copy in bounded chunks so a huge / zip-bomb entry can't be fully allocated before the
             // cap rejects it — abort the moment the running total crosses maxBytes.
             total += copyCapped(zin, target, remaining = maxBytes - total)
-            count++
+            // Only PNGs count toward "does this bundle have any servable previews?" — an override
+            // sidecar without a PNG isn't a renderable preview.
+            if (isPng) count++
           }
         }
         zin.closeEntry()
@@ -161,6 +163,7 @@ class ServeBundleStore(
   companion object {
     private const val PREVIEWS_SUBDIR = "previews"
     private const val PNG_SUFFIX = ".png"
+    private const val OVERRIDES_SUFFIX = ".overrides.json"
     private const val DEFAULT_MAX_BYTES = 100L * 1024 * 1024 // 100 MB
 
     /** A session name safe to use as a path segment + URL value; null if it can't be made safe. */

@@ -46,6 +46,13 @@ data class ServePreview(
   val label: String,
   /** Delivery transports available for this preview. Tier 1 is always [PreviewMode.SNAPSHOT]. */
   val modes: List<PreviewMode> = listOf(PreviewMode.SNAPSHOT),
+  /**
+   * The author-declared editable knobs this preview exposed via `previewOverride*` (the
+   * `compose/overrides` payload). Populated from a bundle's `previews/<id>.overrides.json` sidecar so
+   * the viewer can present editable controls (label / list length / per-item indexed values). Empty
+   * when the preview declared none (or the host doesn't carry them).
+   */
+  val overrides: List<ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration> = emptyList(),
 )
 
 /** Result of a snapshot render request. */
@@ -88,6 +95,9 @@ internal constructor(
   private val onLog: (String) -> Unit = {},
   private val renderTimeoutSeconds: Long = RENDER_TIMEOUT_SECONDS,
 ) : ServeHost {
+
+  // A daemon backs this host, so an override edit actually re-renders (unlike a static bundle).
+  override val canApplyOverrides: Boolean = true
 
   private val previewIds: Set<String> = previews.map { it.id }.toHashSet()
 

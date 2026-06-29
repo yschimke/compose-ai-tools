@@ -20,6 +20,15 @@ interface ServeHost : AutoCloseable {
   /** Human label for the tenant (module Gradle path, `module@rev`, or a bundle name). */
   val label: String
 
+  /**
+   * Whether editing an override actually re-renders. `true` for a daemon-backed host
+   * ([ServeRenderHost]); `false` for a static pre-rendered bundle ([ServeBundleHost]) that can only
+   * replay the baked PNGs — the viewer then shows the preview's declared knobs as disabled,
+   * informational controls.
+   */
+  val canApplyOverrides: Boolean
+    get() = false
+
   /** Render [previewId] at [overrides] (cached where possible). */
   fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome
 

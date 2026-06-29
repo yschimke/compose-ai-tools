@@ -53,6 +53,27 @@ class ServeBundleStoreTest {
   }
 
   @Test
+  fun `override sidecars are extracted and surfaced as a preview's declared knobs`() {
+    val overrides =
+      """{"declarations":[{"key":"label","type":"string",""" +
+        """"default":{"kind":"string","value":"Tap me"},""" +
+        """"current":{"kind":"string","value":"Tap me"}},""" +
+        """{"key":"rowLabel","type":"string","index":0,""" +
+        """"default":{"kind":"string","value":"Item 1"}}]}"""
+    val zip =
+      zipOf(
+        "previews/com.example.Red.png" to byteArrayOf(1, 2, 3),
+        "previews/com.example.Red.overrides.json" to overrides.toByteArray(),
+      )
+    val result = store().add("demo", zip, isSecurityChecked = true)
+    assertEquals(ServeBundleStore.Result.Ok("demo", 1), result)
+
+    val preview = registered.getValue("demo").previews.single { it.id == "com.example.Red" }
+    assertEquals(listOf("label", "rowLabel"), preview.overrides.map { it.key })
+    assertEquals(0, preview.overrides[1].index)
+  }
+
+  @Test
   fun `a bundle without previews is rejected`() {
     val result = store().add("demo", zipOf("notes.txt" to byteArrayOf(1)), isSecurityChecked = true)
     assertTrue(result is ServeBundleStore.Result.Failed)
