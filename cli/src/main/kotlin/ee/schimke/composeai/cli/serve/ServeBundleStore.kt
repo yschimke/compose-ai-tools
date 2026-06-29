@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.cli.BundleSigning
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -36,10 +37,24 @@ class ServeBundleStore(
    * `--accept-bundles` alone never lets a client make the server fetch an arbitrary address.
    */
   private val allowedHosts: List<String> = emptyList(),
+  /**
+   * Producer-trust store. An uploaded bundle is verified against it ([BundleVerifier]) and the
+   * resulting verdict is attached to the registered [ServeBundleHost] + returned in [Result.Ok].
+   * Data tiers (the extracted `previews/<id>.png`) are served regardless — the verdict gates only
+   * whether the operator would later re-render the bundle's executable Compose. Defaults to the
+   * empty (fail-closed) store, so without `--trust-store` every upload is `unverified`.
+   */
+  private val trust: TrustStore = TrustStore.EMPTY,
 ) {
 
   sealed interface Result {
-    data class Ok(val name: String, val previewCount: Int) : Result
+    /**
+     * [trust] is the [BundleVerifier.summary] of the verdict, e.g. `signature:ci` or `unverified`.
+     * Defaults to `unverified` — the value for an upload checked against the empty store (no
+     * `--trust-store`) — so a caller that doesn't care about trust can ignore it.
+     */
+    data class Ok(val name: String, val previewCount: Int, val trust: String = "unverified") :
+      Result
 
     data class Failed(val reason: String) : Result
   }
@@ -56,9 +71,12 @@ class ServeBundleStore(
     val safe = sanitizeName(name) ?: return Result.Failed("invalid bundle name: '$name'")
     val dir = File(root, safe)
     dir.deleteRecursively()
+    // Normalize once: an uploaded bundle may be a plain zip or a PNG+ZIP polyglot (a signed bundle
+    // is a polyglot). Both the preview extraction and the trust digest operate on the zip portion.
+    val zip = BundleSigning.zipBytesOf(zipBytes)
     val count =
       try {
-        extractPreviews(zipBytes, dir)
+        extractPreviews(zip, dir)
       } catch (e: Exception) {
         dir.deleteRecursively()
         return Result.Failed("could not unpack bundle: ${e.message}")
@@ -67,9 +85,13 @@ class ServeBundleStore(
       dir.deleteRecursively()
       return Result.Failed("bundle had no previews/*.png entries")
     }
-    val host = ServeBundleHost(dir, safe)
+    // Attribute the upload to a trusted producer if it carries a verifiable signature (origin trust
+    // is for server-fetched catalogs, not client uploads, so no Origin here). The verdict travels
+    // with the host for display; it never blocks serving the already-extracted data tiers.
+    val verdict = BundleVerifier.verify(zip, trust)
+    val host = ServeBundleHost(dir, safe, verdict)
     register(safe, host)
-    return Result.Ok(safe, host.previews.size)
+    return Result.Ok(safe, host.previews.size, BundleVerifier.summary(verdict))
   }
 
   /**

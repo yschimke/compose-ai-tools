@@ -17,6 +17,7 @@ import ee.schimke.composeai.cli.serve.ServeSessionFactory
 import ee.schimke.composeai.cli.serve.ServeSessionRegistry
 import ee.schimke.composeai.cli.serve.ServeSessionState
 import ee.schimke.composeai.cli.serve.ServeUrls
+import ee.schimke.composeai.cli.serve.TrustStore
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.render.session.RenderSessionException
 import java.io.File
@@ -106,6 +107,15 @@ class ServeCommand(args: List<String>) : Command(args) {
       ?.split(",")
       ?.map { it.trim() }
       ?.filter { it.isNotEmpty() } ?: emptyList()
+
+  /**
+   * Path to the producer-trust store (`--trust-store <file>`): the JSON allowlist of trusted
+   * signing keys / branches / CI identities ([TrustStore]). Uploaded bundles are verified against
+   * it and the verdict is surfaced in the API + viewer. Absent ⇒ the empty, fail-closed store
+   * (every upload `unverified`), which is correct for a private box; a public server points it at
+   * `trust/producers.json`.
+   */
+  private val trustStorePath: String? = args.flagValue("--trust-store")
 
   override fun run() {
     if ("--help" in args || "-h" in args) {
@@ -235,6 +245,7 @@ class ServeCommand(args: List<String>) : Command(args) {
           root = uploads,
           register = { id, bundleHost -> registry.register(id, host = bundleHost, pinned = true) },
           allowedHosts = acceptBundlesFrom,
+          trust = loadTrustStore(),
         )
       } else {
         null
@@ -392,6 +403,27 @@ class ServeCommand(args: List<String>) : Command(args) {
   }
 
   /**
+   * Load the `--trust-store` JSON, or the empty fail-closed store when the flag is absent. A bad
+   * path or unparseable file is a hard error: a public operator who *meant* to pin trusted
+   * producers shouldn't silently fall back to trusting nothing (or, worse, think they configured it
+   * when they didn't).
+   */
+  private fun loadTrustStore(): TrustStore {
+    val path = trustStorePath ?: return TrustStore.EMPTY
+    val f = File(path)
+    if (!f.isFile) {
+      System.err.println("serve: --trust-store not found: ${f.path}")
+      exitProcess(1)
+    }
+    return try {
+      TrustStore.load(f)
+    } catch (e: Exception) {
+      System.err.println("serve: could not parse --trust-store ${f.path}: ${e.message}")
+      exitProcess(1)
+    }
+  }
+
+  /**
    * Match a preview id against `--id` (exact) / `--filter` (substring); all when neither is set.
    */
   private fun matches(id: String): Boolean =
@@ -528,6 +560,11 @@ class ServeCommand(args: List<String>) : Command(args) {
                           SSRF allowlist for POST /bundles?url=: hostnames the server may fetch a
                           bundle from. Omitted/empty = no URL fetch is allowed (fail closed), so a
                           client can't steer the server at an arbitrary or internal address.
+        --trust-store <file>
+                          Producer-trust allowlist (JSON: signing keys / branches / CI identities).
+                          Uploaded bundles are verified against it and the verdict (signature /
+                          branch / provenance / unverified) is returned + badged. Omitted = trust
+                          nothing (every upload unverified); the data tiers serve either way.
 
       The shareable link carries an unguessable token; requests without it get 404.
       """

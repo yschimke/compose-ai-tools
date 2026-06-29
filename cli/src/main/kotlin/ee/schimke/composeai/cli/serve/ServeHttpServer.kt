@@ -128,6 +128,7 @@ class ServeHttpServer(
                       session = result.name,
                       previews = result.previewCount,
                       path = "/?session=${result.name}",
+                      trust = result.trust,
                     ),
                   ),
                   ContentType.Application.Json,
@@ -463,4 +464,10 @@ private data class BundleAcceptedResponse(
   val previews: Int,
   /** Relative viewer link for the new session (append your token). */
   val path: String,
+  /**
+   * Producer-trust verdict for the upload ([BundleVerifier.summary]): `signature:<keyId>`,
+   * `branch:<repo>@<branch>`, `provenance:<id>`, or `unverified`. The data tiers serve either way;
+   * this tells the uploader whether the server would treat the bundle as trusted.
+   */
+  val trust: String,
 )
