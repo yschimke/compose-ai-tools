@@ -42,9 +42,16 @@ sudo docker compose pull
 sudo docker compose up -d
 
 TOKEN="$(grep '^SERVE_TOKEN=' .env | cut -d= -f2-)"
+# Match the compose default (SERVE_PUBLIC defaults to 1) so we print the URL this
+# box actually serves: open in public mode, the ?token= gate only when SERVE_PUBLIC=0.
+SERVE_PUBLIC="$( (grep '^SERVE_PUBLIC=' .env || true) | cut -d= -f2- )"
+SERVE_PUBLIC="${SERVE_PUBLIC:-1}"
 echo
 echo "==> Up. Once DNS for ${DOMAIN} resolves here and Caddy has a cert:"
-echo "    https://${DOMAIN}/        (public mode — open; SERVE_PUBLIC defaults to 1)"
-echo "    For a token-gated box, set SERVE_PUBLIC=0 in .env; the gate is then:"
-echo "    https://${DOMAIN}/?token=${TOKEN}"
+if [[ "${SERVE_PUBLIC}" == "1" ]]; then
+  echo "    https://${DOMAIN}/        (public mode — open, no token needed)"
+  echo "    To lock it down: set SERVE_PUBLIC=0 in .env, re-run, and use the ?token= URL it prints."
+else
+  echo "    https://${DOMAIN}/?token=${TOKEN}   (token-gated — SERVE_PUBLIC=0)"
+fi
 echo "    Logs: sudo docker compose logs -f preview"
