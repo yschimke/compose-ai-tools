@@ -157,6 +157,18 @@
       "sha256": "a7b7cbff68c9c38008346b9c98deb8a6731b5474cc486fa3b2b383ed0a1a359f",
       "size": 91884
     },
+    "serve-landing-public.dark.png": {
+      "fixture": "serve-landing-public",
+      "theme": "dark",
+      "sha256": "67f057a98eeeb08c48b14b6ea9b8af7c4e543c89321f83a08f11ec551758c23f",
+      "size": 77514
+    },
+    "serve-landing-public.light.png": {
+      "fixture": "serve-landing-public",
+      "theme": "light",
+      "sha256": "de58273ddfa704af7f266069472999de4d0eeca92f2f7fdc57ea9be28ea7b8d5",
+      "size": 77685
+    },
     "serve-landing.dark.png": {
       "fixture": "serve-landing",
       "theme": "dark",
