@@ -243,6 +243,9 @@ class ServeHttpServer(
             val dto =
               PreviewsResponse(
                 module = renderHost.label,
+                // Producer-trust verdict for a bundle/catalog session (signature / branch /
+                // provenance / unverified); null for a live daemon-backed module session.
+                trust = (renderHost as? ServeBundleHost)?.let { BundleVerifier.summary(it.trust) },
                 previews =
                   renderHost.previews.map { p ->
                     PreviewDto(id = p.id, label = p.label, modes = p.modes.map { it.wire })
@@ -451,6 +454,12 @@ class ServeHttpServer(
 private data class PreviewsResponse(
   val schema: String = "compose-preview-serve/v1",
   val module: String,
+  /**
+   * Producer-trust verdict for this session ([BundleVerifier.summary]) — `signature:<keyId>`,
+   * `branch:<repo>@<branch>`, `provenance:<id>`, or `unverified`. Null for a live daemon-backed
+   * module (trust applies to detached bundles/catalogs, not the operator's own served module).
+   */
+  val trust: String? = null,
   val previews: List<PreviewDto>,
 )
 
