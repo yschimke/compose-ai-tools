@@ -125,19 +125,30 @@ class ServeCatalogStore(
     val prefix = render.path.trim('/')
     if (prefix.isEmpty() || render.files.isEmpty()) return
     val wasmDir = File(dir, WEB_WASM_DIR)
+    // **Fail closed, all-or-nothing.** Register the app only if *every* declared file is fetched
+    // and
+    // an index.html is present — a partial app (a 404/timeout on composeApp.wasm or skiko.wasm, a
+    // traversal/escaping entry, or a list longer than the cap) would make the viewer advertise "Run
+    // in browser (Wasm)" only for the iframe to 404 its module/wasm fetches. The file list is the
+    // trusted catalog's complete manifest, so any missing/invalid entry means "don't offer it".
+    fun fail(reason: String) {
+      wasmDir.deleteRecursively()
+      System.err.println("serve: $system web/wasm/ incomplete ($reason) — in-browser tier disabled")
+    }
+    if (render.files.size > MAX_WASM_FILES) return fail("more than $MAX_WASM_FILES files declared")
     val wasmRoot = wasmDir.canonicalFile.toPath()
-    var written = 0
-    for (name in render.files.take(MAX_WASM_FILES)) {
+    for (name in render.files) {
       val rel = name.trim('/')
-      if (rel.isEmpty() || ".." in rel.split("/")) continue
+      if (rel.isEmpty() || ".." in rel.split("/")) return fail("invalid entry '$name'")
       val target = File(wasmDir, rel)
-      if (!target.canonicalFile.toPath().startsWith(wasmRoot)) continue
-      val bytes = runCatching { fetch("$base$prefix/$rel") }.getOrNull() ?: continue
+      if (!target.canonicalFile.toPath().startsWith(wasmRoot)) return fail("escaping entry '$name'")
+      val bytes =
+        runCatching { fetch("$base$prefix/$rel") }.getOrNull() ?: return fail("missing $rel")
       target.parentFile?.mkdirs()
       target.writeBytes(bytes)
-      written++
     }
-    if (written > 0 && File(wasmDir, "index.html").isFile) registerWasm(system, wasmDir)
+    if (!File(wasmDir, "index.html").isFile) return fail("no index.html")
+    registerWasm(system, wasmDir)
   }
 
   /**
