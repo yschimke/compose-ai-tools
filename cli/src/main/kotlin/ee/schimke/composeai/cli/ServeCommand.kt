@@ -270,7 +270,9 @@ class ServeCommand(args: List<String>) : Command(args) {
       registry.register(id, host = bundleHost, pinned = true)
     }
     // Serve our published design systems from their trusted `design-artifacts/<system>` branches.
-    if (catalogs.isNotEmpty()) registerCatalogs(registry)
+    // A catalog that carries a `web/wasm/` app yields a system→dir entry so the in-browser tier
+    // rides the same trusted branch (no local --wasm-dir build needed).
+    val catalogWasm = if (catalogs.isNotEmpty()) registerCatalogs(registry) else emptyMap()
     // Runtime ingestion (--accept-bundles): clients POST a bundle (or a ?url= to one) and it's
     // registered as a pinned session. Unpacked under a temp dir for this server's lifetime.
     val bundleStore =
@@ -298,7 +300,7 @@ class ServeCommand(args: List<String>) : Command(args) {
     // assembled app (index.html), warning on the rest, so a typo'd path doesn't silently advertise
     // a
     // broken "Run in browser" toggle.
-    val wasmCatalogs = wasmDirs.filter { (system, dir) ->
+    val localWasm = wasmDirs.filter { (system, dir) ->
       val ok = File(dir, "index.html").isFile
       if (!ok) {
         System.err.println(
@@ -308,6 +310,11 @@ class ServeCommand(args: List<String>) : Command(args) {
       }
       ok
     }
+    // Merge the apps fetched from the catalog branches with the explicit `--wasm-dir` paths; a
+    // local
+    // `--wasm-dir` wins for a system so an operator can override the published app with a local
+    // build.
+    val wasmCatalogs = catalogWasm + localWasm
     if (wasmCatalogs.isNotEmpty()) {
       System.err.println("serve: in-browser Wasm tier for: ${wasmCatalogs.keys.joinToString(", ")}")
     }
@@ -471,9 +478,10 @@ class ServeCommand(args: List<String>) : Command(args) {
    * branch is in the trust store; otherwise served as `unverified` (the images execute no code).
    * Best-effort per system — one catalog failing to fetch doesn't sink the others or the server.
    */
-  private fun registerCatalogs(registry: ServeSessionRegistry) {
+  private fun registerCatalogs(registry: ServeSessionRegistry): Map<String, File> {
     val dir =
       java.nio.file.Files.createTempDirectory("serve-catalogs").toFile().also { it.deleteOnExit() }
+    val wasm = linkedMapOf<String, File>()
     val store =
       ServeCatalogStore(
         root = dir,
@@ -481,6 +489,12 @@ class ServeCommand(args: List<String>) : Command(args) {
         trust = resolvedTrust,
         repo = catalogRepo,
         branchPrefix = catalogBranchPrefix,
+        registerWasm = { system, wasmDir ->
+          wasm[system] = wasmDir
+          System.err.println(
+            "serve: catalog $system carries an in-browser Wasm app (/wasm/$system/)"
+          )
+        },
       )
     for (system in catalogs) {
       when (val r = store.load(system)) {
@@ -493,6 +507,7 @@ class ServeCommand(args: List<String>) : Command(args) {
           System.err.println("serve: catalog ${r.system} not served: ${r.reason}")
       }
     }
+    return wasm
   }
 
   /**

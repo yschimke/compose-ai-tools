@@ -20,6 +20,7 @@ class ServeCatalogStoreTest {
     Files.createTempDirectory("catalog").toFile().also { it.deleteOnExit() }
 
   private val registered = LinkedHashMap<String, ServeBundleHost>()
+  private val registeredWasm = LinkedHashMap<String, File>()
 
   private fun png(): ByteArray =
     ByteArrayOutputStream()
@@ -54,6 +55,7 @@ class ServeCatalogStoreTest {
       register = { n, h -> registered[n] = h },
       trust = trust,
       fetch = fetch,
+      registerWasm = { s, d -> registeredWasm[s] = d },
     )
 
   @Test
@@ -103,5 +105,68 @@ class ServeCatalogStoreTest {
     val result = store(TrustStore.EMPTY, fetch = { null }).load("compose-m3")
     assertTrue(result is ServeCatalogStore.Result.Failed)
     assertTrue(registered.isEmpty())
+  }
+
+  private fun wasmCatalog(files: String): String =
+    """
+    {"schema":"design-parity-catalog/v1","system":"compose-m3","components":[
+      {"componentId":"Button/Filled","images":[
+        {"path":"images/button-filled/ideal__default__dark.png","theme":"dark"}]}],
+     "webRender":{"kind":"compose-wasm","path":"web/wasm/","files":[$files]}}
+    """
+      .trimIndent()
+
+  private fun wasmFetcher(
+    catalog: String,
+    missing: Set<String> = emptySet(),
+  ): (String) -> ByteArray? = { url ->
+    when {
+      url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.toByteArray()
+      url.endsWith(".png") -> png()
+      url.contains("/web/wasm/") ->
+        if (missing.any { url.endsWith(it) }) null else "x".toByteArray()
+      else -> null
+    }
+  }
+
+  @Test
+  fun `a complete catalog webRender fetches the wasm app and registers its dir`() {
+    val catalog = wasmCatalog("\"index.html\",\"composeApp.wasm\",\"skiko.wasm\"")
+    store(TrustStore.EMPTY, wasmFetcher(catalog)).load("compose-m3")
+
+    val wasmDir = registeredWasm.getValue("compose-m3")
+    assertTrue(File(wasmDir, "index.html").isFile, "index.html landed")
+    assertTrue(File(wasmDir, "composeApp.wasm").isFile && File(wasmDir, "skiko.wasm").isFile)
+  }
+
+  @Test
+  fun `a webRender with a failed required-file fetch registers nothing (fail closed)`() {
+    val catalog = wasmCatalog("\"index.html\",\"composeApp.wasm\",\"skiko.wasm\"")
+    // composeApp.wasm 404s → the app is incomplete → don't advertise a tier whose iframe would 404.
+    store(TrustStore.EMPTY, wasmFetcher(catalog, missing = setOf("composeApp.wasm")))
+      .load("compose-m3")
+    assertTrue(registeredWasm.isEmpty(), "incomplete app must not register")
+  }
+
+  @Test
+  fun `a webRender with a traversal entry fails closed and writes nothing outside the dir`() {
+    val catalog = wasmCatalog("\"index.html\",\"composeApp.wasm\",\"../../escape.html\"")
+    val root = tempRoot()
+    ServeCatalogStore(
+        root = root,
+        register = { n, h -> registered[n] = h },
+        trust = TrustStore.EMPTY,
+        fetch = wasmFetcher(catalog),
+        registerWasm = { s, d -> registeredWasm[s] = d },
+      )
+      .load("compose-m3")
+    assertTrue(registeredWasm.isEmpty(), "malformed manifest must not register")
+    assertTrue(!File(root, "compose-m3/escape.html").exists(), "traversal write rejected")
+  }
+
+  @Test
+  fun `no webRender means no wasm dir is registered`() {
+    store(TrustStore.EMPTY).load("compose-m3")
+    assertTrue(registeredWasm.isEmpty())
   }
 }
