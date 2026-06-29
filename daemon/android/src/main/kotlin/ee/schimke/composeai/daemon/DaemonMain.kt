@@ -439,6 +439,35 @@ fun main(args: Array<String>) {
               ),
           )
         }
+        tryAdd("data/overrides") {
+          // Plain-Compose named overrides (`previewOverride*` knobs: label, list length, indexed
+          // per-item values). The planner is wired into `RobolectricHost.previewOverrideExtensions`
+          // (always-on, so `LocalPreviewOverrideHost` is installed on every render and
+          // `renderNow.overrides.namedOverrides` seeds apply); this entry carries the discoverable
+          // descriptor.
+          //
+          // **No `compose/overrides` data-product registry on Android (unlike `:daemon:desktop`).**
+          // The `previewOverride*` lookups record their declarations into the process-static
+          // `PreviewOverrideController` *inside the Robolectric sandbox classloader*, but a host-side
+          // registry runs in the host classloader and would read a different (empty) copy of that
+          // static — Robolectric re-loads project classes per sandbox (see `DaemonHostBridge`'s
+          // do-not-acquire rationale). So `data/fetch?kind=compose/overrides` is desktop-only until a
+          // sandbox→host bridge for the declarations lands. This does **not** affect bundle carriage:
+          // the standalone Robolectric render in `RobolectricRenderTest.writeOverridesSidecar` reads
+          // the controller from *within* the same sandbox, so `previews/<id>.overrides.json` is
+          // captured correctly on Android too.
+          Extension(
+            id = "data/overrides",
+            displayName = "Named preview overrides",
+            dataExtensionDescriptors =
+              listOf(
+                DataExtensionDescriptor(
+                  id = PreviewOverridesOverrideExtension.ID,
+                  displayName = "Named preview overrides",
+                )
+              ),
+          )
+        }
         tryAdd("data/launcher-widget") {
           // Launcher-widget container-size override — same shape as the touch-overlay registration
           // above. The actual planner is wired into `RobolectricHost.previewOverrideExtensions`;

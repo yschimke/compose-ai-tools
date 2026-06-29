@@ -221,6 +221,9 @@ open class DesktopHost(
     // DesktopRecordingSession.writeTalkBackFrame.
     add("talkBack")
     add("launcherWidget")
+    // `renderNow.overrides.namedOverrides` seeds the plain-Compose `previewOverride*` knobs via the
+    // `data/overrides` planner (`PreviewOverridesPreviewOverrideExtension`).
+    add("namedOverrides")
   }
 
   /** PROTOCOL.md § 3 — desktop backend identifier surfaced via `capabilities.backend`. */

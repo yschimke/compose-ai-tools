@@ -285,7 +285,12 @@ class ServeHttpServer(
               return@withLeasedSession
             }
             call.respondText(
-              ServeWeb.viewerPage(preview, token, call.request.queryParameters["session"]),
+              ServeWeb.viewerPage(
+                preview,
+                token,
+                call.request.queryParameters["session"],
+                canApplyOverrides = renderHost.canApplyOverrides,
+              ),
               ContentType.Text.Html,
             )
           }

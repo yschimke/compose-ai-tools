@@ -158,6 +158,11 @@ dependencies {
   // Renderer-agnostic daemon core helpers that are safe to use as a local library from CLI
   // commands. Keep renderer backends (`:daemon:android`, `:daemon:desktop`) out of this module.
   implementation(project(":daemon:core"))
+  // Wire-shape of the `compose/overrides` data product (`PreviewOverrideDeclaration`) — the
+  // editable
+  // knobs `compose-preview serve` reads from a bundle's `previews/<id>.overrides.json` sidecar to
+  // present controls. Pure JVM (depends only on `:daemon:core`), not a renderer artifact.
+  implementation(project(":data-preview-overrides-core"))
   // Public render-session library — the CLI consumes its own published API for daemon-driven
   // commands (`compose-preview a11y` etc.) instead of touching DaemonClient directly. We eat
   // our own dog food: anything the CLI can do, a third-party tooling consumer can do via the

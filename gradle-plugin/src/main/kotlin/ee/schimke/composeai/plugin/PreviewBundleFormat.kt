@@ -31,6 +31,14 @@ import kotlinx.serialization.json.JsonClassDiscriminator
  *                            The cover's leading-bytes PNG is mirrored here under its own id so
  *                            iterating the well-known directory yields every preview uniformly.
  *                            A preview with no render on disk is simply absent from this directory.
+ * previews/<id>.overrides.json — (v8) the author-declared editable knobs the preview exposed via the
+ *                            `previewOverride*` lookups (a verbatim `compose/overrides` payload —
+ *                            `PreviewOverridesPayload` from `:data-preview-overrides-core`, copied byte
+ *                            for byte; the producer never parses it): label / list-length / per-item
+ *                            indexed values. Captured during the normal
+ *                            render, present only for previews that opted in, so a detached viewer can
+ *                            offer the editable controls without a live daemon. Convention-discovered
+ *                            (no manifest pointer), like the optional semantics sidecar.
  * classes/app.jar          — consumer module bytecode, MINIMIZED to classes reachable from the
  *                            selected previews (plus all module resources). For an IR-backed
  *                            preview (see below) the enclosing class is NOT a closure seed, so its
@@ -439,8 +447,23 @@ val CONVENTIONAL_DATA_EXTENSION_REPORTS: Map<String, String> = mapOf("a11y" to "
  *   re-rendering. Additive — the field defaults to empty and `ignoreUnknownKeys` readers skip the
  *   `extensions/` entries, so a v6 reader opening a v7 bundle still works; only a reader that wants
  *   the carried data needs to be v7-aware.
+ * - v8 — adds the `previews/<id>.overrides.json` sidecar: the author-declared editable knobs a
+ *   preview exposed via the `previewOverride*` lookups (the `compose/overrides` payload), captured
+ *   during the normal render so a detached viewer can present editable controls (label / list
+ *   length / per-item indexed values) with no live daemon. Convention-discovered (no manifest
+ *   field), present only for previews that opted in. Additive — the sidecar is ignored by older
+ *   readers and absent for previews that declare no knobs, so a v7 reader opening a v8 bundle still
+ *   works; only a reader that wants the editable knobs needs to be v8-aware.
  */
-const val BUNDLE_SCHEMA_VERSION: Int = 7
+const val BUNDLE_SCHEMA_VERSION: Int = 8
+
+/**
+ * File extension of the per-preview override sidecar the render step writes next to the PNG
+ * (`renders/<stem>.overrides.json`) and the bundle packs under `previews/<id>.overrides.json`.
+ * Holds the serialized `compose/overrides` payload — the editable knobs the preview declared. Kept
+ * in lockstep with the consumer runtime's writer.
+ */
+const val BUNDLE_OVERRIDES_SIDECAR_EXT: String = "overrides.json"
 
 /**
  * Well-known directory inside the bundle zip holding one rendered PNG per selected preview, keyed

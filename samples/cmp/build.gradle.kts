@@ -24,4 +24,7 @@ dependencies {
   // `LottiePreview(...)` — renders a Lottie `.json` asset (from src/main/resources) at a fixed
   // progress through the desktop renderer. Brings Compottie transitively.
   implementation(project(":lottie-preview-runtime"))
+  // `previewOverride*` — opt-in editable knobs (label / list length / per-item indexed values) the
+  // daemon can seed and a served bundle can present as editable controls.
+  implementation(project(":data-preview-overrides-runtime"))
 }

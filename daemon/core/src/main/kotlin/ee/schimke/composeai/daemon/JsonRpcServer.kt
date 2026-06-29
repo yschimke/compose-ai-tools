@@ -1071,12 +1071,19 @@ class JsonRpcServer(
           // desktop `RenderEngine`, which provides it as `LocalLottieProgress` — the interactive
           // Lottie timeline scrub path. No new wire token needed.
           lottie = overrides.lottie,
+          // `namedOverrides` rides the bag so `renderNow.overrides.namedOverrides` reaches the
+          // `PreviewOverridesPreviewOverrideExtension` planner, which seeds
+          // `PreviewOverrideController`
+          // so a preview's `previewOverride*("title", …)` returns the requested value, not its
+          // default.
+          namedOverrides = overrides.namedOverrides,
         )
       if (
         extensionBag.material3Theme != null ||
           extensionBag.wallpaper != null ||
           extensionBag.permissions != null ||
-          extensionBag.lottie != null
+          extensionBag.lottie != null ||
+          !extensionBag.namedOverrides.isNullOrEmpty()
       ) {
         if (isNotEmpty()) append(';')
         append("overrides=")
