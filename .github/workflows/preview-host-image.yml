@@ -37,9 +37,16 @@ permissions:
 jobs:
   publish:
     # Only CLI releases (tags like v0.16.1) — skip clients-v* and manual non-v tags.
+    #
+    # NB: gate on the INPUT, not github.event_name. Inside a reusable workflow
+    # (workflow_call), github.event_name is the CALLER's triggering event — `push`
+    # for release-please.yml — NOT 'workflow_call'. So a `github.event_name ==
+    # 'workflow_call'` check silently SKIPS this job on the release chain (which is
+    # exactly what dropped the v0.16.6 image). cli_version is a required input on
+    # both workflow_dispatch and workflow_call, so it's set on both paths; the
+    # `release` event carries no inputs and falls through to the tag check.
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'workflow_call' ||
+      inputs.cli_version != '' ||
       startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-latest
     steps:
