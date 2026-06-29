@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.16.3](https://github.com/yschimke/compose-ai-tools/compare/v0.16.2...v0.16.3) (2026-06-29)
+
+
+### Features
+
+* **bundle:** Ed25519 signing + trust verification for portable bundles ([#2076](https://github.com/yschimke/compose-ai-tools/issues/2076)) ([cd73e42](https://github.com/yschimke/compose-ai-tools/commit/cd73e42199f7c6b8d9c59f43c9a9ba5de78e4bec))
+* **daemon:** capture coordinate-free script from live recordings ([#2047](https://github.com/yschimke/compose-ai-tools/issues/2047)) ([96f7b5b](https://github.com/yschimke/compose-ai-tools/commit/96f7b5b5fd328ee569c55278d4262ef903e31c11))
+* **deploy:** add generic VPS (Hetzner) hosting for the preview server ([#2068](https://github.com/yschimke/compose-ai-tools/issues/2068)) ([d4b2147](https://github.com/yschimke/compose-ai-tools/commit/d4b21471bcb64c6bf004f0449ed8cf56c3da3f49))
+* **deploy:** auto-update the prebuilt image via Watchtower ([#2072](https://github.com/yschimke/compose-ai-tools/issues/2072)) ([e1a33e8](https://github.com/yschimke/compose-ai-tools/commit/e1a33e82befae4517dfa8c0da07fe1c20fa1e67e))
+* **deploy:** prebuilt preview-host image from published artifacts ([#2070](https://github.com/yschimke/compose-ai-tools/issues/2070)) ([3f29ef2](https://github.com/yschimke/compose-ai-tools/commit/3f29ef29f0c41eee05d2b07c00e3a07cc0eb0b24))
+* **design-artifacts:** editable SVG wireframes in the export bundle ([#2064](https://github.com/yschimke/compose-ai-tools/issues/2064)) ([346d5b3](https://github.com/yschimke/compose-ai-tools/commit/346d5b3b3282c289ac230759ed741bb927cc558f))
+* **design-artifacts:** emit a browsable index.html per catalog ([#2059](https://github.com/yschimke/compose-ai-tools/issues/2059)) ([35f21e3](https://github.com/yschimke/compose-ai-tools/commit/35f21e3d5618101eb06ad30cc9d62d18aac6cf4d))
+* **design-artifacts:** generate a README.md on each delivery branch ([#2067](https://github.com/yschimke/compose-ai-tools/issues/2067)) ([97a4258](https://github.com/yschimke/compose-ai-tools/commit/97a42580382d33dab4a0afdd56742770f3cd56a9))
+* **design-artifacts:** wireframes from the layout-inspector tree ([#2065](https://github.com/yschimke/compose-ai-tools/issues/2065)) ([81b3b82](https://github.com/yschimke/compose-ai-tools/commit/81b3b826af30e5a0fc05baade7711aba6824ee4e))
+* editable preview overrides for plain Compose, carried in bundles and served ([#2074](https://github.com/yschimke/compose-ai-tools/issues/2074)) ([8ab79dc](https://github.com/yschimke/compose-ai-tools/commit/8ab79dc864667b8b267f85417816c614e1eac5c5))
+* **overrides:** surface declared compose/overrides knobs on Android via sandbox bridge ([#2083](https://github.com/yschimke/compose-ai-tools/issues/2083)) ([1e57b15](https://github.com/yschimke/compose-ai-tools/commit/1e57b15fb81d5cea0c4f0f936d5f34690cac0fee))
+* **renderer:** render the Material pressed ripple by settling the Android clock ([#2055](https://github.com/yschimke/compose-ai-tools/issues/2055)) ([c31ea02](https://github.com/yschimke/compose-ai-tools/commit/c31ea0224843557f4363d31b2ee74cd89c7f6b5f))
+* **samples:** add component States group (pressed/focused/disabled/toggle) to catalogs ([#2052](https://github.com/yschimke/compose-ai-tools/issues/2052)) ([a810f80](https://github.com/yschimke/compose-ai-tools/commit/a810f80512b3bd060a638c3e89f537486d44cad3))
+* **samples:** add design-catalog-m3 sticker-sheet module ([#2048](https://github.com/yschimke/compose-ai-tools/issues/2048)) ([33474c8](https://github.com/yschimke/compose-ai-tools/commit/33474c81a02d2481aeb10766c5583bd6f02f7c70))
+* **samples:** add design-catalog-wear-m3 sticker-sheet module ([#2049](https://github.com/yschimke/compose-ai-tools/issues/2049)) ([5d3d1d8](https://github.com/yschimke/compose-ai-tools/commit/5d3d1d81b99719716ffbc9501d1e1e0ecc1a43a1))
+* **samples:** blank Wear list-layout template at the breakpoints ([#2063](https://github.com/yschimke/compose-ai-tools/issues/2063)) ([5af3265](https://github.com/yschimke/compose-ai-tools/commit/5af3265ff99cf869da737144b6df886a2f08f839))
+* **samples:** transparent backgrounds for Wear component stickers ([#2061](https://github.com/yschimke/compose-ai-tools/issues/2061)) ([a4a7284](https://github.com/yschimke/compose-ai-tools/commit/a4a728432951fabb525b5dbe0fd27e82a314c15c))
+* **samples:** Wear size breakpoints + scaling list sample ([#2060](https://github.com/yschimke/compose-ai-tools/issues/2060)) ([8bbad5c](https://github.com/yschimke/compose-ai-tools/commit/8bbad5c50a0965b72741f33d2e7eb9ffef31deb3))
+* **serve:** serve published design systems from trusted design-artifacts branches ([#2084](https://github.com/yschimke/compose-ai-tools/issues/2084)) ([9df6ef7](https://github.com/yschimke/compose-ai-tools/commit/9df6ef78f7cd84a0baab0d8a5602019e7a1313ac))
+* **serve:** verify uploaded bundles against a producer trust store ([#2081](https://github.com/yschimke/compose-ai-tools/issues/2081)) ([4154388](https://github.com/yschimke/compose-ai-tools/commit/41543884fbac1b44f3cca1ddbb14812ecfedb412))
+
+
+### Bug Fixes
+
+* **ci:** authenticate the design-parity clone in design-artifacts job ([26583d8](https://github.com/yschimke/compose-ai-tools/commit/26583d85044999508483b53a6ce56571ceef1433))
+* **ci:** clone design-parity anonymously in design-artifacts job ([#2053](https://github.com/yschimke/compose-ai-tools/issues/2053)) ([8ca2766](https://github.com/yschimke/compose-ai-tools/commit/8ca2766ec1dacb7bdcb68285ab709b2432c3f968))
+* **ci:** guard null widthDp in the design-artifacts driver ([058ee10](https://github.com/yschimke/compose-ai-tools/commit/058ee104ec36b72bf1c0c77ebf2218c4cc1ac372))
+* **ci:** source the design-artifacts export engine from npm, not a private clone ([#2056](https://github.com/yschimke/compose-ai-tools/issues/2056)) ([d5e8f77](https://github.com/yschimke/compose-ai-tools/commit/d5e8f77b220873ad58043ef186ded24522be041b))
+* **deploy:** install Mesa software GL so Skiko renders headless ([#2069](https://github.com/yschimke/compose-ai-tools/issues/2069)) ([e5d97d8](https://github.com/yschimke/compose-ai-tools/commit/e5d97d8d8174f7e2ce8b8645888f4ed87c63ce71))
+* **renderer:** re-capture animation/scroll/focus frames that fail to decode ([#2082](https://github.com/yschimke/compose-ai-tools/issues/2082)) ([41c8926](https://github.com/yschimke/compose-ai-tools/commit/41c8926dcdba41c731d83d8f3848a0042ce4df4a))
+* **renderer:** settle END scroll captures so the Wear EdgeButton renders at rest ([3ed856c](https://github.com/yschimke/compose-ai-tools/commit/3ed856c5e1df6002399317ca60aefdb61db1e7a0))
+* **samples:** make Wear EdgeButton sticker render deterministic ([#2051](https://github.com/yschimke/compose-ai-tools/issues/2051)) ([46f69c1](https://github.com/yschimke/compose-ai-tools/commit/46f69c1185fa461e083b9fd47c443e8eaabd38e1))
+* **serve:** retry coalesced renders, cap concurrency, bound frame time ([#2071](https://github.com/yschimke/compose-ai-tools/issues/2071)) ([71be715](https://github.com/yschimke/compose-ai-tools/commit/71be7153de10212eb02c23d5f206dbe90c77c4e7))
+
 ## [0.16.2](https://github.com/yschimke/compose-ai-tools/compare/v0.16.1...v0.16.2) (2026-06-22)
 
 
