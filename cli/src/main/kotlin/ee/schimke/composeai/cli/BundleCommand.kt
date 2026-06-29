@@ -64,6 +64,9 @@ class BundleCommand(args: List<String>) : Command(args) {
       "extract" -> ExtractSubcommand(subArgs).run()
       "embed" -> EmbedSubcommand(subArgs).run()
       "render" -> RenderSubcommand(subArgs).run()
+      "keygen" -> KeygenSubcommand(subArgs).run()
+      "sign" -> SignSubcommand(subArgs).run()
+      "verify" -> VerifySubcommand(subArgs).run()
       "daemon" -> BundleDaemonCommand(subArgs).run()
       null,
       "help",
@@ -93,7 +96,17 @@ class BundleCommand(args: List<String>) : Command(args) {
         compose-preview bundle extract <bundle.png | URL> [-o <dir>]
         compose-preview bundle embed   <bundle.png | URL> [-o <dir|file.png>] [--title T] [--external-images] [--in-bundle]
         compose-preview bundle render  <bundle.png | URL> [-o <dir>]   (v1: stub — prints what would render)
+        compose-preview bundle keygen  [-o <key.pem>] [--key-id <id>]  (mint an Ed25519 signing keypair)
+        compose-preview bundle sign    <bundle.png> --key <private-key> --key-id <id> [--producer <name>]
+        compose-preview bundle verify  <bundle.png | URL> [--trust <store.json>] [--origin <repo@branch>]
         compose-preview bundle daemon  <bundle.png | URL> [-v]         (spawn the desktop daemon over stdio)
+
+      Signing (producer trust for the public preview server):
+        keygen  Mint an Ed25519 keypair; prints a ready-to-paste trust-store \"keys\" entry.
+        sign    Append a detached signature over the bundle's canonical digest (idempotent per key-id;
+                multiple producers can each sign). --provenance-identity attaches a CI OIDC identity.
+        verify  Check a bundle against a trust store and print the verdict (signature / branch /
+                provenance, or why it's unverified). Exit 3 when unverified.
 
       Pack flags:
         --id <preview-id>   Preview to include. Repeatable. First is the cover. Default: all.
@@ -692,6 +705,33 @@ internal fun injectSidecarsIntoBundle(
   val newZip = addOrReplaceZipEntries(zip, entries)
 
   val tmp = File(bundleFile.parentFile, "${bundleFile.name}.sidecar-tmp")
+  fileSystem.write(tmp.path.toPath()) {
+    write(prefix)
+    write(newZip)
+  }
+  fileSystem.atomicMove(tmp.path.toPath(), bundleFile.path.toPath())
+  return entries.size
+}
+
+/**
+ * Inject arbitrary top-level entries (posix zip path → bytes) into [bundleFile]'s zip portion **in
+ * place**, preserving the leading PNG cover and every existing entry; an entry with a colliding
+ * path is replaced (idempotent). Unlike [injectSidecarsIntoBundle] the paths are used verbatim (no
+ * `previews/` prefix), so this is the carrier for whole-bundle sidecars like `signatures.json`.
+ * Same temp-sibling + atomic-move + DOS-epoch contract as the other injectors. Returns the count
+ * written.
+ */
+internal fun injectRawZipEntries(
+  bundleFile: File,
+  entries: Map<String, ByteArray>,
+  fileSystem: FileSystem = SystemFileSystem,
+): Int {
+  if (entries.isEmpty()) return 0
+  val full = fileSystem.read(bundleFile.path.toPath()) { readByteArray() }
+  val zip = BundleReader.extractZipBytes(bundleFile)
+  val prefix = full.copyOfRange(0, full.size - zip.size)
+  val newZip = addOrReplaceZipEntries(zip, entries)
+  val tmp = File(bundleFile.parentFile, "${bundleFile.name}.rawentry-tmp")
   fileSystem.write(tmp.path.toPath()) {
     write(prefix)
     write(newZip)
