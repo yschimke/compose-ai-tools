@@ -6,6 +6,7 @@ import ee.schimke.composeai.cli.serve.RenderOutcome
 import ee.schimke.composeai.cli.serve.ServeBundle
 import ee.schimke.composeai.cli.serve.ServeBundleHost
 import ee.schimke.composeai.cli.serve.ServeBundleStore
+import ee.schimke.composeai.cli.serve.ServeCatalogStore
 import ee.schimke.composeai.cli.serve.ServeHost
 import ee.schimke.composeai.cli.serve.ServeHttpServer
 import ee.schimke.composeai.cli.serve.ServeMdnsAdvertiser
@@ -117,6 +118,23 @@ class ServeCommand(args: List<String>) : Command(args) {
    */
   private val trustStorePath: String? = args.flagValue("--trust-store")
 
+  /** Resolved once, reused by the upload store and the catalog store. */
+  private val resolvedTrust: TrustStore by lazy { loadTrustStore() }
+
+  /**
+   * Design systems to serve from their published `design-artifacts/<system>` branches (`--catalogs
+   * compose-m3,wear-m3`): each is fetched (catalog.json + images) and registered as a read-only
+   * `?session=<system>` session, trusted-by-origin when the branch is in the trust store.
+   */
+  private val catalogs: List<String> =
+    args.flagValue("--catalogs")?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
+      ?: emptyList()
+  private val catalogRepo: String =
+    args.flagValue("--catalog-repo")?.takeIf { it.isNotBlank() } ?: ServeCatalogStore.DEFAULT_REPO
+  private val catalogBranchPrefix: String =
+    args.flagValue("--catalog-branch-prefix")?.takeIf { it.isNotBlank() }
+      ?: ServeCatalogStore.DEFAULT_BRANCH_PREFIX
+
   override fun run() {
     if ("--help" in args || "-h" in args) {
       printUsage()
@@ -227,6 +245,8 @@ class ServeCommand(args: List<String>) : Command(args) {
     registerBundles().forEach { (id, bundleHost) ->
       registry.register(id, host = bundleHost, pinned = true)
     }
+    // Serve our published design systems from their trusted `design-artifacts/<system>` branches.
+    if (catalogs.isNotEmpty()) registerCatalogs(registry)
     // Runtime ingestion (--accept-bundles): clients POST a bundle (or a ?url= to one) and it's
     // registered as a pinned session. Unpacked under a temp dir for this server's lifetime.
     val bundleStore =
@@ -245,7 +265,7 @@ class ServeCommand(args: List<String>) : Command(args) {
           root = uploads,
           register = { id, bundleHost -> registry.register(id, host = bundleHost, pinned = true) },
           allowedHosts = acceptBundlesFrom,
-          trust = loadTrustStore(),
+          trust = resolvedTrust,
         )
       } else {
         null
@@ -400,6 +420,36 @@ class ServeCommand(args: List<String>) : Command(args) {
       )
     }
     return result
+  }
+
+  /**
+   * Fetch each `--catalogs` design system from its `design-artifacts/<system>` branch and register
+   * it as a pinned `?session=<system>` session ([ServeCatalogStore]). Trusted-by-origin when the
+   * branch is in the trust store; otherwise served as `unverified` (the images execute no code).
+   * Best-effort per system — one catalog failing to fetch doesn't sink the others or the server.
+   */
+  private fun registerCatalogs(registry: ServeSessionRegistry) {
+    val dir =
+      java.nio.file.Files.createTempDirectory("serve-catalogs").toFile().also { it.deleteOnExit() }
+    val store =
+      ServeCatalogStore(
+        root = dir,
+        register = { id, host -> registry.register(id, host = host, pinned = true) },
+        trust = resolvedTrust,
+        repo = catalogRepo,
+        branchPrefix = catalogBranchPrefix,
+      )
+    for (system in catalogs) {
+      when (val r = store.load(system)) {
+        is ServeCatalogStore.Result.Ok ->
+          System.err.println(
+            "serve: catalog ${r.system} → ${r.previewCount} preview(s), trust=${r.trust} " +
+              "(?session=${r.system})"
+          )
+        is ServeCatalogStore.Result.Failed ->
+          System.err.println("serve: catalog ${r.system} not served: ${r.reason}")
+      }
+    }
   }
 
   /**
@@ -565,6 +615,15 @@ class ServeCommand(args: List<String>) : Command(args) {
                           Uploaded bundles are verified against it and the verdict (signature /
                           branch / provenance / unverified) is returned + badged. Omitted = trust
                           nothing (every upload unverified); the data tiers serve either way.
+        --catalogs <system>[,<system>…]
+                          Serve our published design systems from their design-artifacts/<system>
+                          branches (e.g. compose-m3,wear-m3): each is fetched (catalog.json + images)
+                          and served read-only at ?session=<system>, trusted-by-origin when the
+                          branch is in --trust-store.
+        --catalog-repo <owner/repo>
+                          Repo the catalogs are fetched from (default yschimke/compose-ai-tools).
+        --catalog-branch-prefix <prefix>
+                          Branch prefix for --catalogs (default design-artifacts/).
 
       The shareable link carries an unguessable token; requests without it get 404.
       """
