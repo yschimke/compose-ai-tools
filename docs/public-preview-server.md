@@ -55,6 +55,11 @@ So: **CMP renders in the browser** (Wasm sandbox), **Compose Android uses the se
 PNG** is the universal fallback when an image is needed. Remote Compose / Protolayout are *separate,
 data-only* formats — the safest uploads.
 
+The CMP-Wasm tier is built (`:samples:cmp-wasm-catalog`, see
+[`wasm-cmp-spike.md`](wasm-cmp-spike.md)): with `--wasm-dir <system>=<dist>`, a CMP catalog session's
+viewer shows a **"Run in browser (Wasm)"** toggle that mounts the M3 components client-side in a
+sandboxed iframe — no server round-trip, so safe even for an unverified session.
+
 ## Running one
 
 ```bash
@@ -62,6 +67,7 @@ compose-preview serve \
   --module :samples:design-catalog-m3 \   # a base module is the default session
   --public \                              # open every route (no token)
   --catalogs compose-m3,wear-m3 \         # serve the published design systems
+  --wasm-dir compose-m3=build/wasmDist \  # in-browser CMP tier (./gradlew :samples:cmp-wasm-catalog:wasmCatalogDist)
   --accept-bundles \                      # accept client bundle uploads
   --trust-store trust/producers.json \    # who we trust
   --host 0.0.0.0 --port 8080
@@ -80,4 +86,6 @@ compose-preview serve \
 
 `GET /` index · `GET /p/{id}?session=<s>` viewer · `GET /render/{id}.png` PNG ·
 `GET /api/previews` JSON (now includes `trust`) · `POST /bundles/{name}` upload (returns `trust`) ·
-`GET /healthz`. In `--public` mode all are open; otherwise the token gates everything but `/healthz`.
+`GET /wasm/{system}/…` in-browser CMP app (ungated static assets) · `GET /healthz`. In `--public`
+mode all are open; otherwise the token gates everything but `/healthz` and `/wasm/` (static, no
+session data).

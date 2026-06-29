@@ -43,13 +43,29 @@ components in `commonMain` (CMP `material3`, no Android `@Preview`), mounting th
   in-browser tier — server frames + baked PNG only. The report generator gates the Wasm callout to
   `compose-m3` (`WASM_CATALOG_SYSTEMS` in `scripts/design-artifacts/live-preview.mjs`).
 
+## Wired into the serve viewer (built)
+
+`compose-preview serve --wasm-dir <system>=<build/wasmDist>` serves the assembled app, ungated, at
+`/wasm/<system>/`, and that system's viewer gains a **"Run in browser (Wasm)"** toggle that mounts it
+in a sandboxed `<iframe>` at the `data-mode="live"` seam. The catalog preview id maps to the Wasm
+component by its first `__`-segment (the component slug); the Theme dropdown re-points `?uiMode=`.
+End-to-end in headless Chromium — the M3 component renders **client-side**, in-page, no server render:
+
+![Serve viewer with the Wasm tier mounted](images/wasm-cmp-viewer-mounted.png)
+
+**Sandbox + CORS.** The iframe is `sandbox="allow-scripts"` (no `allow-same-origin`), so it has an
+opaque origin and can't touch the parent — which keeps it safe to run even *untrusted* wasm
+client-side. That opaque origin makes the app's own ES-module + wasm fetches cross-origin, so the
+`/wasm/` route sends `Access-Control-Allow-Origin: *` (safe — public static client assets, no session
+data). This preserves the strong isolation the per-bundle (model 2) path will rely on.
+
 ## Remaining (fast-follow)
 
-- **Server route + viewer mount.** Serve the assembled `build/wasmDist/` at `/wasm/<system>/` and
-  mount it in the viewer's sandboxed `<iframe>` at the `data-mode="live"` seam (the URL contract
-  `wasmLiveUrl` already emits, and the README's "Run it in your browser" link, point here).
 - **Production `wasm-opt` size** once the operator enables the Binaryen path.
-- **Model 2** (per-bundle CMP Wasm) — still deferred behind `--with-wasm`.
+- **Deploy wiring** — build `:samples:cmp-wasm-catalog:wasmCatalogDist` in the public-server image and
+  pass `--wasm-dir compose-m3=<dist>`; then regenerate `design-artifacts/compose-m3` so its
+  "Run it in your browser" link resolves.
+- **Model 2** (per-bundle CMP Wasm) — still deferred behind `--with-wasm`; reuses this iframe seam.
 
 ---
 

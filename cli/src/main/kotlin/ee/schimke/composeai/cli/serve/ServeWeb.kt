@@ -39,6 +39,7 @@ object ServeWeb {
       background: repeating-conic-gradient(#f4f4f6 0% 25%, #fff 0% 50%) 50% / 16px 16px; padding: 12px;
       display: flex; align-items: center; justify-content: center; min-height: 320px; }
     .cp-stage img, .cp-stage canvas { max-width: 100%; height: auto; }
+    .cp-stage iframe { width: 100%; height: 320px; border: 0; background: transparent; }
     .cp-live-row { flex-direction: row !important; align-items: center; gap: 6px !important; }
     .cp-controls { flex: 0 0 240px; display: flex; flex-direction: column; gap: 14px; }
     .cp-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; }
@@ -129,19 +130,42 @@ object ServeWeb {
     )
   }
 
-  /** Viewer page for one preview: an `<img>` driven by the override controls. */
+  /**
+   * Viewer page for one preview: an `<img>` driven by the override controls.
+   *
+   * [wasmSrc] (non-null only for a CMP catalog session the server carries a Wasm app for) adds a
+   * "Run in browser (Wasm)" toggle that mounts that app in a sandboxed `<iframe>` at the
+   * `data-mode="live"` seam — the M3 component renders **client-side** (no server round-trip), so
+   * it's safe to run even for an unverified session. The theme dropdown re-points the iframe's
+   * `?uiMode=`. Absent ⇒ the page is exactly the snapshot viewer as before.
+   */
   fun viewerPage(
     preview: ServePreview,
     token: String,
     sessionId: String? = null,
     canApplyOverrides: Boolean = false,
     trust: String? = null,
+    wasmSrc: String? = null,
   ): String {
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
     val q = queryString(token, sessionId)
     val label = WebEscaping.htmlEscape(preview.label)
     val idText = WebEscaping.htmlEscape(preview.id)
     val modes = preview.modes.joinToString(",") { it.wire }
+    // The Wasm tier is opt-in via a toggle (like "Live (stream)"), so the always-works PNG snapshot
+    // stays the default. Both the iframe and the toggle are omitted entirely when no Wasm app backs
+    // this session.
+    val wasmAttr =
+      if (wasmSrc != null) " data-wasm-src=\"${WebEscaping.htmlEscape(wasmSrc)}\"" else ""
+    val wasmFrame =
+      if (wasmSrc != null)
+        "<iframe id=\"cp-wasm\" hidden sandbox=\"allow-scripts\" title=\"$label (Wasm)\"></iframe>"
+      else ""
+    val wasmToggle =
+      if (wasmSrc != null)
+        "<label class=\"cp-live-row\"><input id=\"cp-wasm-toggle\" type=\"checkbox\"> " +
+          "Run in browser (Wasm)</label>"
+      else ""
     val deviceOptions =
       COMMON_DEVICES.joinToString("\n") { (value, name) ->
         val v = WebEscaping.htmlEscape(value)
@@ -151,10 +175,11 @@ object ServeWeb {
       """
       <p class="cp-head"><a href="/?$q">← previews</a>${trustBadge(trust)}</p>
       <p class="cp-sub" title="$idText">$label</p>
-      <div class="cp-viewer" data-preview-id="$idText" data-mode="snapshot" data-modes="$modes">
-        <div class="cp-stage"><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas></div>
+      <div class="cp-viewer" data-preview-id="$idText" data-mode="snapshot" data-modes="$modes"$wasmAttr>
+        <div class="cp-stage"><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$wasmFrame</div>
         <div class="cp-controls">
           <label class="cp-live-row"><input id="cp-live" type="checkbox"> Live (stream)</label>
+          $wasmToggle
           <label>Theme
             <select id="cp-uiMode">
               <option value="">(default)</option>
@@ -384,7 +409,34 @@ object ServeWeb {
         canvas.hidden = true;
         img.hidden = false;
       }
+      // --- Wasm tier (the in-browser CMP app, mounted in a sandboxed iframe). Only wired when the
+      // session carries a Wasm app (data-wasm-src present). The theme dropdown re-points ?uiMode=.
+      var wasmFrame = document.getElementById("cp-wasm");
+      var wasmToggle = document.getElementById("cp-wasm-toggle");
+      var wasmSrc = root.getAttribute("data-wasm-src") || "";
+      function wasmUrl() {
+        var el = document.getElementById("cp-uiMode");
+        var mode = el && el.value ? el.value : "";
+        return wasmSrc + (mode ? (wasmSrc.indexOf("?") >= 0 ? "&" : "?") + "uiMode=" +
+          encodeURIComponent(mode) : "");
+      }
+      function openWasm() {
+        // Wasm and the daemon stream are mutually exclusive — only one transport drives the stage.
+        if (live.checked) { live.checked = false; closeStream(); }
+        root.setAttribute("data-mode", "wasm");
+        img.hidden = true; canvas.hidden = true; wasmFrame.hidden = false;
+        wasmFrame.src = wasmUrl();
+        status.textContent = "";
+      }
+      function closeWasm() {
+        root.setAttribute("data-mode", "snapshot");
+        wasmFrame.hidden = true; wasmFrame.removeAttribute("src");
+        img.hidden = false;
+      }
+      function wasmActive() { return wasmToggle && wasmToggle.checked; }
+
       function onControlsChanged() {
+        if (wasmActive()) { wasmFrame.src = wasmUrl(); return; }
         if (live.checked && ws && ws.readyState === 1) {
           ws.send(JSON.stringify({ type: "setOverrides", overrides: overrides() }));
         } else if (!live.checked) {
@@ -393,9 +445,17 @@ object ServeWeb {
       }
 
       live.addEventListener("change", function () {
-        if (live.checked) openStream();
-        else { closeStream(); refreshSnapshot(); }
+        if (live.checked) {
+          if (wasmToggle && wasmToggle.checked) { wasmToggle.checked = false; closeWasm(); }
+          openStream();
+        } else { closeStream(); refreshSnapshot(); }
       });
+      if (wasmToggle) {
+        wasmToggle.addEventListener("change", function () {
+          if (wasmToggle.checked) openWasm();
+          else { closeWasm(); refreshSnapshot(); }
+        });
+      }
       if (fs) {
         fs.addEventListener("input", function () {
           fsVal.textContent = fs.value;

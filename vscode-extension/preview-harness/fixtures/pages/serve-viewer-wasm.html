@@ -3,7 +3,7 @@
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Profile screen — compose-preview</title>
+        <title>Card — compose-preview</title>
         <style>:root { color-scheme: light dark; }
 * { box-sizing: border-box; }
 body { margin: 0; padding: 24px; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
@@ -50,13 +50,13 @@ a:hover { text-decoration: underline; }
 }</style>
       </head>
       <body>
-              <p class="cp-head"><a href="/?token=demo-token-fixture">← previews</a> <span class="cp-badge cp-badge--unverified" title="producer trust: unverified">⚠ unverified</span></p>
-      <p class="cp-sub" title="com.example.ProfileScreenPreview">Profile screen</p>
-      <div class="cp-viewer" data-preview-id="com.example.ProfileScreenPreview" data-mode="snapshot" data-modes="snapshot,live">
-        <div class="cp-stage"><img id="cp-img" alt="Profile screen"><canvas id="cp-canvas" hidden></canvas></div>
+              <p class="cp-head"><a href="/?token=demo-token-fixture&session=compose-m3">← previews</a> <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ branch:yschimke/compose-ai-tools@design-artifacts/compose-m3</span></p>
+      <p class="cp-sub" title="com.example.CardPreview">Card</p>
+      <div class="cp-viewer" data-preview-id="com.example.CardPreview" data-mode="snapshot" data-modes="snapshot,live" data-wasm-src="/wasm/compose-m3/?id=card-filled">
+        <div class="cp-stage"><img id="cp-img" alt="Card"><canvas id="cp-canvas" hidden></canvas><iframe id="cp-wasm" hidden sandbox="allow-scripts" title="Card (Wasm)"></iframe></div>
         <div class="cp-controls">
           <label class="cp-live-row"><input id="cp-live" type="checkbox"> Live (stream)</label>
-          
+          <label class="cp-live-row"><input id="cp-wasm-toggle" type="checkbox"> Run in browser (Wasm)</label>
           <label>Theme
             <select id="cp-uiMode">
               <option value="">(default)</option>

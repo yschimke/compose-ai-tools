@@ -23,6 +23,7 @@ import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.InputStream
 import java.net.InetAddress
 import java.net.ServerSocket
@@ -68,6 +69,15 @@ class ServeHttpServer(
    * default, so a normal `serve` stays token-gated (a bad/absent token still 404s).
    */
   private val isPublic: Boolean = false,
+  /**
+   * In-browser CMP tier: system id → the assembled Wasm app directory (the
+   * `:samples:cmp-wasm-catalog:wasmCatalogDist` output). When a catalog session's id is a key here,
+   * its viewer offers a "Run in browser (Wasm)" toggle that mounts `/wasm/<system>/?id=<component>`
+   * in a sandboxed iframe. The assets are static, generic client code (the same app for everyone,
+   * no session data), so the `/wasm/` route is **ungated** — letting the iframe's relative
+   * `fetch('./composeApp.wasm')` work without threading the token through every sub-resource.
+   */
+  private val wasmCatalogs: Map<String, File> = emptyMap(),
   portRange: Int = DEFAULT_PORT_RANGE,
   /**
    * Max renders in flight across the HTTP `/render` lane. Defaults to the host's CPU count so a
@@ -88,6 +98,42 @@ class ServeHttpServer(
       routing {
         // `/healthz` is the only ungated route — liveness only, leaks nothing.
         get("/healthz") { call.respondText("ok") }
+
+        // In-browser CMP tier: serve the static Wasm app for a registered system at
+        // `/wasm/<system>/<file>`. Ungated (generic client code, no session data) so the viewer's
+        // sandboxed iframe and its relative asset fetches work without a token. Registered only
+        // when
+        // the operator mapped a system to its built dist (`--wasm-dir`).
+        if (wasmCatalogs.isNotEmpty()) {
+          get("/wasm/{system}/{path...}") {
+            val dir = call.parameters["system"]?.let { wasmCatalogs[it] }
+            if (dir == null) {
+              call.respondText("not found", status = HttpStatusCode.NotFound)
+              return@get
+            }
+            val segments = call.parameters.getAll("path").orEmpty().filter { it.isNotEmpty() }
+            val rel = if (segments.isEmpty()) "index.html" else segments.joinToString("/")
+            val base = dir.toPath().toAbsolutePath().normalize()
+            val resolved = base.resolve(rel).normalize()
+            // Zip-slip guard: a crafted `../` path must not escape the app directory.
+            if (!resolved.startsWith(base)) {
+              call.respondText("not found", status = HttpStatusCode.NotFound)
+              return@get
+            }
+            val file = resolved.toFile()
+            if (!file.isFile) {
+              call.respondText("not found", status = HttpStatusCode.NotFound)
+              return@get
+            }
+            val bytes = withContext(Dispatchers.IO) { file.readBytes() }
+            // The viewer mounts this app in a `sandbox="allow-scripts"` iframe, which has an opaque
+            // (null) origin — so the app's own ES-module + wasm fetches count as cross-origin and
+            // need CORS. `*` is safe: these are public static client assets with no session data,
+            // and keeping the strong sandbox (no `allow-same-origin`) isolates even untrusted wasm.
+            call.response.headers.append(HttpHeaders.AccessControlAllowOrigin, "*")
+            call.respondBytes(bytes, wasmContentType(file.name))
+          }
+        }
 
         // Shared/public mode ingestion: a client contributes a pre-rendered bundle (upload the zip
         // as the body, or pass `?url=` to a build-results artifact) and gets back a ?session= link.
@@ -290,6 +336,7 @@ class ServeHttpServer(
 
         get("/p/{name}") {
           if (rejectBadToken()) return@get
+          val sessionId = call.request.queryParameters["session"] ?: defaultSessionId
           withLeasedSession { renderHost ->
             val previewId = call.parameters["name"]
             val preview = previewId?.let { id -> renderHost.previews.firstOrNull { it.id == id } }
@@ -297,6 +344,17 @@ class ServeHttpServer(
               call.respondText("no such preview", status = HttpStatusCode.NotFound)
               return@withLeasedSession
             }
+            // Offer the in-browser Wasm tier when this catalog session has a Wasm app registered.
+            // The catalog preview id is `<component-slug>__<variant>…`; the Wasm app keys its
+            // registry by the component slug, so take the segment before the first `__`.
+            val wasmSrc =
+              if (wasmCatalogs.containsKey(sessionId)) {
+                val componentId = preview.id.substringBefore("__")
+                "/wasm/${WebEscaping.urlEncodeSegment(sessionId)}/" +
+                  "?id=${WebEscaping.urlEncodeSegment(componentId)}"
+              } else {
+                null
+              }
             call.respondText(
               ServeWeb.viewerPage(
                 preview,
@@ -304,6 +362,7 @@ class ServeHttpServer(
                 call.request.queryParameters["session"],
                 canApplyOverrides = renderHost.canApplyOverrides,
                 trust = (renderHost as? ServeBundleHost)?.let { BundleVerifier.summary(it.trust) },
+                wasmSrc = wasmSrc,
               ),
               ContentType.Text.Html,
             )
@@ -426,6 +485,20 @@ class ServeHttpServer(
     private const val MAX_UPLOAD_BYTES = 100L * 1024 * 1024
 
     private val JSON = Json { encodeDefaults = true }
+
+    /**
+     * Content type for a Wasm-app asset by extension. `application/wasm` matters: the browser's
+     * `WebAssembly.instantiateStreaming` rejects a wasm served as `octet-stream`. `.mjs`/`.js` must
+     * be a JS type so the ES-module loader runs.
+     */
+    internal fun wasmContentType(name: String): ContentType =
+      when {
+        name.endsWith(".html") -> ContentType.Text.Html
+        name.endsWith(".mjs") || name.endsWith(".js") -> ContentType.parse("text/javascript")
+        name.endsWith(".wasm") -> ContentType.parse("application/wasm")
+        name.endsWith(".json") || name.endsWith(".map") -> ContentType.Application.Json
+        else -> ContentType.Application.OctetStream
+      }
 
     /**
      * Read [input] fully, or `null` once it exceeds [max] bytes (without buffering past the cap).

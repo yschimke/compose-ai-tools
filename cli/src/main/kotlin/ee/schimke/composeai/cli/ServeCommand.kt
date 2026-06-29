@@ -137,6 +137,22 @@ class ServeCommand(args: List<String>) : Command(args) {
   private val catalogs: List<String> =
     args.flagValue("--catalogs")?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
       ?: emptyList()
+  /**
+   * In-browser CMP tier (`--wasm-dir <system>=<dir>[,<system>=<dir>…]`): map a design system to the
+   * assembled Wasm catalog app (`./gradlew :samples:cmp-wasm-catalog:wasmCatalogDist` →
+   * `build/wasmDist`). Its viewer then offers a "Run in browser (Wasm)" toggle that mounts the app
+   * client-side. Missing dirs are dropped with a warning. Empty ⇒ no Wasm tier.
+   */
+  private val wasmDirs: Map<String, File> =
+    args
+      .flagValue("--wasm-dir")
+      ?.split(",")
+      ?.mapNotNull { entry ->
+        val eq = entry.indexOf('=')
+        if (eq <= 0) null else entry.substring(0, eq).trim() to File(entry.substring(eq + 1).trim())
+      }
+      ?.toMap() ?: emptyMap()
+
   private val catalogRepo: String =
     args.flagValue("--catalog-repo")?.takeIf { it.isNotBlank() } ?: ServeCatalogStore.DEFAULT_REPO
   private val catalogBranchPrefix: String =
@@ -278,6 +294,23 @@ class ServeCommand(args: List<String>) : Command(args) {
       } else {
         null
       }
+    // In-browser CMP tier: keep only the `--wasm-dir` entries whose directory actually holds the
+    // assembled app (index.html), warning on the rest, so a typo'd path doesn't silently advertise
+    // a
+    // broken "Run in browser" toggle.
+    val wasmCatalogs = wasmDirs.filter { (system, dir) ->
+      val ok = File(dir, "index.html").isFile
+      if (!ok) {
+        System.err.println(
+          "serve: --wasm-dir $system=${dir.path} has no index.html — skipping (build it with " +
+            ":samples:cmp-wasm-catalog:wasmCatalogDist)."
+        )
+      }
+      ok
+    }
+    if (wasmCatalogs.isNotEmpty()) {
+      System.err.println("serve: in-browser Wasm tier for: ${wasmCatalogs.keys.joinToString(", ")}")
+    }
     val server =
       ServeHttpServer(
         host = host,
@@ -287,6 +320,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         defaultSessionId = module.gradlePath,
         bundleStore = bundleStore,
         isPublic = public,
+        wasmCatalogs = wasmCatalogs,
       )
 
     // Advertise on the LAN over mDNS when bound to a reachable interface (`--lan`), so the mobile /
@@ -643,6 +677,12 @@ class ServeCommand(args: List<String>) : Command(args) {
                           Repo the catalogs are fetched from (default yschimke/compose-ai-tools).
         --catalog-branch-prefix <prefix>
                           Branch prefix for --catalogs (default design-artifacts/).
+        --wasm-dir <system>=<dir>[,<system>=<dir>…]
+                          In-browser CMP tier: map a design system to its assembled Kotlin/Wasm
+                          catalog app (./gradlew :samples:cmp-wasm-catalog:wasmCatalogDist →
+                          build/wasmDist). That session's viewer then offers a "Run in browser
+                          (Wasm)" toggle that mounts the M3 components client-side (no server
+                          round-trip), served read-only at /wasm/<system>/. Missing dirs are skipped.
 
       The shareable link carries an unguessable token; requests without it get 404.
       """
