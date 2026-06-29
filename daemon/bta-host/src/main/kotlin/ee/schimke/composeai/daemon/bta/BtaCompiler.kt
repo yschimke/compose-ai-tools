@@ -176,9 +176,10 @@ class BtaCompiler(
     compilerPlugins: List<CompilerPlugin>,
     moduleName: String,
   ) {
-    // Kotlin 2.4.0's Build Tools API retyped CLASSPATH from a path-separator-joined
-    // `String` to `List<Path>?`; pass the list straight through.
-    args.set(JvmCompilerArguments.CLASSPATH, compileClasspath)
+    args.set(
+      JvmCompilerArguments.CLASSPATH,
+      compileClasspath.joinToString(separator = java.io.File.pathSeparator) { it.toString() },
+    )
     args.set(JvmCompilerArguments.JVM_TARGET, JvmTarget.JVM_17)
     args.set(JvmCompilerArguments.MODULE_NAME, moduleName)
     if (compilerPlugins.isNotEmpty()) {

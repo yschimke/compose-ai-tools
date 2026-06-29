@@ -1,5 +1,5 @@
 [versions]
-kotlin = "2.4.0"
+kotlin = "2.3.21"
 # Kotlin language/api floor for published modules. Set lower than `kotlin`
 # so consumers on an older Kotlin can still link against our artifacts —
 # tapmoc enforces this and fails the build if a transitive API dep raises
@@ -177,7 +177,7 @@ material-kolor = "4.0.5"
 # subtree (see `settings.gradle.kts`) — the rest of the repo can keep
 # building under JDK 17. Kotlin 2.3.21 is supported per Metro's
 # compatibility table (`docs/compatibility.md` upstream).
-metro = "1.2.1"
+metro = "1.1.1"
 # Jake Wharton's Mosaic — Compose-based TUI library, used by the `:tui-cli` module.
 # 0.18.0-1 is a release published by the fork at `yschimke/mosaic@compose-ai-tools` under the
 # `ee.schimke.composeai.mosaic` group, which adds the `RawText` + `Image` composables proposed
