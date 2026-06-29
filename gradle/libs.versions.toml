@@ -84,6 +84,16 @@ xr-glimmer = "1.0.0-alpha14"
 # pipeline (see docs/design/XR_SPATIAL_PREVIEW.md). Alpha14 was published
 # 2026-05-19.
 xr-compose = "1.0.0-alpha15"
+# XR `*-testing` fakes injected onto the offline render/test classpath (the
+# Robolectric `composePreviewRenderXr` path + `:renderer-xr` / sample tests).
+# Single source of truth: the plugin bakes these into a generated resource (see
+# `gradle-plugin/build.gradle.kts`) so the hard injection in
+# `AndroidPreviewSupport.kt` can't drift from the catalog. The runtime/scenecore
+# alpha line runs one ahead of the compose/arcore line — bump together with
+# `xr-compose`.
+xr-runtime-testing = "1.0.0-alpha15"
+xr-scenecore-testing = "1.0.0-alpha16"
+xr-arcore-testing = "1.0.0-alpha15"
 # `androidx.wear:wear` carries `androidx.wear.ambient.AmbientLifecycleObserver` —
 # the AOSP entry point both horologist's `AmbientAware` and direct subscribers
 # wrap. Used only by `:data-ambient-connector` (the Robolectric shadow + state
@@ -267,7 +277,9 @@ xr-compose-testing = { module = "androidx.xr.compose:compose-testing", version.r
 # `rotateToLookAtUser` (the "face the viewer" billboard modifier reads the head
 # pose from an `ArDevice` perception job). Pinned literally like the other XR
 # `*-testing` artifacts; bump alongside `xr-compose`.
-xr-arcore-testing = { module = "androidx.xr.arcore:arcore-testing", version = "1.0.0-alpha15" }
+xr-arcore-testing = { module = "androidx.xr.arcore:arcore-testing", version.ref = "xr-arcore-testing" }
+xr-runtime-testing = { module = "androidx.xr.runtime:runtime-testing", version.ref = "xr-runtime-testing" }
+xr-scenecore-testing = { module = "androidx.xr.scenecore:scenecore-testing", version.ref = "xr-scenecore-testing" }
 wear-tooling-preview = { module = "androidx.wear:wear-tooling-preview", version.ref = "wear-tooling-preview" }
 wear = { module = "androidx.wear:wear", version.ref = "wear" }
 horologist-compose-layout = { module = "com.google.android.horologist:horologist-compose-layout", version.ref = "horologist" }
