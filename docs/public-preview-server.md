@@ -1,0 +1,115 @@
+# The public preview server
+
+`compose-preview serve` can run as a **public** preview server (the deployment behind
+`preview.coo.ee`) with two things to show:
+
+1. **Uploaded bundles** — anyone can `POST /bundles/<name>` a portable bundle (or point at one with
+   `?url=`) and get a shareable `?session=<name>` link. The server shows the bundle's **data tiers**
+   (baked PNGs, Remote Compose / Protolayout / Lottie IR) for any uploader, and reports a **trust
+   verdict** so you can tell a bundle from a producer you trust from an anonymous one.
+2. **The design systems we publish** — `--catalogs compose-m3,wear-m3` fetches each published
+   `design-artifacts/<system>` catalog and serves it read-only at `?session=<system>`. Browsing that
+   branch and opening a live, customisable render are then two ends of one workflow (the branch's
+   README + `catalog.json` carry `livePreview` deep links back here).
+
+## Two axes: trust × format
+
+These are orthogonal. **Trust** decides attribution; **format** decides what draws the pixels. Neither
+ever lets untrusted code run *on the server*.
+
+### Trust
+
+A bundle/catalog is `Trusted(by …)` or `Unverified`. Trust gates only **server-side re-render** of a
+bundle's *executable* Compose; the data tiers serve regardless. Three bases (`--trust-store
+trust/producers.json`):
+
+| Basis | How | Strength |
+|---|---|---|
+| **Signature** | An Ed25519 `signatures.json` signed by a key in the store's `keys` (`bundle sign`). | Strongest — cryptographic, offline. |
+| **Branch** | The server fetched the catalog from a branch in the store's `branches` (e.g. `design-artifacts/*`). | Origin/TLS trust. |
+| **Provenance** | A CI OIDC identity in the store's `oidc`. | Advisory — annotates an already-signature-verified bundle; full Sigstore/Rekor is a follow-up. |
+
+Empty store ⇒ trust nothing (fail-closed). See [`trust/producers.json`](../trust/producers.json) for
+the starter, and `compose-preview bundle keygen | sign | verify` to mint a key, sign a bundle, and
+check a verdict.
+
+The landing + viewer pages **badge** the session's verdict — green ✓ for a trusted
+signature/branch/provenance, amber ⚠ for `unverified` (a live daemon-backed module carries no
+badge):
+
+![Trusted session badge on the landing page](images/serve-trust-badge-trusted.png)
+
+![Unverified session badge on the viewer page](images/serve-trust-badge-unverified.png)
+
+### Format (each its own renderer; none executes code on the server)
+
+| Format | In-browser | Server render | Data-only / safe | Server render needs trust |
+|---|---|---|---|---|
+| **Compose Android** | — | Robolectric (daemon) | no (runs Kotlin) | **yes** |
+| **Compose MP (CMP)** | **Kotlin/Wasm** (browser sandbox) | Skiko desktop (daemon) | no (runs Kotlin) | server: **yes**; Wasm: sandboxed |
+| **Remote Compose** | RemoteDocument player | player | **yes** | no |
+| **Protolayout / Lottie** | web player | renderer | **yes** | no |
+| **Baked PNG** | `<img>` | — | **yes** | no |
+
+So: **CMP renders in the browser** (Wasm sandbox), **Compose Android uses the server**, and a **baked
+PNG** is the universal fallback when an image is needed. Remote Compose / Protolayout are *separate,
+data-only* formats — the safest uploads.
+
+The CMP-Wasm tier is built (`:samples:cmp-wasm-catalog`, see
+[`wasm-cmp-spike.md`](wasm-cmp-spike.md)): a CMP catalog session's viewer shows a **"Run in browser
+(Wasm)"** toggle that mounts the M3 components client-side in a sandboxed iframe — no server
+round-trip, so safe even for an unverified session. The app is sourced two ways:
+
+- **From the trusted branch (default).** When the `design-artifacts/<system>` catalog declares a
+  `webRender` (a `web/wasm/` app committed to the branch), `--catalogs` fetches it alongside
+  `catalog.json` + `images/` and serves it at `/wasm/<system>/` — **trusted by the same branch
+  origin**, no local build needed.
+- **From a local build.** `--wasm-dir <system>=<dist>` points at a `wasmCatalogDist` output, which
+  overrides the branch app for that system (handy when iterating locally).
+
+The `/wasm/` assets are sent with `Cache-Control` + an `ETag`, so the heavy skiko + app wasm (≈ 8 MB
+gzipped) is cached and revalidated cheaply (304) instead of re-downloaded each viewer load.
+
+## Running one
+
+```bash
+compose-preview serve \
+  --module :samples:design-catalog-m3 \   # a base module is the default session
+  --public \                              # open every route (no token)
+  --catalogs compose-m3,wear-m3 \         # serve the published design systems (Wasm app rides the branch)
+  --trust-store trust/producers.json \    # who we trust
+  --host 0.0.0.0 --port 8080
+```
+
+- **`--public`** drops the token gate (the deployed server is meant to be open). It is **safe by
+  construction**: rendering a bundle/catalog executes no code, re-rendering untrusted Compose is
+  refused, uploads are size-capped, and the `?url=` fetch is SSRF-gated (`--accept-bundles-from`).
+
+## Deploying `preview.coo.ee`
+
+Both container profiles take this config from env (the entrypoint maps `SERVE_PUBLIC`,
+`SERVE_CATALOGS`, `SERVE_TRUST_STORE`, `SERVE_WASM_DIR`, `SERVE_ACCEPT_BUNDLES` → flags) and put
+**Caddy** in front for TLS. They default to the **open public profile** (`SERVE_PUBLIC=1`, catalogs
+`compose-m3,wear-m3`); set `SERVE_PUBLIC=0` + `SERVE_TOKEN` for a token-gated box.
+
+| | [`deploy/vps`](../deploy/vps) (from source) | [`deploy/image`](../deploy/image) (prebuilt) |
+|---|---|---|
+| CLI | compiled from this checkout (~8 min build) | the **released** tarball (`docker pull`, no build) + Watchtower auto-update |
+| Has the latest serve features? | **immediately** (built from `main`) | only once they're in a **published CLI release** (bump `CP_VERSION`) |
+| In-browser Wasm tier | local build, `SERVE_WASM_DIR=compose-m3=samples/cmp-wasm-catalog/build/wasmDist` | branch-fetch: `--catalogs` pulls each system's `web/wasm/` from the trusted branch (needs the branch to carry it) |
+
+So **today** (before a release), deploy from source: `cd deploy/vps && DOMAIN=preview.coo.ee ./setup.sh`
+— it builds the current `main`, including the Wasm app, and comes up public. **After** the serve
+features ship in a CLI release *and* the `design-artifacts/compose-m3` branch carries `web/wasm/`,
+the prebuilt `deploy/image` path serves the same thing with no host build (and Watchtower keeps it
+current).
+- **Re-render of trusted Compose** stays off unless the operator opts in; a public box should leave
+  `--revisions` *off* (that path runs arbitrary Gradle = RCE).
+
+## Endpoints
+
+`GET /` index · `GET /p/{id}?session=<s>` viewer · `GET /render/{id}.png` PNG ·
+`GET /api/previews` JSON (now includes `trust`) · `POST /bundles/{name}` upload (returns `trust`) ·
+`GET /wasm/{system}/…` in-browser CMP app (ungated static assets) · `GET /healthz`. In `--public`
+mode all are open; otherwise the token gates everything but `/healthz` and `/wasm/` (static, no
+session data).

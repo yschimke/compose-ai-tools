@@ -244,6 +244,53 @@ class BundleFunctionalTest {
   }
 
   @Test
+  fun `composePreviewBundle packs the per-preview override sidecar (v8)`() {
+    val projectDir = createTestProject()
+    val redId = "test.RedKt.RedBoxPreview"
+
+    // Discover so previews.json (and each capture's renderOutput stem) exists.
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewDiscover")
+      .withPluginClasspath()
+      .build()
+
+    val previewsJson = File(projectDir, "build/compose-previews/previews.json")
+    val manifest = json.decodeFromString(PreviewManifest.serializer(), previewsJson.readText())
+    val rendersDir = File(projectDir, "build/compose-previews/renders").apply { mkdirs() }
+
+    // Seed the red preview's PNG plus an `<stem>.overrides.json` sidecar (as the render step would
+    // for a preview that called `previewOverride*`); the blue preview gets only a PNG (no knobs).
+    val overridesJson =
+      """{"declarations":[{"key":"label","type":"string","label":"label",""" +
+        """"default":{"kind":"string","value":"Tap me"},""" +
+        """"current":{"kind":"string","value":"Tap me"}}]}"""
+    for (preview in manifest.previews) {
+      val stem =
+        preview.captures.first().renderOutput.substringAfterLast('/').removeSuffix(".png").ifEmpty {
+          preview.id
+        }
+      File(rendersDir, "$stem.png").writeBytes(solidPng(0x202020))
+      if (preview.id == redId) {
+        File(rendersDir, "$stem.overrides.json").writeText(overridesJson)
+      }
+    }
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewBundle", "-PbundlePreviewIds=$redId", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+    assertThat(result.task(":composePreviewBundle")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val bundle = File(projectDir, "build/compose-previews/bundle.png")
+    assertThat(listEntries(bundle)).contains("previews/$redId.overrides.json")
+    assertThat(String(readZipEntry(bundle, "previews/$redId.overrides.json")!!, Charsets.UTF_8))
+      .isEqualTo(overridesJson)
+  }
+
+  @Test
   fun `composePreviewBundle re-packs when renders appear after a render-less pack`() {
     val projectDir = createTestProject()
     val redId = "test.RedKt.RedBoxPreview"

@@ -21,6 +21,10 @@ object ServeWeb {
     a:hover { text-decoration: underline; }
     .cp-head { margin: 0 0 4px; font-size: 1.2rem; font-weight: 600; }
     .cp-sub { margin: 0 0 20px; font-size: 0.82rem; color: #6b6b70; }
+    .cp-badge { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px;
+      font-size: 0.7rem; font-weight: 600; vertical-align: middle; white-space: nowrap; }
+    .cp-badge--trusted { background: #e7f4ea; color: #1e7a34; border: 1px solid #b6e0c2; }
+    .cp-badge--unverified { background: #fdf0e3; color: #8a5300; border: 1px solid #f0d3a8; }
     .cp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
     .cp-card { border: 1px solid #e3e3e8; border-radius: 10px; overflow: hidden; background: #fff;
       display: block; color: inherit; }
@@ -35,17 +39,23 @@ object ServeWeb {
       background: repeating-conic-gradient(#f4f4f6 0% 25%, #fff 0% 50%) 50% / 16px 16px; padding: 12px;
       display: flex; align-items: center; justify-content: center; min-height: 320px; }
     .cp-stage img, .cp-stage canvas { max-width: 100%; height: auto; }
+    .cp-stage iframe { width: 100%; height: 320px; border: 0; background: transparent; }
     .cp-live-row { flex-direction: row !important; align-items: center; gap: 6px !important; }
     .cp-controls { flex: 0 0 240px; display: flex; flex-direction: column; gap: 14px; }
     .cp-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; }
     .cp-controls input, .cp-controls select { padding: 5px 6px; font-size: 0.85rem; }
     .cp-status { font-size: 0.75rem; color: #6b6b70; min-height: 1em; }
+    .cp-knobs { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .cp-knobs-head { font-size: 0.72rem; color: #6b6b70; }
+    .cp-knobs input:disabled { opacity: 0.7; }
     @media (prefers-color-scheme: dark) {
       body { color: #e6e6e9; background: #161618; }
       .cp-sub, .cp-id, .cp-status { color: #a0a0a8; }
-      .cp-card, .cp-stage { border-color: #34343a; }
+      .cp-card, .cp-stage, .cp-knobs { border-color: #34343a; }
       .cp-card { background: #1d1d20; }
       .cp-imgwrap, .cp-stage { background: repeating-conic-gradient(#26262b 0% 25%, #1d1d20 0% 50%) 50% / 16px 16px; }
+      .cp-badge--trusted { background: #14361f; color: #6cd98a; border-color: #2c6b40; }
+      .cp-badge--unverified { background: #3a2a12; color: #e6b067; border-color: #6b4f24; }
     }
     """
       .trimIndent()
@@ -60,12 +70,27 @@ object ServeWeb {
     return if (sessionId == null) t else t + "&session=" + WebEscaping.urlEncodeSegment(sessionId)
   }
 
+  /**
+   * Producer-trust badge for a bundle/catalog session ([BundleVerifier.summary]); empty for a live
+   * daemon-backed module (trust applies to detached bundles/catalogs, not the operator's own served
+   * module). A non-`unverified` verdict reads as trusted (green ✓); `unverified` is amber (⚠).
+   */
+  private fun trustBadge(trust: String?): String {
+    if (trust.isNullOrBlank()) return ""
+    val unverified = trust == "unverified"
+    val cls = if (unverified) "cp-badge cp-badge--unverified" else "cp-badge cp-badge--trusted"
+    val icon = if (unverified) "⚠" else "✓"
+    val label = WebEscaping.htmlEscape(trust)
+    return " <span class=\"$cls\" title=\"producer trust: $label\">$icon $label</span>"
+  }
+
   /** Landing page: the module's preview list, each card linking to its viewer. */
   fun landingPage(
     moduleLabel: String,
     previews: List<ServePreview>,
     token: String,
     sessionId: String? = null,
+    trust: String? = null,
   ): String {
     val q = queryString(token, sessionId)
     val cards =
@@ -94,7 +119,7 @@ object ServeWeb {
       title = "$moduleLabel — compose-preview",
       body =
         """
-        <p class="cp-head">${WebEscaping.htmlEscape(moduleLabel)}</p>
+        <p class="cp-head">${WebEscaping.htmlEscape(moduleLabel)}${trustBadge(trust)}</p>
         <p class="cp-sub">${previews.size} preview(s) · click one to view with overrides ·
           <a href="/bundle.zip?$q">download all (.zip)</a></p>
         <div class="cp-grid">
@@ -105,13 +130,42 @@ object ServeWeb {
     )
   }
 
-  /** Viewer page for one preview: an `<img>` driven by the override controls. */
-  fun viewerPage(preview: ServePreview, token: String, sessionId: String? = null): String {
+  /**
+   * Viewer page for one preview: an `<img>` driven by the override controls.
+   *
+   * [wasmSrc] (non-null only for a CMP catalog session the server carries a Wasm app for) adds a
+   * "Run in browser (Wasm)" toggle that mounts that app in a sandboxed `<iframe>` at the
+   * `data-mode="live"` seam — the M3 component renders **client-side** (no server round-trip), so
+   * it's safe to run even for an unverified session. The theme dropdown re-points the iframe's
+   * `?uiMode=`. Absent ⇒ the page is exactly the snapshot viewer as before.
+   */
+  fun viewerPage(
+    preview: ServePreview,
+    token: String,
+    sessionId: String? = null,
+    canApplyOverrides: Boolean = false,
+    trust: String? = null,
+    wasmSrc: String? = null,
+  ): String {
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
     val q = queryString(token, sessionId)
     val label = WebEscaping.htmlEscape(preview.label)
     val idText = WebEscaping.htmlEscape(preview.id)
     val modes = preview.modes.joinToString(",") { it.wire }
+    // The Wasm tier is opt-in via a toggle (like "Live (stream)"), so the always-works PNG snapshot
+    // stays the default. Both the iframe and the toggle are omitted entirely when no Wasm app backs
+    // this session.
+    val wasmAttr =
+      if (wasmSrc != null) " data-wasm-src=\"${WebEscaping.htmlEscape(wasmSrc)}\"" else ""
+    val wasmFrame =
+      if (wasmSrc != null)
+        "<iframe id=\"cp-wasm\" hidden sandbox=\"allow-scripts\" title=\"$label (Wasm)\"></iframe>"
+      else ""
+    val wasmToggle =
+      if (wasmSrc != null)
+        "<label class=\"cp-live-row\"><input id=\"cp-wasm-toggle\" type=\"checkbox\"> " +
+          "Run in browser (Wasm)</label>"
+      else ""
     val deviceOptions =
       COMMON_DEVICES.joinToString("\n") { (value, name) ->
         val v = WebEscaping.htmlEscape(value)
@@ -119,12 +173,13 @@ object ServeWeb {
       }
     val body =
       """
-      <p class="cp-head"><a href="/?$q">← previews</a></p>
+      <p class="cp-head"><a href="/?$q">← previews</a>${trustBadge(trust)}</p>
       <p class="cp-sub" title="$idText">$label</p>
-      <div class="cp-viewer" data-preview-id="$idText" data-mode="snapshot" data-modes="$modes">
-        <div class="cp-stage"><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas></div>
+      <div class="cp-viewer" data-preview-id="$idText" data-mode="snapshot" data-modes="$modes"$wasmAttr>
+        <div class="cp-stage"><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$wasmFrame</div>
         <div class="cp-controls">
           <label class="cp-live-row"><input id="cp-live" type="checkbox"> Live (stream)</label>
+          $wasmToggle
           <label>Theme
             <select id="cp-uiMode">
               <option value="">(default)</option>
@@ -151,6 +206,7 @@ object ServeWeb {
               <option value="landscape">Landscape</option>
             </select>
           </label>
+          ${overrideKnobsHtml(preview, canApplyOverrides)}
           <div class="cp-status" id="cp-status"></div>
         </div>
       </div>
@@ -353,7 +409,40 @@ object ServeWeb {
         canvas.hidden = true;
         img.hidden = false;
       }
+      // --- Wasm tier (the in-browser CMP app, mounted in a sandboxed iframe). Only wired when the
+      // session carries a Wasm app (data-wasm-src present). The theme dropdown re-points ?uiMode=.
+      var wasmFrame = document.getElementById("cp-wasm");
+      var wasmToggle = document.getElementById("cp-wasm-toggle");
+      var wasmSrc = root.getAttribute("data-wasm-src") || "";
+      function wasmUrl() {
+        if (!wasmSrc) return "";
+        // The src comes from a server-set data- attribute, but resolve it against our own origin and
+        // refuse anything not same-origin http(s) anyway — so a `javascript:`/`data:` URL can never
+        // reach the iframe even if the attribute were ever mis-set (defuses DOM-text-as-HTML).
+        var u;
+        try { u = new URL(wasmSrc, location.origin); } catch (e) { return ""; }
+        if (u.origin !== location.origin) return "";
+        var el = document.getElementById("cp-uiMode");
+        if (el && el.value) u.searchParams.set("uiMode", el.value);
+        return u.href;
+      }
+      function openWasm() {
+        // Wasm and the daemon stream are mutually exclusive — only one transport drives the stage.
+        if (live.checked) { live.checked = false; closeStream(); }
+        root.setAttribute("data-mode", "wasm");
+        img.hidden = true; canvas.hidden = true; wasmFrame.hidden = false;
+        wasmFrame.src = wasmUrl();
+        status.textContent = "";
+      }
+      function closeWasm() {
+        root.setAttribute("data-mode", "snapshot");
+        wasmFrame.hidden = true; wasmFrame.removeAttribute("src");
+        img.hidden = false;
+      }
+      function wasmActive() { return wasmToggle && wasmToggle.checked; }
+
       function onControlsChanged() {
+        if (wasmActive()) { wasmFrame.src = wasmUrl(); return; }
         if (live.checked && ws && ws.readyState === 1) {
           ws.send(JSON.stringify({ type: "setOverrides", overrides: overrides() }));
         } else if (!live.checked) {
@@ -362,9 +451,17 @@ object ServeWeb {
       }
 
       live.addEventListener("change", function () {
-        if (live.checked) openStream();
-        else { closeStream(); refreshSnapshot(); }
+        if (live.checked) {
+          if (wasmToggle && wasmToggle.checked) { wasmToggle.checked = false; closeWasm(); }
+          openStream();
+        } else { closeStream(); refreshSnapshot(); }
       });
+      if (wasmToggle) {
+        wasmToggle.addEventListener("change", function () {
+          if (wasmToggle.checked) openWasm();
+          else { closeWasm(); refreshSnapshot(); }
+        });
+      }
       if (fs) {
         fs.addEventListener("input", function () {
           fsVal.textContent = fs.value;
@@ -397,6 +494,65 @@ object ServeWeb {
     </html>
     """
       .trimIndent() + "\n"
+
+  /**
+   * Renders the preview's author-declared editable knobs (the `compose/overrides` payload carried
+   * in a bundle's `previews/<id>.overrides.json`) as a labelled control list. Indexed knobs
+   * (per-item values on a repeated component) are grouped under their base key with a `#<index>`
+   * suffix. The controls are disabled when [canApplyOverrides] is false — a static bundle replays
+   * baked PNGs and can't re-render — with a one-line note explaining why; the live daemon-backed
+   * re-render loop for these knobs is a follow-up. Empty string when the preview declared no knobs
+   * (the common case).
+   */
+  private fun overrideKnobsHtml(preview: ServePreview, canApplyOverrides: Boolean): String {
+    if (preview.overrides.isEmpty()) return ""
+    val rows =
+      preview.overrides.joinToString("\n") { d ->
+        val name = if (d.index == null) d.key else "${d.key} #${d.index}"
+        val label = WebEscaping.htmlEscape(name)
+        val value = WebEscaping.htmlEscape(overrideValueText(d.current ?: d.default))
+        val inputType =
+          when (d.type) {
+            "int",
+            "float" -> "number"
+            "color" -> "text"
+            else -> "text"
+          }
+        // Disabled regardless of host for now: a bundle can't re-render, and the live re-render
+        // wiring
+        // for named overrides is a follow-up. The control still shows *what* is editable + its
+        // value.
+        """
+        <label>${label}
+          <input type="$inputType" value="$value" disabled>
+        </label>
+        """
+          .trimIndent()
+      }
+    val note =
+      if (canApplyOverrides) "Declared overrides (live editing coming soon)."
+      else "Declared overrides — static bundle, values are baked in."
+    return """
+      <div class="cp-knobs">
+        <div class="cp-knobs-head">$note</div>
+        $rows
+      </div>
+      """
+      .trimIndent()
+  }
+
+  /** Human text for a [ee.schimke.composeai.daemon.protocol.PreviewOverrideValue] in the viewer. */
+  private fun overrideValueText(
+    v: ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
+  ): String =
+    when (v) {
+      is ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.StringValue -> v.value
+      is ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.IntValue -> v.value.toString()
+      is ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.FloatValue -> v.value.toString()
+      is ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.BooleanValue ->
+        v.value.toString()
+      is ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.ColorValue -> v.argb
+    }
 
   /**
    * A small built-in device menu for the viewer dropdown. Pairs are `device-token` → display name;

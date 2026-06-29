@@ -31,6 +31,14 @@ import kotlinx.serialization.json.JsonClassDiscriminator
  *                            The cover's leading-bytes PNG is mirrored here under its own id so
  *                            iterating the well-known directory yields every preview uniformly.
  *                            A preview with no render on disk is simply absent from this directory.
+ * previews/<id>.overrides.json — (v8) the author-declared editable knobs the preview exposed via the
+ *                            `previewOverride*` lookups (a verbatim `compose/overrides` payload —
+ *                            `PreviewOverridesPayload` from `:data-preview-overrides-core`, copied byte
+ *                            for byte; the producer never parses it): label / list-length / per-item
+ *                            indexed values. Captured during the normal
+ *                            render, present only for previews that opted in, so a detached viewer can
+ *                            offer the editable controls without a live daemon. Convention-discovered
+ *                            (no manifest pointer), like the optional semantics sidecar.
  * classes/app.jar          — consumer module bytecode, MINIMIZED to classes reachable from the
  *                            selected previews (plus all module resources). For an IR-backed
  *                            preview (see below) the enclosing class is NOT a closure seed, so its
@@ -47,6 +55,13 @@ import kotlinx.serialization.json.JsonClassDiscriminator
  *                            runtime — it needs neither the consumer's `@Preview` bytecode nor the
  *                            full Compose graph that produced it. See [BundleIr] and
  *                            [BundleManifest.intermediateRepresentations].
+ * signatures.json          — (v8, optional) one or more detached producer signatures over the
+ *                            bundle's **canonical digest** (see [BundleSignatures]). Lets a verifier
+ *                            (the public preview server) prove a bundle came from a producer it
+ *                            trusts before it will re-render the bundle's executable Compose. Purely
+ *                            additive and **excluded from the digest it signs**, so a second producer
+ *                            can append its own signature without invalidating the first. Absent on
+ *                            an unsigned bundle.
  * extensions/<id>.json     — (v7, optional) a data extension's report (a11y findings, theme tokens,
  *                            drawn strings, …) **sliced to the cover (default) preview** — the one
  *                            shown as the leading PNG — so the headline image carries its detailed
@@ -253,6 +268,88 @@ data class BundleIr(
   val resourcesPath: String? = null,
 )
 
+/**
+ * (v8) The detached producer signatures carried in `signatures.json` ([BUNDLE_SIGNATURES_PATH]).
+ *
+ * # Why a public preview server needs this
+ *
+ * A portable bundle's baked PNGs and IR (`previews/<id>.png`, `ir/<id>.rcdoc`, …) are **data** —
+ * replaying them executes no consumer code, so a public server renders them safely from any
+ * uploader. But a bundle that carries `classes/app.jar` can be **re-rendered**, which runs the
+ * producer's Kotlin on the server. A public server must therefore only re-render a bundle it can
+ * attribute to a producer it trusts. A signature is that attribution: the producer signs the
+ * bundle's canonical digest with a private key, and the server verifies it against an allowlist of
+ * trusted public keys (multiple producers, each with a `keyId`). Unsigned / untrusted bundles still
+ * serve their data tiers; only server-side re-render is gated.
+ *
+ * # Canonical digest (what a signature signs)
+ *
+ * The signed bytes are **not** the raw file (zip ordering / compression aren't stable and
+ * `signatures.json` itself must be excluded so signatures can be appended independently). Instead
+ * the digest is computed over the bundle's logical content:
+ * 1. Enumerate every zip entry **except** `signatures.json` and directory entries.
+ * 2. For each, form the line `"<posix-path>:<lowercase-hex-sha256-of-bytes>"`.
+ * 3. Sort the lines by path (UTF-8 byte order), join with `"\n"`.
+ * 4. The **canonical digest** is the SHA-256 of that joined string's UTF-8 bytes.
+ *
+ * A signature is `Ed25519(privateKey, canonicalDigest)`. Verification recomputes the digest from
+ * the received bundle and checks each signature against the trusted public key named by its
+ * `keyId`. Tampering with any covered entry changes a per-entry hash → changes the digest → every
+ * signature fails. The reference implementation lives in `:cli` (`BundleSigning`), which the
+ * `compose-preview bundle sign` / `verify` commands and the serve verifier share.
+ */
+@Serializable
+data class BundleSignatures(
+  /** Schema id, pinned so a verifier can detect a format break. [BUNDLE_SIGNATURES_SCHEMA]. */
+  val schema: String = BUNDLE_SIGNATURES_SCHEMA,
+  /** One entry per producer that signed this bundle. At least one on a signed bundle. */
+  val signatures: List<BundleSignature>,
+)
+
+/** One producer's detached signature over the bundle's canonical digest. See [BundleSignatures]. */
+@Serializable
+data class BundleSignature(
+  /**
+   * Stable id of the signing key, e.g. `"compose-ai-tools-ci"`. The verifier's trust store maps
+   * this to a trusted public key; it's also how a second producer's signature is told apart from
+   * the first. Free-form but conventionally `[A-Za-z0-9._@-]+`.
+   */
+  val keyId: String,
+  /** Signature algorithm. Only [SIGNATURE_ALG_ED25519] is defined today. */
+  val algorithm: String = SIGNATURE_ALG_ED25519,
+  /**
+   * Lowercase-hex SHA-256 canonical digest the signature was computed over (see
+   * [BundleSignatures]).
+   */
+  val digest: String,
+  /** Base64 (standard, padded) of the raw Ed25519 signature bytes over [digest]'s raw bytes. */
+  val signature: String,
+  /** Human-readable producer label for diagnostics, e.g. `"Compose AI Tools CI"`. Optional. */
+  val producer: String? = null,
+  /**
+   * Optional keyless-provenance attestation (GitHub OIDC / Sigstore). When present the verifier can
+   * trust the signature by matching [BundleProvenance.identity] against its OIDC allowlist instead
+   * of (or in addition to) a pinned public key — useful for CI-produced bundles with no long-lived
+   * key.
+   */
+  val provenance: BundleProvenance? = null,
+)
+
+/** Keyless-provenance attestation attached to a [BundleSignature] (GitHub OIDC / Sigstore). */
+@Serializable
+data class BundleProvenance(
+  /** Provenance flavour: [PROVENANCE_GITHUB_OIDC] or [PROVENANCE_SIGSTORE]. */
+  val type: String,
+  /**
+   * The workload identity that produced the bundle, e.g. a GitHub Actions subject like
+   * `repo:yschimke/compose-ai-tools:ref:refs/heads/main`. The verifier matches this against its
+   * trusted-identity globs.
+   */
+  val identity: String,
+  /** Optional opaque attestation bundle / certificate (Sigstore) for full offline verification. */
+  val attestation: String? = null,
+)
+
 /** Discriminator field `kind`, values: `module`, `maven`, `project`. */
 @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
 @Serializable
@@ -359,6 +456,20 @@ const val IR_FORMAT_LOTTIE: String = "lottie"
 /** Well-known directory inside the bundle zip holding per-preview IR bytes (`ir/<id>.<ext>`). */
 const val BUNDLE_IR_DIR: String = "ir"
 
+/** Well-known zip path of the detached producer signatures (v8). See [BundleSignatures]. */
+const val BUNDLE_SIGNATURES_PATH: String = "signatures.json"
+
+/** Schema id stamped into [BundleSignatures.schema]. */
+const val BUNDLE_SIGNATURES_SCHEMA: String = "compose-preview-bundle/signatures/v1"
+
+/** [BundleSignature.algorithm] value for an Ed25519 signature (the only one defined today). */
+const val SIGNATURE_ALG_ED25519: String = "ed25519"
+
+/** [BundleProvenance.type] values. */
+const val PROVENANCE_GITHUB_OIDC: String = "github-oidc"
+
+const val PROVENANCE_SIGSTORE: String = "sigstore"
+
 /** File extension for a captured Remote Compose document byte stream. */
 const val IR_EXT_REMOTECOMPOSE: String = "rcdoc"
 
@@ -439,8 +550,30 @@ val CONVENTIONAL_DATA_EXTENSION_REPORTS: Map<String, String> = mapOf("a11y" to "
  *   re-rendering. Additive — the field defaults to empty and `ignoreUnknownKeys` readers skip the
  *   `extensions/` entries, so a v6 reader opening a v7 bundle still works; only a reader that wants
  *   the carried data needs to be v7-aware.
+ * - v8 — adds the `previews/<id>.overrides.json` sidecar: the author-declared editable knobs a
+ *   preview exposed via the `previewOverride*` lookups (the `compose/overrides` payload), captured
+ *   during the normal render so a detached viewer can present editable controls (label / list
+ *   length / per-item indexed values) with no live daemon. Convention-discovered (no manifest
+ *   field), present only for previews that opted in. Additive — the sidecar is ignored by older
+ *   readers and absent for previews that declare no knobs, so a v7 reader opening a v8 bundle still
+ *   works; only a reader that wants the editable knobs needs to be v8-aware.
+ *
+ * Orthogonal to the version sequence above, the optional `signatures.json`
+ * ([BUNDLE_SIGNATURES_PATH], [BundleSignatures]) carries detached producer signatures over the
+ * bundle's canonical digest so a public preview server can attribute a bundle to a trusted producer
+ * before re-rendering its executable Compose. It is excluded from the digest it signs and does
+ * **not** bump [schemaVersion] (signing is a post-pack step, like `bundle embed`); an unsigned
+ * bundle has no such entry and an unaware reader ignores it.
  */
-const val BUNDLE_SCHEMA_VERSION: Int = 7
+const val BUNDLE_SCHEMA_VERSION: Int = 8
+
+/**
+ * File extension of the per-preview override sidecar the render step writes next to the PNG
+ * (`renders/<stem>.overrides.json`) and the bundle packs under `previews/<id>.overrides.json`.
+ * Holds the serialized `compose/overrides` payload — the editable knobs the preview declared. Kept
+ * in lockstep with the consumer runtime's writer.
+ */
+const val BUNDLE_OVERRIDES_SIDECAR_EXT: String = "overrides.json"
 
 /**
  * Well-known directory inside the bundle zip holding one rendered PNG per selected preview, keyed

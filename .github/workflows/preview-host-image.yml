@@ -13,9 +13,20 @@ on:
   workflow_dispatch:
     inputs:
       cli_version:
-        description: Released compose-preview version to bundle (no leading v)
+        description: Released compose-preview version to bundle (leading v optional)
         required: true
-        default: "0.16.1"
+        default: "0.16.5"
+  # Called from release-please.yml when a CLI release is cut. A bot-created
+  # release won't fire the `release` trigger below (the GITHUB_TOKEN-doesn't-
+  # trigger-workflows limitation the rest of the release chain already works
+  # around), so the reliable path is this workflow_call after release.yml.
+  workflow_call:
+    inputs:
+      cli_version:
+        description: Released compose-preview version to bundle (leading v optional)
+        required: true
+        type: string
+  # Kept as a manual escape hatch for human-published releases (which DO fire it).
   release:
     types: [published]
 
@@ -28,6 +39,7 @@ jobs:
     # Only CLI releases (tags like v0.16.1) — skip clients-v* and manual non-v tags.
     if: >-
       github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'workflow_call' ||
       startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-latest
     steps:
@@ -35,19 +47,48 @@ jobs:
 
       - name: Resolve bundled CLI version
         id: ver
+        env:
+          # release event → the tag; workflow_call / workflow_dispatch → the
+          # input (the `inputs` context covers both). Strip a leading `v` either
+          # way so a `v0.16.5` tag and a bare `0.16.5` input both work.
+          RAW_VERSION: ${{ github.event.release.tag_name || inputs.cli_version }}
         run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
-            v="${{ github.event.release.tag_name }}"
-            v="${v#v}"
-          else
-            v="${{ github.event.inputs.cli_version }}"
-          fi
+          v="${RAW_VERSION#v}"
           echo "version=${v}" >> "$GITHUB_OUTPUT"
+
+      # Smooth out the release race. When this is chained right after release.yml
+      # (release-please cuts a release), the image's two inputs publish on their
+      # own clocks: the CLI tarball uploads to the GitHub Release after the tag,
+      # and the Gradle plugin reaches Maven Central only after the slow per-OS
+      # viewer builds gate `publish-gradle-plugin` AND Central finishes syncing.
+      # The warm render needs the plugin, so build would fail on a propagation
+      # race. Poll both until resolvable (HEAD, ~60 min ceiling) before building,
+      # so the whole release → image → Watchtower chain is hands-off.
+      - name: Wait for the released artifacts to be resolvable
+        env:
+          V: ${{ steps.ver.outputs.version }}
+        run: |
+          set -u
+          plugin="https://repo.maven.apache.org/maven2/ee/schimke/composeai/preview/ee.schimke.composeai.preview.gradle.plugin/${V}/ee.schimke.composeai.preview.gradle.plugin-${V}.pom"
+          tarball="https://github.com/${GITHUB_REPOSITORY}/releases/download/v${V}/compose-preview-${V}.tar.gz"
+          # 1-byte range GET: cheap (never pulls the 180 MB tarball), no HEAD
+          # dependency — 200 (range ignored) or 206 (partial) both mean "present".
+          ok() { c=$(curl -sSL -o /dev/null -w '%{http_code}' -r 0-0 "$1" 2>/dev/null); [ "$c" = "200" ] || [ "$c" = "206" ]; }
+          for i in $(seq 1 40); do
+            if ok "$plugin" && ok "$tarball"; then
+              echo "plugin + CLI ${V} are resolvable — building."
+              exit 0
+            fi
+            echo "waiting for plugin/CLI ${V} to publish (attempt ${i}/40)…"
+            sleep 90
+          done
+          echo "::error::plugin/CLI ${V} not resolvable after ~60 min — re-run later." >&2
+          exit 1
 
       - uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -55,7 +96,7 @@ jobs:
 
       - name: Image metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository_owner }}/compose-preview-host
           tags: |
@@ -63,7 +104,7 @@ jobs:
             type=raw,value=latest
 
       - name: Build and push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: deploy/image
           file: deploy/image/Dockerfile

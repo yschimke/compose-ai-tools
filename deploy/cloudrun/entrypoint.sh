@@ -12,21 +12,46 @@ PORT="${PORT:-8080}"
 SERVE_MODULE="${SERVE_MODULE:-:samples:cmp}"
 BIN=/app/cli/build/install/compose-preview/bin/compose-preview
 
-# A public endpoint must be token-gated. Cloud Run surfaces the secret as $SERVE_TOKEN.
-# Fail closed rather than expose an unauthenticated renderer.
-if [[ -z "${SERVE_TOKEN:-}" ]]; then
-  echo "entrypoint: SERVE_TOKEN is unset — refusing to start an unauthenticated public server." >&2
-  echo "            Set it (e.g. from Secret Manager) before deploying. See deploy/cloudrun/README.md." >&2
-  exit 64
-fi
-
 args=(
   serve
   --module "${SERVE_MODULE}"
   --host 0.0.0.0
   --port "${PORT}"
-  --token "${SERVE_TOKEN}"
 )
+
+# Two auth postures, chosen by SERVE_PUBLIC:
+#   - SERVE_PUBLIC=1  → the open public preview server (preview.coo.ee): every
+#     route is unauthenticated. Safe by construction — no server-side code exec,
+#     untrusted re-render refused, uploads (if enabled) capped + SSRF-gated.
+#   - otherwise       → token-gated; SERVE_TOKEN is required (fail closed rather
+#     than expose an unauthenticated renderer). Cloud Run surfaces it as a secret.
+if [[ "${SERVE_PUBLIC:-}" == "1" || "${SERVE_PUBLIC:-}" == "true" ]]; then
+  args+=(--public)
+else
+  if [[ -z "${SERVE_TOKEN:-}" ]]; then
+    echo "entrypoint: SERVE_TOKEN is unset and SERVE_PUBLIC is off — refusing to start an" >&2
+    echo "            unauthenticated server. Set SERVE_TOKEN, or SERVE_PUBLIC=1 for the open" >&2
+    echo "            public profile. See deploy/cloudrun/README.md." >&2
+    exit 64
+  fi
+  args+=(--token "${SERVE_TOKEN}")
+fi
+
+# The published design systems, their producer-trust store, and the in-browser
+# CMP Wasm app — the public-server pillars. All optional: unset = off.
+#   SERVE_CATALOGS=compose-m3,wear-m3
+#   SERVE_TRUST_STORE=trust/producers.json
+#   SERVE_WASM_DIR=compose-m3=samples/cmp-wasm-catalog/build/wasmDist
+[[ -n "${SERVE_CATALOGS:-}" ]] && args+=(--catalogs "${SERVE_CATALOGS}")
+[[ -n "${SERVE_TRUST_STORE:-}" ]] && args+=(--trust-store "${SERVE_TRUST_STORE}")
+[[ -n "${SERVE_WASM_DIR:-}" ]] && args+=(--wasm-dir "${SERVE_WASM_DIR}")
+# Client uploads (POST /bundles) — off unless SERVE_ACCEPT_BUNDLES=1; a host
+# allowlist for ?url= fetches is opt-in on top (SSRF stays fail-closed).
+if [[ "${SERVE_ACCEPT_BUNDLES:-}" == "1" || "${SERVE_ACCEPT_BUNDLES:-}" == "true" ]]; then
+  args+=(--accept-bundles)
+  [[ -n "${SERVE_ACCEPT_BUNDLES_FROM:-}" ]] &&
+    args+=(--accept-bundles-from "${SERVE_ACCEPT_BUNDLES_FROM}")
+fi
 
 # Optional: exit after N idle seconds so the Cloud Run instance scales to zero.
 # Set SERVE_IDLE_EXIT=0 (or unset) to run until terminated.

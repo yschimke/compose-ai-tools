@@ -62,24 +62,72 @@ class ServeWebFixtureTest {
       System.getenv("UPDATE_SERVE_WEB_FIXTURES") == "true" ||
         System.getProperty("updateServeWebFixtures") == "true"
 
-    val landing = ServeWeb.landingPage(moduleLabel, previews, token)
+    // Render the fixtures with a producer-trust badge so the visual-diff harness captures it: a
+    // trusted (signature) landing and an unverified viewer exercise both badge styles.
+    val landing =
+      ServeWeb.landingPage(moduleLabel, previews, token, trust = "signature:compose-ai-tools-ci")
     val viewer =
-      ServeWeb.viewerPage(previews.first { it.id.endsWith("ProfileScreenPreview") }, token)
+      ServeWeb.viewerPage(
+        previews.first { it.id.endsWith("ProfileScreenPreview") },
+        token,
+        trust = "unverified",
+      )
+    // A second viewer carrying the in-browser Wasm tier, so the harness captures the "Run in
+    // browser (Wasm)" toggle + iframe seam a CMP catalog session shows.
+    val wasmViewer =
+      ServeWeb.viewerPage(
+        previews.first { it.id.endsWith("CardPreview") },
+        token,
+        sessionId = "compose-m3",
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        wasmSrc = "/wasm/compose-m3/?id=card-filled",
+      )
 
     if (update) {
       pagesDir.mkdirs()
       File(pagesDir, "serve-landing.html").writeText(landing)
       File(pagesDir, "serve-viewer.html").writeText(viewer)
+      File(pagesDir, "serve-viewer-wasm.html").writeText(wasmViewer)
       writePlaceholderPng(File(pagesDir, "_render-placeholder.png"))
       return
     }
 
     assertGolden(File(pagesDir, "serve-landing.html"), landing)
     assertGolden(File(pagesDir, "serve-viewer.html"), viewer)
+    assertGolden(File(pagesDir, "serve-viewer-wasm.html"), wasmViewer)
     assertTrue(
       File(pagesDir, "_render-placeholder.png").isFile,
       "missing _render-placeholder.png — regenerate with UPDATE_SERVE_WEB_FIXTURES=true",
     )
+  }
+
+  @Test
+  fun `viewer mounts the Wasm tier only when a wasm app backs the session`() {
+    val card = previews.first { it.id.endsWith("CardPreview") }
+    val withWasm = ServeWeb.viewerPage(card, token, wasmSrc = "/wasm/compose-m3/?id=card-filled")
+    assertTrue(withWasm.contains("Run in browser (Wasm)"), "expected the Wasm toggle")
+    assertTrue(withWasm.contains("id=\"cp-wasm\""), "expected the Wasm iframe")
+    assertTrue(withWasm.contains("data-wasm-src=\"/wasm/compose-m3/?id=card-filled\""))
+    assertTrue(withWasm.contains("sandbox=\"allow-scripts\""), "iframe must be sandboxed")
+
+    // No wasmSrc → snapshot viewer is unchanged: no toggle, no iframe element.
+    val plain = ServeWeb.viewerPage(card, token)
+    assertTrue(!plain.contains("Run in browser (Wasm)"))
+    assertTrue(!plain.contains("id=\"cp-wasm\""))
+  }
+
+  @Test
+  fun `trust badge renders trusted and unverified variants and is absent for a live module`() {
+    val trusted = ServeWeb.landingPage(moduleLabel, previews, token, trust = "branch:repo@b")
+    assertTrue(trusted.contains("cp-badge--trusted"), "expected a trusted badge")
+    assertTrue(trusted.contains("✓ branch:repo@b"))
+
+    val unverified = ServeWeb.viewerPage(previews.first(), token, trust = "unverified")
+    assertTrue(unverified.contains("cp-badge--unverified"), "expected an unverified badge")
+
+    // A live daemon-backed module carries no trust verdict → no badge element (the CSS still
+    // defines `.cp-badge`, so check for the rendered `class="cp-badge…` span, not the bare string).
+    assertTrue(!ServeWeb.landingPage(moduleLabel, previews, token).contains("class=\"cp-badge"))
   }
 
   private fun assertGolden(file: File, rendered: String) {

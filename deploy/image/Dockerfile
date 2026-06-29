@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.24
+# syntax=docker/dockerfile:1.25
 
 # Fast, prebuilt-friendly image for `compose-preview serve`.
 #
@@ -8,13 +8,13 @@
 # Maven Central. No build-logic, no gradle-plugin, no ~50 data modules to compile
 # — just a download + one warm render. Built once in CI and pushed to GHCR, so
 # hosts pull it and never build at all.
-ARG CP_VERSION=0.16.1
+ARG CP_VERSION=0.16.5
 
 # ---------------------------------------------------------------------------
 # Stage 0: base — JDK + Skiko's native deps (same rationale as the cloudrun image:
 # libGL via libgl1, Mesa software GLX/DRI, fonts; force software GL).
 # ---------------------------------------------------------------------------
-FROM eclipse-temurin:17.0.18_8-jdk AS base
+FROM eclipse-temurin:17.0.19_10-jdk AS base
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       libfreetype6 libfontconfig1 fontconfig fonts-dejavu-core \
@@ -47,9 +47,21 @@ COPY sample-project/ /project/
 # published plugin + Compose from Maven, then renders every preview once. Populates
 # ~/.gradle + /project/build so the runtime container starts warm. A long --timeout
 # keeps slow builders from tripping the CLI's 300s default.
+#
+# Retry the render: it's the actual Maven resolve (plugin marker + the
+# implementation/`daemon-desktop`/renderer modules the plugin pulls), and those
+# propagate to Central independently after a release — so even past the workflow's
+# pre-build wait, one module can still be a minute behind. Retrying the real
+# resolve covers every module without enumerating them; ~12 min of attempts rides
+# out the lag, then it fails hard so a genuinely broken release doesn't ship.
 RUN chmod +x ./gradlew \
- && compose-preview serve --export /tmp/warm-bundle --timeout 1800 \
- && rm -rf /tmp/warm-bundle
+ && ok=0; for i in $(seq 1 6); do \
+      if compose-preview serve --export /tmp/warm-bundle --timeout 1800; then ok=1; break; fi; \
+      echo "warm render failed (attempt ${i}/6) — likely Maven Central propagation; retrying in 120s"; \
+      rm -rf /tmp/warm-bundle; sleep 120; \
+    done; \
+    [ "${ok}" = 1 ] || { echo "warm render failed after retries" >&2; exit 1; }; \
+    rm -rf /tmp/warm-bundle
 
 # ---------------------------------------------------------------------------
 # Stage 2: runtime.

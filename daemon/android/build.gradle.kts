@@ -121,6 +121,10 @@ dependencies {
   // shared JVM module works on both backends (no Android/desktop fork needed, unlike
   // `:data-keyboard-connector` which forks for Android-specific `WindowInsetsCompat`).
   implementation(project(":data-touch-overlay-connector"))
+  // Plain-Compose named-override connector — same portable module `:daemon:desktop` consumes. Seeds
+  // `renderNow.overrides.namedOverrides` into the `previewOverride*` lookups and produces the
+  // `compose/overrides` data product (the preview's declared editable knobs).
+  implementation(project(":data-preview-overrides-connector"))
   // Launcher-widget container-size connector — same shape as `:data-touch-overlay-connector`
   // (single shared JVM module on both backends). `LauncherWidgetExtension` wraps the preview in
   // a sized `Box` matching the clamped whole-cell footprint, driven from
@@ -229,6 +233,10 @@ dependencies {
   "testFixturesImplementation"(libs.compose.foundation)
   "testFixturesImplementation"(libs.compose.material3)
   "testFixturesImplementation"(libs.compose.ui)
+  // `previewOverride*` — the fixture `OverridableSquare` declares editable knobs so
+  // `PreviewOverridesDataFetchE2ETest` can prove the sandbox→host bridge surfaces them via
+  // `data/fetch?kind=compose/overrides`.
+  "testFixturesImplementation"(project(":data-preview-overrides-runtime"))
 }
 
 // D-harness.v2 — the spawned daemon's runtime classpath is built from the daemon module's

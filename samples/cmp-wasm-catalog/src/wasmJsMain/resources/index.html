@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CMP catalog (Wasm)</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: transparent;
+      }
+      #composeApp {
+        width: 100%;
+        height: 100vh;
+      }
+    </style>
+    <!--
+      The Kotlin/Wasm output is loaded as plain ES modules (no webpack), so the
+      bundle assembles without the Node / Binaryen download toolchain that the
+      build's `FAIL_ON_PROJECT_REPOS` mode blocks. The compiler's
+      `import-object.mjs` references the bare specifier `@js-joda/core` (CMP's
+      datetime backing); resolve it to the **self-hosted** copy vendored beside
+      this file (`js-joda.esm.js`, pinned @js-joda/core 5.7.0). Self-hosted, not
+      a CDN, so the bundle works fully offline / behind an egress proxy.
+    -->
+    <script type="importmap">
+      { "imports": { "@js-joda/core": "./js-joda.esm.js" } }
+    </script>
+  </head>
+  <body>
+    <!-- ComposeViewport mounts the catalog component named by ?id=… here. -->
+    <div id="composeApp"></div>
+    <script type="module" src="composeApp.mjs"></script>
+  </body>
+</html>

@@ -196,6 +196,11 @@ include(":samples:cmp")
 
 include(":samples:cmp-shared")
 
+// In-browser CMP tier — a `wasmJs` Compose app rendering the M3 catalog in the
+// browser sandbox (Workstream C / `docs/wasm-cmp-spike.md`). wasmJs-only, no
+// renderable `@Preview`, so it sits outside the desktop/Android render path.
+include(":samples:cmp-wasm-catalog")
+
 // Non-renderable KMP-Android library (no `jvm("desktop")` target) — regression fixture for
 // #1852 / #1855. See its build.gradle.kts. Must coexist in the build without breaking CLI
 // discovery of the other sample modules.
@@ -437,6 +442,22 @@ project(":data-remotecompose-core").projectDir = file("data/remotecompose/core")
 include(":data-remotecompose-connector")
 
 project(":data-remotecompose-connector").projectDir = file("data/remotecompose/connector")
+
+// Plain-Compose named overrides — opt-in author-declared editable knobs (`previewOverride*`). Unlike
+// Remote Compose this needs no alpha runtime, so the runtime + connector are portable Compose
+// Multiplatform JVM modules consumed by both daemon backends. `core` carries the wire-shape; `runtime`
+// is the consumer-facing lookup API; `connector` seeds values + produces the `compose/overrides` data.
+include(":data-preview-overrides-core")
+
+project(":data-preview-overrides-core").projectDir = file("data/preview-overrides/core")
+
+include(":data-preview-overrides-runtime")
+
+project(":data-preview-overrides-runtime").projectDir = file("data/preview-overrides/runtime")
+
+include(":data-preview-overrides-connector")
+
+project(":data-preview-overrides-connector").projectDir = file("data/preview-overrides/connector")
 
 // UIAutomator-shaped query/action API for the Compose preview renderer. Carries the matcher,
 // the Selector DSL, and the JSON wire format — consumed by `:daemon:android` for

@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.24
+# syntax=docker/dockerfile:1.25
 
 # Cloud Run image for `compose-preview serve` (public mode, Desktop-only).
 #
@@ -29,7 +29,7 @@
 # rasterize on the CPU, so LIBGL_ALWAYS_SOFTWARE=1 forces Mesa's software path
 # (no GPU on the host). This mirrors what the repo's own CI installs for headless
 # desktop renders (.github/workflows/ci.yml).
-FROM eclipse-temurin:17.0.18_8-jdk AS base
+FROM eclipse-temurin:17.0.19_10-jdk AS base
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       libfreetype6 libfontconfig1 fontconfig fonts-dejavu-core \
@@ -59,7 +59,10 @@ COPY . /app
 # NOTE: deliberately no BuildKit cache mount here — the warmed Gradle cache must
 # land in a real image layer so `COPY --from=build /root/.gradle` carries it into
 # the runtime image (cache-mount contents are not persisted into layers).
-RUN ./gradlew --no-daemon :cli:installDist \
+# `:samples:cmp-wasm-catalog:wasmCatalogDist` assembles the in-browser CMP app
+# (build/wasmDist) so the from-source public server can serve it via
+# `--wasm-dir` without a CLI release or a populated design-artifacts branch.
+RUN ./gradlew --no-daemon :cli:installDist :samples:cmp-wasm-catalog:wasmCatalogDist \
  && ./cli/build/install/compose-preview/bin/compose-preview serve \
         --module "${SERVE_MODULE}" \
         --export /tmp/warm-bundle \

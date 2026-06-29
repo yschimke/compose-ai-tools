@@ -6,6 +6,7 @@ import ee.schimke.composeai.cli.serve.RenderOutcome
 import ee.schimke.composeai.cli.serve.ServeBundle
 import ee.schimke.composeai.cli.serve.ServeBundleHost
 import ee.schimke.composeai.cli.serve.ServeBundleStore
+import ee.schimke.composeai.cli.serve.ServeCatalogStore
 import ee.schimke.composeai.cli.serve.ServeHost
 import ee.schimke.composeai.cli.serve.ServeHttpServer
 import ee.schimke.composeai.cli.serve.ServeMdnsAdvertiser
@@ -17,6 +18,7 @@ import ee.schimke.composeai.cli.serve.ServeSessionFactory
 import ee.schimke.composeai.cli.serve.ServeSessionRegistry
 import ee.schimke.composeai.cli.serve.ServeSessionState
 import ee.schimke.composeai.cli.serve.ServeUrls
+import ee.schimke.composeai.cli.serve.TrustStore
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.render.session.RenderSessionException
 import java.io.File
@@ -96,6 +98,14 @@ class ServeCommand(args: List<String>) : Command(args) {
   private val acceptBundles: Boolean = "--accept-bundles" in args
 
   /**
+   * Public mode: serve every route **without** requiring the token (the deployed public preview
+   * server, where browsing the published catalogs + uploaded bundles is the point). Safe by
+   * construction — no server-side code execution, re-render of untrusted Compose refused, uploads
+   * capped + SSRF-gated. Off by default so a normal `serve` stays token-gated.
+   */
+  private val public: Boolean = "--public" in args
+
+  /**
    * SSRF allowlist for `POST /bundles/{name}?url=` fetches: comma-separated hostnames the server
    * may fetch a bundle from. Empty = no URL fetch is allowed (fail closed), so `--accept-bundles`
    * alone only accepts uploads; a host must be explicitly trusted before the server will reach out.
@@ -106,6 +116,48 @@ class ServeCommand(args: List<String>) : Command(args) {
       ?.split(",")
       ?.map { it.trim() }
       ?.filter { it.isNotEmpty() } ?: emptyList()
+
+  /**
+   * Path to the producer-trust store (`--trust-store <file>`): the JSON allowlist of trusted
+   * signing keys / branches / CI identities ([TrustStore]). Uploaded bundles are verified against
+   * it and the verdict is surfaced in the API + viewer. Absent ⇒ the empty, fail-closed store
+   * (every upload `unverified`), which is correct for a private box; a public server points it at
+   * `trust/producers.json`.
+   */
+  private val trustStorePath: String? = args.flagValue("--trust-store")
+
+  /** Resolved once, reused by the upload store and the catalog store. */
+  private val resolvedTrust: TrustStore by lazy { loadTrustStore() }
+
+  /**
+   * Design systems to serve from their published `design-artifacts/<system>` branches (`--catalogs
+   * compose-m3,wear-m3`): each is fetched (catalog.json + images) and registered as a read-only
+   * `?session=<system>` session, trusted-by-origin when the branch is in the trust store.
+   */
+  private val catalogs: List<String> =
+    args.flagValue("--catalogs")?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
+      ?: emptyList()
+  /**
+   * In-browser CMP tier (`--wasm-dir <system>=<dir>[,<system>=<dir>…]`): map a design system to the
+   * assembled Wasm catalog app (`./gradlew :samples:cmp-wasm-catalog:wasmCatalogDist` →
+   * `build/wasmDist`). Its viewer then offers a "Run in browser (Wasm)" toggle that mounts the app
+   * client-side. Missing dirs are dropped with a warning. Empty ⇒ no Wasm tier.
+   */
+  private val wasmDirs: Map<String, File> =
+    args
+      .flagValue("--wasm-dir")
+      ?.split(",")
+      ?.mapNotNull { entry ->
+        val eq = entry.indexOf('=')
+        if (eq <= 0) null else entry.substring(0, eq).trim() to File(entry.substring(eq + 1).trim())
+      }
+      ?.toMap() ?: emptyMap()
+
+  private val catalogRepo: String =
+    args.flagValue("--catalog-repo")?.takeIf { it.isNotBlank() } ?: ServeCatalogStore.DEFAULT_REPO
+  private val catalogBranchPrefix: String =
+    args.flagValue("--catalog-branch-prefix")?.takeIf { it.isNotBlank() }
+      ?: ServeCatalogStore.DEFAULT_BRANCH_PREFIX
 
   override fun run() {
     if ("--help" in args || "-h" in args) {
@@ -217,6 +269,10 @@ class ServeCommand(args: List<String>) : Command(args) {
     registerBundles().forEach { (id, bundleHost) ->
       registry.register(id, host = bundleHost, pinned = true)
     }
+    // Serve our published design systems from their trusted `design-artifacts/<system>` branches.
+    // A catalog that carries a `web/wasm/` app yields a system→dir entry so the in-browser tier
+    // rides the same trusted branch (no local --wasm-dir build needed).
+    val catalogWasm = if (catalogs.isNotEmpty()) registerCatalogs(registry) else emptyMap()
     // Runtime ingestion (--accept-bundles): clients POST a bundle (or a ?url= to one) and it's
     // registered as a pinned session. Unpacked under a temp dir for this server's lifetime.
     val bundleStore =
@@ -235,10 +291,33 @@ class ServeCommand(args: List<String>) : Command(args) {
           root = uploads,
           register = { id, bundleHost -> registry.register(id, host = bundleHost, pinned = true) },
           allowedHosts = acceptBundlesFrom,
+          trust = resolvedTrust,
         )
       } else {
         null
       }
+    // In-browser CMP tier: keep only the `--wasm-dir` entries whose directory actually holds the
+    // assembled app (index.html), warning on the rest, so a typo'd path doesn't silently advertise
+    // a
+    // broken "Run in browser" toggle.
+    val localWasm = wasmDirs.filter { (system, dir) ->
+      val ok = File(dir, "index.html").isFile
+      if (!ok) {
+        System.err.println(
+          "serve: --wasm-dir $system=${dir.path} has no index.html — skipping (build it with " +
+            ":samples:cmp-wasm-catalog:wasmCatalogDist)."
+        )
+      }
+      ok
+    }
+    // Merge the apps fetched from the catalog branches with the explicit `--wasm-dir` paths; a
+    // local
+    // `--wasm-dir` wins for a system so an operator can override the published app with a local
+    // build.
+    val wasmCatalogs = catalogWasm + localWasm
+    if (wasmCatalogs.isNotEmpty()) {
+      System.err.println("serve: in-browser Wasm tier for: ${wasmCatalogs.keys.joinToString(", ")}")
+    }
     val server =
       ServeHttpServer(
         host = host,
@@ -247,6 +326,8 @@ class ServeCommand(args: List<String>) : Command(args) {
         sessions = registry,
         defaultSessionId = module.gradlePath,
         bundleStore = bundleStore,
+        isPublic = public,
+        wasmCatalogs = wasmCatalogs,
       )
 
     // Advertise on the LAN over mDNS when bound to a reachable interface (`--lan`), so the mobile /
@@ -392,6 +473,65 @@ class ServeCommand(args: List<String>) : Command(args) {
   }
 
   /**
+   * Fetch each `--catalogs` design system from its `design-artifacts/<system>` branch and register
+   * it as a pinned `?session=<system>` session ([ServeCatalogStore]). Trusted-by-origin when the
+   * branch is in the trust store; otherwise served as `unverified` (the images execute no code).
+   * Best-effort per system — one catalog failing to fetch doesn't sink the others or the server.
+   */
+  private fun registerCatalogs(registry: ServeSessionRegistry): Map<String, File> {
+    val dir =
+      java.nio.file.Files.createTempDirectory("serve-catalogs").toFile().also { it.deleteOnExit() }
+    val wasm = linkedMapOf<String, File>()
+    val store =
+      ServeCatalogStore(
+        root = dir,
+        register = { id, host -> registry.register(id, host = host, pinned = true) },
+        trust = resolvedTrust,
+        repo = catalogRepo,
+        branchPrefix = catalogBranchPrefix,
+        registerWasm = { system, wasmDir ->
+          wasm[system] = wasmDir
+          System.err.println(
+            "serve: catalog $system carries an in-browser Wasm app (/wasm/$system/)"
+          )
+        },
+      )
+    for (system in catalogs) {
+      when (val r = store.load(system)) {
+        is ServeCatalogStore.Result.Ok ->
+          System.err.println(
+            "serve: catalog ${r.system} → ${r.previewCount} preview(s), trust=${r.trust} " +
+              "(?session=${r.system})"
+          )
+        is ServeCatalogStore.Result.Failed ->
+          System.err.println("serve: catalog ${r.system} not served: ${r.reason}")
+      }
+    }
+    return wasm
+  }
+
+  /**
+   * Load the `--trust-store` JSON, or the empty fail-closed store when the flag is absent. A bad
+   * path or unparseable file is a hard error: a public operator who *meant* to pin trusted
+   * producers shouldn't silently fall back to trusting nothing (or, worse, think they configured it
+   * when they didn't).
+   */
+  private fun loadTrustStore(): TrustStore {
+    val path = trustStorePath ?: return TrustStore.EMPTY
+    val f = File(path)
+    if (!f.isFile) {
+      System.err.println("serve: --trust-store not found: ${f.path}")
+      exitProcess(1)
+    }
+    return try {
+      TrustStore.load(f)
+    } catch (e: Exception) {
+      System.err.println("serve: could not parse --trust-store ${f.path}: ${e.message}")
+      exitProcess(1)
+    }
+  }
+
+  /**
    * Match a preview id against `--id` (exact) / `--filter` (substring); all when neither is set.
    */
   private fun matches(id: String): Boolean =
@@ -417,9 +557,15 @@ class ServeCommand(args: List<String>) : Command(args) {
   private fun printBanner(moduleLabel: String, port: Int, token: String, previewCount: Int) {
     val exposed = ServeUrls.isExposed(host)
     val localHost = if (exposed || host == ServeUrls.LOOPBACK) ServeUrls.LOOPBACK else host
-    val localUrl = ServeUrls.landingUrl(ServeUrls.origin(localHost, port), token)
+    // Public mode is open, so the link carries no token; otherwise the token gates every route.
+    val localUrl =
+      if (public) "${ServeUrls.origin(localHost, port)}/"
+      else ServeUrls.landingUrl(ServeUrls.origin(localHost, port), token)
 
     System.err.println("compose-preview serve — module $moduleLabel")
+    if (public) {
+      System.err.println("  ⚠ Public mode — every route is open (no token required).")
+    }
     System.err.println("  Local:   $localUrl")
     if (exposed) {
       val networks = ServeUrls.siteLocalIpv4Addresses()
@@ -499,6 +645,10 @@ class ServeCommand(args: List<String>) : Command(args) {
                           connect. Prints the token-gated network URL and a security warning.
         --port <n>        Preferred port (default $DEFAULT_PORT; auto-picks the next free one).
         --token <value>   Use a fixed token instead of a freshly generated one (stable links).
+        --public          Serve every route WITHOUT a token (open). For a deployed public preview
+                          server — browsing published catalogs / uploaded bundles is the point. Safe
+                          by construction (no server-side code exec; untrusted re-render refused;
+                          uploads capped + SSRF-gated). Off by default.
         --export <path>   Don't serve: render every preview once and write a portable bundle (a
                           self-contained web gallery + PNGs) to <path>. A '.zip' path writes a zip;
                           any other path writes a directory. The live server also offers this at
@@ -528,6 +678,26 @@ class ServeCommand(args: List<String>) : Command(args) {
                           SSRF allowlist for POST /bundles?url=: hostnames the server may fetch a
                           bundle from. Omitted/empty = no URL fetch is allowed (fail closed), so a
                           client can't steer the server at an arbitrary or internal address.
+        --trust-store <file>
+                          Producer-trust allowlist (JSON: signing keys / branches / CI identities).
+                          Uploaded bundles are verified against it and the verdict (signature /
+                          branch / provenance / unverified) is returned + badged. Omitted = trust
+                          nothing (every upload unverified); the data tiers serve either way.
+        --catalogs <system>[,<system>…]
+                          Serve our published design systems from their design-artifacts/<system>
+                          branches (e.g. compose-m3,wear-m3): each is fetched (catalog.json + images)
+                          and served read-only at ?session=<system>, trusted-by-origin when the
+                          branch is in --trust-store.
+        --catalog-repo <owner/repo>
+                          Repo the catalogs are fetched from (default yschimke/compose-ai-tools).
+        --catalog-branch-prefix <prefix>
+                          Branch prefix for --catalogs (default design-artifacts/).
+        --wasm-dir <system>=<dir>[,<system>=<dir>…]
+                          In-browser CMP tier: map a design system to its assembled Kotlin/Wasm
+                          catalog app (./gradlew :samples:cmp-wasm-catalog:wasmCatalogDist →
+                          build/wasmDist). That session's viewer then offers a "Run in browser
+                          (Wasm)" toggle that mounts the M3 components client-side (no server
+                          round-trip), served read-only at /wasm/<system>/. Missing dirs are skipped.
 
       The shareable link carries an unguessable token; requests without it get 404.
       """

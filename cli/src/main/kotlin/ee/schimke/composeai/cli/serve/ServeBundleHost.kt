@@ -3,7 +3,9 @@ package ee.schimke.composeai.cli.serve
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamFrameParams
+import ee.schimke.composeai.data.overrides.PreviewOverridesPayload
 import java.io.File
+import kotlinx.serialization.json.Json
 
 /**
  * A [ServeHost] backed by a **portable bundle** on disk (the `ServeBundle` / WebEmbed layout:
@@ -15,7 +17,16 @@ import java.io.File
  * Cheap and stateless (just file reads), so the registry pins it resident rather than suspending
  * it.
  */
-class ServeBundleHost(private val bundleDir: File, override val label: String) : ServeHost {
+class ServeBundleHost(
+  private val bundleDir: File,
+  override val label: String,
+  /**
+   * Producer-trust verdict for this bundle, attached at ingestion ([ServeBundleStore]) so the API /
+   * viewer can badge it. Defaults to `Unverified` for bundles registered without a check (e.g. a
+   * `--bundles <dir>` directory, which has no original signed file to verify).
+   */
+  val trust: BundleVerifier.Verdict = BundleVerifier.Verdict.Unverified("not checked"),
+) : ServeHost {
 
   private val previewsDir = File(bundleDir, PREVIEWS_SUBDIR)
 
@@ -27,8 +38,27 @@ class ServeBundleHost(private val bundleDir: File, override val label: String) :
       .filter { it.isFile && it.name.endsWith(PNG_SUFFIX) }
       .map { it.relativeTo(previewsDir).invariantSeparatorsPath.removeSuffix(PNG_SUFFIX) }
       .sorted()
-      .map { id -> ServePreview(id = id, label = id) }
+      .map { id -> ServePreview(id = id, label = id, overrides = readOverrides(id)) }
       .toList()
+
+  /**
+   * Read the editable knobs carried for [id] in the bundle's `previews/<id>.overrides.json` sidecar
+   * (the `compose/overrides` payload the producer packed). Absent / unreadable → no knobs. The host
+   * can't re-render (it replays baked PNGs), so [canApplyOverrides] stays false and the viewer
+   * shows these as disabled, informational controls.
+   */
+  private fun readOverrides(
+    id: String
+  ): List<ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration> {
+    val sidecar = File(previewsDir, "$id$OVERRIDES_SUFFIX")
+    if (!sidecar.isFile) return emptyList()
+    return try {
+      OVERRIDES_JSON.decodeFromString(PreviewOverridesPayload.serializer(), sidecar.readText())
+        .declarations
+    } catch (e: Exception) {
+      emptyList()
+    }
+  }
 
   private val previewIds: Set<String> = previews.map { it.id }.toHashSet()
 
@@ -59,6 +89,8 @@ class ServeBundleHost(private val bundleDir: File, override val label: String) :
   companion object {
     private const val PREVIEWS_SUBDIR = "previews"
     private const val PNG_SUFFIX = ".png"
+    private const val OVERRIDES_SUFFIX = ".overrides.json"
+    private val OVERRIDES_JSON = Json { ignoreUnknownKeys = true }
 
     /** True when [dir] looks like a servable bundle (a `previews/` tree with at least one PNG). */
     fun looksLikeBundle(dir: File): Boolean {

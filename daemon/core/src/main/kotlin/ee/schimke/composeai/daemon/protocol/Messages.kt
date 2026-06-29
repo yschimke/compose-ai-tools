@@ -646,7 +646,59 @@ data class PreviewOverrides(
    * `renderNow.overrides.lottie`. Desktop-only today; the Android backend ignores it.
    */
   val lottie: LottieOverride? = null,
+  /**
+   * Optional plain-Compose **named** overrides — the opt-in, author-declared editable knobs a
+   * preview exposes through the `previewOverride*` keyed lookups (see
+   * `:data-preview-overrides-runtime`). Maps a declaration key to the daemon-supplied
+   * [PreviewOverrideValue]; the around-composable (`PreviewOverridesOverrideExtension` in
+   * `:data-preview-overrides-connector`) seeds these into the process-static
+   * `PreviewOverrideController`, and a consumer's `previewOverrideString("label", default)` call
+   * returns the seeded value (or its author default when no entry is present).
+   *
+   * Unlike [remoteCompose], this needs no Remote Compose runtime — it is portable across the
+   * Android and desktop backends. Indexed knobs for repeated components (lists) use composite keys
+   * that suffix the base key with the bracketed index (the third `rowLabel` seeds against the key
+   * `rowLabel` then `2` in brackets); the item count is itself just an int knob the author feeds
+   * into `repeat(n)`. Defaults to null so existing renders are byte-identical.
+   */
+  val namedOverrides: Map<String, PreviewOverrideValue>? = null,
 )
+
+/**
+ * Preview-neutral typed value for an author-declared [PreviewOverrides.namedOverrides] knob.
+ *
+ * Deliberately **not** [RemoteNamedValue]: that sum is Remote-Compose-flavoured (a `dp` variant
+ * wrapped with `.rdp`, mapped onto the `RcPlatformProfiles` creation DSL). These values seed plain
+ * Compose `previewOverride*` lookups, so the variant set is the small JVM/Compose-native one
+ * (string / int / float / bool / color). A `Dp` knob is carried as [FloatValue] — the runtime
+ * helper wraps the float in `.dp` at the API edge.
+ *
+ * `@JsonClassDiscriminator("kind")` so payloads read `{ "kind": "string", "value": "Tap me" }`
+ * rather than carrying the polymorphic class name.
+ */
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+@kotlinx.serialization.json.JsonClassDiscriminator("kind")
+sealed class PreviewOverrideValue {
+  @Serializable
+  @SerialName("string")
+  data class StringValue(val value: String) : PreviewOverrideValue()
+
+  @Serializable @SerialName("int") data class IntValue(val value: Int) : PreviewOverrideValue()
+
+  @Serializable
+  @SerialName("float")
+  data class FloatValue(val value: Float) : PreviewOverrideValue()
+
+  @Serializable
+  @SerialName("bool")
+  data class BooleanValue(val value: Boolean) : PreviewOverrideValue()
+
+  /** Color as `#AARRGGBB`. The runtime helper parses it back to a Compose `Color`. */
+  @Serializable
+  @SerialName("color")
+  data class ColorValue(val argb: String) : PreviewOverrideValue()
+}
 
 /**
  * Optional Lottie timeline override. Drives the interactive "scrub the animation" path for

@@ -602,6 +602,10 @@ private fun renderPreview(
       findComposableMethodWithArgs(clazz, functionName, previewArgs)
     }
 
+  // Arm the named-override capture for this render: drop any knobs a prior preview declared so this
+  // preview's `previewOverride*` lookups accumulate a clean set (drained into the sidecar below).
+  ee.schimke.composeai.overrides.PreviewOverrideController.clearDeclarations()
+
   // `@Preview(fontScale = ...)` rides on `Density.fontScale`. Threading it through the scene's
   // constructor makes the override visible to layout (sp → px) before the first measure pass; we
   // also re-provide the same `Density` as `LocalDensity` below since some ui-text/text-foundation
@@ -757,6 +761,44 @@ private fun renderPreview(
   }
 
   scene.close()
+
+  // After a successful render, write the editable knobs this preview declared via
+  // `previewOverride*`
+  // as the `renders/<stem>.overrides.json` sidecar `BundlePreviewTask` packs into the bundle.
+  writePreviewOverridesSidecar(outputFile, fileSystem)
+}
+
+private val overridesSidecarJson =
+  kotlinx.serialization.json.Json {
+    encodeDefaults = true
+    prettyPrint = false
+  }
+
+/**
+ * Drain the named-override declarations captured during the just-finished render (if any) and write
+ * them beside [outputFile] as `<stem>.overrides.json`, the serialized `compose/overrides` payload
+ * `BundlePreviewTask.resolvePreviewOverrides` reads. Best-effort; an empty set deletes any stale
+ * sidecar so a preview that stopped declaring knobs doesn't keep an old one. The `overrides.json`
+ * suffix is kept in lockstep with `PreviewBundleFormat.BUNDLE_OVERRIDES_SIDECAR_EXT`.
+ */
+private fun writePreviewOverridesSidecar(outputFile: File, fileSystem: FileSystem) {
+  val declarations = ee.schimke.composeai.overrides.PreviewOverrideController.declarations()
+  val parent = outputFile.parentFile ?: return
+  val sidecar = File(parent, "${outputFile.nameWithoutExtension}.overrides.json").path.toPath()
+  if (declarations.isEmpty()) {
+    if (fileSystem.exists(sidecar)) fileSystem.delete(sidecar)
+    return
+  }
+  val payload =
+    ee.schimke.composeai.data.overrides.PreviewOverridesPayload(declarations = declarations)
+  val bytes =
+    overridesSidecarJson
+      .encodeToString(
+        ee.schimke.composeai.data.overrides.PreviewOverridesPayload.serializer(),
+        payload,
+      )
+      .toByteArray(Charsets.UTF_8)
+  fileSystem.write(sidecar) { write(bytes) }
 }
 
 /**

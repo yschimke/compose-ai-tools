@@ -47,6 +47,13 @@ dependencies {
   // render and calls `DeviceFrameDataProducer.writeArtifacts(...)` to composite the PNG into a real
   // device-art bezel. Renderer-agnostic (BufferedImage / ImageIO + Ktor/OkHttp fetch).
   implementation(project(":data-deviceframe-connector"))
+  // Plain-Compose named overrides — DesktopRendererMain drains `PreviewOverrideController` after
+  // each
+  // render and writes the `renders/<stem>.overrides.json` sidecar `BundlePreviewTask` packs. The
+  // consumer's `previewOverride*` calls resolve to the same controller, so depending on the runtime
+  // here guarantees the class is present even when the consumer didn't add it (then nothing is
+  // declared and no sidecar is written). `core` (re-exported) carries the payload serializer.
+  implementation(project(":data-preview-overrides-runtime"))
 
   testImplementation(libs.junit)
 }

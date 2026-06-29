@@ -10,6 +10,7 @@ import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.request.receiveStream
+import io.ktor.server.response.respond
 import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.RoutingContext
@@ -23,6 +24,7 @@ import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.InputStream
 import java.net.InetAddress
 import java.net.ServerSocket
@@ -60,6 +62,23 @@ class ServeHttpServer(
   private val defaultSessionId: String,
   /** When non-null, enables `POST /bundles/{name}` for clients to contribute bundles at runtime. */
   private val bundleStore: ServeBundleStore? = null,
+  /**
+   * Public mode: serve **without** requiring the token — every route is open. For a deployed public
+   * preview server (preview.coo.ee) where browsing the published catalogs / uploaded bundles is the
+   * point. Safe by construction: rendering a bundle/catalog executes no code, re-rendering
+   * untrusted Compose is refused, uploads are size-capped + the `?url=` fetch is SSRF-gated. Off by
+   * default, so a normal `serve` stays token-gated (a bad/absent token still 404s).
+   */
+  private val isPublic: Boolean = false,
+  /**
+   * In-browser CMP tier: system id → the assembled Wasm app directory (the
+   * `:samples:cmp-wasm-catalog:wasmCatalogDist` output). When a catalog session's id is a key here,
+   * its viewer offers a "Run in browser (Wasm)" toggle that mounts `/wasm/<system>/?id=<component>`
+   * in a sandboxed iframe. The assets are static, generic client code (the same app for everyone,
+   * no session data), so the `/wasm/` route is **ungated** — letting the iframe's relative
+   * `fetch('./composeApp.wasm')` work without threading the token through every sub-resource.
+   */
+  private val wasmCatalogs: Map<String, File> = emptyMap(),
   portRange: Int = DEFAULT_PORT_RANGE,
   /**
    * Max renders in flight across the HTTP `/render` lane. Defaults to the host's CPU count so a
@@ -80,6 +99,53 @@ class ServeHttpServer(
       routing {
         // `/healthz` is the only ungated route — liveness only, leaks nothing.
         get("/healthz") { call.respondText("ok") }
+
+        // In-browser CMP tier: serve the static Wasm app for a registered system at
+        // `/wasm/<system>/<file>`. Ungated (generic client code, no session data) so the viewer's
+        // sandboxed iframe and its relative asset fetches work without a token. Registered only
+        // when
+        // the operator mapped a system to its built dist (`--wasm-dir`).
+        if (wasmCatalogs.isNotEmpty()) {
+          get("/wasm/{system}/{path...}") {
+            val dir = call.parameters["system"]?.let { wasmCatalogs[it] }
+            if (dir == null) {
+              call.respondText("not found", status = HttpStatusCode.NotFound)
+              return@get
+            }
+            val segments = call.parameters.getAll("path").orEmpty().filter { it.isNotEmpty() }
+            val rel = if (segments.isEmpty()) "index.html" else segments.joinToString("/")
+            val base = dir.toPath().toAbsolutePath().normalize()
+            val resolved = base.resolve(rel).normalize()
+            // Zip-slip guard: a crafted `../` path must not escape the app directory.
+            if (!resolved.startsWith(base)) {
+              call.respondText("not found", status = HttpStatusCode.NotFound)
+              return@get
+            }
+            val file = resolved.toFile()
+            if (!file.isFile) {
+              call.respondText("not found", status = HttpStatusCode.NotFound)
+              return@get
+            }
+            // The viewer mounts this app in a `sandbox="allow-scripts"` iframe, which has an opaque
+            // (null) origin — so the app's own ES-module + wasm fetches count as cross-origin and
+            // need CORS. `*` is safe: these are public static client assets with no session data,
+            // and keeping the strong sandbox (no `allow-same-origin`) isolates even untrusted wasm.
+            call.response.headers.append(HttpHeaders.AccessControlAllowOrigin, "*")
+            // Cache the heavy payload (skiko + app wasm ≈ 8 MB gzipped). The filenames aren't
+            // content-hashed, so pair a moderate max-age with a size+mtime ETag: within the window
+            // the browser serves from cache (no request); after it, a conditional request gets a
+            // cheap 304 instead of re-downloading megabytes.
+            val etag = "\"${file.length().toString(16)}-${file.lastModified().toString(16)}\""
+            call.response.headers.append(HttpHeaders.CacheControl, "public, max-age=3600")
+            call.response.headers.append(HttpHeaders.ETag, etag)
+            if (call.request.headers[HttpHeaders.IfNoneMatch] == etag) {
+              call.respond(HttpStatusCode.NotModified)
+              return@get
+            }
+            val bytes = withContext(Dispatchers.IO) { file.readBytes() }
+            call.respondBytes(bytes, wasmContentType(file.name))
+          }
+        }
 
         // Shared/public mode ingestion: a client contributes a pre-rendered bundle (upload the zip
         // as the body, or pass `?url=` to a build-results artifact) and gets back a ?session= link.
@@ -128,6 +194,7 @@ class ServeHttpServer(
                       session = result.name,
                       previews = result.previewCount,
                       path = "/?session=${result.name}",
+                      trust = result.trust,
                     ),
                   ),
                   ContentType.Application.Json,
@@ -144,7 +211,7 @@ class ServeHttpServer(
         // checked post-handshake (can't 404 after upgrade) — a bad token closes immediately.
         webSocket("/ws/{name}") {
           val provided = call.request.queryParameters["token"] ?: call.request.headers[TOKEN_HEADER]
-          if (!ServeUrls.tokensMatch(token, provided)) {
+          if (!isAuthorized(token, provided, isPublic)) {
             close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "unauthorized"))
             return@webSocket
           }
@@ -230,6 +297,7 @@ class ServeHttpServer(
                 renderHost.previews,
                 token,
                 call.request.queryParameters["session"],
+                trust = (renderHost as? ServeBundleHost)?.let { BundleVerifier.summary(it.trust) },
               ),
               ContentType.Text.Html,
             )
@@ -242,6 +310,9 @@ class ServeHttpServer(
             val dto =
               PreviewsResponse(
                 module = renderHost.label,
+                // Producer-trust verdict for a bundle/catalog session (signature / branch /
+                // provenance / unverified); null for a live daemon-backed module session.
+                trust = (renderHost as? ServeBundleHost)?.let { BundleVerifier.summary(it.trust) },
                 previews =
                   renderHost.previews.map { p ->
                     PreviewDto(id = p.id, label = p.label, modes = p.modes.map { it.wire })
@@ -277,6 +348,7 @@ class ServeHttpServer(
 
         get("/p/{name}") {
           if (rejectBadToken()) return@get
+          val sessionId = call.request.queryParameters["session"] ?: defaultSessionId
           withLeasedSession { renderHost ->
             val previewId = call.parameters["name"]
             val preview = previewId?.let { id -> renderHost.previews.firstOrNull { it.id == id } }
@@ -284,8 +356,26 @@ class ServeHttpServer(
               call.respondText("no such preview", status = HttpStatusCode.NotFound)
               return@withLeasedSession
             }
+            // Offer the in-browser Wasm tier when this catalog session has a Wasm app registered.
+            // The catalog preview id is `<component-slug>__<variant>…`; the Wasm app keys its
+            // registry by the component slug, so take the segment before the first `__`.
+            val wasmSrc =
+              if (wasmCatalogs.containsKey(sessionId)) {
+                val componentId = preview.id.substringBefore("__")
+                "/wasm/${WebEscaping.urlEncodeSegment(sessionId)}/" +
+                  "?id=${WebEscaping.urlEncodeSegment(componentId)}"
+              } else {
+                null
+              }
             call.respondText(
-              ServeWeb.viewerPage(preview, token, call.request.queryParameters["session"]),
+              ServeWeb.viewerPage(
+                preview,
+                token,
+                call.request.queryParameters["session"],
+                canApplyOverrides = renderHost.canApplyOverrides,
+                trust = (renderHost as? ServeBundleHost)?.let { BundleVerifier.summary(it.trust) },
+                wasmSrc = wasmSrc,
+              ),
               ContentType.Text.Html,
             )
           }
@@ -381,7 +471,7 @@ class ServeHttpServer(
    */
   private suspend fun RoutingContext.rejectBadToken(): Boolean {
     val provided = call.request.queryParameters["token"] ?: call.request.headers[TOKEN_HEADER]
-    if (ServeUrls.tokensMatch(token, provided)) return false
+    if (isAuthorized(token, provided, isPublic)) return false
     call.respondText("not found", status = HttpStatusCode.NotFound)
     return true
   }
@@ -389,6 +479,14 @@ class ServeHttpServer(
   companion object {
     const val TOKEN_HEADER: String = "X-Compose-Preview-Token"
     private const val DEFAULT_PORT_RANGE = 32
+
+    /**
+     * Authorisation decision for a request: open when [isPublic], otherwise the [provided] token
+     * must match [token] (constant-time). Pure so the gate is unit-testable without standing up the
+     * server. A bad/absent token in non-public mode is rejected (the caller 404s for obscurity).
+     */
+    fun isAuthorized(token: String, provided: String?, isPublic: Boolean): Boolean =
+      isPublic || ServeUrls.tokensMatch(token, provided)
 
     /**
      * How long a `/render` request waits for a concurrency slot before getting 503 + Retry-After.
@@ -399,6 +497,20 @@ class ServeHttpServer(
     private const val MAX_UPLOAD_BYTES = 100L * 1024 * 1024
 
     private val JSON = Json { encodeDefaults = true }
+
+    /**
+     * Content type for a Wasm-app asset by extension. `application/wasm` matters: the browser's
+     * `WebAssembly.instantiateStreaming` rejects a wasm served as `octet-stream`. `.mjs`/`.js` must
+     * be a JS type so the ES-module loader runs.
+     */
+    internal fun wasmContentType(name: String): ContentType =
+      when {
+        name.endsWith(".html") -> ContentType.Text.Html
+        name.endsWith(".mjs") || name.endsWith(".js") -> ContentType.parse("text/javascript")
+        name.endsWith(".wasm") -> ContentType.parse("application/wasm")
+        name.endsWith(".json") || name.endsWith(".map") -> ContentType.Application.Json
+        else -> ContentType.Application.OctetStream
+      }
 
     /**
      * Read [input] fully, or `null` once it exceeds [max] bytes (without buffering past the cap).
@@ -445,6 +557,12 @@ class ServeHttpServer(
 private data class PreviewsResponse(
   val schema: String = "compose-preview-serve/v1",
   val module: String,
+  /**
+   * Producer-trust verdict for this session ([BundleVerifier.summary]) — `signature:<keyId>`,
+   * `branch:<repo>@<branch>`, `provenance:<id>`, or `unverified`. Null for a live daemon-backed
+   * module (trust applies to detached bundles/catalogs, not the operator's own served module).
+   */
+  val trust: String? = null,
   val previews: List<PreviewDto>,
 )
 
@@ -458,4 +576,10 @@ private data class BundleAcceptedResponse(
   val previews: Int,
   /** Relative viewer link for the new session (append your token). */
   val path: String,
+  /**
+   * Producer-trust verdict for the upload ([BundleVerifier.summary]): `signature:<keyId>`,
+   * `branch:<repo>@<branch>`, `provenance:<id>`, or `unverified`. The data tiers serve either way;
+   * this tells the uploader whether the server would treat the bundle as trusted.
+   */
+  val trust: String,
 )

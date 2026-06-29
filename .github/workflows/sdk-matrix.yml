@@ -43,13 +43,17 @@ jobs:
           # ----- JDK 17, auto-detect -----
           # Baseline: compileSdk=35 lands within Robolectric's JDK 17 ceiling, renders cleanly.
           - { label: "jdk17 / compileSdk=35 / target=35 / min=24 / auto", jdk: "17", compileSdk: 35, targetSdk: 35, minSdk: 24, sdkVersion: "", robolectric: "", maxSupportedSdk: "", expect: pass }
-          # JDK 17 + compileSdk≥36 fails at sandbox bootstrap: Robolectric refuses SDK 36
-          # without JDK 21. The minSdk axis is moot here; this is purely a JDK constraint.
-          - { label: "jdk17 / compileSdk=36 / target=36 / min=24 / auto", jdk: "17", compileSdk: 36, targetSdk: 36, minSdk: 24, sdkVersion: "", robolectric: "", maxSupportedSdk: "", expect: fail }
-          # JDK 17 + compileSdk=37 auto-detect clamps to sdk=36; JDK 17 still refuses sdk=36
-          # afterwards. The clamp warning fires regardless. Expect fail because of the JDK
-          # constraint, not the clamp.
-          - { label: "jdk17 / compileSdk=37 / target=37 / min=24 / auto (clamp)", jdk: "17", compileSdk: 37, targetSdk: 37, minSdk: 24, sdkVersion: "", robolectric: "", maxSupportedSdk: "", expect: fail }
+          # JDK 17 + compileSdk=36 auto-detect: the plugin's clamp is JDK-aware
+          # (GenerateRobolectricPropertiesTask.resolveSdk → MAX_SUPPORTED_SDK_BELOW_JAVA_21). On
+          # JDK 17 the effective ceiling is 35, so a compileSdk=36 consumer renders at sdk=35 with
+          # a "needs JDK 21+ to render … clamping the Robolectric sandbox to 35" warning instead of
+          # failing at sandbox bootstrap. minSdk=24 parses cleanly against the framework-35 APK.
+          # (Was expect:fail before the JDK-aware clamp landed; the matrix surfaced that drift.)
+          - { label: "jdk17 / compileSdk=36 / target=36 / min=24 / auto", jdk: "17", compileSdk: 36, targetSdk: 36, minSdk: 24, sdkVersion: "", robolectric: "", maxSupportedSdk: "", expect: pass }
+          # JDK 17 + compileSdk=37 auto-detect clamps the same way: ceiling = min(jar=36, JDK17=35)
+          # = 35, so it renders at sdk=35 (the warning notes the APK may still fail if <uses-sdk>
+          # is newer — here minSdk=24 is fine). Same JDK-aware-clamp improvement as the row above.
+          - { label: "jdk17 / compileSdk=37 / target=37 / min=24 / auto (clamp)", jdk: "17", compileSdk: 37, targetSdk: 37, minSdk: 24, sdkVersion: "", robolectric: "", maxSupportedSdk: "", expect: pass }
           # ----- JDK 17, sdkVersion=35 override -----
           # The rescue path consumers on JDK 17 + compileSdk=36 take. APK's minSdk=24 parses
           # cleanly against the SDK 35 framework Robolectric synthesizes.
@@ -93,7 +97,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287 # v5.3.0
+      - uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.4.0
         with:
           distribution: temurin
           java-version: ${{ matrix.jdk }}
@@ -143,8 +147,14 @@ jobs:
             # `Execution failed` line, which beats falling back to "see build.log". The pattern
             # set covers the four documented failure shapes (#1248 PackageParser, JDK 21
             # requirement, missing SDK jar, plus a generic Gradle exception fallback).
+            # `UnknownSdk` is the literal Robolectric raises when a sandbox SDK has no
+            # `android-all-instrumented-N.jar` (`IllegalArgumentException at UnknownSdk.java:45`) —
+            # the missing-SDK-jar shape the `robolectric=4.17-SNAPSHOT` API-37 probes hit. Without
+            # it the match falls through to the generic "N tests failed" summary, so the
+            # `expectedReason: UnknownSdk` gate below would flag a correctly-failing cell as
+            # "failed for the wrong reason".
             reason=$(grep -m1 -E \
-              "Requires newer sdk version|Android SDK [0-9]+ requires Java|API level [0-9]+ is not available|UnsupportedOperationException|Could not resolve all files|composeai.matrix" \
+              "Requires newer sdk version|Android SDK [0-9]+ requires Java|API level [0-9]+ is not available|UnsupportedOperationException|Could not resolve all files|UnknownSdk|composeai.matrix" \
               build.log | head -c 400 || true)
             if [ -z "$reason" ]; then
               reason=$(grep -m1 -E "^.*[Ff]ailed|FAILURE: " build.log | head -c 400 || true)

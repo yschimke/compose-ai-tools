@@ -31,8 +31,8 @@
  * The caller (the weekly workflow) commits the result to the system's
  * `design-artifacts/<system>` branch.
  */
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, resolve, join } from "node:path";
+import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { dirname, resolve, join, relative } from "node:path";
 import { parseArgs } from "node:util";
 
 import { readPreviewBundle, bundleToCandidates } from "@design-parity/candidate";
@@ -42,6 +42,18 @@ import { renderIndexHtml } from "./render-index-html.mjs";
 import { renderReadmeMd } from "./render-readme-md.mjs";
 import { renderWireframeSvg, slug } from "./render-wireframe-svg.mjs";
 import { renderLayoutWireframeSvg } from "./render-layout-wireframe-svg.mjs";
+import { DEFAULT_PREVIEW_BASE, livePreviewUrl } from "./live-preview.mjs";
+
+/** Relative paths of every file under `dir` (forward-slashed), for the webRender manifest. */
+async function listFilesRecursive(dir) {
+  const out = [];
+  for (const entry of await readdir(dir, { recursive: true, withFileTypes: true })) {
+    if (entry.isFile()) {
+      out.push(relative(dir, join(entry.parentPath ?? entry.path, entry.name)).split("\\").join("/"));
+    }
+  }
+  return out;
+}
 
 /**
  * Read a preview bundle into CandidateRenders, resolving each candidate's
@@ -211,6 +223,16 @@ const { values } = parseArgs({
     renders: { type: "string" },
     out: { type: "string" },
     renderer: { type: "string" },
+    // Base URL of the live preview server the catalog deep-links into (the
+    // `livePreview` fields + README "Customise live" links). Falls back to
+    // $PREVIEW_SERVER_BASE, then the public default.
+    "preview-base": { type: "string" },
+    // Optional assembled in-browser CMP Wasm app (the
+    // `:samples:cmp-wasm-catalog:wasmCatalogDist` output, e.g. `build/wasmDist`).
+    // When given, its files are copied under `out/web/wasm/` and a `webRender`
+    // descriptor is written into catalog.json — so the branch carries the live
+    // renderer and `serve --catalogs` fetches it from the same trusted origin.
+    "wasm-dist": { type: "string" },
     // Publish even when the render is incomplete (missing previews or absent
     // semantics). Off by default so a degraded render fails the job rather than
     // force-pushing a tokens/greenline-less bundle over a good delivery branch.
@@ -220,7 +242,7 @@ const { values } = parseArgs({
 
 if (!values.spec || !values.renders || !values.out) {
   console.error(
-    "usage: generate-design-catalog --spec <catalog.spec.json> --renders <dir|zip> --out <dir> [--renderer <s>]",
+    "usage: generate-design-catalog --spec <catalog.spec.json> --renders <dir|zip> --out <dir> [--renderer <s>] [--preview-base <url>]",
   );
   process.exit(2);
 }
@@ -262,6 +284,44 @@ if (!values["allow-incomplete"] && (missing.length > 0 || withoutSemantics.lengt
 // Images in the bundle are relative to the render dir; resolve them from there.
 const sourceRoot = rendersPath.endsWith(".zip") ? dirname(rendersPath) : rendersPath;
 const result = await writeCatalog(catalog, outPath, { sourceRoot });
+
+// Inject the live-preview deep links into catalog.json. Done as a post-process
+// (re-read → annotate → re-write) rather than via writeCatalog's options because
+// the pinned `@design-parity/catalog-export` predates `previewServer`; once a
+// release carrying it lands and the dep is bumped, this can move into the
+// writeCatalog call. Each image gets `livePreview` = the URL that opens its exact
+// variant on `compose-preview serve --catalogs <system>` — the same id derivation
+// the server uses, so browsing this branch and customising the live render are
+// two ends of one workflow.
+const previewBase =
+  values["preview-base"] || process.env.PREVIEW_SERVER_BASE || DEFAULT_PREVIEW_BASE;
+
+// Bundle the in-browser CMP Wasm app into the branch (out/web/wasm/) and record
+// a `webRender` descriptor in catalog.json. `compose-preview serve --catalogs`
+// reads that descriptor and fetches these exact files from the same trusted
+// branch — so the live renderer rides the catalog's origin, no separate hosting.
+// The `files` list IS the manifest the server fetches; an incomplete fetch fails
+// closed there, so list every file the app needs.
+let webRender = null;
+if (values["wasm-dist"]) {
+  const dest = join(outPath, "web", "wasm");
+  await cp(resolve(values["wasm-dist"]), dest, { recursive: true });
+  const files = (await listFilesRecursive(dest)).sort();
+  webRender = { kind: "compose-wasm", path: "web/wasm/", files };
+  console.log(`[${spec.system}] bundled web/wasm/ (${files.length} files)`);
+}
+
+{
+  const catalogJsonPath = join(outPath, "catalog.json");
+  const manifest = JSON.parse(await readFile(catalogJsonPath, "utf8"));
+  for (const component of manifest.components ?? []) {
+    for (const image of component.images ?? []) {
+      if (image.path) image.livePreview = livePreviewUrl(previewBase, manifest.system, image.path);
+    }
+  }
+  if (webRender) manifest.webRender = webRender;
+  await writeFile(catalogJsonPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+}
 
 // Editable SVG wireframes next to the raster PNGs: one labelled shape per layout
 // region, in any-vector-tool-editable form, so a developer can adopt the
@@ -312,7 +372,7 @@ await writeFile(indexPath, renderIndexHtml(catalog, { wireframeSlugs }), "utf8")
 const readmePath = join(outPath, "README.md");
 await writeFile(
   readmePath,
-  renderReadmeMd(catalog, { imageCount: result.imageCount, wireframeCount }),
+  renderReadmeMd(catalog, { imageCount: result.imageCount, wireframeCount, previewBase }),
   "utf8",
 );
 

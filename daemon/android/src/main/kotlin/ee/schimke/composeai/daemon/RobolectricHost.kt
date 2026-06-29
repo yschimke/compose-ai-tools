@@ -365,6 +365,9 @@ open class RobolectricHost(
       "launcherWidget",
       "permissions",
       "remoteCompose",
+      // `renderNow.overrides.namedOverrides` seeds the plain-Compose `previewOverride*` knobs via
+      // the `PreviewOverridesPreviewOverrideExtension` planner wired into `previewOverrideExtensions`.
+      "namedOverrides",
     )
 
   /** PROTOCOL.md § 3 — android backend identifier surfaced via `capabilities.backend`. */
@@ -1585,6 +1588,12 @@ open class RobolectricHost(
                 // today — the daemon-side resize-loop orchestrator that walks intermediate stops
                 // is tracked as a follow-up.
                 LauncherWidgetPreviewOverrideExtension(),
+                // Plain-Compose named overrides. Always-on (like keyboard / permissions): the planner
+                // installs `LocalPreviewOverrideHost` on every render so `previewOverride*` lookups
+                // resolve and record their declarations, and seeds `renderNow.overrides.namedOverrides`
+                // when present. The `compose/overrides` data product (registered in `DaemonMain`)
+                // surfaces the declared knobs.
+                PreviewOverridesPreviewOverrideExtension(),
                 // Runtime pseudolocale: when `localeTag` is `en-XA` / `ar-XB`, wrap LocalContext
                 // with a Resources subclass that pseudolocalises `getString*` returns. The
                 // planner returns null for any other tag, so non-pseudo locales keep going through
