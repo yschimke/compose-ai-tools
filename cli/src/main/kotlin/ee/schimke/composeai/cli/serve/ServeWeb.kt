@@ -415,10 +415,16 @@ object ServeWeb {
       var wasmToggle = document.getElementById("cp-wasm-toggle");
       var wasmSrc = root.getAttribute("data-wasm-src") || "";
       function wasmUrl() {
+        if (!wasmSrc) return "";
+        // The src comes from a server-set data- attribute, but resolve it against our own origin and
+        // refuse anything not same-origin http(s) anyway — so a `javascript:`/`data:` URL can never
+        // reach the iframe even if the attribute were ever mis-set (defuses DOM-text-as-HTML).
+        var u;
+        try { u = new URL(wasmSrc, location.origin); } catch (e) { return ""; }
+        if (u.origin !== location.origin) return "";
         var el = document.getElementById("cp-uiMode");
-        var mode = el && el.value ? el.value : "";
-        return wasmSrc + (mode ? (wasmSrc.indexOf("?") >= 0 ? "&" : "?") + "uiMode=" +
-          encodeURIComponent(mode) : "");
+        if (el && el.value) u.searchParams.set("uiMode", el.value);
+        return u.href;
       }
       function openWasm() {
         // Wasm and the daemon stream are mutually exclusive — only one transport drives the stage.
