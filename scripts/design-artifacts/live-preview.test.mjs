@@ -23,10 +23,10 @@ test("catalogPreviewId flattens the image path to a route-safe id", () => {
   );
 });
 
-test("livePreviewUrl targets the system session with the flattened preview id", () => {
+test("livePreviewUrl targets the /p viewer route with the flattened preview id", () => {
   assert.equal(
     livePreviewUrl("https://preview.coo.ee///", "compose-m3", "images/fab/ideal__default__dark.png"),
-    "https://preview.coo.ee/?session=compose-m3&preview=fab__ideal__default__dark",
+    "https://preview.coo.ee/p/fab__ideal__default__dark?session=compose-m3",
   );
 });
 
