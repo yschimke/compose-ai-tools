@@ -160,10 +160,9 @@ class BtaCompileSession(
     compileClasspath: List<Path>,
     compilerPlugins: List<CompilerPlugin>,
   ) {
-    args.set(
-      JvmCompilerArguments.CLASSPATH,
-      compileClasspath.joinToString(separator = java.io.File.pathSeparator) { it.toString() },
-    )
+    // Kotlin 2.4.0's Build Tools API typed CLASSPATH as `List<Path>?` (it was a
+    // path-separator-joined `String` through 2.3.x); pass the list straight through.
+    args.set(JvmCompilerArguments.CLASSPATH, compileClasspath)
     args.set(JvmCompilerArguments.JVM_TARGET, JvmTarget.JVM_17)
     args.set(JvmCompilerArguments.MODULE_NAME, moduleName)
     if (compilerPlugins.isNotEmpty()) {
