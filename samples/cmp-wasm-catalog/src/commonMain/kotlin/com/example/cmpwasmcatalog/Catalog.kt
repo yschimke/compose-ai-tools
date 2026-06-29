@@ -25,35 +25,43 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 /**
  * The M3 catalog component set, re-authored for Compose Multiplatform `wasmJs`.
  *
  * These are the same components the Android `:samples:design-catalog-m3` module renders into the
- * published `design-artifacts/compose-m3` sticker sheet, but written against the CMP `material3`
+ * published `design-artifacts/compose-m3` sticker sheet, written against the CMP `material3`
  * artifact (which ships a `wasmJs` target) with no Android `@Preview` / `Configuration` tooling.
- * Each entry is keyed by the catalog **component id** (the slug the published `catalog.json` uses),
- * so the viewer can mount the live in-browser render for a given catalog component by id.
  *
- * Interactive (real) state, not a baked snapshot: `Switch` / `Checkbox` / `Slider` keep their own
- * remembered state so a visitor can actually toggle them in the browser.
+ * **Keys are the catalog's slugged `componentId`** — the exact id the published `catalog.json` and
+ * the live-server / README deep links use (`slug()` in `scripts/design-artifacts`: lowercase,
+ * non-alphanumeric runs → `-`). e.g. `Switch/On` → `switch-on`, `Chip/Filter-Selected` →
+ * `chip-filter-selected`, `TextField/Filled` → `textfield-filled`. This 1:1 mirrors
+ * `samples/design-catalog-m3/catalog.spec.json` so `/wasm/compose-m3/?id=<slug>` resolves every
+ * component instead of falling into the unknown-id branch.
+ *
+ * Interactive (real) state, not a baked snapshot: `Switch` / `Checkbox` / `Slider` / `FilterChip`
+ * keep their own remembered state so a visitor can toggle them in the browser; the pressed/focused
+ * states seed a held interaction so the resting state layer matches the catalog's static capture.
  */
 val catalogComponents: Map<String, @Composable () -> Unit> =
   linkedMapOf(
-    // Buttons — the five M3 emphasis levels.
+    // Buttons — the five M3 emphasis levels, plus disabled.
     "button-filled" to { Button(onClick = {}) { Text("Filled") } },
     "button-tonal" to { FilledTonalButton(onClick = {}) { Text("Tonal") } },
     "button-outlined" to { OutlinedButton(onClick = {}) { Text("Outlined") } },
     "button-elevated" to { ElevatedButton(onClick = {}) { Text("Elevated") } },
     "button-text" to { TextButton(onClick = {}) { Text("Text") } },
-    // Selection controls — start in their resting state but stay interactive.
-    "checkbox" to { StatefulCheckbox() },
-    "switch" to { StatefulSwitch() },
-    "radio-button" to { RadioButton(selected = true, onClick = {}) },
+    "button-filled-disabled" to { Button(onClick = {}, enabled = false) { Text("Disabled") } },
+    // Selection controls — primary (checked/selected) state, interactive.
+    "checkbox-checked" to { StatefulCheckbox(initial = true) },
+    "switch-on" to { StatefulSwitch(initial = true) },
+    "radiobutton-selected" to { RadioButton(selected = true, onClick = {}) },
     "slider" to { Box(Modifier.width(220.dp)) { StatefulSlider() } },
-    "filter-chip" to { StatefulFilterChip() },
-    "assist-chip" to { AssistChip(onClick = {}, label = { Text("Assist") }) },
+    "chip-filter-selected" to { StatefulFilterChip(initial = true) },
+    "chip-assist" to { AssistChip(onClick = {}, label = { Text("Assist") }) },
     // Containment — cards and the FAB.
     "card-elevated" to
       {
@@ -73,14 +81,40 @@ val catalogComponents: Map<String, @Composable () -> Unit> =
     "progress-circular" to { CircularProgressIndicator(progress = { 0.6f }) },
     "badge" to { Badge { Text("8") } },
     // Text fields.
-    "text-field-filled" to
+    "textfield-filled" to
       {
         TextField(value = "Filled", onValueChange = {}, label = { Text("Label") })
       },
-    "text-field-outlined" to
+    "textfield-outlined" to
       {
         OutlinedTextField(value = "Outlined", onValueChange = {}, label = { Text("Label") })
       },
-    // Segmented toggle.
-    "segmented-button" to { SegmentedToggle() },
+    // States — interaction (pressed / focused), disabled, and toggle off↔on.
+    "button-filled-pressed" to
+      {
+        Button(onClick = {}, interactionSource = pressedSource()) { Text("Pressed") }
+      },
+    "button-filled-focused" to
+      {
+        Button(onClick = {}, interactionSource = focusedSource()) { Text("Focused") }
+      },
+    "button-outlined-disabled" to
+      {
+        OutlinedButton(onClick = {}, enabled = false) { Text("Disabled") }
+      },
+    "switch-off" to { StatefulSwitch(initial = false) },
+    "checkbox-unchecked" to { StatefulCheckbox(initial = false) },
+    "chip-filter-unselected" to { StatefulFilterChip(initial = false) },
+    "segmentedbutton" to { SegmentedToggle() },
+    // Text options — maxLines + ellipsis overflow.
+    "text-maxlines-truncated" to
+      {
+        Box(Modifier.width(160.dp)) {
+          Text(
+            "This body text is deliberately long so it overflows two lines and truncates.",
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+          )
+        }
+      },
   )

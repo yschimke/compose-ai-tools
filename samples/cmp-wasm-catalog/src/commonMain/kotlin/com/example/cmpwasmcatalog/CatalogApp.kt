@@ -2,6 +2,9 @@
 
 package com.example.cmpwasmcatalog
 
+import androidx.compose.foundation.interaction.FocusInteraction
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -28,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.dp
 
 /**
@@ -58,14 +63,14 @@ fun CatalogApp(id: String, dark: Boolean = false) {
 // --- Interactive state holders: a browser visitor can actually toggle these. ---
 
 @Composable
-fun StatefulCheckbox() {
-  var checked by remember { mutableStateOf(true) }
+fun StatefulCheckbox(initial: Boolean) {
+  var checked by remember { mutableStateOf(initial) }
   Checkbox(checked = checked, onCheckedChange = { checked = it })
 }
 
 @Composable
-fun StatefulSwitch() {
-  var on by remember { mutableStateOf(true) }
+fun StatefulSwitch(initial: Boolean) {
+  var on by remember { mutableStateOf(initial) }
   Switch(checked = on, onCheckedChange = { on = it })
 }
 
@@ -76,9 +81,25 @@ fun StatefulSlider() {
 }
 
 @Composable
-fun StatefulFilterChip() {
-  var selected by remember { mutableStateOf(true) }
+fun StatefulFilterChip(initial: Boolean) {
+  var selected by remember { mutableStateOf(initial) }
   FilterChip(selected = selected, onClick = { selected = !selected }, label = { Text("Filter") })
+}
+
+// --- Held interaction sources: seed a state so the resting state layer matches the catalog. ---
+
+@Composable
+fun pressedSource(): MutableInteractionSource {
+  val source = remember { MutableInteractionSource() }
+  LaunchedEffect(source) { source.emit(PressInteraction.Press(Offset.Zero)) }
+  return source
+}
+
+@Composable
+fun focusedSource(): MutableInteractionSource {
+  val source = remember { MutableInteractionSource() }
+  LaunchedEffect(source) { source.emit(FocusInteraction.Focus()) }
+  return source
 }
 
 @Composable

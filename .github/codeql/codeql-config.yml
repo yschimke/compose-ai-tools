@@ -1,0 +1,12 @@
+name: "compose-ai-tools CodeQL config"
+
+# Exclude vendored / generated third-party assets from CodeQL. These aren't our
+# source — we carry pinned upstream artifacts the way an `npm install` would
+# (which CodeQL doesn't scan either), so alerts in them aren't actionable here
+# and just add noise. Scoped to specific vendored files, not broad globs, so our
+# own JS/TS stays fully analysed.
+paths-ignore:
+  # Pinned @js-joda/core 5.7.0 ES-module build, vendored beside the CMP Wasm
+  # catalog's index.html so the bundle resolves the bare `@js-joda/core` import
+  # offline (no CDN). Minified upstream library code — see docs/wasm-cmp-spike.md.
+  - 'samples/cmp-wasm-catalog/src/wasmJsMain/resources/js-joda.esm.js'

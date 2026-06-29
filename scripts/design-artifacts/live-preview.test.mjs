@@ -64,20 +64,22 @@ test("wasmLiveUrl targets the in-browser /wasm route only for CMP systems", () =
 });
 
 test("the compose-m3 README advertises the Kotlin/Wasm in-browser tier; wear-m3 does not", () => {
+  // Components are keyed by `componentId` (e.g. "Switch/On") — the real catalog
+  // shape, not a fabricated `id`. The Wasm link must use its slug.
   const cmp = renderReadmeMd(
     {
       meta: { system: "compose-m3", title: "Compose Material 3" },
-      components: [{ id: "button-filled", images: [] }],
+      components: [{ componentId: "Switch/On", images: [] }],
     },
     { previewBase: "https://preview.coo.ee" },
   );
   assert.match(cmp, /## 🌐 Run it in your browser \(Kotlin\/Wasm\)/);
-  assert.ok(cmp.includes("https://preview.coo.ee/wasm/compose-m3/?id=button-filled"));
+  assert.ok(cmp.includes("https://preview.coo.ee/wasm/compose-m3/?id=switch-on"));
 
   const wear = renderReadmeMd(
     {
       meta: { system: "wear-m3", title: "Wear Material 3" },
-      components: [{ id: "button", images: [] }],
+      components: [{ componentId: "Button/Filled", images: [] }],
     },
     { previewBase: "https://preview.coo.ee" },
   );

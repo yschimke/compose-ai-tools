@@ -12,6 +12,7 @@
  */
 
 import { DEFAULT_PREVIEW_BASE, hasWasmTier, liveSessionUrl, wasmLiveUrl } from "./live-preview.mjs";
+import { slug } from "./render-wireframe-svg.mjs";
 
 const DEFAULT_REPO = "yschimke/compose-ai-tools";
 
@@ -54,14 +55,17 @@ export function renderReadmeMd(catalog, opts = {}) {
 
   // Compose Multiplatform catalogs (e.g. compose-m3) also render *in the
   // browser* via Kotlin/Wasm — no server round-trip. Wear stays server-only.
-  // Use the first component's id as the section's demo deep link.
-  const firstComponentId = components[0]?.id;
+  // Catalog components are keyed by `componentId` (e.g. "Button/Filled"); the
+  // Wasm registry + route use its slug, so build the demo link off the slugged
+  // first component id.
+  const firstComponentId = components[0]?.componentId;
+  const firstComponentSlug = firstComponentId ? slug(firstComponentId) : undefined;
   const wasmSection =
-    hasWasmTier(system) && firstComponentId
+    hasWasmTier(system) && firstComponentSlug
       ? `
 ## 🌐 Run it in your browser (Kotlin/Wasm)
 
-**[▶ Open ${cell(firstComponentId)} live in the browser](${wasmLiveUrl(previewBase, system, firstComponentId)})**
+**[▶ Open ${cell(firstComponentId)} live in the browser](${wasmLiveUrl(previewBase, system, firstComponentSlug)})**
 
 This catalog's \`material3\` components also compile to **Kotlin/Wasm** and run
 *client-side* in the browser sandbox — no server render, interactive (toggle the
