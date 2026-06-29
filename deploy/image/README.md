@@ -52,7 +52,8 @@ DOMAIN=preview.example.com ./setup.sh
 `docker compose pull && up -d` — **no build**. It prints your
 `https://preview.example.com/?token=<TOKEN>` link once Caddy has a cert.
 
-Pin a version with `IMAGE_TAG=0.16.1` in `.env` (defaults to `:latest`).
+Pin a version with `IMAGE_TAG=0.16.1` in `.env` (a bare tag; defaults to the
+`latest` tag when unset).
 
 ## Auto-updates (Watchtower)
 
@@ -68,8 +69,10 @@ It polls hourly (`--interval 3600`), is scoped to the labelled `preview` service
 It needs the Docker socket (root-equivalent on the host — fine for your own box).
 
 Requirements / options:
-- **Keep `IMAGE_TAG` at `:latest`** — Watchtower only tracks a moving tag. A pinned
-  `IMAGE_TAG=0.16.2` won't auto-update (by design).
+- **Leave `IMAGE_TAG` unset (it defaults to the `latest` tag)** — Watchtower only
+  tracks a moving tag. A pinned `IMAGE_TAG=0.16.2` won't auto-update (by design).
+  The value is a bare tag like `latest`, not `:latest` — the compose image string
+  already supplies the colon (`…host:${IMAGE_TAG:-latest}`).
 - **Brief downtime on update:** recreating `preview` restarts it (a ~1 min window
   where it does its startup render and Caddy 502s), then it's back. Fine for a
   single-instance host; not zero-downtime.
