@@ -17,7 +17,16 @@ import kotlinx.serialization.json.Json
  * Cheap and stateless (just file reads), so the registry pins it resident rather than suspending
  * it.
  */
-class ServeBundleHost(private val bundleDir: File, override val label: String) : ServeHost {
+class ServeBundleHost(
+  private val bundleDir: File,
+  override val label: String,
+  /**
+   * Producer-trust verdict for this bundle, attached at ingestion ([ServeBundleStore]) so the API /
+   * viewer can badge it. Defaults to `Unverified` for bundles registered without a check (e.g. a
+   * `--bundles <dir>` directory, which has no original signed file to verify).
+   */
+  val trust: BundleVerifier.Verdict = BundleVerifier.Verdict.Unverified("not checked"),
+) : ServeHost {
 
   private val previewsDir = File(bundleDir, PREVIEWS_SUBDIR)
 

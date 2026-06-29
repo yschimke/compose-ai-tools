@@ -280,4 +280,28 @@ class BundleSigningTest {
     assertFalse(TrustStore.globMatch("exact", "exact-suffix"))
     assertTrue(TrustStore.globMatch("exact", "exact"))
   }
+
+  @Test
+  fun `zipBytesOf matches the file extractor on a polyglot`() {
+    val file = sampleBundle("poly.png")
+    assertTrue(
+      BundleSigning.zipBytesOf(file.readBytes()).contentEquals(BundleReader.extractZipBytes(file)),
+      "the in-memory twin must strip the PNG cover identically to the file-based extractor",
+    )
+  }
+
+  @Test
+  fun `zipBytesOf rejects a hostile PNG chunk length without spinning`() {
+    // PNG signature + a chunk header whose length is 0xfffffff4 (a negative signed Int) — a
+    // malicious
+    // upload that, before the fix, made the offset stall / move backwards (infinite loop or throw).
+    val pngSig = byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10)
+    val hostile =
+      pngSig +
+        byteArrayOf(0xff.toByte(), 0xff.toByte(), 0xff.toByte(), 0xf4.toByte()) +
+        "IDAT".toByteArray() +
+        ByteArray(16)
+    // Returns promptly (no hang) and, being no valid polyglot, hands the bytes back unchanged.
+    assertTrue(BundleSigning.zipBytesOf(hostile).contentEquals(hostile))
+  }
 }

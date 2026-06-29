@@ -58,6 +58,7 @@ internal object CliFlags {
       "--export",
       "--bundles",
       "--accept-bundles-from",
+      "--trust-store",
       "--revisions-allow",
       // bundle sign / verify / keygen (producer trust)
       "--key",
