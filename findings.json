@@ -1253,6 +1253,16 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "OverridableListPreview_Overridable_List.a11y.png",
+      "cleanBasename": "OverridableListPreview_Overridable_List.png",
+      "findings": [],
+      "functionName": "OverridableListPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.OverridablePreviewsKt.OverridableListPreview_Overridable List",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/OverridablePreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "",
       "cleanBasename": "PinchToZoomPreview_Pinch_To_Zoom.png",
       "findings": [],
