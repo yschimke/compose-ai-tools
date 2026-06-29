@@ -212,9 +212,22 @@ internal object BundleSigning {
           ((raw[offset + 1].toInt() and 0xff) shl 16) or
           ((raw[offset + 2].toInt() and 0xff) shl 8) or
           (raw[offset + 3].toInt() and 0xff)
+      // These bytes are client-controlled (the token-gated upload path). A negative length — e.g. a
+      // hostile chunk header like 0xfffffff4, which reads as a negative signed Int — would make the
+      // advance below stall or move backwards (spin forever / throw on a bad index). A real PNG
+      // chunk
+      // length is < 2^31, so reject anything negative and bail (treat as not-a-polyglot → the
+      // caller
+      // hands the bytes to ZipInputStream, which yields nothing → the upload fails cleanly).
+      if (length < 0) return raw
       val type = String(raw, offset + 4, 4, Charsets.US_ASCII)
-      offset += 4 + 4 + length + 4
-      if (type == "IEND") return raw.copyOfRange(offset.coerceAtMost(raw.size), raw.size)
+      // 12 = 4 (length) + 4 (type) + 4 (crc). Compute in Long so a huge length can't overflow Int
+      // into a negative offset; require strict forward progress within bounds.
+      val next = offset.toLong() + 12L + length.toLong()
+      if (type == "IEND")
+        return if (next in 0..raw.size.toLong()) raw.copyOfRange(next.toInt(), raw.size) else raw
+      if (next <= offset || next > raw.size) return raw
+      offset = next.toInt()
     }
     return raw
   }
