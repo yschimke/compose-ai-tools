@@ -37,9 +37,14 @@ object BundleVerifier {
     data class Branch(val repo: String, val branch: String) : Basis
 
     /**
-     * A signature carried a CI provenance attestation whose identity the store trusts, and the
-     * attested digest matches the recomputed canonical digest. Advisory: the binding is the
-     * identity-glob match plus digest integrity, not (yet) a full Sigstore/Rekor proof.
+     * Supplementary CI-provenance context recorded **only alongside a cryptographically-verified
+     * [Signature]** — never on its own. A `provenance` block is self-asserted data (any uploader
+     * can write any identity), so identity-glob + digest match is *not* proof of origin; granting
+     * trust from it alone would be a bypass (an attacker writes `signatures.json` with the
+     * recomputed digest and a matching identity → `Trusted` → re-render of executable Compose).
+     * Real keyless trust needs Fulcio cert-chain + Rekor verification, which is a follow-up; until
+     * then this basis only annotates a signature a pinned key already verified, so it expands the
+     * displayed provenance but never the trust decision.
      */
     data class Provenance(val identity: String, val type: String) : Basis
   }
@@ -55,29 +60,29 @@ object BundleVerifier {
       bases.add(Basis.Branch(origin.repo, origin.branch))
     }
 
-    // 2) Signature trust — a pinned key cryptographically verifies the canonical digest.
+    // 2) Signature trust — a pinned key cryptographically verifies the canonical digest. This is
+    // the
+    // ONLY path that turns a signature into trust. Provenance is recorded as supplementary context
+    // for a signature that *already* verified — it never grants trust on its own (see
+    // [Basis.Provenance]).
     val signatures = BundleSigning.readSignatures(bundle)?.signatures.orEmpty()
     for (sig in signatures) {
       if (sig.algorithm != BundleSigning.ALG_ED25519) continue
       // The signature's claimed digest must match what we recomputed (no signing a different
       // bundle).
       if (sig.digest != expectedDigestHex) continue
-      val key = trust.publicKeyFor(sig.keyId)
-      if (key != null) {
-        val ok =
-          runCatching {
-              BundleSigning.verifyEd25519(key, digest, BundleSigning.decodeBase64(sig.signature))
-            }
-            .getOrDefault(false)
-        if (ok) bases.add(Basis.Signature(sig.keyId, sig.producer ?: trust.keyName(sig.keyId)))
-      }
-    }
-
-    // 3) Provenance trust — a CI identity the store trusts attested this exact digest.
-    for (sig in signatures) {
-      val prov = sig.provenance ?: continue
-      if (sig.digest != expectedDigestHex) continue
-      if (trust.trustsIdentity(prov.identity)) {
+      val key = trust.publicKeyFor(sig.keyId) ?: continue
+      val ok =
+        runCatching {
+            BundleSigning.verifyEd25519(key, digest, BundleSigning.decodeBase64(sig.signature))
+          }
+          .getOrDefault(false)
+      if (!ok) continue
+      bases.add(Basis.Signature(sig.keyId, sig.producer ?: trust.keyName(sig.keyId)))
+      // Only now — on a cryptographically verified signature — record a trusted CI identity it
+      // carries, as extra provenance context. A pinned key did the actual attesting.
+      val prov = sig.provenance
+      if (prov != null && trust.trustsIdentity(prov.identity)) {
         bases.add(Basis.Provenance(prov.identity, prov.type))
       }
     }

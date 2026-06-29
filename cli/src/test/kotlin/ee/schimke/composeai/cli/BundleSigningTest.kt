@@ -201,8 +201,14 @@ class BundleSigningTest {
     assertTrue((verdict as BundleVerifier.Verdict.Trusted).primary is BundleVerifier.Basis.Branch)
   }
 
+  /**
+   * Provenance is self-asserted data, so an identity glob + digest match is NOT proof of origin —
+   * granting trust from it alone would let an attacker write a `signatures.json` with the
+   * recomputed digest and a matching identity and have executable Compose re-rendered. With only
+   * the OIDC identity trusted (no pinned key), the verdict must stay Unverified.
+   */
   @Test
-  fun `provenance identity is trusted when the digest matches`() {
+  fun `provenance identity alone does not grant trust`() {
     val keys = BundleSigning.generateKeyPair()
     val file = sampleBundle()
     val digest = BundleSigning.canonicalDigest(file)
@@ -222,13 +228,48 @@ class BundleSigningTest {
           ),
       ),
     )
-    // No pinned key — only the OIDC identity is trusted.
+    // Only the OIDC identity is trusted; the signing key is NOT pinned.
     val trust = TrustStore(oidc = listOf(TrustedIdentity("repo:yschimke/compose-ai-tools:ref:*")))
+    assertTrue(BundleVerifier.verify(file, trust) is BundleVerifier.Verdict.Unverified)
+  }
+
+  /**
+   * Provenance is recorded as supplementary context only on a signature a pinned key already
+   * verified — so it annotates, never expands, the trust decision.
+   */
+  @Test
+  fun `provenance annotates a signature verified by a pinned key`() {
+    val keys = BundleSigning.generateKeyPair()
+    val file = sampleBundle()
+    val digest = BundleSigning.canonicalDigest(file)
+    BundleSigning.addSignature(
+      file,
+      BundleSigning.Signature(
+        keyId = "ci",
+        digest = BundleSigning.hex(digest),
+        signature =
+          BundleSigning.base64(
+            BundleSigning.signEd25519(BundleSigning.parsePrivateKey(keys.privateKeyB64), digest)
+          ),
+        provenance =
+          BundleSigning.Provenance(
+            type = "github-oidc",
+            identity = "repo:yschimke/compose-ai-tools:ref:refs/heads/main",
+          ),
+      ),
+    )
+    // Both the pinned key AND the OIDC identity are trusted.
+    val trust =
+      TrustStore(
+        keys = listOf(TrustedKey("ci", keys.publicKeyB64)),
+        oidc = listOf(TrustedIdentity("repo:yschimke/compose-ai-tools:ref:*")),
+      )
     val verdict = BundleVerifier.verify(file, trust)
     assertTrue(verdict is BundleVerifier.Verdict.Trusted)
-    assertTrue(
-      (verdict as BundleVerifier.Verdict.Trusted).primary is BundleVerifier.Basis.Provenance
-    )
+    val bases = (verdict as BundleVerifier.Verdict.Trusted).bases
+    // The cryptographic signature is the trust basis; provenance rides along as context.
+    assertTrue(bases.first() is BundleVerifier.Basis.Signature)
+    assertTrue(bases.any { it is BundleVerifier.Basis.Provenance })
   }
 
   @Test

@@ -17,9 +17,11 @@ import kotlinx.serialization.json.Json
  *   catalogs from. A bundle the server itself pulled from such a branch is **trusted by origin**
  *   (TLS trust in the source, no per-bundle crypto needed). This is how the published
  *   `design-artifacts` catalogs are trusted.
- * - [oidc] — GitHub Actions / Sigstore workload-identity globs. A signature carrying a matching
- *   provenance attestation is **trusted by provenance** (keyless CI identity). Advisory until full
- *   Rekor/Sigstore verification lands — see [BundleVerifier].
+ * - [oidc] — GitHub Actions / Sigstore workload-identity globs. These do **not** by themselves
+ *   grant trust: provenance is self-asserted data, so a real keyless proof needs Fulcio
+ *   cert-chain + Rekor verification (a follow-up). Until that lands, a trusted `oidc` identity only
+ *   *annotates* a signature a pinned [keys] entry already verified — it never expands the trust
+ *   decision, so it can't be a bypass. See [BundleVerifier].
  *
  * An empty store trusts nothing (fail-closed): every bundle verifies as `Unverified`, so a public
  * server with no trust store still serves data tiers but never re-renders untrusted Compose.
