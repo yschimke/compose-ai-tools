@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.16.4](https://github.com/yschimke/compose-ai-tools/compare/v0.16.3...v0.16.4) (2026-06-29)
+
+
+### Features
+
+* **design-artifacts:** deep-link published catalogs to the live preview server ([#2086](https://github.com/yschimke/compose-ai-tools/issues/2086)) ([49d5086](https://github.com/yschimke/compose-ai-tools/commit/49d50869f7a690ef3473163689d9e4b7601f52e9))
+* **serve:** --public open mode + trust-store starter + public-server docs ([#2087](https://github.com/yschimke/compose-ai-tools/issues/2087)) ([4b448cb](https://github.com/yschimke/compose-ai-tools/commit/4b448cb8d7518431ac4fc00798de4b5368095733))
+* **serve:** badge the producer-trust verdict in the viewer ([#2095](https://github.com/yschimke/compose-ai-tools/issues/2095)) ([9282c44](https://github.com/yschimke/compose-ai-tools/commit/9282c44101a1ccdb1560eb7d861907a77a9145db))
+* **serve:** in-browser CMP catalog via Kotlin/Wasm (compose-m3 live tier) ([#2097](https://github.com/yschimke/compose-ai-tools/issues/2097)) ([ee4a0f6](https://github.com/yschimke/compose-ai-tools/commit/ee4a0f6c330a5713a165e1e54ec1638b394eadd9))
+* **serve:** mount the in-browser CMP Wasm tier in the viewer ([#2098](https://github.com/yschimke/compose-ai-tools/issues/2098)) ([64df61c](https://github.com/yschimke/compose-ai-tools/commit/64df61c515b68960958aa3d2f353bac511a181a5))
+
+
+### Bug Fixes
+
+* **release:** split release-please into separate PRs so the root release tags on merge ([#2088](https://github.com/yschimke/compose-ai-tools/issues/2088)) ([a67736e](https://github.com/yschimke/compose-ai-tools/commit/a67736e856a6fac216b73ce0ba99748988b4299e))
+
 ## [0.16.3](https://github.com/yschimke/compose-ai-tools/compare/v0.16.2...v0.16.3) (2026-06-29)
 
 
