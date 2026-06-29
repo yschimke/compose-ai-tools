@@ -47,9 +47,21 @@ COPY sample-project/ /project/
 # published plugin + Compose from Maven, then renders every preview once. Populates
 # ~/.gradle + /project/build so the runtime container starts warm. A long --timeout
 # keeps slow builders from tripping the CLI's 300s default.
+#
+# Retry the render: it's the actual Maven resolve (plugin marker + the
+# implementation/`daemon-desktop`/renderer modules the plugin pulls), and those
+# propagate to Central independently after a release — so even past the workflow's
+# pre-build wait, one module can still be a minute behind. Retrying the real
+# resolve covers every module without enumerating them; ~12 min of attempts rides
+# out the lag, then it fails hard so a genuinely broken release doesn't ship.
 RUN chmod +x ./gradlew \
- && compose-preview serve --export /tmp/warm-bundle --timeout 1800 \
- && rm -rf /tmp/warm-bundle
+ && ok=0; for i in $(seq 1 6); do \
+      if compose-preview serve --export /tmp/warm-bundle --timeout 1800; then ok=1; break; fi; \
+      echo "warm render failed (attempt ${i}/6) — likely Maven Central propagation; retrying in 120s"; \
+      rm -rf /tmp/warm-bundle; sleep 120; \
+    done; \
+    [ "${ok}" = 1 ] || { echo "warm render failed after retries" >&2; exit 1; }; \
+    rm -rf /tmp/warm-bundle
 
 # ---------------------------------------------------------------------------
 # Stage 2: runtime.
