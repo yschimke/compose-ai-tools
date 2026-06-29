@@ -21,6 +21,12 @@ object ServeWeb {
     a:hover { text-decoration: underline; }
     .cp-head { margin: 0 0 4px; font-size: 1.2rem; font-weight: 600; }
     .cp-sub { margin: 0 0 20px; font-size: 0.82rem; color: #6b6b70; }
+    .cp-about { margin: 0 0 24px; padding: 14px 16px; border: 1px solid #e3e3e8; border-radius: 10px;
+      background: #fff; max-width: 720px; }
+    .cp-about-title { margin: 0 0 6px; font-size: 0.95rem; font-weight: 600; }
+    .cp-about-body { margin: 0 0 8px; font-size: 0.84rem; line-height: 1.45; color: #45454c; }
+    .cp-about-body code { font-size: 0.8rem; padding: 0 3px; border-radius: 4px; background: #f0f0f3; }
+    .cp-about-links { margin: 0; font-size: 0.8rem; color: #6b6b70; }
     .cp-badge { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px;
       font-size: 0.7rem; font-weight: 600; vertical-align: middle; white-space: nowrap; }
     .cp-badge--trusted { background: #e7f4ea; color: #1e7a34; border: 1px solid #b6e0c2; }
@@ -50,9 +56,11 @@ object ServeWeb {
     .cp-knobs input:disabled { opacity: 0.7; }
     @media (prefers-color-scheme: dark) {
       body { color: #e6e6e9; background: #161618; }
-      .cp-sub, .cp-id, .cp-status { color: #a0a0a8; }
-      .cp-card, .cp-stage, .cp-knobs { border-color: #34343a; }
-      .cp-card { background: #1d1d20; }
+      .cp-sub, .cp-id, .cp-status, .cp-about-links { color: #a0a0a8; }
+      .cp-card, .cp-stage, .cp-knobs, .cp-about { border-color: #34343a; }
+      .cp-card, .cp-about { background: #1d1d20; }
+      .cp-about-body { color: #c9c9d0; }
+      .cp-about-body code { background: #2a2a30; }
       .cp-imgwrap, .cp-stage { background: repeating-conic-gradient(#26262b 0% 25%, #1d1d20 0% 50%) 50% / 16px 16px; }
       .cp-badge--trusted { background: #14361f; color: #6cd98a; border-color: #2c6b40; }
       .cp-badge--unverified { background: #3a2a12; color: #e6b067; border-color: #6b4f24; }
@@ -84,6 +92,29 @@ object ServeWeb {
     return " <span class=\"$cls\" title=\"producer trust: $label\">$icon $label</span>"
   }
 
+  /**
+   * Public-mode "about" intro: a short, static explanation of what the host is and its safety
+   * model, shown only when [landingPage] is asked for [isPublic]. Deliberately carries **no**
+   * version string (that lives at `/version`) so a release never churns the committed HTML golden.
+   * Links out to the source repo and the machine-readable `/version`.
+   */
+  private fun aboutSection(): String =
+    """
+    <section class="cp-about">
+      <p class="cp-about-title">compose-preview · public preview server</p>
+      <p class="cp-about-body">Browse rendered Compose &amp; Compose&nbsp;Multiplatform design
+        catalogs live. CMP components run <strong>in your browser</strong> (Kotlin/Wasm, sandboxed);
+        everything else is served as pre-rendered snapshots. The server never re-runs untrusted code
+        — catalogs are trusted via signature or their published <code>design-artifacts</code> branch,
+        and anything unverified is badged.</p>
+      <p class="cp-about-links">
+        <a href="https://github.com/yschimke/compose-ai-tools">source</a> ·
+        <a href="/version">/version</a>
+      </p>
+    </section>
+    """
+      .trimIndent()
+
   /** Landing page: the module's preview list, each card linking to its viewer. */
   fun landingPage(
     moduleLabel: String,
@@ -91,6 +122,7 @@ object ServeWeb {
     token: String,
     sessionId: String? = null,
     trust: String? = null,
+    isPublic: Boolean = false,
   ): String {
     val q = queryString(token, sessionId)
     val cards =
@@ -115,11 +147,12 @@ object ServeWeb {
             .trimIndent()
         }
       }
+    val about = if (isPublic) aboutSection() + "\n" else ""
     return document(
       title = "$moduleLabel — compose-preview",
       body =
         """
-        <p class="cp-head">${WebEscaping.htmlEscape(moduleLabel)}${trustBadge(trust)}</p>
+        $about<p class="cp-head">${WebEscaping.htmlEscape(moduleLabel)}${trustBadge(trust)}</p>
         <p class="cp-sub">${previews.size} preview(s) · click one to view with overrides ·
           <a href="/bundle.zip?$q">download all (.zip)</a></p>
         <div class="cp-grid">

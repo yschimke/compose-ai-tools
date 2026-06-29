@@ -66,6 +66,16 @@ class ServeWebFixtureTest {
     // trusted (signature) landing and an unverified viewer exercise both badge styles.
     val landing =
       ServeWeb.landingPage(moduleLabel, previews, token, trust = "signature:compose-ai-tools-ci")
+    // The public preview server's landing carries the "about" intro that explains the host + its
+    // trust model (preview.coo.ee). Captured so the visual-diff harness covers that surface too.
+    val landingPublic =
+      ServeWeb.landingPage(
+        moduleLabel,
+        previews,
+        token,
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        isPublic = true,
+      )
     val viewer =
       ServeWeb.viewerPage(
         previews.first { it.id.endsWith("ProfileScreenPreview") },
@@ -86,6 +96,7 @@ class ServeWebFixtureTest {
     if (update) {
       pagesDir.mkdirs()
       File(pagesDir, "serve-landing.html").writeText(landing)
+      File(pagesDir, "serve-landing-public.html").writeText(landingPublic)
       File(pagesDir, "serve-viewer.html").writeText(viewer)
       File(pagesDir, "serve-viewer-wasm.html").writeText(wasmViewer)
       writePlaceholderPng(File(pagesDir, "_render-placeholder.png"))
@@ -93,6 +104,7 @@ class ServeWebFixtureTest {
     }
 
     assertGolden(File(pagesDir, "serve-landing.html"), landing)
+    assertGolden(File(pagesDir, "serve-landing-public.html"), landingPublic)
     assertGolden(File(pagesDir, "serve-viewer.html"), viewer)
     assertGolden(File(pagesDir, "serve-viewer-wasm.html"), wasmViewer)
     assertTrue(
@@ -114,6 +126,20 @@ class ServeWebFixtureTest {
     val plain = ServeWeb.viewerPage(card, token)
     assertTrue(!plain.contains("Run in browser (Wasm)"))
     assertTrue(!plain.contains("id=\"cp-wasm\""))
+  }
+
+  @Test
+  fun `public landing shows the about intro, default landing does not`() {
+    val public = ServeWeb.landingPage(moduleLabel, previews, token, isPublic = true)
+    assertTrue(public.contains("class=\"cp-about\""), "expected the about section")
+    assertTrue(public.contains("public preview server"), "expected the about title")
+    assertTrue(public.contains("href=\"/version\""), "expected a link to /version")
+
+    val default = ServeWeb.landingPage(moduleLabel, previews, token)
+    assertTrue(
+      !default.contains("class=\"cp-about\""),
+      "non-public landing must omit the about box",
+    )
   }
 
   @Test

@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.cli.BUNDLE_VERSION
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
 import io.ktor.http.ContentType
@@ -46,9 +47,10 @@ import kotlinx.serialization.json.Json
  * [defaultSessionId]); the registry forks the tenant behind its factory on first use. Unknown
  * sessions 404 like a bad token.
  *
- * Endpoints (all token-gated except `/healthz`):
+ * Endpoints (all token-gated except `/healthz`, `/version`, and the `/wasm/` static assets):
  * - `GET /` landing page, `GET /p/{id}` viewer page,
  * - `GET /render/{id}.png` PNG bytes, `GET /api/previews` JSON, `GET /healthz` liveness,
+ * - `GET /version` host identity (CLI version, serve schema, public flag),
  * - `GET /bundle.zip` portable bundle, `WS /ws/{id}` streamed-frame lane.
  *
  * A bad/missing token returns **404** (not 401) so the server's existence isn't confirmed to a
@@ -99,6 +101,21 @@ class ServeHttpServer(
       routing {
         // `/healthz` is the only ungated route — liveness only, leaks nothing.
         get("/healthz") { call.respondText("ok") }
+
+        // `/version` — ungated machine-readable identity for the host: the CLI version, the serve
+        // API schema, and whether this box runs open (public) or token-gated. Lets a deployer,
+        // Watchtower check, or the design-artifacts gallery confirm which build is live without a
+        // token, and keeps the released version OUT of the HTML goldens (it lives here, not in the
+        // landing footer, so a release never churns the fixture diff).
+        get("/version") {
+          call.respondText(
+            JSON.encodeToString(
+              VersionResponse.serializer(),
+              VersionResponse(version = BUNDLE_VERSION, public = isPublic),
+            ),
+            ContentType.Application.Json,
+          )
+        }
 
         // In-browser CMP tier: serve the static Wasm app for a registered system at
         // `/wasm/<system>/<file>`. Ungated (generic client code, no session data) so the viewer's
@@ -298,6 +315,7 @@ class ServeHttpServer(
                 token,
                 call.request.queryParameters["session"],
                 trust = (renderHost as? ServeBundleHost)?.let { BundleVerifier.summary(it.trust) },
+                isPublic = isPublic,
               ),
               ContentType.Text.Html,
             )
@@ -552,6 +570,17 @@ class ServeHttpServer(
     }
   }
 }
+
+@Serializable
+private data class VersionResponse(
+  val schema: String = "compose-preview-serve/version/v1",
+  /** The host CLI's released version ([BUNDLE_VERSION]). */
+  val version: String,
+  /** The schema id the `/api/previews` + page surface speaks, so a client can feature-detect. */
+  val serveSchema: String = "compose-preview-serve/v1",
+  /** True when the box serves token-free (public preview server); false for a token-gated serve. */
+  val public: Boolean,
+)
 
 @Serializable
 private data class PreviewsResponse(
