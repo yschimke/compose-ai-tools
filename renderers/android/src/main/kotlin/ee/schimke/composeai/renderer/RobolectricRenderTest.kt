@@ -88,6 +88,13 @@ private fun ScrollAxis.toProductAxis(): ProductScrollAxis =
     }
 
 /**
+ * Encoder for the `renders/<stem>.overrides.json` sidecar (the `compose/overrides` payload). File-level
+ * so the render class's `writeOverridesSidecar` can reach it. `encodeDefaults = true` to match the
+ * desktop renderer's sidecar writer so the format is identical across backends.
+ */
+private val overridesSidecarJson = Json { encodeDefaults = true }
+
+/**
  * Loads the previews manifest and returns the subset assigned to `shardIndex`
  * out of `shardCount` shards. Generated shard subclasses delegate their
  * `@Parameters` method here (see the plugin's `generateShardTests` task).
@@ -584,7 +591,7 @@ abstract class RobolectricRenderTestBase(
                     declarations = declarations
                 )
             sidecar.writeText(
-                json.encodeToString(
+                overridesSidecarJson.encodeToString(
                     ee.schimke.composeai.data.overrides.PreviewOverridesPayload.serializer(),
                     payload,
                 )
