@@ -12,6 +12,13 @@
    branch and opening a live, customisable render are then two ends of one workflow (the branch's
    README + `catalog.json` carry `livePreview` deep links back here).
 
+In `--public` mode the landing page opens with a short **"about" intro** explaining what the host is
+and its safety model, with a link to the machine-readable [`/version`](#endpoints):
+
+![Public landing "about" intro (light)](images/serve-about-public-light.png)
+
+![Public landing "about" intro (dark)](images/serve-about-public-dark.png)
+
 ## Two axes: trust × format
 
 These are orthogonal. **Trust** decides attribution; **format** decides what draws the pixels. Neither
@@ -110,6 +117,14 @@ current).
 
 `GET /` index · `GET /p/{id}?session=<s>` viewer · `GET /render/{id}.png` PNG ·
 `GET /api/previews` JSON (now includes `trust`) · `POST /bundles/{name}` upload (returns `trust`) ·
-`GET /wasm/{system}/…` in-browser CMP app (ungated static assets) · `GET /healthz`. In `--public`
-mode all are open; otherwise the token gates everything but `/healthz` and `/wasm/` (static, no
-session data).
+`GET /wasm/{system}/…` in-browser CMP app (ungated static assets) · `GET /healthz` ·
+`GET /version`. In `--public` mode all are open; otherwise the token gates everything but
+`/healthz`, `/version`, and `/wasm/` (static, no session data).
+
+`GET /version` is the host's machine-readable identity — ungated so a deployer, Watchtower check, or
+the design-artifacts gallery can confirm which build is live without a token:
+
+```json
+{ "schema": "compose-preview-serve/version/v1", "version": "0.16.5",
+  "serveSchema": "compose-preview-serve/v1", "public": true }
+```
