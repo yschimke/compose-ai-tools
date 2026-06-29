@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -25,5 +26,22 @@ class ServeAuthTest {
     assertTrue(ServeHttpServer.isAuthorized(token, null, isPublic = true))
     assertTrue(ServeHttpServer.isAuthorized(token, "wrong", isPublic = true))
     assertTrue(ServeHttpServer.isAuthorized(token, token, isPublic = true))
+  }
+
+  @Test
+  fun `wasm assets get the content types a streaming wasm load requires`() {
+    // application/wasm is mandatory: WebAssembly.instantiateStreaming rejects octet-stream. The
+    // ES-module loader (.mjs) and its glue (.js) must be a JS type to execute.
+    assertEquals("application/wasm", ServeHttpServer.wasmContentType("composeApp.wasm").toString())
+    assertEquals("text/javascript", ServeHttpServer.wasmContentType("composeApp.mjs").toString())
+    assertEquals(
+      "text/javascript",
+      ServeHttpServer.wasmContentType("custom-formatters.js").toString(),
+    )
+    assertEquals("text/html", ServeHttpServer.wasmContentType("index.html").toString())
+    assertEquals(
+      "application/json",
+      ServeHttpServer.wasmContentType("composeApp.wasm.map").toString(),
+    )
   }
 }

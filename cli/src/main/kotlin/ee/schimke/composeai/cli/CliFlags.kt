@@ -62,6 +62,7 @@ internal object CliFlags {
       "--catalogs",
       "--catalog-repo",
       "--catalog-branch-prefix",
+      "--wasm-dir",
       "--revisions-allow",
       // bundle sign / verify / keygen (producer trust)
       "--key",
