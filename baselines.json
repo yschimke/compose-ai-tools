@@ -1070,6 +1070,13 @@
     "sha256": "06c6659b530f0b64cbdedba15904bfd53b7de6251ff7fe2c980309be307f7653",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/MultiTouchDrawingPreview.kt"
   },
+  "samples:cmp/com.example.samplecmp.OverridablePreviewsKt.OverridableListPreview_Overridable List": {
+    "captureLabel": "",
+    "functionName": "OverridableListPreview",
+    "renderBasename": "OverridableListPreview_Overridable_List.png",
+    "sha256": "4ea495ed4864ab56f8dc3552f1867aefb75998a74f92752091b90597907fd4fb",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/OverridablePreviews.kt"
+  },
   "samples:cmp/com.example.samplecmp.PinchToZoomPreviewKt.PinchToZoomPreview_Pinch To Zoom": {
     "captureLabel": "",
     "functionName": "PinchToZoomPreview",
