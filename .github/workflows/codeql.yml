@@ -42,6 +42,14 @@ jobs:
       # Required to fetch internal or private CodeQL packs
       packages: read
 
+    # CodeQL's bundled Kotlin extractor lags the compiler: it refuses a Kotlin
+    # version newer than it knows about ("Kotlin version too new" → configuration
+    # error) rather than extracting best-effort. We track latest Kotlin, so set
+    # the documented override to keep extraction going. Drop this once the bundled
+    # CodeQL CLI gains support for the Kotlin version in `gradle/libs.versions.toml`.
+    env:
+      CODEQL_EXTRACTOR_KOTLIN_OVERRIDE_VERSION_CHECK: 'true'
+
     strategy:
       fail-fast: false
       matrix:
