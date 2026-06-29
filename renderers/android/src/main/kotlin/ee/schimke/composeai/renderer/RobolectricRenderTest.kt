@@ -480,6 +480,9 @@ abstract class RobolectricRenderTestBase(
         // Arm the IR channel for this preview so a Remote Compose / protolayout producer can offer
         // its captured intermediate representation during composition; drained post-render below.
         ee.schimke.composeai.data.render.IrSidecarChannel.setCurrentPreviewId(preview.id)
+        // Drop any named-override knobs a prior preview declared so this preview's `previewOverride*`
+        // lookups accumulate a clean set (drained into the overrides sidecar below).
+        ee.schimke.composeai.overrides.PreviewOverrideController.clearDeclarations()
         try {
             renderDefault(
                 params = params,
@@ -495,6 +498,9 @@ abstract class RobolectricRenderTestBase(
             // Render succeeded: if the preview's flavour captured an IR, write it beside the PNG as
             // the `renders/<stem>.<ext>` sidecar `BundlePreviewTask.resolvePreviewIr` packs.
             writeIrSidecar(pngFile, preview.id)
+            // Write the editable knobs the preview declared via `previewOverride*` as the
+            // `renders/<stem>.overrides.json` sidecar `BundlePreviewTask.resolvePreviewOverrides` packs.
+            writeOverridesSidecar(pngFile)
         } catch (e: Throwable) {
             System.err.println(
                 "Render failed for ${preview.className}.${preview.functionName}: ${e.message}"
@@ -549,6 +555,42 @@ abstract class RobolectricRenderTestBase(
             }
         } catch (e: Throwable) {
             System.err.println("Failed to write IR sidecar for $previewId: ${e.message}")
+        }
+    }
+
+    /**
+     * Write the editable knobs the preview declared via `previewOverride*` during the just-finished
+     * render as the `renders/<stem>.overrides.json` sidecar `BundlePreviewTask.resolvePreviewOverrides`
+     * packs. An empty set deletes any stale sidecar so a preview that stopped declaring knobs doesn't
+     * keep an old one. Best-effort — a write failure must not derail the PNG render path. The
+     * `overrides.json` suffix is kept in lockstep with `PreviewBundleFormat.BUNDLE_OVERRIDES_SIDECAR_EXT`.
+     */
+    private fun writeOverridesSidecar(pngFile: File) {
+        val declarations =
+            ee.schimke.composeai.overrides.PreviewOverrideController.declarations()
+        val dir = pngFile.parentFile ?: return
+        val sidecar = File(dir, "${pngFile.nameWithoutExtension}.overrides.json")
+        try {
+            if (declarations.isEmpty()) {
+                if (sidecar.isFile && !sidecar.delete()) {
+                    System.err.println(
+                        "Failed to delete stale overrides sidecar: ${sidecar.absolutePath}"
+                    )
+                }
+                return
+            }
+            val payload =
+                ee.schimke.composeai.data.overrides.PreviewOverridesPayload(
+                    declarations = declarations
+                )
+            sidecar.writeText(
+                json.encodeToString(
+                    ee.schimke.composeai.data.overrides.PreviewOverridesPayload.serializer(),
+                    payload,
+                )
+            )
+        } catch (e: Throwable) {
+            System.err.println("Failed to write overrides sidecar: ${e.message}")
         }
     }
 
