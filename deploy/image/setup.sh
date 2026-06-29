@@ -44,5 +44,7 @@ sudo docker compose up -d
 TOKEN="$(grep '^SERVE_TOKEN=' .env | cut -d= -f2-)"
 echo
 echo "==> Up. Once DNS for ${DOMAIN} resolves here and Caddy has a cert:"
+echo "    https://${DOMAIN}/        (public mode — open; SERVE_PUBLIC defaults to 1)"
+echo "    For a token-gated box, set SERVE_PUBLIC=0 in .env; the gate is then:"
 echo "    https://${DOMAIN}/?token=${TOKEN}"
 echo "    Logs: sudo docker compose logs -f preview"

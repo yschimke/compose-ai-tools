@@ -21,7 +21,15 @@ services:
       # Always-on box: keep the server warm (no idle exit).
       SERVE_MODULE: ":samples:cmp"
       SERVE_IDLE_EXIT: "0"
-      SERVE_TOKEN: "${SERVE_TOKEN:?set SERVE_TOKEN in .env}"
+      # Public preview server by default (preview.coo.ee). Built from source, so
+      # it has the new serve features immediately (no CLI release needed) and
+      # serves the in-browser CMP tier from the image's local wasm build via
+      # SERVE_WASM_DIR. For a token-gated box, set SERVE_PUBLIC=0 + SERVE_TOKEN.
+      SERVE_PUBLIC: "${SERVE_PUBLIC:-1}"
+      SERVE_CATALOGS: "${SERVE_CATALOGS:-compose-m3,wear-m3}"
+      SERVE_TRUST_STORE: "${SERVE_TRUST_STORE:-trust/producers.json}"
+      SERVE_WASM_DIR: "${SERVE_WASM_DIR:-compose-m3=samples/cmp-wasm-catalog/build/wasmDist}"
+      SERVE_TOKEN: "${SERVE_TOKEN:-}"
       PORT: "8080"
     expose:
       - "8080"

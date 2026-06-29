@@ -77,7 +77,6 @@ compose-preview serve \
   --module :samples:design-catalog-m3 \   # a base module is the default session
   --public \                              # open every route (no token)
   --catalogs compose-m3,wear-m3 \         # serve the published design systems (Wasm app rides the branch)
-  --accept-bundles \                      # accept client bundle uploads
   --trust-store trust/producers.json \    # who we trust
   --host 0.0.0.0 --port 8080
 ```
@@ -85,9 +84,25 @@ compose-preview serve \
 - **`--public`** drops the token gate (the deployed server is meant to be open). It is **safe by
   construction**: rendering a bundle/catalog executes no code, re-rendering untrusted Compose is
   refused, uploads are size-capped, and the `?url=` fetch is SSRF-gated (`--accept-bundles-from`).
-- Put **Caddy** (or Cloudflare) in front for TLS on `preview.coo.ee` — see
-  [`deploy/vps`](../deploy/vps) / [`deploy/image`](../deploy/image) for the container + reverse-proxy
-  pattern (run the command above in place of the token-gated default).
+
+## Deploying `preview.coo.ee`
+
+Both container profiles take this config from env (the entrypoint maps `SERVE_PUBLIC`,
+`SERVE_CATALOGS`, `SERVE_TRUST_STORE`, `SERVE_WASM_DIR`, `SERVE_ACCEPT_BUNDLES` → flags) and put
+**Caddy** in front for TLS. They default to the **open public profile** (`SERVE_PUBLIC=1`, catalogs
+`compose-m3,wear-m3`); set `SERVE_PUBLIC=0` + `SERVE_TOKEN` for a token-gated box.
+
+| | [`deploy/vps`](../deploy/vps) (from source) | [`deploy/image`](../deploy/image) (prebuilt) |
+|---|---|---|
+| CLI | compiled from this checkout (~8 min build) | the **released** tarball (`docker pull`, no build) + Watchtower auto-update |
+| Has the latest serve features? | **immediately** (built from `main`) | only once they're in a **published CLI release** (bump `CP_VERSION`) |
+| In-browser Wasm tier | local build, `SERVE_WASM_DIR=compose-m3=samples/cmp-wasm-catalog/build/wasmDist` | branch-fetch: `--catalogs` pulls each system's `web/wasm/` from the trusted branch (needs the branch to carry it) |
+
+So **today** (before a release), deploy from source: `cd deploy/vps && DOMAIN=preview.coo.ee ./setup.sh`
+— it builds the current `main`, including the Wasm app, and comes up public. **After** the serve
+features ship in a CLI release *and* the `design-artifacts/compose-m3` branch carries `web/wasm/`,
+the prebuilt `deploy/image` path serves the same thing with no host build (and Watchtower keeps it
+current).
 - **Re-render of trusted Compose** stays off unless the operator opts in; a public box should leave
   `--revisions` *off* (that path runs arbitrary Gradle = RCE).
 
