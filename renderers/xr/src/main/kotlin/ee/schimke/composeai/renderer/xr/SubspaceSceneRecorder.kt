@@ -9,7 +9,6 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.xr.compose.subspace.node.SubspaceSemanticsInfo
-import androidx.xr.compose.testing.SubspaceTestContext
 import androidx.xr.compose.testing.onSubspaceNodeWithTag
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
 import ee.schimke.composeai.xr.OrbitCamera
@@ -105,7 +104,9 @@ public object SubspaceSceneRecorder {
   ): RecordedSubspace {
     val tagged =
       allSemanticsNodes(rule).mapNotNull { node ->
-        val tag = node.config.getOrNull(SemanticsProperties.TestTag) ?: return@mapNotNull null
+        val tag =
+          node.semanticsConfiguration.getOrNull(SemanticsProperties.TestTag)
+            ?: return@mapNotNull null
         tag to node
       }
     val panels = tagged.map { (tag, node) -> panelFrom(node, id = tag, parentId = null) }
@@ -220,7 +221,13 @@ public object SubspaceSceneRecorder {
   private fun allSemanticsNodes(
     rule: AndroidComposeTestRule<*, ComponentActivity>
   ): List<SubspaceSemanticsInfo> {
-    val context = SubspaceTestContext(rule)
+    // alpha15 made SubspaceTestContext's constructor `internal` (it's still JVM-public); build it
+    // reflectively, matching how the enumeration below reaches `getAllSemanticsNodes$compose_testing`.
+    val context =
+      Class.forName("androidx.xr.compose.testing.SubspaceTestContext")
+        .getDeclaredConstructor(AndroidComposeTestRule::class.java)
+        .apply { isAccessible = true }
+        .newInstance(rule)
     return try {
       val method =
         context.javaClass.getMethod(
