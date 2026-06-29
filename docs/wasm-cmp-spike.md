@@ -38,23 +38,37 @@ cold-load, and (c) confirming a headless in-browser render. Those need a measure
 A Wasm app can only render composables **compiled into it** — it can't reflectively render an arbitrary
 uploaded consumer composable the way the server's classpath player can. Two models:
 
-1. **Fixed catalog app (recommended first).** Build one `wasmJs` app from a module **we control** (the
-   `design-catalog-*` catalogs) that registers its composables by preview id. Serve it for our
-   *published* catalogs (`--catalogs`). No per-bundle build; one artifact per design system. This
-   directly delivers "CMP renders in the browser" for the catalogs the public server already hosts.
+1. **Fixed catalog app (recommended first).** Build one `wasmJs` app from a CMP module **we control**
+   that registers its composables by preview id, and serve it for our *published* catalogs
+   (`--catalogs`). No per-bundle build; one artifact per design system. This directly delivers "CMP
+   renders in the browser" for the catalogs the public server already hosts.
+
+   **Important constraint (the existing catalogs aren't wasm-compilable as-is).** The current
+   `samples/design-catalog-m3` / `design-catalog-wear-m3` modules are **Android application** modules
+   that import Android-only APIs — `androidx.compose.ui.tooling.preview.Preview`,
+   `android.content.res.Configuration`, and (Wear) `androidx.wear.compose.*` — none of which a `wasmJs`
+   source set can compile. So model 1 is **not** "point Wasm at the existing modules"; it requires a
+   **new / ported KMP catalog surface**: re-author the M3 catalog's component composables in
+   `commonMain` against the CMP `material3` artifact (which *does* ship wasm), without the Android
+   `@Preview` tooling (replace it with a plain id→composable registry). The **Wear** catalog stays
+   Android/server-only for now — `androidx.wear.compose` has no wasm target — so its CMP-Wasm tier is
+   out of scope. Treat porting the M3 component set to a shared CMP source set as **part of this
+   follow-up**, not a free reuse.
 2. **Per-bundle app (later).** Compile the *consumer's* selected previews to Wasm at `bundle pack`
    time and carry the app in `web/wasm/`. Fully general, but adds a `wasmJs` compile to every CMP pack
    (heavy) and only works for pure-CMP previews (no Android-only APIs). Gate behind a `--with-wasm`
    opt-in once the size/build cost is known.
 
-Recommend shipping (1) first — it's bounded, uses modules we own, and proves the whole viewer path —
-then (2) as an opt-in once the size/build cost is known.
+Recommend shipping (1) first — it's bounded (one ported M3 catalog surface we own) and proves the
+whole viewer path — then (2) as an opt-in once the size/build cost is known. The M3 port is the first
+unit of work; Wear and arbitrary per-bundle CMP follow.
 
 ## Plan
 
 ### 1. A `wasmJs` CMP module
 A new KMP module (e.g. `samples/cmp-wasm-catalog`) applying `kotlin("multiplatform")` +
-`org.jetbrains.compose` with:
+`org.jetbrains.compose`, holding the **ported M3 catalog composables in `commonMain`** (CMP
+`material3`, no Android `@Preview`/`Configuration` — see the constraint above), with:
 ```kotlin
 kotlin {
   wasmJs { browser() ; binaries.executable() }
@@ -88,8 +102,8 @@ server frames (Android / override re-render) → baked PNG.
   job or needs its own.
 
 ## Go / no-go
-- **Go** if the fixed catalog app renders headlessly and the gzipped `web/wasm/` is within a few MB.
-  Ship model (1) wired into the viewer + the `--catalogs` path.
+- **Go** if the ported M3 catalog app renders headlessly and the gzipped `web/wasm/` is within a few
+  MB. Ship model (1) — the ported M3 surface — wired into the viewer + the `--catalogs` path.
 - **Defer (2)** (per-bundle Wasm) until (1)'s size/build cost is known; keep it behind `--with-wasm`.
 - **No-go fallback** is already shipped: CMP previews keep rendering via **server frames** (desktop
   Skiko) and the **baked PNG**, so nothing regresses if Wasm is deferred.
