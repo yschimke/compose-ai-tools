@@ -1,0 +1,26 @@
+{
+  "_comment": "Producer-trust allowlist for a public `compose-preview serve --trust-store`. Three independent bases — pinned Ed25519 keys, trusted GitHub branches (origin trust), and CI provenance identities. A bundle/catalog the server can attribute to one of these is shown as trusted (and, with operator opt-in, eligible for server-side re-render of its executable Compose); everything else still serves its data tiers as `unverified`. Empty = trust nothing (fail-closed). See docs/public-preview-server.md.",
+
+  "keys": [
+    {
+      "keyId": "compose-ai-tools-ci",
+      "name": "Compose AI Tools CI (REPLACE with the real public key)",
+      "_howto": "Generate with `compose-preview bundle keygen`, keep the private key as a CI secret, and paste the printed public key here. Bundles signed with `bundle sign --key <priv> --key-id compose-ai-tools-ci` then verify as trusted by signature.",
+      "publicKey": "REPLACE_WITH_BASE64_ED25519_PUBLIC_KEY"
+    }
+  ],
+
+  "branches": [
+    {
+      "repo": "yschimke/compose-ai-tools",
+      "branch": "design-artifacts/*"
+    }
+  ],
+
+  "oidc": [
+    {
+      "_comment": "Advisory until full Sigstore/Fulcio+Rekor verification lands — an oidc entry only annotates a signature a pinned key already verified; it does not by itself grant trust.",
+      "identity": "repo:yschimke/compose-ai-tools:ref:refs/heads/main"
+    }
+  ]
+}
