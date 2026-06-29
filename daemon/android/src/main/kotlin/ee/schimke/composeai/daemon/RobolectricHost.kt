@@ -365,6 +365,9 @@ open class RobolectricHost(
       "launcherWidget",
       "permissions",
       "remoteCompose",
+      // `renderNow.overrides.namedOverrides` seeds the plain-Compose `previewOverride*` knobs via
+      // the `PreviewOverridesPreviewOverrideExtension` planner wired into `previewOverrideExtensions`.
+      "namedOverrides",
     )
 
   /** PROTOCOL.md § 3 — android backend identifier surfaced via `capabilities.backend`. */
