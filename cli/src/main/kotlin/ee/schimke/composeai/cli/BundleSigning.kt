@@ -193,4 +193,29 @@ internal object BundleSigning {
   fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it) }
 
   fun sha256(bytes: ByteArray): ByteArray = MessageDigest.getInstance("SHA-256").digest(bytes)
+
+  /**
+   * Normalize raw bundle bytes to the appended ZIP portion: a plain zip (`PK\x03\x04`) is returned
+   * as-is; a PNG+ZIP polyglot has its leading PNG stripped (seek past the IEND chunk). The
+   * byte-array twin of [BundleReader.extractZipBytes] for the in-memory upload path. Returns the
+   * input unchanged when it matches neither signature (best effort — callers treat it as zip
+   * bytes).
+   */
+  fun zipBytesOf(raw: ByteArray): ByteArray {
+    if (raw.size >= 2 && raw[0] == 0x50.toByte() && raw[1] == 0x4B.toByte()) return raw
+    val pngSig = byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10)
+    if (raw.size < pngSig.size || !pngSig.indices.all { raw[it] == pngSig[it] }) return raw
+    var offset = pngSig.size
+    while (offset + 8 <= raw.size) {
+      val length =
+        ((raw[offset].toInt() and 0xff) shl 24) or
+          ((raw[offset + 1].toInt() and 0xff) shl 16) or
+          ((raw[offset + 2].toInt() and 0xff) shl 8) or
+          (raw[offset + 3].toInt() and 0xff)
+      val type = String(raw, offset + 4, 4, Charsets.US_ASCII)
+      offset += 4 + 4 + length + 4
+      if (type == "IEND") return raw.copyOfRange(offset.coerceAtMost(raw.size), raw.size)
+    }
+    return raw
+  }
 }

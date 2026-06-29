@@ -50,8 +50,49 @@ object BundleVerifier {
   }
 
   /** Verify a bundle file. [origin] is non-null only when the server fetched it itself. */
-  fun verify(bundle: File, trust: TrustStore, origin: Origin? = null): Verdict {
-    val digest = BundleSigning.canonicalDigest(bundle)
+  fun verify(bundle: File, trust: TrustStore, origin: Origin? = null): Verdict =
+    verifyCore(
+      BundleSigning.canonicalDigest(bundle),
+      BundleSigning.readSignatures(bundle)?.signatures.orEmpty(),
+      trust,
+      origin,
+    )
+
+  /**
+   * Verify in-memory bundle bytes — the runtime upload path ([ServeBundleStore]) has the bytes, not
+   * a file. Accepts either a plain zip or a PNG+ZIP polyglot ([BundleSigning.zipBytesOf]
+   * normalizes).
+   */
+  fun verify(rawBundleBytes: ByteArray, trust: TrustStore, origin: Origin? = null): Verdict {
+    val zip = BundleSigning.zipBytesOf(rawBundleBytes)
+    return verifyCore(
+      BundleSigning.canonicalDigest(zip),
+      BundleSigning.readSignatures(zip)?.signatures.orEmpty(),
+      trust,
+      origin,
+    )
+  }
+
+  /**
+   * Short one-line label for logs / API / UI badge, e.g. `signature:ci`, `branch`, `unverified`.
+   */
+  fun summary(verdict: Verdict): String =
+    when (verdict) {
+      is Verdict.Trusted ->
+        when (val b = verdict.primary) {
+          is Basis.Signature -> "signature:${b.keyId}"
+          is Basis.Branch -> "branch:${b.repo}@${b.branch}"
+          is Basis.Provenance -> "provenance:${b.identity}"
+        }
+      is Verdict.Unverified -> "unverified"
+    }
+
+  private fun verifyCore(
+    digest: ByteArray,
+    signatures: List<BundleSigning.Signature>,
+    trust: TrustStore,
+    origin: Origin?,
+  ): Verdict {
     val expectedDigestHex = BundleSigning.hex(digest)
     val bases = ArrayList<Basis>()
 
@@ -65,7 +106,6 @@ object BundleVerifier {
     // ONLY path that turns a signature into trust. Provenance is recorded as supplementary context
     // for a signature that *already* verified — it never grants trust on its own (see
     // [Basis.Provenance]).
-    val signatures = BundleSigning.readSignatures(bundle)?.signatures.orEmpty()
     for (sig in signatures) {
       if (sig.algorithm != BundleSigning.ALG_ED25519) continue
       // The signature's claimed digest must match what we recomputed (no signing a different

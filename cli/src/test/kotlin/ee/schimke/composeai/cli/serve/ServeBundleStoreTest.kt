@@ -1,7 +1,11 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.cli.BundleSigning
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
 import java.io.File
+import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -161,5 +165,64 @@ class ServeBundleStoreTest {
       store(fetch = { ByteArray(0) }, allowedHosts = listOf("ci.example.com"))
         .addFromUrl("x", "file:///etc/passwd", isSecurityChecked = true)
     assertTrue(result is ServeBundleStore.Result.Failed)
+  }
+
+  // --- producer-trust verification on ingestion -------------------------------------------------
+
+  /** A minimal valid PNG to front the signed polyglot the store must accept and strip. */
+  private fun pngCover(): ByteArray {
+    val baos = ByteArrayOutputStream()
+    ImageIO.write(BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB), "png", baos)
+    return baos.toByteArray()
+  }
+
+  /** Build a signed PNG+ZIP polyglot upload (cover + previews + a real Ed25519 signature). */
+  private fun signedPolyglot(name: String): Pair<ByteArray, BundleSigning.KeyPairB64> {
+    val keys = BundleSigning.generateKeyPair()
+    val zip = zipOf("previews/com.example.Red.png" to byteArrayOf(1, 2, 3))
+    val file =
+      File(tempRoot(), name).also {
+        it.outputStream().use { o ->
+          o.write(pngCover())
+          o.write(zip)
+        }
+      }
+    val digest = BundleSigning.canonicalDigest(file)
+    BundleSigning.addSignature(
+      file,
+      BundleSigning.Signature(
+        keyId = "ci",
+        digest = BundleSigning.hex(digest),
+        signature =
+          BundleSigning.base64(
+            BundleSigning.signEd25519(BundleSigning.parsePrivateKey(keys.privateKeyB64), digest)
+          ),
+      ),
+    )
+    return file.readBytes() to keys
+  }
+
+  @Test
+  fun `a signed bundle from a trusted key is attributed by signature`() {
+    val (bytes, keys) = signedPolyglot("signed.png")
+    val store =
+      ServeBundleStore(
+        tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = TrustStore(keys = listOf(TrustedKey("ci", keys.publicKeyB64))),
+      )
+    val result = store.add("signed", bytes, isSecurityChecked = true)
+    assertEquals(ServeBundleStore.Result.Ok("signed", 1, "signature:ci"), result)
+    assertTrue(registered.getValue("signed").trust is BundleVerifier.Verdict.Trusted)
+  }
+
+  @Test
+  fun `a signed bundle is unverified when its key is not trusted`() {
+    val (bytes, _) = signedPolyglot("untrusted.png")
+    // The default store has the empty (fail-closed) trust store — the signature is present but the
+    // key isn't pinned, so the bundle still serves its data tiers as unverified.
+    val result = store().add("u", bytes, isSecurityChecked = true)
+    assertEquals(ServeBundleStore.Result.Ok("u", 1, "unverified"), result)
+    assertTrue(registered.getValue("u").trust is BundleVerifier.Verdict.Unverified)
   }
 }
