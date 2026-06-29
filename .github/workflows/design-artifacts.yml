@@ -35,6 +35,11 @@ jobs:
           - system: compose-m3
             module: 'samples:design-catalog-m3'
             spec: 'samples/design-catalog-m3/catalog.spec.json'
+            # The in-browser CMP tier: this system gets its `material3` catalog
+            # compiled to Kotlin/Wasm and carried in the branch under web/wasm/.
+            # Wear has no wasm target (androidx.wear.compose), so it's omitted.
+            wasmModule: 'samples:cmp-wasm-catalog'
+            wasmDist: 'samples/cmp-wasm-catalog/build/wasmDist'
           - system: wear-m3
             module: 'samples:design-catalog-wear-m3'
             spec: 'samples/design-catalog-wear-m3/catalog.spec.json'
@@ -71,6 +76,17 @@ jobs:
           compose-preview bundle pack --module "$MODULE" --with-semantics \
             -o "$GITHUB_WORKSPACE/$SYSTEM-bundle.png"
 
+      # In-browser CMP tier: assemble the Kotlin/Wasm catalog app (webpack-free —
+      # no Node/Binaryen toolchain, builds under FAIL_ON_PROJECT_REPOS). Its
+      # build/wasmDist is bundled into the branch by the generator below so
+      # `serve --catalogs` can fetch the live renderer from the same trusted
+      # origin. Only for systems that declare a wasmModule (compose-m3, not Wear).
+      - name: Assemble in-browser Wasm app
+        if: ${{ matrix.wasmModule != '' }}
+        env:
+          WASM_MODULE: ${{ matrix.wasmModule }}
+        run: ./gradlew ":${WASM_MODULE}:wasmCatalogDist"
+
       # The exporter gates on a complete render: `bundle pack --with-semantics`
       # is best-effort (exits 0 even if the daemon failed or captured zero
       # semantics), so the driver exits non-zero when any preview is missing or
@@ -81,13 +97,17 @@ jobs:
         env:
           SYSTEM: ${{ matrix.system }}
           SPEC: ${{ matrix.spec }}
+          # Set only for systems with an in-browser tier; the generator copies
+          # this dir into out/web/wasm/ and writes the catalog.json webRender.
+          WASM_DIST: ${{ matrix.wasmDist }}
         run: |
           set -euo pipefail
           node scripts/design-artifacts/generate-design-catalog.mjs \
             --spec "$SPEC" \
             --renders "$GITHUB_WORKSPACE/$SYSTEM-bundle.png" \
             --out "$GITHUB_WORKSPACE/out" \
-            --renderer "$(compose-preview --version | head -1)"
+            --renderer "$(compose-preview --version | head -1)" \
+            ${WASM_DIST:+--wasm-dist "$GITHUB_WORKSPACE/$WASM_DIST"}
 
       - name: Publish to design-artifacts/${{ matrix.system }}
         env:
