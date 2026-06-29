@@ -41,3 +41,33 @@ export function livePreviewUrl(base, system, imagePath) {
 export function liveSessionUrl(base, system) {
   return `${base.replace(/\/+$/, "")}/?session=${encodeURIComponent(system)}`;
 }
+
+/**
+ * Design systems that have an **in-browser Kotlin/Wasm** render tier (the
+ * `:samples:cmp-wasm-catalog` CMP app — see `docs/wasm-cmp-spike.md`). Only the
+ * Compose Multiplatform catalog qualifies: `material3` ships a `wasmJs` target,
+ * so its components run client-side in the browser sandbox. `wear-m3` stays
+ * server-only — `androidx.wear.compose` has no wasm target.
+ */
+export const WASM_CATALOG_SYSTEMS = new Set(["compose-m3"]);
+
+/** Whether `system` advertises the in-browser Wasm tier. */
+export function hasWasmTier(system) {
+  return WASM_CATALOG_SYSTEMS.has(system);
+}
+
+/**
+ * Deep link that mounts a catalog component **live in the browser** via the CMP
+ * Wasm app the preview server carries for the system at `/wasm/<system>/`. The
+ * `?id=<component>` selects the registered composable (the catalog's component
+ * id); `uiMode=dark` flips the theme. Returns null for server-only systems.
+ *
+ * Keep the `?id=` / `?uiMode=` contract in lockstep with the Wasm entrypoint
+ * (`Main.kt` in `:samples:cmp-wasm-catalog`).
+ */
+export function wasmLiveUrl(base, system, componentId, { dark = false } = {}) {
+  if (!hasWasmTier(system)) return null;
+  const root = base.replace(/\/+$/, "");
+  const q = `?id=${encodeURIComponent(componentId)}${dark ? "&uiMode=dark" : ""}`;
+  return `${root}/wasm/${encodeURIComponent(system)}/${q}`;
+}

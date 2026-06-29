@@ -196,6 +196,11 @@ include(":samples:cmp")
 
 include(":samples:cmp-shared")
 
+// In-browser CMP tier — a `wasmJs` Compose app rendering the M3 catalog in the
+// browser sandbox (Workstream C / `docs/wasm-cmp-spike.md`). wasmJs-only, no
+// renderable `@Preview`, so it sits outside the desktop/Android render path.
+include(":samples:cmp-wasm-catalog")
+
 // Non-renderable KMP-Android library (no `jvm("desktop")` target) — regression fixture for
 // #1852 / #1855. See its build.gradle.kts. Must coexist in the build without breaking CLI
 // discovery of the other sample modules.

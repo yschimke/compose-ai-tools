@@ -11,7 +11,8 @@
  * the README survives branch regeneration instead of being clobbered.
  */
 
-import { DEFAULT_PREVIEW_BASE, liveSessionUrl } from "./live-preview.mjs";
+import { DEFAULT_PREVIEW_BASE, hasWasmTier, liveSessionUrl, wasmLiveUrl } from "./live-preview.mjs";
+import { slug } from "./render-wireframe-svg.mjs";
 
 const DEFAULT_REPO = "yschimke/compose-ai-tools";
 
@@ -51,6 +52,28 @@ export function renderReadmeMd(catalog, opts = {}) {
   const indexUrl = `https://htmlpreview.github.io/?https://github.com/${repo}/blob/${branch}/index.html`;
   const previewBase = opts.previewBase ?? DEFAULT_PREVIEW_BASE;
   const liveUrl = liveSessionUrl(previewBase, system);
+
+  // Compose Multiplatform catalogs (e.g. compose-m3) also render *in the
+  // browser* via Kotlin/Wasm — no server round-trip. Wear stays server-only.
+  // Catalog components are keyed by `componentId` (e.g. "Button/Filled"); the
+  // Wasm registry + route use its slug, so build the demo link off the slugged
+  // first component id.
+  const firstComponentId = components[0]?.componentId;
+  const firstComponentSlug = firstComponentId ? slug(firstComponentId) : undefined;
+  const wasmSection =
+    hasWasmTier(system) && firstComponentSlug
+      ? `
+## 🌐 Run it in your browser (Kotlin/Wasm)
+
+**[▶ Open ${cell(firstComponentId)} live in the browser](${wasmLiveUrl(previewBase, system, firstComponentSlug)})**
+
+This catalog's \`material3\` components also compile to **Kotlin/Wasm** and run
+*client-side* in the browser sandbox — no server render, interactive (toggle the
+switches, drag the sliders). The preview server mounts this tier for
+\`${system}\` at \`/wasm/${system}/?id=<component>\`; append \`&uiMode=dark\` for the
+dark scheme.
+`
+      : "";
 
   const imageCount = opts.imageCount ?? components.reduce((n, c) => n + (c.images?.length ?? 0), 0);
   const wireframeCount = opts.wireframeCount ?? 0;
@@ -113,7 +136,7 @@ open one, then change the theme, locale, font scale, or device and watch it
 re-render. Every entry in \`catalog.json\` carries a per-variant \`livePreview\`
 deep link to its exact preview on the same server, so browsing this branch and
 customising the live render are two ends of one workflow.
-
+${wasmSection}
 ## At a glance
 
 | | |

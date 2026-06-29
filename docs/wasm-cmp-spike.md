@@ -1,8 +1,62 @@
-# Spike: in-browser CMP rendering via Kotlin/Wasm
+# In-browser CMP rendering via Kotlin/Wasm
 
-**Status: spike / design — not yet built.** This records the feasibility findings and the concrete
-plan so the build can be executed (and *measured*) as a focused follow-up, per the "spike first,
-report before the full build" approach.
+**Status: built + measured — GO (model 1).** The spike was executed: a CMP `material3` catalog now
+compiles to `wasmJs` and renders the published M3 catalog components **in the browser**, confirmed
+headlessly. The module is [`:samples:cmp-wasm-catalog`](../samples/cmp-wasm-catalog); the original
+feasibility plan is kept below for context.
+
+## Results (measured)
+
+Built `:samples:cmp-wasm-catalog` — a Compose Multiplatform `wasmJs` app holding the M3 catalog
+components in `commonMain` (CMP `material3`, no Android `@Preview`), mounting the one named by a
+`?id=<component>&uiMode=<light|dark>` query via `ComposeViewport`.
+
+- **It compiles and paints.** `material3` → `wasmJs` builds clean; rendered headlessly in the
+  pre-installed Chromium (Playwright) for buttons, cards, switch, slider, badge, segmented toggle —
+  light and dark. Real, interactive components (the switch/slider keep remembered state), not baked
+  PNGs:
+
+  | Filled button | Outlined card | Switch (dark) | Slider |
+  |---|---|---|---|
+  | ![](images/wasm-cmp-button-filled.png) | ![](images/wasm-cmp-card-outlined.png) | ![](images/wasm-cmp-switch-dark.png) | ![](images/wasm-cmp-slider.png) |
+
+- **Size (cold-load, gzipped):** app wasm **4.66 MB gz** (21 MB raw, *development*/unoptimized) +
+  skiko **3.29 MB gz** (8.6 MB raw) ≈ **~8 MB gz**. The Binaryen `wasm-opt` production path shrinks
+  the app wasm further but needs the toolchain note below. Verdict: fine for **model 1** (one cached
+  artifact per design system); confirms **model 2** (per-bundle) should stay opt-in.
+
+- **Packaging: webpack-free.** The build pins `FAIL_ON_PROJECT_REPOS`, which rejects the Node / Yarn
+  / Binaryen download repos the Kotlin JS/Wasm plugins add at the project level — so
+  `wasmJsBrowserDistribution` (webpack) and the production (`wasm-opt`) compile don't run here.
+  Instead the `wasmCatalogDist` Gradle task assembles the raw Kotlin/Wasm **ES-module** output +
+  skiko + `index.html` into `build/wasmDist/`, served straight from disk (the dev executable builds
+  with no extra repos). Enabling the production `wasm-opt` path is a deploy-time size optimization
+  (declare the Node/Binaryen repos in settings, or flip to `PREFER_SETTINGS`) — left to the operator
+  since it weakens build hermeticity.
+
+- **`@js-joda/core` is self-hosted.** The compiler's `import-object.mjs` imports the bare specifier
+  `@js-joda/core` (CMP's datetime backing). An import map resolves it; we **vendor**
+  `js-joda.esm.js` (pinned 5.7.0) beside `index.html` rather than a CDN, because the egress proxy
+  blocks CDNs (`ERR_TUNNEL_CONNECTION_FAILED`) and self-hosting keeps the bundle offline-clean.
+
+- **Wear stays server-only.** `androidx.wear.compose` has no `wasm` target, so `wear-m3` has no
+  in-browser tier — server frames + baked PNG only. The report generator gates the Wasm callout to
+  `compose-m3` (`WASM_CATALOG_SYSTEMS` in `scripts/design-artifacts/live-preview.mjs`).
+
+## Remaining (fast-follow)
+
+- **Server route + viewer mount.** Serve the assembled `build/wasmDist/` at `/wasm/<system>/` and
+  mount it in the viewer's sandboxed `<iframe>` at the `data-mode="live"` seam (the URL contract
+  `wasmLiveUrl` already emits, and the README's "Run it in your browser" link, point here).
+- **Production `wasm-opt` size** once the operator enables the Binaryen path.
+- **Model 2** (per-bundle CMP Wasm) — still deferred behind `--with-wasm`.
+
+---
+
+## Original spike plan (for context)
+
+This records the feasibility findings and the concrete plan, per the "spike first, report before the
+full build" approach.
 
 ## Goal
 
