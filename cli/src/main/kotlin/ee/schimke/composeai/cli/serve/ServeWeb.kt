@@ -21,6 +21,10 @@ object ServeWeb {
     a:hover { text-decoration: underline; }
     .cp-head { margin: 0 0 4px; font-size: 1.2rem; font-weight: 600; }
     .cp-sub { margin: 0 0 20px; font-size: 0.82rem; color: #6b6b70; }
+    .cp-badge { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px;
+      font-size: 0.7rem; font-weight: 600; vertical-align: middle; white-space: nowrap; }
+    .cp-badge--trusted { background: #e7f4ea; color: #1e7a34; border: 1px solid #b6e0c2; }
+    .cp-badge--unverified { background: #fdf0e3; color: #8a5300; border: 1px solid #f0d3a8; }
     .cp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
     .cp-card { border: 1px solid #e3e3e8; border-radius: 10px; overflow: hidden; background: #fff;
       display: block; color: inherit; }
@@ -49,6 +53,8 @@ object ServeWeb {
       .cp-card, .cp-stage, .cp-knobs { border-color: #34343a; }
       .cp-card { background: #1d1d20; }
       .cp-imgwrap, .cp-stage { background: repeating-conic-gradient(#26262b 0% 25%, #1d1d20 0% 50%) 50% / 16px 16px; }
+      .cp-badge--trusted { background: #14361f; color: #6cd98a; border-color: #2c6b40; }
+      .cp-badge--unverified { background: #3a2a12; color: #e6b067; border-color: #6b4f24; }
     }
     """
       .trimIndent()
@@ -63,12 +69,27 @@ object ServeWeb {
     return if (sessionId == null) t else t + "&session=" + WebEscaping.urlEncodeSegment(sessionId)
   }
 
+  /**
+   * Producer-trust badge for a bundle/catalog session ([BundleVerifier.summary]); empty for a live
+   * daemon-backed module (trust applies to detached bundles/catalogs, not the operator's own served
+   * module). A non-`unverified` verdict reads as trusted (green ✓); `unverified` is amber (⚠).
+   */
+  private fun trustBadge(trust: String?): String {
+    if (trust.isNullOrBlank()) return ""
+    val unverified = trust == "unverified"
+    val cls = if (unverified) "cp-badge cp-badge--unverified" else "cp-badge cp-badge--trusted"
+    val icon = if (unverified) "⚠" else "✓"
+    val label = WebEscaping.htmlEscape(trust)
+    return " <span class=\"$cls\" title=\"producer trust: $label\">$icon $label</span>"
+  }
+
   /** Landing page: the module's preview list, each card linking to its viewer. */
   fun landingPage(
     moduleLabel: String,
     previews: List<ServePreview>,
     token: String,
     sessionId: String? = null,
+    trust: String? = null,
   ): String {
     val q = queryString(token, sessionId)
     val cards =
@@ -97,7 +118,7 @@ object ServeWeb {
       title = "$moduleLabel — compose-preview",
       body =
         """
-        <p class="cp-head">${WebEscaping.htmlEscape(moduleLabel)}</p>
+        <p class="cp-head">${WebEscaping.htmlEscape(moduleLabel)}${trustBadge(trust)}</p>
         <p class="cp-sub">${previews.size} preview(s) · click one to view with overrides ·
           <a href="/bundle.zip?$q">download all (.zip)</a></p>
         <div class="cp-grid">
@@ -114,6 +135,7 @@ object ServeWeb {
     token: String,
     sessionId: String? = null,
     canApplyOverrides: Boolean = false,
+    trust: String? = null,
   ): String {
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
     val q = queryString(token, sessionId)
@@ -127,7 +149,7 @@ object ServeWeb {
       }
     val body =
       """
-      <p class="cp-head"><a href="/?$q">← previews</a></p>
+      <p class="cp-head"><a href="/?$q">← previews</a>${trustBadge(trust)}</p>
       <p class="cp-sub" title="$idText">$label</p>
       <div class="cp-viewer" data-preview-id="$idText" data-mode="snapshot" data-modes="$modes">
         <div class="cp-stage"><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas></div>
