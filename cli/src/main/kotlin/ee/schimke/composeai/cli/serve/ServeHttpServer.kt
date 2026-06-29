@@ -60,6 +60,14 @@ class ServeHttpServer(
   private val defaultSessionId: String,
   /** When non-null, enables `POST /bundles/{name}` for clients to contribute bundles at runtime. */
   private val bundleStore: ServeBundleStore? = null,
+  /**
+   * Public mode: serve **without** requiring the token — every route is open. For a deployed public
+   * preview server (preview.coo.ee) where browsing the published catalogs / uploaded bundles is the
+   * point. Safe by construction: rendering a bundle/catalog executes no code, re-rendering
+   * untrusted Compose is refused, uploads are size-capped + the `?url=` fetch is SSRF-gated. Off by
+   * default, so a normal `serve` stays token-gated (a bad/absent token still 404s).
+   */
+  private val isPublic: Boolean = false,
   portRange: Int = DEFAULT_PORT_RANGE,
   /**
    * Max renders in flight across the HTTP `/render` lane. Defaults to the host's CPU count so a
@@ -145,7 +153,7 @@ class ServeHttpServer(
         // checked post-handshake (can't 404 after upgrade) — a bad token closes immediately.
         webSocket("/ws/{name}") {
           val provided = call.request.queryParameters["token"] ?: call.request.headers[TOKEN_HEADER]
-          if (!ServeUrls.tokensMatch(token, provided)) {
+          if (!isAuthorized(token, provided, isPublic)) {
             close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "unauthorized"))
             return@webSocket
           }
@@ -390,7 +398,7 @@ class ServeHttpServer(
    */
   private suspend fun RoutingContext.rejectBadToken(): Boolean {
     val provided = call.request.queryParameters["token"] ?: call.request.headers[TOKEN_HEADER]
-    if (ServeUrls.tokensMatch(token, provided)) return false
+    if (isAuthorized(token, provided, isPublic)) return false
     call.respondText("not found", status = HttpStatusCode.NotFound)
     return true
   }
@@ -398,6 +406,14 @@ class ServeHttpServer(
   companion object {
     const val TOKEN_HEADER: String = "X-Compose-Preview-Token"
     private const val DEFAULT_PORT_RANGE = 32
+
+    /**
+     * Authorisation decision for a request: open when [isPublic], otherwise the [provided] token
+     * must match [token] (constant-time). Pure so the gate is unit-testable without standing up the
+     * server. A bad/absent token in non-public mode is rejected (the caller 404s for obscurity).
+     */
+    fun isAuthorized(token: String, provided: String?, isPublic: Boolean): Boolean =
+      isPublic || ServeUrls.tokensMatch(token, provided)
 
     /**
      * How long a `/render` request waits for a concurrency slot before getting 503 + Retry-After.

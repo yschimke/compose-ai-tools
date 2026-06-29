@@ -98,6 +98,14 @@ class ServeCommand(args: List<String>) : Command(args) {
   private val acceptBundles: Boolean = "--accept-bundles" in args
 
   /**
+   * Public mode: serve every route **without** requiring the token (the deployed public preview
+   * server, where browsing the published catalogs + uploaded bundles is the point). Safe by
+   * construction — no server-side code execution, re-render of untrusted Compose refused, uploads
+   * capped + SSRF-gated. Off by default so a normal `serve` stays token-gated.
+   */
+  private val public: Boolean = "--public" in args
+
+  /**
    * SSRF allowlist for `POST /bundles/{name}?url=` fetches: comma-separated hostnames the server
    * may fetch a bundle from. Empty = no URL fetch is allowed (fail closed), so `--accept-bundles`
    * alone only accepts uploads; a host must be explicitly trusted before the server will reach out.
@@ -278,6 +286,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         sessions = registry,
         defaultSessionId = module.gradlePath,
         bundleStore = bundleStore,
+        isPublic = public,
       )
 
     // Advertise on the LAN over mDNS when bound to a reachable interface (`--lan`), so the mobile /
@@ -499,9 +508,15 @@ class ServeCommand(args: List<String>) : Command(args) {
   private fun printBanner(moduleLabel: String, port: Int, token: String, previewCount: Int) {
     val exposed = ServeUrls.isExposed(host)
     val localHost = if (exposed || host == ServeUrls.LOOPBACK) ServeUrls.LOOPBACK else host
-    val localUrl = ServeUrls.landingUrl(ServeUrls.origin(localHost, port), token)
+    // Public mode is open, so the link carries no token; otherwise the token gates every route.
+    val localUrl =
+      if (public) "${ServeUrls.origin(localHost, port)}/"
+      else ServeUrls.landingUrl(ServeUrls.origin(localHost, port), token)
 
     System.err.println("compose-preview serve — module $moduleLabel")
+    if (public) {
+      System.err.println("  ⚠ Public mode — every route is open (no token required).")
+    }
     System.err.println("  Local:   $localUrl")
     if (exposed) {
       val networks = ServeUrls.siteLocalIpv4Addresses()
@@ -581,6 +596,10 @@ class ServeCommand(args: List<String>) : Command(args) {
                           connect. Prints the token-gated network URL and a security warning.
         --port <n>        Preferred port (default $DEFAULT_PORT; auto-picks the next free one).
         --token <value>   Use a fixed token instead of a freshly generated one (stable links).
+        --public          Serve every route WITHOUT a token (open). For a deployed public preview
+                          server — browsing published catalogs / uploaded bundles is the point. Safe
+                          by construction (no server-side code exec; untrusted re-render refused;
+                          uploads capped + SSRF-gated). Off by default.
         --export <path>   Don't serve: render every preview once and write a portable bundle (a
                           self-contained web gallery + PNGs) to <path>. A '.zip' path writes a zip;
                           any other path writes a directory. The live server also offers this at
