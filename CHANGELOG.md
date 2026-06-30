@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.8](https://github.com/yschimke/compose-ai-tools/compare/v0.16.7...v0.16.8) (2026-06-30)
+
+
+### Features
+
+* **serve:** live-edit declared knobs on daemon sessions ([#2117](https://github.com/yschimke/compose-ai-tools/issues/2117)) ([9ab1f07](https://github.com/yschimke/compose-ai-tools/commit/9ab1f07958a80776e6d77ed6962cd90aaffbecc6))
+
 ## [0.16.7](https://github.com/yschimke/compose-ai-tools/compare/v0.16.6...v0.16.7) (2026-06-30)
 
 
