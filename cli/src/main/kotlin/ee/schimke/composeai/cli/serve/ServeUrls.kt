@@ -51,6 +51,26 @@ object ServeUrls {
     "$origin/p/${WebEscaping.urlEncodeSegment(previewId)}?token=${WebEscaping.urlEncodeSegment(token)}"
 
   /**
+   * Relative src for the in-browser Wasm app backing a catalog [previewId] in [system]
+   * (`/wasm/<system>/?id=<component>[&uiMode=<theme>]`). The catalog preview id is
+   * `<component-slug>__<axis>…` and the Wasm app keys its component registry by the slug, so the
+   * variant is stripped for `id`. The variant's M3 theme **is** forwarded as `uiMode`, though: the
+   * app defaults to light, so without it a deep link to a `…__dark` snapshot would flip to light
+   * the moment the viewer hands the render to the in-browser tier (e.g. on a font-scale change).
+   * The theme axis surfaces as a `light`/`dark` segment; absent one, no `uiMode` is forced and the
+   * app uses its own default. The viewer's Theme control still overrides this when set.
+   */
+  fun wasmAppSrc(system: String, previewId: String): String {
+    val component = previewId.substringBefore("__")
+    val theme = previewId.split("__").drop(1).lastOrNull { it == "light" || it == "dark" }
+    return buildString {
+      append("/wasm/").append(WebEscaping.urlEncodeSegment(system)).append("/?id=")
+      append(WebEscaping.urlEncodeSegment(component))
+      if (theme != null) append("&uiMode=").append(theme)
+    }
+  }
+
+  /**
    * Render (PNG) URL for one preview at the given overrides. [overrides] is an already-validated
    * map of `ServeOverrides.SUPPORTED_KEYS` → value; the token and each value are percent-encoded.
    */
