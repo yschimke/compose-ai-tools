@@ -45,6 +45,13 @@ fi
 [[ -n "${SERVE_CATALOGS:-}" ]] && args+=(--catalogs "${SERVE_CATALOGS}")
 [[ -n "${SERVE_TRUST_STORE:-}" ]] && args+=(--trust-store "${SERVE_TRUST_STORE}")
 [[ -n "${SERVE_WASM_DIR:-}" ]] && args+=(--wasm-dir "${SERVE_WASM_DIR}")
+# Trusted server-side re-render (opt-in, OFF by default). Only enable on a box that
+# can BUILD the catalog source (the Android catalogs need the Android toolchain).
+# Reuses SERVE_REVISIONS_ALLOW as the trusted ref allowlist (fail-closed).
+[[ -n "${SERVE_REVISIONS_ALLOW:-}" ]] && args+=(--revisions-allow "${SERVE_REVISIONS_ALLOW}")
+if [[ "${SERVE_ALLOW_RENDER_TRUSTED:-}" == "1" || "${SERVE_ALLOW_RENDER_TRUSTED:-}" == "true" ]]; then
+  args+=(--allow-render-trusted)
+fi
 # Client uploads (POST /bundles) — off unless SERVE_ACCEPT_BUNDLES=1; a host
 # allowlist for ?url= fetches is opt-in on top (SSRF stays fail-closed).
 if [[ "${SERVE_ACCEPT_BUNDLES:-}" == "1" || "${SERVE_ACCEPT_BUNDLES:-}" == "true" ]]; then

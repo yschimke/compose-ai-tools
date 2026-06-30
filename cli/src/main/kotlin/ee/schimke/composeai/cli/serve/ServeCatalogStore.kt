@@ -42,7 +42,22 @@ class ServeCatalogStore(
    * catalog** — a deployed public server needs no local `--wasm-dir` build, just `--catalogs`.
    */
   private val registerWasm: (system: String, dir: File) -> Unit = { _, _ -> },
+  /**
+   * Trusted server-side re-render (opt-in, `--allow-render-trusted`). When a catalog is `Trusted`
+   * AND declares a `source` (`{repo, ref, module}`), this is invoked to stand up a **daemon-backed,
+   * re-renderable** session built from that source — so the viewer's controls re-render live at
+   * full fidelity instead of replaying baked PNGs. Returns true when it registered such a session
+   * (then the static [ServeBundleHost] is skipped); false ⇒ fall back to the static catalog.
+   * Default ⇒ never (the safe default + what every public deploy uses). The callback owns the
+   * ref-allowlist + build gates; this store only reaches it for an already-`Trusted` catalog.
+   */
+  private val buildTrustedSource: (system: String, source: CatalogSource) -> Boolean = { _, _ ->
+    false
+  },
 ) {
+
+  /** A catalog's buildable source — where to check out + build to re-render it live. */
+  data class CatalogSource(val repo: String, val ref: String, val module: String)
 
   sealed interface Result {
     data class Ok(val system: String, val previewCount: Int, val trust: String) : Result
@@ -109,6 +124,21 @@ class ServeCatalogStore(
       if (trust.trustsBranch(repo, branch))
         BundleVerifier.Verdict.Trusted(listOf(BundleVerifier.Basis.Branch(repo, branch)))
       else BundleVerifier.Verdict.Unverified("branch $repo@$branch is not trusted")
+
+    // Trusted server-side re-render (opt-in): only a Trusted catalog that declares a source is even
+    // offered to the builder — an Unverified catalog NEVER reaches it, so a compromised/spoofed
+    // catalog can't trigger a build. When the builder takes over it registers a daemon-backed
+    // (re-renderable) session under this id, so we skip the static host below.
+    val src = catalog.source
+    if (
+      verdict is BundleVerifier.Verdict.Trusted &&
+        src != null &&
+        src.module.isNotBlank() &&
+        buildTrustedSource(safe, CatalogSource(src.repo, src.ref, src.module))
+    ) {
+      return Result.Ok(safe, count, "${BundleVerifier.summary(verdict)} (live)")
+    }
+
     val host = ServeBundleHost(dir, safe, verdict)
     register(safe, host)
     return Result.Ok(safe, host.previews.size, BundleVerifier.summary(verdict))
@@ -159,7 +189,13 @@ class ServeCatalogStore(
     val components: List<Component> = emptyList(),
     /** Optional in-browser render descriptor (the CMP-Wasm app carried in the branch). */
     val webRender: WebRender? = null,
+    /** Optional buildable source for trusted server-side re-render (`--allow-render-trusted`). */
+    val source: Source? = null,
   )
+
+  /** `catalog.json`'s `source`: the repo/ref/module to build to re-render this catalog live. */
+  @Serializable
+  private data class Source(val repo: String = "", val ref: String = "", val module: String = "")
 
   @Serializable private data class Component(val images: List<Image> = emptyList())
 

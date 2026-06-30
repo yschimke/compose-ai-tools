@@ -233,6 +233,15 @@ const { values } = parseArgs({
     // descriptor is written into catalog.json — so the branch carries the live
     // renderer and `serve --catalogs` fetches it from the same trusted origin.
     "wasm-dist": { type: "string" },
+    // Optional buildable source for TRUSTED server-side re-render. When
+    // --source-module is given, a `source: {repo, ref, module}` is written into
+    // catalog.json so a `serve --allow-render-trusted` box (one with the toolchain
+    // to build it) can stand up a live, full-fidelity re-render of this catalog
+    // instead of replaying baked PNGs. Inert on the public desktop box (which never
+    // sets that flag).
+    "source-repo": { type: "string" },
+    "source-ref": { type: "string" },
+    "source-module": { type: "string" },
     // Publish even when the render is incomplete (missing previews or absent
     // semantics). Off by default so a degraded render fails the job rather than
     // force-pushing a tokens/greenline-less bundle over a good delivery branch.
@@ -320,6 +329,15 @@ if (values["wasm-dist"]) {
     }
   }
   if (webRender) manifest.webRender = webRender;
+  // Buildable source for trusted server-side re-render (opt-in consumer side).
+  if (values["source-module"]) {
+    manifest.source = {
+      repo: values["source-repo"] ?? "",
+      ref: values["source-ref"] ?? "",
+      module: values["source-module"],
+    };
+    console.log(`[${spec.system}] source → ${manifest.source.module}@${manifest.source.ref}`);
+  }
   await writeFile(catalogJsonPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 }
 
