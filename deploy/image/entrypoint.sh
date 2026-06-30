@@ -27,7 +27,14 @@ fi
 # `serve` fetches each system's web/wasm/ from the trusted design-artifacts
 # branch. (--wasm-dir is for the from-source image's local build.)
 [[ -n "${SERVE_CATALOGS:-}" ]] && args+=(--catalogs "${SERVE_CATALOGS}")
-[[ -n "${SERVE_TRUST_STORE:-}" ]] && args+=(--trust-store "${SERVE_TRUST_STORE}")
+# Default to the baked branch-trust store so the published design-artifacts catalogs
+# badge as Trusted(Branch) out of the box. `:=` fills it when SERVE_TRUST_STORE is
+# unset OR empty (an older host compose passes ""), so a bare image pull self-heals a
+# box without editing compose. Override with your own path to pin different
+# producers, or the literal `none` to run trustless (catalogs then show Unverified).
+# NB opt-out is `none`, not empty — empty deliberately falls back to the default.
+: "${SERVE_TRUST_STORE:=/trust/producers.json}"
+[[ "${SERVE_TRUST_STORE}" != "none" ]] && args+=(--trust-store "${SERVE_TRUST_STORE}")
 [[ -n "${SERVE_WASM_DIR:-}" ]] && args+=(--wasm-dir "${SERVE_WASM_DIR}")
 if [[ "${SERVE_ACCEPT_BUNDLES:-}" == "1" || "${SERVE_ACCEPT_BUNDLES:-}" == "true" ]]; then
   args+=(--accept-bundles)

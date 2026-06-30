@@ -23,11 +23,13 @@ services:
       # SERVE_PUBLIC=0 and SERVE_TOKEN in .env.
       SERVE_PUBLIC: "${SERVE_PUBLIC:-1}"
       SERVE_CATALOGS: "${SERVE_CATALOGS:-compose-m3,wear-m3}"
-      # The image bakes a branch-trust store at /trust/producers.json, so the
-      # published design-artifacts catalogs badge as Trusted(Branch) by default.
-      # Point this at your own file (mount it via volumes below) to pin different
-      # producers, or set it empty to run with no trust store (all Unverified).
-      SERVE_TRUST_STORE: "${SERVE_TRUST_STORE:-/trust/producers.json}"
+      # The image bakes a branch-trust store at /trust/producers.json and the
+      # entrypoint defaults to it, so the published design-artifacts catalogs badge
+      # as Trusted(Branch) out of the box — leave this unset. Set your own path to
+      # pin different producers (mount it via volumes below), or the literal `none`
+      # to run trustless. (Empty is NOT trustless — it falls back to the baked
+      # default; use `none`.)
+      SERVE_TRUST_STORE: "${SERVE_TRUST_STORE:-}"
       # Unused in public mode; required only when SERVE_PUBLIC=0.
       SERVE_TOKEN: "${SERVE_TOKEN:-}"
       SERVE_IDLE_EXIT: "0"
