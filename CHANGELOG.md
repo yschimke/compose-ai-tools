@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.16.7](https://github.com/yschimke/compose-ai-tools/compare/v0.16.6...v0.16.7) (2026-06-30)
+
+
+### Features
+
+* **serve:** drive font scale + locale through the in-browser Wasm render ([#2115](https://github.com/yschimke/compose-ai-tools/issues/2115)) ([a9d6ed8](https://github.com/yschimke/compose-ai-tools/commit/a9d6ed89d85bfb650b45779cb78e0e3fac185446))
+* **serve:** link served catalogs on the landing + disable dead viewer controls ([#2113](https://github.com/yschimke/compose-ai-tools/issues/2113)) ([c253e4c](https://github.com/yschimke/compose-ai-tools/commit/c253e4c40f861aa6e4c196227981e6bc1e123052))
+* **serve:** trusted server-side re-render for catalogs (--allow-render-trusted) ([#2116](https://github.com/yschimke/compose-ai-tools/issues/2116)) ([d2ed3a6](https://github.com/yschimke/compose-ai-tools/commit/d2ed3a6a8443d214211cb3073d38106d9867e905))
+
+
+### Bug Fixes
+
+* **deploy:** bake a branch-trust store into the prebuilt image ([#2112](https://github.com/yschimke/compose-ai-tools/issues/2112)) ([92df70e](https://github.com/yschimke/compose-ai-tools/commit/92df70ec5ace926910913d65099e3c915c90d296))
+* **deploy:** only print the ?token= URL when the box is token-gated ([#2109](https://github.com/yschimke/compose-ai-tools/issues/2109)) ([5a08e04](https://github.com/yschimke/compose-ai-tools/commit/5a08e045c05410775418fc4a65047be4e1064ef6))
+* **deps:** update gradle minor/patch (excluding held remote compose artifacts) ([#2104](https://github.com/yschimke/compose-ai-tools/issues/2104)) ([464cfce](https://github.com/yschimke/compose-ai-tools/commit/464cfce04194eba92f00a8b54b3a72a52765b92d))
+* **release:** stop the prebuilt-image job skipping on the release chain ([#2111](https://github.com/yschimke/compose-ai-tools/issues/2111)) ([03b3b26](https://github.com/yschimke/compose-ai-tools/commit/03b3b267e41fa24e729a979d602c42c24ebd83ac))
+* **samples:** opt in to ExperimentalRotateToLookAtUserApi in xr-spatial ([#2114](https://github.com/yschimke/compose-ai-tools/issues/2114)) ([4c2de16](https://github.com/yschimke/compose-ai-tools/commit/4c2de160f43302e7b1465bfce9e9b15f8115229d))
+
 ## [0.16.6](https://github.com/yschimke/compose-ai-tools/compare/v0.16.5...v0.16.6) (2026-06-29)
 
 
