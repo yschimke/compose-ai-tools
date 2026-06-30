@@ -214,6 +214,12 @@ class ServeWebFixtureTest {
       "font scale forwarded to Wasm",
     )
     assertTrue(wasmView.contains("u.searchParams.set(\"localeTag\""), "locale forwarded to Wasm")
+    // On a static snapshot, a wasm-honoured control change auto-enables the Wasm tier (rather than
+    // firing a /render the published catalog can't serve), so the control actually takes effect.
+    assertTrue(
+      wasmView.contains("else if (live.disabled && wasmToggle) {"),
+      "static-snapshot wasm controls auto-enable the in-browser tier",
+    )
 
     // Live daemon session (canApplyOverrides = true): everything enabled, no note.
     val liveView = ServeWeb.viewerPage(previews.first(), token, canApplyOverrides = true)

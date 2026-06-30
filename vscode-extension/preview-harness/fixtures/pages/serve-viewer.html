@@ -348,6 +348,15 @@ a:hover { text-decoration: underline; }
     if (wasmActive()) { wasmFrame.src = wasmUrl(); return; }
     if (live.checked && ws && ws.readyState === 1) {
       ws.send(JSON.stringify({ type: "setOverrides", overrides: overrides() }));
+    } else if (live.disabled && wasmToggle) {
+      // Static snapshot backed by a Wasm app: the baked PNG can't honour theme/font-scale/locale
+      // (only the in-browser tier can), and /render can't re-render a published catalog. So a
+      // wasm-honoured control change auto-enables the Wasm tier and applies there, instead of
+      // firing a dead refreshSnapshot the user sees as "the control does nothing". (live.disabled
+      // marks a non-renderable session; device/orientation stay disabled, so only the
+      // wasm-honoured controls reach here.)
+      wasmToggle.checked = true;
+      openWasm();
     } else if (!live.checked) {
       refreshSnapshot();
     }
