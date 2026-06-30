@@ -95,6 +95,11 @@ COPY --from=build /project /project
 COPY --from=build /root/.gradle /root/.gradle
 COPY --from=build /root/.m2 /root/.m2
 
+# Bake the branch-trust store so a public deploy badges the published
+# design-artifacts catalogs as Trusted(Branch) out of the box (SERVE_TRUST_STORE
+# defaults to /trust/producers.json). Override by mounting your own there.
+COPY trust/ /trust/
+
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
