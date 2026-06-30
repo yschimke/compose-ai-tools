@@ -211,8 +211,9 @@ object ServeWeb {
    * [wasmSrc] (non-null only for a CMP catalog session the server carries a Wasm app for) adds a
    * "Run in browser (Wasm)" toggle that mounts that app in a sandboxed `<iframe>` at the
    * `data-mode="live"` seam — the M3 component renders **client-side** (no server round-trip), so
-   * it's safe to run even for an unverified session. The theme dropdown re-points the iframe's
-   * `?uiMode=`. Absent ⇒ the page is exactly the snapshot viewer as before.
+   * it's safe to run even for an unverified session. The theme / font-scale / locale controls
+   * re-point the iframe's `?uiMode` / `?fontScale` / `?localeTag` so they drive the in-browser
+   * render (device / orientation stay server-render-only). Absent ⇒ the snapshot viewer as before.
    */
   fun viewerPage(
     preview: ServePreview,
@@ -254,14 +255,18 @@ object ServeWeb {
     // iframe's
     // ?uiMode, so it stays live there. Live daemon sessions (canApplyOverrides) keep everything on.
     val staticSnapshot = !canApplyOverrides
-    val dis = if (staticSnapshot) " disabled" else ""
-    val themeDis = if (staticSnapshot && wasmSrc == null) " disabled" else ""
+    // Server-render-only controls (no client-side path): disabled on a static snapshot.
+    val serverDis = if (staticSnapshot) " disabled" else ""
+    // Controls the in-browser Wasm app also honours — theme (uiMode), font scale (density), locale
+    // (layout direction): live whenever the server can render OR a Wasm app backs the session.
+    val wasmDis = if (staticSnapshot && wasmSrc == null) " disabled" else ""
     val snapshotNote =
       when {
         !staticSnapshot -> ""
         wasmSrc != null ->
-          "<div class=\"cp-note\">Pre-rendered snapshot — tick “Run in browser (Wasm)” to interact " +
-            "(only Theme applies there). The other overrides need the live server.</div>"
+          "<div class=\"cp-note\">Pre-rendered snapshot — tick “Run in browser (Wasm)” to interact: " +
+            "Theme, Font scale &amp; Locale apply in the browser. Device/Orientation need the live " +
+            "server.</div>"
         else ->
           "<div class=\"cp-note\">Pre-rendered snapshot — overrides (device, locale, font scale, " +
             "orientation) need the live server, not a published catalog.</div>"
@@ -274,29 +279,29 @@ object ServeWeb {
         <div class="cp-stage"><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$wasmFrame</div>
         <div class="cp-controls">
           $snapshotNote
-          <label class="cp-live-row"><input id="cp-live" type="checkbox"$dis> Live (stream)</label>
+          <label class="cp-live-row"><input id="cp-live" type="checkbox"$serverDis> Live (stream)</label>
           $wasmToggle
           <label>Theme
-            <select id="cp-uiMode"$themeDis>
+            <select id="cp-uiMode"$wasmDis>
               <option value="">(default)</option>
               <option value="light">Light</option>
               <option value="dark">Dark</option>
             </select>
           </label>
           <label>Device
-            <select id="cp-device"$dis>
+            <select id="cp-device"$serverDis>
               <option value="">(default)</option>
               $deviceOptions
             </select>
           </label>
           <label>Locale (BCP-47)
-            <input id="cp-localeTag" type="text" placeholder="e.g. ar, ja-JP" autocomplete="off"$dis>
+            <input id="cp-localeTag" type="text" placeholder="e.g. ar, ja-JP" autocomplete="off"$wasmDis>
           </label>
           <label>Font scale: <span id="cp-fontScale-val">default</span>
-            <input id="cp-fontScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0"$dis>
+            <input id="cp-fontScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0"$wasmDis>
           </label>
           <label>Orientation
-            <select id="cp-orientation"$dis>
+            <select id="cp-orientation"$serverDis>
               <option value="">(default)</option>
               <option value="portrait">Portrait</option>
               <option value="landscape">Landscape</option>
@@ -506,7 +511,8 @@ object ServeWeb {
         img.hidden = false;
       }
       // --- Wasm tier (the in-browser CMP app, mounted in a sandboxed iframe). Only wired when the
-      // session carries a Wasm app (data-wasm-src present). The theme dropdown re-points ?uiMode=.
+      // session carries a Wasm app (data-wasm-src present). Theme/font-scale/locale re-point the
+      // iframe's ?uiMode/?fontScale/?localeTag (device/orientation are server-render-only).
       var wasmFrame = document.getElementById("cp-wasm");
       var wasmToggle = document.getElementById("cp-wasm-toggle");
       var wasmSrc = root.getAttribute("data-wasm-src") || "";
@@ -520,6 +526,11 @@ object ServeWeb {
         if (u.origin !== location.origin) return "";
         var el = document.getElementById("cp-uiMode");
         if (el && el.value) u.searchParams.set("uiMode", el.value);
+        // The Wasm app also honours font scale (density) + locale (layout direction); device /
+        // orientation are server-render-only, so they're not forwarded.
+        var loc = document.getElementById("cp-localeTag");
+        if (loc && loc.value) u.searchParams.set("localeTag", loc.value);
+        if (fontScaleTouched && fs) u.searchParams.set("fontScale", fs.value);
         return u.href;
       }
       function openWasm() {

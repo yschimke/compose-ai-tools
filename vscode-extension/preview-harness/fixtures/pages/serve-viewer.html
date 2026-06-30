@@ -297,7 +297,8 @@ a:hover { text-decoration: underline; }
     img.hidden = false;
   }
   // --- Wasm tier (the in-browser CMP app, mounted in a sandboxed iframe). Only wired when the
-  // session carries a Wasm app (data-wasm-src present). The theme dropdown re-points ?uiMode=.
+  // session carries a Wasm app (data-wasm-src present). Theme/font-scale/locale re-point the
+  // iframe's ?uiMode/?fontScale/?localeTag (device/orientation are server-render-only).
   var wasmFrame = document.getElementById("cp-wasm");
   var wasmToggle = document.getElementById("cp-wasm-toggle");
   var wasmSrc = root.getAttribute("data-wasm-src") || "";
@@ -311,6 +312,11 @@ a:hover { text-decoration: underline; }
     if (u.origin !== location.origin) return "";
     var el = document.getElementById("cp-uiMode");
     if (el && el.value) u.searchParams.set("uiMode", el.value);
+    // The Wasm app also honours font scale (density) + locale (layout direction); device /
+    // orientation are server-render-only, so they're not forwarded.
+    var loc = document.getElementById("cp-localeTag");
+    if (loc && loc.value) u.searchParams.set("localeTag", loc.value);
+    if (fontScaleTouched && fs) u.searchParams.set("fontScale", fs.value);
     return u.href;
   }
   function openWasm() {
