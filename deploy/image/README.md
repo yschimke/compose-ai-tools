@@ -57,9 +57,10 @@ Pin a version with `IMAGE_TAG=0.16.5` in `.env` (a bare tag; defaults to the
 
 ## Auto-updates (Watchtower)
 
-`docker-compose.yml` includes a [Watchtower](https://containrrr.dev/watchtower/)
-service that **watches the `:latest` tag and updates the `preview` container when a
-new release image is published** — so the chain is hands-off:
+`docker-compose.yml` includes a
+[Watchtower](https://github.com/nicholas-fedor/watchtower) service that **watches the
+`:latest` tag and updates the `preview` container when a new release image is
+published** — so the chain is hands-off:
 
 > merge → cut a `v*` release → `preview-host-image.yml` publishes `:latest` →
 > Watchtower pulls it → server updates
@@ -67,6 +68,14 @@ new release image is published** — so the chain is hands-off:
 It polls hourly (`--interval 3600`), is scoped to the labelled `preview` service
 (`--label-enable`, so it leaves Caddy alone), and `--cleanup` prunes the old image.
 It needs the Docker socket (root-equivalent on the host — fine for your own box).
+
+> **Image:** this uses the maintained
+> [`nicholas-fedor/watchtower`](https://github.com/nicholas-fedor/watchtower) fork,
+> pinned by tag+digest. The original `containrrr/watchtower` is effectively
+> unmaintained and its baked Docker SDK negotiates API 1.25, which modern engines
+> reject (`client version 1.25 is too old. Minimum supported API version is 1.40`) —
+> so it silently never updates. Bump the tag **and** digest together to adopt a newer
+> release.
 
 Requirements / options:
 - **Leave `IMAGE_TAG` unset (it defaults to the `latest` tag)** — Watchtower only
