@@ -52,7 +52,12 @@ services:
   # updates manually (docker compose pull && up -d). For a private GHCR package, mount
   # a registry config: `- ~/.docker/config.json:/config.json:ro`. See README.md.
   watchtower:
-    image: containrrr/watchtower
+    # Maintained fork of the (now-stale) containrrr/watchtower: the upstream image's
+    # baked Docker SDK negotiates API 1.25, which modern engines reject ("client
+    # version 1.25 is too old. Minimum supported API version is 1.40"), so it silently
+    # never updates anything. The fork is rebuilt against a current SDK. Pinned by
+    # tag+digest; bump both together when adopting a newer release.
+    image: ghcr.io/nicholas-fedor/watchtower:1.19.0@sha256:c1dfdf27fe805dcfefe1cf048cee6960a511c097a99aa355b0bc4be6e6bb3bdf
     restart: always
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
