@@ -150,6 +150,16 @@ a:hover { text-decoration: underline; }
     var q = "token=" + encodeURIComponent(token);
     if (session) q += "&session=" + encodeURIComponent(session);
     Object.keys(o).forEach(function (k) { q += "&" + k + "=" + encodeURIComponent(o[k]); });
+    // Author-declared knobs (enabled only on a daemon session): knob.<key>=<kind>:<value>.
+    document.querySelectorAll(".cp-knob").forEach(function (el) {
+      if (el.disabled) return;
+      var key = el.getAttribute("data-knob-key");
+      var kind = el.getAttribute("data-knob-kind") || "string";
+      if (!key) return;
+      var val = (el.type === "checkbox") ? (el.checked ? "true" : "false") : el.value;
+      if (val === "") return;
+      q += "&knob." + encodeURIComponent(key) + "=" + encodeURIComponent(kind + ":" + val);
+    });
     return q;
   }
   function refreshSnapshot() {
@@ -365,6 +375,10 @@ a:hover { text-decoration: underline; }
   fields.forEach(function (f) {
     var el = document.getElementById("cp-" + f);
     if (el) el.addEventListener("change", onControlsChanged);
+  });
+  // Author-declared knobs re-render on edit (text/number debounce via "input", toggles "change").
+  document.querySelectorAll(".cp-knob").forEach(function (el) {
+    el.addEventListener(el.type === "checkbox" ? "change" : "input", onControlsChanged);
   });
   refreshSnapshot();
 })();</script>
