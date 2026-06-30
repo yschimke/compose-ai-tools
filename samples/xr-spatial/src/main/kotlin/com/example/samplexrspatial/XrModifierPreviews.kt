@@ -1,3 +1,8 @@
+// rotateToLookAtUser was marked @ExperimentalRotateToLookAtUserApi (opt-in, error-level) in
+// androidx.xr.compose 1.0.0-alpha15; this sample intentionally demonstrates it, so opt in
+// file-wide rather than at each call site.
+@file:OptIn(ExperimentalRotateToLookAtUserApi::class)
+
 package com.example.samplexrspatial
 
 import androidx.compose.runtime.Composable
@@ -6,6 +11,7 @@ import androidx.xr.compose.spatial.Subspace
 import androidx.xr.compose.subspace.SpatialBox
 import androidx.xr.compose.subspace.SpatialPanel
 import androidx.xr.compose.subspace.SpatialRow
+import androidx.xr.compose.subspace.layout.ExperimentalRotateToLookAtUserApi
 import androidx.xr.compose.subspace.layout.SpatialArrangement
 import androidx.xr.compose.subspace.layout.SubspaceModifier
 import androidx.xr.compose.subspace.layout.absoluteOffset
