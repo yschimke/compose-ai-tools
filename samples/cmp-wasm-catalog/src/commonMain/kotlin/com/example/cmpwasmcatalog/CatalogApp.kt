@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -33,26 +34,39 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 
 /**
  * Mounts one catalog component by id inside the M3 theme, centred on the surface. `dark` flips the
- * color scheme so the viewer's `uiMode` deep-link parameter maps straight through. An unknown id
- * renders a visible diagnostic rather than a blank canvas.
+ * color scheme so the viewer's `uiMode` deep-link parameter maps straight through; [fontScale] and
+ * [rtl] map the viewer's font-scale slider and locale control so those overrides drive the
+ * in-browser render too. An unknown id renders a visible diagnostic rather than a blank canvas.
  */
 @Composable
-fun CatalogApp(id: String, dark: Boolean = false) {
+fun CatalogApp(id: String, dark: Boolean = false, fontScale: Float = 1f, rtl: Boolean = false) {
   val scheme = if (dark) darkColorScheme() else lightColorScheme()
-  MaterialTheme(colorScheme = scheme) {
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-      Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-        val component = catalogComponents[id]
-        if (component != null) {
-          component()
-        } else {
-          Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Unknown component id", style = MaterialTheme.typography.titleMedium)
-            Text(id, style = MaterialTheme.typography.bodySmall)
+  // Re-point density's fontScale (preserving the real pixel density) and the layout direction, so
+  // the viewer's font-scale + locale controls take effect client-side — same overrides the server
+  // render honours, just running in the browser sandbox.
+  val density = LocalDensity.current
+  val scaled = Density(density = density.density, fontScale = fontScale)
+  val direction = if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr
+  CompositionLocalProvider(LocalDensity provides scaled, LocalLayoutDirection provides direction) {
+    MaterialTheme(colorScheme = scheme) {
+      Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+          val component = catalogComponents[id]
+          if (component != null) {
+            component()
+          } else {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+              Text("Unknown component id", style = MaterialTheme.typography.titleMedium)
+              Text(id, style = MaterialTheme.typography.bodySmall)
+            }
           }
         }
       }

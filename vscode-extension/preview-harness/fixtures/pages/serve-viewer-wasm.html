@@ -77,7 +77,7 @@ a:hover { text-decoration: underline; }
       <div class="cp-viewer" data-preview-id="com.example.CardPreview" data-mode="snapshot" data-modes="snapshot,live" data-wasm-src="/wasm/compose-m3/?id=card-filled">
         <div class="cp-stage"><img id="cp-img" alt="Card"><canvas id="cp-canvas" hidden></canvas><iframe id="cp-wasm" hidden sandbox="allow-scripts" title="Card (Wasm)"></iframe></div>
         <div class="cp-controls">
-          <div class="cp-note">Pre-rendered snapshot — tick “Run in browser (Wasm)” to interact (only Theme applies there). The other overrides need the live server.</div>
+          <div class="cp-note">Pre-rendered snapshot — tick “Run in browser (Wasm)” to interact: Theme, Font scale &amp; Locale apply in the browser. Device/Orientation need the live server.</div>
           <label class="cp-live-row"><input id="cp-live" type="checkbox" disabled> Live (stream)</label>
           <label class="cp-live-row"><input id="cp-wasm-toggle" type="checkbox"> Run in browser (Wasm)</label>
           <label>Theme
@@ -99,10 +99,10 @@ a:hover { text-decoration: underline; }
             </select>
           </label>
           <label>Locale (BCP-47)
-            <input id="cp-localeTag" type="text" placeholder="e.g. ar, ja-JP" autocomplete="off" disabled>
+            <input id="cp-localeTag" type="text" placeholder="e.g. ar, ja-JP" autocomplete="off">
           </label>
           <label>Font scale: <span id="cp-fontScale-val">default</span>
-            <input id="cp-fontScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0" disabled>
+            <input id="cp-fontScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0">
           </label>
           <label>Orientation
             <select id="cp-orientation" disabled>
@@ -297,7 +297,8 @@ a:hover { text-decoration: underline; }
     img.hidden = false;
   }
   // --- Wasm tier (the in-browser CMP app, mounted in a sandboxed iframe). Only wired when the
-  // session carries a Wasm app (data-wasm-src present). The theme dropdown re-points ?uiMode=.
+  // session carries a Wasm app (data-wasm-src present). Theme/font-scale/locale re-point the
+  // iframe's ?uiMode/?fontScale/?localeTag (device/orientation are server-render-only).
   var wasmFrame = document.getElementById("cp-wasm");
   var wasmToggle = document.getElementById("cp-wasm-toggle");
   var wasmSrc = root.getAttribute("data-wasm-src") || "";
@@ -311,6 +312,11 @@ a:hover { text-decoration: underline; }
     if (u.origin !== location.origin) return "";
     var el = document.getElementById("cp-uiMode");
     if (el && el.value) u.searchParams.set("uiMode", el.value);
+    // The Wasm app also honours font scale (density) + locale (layout direction); device /
+    // orientation are server-render-only, so they're not forwarded.
+    var loc = document.getElementById("cp-localeTag");
+    if (loc && loc.value) u.searchParams.set("localeTag", loc.value);
+    if (fontScaleTouched && fs) u.searchParams.set("fontScale", fs.value);
     return u.href;
   }
   function openWasm() {

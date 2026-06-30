@@ -192,21 +192,28 @@ class ServeWebFixtureTest {
       "theme disabled without a Wasm app",
     )
 
-    // Static + Wasm: theme stays live (it re-points the iframe ?uiMode); the rest stay disabled.
+    // Static + Wasm: theme, font scale, and locale go LIVE (the in-browser app honours them) — only
+    // the server-render-only controls (device/orientation/live stream) stay disabled.
     val wasmView =
       ServeWeb.viewerPage(
         previews.first { it.id.endsWith("CardPreview") },
         token,
         wasmSrc = "/wasm/compose-m3/?id=card-filled",
       )
+    assertTrue(wasmView.contains("id=\"cp-uiMode\">"), "theme enabled with a Wasm app")
     assertTrue(
-      wasmView.contains("id=\"cp-uiMode\">"),
-      "theme enabled when a Wasm app backs the session",
+      wasmView.contains("step=\"0.1\" value=\"1.0\">"),
+      "font scale enabled with a Wasm app",
     )
+    assertTrue(wasmView.contains("autocomplete=\"off\">"), "locale enabled with a Wasm app")
+    assertTrue(wasmView.contains("id=\"cp-device\" disabled"), "device stays server-only")
+    assertTrue(wasmView.contains("id=\"cp-orientation\" disabled"), "orientation stays server-only")
+    // The Wasm iframe URL builder forwards the honoured params (theme/font scale/locale).
     assertTrue(
-      wasmView.contains("value=\"1.0\" disabled"),
-      "font scale still disabled in a static catalog",
+      wasmView.contains("u.searchParams.set(\"fontScale\""),
+      "font scale forwarded to Wasm",
     )
+    assertTrue(wasmView.contains("u.searchParams.set(\"localeTag\""), "locale forwarded to Wasm")
 
     // Live daemon session (canApplyOverrides = true): everything enabled, no note.
     val liveView = ServeWeb.viewerPage(previews.first(), token, canApplyOverrides = true)
