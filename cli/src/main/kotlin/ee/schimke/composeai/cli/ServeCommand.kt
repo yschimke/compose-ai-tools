@@ -272,8 +272,15 @@ class ServeCommand(args: List<String>) : Command(args) {
     // opens them (gated by the same --revisions-allow ref allowlist).
     val worktrees: GitWorktrees? =
       if (revisions || allowRenderTrusted) openWorktrees(module) else null
+    // The `?session=<rev>` factory (project mode) is gated on --revisions ONLY — NOT merely on
+    // worktrees existing. Otherwise `--allow-render-trusted` (which also opens worktrees, but just
+    // to
+    // build a fixed catalog source) would silently let clients trigger Gradle builds for arbitrary
+    // revisions reachable from the allowlist. The catalog builder uses `worktrees` directly, so it
+    // doesn't need the factory.
     val factory =
-      if (worktrees != null) revisionFactory(module, worktrees) else ServeSessionFactory { null }
+      if (revisions && worktrees != null) revisionFactory(module, worktrees)
+      else ServeSessionFactory { null }
     val registry = ServeSessionRegistry(open = openHost, factory = factory)
     val defaultState =
       ServeSessionState(
@@ -577,7 +584,11 @@ class ServeCommand(args: List<String>) : Command(args) {
           )
           return false
         }
-    val relativePath = source.module.removePrefix(":").replace(":", "/")
+    // GradleRevisionBuilder builds task names as ":${gradlePath}:…", so gradlePath must be the
+    // colon-less form (e.g. `samples:design-catalog-m3`); a catalog's `source.module` is the
+    // conventional `:samples:…` path, so strip the leading colon (a double `::` fails every build).
+    val gradlePath = source.module.removePrefix(":")
+    val relativePath = gradlePath.replace(":", "/")
     val bootstrapArgs =
       autoInjectInitScriptArgs(args, projectRoot = repoRoot) +
         variantGradleArgs() +
@@ -588,7 +599,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         onLog = { System.err.println("[serve build] $it") },
       )
     val built =
-      builder.build(worktree, ServeModuleRef(source.module, relativePath), isSecurityChecked = true)
+      builder.build(worktree, ServeModuleRef(gradlePath, relativePath), isSecurityChecked = true)
         ?: run {
           System.err.println(
             "serve: catalog $system build of ${source.module}@${source.ref} failed — serving baked PNGs"
