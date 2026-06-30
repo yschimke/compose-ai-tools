@@ -33,5 +33,20 @@
     <!-- ComposeViewport mounts the catalog component named by ?id=… here. -->
     <div id="composeApp"></div>
     <script type="module" src="composeApp.mjs"></script>
+    <!--
+      Live overrides without an iframe reload: the embedding `serve` viewer posts a `?a=b` override
+      patch (theme / font scale / locale) via postMessage; forward it to the Wasm app's exported
+      `applyOverrides`, which recomposes in place. Importing the same module is a no-op re-use (ES
+      modules are singletons), and the export may not exist until the Wasm instance has initialised,
+      so each message re-checks it. Data is a plain string, so no structured-clone / origin surface.
+    -->
+    <script type="module">
+      import * as catalog from "./composeApp.mjs";
+      window.addEventListener("message", function (e) {
+        if (typeof e.data === "string" && typeof catalog.applyOverrides === "function") {
+          catalog.applyOverrides(e.data);
+        }
+      });
+    </script>
   </body>
 </html>
