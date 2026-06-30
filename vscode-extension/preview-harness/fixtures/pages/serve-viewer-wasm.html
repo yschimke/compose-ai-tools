@@ -18,6 +18,12 @@ a:hover { text-decoration: underline; }
 .cp-about-body { margin: 0 0 8px; font-size: 0.84rem; line-height: 1.45; color: #45454c; }
 .cp-about-body code { font-size: 0.8rem; padding: 0 3px; border-radius: 4px; background: #f0f0f3; }
 .cp-about-links { margin: 0; font-size: 0.8rem; color: #6b6b70; }
+.cp-systems { margin: 0 0 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  font-size: 0.85rem; }
+.cp-systems-label { font-weight: 600; color: #6b6b70; }
+.cp-systems a, .cp-systems-cur { padding: 3px 10px; border-radius: 999px; border: 1px solid #d7d7de; }
+.cp-systems a { background: #fff; }
+.cp-systems-cur { background: #ececff; border-color: #c4c4f5; color: #3a3a8a; font-weight: 600; }
 .cp-badge { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px;
   font-size: 0.7rem; font-weight: 600; vertical-align: middle; white-space: nowrap; }
 .cp-badge--trusted { background: #e7f4ea; color: #1e7a34; border: 1px solid #b6e0c2; }
@@ -42,6 +48,9 @@ a:hover { text-decoration: underline; }
 .cp-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; }
 .cp-controls input, .cp-controls select { padding: 5px 6px; font-size: 0.85rem; }
 .cp-status { font-size: 0.75rem; color: #6b6b70; min-height: 1em; }
+.cp-note { font-size: 0.75rem; color: #6b6b70; line-height: 1.4; padding: 8px 10px;
+  border-radius: 8px; background: #f4f4f6; }
+.cp-controls label:has(:disabled) { opacity: 0.55; }
 .cp-knobs { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
 .cp-knobs-head { font-size: 0.72rem; color: #6b6b70; }
 .cp-knobs input:disabled { opacity: 0.7; }
@@ -52,6 +61,11 @@ a:hover { text-decoration: underline; }
   .cp-card, .cp-about { background: #1d1d20; }
   .cp-about-body { color: #c9c9d0; }
   .cp-about-body code { background: #2a2a30; }
+  .cp-systems-label { color: #a0a0a8; }
+  .cp-systems a, .cp-systems-cur { border-color: #34343a; }
+  .cp-systems a { background: #1d1d20; }
+  .cp-systems-cur { background: #26264a; border-color: #45458a; color: #c9c9ff; }
+  .cp-note { background: #26262b; color: #a0a0a8; }
   .cp-imgwrap, .cp-stage { background: repeating-conic-gradient(#26262b 0% 25%, #1d1d20 0% 50%) 50% / 16px 16px; }
   .cp-badge--trusted { background: #14361f; color: #6cd98a; border-color: #2c6b40; }
   .cp-badge--unverified { background: #3a2a12; color: #e6b067; border-color: #6b4f24; }
@@ -63,7 +77,8 @@ a:hover { text-decoration: underline; }
       <div class="cp-viewer" data-preview-id="com.example.CardPreview" data-mode="snapshot" data-modes="snapshot,live" data-wasm-src="/wasm/compose-m3/?id=card-filled">
         <div class="cp-stage"><img id="cp-img" alt="Card"><canvas id="cp-canvas" hidden></canvas><iframe id="cp-wasm" hidden sandbox="allow-scripts" title="Card (Wasm)"></iframe></div>
         <div class="cp-controls">
-          <label class="cp-live-row"><input id="cp-live" type="checkbox"> Live (stream)</label>
+          <div class="cp-note">Pre-rendered snapshot — tick “Run in browser (Wasm)” to interact (only Theme applies there). The other overrides need the live server.</div>
+          <label class="cp-live-row"><input id="cp-live" type="checkbox" disabled> Live (stream)</label>
           <label class="cp-live-row"><input id="cp-wasm-toggle" type="checkbox"> Run in browser (Wasm)</label>
           <label>Theme
             <select id="cp-uiMode">
@@ -73,7 +88,7 @@ a:hover { text-decoration: underline; }
             </select>
           </label>
           <label>Device
-            <select id="cp-device">
+            <select id="cp-device" disabled>
               <option value="">(default)</option>
               <option value="id:pixel_5">Pixel 5</option>
 <option value="id:pixel_7">Pixel 7</option>
@@ -84,13 +99,13 @@ a:hover { text-decoration: underline; }
             </select>
           </label>
           <label>Locale (BCP-47)
-            <input id="cp-localeTag" type="text" placeholder="e.g. ar, ja-JP" autocomplete="off">
+            <input id="cp-localeTag" type="text" placeholder="e.g. ar, ja-JP" autocomplete="off" disabled>
           </label>
           <label>Font scale: <span id="cp-fontScale-val">default</span>
-            <input id="cp-fontScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0">
+            <input id="cp-fontScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0" disabled>
           </label>
           <label>Orientation
-            <select id="cp-orientation">
+            <select id="cp-orientation" disabled>
               <option value="">(default)</option>
               <option value="portrait">Portrait</option>
               <option value="landscape">Landscape</option>

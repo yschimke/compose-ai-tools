@@ -138,6 +138,12 @@ class ServeCommand(args: List<String>) : Command(args) {
     args.flagValue("--catalogs")?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
       ?: emptyList()
   /**
+   * The catalog systems that actually registered (a subset of [catalogs] — one can fail to fetch).
+   * Filled by [registerCatalogs]; surfaced on the landing page as `?session=<system>` nav links so
+   * the public front door lists the served design systems instead of hiding them behind the query.
+   */
+  private val registeredCatalogs = mutableListOf<String>()
+  /**
    * In-browser CMP tier (`--wasm-dir <system>=<dir>[,<system>=<dir>…]`): map a design system to the
    * assembled Wasm catalog app (`./gradlew :samples:cmp-wasm-catalog:wasmCatalogDist` →
    * `build/wasmDist`). Its viewer then offers a "Run in browser (Wasm)" toggle that mounts the app
@@ -328,6 +334,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         bundleStore = bundleStore,
         isPublic = public,
         wasmCatalogs = wasmCatalogs,
+        catalogSessions = registeredCatalogs.toList(),
       )
 
     // Advertise on the LAN over mDNS when bound to a reachable interface (`--lan`), so the mobile /
@@ -498,11 +505,13 @@ class ServeCommand(args: List<String>) : Command(args) {
       )
     for (system in catalogs) {
       when (val r = store.load(system)) {
-        is ServeCatalogStore.Result.Ok ->
+        is ServeCatalogStore.Result.Ok -> {
+          registeredCatalogs += r.system
           System.err.println(
             "serve: catalog ${r.system} → ${r.previewCount} preview(s), trust=${r.trust} " +
               "(?session=${r.system})"
           )
+        }
         is ServeCatalogStore.Result.Failed ->
           System.err.println("serve: catalog ${r.system} not served: ${r.reason}")
       }
