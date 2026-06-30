@@ -99,6 +99,13 @@ Both container profiles take this config from env (the entrypoint maps `SERVE_PU
 **Caddy** in front for TLS. They default to the **open public profile** (`SERVE_PUBLIC=1`, catalogs
 `compose-m3,wear-m3`); set `SERVE_PUBLIC=0` + `SERVE_TOKEN` for a token-gated box.
 
+The prebuilt `deploy/image` **bakes a branch-trust store** at `/trust/producers.json` (trusting
+`yschimke/compose-ai-tools` `design-artifacts/*`) and the entrypoint defaults `SERVE_TRUST_STORE` to
+it, so the published catalogs badge as `Trusted(Branch)` out of the box rather than `unverified`.
+Mount your own over that path (or set `SERVE_TRUST_STORE` to it) to pin different producers, or set
+`SERVE_TRUST_STORE=none` to run trustless. (Empty falls back to the baked default — use `none` to opt
+out — which also means a bare image pull self-heals a box without editing its compose.)
+
 | | [`deploy/vps`](../deploy/vps) (from source) | [`deploy/image`](../deploy/image) (prebuilt) |
 |---|---|---|
 | CLI | compiled from this checkout (~8 min build) | the **released** tarball (`docker pull`, no build) + Watchtower auto-update |
