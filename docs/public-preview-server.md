@@ -120,6 +120,27 @@ current).
 - **Re-render of trusted Compose** stays off unless the operator opts in; a public box should leave
   `--revisions` *off* (that path runs arbitrary Gradle = RCE).
 
+## Trusted server-side re-render (`--allow-render-trusted`)
+
+By default a catalog serves **baked PNGs** — the viewer's device/orientation/etc. controls can't
+re-render a static image (they're disabled, with the in-browser Wasm tier carrying theme/font-scale/
+locale for CMP). For **full-fidelity** server-side overrides, a catalog can declare a buildable
+`source: { repo, ref, module }` in its `catalog.json` (the design-artifacts pipeline emits it), and
+an operator can opt in with `--allow-render-trusted`: a catalog that verifies **`Trusted`** *and*
+declares a `source` is then served by a live, daemon-backed session built from that source, so every
+control re-renders for real.
+
+It is **off by default** and gated three ways, all fail-closed: the catalog must be `Trusted`
+(an `Unverified`/spoofed catalog never reaches the builder — no RCE lever), its `source.ref` must
+clear the `--revisions-allow` allowlist, and its `source.repo` must be the server's own repo.
+
+**Never enable it on a box that can't build the catalog source.** Building runs the source's Gradle
+(code execution), and the published catalogs are **Android** modules — the desktop-only public image
+(`deploy/image`, `preview.coo.ee`) has no Android toolchain, so it leaves `SERVE_ALLOW_RENDER_TRUSTED`
+**unset** and relies on the Wasm tier for CMP. Enable it only on a box with the matching toolchain
+(set `SERVE_ALLOW_RENDER_TRUSTED=1` + `SERVE_REVISIONS_ALLOW=main`), where the heavier per-session
+Gradle build + live render is acceptable.
+
 ## Endpoints
 
 `GET /` index · `GET /p/{id}?session=<s>` viewer · `GET /render/{id}.png` PNG ·

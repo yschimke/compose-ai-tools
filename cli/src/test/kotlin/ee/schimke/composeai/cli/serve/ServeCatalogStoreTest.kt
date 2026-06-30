@@ -169,4 +169,81 @@ class ServeCatalogStoreTest {
     store(TrustStore.EMPTY).load("compose-m3")
     assertTrue(registeredWasm.isEmpty())
   }
+
+  // --- Trusted server-side re-render (--allow-render-trusted) gating ---
+
+  private val buildCalls = mutableListOf<Pair<String, ServeCatalogStore.CatalogSource>>()
+
+  private val catalogWithSource =
+    """
+    {"schema":"design-parity-catalog/v1","system":"compose-m3","components":[
+      {"componentId":"Button/Filled","images":[
+        {"path":"images/button-filled/ideal__default__dark.png","theme":"dark"}]}],
+     "source":{"repo":"yschimke/compose-ai-tools","ref":"main",
+               "module":":samples:design-catalog-m3"}}
+    """
+      .trimIndent()
+
+  private val trustBranches =
+    TrustStore(branches = listOf(TrustedBranch("yschimke/compose-ai-tools", "design-artifacts/*")))
+
+  private fun storeWithBuilder(
+    trust: TrustStore,
+    catalog: String,
+    builderResult: Boolean,
+  ): ServeCatalogStore =
+    ServeCatalogStore(
+      root = tempRoot(),
+      register = { n, h -> registered[n] = h },
+      trust = trust,
+      fetch = { url ->
+        when {
+          url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.toByteArray()
+          url.endsWith(".png") -> png()
+          else -> null
+        }
+      },
+      buildTrustedSource = { system, source ->
+        buildCalls += system to source
+        builderResult
+      },
+    )
+
+  @Test
+  fun `a trusted catalog with a source builds a live session and skips the static host`() {
+    val result =
+      storeWithBuilder(trustBranches, catalogWithSource, builderResult = true).load("compose-m3")
+    assertEquals(1, buildCalls.size, "builder invoked for a trusted catalog with a source")
+    assertEquals(":samples:design-catalog-m3", buildCalls.single().second.module)
+    assertEquals("main", buildCalls.single().second.ref)
+    assertTrue(registered.isEmpty(), "static host skipped once the live session takes over")
+    assertTrue(
+      result is ServeCatalogStore.Result.Ok && result.trust.endsWith("(live)"),
+      "result marked live",
+    )
+  }
+
+  @Test
+  fun `an untrusted catalog with a source never reaches the builder (no RCE on spoof)`() {
+    storeWithBuilder(TrustStore.EMPTY, catalogWithSource, builderResult = true).load("compose-m3")
+    assertTrue(buildCalls.isEmpty(), "an unverified catalog must never trigger a build")
+    assertTrue(registered.getValue("compose-m3").trust is BundleVerifier.Verdict.Unverified)
+  }
+
+  @Test
+  fun `a trusted catalog with no source serves the static host`() {
+    storeWithBuilder(trustBranches, catalogJson, builderResult = true).load("compose-m3")
+    assertTrue(buildCalls.isEmpty(), "no source means no build")
+    assertTrue(registered.containsKey("compose-m3"))
+  }
+
+  @Test
+  fun `when the builder declines (ref not allowed) the catalog falls back to baked PNGs`() {
+    storeWithBuilder(trustBranches, catalogWithSource, builderResult = false).load("compose-m3")
+    assertEquals(1, buildCalls.size, "builder consulted")
+    assertTrue(
+      registered.containsKey("compose-m3"),
+      "fall back to the static host when the build is refused",
+    )
+  }
 }

@@ -61,10 +61,23 @@ class ServeCommand(args: List<String>) : Command(args) {
   private val revisions: Boolean = "--revisions" in args
 
   /**
+   * Trusted server-side re-render (SECURITY/RCE, opt-in, default off). When set, a `--catalogs`
+   * catalog that verifies as `Trusted` AND declares a `source` is served by a **daemon-backed,
+   * re-renderable** session built from that source (full-fidelity overrides) instead of static
+   * baked PNGs. Building runs the source's Gradle = code execution, so it's gated three ways: the
+   * catalog must be Trusted, its `source.ref` must clear the [revisionAllowRefs] allowlist
+   * (fail-closed), and its `source.repo` must be the server's own [catalogRepo]. NEVER enable on a
+   * box that can't build the catalog source (e.g. the desktop-only public image can't build the
+   * Android catalogs) — leave it off there and let the in-browser Wasm tier carry CMP. Reuses
+   * `--revisions-allow` as the ref allowlist.
+   */
+  private val allowRenderTrusted: Boolean = "--allow-render-trusted" in args
+
+  /**
    * Project mode revision policy (SECURITY/RCE): comma-separated refs whose history a requested
    * `?session=<rev>` must be reachable from to be checked out and built. Empty = nothing builds
    * (fail closed), since building runs that revision's Gradle. e.g. `--revisions-allow
-   * main,release`.
+   * main,release`. Also gates the trusted-catalog source build ([allowRenderTrusted]).
    */
   private val revisionAllowRefs: List<String> =
     args.flagValue("--revisions-allow")?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
@@ -255,9 +268,19 @@ class ServeCommand(args: List<String>) : Command(args) {
     }
     // Project mode forks a session per git revision behind the registry's factory; off by default
     // the factory yields nothing, so only the pinned current checkout is served.
-    val worktrees: GitWorktrees? = if (revisions) openWorktrees(module) else null
+    // Worktrees back both project-mode revisions and the trusted-catalog source build; either flag
+    // opens them (gated by the same --revisions-allow ref allowlist).
+    val worktrees: GitWorktrees? =
+      if (revisions || allowRenderTrusted) openWorktrees(module) else null
+    // The `?session=<rev>` factory (project mode) is gated on --revisions ONLY — NOT merely on
+    // worktrees existing. Otherwise `--allow-render-trusted` (which also opens worktrees, but just
+    // to
+    // build a fixed catalog source) would silently let clients trigger Gradle builds for arbitrary
+    // revisions reachable from the allowlist. The catalog builder uses `worktrees` directly, so it
+    // doesn't need the factory.
     val factory =
-      if (worktrees != null) revisionFactory(module, worktrees) else ServeSessionFactory { null }
+      if (revisions && worktrees != null) revisionFactory(module, worktrees)
+      else ServeSessionFactory { null }
     val registry = ServeSessionRegistry(open = openHost, factory = factory)
     val defaultState =
       ServeSessionState(
@@ -278,7 +301,8 @@ class ServeCommand(args: List<String>) : Command(args) {
     // Serve our published design systems from their trusted `design-artifacts/<system>` branches.
     // A catalog that carries a `web/wasm/` app yields a system→dir entry so the in-browser tier
     // rides the same trusted branch (no local --wasm-dir build needed).
-    val catalogWasm = if (catalogs.isNotEmpty()) registerCatalogs(registry) else emptyMap()
+    val catalogWasm =
+      if (catalogs.isNotEmpty()) registerCatalogs(registry, worktrees, openHost) else emptyMap()
     // Runtime ingestion (--accept-bundles): clients POST a bundle (or a ?url= to one) and it's
     // registered as a pinned session. Unpacked under a temp dir for this server's lifetime.
     val bundleStore =
@@ -485,7 +509,11 @@ class ServeCommand(args: List<String>) : Command(args) {
    * branch is in the trust store; otherwise served as `unverified` (the images execute no code).
    * Best-effort per system — one catalog failing to fetch doesn't sink the others or the server.
    */
-  private fun registerCatalogs(registry: ServeSessionRegistry): Map<String, File> {
+  private fun registerCatalogs(
+    registry: ServeSessionRegistry,
+    worktrees: GitWorktrees?,
+    openHost: (ServeSessionState) -> ServeHost?,
+  ): Map<String, File> {
     val dir =
       java.nio.file.Files.createTempDirectory("serve-catalogs").toFile().also { it.deleteOnExit() }
     val wasm = linkedMapOf<String, File>()
@@ -502,6 +530,9 @@ class ServeCommand(args: List<String>) : Command(args) {
             "serve: catalog $system carries an in-browser Wasm app (/wasm/$system/)"
           )
         },
+        buildTrustedSource = { system, source ->
+          buildTrustedCatalogSource(system, source, registry, worktrees, openHost)
+        },
       )
     for (system in catalogs) {
       when (val r = store.load(system)) {
@@ -517,6 +548,79 @@ class ServeCommand(args: List<String>) : Command(args) {
       }
     }
     return wasm
+  }
+
+  /**
+   * Build a `Trusted` catalog's source into a daemon-backed, re-renderable session — the engine
+   * behind `--allow-render-trusted`. The store only calls this for an already-`Trusted` catalog;
+   * here we add the remaining fail-closed gates: the flag is set, the source repo (when given) is
+   * the server's own [catalogRepo], and the source ref clears the worktree ref allowlist (enforced
+   * inside [GitWorktrees.prepare]). Returns true once a daemon session is registered under [system]
+   * (the store then skips the static baked-PNG host); false ⇒ fall back to baked PNGs.
+   */
+  private fun buildTrustedCatalogSource(
+    system: String,
+    source: ServeCatalogStore.CatalogSource,
+    registry: ServeSessionRegistry,
+    worktrees: GitWorktrees?,
+    openHost: (ServeSessionState) -> ServeHost?,
+  ): Boolean {
+    if (!allowRenderTrusted || worktrees == null) return false
+    if (source.repo.isNotBlank() && source.repo != catalogRepo) {
+      System.err.println(
+        "serve: catalog $system source repo '${source.repo}' != '$catalogRepo' — not live-rendering"
+      )
+      return false
+    }
+    if (source.ref.isBlank() || source.module.isBlank()) return false
+    val repoRoot = findProjectRoot() ?: return false
+    // The ref allowlist is enforced here (fail-closed): null = unresolvable or not in
+    // --revisions-allow.
+    val worktree =
+      worktrees.prepare(source.ref)
+        ?: run {
+          System.err.println(
+            "serve: catalog $system ref '${source.ref}' not allowed/resolvable — serving baked PNGs"
+          )
+          return false
+        }
+    // GradleRevisionBuilder builds task names as ":${gradlePath}:…", so gradlePath must be the
+    // colon-less form (e.g. `samples:design-catalog-m3`); a catalog's `source.module` is the
+    // conventional `:samples:…` path, so strip the leading colon (a double `::` fails every build).
+    val gradlePath = source.module.removePrefix(":")
+    val relativePath = gradlePath.replace(":", "/")
+    val bootstrapArgs =
+      autoInjectInitScriptArgs(args, projectRoot = repoRoot) +
+        variantGradleArgs() +
+        gradleArgsWithForce()
+    val builder =
+      GradleRevisionBuilder(
+        extraArgs = bootstrapArgs,
+        onLog = { System.err.println("[serve build] $it") },
+      )
+    val built =
+      builder.build(worktree, ServeModuleRef(gradlePath, relativePath), isSecurityChecked = true)
+        ?: run {
+          System.err.println(
+            "serve: catalog $system build of ${source.module}@${source.ref} failed — serving baked PNGs"
+          )
+          return false
+        }
+    val state =
+      ServeSessionState(
+        descriptor = built.descriptor,
+        workspaceRoot = built.moduleDir,
+        workspaceName = built.moduleDir.name,
+        previews = built.previews,
+        label = "$system@${source.ref}",
+      )
+    val host = openHost(state) ?: return false
+    registry.register(system, state, host = host)
+    System.err.println(
+      "serve: catalog $system → LIVE server-render from ${source.module}@${source.ref} " +
+        "(?session=$system)"
+    )
+    return true
   }
 
   /**
@@ -672,6 +776,16 @@ class ServeCommand(args: List<String>) : Command(args) {
                           refs (e.g. main,release) are checked out and built — building runs that
                           revision's own Gradle (code execution). Omitted/empty = nothing builds
                           (fail closed), so arbitrary ?session=<rev> can't run code on the server.
+                          Also gates --allow-render-trusted (the catalog source ref allowlist).
+        --allow-render-trusted
+                          SECURITY gate, opt-in (default off): serve a --catalogs catalog that is
+                          Trusted AND declares a source as a live, re-renderable session built from
+                          that source (full-fidelity overrides) instead of static baked PNGs. Runs
+                          the source's Gradle = code execution, so it's gated by trust + the
+                          --revisions-allow ref allowlist + a same-repo check. NEVER set this on a
+                          box that can't build the catalog source (e.g. the desktop-only public
+                          image can't build the Android catalogs) — leave it off and let the
+                          in-browser Wasm tier carry CMP.
         --exit-when-idle[=<seconds>]
                           Ephemeral mode: shut the server down once it's been idle (no open
                           connections and no requests) for <seconds> (default ${DEFAULT_IDLE_EXIT_SECONDS}s). Use a small

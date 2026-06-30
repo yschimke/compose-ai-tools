@@ -36,6 +36,14 @@ fi
 : "${SERVE_TRUST_STORE:=/trust/producers.json}"
 [[ "${SERVE_TRUST_STORE}" != "none" ]] && args+=(--trust-store "${SERVE_TRUST_STORE}")
 [[ -n "${SERVE_WASM_DIR:-}" ]] && args+=(--wasm-dir "${SERVE_WASM_DIR}")
+# Trusted server-side re-render (opt-in, OFF by default). Only enable on a box that
+# can BUILD the catalog source — this desktop image CANNOT build the Android
+# catalogs, so leave SERVE_ALLOW_RENDER_TRUSTED unset on the public preview server.
+# Needs SERVE_REVISIONS_ALLOW (the trusted ref allowlist) to build anything.
+[[ -n "${SERVE_REVISIONS_ALLOW:-}" ]] && args+=(--revisions-allow "${SERVE_REVISIONS_ALLOW}")
+if [[ "${SERVE_ALLOW_RENDER_TRUSTED:-}" == "1" || "${SERVE_ALLOW_RENDER_TRUSTED:-}" == "true" ]]; then
+  args+=(--allow-render-trusted)
+fi
 if [[ "${SERVE_ACCEPT_BUNDLES:-}" == "1" || "${SERVE_ACCEPT_BUNDLES:-}" == "true" ]]; then
   args+=(--accept-bundles)
   [[ -n "${SERVE_ACCEPT_BUNDLES_FROM:-}" ]] &&
