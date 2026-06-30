@@ -75,6 +75,7 @@ class ServeWebFixtureTest {
         token,
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         isPublic = true,
+        catalogs = listOf("compose-m3", "wear-m3"),
       )
     val viewer =
       ServeWeb.viewerPage(
@@ -129,6 +130,37 @@ class ServeWebFixtureTest {
   }
 
   @Test
+  fun `landing lists served catalogs as session nav links, marking the current one`() {
+    // Default session (sessionId null): every catalog is a link to its ?session=.
+    val front =
+      ServeWeb.landingPage(moduleLabel, previews, token, catalogs = listOf("compose-m3", "wear-m3"))
+    assertTrue(front.contains("class=\"cp-systems\""), "expected the design-systems nav")
+    assertTrue(
+      front.contains("href=\"/?token=$token&session=compose-m3\""),
+      "expected a compose-m3 link",
+    )
+    assertTrue(front.contains("href=\"/?token=$token&session=wear-m3\""), "expected a wear-m3 link")
+
+    // On a catalog session, that system is the current (non-link) pill, the other stays a link.
+    val onCompose =
+      ServeWeb.landingPage(
+        moduleLabel,
+        previews,
+        token,
+        sessionId = "compose-m3",
+        catalogs = listOf("compose-m3", "wear-m3"),
+      )
+    assertTrue(
+      onCompose.contains("aria-current=\"page\">compose-m3</span>"),
+      "current catalog is marked",
+    )
+    assertTrue(onCompose.contains("session=wear-m3"), "other catalog stays a link")
+
+    // No catalogs → no nav row.
+    assertTrue(!ServeWeb.landingPage(moduleLabel, previews, token).contains("class=\"cp-systems\""))
+  }
+
+  @Test
   fun `public landing shows the about intro, default landing does not`() {
     val public = ServeWeb.landingPage(moduleLabel, previews, token, isPublic = true)
     assertTrue(public.contains("class=\"cp-about\""), "expected the about section")
@@ -140,6 +172,47 @@ class ServeWebFixtureTest {
       !default.contains("class=\"cp-about\""),
       "non-public landing must omit the about box",
     )
+  }
+
+  @Test
+  fun `static snapshot viewer disables server-render controls but a live session keeps them`() {
+    // Catalog/bundle (canApplyOverrides defaults false), no Wasm: the controls that rebuild /render
+    // can't take effect on a baked PNG, so they're disabled and a note explains why.
+    val staticView = ServeWeb.viewerPage(previews.first(), token)
+    assertTrue(staticView.contains("Pre-rendered snapshot"), "expected the static-snapshot note")
+    assertTrue(staticView.contains("value=\"1.0\" disabled"), "font scale disabled")
+    assertTrue(staticView.contains("id=\"cp-device\" disabled"), "device disabled")
+    assertTrue(staticView.contains("id=\"cp-orientation\" disabled"), "orientation disabled")
+    assertTrue(
+      staticView.contains("id=\"cp-live\" type=\"checkbox\" disabled"),
+      "live stream disabled",
+    )
+    assertTrue(
+      staticView.contains("id=\"cp-uiMode\" disabled"),
+      "theme disabled without a Wasm app",
+    )
+
+    // Static + Wasm: theme stays live (it re-points the iframe ?uiMode); the rest stay disabled.
+    val wasmView =
+      ServeWeb.viewerPage(
+        previews.first { it.id.endsWith("CardPreview") },
+        token,
+        wasmSrc = "/wasm/compose-m3/?id=card-filled",
+      )
+    assertTrue(
+      wasmView.contains("id=\"cp-uiMode\">"),
+      "theme enabled when a Wasm app backs the session",
+    )
+    assertTrue(
+      wasmView.contains("value=\"1.0\" disabled"),
+      "font scale still disabled in a static catalog",
+    )
+
+    // Live daemon session (canApplyOverrides = true): everything enabled, no note.
+    val liveView = ServeWeb.viewerPage(previews.first(), token, canApplyOverrides = true)
+    assertTrue(!liveView.contains("Pre-rendered snapshot"), "no static note on a live session")
+    assertTrue(!liveView.contains("value=\"1.0\" disabled"), "font scale enabled on a live session")
+    assertTrue(!liveView.contains("id=\"cp-device\" disabled"), "device enabled on a live session")
   }
 
   @Test

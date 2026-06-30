@@ -81,6 +81,13 @@ class ServeHttpServer(
    * `fetch('./composeApp.wasm')` work without threading the token through every sub-resource.
    */
   private val wasmCatalogs: Map<String, File> = emptyMap(),
+  /**
+   * Design-system catalog sessions that registered (`--catalogs`), e.g. `["compose-m3","wear-m3"]`.
+   * Surfaced as `?session=<system>` nav links on the landing page so the public front door lists
+   * the served systems instead of hiding them behind the query param. Empty ⇒ no nav row (the
+   * default).
+   */
+  private val catalogSessions: List<String> = emptyList(),
   portRange: Int = DEFAULT_PORT_RANGE,
   /**
    * Max renders in flight across the HTTP `/render` lane. Defaults to the host's CPU count so a
@@ -316,6 +323,7 @@ class ServeHttpServer(
                 call.request.queryParameters["session"],
                 trust = (renderHost as? ServeBundleHost)?.let { BundleVerifier.summary(it.trust) },
                 isPublic = isPublic,
+                catalogs = catalogSessions,
               ),
               ContentType.Text.Html,
             )

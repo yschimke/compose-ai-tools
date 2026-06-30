@@ -27,6 +27,12 @@ object ServeWeb {
     .cp-about-body { margin: 0 0 8px; font-size: 0.84rem; line-height: 1.45; color: #45454c; }
     .cp-about-body code { font-size: 0.8rem; padding: 0 3px; border-radius: 4px; background: #f0f0f3; }
     .cp-about-links { margin: 0; font-size: 0.8rem; color: #6b6b70; }
+    .cp-systems { margin: 0 0 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+      font-size: 0.85rem; }
+    .cp-systems-label { font-weight: 600; color: #6b6b70; }
+    .cp-systems a, .cp-systems-cur { padding: 3px 10px; border-radius: 999px; border: 1px solid #d7d7de; }
+    .cp-systems a { background: #fff; }
+    .cp-systems-cur { background: #ececff; border-color: #c4c4f5; color: #3a3a8a; font-weight: 600; }
     .cp-badge { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px;
       font-size: 0.7rem; font-weight: 600; vertical-align: middle; white-space: nowrap; }
     .cp-badge--trusted { background: #e7f4ea; color: #1e7a34; border: 1px solid #b6e0c2; }
@@ -51,6 +57,9 @@ object ServeWeb {
     .cp-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; }
     .cp-controls input, .cp-controls select { padding: 5px 6px; font-size: 0.85rem; }
     .cp-status { font-size: 0.75rem; color: #6b6b70; min-height: 1em; }
+    .cp-note { font-size: 0.75rem; color: #6b6b70; line-height: 1.4; padding: 8px 10px;
+      border-radius: 8px; background: #f4f4f6; }
+    .cp-controls label:has(:disabled) { opacity: 0.55; }
     .cp-knobs { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
     .cp-knobs-head { font-size: 0.72rem; color: #6b6b70; }
     .cp-knobs input:disabled { opacity: 0.7; }
@@ -61,6 +70,11 @@ object ServeWeb {
       .cp-card, .cp-about { background: #1d1d20; }
       .cp-about-body { color: #c9c9d0; }
       .cp-about-body code { background: #2a2a30; }
+      .cp-systems-label { color: #a0a0a8; }
+      .cp-systems a, .cp-systems-cur { border-color: #34343a; }
+      .cp-systems a { background: #1d1d20; }
+      .cp-systems-cur { background: #26264a; border-color: #45458a; color: #c9c9ff; }
+      .cp-note { background: #26262b; color: #a0a0a8; }
       .cp-imgwrap, .cp-stage { background: repeating-conic-gradient(#26262b 0% 25%, #1d1d20 0% 50%) 50% / 16px 16px; }
       .cp-badge--trusted { background: #14361f; color: #6cd98a; border-color: #2c6b40; }
       .cp-badge--unverified { background: #3a2a12; color: #e6b067; border-color: #6b4f24; }
@@ -115,6 +129,32 @@ object ServeWeb {
     """
       .trimIndent()
 
+  /**
+   * Design-system nav: a pill row linking each served `--catalogs` system to its
+   * `?session=<system>` landing, so the public front door lists the catalogs instead of hiding them
+   * behind the query. The current session (when it is one of the catalogs) renders as a non-link,
+   * current-marked pill. Empty [catalogs] ⇒ no row.
+   */
+  private fun catalogNav(catalogs: List<String>, token: String, sessionId: String?): String {
+    if (catalogs.isEmpty()) return ""
+    val links =
+      catalogs.joinToString("\n") { sys ->
+        val name = WebEscaping.htmlEscape(sys)
+        if (sys == sessionId) {
+          "<span class=\"cp-systems-cur\" aria-current=\"page\">$name</span>"
+        } else {
+          "<a href=\"/?${queryString(token, sys)}\">$name</a>"
+        }
+      }
+    return """
+      <nav class="cp-systems" aria-label="Design systems">
+        <span class="cp-systems-label">Design systems</span>
+        $links
+      </nav>
+      """
+      .trimIndent()
+  }
+
   /** Landing page: the module's preview list, each card linking to its viewer. */
   fun landingPage(
     moduleLabel: String,
@@ -123,6 +163,7 @@ object ServeWeb {
     sessionId: String? = null,
     trust: String? = null,
     isPublic: Boolean = false,
+    catalogs: List<String> = emptyList(),
   ): String {
     val q = queryString(token, sessionId)
     val cards =
@@ -148,11 +189,12 @@ object ServeWeb {
         }
       }
     val about = if (isPublic) aboutSection() + "\n" else ""
+    val nav = if (catalogs.isNotEmpty()) catalogNav(catalogs, token, sessionId) + "\n" else ""
     return document(
       title = "$moduleLabel — compose-preview",
       body =
         """
-        $about<p class="cp-head">${WebEscaping.htmlEscape(moduleLabel)}${trustBadge(trust)}</p>
+        $about$nav<p class="cp-head">${WebEscaping.htmlEscape(moduleLabel)}${trustBadge(trust)}</p>
         <p class="cp-sub">${previews.size} preview(s) · click one to view with overrides ·
           <a href="/bundle.zip?$q">download all (.zip)</a></p>
         <div class="cp-grid">
@@ -204,6 +246,26 @@ object ServeWeb {
         val v = WebEscaping.htmlEscape(value)
         "<option value=\"$v\">${WebEscaping.htmlEscape(name)}</option>"
       }
+    // A static bundle/catalog replays baked PNGs — the server can't re-render, so the override
+    // controls that rebuild the /render URL (device/locale/font scale/orientation + the live
+    // stream)
+    // do nothing. Disable them (with a note) instead of leaving dead knobs the user fiddles with.
+    // Theme is the exception when a Wasm app backs the session: it re-points the in-browser
+    // iframe's
+    // ?uiMode, so it stays live there. Live daemon sessions (canApplyOverrides) keep everything on.
+    val staticSnapshot = !canApplyOverrides
+    val dis = if (staticSnapshot) " disabled" else ""
+    val themeDis = if (staticSnapshot && wasmSrc == null) " disabled" else ""
+    val snapshotNote =
+      when {
+        !staticSnapshot -> ""
+        wasmSrc != null ->
+          "<div class=\"cp-note\">Pre-rendered snapshot — tick “Run in browser (Wasm)” to interact " +
+            "(only Theme applies there). The other overrides need the live server.</div>"
+        else ->
+          "<div class=\"cp-note\">Pre-rendered snapshot — overrides (device, locale, font scale, " +
+            "orientation) need the live server, not a published catalog.</div>"
+      }
     val body =
       """
       <p class="cp-head"><a href="/?$q">← previews</a>${trustBadge(trust)}</p>
@@ -211,29 +273,30 @@ object ServeWeb {
       <div class="cp-viewer" data-preview-id="$idText" data-mode="snapshot" data-modes="$modes"$wasmAttr>
         <div class="cp-stage"><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$wasmFrame</div>
         <div class="cp-controls">
-          <label class="cp-live-row"><input id="cp-live" type="checkbox"> Live (stream)</label>
+          $snapshotNote
+          <label class="cp-live-row"><input id="cp-live" type="checkbox"$dis> Live (stream)</label>
           $wasmToggle
           <label>Theme
-            <select id="cp-uiMode">
+            <select id="cp-uiMode"$themeDis>
               <option value="">(default)</option>
               <option value="light">Light</option>
               <option value="dark">Dark</option>
             </select>
           </label>
           <label>Device
-            <select id="cp-device">
+            <select id="cp-device"$dis>
               <option value="">(default)</option>
               $deviceOptions
             </select>
           </label>
           <label>Locale (BCP-47)
-            <input id="cp-localeTag" type="text" placeholder="e.g. ar, ja-JP" autocomplete="off">
+            <input id="cp-localeTag" type="text" placeholder="e.g. ar, ja-JP" autocomplete="off"$dis>
           </label>
           <label>Font scale: <span id="cp-fontScale-val">default</span>
-            <input id="cp-fontScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0">
+            <input id="cp-fontScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0"$dis>
           </label>
           <label>Orientation
-            <select id="cp-orientation">
+            <select id="cp-orientation"$dis>
               <option value="">(default)</option>
               <option value="portrait">Portrait</option>
               <option value="landscape">Landscape</option>
