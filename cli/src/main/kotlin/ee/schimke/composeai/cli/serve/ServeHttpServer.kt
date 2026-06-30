@@ -255,8 +255,18 @@ class ServeHttpServer(
               return@webSocket
             }
             val initialOverrides =
-              ServeOverrides.SUPPORTED_KEYS.mapNotNull { key ->
-                  call.request.queryParameters[key]?.let { key to it }
+              call.request.queryParameters
+                .entries()
+                .mapNotNull { (key, values) ->
+                  val value = values.firstOrNull() ?: return@mapNotNull null
+                  if (
+                    key in ServeOverrides.SUPPORTED_KEYS ||
+                      key.startsWith(ServeOverrides.KNOB_PREFIX)
+                  ) {
+                    key to value
+                  } else {
+                    null
+                  }
                 }
                 .toMap()
             // Non-suspending hand-off to the socket; drop frames a slow client can't keep up with.
@@ -415,9 +425,22 @@ class ServeHttpServer(
               call.respondText("missing preview id", status = HttpStatusCode.BadRequest)
               return@withLeasedSession
             }
+            // Forward the fixed render axes plus any author-declared knob params
+            // (`knob.<key>=…`, dynamic keys not in SUPPORTED_KEYS) so a live knob edit reaches
+            // ServeOverrides.parse instead of being silently dropped.
             val overrideParams =
-              ServeOverrides.SUPPORTED_KEYS.mapNotNull { key ->
-                  call.request.queryParameters[key]?.let { key to it }
+              call.request.queryParameters
+                .entries()
+                .mapNotNull { (key, values) ->
+                  val value = values.firstOrNull() ?: return@mapNotNull null
+                  if (
+                    key in ServeOverrides.SUPPORTED_KEYS ||
+                      key.startsWith(ServeOverrides.KNOB_PREFIX)
+                  ) {
+                    key to value
+                  } else {
+                    null
+                  }
                 }
                 .toMap()
             when (val parsed = ServeOverrides.parse(overrideParams)) {
