@@ -1,10 +1,12 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.daemon.protocol.Orientation
+import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.daemon.protocol.UiMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -105,6 +107,86 @@ class ServeOverridesTest {
       ServeOverrides.cacheKey("preview.A", base),
       ServeOverrides.cacheKey("preview.B", base),
     )
+  }
+
+  @Test
+  fun `knob params parse to typed named overrides`() {
+    val o =
+      ok(
+        mapOf(
+          "knob.label" to "string:Tap me",
+          "knob.count" to "int:3",
+          "knob.weight" to "float:1.5",
+          "knob.enabled" to "bool:true",
+          "knob.tint" to "color:#FF0000",
+        )
+      )
+    val named = o.namedOverrides
+    assertNotNull(named)
+    assertEquals(PreviewOverrideValue.StringValue("Tap me"), named["label"])
+    assertEquals(PreviewOverrideValue.IntValue(3), named["count"])
+    assertEquals(PreviewOverrideValue.FloatValue(1.5f), named["weight"])
+    assertEquals(PreviewOverrideValue.BooleanValue(true), named["enabled"])
+    assertEquals(PreviewOverrideValue.ColorValue("#FF0000"), named["tint"])
+  }
+
+  @Test
+  fun `bool knob accepts 1 and is false otherwise`() {
+    val o = ok(mapOf("knob.a" to "bool:1", "knob.b" to "bool:0", "knob.c" to "bool:nope"))
+    assertEquals(PreviewOverrideValue.BooleanValue(true), o.namedOverrides!!["a"])
+    assertEquals(PreviewOverrideValue.BooleanValue(false), o.namedOverrides!!["b"])
+    assertEquals(PreviewOverrideValue.BooleanValue(false), o.namedOverrides!!["c"])
+  }
+
+  @Test
+  fun `indexed knob key keeps its bracketed wire key`() {
+    val o = ok(mapOf("knob.rowLabel[2]" to "string:Hi"))
+    assertEquals(PreviewOverrideValue.StringValue("Hi"), o.namedOverrides!!["rowLabel[2]"])
+  }
+
+  @Test
+  fun `no knob params leave named overrides null`() {
+    val o = ok(mapOf("uiMode" to "dark"))
+    assertNull(o.namedOverrides)
+  }
+
+  @Test
+  fun `blank knob key or value is ignored`() {
+    val o = ok(mapOf("knob." to "string:x", "knob.label" to ""))
+    assertNull(o.namedOverrides)
+  }
+
+  @Test
+  fun `malformed knob values are rejected with a reason`() {
+    for (bad in
+      listOf(
+        mapOf("knob.label" to "Tap me"), // missing kind:value separator
+        mapOf("knob.label" to ":Tap me"), // empty kind
+        mapOf("knob.count" to "int:three"), // not an integer
+        mapOf("knob.weight" to "float:heavy"), // not a number
+        mapOf("knob.x" to "mystery:y"), // unknown kind
+      )) {
+      val parsed = ServeOverrides.parse(bad)
+      assertTrue(parsed is OverrideParse.Invalid, "expected Invalid for $bad, got $parsed")
+      assertTrue(parsed.message.isNotBlank())
+    }
+  }
+
+  @Test
+  fun `cache key differs when a knob value changes`() {
+    val a = ok(mapOf("knob.label" to "string:Tap me"))
+    val b = ok(mapOf("knob.label" to "string:Press me"))
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", a),
+      ServeOverrides.cacheKey("preview.A", b),
+    )
+  }
+
+  @Test
+  fun `cache key is knob-order independent`() {
+    val a = ok(mapOf("knob.label" to "string:Hi", "knob.count" to "int:2"))
+    val b = ok(mapOf("knob.count" to "int:2", "knob.label" to "string:Hi"))
+    assertEquals(ServeOverrides.cacheKey("preview.A", a), ServeOverrides.cacheKey("preview.A", b))
   }
 
   @Test

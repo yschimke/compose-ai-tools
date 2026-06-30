@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.daemon.protocol.Orientation
+import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.UiMode
 import java.security.MessageDigest
@@ -54,6 +55,16 @@ object ServeOverrides {
       "orientation",
       "inspectionMode",
     )
+
+  /**
+   * Prefix for author-declared named-override knobs: `knob.<wireKey>=<kind>:<value>`, e.g.
+   * `knob.label=string:Tap me` or `knob.count=int:3`. `wireKey` is the declaration key (indexed
+   * knobs use `key[index]`); `kind` is one of string/int/float/bool/color, matching
+   * [PreviewOverrideValue]. The daemon's named-override planner seeds the preview's declared knobs
+   * from these, so editing one re-renders the composable (only on a daemon-backed session — a
+   * static bundle / the Wasm tier ignore them). Dynamic keys, so not listed in [SUPPORTED_KEYS].
+   */
+  const val KNOB_PREFIX = "knob."
 
   /**
    * Parse [params] (one value per key — the ktor layer collapses multi-values to the first) into a
@@ -134,6 +145,41 @@ object ServeOverrides {
           }
         }
 
+    // Named-override knobs (`knob.<key>=<kind>:<value>`). A malformed typed value is a hard
+    // Invalid (mirrors the numeric fields) rather than a silently-dropped edit.
+    val namedOverrides = mutableMapOf<String, PreviewOverrideValue>()
+    for ((rawKey, raw) in params) {
+      if (!rawKey.startsWith(KNOB_PREFIX)) continue
+      val wireKey = rawKey.removePrefix(KNOB_PREFIX)
+      if (wireKey.isBlank() || raw.isBlank()) continue
+      val sep = raw.indexOf(':')
+      if (sep <= 0) {
+        return OverrideParse.Invalid("knob '$wireKey' must be '<kind>:<value>', got '$raw'")
+      }
+      val kind = raw.substring(0, sep)
+      val value = raw.substring(sep + 1)
+      namedOverrides[wireKey] =
+        when (kind) {
+          "string" -> PreviewOverrideValue.StringValue(value)
+          "int" ->
+            value.toIntOrNull()?.let { PreviewOverrideValue.IntValue(it) }
+              ?: return OverrideParse.Invalid(
+                "knob '$wireKey' int must be an integer, got '$value'"
+              )
+          "float" ->
+            value.toFloatOrNull()?.let { PreviewOverrideValue.FloatValue(it) }
+              ?: return OverrideParse.Invalid(
+                "knob '$wireKey' float must be a number, got '$value'"
+              )
+          "bool" ->
+            PreviewOverrideValue.BooleanValue(
+              value.equals("true", ignoreCase = true) || value == "1"
+            )
+          "color" -> PreviewOverrideValue.ColorValue(value)
+          else -> return OverrideParse.Invalid("knob '$wireKey' has unknown kind '$kind'")
+        }
+    }
+
     return OverrideParse.Ok(
       PreviewOverrides(
         widthPx = widthPx,
@@ -145,6 +191,7 @@ object ServeOverrides {
         orientation = orientation,
         device = params["device"]?.takeIf { it.isNotBlank() },
         inspectionMode = inspectionMode,
+        namedOverrides = namedOverrides.ifEmpty { null },
       )
     )
   }
@@ -166,7 +213,13 @@ object ServeOverrides {
       append("ui=").append(o.uiMode).append('|')
       append("or=").append(o.orientation).append('|')
       append("dev=").append(o.device).append('|')
-      append("insp=").append(o.inspectionMode)
+      append("insp=").append(o.inspectionMode).append('|')
+      // Named overrides participate so a knob edit isn't coalesced onto the prior render. Sorted by
+      // key for order-independence; the value data classes have stable toString.
+      append("named=")
+      o.namedOverrides?.toSortedMap()?.forEach { (k, v) ->
+        append(k).append('=').append(v).append(';')
+      }
     }
     return MessageDigest.getInstance("SHA-256")
       .digest(canonical.toByteArray(Charsets.UTF_8))

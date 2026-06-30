@@ -364,6 +364,16 @@ object ServeWeb {
         var q = "token=" + encodeURIComponent(token);
         if (session) q += "&session=" + encodeURIComponent(session);
         Object.keys(o).forEach(function (k) { q += "&" + k + "=" + encodeURIComponent(o[k]); });
+        // Author-declared knobs (enabled only on a daemon session): knob.<key>=<kind>:<value>.
+        document.querySelectorAll(".cp-knob").forEach(function (el) {
+          if (el.disabled) return;
+          var key = el.getAttribute("data-knob-key");
+          var kind = el.getAttribute("data-knob-kind") || "string";
+          if (!key) return;
+          var val = (el.type === "checkbox") ? (el.checked ? "true" : "false") : el.value;
+          if (val === "") return;
+          q += "&knob." + encodeURIComponent(key) + "=" + encodeURIComponent(kind + ":" + val);
+        });
         return q;
       }
       function refreshSnapshot() {
@@ -580,6 +590,10 @@ object ServeWeb {
         var el = document.getElementById("cp-" + f);
         if (el) el.addEventListener("change", onControlsChanged);
       });
+      // Author-declared knobs re-render on edit (text/number debounce via "input", toggles "change").
+      document.querySelectorAll(".cp-knob").forEach(function (el) {
+        el.addEventListener(el.type === "checkbox" ? "change" : "input", onControlsChanged);
+      });
       refreshSnapshot();
     })();
     """
@@ -613,31 +627,35 @@ object ServeWeb {
    */
   private fun overrideKnobsHtml(preview: ServePreview, canApplyOverrides: Boolean): String {
     if (preview.overrides.isEmpty()) return ""
+    // Editable only on a daemon-backed session (canApplyOverrides) — a static bundle / the Wasm
+    // tier
+    // can't re-render with new knob values, so there the controls show *what* is editable but stay
+    // disabled. The viewer JS collects `.cp-knob` values into `knob.<key>=<kind>:<value>` params.
+    val dis = if (canApplyOverrides) "" else " disabled"
     val rows =
       preview.overrides.joinToString("\n") { d ->
         val name = if (d.index == null) d.key else "${d.key} #${d.index}"
         val label = WebEscaping.htmlEscape(name)
+        // Daemon map key: base key, plus `[index]` for an indexed (per-item) knob.
+        val wireKey = WebEscaping.htmlEscape(if (d.index == null) d.key else "${d.key}[${d.index}]")
+        val kind = knobKind(d.type)
         val value = WebEscaping.htmlEscape(overrideValueText(d.current ?: d.default))
-        val inputType =
-          when (d.type) {
-            "int",
-            "float" -> "number"
-            "color" -> "text"
-            else -> "text"
-          }
-        // Disabled regardless of host for now: a bundle can't re-render, and the live re-render
-        // wiring
-        // for named overrides is a follow-up. The control still shows *what* is editable + its
-        // value.
-        """
-        <label>${label}
-          <input type="$inputType" value="$value" disabled>
-        </label>
-        """
-          .trimIndent()
+        val attrs = "class=\"cp-knob\" data-knob-key=\"$wireKey\" data-knob-kind=\"$kind\""
+        if (kind == "bool") {
+          val checked = if (value == "true" || value == "1") " checked" else ""
+          "<label class=\"cp-live-row\"><input type=\"checkbox\" $attrs$checked$dis> $label</label>"
+        } else {
+          val inputType = if (d.type == "int" || d.type == "float") "number" else "text"
+          """
+          <label>${label}
+            <input type="$inputType" $attrs value="$value"$dis>
+          </label>
+          """
+            .trimIndent()
+        }
       }
     val note =
-      if (canApplyOverrides) "Declared overrides (live editing coming soon)."
+      if (canApplyOverrides) "Declared overrides — edit a value to re-render."
       else "Declared overrides — static bundle, values are baked in."
     return """
       <div class="cp-knobs">
@@ -647,6 +665,20 @@ object ServeWeb {
       """
       .trimIndent()
   }
+
+  /**
+   * Map a declaration's `type` string to the [PreviewOverrideValue] wire kind the daemon expects.
+   */
+  private fun knobKind(type: String): String =
+    when (type.lowercase()) {
+      "int" -> "int"
+      "float",
+      "dp" -> "float"
+      "bool",
+      "boolean" -> "bool"
+      "color" -> "color"
+      else -> "string"
+    }
 
   /** Human text for a [ee.schimke.composeai.daemon.protocol.PreviewOverrideValue] in the viewer. */
   private fun overrideValueText(
