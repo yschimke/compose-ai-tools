@@ -160,14 +160,14 @@
     "serve-landing-public.dark.png": {
       "fixture": "serve-landing-public",
       "theme": "dark",
-      "sha256": "67f057a98eeeb08c48b14b6ea9b8af7c4e543c89321f83a08f11ec551758c23f",
-      "size": 77514
+      "sha256": "55bf495a5f5daa30fed96804b8b1f3ca3b5bde9ac62e5bb627fbd777dce5c38b",
+      "size": 82947
     },
     "serve-landing-public.light.png": {
       "fixture": "serve-landing-public",
       "theme": "light",
-      "sha256": "de58273ddfa704af7f266069472999de4d0eeca92f2f7fdc57ea9be28ea7b8d5",
-      "size": 77685
+      "sha256": "a6a6aa3cc260b775d39e6f243c9e507f60d9cb540a0669faee3c78b906f0eac2",
+      "size": 82898
     },
     "serve-landing.dark.png": {
       "fixture": "serve-landing",
@@ -184,26 +184,26 @@
     "serve-viewer-wasm.dark.png": {
       "fixture": "serve-viewer-wasm",
       "theme": "dark",
-      "sha256": "06cd068e76f9c63c2f9d536b1bf94e84adba9ffa42959cf5aeb9770db0d0fa6b",
-      "size": 31773
+      "sha256": "a628e763bc4ca526d6cf9f5f0cd16e6c4e7c899201ce8e340a8011c3630c2fcd",
+      "size": 41237
     },
     "serve-viewer-wasm.light.png": {
       "fixture": "serve-viewer-wasm",
       "theme": "light",
-      "sha256": "11b5a3085d855ef58a9293e9813d4cffb84b48c2fdbebaf1614a636099d3aae9",
-      "size": 31343
+      "sha256": "ff6e00919fd53459fb948f7a0e42c8052bfead4b86617536c620789272367f74",
+      "size": 41544
     },
     "serve-viewer.dark.png": {
       "fixture": "serve-viewer",
       "theme": "dark",
-      "sha256": "a2a5cf58aeb9235341fb345a914b8829808c07761d40b8a41a942e838855885a",
-      "size": 26329
+      "sha256": "9c2b7fb1dc6882e77a07be55ebee2b51cf8784218dcbd4b69a01f2fa8bce0475",
+      "size": 34941
     },
     "serve-viewer.light.png": {
       "fixture": "serve-viewer",
       "theme": "light",
-      "sha256": "f046464c96d37375d40a39987c1d243c3b4adbdf1d0e2faf84a79fd85fcd5b89",
-      "size": 25986
+      "sha256": "8a83308c9fa6376f478466855a68ab782328df62b5a660549e4331c768f68a60",
+      "size": 35577
     },
     "spatial-semantics.dark.png": {
       "fixture": "spatial-semantics",
