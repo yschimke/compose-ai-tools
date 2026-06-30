@@ -393,16 +393,12 @@ class ServeHttpServer(
               return@withLeasedSession
             }
             // Offer the in-browser Wasm tier when this catalog session has a Wasm app registered.
-            // The catalog preview id is `<component-slug>__<variant>…`; the Wasm app keys its
-            // registry by the component slug, so take the segment before the first `__`.
+            // ServeUrls.wasmAppSrc strips the variant to the component slug the Wasm registry keys
+            // by, and bakes the variant's theme into `uiMode` so the live render opens on the same
+            // theme as the baked snapshot the visitor deep-linked to.
             val wasmSrc =
-              if (wasmCatalogs.containsKey(sessionId)) {
-                val componentId = preview.id.substringBefore("__")
-                "/wasm/${WebEscaping.urlEncodeSegment(sessionId)}/" +
-                  "?id=${WebEscaping.urlEncodeSegment(componentId)}"
-              } else {
-                null
-              }
+              if (wasmCatalogs.containsKey(sessionId)) ServeUrls.wasmAppSrc(sessionId, preview.id)
+              else null
             call.respondText(
               ServeWeb.viewerPage(
                 preview,

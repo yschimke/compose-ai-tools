@@ -56,4 +56,23 @@ class ServeUrlsTest {
     // Blank override values are dropped.
     assertFalse("device=" in render, render)
   }
+
+  @Test
+  fun `wasm app src strips the variant to the component slug but bakes its theme`() {
+    // The Wasm registry keys by component slug, so the variant is dropped from `id` — but the
+    // variant's theme rides along as uiMode so the in-browser app opens on the same theme as the
+    // baked snapshot (the app itself defaults to light).
+    assertEquals(
+      "/wasm/compose-m3/?id=button-filled&uiMode=dark",
+      ServeUrls.wasmAppSrc("compose-m3", "button-filled__ideal__default__dark"),
+    )
+    assertEquals(
+      "/wasm/compose-m3/?id=button-filled&uiMode=light",
+      ServeUrls.wasmAppSrc("compose-m3", "button-filled__ideal__default__light"),
+    )
+    // No theme axis → no uiMode forced (the app uses its own default).
+    assertEquals("/wasm/wear-m3/?id=chip", ServeUrls.wasmAppSrc("wear-m3", "chip__compact"))
+    // A bare component id (no variant) is passed through unchanged.
+    assertEquals("/wasm/compose-m3/?id=switch", ServeUrls.wasmAppSrc("compose-m3", "switch"))
+  }
 }
