@@ -40,12 +40,35 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-          # When the release PR is merged, release-please creates the tag and
-          # an empty GitHub Release (populated with the CHANGELOG entry as the
-          # body). The `release` job below then uploads CLI + VSIX assets to
-          # that Release. We used to skip this and tag manually, but chaining
-          # within a single workflow run sidesteps the GITHUB_TOKEN-doesn't-
-          # trigger-workflows limitation that motivated the manual step.
+          # When the release PR is merged, release-please creates a DRAFT GitHub
+          # Release (config `"draft": true`), populated with the CHANGELOG entry
+          # as the body. The `release` job below uploads CLI + VSIX assets onto
+          # that draft; `finalize-release` un-drafts it once every required asset
+          # is verified present, so `/releases/latest` + `latest/download/…` never
+          # point at a version whose tarball hasn't uploaded yet (the "release not
+          # found" install race). Chaining within one run also sidesteps the
+          # GITHUB_TOKEN-doesn't-trigger-workflows limitation.
+
+      # A *draft* GitHub Release does NOT create its git tag — GitHub only writes
+      # the tag ref when the release is published. But the downstream build jobs
+      # (release.yml, preview-host-image.yml) check out `ref: <tag>`, so create
+      # the tag now, at the release PR's merge commit. Idempotent: skips if the
+      # ref already exists (e.g. a re-run, or a future non-draft release-please).
+      - name: Ensure the release tag exists for the draft
+        if: steps.rp.outputs.release_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.rp.outputs.tag_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" >/dev/null 2>&1; then
+            echo "tag ${TAG} already exists — leaving it."
+          else
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/tags/${TAG}" -f sha="${SHA}"
+            echo "created tag ${TAG} at ${SHA}."
+          fi
 
   # Build and publish the artifacts whenever release-please actually cuts a
   # release. Skipped on "just updating the release PR" runs.
@@ -61,12 +84,79 @@ jobs:
     permissions:
       contents: write   # needed by the called workflow's `release` job
 
+  # Flip the draft Release to published once every required artifact is verified
+  # present — the gate that makes a release atomic from a consumer's view.
+  # `needs: release` so the whole release.yml run (asset upload + the irreversible
+  # Maven Central publish) is done first. Two checks:
+  #   1. Required GitHub Release assets are attached (HARD gate — a missing CLI
+  #      tarball is exactly the "release not found" install failure, so we refuse
+  #      to publish and leave the draft for a human / re-run).
+  #   2. Maven Central is serving the published plugin (ADVISORY — the publish
+  #      task already succeeded, so propagation is eventual; we poll, then publish
+  #      anyway with a warning rather than wedge the release on CDN lag).
+  # Only then `gh release edit --draft=false --latest`, so `/releases/latest` and
+  # `latest/download/…` flip atomically to a fully-populated release.
+  finalize-release:
+    needs: [release-please, release]
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # un-draft + mark latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.release-please.outputs.tag_name }}
+    steps:
+      - name: Verify required GitHub Release assets are present
+        run: |
+          set -euo pipefail
+          V="${TAG#v}"
+          required=(
+            "compose-preview-${V}.tar.gz"
+            "compose-preview-${V}.zip"
+            "compose-preview-mcp-${V}.tar.gz"
+            "compose-preview-${V}.vsix"
+            "compose-preview-android-daemon-${V}.zip"
+          )
+          mapfile -t have < <(gh release view "$TAG" --json assets --jq '.assets[].name')
+          printf 'assets on %s:\n' "$TAG"; printf '  %s\n' "${have[@]}"
+          missing=0
+          for a in "${required[@]}"; do
+            printf '%s\n' "${have[@]}" | grep -qxF "$a" \
+              || { echo "::error::missing required asset $a"; missing=1; }
+          done
+          [ "$missing" -eq 0 ] \
+            || { echo "::error::$TAG missing required assets — leaving it as a draft"; exit 1; }
+      - name: Wait for Maven Central to serve the published plugin (advisory)
+        run: |
+          set -u
+          V="${TAG#v}"
+          pom="https://repo1.maven.org/maven2/ee/schimke/composeai/preview/ee.schimke.composeai.preview.gradle.plugin/${V}/ee.schimke.composeai.preview.gradle.plugin-${V}.pom"
+          for i in $(seq 1 20); do
+            code=$(curl -sSL -o /dev/null -w '%{http_code}' "$pom" 2>/dev/null || echo 000)
+            if [ "$code" = 200 ]; then
+              echo "plugin ${V} is live on Maven Central."
+              exit 0
+            fi
+            echo "waiting for Maven Central to serve plugin ${V} (attempt ${i}/20, http ${code})…"
+            sleep 60
+          done
+          echo "::warning::plugin ${V} not visible on Maven Central after ~20 min — publishing the GitHub release anyway (the publish task already succeeded; Central propagation is eventual)."
+      - name: Publish the release (un-draft + mark latest)
+        run: |
+          set -euo pipefail
+          gh release edit "$TAG" --draft=false --latest
+          echo "published $TAG."
+
   # Publish the prebuilt preview-host image (deploy/image) for the released CLI.
   # Same workflow_call chaining as `release`: a bot-created release won't fire
-  # preview-host-image.yml's own `on: release` trigger. `needs: release` so the
-  # CLI tarball the image downloads is already uploaded to the Release.
+  # preview-host-image.yml's own `on: release` trigger. `needs: finalize-release`
+  # because the image pulls the CLI tarball from the PUBLIC
+  # `releases/download/<tag>/…` URL, which 404s while the release is still a
+  # draft — so it must run only after finalize un-drafts it (which also makes its
+  # tarball-resolvable poll resolve immediately instead of riding out the upload).
   preview-host-image:
-    needs: [release-please, release]
+    needs: [release-please, release, finalize-release]
     if: needs.release-please.outputs.release_created == 'true'
     uses: ./.github/workflows/preview-host-image.yml
     with:

@@ -362,6 +362,15 @@ jobs:
   publish-vscode-extension:
     needs: build-vscode-extension
     runs-on: ubuntu-latest
+    # Non-fatal: a VSCE/Open VSX outage must not fail the workflow run. The two
+    # publish steps already treat "already published" as success (idempotent
+    # reruns), but a genuine marketplace outage still exits 1 — and since the
+    # release is now drafted and `finalize-release` gates on this whole reusable
+    # run succeeding, a failure here would skip finalization and strand the
+    # release as a draft on the old version. The VSIX is attached to the GitHub
+    # Release as a fallback, so tolerate the failure (it shows as a tolerated
+    # job) and let the asset/Maven gates decide whether to publish.
+    continue-on-error: true
     permissions:
       contents: read
     steps:

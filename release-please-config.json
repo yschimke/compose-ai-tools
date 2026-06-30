@@ -12,6 +12,7 @@
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": true,
       "exclude-paths": ["clients"],
+      "draft": true,
       "extra-files": [
         ".github/actions/install/README.md",
         "vscode-extension/README.md",
