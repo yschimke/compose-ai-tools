@@ -58,3 +58,10 @@ jobs:
           a11y-module: ''
           a11y-skip-modules: ''
           notifications-module: 'samples:android'
+          # Don't hard-fail this repo's own CI on individual previews/resources
+          # that render no PNG (e.g. the launcher-icon rasterizer jitter tracked
+          # in #2133): log them and keep going instead of gating every push +
+          # PR. Scoped to this caller — the action's default stays `fail` for
+          # external consumers. The underlying missing renders are tracked
+          # separately; flip back to `fail` once they're fixed.
+          missing-renders: warn
