@@ -521,54 +521,60 @@ class ServeHttpServer(
     }
     val sessionId =
       call.parameters["system"] ?: call.request.queryParameters["session"] ?: defaultSessionId
-    // Lease (not just acquire) the tenant for the socket's whole life: a fallback-lane socket opens
-    // no stream, so without a lease the reaper could close its host mid-connection.
-    val lease = withContext(Dispatchers.IO) { sessions.lease(sessionId) }
-    if (lease == null) {
-      close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "no such session"))
+    // Reserve a live seat BEFORE opening the session: leasing resumes a suspended/forked host,
+    // which
+    // spawns the JVM render daemon, so a post-lease check would let an over-cap burst spawn the
+    // very
+    // daemons this cap bounds. A known-static (pinned bundle/catalog) session never takes a seat;
+    // an
+    // as-yet-unregistered one (lazily forked, e.g. --revisions) counts as daemon-backed.
+    val seats = if (liveSeats != null && !sessions.isKnownStatic(sessionId)) liveSeats else null
+    if (seats != null && !seats.tryAcquire()) {
+      close(CloseReason(1013.toShort(), "live preview at capacity — try again shortly"))
       return
     }
     try {
-      val renderHost = lease.host
-      val previewId = call.parameters["name"]
-      if (previewId == null || renderHost.previews.none { it.id == previewId }) {
-        close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "no such preview"))
-        return
-      }
-      val initialOverrides =
-        call.request.queryParameters
-          .entries()
-          .mapNotNull { (key, values) ->
-            val value = values.firstOrNull() ?: return@mapNotNull null
-            if (
-              key in ServeOverrides.SUPPORTED_KEYS || key.startsWith(ServeOverrides.KNOB_PREFIX)
-            ) {
-              key to value
-            } else {
-              null
-            }
-          }
-          .toMap()
-      // Non-suspending hand-off to the socket; drop frames a slow client can't keep up with.
-      val send: (String) -> Unit = { text -> outgoing.trySend(Frame.Text(text)) }
-      // Optional stream tuning: codec (WebP is ~30–60% smaller; the daemon downgrades to PNG if it
-      // can't encode WebP) and an fps cap.
-      val codec =
-        when (call.request.queryParameters["codec"]?.lowercase()) {
-          "webp" -> StreamCodec.WEBP
-          "png" -> StreamCodec.PNG
-          else -> null
-        }
-      val maxFps = call.request.queryParameters["maxFps"]?.toIntOrNull()?.takeIf { it > 0 }
-      // Live-seat cap: a daemon-backed stream holds a JVM Compose render session, so bound how many
-      // run at once on a constrained box (a stream over the cap is refused, not queued). Static
-      // (snapshot) hosts re-render from cache and never take a seat, so the default tiers are free.
-      val seat = if (renderHost.canApplyOverrides) liveSeats else null
-      if (seat != null && !seat.tryAcquire()) {
-        close(CloseReason(1013.toShort(), "live preview at capacity — try again shortly"))
+      // Lease (not just acquire) the tenant for the socket's whole life: a fallback-lane socket
+      // opens
+      // no stream, so without a lease the reaper could close its host mid-connection.
+      val lease = withContext(Dispatchers.IO) { sessions.lease(sessionId) }
+      if (lease == null) {
+        close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "no such session"))
         return
       }
       try {
+        val renderHost = lease.host
+        val previewId = call.parameters["name"]
+        if (previewId == null || renderHost.previews.none { it.id == previewId }) {
+          close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "no such preview"))
+          return
+        }
+        val initialOverrides =
+          call.request.queryParameters
+            .entries()
+            .mapNotNull { (key, values) ->
+              val value = values.firstOrNull() ?: return@mapNotNull null
+              if (
+                key in ServeOverrides.SUPPORTED_KEYS || key.startsWith(ServeOverrides.KNOB_PREFIX)
+              ) {
+                key to value
+              } else {
+                null
+              }
+            }
+            .toMap()
+        // Non-suspending hand-off to the socket; drop frames a slow client can't keep up with.
+        val send: (String) -> Unit = { text -> outgoing.trySend(Frame.Text(text)) }
+        // Optional stream tuning: codec (WebP is ~30–60% smaller; the daemon downgrades to PNG if
+        // it
+        // can't encode WebP) and an fps cap.
+        val codec =
+          when (call.request.queryParameters["codec"]?.lowercase()) {
+            "webp" -> StreamCodec.WEBP
+            "png" -> StreamCodec.PNG
+            else -> null
+          }
+        val maxFps = call.request.queryParameters["maxFps"]?.toIntOrNull()?.takeIf { it > 0 }
         // Prefer the daemon's live stream lane (frames pushed, input dispatched); fall back to the
         // snapshot re-render lane when the backend doesn't support streaming.
         val live =
@@ -598,10 +604,10 @@ class ServeHttpServer(
           }
         }
       } finally {
-        seat?.release()
+        lease.close()
       }
     } finally {
-      lease.close()
+      seats?.release()
     }
   }
 

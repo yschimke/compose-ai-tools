@@ -141,6 +141,17 @@ class ServeSessionRegistry(
   }
 
   /**
+   * True when [sessionId] is an already-registered **static** (pinned) session — a bundle/catalog
+   * host that replays baked PNGs and holds no daemon, so leasing it spawns nothing. Unknown or
+   * daemon-backed (non-pinned, incl. a lazily-forked one) sessions return false, so the live-seat
+   * gate reserves a seat for anything whose open could cost a render daemon. Never opens/forks a
+   * host.
+   */
+  fun isKnownStatic(sessionId: String): Boolean = lock.withLock {
+    sessions[sessionId]?.pinned == true
+  }
+
+  /**
    * Milliseconds the *whole server* has been idle, or `null` when it's busy (any session has an
    * open lease — e.g. a live WebSocket). Idle counts from the last acquire/lease/release; with no
    * leases and no requests it grows unbounded. Drives the ephemeral "exit when idle" watchdog.
