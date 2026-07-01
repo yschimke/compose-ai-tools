@@ -68,6 +68,13 @@ public object FakeXrHeadPose {
     // directly (Session.configure runs a deadlock-prone runBlocking and registers a global perception
     // runtime — see the class KDoc). The fake perception runtime already defaults to a device-tracking
     // config, so ArDevice.getInstance resolves.
+    //
+    // This is a REQUIRED prerequisite, not part of the best-effort seed below: with tracking left
+    // disabled, `RotateToLookAtUserNode.onAttach` skips assigning `arDevice` yet still starts its
+    // head-pose job on placement, so a `rotateToLookAtUser` preview crashes on the uninitialised
+    // `arDevice` rather than degrading. A miss here must surface loudly. It reflects the still-present
+    // `Session.access$setConfig$p` synthetic (verified against the resolved alpha15 runtime), so it is
+    // not the version-fragile path the seed below guards.
     setSessionConfig(session, Config(deviceTracking = DeviceTrackingMode.SPATIAL_LAST_KNOWN))
 
     // Make Subspace's getOrCreateSession reuse THIS session (it reads the decor-view tag first).
@@ -75,8 +82,29 @@ public object FakeXrHeadPose {
     // `androidx.xr.compose` R.id.compose_xr_session decor-view tag it used to set.
     rule.activity.window.decorView.setTag(androidx.xr.compose.R.id.compose_xr_session, session)
 
-    seedHeadPose(session, headPose)
+    // Best-effort: the head-pose seed reaches `androidx.xr.runtime` / `androidx.xr.arcore` internals
+    // reflectively, so a version bump that renames/moves/drops one of those symbols (e.g. `androidx.xr
+    // .runtime.TrackingState` disappearing) must NOT take down the whole XR render — the seed only
+    // powers the `rotateToLookAtUser` billboard facing. A reflective/linkage miss logs a warning and
+    // the render still produces its scene.json + textures.
+    runCatching { seedHeadPose(session, headPose) }
+      .onFailure { warnSeedSkipped("seed the viewer head pose", it) }
     return session
+  }
+
+  /**
+   * Logs a best-effort warning when the reflective head-pose seed can't run against the resolved
+   * `androidx.xr.*` runtime (a version skew renamed/moved/dropped an internal symbol). The render
+   * continues without the seed — `rotateToLookAtUser` billboards fall back to a default facing rather
+   * than failing the whole `composePreviewRenderXr` task. Update the reflective accessors here if the
+   * seed matters for the target version.
+   */
+  private fun warnSeedSkipped(step: String, t: Throwable) {
+    System.err.println(
+      "FakeXrHeadPose: could not $step (${t.javaClass.simpleName}: ${t.message}); " +
+        "rotateToLookAtUser billboards fall back to a default facing. This is usually an " +
+        "androidx.xr.* version skew — update the reflective accessors in FakeXrHeadPose."
+    )
   }
 
   /** Sets `Session.config` directly via the synthetic `access$setConfig$p` accessor (no runBlocking). */
@@ -88,22 +116,25 @@ public object FakeXrHeadPose {
   }
 
   /**
-   * Seeds the head pose into the `ArDevice` state the node collects. `ArDevice.getInstance(session)`
-   * returns the cached wrapper the node reads; its pose comes from a `StateFlow<State>` seeded with an
-   * identity pose at construction. We set that flow's value directly (rather than `ArDevice.update()`,
-   * another deadlock-prone runBlocking) to a `State` carrying the viewer [headPose] and a live
-   * tracking state. All arcore access is reflective so the artifacts stay off the compile classpath.
+   * Seeds the head pose into the `ArDevice` the node collects. `ArDevice.getInstance(session)` returns
+   * the cached wrapper the node reads; its pose ultimately comes from the fake runtime device, which
+   * the perception update cycle refreshes `ArDevice.state` from. We seed the runtime device's pose (the
+   * durable path) and, best-effort, also prime the `StateFlow<State>` directly so the seed is present
+   * immediately on attach — rather than `ArDevice.update()`, a deadlock-prone runBlocking under the
+   * multi-preview render's test-coroutine environment. All arcore access is reflective so the artifacts
+   * stay off the compile classpath; the direct-prime reaches version-fragile internals, so it degrades
+   * to the runtime-device seed alone when they shift (see the inline note).
    */
   private fun seedHeadPose(session: Session, headPose: Pose) {
     val arDeviceClass = Class.forName("androidx.xr.arcore.ArDevice")
     val arDevice = arDeviceClass.getMethod("getInstance", Session::class.java).invoke(null, session)
 
-    // Seed the underlying fake *runtime* device's pose, not just the ArDevice state flow below: the
-    // perception runtime's update cycle (which runs during waitForIdle in the multi-preview render
-    // task) refreshes ArDevice.state FROM the runtime device, and would otherwise overwrite a
-    // directly-set state back to the runtime's default identity pose — leaving the panel looking at
-    // the origin instead of the viewer. Setting both makes the seed survive a refresh AND be present
-    // immediately on attach.
+    // Seed the underlying fake *runtime* device's pose. The perception runtime's update cycle (which
+    // runs during waitForIdle in the multi-preview render task) refreshes ArDevice.state FROM the
+    // runtime device, so THIS is what actually lands the viewer pose the RotateToLookAtUserNode job
+    // collects — it also survives that refresh (a directly-set ArDevice.state would be overwritten
+    // back to the runtime's default). Uses `androidx.xr.arcore.runtime.TrackingState`, the runtime
+    // enum that is still present (mirrors `:samples:xr-spatial`'s inlined seedHeadPose).
     val runtimeArDevice = arDeviceClass.getMethod("getRuntimeArDevice\$arcore").invoke(arDevice)
     runtimeArDevice.javaClass
       .getMethod("setDevicePose", Pose::class.java)
@@ -113,17 +144,26 @@ public object FakeXrHeadPose {
       .getMethod("setTrackingState", runtimeTrackingClass)
       .invoke(runtimeArDevice, runtimeTrackingClass.getField("TRACKING").get(null))
 
-    val trackingStateClass = Class.forName("androidx.xr.runtime.TrackingState")
-    val tracking = trackingStateClass.getField("TRACKING").get(null)
-    val stateClass = Class.forName("androidx.xr.arcore.ArDevice\$State")
-    val state =
-      stateClass
-        .getConstructor(Pose::class.java, trackingStateClass, arDeviceClass)
-        .newInstance(headPose, tracking, arDevice)
+    // Belt-and-suspenders: also prime ArDevice._state directly so the seed is present immediately on
+    // attach, not only after the first refresh. This reaches `androidx.xr.runtime.TrackingState` and
+    // the `ArDevice.State` constructor — internals that move between XR versions (alpha16 dropped
+    // `androidx.xr.runtime.TrackingState`), so keep it best-effort: if the shape has shifted, the
+    // runtime-device seed above still carries the pose on the next refresh, so warn and skip rather
+    // than fail the whole render.
+    runCatching {
+        val trackingStateClass = Class.forName("androidx.xr.runtime.TrackingState")
+        val tracking = trackingStateClass.getField("TRACKING").get(null)
+        val stateClass = Class.forName("androidx.xr.arcore.ArDevice\$State")
+        val state =
+          stateClass
+            .getConstructor(Pose::class.java, trackingStateClass, arDeviceClass)
+            .newInstance(headPose, tracking, arDevice)
 
-    val stateField = arDeviceClass.getDeclaredField("_state").apply { isAccessible = true }
-    @Suppress("UNCHECKED_CAST")
-    val mutableState = stateField.get(arDevice) as kotlinx.coroutines.flow.MutableStateFlow<Any?>
-    mutableState.value = state
+        val stateField = arDeviceClass.getDeclaredField("_state").apply { isAccessible = true }
+        @Suppress("UNCHECKED_CAST")
+        val mutableState = stateField.get(arDevice) as kotlinx.coroutines.flow.MutableStateFlow<Any?>
+        mutableState.value = state
+      }
+      .onFailure { warnSeedSkipped("prime the ArDevice state flow", it) }
   }
 }
