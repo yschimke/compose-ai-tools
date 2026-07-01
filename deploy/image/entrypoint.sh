@@ -22,16 +22,22 @@ else
   args+=(--token "${SERVE_TOKEN}")
 fi
 
-# The public-server pillars (all optional). The prebuilt image has no catalog
-# modules to build a Wasm app from, so its in-browser tier rides --catalogs:
-# `serve` fetches each system's web/wasm/ from the trusted design-artifacts
-# branch. (--wasm-dir is for the from-source image's local build.)
-[[ -n "${SERVE_CATALOGS:-}" ]] && args+=(--catalogs "${SERVE_CATALOGS}")
-# Design systems served but hidden from the front-page nav — reachable at /<system>/
-# (and ?session=<system>). Each entry may carry a per-repo source as <system>@<owner>/<repo>
-# (e.g. meshcore-mobile@yschimke/meshcore-mobile). Their web/wasm/ (if any) still rides the
-# branch, and their branch must be trusted (see the trust store below) to badge Trusted.
-[[ -n "${SERVE_CATALOGS_UNLISTED:-}" ]] && args+=(--catalogs-unlisted "${SERVE_CATALOGS_UNLISTED}")
+# The public-server pillars. The prebuilt image has no catalog modules to build a
+# Wasm app from, so its in-browser tier rides --catalogs: `serve` fetches each
+# system's web/wasm/ from the trusted design-artifacts branch. (--wasm-dir is for
+# the from-source image's local build.)
+#
+# The published catalog set is BAKED INTO THE IMAGE (same `:=` + `none` convention
+# as SERVE_TRUST_STORE below), so a bare `docker pull` / Watchtower auto-update
+# self-heals without editing the box's compose. Front-page systems:
+: "${SERVE_CATALOGS:=compose-m3,wear-m3}"
+[[ "${SERVE_CATALOGS}" != "none" ]] && args+=(--catalogs "${SERVE_CATALOGS}")
+# …and the app design systems we publish UNLISTED from their own repos — reachable at
+# /<system>/ (and ?session=<system>) but off the front-page nav. <system>@<owner>/<repo>
+# points at a per-repo design-artifacts branch, which must be trusted (see the store
+# below) to badge Trusted. Override with your own list, or `none` to serve none.
+: "${SERVE_CATALOGS_UNLISTED:=meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose}"
+[[ "${SERVE_CATALOGS_UNLISTED}" != "none" ]] && args+=(--catalogs-unlisted "${SERVE_CATALOGS_UNLISTED}")
 # Default to the baked branch-trust store so the published design-artifacts catalogs
 # badge as Trusted(Branch) out of the box. `:=` fills it when SERVE_TRUST_STORE is
 # unset OR empty (an older host compose passes ""), so a bare image pull self-heals a
