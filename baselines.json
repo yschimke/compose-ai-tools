@@ -157,6 +157,18 @@
       "sha256": "a7b7cbff68c9c38008346b9c98deb8a6731b5474cc486fa3b2b383ed0a1a359f",
       "size": 91884
     },
+    "serve-landing-path.dark.png": {
+      "fixture": "serve-landing-path",
+      "theme": "dark",
+      "sha256": "d1439104b6327f34119e69c46f0e2c5be029e83ef424400158d3969ee667d3d8",
+      "size": 83084
+    },
+    "serve-landing-path.light.png": {
+      "fixture": "serve-landing-path",
+      "theme": "light",
+      "sha256": "5559a4b8cd6a7f2d2544c196bdb441c418dd5c86912ef423981ce296e6a3aed2",
+      "size": 82939
+    },
     "serve-landing-public.dark.png": {
       "fixture": "serve-landing-public",
       "theme": "dark",
@@ -180,6 +192,18 @@
       "theme": "light",
       "sha256": "63add63d85d43002f57c407e8210aba8124f064e1619a1d4085d2d5e7f9a1188",
       "size": 41122
+    },
+    "serve-viewer-path.dark.png": {
+      "fixture": "serve-viewer-path",
+      "theme": "dark",
+      "sha256": "285f7a28135dcdecbe7daa15d0f4bda2e4bd3702b7f54335f7c833f7525837b1",
+      "size": 38460
+    },
+    "serve-viewer-path.light.png": {
+      "fixture": "serve-viewer-path",
+      "theme": "light",
+      "sha256": "5ad89b991e21876a9adaea35f0ccf83aaee2d9668ab9c28fa00f7a1de385587a",
+      "size": 39106
     },
     "serve-viewer-wasm.dark.png": {
       "fixture": "serve-viewer-wasm",
