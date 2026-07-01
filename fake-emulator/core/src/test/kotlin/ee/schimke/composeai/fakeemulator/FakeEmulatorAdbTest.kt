@@ -2,6 +2,7 @@ package ee.schimke.composeai.fakeemulator
 
 import com.google.common.truth.Truth.assertThat
 import dadb.Dadb
+import java.io.File
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -59,6 +60,21 @@ class FakeEmulatorAdbTest {
     assertThat(response.output).contains("Starting:")
     assertThat(launched).isNotNull()
     assertThat(launched!!.composableFqn).isEqualTo("com.example.PreviewsKt.MyPreview")
+  }
+
+  @Test
+  fun `adb install over the transport is accepted and the package is captured`() {
+    val apk = File.createTempFile("preview-app", ".apk")
+    apk.deleteOnExit()
+    apk.writeBytes(ApkFixtures.apk("com.example.installed"))
+
+    // dadb.install drives the modern streaming path (abb_exec / exec:cmd package install -S) end
+    // to end over the socket; it throws unless it reads back "Success".
+    dadb.install(apk)
+
+    val installed = emulator.apkStore.findByPackage("com.example.installed")
+    assertThat(installed).isNotNull()
+    assertThat(installed!!.info.declaresComposePreviews).isTrue()
   }
 
   @Test

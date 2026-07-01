@@ -76,7 +76,8 @@ Per-OPEN we allocate a remote stream id and dispatch on the destination string:
 |------------------------|----------|
 | `shell,v2:<cmd>`       | Shell-protocol framed (id+len+payload; stdout/stderr/exit). The modern path dadb/`adb` prefer. |
 | `shell:<cmd>`          | Legacy raw shell (no framing). |
-| `sync:`                | Minimal file-sync (STAT/SEND/RECV/QUIT) so install-shaped flows don't hang. |
+| `sync:`                | Minimal file-sync (STAT/SEND/RECV/QUIT). `SEND` captures the pushed APK into the [`ApkStore`](#apk-install--inspection) so a later `pm install <path>` can use its bytes. |
+| `abb_exec:` / `abb:`   | Modern binder-command transport (NUL-separated argv). Routes `package install …` to the same install handlers `cmd package` uses — the streaming-install default. |
 | `framebuffer:`         | Reserved; `screencap` is the supported screenshot path. |
 
 The shell command interpreter is deliberately small — a real device runs
@@ -93,6 +94,37 @@ thousands of commands, we answer the few that matter for *device detection* and
 - `screencap [-p]` — returns the current `FrameSource` frame as PNG bytes.
 - Common detection no-ops (`wm size`, `echo`, `id`, …) answered plausibly;
   everything else returns empty output + exit 0.
+
+## APK install & inspection
+
+`adb install` and Android Studio's "Deploy" push an APK before launching a preview. The fake
+emulator **accepts the install and inspects the APK, but never executes it** — the APK is treated as
+*metadata + discovery*, not as bytecode to run (APKs carry DEX, not JVM `.class` files; the recommended
+render path stays the project classpath via the daemon descriptor). Two transports feed one in-memory
+[`ApkStore`](../../fake-emulator/core/src/main/kotlin/ee/schimke/composeai/fakeemulator/ApkStore.kt):
+
+| Transport | Wire | Handling |
+|-----------|------|----------|
+| **Legacy** | `sync: SEND /data/local/tmp/x.apk` then `pm install <path>` | `SyncService` captures the `SEND` bytes under the path; `pm install <path>` installs the captured bytes. |
+| **Streaming** (default) | `abb_exec:package\0install\0-S\0<size>` / `exec:cmd package install -S <size>` (APK piped to stdin) | The shell reads exactly `<size>` bytes off the stream and records the install. |
+| **Session** | `install-create` → `install-write -S <size> <id> <split> -` → `install-commit <id>` | Bytes buffered per session, concatenated on commit. |
+
+Each path replies with the `Success` line real `pm` emits, so `adb install` / Studio deploy don't
+error. On commit, [`ApkInspector`](../../fake-emulator/core/src/main/kotlin/ee/schimke/composeai/fakeemulator/ApkInspector.kt)
+parses the APK (pure-Kotlin `java.util.zip` + a tiny binary-XML reader — no AAPT/dexlib2 in the
+dependency-light core):
+
+- **Package name** from the binary `AndroidManifest.xml` — wires the `am start -n <pkg>/PreviewActivity`
+  component + device serial to the deployed app.
+- **`@Preview` presence**: a byte scan of `classesN.dex` for the `Landroidx/compose/ui/tooling/preview/Preview;`
+  descriptor — a cheap "this APK carries previews worth discovering" signal (`@Preview` is `BINARY`
+  retention, so it survives in DEX even though reflection can't see it).
+
+The `cmd`/`abb_exec` features are advertised in the CNXN banner so hosts pick the streaming path we
+support. **Deferred:** enumerating the individual `@Preview`/`@Composable` **method FQNs** from DEX
+(a full annotations-directory walk via dexlib2, to validate `--es composable <fqn>` against the
+installed APK) and the experimental "run app code from the APK" path (dex2jar + Robolectric
+`ApkAssets`) — both add heavyweight deps to the core and stay follow-ups; see #2033.
 
 ## Emulator console (`:fake-emulator-core`)
 
@@ -220,9 +252,12 @@ start` preview-launch parser, the console, the discovery writer, the
 gRPC `EmulatorController` subset + screenshot stream, a runnable launcher, and
 `dadb`-driven tests for the ADB + preview-launch path.
 
-**Deferred:** full sync (large APK install), authenticated adb (RSA/TLS),
-complete `EmulatorController` surface, pointer/key fidelity, and the `serve`
-URL-sharing wire-up above.
+**Deferred:** authenticated adb (RSA/TLS), the complete `EmulatorController`
+surface, pointer/key fidelity, the `serve` URL-sharing wire-up above, and — for
+APK install — enumerating `@Preview` method FQNs from DEX (dexlib2) and the
+experimental run-app-code-from-APK path (see [APK install & inspection](#apk-install--inspection)).
+APK install itself (accept + inspect for the package name / preview presence) is
+now delivered.
 
 ## Testing
 
