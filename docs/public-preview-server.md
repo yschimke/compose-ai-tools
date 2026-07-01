@@ -123,6 +123,15 @@ Mount your own over that path (or set `SERVE_TRUST_STORE` to it) to pin differen
 `SERVE_TRUST_STORE=none` to run trustless. (Empty falls back to the baked default — use `none` to opt
 out — which also means a bare image pull self-heals a box without editing its compose.)
 
+The **catalog set is baked into the image the same way**: the entrypoint defaults `SERVE_CATALOGS`
+to `compose-m3,wear-m3` (front-page nav) and `SERVE_CATALOGS_UNLISTED` to
+`meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose`
+(served at `/<system>/`, off the nav). So a bare `docker pull` / Watchtower update serves them
+without editing the box's compose. Override either with your own comma list, or `none` to serve none
+of that kind (empty inherits the baked default). The `deploy/vps` from-source path still sets these
+in its compose (it builds `main`, so the flags exist immediately; the prebuilt image needs a CLI
+release that carries `--catalogs-unlisted`).
+
 | | [`deploy/vps`](../deploy/vps) (from source) | [`deploy/image`](../deploy/image) (prebuilt) |
 |---|---|---|
 | CLI | compiled from this checkout (~8 min build) | the **released** tarball (`docker pull`, no build) + Watchtower auto-update |

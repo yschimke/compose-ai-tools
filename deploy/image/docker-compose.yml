@@ -22,12 +22,14 @@ services:
       # design-artifacts/<system> branch. For a token-gated box instead, set
       # SERVE_PUBLIC=0 and SERVE_TOKEN in .env.
       SERVE_PUBLIC: "${SERVE_PUBLIC:-1}"
-      SERVE_CATALOGS: "${SERVE_CATALOGS:-compose-m3,wear-m3}"
-      # App design systems published from their OWN repos, served but hidden from the
-      # front-page nav — reachable at /<system>/ (and ?session=<system>). The
-      # <system>@<owner>/<repo> suffix points serve at each app's design-artifacts/<system>
-      # branch; the baked trust store trusts those branches so they badge Trusted(Branch).
-      SERVE_CATALOGS_UNLISTED: "${SERVE_CATALOGS_UNLISTED:-meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose}"
+      # The catalog set is BAKED INTO THE IMAGE (entrypoint): the front-page systems
+      # (compose-m3,wear-m3) and the app systems served unlisted from their own repos
+      # (meshcore-mobile, homeassistant-remotecompose). Leave these empty to inherit the
+      # baked defaults — so a bare image pull self-heals without editing this compose.
+      # Set your own comma list to override, or the literal `none` to serve none of that
+      # kind. (Empty is NOT `none` — it falls back to the baked default.)
+      SERVE_CATALOGS: "${SERVE_CATALOGS:-}"
+      SERVE_CATALOGS_UNLISTED: "${SERVE_CATALOGS_UNLISTED:-}"
       # The image bakes a branch-trust store at /trust/producers.json and the
       # entrypoint defaults to it, so the published design-artifacts catalogs badge
       # as Trusted(Branch) out of the box — leave this unset. Set your own path to
