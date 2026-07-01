@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.16.11](https://github.com/yschimke/compose-ai-tools/compare/v0.16.10...v0.16.11) (2026-07-01)
+
+
+### Features
+
+* auto-discover @ColorCatalog design tokens into rendered swatch sheets ([#2148](https://github.com/yschimke/compose-ai-tools/issues/2148)) ([5098543](https://github.com/yschimke/compose-ai-tools/commit/5098543a8f5d75085dd9fc884b8a4496b650718a))
+* **fake-emulator:** accept adb install and inspect APKs for preview discovery ([#2153](https://github.com/yschimke/compose-ai-tools/issues/2153)) ([ed1608d](https://github.com/yschimke/compose-ai-tools/commit/ed1608dfee1236f084164191fa3541da4eb136ae))
+
+
+### Bug Fixes
+
+* cap PR comment body to GitHub's 65,536-char limit ([#2150](https://github.com/yschimke/compose-ai-tools/issues/2150)) ([3585538](https://github.com/yschimke/compose-ai-tools/commit/3585538b32e4cc1c4f5a9a871c284abf3084289d))
+* **cli:** honor --missing-renders in show-resources ([#2156](https://github.com/yschimke/compose-ai-tools/issues/2156)) ([9a6e321](https://github.com/yschimke/compose-ai-tools/commit/9a6e321dd7a65ae43a5fe79daca17ada7dd779a7))
+* don't crash desktop renders on @ColorCatalog catalog sheets ([#2154](https://github.com/yschimke/compose-ai-tools/issues/2154)) ([c3c1d04](https://github.com/yschimke/compose-ai-tools/commit/c3c1d04400fdcfa83f701b675a173d75ed0d0035))
+* **fake-emulator:** use escaped unicode literals instead of raw NUL bytes ([#2155](https://github.com/yschimke/compose-ai-tools/issues/2155)) ([5e668cb](https://github.com/yschimke/compose-ai-tools/commit/5e668cb171e46548de5f9ad3d84bf869f0559419))
+* keep Android @ColorCatalog renders required in the render gate ([#2158](https://github.com/yschimke/compose-ai-tools/issues/2158)) ([c2e9c9c](https://github.com/yschimke/compose-ai-tools/commit/c2e9c9c326cc2b03327a7ce40cec6ecc9ca29e33))
+* make @ColorCatalog capture optionality backend-aware at discovery ([#2160](https://github.com/yschimke/compose-ai-tools/issues/2160)) ([e8312ef](https://github.com/yschimke/compose-ai-tools/commit/e8312ef49c293b7911f0b6e8ac29a1e64d606373))
+
+
+### Performance Improvements
+
+* **preview-ci:** shard renders by default and widen the fork cap ([#2152](https://github.com/yschimke/compose-ai-tools/issues/2152)) ([777f914](https://github.com/yschimke/compose-ai-tools/commit/777f914b6f05827f8c778d231b1a0441b062daaf))
+
 ## [0.16.10](https://github.com/yschimke/compose-ai-tools/compare/v0.16.9...v0.16.10) (2026-07-01)
 
 
