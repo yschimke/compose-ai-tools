@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.16.10](https://github.com/yschimke/compose-ai-tools/compare/v0.16.9...v0.16.10) (2026-07-01)
+
+
+### Features
+
+* add :color-preview-runtime colour/token specimen sheets ([#2140](https://github.com/yschimke/compose-ai-tools/issues/2140)) ([84fa3af](https://github.com/yschimke/compose-ai-tools/commit/84fa3af0136352359ec28b3593b34e1188e2fc7b))
+* **deploy:** bake the published catalog set into the prebuilt image ([#2132](https://github.com/yschimke/compose-ai-tools/issues/2132)) ([9b5471a](https://github.com/yschimke/compose-ai-tools/commit/9b5471a0b55e5382673c9dd63cb4a2bf68aa5895))
+* **samples:** add Remote Compose design catalog (remote-m3) ([#2134](https://github.com/yschimke/compose-ai-tools/issues/2134)) ([fc40ccd](https://github.com/yschimke/compose-ai-tools/commit/fc40ccdbadcb34750ffe40df5053b61260bc8c33))
+* **serve:** add search filter to the preview browser landing grid ([#2145](https://github.com/yschimke/compose-ai-tools/issues/2145)) ([1cad9e0](https://github.com/yschimke/compose-ai-tools/commit/1cad9e090adaf959a33ac2a894d3e36f641af2df))
+* **serve:** backend-provenance badge on the viewer stage ([#2131](https://github.com/yschimke/compose-ai-tools/issues/2131)) ([8915432](https://github.com/yschimke/compose-ai-tools/commit/8915432b6043cfc13815f86035fdef3f58bf0b0e))
+* **serve:** bounded live-seat cap for the daemon-backed stream tier ([#2144](https://github.com/yschimke/compose-ai-tools/issues/2144)) ([bbf21df](https://github.com/yschimke/compose-ai-tools/commit/bbf21df440b353690e61bb76dd9edea6891bdb83))
+* **serve:** recompose the Wasm tier in place instead of reloading the iframe ([#2127](https://github.com/yschimke/compose-ai-tools/issues/2127)) ([b81785f](https://github.com/yschimke/compose-ai-tools/commit/b81785fc6dbdb02cff427d39d4d2267515bb6db5))
+* **serve:** sticky light/dark theme toggle on the catalog ([#2130](https://github.com/yschimke/compose-ai-tools/issues/2130)) ([cb20c32](https://github.com/yschimke/compose-ai-tools/commit/cb20c32d9b46d0743e33a77ba8844c91b4b6f03e))
+* **wasm-catalog:** frame parity — scale the in-browser component to fill the stage ([#2139](https://github.com/yschimke/compose-ai-tools/issues/2139)) ([e39bca4](https://github.com/yschimke/compose-ai-tools/commit/e39bca46ea87b1faeac1fca0dc45d7f271eb8d6e))
+* **wasm-catalog:** run the progress indicators live (indeterminate) ([#2142](https://github.com/yschimke/compose-ai-tools/issues/2142)) ([0d7333e](https://github.com/yschimke/compose-ai-tools/commit/0d7333ecf56134b2dd8c458a6ef2d3fb1f94b3eb))
+
+
+### Bug Fixes
+
+* **ci:** skip compose PR comment when previews.json is empty ([#2141](https://github.com/yschimke/compose-ai-tools/issues/2141)) ([be313d6](https://github.com/yschimke/compose-ai-tools/commit/be313d609edef345cf4200aa0755e25fae353e74))
+* **preview-diff:** tolerate resource rasterizer jitter in the diff bot ([#2133](https://github.com/yschimke/compose-ai-tools/issues/2133)) ([69b8b55](https://github.com/yschimke/compose-ai-tools/commit/69b8b554e5437276d48492c20a65d496d6e17b92))
+* **renderer-xr:** make FakeXrHeadPose seeding best-effort across XR versions ([#2146](https://github.com/yschimke/compose-ai-tools/issues/2146)) ([b5b85bf](https://github.com/yschimke/compose-ai-tools/commit/b5b85bf5d808a9f2206c7451efbece4ae9bfd6a5))
+
 ## [0.16.9](https://github.com/yschimke/compose-ai-tools/compare/v0.16.8...v0.16.9) (2026-07-01)
 
 
