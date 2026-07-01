@@ -8,25 +8,32 @@ import androidx.compose.remote.creation.compose.layout.RemoteComposable
 import androidx.compose.remote.creation.compose.modifier.RemoteModifier
 import androidx.compose.remote.creation.compose.modifier.fillMaxSize
 import androidx.compose.remote.creation.profile.RcPlatformProfiles
-import androidx.compose.remote.tooling.preview.RemotePreview
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
+import ee.schimke.composeai.daemon.RemoteOverridablePreview
 
 /**
  * The catalog's Remote Compose **component** sticker frame: the remote content,
- * centred inside a full-size `RemoteBox`, built into a `RemoteDocument` by
- * [RemotePreview] and rasterised by the Remote Compose player — the same byte
- * stream path a watch face / tile / widget takes on-device.
- * `RcPlatformProfiles.ANDROIDX` is the render profile the AndroidX tooling uses.
+ * centred inside a full-size `RemoteBox`, built into a `RemoteDocument` and
+ * rasterised by the Remote Compose player — the same byte-stream path a watch
+ * face / tile / widget takes on-device. `RcPlatformProfiles.ANDROIDX` is the
+ * render profile the AndroidX tooling uses.
  *
- * Uses the `RemotePreview { … }`-inside-the-preview shape (Approach 1 in
- * `:samples:remotecompose`) so it renders today without the `@PreviewWrapper`
- * tooling annotation, which only exists in compose-ui 1.11.0-beta+ and isn't yet
- * understood by the discovery pipeline paired with stable Compose.
+ * Captures through the connector's [RemoteOverridablePreview] rather than raw
+ * upstream `RemotePreview`. It keeps the `RemotePreview { … }`-inside-the-preview
+ * shape (Approach 1 in `:samples:remotecompose`, so it renders today without the
+ * `@PreviewWrapper` tooling annotation), but additionally (a) applies any
+ * `renderNow.overrides.remoteCompose.namedValues` the daemon seeds — so the
+ * named-value stickers ([com.example.designcatalogremotem3.NamedLabelRemoteButton],
+ * [com.example.designcatalogremotem3.ShaderGradientSticker]) actually flip in
+ * trusted live re-renders, matching what the spec/captions advertise — and (b)
+ * offers the captured `RemoteDocument` into the bundle's `.rcdoc` sidecar for
+ * replay. With no seeded overrides (the vanilla `composePreviewRenderAll` and the
+ * weekly design-artifacts render) it is the same output as plain `RemotePreview`.
  */
 @Composable
 fun RemoteSticker(content: @Composable @RemoteComposable () -> Unit) {
-  RemotePreview(profile = RcPlatformProfiles.ANDROIDX) {
+  RemoteOverridablePreview(profile = RcPlatformProfiles.ANDROIDX) {
     RemoteBox(
       modifier = RemoteModifier.fillMaxSize(),
       contentAlignment = RemoteAlignment.Center,
