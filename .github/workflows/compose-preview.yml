@@ -5,7 +5,11 @@ name: Compose Preview
 # Replaces preview-baselines.yml, preview-comment.yml, a11y-report.yml,
 # and notification-previews.yml — the `apply` composite picks baseline-vs-
 # comment from the triggering event and runs the four pipelines (compose /
-# resources / a11y / notifications) concurrently.
+# resources / a11y / notifications) back-to-back — they share the Gradle
+# build lock and the same `.git`, so `apply` serializes them on purpose
+# (see action.yml "Run pipelines"). Concurrency lives *inside* the compose
+# render: `composePreview { shards }` fans previews across parallel JVM
+# forks.
 
 on:
   push:

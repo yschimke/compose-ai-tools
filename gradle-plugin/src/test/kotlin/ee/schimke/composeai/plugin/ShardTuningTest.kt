@@ -16,7 +16,12 @@ class ShardTuningTest {
   @Test
   fun `single static preview never shards`() {
     val k =
-      ShardTuning.autoShards(totalCost = 1.0, maxIndividualCost = 1.0, captureCount = 1, cores = 16)
+      ShardTuning.autoShards(
+        totalCost = 1.0,
+        maxIndividualCost = 1.0,
+        shardableRows = 1,
+        cores = 16,
+      )
     assertThat(k).isEqualTo(1)
   }
 
@@ -31,7 +36,7 @@ class ShardTuningTest {
       ShardTuning.autoShards(
         totalCost = 40.0,
         maxIndividualCost = 1.0,
-        captureCount = 40,
+        shardableRows = 40,
         cores = 16,
       )
     assertThat(k).isAtMost(2) // model-stable assertion: would be 1 today, 2 if constants ever shift
@@ -48,7 +53,7 @@ class ShardTuningTest {
       ShardTuning.autoShards(
         totalCost = 125.0,
         maxIndividualCost = 40.0,
-        captureCount = 8,
+        shardableRows = 8,
         cores = 16,
       )
     assertThat(k).isAtLeast(2)
@@ -65,7 +70,7 @@ class ShardTuningTest {
       ShardTuning.autoShards(
         totalCost = 54.0,
         maxIndividualCost = 50.0,
-        captureCount = 5,
+        shardableRows = 5,
         cores = 16,
       )
     assertThat(k).isAtMost(2)
@@ -86,36 +91,159 @@ class ShardTuningTest {
   }
 
   @Test
-  fun `shard count is bounded by half the available cores`() {
-    // Lots of cheap captures, but only 4 cores → cap at K = 2.
+  fun `shard count leaves one core for the Gradle daemon`() {
+    // Lots of cheap captures, but only 4 cores → cap at K = cores - 1 = 3.
+    // (Was cores / 2 = 2 before we stopped reserving half the machine for a
+    // Gradle worker pool that's idle while the render task runs.)
     val k =
       ShardTuning.autoShards(
         totalCost = 1000.0,
         maxIndividualCost = 1.0,
-        captureCount = 1000,
+        shardableRows = 1000,
         cores = 4,
+      )
+    assertThat(k).isAtMost(3)
+    // And it genuinely uses the extra headroom: a 2-core cap would return ≤2.
+    assertThat(k).isGreaterThan(2)
+  }
+
+  @Test
+  fun `shard count is bounded by available memory`() {
+    // 16 cores would allow up to MAX_SHARDS, and the cost easily justifies it,
+    // but only ~4 GB of RAM → 4096 / PER_FORK_MEMORY_MB(2048) = 2 forks max.
+    val k =
+      ShardTuning.autoShards(
+        totalCost = 1000.0,
+        maxIndividualCost = 1.0,
+        shardableRows = 1000,
+        cores = 16,
+        availableMemoryMb = 4096,
       )
     assertThat(k).isAtMost(2)
   }
 
   @Test
-  fun `shard count never exceeds capture count`() {
-    // 3 captures, 16 cores: even if 8 shards would minimise wall-time,
-    // we never assign fewer than 1 capture per fork.
+  fun `unbounded memory default does not cap sharding`() {
+    // Same shape as the memory test but with the default (unbounded) memory:
+    // the CPU/cost caps decide, so we get more than the 2 the 4 GB run allowed.
+    val k =
+      ShardTuning.autoShards(
+        totalCost = 1000.0,
+        maxIndividualCost = 1.0,
+        shardableRows = 1000,
+        cores = 16,
+      )
+    assertThat(k).isGreaterThan(2)
+  }
+
+  @Test
+  fun `shard count never exceeds shardable row count`() {
+    // 3 rows, 16 cores: even if 8 shards would minimise wall-time,
+    // we never assign fewer than 1 row per fork.
     val k =
       ShardTuning.autoShards(
         totalCost = 90.0,
         maxIndividualCost = 30.0,
-        captureCount = 3,
+        shardableRows = 3,
         cores = 16,
       )
     assertThat(k).isAtMost(3)
   }
 
   @Test
-  fun `module with no captures returns single shard`() {
+  fun `one preview with many heavy captures stays single-fork`() {
+    // The regression this guards: a single paused-clock / GIF preview with
+    // eight cost-40 captures. The renderer keeps all eight captures on one
+    // shard (one indivisible row), so shardableRows = 1 even though there are
+    // eight captures and 320 units of work. Sizing by capture count would have
+    // picked multiple forks that then sit idle — slower than a single fork.
     val k =
-      ShardTuning.autoShards(totalCost = 0.0, maxIndividualCost = 0.0, captureCount = 0, cores = 16)
+      ShardTuning.autoShards(
+        totalCost = 320.0,
+        maxIndividualCost = 320.0,
+        shardableRows = 1,
+        cores = 16,
+      )
     assertThat(k).isEqualTo(1)
+  }
+
+  @Test
+  fun `module with no rows returns single shard`() {
+    val k =
+      ShardTuning.autoShards(
+        totalCost = 0.0,
+        maxIndividualCost = 0.0,
+        shardableRows = 0,
+        cores = 16,
+      )
+    assertThat(k).isEqualTo(1)
+  }
+
+  @Test
+  fun `perPreviewRowCosts sums captures and data products per preview`() {
+    // Two previews: the first is a heavy paused-clock (3 captures + 1 data
+    // product), the second a plain static. Each preview must collapse to ONE
+    // row whose cost is the sum of its captures + products — never one row per
+    // capture.
+    val manifest =
+      """
+      {
+        "schemaVersion": 1,
+        "previews": [
+          {
+            "id": "com.example.Heavy",
+            "functionName": "Heavy",
+            "className": "com.example.HeavyKt",
+            "captures": [
+              { "renderOutput": "a.png", "cost": 40.0 },
+              { "renderOutput": "b.png", "cost": 40.0 },
+              { "renderOutput": "c.png", "cost": 40.0 }
+            ],
+            "dataProducts": [ { "kind": "a11y", "output": "a.json", "cost": 3.0 } ]
+          },
+          {
+            "id": "com.example.Static",
+            "functionName": "Static",
+            "className": "com.example.StaticKt",
+            "captures": [ { "renderOutput": "s.png", "cost": 1.0 } ]
+          }
+        ]
+      }
+      """
+        .trimIndent()
+
+    val rows = ShardTuning.perPreviewRowCosts(manifest)
+    assertThat(rows).hasSize(2)
+    assertThat(rows[0]).isWithin(1e-6).of(123.0) // 40+40+40+3
+    assertThat(rows[1]).isWithin(1e-6).of(1.0)
+  }
+
+  @Test
+  fun `perPreviewRowCosts prices captures without a cost field at 1_0`() {
+    // Pre-0.8.0 manifest: no "cost" fields. Each capture is priced at 1.0, so a
+    // two-capture preview is one row of cost 2.0.
+    val manifest =
+      """
+      {
+        "previews": [
+          {
+            "id": "old",
+            "functionName": "Old",
+            "captures": [ { "renderOutput": "a.png" }, { "renderOutput": "b.png" } ]
+          }
+        ]
+      }
+      """
+        .trimIndent()
+
+    val rows = ShardTuning.perPreviewRowCosts(manifest)
+    assertThat(rows).hasSize(1)
+    assertThat(rows[0]).isWithin(1e-6).of(2.0)
+  }
+
+  @Test
+  fun `perPreviewRowCosts returns empty for a manifest with no previews`() {
+    assertThat(ShardTuning.perPreviewRowCosts("""{ "previews": [] }""")).isEmpty()
+    assertThat(ShardTuning.perPreviewRowCosts("""{ "schemaVersion": 1 }""")).isEmpty()
   }
 }
