@@ -85,10 +85,10 @@ object PreviewDiscovery {
      */
     val projectClassJars: List<File> = emptyList(),
     /**
-     * Whether this module's render backend can draw `@ColorCatalog` sheets. `true` (the default) for
-     * the Android backend, which renders them; `false` for the desktop backend, which can't yet
-     * (#2135). When `false`, the synthetic `CATALOG` captures are emitted `optional` so a missing PNG
-     * is treated as expected — by the render gate AND every downstream consumer that reads
+     * Whether this module's render backend can draw `@ColorCatalog` sheets. `true` (the default)
+     * for the Android backend, which renders them; `false` for the desktop backend, which can't yet
+     * (#2135). When `false`, the synthetic `CATALOG` captures are emitted `optional` so a missing
+     * PNG is treated as expected — by the render gate AND every downstream consumer that reads
      * `Capture.optional` (VS Code's consistency check, its render UI). Keeping the flag on the
      * capture, rather than only in the Gradle gate, is what makes the desktop skip consistent
      * everywhere.
@@ -664,9 +664,11 @@ object PreviewDiscovery {
             },
         ),
       // The capture is `optional` exactly when the backend can't render catalog sheets. On Android
-      // ([renderSupported] = true) it's required, so a missing PNG is flagged as a regression by the
+      // ([renderSupported] = true) it's required, so a missing PNG is flagged as a regression by
+      // the
       // gate. On desktop ([renderSupported] = false) it's optional, so every consumer that reads
-      // `Capture.optional` — the render gate, VS Code's consistency check, its render UI — treats the
+      // `Capture.optional` — the render gate, VS Code's consistency check, its render UI — treats
+      // the
       // (deliberately skipped, #2135) sheet as expected-absent rather than drift. One flag, all
       // consumers.
       captures = listOf(Capture(renderOutput = "renders/$id.png", optional = !renderSupported)),

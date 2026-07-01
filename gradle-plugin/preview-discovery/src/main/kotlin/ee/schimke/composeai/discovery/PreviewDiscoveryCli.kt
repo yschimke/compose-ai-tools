@@ -87,6 +87,7 @@ public object PreviewDiscoveryCli {
     var variantName: String? = null
     var projectDirectory: File? = null
     var failOnEmpty = false
+    var catalogRenderSupported = true
     var outPath: File? = null
 
     var i = 0
@@ -101,6 +102,10 @@ public object PreviewDiscoveryCli {
         "--variant" -> variantName = requireValue(args, i)
         "--project-directory" -> projectDirectory = File(requireValue(args, i))
         "--out" -> outPath = File(requireValue(args, i))
+        "--catalog-render-supported" ->
+          catalogRenderSupported =
+            requireValue(args, i).toBooleanStrictOrNull()
+              ?: throw ArgError("--catalog-render-supported must be 'true' or 'false'")
         "--fail-on-empty" -> {
           failOnEmpty = true
           i++
@@ -131,6 +136,7 @@ public object PreviewDiscoveryCli {
           variantName = variant,
           projectDirectory = projectDir,
           failOnEmpty = failOnEmpty,
+          catalogRenderSupported = catalogRenderSupported,
         ),
       outFile = out,
     )
@@ -164,6 +170,11 @@ public object PreviewDiscoveryCli {
 
       Flags:
         --fail-on-empty   Exit non-zero with diagnostics when zero previews are discovered.
+        --catalog-render-supported <true|false>
+                          Whether this backend renders @ColorCatalog sheets. Default true
+                          (Android). Pass false for desktop/JVM backends that skip catalog
+                          rendering, so the emitted CATALOG captures are marked optional and
+                          downstream consumers don't treat the skipped sheet as missing (#2135).
         --help, -h        Print this message.
 
       Exit codes: 0 = success, 1 = discovery failure, 2 = argument parsing failure.
