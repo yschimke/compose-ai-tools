@@ -25,6 +25,30 @@ set -euo pipefail
 # `gh pr comment --body-file` and `gh api -f key=@file` both stream from
 # the file instead of expanding it into the command line.
 
+# GitHub's comment API caps a single body at 65,536 characters ("Body is
+# too long"). Streaming from a file dodges ARG_MAX but *not* this ceiling,
+# so truncate an over-long body here — defence in depth for every comment
+# the action posts (e.g. a large module's a11y report). The budget is in
+# bytes; a UTF-8 string's byte length is >= its character count, so keeping
+# under the byte budget guarantees we're under the character cap, with
+# headroom for the truncation notice. We keep the head of the body (the
+# marker + summary live at the top) and cut on a line boundary.
+MAX_BYTES="${COMMENT_MAX_BYTES:-60000}"
+BODY_BYTES=$(wc -c < "$BODY_FILE")
+if [ "$BODY_BYTES" -gt "$MAX_BYTES" ]; then
+  NOTICE=$'\n\n---\n> ⚠️ This comment was truncated because it exceeded GitHub'\''s 65,536-character limit. See the full report in the render branch / workflow artifacts.'
+  NOTICE_BYTES=$(printf '%s' "$NOTICE" | wc -c)
+  BUDGET=$((MAX_BYTES - NOTICE_BYTES))
+  TRUNCATED=$(mktemp)
+  # Cut to the byte budget, then drop the final (possibly partial) line so
+  # we always end on a clean line boundary and never leave a half-written
+  # multi-byte character.
+  head -c "$BUDGET" "$BODY_FILE" | sed '$d' > "$TRUNCATED"
+  printf '%s\n' "$NOTICE" >> "$TRUNCATED"
+  echo "post-comment: body was ${BODY_BYTES} bytes; truncated to fit GitHub's 65,536-char comment limit." >&2
+  BODY_FILE="$TRUNCATED"
+fi
+
 COMMENT_ID=$(gh api \
   "repos/${REPO}/issues/${PR_NUMBER}/comments" \
   --paginate \
