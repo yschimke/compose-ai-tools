@@ -300,7 +300,7 @@ class PerceptualFilterEndToEndTest(unittest.TestCase):
         # Same filename-based stub as PerceptualFilterTest: the convention
         # "noise" in the basename → unchanged, anything else → changed.
         self._real = cp._perceptually_changed
-        cp._perceptually_changed = lambda prior, current: "noise" not in current.name
+        cp._perceptually_changed = lambda prior, current, **_: "noise" not in current.name
         self.addCleanup(setattr, cp, "_perceptually_changed", self._real)
 
     def test_copy_changed_filters_perceptual_noise(self):
@@ -378,6 +378,45 @@ class PerceptualFilterRealLibTest(unittest.TestCase):
         with Image.new("RGB", (20, 20), (0, 0, 0)) as b:
             b.save(big)
         self.assertTrue(cp._perceptually_changed(small, big))
+
+
+class ResourceSizeAwareToleranceTest(unittest.TestCase):
+    """The size-aware slack the resource path opts into. Both PNGs are real
+    ``mipmap/ic_launcher`` LEGACY adaptive-icon captures of the *same*
+    (unchanged) drawable rendered on two CI runs: sha256-different, visually
+    identical, ~62 pixelmatch-counted pixels of tile-chip boundary jitter that
+    the Robolectric rasterizer emits run-to-run. Strict composable tolerance
+    (16) reads that as changed; the resource path's size-relative slack does
+    not — see homeassistant-remotecompose flaky-render investigation."""
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            from pixelmatch.contrib.PIL import pixelmatch  # noqa: F401
+            from PIL import Image  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("pixelmatch/Pillow not installed")
+        cls.fixtures = Path(__file__).resolve().parent / "fixtures" / "adaptive-icon-flake"
+        cls.a = cls.fixtures / "ic_launcher_LEGACY_A.png"
+        cls.b = cls.fixtures / "ic_launcher_LEGACY_B.png"
+        if not cls.a.exists() or not cls.b.exists():
+            raise unittest.SkipTest("adaptive-icon-flake fixture PNGs not present")
+
+    def test_strict_path_flags_rasterizer_jitter(self):
+        # Composable default: the 62-px jitter exceeds the flat 16 floor.
+        self.assertTrue(cp._perceptually_changed(self.a, self.b))
+
+    def test_resource_size_aware_path_absorbs_rasterizer_jitter(self):
+        # Resource opt-in: ≤0.5% of the 144×144 icon (~104 px) is slack.
+        self.assertFalse(cp._perceptually_changed(self.a, self.b, size_aware=True))
+
+    def test_size_aware_cap_bounds_large_resources(self):
+        # The fraction is capped so a big drawable can't hide a real change:
+        # the limit never exceeds the absolute cap regardless of area.
+        self.assertLessEqual(
+            min(round(4_000_000 * cp._RESOURCE_PIXEL_FRACTION), cp._RESOURCE_PIXEL_CAP),
+            cp._RESOURCE_PIXEL_CAP,
+        )
 
 
 class GenerateTest(unittest.TestCase):
@@ -529,7 +568,7 @@ class PerceptualFilterTest(unittest.TestCase):
         self.calls: list[tuple[Path, Path]] = []
         self._real_perceptually_changed = cp._perceptually_changed
 
-        def stub(prior: Path, current: Path) -> bool:
+        def stub(prior: Path, current: Path, **_) -> bool:
             self.calls.append((prior, current))
             # File-name convention used by tests below: PNGs whose name
             # contains "noise" model the today's-flake case (sha-different
@@ -1702,7 +1741,7 @@ class ResourcePerceptualFilterTest(unittest.TestCase):
         # adaptive-icon AA flake (sha-different, pixelmatch-clean), anything
         # else is a genuine pixel diff.
         self._real = cp._perceptually_changed
-        cp._perceptually_changed = lambda prior, current: "noise" not in current.name
+        cp._perceptually_changed = lambda prior, current, **_: "noise" not in current.name
         self.addCleanup(setattr, cp, "_perceptually_changed", self._real)
 
         # Resource baseline tree mimics what the action's
