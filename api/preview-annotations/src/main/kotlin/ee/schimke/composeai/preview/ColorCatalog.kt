@@ -6,7 +6,8 @@ package ee.schimke.composeai.preview
  * `@ShowkaseColor`. Call-site behaviour mirrors Showkase: annotate the `val` itself, and the
  * compose-preview Gradle plugin aggregates every annotated colour into a rendered swatch sheet with
  * **no `@Preview` wrapper**. [name] defaults to the property name and [group] to the enclosing
- * file/class; tokens sharing a [group] render together, and a module-wide sheet aggregates them all.
+ * file/class; tokens sharing a [group] render together, and a module-wide sheet aggregates them
+ * all.
  *
  * ```kotlin
  * @ColorCatalog(group = "Brand")

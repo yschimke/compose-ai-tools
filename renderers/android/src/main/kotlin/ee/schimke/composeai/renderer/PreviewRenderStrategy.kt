@@ -1,9 +1,31 @@
 package ee.schimke.composeai.renderer
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import java.util.Locale
 
 /**
  * Produces the composition body for a single [RenderPreviewEntry]. Selection
@@ -23,6 +45,7 @@ private val STRATEGIES: Map<PreviewKind, PreviewRenderStrategy> = mapOf(
     PreviewKind.TILE to TilePreviewStrategy,
     PreviewKind.NOTIFICATION to NotificationPreviewStrategy,
     PreviewKind.GLANCE_APPWIDGET to GlanceAppWidgetPreviewStrategy,
+    PreviewKind.CATALOG to CatalogPreviewStrategy,
 )
 
 internal fun strategyFor(kind: PreviewKind): PreviewRenderStrategy =
@@ -225,5 +248,89 @@ private object TilePreviewStrategy : PreviewRenderStrategy {
             heightDp = heightDp,
             device = preview.params.device,
         )
+    }
+}
+
+/**
+ * Design-token catalog strategy: there's no consumer composable to invoke. Instead the entry's
+ * [RenderPreviewParams.catalogTokens] name properties on the consumer's compiled classes, whose
+ * *values* we reflect at render time and lay out as a labelled swatch sheet — the auto-discovered
+ * analogue of the hand-written `ColorSpecimen` gallery.
+ *
+ * The layout is intentionally self-contained (foundation `BasicText` + explicit neutral colours, no
+ * `MaterialTheme`) so the sheet reads the same regardless of the consumer's theme, and so the
+ * renderer takes no dependency on `:color-preview-runtime` — keeping the load-bearing
+ * renderer↔consumer AndroidX alignment untouched. A token whose value can't be reflected is skipped
+ * rather than failing the whole sheet.
+ */
+private object CatalogPreviewStrategy : PreviewRenderStrategy {
+    @Composable
+    override fun Render(preview: RenderPreviewEntry, widthDp: Int, heightDp: Int, previewArgs: List<Any?>) {
+        val swatches = remember(preview.id) {
+            preview.params.catalogTokens.mapNotNull { token ->
+                runCatching { token.label to CatalogValueReflection.reflectColor(token.className, token.member) }
+                    .getOrNull()
+            }
+        }
+        Box(Modifier.fillMaxSize().background(CATALOG_SHEET_BACKGROUND).padding(16.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                for ((label, color) in swatches) {
+                    CatalogSwatchRow(label = label, color = color)
+                }
+            }
+        }
+    }
+}
+
+/** One swatch row: a bounded colour square, the token label, and its `#AARRGGBB` hex. */
+@Composable
+private fun CatalogSwatchRow(label: String, color: Color) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier.size(40.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(color)
+                .border(1.dp, CATALOG_SWATCH_BORDER, RoundedCornerShape(6.dp)),
+        )
+        Column(modifier = Modifier.padding(start = 12.dp)) {
+            BasicText(text = label, style = CATALOG_LABEL_STYLE)
+            BasicText(text = catalogHex(color), style = CATALOG_HEX_STYLE)
+        }
+    }
+}
+
+/** Formats [color] as an uppercase `#AARRGGBB` string; alpha included so translucent tokens read as such. */
+private fun catalogHex(color: Color): String = String.format(Locale.ROOT, "#%08X", color.toArgb())
+
+private val CATALOG_SHEET_BACKGROUND: Color = Color(0xFFFFFFFF)
+private val CATALOG_SWATCH_BORDER: Color = Color(0xFF9E9E9E)
+private val CATALOG_LABEL_STYLE: TextStyle = TextStyle(color = Color(0xFF1B1B1F), fontSize = 13.sp)
+private val CATALOG_HEX_STYLE: TextStyle =
+    TextStyle(color = Color(0xFF5F5F66), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+
+/**
+ * Reads design-token property *values* off the consumer's loaded classes at render time. A
+ * top-level `Color` property compiles to a `static final long` backing field (the value class is
+ * erased through `ULong` to `long`); we read the raw bits and rebox them into a `Color` via the
+ * synthetic `Color.box-impl(long)` factory (no public constructor takes the packed representation).
+ * A property declared inside a Kotlin `object` is an instance field read off the `INSTANCE`
+ * singleton. Pinned by `ColorValueReflectionProbeTest`.
+ */
+internal object CatalogValueReflection {
+    fun reflectColor(className: String, member: String): Color {
+        val owner = Class.forName(className)
+        val field = owner.getDeclaredField(member).apply { isAccessible = true }
+        val receiver =
+            if (java.lang.reflect.Modifier.isStatic(field.modifiers)) {
+                null
+            } else {
+                runCatching { owner.getField("INSTANCE").get(null) }.getOrNull()
+            }
+        val rawUlongBits = field.getLong(receiver)
+        val boxImpl = Color::class.java.getDeclaredMethod("box-impl", Long::class.javaPrimitiveType)
+        return boxImpl.invoke(null, rawUlongBits) as Color
     }
 }

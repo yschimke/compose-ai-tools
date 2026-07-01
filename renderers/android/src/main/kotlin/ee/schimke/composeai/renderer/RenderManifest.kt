@@ -13,7 +13,27 @@ enum class PreviewKind {
     // rendered here — the JVM desktop Compottie path (`composePreviewRenderLottie`) owns it, and
     // `RobolectricRenderTest` filters it out. There is no Android Lottie player.
     LOTTIE,
+    // A synthetic design-token catalog sheet aggregated from `@ColorCatalog` properties. Rendered
+    // here by `CatalogPreviewStrategy`, which reflects each token's value off the loaded consumer
+    // class and lays them out as a labelled swatch sheet. Payload travels on
+    // `RenderPreviewParams.catalogTokens`.
+    CATALOG,
 }
+
+/** Renderer-side mirror of the plugin's `CatalogTokenKind`. */
+@Serializable
+enum class CatalogTokenKind {
+    COLOR,
+}
+
+/** Renderer-side mirror of the plugin's `CatalogToken`. */
+@Serializable
+data class CatalogToken(
+    val className: String,
+    val member: String,
+    val label: String,
+    val tokenKind: CatalogTokenKind = CatalogTokenKind.COLOR,
+)
 
 /**
  * Mirrors `ee.schimke.composeai.preview.ScrollMode` from the `preview-annotations`
@@ -266,4 +286,6 @@ data class RenderPreviewParams(
     /** Mirrors `@PreviewParameter.limit`. `Int.MAX_VALUE` = take every value. */
     val previewParameterLimit: Int = Int.MAX_VALUE,
     val kind: PreviewKind = PreviewKind.COMPOSE,
+    /** For [PreviewKind.CATALOG] only: the design tokens this synthetic sheet renders, in order. */
+    val catalogTokens: List<CatalogToken> = emptyList(),
 )
