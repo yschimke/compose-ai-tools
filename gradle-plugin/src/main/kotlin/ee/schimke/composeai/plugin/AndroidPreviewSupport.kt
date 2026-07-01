@@ -2735,12 +2735,20 @@ internal object AndroidPreviewSupport {
     val totalCost = explicitCostSum + implicitCostSum
     val maxIndividualCost =
       (costs.maxOrNull() ?: 1.0).coerceAtLeast(if (captureCount > costs.size) 1.0 else 0.0)
-    val resolved = ShardTuning.autoShards(totalCost, maxIndividualCost, captureCount)
+    val hostMemoryMb = ShardTuning.hostMemoryMb()
+    val resolved =
+      ShardTuning.autoShards(
+        totalCost = totalCost,
+        maxIndividualCost = maxIndividualCost,
+        captureCount = captureCount,
+        availableMemoryMb = hostMemoryMb,
+      )
+    val memTag = if (hostMemoryMb == Long.MAX_VALUE) "unknown" else "${hostMemoryMb}MB"
     project.logger.lifecycle(
       "compose-ai-tools: shards=auto → $resolved " +
         "(captures=$captureCount, totalCost=${"%.1f".format(totalCost)}, " +
         "maxCost=${"%.1f".format(maxIndividualCost)}, " +
-        "cores=${Runtime.getRuntime().availableProcessors()})"
+        "cores=${Runtime.getRuntime().availableProcessors()}, mem=$memTag)"
     )
     return resolved
   }

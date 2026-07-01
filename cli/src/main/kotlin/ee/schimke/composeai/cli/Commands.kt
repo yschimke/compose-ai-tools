@@ -365,21 +365,38 @@ abstract class Command(
    * it explicitly even if cache discovery misfires), else empty. Discovery via the cache path is
    * the general mechanism; passing the property is a belt-and-braces handoff.
    */
+  /**
+   * Run `:<module>:composePreviewDiscover` for every module as its own Gradle invocation, ahead of
+   * the render. This is what makes `composePreview { shards = auto }` size the fork count correctly
+   * on a cold CI runner: the plugin resolves the shard count at *configuration* time by reading
+   * `build/compose-previews/previews.json`, which only exists once discover has run. Because
+   * `composePreviewRenderAll` depends on discover, a *separate* prior discover invocation writes
+   * the manifest, so when the render invocation configures (a distinct task set → its own
+   * configuration-cache entry) it sees a fresh manifest and auto sizing engages on the first run.
+   * On warm builds discover is UP-TO-DATE and near-free. Returns the build result; callers treat
+   * failure as non-fatal (the render re-runs discover as a dependency and surfaces the real error).
+   */
+  protected fun runDiscover(
+    gradle: GradleConnection,
+    modules: List<PreviewModule>,
+    silenceStdout: Boolean,
+  ): Boolean =
+    withGradleStdout(silenceStdout) {
+      val tasks = modules.map { ":${it.gradlePath}:composePreviewDiscover" }.toTypedArray()
+      runGradle(gradle, *tasks)
+    }
+
   protected fun provisionXrCompositeArgs(
     gradle: GradleConnection,
     modules: List<PreviewModule>,
     silenceStdout: Boolean,
+    discoverFirst: Boolean = true,
   ): List<String> {
     if (modules.isEmpty()) return emptyList()
-    // Discover first so previews.json exists; renderAll depends on discover anyway, so on a warm
-    // build this is a no-op UP-TO-DATE pass. A discovery failure isn't fatal here — the subsequent
-    // render will surface it; we just can't gate, so we skip provisioning.
-    val discoverOk =
-      withGradleStdout(silenceStdout) {
-        val tasks = modules.map { ":${it.gradlePath}:composePreviewDiscover" }.toTypedArray()
-        runGradle(gradle, *tasks)
-      }
-    if (!discoverOk) return emptyList()
+    // Discover so previews.json exists before we read it to gate the XR fetch. Callers that already
+    // ran [runDiscover] pass discoverFirst = false to avoid a redundant (UP-TO-DATE) pass. A
+    // discovery failure isn't fatal — the subsequent render surfaces it; we just skip provisioning.
+    if (discoverFirst && !runDiscover(gradle, modules, silenceStdout)) return emptyList()
     val hasXr =
       readAllManifests(modules).any { (_, manifest) ->
         manifest.previews.any { it.params.kind == XrCompositeProvision.XR_SUBSPACE_KIND }
@@ -442,7 +459,13 @@ abstract class Command(
       val buildOk =
         if (modules.isEmpty()) true
         else {
-          val xrArgs = provisionXrCompositeArgs(gradle, modules, silenceStdout)
+          // Explicit discover pass before the render so `shards=auto` sees a fresh previews.json at
+          // render-configuration time (see [runDiscover]). Kept as a first-class step — not an
+          // incidental side effect of XR provisioning — so shard sizing can't regress if the XR
+          // path changes. provisionXr therefore skips its own (now-redundant) discover.
+          runDiscover(gradle, modules, silenceStdout)
+          val xrArgs =
+            provisionXrCompositeArgs(gradle, modules, silenceStdout, discoverFirst = false)
           val tasks = modules.map(taskFor).toTypedArray()
           val ok =
             withGradleStdout(silenceStdout) {

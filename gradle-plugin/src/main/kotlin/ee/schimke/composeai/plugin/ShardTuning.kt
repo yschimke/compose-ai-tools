@@ -49,6 +49,17 @@ internal object ShardTuning {
   const val MAX_SHARDS = 8
 
   /**
+   * Estimated peak memory (MB) a single render fork holds — Robolectric sandbox + Compose runtime +
+   * the forked JVM's own heap/metaspace/native overhead. Used only to bound the fork count on
+   * memory-constrained runners: [autoShards] never asks for more forks than `availableMemoryMb /
+   * PER_FORK_MEMORY_MB`. Deliberately generous (a static-only fork is far lighter) so we err on the
+   * side of not OOM-ing a small runner. GitHub-hosted runners scale RAM with cores (2-vCPU≈7 GB,
+   * 4-vCPU≈16 GB), so on the standard ladder the CPU cap usually binds first and this only bites on
+   * tight self-hosted / container runners.
+   */
+  const val PER_FORK_MEMORY_MB = 2048L
+
+  /**
    * Auto mode only turns sharding on when both thresholds are met versus the single-fork baseline.
    * Rationale: forking is an externally visible cost (more JVMs, more memory, more log noise) — we
    * should only pay it when the gain is unambiguous. A 2s→1s speedup is not worth the complexity.
@@ -81,21 +92,38 @@ internal object ShardTuning {
    * if the improvement over K = 1 clears BOTH the absolute ([MIN_SAVING_SECONDS]) and relative
    * ([MIN_SAVING_FRACTION]) thresholds. Otherwise returns 1.
    *
-   * Upper bound is `min(MAX_SHARDS, cores / 2, captureCount)` — leave CPU headroom for Gradle
-   * workers; never shard below one capture per fork.
+   * Upper bound is `min(MAX_SHARDS, cores − 1, availableMemoryMb / PER_FORK_MEMORY_MB,
+   * captureCount)`. We leave a single core for the Gradle daemon + I/O rather than the old `cores /
+   * 2` — while the render task runs it is effectively the *only* Gradle work in flight, so
+   * reserving half the machine left it idle. On the standard GitHub runner ladder that roughly
+   * doubles the usable fork count (a 4-vCPU runner goes from 2 → 3). The memory term stops a
+   * many-core-but-low-RAM runner from OOM-ing; never shard below one capture per fork.
    *
    * @param totalCost sum of `Capture.cost` across every capture in the manifest
    * @param maxIndividualCost largest single `Capture.cost` value (sets the makespan floor)
    * @param captureCount total number of captures (caps shard count so each fork gets ≥ 1)
+   * @param cores CPU cores visible to the build (defaults to the runtime processor count)
+   * @param availableMemoryMb host physical memory in MB used to bound forks; defaults to
+   *   [Long.MAX_VALUE] so unit tests exercise the CPU/cost logic without a machine-dependent memory
+   *   cap. Production callers pass [hostMemoryMb].
    */
   fun autoShards(
     totalCost: Double,
     maxIndividualCost: Double,
     captureCount: Int,
     cores: Int = Runtime.getRuntime().availableProcessors(),
+    availableMemoryMb: Long = Long.MAX_VALUE,
   ): Int {
     if (captureCount < 2 || totalCost <= 0.0) return 1
-    val maxK = minOf(MAX_SHARDS, (cores / 2).coerceAtLeast(1), captureCount)
+    val memForks = (availableMemoryMb / PER_FORK_MEMORY_MB).coerceAtLeast(1L)
+    val maxK =
+      minOf(
+          MAX_SHARDS.toLong(),
+          (cores - 1).coerceAtLeast(1).toLong(),
+          memForks,
+          captureCount.toLong(),
+        )
+        .toInt()
     if (maxK < 2) return 1
 
     val baseline = predictedSeconds(totalCost, maxIndividualCost, 1)
@@ -113,4 +141,21 @@ internal object ShardTuning {
     return if (bestK >= 2 && saved >= MIN_SAVING_SECONDS && fraction >= MIN_SAVING_FRACTION) bestK
     else 1
   }
+
+  /**
+   * Best-effort host physical memory in MB, for the [autoShards] memory bound. Reads the HotSpot
+   * `com.sun.management.OperatingSystemMXBean`; if that management interface isn't present (non-Sun
+   * JVM), returns [Long.MAX_VALUE] so the memory term simply doesn't bind and the CPU/cost caps
+   * decide. Container memory limits aren't reflected by this bean pre-JDK-uncommon setups, but the
+   * generous [PER_FORK_MEMORY_MB] margin absorbs the slack.
+   */
+  fun hostMemoryMb(): Long =
+    try {
+      val os = java.lang.management.ManagementFactory.getOperatingSystemMXBean()
+      val sunOs = os as? com.sun.management.OperatingSystemMXBean
+      val bytes = sunOs?.totalMemorySize ?: -1L
+      if (bytes > 0L) bytes / (1024L * 1024L) else Long.MAX_VALUE
+    } catch (_: Throwable) {
+      Long.MAX_VALUE
+    }
 }

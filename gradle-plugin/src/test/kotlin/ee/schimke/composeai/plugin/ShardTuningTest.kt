@@ -86,8 +86,10 @@ class ShardTuningTest {
   }
 
   @Test
-  fun `shard count is bounded by half the available cores`() {
-    // Lots of cheap captures, but only 4 cores → cap at K = 2.
+  fun `shard count leaves one core for the Gradle daemon`() {
+    // Lots of cheap captures, but only 4 cores → cap at K = cores - 1 = 3.
+    // (Was cores / 2 = 2 before we stopped reserving half the machine for a
+    // Gradle worker pool that's idle while the render task runs.)
     val k =
       ShardTuning.autoShards(
         totalCost = 1000.0,
@@ -95,7 +97,38 @@ class ShardTuningTest {
         captureCount = 1000,
         cores = 4,
       )
+    assertThat(k).isAtMost(3)
+    // And it genuinely uses the extra headroom: a 2-core cap would return ≤2.
+    assertThat(k).isGreaterThan(2)
+  }
+
+  @Test
+  fun `shard count is bounded by available memory`() {
+    // 16 cores would allow up to MAX_SHARDS, and the cost easily justifies it,
+    // but only ~4 GB of RAM → 4096 / PER_FORK_MEMORY_MB(2048) = 2 forks max.
+    val k =
+      ShardTuning.autoShards(
+        totalCost = 1000.0,
+        maxIndividualCost = 1.0,
+        captureCount = 1000,
+        cores = 16,
+        availableMemoryMb = 4096,
+      )
     assertThat(k).isAtMost(2)
+  }
+
+  @Test
+  fun `unbounded memory default does not cap sharding`() {
+    // Same shape as the memory test but with the default (unbounded) memory:
+    // the CPU/cost caps decide, so we get more than the 2 the 4 GB run allowed.
+    val k =
+      ShardTuning.autoShards(
+        totalCost = 1000.0,
+        maxIndividualCost = 1.0,
+        captureCount = 1000,
+        cores = 16,
+      )
+    assertThat(k).isGreaterThan(2)
   }
 
   @Test
