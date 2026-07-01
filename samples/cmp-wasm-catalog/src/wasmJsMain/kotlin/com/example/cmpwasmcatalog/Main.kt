@@ -1,7 +1,13 @@
-@file:OptIn(ExperimentalComposeUiApi::class, kotlin.js.ExperimentalWasmJsInterop::class)
+@file:OptIn(
+  ExperimentalComposeUiApi::class,
+  kotlin.js.ExperimentalWasmJsInterop::class,
+  kotlin.js.ExperimentalJsExport::class,
+)
 
 package com.example.cmpwasmcatalog
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.ComposeViewport
 
@@ -14,15 +20,44 @@ import androidx.compose.ui.window.ComposeViewport
  * browser sandbox, so it's safe to execute even for an unverified session (no code runs on our
  * server). The viewer's theme / font-scale / locale controls re-point these params, so they drive
  * the in-browser render live (device/orientation are server-render-only and stay disabled there).
+ *
+ * Those controls update the render **in place** rather than reloading the iframe: the page's
+ * initial query is the [baseParams] floor and [applyOverrides] (called by the embedding viewer via
+ * `postMessage`) merges a `?a=b` patch over it into [renderParams], which recomposes the live tree.
+ * Recomputing from [baseParams] every time means an absent key reverts to the deep-link default
+ * (e.g. clearing the Theme control falls back to the baked variant's `uiMode`), with no full
+ * reload.
  */
+private var baseParams: Map<String, String> = emptyMap()
+private val renderParams = mutableStateOf<Map<String, String>>(emptyMap())
+
 fun main() {
-  val params = parseQuery(locationSearch())
-  val id = params["id"] ?: catalogComponents.keys.first()
-  val dark = params["uiMode"] == "dark"
-  // Clamp to the viewer slider's range so a crafted query can't blow up layout.
-  val fontScale = params["fontScale"]?.toFloatOrNull()?.coerceIn(0.5f, 2.0f) ?: 1f
-  val rtl = isRtlLocale(params["localeTag"])
-  ComposeViewport(viewportContainerId = "composeApp") { CatalogApp(id, dark, fontScale, rtl) }
+  // The `?…` query is the clean baked default (the viewer's `data-wasm-src`); the viewer carries
+  // its
+  // initial session overrides in the `#…` fragment instead, so [baseParams] stays the true default
+  // and clearing a control later (an empty [applyOverrides] patch) reverts to it rather than
+  // sticking.
+  baseParams = parseQuery(locationSearch())
+  renderParams.value = baseParams + parseQuery(locationHash())
+  ComposeViewport(viewportContainerId = "composeApp") {
+    val params by renderParams
+    val id = params["id"] ?: catalogComponents.keys.first()
+    val dark = params["uiMode"] == "dark"
+    // Clamp to the viewer slider's range so a crafted query can't blow up layout.
+    val fontScale = params["fontScale"]?.toFloatOrNull()?.coerceIn(0.5f, 2.0f) ?: 1f
+    val rtl = isRtlLocale(params["localeTag"])
+    CatalogApp(id, dark, fontScale, rtl)
+  }
+}
+
+/**
+ * Apply a live override patch (`?a=b&c=d`, no leading `?`) pushed by the embedding viewer through
+ * `window.postMessage`. Exported to JS so the host page's message listener can forward it; merges
+ * over [baseParams] so absent keys revert to the deep-link defaults, then recomposes in place.
+ */
+@JsExport
+fun applyOverrides(query: String) {
+  renderParams.value = baseParams + parseQuery(query)
 }
 
 /**
@@ -38,6 +73,9 @@ internal fun isRtlLocale(localeTag: String?): Boolean {
 
 /** The raw `?…` query string, read straight from the browser's `window.location`. */
 private fun locationSearch(): String = js("window.location.search")
+
+/** The `#…` fragment without its leading `#` — the viewer's initial session overrides at load. */
+private fun locationHash(): String = js("window.location.hash.replace(/^#/, '')")
 
 /** Minimal `?a=b&c=d` parser — avoids a `kotlinx-browser` / URLSearchParams dependency. */
 internal fun parseQuery(search: String): Map<String, String> {

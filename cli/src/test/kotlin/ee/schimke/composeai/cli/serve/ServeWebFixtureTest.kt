@@ -283,12 +283,10 @@ class ServeWebFixtureTest {
     assertTrue(wasmView.contains("autocomplete=\"off\">"), "locale enabled with a Wasm app")
     assertTrue(wasmView.contains("id=\"cp-device\" disabled"), "device stays server-only")
     assertTrue(wasmView.contains("id=\"cp-orientation\" disabled"), "orientation stays server-only")
-    // The Wasm iframe URL builder forwards the honoured params (theme/font scale/locale).
-    assertTrue(
-      wasmView.contains("u.searchParams.set(\"fontScale\""),
-      "font scale forwarded to Wasm",
-    )
-    assertTrue(wasmView.contains("u.searchParams.set(\"localeTag\""), "locale forwarded to Wasm")
+    // The Wasm override-patch builder forwards the honoured params (theme/font scale/locale) to the
+    // running app (via postMessage / the initial `#…` fragment), not the iframe query.
+    assertTrue(wasmView.contains("\"fontScale=\""), "font scale forwarded to Wasm")
+    assertTrue(wasmView.contains("\"localeTag=\""), "locale forwarded to Wasm")
     // On a static snapshot, a wasm-honoured control change auto-enables the Wasm tier (rather than
     // firing a /render the published catalog can't serve), so the control actually takes effect.
     assertTrue(

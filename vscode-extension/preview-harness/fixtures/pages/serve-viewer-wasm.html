@@ -317,40 +317,70 @@ a:hover { text-decoration: underline; }
   var wasmFrame = document.getElementById("cp-wasm");
   var wasmToggle = document.getElementById("cp-wasm-toggle");
   var wasmSrc = root.getAttribute("data-wasm-src") || "";
-  function wasmUrl() {
+  // Set once the iframe's Wasm app has loaded and registered its postMessage listener. Until
+  // then a control change re-points ?query (initial load); after, it posts an override patch so
+  // the app recomposes in place instead of reloading the whole ~20 MB Wasm bundle.
+  var wasmReady = false;
+  function wasmBaseSrc() {
     if (!wasmSrc) return "";
     // The src comes from a server-set data- attribute, but resolve it against our own origin and
     // refuse anything not same-origin http(s) anyway — so a `javascript:`/`data:` URL can never
-    // reach the iframe even if the attribute were ever mis-set (defuses DOM-text-as-HTML).
+    // reach the iframe even if the attribute were ever mis-set (defuses DOM-text-as-HTML). The
+    // query is left as the server baked it (the variant's default theme) — session overrides
+    // never go in it, so it stays the app's clean base to revert to when a control is cleared.
     var u;
     try { u = new URL(wasmSrc, location.origin); } catch (e) { return ""; }
     if (u.origin !== location.origin) return "";
-    var el = document.getElementById("cp-uiMode");
-    if (el && el.value) u.searchParams.set("uiMode", el.value);
-    // The Wasm app also honours font scale (density) + locale (layout direction); device /
-    // orientation are server-render-only, so they're not forwarded.
-    var loc = document.getElementById("cp-localeTag");
-    if (loc && loc.value) u.searchParams.set("localeTag", loc.value);
-    if (fontScaleTouched && fs) u.searchParams.set("fontScale", fs.value);
     return u.href;
+  }
+  // The override patch (theme / font scale / locale) the running app merges over its baked base —
+  // a bare `a=b&c=d` query. An absent key falls back to the app's baked default (e.g. cleared
+  // Theme → the variant's uiMode). Device / orientation are server-render-only, so not forwarded.
+  function wasmOverridePatch() {
+    var parts = [];
+    var el = document.getElementById("cp-uiMode");
+    if (el && el.value) parts.push("uiMode=" + encodeURIComponent(el.value));
+    var loc = document.getElementById("cp-localeTag");
+    if (loc && loc.value) parts.push("localeTag=" + encodeURIComponent(loc.value));
+    if (fontScaleTouched && fs) parts.push("fontScale=" + encodeURIComponent(fs.value));
+    return parts.join("&");
+  }
+  // Initial iframe URL: the baked base plus the current overrides in the `#…` fragment, so the
+  // app's first paint honours them yet keeps the query as its true base (a later clear reverts).
+  function wasmInitialSrc() {
+    var base = wasmBaseSrc();
+    if (!base) return "";
+    var patch = wasmOverridePatch();
+    return patch ? base + "#" + patch : base;
   }
   function openWasm() {
     // Wasm and the daemon stream are mutually exclusive — only one transport drives the stage.
     if (live.checked) { live.checked = false; closeStream(); }
     root.setAttribute("data-mode", "wasm");
     img.hidden = true; canvas.hidden = true; wasmFrame.hidden = false;
-    wasmFrame.src = wasmUrl();
+    wasmReady = false;
+    wasmFrame.src = wasmInitialSrc();
     status.textContent = "";
   }
   function closeWasm() {
     root.setAttribute("data-mode", "snapshot");
+    wasmReady = false;
     wasmFrame.hidden = true; wasmFrame.removeAttribute("src");
     img.hidden = false;
   }
   function wasmActive() { return wasmToggle && wasmToggle.checked; }
 
   function onControlsChanged() {
-    if (wasmActive()) { wasmFrame.src = wasmUrl(); return; }
+    if (wasmActive()) {
+      // Recompose in place once the app is up; before it's ready, re-point the initial src (the
+      // fragment carries the overrides) — the load handler re-syncs the final state either way.
+      if (wasmReady && wasmFrame.contentWindow) {
+        wasmFrame.contentWindow.postMessage(wasmOverridePatch(), "*");
+      } else {
+        wasmFrame.src = wasmInitialSrc();
+      }
+      return;
+    }
     if (live.checked && ws && ws.readyState === 1) {
       ws.send(JSON.stringify({ type: "setOverrides", overrides: overrides() }));
     } else if (live.disabled && wasmToggle) {
@@ -377,6 +407,14 @@ a:hover { text-decoration: underline; }
     wasmToggle.addEventListener("change", function () {
       if (wasmToggle.checked) openWasm();
       else { closeWasm(); refreshSnapshot(); }
+    });
+    // The app registers its message listener during startup; mark ready on iframe load so
+    // subsequent control changes recompose in place rather than reloading the bundle.
+    wasmFrame.addEventListener("load", function () {
+      wasmReady = true;
+      // Re-sync any control changed during load (the fragment only captured open-time state).
+      var patch = wasmOverridePatch();
+      if (patch) wasmFrame.contentWindow.postMessage(patch, "*");
     });
   }
   if (fs) {
