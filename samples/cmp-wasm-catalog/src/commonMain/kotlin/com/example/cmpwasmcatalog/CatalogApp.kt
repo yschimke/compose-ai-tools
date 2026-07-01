@@ -74,17 +74,20 @@ fun CatalogApp(id: String, dark: Boolean = false, fontScale: Float = 1f, rtl: Bo
           // absurdly magnified, and shrinking oversized ones so nothing overflows), so switching to
           // the in-browser tier no longer makes it jump in size.
           Box(
-            modifier =
-              Modifier.fillMaxSize().padding(24.dp).onGloballyPositioned { frame = it.size },
+            modifier = Modifier.fillMaxSize().onGloballyPositioned { frame = it.size },
             contentAlignment = Alignment.Center,
           ) {
+            // Fit against the *full* frame with a fractional inset for breathing room — a fixed dp
+            // padding would exceed a short frame (the iframe is sized to the snapshot's box, which
+            // is
+            // tiny for a linear progress bar or badge) and collapse the scale to the 0.25 floor.
             val scale =
               if (frame == IntSize.Zero || content.width == 0 || content.height == 0) 1f
               else
-                minOf(
+                (minOf(
                     frame.width.toFloat() / content.width,
                     frame.height.toFloat() / content.height,
-                  )
+                  ) * 0.9f)
                   .coerceIn(0.25f, 4f)
             Box(
               modifier =
