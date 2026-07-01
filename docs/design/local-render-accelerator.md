@@ -151,10 +151,16 @@ build + daemon spin-up happens **now, post-consent**.
 
 ### 5. Render
 
-The browser opens the normal `WS /ws/{id}` against the approved `sessionId` and
-streams frames exactly as today. Overrides / slider drags on that session need
-**no re-prompt** — only a *different* module or ref starts a fresh negotiation.
-The grant is least-privilege: bound to `(origin, repo, ref, module)`.
+The approved `sessionId` registers as a session, so the browser opens the normal
+streamed-frame lane against it via the **path form** where the leading segment
+selects the session and the trailing segment is the preview id —
+`WS /{sessionId}/ws/{previewId}` (equivalently `WS /ws/{previewId}?session={sessionId}`).
+In `/ws/{name}` the `{name}` is the *preview id*, not the session
+([`ServeHttpServer.kt:239`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeHttpServer.kt)),
+so the session must come from the path prefix or `?session=`. From there it
+streams exactly as today. Overrides / slider drags on that session need **no
+re-prompt** — only a *different* module or ref starts a fresh negotiation. The
+grant is least-privilege: bound to `(origin, repo, ref, module)`.
 
 ### 6. Revoke / expiry
 
@@ -175,7 +181,7 @@ Browser (preview.coo.ee page)        Accelerator (compose-preview serve, 127.0.0
         |-- GET .../{requestId} (poll) ------>|                                    <-- y ----|
         |                                     | build module @ ref, open session             |
         |<-- approved, sessionId -------------|                                              |
-        |-- WS /ws/{sessionId} -------------->| stream frames (render on this machine)        |
+        |-- WS /{sessionId}/ws/{previewId} -->| stream frames (render on this machine)        |
         |<== frames ==========================|                                              |
 ```
 
