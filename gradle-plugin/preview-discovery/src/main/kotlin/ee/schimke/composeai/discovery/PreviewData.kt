@@ -39,18 +39,20 @@ enum class PreviewKind {
   CATALOG,
 }
 
-/** Which kind of design token a [CatalogToken] points at — drives which specimen layout renders it. */
+/**
+ * Which kind of design token a [CatalogToken] points at — drives which specimen layout renders it.
+ */
 enum class CatalogTokenKind {
   /** An `androidx.compose.ui.graphics.Color` property → a labelled swatch row. */
-  COLOR,
+  COLOR
 }
 
 /**
  * One design-token property aggregated into a [PreviewKind.CATALOG] sheet. Discovery records only
  * the *coordinates* (the declaring class + member name) and the display [label] — never the value,
  * because the plugin's scan classpath doesn't carry the consumer's Compose runtime. The renderer
- * reflects the value out of the loaded consumer class at render time (a `Color` property compiles to
- * an erased `long` backing field, reboxed via the synthetic `Color.box-impl`).
+ * reflects the value out of the loaded consumer class at render time (a `Color` property compiles
+ * to an erased `long` backing field, reboxed via the synthetic `Color.box-impl`).
  */
 @Serializable
 data class CatalogToken(

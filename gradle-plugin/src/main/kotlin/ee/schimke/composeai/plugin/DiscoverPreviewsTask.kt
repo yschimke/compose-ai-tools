@@ -112,6 +112,15 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
    */
   @get:Input abstract val lottieRenderSubdir: Property<String>
 
+  /**
+   * Whether this module's render backend can draw `@ColorCatalog` sheets. The Android backend can
+   * (default `true`); the desktop backend can't yet (#2135), so it passes `false` and discovery
+   * marks the synthetic `CATALOG` captures `optional` — the single flag every consumer reads (the
+   * render gate, VS Code's consistency check + render UI) to know a missing catalog PNG is expected
+   * on that backend rather than a regression.
+   */
+  @get:Input abstract val catalogRenderSupported: Property<Boolean>
+
   private val json = Json {
     prettyPrint = true
     encodeDefaults = true
@@ -138,6 +147,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         resourceDirs = resourceDirs.files.toList(),
         lottieRenderSubdir = lottieRenderSubdir.getOrElse("renders"),
         projectClassJars = scopedClassJars,
+        catalogRenderSupported = catalogRenderSupported.getOrElse(true),
       )
     when (val outcome = PreviewDiscovery.discover(input)) {
       is PreviewDiscovery.Outcome.Success -> {

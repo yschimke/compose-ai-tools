@@ -84,6 +84,16 @@ object PreviewDiscovery {
      * types that expose the module's classes only as directories. See issue #1924.
      */
     val projectClassJars: List<File> = emptyList(),
+    /**
+     * Whether this module's render backend can draw `@ColorCatalog` sheets. `true` (the default)
+     * for the Android backend, which renders them; `false` for the desktop backend, which can't yet
+     * (#2135). When `false`, the synthetic `CATALOG` captures are emitted `optional` so a missing
+     * PNG is treated as expected — by the render gate AND every downstream consumer that reads
+     * `Capture.optional` (VS Code's consistency check, its render UI). Keeping the flag on the
+     * capture, rather than only in the Gradle gate, is what makes the desktop skip consistent
+     * everywhere.
+     */
+    val catalogRenderSupported: Boolean = true,
   )
 
   /** Outcome of a [discover] call. */
@@ -387,7 +397,7 @@ object PreviewDiscovery {
     val normalized =
       normalizeRenderOutputs(deduped) +
         discoverLottieAssets(input) +
-        buildColorCatalogPreviews(rawColorCatalogTokens)
+        buildColorCatalogPreviews(rawColorCatalogTokens, input.catalogRenderSupported)
 
     // The generic per-extension reports map is empty on the standalone Gradle path — a11y
     // (today's only canned-report producer) writes its artefacts exclusively through the
@@ -604,7 +614,10 @@ object PreviewDiscovery {
    * single group would just duplicate itself). Appended after [normalizeRenderOutputs] with render
    * outputs already shell-safe, like the Lottie assets.
    */
-  private fun buildColorCatalogPreviews(tokens: List<RawCatalogToken>): List<PreviewInfo> {
+  private fun buildColorCatalogPreviews(
+    tokens: List<RawCatalogToken>,
+    renderSupported: Boolean,
+  ): List<PreviewInfo> {
     if (tokens.isEmpty()) return emptyList()
     val byGroup = LinkedHashMap<String, MutableList<RawCatalogToken>>()
     for (t in tokens) byGroup.getOrPut(t.group) { mutableListOf() }.add(t)
@@ -616,11 +629,17 @@ object PreviewDiscovery {
           id = "colorcatalog__${group.replace(SANITIZE_RENDER_STEM, "_")}",
           displayName = "$group colours",
           tokens = groupTokens,
+          renderSupported = renderSupported,
         )
     }
     if (byGroup.size > 1) {
       entries +=
-        colorCatalogPreview(id = "colorcatalog__all", displayName = "All colours", tokens = tokens)
+        colorCatalogPreview(
+          id = "colorcatalog__all",
+          displayName = "All colours",
+          tokens = tokens,
+          renderSupported = renderSupported,
+        )
     }
     return entries
   }
@@ -629,6 +648,7 @@ object PreviewDiscovery {
     id: String,
     displayName: String,
     tokens: List<RawCatalogToken>,
+    renderSupported: Boolean,
   ): PreviewInfo =
     PreviewInfo(
       id = id,
@@ -643,12 +663,15 @@ object PreviewDiscovery {
               CatalogToken(className = it.className, member = it.member, label = it.name)
             },
         ),
-      // Required (not optional): the Android backend renders catalog sheets, so a missing PNG there
-      // is a real regression the `composePreviewRenderAll` gate must catch. The desktop backend
-      // can't draw them yet (#2135) — rather than weaken the gate for every backend, the desktop
-      // render task skips CATALOG (see `RenderPreviewsTask`) and the desktop-only validation pass
-      // excludes it from the required set (see `registerRenderAllPreviews(requireCatalog = false)`).
-      captures = listOf(Capture(renderOutput = "renders/$id.png")),
+      // The capture is `optional` exactly when the backend can't render catalog sheets. On Android
+      // ([renderSupported] = true) it's required, so a missing PNG is flagged as a regression by
+      // the
+      // gate. On desktop ([renderSupported] = false) it's optional, so every consumer that reads
+      // `Capture.optional` — the render gate, VS Code's consistency check, its render UI — treats
+      // the
+      // (deliberately skipped, #2135) sheet as expected-absent rather than drift. One flag, all
+      // consumers.
+      captures = listOf(Capture(renderOutput = "renders/$id.png", optional = !renderSupported)),
     )
 
   /**

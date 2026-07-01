@@ -143,49 +143,4 @@ class CleanStaleRendersTest {
     assertThat(ComposePreviewTasks.missingPreviewOutputIds(manifest, outDir, isFastTier = false))
       .isEmpty()
   }
-
-  @Test
-  fun `catalog render required on android, excluded on desktop`() {
-    val outDir = tempDir.root.resolve("build/compose-previews")
-    // A CATALOG sheet with no PNG on disk. The Android backend renders catalog sheets, so a missing
-    // one is a real regression and must be flagged (requireCatalog = true, the default). The
-    // desktop
-    // backend can't render them yet (#2135) — its render task skips them, so its validation pass
-    // must not demand the PNG (requireCatalog = false). This is the split that replaced marking the
-    // capture globally `optional`, which would have blinded the Android gate too.
-    val manifest =
-      PreviewManifest(
-        module = "app",
-        variant = "debug",
-        previews =
-          listOf(
-            PreviewInfo(
-              id = "colorcatalog__Brand",
-              functionName = "Brand colours",
-              className = "com.example.TokensKt",
-              params = PreviewParams(kind = PreviewKind.CATALOG),
-              captures = listOf(Capture(renderOutput = "renders/colorcatalog__Brand.png")),
-            )
-          ),
-      )
-
-    assertThat(
-        ComposePreviewTasks.missingPreviewOutputIds(
-          manifest,
-          outDir,
-          isFastTier = false,
-          requireCatalog = true,
-        )
-      )
-      .containsExactly("colorcatalog__Brand")
-    assertThat(
-        ComposePreviewTasks.missingPreviewOutputIds(
-          manifest,
-          outDir,
-          isFastTier = false,
-          requireCatalog = false,
-        )
-      )
-      .isEmpty()
-  }
 }

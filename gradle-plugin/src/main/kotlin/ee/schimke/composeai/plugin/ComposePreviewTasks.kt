@@ -204,6 +204,9 @@ internal object ComposePreviewTasks {
         // allow discovery to go lenient *for that config only* so `compose-preview list` never
         // aborts on such a module. JVM/desktop configs stay strict.
         lenientWhenAndroidOnlyFallback = true,
+        // Desktop can't render `@ColorCatalog` sheets yet (#2135) — mark their captures optional so
+        // the render skip is consistent across the gate and VS Code consumers.
+        catalogRenderSupported = false,
       ) {
         onlyIf { extension.enabled.get() }
         // `compileAndroidMain` is the lifecycle task for the KMP-Android target's `main`
@@ -261,15 +264,7 @@ internal object ComposePreviewTasks {
         dependsOn(renderClasspathGuard)
         dependsOn(project.tasks.matching { it.name in DESKTOP_RESOURCE_TASK_CANDIDATES })
       }
-    // Desktop backend: `requireCatalog = false` — the desktop render task skips CATALOG sheets
-    // (it can't forward the token list yet, #2135), so the gate must not require their PNGs.
-    registerRenderAllPreviews(
-      project,
-      extension,
-      renderTask,
-      previewOutputDir,
-      requireCatalog = false,
-    )
+    registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
 
     registerBundleTask(
       project = project,
@@ -1167,11 +1162,16 @@ internal object ComposePreviewTasks {
     // (and the entire Android path, which passes `false`) stay STRICT so a genuinely unresolvable
     // dependency still surfaces loudly.
     lenientWhenAndroidOnlyFallback: Boolean = false,
+    // `false` on the desktop backend, which can't render `@ColorCatalog` sheets yet (#2135): its
+    // discovered CATALOG captures are emitted `optional` so the render gate and every consumer that
+    // reads `Capture.optional` (VS Code) treat the skipped sheet as expected. Android keeps `true`.
+    catalogRenderSupported: Boolean = true,
     configureDeps: DiscoverPreviewsTask.() -> Unit,
   ): TaskProvider<DiscoverPreviewsTask> {
     val artifactType = Attribute.of("artifactType", String::class.java)
 
     return project.tasks.register("composePreviewDiscover", DiscoverPreviewsTask::class.java) {
+      this.catalogRenderSupported.set(catalogRenderSupported)
       classDirs.from(sourceClassDirs)
       sourceFiles.from(
         project.fileTree("src") {
@@ -1265,13 +1265,6 @@ internal object ComposePreviewTasks {
     extension: PreviewExtension,
     renderTask: TaskProvider<*>,
     previewOutputDir: Provider<Directory>,
-    // `false` on the desktop backend, which can't render `PreviewKind.CATALOG` sheets yet (#2135):
-    // the desktop render task skips them, so the required-output gate must not demand their PNGs.
-    // The Android backend renders catalog sheets, so it keeps the default `true` — a missing
-    // catalog
-    // PNG there is a real regression the gate must catch (rather than weakening the capture to
-    // `optional`, which would blind the gate on every backend).
-    requireCatalog: Boolean = true,
   ) {
     // Post-condition check: every entry in the manifest must have a PNG
     // on disk after the render dependency ran. We ship the renderer
@@ -1343,7 +1336,7 @@ internal object ComposePreviewTasks {
         // from the `<stem>_*` glob so a `Foo_header.png` that
         // belongs to a different preview never gets treated as
         // part of `Foo`'s fan-out.
-        val missing = missingPreviewOutputIds(manifest, outDir, isFastTier, requireCatalog)
+        val missing = missingPreviewOutputIds(manifest, outDir, isFastTier)
         if (missing.isNotEmpty()) {
           val sidecars = readErrorSidecarsFor(manifest, missing, outDir)
           val message = formatMissingPreviewsMessage(manifest, missing, sidecars)
@@ -1523,16 +1516,9 @@ internal object ComposePreviewTasks {
     manifest: PreviewManifest,
     outDir: java.io.File,
     isFastTier: Boolean,
-    // When `false` (the desktop backend), `PreviewKind.CATALOG` sheets are excluded from the
-    // required-output check — the desktop render task skips them (#2135). Android passes `true`, so
-    // a missing catalog PNG there is still flagged.
-    requireCatalog: Boolean = true,
   ): List<String> {
-    val candidates =
-      if (requireCatalog) manifest.previews
-      else manifest.previews.filter { it.params.kind.name != "CATALOG" }
     val siblingNames =
-      candidates
+      manifest.previews
         .filter { it.params.previewParameterProviderClassName == null }
         .flatMap { p ->
           p.captures.map { c -> c.renderOutput } + p.dataProducts.map { product -> product.output }
@@ -1541,7 +1527,7 @@ internal object ComposePreviewTasks {
         .map { java.io.File(outDir, it).name }
         .toSet()
 
-    return candidates
+    return manifest.previews
       .filter { p ->
         val captureMissing =
           p.captures.any { c ->
