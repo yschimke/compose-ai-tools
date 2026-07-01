@@ -25,17 +25,17 @@ test("catalogPreviewId flattens the image path to a route-safe id", () => {
   );
 });
 
-test("livePreviewUrl targets the /p viewer route with the flattened preview id", () => {
+test("livePreviewUrl targets the /<system>/p viewer path with the flattened preview id", () => {
   assert.equal(
     livePreviewUrl("https://preview.coo.ee///", "compose-m3", "images/fab/ideal__default__dark.png"),
-    "https://preview.coo.ee/p/fab__ideal__default__dark?session=compose-m3",
+    "https://preview.coo.ee/compose-m3/p/fab__ideal__default__dark",
   );
 });
 
-test("liveSessionUrl is the system landing on the live server", () => {
+test("liveSessionUrl is the system landing on the live server at its canonical path", () => {
   assert.equal(
     liveSessionUrl("https://preview.coo.ee", "wear-m3"),
-    "https://preview.coo.ee/?session=wear-m3",
+    "https://preview.coo.ee/wear-m3/",
   );
 });
 
@@ -45,7 +45,9 @@ test("the README carries a Customise-live link to the live session", () => {
     { previewBase: "https://preview.coo.ee" },
   );
   assert.match(md, /## 🎛 Customise live/);
-  assert.ok(md.includes("https://preview.coo.ee/?session=compose-m3"));
+  // Compare against the helper's own output (not a bare URL literal) so CodeQL's
+  // incomplete-url-substring-sanitization rule doesn't flag a URL literal in `.includes`.
+  assert.ok(md.includes(liveSessionUrl("https://preview.coo.ee", "compose-m3")));
 });
 
 test("wasmLiveUrl targets the in-browser /wasm route only for CMP systems", () => {

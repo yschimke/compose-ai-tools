@@ -67,9 +67,17 @@ class ServeCatalogStore(
 
   /**
    * Fetch the `<branchPrefix><system>` catalog, lay its images out as previews, and register it.
+   *
+   * [sourceRepo] / [sourceBranchPrefix] override the store's defaults for this one system, so a
+   * single server can serve catalogs published to *different* repos (e.g. `compose-m3` from
+   * `yschimke/compose-ai-tools` and `meshcore-mobile` from `yschimke/meshcore-mobile`, each in its
+   * own `design-artifacts/<system>` branch). Null ⇒ the store's [repo] / [branchPrefix]. The
+   * branch-trust verdict is computed against whichever repo actually served the catalog.
    */
-  fun load(system: String): Result {
+  fun load(system: String, sourceRepo: String? = null, sourceBranchPrefix: String? = null): Result {
     val safe = ServeBundleStore.sanitizeName(system) ?: return Result.Failed(system, "invalid name")
+    val repo = sourceRepo?.takeIf { it.isNotBlank() } ?: this.repo
+    val branchPrefix = sourceBranchPrefix?.takeIf { it.isNotBlank() } ?: this.branchPrefix
     val branch = "$branchPrefix$system"
     val base = "https://raw.githubusercontent.com/$repo/$branch/"
 

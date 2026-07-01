@@ -123,6 +123,11 @@ a:hover { text-decoration: underline; }
   var status = document.getElementById("cp-status");
   var live = document.getElementById("cp-live");
   var previewId = root.getAttribute("data-preview-id");
+  // The session path prefix ("/<system>") when this viewer is served under a path — it sits at
+  // "<base>/p/<id>", so stripping the trailing "/p/<id>" recovers the base ("" for the root
+  // mount / legacy ?session= form). /render + /ws requests are prefixed with it so they hit the
+  // same session without needing ?session= threaded through.
+  var base = location.pathname.replace(/\/p\/[^/]*\/?$/, "");
   var token = new URLSearchParams(location.search).get("token") || "";
   // Carry the tenant through follow-up requests so a non-default ?session= stays on its module.
   var session = new URLSearchParams(location.search).get("session") || "";
@@ -164,7 +169,7 @@ a:hover { text-decoration: underline; }
   }
   function refreshSnapshot() {
     status.textContent = "rendering…";
-    var url = "/render/" + encodeURIComponent(previewId) + ".png?" + query();
+    var url = base + "/render/" + encodeURIComponent(previewId) + ".png?" + query();
     var next = new Image();
     next.onload = function () { img.src = url; status.textContent = ""; };
     next.onerror = function () { status.textContent = "render failed"; };
@@ -289,7 +294,7 @@ a:hover { text-decoration: underline; }
     var proto = location.protocol === "https:" ? "wss:" : "ws:";
     // Request WebP frames (smaller; the browser decodes them via the data URL, and the daemon
     // downgrades to PNG when it can't encode WebP — each frame carries its actual codec).
-    ws = new WebSocket(proto + "//" + location.host + "/ws/" +
+    ws = new WebSocket(proto + "//" + location.host + base + "/ws/" +
       encodeURIComponent(previewId) + "?" + query() + "&codec=webp");
     ws.onmessage = function (ev) {
       var m;

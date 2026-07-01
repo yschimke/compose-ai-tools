@@ -8,9 +8,18 @@
    (baked PNGs, Remote Compose / Protolayout / Lottie IR) for any uploader, and reports a **trust
    verdict** so you can tell a bundle from a producer you trust from an anonymous one.
 2. **The design systems we publish** — `--catalogs compose-m3,wear-m3` fetches each published
-   `design-artifacts/<system>` catalog and serves it read-only at `?session=<system>`. Browsing that
-   branch and opening a live, customisable render are then two ends of one workflow (the branch's
-   README + `catalog.json` carry `livePreview` deep links back here).
+   `design-artifacts/<system>` catalog and serves it read-only at its canonical path `/<system>/`
+   (the legacy `?session=<system>` form still works). Browsing that branch and opening a live,
+   customisable render are then two ends of one workflow (the branch's README + `catalog.json` carry
+   `livePreview` deep links back here).
+
+   A catalog entry may name a **per-system source repo** as `<system>@<owner>/<repo>`, so one server
+   can serve systems published to *different* repos — e.g. `compose-m3,wear-m3` from this repo
+   alongside `--catalogs-unlisted meshcore-mobile@yschimke/meshcore-mobile` from the app's own repo.
+   `--catalogs-unlisted` serves a system exactly like `--catalogs` but keeps it **off the front-page
+   "Design systems" nav** — reachable at `/<system>/` (and `?session=`) but not advertised on the
+   landing page. Every catalog's branch (whatever repo) must be in the `--trust-store` to badge
+   `Trusted(Branch)`; otherwise it serves `Unverified` (the data tiers serve either way).
 
 In `--public` mode the landing page opens with a short **"about" intro** explaining what the host is
 and its safety model, with a link to the machine-readable [`/version`](#endpoints):
@@ -83,9 +92,14 @@ gzipped) is cached and revalidated cheaply (304) instead of re-downloaded each v
 compose-preview serve \
   --module :samples:design-catalog-m3 \   # a base module is the default session
   --public \                              # open every route (no token)
-  --catalogs compose-m3,wear-m3 \         # serve the published design systems (Wasm app rides the branch)
-  --trust-store trust/producers.json \    # who we trust
+  --catalogs compose-m3,wear-m3 \         # published design systems, listed on the front-page nav
+  --catalogs-unlisted \                   # served at /<system>/ but hidden from the nav; each from its own repo
+      meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose \
+  --trust-store trust/producers.json \    # who we trust (must list every catalog's branch/repo)
   --host 0.0.0.0 --port 8080
+
+# The listed systems open at https://preview.coo.ee/compose-m3/ ; the unlisted app
+# systems at https://preview.coo.ee/meshcore-mobile/ (not on the front page, but shareable).
 ```
 
 - **`--public`** drops the token gate (the deployed server is meant to be open). It is **safe by
@@ -95,12 +109,15 @@ compose-preview serve \
 ## Deploying `preview.coo.ee`
 
 Both container profiles take this config from env (the entrypoint maps `SERVE_PUBLIC`,
-`SERVE_CATALOGS`, `SERVE_TRUST_STORE`, `SERVE_WASM_DIR`, `SERVE_ACCEPT_BUNDLES` → flags) and put
-**Caddy** in front for TLS. They default to the **open public profile** (`SERVE_PUBLIC=1`, catalogs
-`compose-m3,wear-m3`); set `SERVE_PUBLIC=0` + `SERVE_TOKEN` for a token-gated box.
+`SERVE_CATALOGS`, `SERVE_CATALOGS_UNLISTED`, `SERVE_TRUST_STORE`, `SERVE_WASM_DIR`,
+`SERVE_ACCEPT_BUNDLES` → flags) and put **Caddy** in front for TLS. They default to the **open public
+profile** (`SERVE_PUBLIC=1`, catalogs `compose-m3,wear-m3` on the nav, plus the app systems
+`meshcore-mobile` / `homeassistant-remotecompose` served unlisted at `/<system>/` from their own
+repos via `SERVE_CATALOGS_UNLISTED`); set `SERVE_PUBLIC=0` + `SERVE_TOKEN` for a token-gated box.
 
 The prebuilt `deploy/image` **bakes a branch-trust store** at `/trust/producers.json` (trusting
-`yschimke/compose-ai-tools` `design-artifacts/*`) and the entrypoint defaults `SERVE_TRUST_STORE` to
+`design-artifacts/*` on `yschimke/compose-ai-tools`, `yschimke/meshcore-mobile`, and
+`yschimke/homeassistant-remotecompose`) and the entrypoint defaults `SERVE_TRUST_STORE` to
 it, so the published catalogs badge as `Trusted(Branch)` out of the box rather than `unverified`.
 Mount your own over that path (or set `SERVE_TRUST_STORE` to it) to pin different producers, or set
 `SERVE_TRUST_STORE=none` to run trustless. (Empty falls back to the baked default — use `none` to opt
@@ -148,6 +165,14 @@ Gradle build + live render is acceptable.
 `GET /wasm/{system}/…` in-browser CMP app (ungated static assets) · `GET /healthz` ·
 `GET /version`. In `--public` mode all are open; otherwise the token gates everything but
 `/healthz`, `/version`, and `/wasm/` (static, no session data).
+
+Every session-selecting route also has a **path form** where the leading `/{system}` segment picks
+the session instead of `?session=`: `GET /{system}/` index · `GET /{system}/p/{id}` viewer ·
+`GET /{system}/render/{id}.png` PNG · `GET /{system}/api/previews` JSON · `GET /{system}/bundle.zip`
+· `WS /{system}/ws/{id}` stream. This is the canonical public URL for a published catalog
+(`/compose-m3/`, `/meshcore-mobile/`, …); the `?session=` form stays for back-compat. The constant
+routes (`/healthz`, `/version`, `/bundle.zip`, `/wasm/…`) outrank the `/{system}` catch-all, so an
+unknown single segment just 404s like a bad session.
 
 `GET /version` is the host's machine-readable identity — ungated so a deployer, Watchtower check, or
 the design-artifacts gallery can confirm which build is live without a token:

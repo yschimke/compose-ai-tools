@@ -23,6 +23,11 @@ services:
       # SERVE_PUBLIC=0 and SERVE_TOKEN in .env.
       SERVE_PUBLIC: "${SERVE_PUBLIC:-1}"
       SERVE_CATALOGS: "${SERVE_CATALOGS:-compose-m3,wear-m3}"
+      # App design systems published from their OWN repos, served but hidden from the
+      # front-page nav — reachable at /<system>/ (and ?session=<system>). The
+      # <system>@<owner>/<repo> suffix points serve at each app's design-artifacts/<system>
+      # branch; the baked trust store trusts those branches so they badge Trusted(Branch).
+      SERVE_CATALOGS_UNLISTED: "${SERVE_CATALOGS_UNLISTED:-meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose}"
       # The image bakes a branch-trust store at /trust/producers.json and the
       # entrypoint defaults to it, so the published design-artifacts catalogs badge
       # as Trusted(Branch) out of the box — leave this unset. Set your own path to

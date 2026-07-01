@@ -60,6 +60,7 @@ internal object CliFlags {
       "--accept-bundles-from",
       "--trust-store",
       "--catalogs",
+      "--catalogs-unlisted",
       "--catalog-repo",
       "--catalog-branch-prefix",
       "--wasm-dir",

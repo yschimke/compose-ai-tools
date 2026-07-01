@@ -93,6 +93,28 @@ class ServeWebFixtureTest {
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         wasmSrc = "/wasm/compose-m3/?id=card-filled",
       )
+    // A catalog served under its canonical path (/meshcore-mobile/) rather than ?session=: same
+    // pages, but links stay on the path (basePath) and drop the &session= param. Captures the
+    // path-mounted landing + viewer the public server now serves these design systems at.
+    val landingPath =
+      ServeWeb.landingPage(
+        "meshcore-mobile",
+        previews,
+        token,
+        sessionId = "meshcore-mobile",
+        trust = "branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile",
+        isPublic = true,
+        catalogs = listOf("compose-m3", "wear-m3"),
+        basePath = "/meshcore-mobile",
+      )
+    val viewerPath =
+      ServeWeb.viewerPage(
+        previews.first { it.id.endsWith("ProfileScreenPreview") },
+        token,
+        sessionId = "meshcore-mobile",
+        trust = "branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile",
+        basePath = "/meshcore-mobile",
+      )
 
     if (update) {
       pagesDir.mkdirs()
@@ -100,6 +122,8 @@ class ServeWebFixtureTest {
       File(pagesDir, "serve-landing-public.html").writeText(landingPublic)
       File(pagesDir, "serve-viewer.html").writeText(viewer)
       File(pagesDir, "serve-viewer-wasm.html").writeText(wasmViewer)
+      File(pagesDir, "serve-landing-path.html").writeText(landingPath)
+      File(pagesDir, "serve-viewer-path.html").writeText(viewerPath)
       writePlaceholderPng(File(pagesDir, "_render-placeholder.png"))
       return
     }
@@ -108,6 +132,8 @@ class ServeWebFixtureTest {
     assertGolden(File(pagesDir, "serve-landing-public.html"), landingPublic)
     assertGolden(File(pagesDir, "serve-viewer.html"), viewer)
     assertGolden(File(pagesDir, "serve-viewer-wasm.html"), wasmViewer)
+    assertGolden(File(pagesDir, "serve-landing-path.html"), landingPath)
+    assertGolden(File(pagesDir, "serve-viewer-path.html"), viewerPath)
     assertTrue(
       File(pagesDir, "_render-placeholder.png").isFile,
       "missing _render-placeholder.png — regenerate with UPDATE_SERVE_WEB_FIXTURES=true",
@@ -131,15 +157,15 @@ class ServeWebFixtureTest {
 
   @Test
   fun `landing lists served catalogs as session nav links, marking the current one`() {
-    // Default session (sessionId null): every catalog is a link to its ?session=.
+    // Default session (sessionId null): every catalog is a link to its canonical /<system>/ path.
     val front =
       ServeWeb.landingPage(moduleLabel, previews, token, catalogs = listOf("compose-m3", "wear-m3"))
     assertTrue(front.contains("class=\"cp-systems\""), "expected the design-systems nav")
     assertTrue(
-      front.contains("href=\"/?token=$token&session=compose-m3\""),
-      "expected a compose-m3 link",
+      front.contains("href=\"/compose-m3/?token=$token\""),
+      "expected a compose-m3 path link",
     )
-    assertTrue(front.contains("href=\"/?token=$token&session=wear-m3\""), "expected a wear-m3 link")
+    assertTrue(front.contains("href=\"/wear-m3/?token=$token\""), "expected a wear-m3 path link")
 
     // On a catalog session, that system is the current (non-link) pill, the other stays a link.
     val onCompose =
@@ -154,10 +180,59 @@ class ServeWebFixtureTest {
       onCompose.contains("aria-current=\"page\">compose-m3</span>"),
       "current catalog is marked",
     )
-    assertTrue(onCompose.contains("session=wear-m3"), "other catalog stays a link")
+    assertTrue(onCompose.contains("href=\"/wear-m3/?token=$token\""), "other catalog stays a link")
 
     // No catalogs → no nav row.
     assertTrue(!ServeWeb.landingPage(moduleLabel, previews, token).contains("class=\"cp-systems\""))
+  }
+
+  @Test
+  fun `path-mounted pages keep links on the path and drop the session query param`() {
+    // Served under /meshcore-mobile/: card, render and zip links carry the /meshcore-mobile prefix
+    // and are token-only (the path, not &session=, carries the session).
+    val landing =
+      ServeWeb.landingPage(
+        "meshcore-mobile",
+        previews,
+        token,
+        sessionId = "meshcore-mobile",
+        basePath = "/meshcore-mobile",
+      )
+    assertTrue(
+      landing.contains("href=\"/meshcore-mobile/p/com.example.ButtonPreview?token=$token\""),
+      "card link stays on the path",
+    )
+    assertTrue(
+      landing.contains(
+        "src=\"/meshcore-mobile/render/com.example.ButtonPreview.png?token=$token\""
+      ),
+      "render link stays on the path",
+    )
+    assertTrue(landing.contains("href=\"/meshcore-mobile/bundle.zip?token=$token\""), "zip on path")
+    assertTrue(!landing.contains("&session="), "no &session= param in path mode")
+
+    val viewer =
+      ServeWeb.viewerPage(
+        previews.first(),
+        token,
+        sessionId = "meshcore-mobile",
+        basePath = "/meshcore-mobile",
+      )
+    assertTrue(
+      viewer.contains("href=\"/meshcore-mobile/?token=$token\""),
+      "back link stays on path",
+    )
+    // No same-session link carries &session= (the viewer JS still contains the literal "&session="
+    // for the legacy query lane, so match the link pattern, not the bare substring).
+    assertTrue(
+      !viewer.contains("&session=meshcore-mobile"),
+      "no &session= link param in path-mode viewer",
+    )
+    // The viewer JS recovers the base from the path so /render + /ws hit the same session.
+    assertTrue(
+      viewer.contains("location.pathname.replace"),
+      "viewer derives its request base from the path",
+    )
   }
 
   @Test

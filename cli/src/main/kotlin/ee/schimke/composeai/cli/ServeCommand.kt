@@ -145,15 +145,26 @@ class ServeCommand(args: List<String>) : Command(args) {
   /**
    * Design systems to serve from their published `design-artifacts/<system>` branches (`--catalogs
    * compose-m3,wear-m3`): each is fetched (catalog.json + images) and registered as a read-only
-   * `?session=<system>` session, trusted-by-origin when the branch is in the trust store.
+   * session reachable at `/<system>/` (and, for back-compat, `?session=<system>`),
+   * trusted-by-origin when the branch is in the trust store.
+   *
+   * An entry may carry a **per-system source repo** as `<system>@<owner>/<repo>` so one server can
+   * mix catalogs published to different repos (e.g. `meshcore-mobile@yschimke/meshcore-mobile`
+   * alongside the default-repo `compose-m3`). Without `@…` the shared `--catalog-repo` is used.
    */
-  private val catalogs: List<String> =
-    args.flagValue("--catalogs")?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
-      ?: emptyList()
+  private val catalogsRaw: String? = args.flagValue("--catalogs")
   /**
-   * The catalog systems that actually registered (a subset of [catalogs] — one can fail to fetch).
-   * Filled by [registerCatalogs]; surfaced on the landing page as `?session=<system>` nav links so
-   * the public front door lists the served design systems instead of hiding them behind the query.
+   * Like [catalogsRaw], but these systems are served **without** a front-page nav link — reachable
+   * by path (`/<system>/`) / `?session=<system>` but hidden from the landing "Design systems" row
+   * (`--catalogs-unlisted meshcore-mobile@yschimke/meshcore-mobile,…`). For app design systems we
+   * publish but don't want on the public front door.
+   */
+  private val catalogsUnlistedRaw: String? = args.flagValue("--catalogs-unlisted")
+  /**
+   * The **listed** catalog systems that actually registered (one can fail to fetch). Filled by
+   * [registerCatalogs]; surfaced on the landing page as nav links so the public front door lists
+   * the served design systems instead of hiding them behind the query. Unlisted catalogs register
+   * as sessions but never land here, so they stay off the nav.
    */
   private val registeredCatalogs = mutableListOf<String>()
   /**
@@ -177,6 +188,41 @@ class ServeCommand(args: List<String>) : Command(args) {
   private val catalogBranchPrefix: String =
     args.flagValue("--catalog-branch-prefix")?.takeIf { it.isNotBlank() }
       ?: ServeCatalogStore.DEFAULT_BRANCH_PREFIX
+
+  /**
+   * A parsed `--catalogs` / `--catalogs-unlisted` entry: the [system] id, the [repo] its
+   * `design-artifacts/<system>` branch lives in (the shared [catalogRepo] unless the entry gave an
+   * `@<owner>/<repo>` override), and whether it's [listed] on the front-page nav.
+   */
+  private data class CatalogRef(val system: String, val repo: String, val listed: Boolean)
+
+  /**
+   * Parse one comma-separated flag value into [CatalogRef]s; `<system>@<owner>/<repo>` per entry.
+   */
+  private fun parseCatalogRefs(raw: String?, listed: Boolean): List<CatalogRef> =
+    raw
+      ?.split(",")
+      ?.map { it.trim() }
+      ?.filter { it.isNotEmpty() }
+      ?.map { entry ->
+        val at = entry.indexOf('@')
+        if (at < 0) {
+          CatalogRef(entry, catalogRepo, listed)
+        } else {
+          val system = entry.substring(0, at).trim()
+          val repo = entry.substring(at + 1).trim().ifEmpty { catalogRepo }
+          CatalogRef(system, repo, listed)
+        }
+      } ?: emptyList()
+
+  /**
+   * All catalog refs to serve — listed first, then unlisted; de-duplicated by system (first wins).
+   */
+  private val catalogRefs: List<CatalogRef> by lazy {
+    (parseCatalogRefs(catalogsRaw, listed = true) +
+        parseCatalogRefs(catalogsUnlistedRaw, listed = false))
+      .distinctBy { it.system }
+  }
 
   override fun run() {
     if ("--help" in args || "-h" in args) {
@@ -302,7 +348,7 @@ class ServeCommand(args: List<String>) : Command(args) {
     // A catalog that carries a `web/wasm/` app yields a system→dir entry so the in-browser tier
     // rides the same trusted branch (no local --wasm-dir build needed).
     val catalogWasm =
-      if (catalogs.isNotEmpty()) registerCatalogs(registry, worktrees, openHost) else emptyMap()
+      if (catalogRefs.isNotEmpty()) registerCatalogs(registry, worktrees, openHost) else emptyMap()
     // Runtime ingestion (--accept-bundles): clients POST a bundle (or a ?url= to one) and it's
     // registered as a pinned session. Unpacked under a temp dir for this server's lifetime.
     val bundleStore =
@@ -534,13 +580,15 @@ class ServeCommand(args: List<String>) : Command(args) {
           buildTrustedCatalogSource(system, source, registry, worktrees, openHost)
         },
       )
-    for (system in catalogs) {
-      when (val r = store.load(system)) {
+    for (ref in catalogRefs) {
+      when (val r = store.load(ref.system, sourceRepo = ref.repo)) {
         is ServeCatalogStore.Result.Ok -> {
-          registeredCatalogs += r.system
+          // Only listed catalogs feed the front-page nav; unlisted ones stay reachable by
+          // /<system>/ and ?session=<system> but off the landing "Design systems" row.
+          if (ref.listed) registeredCatalogs += r.system
           System.err.println(
             "serve: catalog ${r.system} → ${r.previewCount} preview(s), trust=${r.trust} " +
-              "(?session=${r.system})"
+              "(/${r.system}/${if (ref.listed) "" else ", unlisted"})"
           )
         }
         is ServeCatalogStore.Result.Failed ->
@@ -806,13 +854,20 @@ class ServeCommand(args: List<String>) : Command(args) {
                           Uploaded bundles are verified against it and the verdict (signature /
                           branch / provenance / unverified) is returned + badged. Omitted = trust
                           nothing (every upload unverified); the data tiers serve either way.
-        --catalogs <system>[,<system>…]
+        --catalogs <system>[@<owner>/<repo>][,…]
                           Serve our published design systems from their design-artifacts/<system>
                           branches (e.g. compose-m3,wear-m3): each is fetched (catalog.json + images)
-                          and served read-only at ?session=<system>, trusted-by-origin when the
-                          branch is in --trust-store.
+                          and served read-only at /<system>/ (also ?session=<system>), listed on the
+                          front-page nav, trusted-by-origin when the branch is in --trust-store. Add
+                          @<owner>/<repo> to fetch a system from a different repo than --catalog-repo
+                          (e.g. meshcore-mobile@yschimke/meshcore-mobile).
+        --catalogs-unlisted <system>[@<owner>/<repo>][,…]
+                          Like --catalogs, but served WITHOUT a front-page nav link — reachable at
+                          /<system>/ and ?session=<system> but hidden from the landing "Design
+                          systems" row. For app design systems we publish but keep off the front door.
         --catalog-repo <owner/repo>
-                          Repo the catalogs are fetched from (default yschimke/compose-ai-tools).
+                          Default repo the catalogs are fetched from (default
+                          yschimke/compose-ai-tools); per-entry @<owner>/<repo> overrides it.
         --catalog-branch-prefix <prefix>
                           Branch prefix for --catalogs (default design-artifacts/).
         --wasm-dir <system>=<dir>[,<system>=<dir>…]
