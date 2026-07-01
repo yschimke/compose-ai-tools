@@ -95,6 +95,10 @@ dependencies {
   // type-role audit sheet, font-family weight ladder, and a fixed script-coverage check set,
   // each wrapped in a normal `@Preview`. Sister to `:notification-preview-runtime`.
   implementation(project(":typography-preview-runtime"))
+  // `ColorSchemeSpecimen` / `ColorSpecimen` helpers — Material 3 `ColorScheme` role swatch sheet
+  // and an arbitrary named-colour palette sheet, each wrapped in a normal `@Preview`. Sister to
+  // `:typography-preview-runtime`; the compose-ai-tools analogue of Showkase's `@ShowkaseColor`.
+  implementation(project(":color-preview-runtime"))
   // `GlanceAppWidgetContent` composable helper for the Glance-widget @Preview. The runtime
   // module re-exposes `androidx.glance:glance-appwidget` as `api`, so the sample's
   // `GlanceWidgetPreview` can declare a `GlanceAppWidget` subclass and pass it to the helper

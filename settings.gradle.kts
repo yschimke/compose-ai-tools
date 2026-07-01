@@ -156,6 +156,10 @@ include(":typography-preview-runtime")
 
 project(":typography-preview-runtime").projectDir = file("runtimes/typography")
 
+include(":color-preview-runtime")
+
+project(":color-preview-runtime").projectDir = file("runtimes/color")
+
 include(":splash-preview-runtime")
 
 project(":splash-preview-runtime").projectDir = file("runtimes/splash")
