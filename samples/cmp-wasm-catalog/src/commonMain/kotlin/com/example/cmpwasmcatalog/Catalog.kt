@@ -73,12 +73,13 @@ val catalogComponents: Map<String, @Composable () -> Unit> =
       },
     "card-filled" to { Card { Box(Modifier.size(160.dp, 80.dp)) { Text("Filled card") } } },
     "fab" to { FloatingActionButton(onClick = {}) { Text("+") } },
-    // Communication — progress + badge.
-    "progress-linear" to
-      {
-        Box(Modifier.width(220.dp)) { LinearProgressIndicator(progress = { 0.6f }) }
-      },
-    "progress-circular" to { CircularProgressIndicator(progress = { 0.6f }) },
+    // Communication — progress + badge. The in-browser tier runs the **indeterminate** (animated)
+    // variants so they're visibly live; the baked snapshot keeps the determinate `0.6` capture (a
+    // deterministic frame from the separate Android catalog), so this is the live tier coming
+    // alive,
+    // not a snapshot mismatch.
+    "progress-linear" to { Box(Modifier.width(220.dp)) { LinearProgressIndicator() } },
+    "progress-circular" to { CircularProgressIndicator() },
     "badge" to { Badge { Text("8") } },
     // Text fields.
     "textfield-filled" to
