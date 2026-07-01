@@ -565,13 +565,23 @@ internal object AndroidPreviewSupport {
     val mainCompileTaskNames =
       if (isKmp) listOf("compile${capVariant}Kotlin", "compile${capVariant}KotlinAndroid")
       else listOf("compile${capVariant}Kotlin")
+    // Includes the screenshotTest *javac* task: `sourceClassDirs` adds both the Kotlin
+    // (`built_in_kotlinc/…ScreenshotTest/…Kotlin/classes`) and the javac
+    // (`intermediates/javac/${variantName}ScreenshotTest/classes`) outputs to the render classpath,
+    // so consumers must depend on both compile tasks or Gradle's strict validation fails for a
+    // module with Java sources under `src/screenshotTest/java`. Empty-safe via `tasks.matching`.
     val screenshotCompileTaskNames =
       if (isKmp)
         listOf(
           "compile${capVariant}ScreenshotTestKotlin",
           "compile${capVariant}ScreenshotTestKotlinAndroid",
+          "compile${capVariant}ScreenshotTestJavaWithJavac",
         )
-      else listOf("compile${capVariant}ScreenshotTestKotlin")
+      else
+        listOf(
+          "compile${capVariant}ScreenshotTestKotlin",
+          "compile${capVariant}ScreenshotTestJavaWithJavac",
+        )
     val discoverTask =
       ComposePreviewTasks.registerDiscoverTask(
         project,
