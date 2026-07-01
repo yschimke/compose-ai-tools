@@ -29,8 +29,19 @@ and breakpoints that matter.
 | --- | --- | --- |
 | `samples/design-catalog-m3` | Compose Material 3 (+ Adaptive, planned) | ✅ template |
 | `samples/design-catalog-wear-m3` | Wear Compose M3 | ✅ |
+| `samples/design-catalog-remote-m3` | Remote Compose (Wear Compose Remote M3 + `remote-creation-compose`) | ✅ |
 | `samples/design-catalog-glimmer` | Glimmer (Android XR) | planned (see `samples/xr-glimmer`) |
 | `samples/design-catalog-glance` | Glance app widgets + Wear widgets | planned |
+
+The Remote Compose catalog is the sticker-sheet sibling of the
+`samples/remotecompose` demo (which shows the two *ways* to preview Remote
+Compose). Each sticker is a real `RemoteDocument` built by `RemotePreview` and
+rasterised by the Remote Compose player, so — unlike the M3/Wear stickers — it
+renders on the player's own opaque canvas (`showBackground = true`, no
+transparency) and has a single primary mode (the document carries explicit
+colours, so there is no light/dark split). It carries the alpha Remote Compose
+runtime and `compileSdk 37`, diverging from the rest of the repo; see its
+`build.gradle.kts` and `:samples:remotecompose`.
 
 Each module carries a `catalog.spec.json` (the Phase-0 inventory: groups,
 captions, primary modes, breakpoints, and the seed-kit frame per component).

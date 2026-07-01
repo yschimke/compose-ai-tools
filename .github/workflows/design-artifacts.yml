@@ -43,6 +43,12 @@ jobs:
           - system: wear-m3
             module: 'samples:design-catalog-wear-m3'
             spec: 'samples/design-catalog-wear-m3/catalog.spec.json'
+          - system: remote-m3
+            module: 'samples:design-catalog-remote-m3'
+            spec: 'samples/design-catalog-remote-m3/catalog.spec.json'
+            # No wasm tier: Remote Compose is an Android-only alpha
+            # (androidx.wear.compose.remote / androidx.compose.remote, compileSdk 37),
+            # with no wasmJs target — same as Wear.
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
