@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.16.9](https://github.com/yschimke/compose-ai-tools/compare/v0.16.8...v0.16.9) (2026-07-01)
+
+
+### Features
+
+* **serve:** path-based catalog URLs + per-repo & unlisted --catalogs ([#2126](https://github.com/yschimke/compose-ai-tools/issues/2126)) ([bea1caa](https://github.com/yschimke/compose-ai-tools/commit/bea1caa63a39c2a1f2bfdfa493034ee22b995094))
+
+
+### Bug Fixes
+
+* **deploy:** move Watchtower to maintained fork ([#2122](https://github.com/yschimke/compose-ai-tools/issues/2122)) ([c6b6680](https://github.com/yschimke/compose-ai-tools/commit/c6b6680c2c1d951b1bdef5b1f742deac07b7e1f5))
+* **samples:** opt in to ExperimentalRotateToLookAtUserApi in xr-spatial test ([#2120](https://github.com/yschimke/compose-ai-tools/issues/2120)) ([6c5a8df](https://github.com/yschimke/compose-ai-tools/commit/6c5a8df186f284b7f7d664a0ff4d20347a3eb317))
+* **serve:** font-scale/theme/locale controls work on first interaction on catalog pages ([#2123](https://github.com/yschimke/compose-ai-tools/issues/2123)) ([73807b4](https://github.com/yschimke/compose-ai-tools/commit/73807b430004c908c835bcf8dcf5c449293122bc))
+* **serve:** preserve the baked variant theme when opening the Wasm tier ([#2124](https://github.com/yschimke/compose-ai-tools/issues/2124)) ([7b71908](https://github.com/yschimke/compose-ai-tools/commit/7b71908fb2f4e6e785c98d09349a769b86d1d0ad))
+
 ## [0.16.8](https://github.com/yschimke/compose-ai-tools/compare/v0.16.7...v0.16.8) (2026-06-30)
 
 
