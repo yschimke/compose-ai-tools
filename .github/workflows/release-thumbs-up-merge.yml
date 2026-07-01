@@ -1,0 +1,105 @@
+name: Release PR thumbs-up merge
+
+# One-tap release, human-gated. The release-please PR sits fully green (the heavy
+# CI jobs skip on it, and the two required integration legs are reported by
+# `release-please-gate` in integration.yml) but is deliberately NOT auto-merged.
+# When the maintainer signs off with a 👍 (`+1`) reaction on the PR, this poller
+# squash-merges it; with no 👍 it leaves the PR untouched for a manual merge.
+#
+# GitHub has no "reaction" event, so this polls on a cron rather than triggering
+# off the reaction. Merging with the built-in GITHUB_TOKEN never ticks the
+# "bypass rules" box, so it only merges once the PR is genuinely green.
+#
+# One wrinkle: a merge performed with GITHUB_TOKEN does NOT start new workflow
+# runs (GitHub's recursion guard), so the push to `main` would not fire
+# `release-please.yml` and the tag + GitHub Release would never be cut. We
+# therefore dispatch `release-please.yml` explicitly after merging — on its next
+# run it sees the merged release commit and cuts the release + chains the
+# publish, exactly as a human web-UI merge would.
+
+on:
+  schedule:
+    # Every ~10 minutes — GitHub has no reaction trigger, so we poll. Latency
+    # between the 👍 and the merge is at most one interval.
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+# Least privilege: read PR reactions (issues: read — reactions live on the
+# issues endpoint, and omitted permissions default to `none`), merge the PR
+# (contents + pull-requests), and dispatch release-please.yml (actions: write).
+permissions:
+  contents: write
+  pull-requests: write
+  issues: read
+  actions: write
+
+concurrency:
+  group: release-thumbs-up-merge
+  cancel-in-progress: false
+
+jobs:
+  merge-on-thumbs-up:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge release PRs the maintainer reacted 👍 to
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          # Only this login's 👍 authorises a merge. The reaction IS the sign-off,
+          # so this is the security gate — keep it to a trusted maintainer.
+          APPROVER: yschimke
+        run: |
+          set -euo pipefail
+
+          # Open release-please PRs only: bot-authored, `release-please--` head,
+          # targeting main — mirroring the guard in integration.yml so a human/
+          # fork PR that merely borrows the branch prefix can never be treated as
+          # a release PR (the 👍 gate below is a second line of defence, per-PR).
+          mapfile -t prs < <(
+            gh pr list --repo "$GH_REPO" --state open \
+              --json number,headRefName,baseRefName,author \
+              --jq '.[]
+                    | select((.headRefName | startswith("release-please--"))
+                             and .baseRefName == "main"
+                             and .author.is_bot)
+                    | .number'
+          )
+          if [ "${#prs[@]}" -eq 0 ]; then
+            echo "No open release-please PR — nothing to do."
+            exit 0
+          fi
+
+          merged=0
+          for pr in "${prs[@]}"; do
+            # Require a 👍 (+1) reaction from the approver on the PR itself.
+            approved=$(
+              gh api "repos/$GH_REPO/issues/$pr/reactions" \
+                --jq '[.[] | select(.content == "+1" and .user.login == env.APPROVER)] | length'
+            )
+            if [ "${approved:-0}" -eq 0 ]; then
+              echo "PR #$pr: no 👍 from $APPROVER yet — leaving it for the maintainer."
+              continue
+            fi
+
+            # Only merge when it's actually green — we never bypass. UNSTABLE
+            # (a non-required check failing) is still mergeable; BLOCKED / BEHIND
+            # / DIRTY / UNKNOWN mean wait and retry next run.
+            state=$(gh pr view "$pr" --repo "$GH_REPO" --json mergeStateStatus --jq '.mergeStateStatus')
+            case "$state" in
+              CLEAN|HAS_HOOKS|UNSTABLE)
+                echo "PR #$pr: 👍 from $APPROVER and mergeable ($state) — squash-merging."
+                gh pr merge "$pr" --repo "$GH_REPO" --squash
+                merged=1
+                ;;
+              *)
+                echo "PR #$pr: approved but not mergeable yet ($state) — retrying next run."
+                ;;
+            esac
+          done
+
+          # A GITHUB_TOKEN merge won't re-trigger release-please.yml, so kick it
+          # to cut the tag + GitHub Release for the just-merged version(s).
+          if [ "$merged" -eq 1 ]; then
+            echo "Dispatching release-please.yml to cut the release."
+            gh workflow run release-please.yml --repo "$GH_REPO" --ref main
+          fi
