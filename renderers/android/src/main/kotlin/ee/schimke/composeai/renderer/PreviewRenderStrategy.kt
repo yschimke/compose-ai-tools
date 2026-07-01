@@ -285,6 +285,9 @@ private object CatalogPreviewStrategy : PreviewRenderStrategy {
                     .getOrNull()
             }
         }
+        // Emit the resolved-token sidecar (issue #2167) once per sheet, alongside the PNG. Keyed by
+        // `preview.id` so it fires on first composition only — the render composes exactly once.
+        remember(preview.id) { CatalogTokenSidecar.write(preview.id, preview.params.catalogTokens) }
         Box(Modifier.fillMaxSize().background(CATALOG_SHEET_BACKGROUND).padding(16.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 for (row in rows) {
