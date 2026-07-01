@@ -69,29 +69,31 @@ public object FakeXrHeadPose {
     // runtime — see the class KDoc). The fake perception runtime already defaults to a device-tracking
     // config, so ArDevice.getInstance resolves.
     //
-    // Best-effort: the config flip + head-pose seed reach into `androidx.xr.runtime` / `androidx.xr
-    // .arcore` internals reflectively, so a version bump that renames/moves/drops one of those symbols
-    // (e.g. `androidx.xr.runtime.TrackingState` disappearing) must NOT take down the whole XR render.
-    // The seed only powers the `rotateToLookAtUser` billboard facing, which degrades to a default
-    // orientation ([SubspaceSceneRecorder.panelFrom] already sanitises a degenerate look-at pose), so a
-    // reflective/linkage miss logs a warning and the render still produces its scene.json + textures.
-    runCatching {
-        setSessionConfig(session, Config(deviceTracking = DeviceTrackingMode.SPATIAL_LAST_KNOWN))
-      }
-      .onFailure { warnSeedSkipped("configure device tracking on the offline XR session", it) }
+    // This is a REQUIRED prerequisite, not part of the best-effort seed below: with tracking left
+    // disabled, `RotateToLookAtUserNode.onAttach` skips assigning `arDevice` yet still starts its
+    // head-pose job on placement, so a `rotateToLookAtUser` preview crashes on the uninitialised
+    // `arDevice` rather than degrading. A miss here must surface loudly. It reflects the still-present
+    // `Session.access$setConfig$p` synthetic (verified against the resolved alpha15 runtime), so it is
+    // not the version-fragile path the seed below guards.
+    setSessionConfig(session, Config(deviceTracking = DeviceTrackingMode.SPATIAL_LAST_KNOWN))
 
     // Make Subspace's getOrCreateSession reuse THIS session (it reads the decor-view tag first).
     // alpha15 dropped the `AndroidComposeTestRule.session` test extension; write the same
     // `androidx.xr.compose` R.id.compose_xr_session decor-view tag it used to set.
     rule.activity.window.decorView.setTag(androidx.xr.compose.R.id.compose_xr_session, session)
 
+    // Best-effort: the head-pose seed reaches `androidx.xr.runtime` / `androidx.xr.arcore` internals
+    // reflectively, so a version bump that renames/moves/drops one of those symbols (e.g. `androidx.xr
+    // .runtime.TrackingState` disappearing) must NOT take down the whole XR render — the seed only
+    // powers the `rotateToLookAtUser` billboard facing. A reflective/linkage miss logs a warning and
+    // the render still produces its scene.json + textures.
     runCatching { seedHeadPose(session, headPose) }
       .onFailure { warnSeedSkipped("seed the viewer head pose", it) }
     return session
   }
 
   /**
-   * Logs a best-effort warning when a reflective head-pose step can't run against the resolved
+   * Logs a best-effort warning when the reflective head-pose seed can't run against the resolved
    * `androidx.xr.*` runtime (a version skew renamed/moved/dropped an internal symbol). The render
    * continues without the seed — `rotateToLookAtUser` billboards fall back to a default facing rather
    * than failing the whole `composePreviewRenderXr` task. Update the reflective accessors here if the
