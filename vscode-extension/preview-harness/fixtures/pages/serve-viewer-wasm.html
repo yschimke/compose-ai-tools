@@ -125,6 +125,23 @@ a:hover { text-decoration: underline; }
         </div>
       </div>
       <script>(function () {
+  var el = document.getElementById("cp-uiMode");
+  if (!el) return;
+  // Inherit the catalog's sticky theme on the first render — matters for theme-less previews the
+  // catalog shows under either filter, which would otherwise open at (default). This runs before
+  // viewerScript()'s initial render, so the snapshot / Wasm path picks it up.
+  try {
+    var stored = localStorage.getItem("cp-theme");
+    if (!el.value && (stored === "light" || stored === "dark")) el.value = stored;
+  } catch (e) {}
+  // Round-trip: a Theme change writes the shared key so the catalog remembers it.
+  el.addEventListener("change", function () {
+    if (el.value === "light" || el.value === "dark") {
+      try { localStorage.setItem("cp-theme", el.value); } catch (e) {}
+    }
+  });
+})();</script>
+      <script>(function () {
   "use strict";
   var root = document.querySelector(".cp-viewer");
   var img = document.getElementById("cp-img");
@@ -442,15 +459,6 @@ a:hover { text-decoration: underline; }
     el.addEventListener(el.type === "checkbox" ? "change" : "input", onControlsChanged);
   });
   refreshSnapshot();
-})();</script>
-      <script>(function () {
-  var el = document.getElementById("cp-uiMode");
-  if (!el) return;
-  el.addEventListener("change", function () {
-    if (el.value === "light" || el.value === "dark") {
-      try { localStorage.setItem("cp-theme", el.value); } catch (e) {}
-    }
-  });
 })();</script>
       </body>
     </html>

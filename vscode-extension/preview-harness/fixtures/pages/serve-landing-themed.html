@@ -155,9 +155,8 @@ a:hover { text-decoration: underline; }
 </a>
         </div>
 <script>(function () {
-  var KEY = "cp-theme";
   var stored = null;
-  try { stored = localStorage.getItem(KEY); } catch (e) {}
+  try { stored = localStorage.getItem("cp-theme"); } catch (e) {}
   var theme = (stored === "light" || stored === "dark") ? stored
     : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
   var btns = document.querySelectorAll(".cp-theme-btn");
@@ -172,7 +171,7 @@ a:hover { text-decoration: underline; }
   btns.forEach(function (b) {
     b.addEventListener("click", function () {
       theme = b.getAttribute("data-theme-choice");
-      try { localStorage.setItem(KEY, theme); } catch (e) {}
+      try { localStorage.setItem("cp-theme", theme); } catch (e) {}
       apply();
     });
   });

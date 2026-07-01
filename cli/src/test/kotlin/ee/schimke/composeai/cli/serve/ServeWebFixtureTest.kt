@@ -184,7 +184,12 @@ class ServeWebFixtureTest {
       landing.contains("class=\"cp-theme\""),
       "a module without theme variants shows no toggle",
     )
-    // The viewer writes the shared cp-theme when its Theme select changes (the sticky round-trip).
+    // The viewer both seeds its Theme select from the shared cp-theme on load (so a theme-less
+    // preview inherits the catalog choice) and writes it back on change — the sticky round-trip.
+    assertTrue(
+      viewer.contains("localStorage.getItem(\"cp-theme\""),
+      "viewer seeds its Theme select from the shared cp-theme on load",
+    )
     assertTrue(
       viewer.contains("localStorage.setItem(\"cp-theme\""),
       "viewer Theme change writes the shared cp-theme key",

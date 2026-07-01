@@ -207,9 +207,8 @@ object ServeWeb {
   private fun catalogThemeScript(): String =
     """
     (function () {
-      var KEY = "cp-theme";
       var stored = null;
-      try { stored = localStorage.getItem(KEY); } catch (e) {}
+      try { stored = localStorage.getItem("cp-theme"); } catch (e) {}
       var theme = (stored === "light" || stored === "dark") ? stored
         : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
       var btns = document.querySelectorAll(".cp-theme-btn");
@@ -224,7 +223,7 @@ object ServeWeb {
       btns.forEach(function (b) {
         b.addEventListener("click", function () {
           theme = b.getAttribute("data-theme-choice");
-          try { localStorage.setItem(KEY, theme); } catch (e) {}
+          try { localStorage.setItem("cp-theme", theme); } catch (e) {}
           apply();
         });
       });
@@ -243,6 +242,14 @@ object ServeWeb {
     (function () {
       var el = document.getElementById("cp-uiMode");
       if (!el) return;
+      // Inherit the catalog's sticky theme on the first render — matters for theme-less previews the
+      // catalog shows under either filter, which would otherwise open at (default). This runs before
+      // viewerScript()'s initial render, so the snapshot / Wasm path picks it up.
+      try {
+        var stored = localStorage.getItem("cp-theme");
+        if (!el.value && (stored === "light" || stored === "dark")) el.value = stored;
+      } catch (e) {}
+      // Round-trip: a Theme change writes the shared key so the catalog remembers it.
       el.addEventListener("change", function () {
         if (el.value === "light" || el.value === "dark") {
           try { localStorage.setItem("cp-theme", el.value); } catch (e) {}
@@ -426,8 +433,8 @@ object ServeWeb {
           <div class="cp-status" id="cp-status"></div>
         </div>
       </div>
-      <script>${viewerScript()}</script>
       <script>${viewerThemeStickyScript()}</script>
+      <script>${viewerScript()}</script>
       """
         .trimIndent()
     return document(title = "$label — compose-preview", body = body)
