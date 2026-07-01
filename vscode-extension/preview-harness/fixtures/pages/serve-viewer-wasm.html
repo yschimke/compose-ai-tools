@@ -87,7 +87,7 @@ a:hover { text-decoration: underline; }
       <body>
               <p class="cp-head"><a href="/?token=demo-token-fixture&session=compose-m3">← previews</a> <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ branch:yschimke/compose-ai-tools@design-artifacts/compose-m3</span></p>
       <p class="cp-sub" title="com.example.CardPreview">Card</p>
-      <div class="cp-viewer" data-preview-id="com.example.CardPreview" data-mode="snapshot" data-modes="snapshot,live" data-snapshot-backend="Snapshot" data-wasm-src="/wasm/compose-m3/?id=card-filled">
+      <div class="cp-viewer" data-preview-id="com.example.CardPreview" data-mode="snapshot" data-modes="snapshot,live" data-snapshot-backend="Snapshot" data-live-backend="Live" data-wasm-src="/wasm/compose-m3/?id=card-filled">
         <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="Card"><canvas id="cp-canvas" hidden></canvas><iframe id="cp-wasm" hidden sandbox="allow-scripts" title="Card (Wasm)"></iframe></div>
         <div class="cp-controls">
           <div class="cp-note">Pre-rendered snapshot — tick “Run in browser (Wasm)” to interact: Theme, Font scale &amp; Locale apply in the browser. Device/Orientation need the live server.</div>
@@ -470,7 +470,7 @@ a:hover { text-decoration: underline; }
   if (!root || !badge) return;
   function label(mode) {
     if (mode === "wasm") return "CMP-WASM";
-    if (mode === "live") return "CMP-JVM";
+    if (mode === "live") return root.getAttribute("data-live-backend") || "Live";
     return root.getAttribute("data-snapshot-backend") || "Snapshot";
   }
   function refresh() { badge.textContent = label(root.getAttribute("data-mode")); }

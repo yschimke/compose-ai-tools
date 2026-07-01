@@ -87,7 +87,7 @@ a:hover { text-decoration: underline; }
       <body>
               <p class="cp-head"><a href="/?token=demo-token-fixture">← previews</a> <span class="cp-badge cp-badge--unverified" title="producer trust: unverified">⚠ unverified</span></p>
       <p class="cp-sub" title="com.example.ProfileScreenPreview">Profile screen</p>
-      <div class="cp-viewer" data-preview-id="com.example.ProfileScreenPreview" data-mode="snapshot" data-modes="snapshot,live" data-snapshot-backend="Snapshot">
+      <div class="cp-viewer" data-preview-id="com.example.ProfileScreenPreview" data-mode="snapshot" data-modes="snapshot,live" data-snapshot-backend="Snapshot" data-live-backend="Live">
         <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="Profile screen"><canvas id="cp-canvas" hidden></canvas></div>
         <div class="cp-controls">
           <div class="cp-note">Pre-rendered snapshot — overrides (device, locale, font scale, orientation) need the live server, not a published catalog.</div>
@@ -470,7 +470,7 @@ a:hover { text-decoration: underline; }
   if (!root || !badge) return;
   function label(mode) {
     if (mode === "wasm") return "CMP-WASM";
-    if (mode === "live") return "CMP-JVM";
+    if (mode === "live") return root.getAttribute("data-live-backend") || "Live";
     return root.getAttribute("data-snapshot-backend") || "Snapshot";
   }
   function refresh() { badge.textContent = label(root.getAttribute("data-mode")); }

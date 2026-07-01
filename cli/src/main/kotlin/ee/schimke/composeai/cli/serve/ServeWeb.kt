@@ -266,8 +266,9 @@ object ServeWeb {
   /**
    * Backend-provenance badge: a small corner label naming the tier that produced the pixels now on
    * the stage, so a viewer can tell an in-browser CMP render from a baked snapshot. Reads the
-   * viewer's `data-mode` (kept in sync by the transport toggles) — `CMP-WASM` for the Wasm app,
-   * `CMP-JVM` for the daemon stream, else the `data-snapshot-backend` label for the baked PNG.
+   * viewer's `data-mode` (kept in sync by the transport toggles) — `CMP-WASM` for the Wasm app
+   * (always that), else the server-supplied `data-live-backend` / `data-snapshot-backend` label, so
+   * the daemon's actual platform (desktop/JVM or Android) and the snapshot renderer stay accurate.
    */
   private fun backendBadgeScript(): String =
     """
@@ -277,7 +278,7 @@ object ServeWeb {
       if (!root || !badge) return;
       function label(mode) {
         if (mode === "wasm") return "CMP-WASM";
-        if (mode === "live") return "CMP-JVM";
+        if (mode === "live") return root.getAttribute("data-live-backend") || "Live";
         return root.getAttribute("data-snapshot-backend") || "Snapshot";
       }
       function refresh() { badge.textContent = label(root.getAttribute("data-mode")); }
@@ -374,11 +375,17 @@ object ServeWeb {
     basePath: String = "",
     /**
      * Label for the corner "backend" badge while showing the baked snapshot — the renderer that
-     * produced the PNG (e.g. `Android` for the design catalogs). The live tiers override it from
-     * the active mode (`CMP-WASM` for the in-browser Wasm app, `CMP-JVM` for the daemon stream).
-     * Null ⇒ a generic `Snapshot`.
+     * produced the PNG (e.g. `Android` for the design catalogs). The in-browser Wasm tier always
+     * reads `CMP-WASM`; the daemon stream reads [liveBackend]. Null ⇒ a generic `Snapshot`.
      */
     snapshotBackend: String? = null,
+    /**
+     * Label for the badge while the daemon **live stream** drives the stage — the serving daemon's
+     * platform, since a live session can be desktop/JVM **or** Android (a `RobolectricHost` streams
+     * `BackendKind.ANDROID`), so it must come from the server, not a hard-coded tier name. Null ⇒ a
+     * generic `Live`.
+     */
+    liveBackend: String? = null,
   ): String {
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
     val q = linkQuery(token, sessionId, basePath)
@@ -429,11 +436,12 @@ object ServeWeb {
             "orientation) need the live server, not a published catalog.</div>"
       }
     val backendLabel = WebEscaping.htmlEscape(snapshotBackend ?: "Snapshot")
+    val liveLabel = WebEscaping.htmlEscape(liveBackend ?: "Live")
     val body =
       """
       <p class="cp-head"><a href="$basePath/?$q">← previews</a>${trustBadge(trust)}</p>
       <p class="cp-sub" title="$idText">$label</p>
-      <div class="cp-viewer" data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-snapshot-backend="$backendLabel"$wasmAttr>
+      <div class="cp-viewer" data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel"$wasmAttr>
         <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$wasmFrame</div>
         <div class="cp-controls">
           $snapshotNote

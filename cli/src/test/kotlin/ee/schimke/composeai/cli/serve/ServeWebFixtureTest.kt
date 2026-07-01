@@ -195,28 +195,30 @@ class ServeWebFixtureTest {
       "viewer Theme change writes the shared cp-theme key",
     )
 
-    // The backend-provenance badge names the active tier; the snapshot label defaults to "Snapshot"
-    // and the badge script maps the live tiers to CMP-WASM / CMP-JVM.
+    // The backend-provenance badge names the active tier. The Wasm tier is always CMP-WASM; the
+    // live + snapshot labels come from server metadata (a live daemon can be Android, not just
+    // JVM),
+    // defaulting to generic Live / Snapshot.
     assertTrue(viewer.contains("id=\"cp-backend\""), "viewer stage carries the backend badge")
+    assertTrue(wasmViewer.contains("\"CMP-WASM\""), "badge hard-codes only the wasm tier label")
     assertTrue(
-      viewer.contains("data-snapshot-backend=\"Snapshot\""),
-      "snapshot backend defaults to a generic label",
+      viewer.contains("data-live-backend=\"Live\"") &&
+        viewer.contains("data-snapshot-backend=\"Snapshot\""),
+      "live + snapshot labels default to generic, server-settable values",
     )
-    assertTrue(
-      wasmViewer.contains("\"CMP-WASM\"") && wasmViewer.contains("\"CMP-JVM\""),
-      "badge script labels the wasm + live tiers",
-    )
-    // The snapshot backend label is server-settable (e.g. the design catalogs are
-    // Android-rendered).
-    val androidViewer =
+    // Both labels are server-settable (design catalogs render Android; a desktop daemon streams
+    // JVM).
+    val labelled =
       ServeWeb.viewerPage(
         previews.first { it.id.endsWith("ButtonPreview") },
         token,
         snapshotBackend = "Android",
+        liveBackend = "CMP-JVM",
       )
     assertTrue(
-      androidViewer.contains("data-snapshot-backend=\"Android\""),
-      "snapshotBackend flows to the badge",
+      labelled.contains("data-snapshot-backend=\"Android\"") &&
+        labelled.contains("data-live-backend=\"CMP-JVM\""),
+      "snapshotBackend + liveBackend flow to the badge",
     )
   }
 
