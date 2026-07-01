@@ -212,6 +212,81 @@ class DiscoveryFunctionalTest {
 
     // The module aggregate carries every token across both groups.
     assertThat(catalogs.first { it.id == "colorcatalog__all" }.params.catalogTokens).hasSize(3)
+    // Colour tokens are tagged COLOR so the renderer picks the swatch layout.
+    assertThat(brand.params.catalogTokens.map { it.tokenKind })
+      .containsExactly(CatalogTokenKind.COLOR, CatalogTokenKind.COLOR)
+  }
+
+  @Test
+  fun `composePreviewDiscover aggregates @TypographyCatalog tokens into type-style sheets`() {
+    val projectDir = createCmpTestProject()
+
+    // Same FQN-match policy as `@ColorCatalog`, just on a `TextStyle` field — declare the
+    // annotation
+    // locally so the test needs no external `preview-annotations` artifact.
+    val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+    annDir.mkdirs()
+    File(annDir, "TypographyCatalog.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FIELD)
+        annotation class TypographyCatalog(val name: String = "", val group: String = "")
+        """
+          .trimIndent()
+      )
+
+    File(projectDir, "src/main/kotlin/test/TypeTokens.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.ui.text.TextStyle
+        import androidx.compose.ui.unit.sp
+        import ee.schimke.composeai.preview.TypographyCatalog
+
+        @TypographyCatalog(group = "Display") val DisplayLarge: TextStyle = TextStyle(fontSize = 57.sp)
+        @TypographyCatalog(name = "Body Large", group = "Body") val BodyL: TextStyle = TextStyle(fontSize = 16.sp)
+        @TypographyCatalog(group = "Body") val Caption: TextStyle = TextStyle(fontSize = 11.sp)
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val catalogs = manifest.previews.filter { it.params.kind == PreviewKind.CATALOG }
+
+    // Two groups (Display, Body) → two group sheets, plus a module-wide aggregate — namespaced
+    // under `typographycatalog__` so they never collide with `@ColorCatalog` sheets.
+    assertThat(catalogs.map { it.id })
+      .containsExactly(
+        "typographycatalog__Display",
+        "typographycatalog__Body",
+        "typographycatalog__all",
+      )
+
+    val body = catalogs.first { it.id == "typographycatalog__Body" }
+    // `name` defaults to the property name (`Caption`); the explicit "Body Large" overrides it.
+    assertThat(body.params.catalogTokens.map { it.label }).containsExactly("Body Large", "Caption")
+    assertThat(body.params.catalogTokens.map { it.member }).containsExactly("BodyL", "Caption")
+    // Type tokens are tagged TEXT_STYLE so the renderer picks the specimen layout, not a swatch.
+    assertThat(body.params.catalogTokens.map { it.tokenKind })
+      .containsExactly(CatalogTokenKind.TEXT_STYLE, CatalogTokenKind.TEXT_STYLE)
+
+    assertThat(catalogs.first { it.id == "typographycatalog__all" }.params.catalogTokens).hasSize(3)
   }
 
   @Test

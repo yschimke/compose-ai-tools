@@ -24,6 +24,7 @@ enum class PreviewKind {
 @Serializable
 enum class CatalogTokenKind {
     COLOR,
+    TEXT_STYLE,
 }
 
 /** Renderer-side mirror of the plugin's `CatalogToken`. */

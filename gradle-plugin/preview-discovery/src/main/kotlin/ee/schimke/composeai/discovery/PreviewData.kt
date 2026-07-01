@@ -44,7 +44,9 @@ enum class PreviewKind {
  */
 enum class CatalogTokenKind {
   /** An `androidx.compose.ui.graphics.Color` property → a labelled swatch row. */
-  COLOR
+  COLOR,
+  /** An `androidx.compose.ui.text.TextStyle` property → a labelled sample-text row in that style. */
+  TEXT_STYLE,
 }
 
 /**
