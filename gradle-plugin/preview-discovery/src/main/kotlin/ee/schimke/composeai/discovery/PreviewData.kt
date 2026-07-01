@@ -29,7 +29,39 @@ enum class PreviewKind {
    * [PreviewParams.assetPath].
    */
   LOTTIE,
+  /**
+   * A synthetic design-token catalog sheet aggregated from `@ColorCatalog` (and, later,
+   * `@TypographyCatalog`) properties — no `@Preview`, no consumer composable. Like [LOTTIE] this is
+   * data-driven: the tokens to render travel on [PreviewParams.catalogTokens], and the renderer
+   * reflects each property's value at render time and lays them out as a labelled specimen sheet.
+   * The compose-ai-tools analogue of Airbnb Showkase's `@ShowkaseColor` browser page.
+   */
+  CATALOG,
 }
+
+/** Which kind of design token a [CatalogToken] points at — drives which specimen layout renders it. */
+enum class CatalogTokenKind {
+  /** An `androidx.compose.ui.graphics.Color` property → a labelled swatch row. */
+  COLOR,
+}
+
+/**
+ * One design-token property aggregated into a [PreviewKind.CATALOG] sheet. Discovery records only
+ * the *coordinates* (the declaring class + member name) and the display [label] — never the value,
+ * because the plugin's scan classpath doesn't carry the consumer's Compose runtime. The renderer
+ * reflects the value out of the loaded consumer class at render time (a `Color` property compiles to
+ * an erased `long` backing field, reboxed via the synthetic `Color.box-impl`).
+ */
+@Serializable
+data class CatalogToken(
+  /** FQN of the class carrying the property (e.g. the file's synthetic `TokensKt`). */
+  val className: String,
+  /** The property/backing-field name to reflect. */
+  val member: String,
+  /** Display label for the swatch — the `@ColorCatalog.name` or, by default, the property name. */
+  val label: String,
+  val tokenKind: CatalogTokenKind = CatalogTokenKind.COLOR,
+)
 
 /**
  * Mirrors `ee.schimke.composeai.preview.ScrollMode` from the `preview-annotations` artifact.
@@ -348,6 +380,11 @@ data class PreviewParams(
    */
   val previewParameterLimit: Int = Int.MAX_VALUE,
   val kind: PreviewKind = PreviewKind.COMPOSE,
+  /**
+   * For [PreviewKind.CATALOG] only: the design-token properties this synthetic sheet aggregates, in
+   * render order. Empty for every other kind.
+   */
+  val catalogTokens: List<CatalogToken> = emptyList(),
   /**
    * For [PreviewKind.LOTTIE] only: the module-resource-relative path of the discovered Lottie asset
    * (e.g. `lottie/loading.json`). The renderer loads it via the classloader (the plugin links the
