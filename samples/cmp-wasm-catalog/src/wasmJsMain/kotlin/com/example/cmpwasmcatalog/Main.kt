@@ -32,8 +32,13 @@ private var baseParams: Map<String, String> = emptyMap()
 private val renderParams = mutableStateOf<Map<String, String>>(emptyMap())
 
 fun main() {
+  // The `?…` query is the clean baked default (the viewer's `data-wasm-src`); the viewer carries
+  // its
+  // initial session overrides in the `#…` fragment instead, so [baseParams] stays the true default
+  // and clearing a control later (an empty [applyOverrides] patch) reverts to it rather than
+  // sticking.
   baseParams = parseQuery(locationSearch())
-  renderParams.value = baseParams
+  renderParams.value = baseParams + parseQuery(locationHash())
   ComposeViewport(viewportContainerId = "composeApp") {
     val params by renderParams
     val id = params["id"] ?: catalogComponents.keys.first()
@@ -68,6 +73,9 @@ internal fun isRtlLocale(localeTag: String?): Boolean {
 
 /** The raw `?…` query string, read straight from the browser's `window.location`. */
 private fun locationSearch(): String = js("window.location.search")
+
+/** The `#…` fragment without its leading `#` — the viewer's initial session overrides at load. */
+private fun locationHash(): String = js("window.location.hash.replace(/^#/, '')")
 
 /** Minimal `?a=b&c=d` parser — avoids a `kotlinx-browser` / URLSearchParams dependency. */
 internal fun parseQuery(search: String): Map<String, String> {
