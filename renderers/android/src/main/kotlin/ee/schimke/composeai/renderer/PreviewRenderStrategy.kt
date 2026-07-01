@@ -266,20 +266,43 @@ private object TilePreviewStrategy : PreviewRenderStrategy {
 private object CatalogPreviewStrategy : PreviewRenderStrategy {
     @Composable
     override fun Render(preview: RenderPreviewEntry, widthDp: Int, heightDp: Int, previewArgs: List<Any?>) {
-        val swatches = remember(preview.id) {
+        val rows = remember(preview.id) {
             preview.params.catalogTokens.mapNotNull { token ->
-                runCatching { token.label to CatalogValueReflection.reflectColor(token.className, token.member) }
+                runCatching {
+                    when (token.tokenKind) {
+                        CatalogTokenKind.COLOR ->
+                            CatalogRow.Swatch(
+                                token.label,
+                                CatalogValueReflection.reflectColor(token.className, token.member),
+                            )
+                        CatalogTokenKind.TEXT_STYLE ->
+                            CatalogRow.Type(
+                                token.label,
+                                CatalogValueReflection.reflectTextStyle(token.className, token.member),
+                            )
+                    }
+                }
                     .getOrNull()
             }
         }
         Box(Modifier.fillMaxSize().background(CATALOG_SHEET_BACKGROUND).padding(16.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                for ((label, color) in swatches) {
-                    CatalogSwatchRow(label = label, color = color)
+                for (row in rows) {
+                    when (row) {
+                        is CatalogRow.Swatch -> CatalogSwatchRow(label = row.label, color = row.color)
+                        is CatalogRow.Type -> CatalogTypeRow(label = row.label, style = row.style)
+                    }
                 }
             }
         }
     }
+}
+
+/** A resolved catalog row — a colour swatch or a type specimen — ready to lay out. */
+private sealed interface CatalogRow {
+    data class Swatch(val label: String, val color: Color) : CatalogRow
+
+    data class Type(val label: String, val style: TextStyle) : CatalogRow
 }
 
 /** One swatch row: a bounded colour square, the token label, and its `#AARRGGBB` hex. */
@@ -304,6 +327,23 @@ private fun CatalogSwatchRow(label: String, color: Color) {
 
 /** Formats [color] as an uppercase `#AARRGGBB` string; alpha included so translucent tokens read as such. */
 private fun catalogHex(color: Color): String = String.format(Locale.ROOT, "#%08X", color.toArgb())
+
+/**
+ * One type specimen row: the token name as a small caption, then a sample line set in the reflected
+ * [style]. The sample's colour is forced to the sheet's dark neutral (via `copy`) so a design-system
+ * style whose own colour is light — or unspecified — still reads on the white sheet; size / weight /
+ * family are what the specimen is there to show, not colour (that's the swatch sheet's job).
+ */
+@Composable
+private fun CatalogTypeRow(label: String, style: TextStyle) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+        BasicText(text = label, style = CATALOG_HEX_STYLE)
+        BasicText(text = CATALOG_TYPE_SAMPLE, style = style.copy(color = CATALOG_LABEL_STYLE.color))
+    }
+}
+
+/** Sample text for type specimens — the canonical pangram, so ascenders/descenders/kerning show. */
+private const val CATALOG_TYPE_SAMPLE = "The quick brown fox"
 
 private val CATALOG_SHEET_BACKGROUND: Color = Color(0xFFFFFFFF)
 private val CATALOG_SWATCH_BORDER: Color = Color(0xFF9E9E9E)
@@ -332,5 +372,22 @@ internal object CatalogValueReflection {
         val rawUlongBits = field.getLong(receiver)
         val boxImpl = Color::class.java.getDeclaredMethod("box-impl", Long::class.javaPrimitiveType)
         return boxImpl.invoke(null, rawUlongBits) as Color
+    }
+
+    /**
+     * Reads a `TextStyle` property value. Unlike `Color`, `TextStyle` is an ordinary class, so its
+     * backing field holds the object directly — no value-class unboxing, just a plain reflective get
+     * (off the `INSTANCE` singleton for a property declared inside a Kotlin `object`).
+     */
+    fun reflectTextStyle(className: String, member: String): TextStyle {
+        val owner = Class.forName(className)
+        val field = owner.getDeclaredField(member).apply { isAccessible = true }
+        val receiver =
+            if (java.lang.reflect.Modifier.isStatic(field.modifiers)) {
+                null
+            } else {
+                runCatching { owner.getField("INSTANCE").get(null) }.getOrNull()
+            }
+        return field.get(receiver) as TextStyle
     }
 }

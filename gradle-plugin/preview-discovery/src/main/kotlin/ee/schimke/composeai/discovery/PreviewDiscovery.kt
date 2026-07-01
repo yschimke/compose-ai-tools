@@ -208,6 +208,10 @@ object PreviewDiscovery {
   // `ColorCatalog.kt`.
   internal const val COLOR_CATALOG_FQN = "ee.schimke.composeai.preview.ColorCatalog"
 
+  // `@TypographyCatalog` — the type-scale sibling of `@ColorCatalog`, on a `TextStyle` property's
+  // backing field. Same BINARY / `@Target(FIELD)` FQN-match policy. See `TypographyCatalog.kt`.
+  internal const val TYPOGRAPHY_CATALOG_FQN = "ee.schimke.composeai.preview.TypographyCatalog"
+
   // failOnEmpty diagnostics: cap the JAR + annotation FQN sample sizes
   // so the lifecycle log stays readable on projects with huge classpaths.
   private const val DIAG_JAR_SAMPLE = 15
@@ -300,6 +304,7 @@ object PreviewDiscovery {
     // `@ColorCatalog`-annotated design-token fields collected during the scan, aggregated into
     // synthetic [PreviewKind.CATALOG] sheets after the class walk.
     val rawColorCatalogTokens = mutableListOf<RawCatalogToken>()
+    val rawTypographyCatalogTokens = mutableListOf<RawCatalogToken>()
 
     if (classpath.isNotEmpty()) {
       ClassGraph()
@@ -364,17 +369,16 @@ object PreviewDiscovery {
                 warnings,
               )
             }
-            // `@ColorCatalog` design tokens: an annotated `Color` property's backing field. Collect
-            // the coordinates + display metadata here; the values are reflected at render time.
+            // `@ColorCatalog` / `@TypographyCatalog` design tokens: an annotated `Color` / `TextStyle`
+            // property's backing field. Collect the coordinates + display metadata here; the values
+            // are reflected at render time.
             for (field in classInfo.fieldInfo) {
-              val ann = field.getAnnotationInfo(COLOR_CATALOG_FQN) ?: continue
-              rawColorCatalogTokens +=
-                RawCatalogToken(
-                  className = classInfo.name,
-                  member = field.name,
-                  name = annStringOrDefault(ann, "name", field.name),
-                  group = annStringOrDefault(ann, "group", defaultCatalogGroup(classInfo.name)),
-                )
+              field.getAnnotationInfo(COLOR_CATALOG_FQN)?.let { ann ->
+                rawColorCatalogTokens += rawCatalogToken(classInfo, field, ann)
+              }
+              field.getAnnotationInfo(TYPOGRAPHY_CATALOG_FQN)?.let { ann ->
+                rawTypographyCatalogTokens += rawCatalogToken(classInfo, field, ann)
+              }
             }
           }
         }
@@ -397,7 +401,20 @@ object PreviewDiscovery {
     val normalized =
       normalizeRenderOutputs(deduped) +
         discoverLottieAssets(input) +
-        buildColorCatalogPreviews(rawColorCatalogTokens, input.catalogRenderSupported)
+        buildCatalogPreviews(
+          rawColorCatalogTokens,
+          input.catalogRenderSupported,
+          CatalogTokenKind.COLOR,
+          idPrefix = "colorcatalog",
+          noun = "colours",
+        ) +
+        buildCatalogPreviews(
+          rawTypographyCatalogTokens,
+          input.catalogRenderSupported,
+          CatalogTokenKind.TEXT_STYLE,
+          idPrefix = "typographycatalog",
+          noun = "type styles",
+        )
 
     // The generic per-extension reports map is empty on the standalone Gradle path — a11y
     // (today's only canned-report producer) writes its artefacts exclusively through the
@@ -589,6 +606,19 @@ object PreviewDiscovery {
     val group: String,
   )
 
+  /** Builds a [RawCatalogToken] from an annotated field, applying Showkase-style name/group defaults. */
+  private fun rawCatalogToken(
+    classInfo: ClassInfo,
+    field: io.github.classgraph.FieldInfo,
+    ann: AnnotationInfo,
+  ): RawCatalogToken =
+    RawCatalogToken(
+      className = classInfo.name,
+      member = field.name,
+      name = annStringOrDefault(ann, "name", field.name),
+      group = annStringOrDefault(ann, "group", defaultCatalogGroup(classInfo.name)),
+    )
+
   /**
    * Reads a `String` annotation parameter, falling back to [fallback] when absent or blank — this
    * is how `@ColorCatalog.name` defaults to the property name and `.group` to the enclosing class,
@@ -609,14 +639,20 @@ object PreviewDiscovery {
   }
 
   /**
-   * Aggregates the collected `@ColorCatalog` tokens into synthetic [PreviewKind.CATALOG] sheets:
-   * one per `group`, plus a module-wide "All colours" sheet when there is more than one group (a
-   * single group would just duplicate itself). Appended after [normalizeRenderOutputs] with render
-   * outputs already shell-safe, like the Lottie assets.
+   * Aggregates the collected `@ColorCatalog` / `@TypographyCatalog` tokens into synthetic
+   * [PreviewKind.CATALOG] sheets: one per `group`, plus a module-wide "All <noun>" sheet when there
+   * is more than one group (a single group would just duplicate itself). [idPrefix] namespaces the
+   * render-output filename (`colorcatalog` / `typographycatalog`), [noun] labels the sheet
+   * ("colours" / "type styles"), and [kind] tags each emitted [CatalogToken] so the renderer picks
+   * the swatch-vs-type layout. Appended after [normalizeRenderOutputs] with render outputs already
+   * shell-safe, like the Lottie assets.
    */
-  private fun buildColorCatalogPreviews(
+  private fun buildCatalogPreviews(
     tokens: List<RawCatalogToken>,
     renderSupported: Boolean,
+    kind: CatalogTokenKind,
+    idPrefix: String,
+    noun: String,
   ): List<PreviewInfo> {
     if (tokens.isEmpty()) return emptyList()
     val byGroup = LinkedHashMap<String, MutableList<RawCatalogToken>>()
@@ -625,30 +661,33 @@ object PreviewDiscovery {
     val entries = mutableListOf<PreviewInfo>()
     for ((group, groupTokens) in byGroup) {
       entries +=
-        colorCatalogPreview(
-          id = "colorcatalog__${group.replace(SANITIZE_RENDER_STEM, "_")}",
-          displayName = "$group colours",
+        catalogPreview(
+          id = "${idPrefix}__${group.replace(SANITIZE_RENDER_STEM, "_")}",
+          displayName = "$group $noun",
           tokens = groupTokens,
           renderSupported = renderSupported,
+          kind = kind,
         )
     }
     if (byGroup.size > 1) {
       entries +=
-        colorCatalogPreview(
-          id = "colorcatalog__all",
-          displayName = "All colours",
+        catalogPreview(
+          id = "${idPrefix}__all",
+          displayName = "All $noun",
           tokens = tokens,
           renderSupported = renderSupported,
+          kind = kind,
         )
     }
     return entries
   }
 
-  private fun colorCatalogPreview(
+  private fun catalogPreview(
     id: String,
     displayName: String,
     tokens: List<RawCatalogToken>,
     renderSupported: Boolean,
+    kind: CatalogTokenKind,
   ): PreviewInfo =
     PreviewInfo(
       id = id,
@@ -660,7 +699,12 @@ object PreviewDiscovery {
           kind = PreviewKind.CATALOG,
           catalogTokens =
             tokens.map {
-              CatalogToken(className = it.className, member = it.member, label = it.name)
+              CatalogToken(
+                className = it.className,
+                member = it.member,
+                label = it.name,
+                tokenKind = kind,
+              )
             },
         ),
       // The capture is `optional` exactly when the backend can't render catalog sheets. On Android
