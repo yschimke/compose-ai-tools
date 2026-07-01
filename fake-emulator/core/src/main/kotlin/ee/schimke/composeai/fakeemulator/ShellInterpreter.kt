@@ -1,5 +1,7 @@
 package ee.schimke.composeai.fakeemulator
 
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.nio.charset.StandardCharsets
 
 /**
@@ -16,6 +18,8 @@ class ShellInterpreter(
   private val frameSource: FrameSource,
   private val previewLauncher: PreviewLauncher,
   private val settings: DeviceSettingsController = DeviceSettingsController(),
+  /** Records `adb install` / Studio deploys (captured APK bytes + parsed package). */
+  val apkStore: ApkStore = ApkStore(),
 ) {
   /** stdout/stderr are raw bytes because `screencap -p` returns binary PNG. */
   class Result(val stdout: ByteArray, val stderr: ByteArray = ByteArray(0), val exitCode: Int = 0)
@@ -23,15 +27,22 @@ class ShellInterpreter(
   /** Backing store for `settings get/put/delete`, keyed `<namespace>.<key>`. */
   private val settingsStore = java.util.concurrent.ConcurrentHashMap<String, String>()
 
-  fun execute(commandLine: String): Result {
-    val tokens = tokenize(commandLine)
+  /**
+   * [stdin] carries the piped APK for streaming installs (`pm install -S`); null for most commands.
+   */
+  fun execute(commandLine: String, stdin: InputStream? = null): Result =
+    executeArgv(tokenize(commandLine), stdin)
+
+  /** Argv entry point — used directly by `abb_exec:` (NUL-separated args, no shell tokenizing). */
+  fun executeArgv(tokens: List<String>, stdin: InputStream? = null): Result {
     if (tokens.isEmpty()) return ok("")
     return when (tokens[0]) {
       "getprop" -> getprop(tokens.drop(1))
       "am" -> am(tokens.drop(1))
+      "pm" -> packageCommand(tokens.drop(1), stdin)
       "screencap" -> screencap(tokens.drop(1))
       "wm" -> wm(tokens.drop(1))
-      "cmd" -> cmd(tokens.drop(1))
+      "cmd" -> cmd(tokens.drop(1), stdin)
       "settings" -> settingsCmd(tokens.drop(1))
       "setprop" -> setprop(tokens.drop(1))
       "echo" -> ok(tokens.drop(1).joinToString(" ") + "\n")
@@ -131,9 +142,13 @@ class ShellInterpreter(
     }
   }
 
-  /** `cmd uimode night yes|no|auto`, `cmd locale set-app-locales … --locales <tag>`. */
-  private fun cmd(args: List<String>): Result {
+  /**
+   * `cmd uimode night yes|no|auto`, `cmd locale set-app-locales … --locales <tag>`, and `cmd
+   * package install…` (the modern install service — same handlers `pm` uses).
+   */
+  private fun cmd(args: List<String>, stdin: InputStream?): Result {
     when (args.firstOrNull()) {
+      "package" -> return packageCommand(args.drop(1), stdin)
       "uimode" ->
         if (args.getOrNull(1) == "night") {
           val mode =
@@ -155,6 +170,89 @@ class ShellInterpreter(
     }
     return ok("")
   }
+
+  /**
+   * The install surface of `pm` / `cmd package`. We accept the APK (legacy pushed path, single-shot
+   * `-S <size>` stream, or the `install-create`/`install-write`/`install-commit` session flow),
+   * record it via [ApkStore], and reply with the `Success` line the real `pm` prints so `adb
+   * install` and Studio's deploy don't error. We don't execute anything — the APK is metadata +
+   * discovery.
+   */
+  private fun packageCommand(args: List<String>, stdin: InputStream?): Result {
+    return when (args.firstOrNull()) {
+      "install" -> installSingle(args.drop(1), stdin)
+      "install-create" -> ok("Success: created install session [${apkStore.createSession()}]\n")
+      "install-write" -> installWrite(args.drop(1), stdin)
+      "install-commit" -> {
+        args.getOrNull(1)?.let { apkStore.commitSession(it) }
+        ok("Success\n")
+      }
+      "install-abandon" -> {
+        args.getOrNull(1)?.let { apkStore.abandonSession(it) }
+        ok("Success\n")
+      }
+      "list" -> if (args.getOrNull(1) == "packages") listPackages() else ok("")
+      else -> ok("")
+    }
+  }
+
+  /** `pm install [-flags] (-S <size> | <pushed-path>)`. */
+  private fun installSingle(args: List<String>, stdin: InputStream?): Result {
+    val sizeIndex = args.indexOf("-S")
+    if (sizeIndex >= 0) {
+      val size = args.getOrNull(sizeIndex + 1)?.toLongOrNull() ?: return failure("bad -S size")
+      val bytes = readExactly(stdin, size) ?: return failure("no install stream")
+      apkStore.install(bytes, ApkStore.Transport.STREAMING)
+      return ok("Success\n")
+    }
+    // Legacy: install the APK a prior `sync: SEND` pushed to <path> (last non-flag arg).
+    val path = args.lastOrNull { !it.startsWith("-") }
+    val bytes = path?.let { apkStore.takePushedFile(it) }
+    if (bytes != null) apkStore.install(bytes, ApkStore.Transport.LEGACY_PUSH)
+    return ok("Success\n")
+  }
+
+  /** `pm install-write [-S <size>] <session> <split> [-|<path>]`. */
+  private fun installWrite(args: List<String>, stdin: InputStream?): Result {
+    val sizeIndex = args.indexOf("-S")
+    if (sizeIndex >= 0) {
+      val size = args.getOrNull(sizeIndex + 1)?.toLongOrNull() ?: return failure("bad -S size")
+      val session = args.getOrNull(sizeIndex + 2) ?: return failure("no session id")
+      val bytes = readExactly(stdin, size) ?: return failure("no install stream")
+      apkStore.writeSession(session, bytes)
+      return ok("Success: streamed ${bytes.size} bytes\n")
+    }
+    val session = args.getOrNull(0) ?: return failure("no session id")
+    val bytes = args.getOrNull(2)?.let { apkStore.takePushedFile(it) }
+    if (bytes != null) apkStore.writeSession(session, bytes)
+    return ok("Success: streamed ${bytes?.size ?: 0} bytes\n")
+  }
+
+  private fun listPackages(): Result {
+    val sb = StringBuilder()
+    for (apk in apkStore.installed()) apk.packageName?.let {
+      sb.append("package:").append(it).append('\n')
+    }
+    return ok(sb.toString())
+  }
+
+  /** Read exactly [size] bytes of the piped APK from [input] (short at early EOF). */
+  private fun readExactly(input: InputStream?, size: Long): ByteArray? {
+    if (input == null) return null
+    val out = ByteArrayOutputStream()
+    val buf = ByteArray(64 * 1024)
+    var remaining = size
+    while (remaining > 0) {
+      val n = input.read(buf, 0, remaining.coerceAtMost(buf.size.toLong()).toInt())
+      if (n < 0) break
+      out.write(buf, 0, n)
+      remaining -= n
+    }
+    return out.toByteArray()
+  }
+
+  /** `pm`/`cmd package` failure line, mirroring pm's `Failure [<reason>]` on stdout. */
+  private fun failure(reason: String): Result = ok("Failure [$reason]\n")
 
   /** `settings put|get|delete <namespace> <key> [value]`. */
   private fun settingsCmd(args: List<String>): Result {

@@ -29,8 +29,12 @@ object DeviceProperties {
 
 /** Builds the CNXN banner an adbd device sends: `device::<key=val;…>features=<csv>`. */
 object AdbBanner {
-  /** Features we actually honour. `shell_v2` makes hosts use the framed shell protocol. */
-  val FEATURES = listOf("shell_v2")
+  /**
+   * Features we actually honour. `shell_v2` makes hosts use the framed shell protocol; `cmd` +
+   * `abb_exec` let hosts (adb / Studio / dadb) drive installs over the modern streaming path
+   * (`abb_exec:package\0install\0-S\0…` / `exec:cmd package install -S …`) our shell now accepts.
+   */
+  val FEATURES = listOf("shell_v2", "cmd", "abb_exec")
 
   fun build(properties: Map<String, String>, features: List<String> = FEATURES): ByteArray {
     val sb = StringBuilder("device::")
