@@ -1327,6 +1327,17 @@ internal object ComposePreviewTasks {
         // here we keep every `<stem>_*<ext>` match rather than
         // second-guessing the provider values.
         cleanStaleRenders(previewOutputDir.get().asFile.resolve("renders"), manifest, logger)
+        // Same staleness problem for the `data/catalog-tokens/` sidecars (issue #2167): the
+        // renderer
+        // writes one per current CATALOG sheet but never removes those for renamed/deleted sheets,
+        // so
+        // an importer scanning the tree would keep seeing tokens absent from the current manifest.
+        // Prune by the same manifest-derived id set.
+        cleanStaleCatalogTokens(
+          previewOutputDir.get().asFile.resolve("data/catalog-tokens"),
+          manifest,
+          logger,
+        )
         // Each preview can produce multiple captures (`@RoboComposePreviewOptions`
         // time fan-out, future scroll / dimension fan-outs). Verify each
         // capture's renderOutput lands on disk — report back one missing
@@ -1595,6 +1606,39 @@ internal object ComposePreviewTasks {
    * Anything else (PNGs or GIFs that were produced for a now-removed preview) gets removed so
    * downstream tools compare the manifest against a clean directory.
    */
+  /**
+   * Prune `data/catalog-tokens/<id>.catalog.json` sidecars whose sheet is no longer in [manifest] —
+   * the data-product analogue of [cleanStaleRenders]. Keeps exactly the files the current
+   * `PreviewKind.CATALOG` previews would (re)write, so a renamed or deleted `@ColorCatalog` /
+   * `@TypographyCatalog` group doesn't leave orphaned tokens for a downstream importer. The
+   * expected filename mirrors the renderer's `CatalogTokenSidecar` (`sanitize(id) +
+   * ".catalog.json"`).
+   */
+  internal fun cleanStaleCatalogTokens(
+    catalogTokensDir: java.io.File,
+    manifest: PreviewManifest,
+    logger: org.gradle.api.logging.Logger,
+  ) {
+    if (!catalogTokensDir.isDirectory) return
+    val expected =
+      manifest.previews
+        .filter { it.params.kind == PreviewKind.CATALOG }
+        .map { sanitizeCatalogTokenId(it.id) + ".catalog.json" }
+        .toSet()
+    catalogTokensDir
+      .listFiles { f -> f.isFile && f.name.endsWith(".catalog.json") }
+      ?.forEach { f ->
+        if (f.name in expected) return@forEach
+        if (!f.delete()) {
+          logger.warn("compose-preview: couldn't delete stale catalog-token sidecar $f")
+        }
+      }
+  }
+
+  // Mirror of `CatalogTokenSidecar.sanitize` so the expected filenames match the renderer's.
+  private fun sanitizeCatalogTokenId(id: String): String =
+    id.replace(Regex("""[/\\:*?"<>|\s]"""), "_")
+
   private fun cleanStaleRenders(
     rendersDir: java.io.File,
     manifest: PreviewManifest,
