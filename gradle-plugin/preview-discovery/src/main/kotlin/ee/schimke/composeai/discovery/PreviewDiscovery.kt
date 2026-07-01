@@ -296,7 +296,8 @@ object PreviewDiscovery {
         .enableMethodInfo()
         // Field scanning powers `@ColorCatalog` design-token discovery — the annotation lands on a
         // `Color` property's backing field, so we need field metadata + annotations to see it.
-        // `ignoreFieldVisibility()` is required because a top-level `val`'s backing field is private
+        // `ignoreFieldVisibility()` is required because a top-level `val`'s backing field is
+        // private
         // static (mirrors `ignoreMethodVisibility()` for private `@Preview` functions).
         .enableFieldInfo()
         .ignoreFieldVisibility()
@@ -579,26 +580,29 @@ object PreviewDiscovery {
   )
 
   /**
-   * Reads a `String` annotation parameter, falling back to [fallback] when absent or blank — this is
-   * how `@ColorCatalog.name` defaults to the property name and `.group` to the enclosing class, the
-   * same defaulting Showkase applies.
+   * Reads a `String` annotation parameter, falling back to [fallback] when absent or blank — this
+   * is how `@ColorCatalog.name` defaults to the property name and `.group` to the enclosing class,
+   * the same defaulting Showkase applies.
    */
   private fun annStringOrDefault(ann: AnnotationInfo, param: String, fallback: String): String {
     val raw = runCatching { ann.parameterValues.getValue(param) as? String }.getOrNull()
     return raw?.takeIf { it.isNotBlank() } ?: fallback
   }
 
-  /** Default group for a token: the enclosing class simple name, with a file class's `Kt` suffix dropped. */
+  /**
+   * Default group for a token: the enclosing class simple name, with a file class's `Kt` suffix
+   * dropped.
+   */
   private fun defaultCatalogGroup(className: String): String {
     val simple = className.substringAfterLast('.')
     return simple.removeSuffix("Kt").ifBlank { simple }
   }
 
   /**
-   * Aggregates the collected `@ColorCatalog` tokens into synthetic [PreviewKind.CATALOG] sheets: one
-   * per `group`, plus a module-wide "All colours" sheet when there is more than one group (a single
-   * group would just duplicate itself). Appended after [normalizeRenderOutputs] with render outputs
-   * already shell-safe, like the Lottie assets.
+   * Aggregates the collected `@ColorCatalog` tokens into synthetic [PreviewKind.CATALOG] sheets:
+   * one per `group`, plus a module-wide "All colours" sheet when there is more than one group (a
+   * single group would just duplicate itself). Appended after [normalizeRenderOutputs] with render
+   * outputs already shell-safe, like the Lottie assets.
    */
   private fun buildColorCatalogPreviews(tokens: List<RawCatalogToken>): List<PreviewInfo> {
     if (tokens.isEmpty()) return emptyList()
@@ -615,7 +619,8 @@ object PreviewDiscovery {
         )
     }
     if (byGroup.size > 1) {
-      entries += colorCatalogPreview(id = "colorcatalog__all", displayName = "All colours", tokens = tokens)
+      entries +=
+        colorCatalogPreview(id = "colorcatalog__all", displayName = "All colours", tokens = tokens)
     }
     return entries
   }
@@ -634,9 +639,17 @@ object PreviewDiscovery {
           name = displayName,
           kind = PreviewKind.CATALOG,
           catalogTokens =
-            tokens.map { CatalogToken(className = it.className, member = it.member, label = it.name) },
+            tokens.map {
+              CatalogToken(className = it.className, member = it.member, label = it.name)
+            },
         ),
-      captures = listOf(Capture(renderOutput = "renders/$id.png")),
+      // Optional so the `composePreviewRenderAll` required-output gate doesn't fail on backends
+      // that
+      // can't draw catalog sheets yet: the Android backend renders them, but the desktop backend
+      // skips `CATALOG` (see `RenderPreviewsTask`) until #2135 adds desktop support. `optional`
+      // doesn't stop the Android render — the PNG is still produced and shown; it only means "don't
+      // fail if absent." Mirrors how the XR composite capture is marked optional.
+      captures = listOf(Capture(renderOutput = "renders/$id.png", optional = true)),
     )
 
   /**
