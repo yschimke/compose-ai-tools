@@ -224,12 +224,30 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
 
     val missing = filtered.filter { r -> r.captures.any { it.pngPath == null } }
     if (missing.isNotEmpty()) {
+      // Mirror ShowCommand: honour `--missing-renders`. The diagnostic (including the per-variant
+      // offender list) always prints so the CI log is self-diagnosing, but only the default `fail`
+      // policy bumps the exit to 2 — `warn`/`ignore` opt that down. Without this, `show-resources`
+      // hard-failed on every null-PNG resource regardless of policy (e.g. the launcher-icon
+      // rasterizer jitter), keeping the Compose Preview check red even under
+      // `missing-renders=warn`.
+      val policy = missingRendersPolicy?.lowercase()
+      val prefix =
+        if (policy in setOf("warn", "ignore")) "missing-renders policy=$policy — " else ""
       System.err.println(
-        "Resource render completed but produced no PNG for ${missing.size} of " +
-          "${filtered.size} resource preview(s)."
+        "${prefix}Resource render completed but produced no PNG for ${missing.size} of " +
+          "${filtered.size} resource preview(s):"
       )
+      for (r in missing) {
+        val nullVariants =
+          r.captures
+            .filter { it.pngPath == null }
+            .joinToString(", ") { it.renderOutput.ifBlank { "default" } }
+            .ifEmpty { "default" }
+        val moduleTag = if (r.module.isNotBlank()) " (${r.module})" else ""
+        System.err.println("  - ${r.id}$moduleTag — no PNG for: $nullVariants")
+      }
       System.out.flush()
-      exitProcess(2)
+      if (shouldFailOnMissingRenders()) exitProcess(2)
     }
     System.out.flush()
   }
