@@ -643,13 +643,12 @@ object PreviewDiscovery {
               CatalogToken(className = it.className, member = it.member, label = it.name)
             },
         ),
-      // Optional so the `composePreviewRenderAll` required-output gate doesn't fail on backends
-      // that
-      // can't draw catalog sheets yet: the Android backend renders them, but the desktop backend
-      // skips `CATALOG` (see `RenderPreviewsTask`) until #2135 adds desktop support. `optional`
-      // doesn't stop the Android render — the PNG is still produced and shown; it only means "don't
-      // fail if absent." Mirrors how the XR composite capture is marked optional.
-      captures = listOf(Capture(renderOutput = "renders/$id.png", optional = true)),
+      // Required (not optional): the Android backend renders catalog sheets, so a missing PNG there
+      // is a real regression the `composePreviewRenderAll` gate must catch. The desktop backend
+      // can't draw them yet (#2135) — rather than weaken the gate for every backend, the desktop
+      // render task skips CATALOG (see `RenderPreviewsTask`) and the desktop-only validation pass
+      // excludes it from the required set (see `registerRenderAllPreviews(requireCatalog = false)`).
+      captures = listOf(Capture(renderOutput = "renders/$id.png")),
     )
 
   /**
