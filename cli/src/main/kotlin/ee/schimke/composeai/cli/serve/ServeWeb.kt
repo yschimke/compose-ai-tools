@@ -93,6 +93,17 @@ object ServeWeb {
   }
 
   /**
+   * The query string for a same-session link, given the page's [basePath]. When the page is served
+   * under a `/<system>` path ([basePath] non-empty) the session is carried by the path, so links
+   * are **token-only** — no `&session=`. When it's the root-mounted default/legacy `?session=` form
+   * ([basePath] empty) it falls back to [queryString], preserving the historical link shape (and
+   * byte-identical goldens for the callers that don't pass a basePath).
+   */
+  private fun linkQuery(token: String, sessionId: String?, basePath: String): String =
+    if (basePath.isEmpty()) queryString(token, sessionId)
+    else "token=" + WebEscaping.urlEncodeSegment(token)
+
+  /**
    * Producer-trust badge for a bundle/catalog session ([BundleVerifier.summary]); empty for a live
    * daemon-backed module (trust applies to detached bundles/catalogs, not the operator's own served
    * module). A non-`unverified` verdict reads as trusted (green ✓); `unverified` is amber (⚠).
@@ -130,20 +141,21 @@ object ServeWeb {
       .trimIndent()
 
   /**
-   * Design-system nav: a pill row linking each served `--catalogs` system to its
-   * `?session=<system>` landing, so the public front door lists the catalogs instead of hiding them
-   * behind the query. The current session (when it is one of the catalogs) renders as a non-link,
+   * Design-system nav: a pill row linking each served `--catalogs` system to its canonical
+   * `/<system>/` landing, so the public front door lists the catalogs instead of hiding them behind
+   * the query. The current session (when it is one of the catalogs) renders as a non-link,
    * current-marked pill. Empty [catalogs] ⇒ no row.
    */
   private fun catalogNav(catalogs: List<String>, token: String, sessionId: String?): String {
     if (catalogs.isEmpty()) return ""
+    val tokenQuery = "token=" + WebEscaping.urlEncodeSegment(token)
     val links =
       catalogs.joinToString("\n") { sys ->
         val name = WebEscaping.htmlEscape(sys)
         if (sys == sessionId) {
           "<span class=\"cp-systems-cur\" aria-current=\"page\">$name</span>"
         } else {
-          "<a href=\"/?${queryString(token, sys)}\">$name</a>"
+          "<a href=\"/${WebEscaping.urlEncodeSegment(sys)}/?$tokenQuery\">$name</a>"
         }
       }
     return """
@@ -164,8 +176,14 @@ object ServeWeb {
     trust: String? = null,
     isPublic: Boolean = false,
     catalogs: List<String> = emptyList(),
+    /**
+     * URL prefix for this session's own links (`/<system>` when served under a path, empty for the
+     * root-mounted default/legacy session). Card/render/zip links are prefixed with it and drop the
+     * `&session=` param (the path carries the session). Empty ⇒ links are exactly as before.
+     */
+    basePath: String = "",
   ): String {
-    val q = queryString(token, sessionId)
+    val q = linkQuery(token, sessionId, basePath)
     val cards =
       if (previews.isEmpty()) {
         "<p class=\"cp-sub\">No previews discovered in this module.</p>"
@@ -175,9 +193,9 @@ object ServeWeb {
           val label = WebEscaping.htmlEscape(p.label)
           val idText = WebEscaping.htmlEscape(p.id)
           """
-          <a class="cp-card" href="/p/$idSeg?$q">
+          <a class="cp-card" href="$basePath/p/$idSeg?$q">
             <div class="cp-imgwrap">
-              <img loading="lazy" alt="$label" src="/render/$idSeg.png?$q">
+              <img loading="lazy" alt="$label" src="$basePath/render/$idSeg.png?$q">
             </div>
             <div class="cp-meta">
               <div class="cp-label" title="$idText">$label</div>
@@ -196,7 +214,7 @@ object ServeWeb {
         """
         $about$nav<p class="cp-head">${WebEscaping.htmlEscape(moduleLabel)}${trustBadge(trust)}</p>
         <p class="cp-sub">${previews.size} preview(s) · click one to view with overrides ·
-          <a href="/bundle.zip?$q">download all (.zip)</a></p>
+          <a href="$basePath/bundle.zip?$q">download all (.zip)</a></p>
         <div class="cp-grid">
         $cards
         </div>
@@ -222,9 +240,16 @@ object ServeWeb {
     canApplyOverrides: Boolean = false,
     trust: String? = null,
     wasmSrc: String? = null,
+    /**
+     * URL prefix for this session's links (`/<system>` when served under a path, empty otherwise).
+     * The "← previews" link is prefixed with it; the viewer's own `/render` + `/ws` requests derive
+     * their prefix from `location.pathname` at runtime, so they work under either mount. Empty ⇒
+     * links are exactly as before.
+     */
+    basePath: String = "",
   ): String {
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
-    val q = queryString(token, sessionId)
+    val q = linkQuery(token, sessionId, basePath)
     val label = WebEscaping.htmlEscape(preview.label)
     val idText = WebEscaping.htmlEscape(preview.id)
     val modes = preview.modes.joinToString(",") { it.wire }
@@ -273,7 +298,7 @@ object ServeWeb {
       }
     val body =
       """
-      <p class="cp-head"><a href="/?$q">← previews</a>${trustBadge(trust)}</p>
+      <p class="cp-head"><a href="$basePath/?$q">← previews</a>${trustBadge(trust)}</p>
       <p class="cp-sub" title="$idText">$label</p>
       <div class="cp-viewer" data-preview-id="$idText" data-mode="snapshot" data-modes="$modes"$wasmAttr>
         <div class="cp-stage"><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$wasmFrame</div>
@@ -337,6 +362,11 @@ object ServeWeb {
       var status = document.getElementById("cp-status");
       var live = document.getElementById("cp-live");
       var previewId = root.getAttribute("data-preview-id");
+      // The session path prefix ("/<system>") when this viewer is served under a path — it sits at
+      // "<base>/p/<id>", so stripping the trailing "/p/<id>" recovers the base ("" for the root
+      // mount / legacy ?session= form). /render + /ws requests are prefixed with it so they hit the
+      // same session without needing ?session= threaded through.
+      var base = location.pathname.replace(/\/p\/[^/]*\/?$/, "");
       var token = new URLSearchParams(location.search).get("token") || "";
       // Carry the tenant through follow-up requests so a non-default ?session= stays on its module.
       var session = new URLSearchParams(location.search).get("session") || "";
@@ -378,7 +408,7 @@ object ServeWeb {
       }
       function refreshSnapshot() {
         status.textContent = "rendering…";
-        var url = "/render/" + encodeURIComponent(previewId) + ".png?" + query();
+        var url = base + "/render/" + encodeURIComponent(previewId) + ".png?" + query();
         var next = new Image();
         next.onload = function () { img.src = url; status.textContent = ""; };
         next.onerror = function () { status.textContent = "render failed"; };
@@ -503,7 +533,7 @@ object ServeWeb {
         var proto = location.protocol === "https:" ? "wss:" : "ws:";
         // Request WebP frames (smaller; the browser decodes them via the data URL, and the daemon
         // downgrades to PNG when it can't encode WebP — each frame carries its actual codec).
-        ws = new WebSocket(proto + "//" + location.host + "/ws/" +
+        ws = new WebSocket(proto + "//" + location.host + base + "/ws/" +
           encodeURIComponent(previewId) + "?" + query() + "&codec=webp");
         ws.onmessage = function (ev) {
           var m;

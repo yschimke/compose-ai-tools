@@ -101,6 +101,39 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `a per-system sourceRepo override fetches from that repo and attributes to it`() {
+    val urls = mutableListOf<String>()
+    val trust =
+      TrustStore(branches = listOf(TrustedBranch("yschimke/meshcore-mobile", "design-artifacts/*")))
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = trust,
+        fetch = { url ->
+          urls += url
+          fetcher()(url)
+        },
+      )
+    val result = store.load("meshcore-mobile", sourceRepo = "yschimke/meshcore-mobile")
+
+    // Every fetch went to the override repo's design-artifacts/<system> branch, not the default.
+    assertTrue(
+      urls.all {
+        it.startsWith(
+          "https://raw.githubusercontent.com/yschimke/meshcore-mobile/design-artifacts/meshcore-mobile/"
+        )
+      },
+      "fetched from the override repo: $urls",
+    )
+    assertTrue(
+      result is ServeCatalogStore.Result.Ok &&
+        result.trust == "branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile",
+      "attributed to the override repo's branch: $result",
+    )
+  }
+
+  @Test
   fun `a missing catalog reports a failure`() {
     val result = store(TrustStore.EMPTY, fetch = { null }).load("compose-m3")
     assertTrue(result is ServeCatalogStore.Result.Failed)

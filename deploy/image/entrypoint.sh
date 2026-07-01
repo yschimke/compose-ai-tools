@@ -27,6 +27,11 @@ fi
 # `serve` fetches each system's web/wasm/ from the trusted design-artifacts
 # branch. (--wasm-dir is for the from-source image's local build.)
 [[ -n "${SERVE_CATALOGS:-}" ]] && args+=(--catalogs "${SERVE_CATALOGS}")
+# Design systems served but hidden from the front-page nav — reachable at /<system>/
+# (and ?session=<system>). Each entry may carry a per-repo source as <system>@<owner>/<repo>
+# (e.g. meshcore-mobile@yschimke/meshcore-mobile). Their web/wasm/ (if any) still rides the
+# branch, and their branch must be trusted (see the trust store below) to badge Trusted.
+[[ -n "${SERVE_CATALOGS_UNLISTED:-}" ]] && args+=(--catalogs-unlisted "${SERVE_CATALOGS_UNLISTED}")
 # Default to the baked branch-trust store so the published design-artifacts catalogs
 # badge as Trusted(Branch) out of the box. `:=` fills it when SERVE_TRUST_STORE is
 # unset OR empty (an older host compose passes ""), so a bare image pull self-heals a

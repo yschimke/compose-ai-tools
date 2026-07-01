@@ -4,6 +4,14 @@
     {
       "repo": "yschimke/compose-ai-tools",
       "branch": "design-artifacts/*"
+    },
+    {
+      "repo": "yschimke/meshcore-mobile",
+      "branch": "design-artifacts/*"
+    },
+    {
+      "repo": "yschimke/homeassistant-remotecompose",
+      "branch": "design-artifacts/*"
     }
   ]
 }

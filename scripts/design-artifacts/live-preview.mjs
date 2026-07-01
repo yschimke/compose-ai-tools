@@ -28,18 +28,22 @@ export function catalogPreviewId(imagePath) {
 
 /**
  * Deep link that opens a catalog image's variant in the live preview server. Targets the **viewer**
- * route `/p/{name}` (not `/?preview=`, which only renders the session landing page) with the
- * route-safe preview id as the single path segment and `?session=<system>` selecting the catalog.
+ * under the catalog's canonical path `/<system>/p/{name}`: the `<system>` segment selects the
+ * catalog and the route-safe preview id is the trailing segment. The server still accepts the legacy
+ * `/p/{name}?session=<system>` form, but the path form is what we publish.
  */
 export function livePreviewUrl(base, system, imagePath) {
   const root = base.replace(/\/+$/, "");
   const id = catalogPreviewId(imagePath);
-  return `${root}/p/${encodeURIComponent(id)}?session=${encodeURIComponent(system)}`;
+  return `${root}/${encodeURIComponent(system)}/p/${encodeURIComponent(id)}`;
 }
 
-/** Session-level link (the system's landing page on the live server), for the README banner. */
+/**
+ * Session-level link — the system's landing page on the live server at its canonical `/<system>/`
+ * path (for the README banner). The server also honours the legacy `/?session=<system>` form.
+ */
 export function liveSessionUrl(base, system) {
-  return `${base.replace(/\/+$/, "")}/?session=${encodeURIComponent(system)}`;
+  return `${base.replace(/\/+$/, "")}/${encodeURIComponent(system)}/`;
 }
 
 /**

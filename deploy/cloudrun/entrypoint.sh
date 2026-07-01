@@ -43,6 +43,10 @@ fi
 #   SERVE_TRUST_STORE=trust/producers.json
 #   SERVE_WASM_DIR=compose-m3=samples/cmp-wasm-catalog/build/wasmDist
 [[ -n "${SERVE_CATALOGS:-}" ]] && args+=(--catalogs "${SERVE_CATALOGS}")
+# Design systems served but hidden from the front-page nav — reachable at /<system>/
+# (and ?session=<system>). Each entry may carry a per-repo source as <system>@<owner>/<repo>
+# (e.g. meshcore-mobile@yschimke/meshcore-mobile).
+[[ -n "${SERVE_CATALOGS_UNLISTED:-}" ]] && args+=(--catalogs-unlisted "${SERVE_CATALOGS_UNLISTED}")
 [[ -n "${SERVE_TRUST_STORE:-}" ]] && args+=(--trust-store "${SERVE_TRUST_STORE}")
 [[ -n "${SERVE_WASM_DIR:-}" ]] && args+=(--wasm-dir "${SERVE_WASM_DIR}")
 # Trusted server-side re-render (opt-in, OFF by default). Only enable on a box that
