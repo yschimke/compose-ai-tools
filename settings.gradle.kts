@@ -210,6 +210,14 @@ include(":samples:desktop-daemon-bench")
 
 include(":samples:remotecompose")
 
+// Remote Compose **design catalog** — one `@Preview` per Remote Compose component
+// (Wear Compose Remote Material 3 + remote-creation-compose primitives), exported
+// as a sticker sheet like the M3 / Wear siblings. Each sticker is a real
+// RemoteDocument built by `RemotePreview` and rasterised by the player, so this
+// module carries the alpha Remote Compose runtime (compileSdk 37) rather than the
+// stable Compose BOM (see `:samples:remotecompose` and `docs/design/DESIGN_CATALOGS.md`).
+include(":samples:design-catalog-remote-m3")
+
 include(":renderer-desktop")
 
 project(":renderer-desktop").projectDir = file("renderers/desktop")

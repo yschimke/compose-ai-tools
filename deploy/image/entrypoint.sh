@@ -30,7 +30,7 @@ fi
 # The published catalog set is BAKED INTO THE IMAGE (same `:=` + `none` convention
 # as SERVE_TRUST_STORE below), so a bare `docker pull` / Watchtower auto-update
 # self-heals without editing the box's compose. Front-page systems:
-: "${SERVE_CATALOGS:=compose-m3,wear-m3}"
+: "${SERVE_CATALOGS:=compose-m3,wear-m3,remote-m3}"
 [[ "${SERVE_CATALOGS}" != "none" ]] && args+=(--catalogs "${SERVE_CATALOGS}")
 # …and the app design systems we publish UNLISTED from their own repos — reachable at
 # /<system>/ (and ?session=<system>) but off the front-page nav. <system>@<owner>/<repo>

@@ -1,0 +1,40 @@
+{
+  "$comment": "Phase-0 catalog spec for Remote Compose (Wear Compose Remote Material 3 + remote-creation-compose primitives). Code-led: each sticker is a real RemoteDocument built by RemotePreview and rasterised by the Remote Compose player, so the render is authoritative. Remote Compose carries explicit colours in the document rather than a light/dark theme split, so there is a single primary mode. Consumed by @design-parity/catalog-export to populate ComponentSource group/caption/reference. Sibling of samples/design-catalog-{m3,wear-m3}; see docs/design/DESIGN_CATALOGS.md.",
+  "system": "remote-m3",
+  "title": "Remote Compose Material 3",
+  "library": [
+    "androidx.wear.compose.remote:remote-material3",
+    "androidx.compose.remote:remote-creation-compose"
+  ],
+  "module": "samples:design-catalog-remote-m3",
+  "modes": ["light"],
+  "referenceKits": [],
+  "groups": [
+    {
+      "name": "Buttons",
+      "components": [
+        { "componentId": "Button/Filled", "preview": "FilledRemoteButton", "caption": "Remote Material 3 button — the primary action." },
+        { "componentId": "Button/Bordered", "preview": "BorderedRemoteButton", "caption": "Button with an explicit remote border + border colour." },
+        { "componentId": "Button/CustomShape", "preview": "CustomShapeRemoteButton", "caption": "Button with a RemoteRoundedCornerShape override." }
+      ]
+    },
+    {
+      "name": "Text",
+      "components": [
+        { "componentId": "Text/Body", "preview": "RemoteTextSticker", "caption": "The Remote Material 3 text primitive on its own." }
+      ]
+    },
+    {
+      "name": "Interactive",
+      "components": [
+        { "componentId": "Button/NamedLabel", "preview": "NamedLabelRemoteButton", "caption": "Label bound to a Remote Compose named value — the connector flips it live (default render shows \"Tap me\")." }
+      ]
+    },
+    {
+      "name": "Shaders",
+      "components": [
+        { "componentId": "Shader/LinearGradient", "preview": "ShaderGradientSticker", "caption": "Document-level gradient shader fill; the middle stop is a named value the connector can recolour live." }
+      ]
+    }
+  ]
+}
