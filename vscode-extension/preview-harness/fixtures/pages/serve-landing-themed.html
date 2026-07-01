@@ -59,7 +59,9 @@ a:hover { text-decoration: underline; }
 .cp-backend { position: absolute; top: 8px; right: 8px; font-size: 0.62rem; font-weight: 600;
   letter-spacing: 0.02em; padding: 2px 8px; border-radius: 999px; background: rgba(20,20,22,0.72);
   color: #fff; pointer-events: none; }
-.cp-stage iframe { width: 100%; height: 320px; border: 0; background: transparent; }
+.cp-stage iframe { position: absolute; border: 0; background: transparent; opacity: 0;
+  transition: opacity 0.15s ease; pointer-events: none; }
+.cp-stage iframe.cp-wasm-live { opacity: 1; pointer-events: auto; }
 .cp-live-row { flex-direction: row !important; align-items: center; gap: 6px !important; }
 .cp-controls { flex: 0 0 240px; display: flex; flex-direction: column; gap: 14px; }
 .cp-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; }

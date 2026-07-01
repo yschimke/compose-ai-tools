@@ -53,6 +53,22 @@ End-to-end in headless Chromium — the M3 component renders **client-side**, in
 
 ![Serve viewer with the Wasm tier mounted](images/wasm-cmp-viewer-mounted.png)
 
+**Snapshot parity + flash-free switch (built).** The app reproduces the baked catalog sticker
+exactly — the same `Surface` + 16dp-padding geometry `CatalogSticker` bakes, contain-fit scaled to
+the iframe, which the viewer overlays on the snapshot `<img>`'s exact rendered box. The app posts
+`cp-wasm-ready` after its first drawn frame and the viewer keeps the snapshot on-stage until then,
+so ticking "Run in browser (Wasm)" swaps with no white flash and (fonts aside) no pixel movement:
+
+![Snapshot vs Wasm vs 50/50 blend vs amplified diff](images/wasm-parity-checkbox-dark.png)
+
+The compose-web surface can't be transparent (it paints an opaque base), so the app draws the serve
+stage's own checkerboard behind the sticker, phase-aligned via the viewer-supplied `bgPhase` param —
+that's also what backs the viewer's **"Component only (no background)"** toggle (`background=off`),
+which drops the sticker's surface fill and leaves the bare component on the (visually) transparent
+stage:
+
+![Component only (no background)](images/wasm-nobg-checkbox.png)
+
 **Sandbox + CORS.** The iframe is `sandbox="allow-scripts"` (no `allow-same-origin`), so it has an
 opaque origin and can't touch the parent — which keeps it safe to run even *untrusted* wasm
 client-side. That opaque origin makes the app's own ES-module + wasm fetches cross-origin, so the
