@@ -653,15 +653,15 @@ runs:
         # resolved body, no-diff+no-prior → only post resolved if
         # comment-on-empty-diff=true.
         RESOLVED_BODY="${MARKER}"$'\n'"## Resource Changes"$'\n\n'"_No resource changes in this PR's latest render._"
-        # Stream body via file when present — large resource diffs would
-        # otherwise blow ARG_MAX. RESOLVED_BODY is small and stays inline.
+        # Route the populated-body path through post-comment.sh so a large
+        # resource diff gets the same ARG_MAX streaming *and* the
+        # 65,536-char truncation guard as every other comment (the helper
+        # re-resolves the sticky comment by MARKER and PATCHes/posts).
+        # RESOLVED_BODY is small and stays inline.
         if [ -s _comment_body_resources.md ]; then
-          if [ -n "$COMMENT_ID" ]; then
-            gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" \
-              -X PATCH -f "body=@_comment_body_resources.md"
-          else
-            gh pr comment "$PR_NUMBER" --body-file _comment_body_resources.md
-          fi
+          export PR_NUMBER MARKER
+          export BODY_FILE="_comment_body_resources.md"
+          bash "$ACTION_PATH/lib/post-comment.sh"
         elif [ -n "$COMMENT_ID" ]; then
           gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" \
             -X PATCH -f body="$RESOLVED_BODY"

@@ -40,6 +40,10 @@ class FakeEmulator(
    * controller.
    */
   val settings: DeviceSettingsController = DeviceSettingsController(),
+  /**
+   * Captures `adb install` / Studio deploys: APK bytes + the parsed package (metadata, not run).
+   */
+  val apkStore: ApkStore = ApkStore(),
   private val discovery: DiscoveryRegistration = DiscoveryRegistration(),
 ) : AutoCloseable {
   private var console: EmulatorConsole? = null
@@ -68,7 +72,7 @@ class FakeEmulator(
       LinkedHashMap(DeviceProperties.defaults(serial, config.display)).apply {
         putAll(config.propertyOverrides)
       }
-    val interpreter = ShellInterpreter(properties, frameSource, previewLauncher, settings)
+    val interpreter = ShellInterpreter(properties, frameSource, previewLauncher, settings, apkStore)
     val resolver = EmulatorAdbServices(interpreter)
     val banner = AdbBanner.build(properties)
     adbServer = AdbTransportServer(config.adbPort, banner, resolver).also { it.start() }

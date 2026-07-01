@@ -1,0 +1,100 @@
+package ee.schimke.composeai.fakeemulator
+
+import java.io.ByteArrayOutputStream
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
+
+/**
+ * In-memory record of what an `adb install` / Studio deploy pushes at the fake emulator. It
+ * captures the two things a real device does with an install — hold the APK bytes and remember the
+ * resulting package — but stops short of running anything. Two transports feed it:
+ *
+ * - **Legacy:** `sync:` `SEND` writes the APK to a device path (e.g. `/data/local/tmp/x.apk`) via
+ *   [putPushedFile]; a later `pm install <path>` [installs][install] the [taken][takePushedFile]
+ *   bytes.
+ * - **Streaming (modern default):** `cmd package install-create` / `install-write` /
+ *   `install-commit` (or single-shot `-S <size>`) buffers the piped APK into a [session] and
+ *   commits it.
+ *
+ * Committing an install runs [ApkInspector] over the bytes so the package name (and whether it
+ * carries `@Preview`s) is available to the launch/discovery path. Everything is kept in memory;
+ * this is metadata + discovery, not a package manager.
+ */
+class ApkStore {
+  /** Bytes pushed to a device path by `sync: SEND`, awaiting a `pm install <path>`. */
+  private val pushedFiles = ConcurrentHashMap<String, ByteArray>()
+  /** Open streaming-install sessions, keyed by the id we hand back from `install-create`. */
+  private val sessions = ConcurrentHashMap<String, ByteArrayOutputStream>()
+  /**
+   * Installs recorded so far, keyed by package name (unknown-package installs use a synthetic key).
+   */
+  private val installed = ConcurrentHashMap<String, InstalledApk>()
+  private val sessionSeq = AtomicInteger(1)
+  private val anonSeq = AtomicInteger(1)
+
+  /** One recorded install: the parsed [ApkInfo] plus how it arrived. */
+  data class InstalledApk(val info: ApkInfo, val transport: Transport) {
+    val packageName: String?
+      get() = info.packageName
+  }
+
+  enum class Transport {
+    /** `sync: SEND` to a temp path, then `pm install <path>`. */
+    LEGACY_PUSH,
+    /** `cmd package install -S <size>` with the APK piped to stdin. */
+    STREAMING,
+    /** `install-create` + `install-write` + `install-commit`. */
+    SESSION,
+  }
+
+  // --- Legacy push (sync: SEND → pm install <path>) ---
+
+  fun putPushedFile(path: String, bytes: ByteArray) {
+    pushedFiles[path] = bytes
+  }
+
+  fun takePushedFile(path: String): ByteArray? = pushedFiles.remove(path)
+
+  // --- Streaming sessions (install-create / install-write / install-commit) ---
+
+  /** Opens a session and returns its id, as `pm install-create` would. */
+  fun createSession(): String {
+    val id = sessionSeq.getAndIncrement().toString()
+    sessions[id] = ByteArrayOutputStream()
+    return id
+  }
+
+  /** Appends streamed bytes to an open session. No-op for an unknown id. */
+  fun writeSession(id: String, bytes: ByteArray) {
+    sessions[id]?.write(bytes)
+  }
+
+  /**
+   * Commits and records a session's APK; returns the recorded install, or `null` if id is unknown.
+   */
+  fun commitSession(id: String): InstalledApk? {
+    val buffer = sessions.remove(id) ?: return null
+    return install(buffer.toByteArray(), Transport.SESSION)
+  }
+
+  fun abandonSession(id: String) {
+    sessions.remove(id)
+  }
+
+  // --- Recording an install ---
+
+  /**
+   * Inspects [apk] and records it as installed, replacing any prior install of the same package.
+   */
+  fun install(apk: ByteArray, transport: Transport): InstalledApk {
+    val info = ApkInspector.inspect(apk)
+    val record = InstalledApk(info, transport)
+    val key = info.packageName ?: "\u0000anon-${anonSeq.getAndIncrement()}"
+    installed[key] = record
+    return record
+  }
+
+  fun installed(): List<InstalledApk> = installed.values.toList()
+
+  fun findByPackage(packageName: String): InstalledApk? = installed[packageName]
+}

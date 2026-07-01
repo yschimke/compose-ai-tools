@@ -14,7 +14,12 @@ class EmulatorAdbServices(private val interpreter: ShellInterpreter) : AdbServic
       // raw, which is exactly what `exec-out screencap -p > screen.png` needs.
       destination.startsWith("shell") -> ShellService(interpreter, destination)
       destination.startsWith("exec:") -> ShellService(interpreter, destination)
-      destination.startsWith("sync:") -> SyncService()
+      // `abb_exec:` / `abb:` are the modern binder-command transports Studio/adb use for streaming
+      // installs (`abb_exec:package\0install\0-S\0<size>` == `cmd package install -S <size>`).
+      destination.startsWith("abb_exec:") -> AbbService(interpreter, destination)
+      destination.startsWith("abb:") -> AbbService(interpreter, destination)
+      // `sync:` captures a pushed APK (SEND) so a later `pm install <path>` can use its bytes.
+      destination.startsWith("sync:") -> SyncService(interpreter.apkStore)
       // framebuffer:/reverse:/jdwp:/tcp: aren't implemented — screencap is the screenshot path.
       else -> null
     }
@@ -33,7 +38,10 @@ class ShellService(private val interpreter: ShellInterpreter, private val destin
     val command = if (colon >= 0) destination.substring(colon + 1) else ""
     val v2 = options.split(',').contains("v2")
 
-    val result = interpreter.execute(command)
+    // Raw `exec:`/`shell:` stdin is the APK stream for `pm install -S`; v2 stdin is shell-framed
+    // and
+    // not an install path, so leaving it unread is fine.
+    val result = interpreter.execute(command, AdbStreamInputStream(io))
     if (v2) {
       writeShellV2(io, ID_STDOUT, result.stdout)
       writeShellV2(io, ID_STDERR, result.stderr)
@@ -66,11 +74,30 @@ class ShellService(private val interpreter: ShellInterpreter, private val destin
 }
 
 /**
- * Minimal ADB sync service (`sync:`). Enough that file-transfer-shaped flows (e.g. an install
- * pushing an APK) don't hang: STAT reports "not present", SEND is consumed and OKAY'd, RECV fails
- * cleanly, QUIT ends. Full sync (real pull, v2 stat/list) is out of scope — see DESIGN.md.
+ * Runs a binder command over the `abb_exec:` / `abb:` transport. Args are NUL-separated rather than
+ * a shell line (`abb_exec:package\0install\0-S\0<size>`), and map onto the same `cmd <service> …`
+ * the shell interpreter runs — so a streaming install arriving over `abb_exec` reuses the exact
+ * `cmd package install` handling. Output is written raw (no shell-v2 framing).
  */
-class SyncService : AdbService {
+class AbbService(private val interpreter: ShellInterpreter, private val destination: String) :
+  AdbService {
+  override fun run(io: AdbStreamIo) {
+    val colon = destination.indexOf(':')
+    val payload = if (colon >= 0) destination.substring(colon + 1) else ""
+    val argv = payload.split('\u0000').filter { it.isNotEmpty() }
+    val result = interpreter.executeArgv(listOf("cmd") + argv, AdbStreamInputStream(io))
+    if (result.stdout.isNotEmpty()) io.write(result.stdout)
+    if (result.stderr.isNotEmpty()) io.write(result.stderr)
+  }
+}
+
+/**
+ * Minimal ADB sync service (`sync:`). Enough that file-transfer-shaped flows (e.g. an install
+ * pushing an APK) don't hang: STAT reports "not present", SEND is captured into the [ApkStore] (so
+ * a later `pm install <path>` can install its bytes) and OKAY'd, RECV fails cleanly, QUIT ends.
+ * Full sync (real pull, v2 stat/list) is out of scope — see DESIGN.md.
+ */
+class SyncService(private val apkStore: ApkStore = ApkStore()) : AdbService {
   override fun run(io: AdbStreamIo) {
     val input = AdbStreamInputStream(io)
     while (true) {
@@ -86,8 +113,10 @@ class SyncService : AdbService {
           io.write("DONE".toByteArray(US_ASCII) + ByteArray(16))
         }
         "SEND" -> {
-          skip(input, arg) // "path,mode"
-          drainSend(input)
+          val spec = readString(input, arg) // "path,mode"
+          val path = spec.substringBeforeLast(',')
+          val bytes = captureSend(input)
+          apkStore.putPushedFile(path, bytes)
           io.write("OKAY".toByteArray(US_ASCII) + le32(0))
         }
         "RECV" -> {
@@ -102,17 +131,35 @@ class SyncService : AdbService {
     }
   }
 
-  /** Consume DATA chunks until DONE (whose arg is the mtime, not a length). */
-  private fun drainSend(input: InputStream) {
+  /** Read [count] bytes as an ASCII string (the SEND "path,mode" header). */
+  private fun readString(input: InputStream, count: Int): String {
+    val b = ByteArray(count.coerceAtLeast(0))
+    if (!readFully(input, b)) return String(b, US_ASCII)
+    return String(b, US_ASCII)
+  }
+
+  /** Accumulate DATA chunks until DONE (whose arg is the mtime, not a length) → the APK bytes. */
+  private fun captureSend(input: InputStream): ByteArray {
+    val out = java.io.ByteArrayOutputStream()
+    val buf = ByteArray(8192)
     while (true) {
-      val id = readId(input) ?: return
-      val arg = readLe32(input) ?: return
+      val id = readId(input) ?: break
+      val arg = readLe32(input) ?: break
       when (id) {
-        "DATA" -> skip(input, arg)
-        "DONE" -> return
-        else -> return
+        "DATA" -> {
+          var remaining = arg
+          while (remaining > 0) {
+            val n = input.read(buf, 0, remaining.coerceAtMost(buf.size))
+            if (n < 0) break
+            out.write(buf, 0, n)
+            remaining -= n
+          }
+        }
+        "DONE" -> break
+        else -> break
       }
     }
+    return out.toByteArray()
   }
 
   private fun readId(input: InputStream): String? {

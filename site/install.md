@@ -178,6 +178,27 @@ There's also a reusable, preview-gated AI PR-review workflow (Codex / Claude
 / Gemini): see
 [PR review workflow](https://github.com/yschimke/compose-ai-tools/blob/main/docs/PR_REVIEW_WORKFLOW.md).
 
+### Speeding up preview CI
+
+Rendering is the long pole. Two levers, both about parallelism:
+
+- **Sharding (on by default).** `composePreview { shards }` fans a module's
+  previews across parallel JVM forks. The default is `0` (auto): the plugin
+  sizes the fork count from the discovered preview cost and the runner's cores
+  + memory, and only shards when the predicted saving is worth the extra JVM
+  cold-starts — so small modules stay single-fork and heavy ones (many
+  previews, GIF/animated captures) fan out automatically. Set `shards = 1` to
+  force it off, or a fixed `≥ 2` to pin it. No workflow changes needed; auto
+  sizing engages on the first CI run because the pipeline discovers previews in
+  a separate Gradle pass before rendering.
+- **Bigger runners.** Auto sharding is capped at `cores − 1` forks (leaving one
+  core for the Gradle daemon), so it can only go as wide as the runner is. The
+  default `runs-on: ubuntu-latest` is 2 vCPU on private repos (no sharding) and
+  4 vCPU on public ones (up to 3 forks). For a large preview suite, point the
+  preview job at a 4- or 8-vCPU runner — that's where the two levers compound
+  into real wall-clock savings. RAM scales with cores on GitHub-hosted runners,
+  which keeps the per-fork memory bound out of the way.
+
 ## Requirements
 
 Java 17+, Gradle 8.13+, AGP 8.13.0+ (Android), Kotlin 2.0.21+, Compose

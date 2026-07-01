@@ -28,21 +28,26 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
   val enabled: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
 
   /**
-   * Number of parallel JVM forks used to render previews. Default 1 (no sharding).
+   * Number of parallel JVM forks used to render previews. Default `0` (auto).
    *
    * Special values:
-   * - `1` (default): no sharding; a single JVM renders every preview.
-   * - `0`: auto — the plugin picks a shard count based on the discovered preview count and
-   *   available CPU cores, using [ShardTuning]'s cost model. Falls back to 1 if previews.json
-   *   hasn't been generated yet.
+   * - `0` (default): auto — the plugin picks a shard count based on the discovered preview cost
+   *   (see [ShardTuning]'s model) and the runner's CPU cores + memory. It only shards when the
+   *   predicted saving clears both an absolute and a relative threshold, so light modules stay on a
+   *   single fork; heavy ones (many previews, GIF/animated captures) fan out. Falls back to 1 if
+   *   `previews.json` hasn't been generated yet — the CLI runs `composePreviewDiscover` as a
+   *   separate Gradle invocation before rendering, so on CI the render's configuration already sees
+   *   a fresh manifest and auto sizing engages on the first run.
+   * - `1`: force no sharding; a single JVM renders every preview.
    * - `≥2`: explicit shard count.
    *
    * Each shard runs a generated `RobolectricRenderTest_ShardN` subclass with its own slice of the
    * manifest (round-robin partition). Within a shard, the Robolectric sandbox is reused across that
    * shard's previews; across shards each JVM pays its own ~3–4s cold-start cost, so sharding is a
-   * net win only when the module has enough previews to amortise that overhead.
+   * net win only when the module has enough previews to amortise that overhead — which is exactly
+   * what the auto model checks before turning it on.
    */
-  val shards: Property<Int> = objects.property(Int::class.java).convention(1)
+  val shards: Property<Int> = objects.property(Int::class.java).convention(0)
 
   /**
    * When `true`, Robolectric instantiates the consumer's manifest-declared `Application` class

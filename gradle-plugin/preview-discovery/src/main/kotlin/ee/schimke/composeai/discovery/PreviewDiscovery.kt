@@ -192,6 +192,12 @@ object PreviewDiscovery {
   internal const val LAUNCHER_WIDGET_RESIZE_FQN =
     "ee.schimke.composeai.preview.LauncherWidgetResize"
 
+  // `@ColorCatalog` — our own opt-in for auto-discovered colour-token sheets. Placed on a `Color`
+  // property's backing field (BINARY retention, `@Target(FIELD)`), so unlike Showkase's
+  // SOURCE-retained `@ShowkaseColor` it survives into bytecode for this FQN-match scan. See
+  // `ColorCatalog.kt`.
+  internal const val COLOR_CATALOG_FQN = "ee.schimke.composeai.preview.ColorCatalog"
+
   // failOnEmpty diagnostics: cap the JAR + annotation FQN sample sizes
   // so the lifecycle log stays readable on projects with huge classpaths.
   private const val DIAG_JAR_SAMPLE = 15
@@ -281,9 +287,20 @@ object PreviewDiscovery {
     // which is almost always a misconfigured dep-jar classpath.
     var reachablePreviewFqns: List<String> = emptyList()
 
+    // `@ColorCatalog`-annotated design-token fields collected during the scan, aggregated into
+    // synthetic [PreviewKind.CATALOG] sheets after the class walk.
+    val rawColorCatalogTokens = mutableListOf<RawCatalogToken>()
+
     if (classpath.isNotEmpty()) {
       ClassGraph()
         .enableMethodInfo()
+        // Field scanning powers `@ColorCatalog` design-token discovery — the annotation lands on a
+        // `Color` property's backing field, so we need field metadata + annotations to see it.
+        // `ignoreFieldVisibility()` is required because a top-level `val`'s backing field is
+        // private
+        // static (mirrors `ignoreMethodVisibility()` for private `@Preview` functions).
+        .enableFieldInfo()
+        .ignoreFieldVisibility()
         .enableAnnotationInfo()
         .ignoreMethodVisibility()
         .overrideClasspath(classpath.map { it.absolutePath })
@@ -337,6 +354,18 @@ object PreviewDiscovery {
                 warnings,
               )
             }
+            // `@ColorCatalog` design tokens: an annotated `Color` property's backing field. Collect
+            // the coordinates + display metadata here; the values are reflected at render time.
+            for (field in classInfo.fieldInfo) {
+              val ann = field.getAnnotationInfo(COLOR_CATALOG_FQN) ?: continue
+              rawColorCatalogTokens +=
+                RawCatalogToken(
+                  className = classInfo.name,
+                  member = field.name,
+                  name = annStringOrDefault(ann, "name", field.name),
+                  group = annStringOrDefault(ann, "group", defaultCatalogGroup(classInfo.name)),
+                )
+            }
           }
         }
     }
@@ -355,7 +384,10 @@ object PreviewDiscovery {
     // unaffected.
     // Lottie asset previews are appended after normalization with their render outputs already
     // shell-safe, so they bypass the package-prefix stripping (they have no class/package).
-    val normalized = normalizeRenderOutputs(deduped) + discoverLottieAssets(input)
+    val normalized =
+      normalizeRenderOutputs(deduped) +
+        discoverLottieAssets(input) +
+        buildColorCatalogPreviews(rawColorCatalogTokens)
 
     // The generic per-extension reports map is empty on the standalone Gradle path — a11y
     // (today's only canned-report producer) writes its artefacts exclusively through the
@@ -538,6 +570,87 @@ object PreviewDiscovery {
   }
 
   private data class LottieDims(val width: Int?, val height: Int?)
+
+  /** Raw `@ColorCatalog` hit collected during the scan, before aggregation into sheets. */
+  private data class RawCatalogToken(
+    val className: String,
+    val member: String,
+    val name: String,
+    val group: String,
+  )
+
+  /**
+   * Reads a `String` annotation parameter, falling back to [fallback] when absent or blank — this
+   * is how `@ColorCatalog.name` defaults to the property name and `.group` to the enclosing class,
+   * the same defaulting Showkase applies.
+   */
+  private fun annStringOrDefault(ann: AnnotationInfo, param: String, fallback: String): String {
+    val raw = runCatching { ann.parameterValues.getValue(param) as? String }.getOrNull()
+    return raw?.takeIf { it.isNotBlank() } ?: fallback
+  }
+
+  /**
+   * Default group for a token: the enclosing class simple name, with a file class's `Kt` suffix
+   * dropped.
+   */
+  private fun defaultCatalogGroup(className: String): String {
+    val simple = className.substringAfterLast('.')
+    return simple.removeSuffix("Kt").ifBlank { simple }
+  }
+
+  /**
+   * Aggregates the collected `@ColorCatalog` tokens into synthetic [PreviewKind.CATALOG] sheets:
+   * one per `group`, plus a module-wide "All colours" sheet when there is more than one group (a
+   * single group would just duplicate itself). Appended after [normalizeRenderOutputs] with render
+   * outputs already shell-safe, like the Lottie assets.
+   */
+  private fun buildColorCatalogPreviews(tokens: List<RawCatalogToken>): List<PreviewInfo> {
+    if (tokens.isEmpty()) return emptyList()
+    val byGroup = LinkedHashMap<String, MutableList<RawCatalogToken>>()
+    for (t in tokens) byGroup.getOrPut(t.group) { mutableListOf() }.add(t)
+
+    val entries = mutableListOf<PreviewInfo>()
+    for ((group, groupTokens) in byGroup) {
+      entries +=
+        colorCatalogPreview(
+          id = "colorcatalog__${group.replace(SANITIZE_RENDER_STEM, "_")}",
+          displayName = "$group colours",
+          tokens = groupTokens,
+        )
+    }
+    if (byGroup.size > 1) {
+      entries +=
+        colorCatalogPreview(id = "colorcatalog__all", displayName = "All colours", tokens = tokens)
+    }
+    return entries
+  }
+
+  private fun colorCatalogPreview(
+    id: String,
+    displayName: String,
+    tokens: List<RawCatalogToken>,
+  ): PreviewInfo =
+    PreviewInfo(
+      id = id,
+      functionName = displayName,
+      className = tokens.first().className,
+      params =
+        PreviewParams(
+          name = displayName,
+          kind = PreviewKind.CATALOG,
+          catalogTokens =
+            tokens.map {
+              CatalogToken(className = it.className, member = it.member, label = it.name)
+            },
+        ),
+      // Optional so the `composePreviewRenderAll` required-output gate doesn't fail on backends
+      // that
+      // can't draw catalog sheets yet: the Android backend renders them, but the desktop backend
+      // skips `CATALOG` (see `RenderPreviewsTask`) until #2135 adds desktop support. `optional`
+      // doesn't stop the Android render — the PNG is still produced and shown; it only means "don't
+      // fail if absent." Mirrors how the XR composite capture is marked optional.
+      captures = listOf(Capture(renderOutput = "renders/$id.png", optional = true)),
+    )
 
   /**
    * Parse [file] as a Lottie document, returning its declared canvas dimensions when it carries the

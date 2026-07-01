@@ -150,6 +150,71 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
+  fun `composePreviewDiscover aggregates @ColorCatalog tokens into catalog sheets`() {
+    val projectDir = createCmpTestProject()
+
+    // Declare the annotation locally with the discovered FQN so the test needs no external
+    // `preview-annotations` artifact — discovery matches by FQN + FIELD target, nothing else.
+    val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+    annDir.mkdirs()
+    File(annDir, "ColorCatalog.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FIELD)
+        annotation class ColorCatalog(val name: String = "", val group: String = "")
+        """
+          .trimIndent()
+      )
+
+    File(projectDir, "src/main/kotlin/test/Tokens.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.ui.graphics.Color
+        import ee.schimke.composeai.preview.ColorCatalog
+
+        @ColorCatalog(group = "Brand") val Coral: Color = Color(0xFFFF6F61)
+        @ColorCatalog(name = "Brand Gold", group = "Brand") val Gold: Color = Color(0xFFFFD700)
+        @ColorCatalog(group = "Semantic") val Danger: Color = Color(0xFFC62828)
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val catalogs = manifest.previews.filter { it.params.kind == PreviewKind.CATALOG }
+
+    // Two groups (Brand, Semantic) → two group sheets, plus a module-wide aggregate.
+    assertThat(catalogs.map { it.id })
+      .containsExactly("colorcatalog__Brand", "colorcatalog__Semantic", "colorcatalog__all")
+
+    val brand = catalogs.first { it.id == "colorcatalog__Brand" }
+    // `name` defaults to the property name (`Coral`); the explicit "Brand Gold" overrides it.
+    assertThat(brand.params.catalogTokens.map { it.label }).containsExactly("Coral", "Brand Gold")
+    assertThat(brand.params.catalogTokens.map { it.member }).containsExactly("Coral", "Gold")
+    // Coordinates point at the file's synthetic `TokensKt` class for render-time reflection.
+    assertThat(brand.params.catalogTokens.first().className).endsWith("TokensKt")
+
+    // The module aggregate carries every token across both groups.
+    assertThat(catalogs.first { it.id == "colorcatalog__all" }.params.catalogTokens).hasSize(3)
+  }
+
+  @Test
   fun `composePreviewDiscover is UP-TO-DATE on second run`() {
     val projectDir = createCmpTestProject()
 

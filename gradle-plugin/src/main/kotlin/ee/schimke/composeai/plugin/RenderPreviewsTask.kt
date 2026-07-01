@@ -120,10 +120,20 @@ abstract class RenderPreviewsTask : DefaultTask() {
     // Empty
     // keeps every kind.
     val kinds = includeKinds.getOrElse(emptySet())
-    val previews =
+    val kindFiltered =
       if (kinds.isEmpty()) tierFiltered else tierFiltered.filter { it.params.kind.name in kinds }
-    val manifest =
-      if (isFastTier || kinds.isNotEmpty()) rawManifest.copy(previews = previews) else rawManifest
+    // `CATALOG` sheets carry their tokens as structured data (`params.catalogTokens`), which this
+    // desktop path's flat positional-arg protocol doesn't forward — and their display
+    // `functionName`
+    // ("Brand colours") isn't a real composable, so `getDeclaredComposableMethod` would throw and
+    // sink `composePreviewRenderAll` on any CMP/desktop module using `@ColorCatalog`. Catalog
+    // sheets
+    // render on the Android backend today; desktop catalog support is tracked in #2135. Skip them
+    // here rather than crash.
+    val previews = kindFiltered.filter { it.params.kind.name != "CATALOG" }
+    // Always rebuild from the filtered list now that the CATALOG skip applies unconditionally (the
+    // old fast-path reused `rawManifest` verbatim, which would leave catalog entries in).
+    val manifest = rawManifest.copy(previews = previews)
 
     if (manifest.previews.isEmpty()) {
       logger.lifecycle("No previews to render.")

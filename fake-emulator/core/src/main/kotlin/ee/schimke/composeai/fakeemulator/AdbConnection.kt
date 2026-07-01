@@ -117,14 +117,15 @@ internal class AdbConnection(
     synchronized(writeLock) { AdbProtocol.write(output, message) }
   }
 
+  /**
+   * Decode an OPEN destination. adb appends a single terminating NUL; we strip just that one so
+   * `abb_exec:`'s internal NUL argument separators (`package\0install\0-S\0…`) survive — a
+   * truncate-at-first-NUL would lose the install args.
+   */
   private fun cstr(bytes: ByteArray): String {
-    val end = bytes.indexOf(0).let { if (it < 0) bytes.size else it }
+    val end =
+      if (bytes.isNotEmpty() && bytes[bytes.size - 1].toInt() == 0) bytes.size - 1 else bytes.size
     return String(bytes, 0, end, StandardCharsets.UTF_8)
-  }
-
-  private fun ByteArray.indexOf(b: Int): Int {
-    for (i in indices) if (this[i].toInt() == b) return i
-    return -1
   }
 
   /** One logical ADB stream within this connection. */
