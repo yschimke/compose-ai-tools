@@ -8,7 +8,7 @@
 # Maven Central. No build-logic, no gradle-plugin, no ~50 data modules to compile
 # — just a download + one warm render. Built once in CI and pushed to GHCR, so
 # hosts pull it and never build at all.
-ARG CP_VERSION=0.16.5
+ARG CP_VERSION=0.16.9
 
 # ---------------------------------------------------------------------------
 # Stage 0: base — JDK + Skiko's native deps (same rationale as the cloudrun image:
