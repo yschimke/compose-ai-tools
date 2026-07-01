@@ -9,6 +9,7 @@ import java.io.File
 import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -53,6 +54,18 @@ class ServeWebFixtureTest {
         listOf(PreviewMode.SNAPSHOT, PreviewMode.LIVE),
       ),
       ServePreview("com.example.SettingsScreenPreview", "Settings screen"),
+    )
+
+  // A design-catalog spread whose flattened ids carry a per-theme axis (`…__light` / `…__dark`),
+  // plus one theme-less component — so the captured landing exercises the sticky light/dark toggle
+  // and its card filtering (a component-preview module without theme variants shows no toggle).
+  private val themedPreviews =
+    listOf(
+      ServePreview("button-filled__ideal__default__light", "Button · Filled (light)"),
+      ServePreview("button-filled__ideal__default__dark", "Button · Filled (dark)"),
+      ServePreview("switch-on__ideal__default__light", "Switch · On (light)"),
+      ServePreview("switch-on__ideal__default__dark", "Switch · On (dark)"),
+      ServePreview("badge", "Badge"),
     )
 
   @Test
@@ -115,6 +128,17 @@ class ServeWebFixtureTest {
         trust = "branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile",
         basePath = "/meshcore-mobile",
       )
+    // A catalog whose previews carry per-theme variants, so the landing shows the sticky light/dark
+    // toggle and tags each card with its baked theme for client-side filtering.
+    val landingThemed =
+      ServeWeb.landingPage(
+        "compose-m3",
+        themedPreviews,
+        token,
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        isPublic = true,
+        catalogs = listOf("compose-m3", "wear-m3"),
+      )
 
     if (update) {
       pagesDir.mkdirs()
@@ -124,6 +148,7 @@ class ServeWebFixtureTest {
       File(pagesDir, "serve-viewer-wasm.html").writeText(wasmViewer)
       File(pagesDir, "serve-landing-path.html").writeText(landingPath)
       File(pagesDir, "serve-viewer-path.html").writeText(viewerPath)
+      File(pagesDir, "serve-landing-themed.html").writeText(landingThemed)
       writePlaceholderPng(File(pagesDir, "_render-placeholder.png"))
       return
     }
@@ -134,9 +159,40 @@ class ServeWebFixtureTest {
     assertGolden(File(pagesDir, "serve-viewer-wasm.html"), wasmViewer)
     assertGolden(File(pagesDir, "serve-landing-path.html"), landingPath)
     assertGolden(File(pagesDir, "serve-viewer-path.html"), viewerPath)
+    assertGolden(File(pagesDir, "serve-landing-themed.html"), landingThemed)
     assertTrue(
       File(pagesDir, "_render-placeholder.png").isFile,
       "missing _render-placeholder.png — regenerate with UPDATE_SERVE_WEB_FIXTURES=true",
+    )
+
+    // The sticky theme toggle appears only for a catalog with per-theme variants, and each themed
+    // card is tagged for client-side filtering; a plain component module shows no toggle.
+    assertTrue(
+      landingThemed.contains("class=\"cp-theme\""),
+      "themed catalog shows the theme toggle",
+    )
+    assertTrue(
+      landingThemed.contains("data-card-theme=\"dark\"") &&
+        landingThemed.contains("data-card-theme=\"light\""),
+      "themed cards are tagged with their baked theme",
+    )
+    assertTrue(
+      landingThemed.contains("localStorage.setItem(\"cp-theme\""),
+      "toggle persists the choice to the shared cp-theme key",
+    )
+    assertFalse(
+      landing.contains("class=\"cp-theme\""),
+      "a module without theme variants shows no toggle",
+    )
+    // The viewer both seeds its Theme select from the shared cp-theme on load (so a theme-less
+    // preview inherits the catalog choice) and writes it back on change — the sticky round-trip.
+    assertTrue(
+      viewer.contains("localStorage.getItem(\"cp-theme\""),
+      "viewer seeds its Theme select from the shared cp-theme on load",
+    )
+    assertTrue(
+      viewer.contains("localStorage.setItem(\"cp-theme\""),
+      "viewer Theme change writes the shared cp-theme key",
     )
   }
 

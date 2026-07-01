@@ -33,6 +33,11 @@ object ServeWeb {
     .cp-systems a, .cp-systems-cur { padding: 3px 10px; border-radius: 999px; border: 1px solid #d7d7de; }
     .cp-systems a { background: #fff; }
     .cp-systems-cur { background: #ececff; border-color: #c4c4f5; color: #3a3a8a; font-weight: 600; }
+    .cp-toolbar { margin: 0 0 16px; }
+    .cp-theme { display: inline-flex; border: 1px solid #d7d7de; border-radius: 999px; overflow: hidden; }
+    .cp-theme-btn { border: 0; background: #fff; color: #6b6b70; font: inherit; font-size: 0.78rem;
+      padding: 3px 14px; cursor: pointer; }
+    .cp-theme-btn[aria-pressed="true"] { background: #ececff; color: #3a3a8a; font-weight: 600; }
     .cp-badge { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px;
       font-size: 0.7rem; font-weight: 600; vertical-align: middle; white-space: nowrap; }
     .cp-badge--trusted { background: #e7f4ea; color: #1e7a34; border: 1px solid #b6e0c2; }
@@ -40,6 +45,7 @@ object ServeWeb {
     .cp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
     .cp-card { border: 1px solid #e3e3e8; border-radius: 10px; overflow: hidden; background: #fff;
       display: block; color: inherit; }
+    .cp-card[hidden] { display: none; }
     .cp-imgwrap { display: flex; align-items: center; justify-content: center; min-height: 140px;
       background: repeating-conic-gradient(#f4f4f6 0% 25%, #fff 0% 50%) 50% / 16px 16px; padding: 8px; }
     .cp-imgwrap img { max-width: 100%; height: auto; display: block; }
@@ -74,6 +80,9 @@ object ServeWeb {
       .cp-systems a, .cp-systems-cur { border-color: #34343a; }
       .cp-systems a { background: #1d1d20; }
       .cp-systems-cur { background: #26264a; border-color: #45458a; color: #c9c9ff; }
+      .cp-theme { border-color: #34343a; }
+      .cp-theme-btn { background: #1d1d20; color: #a0a0a8; }
+      .cp-theme-btn[aria-pressed="true"] { background: #26264a; color: #c9c9ff; }
       .cp-note { background: #26262b; color: #a0a0a8; }
       .cp-imgwrap, .cp-stage { background: repeating-conic-gradient(#26262b 0% 25%, #1d1d20 0% 50%) 50% / 16px 16px; }
       .cp-badge--trusted { background: #14361f; color: #6cd98a; border-color: #2c6b40; }
@@ -167,6 +176,89 @@ object ServeWeb {
       .trimIndent()
   }
 
+  /**
+   * The theme axis (`light`/`dark`) baked into a flattened catalog id, or null if it carries none.
+   */
+  private fun cardTheme(id: String): String? =
+    id.split("__").drop(1).lastOrNull { it == "light" || it == "dark" }
+
+  /**
+   * The sticky light/dark control for the catalog header. Persists to `localStorage['cp-theme']`
+   * (shared with the viewer's Theme select) and filters the card grid to the chosen theme's
+   * variants. Purely client-side — the server emits every card tagged with `data-card-theme`, and
+   * [catalogThemeScript] does the hiding, so a no-JS client still sees the full catalog.
+   */
+  private fun themeToggleHtml(): String =
+    """
+    <div class="cp-toolbar">
+      <span class="cp-theme" role="group" aria-label="Preview theme">
+        <button type="button" class="cp-theme-btn" data-theme-choice="light">Light</button>
+        <button type="button" class="cp-theme-btn" data-theme-choice="dark">Dark</button>
+      </span>
+    </div>
+    """
+      .trimIndent()
+
+  /**
+   * Catalog theme script: resolve the sticky theme (stored choice, else the OS preference), reflect
+   * it on the toggle, and hide the cards whose baked variant is the other theme. Cards without a
+   * theme axis are always shown. A click updates the store + re-filters.
+   */
+  private fun catalogThemeScript(): String =
+    """
+    (function () {
+      var stored = null;
+      try { stored = localStorage.getItem("cp-theme"); } catch (e) {}
+      var theme = (stored === "light" || stored === "dark") ? stored
+        : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      var btns = document.querySelectorAll(".cp-theme-btn");
+      function apply() {
+        btns.forEach(function (b) {
+          b.setAttribute("aria-pressed", b.getAttribute("data-theme-choice") === theme ? "true" : "false");
+        });
+        document.querySelectorAll(".cp-card[data-card-theme]").forEach(function (c) {
+          c.hidden = c.getAttribute("data-card-theme") !== theme;
+        });
+      }
+      btns.forEach(function (b) {
+        b.addEventListener("click", function () {
+          theme = b.getAttribute("data-theme-choice");
+          try { localStorage.setItem("cp-theme", theme); } catch (e) {}
+          apply();
+        });
+      });
+      apply();
+    })();
+    """
+      .trimIndent()
+
+  /**
+   * Viewer theme-sticky script: when the Theme select is set to light/dark, write it to the shared
+   * `localStorage['cp-theme']` so the catalog remembers the last theme the visitor viewed a
+   * component in (the other half of the catalog toggle's stickiness).
+   */
+  private fun viewerThemeStickyScript(): String =
+    """
+    (function () {
+      var el = document.getElementById("cp-uiMode");
+      if (!el) return;
+      // Inherit the catalog's sticky theme on the first render — matters for theme-less previews the
+      // catalog shows under either filter, which would otherwise open at (default). This runs before
+      // viewerScript()'s initial render, so the snapshot / Wasm path picks it up.
+      try {
+        var stored = localStorage.getItem("cp-theme");
+        if (!el.value && (stored === "light" || stored === "dark")) el.value = stored;
+      } catch (e) {}
+      // Round-trip: a Theme change writes the shared key so the catalog remembers it.
+      el.addEventListener("change", function () {
+        if (el.value === "light" || el.value === "dark") {
+          try { localStorage.setItem("cp-theme", el.value); } catch (e) {}
+        }
+      });
+    })();
+    """
+      .trimIndent()
+
   /** Landing page: the module's preview list, each card linking to its viewer. */
   fun landingPage(
     moduleLabel: String,
@@ -192,8 +284,9 @@ object ServeWeb {
           val idSeg = WebEscaping.urlEncodeSegment(p.id)
           val label = WebEscaping.htmlEscape(p.label)
           val idText = WebEscaping.htmlEscape(p.id)
+          val themeAttr = cardTheme(p.id)?.let { " data-card-theme=\"$it\"" } ?: ""
           """
-          <a class="cp-card" href="$basePath/p/$idSeg?$q">
+          <a class="cp-card"$themeAttr href="$basePath/p/$idSeg?$q">
             <div class="cp-imgwrap">
               <img loading="lazy" alt="$label" src="$basePath/render/$idSeg.png?$q">
             </div>
@@ -208,16 +301,20 @@ object ServeWeb {
       }
     val about = if (isPublic) aboutSection() + "\n" else ""
     val nav = if (catalogs.isNotEmpty()) catalogNav(catalogs, token, sessionId) + "\n" else ""
+    // The theme toggle only makes sense when the catalog carries per-theme variants to filter.
+    val hasThemes = previews.any { cardTheme(it.id) != null }
+    val themeToggle = if (hasThemes) themeToggleHtml() + "\n" else ""
+    val themeScript = if (hasThemes) "\n<script>${catalogThemeScript()}</script>" else ""
     return document(
       title = "$moduleLabel — compose-preview",
       body =
         """
         $about$nav<p class="cp-head">${WebEscaping.htmlEscape(moduleLabel)}${trustBadge(trust)}</p>
-        <p class="cp-sub">${previews.size} preview(s) · click one to view with overrides ·
+        $themeToggle<p class="cp-sub">${previews.size} preview(s) · click one to view with overrides ·
           <a href="$basePath/bundle.zip?$q">download all (.zip)</a></p>
         <div class="cp-grid">
         $cards
-        </div>
+        </div>$themeScript
         """
           .trimIndent(),
     )
@@ -336,6 +433,7 @@ object ServeWeb {
           <div class="cp-status" id="cp-status"></div>
         </div>
       </div>
+      <script>${viewerThemeStickyScript()}</script>
       <script>${viewerScript()}</script>
       """
         .trimIndent()

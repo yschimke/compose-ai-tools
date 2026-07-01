@@ -24,6 +24,11 @@ a:hover { text-decoration: underline; }
 .cp-systems a, .cp-systems-cur { padding: 3px 10px; border-radius: 999px; border: 1px solid #d7d7de; }
 .cp-systems a { background: #fff; }
 .cp-systems-cur { background: #ececff; border-color: #c4c4f5; color: #3a3a8a; font-weight: 600; }
+.cp-toolbar { margin: 0 0 16px; }
+.cp-theme { display: inline-flex; border: 1px solid #d7d7de; border-radius: 999px; overflow: hidden; }
+.cp-theme-btn { border: 0; background: #fff; color: #6b6b70; font: inherit; font-size: 0.78rem;
+  padding: 3px 14px; cursor: pointer; }
+.cp-theme-btn[aria-pressed="true"] { background: #ececff; color: #3a3a8a; font-weight: 600; }
 .cp-badge { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px;
   font-size: 0.7rem; font-weight: 600; vertical-align: middle; white-space: nowrap; }
 .cp-badge--trusted { background: #e7f4ea; color: #1e7a34; border: 1px solid #b6e0c2; }
@@ -31,6 +36,7 @@ a:hover { text-decoration: underline; }
 .cp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
 .cp-card { border: 1px solid #e3e3e8; border-radius: 10px; overflow: hidden; background: #fff;
   display: block; color: inherit; }
+.cp-card[hidden] { display: none; }
 .cp-imgwrap { display: flex; align-items: center; justify-content: center; min-height: 140px;
   background: repeating-conic-gradient(#f4f4f6 0% 25%, #fff 0% 50%) 50% / 16px 16px; padding: 8px; }
 .cp-imgwrap img { max-width: 100%; height: auto; display: block; }
@@ -65,6 +71,9 @@ a:hover { text-decoration: underline; }
   .cp-systems a, .cp-systems-cur { border-color: #34343a; }
   .cp-systems a { background: #1d1d20; }
   .cp-systems-cur { background: #26264a; border-color: #45458a; color: #c9c9ff; }
+  .cp-theme { border-color: #34343a; }
+  .cp-theme-btn { background: #1d1d20; color: #a0a0a8; }
+  .cp-theme-btn[aria-pressed="true"] { background: #26264a; color: #c9c9ff; }
   .cp-note { background: #26262b; color: #a0a0a8; }
   .cp-imgwrap, .cp-stage { background: repeating-conic-gradient(#26262b 0% 25%, #1d1d20 0% 50%) 50% / 16px 16px; }
   .cp-badge--trusted { background: #14361f; color: #6cd98a; border-color: #2c6b40; }
@@ -115,6 +124,23 @@ a:hover { text-decoration: underline; }
           <div class="cp-status" id="cp-status"></div>
         </div>
       </div>
+      <script>(function () {
+  var el = document.getElementById("cp-uiMode");
+  if (!el) return;
+  // Inherit the catalog's sticky theme on the first render — matters for theme-less previews the
+  // catalog shows under either filter, which would otherwise open at (default). This runs before
+  // viewerScript()'s initial render, so the snapshot / Wasm path picks it up.
+  try {
+    var stored = localStorage.getItem("cp-theme");
+    if (!el.value && (stored === "light" || stored === "dark")) el.value = stored;
+  } catch (e) {}
+  // Round-trip: a Theme change writes the shared key so the catalog remembers it.
+  el.addEventListener("change", function () {
+    if (el.value === "light" || el.value === "dark") {
+      try { localStorage.setItem("cp-theme", el.value); } catch (e) {}
+    }
+  });
+})();</script>
       <script>(function () {
   "use strict";
   var root = document.querySelector(".cp-viewer");
