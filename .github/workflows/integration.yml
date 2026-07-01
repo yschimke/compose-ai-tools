@@ -135,6 +135,43 @@ jobs:
           path: compose-ai-bundle.tar.gz
           retention-days: 7
 
+  # Release-please PRs only bump the version manifest / CHANGELOG / version
+  # strings, so the integration matrix below is skipped on them (the `if:` on
+  # `build-plugin` + `integration`). But a skipped *matrix* job posts NO per-leg
+  # check run — unlike a skipped plain job, which still reports "skipped" and so
+  # counts as passing for branch protection. That's the asymmetry that bit us:
+  # the CI workflow's plain jobs skip green, but the two PR-blocking matrix legs
+  # `wear-os-samples (ComposeStarter)` and `wear-os-samples (WearTilesKotlin)` —
+  # both REQUIRED status checks — emit nothing, so they sit on "Expected —
+  # Waiting for status to be reported" forever and force the admin "bypass rules"
+  # checkbox to land every release.
+  #
+  # This gate runs ONLY on those bot release PRs and re-emits check runs with the
+  # SAME names (via the matrix `name`, exactly as the real `integration` job
+  # does), reporting them green — so the release PR clears branch protection with
+  # no bypass. Its `if:` is the exact inverse of the matrix job's guard, so on
+  # any given event exactly one of the two posts each context, never both: the
+  # real matrix on normal PRs / pushes / the nightly cron, this gate on release
+  # PRs. Keep the two names in lockstep with the `pr_blocking: true` matrix cells.
+  release-please-gate:
+    if: ${{ startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]' }}
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        name:
+          - "wear-os-samples (ComposeStarter)"
+          - "wear-os-samples (WearTilesKotlin)"
+    steps:
+      - name: Report green (version-only release PR — integration not applicable)
+        env:
+          LEG: ${{ matrix.name }}
+        run: |
+          echo "Release-please PR (version manifest / CHANGELOG only) — the"
+          echo "integration matrix is skipped, so this required leg"
+          echo "'${LEG}' is reported green here to satisfy branch"
+          echo "protection without an admin bypass."
+
   integration:
     if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     name: ${{ matrix.name }}
