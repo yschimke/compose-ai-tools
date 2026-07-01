@@ -53,10 +53,14 @@ object ServeWeb {
     .cp-label { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .cp-id { color: #6b6b70; font-size: 0.7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .cp-viewer { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
-    .cp-stage { flex: 1 1 360px; min-width: 280px; border: 1px solid #e3e3e8; border-radius: 10px;
+    .cp-stage { position: relative; flex: 1 1 360px; min-width: 280px; border: 1px solid #e3e3e8;
+      border-radius: 10px;
       background: repeating-conic-gradient(#f4f4f6 0% 25%, #fff 0% 50%) 50% / 16px 16px; padding: 12px;
       display: flex; align-items: center; justify-content: center; min-height: 320px; }
     .cp-stage img, .cp-stage canvas { max-width: 100%; height: auto; }
+    .cp-backend { position: absolute; top: 8px; right: 8px; font-size: 0.62rem; font-weight: 600;
+      letter-spacing: 0.02em; padding: 2px 8px; border-radius: 999px; background: rgba(20,20,22,0.72);
+      color: #fff; pointer-events: none; }
     .cp-stage iframe { width: 100%; height: 320px; border: 0; background: transparent; }
     .cp-live-row { flex-direction: row !important; align-items: center; gap: 6px !important; }
     .cp-controls { flex: 0 0 240px; display: flex; flex-direction: column; gap: 14px; }
@@ -259,6 +263,31 @@ object ServeWeb {
     """
       .trimIndent()
 
+  /**
+   * Backend-provenance badge: a small corner label naming the tier that produced the pixels now on
+   * the stage, so a viewer can tell an in-browser CMP render from a baked snapshot. Reads the
+   * viewer's `data-mode` (kept in sync by the transport toggles) — `CMP-WASM` for the Wasm app
+   * (always that), else the server-supplied `data-live-backend` / `data-snapshot-backend` label, so
+   * the daemon's actual platform (desktop/JVM or Android) and the snapshot renderer stay accurate.
+   */
+  private fun backendBadgeScript(): String =
+    """
+    (function () {
+      var root = document.querySelector(".cp-viewer");
+      var badge = document.getElementById("cp-backend");
+      if (!root || !badge) return;
+      function label(mode) {
+        if (mode === "wasm") return "CMP-WASM";
+        if (mode === "live") return root.getAttribute("data-live-backend") || "Live";
+        return root.getAttribute("data-snapshot-backend") || "Snapshot";
+      }
+      function refresh() { badge.textContent = label(root.getAttribute("data-mode")); }
+      new MutationObserver(refresh).observe(root, { attributes: true, attributeFilter: ["data-mode"] });
+      refresh();
+    })();
+    """
+      .trimIndent()
+
   /** Landing page: the module's preview list, each card linking to its viewer. */
   fun landingPage(
     moduleLabel: String,
@@ -344,6 +373,19 @@ object ServeWeb {
      * links are exactly as before.
      */
     basePath: String = "",
+    /**
+     * Label for the corner "backend" badge while showing the baked snapshot — the renderer that
+     * produced the PNG (e.g. `Android` for the design catalogs). The in-browser Wasm tier always
+     * reads `CMP-WASM`; the daemon stream reads [liveBackend]. Null ⇒ a generic `Snapshot`.
+     */
+    snapshotBackend: String? = null,
+    /**
+     * Label for the badge while the daemon **live stream** drives the stage — the serving daemon's
+     * platform, since a live session can be desktop/JVM **or** Android (a `RobolectricHost` streams
+     * `BackendKind.ANDROID`), so it must come from the server, not a hard-coded tier name. Null ⇒ a
+     * generic `Live`.
+     */
+    liveBackend: String? = null,
   ): String {
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
     val q = linkQuery(token, sessionId, basePath)
@@ -393,12 +435,14 @@ object ServeWeb {
           "<div class=\"cp-note\">Pre-rendered snapshot — overrides (device, locale, font scale, " +
             "orientation) need the live server, not a published catalog.</div>"
       }
+    val backendLabel = WebEscaping.htmlEscape(snapshotBackend ?: "Snapshot")
+    val liveLabel = WebEscaping.htmlEscape(liveBackend ?: "Live")
     val body =
       """
       <p class="cp-head"><a href="$basePath/?$q">← previews</a>${trustBadge(trust)}</p>
       <p class="cp-sub" title="$idText">$label</p>
-      <div class="cp-viewer" data-preview-id="$idText" data-mode="snapshot" data-modes="$modes"$wasmAttr>
-        <div class="cp-stage"><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$wasmFrame</div>
+      <div class="cp-viewer" data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel"$wasmAttr>
+        <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$wasmFrame</div>
         <div class="cp-controls">
           $snapshotNote
           <label class="cp-live-row"><input id="cp-live" type="checkbox"$serverDis> Live (stream)</label>
@@ -435,6 +479,7 @@ object ServeWeb {
       </div>
       <script>${viewerThemeStickyScript()}</script>
       <script>${viewerScript()}</script>
+      <script>${backendBadgeScript()}</script>
       """
         .trimIndent()
     return document(title = "$label — compose-preview", body = body)

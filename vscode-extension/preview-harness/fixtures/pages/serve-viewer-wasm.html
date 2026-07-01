@@ -44,10 +44,14 @@ a:hover { text-decoration: underline; }
 .cp-label { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp-id { color: #6b6b70; font-size: 0.7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp-viewer { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
-.cp-stage { flex: 1 1 360px; min-width: 280px; border: 1px solid #e3e3e8; border-radius: 10px;
+.cp-stage { position: relative; flex: 1 1 360px; min-width: 280px; border: 1px solid #e3e3e8;
+  border-radius: 10px;
   background: repeating-conic-gradient(#f4f4f6 0% 25%, #fff 0% 50%) 50% / 16px 16px; padding: 12px;
   display: flex; align-items: center; justify-content: center; min-height: 320px; }
 .cp-stage img, .cp-stage canvas { max-width: 100%; height: auto; }
+.cp-backend { position: absolute; top: 8px; right: 8px; font-size: 0.62rem; font-weight: 600;
+  letter-spacing: 0.02em; padding: 2px 8px; border-radius: 999px; background: rgba(20,20,22,0.72);
+  color: #fff; pointer-events: none; }
 .cp-stage iframe { width: 100%; height: 320px; border: 0; background: transparent; }
 .cp-live-row { flex-direction: row !important; align-items: center; gap: 6px !important; }
 .cp-controls { flex: 0 0 240px; display: flex; flex-direction: column; gap: 14px; }
@@ -83,8 +87,8 @@ a:hover { text-decoration: underline; }
       <body>
               <p class="cp-head"><a href="/?token=demo-token-fixture&session=compose-m3">← previews</a> <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ branch:yschimke/compose-ai-tools@design-artifacts/compose-m3</span></p>
       <p class="cp-sub" title="com.example.CardPreview">Card</p>
-      <div class="cp-viewer" data-preview-id="com.example.CardPreview" data-mode="snapshot" data-modes="snapshot,live" data-wasm-src="/wasm/compose-m3/?id=card-filled">
-        <div class="cp-stage"><img id="cp-img" alt="Card"><canvas id="cp-canvas" hidden></canvas><iframe id="cp-wasm" hidden sandbox="allow-scripts" title="Card (Wasm)"></iframe></div>
+      <div class="cp-viewer" data-preview-id="com.example.CardPreview" data-mode="snapshot" data-modes="snapshot,live" data-snapshot-backend="Snapshot" data-live-backend="Live" data-wasm-src="/wasm/compose-m3/?id=card-filled">
+        <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="Card"><canvas id="cp-canvas" hidden></canvas><iframe id="cp-wasm" hidden sandbox="allow-scripts" title="Card (Wasm)"></iframe></div>
         <div class="cp-controls">
           <div class="cp-note">Pre-rendered snapshot — tick “Run in browser (Wasm)” to interact: Theme, Font scale &amp; Locale apply in the browser. Device/Orientation need the live server.</div>
           <label class="cp-live-row"><input id="cp-live" type="checkbox" disabled> Live (stream)</label>
@@ -459,6 +463,19 @@ a:hover { text-decoration: underline; }
     el.addEventListener(el.type === "checkbox" ? "change" : "input", onControlsChanged);
   });
   refreshSnapshot();
+})();</script>
+      <script>(function () {
+  var root = document.querySelector(".cp-viewer");
+  var badge = document.getElementById("cp-backend");
+  if (!root || !badge) return;
+  function label(mode) {
+    if (mode === "wasm") return "CMP-WASM";
+    if (mode === "live") return root.getAttribute("data-live-backend") || "Live";
+    return root.getAttribute("data-snapshot-backend") || "Snapshot";
+  }
+  function refresh() { badge.textContent = label(root.getAttribute("data-mode")); }
+  new MutationObserver(refresh).observe(root, { attributes: true, attributeFilter: ["data-mode"] });
+  refresh();
 })();</script>
       </body>
     </html>
