@@ -204,6 +204,9 @@ internal object ComposePreviewTasks {
         // allow discovery to go lenient *for that config only* so `compose-preview list` never
         // aborts on such a module. JVM/desktop configs stay strict.
         lenientWhenAndroidOnlyFallback = true,
+        // Desktop can't render `@ColorCatalog` sheets yet (#2135) — mark their captures optional so
+        // the render skip is consistent across the gate and VS Code consumers.
+        catalogRenderSupported = false,
       ) {
         onlyIf { extension.enabled.get() }
         // `compileAndroidMain` is the lifecycle task for the KMP-Android target's `main`
@@ -1159,11 +1162,16 @@ internal object ComposePreviewTasks {
     // (and the entire Android path, which passes `false`) stay STRICT so a genuinely unresolvable
     // dependency still surfaces loudly.
     lenientWhenAndroidOnlyFallback: Boolean = false,
+    // `false` on the desktop backend, which can't render `@ColorCatalog` sheets yet (#2135): its
+    // discovered CATALOG captures are emitted `optional` so the render gate and every consumer that
+    // reads `Capture.optional` (VS Code) treat the skipped sheet as expected. Android keeps `true`.
+    catalogRenderSupported: Boolean = true,
     configureDeps: DiscoverPreviewsTask.() -> Unit,
   ): TaskProvider<DiscoverPreviewsTask> {
     val artifactType = Attribute.of("artifactType", String::class.java)
 
     return project.tasks.register("composePreviewDiscover", DiscoverPreviewsTask::class.java) {
+      this.catalogRenderSupported.set(catalogRenderSupported)
       classDirs.from(sourceClassDirs)
       sourceFiles.from(
         project.fileTree("src") {

@@ -74,6 +74,30 @@ class PreviewDiscoveryCliTest {
     assertThat(parsed.input.failOnEmpty).isFalse()
   }
 
+  private val baseArgs =
+    arrayOf("--module", "m", "--variant", "v", "--project-directory", "/proj", "--out", "/out")
+
+  @Test
+  fun `--catalog-render-supported defaults to true (Android semantics)`() {
+    assertThat(PreviewDiscoveryCli.parse(baseArgs).input.catalogRenderSupported).isTrue()
+  }
+
+  @Test
+  fun `--catalog-render-supported false marks the desktop backend`() {
+    val parsed =
+      PreviewDiscoveryCli.parse(baseArgs + arrayOf("--catalog-render-supported", "false"))
+    assertThat(parsed.input.catalogRenderSupported).isFalse()
+  }
+
+  @Test
+  fun `--catalog-render-supported rejects a non-boolean value`() {
+    val error =
+      assertThrows(PreviewDiscoveryCli.ArgError::class.java) {
+        PreviewDiscoveryCli.parse(baseArgs + arrayOf("--catalog-render-supported", "maybe"))
+      }
+    assertThat(error.message).contains("must be 'true' or 'false'")
+  }
+
   @Test
   fun `missing --module errors with a clear message`() {
     val error =
