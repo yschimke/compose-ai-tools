@@ -65,6 +65,7 @@ internal object CliFlags {
       "--catalog-branch-prefix",
       "--wasm-dir",
       "--revisions-allow",
+      "--live-seats",
       // bundle sign / verify / keygen (producer trust)
       "--key",
       "--key-id",

@@ -55,6 +55,11 @@ fi
 if [[ "${SERVE_ALLOW_RENDER_TRUSTED:-}" == "1" || "${SERVE_ALLOW_RENDER_TRUSTED:-}" == "true" ]]; then
   args+=(--allow-render-trusted)
 fi
+# Bound concurrent live (daemon-backed) stream seats. Only meaningful once the live tier is enabled
+# (SERVE_ALLOW_RENDER_TRUSTED) — each seat holds a JVM Compose daemon, so a small box (preview.coo.ee
+# is 4 GB / 2 vCPU) should cap it (e.g. SERVE_LIVE_SEATS=1) so an over-cap viewer is refused rather
+# than OOM-ing the box. Unset ⇒ unbounded (fine for a beefy box or the snapshot/Wasm-only default).
+[[ -n "${SERVE_LIVE_SEATS:-}" ]] && args+=(--live-seats "${SERVE_LIVE_SEATS}")
 if [[ "${SERVE_ACCEPT_BUNDLES:-}" == "1" || "${SERVE_ACCEPT_BUNDLES:-}" == "true" ]]; then
   args+=(--accept-bundles)
   [[ -n "${SERVE_ACCEPT_BUNDLES_FROM:-}" ]] &&

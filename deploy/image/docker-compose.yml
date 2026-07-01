@@ -40,6 +40,12 @@ services:
       # Unused in public mode; required only when SERVE_PUBLIC=0.
       SERVE_TOKEN: "${SERVE_TOKEN:-}"
       SERVE_IDLE_EXIT: "0"
+      # Live (daemon-backed) preview tier — OFF by default (snapshot + in-browser Wasm only). To
+      # offer live CMP-JVM streaming on this box, set SERVE_ALLOW_RENDER_TRUSTED=1 (+ its ref
+      # allowlist) and cap the seats: each seat is a JVM Compose daemon, so on this 4 GB / 2 vCPU box
+      # keep it small (1–2). An over-cap viewer is refused (WS 1013) instead of OOM-ing the box.
+      # Flip on with a compose redeploy: set these in .env, then `docker compose up -d`.
+      SERVE_LIVE_SEATS: "${SERVE_LIVE_SEATS:-}"
       PORT: "8080"
     # To pin your OWN producers, mount a trust store over the baked one and keep
     # SERVE_TRUST_STORE pointing at it:

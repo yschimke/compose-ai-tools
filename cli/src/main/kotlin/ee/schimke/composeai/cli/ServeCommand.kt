@@ -50,6 +50,15 @@ class ServeCommand(args: List<String>) : Command(args) {
     }
   private val requestedPort: Int = args.flagValue("--port")?.toIntOrNull() ?: DEFAULT_PORT
   private val tokenOverride: String? = args.flagValue("--token")?.takeIf { it.isNotBlank() }
+
+  /**
+   * Cap on concurrent **live** (daemon-backed) stream sessions — the "live seats". `0` (default) is
+   * unbounded (a local dev box); a small positive value bounds the JVM render daemons a constrained
+   * public box (e.g. `--allow-render-trusted` on a 4 GB VM) will spawn, so an over-cap stream is
+   * refused rather than risking the OOM killer. Only bites when a live daemon actually backs a
+   * session; the snapshot + Wasm tiers never take a seat.
+   */
+  private val liveSeats: Int = args.flagValue("--live-seats")?.toIntOrNull()?.coerceAtLeast(0) ?: 0
   private val exportPath: String? = args.flagValue("--export")?.takeIf { it.isNotBlank() }
   private val inlineBundle: Boolean = "--inline" in args
 
@@ -405,6 +414,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         isPublic = public,
         wasmCatalogs = wasmCatalogs,
         catalogSessions = registeredCatalogs.toList(),
+        maxLiveSeats = liveSeats,
       )
 
     // Advertise on the LAN over mDNS when bound to a reachable interface (`--lan`), so the mobile /
@@ -834,6 +844,11 @@ class ServeCommand(args: List<String>) : Command(args) {
                           box that can't build the catalog source (e.g. the desktop-only public
                           image can't build the Android catalogs) — leave it off and let the
                           in-browser Wasm tier carry CMP.
+        --live-seats <n>  Cap concurrent live (daemon-backed) stream sessions. Each seat holds a JVM
+                          Compose daemon, so on a small box bound this (e.g. 1–2) when the live tier
+                          is on (--allow-render-trusted) — an over-cap stream is refused (WS 1013)
+                          rather than risking the OOM killer. Default 0 = unbounded. Snapshot + Wasm
+                          sessions never take a seat.
         --exit-when-idle[=<seconds>]
                           Ephemeral mode: shut the server down once it's been idle (no open
                           connections and no requests) for <seconds> (default ${DEFAULT_IDLE_EXIT_SECONDS}s). Use a small

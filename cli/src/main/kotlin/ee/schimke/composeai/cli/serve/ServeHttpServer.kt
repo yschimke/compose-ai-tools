@@ -97,11 +97,24 @@ class ServeHttpServer(
    * this is a load-shedding bound on concurrent HTTP work, not a parallel-render knob.
    */
   maxConcurrentRenders: Int = Runtime.getRuntime().availableProcessors().coerceAtLeast(1),
+  /**
+   * Max concurrent **live** (daemon-backed) stream sessions — the "live seats". Each holds a JVM
+   * Compose render session on the box, so a constrained host (e.g. a 4 GB / 2-vCPU VM) can bound
+   * them: a stream that would exceed the cap is refused with WebSocket close 1013 (Try Again Later)
+   * rather than spawning an unbounded daemon and risking the OOM killer. `0` (the default) is
+   * unbounded — the historical behaviour for a local `serve` on a developer box. Static
+   * (snapshot/Wasm) sessions never consume a seat, so the public server's default tiers are
+   * unaffected; this only bites when `--allow-render-trusted` puts a live daemon behind a catalog.
+   */
+  maxLiveSeats: Int = 0,
 ) {
   /** The actual bound port — may differ from the requested one if it was taken (auto-picked). */
   val port: Int = pickPort(host, requestedPort, portRange)
 
   private val renderSemaphore = Semaphore(maxConcurrentRenders.coerceAtLeast(1))
+
+  /** Live-seat limiter; null ⇒ unbounded (`maxLiveSeats <= 0`). See [maxLiveSeats]. */
+  private val liveSeats: Semaphore? = if (maxLiveSeats > 0) Semaphore(maxLiveSeats) else null
 
   private val server: EmbeddedServer<*, *> =
     embeddedServer(CIO, host = host, port = port) {
@@ -547,33 +560,45 @@ class ServeHttpServer(
           else -> null
         }
       val maxFps = call.request.queryParameters["maxFps"]?.toIntOrNull()?.takeIf { it > 0 }
-      // Prefer the daemon's live stream lane (frames pushed, input dispatched); fall back to the
-      // snapshot re-render lane when the backend doesn't support streaming.
-      val live =
-        withContext(Dispatchers.IO) {
-          ServeLiveSession.tryStart(renderHost, previewId, initialOverrides, codec, maxFps, send)
-        }
-      if (live != null) {
-        try {
+      // Live-seat cap: a daemon-backed stream holds a JVM Compose render session, so bound how many
+      // run at once on a constrained box (a stream over the cap is refused, not queued). Static
+      // (snapshot) hosts re-render from cache and never take a seat, so the default tiers are free.
+      val seat = if (renderHost.canApplyOverrides) liveSeats else null
+      if (seat != null && !seat.tryAcquire()) {
+        close(CloseReason(1013.toShort(), "live preview at capacity — try again shortly"))
+        return
+      }
+      try {
+        // Prefer the daemon's live stream lane (frames pushed, input dispatched); fall back to the
+        // snapshot re-render lane when the backend doesn't support streaming.
+        val live =
+          withContext(Dispatchers.IO) {
+            ServeLiveSession.tryStart(renderHost, previewId, initialOverrides, codec, maxFps, send)
+          }
+        if (live != null) {
+          try {
+            for (frame in incoming) {
+              if (frame is Frame.Text) {
+                val text = frame.readText()
+                withContext(Dispatchers.IO) { live.onClientMessage(text) }
+              }
+            }
+          } finally {
+            withContext(Dispatchers.IO) { live.close() }
+          }
+        } else {
+          val session = ServeStreamSession(renderHost, previewId, initialOverrides, send)
+          // Renders block (renderNow + await); keep them off the socket's event-loop thread.
+          withContext(Dispatchers.IO) { session.onOpen() }
           for (frame in incoming) {
             if (frame is Frame.Text) {
               val text = frame.readText()
-              withContext(Dispatchers.IO) { live.onClientMessage(text) }
+              withContext(Dispatchers.IO) { session.onClientMessage(text) }
             }
           }
-        } finally {
-          withContext(Dispatchers.IO) { live.close() }
         }
-      } else {
-        val session = ServeStreamSession(renderHost, previewId, initialOverrides, send)
-        // Renders block (renderNow + await); keep them off the socket's event-loop thread.
-        withContext(Dispatchers.IO) { session.onOpen() }
-        for (frame in incoming) {
-          if (frame is Frame.Text) {
-            val text = frame.readText()
-            withContext(Dispatchers.IO) { session.onClientMessage(text) }
-          }
-        }
+      } finally {
+        seat?.release()
       }
     } finally {
       lease.close()

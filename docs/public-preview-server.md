@@ -167,6 +167,16 @@ clear the `--revisions-allow` allowlist, and its `source.repo` must be the serve
 (set `SERVE_ALLOW_RENDER_TRUSTED=1` + `SERVE_REVISIONS_ALLOW=main`), where the heavier per-session
 Gradle build + live render is acceptable.
 
+### Bounding the live tier — `--live-seats` / `SERVE_LIVE_SEATS`
+
+Each live (daemon-backed) stream holds a JVM Compose render session, so on a constrained box a burst
+of viewers could exhaust memory. `--live-seats <n>` (env `SERVE_LIVE_SEATS`) caps concurrent live
+streams: a stream that would exceed the cap is refused with WebSocket close `1013` (*Try Again
+Later*) instead of spawning an unbounded daemon and risking the OOM killer. `0` (the default) is
+unbounded; snapshot + Wasm sessions never consume a seat. On a small box (e.g. a 4 GB / 2 vCPU VM),
+keep it to **1–2** when you turn the live tier on — it's just another env var, so flip it with a
+compose redeploy (`SERVE_LIVE_SEATS=1` in `.env`, then `docker compose up -d`).
+
 ## Endpoints
 
 `GET /` index · `GET /p/{id}?session=<s>` viewer · `GET /render/{id}.png` PNG ·
