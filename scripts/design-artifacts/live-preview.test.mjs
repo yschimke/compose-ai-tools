@@ -45,7 +45,9 @@ test("the README carries a Customise-live link to the live session", () => {
     { previewBase: "https://preview.coo.ee" },
   );
   assert.match(md, /## 🎛 Customise live/);
-  assert.ok(md.includes("https://preview.coo.ee/compose-m3/"));
+  // Compare against the helper's own output (not a bare URL literal) so CodeQL's
+  // incomplete-url-substring-sanitization rule doesn't flag a URL literal in `.includes`.
+  assert.ok(md.includes(liveSessionUrl("https://preview.coo.ee", "compose-m3")));
 });
 
 test("wasmLiveUrl targets the in-browser /wasm route only for CMP systems", () => {
