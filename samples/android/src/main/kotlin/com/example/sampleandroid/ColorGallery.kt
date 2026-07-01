@@ -20,7 +20,7 @@ import ee.schimke.composeai.preview.color.ColorSpecimen
  * so both palettes land as their own committed PNG in the sample gallery — the sister to
  * `TypographyGallery`'s specimen sheets.
  */
-@Preview(name = "ColorScheme specimen — light", widthDp = 360, heightDp = 1100)
+@Preview(name = "ColorScheme specimen — light", widthDp = 360, heightDp = 1760)
 @Composable
 fun ColorSchemeSpecimenLightPreview() {
   MaterialTheme(colorScheme = lightColorScheme()) {
@@ -28,7 +28,7 @@ fun ColorSchemeSpecimenLightPreview() {
   }
 }
 
-@Preview(name = "ColorScheme specimen — dark", widthDp = 360, heightDp = 1100)
+@Preview(name = "ColorScheme specimen — dark", widthDp = 360, heightDp = 1760)
 @Composable
 fun ColorSchemeSpecimenDarkPreview() {
   MaterialTheme(colorScheme = darkColorScheme()) {
