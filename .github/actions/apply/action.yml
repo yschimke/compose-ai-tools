@@ -530,8 +530,12 @@ runs:
       run: |
         set -euo pipefail
         # Compose comment is only meaningful when the compose pipeline
-        # actually produced previews.json + a baseline dir.
-        if [ ! -f _previews.json ] || [ ! -d _baselines ]; then
+        # actually produced a non-empty previews.json + a baseline dir.
+        # `pipelines/compose.sh` already treats an empty _previews.json as a
+        # clean skip (no compose modules / zero previews), so match that here
+        # with `-s` — otherwise a docs-only PR leaves an empty file that slips
+        # past `-f` and errors in compare-previews.py.
+        if [ ! -s _previews.json ] || [ ! -d _baselines ]; then
           echo "compose comment: nothing to compare, skipping."
           exit 0
         fi
