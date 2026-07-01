@@ -1740,6 +1740,12 @@ internal object AndroidPreviewSupport {
           dependsOn(generateShardsTask)
           // Reads AGP's unit-test-config dir via `resolvedClasspath` (see unitTestConfigProducer).
           dependsOn(unitTestConfigProducer)
+          // …and the screenshotTest classes dir, which `sourceClassDirs` adds to the render
+          // classpath when the screenshot plugin is applied — same strict-validation requirement,
+          // matched by name like `composePreviewDiscover` above.
+          if (screenshotTestEnabled) {
+            dependsOn(project.tasks.matching { it.name in screenshotCompileTaskNames })
+          }
           if (useLocalRenderer) {
             dependsOn(":renderer-android:compile${capVariant}Kotlin")
           }
@@ -1756,6 +1762,11 @@ internal object AndroidPreviewSupport {
         validatePreviewToolingPresentTask?.let { dependsOn(it) }
         // Reads AGP's unit-test-config dir via `resolvedClasspath` (see unitTestConfigProducer).
         dependsOn(unitTestConfigProducer)
+        // …and the screenshotTest classes dir on the render classpath (see the compile-shards
+        // task).
+        if (screenshotTestEnabled) {
+          dependsOn(project.tasks.matching { it.name in screenshotCompileTaskNames })
+        }
         val agpTestTask = project.tasks.findByName("test${capVariant}UnitTest") as? Test
         testClassesDirs =
           if (compileShardsTask != null) {
