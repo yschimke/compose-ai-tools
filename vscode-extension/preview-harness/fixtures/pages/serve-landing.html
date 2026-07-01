@@ -25,6 +25,13 @@ a:hover { text-decoration: underline; }
 .cp-systems a { background: #fff; }
 .cp-systems-cur { background: #ececff; border-color: #c4c4f5; color: #3a3a8a; font-weight: 600; }
 .cp-toolbar { margin: 0 0 16px; }
+.cp-searchbar { margin: 0 0 16px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cp-search { flex: 1 1 260px; max-width: 420px; padding: 7px 12px; font: inherit; font-size: 0.85rem;
+  border: 1px solid #d7d7de; border-radius: 999px; background: #fff; color: inherit; }
+.cp-search:focus { outline: 2px solid #c4c4f5; outline-offset: 1px; }
+.cp-count { font-size: 0.78rem; color: #6b6b70; }
+.cp-empty { margin: 12px 0 0; font-size: 0.85rem; color: #6b6b70; }
+.cp-empty[hidden] { display: none; }
 .cp-theme { display: inline-flex; border: 1px solid #d7d7de; border-radius: 999px; overflow: hidden; }
 .cp-theme-btn { border: 0; background: #fff; color: #6b6b70; font: inherit; font-size: 0.78rem;
   padding: 3px 14px; cursor: pointer; }
@@ -75,6 +82,8 @@ a:hover { text-decoration: underline; }
   .cp-systems a, .cp-systems-cur { border-color: #34343a; }
   .cp-systems a { background: #1d1d20; }
   .cp-systems-cur { background: #26264a; border-color: #45458a; color: #c9c9ff; }
+  .cp-search { border-color: #34343a; background: #1d1d20; }
+  .cp-count, .cp-empty { color: #a0a0a8; }
   .cp-theme { border-color: #34343a; }
   .cp-theme-btn { background: #1d1d20; color: #a0a0a8; }
   .cp-theme-btn[aria-pressed="true"] { background: #26264a; color: #c9c9ff; }
@@ -88,7 +97,12 @@ a:hover { text-decoration: underline; }
                 <p class="cp-head">:samples:cmp <span class="cp-badge cp-badge--trusted" title="producer trust: signature:compose-ai-tools-ci">✓ signature:compose-ai-tools-ci</span></p>
         <p class="cp-sub">6 preview(s) · click one to view with overrides ·
           <a href="/bundle.zip?token=demo-token-fixture">download all (.zip)</a></p>
-        <div class="cp-grid">
+        <div class="cp-searchbar">
+  <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
+    autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
+  <span id="cp-count" class="cp-count" role="status" aria-live="polite" data-total="6"></span>
+</div>
+<div class="cp-grid" id="cp-grid">
         <a class="cp-card" href="/p/com.example.ButtonPreview?token=demo-token-fixture">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="Button" src="/render/com.example.ButtonPreview.png?token=demo-token-fixture">
@@ -144,5 +158,34 @@ a:hover { text-decoration: underline; }
   </div>
 </a>
         </div>
+<p id="cp-empty" class="cp-empty" hidden>No previews match your filter.</p>
+<script>(function () {
+  var cards = document.querySelectorAll(".cp-card");
+  var input = document.getElementById("cp-search");
+  var count = document.getElementById("cp-count");
+  var empty = document.getElementById("cp-empty");
+  var total = cards.length;
+  
+  function apply() {
+    
+    var q = input ? input.value.trim().toLowerCase() : "";
+    var shown = 0;
+    cards.forEach(function (c) {
+      var ct = c.getAttribute("data-card-theme");
+      var lab = c.querySelector(".cp-label");
+      var idn = c.querySelector(".cp-id");
+      var hay = ((lab ? lab.textContent : "") + " " + (idn ? idn.textContent : "")).toLowerCase();
+      var searchOk = q === "" || hay.indexOf(q) !== -1;
+      var visible = true && searchOk;
+      c.hidden = !visible;
+      if (visible) shown++;
+    });
+    if (count) count.textContent = q === "" ? "" : (shown + " of " + total);
+    if (empty) empty.hidden = shown !== 0;
+  }
+  if (input) input.addEventListener("input", apply);
+  
+  apply();
+})();</script>
       </body>
     </html>

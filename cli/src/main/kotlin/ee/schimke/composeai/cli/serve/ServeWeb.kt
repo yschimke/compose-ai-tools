@@ -34,6 +34,13 @@ object ServeWeb {
     .cp-systems a { background: #fff; }
     .cp-systems-cur { background: #ececff; border-color: #c4c4f5; color: #3a3a8a; font-weight: 600; }
     .cp-toolbar { margin: 0 0 16px; }
+    .cp-searchbar { margin: 0 0 16px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .cp-search { flex: 1 1 260px; max-width: 420px; padding: 7px 12px; font: inherit; font-size: 0.85rem;
+      border: 1px solid #d7d7de; border-radius: 999px; background: #fff; color: inherit; }
+    .cp-search:focus { outline: 2px solid #c4c4f5; outline-offset: 1px; }
+    .cp-count { font-size: 0.78rem; color: #6b6b70; }
+    .cp-empty { margin: 12px 0 0; font-size: 0.85rem; color: #6b6b70; }
+    .cp-empty[hidden] { display: none; }
     .cp-theme { display: inline-flex; border: 1px solid #d7d7de; border-radius: 999px; overflow: hidden; }
     .cp-theme-btn { border: 0; background: #fff; color: #6b6b70; font: inherit; font-size: 0.78rem;
       padding: 3px 14px; cursor: pointer; }
@@ -84,6 +91,8 @@ object ServeWeb {
       .cp-systems a, .cp-systems-cur { border-color: #34343a; }
       .cp-systems a { background: #1d1d20; }
       .cp-systems-cur { background: #26264a; border-color: #45458a; color: #c9c9ff; }
+      .cp-search { border-color: #34343a; background: #1d1d20; }
+      .cp-count, .cp-empty { color: #a0a0a8; }
       .cp-theme { border-color: #34343a; }
       .cp-theme-btn { background: #1d1d20; color: #a0a0a8; }
       .cp-theme-btn[aria-pressed="true"] { background: #26264a; color: #c9c9ff; }
@@ -204,37 +213,92 @@ object ServeWeb {
       .trimIndent()
 
   /**
-   * Catalog theme script: resolve the sticky theme (stored choice, else the OS preference), reflect
-   * it on the toggle, and hide the cards whose baked variant is the other theme. Cards without a
-   * theme axis are always shown. A click updates the store + re-filters.
+   * The search box for the landing grid: a text input that filters cards to those whose label or id
+   * contains the typed text, plus a live result count. Progressive enhancement — the server emits
+   * every card and [catalogFilterScript] does the hiding, so a no-JS client still sees the full
+   * grid. Shown whenever the module has previews (independent of the theme toggle, which only
+   * appears for per-theme catalogs). [count] seeds the total for the "N of M" readout.
    */
-  private fun catalogThemeScript(): String =
+  private fun searchBoxHtml(count: Int): String =
     """
-    (function () {
-      var stored = null;
-      try { stored = localStorage.getItem("cp-theme"); } catch (e) {}
-      var theme = (stored === "light" || stored === "dark") ? stored
-        : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-      var btns = document.querySelectorAll(".cp-theme-btn");
-      function apply() {
-        btns.forEach(function (b) {
+    <div class="cp-searchbar">
+      <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
+        autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
+      <span id="cp-count" class="cp-count" role="status" aria-live="polite" data-total="$count"></span>
+    </div>
+    """
+      .trimIndent()
+
+  /**
+   * Combined landing-grid filter: owns every `.cp-card`'s visibility from two independent inputs —
+   * the search box (matches the card's label + id, case-insensitive) and, when the catalog carries
+   * per-theme variants, the sticky light/dark toggle. A card is shown only when it satisfies BOTH,
+   * so the two filters compose instead of fighting over `hidden`. Theme state persists to the
+   * shared `localStorage['cp-theme']` key (round-tripped with the viewer's Theme select); the
+   * search text is ephemeral. Fully client-side progressive enhancement — a no-JS client sees the
+   * whole grid.
+   */
+  private fun catalogFilterScript(hasThemes: Boolean): String {
+    val themeInit =
+      if (hasThemes)
+        """
+        var stored = null;
+        try { stored = localStorage.getItem("cp-theme"); } catch (e) {}
+        var theme = (stored === "light" || stored === "dark") ? stored
+          : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+        var themeBtns = document.querySelectorAll(".cp-theme-btn");
+        """
+          .trimIndent()
+      else ""
+    val reflectTheme =
+      if (hasThemes)
+        """themeBtns.forEach(function (b) {
           b.setAttribute("aria-pressed", b.getAttribute("data-theme-choice") === theme ? "true" : "false");
-        });
-        document.querySelectorAll(".cp-card[data-card-theme]").forEach(function (c) {
-          c.hidden = c.getAttribute("data-card-theme") !== theme;
-        });
-      }
-      btns.forEach(function (b) {
+        });"""
+      else ""
+    val themeOk = if (hasThemes) "(!ct || ct === theme)" else "true"
+    val themeWiring =
+      if (hasThemes)
+        """themeBtns.forEach(function (b) {
         b.addEventListener("click", function () {
           theme = b.getAttribute("data-theme-choice");
           try { localStorage.setItem("cp-theme", theme); } catch (e) {}
           apply();
         });
-      });
+      });"""
+      else ""
+    return """
+    (function () {
+      var cards = document.querySelectorAll(".cp-card");
+      var input = document.getElementById("cp-search");
+      var count = document.getElementById("cp-count");
+      var empty = document.getElementById("cp-empty");
+      var total = cards.length;
+      $themeInit
+      function apply() {
+        $reflectTheme
+        var q = input ? input.value.trim().toLowerCase() : "";
+        var shown = 0;
+        cards.forEach(function (c) {
+          var ct = c.getAttribute("data-card-theme");
+          var lab = c.querySelector(".cp-label");
+          var idn = c.querySelector(".cp-id");
+          var hay = ((lab ? lab.textContent : "") + " " + (idn ? idn.textContent : "")).toLowerCase();
+          var searchOk = q === "" || hay.indexOf(q) !== -1;
+          var visible = $themeOk && searchOk;
+          c.hidden = !visible;
+          if (visible) shown++;
+        });
+        if (count) count.textContent = q === "" ? "" : (shown + " of " + total);
+        if (empty) empty.hidden = shown !== 0;
+      }
+      if (input) input.addEventListener("input", apply);
+      $themeWiring
       apply();
     })();
     """
       .trimIndent()
+  }
 
   /**
    * Viewer theme-sticky script: when the Theme select is set to light/dark, write it to the shared
@@ -333,7 +397,16 @@ object ServeWeb {
     // The theme toggle only makes sense when the catalog carries per-theme variants to filter.
     val hasThemes = previews.any { cardTheme(it.id) != null }
     val themeToggle = if (hasThemes) themeToggleHtml() + "\n" else ""
-    val themeScript = if (hasThemes) "\n<script>${catalogThemeScript()}</script>" else ""
+    // Search + empty-state + the combined filter script are shown whenever there are previews to
+    // filter, independent of the theme axis.
+    val hasPreviews = previews.isNotEmpty()
+    val searchBox = if (hasPreviews) searchBoxHtml(previews.size) + "\n" else ""
+    val emptyState =
+      if (hasPreviews)
+        "\n<p id=\"cp-empty\" class=\"cp-empty\" hidden>No previews match your filter.</p>"
+      else ""
+    val filterScript =
+      if (hasPreviews) "\n<script>${catalogFilterScript(hasThemes)}</script>" else ""
     return document(
       title = "$moduleLabel — compose-preview",
       body =
@@ -341,9 +414,9 @@ object ServeWeb {
         $about$nav<p class="cp-head">${WebEscaping.htmlEscape(moduleLabel)}${trustBadge(trust)}</p>
         $themeToggle<p class="cp-sub">${previews.size} preview(s) · click one to view with overrides ·
           <a href="$basePath/bundle.zip?$q">download all (.zip)</a></p>
-        <div class="cp-grid">
+        $searchBox<div class="cp-grid" id="cp-grid">
         $cards
-        </div>$themeScript
+        </div>$emptyState$filterScript
         """
           .trimIndent(),
     )
