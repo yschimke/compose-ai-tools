@@ -120,4 +120,40 @@ internal fun parseQuery(search: String): Map<String, String> {
     .toMap()
 }
 
-private fun decode(value: String): String = value.replace('+', ' ')
+/**
+ * Decode one query key/value: `+` → space, then `%XX` percent-escapes (UTF-8). The embedding viewer
+ * builds patches with `encodeURIComponent`, which escapes even the comma inside `bgPhase`
+ * (`12.00,4.00` → `12.00%2C4.00`) — without this decode the phase parser would silently fall back
+ * to `Offset.Zero` and the checkerboard would seam. Hand-rolled (not JS `decodeURIComponent`) so a
+ * malformed escape degrades to literal text instead of throwing across the JS boundary.
+ */
+internal fun decode(value: String): String {
+  val plusDecoded = value.replace('+', ' ')
+  if ('%' !in plusDecoded) return plusDecoded
+  val out = StringBuilder(plusDecoded.length)
+  val bytes = ArrayList<Byte>()
+  fun flushBytes() {
+    if (bytes.isNotEmpty()) {
+      out.append(bytes.toByteArray().decodeToString())
+      bytes.clear()
+    }
+  }
+  var i = 0
+  while (i < plusDecoded.length) {
+    val c = plusDecoded[i]
+    if (c == '%' && i + 2 < plusDecoded.length) {
+      val hi = plusDecoded[i + 1].digitToIntOrNull(16)
+      val lo = plusDecoded[i + 2].digitToIntOrNull(16)
+      if (hi != null && lo != null) {
+        bytes.add(((hi shl 4) or lo).toByte())
+        i += 3
+        continue
+      }
+    }
+    flushBytes()
+    out.append(c)
+    i++
+  }
+  flushBytes()
+  return out.toString()
+}
