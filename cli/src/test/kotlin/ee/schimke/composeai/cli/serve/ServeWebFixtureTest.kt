@@ -184,6 +184,24 @@ class ServeWebFixtureTest {
       landing.contains("class=\"cp-theme\""),
       "a module without theme variants shows no toggle",
     )
+    // The search box filters the grid and appears for every non-empty module — including the
+    // plain, theme-less one that shows no theme toggle. The grid carries the id the input targets.
+    assertTrue(landing.contains("id=\"cp-search\""), "landing carries the search box")
+    assertTrue(
+      landing.contains("id=\"cp-grid\""),
+      "the grid is labelled for the search box to target",
+    )
+    assertTrue(
+      landingThemed.contains("id=\"cp-search\""),
+      "the search box shows alongside the theme toggle on a themed catalog",
+    )
+    // The combined filter composes search with theme: on a themed catalog the script still persists
+    // the theme choice, so search didn't displace the theme half.
+    assertTrue(
+      landingThemed.contains("localStorage.setItem(\"cp-theme\"") &&
+        landingThemed.contains("getElementById(\"cp-search\")"),
+      "the themed landing's filter script drives both the theme toggle and the search box",
+    )
     // The viewer both seeds its Theme select from the shared cp-theme on load (so a theme-less
     // preview inherits the catalog choice) and writes it back on change — the sticky round-trip.
     assertTrue(
