@@ -387,6 +387,10 @@ a:hover { text-decoration: underline; }
     // Wasm and the daemon stream are mutually exclusive — only one transport drives the stage.
     if (live.checked) { live.checked = false; closeStream(); }
     root.setAttribute("data-mode", "wasm");
+    // Frame parity: size the iframe to the snapshot's rendered box (before hiding it) so the
+    // stage keeps its height across the switch — the in-browser app then scales its component to
+    // fill that same frame, so toggling Wasm no longer makes the preview jump in size.
+    if (img.clientHeight > 0) wasmFrame.style.height = img.clientHeight + "px";
     img.hidden = true; canvas.hidden = true; wasmFrame.hidden = false;
     wasmReady = false;
     wasmFrame.src = wasmInitialSrc();
@@ -396,6 +400,7 @@ a:hover { text-decoration: underline; }
     root.setAttribute("data-mode", "snapshot");
     wasmReady = false;
     wasmFrame.hidden = true; wasmFrame.removeAttribute("src");
+    wasmFrame.style.removeProperty("height");
     img.hidden = false;
   }
   function wasmActive() { return wasmToggle && wasmToggle.checked; }

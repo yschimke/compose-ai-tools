@@ -34,9 +34,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 
@@ -55,14 +58,47 @@ fun CatalogApp(id: String, dark: Boolean = false, fontScale: Float = 1f, rtl: Bo
   val density = LocalDensity.current
   val scaled = Density(density = density.density, fontScale = fontScale)
   val direction = if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr
+  // Frame + component bounds, measured to scale the component to fill the stage (see below).
+  var frame by remember { mutableStateOf(IntSize.Zero) }
+  var content by remember { mutableStateOf(IntSize.Zero) }
   CompositionLocalProvider(LocalDensity provides scaled, LocalLayoutDirection provides direction) {
     MaterialTheme(colorScheme = scheme) {
       Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-          val component = catalogComponents[id]
-          if (component != null) {
-            component()
-          } else {
+        val component = catalogComponents[id]
+        if (component != null) {
+          // Frame parity with the baked snapshot: the snapshot crops to the component's bounds and
+          // the viewer scales that up to fill the stage, so a lone component looks large. The Wasm
+          // app instead renders into the full iframe, leaving the component small and adrift. Scale
+          // the component to fill the frame (preserving aspect, with a cap so a tiny component
+          // isn't
+          // absurdly magnified, and shrinking oversized ones so nothing overflows), so switching to
+          // the in-browser tier no longer makes it jump in size.
+          Box(
+            modifier =
+              Modifier.fillMaxSize().padding(24.dp).onGloballyPositioned { frame = it.size },
+            contentAlignment = Alignment.Center,
+          ) {
+            val scale =
+              if (frame == IntSize.Zero || content.width == 0 || content.height == 0) 1f
+              else
+                minOf(
+                    frame.width.toFloat() / content.width,
+                    frame.height.toFloat() / content.height,
+                  )
+                  .coerceIn(0.25f, 4f)
+            Box(
+              modifier =
+                Modifier.onGloballyPositioned { content = it.size }
+                  .graphicsLayer(scaleX = scale, scaleY = scale)
+            ) {
+              component()
+            }
+          }
+        } else {
+          Box(
+            modifier = Modifier.fillMaxSize().padding(24.dp),
+            contentAlignment = Alignment.Center,
+          ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
               Text("Unknown component id", style = MaterialTheme.typography.titleMedium)
               Text(id, style = MaterialTheme.typography.bodySmall)
