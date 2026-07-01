@@ -1593,6 +1593,16 @@ internal object AndroidPreviewSupport {
         "intermediates/unit_test_config_directory/${variantName}UnitTest/generate${capVariant}UnitTestConfig/out"
       )
 
+    // `unitTestConfigDir` is a bare buildDir path with no producer wired in, but it IS the output
+    // of AGP's `generate${capVariant}UnitTestConfig` task. Any task that reads it via the render
+    // classpath (`composePreviewCompileRenderShards`, `composePreviewRender`) must therefore
+    // declare a dependency on that generator, or Gradle's strict task-dependency validation
+    // (AGP 9 / Gradle 9) fails the build with a `WorkValidationException` ("uses this output …
+    // without declaring an explicit or implicit dependency"). Match by name so it's empty-safe:
+    // modules with unit tests disabled have no such task, and then nothing consumes the dir either.
+    val unitTestConfigProducer =
+      project.tasks.matching { it.name == "generate${capVariant}UnitTestConfig" }
+
     // Generates `ee/schimke/composeai/renderer/robolectric.properties`
     // onto the render classpath so Robolectric overrides the consumer's
     // `Application` with a stub by default — see
@@ -1728,6 +1738,8 @@ internal object AndroidPreviewSupport {
           destinationDirectory.set(shardClassesDir)
           options.release.set(21)
           dependsOn(generateShardsTask)
+          // Reads AGP's unit-test-config dir via `resolvedClasspath` (see unitTestConfigProducer).
+          dependsOn(unitTestConfigProducer)
           if (useLocalRenderer) {
             dependsOn(":renderer-android:compile${capVariant}Kotlin")
           }
@@ -1742,6 +1754,8 @@ internal object AndroidPreviewSupport {
         // resolved runtime classpath doesn't actually reach a preview-tooling coord (issue #1549).
         // Null when direct tooling was found (validator wasn't registered — nothing to depend on).
         validatePreviewToolingPresentTask?.let { dependsOn(it) }
+        // Reads AGP's unit-test-config dir via `resolvedClasspath` (see unitTestConfigProducer).
+        dependsOn(unitTestConfigProducer)
         val agpTestTask = project.tasks.findByName("test${capVariant}UnitTest") as? Test
         testClassesDirs =
           if (compileShardsTask != null) {
