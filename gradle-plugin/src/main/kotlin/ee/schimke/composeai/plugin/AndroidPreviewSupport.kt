@@ -2714,40 +2714,33 @@ internal object AndroidPreviewSupport {
       )
       return 1
     }
-    // Cheap regex parse — keeps kotlinx.serialization off the plugin
-    // classpath. Each Capture entry in `previews.json` carries its own
-    // `"renderOutput"` field (so counting those gives the capture
-    // count, not the preview count) and an optional `"cost"` (added
-    // post-0.8.0; older manifests omit it and the renderer treats
-    // missing as 1.0). We feed `(totalCost, maxIndividualCost,
-    // captureCount)` into [ShardTuning.autoShards] so a module with
-    // three GIF captures (cost = 40 each) gets sharded for the right
-    // reason rather than being judged by preview count alone.
+    // Size by preview *row*, not by capture. The renderer shards whole preview
+    // rows (`RobolectricRenderTest.assignToShard`) — every capture of one
+    // preview stays on the same fork — so a preview with many heavy captures
+    // (paused-clock / GIF frames) is one indivisible unit. Counting captures
+    // here would let auto pick more forks than there are rows to spread, so the
+    // extra forks sit idle and the run ends up slower than a single fork.
+    // [ShardTuning.perPreviewRowCosts] groups captures + data products per
+    // preview entry, mirroring the renderer's per-row cost. `@PreviewParameter`
+    // expansion only adds rows in the renderer, so this is a safe lower bound.
     val text = previewsJson.readText()
-    val captureCount = Regex("\"renderOutput\"\\s*:").findAll(text).count()
-    val costs =
-      Regex("\"cost\"\\s*:\\s*([0-9.]+)")
-        .findAll(text)
-        .mapNotNull { it.groupValues[1].toDoubleOrNull() }
-        .toList()
-    val explicitCostSum = costs.sum()
-    val implicitCostSum = (captureCount - costs.size).coerceAtLeast(0).toDouble()
-    val totalCost = explicitCostSum + implicitCostSum
-    val maxIndividualCost =
-      (costs.maxOrNull() ?: 1.0).coerceAtLeast(if (captureCount > costs.size) 1.0 else 0.0)
+    val rowCosts = ShardTuning.perPreviewRowCosts(text)
+    val rowCount = rowCosts.size
+    val totalCost = rowCosts.sum()
+    val maxIndividualCost = rowCosts.maxOrNull() ?: 0.0
     val hostMemoryMb = ShardTuning.hostMemoryMb()
     val resolved =
       ShardTuning.autoShards(
         totalCost = totalCost,
         maxIndividualCost = maxIndividualCost,
-        captureCount = captureCount,
+        shardableRows = rowCount,
         availableMemoryMb = hostMemoryMb,
       )
     val memTag = if (hostMemoryMb == Long.MAX_VALUE) "unknown" else "${hostMemoryMb}MB"
     project.logger.lifecycle(
       "compose-ai-tools: shards=auto → $resolved " +
-        "(captures=$captureCount, totalCost=${"%.1f".format(totalCost)}, " +
-        "maxCost=${"%.1f".format(maxIndividualCost)}, " +
+        "(rows=$rowCount, totalCost=${"%.1f".format(totalCost)}, " +
+        "maxRowCost=${"%.1f".format(maxIndividualCost)}, " +
         "cores=${Runtime.getRuntime().availableProcessors()}, mem=$memTag)"
     )
     return resolved

@@ -93,15 +93,24 @@ internal object ShardTuning {
    * ([MIN_SAVING_FRACTION]) thresholds. Otherwise returns 1.
    *
    * Upper bound is `min(MAX_SHARDS, cores − 1, availableMemoryMb / PER_FORK_MEMORY_MB,
-   * captureCount)`. We leave a single core for the Gradle daemon + I/O rather than the old `cores /
-   * 2` — while the render task runs it is effectively the *only* Gradle work in flight, so
+   * shardableRows)`. We leave a single core for the Gradle daemon + I/O rather than the old `cores
+   * / 2` — while the render task runs it is effectively the *only* Gradle work in flight, so
    * reserving half the machine left it idle. On the standard GitHub runner ladder that roughly
    * doubles the usable fork count (a 4-vCPU runner goes from 2 → 3). The memory term stops a
-   * many-core-but-low-RAM runner from OOM-ing; never shard below one capture per fork.
+   * many-core-but-low-RAM runner from OOM-ing; never shard below one row per fork.
    *
-   * @param totalCost sum of `Capture.cost` across every capture in the manifest
-   * @param maxIndividualCost largest single `Capture.cost` value (sets the makespan floor)
-   * @param captureCount total number of captures (caps shard count so each fork gets ≥ 1)
+   * **[shardableRows], not capture count.** The renderer partitions whole preview *rows* across
+   * forks (`RobolectricRenderTest.assignToShard`) — every capture of one preview stays on the same
+   * shard, so a preview is indivisible no matter how many captures it has. Sizing by raw capture
+   * count would let this pick more forks than there are rows to spread, leaving the extra forks
+   * idle and making a multi-capture module (paused-clock / GIF frames) *slower* than a single fork.
+   * Callers pass the preview-row count and per-row cost (see [ShardTuning.perPreviewRowCosts]).
+   *
+   * @param totalCost sum of every row's cost across the manifest
+   * @param maxIndividualCost largest single *row* cost (sum of that preview's captures + data
+   *   products) — sets the makespan floor, since no shard can finish before its heaviest row
+   * @param shardableRows number of indivisible preview rows (caps shard count so each fork gets
+   *   ≥ 1)
    * @param cores CPU cores visible to the build (defaults to the runtime processor count)
    * @param availableMemoryMb host physical memory in MB used to bound forks; defaults to
    *   [Long.MAX_VALUE] so unit tests exercise the CPU/cost logic without a machine-dependent memory
@@ -110,18 +119,18 @@ internal object ShardTuning {
   fun autoShards(
     totalCost: Double,
     maxIndividualCost: Double,
-    captureCount: Int,
+    shardableRows: Int,
     cores: Int = Runtime.getRuntime().availableProcessors(),
     availableMemoryMb: Long = Long.MAX_VALUE,
   ): Int {
-    if (captureCount < 2 || totalCost <= 0.0) return 1
+    if (shardableRows < 2 || totalCost <= 0.0) return 1
     val memForks = (availableMemoryMb / PER_FORK_MEMORY_MB).coerceAtLeast(1L)
     val maxK =
       minOf(
           MAX_SHARDS.toLong(),
           (cores - 1).coerceAtLeast(1).toLong(),
           memForks,
-          captureCount.toLong(),
+          shardableRows.toLong(),
         )
         .toInt()
     if (maxK < 2) return 1
@@ -158,4 +167,74 @@ internal object ShardTuning {
     } catch (_: Throwable) {
       Long.MAX_VALUE
     }
+
+  private val COST_FIELD = Regex("\"cost\"\\s*:\\s*([0-9.]+)")
+  private val RENDER_OUTPUT_FIELD = Regex("\"renderOutput\"\\s*:")
+
+  /**
+   * Parse a `previews.json` manifest into one cost per **preview row** — the unit the renderer
+   * actually shards on ([autoShards] docs). Each element is the summed cost of one preview entry's
+   * captures + data products, mirroring the per-row cost `RobolectricRenderTest.assignToShard`
+   * uses. The returned size is the shardable-row count.
+   *
+   * Hand-rolled brace-depth scan rather than `kotlinx.serialization` to keep that dependency off
+   * the plugin classpath (same rationale as the rest of the plugin's manifest reads). It groups by
+   * the top-level objects inside the `"previews"` array, so nested capture/product objects don't
+   * inflate the row count. `@PreviewParameter` expansion happens later in the renderer and only
+   * *adds* rows, so this count is a safe lower bound: we may under-shard a provider-heavy module,
+   * never over-shard it. A capture with no explicit `cost` (pre-0.8.0 manifest) is priced at 1.0,
+   * matching the renderer's default.
+   */
+  fun perPreviewRowCosts(manifestText: String): List<Double> {
+    val previewsKey = manifestText.indexOf("\"previews\"")
+    if (previewsKey < 0) return emptyList()
+    val arrStart = manifestText.indexOf('[', previewsKey)
+    if (arrStart < 0) return emptyList()
+
+    val rows = mutableListOf<Double>()
+    var depth = 0
+    var inString = false
+    var escaped = false
+    var entryStart = -1
+    var i = arrStart + 1
+    while (i < manifestText.length) {
+      val c = manifestText[i]
+      if (inString) {
+        when {
+          escaped -> escaped = false
+          c == '\\' -> escaped = true
+          c == '"' -> inString = false
+        }
+      } else {
+        when (c) {
+          '"' -> inString = true
+          '{' -> {
+            if (depth == 0) entryStart = i
+            depth++
+          }
+          '}' -> {
+            depth--
+            if (depth == 0 && entryStart >= 0) {
+              rows += rowCost(manifestText.substring(entryStart, i + 1))
+              entryStart = -1
+            }
+          }
+          ']' -> if (depth == 0) break // end of the previews array
+        }
+      }
+      i++
+    }
+    return rows
+  }
+
+  /**
+   * Cost of one preview entry: sum of its `cost` fields, or 1.0 per capture on a pre-cost manifest.
+   */
+  private fun rowCost(entryJson: String): Double {
+    val costs =
+      COST_FIELD.findAll(entryJson).mapNotNull { it.groupValues[1].toDoubleOrNull() }.toList()
+    if (costs.isNotEmpty()) return costs.sum()
+    val captures = RENDER_OUTPUT_FIELD.findAll(entryJson).count()
+    return captures.coerceAtLeast(1).toDouble()
+  }
 }
