@@ -194,6 +194,30 @@ class ServeWebFixtureTest {
       viewer.contains("localStorage.setItem(\"cp-theme\""),
       "viewer Theme change writes the shared cp-theme key",
     )
+
+    // The backend-provenance badge names the active tier; the snapshot label defaults to "Snapshot"
+    // and the badge script maps the live tiers to CMP-WASM / CMP-JVM.
+    assertTrue(viewer.contains("id=\"cp-backend\""), "viewer stage carries the backend badge")
+    assertTrue(
+      viewer.contains("data-snapshot-backend=\"Snapshot\""),
+      "snapshot backend defaults to a generic label",
+    )
+    assertTrue(
+      wasmViewer.contains("\"CMP-WASM\"") && wasmViewer.contains("\"CMP-JVM\""),
+      "badge script labels the wasm + live tiers",
+    )
+    // The snapshot backend label is server-settable (e.g. the design catalogs are
+    // Android-rendered).
+    val androidViewer =
+      ServeWeb.viewerPage(
+        previews.first { it.id.endsWith("ButtonPreview") },
+        token,
+        snapshotBackend = "Android",
+      )
+    assertTrue(
+      androidViewer.contains("data-snapshot-backend=\"Android\""),
+      "snapshotBackend flows to the badge",
+    )
   }
 
   @Test
