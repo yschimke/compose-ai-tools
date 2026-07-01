@@ -86,8 +86,23 @@ def _load_baselines(path: Path) -> dict:
 # catches most but not all of those, so we leave a small slack.
 _PERCEPTUAL_PIXEL_TOLERANCE = 16
 
+# Resource renders (Robolectric-rasterized Android drawables) carry more
+# run-to-run rasterizer jitter than the byte-stable Compose/Skiko preview
+# renderer: an adaptive-icon's tile-chip boundaries, for instance, drift ~0.3%
+# of pixels between CI runners while staying visually identical, and those
+# high-contrast colour boundaries aren't classified as AA by pixelmatch, so the
+# flat 16px floor above trips a false "changed". Give the resource path an
+# extra size-relative slack (echoing the daemon PixelDiff ≤0.5% aggregate
+# budget) on top of the floor, capped in absolute terms so a large drawable
+# still can't hide a real change. Only the resource path opts in; composable
+# diffs keep the strict floor.
+_RESOURCE_PIXEL_FRACTION = 0.005
+_RESOURCE_PIXEL_CAP = 256
 
-def _perceptually_changed(prior_png: Path, current_png: Path) -> bool:
+
+def _perceptually_changed(
+    prior_png: Path, current_png: Path, *, size_aware: bool = False
+) -> bool:
     """Return True if the two PNGs differ by more than rounding noise.
 
     Uses the pixelmatch algorithm (Mapbox; widely used by Playwright,
@@ -114,16 +129,24 @@ def _perceptually_changed(prior_png: Path, current_png: Path) -> bool:
         with Image.open(prior_png) as prior, Image.open(current_png) as current:
             if prior.size != current.size:
                 return True
+            limit = _PERCEPTUAL_PIXEL_TOLERANCE
+            if size_aware:
+                total = prior.width * prior.height
+                limit = max(
+                    limit, min(round(total * _RESOURCE_PIXEL_FRACTION), _RESOURCE_PIXEL_CAP)
+                )
             diff = pixelmatch(prior, current, threshold=0.1, includeAA=False)
     except Exception:
         return True
-    return diff > _PERCEPTUAL_PIXEL_TOLERANCE
+    return diff > limit
 
 
 def _is_changed(
     cur_info: dict,
     bl_info: dict,
     baseline_renders: Path | None,
+    *,
+    size_aware: bool = False,
 ) -> bool:
     """Decide whether ``cur_info`` represents a real change vs ``bl_info``.
 
@@ -142,7 +165,7 @@ def _is_changed(
     if not basename or not png_path:
         return True
     prior = baseline_renders / cur_info["module"] / basename
-    return _perceptually_changed(prior, Path(png_path))
+    return _perceptually_changed(prior, Path(png_path), size_aware=size_aware)
 
 
 def _collect_failures(rows: dict) -> list[tuple[str, dict]]:
@@ -1369,7 +1392,9 @@ def cmd_copy_changed_resources(args: argparse.Namespace) -> int:
         if not info["sha256"]:
             continue
         is_new = key not in baselines
-        is_changed = not is_new and _is_changed(info, baselines[key], baseline_renders)
+        is_changed = not is_new and _is_changed(
+            info, baselines[key], baseline_renders, size_aware=True
+        )
         if not (is_new or is_changed):
             continue
         dest = out_dir / "renders" / info["module"] / info["destRelative"]
@@ -1446,7 +1471,7 @@ def cmd_compare_resources(args: argparse.Namespace) -> int:
             continue
         if key not in baselines:
             new.append((key, info))
-        elif _is_changed(info, baselines[key], baseline_renders):
+        elif _is_changed(info, baselines[key], baseline_renders, size_aware=True):
             changed.append((key, info, baselines[key]))
         else:
             unchanged.append((key, info))
