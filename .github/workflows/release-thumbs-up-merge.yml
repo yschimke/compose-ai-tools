@@ -24,11 +24,13 @@ on:
     - cron: "*/10 * * * *"
   workflow_dispatch:
 
-# Least privilege: merge the PR (contents + pull-requests) and dispatch
-# release-please.yml afterwards (actions: write). Nothing else.
+# Least privilege: read PR reactions (issues: read — reactions live on the
+# issues endpoint, and omitted permissions default to `none`), merge the PR
+# (contents + pull-requests), and dispatch release-please.yml (actions: write).
 permissions:
   contents: write
   pull-requests: write
+  issues: read
   actions: write
 
 concurrency:
@@ -49,12 +51,18 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Open release-please PRs (root + any component share the head-branch
-          # prefix). The 👍 gate below is per-PR, so we can safely consider all.
+          # Open release-please PRs only: bot-authored, `release-please--` head,
+          # targeting main — mirroring the guard in integration.yml so a human/
+          # fork PR that merely borrows the branch prefix can never be treated as
+          # a release PR (the 👍 gate below is a second line of defence, per-PR).
           mapfile -t prs < <(
             gh pr list --repo "$GH_REPO" --state open \
-              --json number,headRefName \
-              --jq '.[] | select(.headRefName | startswith("release-please--")) | .number'
+              --json number,headRefName,baseRefName,author \
+              --jq '.[]
+                    | select((.headRefName | startswith("release-please--"))
+                             and .baseRefName == "main"
+                             and .author.is_bot)
+                    | .number'
           )
           if [ "${#prs[@]}" -eq 0 ]; then
             echo "No open release-please PR — nothing to do."
