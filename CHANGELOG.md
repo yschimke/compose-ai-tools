@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.16.14](https://github.com/yschimke/compose-ai-tools/compare/v0.16.13...v0.16.14) (2026-07-02)
+
+
+### Features
+
+* **catalog:** generate the wasm tier's fonts.json from recorded font usage ([#2188](https://github.com/yschimke/compose-ai-tools/issues/2188)) ([b2abbb4](https://github.com/yschimke/compose-ai-tools/commit/b2abbb43267f7063751e4fde2325f9e92d1f4c5b))
+* **catalog:** generic-family fonts — serif/mono specimens rendered from the same files on both tiers ([#2186](https://github.com/yschimke/compose-ai-tools/issues/2186)) ([5292c08](https://github.com/yschimke/compose-ai-tools/commit/5292c08bf9b14d5e469580e3072de59959057e7e))
+* publish preview-annotations as a Kotlin Multiplatform artifact ([#2185](https://github.com/yschimke/compose-ai-tools/issues/2185)) ([3e47d1b](https://github.com/yschimke/compose-ai-tools/commit/3e47d1b04000fa56a391a5de2cc3fb381c4e5f61))
+
+
+### Bug Fixes
+
+* treat optional captures as expected skips in the missing-render gate and diff bot ([#2187](https://github.com/yschimke/compose-ai-tools/issues/2187)) ([0adda67](https://github.com/yschimke/compose-ai-tools/commit/0adda6727750375d53ce469bfebef7bb333f7734))
+
 ## [0.16.13](https://github.com/yschimke/compose-ai-tools/compare/v0.16.12...v0.16.13) (2026-07-02)
 
 
