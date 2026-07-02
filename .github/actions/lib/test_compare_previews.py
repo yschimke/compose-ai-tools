@@ -56,13 +56,15 @@ def _entry(*, id: str, module: str = "app", function: str = "Fn",
 
 def _capture(*, png: str | None = None, sha: str | None = None,
              advanceTimeMillis: int | None = None,
-             scroll: dict | None = None) -> dict:
+             scroll: dict | None = None,
+             optional: bool = False) -> dict:
     """Build a CaptureResult-shaped dict for use in `_entry(captures=[…])`."""
     return {
         "pngPath": png,
         "sha256": sha,
         "advanceTimeMillis": advanceTimeMillis,
         "scroll": scroll,
+        "optional": optional,
     }
 
 
@@ -180,6 +182,40 @@ class LoadCliOutputTest(unittest.TestCase):
         out = cp.load_cli_output(path)
         self.assertEqual(out["app/X"]["sha256"], "")
         self.assertEqual(out["app/X"]["pngPath"], "")
+
+
+class OptionalCaptureFailureTest(unittest.TestCase):
+    """`optional` captures (desktop `@ColorCatalog` sheets, #2135) must not
+    read as render failures — the flag is the CLI-envelope mirror of the
+    manifest `Capture.optional` the render gate already honours (#2159)."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+
+    def _load(self, entries) -> dict:
+        p = self.tmp / "cli.json"
+        p.write_text(json.dumps({"schema": "compose-preview-show/v2", "previews": entries}))
+        return cp.load_cli_output(p)
+
+    def test_optional_flag_round_trips_through_load(self):
+        rows = self._load([
+            _entry(id="Sheet", captures=[_capture(optional=True)]),
+        ])
+        self.assertTrue(rows["app/Sheet"]["optional"])
+
+    def test_optional_missing_capture_is_not_a_failure(self):
+        rows = self._load([
+            _entry(id="Sheet", captures=[_capture(optional=True)]),
+            _entry(id="Ok", captures=[_capture(png="/r/ok.png", sha="abc")]),
+        ])
+        self.assertEqual(cp._collect_failures(rows), [])
+
+    def test_required_missing_capture_still_fails(self):
+        rows = self._load([
+            _entry(id="Broken", captures=[_capture()]),
+        ])
+        self.assertEqual([key for key, _ in cp._collect_failures(rows)], ["app/Broken"])
 
 
 class VariantLabelTest(unittest.TestCase):

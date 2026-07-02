@@ -58,10 +58,18 @@ jobs:
           a11y-module: ''
           a11y-skip-modules: ''
           notifications-module: 'samples:android'
-          # Don't hard-fail this repo's own CI on individual previews/resources
-          # that render no PNG (e.g. the launcher-icon rasterizer jitter tracked
-          # in #2133): log them and keep going instead of gating every push +
-          # PR. Scoped to this caller — the action's default stays `fail` for
-          # external consumers. The underlying missing renders are tracked
-          # separately; flip back to `fail` once they're fixed.
-          missing-renders: warn
+          # Per-Gradle-invocation ceiling for the render pipelines. The
+          # action's 600s default is marginal for this repo's own all-module
+          # render: identical jobs swing 23–32 minutes across runners, and on
+          # a below-median runner the compose `show` (and the a11y re-render,
+          # which used to run on the CLI's 300s default) got cancelled mid
+          # build — surfacing as "Render failed" / rc=2 with the baselines
+          # frozen. This is a safety ceiling against a hung build, not a
+          # budget, so keep it comfortably above the slowest observed run.
+          timeout: '1800'
+          # No `missing-renders` override: the action's default `fail` gates
+          # every push + PR on all required renders producing a PNG. The one
+          # legitimately unrenderable capture (the desktop `@ColorCatalog`
+          # sheet, #2135) is marked `optional` at discovery, which the gate,
+          # the CLI, and the diff bot all honour — see #2159 for the history
+          # of the `warn` override this replaces.

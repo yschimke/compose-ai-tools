@@ -56,6 +56,14 @@ fi
 if [ -n "${MISSING_RENDERS:-}" ]; then
   cli_args+=(--missing-renders "${MISSING_RENDERS}")
 fi
+# Same per-Gradle-invocation ceiling the compose/resources pipelines get.
+# Without it the a11y run sits on the CLI's 300s default, which cannot fit
+# the full re-render this command triggers (`activeExtensions=a11y` changes
+# every render task's inputs) — a below-median runner times the build out,
+# the pipeline silently self-skips, and the a11y baseline never updates.
+if [ -n "${RENDER_TIMEOUT:-}" ]; then
+  cli_args+=(--timeout "${RENDER_TIMEOUT}")
+fi
 
 # Use the same CLI that the install step put on $PATH (release tarball or
 # source build); the legacy `:cli:installDist` rebuild was a leftover from

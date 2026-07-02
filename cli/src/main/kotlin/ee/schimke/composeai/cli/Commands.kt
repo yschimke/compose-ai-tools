@@ -705,12 +705,15 @@ abstract class Command(
       total = results.size,
       changed = results.count { it.anyChanged() },
       unchanged = results.count { !it.anyChanged() && it.captures.any { c -> c.pngPath != null } },
-      // Exclude kinds that never emit a PNG (see [NON_PNG_PREVIEW_KINDS]) so `counts.missing`
-      // matches what `--missing-renders` actually gates on — an `@XrSubspacePreview` with no
-      // composite still isn't a render failure.
+      // Exclude kinds that never emit a PNG (see [NON_PNG_PREVIEW_KINDS]) and `optional` captures
+      // so `counts.missing` matches what `--missing-renders` actually gates on — an
+      // `@XrSubspacePreview` with no composite or a desktop `@ColorCatalog` sheet still isn't a
+      // render failure.
       missing =
-        results.count {
-          it.params.kind !in NON_PNG_PREVIEW_KINDS && it.captures.all { c -> c.pngPath == null }
+        results.count { r ->
+          r.params.kind !in NON_PNG_PREVIEW_KINDS &&
+            r.captures.all { c -> c.pngPath == null } &&
+            r.captures.any { c -> !c.optional }
         },
     )
 
@@ -871,12 +874,14 @@ internal val NON_PNG_PREVIEW_KINDS = setOf("XR_SUBSPACE")
 /**
  * Previews that finished rendering but produced no PNG for at least one capture — the set
  * `--missing-renders` gates on and the diagnostic enumerates. Excludes [NON_PNG_PREVIEW_KINDS],
- * whose empty `pngPath` is by design. Pulled out as a pure function so the policy is unit-testable
- * without standing up a Gradle render.
+ * whose empty `pngPath` is by design, and `optional` captures, whose missing PNG is expected
+ * (best-effort artefacts like a `@ColorCatalog` sheet on the desktop backend — see
+ * `Capture.optional`). Pulled out as a pure function so the policy is unit-testable without
+ * standing up a Gradle render.
  */
 internal fun previewsMissingPng(results: List<PreviewResult>): List<PreviewResult> =
   results.filter { r ->
-    r.params.kind !in NON_PNG_PREVIEW_KINDS && r.captures.any { it.pngPath == null }
+    r.params.kind !in NON_PNG_PREVIEW_KINDS && r.captures.any { it.pngPath == null && !it.optional }
   }
 
 /**
@@ -994,7 +999,7 @@ class ShowCommand(args: List<String>) : Command(args) {
       for (r in missing) {
         val nullCoords =
           r.captures
-            .filter { it.pngPath == null }
+            .filter { it.pngPath == null && !it.optional }
             .joinToString(", ") { captureCoordLabel(it) }
             .ifEmpty { "default" }
         val moduleTag = if (r.module.isNotBlank()) " (${r.module})" else ""
@@ -1120,7 +1125,7 @@ class RenderCommand(args: List<String>) : Command(args) {
         exitProcess(3)
       }
 
-      val missing = filtered.filter { r -> r.captures.any { it.pngPath == null } }
+      val missing = previewsMissingPng(filtered)
 
       if (output != null) {
         if (filtered.size != 1) {
