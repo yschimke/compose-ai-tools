@@ -350,6 +350,58 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
+  fun `composePreviewDiscover disambiguates theme catalog ids when two providers share a name`() {
+    val projectDir = createCmpTestProject()
+    val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+    annDir.mkdirs()
+    File(annDir, "ThemeCatalog.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.CLASS)
+        annotation class ThemeCatalog(val name: String = "", val group: String = "")
+        """
+          .trimIndent()
+      )
+    // Two providers with the SAME display name in different groups — would collide on
+    // `themecatalog__Light` (and its render output) without FQN disambiguation.
+    File(projectDir, "src/main/kotlin/test/Themes.kt")
+      .writeText(
+        """
+        package test
+
+        import ee.schimke.composeai.preview.ThemeCatalog
+
+        @ThemeCatalog(name = "Light", group = "BrandA") class BrandALight
+        @ThemeCatalog(name = "Light", group = "BrandB") class BrandBLight
+        """
+          .trimIndent()
+      )
+
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewDiscover", "--stacktrace")
+      .withPluginClasspath()
+      .build()
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val themes = manifest.previews.filter { it.params.kind == PreviewKind.THEME_CATALOG }
+
+    // Distinct ids (FQN-suffixed) → distinct render outputs, so neither sheet clobbers the other.
+    assertThat(themes.map { it.id })
+      .containsExactly(
+        "themecatalog__Light__test.BrandALight",
+        "themecatalog__Light__test.BrandBLight",
+      )
+    assertThat(themes.map { it.captures.single().renderOutput }.toSet()).hasSize(2)
+  }
+
+  @Test
   fun `composePreviewDiscover is UP-TO-DATE on second run`() {
     val projectDir = createCmpTestProject()
 

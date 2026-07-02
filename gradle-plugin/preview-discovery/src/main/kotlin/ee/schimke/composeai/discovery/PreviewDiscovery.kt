@@ -745,17 +745,30 @@ object PreviewDiscovery {
 
   /**
    * Aggregates the collected `@ThemeCatalog` providers into synthetic [PreviewKind.THEME_CATALOG]
-   * sheets — one per provider, keyed `themecatalog__<name>`. The provider FQN travels on
-   * [PreviewParams.wrapperClassName]; the renderer resolves it and composes its `Wrap(content)`
-   * around a canned specimen. `optional` exactly when the backend can't render (desktop), like the
-   * token catalogs.
+   * sheets — one per provider, keyed `themecatalog__<name>`. Because each provider is its own sheet
+   * (not aggregated like the token catalogs), the id must be unique per provider: two providers that
+   * share a display `name` (e.g. `"Light"` in different groups/packages) would otherwise derive the
+   * same id and `renders/<id>.png` and clobber each other, so a collision falls back to appending
+   * the provider's (unique) FQN. The provider FQN travels on [PreviewParams.wrapperClassName]; the
+   * renderer resolves it and composes its `Wrap(content)` around a canned specimen. `optional`
+   * exactly when the backend can't render (desktop), like the token catalogs.
    */
   private fun buildThemeCatalogPreviews(
     themes: List<RawThemeCatalog>,
     renderSupported: Boolean,
-  ): List<PreviewInfo> =
-    themes.map { theme ->
-      val id = "themecatalog__${theme.name.replace(SANITIZE_RENDER_STEM, "_")}"
+  ): List<PreviewInfo> {
+    fun baseId(t: RawThemeCatalog) = "themecatalog__${t.name.replace(SANITIZE_RENDER_STEM, "_")}"
+    val baseCounts = themes.groupingBy { baseId(it) }.eachCount()
+    return themes.map { theme ->
+      val base = baseId(theme)
+      // Clean `themecatalog__<name>` when the name is unique; disambiguate a shared name with the
+      // provider FQN (guaranteed unique) so the two sheets get distinct render outputs.
+      val id =
+        if (baseCounts.getValue(base) > 1) {
+          "${base}__${theme.className.replace(SANITIZE_RENDER_STEM, "_")}"
+        } else {
+          base
+        }
       PreviewInfo(
         id = id,
         functionName = "${theme.name} theme",
@@ -770,6 +783,7 @@ object PreviewDiscovery {
           listOf(Capture(renderOutput = "renders/$id.png", optional = !renderSupported)),
       )
     }
+  }
 
   /**
    * Parse [file] as a Lottie document, returning its declared canvas dimensions when it carries the
