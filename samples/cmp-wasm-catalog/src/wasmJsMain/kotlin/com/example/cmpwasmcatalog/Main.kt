@@ -2,15 +2,29 @@
   ExperimentalComposeUiApi::class,
   kotlin.js.ExperimentalWasmJsInterop::class,
   kotlin.js.ExperimentalJsExport::class,
+  ExperimentalEncodingApi::class,
 )
 
 package com.example.cmpwasmcatalog
 
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.platform.Font
 import androidx.compose.ui.window.ComposeViewport
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlin.coroutines.suspendCoroutine
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.js.Promise
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Browser entrypoint for the in-browser CMP catalog (Workstream C / model 1).
@@ -41,6 +55,17 @@ fun main() {
   baseParams = parseQuery(locationSearch())
   renderParams.value = baseParams + parseQuery(locationHash())
   ComposeViewport(viewportContainerId = "composeApp") {
+    // Text parity with the baked snapshot needs the same typeface the Android renderer
+    // rasterizes:
+    // fetch Roboto by URL (self-hosted beside the app, `?fontsBase=` overridable) and hold the
+    // catalog composition — and therefore the first-frame signal the embedding viewer swaps on —
+    // until the fonts resolve, so the first revealed frame is already Roboto-shaped. A fetch
+    // failure or the timeout degrades to the CMP bundled font instead of blocking the reveal.
+    var fonts by remember { mutableStateOf<FontsState>(FontsState.Loading) }
+    LaunchedEffect(Unit) {
+      fonts = FontsState.Ready(withTimeoutOrNull(FONT_LOAD_TIMEOUT_MS) { loadRobotoFamily() })
+    }
+    val loaded = fonts as? FontsState.Ready ?: return@ComposeViewport
     val params by renderParams
     val id = params["id"] ?: catalogComponents.keys.first()
     val dark = params["uiMode"] == "dark"
@@ -53,9 +78,86 @@ fun main() {
     // this frame's CSS-px coordinates, so that checkerboard continues the page's cells exactly.
     val showBackground = params["background"] !in setOf("off", "false", "none", "transparent")
     val checkerPhase = parsePhase(params["bgPhase"])
-    CatalogApp(id, dark, fontScale, rtl, showBackground, checkerPhase, ::postFirstFrame)
+    CatalogApp(
+      id,
+      dark,
+      fontScale,
+      rtl,
+      showBackground,
+      checkerPhase,
+      loaded.family,
+      ::postFirstFrame,
+    )
   }
 }
+
+private const val FONT_LOAD_TIMEOUT_MS = 8_000L
+
+/** Font loading state: the catalog composes only once resolved (family null ⇒ bundled default). */
+private sealed interface FontsState {
+  data object Loading : FontsState
+
+  data class Ready(val family: FontFamily?) : FontsState
+}
+
+/**
+ * Fetch Roboto (Regular 400 + Medium 500 — the two weights M3's type scale uses) **by URL** and
+ * build a [FontFamily] from the raw bytes. The default base is `./fonts/` — vendored beside the app
+ * (self-hosted, Apache 2.0), so the bundle stays offline-clean behind an egress proxy — and an
+ * operator can point `?fontsBase=` at any http(s) origin that serves the same filenames with CORS
+ * (the sandboxed iframe has an opaque origin, so cross-origin fonts need `ACAO`). Null on any
+ * failure ⇒ the caller falls back to the CMP bundled font.
+ */
+private suspend fun loadRobotoFamily(): FontFamily? {
+  val raw = baseParams["fontsBase"] ?: "./fonts/"
+  // A fetch URL, not code — but still refuse non-http(s) absolute schemes (javascript:, data:).
+  val base =
+    (if (raw.endsWith("/")) raw else "$raw/").takeIf {
+      !it.contains(":") || it.startsWith("http:") || it.startsWith("https:")
+    } ?: "./fonts/"
+  return try {
+    val regular = fetchBytes(base + "Roboto-Regular.ttf")
+    val medium = fetchBytes(base + "Roboto-Medium.ttf")
+    FontFamily(
+      Font(identity = "Roboto-Regular", data = regular, weight = FontWeight.Normal),
+      Font(identity = "Roboto-Medium", data = medium, weight = FontWeight.Medium),
+    )
+  } catch (e: Throwable) {
+    consoleWarn("compose-ai wasm catalog: font load failed (${e.message}); using bundled font")
+    null
+  }
+}
+
+/**
+ * `fetch(url)` → base64 of the response body. Base64 is the bridge shape because Kotlin/Wasm can't
+ * take a `Uint8Array` across the interop boundary as a `ByteArray`; the chunked
+ * `String.fromCharCode` keeps each `apply` under the JS argument-count limit.
+ */
+private fun fetchAsBase64(url: String): Promise<JsString> =
+  js(
+    """fetch(url)
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+      .then(function (buf) {
+        var bytes = new Uint8Array(buf), chunks = [], CHUNK = 0x8000;
+        for (var i = 0; i < bytes.length; i += CHUNK)
+          chunks.push(String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK)));
+        return btoa(chunks.join(''));
+      })"""
+  )
+
+private suspend fun fetchBytes(url: String): ByteArray = suspendCoroutine { cont ->
+  fetchAsBase64(url)
+    .then { s ->
+      cont.resume(Base64.decode(s.toString()))
+      null
+    }
+    .catch { e ->
+      cont.resumeWithException(IllegalStateException(e?.toString() ?: "fetch failed"))
+      null
+    }
+}
+
+private fun consoleWarn(message: String): Unit = js("console.warn(message)")
 
 /** Parse the viewer's `bgPhase=<x>,<y>` (CSS px, possibly fractional/negative). */
 internal fun parsePhase(raw: String?): Offset {

@@ -107,10 +107,13 @@ val catalogComponents: Map<String, @Composable () -> Unit> =
     "checkbox-unchecked" to { StatefulCheckbox(initial = false) },
     "chip-filter-unselected" to { StatefulFilterChip(initial = false) },
     "segmentedbutton" to { SegmentedToggle() },
-    // Text options — maxLines + ellipsis overflow.
+    // Text options — maxLines + ellipsis overflow. The Android sticker declares no width; its
+    // baked render wraps at the preview canvas, which measures out to a 128dp text box (160dp
+    // sticker). Mirror that box so the wrap/truncation point — and the sticker's aspect the
+    // viewer's contain-fit relies on — match the snapshot exactly.
     "text-maxlines-truncated" to
       {
-        Box(Modifier.width(160.dp)) {
+        Box(Modifier.width(128.dp)) {
           Text(
             "This body text is deliberately long so it overflows two lines and truncates.",
             maxLines = 2,

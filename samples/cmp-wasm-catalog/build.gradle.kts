@@ -67,7 +67,7 @@ tasks.register<Sync>("wasmCatalogDist") {
     include("skiko.mjs", "skiko.wasm")
   }
   from(layout.projectDirectory.dir("src/wasmJsMain/resources")) {
-    include("index.html", "js-joda.esm.js")
+    include("index.html", "js-joda.esm.js", "fonts/**")
   }
   into(layout.buildDirectory.dir("wasmDist"))
 }
