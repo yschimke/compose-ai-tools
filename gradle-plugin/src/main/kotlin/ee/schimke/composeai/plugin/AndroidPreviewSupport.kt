@@ -49,6 +49,18 @@ internal object AndroidPreviewSupport {
   internal const val RENDERER_COMPOSE_FLOOR_VERSION: String = "1.9.5"
 
   /**
+   * Path segments that identify `androidx.xr.scenecore`'s on-device spatial backend artifacts on a
+   * resolved classpath — the bare module-cache dir (`scenecore-spatial-core`) or an
+   * artifact-with-version file/dir (`scenecore-spatial-core-1.0.0-alpha16[.aar]`,
+   * `…-alpha16-runtime.jar`, the extracted-AAR transform dir). Anchored so consumer directories
+   * that merely contain the prefix (e.g. a checkout named `scenecore-spatial-demo`) never match.
+   * See the `composePreviewRenderXr` classpath filter for why these must stay off the render
+   * classpath.
+   */
+  internal val SCENECORE_SPATIAL_BACKEND_SEGMENT: Regex =
+    Regex("scenecore-spatial-(core|rendering)([-.][0-9].*)?")
+
+  /**
    * Platform token for the auto-provisioned `xr-composite` cache, matching the Release asset matrix
    * in `.github/workflows/release.yml` and the CLI writer's `XrCompositeProvision.platformToken`.
    * `null` for any OS/arch combination that has no published asset (e.g. linux-arm64) — the cache
@@ -2077,7 +2089,18 @@ internal object AndroidPreviewSupport {
             // the artifacts absent the probe misses cleanly and falls back to
             // `scenecore-testing`'s `FakeXrExtensionsHolderProvider`, matching the fake
             // scene/rendering/perception runtimes this classpath already runs on.
-            .filter { file -> !file.path.contains("scenecore-spatial-") }
+            //
+            // Matched per path segment against the artifact naming shapes Gradle produces
+            // (`scenecore-spatial-core-<version>.aar`, the extracted-AAR dir
+            // `…/transformed/scenecore-spatial-core-<version>/jars/classes.jar`, the
+            // module-cache dir `…/scenecore-spatial-core/<version>/…`) rather than a bare
+            // substring of the absolute path, so a consumer checkout or module directory
+            // that merely contains "scenecore-spatial-" in its name is never filtered out.
+            .filter { file ->
+              file.toPath().none { segment ->
+                SCENECORE_SPATIAL_BACKEND_SEGMENT.matches(segment.toString())
+              }
+            }
         include("**/XrSubspaceRenderTest.class")
         useJUnit()
 
