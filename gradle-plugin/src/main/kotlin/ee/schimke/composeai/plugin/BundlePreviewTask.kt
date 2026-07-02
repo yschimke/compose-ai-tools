@@ -216,6 +216,20 @@ abstract class BundlePreviewTask : DefaultTask() {
   abstract val renderFiles: ConfigurableFileCollection
 
   /**
+   * The per-sheet catalog-token sidecars under `<rendersDir>/../data/catalog-tokens/`, tracked as a
+   * real input for the same reason as [renderFiles]: they live OUTSIDE the `renders/` tree, so
+   * without this the task could be UP-TO-DATE / restored FROM-CACHE and keep emitting a bundle with
+   * a missing or stale `previews/<id>.catalog.json` when a sidecar is created or updated after a
+   * render-less pack, with no PNG change to invalidate the cache key (Codex review, PR #2172).
+   * `@InputFiles @Optional` so an absent `data/catalog-tokens/` dir snapshots as empty rather than
+   * failing the build.
+   */
+  @get:InputFiles
+  @get:Optional
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val catalogTokenFiles: ConfigurableFileCollection
+
+  /**
    * Preview ids to include. First entry is the cover. Empty means "all previews in the manifest";
    * passing the empty list intentionally — most callers will populate this from CLI input.
    */
@@ -483,11 +497,11 @@ abstract class BundlePreviewTask : DefaultTask() {
     // packed by convention under `previews/<id>.catalog.json` — same shape as the override sidecars
     // so a detached reader (design-parity's `catalog-export`) can import the palette / type scale
     // without re-rendering. Only `PreviewKind.CATALOG` sheets carry one.
-    val catalogTokenFiles = LinkedHashMap<String, ByteArray>()
+    val catalogTokenEntries = LinkedHashMap<String, ByteArray>()
     for (preview in selected) {
       resolvePreviewCatalogTokens(preview)?.let {
-        catalogTokenFiles["$BUNDLE_PREVIEWS_DIR/${preview.id}.$BUNDLE_CATALOG_TOKENS_SIDECAR_EXT"] =
-          it
+        catalogTokenEntries[
+          "$BUNDLE_PREVIEWS_DIR/${preview.id}.$BUNDLE_CATALOG_TOKENS_SIDECAR_EXT"] = it
       }
     }
 
@@ -520,7 +534,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         irFiles = irZipFiles,
         dataExtensionFiles = dataExtensionZipFiles,
         overrideFiles = overrideFiles,
-        catalogTokenFiles = catalogTokenFiles,
+        catalogTokenFiles = catalogTokenEntries,
       )
 
     // The cover (first selected preview) forms the polyglot's leading bytes. Reuse its baked PNG

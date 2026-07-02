@@ -335,8 +335,25 @@ class BundleFunctionalTest {
         .id
         .also { assertThat(it).isEqualTo("colorcatalog__Brand") }
 
+    // `--build-cache` so a warm cache is exercised too — assert on bundle CONTENT (not task outcome)
+    // so the assertion holds whether the second pack is SUCCESS or FROM_CACHE.
+    fun pack() {
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewBundle", "-PbundlePreviewIds=$catalogId", "--build-cache")
+        .withPluginClasspath()
+        .build()
+    }
+
+    // Pack once BEFORE the sidecar exists: the bundle carries no catalog-token entry.
+    pack()
+    var bundle = File(projectDir, "build/compose-previews/bundle.png")
+    assertThat(listEntries(bundle)).doesNotContain("previews/$catalogId.catalog.json")
+
     // Seed the resolved-token sidecar as the renderer's `CatalogTokenSidecar` would, under the
-    // `data/catalog-tokens/` tree (a sibling of `renders/`, keyed by the sheet id).
+    // `data/catalog-tokens/` tree (a sibling of `renders/`, keyed by the sheet id), then re-pack.
+    // Because the tree is a tracked input (`catalogTokenFiles`), the task must NOT be UP-TO-DATE /
+    // restored FROM-CACHE — it re-packs and carries the now-present sidecar.
     val catalogJson =
       """{"schema":"compose-preview-catalog-tokens/v1","previewId":"$catalogId",""" +
         """"tokens":[{"label":"Coral","className":"test.TokensKt","member":"Coral",""" +
@@ -345,15 +362,8 @@ class BundleFunctionalTest {
       .apply { mkdirs() }
       .also { File(it, "$catalogId.catalog.json").writeText(catalogJson) }
 
-    val result =
-      GradleRunner.create()
-        .withProjectDir(projectDir)
-        .withArguments("composePreviewBundle", "-PbundlePreviewIds=$catalogId", "--stacktrace")
-        .withPluginClasspath()
-        .build()
-    assertThat(result.task(":composePreviewBundle")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
-
-    val bundle = File(projectDir, "build/compose-previews/bundle.png")
+    pack()
+    bundle = File(projectDir, "build/compose-previews/bundle.png")
     assertThat(listEntries(bundle)).contains("previews/$catalogId.catalog.json")
     assertThat(String(readZipEntry(bundle, "previews/$catalogId.catalog.json")!!, Charsets.UTF_8))
       .isEqualTo(catalogJson)

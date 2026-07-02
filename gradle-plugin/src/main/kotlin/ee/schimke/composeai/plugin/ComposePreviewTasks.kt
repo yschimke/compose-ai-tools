@@ -487,6 +487,10 @@ internal object ComposePreviewTasks {
       // bundle.
       rendersDir.set(previewOutputDir.map { it.dir("renders") })
       renderFiles.from(previewOutputDir.map { it.dir("renders") })
+      // Catalog-token sidecars live under `data/catalog-tokens/` (a sibling of `renders/`), outside
+      // `renderFiles`' tree — track them as their own input so the bundle re-packs when a sidecar
+      // appears/changes (see `catalogTokenFiles` on the task).
+      catalogTokenFiles.from(previewOutputDir.map { it.dir("data/catalog-tokens") })
       previewIds.set(previewIdsProperty.orElse(emptyList()))
       embedDeps.set(embedDepsProperty.orElse(false))
       includeDataExtensions.set(includeDataExtensionsProperty.orElse(false))
