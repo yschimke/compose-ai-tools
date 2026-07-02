@@ -2063,10 +2063,21 @@ internal object AndroidPreviewSupport {
         testClassesDirs = xrRendererClassDirs + (agpTestTask?.testClassesDirs ?: project.files())
         val agpTestClasspath = agpTestTask?.classpath ?: project.files()
         classpath =
-          resolvedClasspath +
-            xrRendererClassDirs +
-            (agpTestTask?.testClassesDirs ?: project.files()) +
-            agpTestClasspath
+          (resolvedClasspath +
+              xrRendererClassDirs +
+              (agpTestTask?.testClassesDirs ?: project.files()) +
+              agpTestClasspath)
+            // Drop scenecore's on-device spatial backends (`scenecore-spatial-core` /
+            // `scenecore-spatial-rendering`, runtime deps of `androidx.xr.scenecore:scenecore`
+            // since alpha16). Their `SpatialCoreXrExtensionsHolderProvider`'s static init
+            // references the device-only `com.android.extensions.xr.XrExtensions`, and
+            // `XrExtensionsHolderAccessor` (probed by xr-compose alpha15's `Meter.DP_PER_METER`
+            // on the first `Subspace` layout) only catches `ClassNotFoundException` — a present
+            // class whose <clinit> throws `NoClassDefFoundError` fails the whole render. With
+            // the artifacts absent the probe misses cleanly and falls back to
+            // `scenecore-testing`'s `FakeXrExtensionsHolderProvider`, matching the fake
+            // scene/rendering/perception runtimes this classpath already runs on.
+            .filter { file -> !file.path.contains("scenecore-spatial-") }
         include("**/XrSubspaceRenderTest.class")
         useJUnit()
 
