@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.16.13](https://github.com/yschimke/compose-ai-tools/compare/v0.16.12...v0.16.13) (2026-07-02)
+
+
+### Features
+
+* add @ThemeCatalog for auto-discovered alternative-theme sheets ([#2182](https://github.com/yschimke/compose-ai-tools/issues/2182)) ([2064cb1](https://github.com/yschimke/compose-ai-tools/commit/2064cb1b35ec177d8c6b7c40a7323876542e1415))
+* carry @ColorCatalog/@TypographyCatalog tokens in the preview bundle ([#2172](https://github.com/yschimke/compose-ai-tools/issues/2172)) ([eeed109](https://github.com/yschimke/compose-ai-tools/commit/eeed109f2d2cefa99f31e61018167bb04e9d07d4))
+* **design-artifacts:** fold @ColorCatalog/@TypographyCatalog tokens into the kit ([#2178](https://github.com/yschimke/compose-ai-tools/issues/2178)) ([0d878da](https://github.com/yschimke/compose-ai-tools/commit/0d878da472f2f4617202e97e84086a028b63ee87))
+* **serve:** make the public front page a design-systems index ([#2177](https://github.com/yschimke/compose-ai-tools/issues/2177)) ([58eaaff](https://github.com/yschimke/compose-ai-tools/commit/58eaaffd4b0f7dbe3795a141b32b1e1b887691b2))
+* **wasm-catalog:** load Roboto by URL for snapshot text parity ([#2174](https://github.com/yschimke/compose-ai-tools/issues/2174)) ([265937f](https://github.com/yschimke/compose-ai-tools/commit/265937f7cf3b1b458c3864f63f0f459bdb253a3c))
+* **wasm-catalog:** manifest-driven fonts, prefetched in parallel with the Wasm boot ([#2181](https://github.com/yschimke/compose-ai-tools/issues/2181)) ([a787693](https://github.com/yschimke/compose-ai-tools/commit/a787693ec5267c272c3950f7a5ee1f1d1c1ddd30))
+
+
+### Bug Fixes
+
+* **plugin:** keep scenecore-spatial backends off the composePreviewRenderXr classpath ([#2183](https://github.com/yschimke/compose-ai-tools/issues/2183)) ([d73f489](https://github.com/yschimke/compose-ai-tools/commit/d73f489d79efa7a559bc145faa60a6f749aaf710))
+* **wasm-catalog:** make font fetches cancellable so a stalled origin can't hold the first frame ([#2176](https://github.com/yschimke/compose-ai-tools/issues/2176)) ([1ed906e](https://github.com/yschimke/compose-ai-tools/commit/1ed906e7aa44cdb8c5b718364da084bb659535c9))
+
 ## [0.16.12](https://github.com/yschimke/compose-ai-tools/compare/v0.16.11...v0.16.12) (2026-07-02)
 
 
