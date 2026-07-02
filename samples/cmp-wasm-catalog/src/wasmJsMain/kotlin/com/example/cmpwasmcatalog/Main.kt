@@ -20,10 +20,10 @@ import androidx.compose.ui.text.platform.Font
 import androidx.compose.ui.window.ComposeViewport
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import kotlin.coroutines.suspendCoroutine
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.js.Promise
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -133,9 +133,9 @@ private suspend fun loadRobotoFamily(): FontFamily? {
  * take a `Uint8Array` across the interop boundary as a `ByteArray`; the chunked
  * `String.fromCharCode` keeps each `apply` under the JS argument-count limit.
  */
-private fun fetchAsBase64(url: String): Promise<JsString> =
+private fun fetchAsBase64(url: String, timeoutMs: Int): Promise<JsString> =
   js(
-    """fetch(url)
+    """fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
       .then(function (buf) {
         var bytes = new Uint8Array(buf), chunks = [], CHUNK = 0x8000;
@@ -145,14 +145,21 @@ private fun fetchAsBase64(url: String): Promise<JsString> =
       })"""
   )
 
-private suspend fun fetchBytes(url: String): ByteArray = suspendCoroutine { cont ->
-  fetchAsBase64(url)
+/**
+ * Cancellable, so `withTimeoutOrNull` around the font load actually unblocks on a stalled origin (a
+ * plain `suspendCoroutine` never observes cancellation and would hold the first frame forever). The
+ * JS-side `AbortSignal.timeout` additionally kills the underlying request itself, slightly after
+ * the Kotlin timeout would have abandoned it.
+ */
+private suspend fun fetchBytes(url: String): ByteArray = suspendCancellableCoroutine { cont ->
+  fetchAsBase64(url, timeoutMs = (FONT_LOAD_TIMEOUT_MS + 2_000L).toInt())
     .then { s ->
-      cont.resume(Base64.decode(s.toString()))
+      if (cont.isActive) cont.resume(Base64.decode(s.toString()))
       null
     }
     .catch { e ->
-      cont.resumeWithException(IllegalStateException(e?.toString() ?: "fetch failed"))
+      if (cont.isActive)
+        cont.resumeWithException(IllegalStateException(e?.toString() ?: "fetch failed"))
       null
     }
 }
