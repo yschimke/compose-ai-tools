@@ -39,6 +39,14 @@ import kotlinx.serialization.json.JsonClassDiscriminator
  *                            render, present only for previews that opted in, so a detached viewer can
  *                            offer the editable controls without a live daemon. Convention-discovered
  *                            (no manifest pointer), like the optional semantics sidecar.
+ * previews/<id>.catalog.json — the resolved `@ColorCatalog` / `@TypographyCatalog` token values for a
+ *                            `PreviewKind.CATALOG` sheet (a verbatim `compose-preview-catalog-tokens`
+ *                            payload the renderer wrote under `data/catalog-tokens/`; copied byte for
+ *                            byte, never parsed): hex per colour, size/weight metrics per type style.
+ *                            Present only for catalog sheets, so a detached reader (design-parity's
+ *                            `catalog-export`) can import an annotation-declared palette / type scale
+ *                            without re-rendering. Convention-discovered (no manifest pointer). See
+ *                            [BUNDLE_CATALOG_TOKENS_SIDECAR_EXT] and issue #2167.
  * classes/app.jar          — consumer module bytecode, MINIMIZED to classes reachable from the
  *                            selected previews (plus all module resources). For an IR-backed
  *                            preview (see below) the enclosing class is NOT a closure seed, so its
@@ -574,6 +582,17 @@ const val BUNDLE_SCHEMA_VERSION: Int = 8
  * in lockstep with the consumer runtime's writer.
  */
 const val BUNDLE_OVERRIDES_SIDECAR_EXT: String = "overrides.json"
+
+/**
+ * File extension of the per-sheet catalog-token sidecar the render step writes under
+ * `data/catalog-tokens/<id>.catalog.json` (issue #2167) and the bundle packs under
+ * `previews/<id>.catalog.json`. Holds the resolved `@ColorCatalog` / `@TypographyCatalog` token
+ * values (hex / type metrics) so a detached reader — e.g. design-parity's `catalog-export` — can
+ * import an annotation-declared palette or type scale without re-rendering. Only
+ * `PreviewKind.CATALOG` sheets carry one. Kept in lockstep with the renderer's
+ * `CatalogTokenSidecar` writer.
+ */
+const val BUNDLE_CATALOG_TOKENS_SIDECAR_EXT: String = "catalog.json"
 
 /**
  * Well-known directory inside the bundle zip holding one rendered PNG per selected preview, keyed
