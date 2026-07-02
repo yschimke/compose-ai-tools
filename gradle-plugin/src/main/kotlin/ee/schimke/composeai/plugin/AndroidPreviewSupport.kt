@@ -1746,7 +1746,12 @@ internal object AndroidPreviewSupport {
           source(generateShardsTask.map { it.outputDir.asFileTree })
           classpath = resolvedClasspath
           destinationDirectory.set(shardClassesDir)
-          options.release.set(21)
+          // Target JDK 17: the toolchain that builds this repo (and the common consumer floor —
+          // AGP requires JDK 17+) runs javac 17, which rejects `--release 21` with
+          // "release version 21 not supported". The generated shards are trivial JUnit
+          // subclasses with no need for a newer language level, and release-17 bytecode still
+          // loads on the (17-or-newer) render test JVM.
+          options.release.set(17)
           dependsOn(generateShardsTask)
           // Reads AGP's unit-test-config dir via `resolvedClasspath` (see unitTestConfigProducer).
           dependsOn(unitTestConfigProducer)
