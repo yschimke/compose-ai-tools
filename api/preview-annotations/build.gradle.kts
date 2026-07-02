@@ -2,13 +2,10 @@ plugins {
   id("composeai.base-conventions")
   id("composeai.maven-publishing")
   // Kotlin Multiplatform so the annotations are usable from a KMP consumer's `commonMain` (e.g.
-  // meshcore-mobile's `:meshcore-components`, whose design tokens live in shared code). Applied by
-  // id (no version) alongside the KMP-Android library plugin — same buildscript-classpath story as
-  // the CMP samples (AGP 9 brings both onto the classpath for any module in an AGP build). The
+  // meshcore-mobile's `:meshcore-components`, whose design tokens live in shared code). The
   // annotations are pure Kotlin with zero deps, so everything lives in `commonMain` and each target
   // gets it verbatim — no `expect`/`actual`.
   id("org.jetbrains.kotlin.multiplatform")
-  id("com.android.kotlin.multiplatform.library")
   alias(libs.plugins.tapmoc)
 }
 
@@ -26,17 +23,12 @@ composeAiMavenPublishing {
 }
 
 kotlin {
-  // JVM target: the desktop renderer, the Gradle plugin, and every plain-JVM/Android consumer that
-  // does `implementation(...preview-annotations)` today resolve this variant via Gradle module
-  // metadata — so the KMP move stays source-compatible for them.
+  // JVM target only. The desktop renderer, the Gradle plugin, and every plain-JVM/Android consumer
+  // that does `implementation(...preview-annotations)` resolve this variant via Gradle module
+  // metadata. A KMP consumer's Android compilation also consumes the `jvm` variant (an `androidJvm`
+  // target can depend on a plain-JVM library), so we deliberately do NOT declare an Android target:
+  // it would stamp a `minSdk` floor into an annotation-only artifact and raise the floor of any
+  // lower-`minSdk` consumer (Codex review, #2185), for zero benefit — the annotations reference no
+  // Android APIs.
   jvm()
-
-  // Android target so a KMP-Android-library consumer (`com.android.kotlin.multiplatform.library`)
-  // can resolve the annotations for its `androidJvm` compilation. No resources — only annotations.
-  // AGP 9 / KMP renamed the `androidLibrary { }` DSL block to `android { }`.
-  android {
-    namespace = "ee.schimke.composeai.preview"
-    compileSdk = 36
-    minSdk = 24
-  }
 }
