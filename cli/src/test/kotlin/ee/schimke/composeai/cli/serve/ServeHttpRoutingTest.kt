@@ -81,8 +81,10 @@ class ServeHttpRoutingTest {
   fun `a catalog is reachable under its canonical path`() {
     val (landingCode, landing) = get("/compose-m3/")
     assertEquals(200, landingCode)
-    // The landing's own links stay on the path (no &session=).
-    assertTrue(landing.contains("/compose-m3/p/$previewId?token="), "path card link: $landing")
+    // The landing's own links stay on the path (no &session=). Public mode is open, so the link
+    // also carries no ?token — the route needs none.
+    assertTrue(landing.contains("href=\"/compose-m3/p/$previewId\""), "path card link: $landing")
+    assertTrue(!landing.contains("token="), "public path landing links are token-free: $landing")
 
     val (viewerCode, viewer) = get("/compose-m3/p/$previewId")
     assertEquals(200, viewerCode)
@@ -101,6 +103,21 @@ class ServeHttpRoutingTest {
     val (apiCode, api) = get("/compose-m3/api/previews")
     assertEquals(200, apiCode)
     assertTrue(api.contains("\"module\":\"compose-m3\""), "api for the path session: $api")
+  }
+
+  @Test
+  fun `the bare root serves the design-systems home index, not the default module`() {
+    val (code, body) = get("/")
+    assertEquals(200, code)
+    assertTrue(body.contains("Design systems"), "root is the systems index: $body")
+    // A card links to the catalog's canonical path and shows a hero preview from its /render lane.
+    assertTrue(body.contains("href=\"/compose-m3/\""), "index card links to the system: $body")
+    assertTrue(
+      body.contains("/compose-m3/render/$previewId.png"),
+      "index card renders a hero preview: $body",
+    )
+    // It is NOT the default module's own preview grid.
+    assertTrue(!body.contains("default-mod"), "root is the index, not the default module: $body")
   }
 
   @Test

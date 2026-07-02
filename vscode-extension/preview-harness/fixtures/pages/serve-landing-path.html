@@ -41,6 +41,12 @@ a:hover { text-decoration: underline; }
 .cp-badge--trusted { background: #e7f4ea; color: #1e7a34; border: 1px solid #b6e0c2; }
 .cp-badge--unverified { background: #fdf0e3; color: #8a5300; border: 1px solid #f0d3a8; }
 .cp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+.cp-syslist { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.cp-syslist .cp-imgwrap { min-height: 180px; }
+.cp-sys-title { font-size: 0.98rem; font-weight: 600; }
+.cp-sys-desc { margin-top: 4px; font-size: 0.76rem; color: #6b6b70; line-height: 1.4; }
+.cp-sys-foot { margin-top: 8px; font-size: 0.74rem; color: #6b6b70; }
+.cp-sys-noimg { font-size: 0.78rem; color: #a0a0a8; }
 .cp-card { border: 1px solid #e3e3e8; border-radius: 10px; overflow: hidden; background: #fff;
   display: block; color: inherit; }
 .cp-card[hidden] { display: none; }
@@ -75,7 +81,7 @@ a:hover { text-decoration: underline; }
 .cp-knobs input:disabled { opacity: 0.7; }
 @media (prefers-color-scheme: dark) {
   body { color: #e6e6e9; background: #161618; }
-  .cp-sub, .cp-id, .cp-status, .cp-about-links { color: #a0a0a8; }
+  .cp-sub, .cp-id, .cp-status, .cp-about-links, .cp-sys-desc, .cp-sys-foot { color: #a0a0a8; }
   .cp-card, .cp-stage, .cp-knobs, .cp-about { border-color: #34343a; }
   .cp-card, .cp-about { background: #1d1d20; }
   .cp-about-body { color: #c9c9d0; }
@@ -110,66 +116,66 @@ a:hover { text-decoration: underline; }
 </section>
       <nav class="cp-systems" aria-label="Design systems">
         <span class="cp-systems-label">Design systems</span>
-        <a href="/compose-m3/?token=demo-token-fixture">compose-m3</a>
-<a href="/wear-m3/?token=demo-token-fixture">wear-m3</a>
+        <a href="/compose-m3/">compose-m3</a>
+<a href="/wear-m3/">wear-m3</a>
       </nav>
 <p class="cp-head">meshcore-mobile <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile">✓ branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile</span></p>
         <p class="cp-sub">6 preview(s) · click one to view with overrides ·
-          <a href="/meshcore-mobile/bundle.zip?token=demo-token-fixture">download all (.zip)</a></p>
+          <a href="/meshcore-mobile/bundle.zip">download all (.zip)</a></p>
         <div class="cp-searchbar">
   <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
     autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
   <span id="cp-count" class="cp-count" role="status" aria-live="polite" data-total="6"></span>
 </div>
 <div class="cp-grid" id="cp-grid">
-        <a class="cp-card" href="/meshcore-mobile/p/com.example.ButtonPreview?token=demo-token-fixture">
+        <a class="cp-card" href="/meshcore-mobile/p/com.example.ButtonPreview">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Button" src="/meshcore-mobile/render/com.example.ButtonPreview.png?token=demo-token-fixture">
+    <img loading="lazy" alt="Button" src="/meshcore-mobile/render/com.example.ButtonPreview.png">
   </div>
   <div class="cp-meta">
     <div class="cp-label" title="com.example.ButtonPreview">Button</div>
     <div class="cp-id">com.example.ButtonPreview</div>
   </div>
 </a>
-<a class="cp-card" href="/meshcore-mobile/p/com.example.CardPreview?token=demo-token-fixture">
+<a class="cp-card" href="/meshcore-mobile/p/com.example.CardPreview">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Card" src="/meshcore-mobile/render/com.example.CardPreview.png?token=demo-token-fixture">
+    <img loading="lazy" alt="Card" src="/meshcore-mobile/render/com.example.CardPreview.png">
   </div>
   <div class="cp-meta">
     <div class="cp-label" title="com.example.CardPreview">Card</div>
     <div class="cp-id">com.example.CardPreview</div>
   </div>
 </a>
-<a class="cp-card" href="/meshcore-mobile/p/com.example.DialogPreview?token=demo-token-fixture">
+<a class="cp-card" href="/meshcore-mobile/p/com.example.DialogPreview">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Dialog" src="/meshcore-mobile/render/com.example.DialogPreview.png?token=demo-token-fixture">
+    <img loading="lazy" alt="Dialog" src="/meshcore-mobile/render/com.example.DialogPreview.png">
   </div>
   <div class="cp-meta">
     <div class="cp-label" title="com.example.DialogPreview">Dialog</div>
     <div class="cp-id">com.example.DialogPreview</div>
   </div>
 </a>
-<a class="cp-card" href="/meshcore-mobile/p/com.example.ListScreenPreview?token=demo-token-fixture">
+<a class="cp-card" href="/meshcore-mobile/p/com.example.ListScreenPreview">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="List screen" src="/meshcore-mobile/render/com.example.ListScreenPreview.png?token=demo-token-fixture">
+    <img loading="lazy" alt="List screen" src="/meshcore-mobile/render/com.example.ListScreenPreview.png">
   </div>
   <div class="cp-meta">
     <div class="cp-label" title="com.example.ListScreenPreview">List screen</div>
     <div class="cp-id">com.example.ListScreenPreview</div>
   </div>
 </a>
-<a class="cp-card" href="/meshcore-mobile/p/com.example.ProfileScreenPreview?token=demo-token-fixture">
+<a class="cp-card" href="/meshcore-mobile/p/com.example.ProfileScreenPreview">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Profile screen" src="/meshcore-mobile/render/com.example.ProfileScreenPreview.png?token=demo-token-fixture">
+    <img loading="lazy" alt="Profile screen" src="/meshcore-mobile/render/com.example.ProfileScreenPreview.png">
   </div>
   <div class="cp-meta">
     <div class="cp-label" title="com.example.ProfileScreenPreview">Profile screen</div>
     <div class="cp-id">com.example.ProfileScreenPreview</div>
   </div>
 </a>
-<a class="cp-card" href="/meshcore-mobile/p/com.example.SettingsScreenPreview?token=demo-token-fixture">
+<a class="cp-card" href="/meshcore-mobile/p/com.example.SettingsScreenPreview">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Settings screen" src="/meshcore-mobile/render/com.example.SettingsScreenPreview.png?token=demo-token-fixture">
+    <img loading="lazy" alt="Settings screen" src="/meshcore-mobile/render/com.example.SettingsScreenPreview.png">
   </div>
   <div class="cp-meta">
     <div class="cp-label" title="com.example.SettingsScreenPreview">Settings screen</div>

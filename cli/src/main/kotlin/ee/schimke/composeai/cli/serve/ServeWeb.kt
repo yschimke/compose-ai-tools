@@ -50,6 +50,12 @@ object ServeWeb {
     .cp-badge--trusted { background: #e7f4ea; color: #1e7a34; border: 1px solid #b6e0c2; }
     .cp-badge--unverified { background: #fdf0e3; color: #8a5300; border: 1px solid #f0d3a8; }
     .cp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+    .cp-syslist { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+    .cp-syslist .cp-imgwrap { min-height: 180px; }
+    .cp-sys-title { font-size: 0.98rem; font-weight: 600; }
+    .cp-sys-desc { margin-top: 4px; font-size: 0.76rem; color: #6b6b70; line-height: 1.4; }
+    .cp-sys-foot { margin-top: 8px; font-size: 0.74rem; color: #6b6b70; }
+    .cp-sys-noimg { font-size: 0.78rem; color: #a0a0a8; }
     .cp-card { border: 1px solid #e3e3e8; border-radius: 10px; overflow: hidden; background: #fff;
       display: block; color: inherit; }
     .cp-card[hidden] { display: none; }
@@ -84,7 +90,7 @@ object ServeWeb {
     .cp-knobs input:disabled { opacity: 0.7; }
     @media (prefers-color-scheme: dark) {
       body { color: #e6e6e9; background: #161618; }
-      .cp-sub, .cp-id, .cp-status, .cp-about-links { color: #a0a0a8; }
+      .cp-sub, .cp-id, .cp-status, .cp-about-links, .cp-sys-desc, .cp-sys-foot { color: #a0a0a8; }
       .cp-card, .cp-stage, .cp-knobs, .cp-about { border-color: #34343a; }
       .cp-card, .cp-about { background: #1d1d20; }
       .cp-about-body { color: #c9c9d0; }
@@ -110,22 +116,41 @@ object ServeWeb {
    * Query string carrying the token and — only for a non-default tenant ([sessionId] non-null) —
    * the `session` id, so generated links stay on the same tenant. A null [sessionId] (the default
    * session) keeps URLs token-only.
+   *
+   * In [isPublic] mode every route is open (the token gates nothing), so the `token=` param is
+   * **omitted** — a public link like `preview.coo.ee/compose-m3/` shouldn't drag a useless token
+   * around. Non-public keeps the token as the only gate. May return an empty string (public + the
+   * default session), so callers wrap it with [querySuffix] to avoid a dangling `?`.
    */
-  private fun queryString(token: String, sessionId: String?): String {
-    val t = "token=" + WebEscaping.urlEncodeSegment(token)
-    return if (sessionId == null) t else t + "&session=" + WebEscaping.urlEncodeSegment(sessionId)
+  private fun queryString(token: String, sessionId: String?, isPublic: Boolean): String {
+    val parts = buildList {
+      if (!isPublic) add("token=" + WebEscaping.urlEncodeSegment(token))
+      if (sessionId != null) add("session=" + WebEscaping.urlEncodeSegment(sessionId))
+    }
+    return parts.joinToString("&")
   }
 
   /**
    * The query string for a same-session link, given the page's [basePath]. When the page is served
    * under a `/<system>` path ([basePath] non-empty) the session is carried by the path, so links
    * are **token-only** — no `&session=`. When it's the root-mounted default/legacy `?session=` form
-   * ([basePath] empty) it falls back to [queryString], preserving the historical link shape (and
-   * byte-identical goldens for the callers that don't pass a basePath).
+   * ([basePath] empty) it falls back to [queryString]. In [isPublic] mode the token is dropped
+   * either way (may return empty — wrap with [querySuffix]).
    */
-  private fun linkQuery(token: String, sessionId: String?, basePath: String): String =
-    if (basePath.isEmpty()) queryString(token, sessionId)
-    else "token=" + WebEscaping.urlEncodeSegment(token)
+  private fun linkQuery(
+    token: String,
+    sessionId: String?,
+    basePath: String,
+    isPublic: Boolean,
+  ): String =
+    if (basePath.isEmpty()) queryString(token, sessionId, isPublic)
+    else if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token)
+
+  /**
+   * Prefix a query with `?` when non-empty, else the empty string (no dangling `?` on token-free
+   * public links).
+   */
+  private fun querySuffix(query: String): String = if (query.isEmpty()) "" else "?$query"
 
   /**
    * Producer-trust badge for a bundle/catalog session ([BundleVerifier.summary]); empty for a live
@@ -139,6 +164,21 @@ object ServeWeb {
     val icon = if (unverified) "⚠" else "✓"
     val label = WebEscaping.htmlEscape(trust)
     return " <span class=\"$cls\" title=\"producer trust: $label\">$icon $label</span>"
+  }
+
+  /**
+   * A compact trust badge for a home-index card: the icon + a one-word verdict (`trusted` /
+   * `unverified`) rather than the full basis string, which is too long for a narrow card title. The
+   * full basis is kept in the `title` tooltip and shown in full on the system's own landing.
+   */
+  private fun compactTrustBadge(trust: String?): String {
+    if (trust.isNullOrBlank()) return ""
+    val unverified = trust == "unverified"
+    val cls = if (unverified) "cp-badge cp-badge--unverified" else "cp-badge cp-badge--trusted"
+    val icon = if (unverified) "⚠" else "✓"
+    val word = if (unverified) "unverified" else "trusted"
+    val full = WebEscaping.htmlEscape(trust)
+    return " <span class=\"$cls\" title=\"producer trust: $full\">$icon $word</span>"
   }
 
   /**
@@ -170,16 +210,22 @@ object ServeWeb {
    * the query. The current session (when it is one of the catalogs) renders as a non-link,
    * current-marked pill. Empty [catalogs] ⇒ no row.
    */
-  private fun catalogNav(catalogs: List<String>, token: String, sessionId: String?): String {
+  private fun catalogNav(
+    catalogs: List<String>,
+    token: String,
+    sessionId: String?,
+    isPublic: Boolean,
+  ): String {
     if (catalogs.isEmpty()) return ""
-    val tokenQuery = "token=" + WebEscaping.urlEncodeSegment(token)
+    // Public routes are open, so a nav pill needs no token; token-gated boxes keep it.
+    val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     val links =
       catalogs.joinToString("\n") { sys ->
         val name = WebEscaping.htmlEscape(sys)
         if (sys == sessionId) {
           "<span class=\"cp-systems-cur\" aria-current=\"page\">$name</span>"
         } else {
-          "<a href=\"/${WebEscaping.urlEncodeSegment(sys)}/?$tokenQuery\">$name</a>"
+          "<a href=\"/${WebEscaping.urlEncodeSegment(sys)}/$suffix\">$name</a>"
         }
       }
     return """
@@ -354,6 +400,121 @@ object ServeWeb {
     """
       .trimIndent()
 
+  /**
+   * One design system's summary on the public [homeIndexPage]: its [system] id, human [title], an
+   * optional one-line [subtitle] (the library coordinate), how many [previewCount] previews it
+   * carries, its producer-[trust] verdict, and a [heroPreviewId] to render as the card's meaningful
+   * preview (null ⇒ the system has no renderable preview, shown as a placeholder).
+   */
+  data class HomeSystem(
+    val system: String,
+    val title: String,
+    val subtitle: String?,
+    val previewCount: Int,
+    val trust: String?,
+    val heroPreviewId: String?,
+  )
+
+  /**
+   * The public preview server's **front door**: an index of the design systems it publishes, each a
+   * card carrying a meaningful preview, the system's title + library, its trust badge, and a link
+   * to its `/<system>/` catalog. This replaces showing an arbitrary default module's previews at
+   * `/` (the point of `preview.coo.ee` is the catalogs, so the landing lists them rather than
+   * hiding them behind a nav pill). Non-catalog `serve` (no `--catalogs`) keeps the plain
+   * [landingPage].
+   */
+  fun homeIndexPage(systems: List<HomeSystem>, token: String, isPublic: Boolean = false): String {
+    val about = if (isPublic) aboutSection() + "\n" else ""
+    // Public routes are open — no token param on the cards; a token-gated box keeps it.
+    val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
+    val body =
+      if (systems.isEmpty()) {
+        "<p class=\"cp-sub\">No design systems are configured on this server.</p>"
+      } else {
+        val cards =
+          systems.joinToString("\n") { s ->
+            val sysSeg = WebEscaping.urlEncodeSegment(s.system)
+            val title = WebEscaping.htmlEscape(s.title)
+            val sysId = WebEscaping.htmlEscape(s.system)
+            val img =
+              if (s.heroPreviewId != null) {
+                val idSeg = WebEscaping.urlEncodeSegment(s.heroPreviewId)
+                "<img loading=\"lazy\" alt=\"$title preview\" src=\"/$sysSeg/render/$idSeg.png$suffix\">"
+              } else {
+                "<span class=\"cp-sys-noimg\">no preview</span>"
+              }
+            val desc =
+              s.subtitle
+                ?.takeIf { it.isNotBlank() }
+                ?.let {
+                  "\n            <div class=\"cp-sys-desc\">${WebEscaping.htmlEscape(it)}</div>"
+                } ?: ""
+            """
+            <a class="cp-card cp-sys" href="/$sysSeg/$suffix">
+              <div class="cp-imgwrap">$img</div>
+              <div class="cp-meta">
+                <div class="cp-sys-title">$title${compactTrustBadge(s.trust)}</div>
+                <div class="cp-id">$sysId</div>$desc
+                <div class="cp-sys-foot">${s.previewCount} preview(s)</div>
+              </div>
+            </a>
+            """
+              .trimIndent()
+          }
+        """
+        <p class="cp-sub">${systems.size} design system(s) · pick one to browse its components and
+          open a live, customisable preview.</p>
+        <div class="cp-grid cp-syslist" id="cp-grid">
+        $cards
+        </div>
+        """
+          .trimIndent()
+      }
+    return document(
+      title = "Design systems — compose-preview",
+      body =
+        """
+        $about<p class="cp-head">Design systems</p>
+        $body
+        """
+          .trimIndent(),
+    )
+  }
+
+  /**
+   * Pick a **meaningful** representative preview from a catalog's flattened ids for the home index
+   * — one recognisable, default-state light render rather than an arbitrary (often alphabetically
+   * first) edge case. Scores each id: light beats dark; a canonical button/filled hero is
+   * preferred; disabled/error/pressed/… state variants are pushed down. Ties break on the id so the
+   * choice is deterministic (stable goldens). Null when there are no previews.
+   */
+  fun representativePreviewId(previews: List<ServePreview>): String? {
+    if (previews.isEmpty()) return null
+    val demote =
+      listOf(
+        "disabled",
+        "error",
+        "pressed",
+        "focused",
+        "hover",
+        "dragged",
+        "unchecked",
+        "indeterminate",
+        "empty",
+        "loading",
+      )
+    fun score(id: String): Int {
+      val lower = id.lowercase()
+      var s = 0
+      if ("dark" in lower) s += 4
+      demote.forEach { if (it in lower) s += 8 }
+      if ("button" in lower) s -= 3
+      if ("filled" in lower) s -= 2
+      return s
+    }
+    return previews.map { it.id }.sortedWith(compareBy({ score(it) }, { it })).first()
+  }
+
   /** Landing page: the module's preview list, each card linking to its viewer. */
   fun landingPage(
     moduleLabel: String,
@@ -370,7 +531,7 @@ object ServeWeb {
      */
     basePath: String = "",
   ): String {
-    val q = linkQuery(token, sessionId, basePath)
+    val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
     val cards =
       if (previews.isEmpty()) {
         "<p class=\"cp-sub\">No previews discovered in this module.</p>"
@@ -381,9 +542,9 @@ object ServeWeb {
           val idText = WebEscaping.htmlEscape(p.id)
           val themeAttr = cardTheme(p.id)?.let { " data-card-theme=\"$it\"" } ?: ""
           """
-          <a class="cp-card"$themeAttr href="$basePath/p/$idSeg?$q">
+          <a class="cp-card"$themeAttr href="$basePath/p/$idSeg$q">
             <div class="cp-imgwrap">
-              <img loading="lazy" alt="$label" src="$basePath/render/$idSeg.png?$q">
+              <img loading="lazy" alt="$label" src="$basePath/render/$idSeg.png$q">
             </div>
             <div class="cp-meta">
               <div class="cp-label" title="$idText">$label</div>
@@ -395,7 +556,8 @@ object ServeWeb {
         }
       }
     val about = if (isPublic) aboutSection() + "\n" else ""
-    val nav = if (catalogs.isNotEmpty()) catalogNav(catalogs, token, sessionId) + "\n" else ""
+    val nav =
+      if (catalogs.isNotEmpty()) catalogNav(catalogs, token, sessionId, isPublic) + "\n" else ""
     // The theme toggle only makes sense when the catalog carries per-theme variants to filter.
     val hasThemes = previews.any { cardTheme(it.id) != null }
     val themeToggle = if (hasThemes) themeToggleHtml() + "\n" else ""
@@ -415,7 +577,7 @@ object ServeWeb {
         """
         $about$nav<p class="cp-head">${WebEscaping.htmlEscape(moduleLabel)}${trustBadge(trust)}</p>
         $themeToggle<p class="cp-sub">${previews.size} preview(s) · click one to view with overrides ·
-          <a href="$basePath/bundle.zip?$q">download all (.zip)</a></p>
+          <a href="$basePath/bundle.zip$q">download all (.zip)</a></p>
         $searchBox<div class="cp-grid" id="cp-grid">
         $cards
         </div>$emptyState$filterScript
@@ -449,6 +611,13 @@ object ServeWeb {
      */
     basePath: String = "",
     /**
+     * Public mode: drop the `token=` param from the server-rendered "← previews" link (every route
+     * is open, so the token gates nothing). The viewer's own `/render` + `/ws` requests read the
+     * token from the page URL at runtime, so they're naturally token-free too when the page arrived
+     * without one. Off by default so a token-gated box keeps the token in links.
+     */
+    isPublic: Boolean = false,
+    /**
      * Label for the corner "backend" badge while showing the baked snapshot — the renderer that
      * produced the PNG (e.g. `Android` for the design catalogs). The in-browser Wasm tier always
      * reads `CMP-WASM`; the daemon stream reads [liveBackend]. Null ⇒ a generic `Snapshot`.
@@ -463,7 +632,7 @@ object ServeWeb {
     liveBackend: String? = null,
   ): String {
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
-    val q = linkQuery(token, sessionId, basePath)
+    val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
     val label = WebEscaping.htmlEscape(preview.label)
     val idText = WebEscaping.htmlEscape(preview.id)
     val modes = preview.modes.joinToString(",") { it.wire }
@@ -516,7 +685,7 @@ object ServeWeb {
     val liveLabel = WebEscaping.htmlEscape(liveBackend ?: "Live")
     val body =
       """
-      <p class="cp-head"><a href="$basePath/?$q">← previews</a>${trustBadge(trust)}</p>
+      <p class="cp-head"><a href="$basePath/$q">← previews</a>${trustBadge(trust)}</p>
       <p class="cp-sub" title="$idText">$label</p>
       <div class="cp-viewer" data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel"$wasmAttr>
         <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$wasmFrame</div>
@@ -611,9 +780,12 @@ object ServeWeb {
       }
       function query() {
         var o = overrides();
-        var q = "token=" + encodeURIComponent(token);
-        if (session) q += "&session=" + encodeURIComponent(session);
-        Object.keys(o).forEach(function (k) { q += "&" + k + "=" + encodeURIComponent(o[k]); });
+        // Public routes are open, so a page that arrived without a token stays token-free — only
+        // carry token= when this page's own URL had one (a token-gated box).
+        var parts = [];
+        if (token) parts.push("token=" + encodeURIComponent(token));
+        if (session) parts.push("session=" + encodeURIComponent(session));
+        Object.keys(o).forEach(function (k) { parts.push(k + "=" + encodeURIComponent(o[k])); });
         // Author-declared knobs (enabled only on a daemon session): knob.<key>=<kind>:<value>.
         document.querySelectorAll(".cp-knob").forEach(function (el) {
           if (el.disabled) return;
@@ -622,13 +794,14 @@ object ServeWeb {
           if (!key) return;
           var val = (el.type === "checkbox") ? (el.checked ? "true" : "false") : el.value;
           if (val === "") return;
-          q += "&knob." + encodeURIComponent(key) + "=" + encodeURIComponent(kind + ":" + val);
+          parts.push("knob." + encodeURIComponent(key) + "=" + encodeURIComponent(kind + ":" + val));
         });
-        return q;
+        return parts.join("&");
       }
       function refreshSnapshot() {
         status.textContent = "rendering…";
-        var url = base + "/render/" + encodeURIComponent(previewId) + ".png?" + query();
+        var qs = query();
+        var url = base + "/render/" + encodeURIComponent(previewId) + ".png" + (qs ? "?" + qs : "");
         var next = new Image();
         next.onload = function () { img.src = url; status.textContent = ""; };
         next.onerror = function () { status.textContent = "render failed"; };
@@ -753,8 +926,9 @@ object ServeWeb {
         var proto = location.protocol === "https:" ? "wss:" : "ws:";
         // Request WebP frames (smaller; the browser decodes them via the data URL, and the daemon
         // downgrades to PNG when it can't encode WebP — each frame carries its actual codec).
+        var qs = query();
         ws = new WebSocket(proto + "//" + location.host + base + "/ws/" +
-          encodeURIComponent(previewId) + "?" + query() + "&codec=webp");
+          encodeURIComponent(previewId) + "?" + (qs ? qs + "&codec=webp" : "codec=webp"));
         ws.onmessage = function (ev) {
           var m;
           try { m = JSON.parse(ev.data); } catch (e) { return; }

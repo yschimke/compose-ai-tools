@@ -147,7 +147,15 @@ class ServeCatalogStore(
       return Result.Ok(safe, count, "${BundleVerifier.summary(verdict)} (live)")
     }
 
-    val host = ServeBundleHost(dir, safe, verdict)
+    val host =
+      ServeBundleHost(
+        dir,
+        safe,
+        verdict,
+        title = catalog.title?.takeIf { it.isNotBlank() },
+        subtitle =
+          catalog.library.filter { it.isNotBlank() }.take(2).joinToString(" · ").ifBlank { null },
+      )
     register(safe, host)
     return Result.Ok(safe, host.previews.size, BundleVerifier.summary(verdict))
   }
@@ -194,6 +202,10 @@ class ServeCatalogStore(
    */
   @Serializable
   private data class Catalog(
+    /** Human display title (e.g. "Compose Material 3"); surfaced on the public home index. */
+    val title: String? = null,
+    /** Underlying library coordinate(s); shown as the one-line descriptor on a system card. */
+    val library: List<String> = emptyList(),
     val components: List<Component> = emptyList(),
     /** Optional in-browser render descriptor (the CMP-Wasm app carried in the branch). */
     val webRender: WebRender? = null,

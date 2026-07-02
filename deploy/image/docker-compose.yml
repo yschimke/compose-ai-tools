@@ -23,7 +23,7 @@ services:
       # SERVE_PUBLIC=0 and SERVE_TOKEN in .env.
       SERVE_PUBLIC: "${SERVE_PUBLIC:-1}"
       # The catalog set is BAKED INTO THE IMAGE (entrypoint): the front-page systems
-      # (compose-m3,wear-m3) and the app systems served unlisted from their own repos
+      # (compose-m3,wear-m3,remote-m3) and the app systems served unlisted from their own repos
       # (meshcore-mobile, homeassistant-remotecompose). Leave these empty to inherit the
       # baked defaults — so a bare image pull self-heals without editing this compose.
       # Set your own comma list to override, or the literal `none` to serve none of that
