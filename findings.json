@@ -346,6 +346,84 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "ColorSchemeSpecimenDarkPreview_ColorScheme_specimen_dark.a11y.png",
+      "cleanBasename": "ColorSchemeSpecimenDarkPreview_ColorScheme_specimen_dark.png",
+      "findings": [
+        {
+          "boundsInScreen": "137,61,290,95",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"#FFD0BCFF\" is identical to that of 1 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        },
+        {
+          "boundsInScreen": "137,2203,290,2237",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"#FF49454F\" is identical to that of 1 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        },
+        {
+          "boundsInScreen": "137,1825,290,1859",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"#FFE6E0E9\" is identical to that of 2 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        },
+        {
+          "boundsInScreen": "137,1699,290,1733",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"#FF141218\" is identical to that of 2 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        }
+      ],
+      "functionName": "ColorSchemeSpecimenDarkPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.ColorGalleryKt.ColorSchemeSpecimenDarkPreview_ColorScheme specimen \u2014 dark",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/ColorGallery.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "ColorSchemeSpecimenLightPreview_ColorScheme_specimen_light.a11y.png",
+      "cleanBasename": "ColorSchemeSpecimenLightPreview_ColorScheme_specimen_light.png",
+      "findings": [
+        {
+          "boundsInScreen": "137,1825,290,1859",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"#FF1D1B20\" is identical to that of 1 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        },
+        {
+          "boundsInScreen": "137,1699,290,1733",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"#FFFEF7FF\" is identical to that of 2 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        },
+        {
+          "boundsInScreen": "137,61,290,95",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"#FF6750A4\" is identical to that of 1 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        },
+        {
+          "boundsInScreen": "137,187,290,221",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"#FFFFFFFF\" is identical to that of 4 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        }
+      ],
+      "functionName": "ColorSchemeSpecimenLightPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.ColorGalleryKt.ColorSchemeSpecimenLightPreview_ColorScheme specimen \u2014 light",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/ColorGallery.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "ConfigProbePreview_Default.a11y.png",
       "cleanBasename": "ConfigProbePreview_Default.png",
       "findings": [],
@@ -741,6 +819,16 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "NamedColorPaletteSpecimenPreview_Named_colour_palette_specimen.a11y.png",
+      "cleanBasename": "NamedColorPaletteSpecimenPreview_Named_colour_palette_specimen.png",
+      "findings": [],
+      "functionName": "NamedColorPaletteSpecimenPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.ColorGalleryKt.NamedColorPaletteSpecimenPreview_Named colour palette specimen",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/ColorGallery.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "NavHostHomePreview_NavHost_Home.a11y.png",
       "cleanBasename": "NavHostHomePreview_NavHost_Home.png",
       "findings": [],
@@ -805,6 +893,16 @@
       "previewId": "com.example.sampleandroid.PreviewsKt.Pixel8SystemUiPreview_Pixel 8",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
       "variant": "pixel_8"
+    },
+    {
+      "annotatedBasename": "PressedButtonPreview_Pressed.a11y.png",
+      "cleanBasename": "PressedButtonPreview_Pressed.png",
+      "findings": [],
+      "functionName": "PressedButtonPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.RippleStatePreviewsKt.PressedButtonPreview_Pressed",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/RippleStatePreviews.kt",
+      "variant": ""
     },
     {
       "annotatedBasename": "PseudoSampleAccent_accent.a11y.png",
@@ -1243,6 +1341,16 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "OverridableListPreview_Overridable_List.a11y.png",
+      "cleanBasename": "OverridableListPreview_Overridable_List.png",
+      "findings": [],
+      "functionName": "OverridableListPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.OverridablePreviewsKt.OverridableListPreview_Overridable List",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/OverridablePreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "",
       "cleanBasename": "PinchToZoomPreview_Pinch_To_Zoom.png",
       "findings": [],
@@ -1651,174 +1759,282 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "ButtonDisabled_Devices_Large_Round.a11y.png",
-      "cleanBasename": "ButtonDisabled_Devices_Large_Round.png",
+      "annotatedBasename": "BorderedRemoteButton.a11y.png",
+      "cleanBasename": "BorderedRemoteButton.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,525,525",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "BorderedRemoteButton",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.BorderedRemoteButton",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "CustomShapeRemoteButton.a11y.png",
+      "cleanBasename": "CustomShapeRemoteButton.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,525,525",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "CustomShapeRemoteButton",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.CustomShapeRemoteButton",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "FilledRemoteButton.a11y.png",
+      "cleanBasename": "FilledRemoteButton.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,525,525",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "FilledRemoteButton",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.FilledRemoteButton",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "NamedLabelRemoteButton.a11y.png",
+      "cleanBasename": "NamedLabelRemoteButton.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,525,525",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "NamedLabelRemoteButton",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.NamedLabelRemoteButton",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "RemoteTextSticker.a11y.png",
+      "cleanBasename": "RemoteTextSticker.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,525,525",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "RemoteTextSticker",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.RemoteTextSticker",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "ShaderGradientSticker.a11y.png",
+      "cleanBasename": "ShaderGradientSticker.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,525,525",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "ShaderGradientSticker",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.ShaderGradientSticker",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "ButtonDisabled.a11y.png",
+      "cleanBasename": "ButtonDisabled.png",
       "findings": [],
       "functionName": "ButtonDisabled",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonDisabled_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonDisabled",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
-      "annotatedBasename": "ButtonFocused_Devices_Large_Round.a11y.png",
-      "cleanBasename": "ButtonFocused_Devices_Large_Round.png",
+      "annotatedBasename": "ButtonFocused.a11y.png",
+      "cleanBasename": "ButtonFocused.png",
       "findings": [],
       "functionName": "ButtonFocused",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonFocused_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonFocused",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
-      "annotatedBasename": "ButtonPressed_Devices_Large_Round.a11y.png",
-      "cleanBasename": "ButtonPressed_Devices_Large_Round.png",
+      "annotatedBasename": "ButtonPressed.a11y.png",
+      "cleanBasename": "ButtonPressed.png",
       "findings": [],
       "functionName": "ButtonPressed",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonPressed_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonPressed",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
-      "annotatedBasename": "CardSticker_Devices_Large_Round.a11y.png",
-      "cleanBasename": "CardSticker_Devices_Large_Round.png",
+      "annotatedBasename": "CardSticker.a11y.png",
+      "cleanBasename": "CardSticker.png",
       "findings": [],
       "functionName": "CardSticker",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CardSticker_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CardSticker",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
-      "annotatedBasename": "CheckboxButtonChecked_Devices_Large_Round.a11y.png",
-      "cleanBasename": "CheckboxButtonChecked_Devices_Large_Round.png",
+      "annotatedBasename": "CheckboxButtonChecked.a11y.png",
+      "cleanBasename": "CheckboxButtonChecked.png",
       "findings": [],
       "functionName": "CheckboxButtonChecked",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CheckboxButtonChecked_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CheckboxButtonChecked",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
-      "annotatedBasename": "CheckboxButtonUnchecked_Devices_Large_Round.a11y.png",
-      "cleanBasename": "CheckboxButtonUnchecked_Devices_Large_Round.png",
+      "annotatedBasename": "CheckboxButtonUnchecked.a11y.png",
+      "cleanBasename": "CheckboxButtonUnchecked.png",
       "findings": [],
       "functionName": "CheckboxButtonUnchecked",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CheckboxButtonUnchecked_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CheckboxButtonUnchecked",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
-      "annotatedBasename": "ChildButtonSticker_Devices_Large_Round.a11y.png",
-      "cleanBasename": "ChildButtonSticker_Devices_Large_Round.png",
+      "annotatedBasename": "ChildButtonSticker.a11y.png",
+      "cleanBasename": "ChildButtonSticker.png",
       "findings": [],
       "functionName": "ChildButtonSticker",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ChildButtonSticker_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ChildButtonSticker",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "CircularProgressSticker_Devices_Large_Round.png",
+      "cleanBasename": "CircularProgressSticker.png",
       "findings": [],
       "functionName": "CircularProgressSticker",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CircularProgressSticker_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CircularProgressSticker",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
-      "annotatedBasename": "EdgeButtonSticker_Devices_Large_Round.a11y.png",
-      "cleanBasename": "EdgeButtonSticker_Devices_Large_Round.png",
-      "findings": [],
-      "functionName": "EdgeButtonSticker",
-      "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Devices - Large Round",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
-    },
-    {
-      "annotatedBasename": "FilledButton_Devices_Large_Round.a11y.png",
-      "cleanBasename": "FilledButton_Devices_Large_Round.png",
+      "annotatedBasename": "FilledButton.a11y.png",
+      "cleanBasename": "FilledButton.png",
       "findings": [],
       "functionName": "FilledButton",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.FilledButton_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.FilledButton",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
-      "annotatedBasename": "FilledTonalButtonSticker_Devices_Large_Round.a11y.png",
-      "cleanBasename": "FilledTonalButtonSticker_Devices_Large_Round.png",
+      "annotatedBasename": "FilledTonalButtonSticker.a11y.png",
+      "cleanBasename": "FilledTonalButtonSticker.png",
       "findings": [],
       "functionName": "FilledTonalButtonSticker",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.FilledTonalButtonSticker_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.FilledTonalButtonSticker",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
-      "annotatedBasename": "ListHeaderSticker_Devices_Large_Round.a11y.png",
-      "cleanBasename": "ListHeaderSticker_Devices_Large_Round.png",
+      "annotatedBasename": "ListHeaderSticker.a11y.png",
+      "cleanBasename": "ListHeaderSticker.png",
       "findings": [],
       "functionName": "ListHeaderSticker",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ListHeaderSticker_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ListHeaderSticker",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
-      "annotatedBasename": "OutlinedButtonSticker_Devices_Large_Round.a11y.png",
-      "cleanBasename": "OutlinedButtonSticker_Devices_Large_Round.png",
+      "annotatedBasename": "OutlinedButtonSticker.a11y.png",
+      "cleanBasename": "OutlinedButtonSticker.png",
       "findings": [],
       "functionName": "OutlinedButtonSticker",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.OutlinedButtonSticker_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.OutlinedButtonSticker",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "ScalingListSticker_Large_Round.a11y.png",
+      "cleanBasename": "ScalingListSticker_Large_Round.png",
+      "findings": [],
+      "functionName": "ScalingListSticker",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Large Round",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "SwitchButtonOff_Devices_Large_Round.a11y.png",
-      "cleanBasename": "SwitchButtonOff_Devices_Large_Round.png",
+      "annotatedBasename": "SwitchButtonOff.a11y.png",
+      "cleanBasename": "SwitchButtonOff.png",
       "findings": [],
       "functionName": "SwitchButtonOff",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOff_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOff",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
-      "annotatedBasename": "SwitchButtonOn_Devices_Large_Round.a11y.png",
-      "cleanBasename": "SwitchButtonOn_Devices_Large_Round.png",
+      "annotatedBasename": "SwitchButtonOn.a11y.png",
+      "cleanBasename": "SwitchButtonOn.png",
       "findings": [],
       "functionName": "SwitchButtonOn",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOn_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOn",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
-      "annotatedBasename": "TextMaxLinesTruncated_Devices_Large_Round.a11y.png",
-      "cleanBasename": "TextMaxLinesTruncated_Devices_Large_Round.png",
+      "annotatedBasename": "TextMaxLinesTruncated.a11y.png",
+      "cleanBasename": "TextMaxLinesTruncated.png",
       "findings": [],
       "functionName": "TextMaxLinesTruncated",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TextMaxLinesTruncated_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TextMaxLinesTruncated",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
-      "annotatedBasename": "TitleCardSticker_Devices_Large_Round.a11y.png",
-      "cleanBasename": "TitleCardSticker_Devices_Large_Round.png",
+      "annotatedBasename": "TitleCardSticker.a11y.png",
+      "cleanBasename": "TitleCardSticker.png",
       "findings": [],
       "functionName": "TitleCardSticker",
       "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TitleCardSticker_Devices - Large Round",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TitleCardSticker",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": "wearos_large_round"
+      "variant": ""
     },
     {
       "annotatedBasename": "BlueLabelPreview_BlueLabel.a11y.png",

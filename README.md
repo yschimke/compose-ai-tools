@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/pr`. 191 preview(s) across 17 module(s) · 11 error(s) · 4 warning(s) · 18 info._
+_Auto-generated from `compose-preview/a11y/pr`. 202 preview(s) across 18 module(s) · 17 error(s) · 4 warning(s) · 26 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -74,6 +74,28 @@ _No findings._
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
 | 1 | WARNING | TextSizeCheck | com.android.internal.widget.ImageFloatingTextView #text | Consider modifying the LayoutParams to allow for text expansion. |
+
+### `ColorSchemeSpecimenDarkPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/ColorSchemeSpecimenDarkPreview_ColorScheme_specimen_dark.a11y.png" width="400" />
+
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "#FFD0BCFF" is identical to that of 1 other item(s). |
+| 2 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "#FF49454F" is identical to that of 1 other item(s). |
+| 3 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "#FFE6E0E9" is identical to that of 2 other item(s). |
+| 4 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "#FF141218" is identical to that of 2 other item(s). |
+
+### `ColorSchemeSpecimenLightPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/ColorSchemeSpecimenLightPreview_ColorScheme_specimen_light.a11y.png" width="400" />
+
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "#FF1D1B20" is identical to that of 1 other item(s). |
+| 2 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "#FFFEF7FF" is identical to that of 2 other item(s). |
+| 3 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "#FF6750A4" is identical to that of 1 other item(s). |
+| 4 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "#FFFFFFFF" is identical to that of 4 other item(s). |
 
 ### `ConfigProbePreview`
 
@@ -268,6 +290,12 @@ _No findings._
 |--:|---|---|---|---|
 | 1 | INFO | TextSizeCheck | android.view.NotificationHeaderView #notification_header | Consider modifying the LayoutParams to allow for text expansion. |
 
+### `NamedColorPaletteSpecimenPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/NamedColorPaletteSpecimenPreview_Named_colour_palette_specimen.a11y.png" width="400" />
+
+_No findings._
+
 ### `NavHostHomePreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/NavHostHomePreview_NavHost_Home.a11y.png" width="400" />
@@ -299,6 +327,12 @@ _No findings._
 ### `Pixel8SystemUiPreview` · `pixel_8`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/Pixel8SystemUiPreview_Pixel_8.a11y.png" width="400" />
+
+_No findings._
+
+### `PressedButtonPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/PressedButtonPreview_Pressed.a11y.png" width="400" />
 
 _No findings._
 
@@ -626,6 +660,12 @@ _No findings._
 
 _No findings._
 
+### `OverridableListPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/OverridableListPreview_Overridable_List.a11y.png" width="400" />
+
+_No findings._
+
 ### `PinchToZoomPreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/PinchToZoomPreview_Pinch_To_Zoom.png" width="400" />
@@ -882,107 +922,157 @@ _No findings._
 
 _No findings._
 
+## design-catalog-remote-m3
+
+### `BorderedRemoteButton`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-remote-m3/BorderedRemoteButton.a11y.png" width="400" />
+
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | ERROR | SpeakableTextPresentCheck | androidx.compose.remote.player.view.RemoteComposePlayer | This item may not have a label readable by screen readers. |
+
+### `CustomShapeRemoteButton`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-remote-m3/CustomShapeRemoteButton.a11y.png" width="400" />
+
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | ERROR | SpeakableTextPresentCheck | androidx.compose.remote.player.view.RemoteComposePlayer | This item may not have a label readable by screen readers. |
+
+### `FilledRemoteButton`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-remote-m3/FilledRemoteButton.a11y.png" width="400" />
+
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | ERROR | SpeakableTextPresentCheck | androidx.compose.remote.player.view.RemoteComposePlayer | This item may not have a label readable by screen readers. |
+
+### `NamedLabelRemoteButton`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-remote-m3/NamedLabelRemoteButton.a11y.png" width="400" />
+
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | ERROR | SpeakableTextPresentCheck | androidx.compose.remote.player.view.RemoteComposePlayer | This item may not have a label readable by screen readers. |
+
+### `RemoteTextSticker`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-remote-m3/RemoteTextSticker.a11y.png" width="400" />
+
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | ERROR | SpeakableTextPresentCheck | androidx.compose.remote.player.view.RemoteComposePlayer | This item may not have a label readable by screen readers. |
+
+### `ShaderGradientSticker`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-remote-m3/ShaderGradientSticker.a11y.png" width="400" />
+
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | ERROR | SpeakableTextPresentCheck | androidx.compose.remote.player.view.RemoteComposePlayer | This item may not have a label readable by screen readers. |
+
 ## design-catalog-wear-m3
 
-### `ButtonDisabled` · `wearos_large_round`
+### `ButtonDisabled`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/ButtonDisabled_Devices_Large_Round.a11y.png" width="400" />
-
-_No findings._
-
-### `ButtonFocused` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/ButtonFocused_Devices_Large_Round.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/ButtonDisabled.a11y.png" width="400" />
 
 _No findings._
 
-### `ButtonPressed` · `wearos_large_round`
+### `ButtonFocused`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/ButtonPressed_Devices_Large_Round.a11y.png" width="400" />
-
-_No findings._
-
-### `CardSticker` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CardSticker_Devices_Large_Round.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/ButtonFocused.a11y.png" width="400" />
 
 _No findings._
 
-### `CheckboxButtonChecked` · `wearos_large_round`
+### `ButtonPressed`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CheckboxButtonChecked_Devices_Large_Round.a11y.png" width="400" />
-
-_No findings._
-
-### `CheckboxButtonUnchecked` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CheckboxButtonUnchecked_Devices_Large_Round.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/ButtonPressed.a11y.png" width="400" />
 
 _No findings._
 
-### `ChildButtonSticker` · `wearos_large_round`
+### `CardSticker`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/ChildButtonSticker_Devices_Large_Round.a11y.png" width="400" />
-
-_No findings._
-
-### `CircularProgressSticker` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CircularProgressSticker_Devices_Large_Round.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CardSticker.a11y.png" width="400" />
 
 _No findings._
 
-### `EdgeButtonSticker` · `wearos_large_round`
+### `CheckboxButtonChecked`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/EdgeButtonSticker_Devices_Large_Round.a11y.png" width="400" />
-
-_No findings._
-
-### `FilledButton` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/FilledButton_Devices_Large_Round.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CheckboxButtonChecked.a11y.png" width="400" />
 
 _No findings._
 
-### `FilledTonalButtonSticker` · `wearos_large_round`
+### `CheckboxButtonUnchecked`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/FilledTonalButtonSticker_Devices_Large_Round.a11y.png" width="400" />
-
-_No findings._
-
-### `ListHeaderSticker` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/ListHeaderSticker_Devices_Large_Round.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CheckboxButtonUnchecked.a11y.png" width="400" />
 
 _No findings._
 
-### `OutlinedButtonSticker` · `wearos_large_round`
+### `ChildButtonSticker`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/OutlinedButtonSticker_Devices_Large_Round.a11y.png" width="400" />
-
-_No findings._
-
-### `SwitchButtonOff` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/SwitchButtonOff_Devices_Large_Round.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/ChildButtonSticker.a11y.png" width="400" />
 
 _No findings._
 
-### `SwitchButtonOn` · `wearos_large_round`
+### `CircularProgressSticker`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/SwitchButtonOn_Devices_Large_Round.a11y.png" width="400" />
-
-_No findings._
-
-### `TextMaxLinesTruncated` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/TextMaxLinesTruncated_Devices_Large_Round.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CircularProgressSticker.png" width="400" />
 
 _No findings._
 
-### `TitleCardSticker` · `wearos_large_round`
+### `FilledButton`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/TitleCardSticker_Devices_Large_Round.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/FilledButton.a11y.png" width="400" />
+
+_No findings._
+
+### `FilledTonalButtonSticker`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/FilledTonalButtonSticker.a11y.png" width="400" />
+
+_No findings._
+
+### `ListHeaderSticker`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/ListHeaderSticker.a11y.png" width="400" />
+
+_No findings._
+
+### `OutlinedButtonSticker`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/OutlinedButtonSticker.a11y.png" width="400" />
+
+_No findings._
+
+### `ScalingListSticker` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/ScalingListSticker_Large_Round.a11y.png" width="400" />
+
+_No findings._
+
+### `SwitchButtonOff`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/SwitchButtonOff.a11y.png" width="400" />
+
+_No findings._
+
+### `SwitchButtonOn`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/SwitchButtonOn.a11y.png" width="400" />
+
+_No findings._
+
+### `TextMaxLinesTruncated`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/TextMaxLinesTruncated.a11y.png" width="400" />
+
+_No findings._
+
+### `TitleCardSticker`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/TitleCardSticker.a11y.png" width="400" />
 
 _No findings._
 
