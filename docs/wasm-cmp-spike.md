@@ -61,6 +61,12 @@ so ticking "Run in browser (Wasm)" swaps with no white flash and (fonts aside) n
 
 ![Snapshot vs Wasm vs 50/50 blend vs amplified diff](images/wasm-parity-checkbox-dark.png)
 
+Text matches because the app fetches **the same Roboto the Android renderer rasterizes with**
+(Regular + Medium, extracted from Robolectric's `nativeruntime-dist-compat`, vendored under
+`fonts/` in the dist) by URL at startup and holds the first-frame signal until they resolve —
+`?fontsBase=` re-points the fetch, and a failure degrades to the CMP bundled font. See
+[`fonts/README.md`](../samples/cmp-wasm-catalog/src/wasmJsMain/resources/fonts/README.md).
+
 The compose-web surface can't be transparent (it paints an opaque base), so the app draws the serve
 stage's own checkerboard behind the sticker, phase-aligned via the viewer-supplied `bgPhase` param —
 that's also what backs the viewer's **"Component only (no background)"** toggle (`background=off`),

@@ -22,6 +22,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -43,6 +44,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
@@ -79,6 +81,11 @@ fun CatalogApp(
   rtl: Boolean = false,
   showBackground: Boolean = true,
   checkerPhase: Offset = Offset.Zero,
+  /**
+   * Typeface for the whole M3 type scale — the URL-loaded Roboto that matches what the Android
+   * renderer baked into the snapshots. Null ⇒ the CMP bundled default (fetch failed/timed out).
+   */
+  fontFamily: FontFamily? = null,
   onFirstFrame: (() -> Unit)? = null,
 ) {
   val scheme = if (dark) darkColorScheme() else lightColorScheme()
@@ -93,7 +100,7 @@ fun CatalogApp(
   var content by remember { mutableStateOf(IntSize.Zero) }
   var signalled by remember { mutableStateOf(false) }
   CompositionLocalProvider(LocalDensity provides scaled, LocalLayoutDirection provides direction) {
-    MaterialTheme(colorScheme = scheme) {
+    MaterialTheme(colorScheme = scheme, typography = catalogTypography(fontFamily)) {
       val component = catalogComponents[id]
       if (component != null) {
         Box(
@@ -164,6 +171,33 @@ fun CatalogApp(
       }
     }
   }
+}
+
+/**
+ * The stock M3 [Typography] with every style re-pointed at [fontFamily] — the type scale keeps its
+ * real Material sizes/weights/line-heights, only the typeface changes (to the URL-loaded Roboto the
+ * baked snapshots were rendered with). Null ⇒ the untouched default scale.
+ */
+private fun catalogTypography(fontFamily: FontFamily?): Typography {
+  val base = Typography()
+  if (fontFamily == null) return base
+  return Typography(
+    displayLarge = base.displayLarge.copy(fontFamily = fontFamily),
+    displayMedium = base.displayMedium.copy(fontFamily = fontFamily),
+    displaySmall = base.displaySmall.copy(fontFamily = fontFamily),
+    headlineLarge = base.headlineLarge.copy(fontFamily = fontFamily),
+    headlineMedium = base.headlineMedium.copy(fontFamily = fontFamily),
+    headlineSmall = base.headlineSmall.copy(fontFamily = fontFamily),
+    titleLarge = base.titleLarge.copy(fontFamily = fontFamily),
+    titleMedium = base.titleMedium.copy(fontFamily = fontFamily),
+    titleSmall = base.titleSmall.copy(fontFamily = fontFamily),
+    bodyLarge = base.bodyLarge.copy(fontFamily = fontFamily),
+    bodyMedium = base.bodyMedium.copy(fontFamily = fontFamily),
+    bodySmall = base.bodySmall.copy(fontFamily = fontFamily),
+    labelLarge = base.labelLarge.copy(fontFamily = fontFamily),
+    labelMedium = base.labelMedium.copy(fontFamily = fontFamily),
+    labelSmall = base.labelSmall.copy(fontFamily = fontFamily),
+  )
 }
 
 /**
