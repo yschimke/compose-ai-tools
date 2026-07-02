@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.16.12](https://github.com/yschimke/compose-ai-tools/compare/v0.16.11...v0.16.12) (2026-07-02)
+
+
+### Features
+
+* add @TypographyCatalog for auto-discovered type specimen sheets ([#2165](https://github.com/yschimke/compose-ai-tools/issues/2165)) ([6f1a09f](https://github.com/yschimke/compose-ai-tools/commit/6f1a09fab9fa3816fb3258b9f5ae7c6a55eb3593))
+* emit @ColorCatalog/@TypographyCatalog tokens as a data product ([#2168](https://github.com/yschimke/compose-ai-tools/issues/2168)) ([33b09cb](https://github.com/yschimke/compose-ai-tools/commit/33b09cbeae4afaa390741cd074e7c941ad79e1cb))
+* **serve:** pixel-exact Wasm tier with flash-free switch and no-background toggle ([#2169](https://github.com/yschimke/compose-ai-tools/issues/2169)) ([5673155](https://github.com/yschimke/compose-ai-tools/commit/56731552f4fe8045e9baf756d8d29a6c2e849cf7))
+
+
+### Bug Fixes
+
+* **plugin:** compile render shards at release 17, not 21 ([#2170](https://github.com/yschimke/compose-ai-tools/issues/2170)) ([b421be4](https://github.com/yschimke/compose-ai-tools/commit/b421be4e63f9fba69c99bf86e58d9da38839f29f))
+* **plugin:** declare render tasks depend on generateUnitTestConfig ([#2162](https://github.com/yschimke/compose-ai-tools/issues/2162)) ([e1698bd](https://github.com/yschimke/compose-ai-tools/commit/e1698bd04dbcd0e0ac04b38a38bb1ebc34637b71))
+* **plugin:** render tasks also depend on compileScreenshotTestKotlin ([#2166](https://github.com/yschimke/compose-ai-tools/issues/2166)) ([b9785fe](https://github.com/yschimke/compose-ai-tools/commit/b9785fe544f18675e1af117d907a4c44f95b1125))
+
 ## [0.16.11](https://github.com/yschimke/compose-ai-tools/compare/v0.16.10...v0.16.11) (2026-07-01)
 
 
