@@ -478,6 +478,19 @@ abstract class BundlePreviewTask : DefaultTask() {
       }
     }
 
+    // Per-sheet catalog-token sidecars (issue #2167): the resolved `@ColorCatalog` /
+    // `@TypographyCatalog` values the renderer wrote under `data/catalog-tokens/<id>.catalog.json`,
+    // packed by convention under `previews/<id>.catalog.json` — same shape as the override sidecars
+    // so a detached reader (design-parity's `catalog-export`) can import the palette / type scale
+    // without re-rendering. Only `PreviewKind.CATALOG` sheets carry one.
+    val catalogTokenFiles = LinkedHashMap<String, ByteArray>()
+    for (preview in selected) {
+      resolvePreviewCatalogTokens(preview)?.let {
+        catalogTokenFiles["$BUNDLE_PREVIEWS_DIR/${preview.id}.$BUNDLE_CATALOG_TOKENS_SIDECAR_EXT"] =
+          it
+      }
+    }
+
     val filteredManifest =
       if (includeDataExtensions.getOrElse(false)) {
         // When carrying extension data, rewrite the bundled manifest's `dataExtensionReports` to
@@ -507,6 +520,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         irFiles = irZipFiles,
         dataExtensionFiles = dataExtensionZipFiles,
         overrideFiles = overrideFiles,
+        catalogTokenFiles = catalogTokenFiles,
       )
 
     // The cover (first selected preview) forms the polyglot's leading bytes. Reuse its baked PNG
@@ -653,6 +667,27 @@ abstract class BundlePreviewTask : DefaultTask() {
     val f = File(rendersRoot, "$stem.$BUNDLE_OVERRIDES_SIDECAR_EXT")
     return if (f.isFile && f.length() > 0) f.readBytes() else null
   }
+
+  /**
+   * Look for the per-sheet catalog-token sidecar the render step wrote for a `PreviewKind.CATALOG`
+   * [preview] (`<rendersRoot>/../data/catalog-tokens/<id>.catalog.json`, issue #2167). Unlike the
+   * override / IR sidecars, it lives under the `data/` tree keyed by the sheet id (not the PNG
+   * stem), so resolution mirrors the renderer's `CatalogTokenSidecar` path + sanitize. Returns the
+   * raw bytes (copied verbatim — the producer never parses them) or `null` for non-catalog previews
+   * and sheets that resolved no tokens.
+   */
+  private fun resolvePreviewCatalogTokens(preview: PreviewInfo): ByteArray? {
+    if (preview.params.kind != PreviewKind.CATALOG) return null
+    val rendersRoot = rendersDir.orNull?.asFile ?: return null
+    val dataDir = File(rendersRoot.parentFile ?: rendersRoot, "data/catalog-tokens")
+    val name = sanitizeCatalogTokenId(preview.id) + ".$BUNDLE_CATALOG_TOKENS_SIDECAR_EXT"
+    val f = File(dataDir, name)
+    return if (f.isFile && f.length() > 0) f.readBytes() else null
+  }
+
+  // Mirror of the renderer's `CatalogTokenSidecar.sanitize` so the on-disk filename matches.
+  private fun sanitizeCatalogTokenId(id: String): String =
+    id.replace(Regex("""[/\\:*?"<>|\s]"""), "_")
 
   private fun resolvePreviewIr(preview: PreviewInfo): ResolvedIr? {
     // kind=LOTTIE: the IR is the discovered asset file itself (no render-time capture). Read it
@@ -1077,6 +1112,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     irFiles: Map<String, ByteArray>,
     dataExtensionFiles: Map<String, ByteArray>,
     overrideFiles: Map<String, ByteArray>,
+    catalogTokenFiles: Map<String, ByteArray>,
   ): ByteArray {
     val baos = ByteArrayOutputStream()
     ZipOutputStream(baos).use { zip ->
@@ -1086,6 +1122,8 @@ abstract class BundlePreviewTask : DefaultTask() {
       previewPngs.forEach { (id, bytes) -> zip.writeFile("$BUNDLE_PREVIEWS_DIR/$id.png", bytes) }
       // (v8) Per-preview override sidecars under `previews/<id>.overrides.json`.
       overrideFiles.forEach { (path, bytes) -> zip.writeFile(path, bytes) }
+      // Per-sheet catalog-token sidecars under `previews/<id>.catalog.json` (issue #2167).
+      catalogTokenFiles.forEach { (path, bytes) -> zip.writeFile(path, bytes) }
       // Captured IR bytes (Remote Compose doc / protolayout proto) under `ir/`.
       irFiles.forEach { (path, bytes) -> zip.writeFile(path, bytes) }
       // (v7) Optional per-extension data reports under `extensions/<id>.json`.

@@ -291,6 +291,75 @@ class BundleFunctionalTest {
   }
 
   @Test
+  fun `composePreviewBundle packs the per-sheet catalog-token sidecar`() {
+    val projectDir = createTestProject()
+
+    // Plant a `@ColorCatalog` token so discovery emits a real `PreviewKind.CATALOG` sheet (the
+    // annotation is matched by FQN, declared locally so the test needs no external artifact).
+    val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview").apply { mkdirs() }
+    File(annDir, "ColorCatalog.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FIELD)
+        annotation class ColorCatalog(val name: String = "", val group: String = "")
+        """
+          .trimIndent()
+      )
+    File(projectDir, "src/main/kotlin/test/Tokens.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.ui.graphics.Color
+        import ee.schimke.composeai.preview.ColorCatalog
+
+        @ColorCatalog(group = "Brand") val Coral: Color = Color(0xFFFF6F61)
+        """
+          .trimIndent()
+      )
+
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewDiscover")
+      .withPluginClasspath()
+      .build()
+
+    val previewsJson = File(projectDir, "build/compose-previews/previews.json")
+    val manifest = json.decodeFromString(PreviewManifest.serializer(), previewsJson.readText())
+    val catalogId =
+      manifest.previews
+        .first { it.params.kind == PreviewKind.CATALOG }
+        .id
+        .also { assertThat(it).isEqualTo("colorcatalog__Brand") }
+
+    // Seed the resolved-token sidecar as the renderer's `CatalogTokenSidecar` would, under the
+    // `data/catalog-tokens/` tree (a sibling of `renders/`, keyed by the sheet id).
+    val catalogJson =
+      """{"schema":"compose-preview-catalog-tokens/v1","previewId":"$catalogId",""" +
+        """"tokens":[{"label":"Coral","className":"test.TokensKt","member":"Coral",""" +
+        """"kind":"COLOR","color":{"hex":"#FFFF6F61","argb":-37023}}]}"""
+    File(projectDir, "build/compose-previews/data/catalog-tokens")
+      .apply { mkdirs() }
+      .also { File(it, "$catalogId.catalog.json").writeText(catalogJson) }
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewBundle", "-PbundlePreviewIds=$catalogId", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+    assertThat(result.task(":composePreviewBundle")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val bundle = File(projectDir, "build/compose-previews/bundle.png")
+    assertThat(listEntries(bundle)).contains("previews/$catalogId.catalog.json")
+    assertThat(String(readZipEntry(bundle, "previews/$catalogId.catalog.json")!!, Charsets.UTF_8))
+      .isEqualTo(catalogJson)
+  }
+
+  @Test
   fun `composePreviewBundle re-packs when renders appear after a render-less pack`() {
     val projectDir = createTestProject()
     val redId = "test.RedKt.RedBoxPreview"
