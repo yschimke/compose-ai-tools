@@ -387,6 +387,11 @@ a:hover { text-decoration: underline; }
     if (u.origin !== location.origin) return "";
     return u.href;
   }
+  // NOTE: don't "preload" the app's fonts from this page — the sandboxed iframe has an opaque
+  // origin, and Chrome partitions the HTTP cache by frame origin, so nothing fetched here is
+  // reusable inside it (measured: every font was fetched twice). The prefetch that actually
+  // works lives in the app's own index.html, which starts the manifest+font fetches at
+  // document load, in parallel with the Wasm boot.
   // The override patch (theme / font scale / locale) the running app merges over its baked base —
   // a bare `a=b&c=d` query. An absent key falls back to the app's baked default (e.g. cleared
   // Theme → the variant's uiMode). Device / orientation are server-render-only, so not forwarded.

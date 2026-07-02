@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "families": [
+    {
+      "name": "Roboto",
+      "role": "default",
+      "fonts": [
+        { "file": "Roboto-Regular.ttf", "weight": 400 },
+        { "file": "Roboto-Medium.ttf", "weight": 500 }
+      ]
+    }
+  ]
+}
