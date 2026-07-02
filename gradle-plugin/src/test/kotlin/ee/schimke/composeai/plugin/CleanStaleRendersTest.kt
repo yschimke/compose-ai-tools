@@ -41,6 +41,52 @@ class CleanStaleRendersTest {
   }
 
   @Test
+  fun `prunes catalog-token sidecars for sheets absent from the manifest`() {
+    val catalogDir = tempDir.root.resolve("build/compose-previews/data/catalog-tokens")
+    catalogDir.mkdirs()
+    // Two sheets are current; one (`typographycatalog__Removed`) was renamed/deleted, plus an
+    // unrelated file that must be left alone.
+    val current1 = catalogDir.resolve("colorcatalog__Brand.catalog.json").apply { writeText("{}") }
+    val current2 =
+      catalogDir.resolve("typographycatalog__Body.catalog.json").apply { writeText("{}") }
+    val stale =
+      catalogDir.resolve("typographycatalog__Removed.catalog.json").apply { writeText("{}") }
+    val unrelated = catalogDir.resolve("notes.txt").apply { writeText("keep") }
+
+    val manifest =
+      PreviewManifest(
+        module = "app",
+        variant = "debug",
+        previews =
+          listOf(
+            PreviewInfo(
+              id = "colorcatalog__Brand",
+              functionName = "colorcatalog__Brand",
+              className = "com.example.ColorTokensKt",
+              params = PreviewParams(kind = PreviewKind.CATALOG),
+            ),
+            PreviewInfo(
+              id = "typographycatalog__Body",
+              functionName = "typographycatalog__Body",
+              className = "com.example.TypographyTokensKt",
+              params = PreviewParams(kind = PreviewKind.CATALOG),
+            ),
+          ),
+      )
+
+    ComposePreviewTasks.cleanStaleCatalogTokens(
+      catalogDir,
+      manifest,
+      org.gradle.api.logging.Logging.getLogger(CleanStaleRendersTest::class.java),
+    )
+
+    assertThat(current1.exists()).isTrue()
+    assertThat(current2.exists()).isTrue()
+    assertThat(stale.exists()).isFalse()
+    assertThat(unrelated.exists()).isTrue()
+  }
+
+  @Test
   fun `missing output check includes scroll data products`() {
     val outDir = tempDir.root.resolve("build/compose-previews")
     // `@ScrollingPreview(modes = [LONG])` alone produces ONLY a data product — discovery
