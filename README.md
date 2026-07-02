@@ -23,6 +23,9 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 
 | Preview | Image |
 |---------|-------|
+| `Brand colours` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/colorcatalog__Brand.png" width="150" /> |
+| `Semantic colours` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/colorcatalog__Semantic.png" width="150" /> |
+| `All colours` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/colorcatalog__all.png" width="150" /> |
 | `FadeInBoxAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/FadeInBoxAnimatedPreview.gif" width="150" /> |
 | `RevealLabelAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/RevealLabelAnimatedPreview.gif" width="150" /> |
 | `GlanceWeatherWidgetPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/GlanceWeatherWidgetPreview_Glance_widget_4_2.png" width="150" /> |
@@ -42,6 +45,9 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `LauncherWidgetResize1x1To4x2Preview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/LauncherWidgetResize1x1To4x2Preview_Launcher_widget_resize_1_1_4_2_RESIZE_4x2.png" width="150" /> |
 | `NativeGlanceWidgetPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/NativeGlanceWidgetPreview.png" width="150" /> |
 | `RemoteViewsWeatherWidgetPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/RemoteViewsWeatherWidgetPreview_RemoteViews_widget_4_2.png" width="150" /> |
+| `ColorSchemeSpecimenDarkPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ColorSchemeSpecimenDarkPreview_ColorScheme_specimen_dark.png" width="150" /> |
+| `ColorSchemeSpecimenLightPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ColorSchemeSpecimenLightPreview_ColorScheme_specimen_light.png" width="150" /> |
+| `NamedColorPaletteSpecimenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/NamedColorPaletteSpecimenPreview_Named_colour_palette_specimen.png" width="150" /> |
 | `KeyboardDemoPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/KeyboardDemoPreview_Keyboard_Demo.png" width="150" /> |
 | `NavHostHomePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/NavHostHomePreview_NavHost_Home.png" width="150" /> |
 | `bigTextNotificationPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/bigTextNotificationPreview.png" width="150" /> |
@@ -137,6 +143,11 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `TypographySpecimenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/TypographySpecimenPreview_Typography_specimen.png" width="150" /> |
 | `lottie/spin.json` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/lottie__lottie_spin.png" width="150" /> |
 | `lottie/spin.json` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/lottie__lottie_spin.gif" width="150" /> |
+| `Brand Dark theme` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/themecatalog__Brand_Dark.png" width="150" /> |
+| `Brand Light theme` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/themecatalog__Brand_Light.png" width="150" /> |
+| `Body type styles` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/typographycatalog__Body.png" width="150" /> |
+| `Display type styles` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/typographycatalog__Display.png" width="150" /> |
+| `All type styles` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/typographycatalog__all.png" width="150" /> |
 
 ## samples:android-alpha
 
@@ -289,6 +300,21 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `TextFieldSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextFieldSticker_Light.png" width="150" /> |
 | `TextMaxLinesTruncated` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextMaxLinesTruncated_Dark.png" width="150" /> |
 | `TextMaxLinesTruncated` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextMaxLinesTruncated_Light.png" width="150" /> |
+| `TextMonospaceSpecimen` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextMonospaceSpecimen_Dark.png" width="150" /> |
+| `TextMonospaceSpecimen` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextMonospaceSpecimen_Light.png" width="150" /> |
+| `TextSerifSpecimen` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextSerifSpecimen_Dark.png" width="150" /> |
+| `TextSerifSpecimen` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextSerifSpecimen_Light.png" width="150" /> |
+
+## samples:design-catalog-remote-m3
+
+| Preview | Image |
+|---------|-------|
+| `BorderedRemoteButton` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/BorderedRemoteButton.png" width="150" /> |
+| `CustomShapeRemoteButton` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/CustomShapeRemoteButton.png" width="150" /> |
+| `FilledRemoteButton` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/FilledRemoteButton.png" width="150" /> |
+| `NamedLabelRemoteButton` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/NamedLabelRemoteButton.png" width="150" /> |
+| `RemoteTextSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/RemoteTextSticker.png" width="150" /> |
+| `ShaderGradientSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/ShaderGradientSticker.png" width="150" /> |
 
 ## samples:design-catalog-wear-m3
 

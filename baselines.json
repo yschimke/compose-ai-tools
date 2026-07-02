@@ -202,6 +202,27 @@
     "sha256": "a90781a82be57f76cde772aeef416dd0b7ac8c87d5ebb451df437b8347cb7c28",
     "sourceFile": "src/main/kotlin/com/example/sampleandroidscreenshot/MainPreviews.kt"
   },
+  "samples:android/colorcatalog__Brand": {
+    "captureLabel": "",
+    "functionName": "Brand colours",
+    "renderBasename": "colorcatalog__Brand.png",
+    "sha256": "cfce6bed66cffd09e0072a4cc4bd09a16f09651248baab7ff17b155c92f2eac7",
+    "sourceFile": null
+  },
+  "samples:android/colorcatalog__Semantic": {
+    "captureLabel": "",
+    "functionName": "Semantic colours",
+    "renderBasename": "colorcatalog__Semantic.png",
+    "sha256": "add332b0ffff3b4b93a7344bfac0ccdcd403dc125d3d3610eb5b5869f6f1d02b",
+    "sourceFile": null
+  },
+  "samples:android/colorcatalog__all": {
+    "captureLabel": "",
+    "functionName": "All colours",
+    "renderBasename": "colorcatalog__all.png",
+    "sha256": "77f5e1ad53ffdc4e98271ae5e837b583d77d856c5ae5c8090d945e2507e01060",
+    "sourceFile": null
+  },
   "samples:android/com.example.sampleandroid.AnimatedPreviewsKt.FadeInBoxAnimatedPreview": {
     "captureLabel": "",
     "functionName": "FadeInBoxAnimatedPreview",
@@ -334,6 +355,27 @@
     "renderBasename": "RemoteViewsWeatherWidgetPreview_RemoteViews_widget_4_2.png",
     "sha256": "74d4a94d38d45d547ce2b3f403d24ebd6798589e3e16d36cfc9b6bb60b76aa4a",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.ColorGalleryKt.ColorSchemeSpecimenDarkPreview_ColorScheme specimen \u2014 dark": {
+    "captureLabel": "",
+    "functionName": "ColorSchemeSpecimenDarkPreview",
+    "renderBasename": "ColorSchemeSpecimenDarkPreview_ColorScheme_specimen_dark.png",
+    "sha256": "fa23f7ee89c61edeee4dc04200f5216b7e1e7dbd069fbdc0a4951ac8bb03fa6d",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/ColorGallery.kt"
+  },
+  "samples:android/com.example.sampleandroid.ColorGalleryKt.ColorSchemeSpecimenLightPreview_ColorScheme specimen \u2014 light": {
+    "captureLabel": "",
+    "functionName": "ColorSchemeSpecimenLightPreview",
+    "renderBasename": "ColorSchemeSpecimenLightPreview_ColorScheme_specimen_light.png",
+    "sha256": "8f758eb5808e4cd8e563ae945ba3bdc292764645a7af22e0d61ec6e0ff783ccb",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/ColorGallery.kt"
+  },
+  "samples:android/com.example.sampleandroid.ColorGalleryKt.NamedColorPaletteSpecimenPreview_Named colour palette specimen": {
+    "captureLabel": "",
+    "functionName": "NamedColorPaletteSpecimenPreview",
+    "renderBasename": "NamedColorPaletteSpecimenPreview_Named_colour_palette_specimen.png",
+    "sha256": "f53c4be2e7d155fe5c36967b7badcccc3ab751e25f61b7e0338cf886d0a152c9",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/ColorGallery.kt"
   },
   "samples:android/com.example.sampleandroid.KeyboardDemoPreviewKt.KeyboardDemoPreview_Keyboard Demo": {
     "captureLabel": "",
@@ -1000,6 +1042,41 @@
     "sha256": "d2c90315835a6f85fb3dd3ae57a3c0c71e01321d22cecdb42b475f96131b45ff",
     "sourceFile": null
   },
+  "samples:android/themecatalog__Brand_Dark": {
+    "captureLabel": "",
+    "functionName": "Brand Dark theme",
+    "renderBasename": "themecatalog__Brand_Dark.png",
+    "sha256": "f287b8bea71ce9f2cd6ab50579f18f1fb499d88f42e317e2e6ab153daaed3e45",
+    "sourceFile": null
+  },
+  "samples:android/themecatalog__Brand_Light": {
+    "captureLabel": "",
+    "functionName": "Brand Light theme",
+    "renderBasename": "themecatalog__Brand_Light.png",
+    "sha256": "2b933bb57393f9b7992f0fd41cbacf8cc8e70c1a38630a2f889a8389ded639bd",
+    "sourceFile": null
+  },
+  "samples:android/typographycatalog__Body": {
+    "captureLabel": "",
+    "functionName": "Body type styles",
+    "renderBasename": "typographycatalog__Body.png",
+    "sha256": "4235e807ab309c77c5b9b06d40537256d44f80696b17a932d9e2c7ecbda45167",
+    "sourceFile": null
+  },
+  "samples:android/typographycatalog__Display": {
+    "captureLabel": "",
+    "functionName": "Display type styles",
+    "renderBasename": "typographycatalog__Display.png",
+    "sha256": "148515c173942cc8e530973122f7ab990407fe72a385d4d48ed27c050e66829a",
+    "sourceFile": null
+  },
+  "samples:android/typographycatalog__all": {
+    "captureLabel": "",
+    "functionName": "All type styles",
+    "renderBasename": "typographycatalog__all.png",
+    "sha256": "f51e017ff9e22959b0f1ca57bb23c070597e4e9de1849b63e7af77f153bbc6f1",
+    "sourceFile": null
+  },
   "samples:cmp-shared/com.example.cmpshared.SharedPreviewsKt.SharedBlueBoxPreview_Blue": {
     "captureLabel": "",
     "functionName": "SharedBlueBoxPreview",
@@ -1664,6 +1741,76 @@
     "renderBasename": "TextMaxLinesTruncated_Light.png",
     "sha256": "196e3b787a0def87a13f9bea9d2d26d0caa2cbb427a06fd590219ef5b16d4978",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.TextMonospaceSpecimen_Dark": {
+    "captureLabel": "",
+    "functionName": "TextMonospaceSpecimen",
+    "renderBasename": "TextMonospaceSpecimen_Dark.png",
+    "sha256": "2a8dddf997a8052b5257367d1389e8733ac7a03fab4d891e698199db09d49a89",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.TextMonospaceSpecimen_Light": {
+    "captureLabel": "",
+    "functionName": "TextMonospaceSpecimen",
+    "renderBasename": "TextMonospaceSpecimen_Light.png",
+    "sha256": "ff6d3a5cc0c88e8c60ab32e572e2348404fcf91da0511c119b69de0a1a8956cb",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.TextSerifSpecimen_Dark": {
+    "captureLabel": "",
+    "functionName": "TextSerifSpecimen",
+    "renderBasename": "TextSerifSpecimen_Dark.png",
+    "sha256": "f0ab4eee306198bc8a5fc5b261ba0ddf25f6eea709d736d250e1d6208d7d85f9",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.TextSerifSpecimen_Light": {
+    "captureLabel": "",
+    "functionName": "TextSerifSpecimen",
+    "renderBasename": "TextSerifSpecimen_Light.png",
+    "sha256": "e4e745ed88744dbc2d2043a0afa2d9b1107938a49546986d0ad506512de1a650",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.BorderedRemoteButton": {
+    "captureLabel": "",
+    "functionName": "BorderedRemoteButton",
+    "renderBasename": "BorderedRemoteButton.png",
+    "sha256": "05ca78c9a948b395eaec4d713f11c55e8fc631b2e921a7737ce5f3edd395e30e",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.CustomShapeRemoteButton": {
+    "captureLabel": "",
+    "functionName": "CustomShapeRemoteButton",
+    "renderBasename": "CustomShapeRemoteButton.png",
+    "sha256": "5e60f8a1f84b2815f4c352a60294384158046b8c1df9583b95f5e8f379ff586a",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.FilledRemoteButton": {
+    "captureLabel": "",
+    "functionName": "FilledRemoteButton",
+    "renderBasename": "FilledRemoteButton.png",
+    "sha256": "c85ebde1a1469d24283861fa9478fa903597766c7e4ae9f2aa46d3b26c73af08",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.NamedLabelRemoteButton": {
+    "captureLabel": "",
+    "functionName": "NamedLabelRemoteButton",
+    "renderBasename": "NamedLabelRemoteButton.png",
+    "sha256": "cc9b35225e66d6e6b73d41235c60ad4e79294bfa59ce0744023e261caa0b9995",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.RemoteTextSticker": {
+    "captureLabel": "",
+    "functionName": "RemoteTextSticker",
+    "renderBasename": "RemoteTextSticker.png",
+    "sha256": "5554c2fab4f1c30441cc39c7f043953c76ada28a5380ad832bcea67c3dda938f",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.ShaderGradientSticker": {
+    "captureLabel": "",
+    "functionName": "ShaderGradientSticker",
+    "renderBasename": "ShaderGradientSticker.png",
+    "sha256": "fc0ba94173d63faadf5a83c702072ddaee1bdf1a4c893ae3a69c40161363ed0c",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.BlankListLayout_Extra Large Round": {
     "captureLabel": "scroll end",
