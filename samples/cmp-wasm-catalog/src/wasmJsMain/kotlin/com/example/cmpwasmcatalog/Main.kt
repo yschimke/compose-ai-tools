@@ -15,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.platform.Font
 import androidx.compose.ui.window.ComposeViewport
@@ -55,15 +56,15 @@ fun main() {
   baseParams = parseQuery(locationSearch())
   renderParams.value = baseParams + parseQuery(locationHash())
   ComposeViewport(viewportContainerId = "composeApp") {
-    // Text parity with the baked snapshot needs the same typeface the Android renderer
-    // rasterizes:
-    // fetch Roboto by URL (self-hosted beside the app, `?fontsBase=` overridable) and hold the
-    // catalog composition — and therefore the first-frame signal the embedding viewer swaps on —
-    // until the fonts resolve, so the first revealed frame is already Roboto-shaped. A fetch
-    // failure or the timeout degrades to the CMP bundled font instead of blocking the reveal.
+    // Text parity with the baked snapshot needs the same typefaces the Android renderer
+    // rasterizes: load the fonts the `fonts.json` manifest declares (self-hosted beside the app,
+    // `?fontsBase=` overridable) and hold the catalog composition — and therefore the first-frame
+    // signal the embedding viewer swaps on — until they resolve, so the first revealed frame is
+    // already shaped by the right fonts. A fetch failure or the timeout degrades to the CMP
+    // bundled font instead of blocking the reveal.
     var fonts by remember { mutableStateOf<FontsState>(FontsState.Loading) }
     LaunchedEffect(Unit) {
-      fonts = FontsState.Ready(withTimeoutOrNull(FONT_LOAD_TIMEOUT_MS) { loadRobotoFamily() })
+      fonts = FontsState.Ready(withTimeoutOrNull(FONT_LOAD_TIMEOUT_MS) { loadCatalogFonts() })
     }
     val loaded = fonts as? FontsState.Ready ?: return@ComposeViewport
     val params by renderParams
@@ -101,32 +102,118 @@ private sealed interface FontsState {
 }
 
 /**
- * Fetch Roboto (Regular 400 + Medium 500 — the two weights M3's type scale uses) **by URL** and
- * build a [FontFamily] from the raw bytes. The default base is `./fonts/` — vendored beside the app
- * (self-hosted, Apache 2.0), so the bundle stays offline-clean behind an egress proxy — and an
- * operator can point `?fontsBase=` at any http(s) origin that serves the same filenames with CORS
- * (the sandboxed iframe has an opaque origin, so cross-origin fonts need `ACAO`). Null on any
- * failure ⇒ the caller falls back to the CMP bundled font.
+ * Load the catalog's fonts **by URL**, driven by the `fonts.json` manifest served beside them: for
+ * each `role: "default"` family entry, fetch its files and build one [FontFamily] used for the
+ * whole M3 type scale. The default base is `./fonts/` — vendored beside the app (self-hosted,
+ * Apache 2.0), so the bundle stays offline-clean behind an egress proxy — and an operator can point
+ * `?fontsBase=` at any http(s) origin that serves the same layout with CORS (the sandboxed iframe
+ * has an opaque origin, so cross-origin fonts need `ACAO`). A base without a manifest falls back to
+ * the fixed Roboto pair (the pre-manifest `?fontsBase=` contract); null on any failure ⇒ the caller
+ * falls back to the CMP bundled font.
+ *
+ * The host `index.html` starts these same fetches at document load (`__cpPrefetch*`), in parallel
+ * with the Wasm boot, and the fetch bridge below consumes those in-flight promises — so by the time
+ * this runs the bytes are usually already here. (It must be the *iframe's own* prefetch: the
+ * sandbox's opaque origin gets its own HTTP-cache partition, so the embedding viewer page can't
+ * warm anything for it.)
  */
-private suspend fun loadRobotoFamily(): FontFamily? {
+private suspend fun loadCatalogFonts(): FontFamily? {
   val raw = baseParams["fontsBase"] ?: "./fonts/"
   // A fetch URL, not code — but still refuse non-http(s) absolute schemes (javascript:, data:).
   val base =
     (if (raw.endsWith("/")) raw else "$raw/").takeIf {
       !it.contains(":") || it.startsWith("http:") || it.startsWith("https:")
     } ?: "./fonts/"
+  val entries =
+    runCatching { parseFontsManifest(fetchText(base + "fonts.json")) }
+      .getOrDefault(emptyList())
+      .filter { it.role == "default" }
   return try {
-    val regular = fetchBytes(base + "Roboto-Regular.ttf")
-    val medium = fetchBytes(base + "Roboto-Medium.ttf")
-    FontFamily(
-      Font(identity = "Roboto-Regular", data = regular, weight = FontWeight.Normal),
-      Font(identity = "Roboto-Medium", data = medium, weight = FontWeight.Medium),
-    )
+    if (entries.isEmpty()) {
+      // Legacy layout: a fontsBase serving bare TTFs without a manifest (the #2174 contract).
+      FontFamily(
+        Font(identity = "Roboto-Regular", data = fetchBytes(base + "Roboto-Regular.ttf")),
+        Font(
+          identity = "Roboto-Medium",
+          data = fetchBytes(base + "Roboto-Medium.ttf"),
+          weight = FontWeight.Medium,
+        ),
+      )
+    } else {
+      FontFamily(
+        entries.map { e ->
+          Font(
+            identity = e.file,
+            data = fetchBytes(base + e.file),
+            weight = FontWeight(e.weight),
+            style = if (e.italic) FontStyle.Italic else FontStyle.Normal,
+          )
+        }
+      )
+    }
   } catch (e: Throwable) {
     consoleWarn("compose-ai wasm catalog: font load failed (${e.message}); using bundled font")
     null
   }
 }
+
+/** One font file declared by `fonts.json`, flattened out of its family entry. */
+internal data class ManifestFont(
+  val role: String,
+  val family: String,
+  val file: String,
+  val weight: Int,
+  val italic: Boolean,
+)
+
+/**
+ * Parse `fonts.json` (`{families: [{name, role, fonts: [{file, weight, style}]}]}`). JSON parsing
+ * happens on the JS side ([flattenFontsManifest] — no serialization dependency for one small
+ * manifest); this validates each flattened row. Rows with a missing/unsafe `file` (path traversal,
+ * absolute scheme) are dropped; unknown roles are kept for the caller to filter, so future roles
+ * (generic-family mappings, named families) stay additive.
+ */
+internal fun parseFontsManifest(json: String?): List<ManifestFont> {
+  val flat = json?.let { flattenFontsManifest(it) }?.toString() ?: return emptyList()
+  if (flat.isEmpty()) return emptyList()
+  return flat.split(ROW_SEP).mapNotNull { row ->
+    val f = row.split(FIELD_SEP)
+    if (f.size != 5) return@mapNotNull null
+    val file =
+      f[2].takeIf { it.isNotEmpty() && ".." !in it.split("/") && !it.contains(":") }
+        ?: return@mapNotNull null
+    ManifestFont(
+      role = f[0],
+      family = f[1],
+      file = file,
+      weight = f[3].toIntOrNull()?.coerceIn(1, 1000) ?: 400,
+      italic = f[4] == "italic",
+    )
+  }
+}
+
+private const val FIELD_SEP = "\u0000"
+private const val ROW_SEP = "\u0001"
+
+/**
+ * `JSON.parse` the manifest and flatten it to `role␀name␀file␀weight␀style` rows (␁-joined) — the
+ * shape that crosses the Wasm↔JS boundary as one string. Null/empty on malformed JSON.
+ */
+private fun flattenFontsManifest(json: String): JsString? =
+  js(
+    """(function () {
+      try {
+        var m = JSON.parse(json), out = [];
+        (m.families || []).forEach(function (fam) {
+          (fam.fonts || []).forEach(function (f) {
+            out.push([fam.role || 'default', fam.name || '', String(f.file || ''),
+              String(f.weight || 400), String(f.style || 'normal')].join('\u0000'));
+          });
+        });
+        return out.join('\u0001');
+      } catch (e) { return null; }
+    })()"""
+  )
 
 /**
  * `fetch(url)` → base64 of the response body. Base64 is the bridge shape because Kotlin/Wasm can't
@@ -135,8 +222,9 @@ private suspend fun loadRobotoFamily(): FontFamily? {
  */
 private fun fetchAsBase64(url: String, timeoutMs: Int): Promise<JsString> =
   js(
-    """fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
-      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+    """((window.__cpPrefetchBuf && window.__cpPrefetchBuf[url]) ||
+      fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
+        .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); }))
       .then(function (buf) {
         var bytes = new Uint8Array(buf), chunks = [], CHUNK = 0x8000;
         for (var i = 0; i < bytes.length; i += CHUNK)
@@ -155,6 +243,27 @@ private suspend fun fetchBytes(url: String): ByteArray = suspendCancellableCorou
   fetchAsBase64(url, timeoutMs = (FONT_LOAD_TIMEOUT_MS + 2_000L).toInt())
     .then { s ->
       if (cont.isActive) cont.resume(Base64.decode(s.toString()))
+      null
+    }
+    .catch { e ->
+      if (cont.isActive)
+        cont.resumeWithException(IllegalStateException(e?.toString() ?: "fetch failed"))
+      null
+    }
+}
+
+private fun fetchAsText(url: String, timeoutMs: Int): Promise<JsString> =
+  js(
+    """((window.__cpPrefetchText && window.__cpPrefetchText[url]) ||
+      fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
+        .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); }))"""
+  )
+
+/** `fetch(url)` → response text; cancellable like [fetchBytes] so timeouts genuinely unblock. */
+private suspend fun fetchText(url: String): String = suspendCancellableCoroutine { cont ->
+  fetchAsText(url, timeoutMs = (FONT_LOAD_TIMEOUT_MS + 2_000L).toInt())
+    .then { s ->
+      if (cont.isActive) cont.resume(s.toString())
       null
     }
     .catch { e ->

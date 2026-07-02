@@ -32,6 +32,47 @@
   <body>
     <!-- ComposeViewport mounts the catalog component named by ?id=… here. -->
     <div id="composeApp"></div>
+    <!--
+      Font prefetch, started at document load so it runs IN PARALLEL with the multi-second Wasm
+      boot: fetch fonts.json and every file it lists, stashing the in-flight promises where the
+      app's fetch bridge picks them up (Main.kt consults __cpPrefetchText/__cpPrefetchBuf before
+      issuing its own fetch). This must live in the iframe, not the embedding viewer page — the
+      sandbox gives this document an opaque origin with its own HTTP-cache partition, so nothing
+      the parent page fetches is reusable here. A rejected prefetch deletes its entry so the app
+      retries fresh; any error just means the app fetches cold, exactly as before.
+    -->
+    <script>
+      window.__cpPrefetchText = {};
+      window.__cpPrefetchBuf = {};
+      (function () {
+        try {
+          var base = new URLSearchParams(location.search).get("fontsBase") || "./fonts/";
+          if (base.indexOf(":") !== -1 && !/^https?:/.test(base)) return;
+          if (base.charAt(base.length - 1) !== "/") base += "/";
+          function stash(map, url, promise) {
+            map[url] = promise;
+            promise.catch(function () { delete map[url]; });
+          }
+          var manifest = fetch(base + "fonts.json").then(function (r) {
+            if (!r.ok) throw new Error("HTTP " + r.status);
+            return r.text();
+          });
+          stash(window.__cpPrefetchText, base + "fonts.json", manifest);
+          manifest.then(function (t) {
+            (JSON.parse(t).families || []).forEach(function (fam) {
+              (fam.fonts || []).forEach(function (f) {
+                var file = String(f.file || "");
+                if (!file || file.indexOf("..") !== -1 || file.indexOf(":") !== -1) return;
+                stash(window.__cpPrefetchBuf, base + file, fetch(base + file).then(function (r) {
+                  if (!r.ok) throw new Error("HTTP " + r.status);
+                  return r.arrayBuffer();
+                }));
+              });
+            });
+          }).catch(function () {});
+        } catch (e) {}
+      })();
+    </script>
     <script type="module" src="composeApp.mjs"></script>
     <!--
       Live overrides without an iframe reload: the embedding `serve` viewer posts a `?a=b` override

@@ -259,6 +259,13 @@ class ServeWebFixtureTest {
       "iframe is positioned over the snapshot's rendered box",
     )
     assertTrue(withWasm.contains("loading Wasm…"), "load state keeps the snapshot with a status")
+    // Guard against re-adding a page-side font preload: the sandboxed iframe's opaque origin gets
+    // its own HTTP-cache partition, so nothing this page fetches is reusable inside it. The real
+    // prefetch lives in the app's index.html (parallel with the Wasm boot).
+    assertFalse(
+      withWasm.contains("preloadWasmFonts"),
+      "no page-side font preload (cache-partitioned away from the sandboxed iframe)",
+    )
     // The in-browser tier can drop the sticker background (component only on the checkerboard).
     assertTrue(
       withWasm.contains("id=\"cp-wasm-bg\"") && withWasm.contains("Component only (no background)"),
