@@ -101,6 +101,34 @@ class MissingRendersPolicyTest {
   }
 
   @Test
+  fun `previewsMissingPng skips optional captures whose PNG is expected to be absent`() {
+    // A desktop `@ColorCatalog` sheet is discovered with a single `optional` capture (the desktop
+    // backend can't draw them yet — #2135); its missing PNG is by design, not a render failure.
+    val results =
+      listOf(
+        result(
+          "p.CatalogSheet",
+          kind = "CATALOG",
+          captures = listOf(CaptureResult(pngPath = null, optional = true)),
+        )
+      )
+    assertTrue(previewsMissingPng(results).isEmpty())
+  }
+
+  @Test
+  fun `previewsMissingPng still flags a required null capture next to an optional one`() {
+    val results =
+      listOf(
+        result(
+          "p.Mixed",
+          captures =
+            listOf(CaptureResult(pngPath = null, optional = true), CaptureResult(pngPath = null)),
+        )
+      )
+    assertEquals(listOf("p.Mixed"), previewsMissingPng(results).map { it.id })
+  }
+
+  @Test
   fun `previewsMissingPng catches a partially-rendered fan-out`() {
     val results =
       listOf(

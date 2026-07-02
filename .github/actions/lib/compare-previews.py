@@ -180,12 +180,17 @@ def _collect_failures(rows: dict) -> list[tuple[str, dict]]:
     state. Sorted by key so the markdown output is deterministic.
 
     Previews whose kind never emits a PNG (see [NON_PNG_PREVIEW_KINDS]) are
-    excluded — their empty `sha256` is expected, not a render failure.
+    excluded — their empty `sha256` is expected, not a render failure. So are
+    `optional` captures (the CLI envelope's mirror of the manifest
+    `Capture.optional` flag): best-effort artefacts like a `@ColorCatalog`
+    sheet on the desktop backend, whose missing PNG is by design.
     """
     return [
         (key, info)
         for key, info in sorted(rows.items())
-        if not info.get("sha256") and info.get("kind") not in NON_PNG_PREVIEW_KINDS
+        if not info.get("sha256")
+        and info.get("kind") not in NON_PNG_PREVIEW_KINDS
+        and not info.get("optional")
     ]
 
 
@@ -373,6 +378,9 @@ def load_cli_output(cli_json_path: Path) -> dict[str, dict]:
                 "captureIndex": idx,
                 "captureLabel": _capture_label(capture),
                 "renderBasename": _render_basename(png, preview_id),
+                # Best-effort capture — a missing PNG is expected, not a
+                # render failure (see _collect_failures).
+                "optional": bool(capture.get("optional")),
             }
     return result
 

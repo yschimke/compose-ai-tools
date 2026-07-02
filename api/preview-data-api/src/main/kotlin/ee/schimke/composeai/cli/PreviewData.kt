@@ -138,6 +138,13 @@ data class CaptureResult(
   val pngPath: String? = null,
   val sha256: String? = null,
   val changed: Boolean? = null,
+  /**
+   * Mirror of the manifest [Capture.optional] flag: `true` → best-effort capture whose missing PNG
+   * is expected (e.g. a `@ColorCatalog` sheet on the desktop backend, which can't draw them yet
+   * — #2135). Carried into the CLI envelope so `--missing-renders` gating and the CI diff bot treat
+   * the skip as expected instead of reporting a render failure.
+   */
+  val optional: Boolean = false,
 )
 
 /**

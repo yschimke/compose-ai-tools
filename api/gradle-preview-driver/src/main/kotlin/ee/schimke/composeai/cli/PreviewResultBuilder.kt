@@ -109,6 +109,7 @@ object PreviewResultBuilder {
             pngPath = pngFile?.absolutePath,
             sha256 = sha,
             changed = null,
+            optional = capture.optional,
           )
         }
         val first = captureResults.firstOrNull()
