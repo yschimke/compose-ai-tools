@@ -212,6 +212,11 @@ object PreviewDiscovery {
   // backing field. Same BINARY / `@Target(FIELD)` FQN-match policy. See `TypographyCatalog.kt`.
   internal const val TYPOGRAPHY_CATALOG_FQN = "ee.schimke.composeai.preview.TypographyCatalog"
 
+  // `@ThemeCatalog` — the theme-scoped sibling. Placed on a `PreviewWrapperProvider` CLASS (BINARY
+  // retention, `@Target(CLASS)`), so it's an FQN match on the class annotation rather than a field.
+  // See `ThemeCatalog.kt`.
+  internal const val THEME_CATALOG_FQN = "ee.schimke.composeai.preview.ThemeCatalog"
+
   // failOnEmpty diagnostics: cap the JAR + annotation FQN sample sizes
   // so the lifecycle log stays readable on projects with huge classpaths.
   private const val DIAG_JAR_SAMPLE = 15
@@ -305,6 +310,8 @@ object PreviewDiscovery {
     // synthetic [PreviewKind.CATALOG] sheets after the class walk.
     val rawColorCatalogTokens = mutableListOf<RawCatalogToken>()
     val rawTypographyCatalogTokens = mutableListOf<RawCatalogToken>()
+    // `@ThemeCatalog`-annotated `PreviewWrapperProvider` classes → one theme catalog sheet each.
+    val rawThemeCatalogs = mutableListOf<RawThemeCatalog>()
 
     if (classpath.isNotEmpty()) {
       ClassGraph()
@@ -380,6 +387,16 @@ object PreviewDiscovery {
                 rawTypographyCatalogTokens += rawCatalogToken(classInfo, field, ann)
               }
             }
+            // `@ThemeCatalog` on a `PreviewWrapperProvider` class → a theme catalog sheet. The
+            // provider FQN is all discovery records; the renderer resolves + invokes its `Wrap`.
+            classInfo.getAnnotationInfo(THEME_CATALOG_FQN)?.let { ann ->
+              rawThemeCatalogs +=
+                RawThemeCatalog(
+                  className = classInfo.name,
+                  name = annStringOrDefault(ann, "name", classInfo.simpleName),
+                  group = annStringOrDefault(ann, "group", defaultCatalogGroup(classInfo.name)),
+                )
+            }
           }
         }
     }
@@ -414,7 +431,8 @@ object PreviewDiscovery {
           CatalogTokenKind.TEXT_STYLE,
           idPrefix = "typographycatalog",
           noun = "type styles",
-        )
+        ) +
+        buildThemeCatalogPreviews(rawThemeCatalogs, input.catalogRenderSupported)
 
     // The generic per-extension reports map is empty on the standalone Gradle path — a11y
     // (today's only canned-report producer) writes its artefacts exclusively through the
@@ -606,6 +624,13 @@ object PreviewDiscovery {
     val group: String,
   )
 
+  /** Raw `@ThemeCatalog` hit: the annotated `PreviewWrapperProvider` class + its display metadata. */
+  private data class RawThemeCatalog(
+    val className: String,
+    val name: String,
+    val group: String,
+  )
+
   /** Builds a [RawCatalogToken] from an annotated field, applying Showkase-style name/group defaults. */
   private fun rawCatalogToken(
     classInfo: ClassInfo,
@@ -717,6 +742,34 @@ object PreviewDiscovery {
       // consumers.
       captures = listOf(Capture(renderOutput = "renders/$id.png", optional = !renderSupported)),
     )
+
+  /**
+   * Aggregates the collected `@ThemeCatalog` providers into synthetic [PreviewKind.THEME_CATALOG]
+   * sheets — one per provider, keyed `themecatalog__<name>`. The provider FQN travels on
+   * [PreviewParams.wrapperClassName]; the renderer resolves it and composes its `Wrap(content)`
+   * around a canned specimen. `optional` exactly when the backend can't render (desktop), like the
+   * token catalogs.
+   */
+  private fun buildThemeCatalogPreviews(
+    themes: List<RawThemeCatalog>,
+    renderSupported: Boolean,
+  ): List<PreviewInfo> =
+    themes.map { theme ->
+      val id = "themecatalog__${theme.name.replace(SANITIZE_RENDER_STEM, "_")}"
+      PreviewInfo(
+        id = id,
+        functionName = "${theme.name} theme",
+        className = theme.className,
+        params =
+          PreviewParams(
+            name = "${theme.name} theme",
+            kind = PreviewKind.THEME_CATALOG,
+            wrapperClassName = theme.className,
+          ),
+        captures =
+          listOf(Capture(renderOutput = "renders/$id.png", optional = !renderSupported)),
+      )
+    }
 
   /**
    * Parse [file] as a Lottie document, returning its declared canvas dimensions when it carries the
