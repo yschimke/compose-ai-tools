@@ -8,7 +8,7 @@
     "node": ">=22"
   },
   "dependencies": {
-    "@design-parity/candidate": "^0.1.21",
+    "@design-parity/candidate": "^0.1.24",
     "@design-parity/catalog-export": "^0.1.20"
   }
 }

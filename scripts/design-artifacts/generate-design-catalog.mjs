@@ -35,7 +35,11 @@ import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, resolve, join, relative } from "node:path";
 import { parseArgs } from "node:util";
 
-import { readPreviewBundle, bundleToCandidates } from "@design-parity/candidate";
+import {
+  readPreviewBundle,
+  bundleToCandidates,
+  catalogTokensFromBundle,
+} from "@design-parity/candidate";
 import { buildCatalog, writeCatalog } from "@design-parity/catalog-export";
 
 import { renderIndexHtml } from "./render-index-html.mjs";
@@ -267,8 +271,20 @@ const spec = JSON.parse(await readFile(specPath, "utf8"));
 // also works around the published null-widthDp crash) and the vendored join.
 const { candidates, bundle } = await loadCandidates(rendersPath);
 
+// System tokens declared via `@ColorCatalog` / `@TypographyCatalog` — carried in the
+// bundle as `previews/<id>.catalog.json` sidecars (compose-ai-tools#2167), which the
+// screen-render `compose/theme` never sees (an ad-hoc palette / type scale has no
+// MaterialTheme). Feed them as the catalog's `themeTokens` so they land in the exported
+// DTCG token set + sticker kit. `undefined` for a bundle with no catalog sheets (today's
+// `@CatalogModes` design-catalog modules), so `buildCatalog` keeps lifting theme tokens
+// from component semantics — behaviour is unchanged until a module adds the annotations.
+// (Merging both a MaterialTheme table AND catalog tokens is a future refinement — no
+// current module carries both.)
+const catalogTokens = catalogTokensFromBundle(bundle);
+
 const { catalog, missing, withoutSemantics } = catalogFromCandidates(candidates, spec, {
   ...(values.renderer ? { renderer: values.renderer } : {}),
+  ...(catalogTokens ? { themeTokens: catalogTokens } : {}),
 });
 
 // Completeness gate: `bundle pack --with-semantics` is best-effort and exits 0
