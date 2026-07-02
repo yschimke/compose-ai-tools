@@ -35,7 +35,11 @@ import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, resolve, join, relative } from "node:path";
 import { parseArgs } from "node:util";
 
-import { readPreviewBundle, bundleToCandidates } from "@design-parity/candidate";
+import {
+  readPreviewBundle,
+  bundleToCandidates,
+  catalogTokensFromBundle,
+} from "@design-parity/candidate";
 import { buildCatalog, writeCatalog } from "@design-parity/catalog-export";
 
 import { renderIndexHtml } from "./render-index-html.mjs";
@@ -167,6 +171,25 @@ function mergeByFunction(a, b) {
 }
 
 /**
+ * Deep-merge two token sets, layering `extra` over `base` per category (spacing /
+ * colors / radius / typography). Folds `@ColorCatalog`/`@TypographyCatalog` tokens
+ * on top of the MaterialTheme table lifted from component semantics, so a bundle
+ * carrying both keeps every token instead of one replacing the other. Returns the
+ * single defined side when only one exists, or `undefined` when neither does.
+ */
+function mergeDesignTokens(base, extra) {
+  if (!base) return extra;
+  if (!extra) return base;
+  const out = { ...base };
+  for (const cat of ["spacing", "colors", "radius", "typography"]) {
+    if (base[cat] || extra[cat]) {
+      out[cat] = { ...(base[cat] ?? {}), ...(extra[cat] ?? {}) };
+    }
+  }
+  return out;
+}
+
+/**
  * Join rendered candidates to a catalog spec. Each spec component is matched to
  * the candidate whose preview function name equals its `preview`; a function's
  * theme/size variants are folded into one component, missing previews are
@@ -267,8 +290,30 @@ const spec = JSON.parse(await readFile(specPath, "utf8"));
 // also works around the published null-widthDp crash) and the vendored join.
 const { candidates, bundle } = await loadCandidates(rendersPath);
 
+// System tokens declared via `@ColorCatalog` / `@TypographyCatalog` — carried in the
+// bundle as `previews/<id>.catalog.json` sidecars (compose-ai-tools#2167), which the
+// screen-render `compose/theme` never sees (an ad-hoc palette / type scale has no
+// MaterialTheme). Fold them into the catalog's exported `themeTokens` so they land in
+// the DTCG token set + sticker kit.
+//
+// When a bundle carries BOTH — a MaterialTheme system (whose tokens `buildCatalog` lifts
+// from component `semantics.themeTokens`) AND catalog sidecars — the two are MERGED, not
+// replaced: lift the semantic table here (the same first-component-with-themeTokens rule
+// `buildCatalog` uses) and layer the catalog tokens on top, so adding a catalog sheet to
+// an M3/Wear module augments its token set instead of dropping the MaterialTheme one.
+// When there are no catalog tokens we pass nothing, so `buildCatalog` lifts exactly as
+// before — zero behaviour change for today's `@CatalogModes` design-catalog modules.
+const catalogTokens = catalogTokensFromBundle(bundle);
+const themeTokens = catalogTokens
+  ? mergeDesignTokens(
+      candidates.find((c) => c.semantics?.themeTokens)?.semantics?.themeTokens,
+      catalogTokens,
+    )
+  : undefined;
+
 const { catalog, missing, withoutSemantics } = catalogFromCandidates(candidates, spec, {
   ...(values.renderer ? { renderer: values.renderer } : {}),
+  ...(themeTokens ? { themeTokens } : {}),
 });
 
 // Completeness gate: `bundle pack --with-semantics` is best-effort and exits 0
