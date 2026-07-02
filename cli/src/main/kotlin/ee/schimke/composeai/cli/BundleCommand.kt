@@ -125,9 +125,11 @@ class BundleCommand(args: List<String>) : Command(args) {
                             the shape design-parity reads for contrast/a11y + token checks. Also
                             carries the layout-inspector tree (full LayoutNode walk with per-node
                             bounds + resolved design tokens) as previews/<id>.layout.json, for
-                            slot-level redlines/wireframes. Produced by a short-lived daemon render
-                            (no separate --with-extension pass needed). Off by default; ignored with
-                            --no-render.
+                            slot-level redlines/wireframes, and the fonts/used record (requested vs
+                            resolved font families) as previews/<id>.fonts.json, from which the
+                            design-catalog export generates the in-browser tier's fonts.json.
+                            Produced by a short-lived daemon render (no separate --with-extension
+                            pass needed). Off by default; ignored with --no-render.
 
       Inspect / extract / render flags:
         -o, --output <dir>  Directory to extract / render into. Default: alongside the bundle.
@@ -317,14 +319,26 @@ private class PackSubcommand(private val args: List<String>) {
         // that produced a tree gets `previews/<id>.layout.json` so a consumer can build slot-level
         // redlines/wireframes. Injected after semantics so its byte count is reflected too.
         val layoutWritten = injectLayoutIntoBundle(bundleFile, outcome.layoutById)
+        // The fonts/used record rides the same render (best-effort, Android daemon only): carried
+        // so the design-catalog export can generate the Wasm tier's fonts.json from actual usage.
+        val fontsWritten = injectFontsIntoBundle(bundleFile, outcome.fontsById)
         val semanticsLine =
           "  semantics:     $written / ${previewIds.size} preview(s) carried as " +
             "previews/<id>$BUNDLE_SEMANTICS_SUFFIX" +
             if (missing > 0) " ($missing without a captured tree)" else ""
-        return if (layoutWritten > 0)
-          "$semanticsLine\n  layout:        $layoutWritten / ${previewIds.size} preview(s) carried " +
-            "as previews/<id>$BUNDLE_LAYOUT_SUFFIX"
-        else semanticsLine
+        val extraLines = buildString {
+          if (layoutWritten > 0)
+            append(
+              "\n  layout:        $layoutWritten / ${previewIds.size} preview(s) carried " +
+                "as previews/<id>$BUNDLE_LAYOUT_SUFFIX"
+            )
+          if (fontsWritten > 0)
+            append(
+              "\n  fonts:         $fontsWritten / ${previewIds.size} preview(s) carried " +
+                "as previews/<id>$BUNDLE_FONTS_SUFFIX"
+            )
+        }
+        return semanticsLine + extraLines
       }
       is DaemonSemanticsFetcher.Outcome.DescriptorMissing ->
         System.err.println(
@@ -657,6 +671,16 @@ internal const val BUNDLE_SEMANTICS_SUFFIX: String = ".semantics.json"
 internal const val BUNDLE_LAYOUT_SUFFIX: String = ".layout.json"
 
 /**
+ * Suffix for the per-preview font-usage blob carried beside `previews/<id>.png`. The payload is the
+ * `fonts/used` [ee.schimke.composeai.data.fonts.FontsUsedPayload] — every font resolution the
+ * render made (requested vs resolved family, weight, style, fallback chain) — recorded by the
+ * daemon's always-on FontsRecorderExtension. Carried so the design-catalog export can generate the
+ * in-browser Wasm tier's `fonts.json` from what the previews actually resolved instead of a
+ * hand-authored manifest.
+ */
+internal const val BUNDLE_FONTS_SUFFIX: String = ".fonts.json"
+
+/**
  * Inject `previews/<id>.semantics.json` entries (id → `compose-semantics.json` bytes) into
  * [bundleFile]'s zip portion **in place**, preserving the leading PNG cover and every existing
  * entry. Re-injecting replaces any prior semantics entry for the same id, so a second
@@ -682,6 +706,19 @@ internal fun injectLayoutIntoBundle(
   layoutById: Map<String, ByteArray>,
   fileSystem: FileSystem = SystemFileSystem,
 ): Int = injectSidecarsIntoBundle(bundleFile, layoutById, BUNDLE_LAYOUT_SUFFIX, fileSystem)
+
+/**
+ * Inject `previews/<id>.fonts.json` entries (id → `fonts-used.json` bytes) into [bundleFile] — the
+ * per-preview `fonts/used` record the daemon bakes alongside the semantics blob. Carried so the
+ * design-catalog export can generate the in-browser tier's font manifest from recorded usage. Same
+ * in-place, idempotent, byte-stable contract as [injectSemanticsIntoBundle]. Returns the number of
+ * entries written.
+ */
+internal fun injectFontsIntoBundle(
+  bundleFile: File,
+  fontsById: Map<String, ByteArray>,
+  fileSystem: FileSystem = SystemFileSystem,
+): Int = injectSidecarsIntoBundle(bundleFile, fontsById, BUNDLE_FONTS_SUFFIX, fileSystem)
 
 /**
  * Inject `previews/<id><suffix>` entries (id → bytes) into [bundleFile]'s zip portion **in place**,

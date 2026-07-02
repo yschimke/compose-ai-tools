@@ -144,6 +144,38 @@ class BundleSemanticsInjectTest {
   }
 
   @Test
+  fun `injects fonts sidecars beside semantics without disturbing either`() {
+    val cover = png(4, 8)
+    val file =
+      polyglot(
+        cover,
+        linkedMapOf(
+          "bundle.json" to "{}".toByteArray(),
+          "previews/a.png" to cover,
+          "previews/a.semantics.json" to """{"root":{"nodeId":"1"}}""".toByteArray(),
+        ),
+      )
+
+    val written =
+      injectFontsIntoBundle(
+        file,
+        mapOf("a" to """{"fonts":[{"requestedFamily":"serif","weight":400}]}""".toByteArray()),
+      )
+
+    assertEquals(1, written)
+    val names = entries(BundleReader.extractZipBytes(file))
+    // Semantics blob untouched; the fonts/used record lands beside it under .fonts.json.
+    assertEquals(
+      """{"root":{"nodeId":"1"}}""",
+      names.getValue("previews/a.semantics.json").toString(Charsets.UTF_8),
+    )
+    assertEquals(
+      """{"fonts":[{"requestedFamily":"serif","weight":400}]}""",
+      names.getValue("previews/a.fonts.json").toString(Charsets.UTF_8),
+    )
+  }
+
+  @Test
   fun `re-injection replaces a stale semantics entry without duplicating it`() {
     val cover = png()
     val file =

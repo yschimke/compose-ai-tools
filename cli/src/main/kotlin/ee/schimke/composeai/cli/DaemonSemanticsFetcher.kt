@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.data.fonts.FontsUsedDataProducer
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorProduct
 import ee.schimke.composeai.io.SystemFileSystem
@@ -90,6 +91,7 @@ internal class DaemonSemanticsFetcher(
       for (previewId in previewIds) {
         sidecarFile(projectDir, previewId).delete()
         layoutSidecarFile(projectDir, previewId).delete()
+        fontsSidecarFile(projectDir, previewId).delete()
       }
 
       val pending = ConcurrentHashMap.newKeySet<String>().apply { addAll(previewIds) }
@@ -131,6 +133,7 @@ internal class DaemonSemanticsFetcher(
 
       val byId = LinkedHashMap<String, ByteArray>()
       val layoutById = LinkedHashMap<String, ByteArray>()
+      val fontsById = LinkedHashMap<String, ByteArray>()
       for (previewId in previewIds) {
         val file = sidecarFile(projectDir, previewId)
         if (file.isFile && file.length() > 0) {
@@ -146,8 +149,16 @@ internal class DaemonSemanticsFetcher(
         if (layout.isFile && layout.length() > 0) {
           layoutById[previewId] = fileSystem.read(layout.path.toPath()) { readByteArray() }
         }
+        // The `fonts/used` record (requested vs resolved family, weight, style per font
+        // resolution) is baked by the same always-on daemon render (FontsRecorderExtension); carry
+        // it so the design-catalog export can generate the in-browser tier's fonts.json from what
+        // the previews actually resolved. Best-effort — absent on backends without the recorder.
+        val fonts = fontsSidecarFile(projectDir, previewId)
+        if (fonts.isFile && fonts.length() > 0) {
+          fontsById[previewId] = fileSystem.read(fonts.path.toPath()) { readByteArray() }
+        }
       }
-      Outcome.Ok(semanticsById = byId, layoutById = layoutById)
+      Outcome.Ok(semanticsById = byId, layoutById = layoutById, fontsById = fontsById)
     }
   }
 
@@ -157,16 +168,22 @@ internal class DaemonSemanticsFetcher(
   private fun layoutSidecarFile(projectDir: File, previewId: String): File =
     File(projectDir, "build/compose-previews/data/$previewId/${LayoutInspectorProduct.FILE}")
 
+  private fun fontsSidecarFile(projectDir: File, previewId: String): File =
+    File(projectDir, "build/compose-previews/data/$previewId/${FontsUsedDataProducer.FILE}")
+
   sealed interface Outcome {
     /**
      * Session opened and renders attempted. [semanticsById] holds one entry per preview whose
      * `compose-semantics.json` materialised — possibly empty if every render failed. [layoutById]
      * holds the matching `layout-inspector.json` (the full LayoutNode tree) for each preview that
-     * produced one; a preview may have semantics but no layout tree, or vice versa.
+     * produced one; a preview may have semantics but no layout tree, or vice versa. [fontsById]
+     * holds the matching `fonts-used.json` (`fonts/used` — requested vs resolved font families) for
+     * each preview whose backend runs the fonts recorder.
      */
     data class Ok(
       val semanticsById: Map<String, ByteArray>,
       val layoutById: Map<String, ByteArray> = emptyMap(),
+      val fontsById: Map<String, ByteArray> = emptyMap(),
     ) : Outcome
 
     data class DescriptorMissing(val expected: File) : Outcome
