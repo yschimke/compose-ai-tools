@@ -7,11 +7,17 @@
    `?url=`) and get a shareable `?session=<name>` link. The server shows the bundle's **data tiers**
    (baked PNGs, Remote Compose / Protolayout / Lottie IR) for any uploader, and reports a **trust
    verdict** so you can tell a bundle from a producer you trust from an anonymous one.
-2. **The design systems we publish** — `--catalogs compose-m3,wear-m3` fetches each published
-   `design-artifacts/<system>` catalog and serves it read-only at its canonical path `/<system>/`
-   (the legacy `?session=<system>` form still works). Browsing that branch and opening a live,
-   customisable render are then two ends of one workflow (the branch's README + `catalog.json` carry
-   `livePreview` deep links back here).
+2. **The design systems we publish** — `--catalogs compose-m3,wear-m3,remote-m3` fetches each
+   published `design-artifacts/<system>` catalog and serves it read-only at its canonical path
+   `/<system>/` (the legacy `?session=<system>` form still works). Browsing that branch and opening a
+   live, customisable render are then two ends of one workflow (the branch's README + `catalog.json`
+   carry `livePreview` deep links back here).
+
+   When a server publishes catalogs, its **front door (`/`) is an index of those design systems** —
+   one card per listed system carrying a meaningful hero preview, the system's title + library, its
+   trust badge, and a link to `/<system>/`. (A plain `serve` with no `--catalogs` still shows the
+   served module's own preview grid at `/`.) This replaces showing an arbitrary default module at the
+   root — the point of the public server is the catalogs, so the landing leads with them.
 
    A catalog entry may name a **per-system source repo** as `<system>@<owner>/<repo>`, so one server
    can serve systems published to *different* repos — e.g. `compose-m3,wear-m3` from this repo
@@ -90,9 +96,9 @@ gzipped) is cached and revalidated cheaply (304) instead of re-downloaded each v
 
 ```bash
 compose-preview serve \
-  --module :samples:design-catalog-m3 \   # a base module is the default session
+  --module :samples:design-catalog-m3 \   # a base module (used only for ?session=/legacy; `/` is the index)
   --public \                              # open every route (no token)
-  --catalogs compose-m3,wear-m3 \         # published design systems, listed on the front-page nav
+  --catalogs compose-m3,wear-m3,remote-m3 \  # published design systems, listed on the front-page index
   --catalogs-unlisted \                   # served at /<system>/ but hidden from the nav; each from its own repo
       meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose \
   --trust-store trust/producers.json \    # who we trust (must list every catalog's branch/repo)
@@ -111,7 +117,7 @@ compose-preview serve \
 Both container profiles take this config from env (the entrypoint maps `SERVE_PUBLIC`,
 `SERVE_CATALOGS`, `SERVE_CATALOGS_UNLISTED`, `SERVE_TRUST_STORE`, `SERVE_WASM_DIR`,
 `SERVE_ACCEPT_BUNDLES` → flags) and put **Caddy** in front for TLS. They default to the **open public
-profile** (`SERVE_PUBLIC=1`, catalogs `compose-m3,wear-m3` on the nav, plus the app systems
+profile** (`SERVE_PUBLIC=1`, catalogs `compose-m3,wear-m3,remote-m3` on the front-page index, plus the app systems
 `meshcore-mobile` / `homeassistant-remotecompose` served unlisted at `/<system>/` from their own
 repos via `SERVE_CATALOGS_UNLISTED`); set `SERVE_PUBLIC=0` + `SERVE_TOKEN` for a token-gated box.
 
@@ -124,7 +130,7 @@ Mount your own over that path (or set `SERVE_TRUST_STORE` to it) to pin differen
 out — which also means a bare image pull self-heals a box without editing its compose.)
 
 The **catalog set is baked into the image the same way**: the entrypoint defaults `SERVE_CATALOGS`
-to `compose-m3,wear-m3` (front-page nav) and `SERVE_CATALOGS_UNLISTED` to
+to `compose-m3,wear-m3,remote-m3` (front-page index) and `SERVE_CATALOGS_UNLISTED` to
 `meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose`
 (served at `/<system>/`, off the nav). So a bare `docker pull` / Watchtower update serves them
 without editing the box's compose. Override either with your own comma list, or `none` to serve none
@@ -179,11 +185,13 @@ compose redeploy (`SERVE_LIVE_SEATS=1` in `.env`, then `docker compose up -d`).
 
 ## Endpoints
 
-`GET /` index · `GET /p/{id}?session=<s>` viewer · `GET /render/{id}.png` PNG ·
+`GET /` — with `--catalogs`, the **design-systems index** (one card per listed system); otherwise
+the served module's preview grid · `GET /p/{id}?session=<s>` viewer · `GET /render/{id}.png` PNG ·
 `GET /api/previews` JSON (now includes `trust`) · `POST /bundles/{name}` upload (returns `trust`) ·
 `GET /wasm/{system}/…` in-browser CMP app (ungated static assets) · `GET /healthz` ·
-`GET /version`. In `--public` mode all are open; otherwise the token gates everything but
-`/healthz`, `/version`, and `/wasm/` (static, no session data).
+`GET /version`. In `--public` mode all are open **and links carry no `?token`** (the token gates
+nothing); otherwise the token gates everything but `/healthz`, `/version`, and `/wasm/` (static, no
+session data) and is threaded through every generated link.
 
 Every session-selecting route also has a **path form** where the leading `/{system}` segment picks
 the session instead of `?session=`: `GET /{system}/` index · `GET /{system}/p/{id}` viewer ·

@@ -337,6 +337,19 @@ class ServeHttpServer(
   /** `GET /` (query) and `GET /{system}[/]` (path): the session's preview-list landing page. */
   private suspend fun RoutingContext.handleLanding(sessionInPath: Boolean) {
     if (rejectBadToken()) return
+    // Front door: when this server publishes design-system catalogs, the bare `/` (no `?session=`,
+    // no `/<system>` path) is an INDEX of those systems — each with a meaningful preview — rather
+    // than an arbitrary default module's grid. A plain `serve` (no `--catalogs`) keeps the module
+    // landing. A query `?session=` or a `/<system>` path still selects that session's landing
+    // below.
+    if (
+      !sessionInPath &&
+        catalogSessions.isNotEmpty() &&
+        call.request.queryParameters["session"] == null
+    ) {
+      handleHomeIndex()
+      return
+    }
     val (webSessionId, basePath) = webSessionAndBase(sessionInPath)
     withLeasedSession(selectedSessionId(sessionInPath)) { renderHost ->
       call.respondText(
@@ -353,6 +366,40 @@ class ServeHttpServer(
         ContentType.Text.Html,
       )
     }
+  }
+
+  /**
+   * The public server's front-page index of published design-system catalogs ([catalogSessions]).
+   * Leases each catalog in turn (they're cheap, pinned bundle hosts) to read its title, preview
+   * count, trust verdict, and pick a meaningful hero preview — then renders a card per system. A
+   * catalog that can't be leased (e.g. transiently unavailable) is skipped rather than sinking the
+   * whole page.
+   */
+  private suspend fun RoutingContext.handleHomeIndex() {
+    val systems =
+      withContext(Dispatchers.IO) {
+        catalogSessions.mapNotNull { system ->
+          val lease = sessions.lease(system) ?: return@mapNotNull null
+          try {
+            val host = lease.host
+            val bundle = host as? ServeBundleHost
+            ServeWeb.HomeSystem(
+              system = system,
+              title = bundle?.title?.takeIf { it.isNotBlank() } ?: host.label,
+              subtitle = bundle?.subtitle,
+              previewCount = host.previews.size,
+              trust = bundle?.let { BundleVerifier.summary(it.trust) },
+              heroPreviewId = ServeWeb.representativePreviewId(host.previews),
+            )
+          } finally {
+            lease.close()
+          }
+        }
+      }
+    call.respondText(
+      ServeWeb.homeIndexPage(systems, token, isPublic = isPublic),
+      ContentType.Text.Html,
+    )
   }
 
   /**
@@ -434,6 +481,7 @@ class ServeHttpServer(
           trust = (renderHost as? ServeBundleHost)?.let { BundleVerifier.summary(it.trust) },
           wasmSrc = wasmSrc,
           basePath = basePath,
+          isPublic = isPublic,
         ),
         ContentType.Text.Html,
       )

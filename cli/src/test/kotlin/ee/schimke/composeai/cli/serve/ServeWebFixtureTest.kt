@@ -90,6 +90,41 @@ class ServeWebFixtureTest {
         isPublic = true,
         catalogs = listOf("compose-m3", "wear-m3"),
       )
+    // The public preview server's FRONT DOOR: an index of the published design systems, each a card
+    // with a meaningful hero preview, its title + library, trust badge, and a link to /<system>/.
+    // This is what `/` serves now (instead of an arbitrary default module's grid), so the harness
+    // captures it per theme.
+    val homeIndex =
+      ServeWeb.homeIndexPage(
+        listOf(
+          ServeWeb.HomeSystem(
+            system = "compose-m3",
+            title = "Compose Material 3",
+            subtitle = "androidx.compose.material3:material3",
+            previewCount = 42,
+            trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+            heroPreviewId = "button-filled__ideal__default__light",
+          ),
+          ServeWeb.HomeSystem(
+            system = "wear-m3",
+            title = "Wear Compose Material 3",
+            subtitle = "androidx.wear.compose:compose-material3",
+            previewCount = 18,
+            trust = "branch:yschimke/compose-ai-tools@design-artifacts/wear-m3",
+            heroPreviewId = "button-filled__ideal__default__light",
+          ),
+          ServeWeb.HomeSystem(
+            system = "remote-m3",
+            title = "Remote Compose Material 3",
+            subtitle = "androidx.wear.compose.remote:remote-material3",
+            previewCount = 6,
+            trust = "branch:yschimke/compose-ai-tools@design-artifacts/remote-m3",
+            heroPreviewId = "Button-Filled__ideal__default__light",
+          ),
+        ),
+        token,
+        isPublic = true,
+      )
     val viewer =
       ServeWeb.viewerPage(
         previews.first { it.id.endsWith("ProfileScreenPreview") },
@@ -144,6 +179,7 @@ class ServeWebFixtureTest {
       pagesDir.mkdirs()
       File(pagesDir, "serve-landing.html").writeText(landing)
       File(pagesDir, "serve-landing-public.html").writeText(landingPublic)
+      File(pagesDir, "serve-home-index.html").writeText(homeIndex)
       File(pagesDir, "serve-viewer.html").writeText(viewer)
       File(pagesDir, "serve-viewer-wasm.html").writeText(wasmViewer)
       File(pagesDir, "serve-landing-path.html").writeText(landingPath)
@@ -155,6 +191,7 @@ class ServeWebFixtureTest {
 
     assertGolden(File(pagesDir, "serve-landing.html"), landing)
     assertGolden(File(pagesDir, "serve-landing-public.html"), landingPublic)
+    assertGolden(File(pagesDir, "serve-home-index.html"), homeIndex)
     assertGolden(File(pagesDir, "serve-viewer.html"), viewer)
     assertGolden(File(pagesDir, "serve-viewer-wasm.html"), wasmViewer)
     assertGolden(File(pagesDir, "serve-landing-path.html"), landingPath)
@@ -163,6 +200,64 @@ class ServeWebFixtureTest {
     assertTrue(
       File(pagesDir, "_render-placeholder.png").isFile,
       "missing _render-placeholder.png — regenerate with UPDATE_SERVE_WEB_FIXTURES=true",
+    )
+
+    // The home index lists every published system as a card linking to its /<system>/ catalog —
+    // including remote-m3 — each carrying a hero preview img from that system's /render endpoint.
+    assertTrue(homeIndex.contains("Design systems"), "home index is headed 'Design systems'")
+    assertTrue(
+      homeIndex.contains("href=\"/compose-m3/\"") &&
+        homeIndex.contains("href=\"/wear-m3/\"") &&
+        homeIndex.contains("href=\"/remote-m3/\""),
+      "home index cards link to each system's canonical /<system>/ path",
+    )
+    assertTrue(
+      homeIndex.contains("Remote Compose Material 3"),
+      "remote-m3 appears in the index with its human title",
+    )
+    assertTrue(
+      homeIndex.contains("src=\"/remote-m3/render/Button-Filled__ideal__default__light.png\""),
+      "each system card renders a meaningful hero preview from its /render endpoint",
+    )
+    assertTrue(
+      homeIndex.contains("cp-badge--trusted"),
+      "the index badges each system's producer trust",
+    )
+    // Public mode opens every route, so server-rendered links carry NO ?token param.
+    assertFalse(homeIndex.contains("token="), "public home index links are token-free")
+    assertFalse(landingPublic.contains("token="), "public landing drops the token from its links")
+    // A token-gated (non-public) landing keeps the token as the only gate.
+    assertTrue(
+      landing.contains("?token=$token"),
+      "a token-gated landing keeps the token in its links",
+    )
+    // The public viewer's back-link is token-free, and its request-building JS only sends a token
+    // when the page URL itself carried one (so a public page stays token-free end to end).
+    val publicViewer =
+      ServeWeb.viewerPage(
+        previews.first(),
+        token,
+        sessionId = "compose-m3",
+        basePath = "/compose-m3",
+        isPublic = true,
+      )
+    assertFalse(publicViewer.contains("?token="), "public viewer back-link carries no token")
+    assertTrue(
+      publicViewer.contains("if (token) parts.push(\"token=\""),
+      "viewer JS only appends a token when the page URL carried one",
+    )
+    // The representative pick prefers a default-state light hero over dark / disabled edge cases.
+    assertEquals(
+      "button-filled__ideal__default__light",
+      ServeWeb.representativePreviewId(
+        listOf(
+          ServePreview("badge__ideal__default__dark", "Badge dark"),
+          ServePreview("button-filled__ideal__disabled__light", "Filled disabled"),
+          ServePreview("button-filled__ideal__default__light", "Filled default"),
+          ServePreview("button-filled__ideal__default__dark", "Filled dark"),
+        )
+      ),
+      "the hero pick prefers a default-state, light, filled-button render",
     )
 
     // The sticky theme toggle appears only for a catalog with per-theme variants, and each themed

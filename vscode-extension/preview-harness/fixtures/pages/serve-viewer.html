@@ -41,6 +41,12 @@ a:hover { text-decoration: underline; }
 .cp-badge--trusted { background: #e7f4ea; color: #1e7a34; border: 1px solid #b6e0c2; }
 .cp-badge--unverified { background: #fdf0e3; color: #8a5300; border: 1px solid #f0d3a8; }
 .cp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+.cp-syslist { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.cp-syslist .cp-imgwrap { min-height: 180px; }
+.cp-sys-title { font-size: 0.98rem; font-weight: 600; }
+.cp-sys-desc { margin-top: 4px; font-size: 0.76rem; color: #6b6b70; line-height: 1.4; }
+.cp-sys-foot { margin-top: 8px; font-size: 0.74rem; color: #6b6b70; }
+.cp-sys-noimg { font-size: 0.78rem; color: #a0a0a8; }
 .cp-card { border: 1px solid #e3e3e8; border-radius: 10px; overflow: hidden; background: #fff;
   display: block; color: inherit; }
 .cp-card[hidden] { display: none; }
@@ -75,7 +81,7 @@ a:hover { text-decoration: underline; }
 .cp-knobs input:disabled { opacity: 0.7; }
 @media (prefers-color-scheme: dark) {
   body { color: #e6e6e9; background: #161618; }
-  .cp-sub, .cp-id, .cp-status, .cp-about-links { color: #a0a0a8; }
+  .cp-sub, .cp-id, .cp-status, .cp-about-links, .cp-sys-desc, .cp-sys-foot { color: #a0a0a8; }
   .cp-card, .cp-stage, .cp-knobs, .cp-about { border-color: #34343a; }
   .cp-card, .cp-about { background: #1d1d20; }
   .cp-about-body { color: #c9c9d0; }
@@ -193,9 +199,12 @@ a:hover { text-decoration: underline; }
   }
   function query() {
     var o = overrides();
-    var q = "token=" + encodeURIComponent(token);
-    if (session) q += "&session=" + encodeURIComponent(session);
-    Object.keys(o).forEach(function (k) { q += "&" + k + "=" + encodeURIComponent(o[k]); });
+    // Public routes are open, so a page that arrived without a token stays token-free — only
+    // carry token= when this page's own URL had one (a token-gated box).
+    var parts = [];
+    if (token) parts.push("token=" + encodeURIComponent(token));
+    if (session) parts.push("session=" + encodeURIComponent(session));
+    Object.keys(o).forEach(function (k) { parts.push(k + "=" + encodeURIComponent(o[k])); });
     // Author-declared knobs (enabled only on a daemon session): knob.<key>=<kind>:<value>.
     document.querySelectorAll(".cp-knob").forEach(function (el) {
       if (el.disabled) return;
@@ -204,13 +213,14 @@ a:hover { text-decoration: underline; }
       if (!key) return;
       var val = (el.type === "checkbox") ? (el.checked ? "true" : "false") : el.value;
       if (val === "") return;
-      q += "&knob." + encodeURIComponent(key) + "=" + encodeURIComponent(kind + ":" + val);
+      parts.push("knob." + encodeURIComponent(key) + "=" + encodeURIComponent(kind + ":" + val));
     });
-    return q;
+    return parts.join("&");
   }
   function refreshSnapshot() {
     status.textContent = "rendering…";
-    var url = base + "/render/" + encodeURIComponent(previewId) + ".png?" + query();
+    var qs = query();
+    var url = base + "/render/" + encodeURIComponent(previewId) + ".png" + (qs ? "?" + qs : "");
     var next = new Image();
     next.onload = function () { img.src = url; status.textContent = ""; };
     next.onerror = function () { status.textContent = "render failed"; };
@@ -335,8 +345,9 @@ a:hover { text-decoration: underline; }
     var proto = location.protocol === "https:" ? "wss:" : "ws:";
     // Request WebP frames (smaller; the browser decodes them via the data URL, and the daemon
     // downgrades to PNG when it can't encode WebP — each frame carries its actual codec).
+    var qs = query();
     ws = new WebSocket(proto + "//" + location.host + base + "/ws/" +
-      encodeURIComponent(previewId) + "?" + query() + "&codec=webp");
+      encodeURIComponent(previewId) + "?" + (qs ? qs + "&codec=webp" : "codec=webp"));
     ws.onmessage = function (ev) {
       var m;
       try { m = JSON.parse(ev.data); } catch (e) { return; }

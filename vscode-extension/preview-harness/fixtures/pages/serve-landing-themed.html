@@ -41,6 +41,12 @@ a:hover { text-decoration: underline; }
 .cp-badge--trusted { background: #e7f4ea; color: #1e7a34; border: 1px solid #b6e0c2; }
 .cp-badge--unverified { background: #fdf0e3; color: #8a5300; border: 1px solid #f0d3a8; }
 .cp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+.cp-syslist { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.cp-syslist .cp-imgwrap { min-height: 180px; }
+.cp-sys-title { font-size: 0.98rem; font-weight: 600; }
+.cp-sys-desc { margin-top: 4px; font-size: 0.76rem; color: #6b6b70; line-height: 1.4; }
+.cp-sys-foot { margin-top: 8px; font-size: 0.74rem; color: #6b6b70; }
+.cp-sys-noimg { font-size: 0.78rem; color: #a0a0a8; }
 .cp-card { border: 1px solid #e3e3e8; border-radius: 10px; overflow: hidden; background: #fff;
   display: block; color: inherit; }
 .cp-card[hidden] { display: none; }
@@ -75,7 +81,7 @@ a:hover { text-decoration: underline; }
 .cp-knobs input:disabled { opacity: 0.7; }
 @media (prefers-color-scheme: dark) {
   body { color: #e6e6e9; background: #161618; }
-  .cp-sub, .cp-id, .cp-status, .cp-about-links { color: #a0a0a8; }
+  .cp-sub, .cp-id, .cp-status, .cp-about-links, .cp-sys-desc, .cp-sys-foot { color: #a0a0a8; }
   .cp-card, .cp-stage, .cp-knobs, .cp-about { border-color: #34343a; }
   .cp-card, .cp-about { background: #1d1d20; }
   .cp-about-body { color: #c9c9d0; }
@@ -110,8 +116,8 @@ a:hover { text-decoration: underline; }
 </section>
       <nav class="cp-systems" aria-label="Design systems">
         <span class="cp-systems-label">Design systems</span>
-        <a href="/compose-m3/?token=demo-token-fixture">compose-m3</a>
-<a href="/wear-m3/?token=demo-token-fixture">wear-m3</a>
+        <a href="/compose-m3/">compose-m3</a>
+<a href="/wear-m3/">wear-m3</a>
       </nav>
 <p class="cp-head">compose-m3 <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ branch:yschimke/compose-ai-tools@design-artifacts/compose-m3</span></p>
         <div class="cp-toolbar">
@@ -121,52 +127,52 @@ a:hover { text-decoration: underline; }
   </span>
 </div>
 <p class="cp-sub">5 preview(s) · click one to view with overrides ·
-          <a href="/bundle.zip?token=demo-token-fixture">download all (.zip)</a></p>
+          <a href="/bundle.zip">download all (.zip)</a></p>
         <div class="cp-searchbar">
   <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
     autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
   <span id="cp-count" class="cp-count" role="status" aria-live="polite" data-total="5"></span>
 </div>
 <div class="cp-grid" id="cp-grid">
-        <a class="cp-card" data-card-theme="light" href="/p/button-filled__ideal__default__light?token=demo-token-fixture">
+        <a class="cp-card" data-card-theme="light" href="/p/button-filled__ideal__default__light">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Button · Filled (light)" src="/render/button-filled__ideal__default__light.png?token=demo-token-fixture">
+    <img loading="lazy" alt="Button · Filled (light)" src="/render/button-filled__ideal__default__light.png">
   </div>
   <div class="cp-meta">
     <div class="cp-label" title="button-filled__ideal__default__light">Button · Filled (light)</div>
     <div class="cp-id">button-filled__ideal__default__light</div>
   </div>
 </a>
-<a class="cp-card" data-card-theme="dark" href="/p/button-filled__ideal__default__dark?token=demo-token-fixture">
+<a class="cp-card" data-card-theme="dark" href="/p/button-filled__ideal__default__dark">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Button · Filled (dark)" src="/render/button-filled__ideal__default__dark.png?token=demo-token-fixture">
+    <img loading="lazy" alt="Button · Filled (dark)" src="/render/button-filled__ideal__default__dark.png">
   </div>
   <div class="cp-meta">
     <div class="cp-label" title="button-filled__ideal__default__dark">Button · Filled (dark)</div>
     <div class="cp-id">button-filled__ideal__default__dark</div>
   </div>
 </a>
-<a class="cp-card" data-card-theme="light" href="/p/switch-on__ideal__default__light?token=demo-token-fixture">
+<a class="cp-card" data-card-theme="light" href="/p/switch-on__ideal__default__light">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Switch · On (light)" src="/render/switch-on__ideal__default__light.png?token=demo-token-fixture">
+    <img loading="lazy" alt="Switch · On (light)" src="/render/switch-on__ideal__default__light.png">
   </div>
   <div class="cp-meta">
     <div class="cp-label" title="switch-on__ideal__default__light">Switch · On (light)</div>
     <div class="cp-id">switch-on__ideal__default__light</div>
   </div>
 </a>
-<a class="cp-card" data-card-theme="dark" href="/p/switch-on__ideal__default__dark?token=demo-token-fixture">
+<a class="cp-card" data-card-theme="dark" href="/p/switch-on__ideal__default__dark">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Switch · On (dark)" src="/render/switch-on__ideal__default__dark.png?token=demo-token-fixture">
+    <img loading="lazy" alt="Switch · On (dark)" src="/render/switch-on__ideal__default__dark.png">
   </div>
   <div class="cp-meta">
     <div class="cp-label" title="switch-on__ideal__default__dark">Switch · On (dark)</div>
     <div class="cp-id">switch-on__ideal__default__dark</div>
   </div>
 </a>
-<a class="cp-card" href="/p/badge?token=demo-token-fixture">
+<a class="cp-card" href="/p/badge">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Badge" src="/render/badge.png?token=demo-token-fixture">
+    <img loading="lazy" alt="Badge" src="/render/badge.png">
   </div>
   <div class="cp-meta">
     <div class="cp-label" title="badge">Badge</div>

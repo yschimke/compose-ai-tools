@@ -26,6 +26,17 @@ class ServeBundleHost(
    * `--bundles <dir>` directory, which has no original signed file to verify).
    */
   val trust: BundleVerifier.Verdict = BundleVerifier.Verdict.Unverified("not checked"),
+  /**
+   * Human display title for a design-system catalog (e.g. "Compose Material 3"), taken from
+   * `catalog.json`'s `title`. Null for a plain uploaded bundle (no such metadata). Surfaced on the
+   * public server's home index so each system card reads as a name, not a bare id.
+   */
+  val title: String? = null,
+  /**
+   * Short one-line descriptor for a catalog card — the underlying library coordinate(s) from
+   * `catalog.json`'s `library`. Null when the catalog declares none (or for a plain bundle).
+   */
+  val subtitle: String? = null,
 ) : ServeHost {
 
   private val previewsDir = File(bundleDir, PREVIEWS_SUBDIR)
