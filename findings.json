@@ -1759,6 +1759,26 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "TextMonospaceSpecimen_Dark.a11y.png",
+      "cleanBasename": "TextMonospaceSpecimen_Dark.png",
+      "findings": [],
+      "functionName": "TextMonospaceSpecimen",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.TextMonospaceSpecimen_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "TextSerifSpecimen_Dark.a11y.png",
+      "cleanBasename": "TextSerifSpecimen_Dark.png",
+      "findings": [],
+      "functionName": "TextSerifSpecimen",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.TextSerifSpecimen_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "BorderedRemoteButton.a11y.png",
       "cleanBasename": "BorderedRemoteButton.png",
       "findings": [
