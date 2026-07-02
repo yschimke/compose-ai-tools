@@ -37,6 +37,15 @@ enum class PreviewKind {
    * The compose-ai-tools analogue of Airbnb Showkase's `@ShowkaseColor` browser page.
    */
   CATALOG,
+  /**
+   * A synthetic theme catalog sheet for one `@ThemeCatalog` provider — no `@Preview`, no consumer
+   * composable. Unlike [CATALOG] (reflection-only static tokens) this enters composition: the
+   * renderer resolves the provider named on [PreviewParams.wrapperClassName] and composes its
+   * `Wrap(content)` around a canned Material 3 role + type-scale specimen, so the sheet shows the
+   * theme's **live** resolved `MaterialTheme.colorScheme` / `typography`. The N-ary generalization
+   * of `@Preview(uiMode = …)` — one declared theme per annotated provider.
+   */
+  THEME_CATALOG,
 }
 
 /**

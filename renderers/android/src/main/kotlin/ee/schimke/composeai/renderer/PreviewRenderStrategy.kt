@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.remember
@@ -46,6 +47,7 @@ private val STRATEGIES: Map<PreviewKind, PreviewRenderStrategy> = mapOf(
     PreviewKind.NOTIFICATION to NotificationPreviewStrategy,
     PreviewKind.GLANCE_APPWIDGET to GlanceAppWidgetPreviewStrategy,
     PreviewKind.CATALOG to CatalogPreviewStrategy,
+    PreviewKind.THEME_CATALOG to ThemeCatalogStrategy,
 )
 
 internal fun strategyFor(kind: PreviewKind): PreviewRenderStrategy =
@@ -297,6 +299,64 @@ private object CatalogPreviewStrategy : PreviewRenderStrategy {
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Theme catalog strategy: resolve the `@ThemeCatalog` provider named on the preview's
+ * `wrapperClassName` and compose its `Wrap(content)` around [ThemeSpecimen] — the exact wrapper
+ * machinery `@PreviewWrapper` uses (see [ComposePreviewStrategy]). Because the specimen renders
+ * *inside* the theme, it reads the theme's **live** resolved `MaterialTheme.colorScheme` /
+ * `typography` — the composition-scoped counterpart to the reflection-only `@ColorCatalog` /
+ * `@TypographyCatalog` sheets, which never enter composition.
+ */
+private object ThemeCatalogStrategy : PreviewRenderStrategy {
+    @Composable
+    override fun Render(preview: RenderPreviewEntry, widthDp: Int, heightDp: Int, previewArgs: List<Any?>) {
+        val wrapperFqn = preview.params.wrapperClassName ?: return
+        val resolved = remember(wrapperFqn) { resolveWrapper(wrapperFqn) }
+        val specimen: @Composable () -> Unit = { ThemeSpecimen() }
+        resolved.first.invoke(currentComposer, resolved.second, specimen)
+    }
+}
+
+/**
+ * The canned specimen composed inside a declared theme: the Material 3 colour roles as swatches and
+ * a few type-scale styles as samples, read from `MaterialTheme.colorScheme` / `.typography` in the
+ * current composition — i.e. whatever the enclosing `@ThemeCatalog` provider resolved to. Laid out
+ * on the neutral catalog sheet (not the theme's own surface) so the fixed dark labels stay legible
+ * for a dark theme too; the swatches carry the theme's colours, the samples its type scale.
+ */
+@Composable
+private fun ThemeSpecimen() {
+    val scheme = MaterialTheme.colorScheme
+    val typography = MaterialTheme.typography
+    val roles =
+        listOf(
+            "primary" to scheme.primary,
+            "onPrimary" to scheme.onPrimary,
+            "primaryContainer" to scheme.primaryContainer,
+            "secondary" to scheme.secondary,
+            "secondaryContainer" to scheme.secondaryContainer,
+            "tertiary" to scheme.tertiary,
+            "error" to scheme.error,
+            "surface" to scheme.surface,
+            "onSurface" to scheme.onSurface,
+            "surfaceVariant" to scheme.surfaceVariant,
+            "outline" to scheme.outline,
+        )
+    val types =
+        listOf(
+            "displaySmall" to typography.displaySmall,
+            "titleLarge" to typography.titleLarge,
+            "bodyLarge" to typography.bodyLarge,
+            "labelSmall" to typography.labelSmall,
+        )
+    Box(Modifier.fillMaxSize().background(CATALOG_SHEET_BACKGROUND).padding(16.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            for ((label, color) in roles) CatalogSwatchRow(label = label, color = color)
+            for ((label, style) in types) CatalogTypeRow(label = label, style = style)
         }
     }
 }

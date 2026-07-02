@@ -18,6 +18,11 @@ enum class PreviewKind {
     // class and lays them out as a labelled swatch sheet. Payload travels on
     // `RenderPreviewParams.catalogTokens`.
     CATALOG,
+    // A synthetic theme catalog sheet for one `@ThemeCatalog` provider. Rendered here by
+    // `ThemeCatalogStrategy`, which resolves the `PreviewWrapperProvider` named on
+    // `RenderPreviewParams.wrapperClassName` and composes its `Wrap(content)` around a canned M3
+    // role + type specimen, capturing the theme's live `MaterialTheme.colorScheme` / `typography`.
+    THEME_CATALOG,
 }
 
 /** Renderer-side mirror of the plugin's `CatalogTokenKind`. */
