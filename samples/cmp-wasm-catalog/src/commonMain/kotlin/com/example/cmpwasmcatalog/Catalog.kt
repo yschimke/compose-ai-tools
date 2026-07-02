@@ -121,4 +121,10 @@ val catalogComponents: Map<String, @Composable () -> Unit> =
           )
         }
       },
+    // Generic-family specimens — where the Android sticker says `FontFamily.Serif`, this port says
+    // `genericFontFamily("serif")`: the lookup resolves the manifest's URL-loaded copy of the same
+    // file Android's system table maps that name to (Noto Serif / Droid Sans Mono). See
+    // [LocalGenericFonts] for why it's a lookup, not resolver interception.
+    "text-serif" to { Text("Serif specimen 0123", fontFamily = genericFontFamily("serif")) },
+    "text-monospace" to { Text("Mono specimen 0123", fontFamily = genericFontFamily("monospace")) },
   )

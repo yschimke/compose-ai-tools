@@ -79,7 +79,9 @@
     {
       "name": "Text options",
       "components": [
-        { "componentId": "Text/MaxLines-Truncated", "preview": "TextMaxLinesTruncated", "caption": "maxLines=2 + ellipsis overflow — exercises the textOverflow product." }
+        { "componentId": "Text/MaxLines-Truncated", "preview": "TextMaxLinesTruncated", "caption": "maxLines=2 + ellipsis overflow — exercises the textOverflow product." },
+        { "componentId": "Text/Serif", "preview": "TextSerifSpecimen", "caption": "Generic serif family (Noto Serif) — pins the Wasm tier’s font interception." },
+        { "componentId": "Text/Monospace", "preview": "TextMonospaceSpecimen", "caption": "Generic monospace family (Droid Sans Mono) — pins the Wasm tier’s font interception." }
       ]
     }
   ]

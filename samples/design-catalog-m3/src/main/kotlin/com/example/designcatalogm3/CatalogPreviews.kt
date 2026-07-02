@@ -39,6 +39,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -188,6 +189,21 @@ fun TextMaxLinesTruncated() =
       overflow = TextOverflow.Ellipsis,
     )
   }
+
+// Generic-family specimens: the two non-default families Android resolves through its system font
+// table (serif → Noto Serif, monospace → Droid Sans Mono). They exist to pin the in-browser Wasm
+// tier's font interception — its resolver substitutes URL-loaded copies of the same font files —
+// so keep the strings/styles in lockstep with the CMP port in `samples/cmp-wasm-catalog`.
+
+@CatalogModes
+@Composable
+fun TextSerifSpecimen() =
+  CatalogSticker { Text("Serif specimen 0123", fontFamily = FontFamily.Serif) }
+
+@CatalogModes
+@Composable
+fun TextMonospaceSpecimen() =
+  CatalogSticker { Text("Mono specimen 0123", fontFamily = FontFamily.Monospace) }
 
 // ---------------------------------------------------------------------------
 // States — interaction (pressed / focused), disabled, and toggle off↔on.

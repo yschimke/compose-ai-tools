@@ -1,11 +1,17 @@
-# Roboto (vendored)
+# Catalog fonts (vendored)
 
-`Roboto-Regular.ttf` + `Roboto-Medium.ttf` — the two weights Material 3's type scale uses —
-extracted from `org.robolectric:nativeruntime-dist-compat:1.0.19` (`fonts/` inside the jar,
-Maven Central), i.e. **the exact font files the Android snapshot renderer rasterizes with**
-under Robolectric's native graphics. Using the same bytes is what makes the in-browser Wasm
-tier's text wrap, truncate, and measure identically to the baked catalog PNGs; classic
-Roboto 2.x and CMP's bundled default both differ measurably (see PR history).
+All files are extracted from `org.robolectric:nativeruntime-dist-compat:1.0.19` (`fonts/`
+inside the jar, Maven Central), i.e. **the exact font files the Android snapshot renderer
+rasterizes with** under Robolectric's native graphics. Using the same bytes is what makes the
+in-browser Wasm tier's text wrap, truncate, and measure identically to the baked catalog PNGs;
+classic Roboto 2.x and CMP's bundled default both differ measurably (see PR history).
+
+- `Roboto-Regular.ttf` + `Roboto-Medium.ttf` — the two weights Material 3's type scale uses
+  (`role: "default"`; applied to the whole M3 `Typography`).
+- `NotoSerif-Regular.ttf` + `DroidSansMono.ttf` — what Android's system font table
+  (`fonts.xml`) maps the generic `serif` / `monospace` families to (`role: "generic"`;
+  consumed by `genericFontFamily(...)` lookups in catalog components — CMP's
+  `FontFamily.Resolver` is sealed, so resolver-level interception isn't available to apps).
 
 Loading is driven by [`fonts.json`](fonts.json): each `role: "default"` family's files are
 fetched **by URL** and become the app's whole M3 type scale (`Main.kt` → `loadCatalogFonts()`,
