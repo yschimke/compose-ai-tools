@@ -84,6 +84,41 @@ class DaemonSemanticsFetcherTest {
   }
 
   @Test
+  fun `carries the fonts-used sidecar for previews whose backend records it`() {
+    val projectDir = newTempFolder("semantics-fonts")
+    writeDescriptor(projectDir)
+
+    val fonts = mapOf("AlphaPreview" to """{"fonts":[{"requestedFamily":"serif","weight":400}]}""")
+    val fetcher =
+      DaemonSemanticsFetcher(
+        factory =
+          FakeFactory(
+            produced =
+              mapOf(
+                "AlphaPreview" to """{"root":{"nodeId":"1","boundsInRoot":"0,0,4,8"}}""",
+                "BetaPreview" to """{"root":{"nodeId":"2","boundsInRoot":"0,0,6,6"}}""",
+              ),
+            fontsProduced = fonts,
+          )
+      )
+
+    val outcome =
+      fetcher.fetch(
+        projectDir = projectDir,
+        moduleName = "sample",
+        previewIds = listOf("AlphaPreview", "BetaPreview"),
+      )
+
+    assertTrue(outcome is DaemonSemanticsFetcher.Outcome.Ok, "expected Ok, got $outcome")
+    // Only Alpha's backend recorded font usage; Beta simply has no fonts entry.
+    assertEquals(setOf("AlphaPreview"), outcome.fontsById.keys)
+    assertEquals(
+      fonts.getValue("AlphaPreview"),
+      outcome.fontsById.getValue("AlphaPreview").toString(Charsets.UTF_8),
+    )
+  }
+
+  @Test
   fun `previews whose sidecar never materialised are simply absent`() {
     val projectDir = newTempFolder("semantics-partial")
     writeDescriptor(projectDir)
@@ -172,13 +207,17 @@ class DaemonSemanticsFetcherTest {
   // -------------------------------------------------------------------------
   // Fake factory + session
 
-  private class FakeFactory(private val produced: Map<String, String>) : RenderSessionFactory {
+  private class FakeFactory(
+    private val produced: Map<String, String>,
+    private val fontsProduced: Map<String, String> = emptyMap(),
+  ) : RenderSessionFactory {
     override val backendKind: RenderSessionBackend = RenderSessionBackend.Subprocess
 
     override fun open(config: RenderSessionConfig): RenderSession =
       FakeSession(
         workspaceRoot = config.workspaceRoot.absolutePath,
         produced = produced,
+        fontsProduced = fontsProduced,
         dataRoot = File(config.workspaceRoot, "build/compose-previews/data"),
       )
   }
@@ -200,6 +239,7 @@ class DaemonSemanticsFetcherTest {
     override val workspaceRoot: String,
     private val produced: Map<String, String>,
     private val dataRoot: File,
+    private val fontsProduced: Map<String, String> = emptyMap(),
   ) : RenderSession {
     private val listeners = java.util.concurrent.CopyOnWriteArrayList<NotificationListener>()
 
@@ -237,6 +277,10 @@ class DaemonSemanticsFetcherTest {
         produced[id]?.let { content ->
           val dir = File(dataRoot, id).also { it.mkdirs() }
           File(dir, "compose-semantics.json").writeText(content)
+        }
+        fontsProduced[id]?.let { content ->
+          val dir = File(dataRoot, id).also { it.mkdirs() }
+          File(dir, "fonts-used.json").writeText(content)
         }
         // Emit renderFinished for *every* requested id — including ones that wrote no sidecar — so
         // the fetcher's wait completes (a failed render still finishes) rather than timing out.

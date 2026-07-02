@@ -65,6 +65,11 @@ Text matches because the app fetches **the same font files the Android renderer 
 (extracted from Robolectric's `nativeruntime-dist-compat`, vendored under `fonts/` in the dist,
 declared by the `fonts.json` manifest) by URL at startup and holds the first-frame signal until
 they resolve — `?fontsBase=` re-points the fetch, and a failure degrades to the CMP bundled font.
+The published manifest is **generated from recorded usage**: the daemon's always-on
+`FontsRecorderExtension` writes a `fonts/used` record per preview, `bundle pack --with-semantics`
+carries it as `previews/<id>.fonts.json`, and the design-catalog export regenerates `fonts.json`
+from what the catalog's previews actually resolved (`render-fonts-manifest.mjs`) — the committed
+manifest is only the dev-time fallback.
 Generic families (`FontFamily.Serif` / `Monospace` in the Android stickers) resolve through
 `genericFontFamily(...)` lookups against the manifest's `role: "generic"` entries — a composition
 local, because CMP's `FontFamily.Resolver` is sealed and can't be wrapped by apps. See

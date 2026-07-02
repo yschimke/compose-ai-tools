@@ -47,6 +47,7 @@ import { renderReadmeMd } from "./render-readme-md.mjs";
 import { renderWireframeSvg, slug } from "./render-wireframe-svg.mjs";
 import { renderLayoutWireframeSvg } from "./render-layout-wireframe-svg.mjs";
 import { DEFAULT_PREVIEW_BASE, livePreviewUrl } from "./live-preview.mjs";
+import { buildFontsManifest, fontsPayloadsFromBundle } from "./render-fonts-manifest.mjs";
 
 /** Relative paths of every file under `dir` (forward-slashed), for the webRender manifest. */
 async function listFilesRecursive(dir) {
@@ -360,6 +361,26 @@ let webRender = null;
 if (values["wasm-dist"]) {
   const dest = join(outPath, "web", "wasm");
   await cp(resolve(values["wasm-dist"]), dest, { recursive: true });
+  // Regenerate the app's fonts.json from the recorded `fonts/used` sidecars, so the published
+  // manifest reflects what this catalog's previews actually resolved (the manifest committed in
+  // the dist is the dev-time fallback). No sidecars (older CLI / non-Android backend) ⇒ keep it.
+  const fontsDir = join(dest, "fonts");
+  const fontsPayloads = fontsPayloadsFromBundle(bundle);
+  if (fontsPayloads.length > 0) {
+    const available = new Set(await readdir(fontsDir).catch(() => []));
+    const { manifest: fontsManifest, warnings } = buildFontsManifest(fontsPayloads, available);
+    for (const warning of warnings) console.warn(`[${spec.system}] fonts: ${warning}`);
+    if (fontsManifest) {
+      await writeFile(
+        join(fontsDir, "fonts.json"),
+        JSON.stringify(fontsManifest, null, 2) + "\n",
+      );
+      console.log(
+        `[${spec.system}] generated fonts.json from ${fontsPayloads.length} preview font ` +
+          `record(s): ${fontsManifest.families.map((f) => f.name).join(", ")}`,
+      );
+    }
+  }
   const files = (await listFilesRecursive(dest)).sort();
   webRender = { kind: "compose-wasm", path: "web/wasm/", files };
   console.log(`[${spec.system}] bundled web/wasm/ (${files.length} files)`);

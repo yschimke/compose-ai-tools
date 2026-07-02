@@ -13,6 +13,11 @@ classic Roboto 2.x and CMP's bundled default both differ measurably (see PR hist
   consumed by `genericFontFamily(...)` lookups in catalog components — CMP's
   `FontFamily.Resolver` is sealed, so resolver-level interception isn't available to apps).
 
+The committed [`fonts.json`](fonts.json) is the **dev-time default**; the design-catalog export
+regenerates it from the per-preview `fonts/used` records (`previews/<id>.fonts.json` in the packed
+bundle → `scripts/design-artifacts/render-fonts-manifest.mjs`), so the published manifest tracks
+what the catalog's previews actually resolve.
+
 Loading is driven by [`fonts.json`](fonts.json): each `role: "default"` family's files are
 fetched **by URL** and become the app's whole M3 type scale (`Main.kt` → `loadCatalogFonts()`,
 default base `./fonts/`, overridable via `?fontsBase=`; a base without a manifest falls back to
