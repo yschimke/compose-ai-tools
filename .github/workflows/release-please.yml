@@ -178,3 +178,34 @@ jobs:
     secrets: inherit
     permissions:
       contents: write
+
+  # Reconcile the "next release" PR after a release fully publishes.
+  #
+  # The `release-please` job above opens the next release PR in the SAME run that
+  # cuts the release — but at that moment the just-cut version is invisible to
+  # release-please: it's a *draft* GitHub Release (config `"draft": true`), which
+  # carries no git tag, and the tag is only written by the later "Ensure the
+  # release tag exists" step. So release-please falls back to the PREVIOUS
+  # published release as its baseline, re-lists the just-released commits, and
+  # opens a phantom next-version PR (e.g. a spurious 0.17.0 with duplicated notes)
+  # that only clears on the next release-please run.
+  #
+  # This job IS that next run: it fires after finalize-release (so both the tag
+  # and the now-published release exist), re-runs release-please with the same
+  # config, sees the correct baseline, and closes the phantom PR automatically.
+  # It cannot cut a release itself — the merged release PR is already labelled
+  # `autorelease: tagged`, so there is nothing pending to release and no
+  # downstream chain fires (no loop). If genuinely new commits landed while the
+  # release was publishing, it opens the correct next PR instead of the phantom.
+  reconcile-release-pr:
+    needs: [release-please, finalize-release]
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # update the release branch
+      pull-requests: write   # close/open the next release PR
+    steps:
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
