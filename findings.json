@@ -346,6 +346,84 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "ColorSchemeSpecimenDarkPreview_ColorScheme_specimen_dark.a11y.png",
+      "cleanBasename": "ColorSchemeSpecimenDarkPreview_ColorScheme_specimen_dark.png",
+      "findings": [
+        {
+          "boundsInScreen": "137,61,290,95",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"#FFD0BCFF\" is identical to that of 1 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        },
+        {
+          "boundsInScreen": "137,2203,290,2237",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"#FF49454F\" is identical to that of 1 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        },
+        {
+          "boundsInScreen": "137,1825,290,1859",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"#FFE6E0E9\" is identical to that of 2 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        },
+        {
+          "boundsInScreen": "137,1699,290,1733",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"#FF141218\" is identical to that of 2 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        }
+      ],
+      "functionName": "ColorSchemeSpecimenDarkPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.ColorGalleryKt.ColorSchemeSpecimenDarkPreview_ColorScheme specimen \u2014 dark",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/ColorGallery.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "ColorSchemeSpecimenLightPreview_ColorScheme_specimen_light.a11y.png",
+      "cleanBasename": "ColorSchemeSpecimenLightPreview_ColorScheme_specimen_light.png",
+      "findings": [
+        {
+          "boundsInScreen": "137,1825,290,1859",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"#FF1D1B20\" is identical to that of 1 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        },
+        {
+          "boundsInScreen": "137,1699,290,1733",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"#FFFEF7FF\" is identical to that of 2 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        },
+        {
+          "boundsInScreen": "137,61,290,95",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"#FF6750A4\" is identical to that of 1 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        },
+        {
+          "boundsInScreen": "137,187,290,221",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"#FFFFFFFF\" is identical to that of 4 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        }
+      ],
+      "functionName": "ColorSchemeSpecimenLightPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.ColorGalleryKt.ColorSchemeSpecimenLightPreview_ColorScheme specimen \u2014 light",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/ColorGallery.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "ConfigProbePreview_Default.a11y.png",
       "cleanBasename": "ConfigProbePreview_Default.png",
       "findings": [],
@@ -738,6 +816,16 @@
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.MessagingStylePreview_Messaging style",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "NamedColorPaletteSpecimenPreview_Named_colour_palette_specimen.a11y.png",
+      "cleanBasename": "NamedColorPaletteSpecimenPreview_Named_colour_palette_specimen.png",
+      "findings": [],
+      "functionName": "NamedColorPaletteSpecimenPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.ColorGalleryKt.NamedColorPaletteSpecimenPreview_Named colour palette specimen",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/ColorGallery.kt",
       "variant": ""
     },
     {
@@ -1668,6 +1756,134 @@
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.TextMaxLinesTruncated_Dark",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "TextMonospaceSpecimen_Dark.a11y.png",
+      "cleanBasename": "TextMonospaceSpecimen_Dark.png",
+      "findings": [],
+      "functionName": "TextMonospaceSpecimen",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.TextMonospaceSpecimen_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "TextSerifSpecimen_Dark.a11y.png",
+      "cleanBasename": "TextSerifSpecimen_Dark.png",
+      "findings": [],
+      "functionName": "TextSerifSpecimen",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.TextSerifSpecimen_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "BorderedRemoteButton.a11y.png",
+      "cleanBasename": "BorderedRemoteButton.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,525,525",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "BorderedRemoteButton",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.BorderedRemoteButton",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "CustomShapeRemoteButton.a11y.png",
+      "cleanBasename": "CustomShapeRemoteButton.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,525,525",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "CustomShapeRemoteButton",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.CustomShapeRemoteButton",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "FilledRemoteButton.a11y.png",
+      "cleanBasename": "FilledRemoteButton.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,525,525",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "FilledRemoteButton",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.FilledRemoteButton",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "NamedLabelRemoteButton.a11y.png",
+      "cleanBasename": "NamedLabelRemoteButton.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,525,525",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "NamedLabelRemoteButton",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.NamedLabelRemoteButton",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "RemoteTextSticker.a11y.png",
+      "cleanBasename": "RemoteTextSticker.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,525,525",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "RemoteTextSticker",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.RemoteTextSticker",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "ShaderGradientSticker.a11y.png",
+      "cleanBasename": "ShaderGradientSticker.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,525,525",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "ShaderGradientSticker",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.ShaderGradientSticker",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": ""
     },
     {
