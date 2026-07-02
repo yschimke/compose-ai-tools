@@ -335,7 +335,8 @@ class BundleFunctionalTest {
         .id
         .also { assertThat(it).isEqualTo("colorcatalog__Brand") }
 
-    // `--build-cache` so a warm cache is exercised too — assert on bundle CONTENT (not task outcome)
+    // `--build-cache` so a warm cache is exercised too — assert on bundle CONTENT (not task
+    // outcome)
     // so the assertion holds whether the second pack is SUCCESS or FROM_CACHE.
     fun pack() {
       GradleRunner.create()
