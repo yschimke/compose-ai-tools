@@ -95,6 +95,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![remotecompose-state/dark](renders/remotecompose-state.dark.png) |
 | `light` | ![remotecompose-state/light](renders/remotecompose-state.light.png) |
 
+## serve-home-index
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-home-index/dark](renders/serve-home-index.dark.png) |
+| `light` | ![serve-home-index/light](renders/serve-home-index.light.png) |
+
 ## serve-landing
 
 | Theme | Capture |
