@@ -220,14 +220,14 @@
     "serve-viewer-wasm.dark.png": {
       "fixture": "serve-viewer-wasm",
       "theme": "dark",
-      "sha256": "1035f4abb6929f63e05fe9d117fb6ad65418adb6071715daf0c937d1a783e963",
-      "size": 44337
+      "sha256": "04492449327a0362fa194d044d4c2e2bf0f3d850470ac69db464b85791891387",
+      "size": 48968
     },
     "serve-viewer-wasm.light.png": {
       "fixture": "serve-viewer-wasm",
       "theme": "light",
-      "sha256": "40d99bd32329d053325888a2bcec6c212b2ba8129500930fe411165de358c24b",
-      "size": 44589
+      "sha256": "d41bb8a6a1d0696e96d575609e8a4d18b77f119cfd1c3d017d299c47b3ffdfb5",
+      "size": 48964
     },
     "serve-viewer.dark.png": {
       "fixture": "serve-viewer",
