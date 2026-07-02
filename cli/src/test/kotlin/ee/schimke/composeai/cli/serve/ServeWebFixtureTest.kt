@@ -248,11 +248,29 @@ class ServeWebFixtureTest {
     assertTrue(withWasm.contains("id=\"cp-wasm\""), "expected the Wasm iframe")
     assertTrue(withWasm.contains("data-wasm-src=\"/wasm/compose-m3/?id=card-filled\""))
     assertTrue(withWasm.contains("sandbox=\"allow-scripts\""), "iframe must be sandboxed")
+    // Flash-free switch: the snapshot stays on-stage until the app's first-frame signal, and the
+    // iframe is overlaid on the snapshot's exact box (pixel parity with the baked PNG).
+    assertTrue(
+      withWasm.contains("\"cp-wasm-ready\""),
+      "viewer listens for the app's first-frame signal",
+    )
+    assertTrue(
+      withWasm.contains("function positionWasmFrame()"),
+      "iframe is positioned over the snapshot's rendered box",
+    )
+    assertTrue(withWasm.contains("loading Wasm…"), "load state keeps the snapshot with a status")
+    // The in-browser tier can drop the sticker background (component only on the checkerboard).
+    assertTrue(
+      withWasm.contains("id=\"cp-wasm-bg\"") && withWasm.contains("Component only (no background)"),
+      "expected the background toggle",
+    )
+    assertTrue(withWasm.contains("\"background=off\""), "background knob forwarded to the app")
 
     // No wasmSrc → snapshot viewer is unchanged: no toggle, no iframe element.
     val plain = ServeWeb.viewerPage(card, token)
     assertTrue(!plain.contains("Run in browser (Wasm)"))
     assertTrue(!plain.contains("id=\"cp-wasm\""))
+    assertTrue(!plain.contains("id=\"cp-wasm-bg\""))
   }
 
   @Test

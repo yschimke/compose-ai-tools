@@ -9,6 +9,7 @@ package com.example.cmpwasmcatalog
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.window.ComposeViewport
 
 /**
@@ -46,9 +47,38 @@ fun main() {
     // Clamp to the viewer slider's range so a crafted query can't blow up layout.
     val fontScale = params["fontScale"]?.toFloatOrNull()?.coerceIn(0.5f, 2.0f) ?: 1f
     val rtl = isRtlLocale(params["localeTag"])
-    CatalogApp(id, dark, fontScale, rtl)
+    // `background=off` drops the sticker's surface fill so just the component shows on the
+    // stage-matching checkerboard the app paints behind it (see CatalogApp — the surface can't be
+    // truly transparent). `bgPhase=<x>,<y>` is the embedding viewer's stage-pattern tile origin in
+    // this frame's CSS-px coordinates, so that checkerboard continues the page's cells exactly.
+    val showBackground = params["background"] !in setOf("off", "false", "none", "transparent")
+    val checkerPhase = parsePhase(params["bgPhase"])
+    CatalogApp(id, dark, fontScale, rtl, showBackground, checkerPhase, ::postFirstFrame)
   }
 }
+
+/** Parse the viewer's `bgPhase=<x>,<y>` (CSS px, possibly fractional/negative). */
+internal fun parsePhase(raw: String?): Offset {
+  val parts = raw?.split(",") ?: return Offset.Zero
+  if (parts.size != 2) return Offset.Zero
+  val x = parts[0].toFloatOrNull() ?: return Offset.Zero
+  val y = parts[1].toFloatOrNull() ?: return Offset.Zero
+  if (!x.isFinite() || !y.isFinite()) return Offset.Zero
+  return Offset(x, y)
+}
+
+/**
+ * Tell the embedding `serve` viewer the first real frame is on the canvas ("cp-wasm-ready"): it
+ * keeps the baked snapshot on-stage until this arrives, so ticking "Run in browser (Wasm)" swaps
+ * with no blank/white flash while the ~MBs of Wasm load. A no-op when the page is top-level
+ * (`window.parent === window`; the string bounces to our own message listener, where it parses to
+ * an empty override patch).
+ */
+private fun postFirstFrame() {
+  postToParent("cp-wasm-ready")
+}
+
+private fun postToParent(message: String): Unit = js("window.parent.postMessage(message, '*')")
 
 /**
  * Apply a live override patch (`?a=b&c=d`, no leading `?`) pushed by the embedding viewer through
@@ -90,4 +120,40 @@ internal fun parseQuery(search: String): Map<String, String> {
     .toMap()
 }
 
-private fun decode(value: String): String = value.replace('+', ' ')
+/**
+ * Decode one query key/value: `+` → space, then `%XX` percent-escapes (UTF-8). The embedding viewer
+ * builds patches with `encodeURIComponent`, which escapes even the comma inside `bgPhase`
+ * (`12.00,4.00` → `12.00%2C4.00`) — without this decode the phase parser would silently fall back
+ * to `Offset.Zero` and the checkerboard would seam. Hand-rolled (not JS `decodeURIComponent`) so a
+ * malformed escape degrades to literal text instead of throwing across the JS boundary.
+ */
+internal fun decode(value: String): String {
+  val plusDecoded = value.replace('+', ' ')
+  if ('%' !in plusDecoded) return plusDecoded
+  val out = StringBuilder(plusDecoded.length)
+  val bytes = ArrayList<Byte>()
+  fun flushBytes() {
+    if (bytes.isNotEmpty()) {
+      out.append(bytes.toByteArray().decodeToString())
+      bytes.clear()
+    }
+  }
+  var i = 0
+  while (i < plusDecoded.length) {
+    val c = plusDecoded[i]
+    if (c == '%' && i + 2 < plusDecoded.length) {
+      val hi = plusDecoded[i + 1].digitToIntOrNull(16)
+      val lo = plusDecoded[i + 2].digitToIntOrNull(16)
+      if (hi != null && lo != null) {
+        bytes.add(((hi shl 4) or lo).toByte())
+        i += 3
+        continue
+      }
+    }
+    flushBytes()
+    out.append(c)
+    i++
+  }
+  flushBytes()
+  return out.toString()
+}
