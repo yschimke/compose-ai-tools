@@ -64,7 +64,8 @@ fun main() {
     // bundled font instead of blocking the reveal.
     var fonts by remember { mutableStateOf<FontsState>(FontsState.Loading) }
     LaunchedEffect(Unit) {
-      fonts = FontsState.Ready(withTimeoutOrNull(FONT_LOAD_TIMEOUT_MS) { loadCatalogFonts() })
+      fonts =
+        withTimeoutOrNull(FONT_LOAD_TIMEOUT_MS) { loadCatalogFonts() } ?: FontsState.Ready(null)
     }
     val loaded = fonts as? FontsState.Ready ?: return@ComposeViewport
     val params by renderParams
@@ -87,6 +88,7 @@ fun main() {
       showBackground,
       checkerPhase,
       loaded.family,
+      loaded.generics,
       ::postFirstFrame,
     )
   }
@@ -98,7 +100,8 @@ private const val FONT_LOAD_TIMEOUT_MS = 8_000L
 private sealed interface FontsState {
   data object Loading : FontsState
 
-  data class Ready(val family: FontFamily?) : FontsState
+  data class Ready(val family: FontFamily?, val generics: Map<String, FontFamily> = emptyMap()) :
+    FontsState
 }
 
 /**
@@ -117,7 +120,7 @@ private sealed interface FontsState {
  * sandbox's opaque origin gets its own HTTP-cache partition, so the embedding viewer page can't
  * warm anything for it.)
  */
-private suspend fun loadCatalogFonts(): FontFamily? {
+private suspend fun loadCatalogFonts(): FontsState.Ready {
   val raw = baseParams["fontsBase"] ?: "./fonts/"
   // A fetch URL, not code — but still refuse non-http(s) absolute schemes (javascript:, data:).
   val base =
@@ -125,36 +128,63 @@ private suspend fun loadCatalogFonts(): FontFamily? {
       !it.contains(":") || it.startsWith("http:") || it.startsWith("https:")
     } ?: "./fonts/"
   val entries =
-    runCatching { parseFontsManifest(fetchText(base + "fonts.json")) }
-      .getOrDefault(emptyList())
-      .filter { it.role == "default" }
-  return try {
-    if (entries.isEmpty()) {
-      // Legacy layout: a fontsBase serving bare TTFs without a manifest (the #2174 contract).
-      FontFamily(
-        Font(identity = "Roboto-Regular", data = fetchBytes(base + "Roboto-Regular.ttf")),
-        Font(
-          identity = "Roboto-Medium",
-          data = fetchBytes(base + "Roboto-Medium.ttf"),
-          weight = FontWeight.Medium,
-        ),
-      )
-    } else {
-      FontFamily(
-        entries.map { e ->
+    runCatching { parseFontsManifest(fetchText(base + "fonts.json")) }.getOrDefault(emptyList())
+  suspend fun load(e: ManifestFont) =
+    Font(
+      identity = e.file,
+      data = fetchBytes(base + e.file),
+      weight = FontWeight(e.weight),
+      style = if (e.italic) FontStyle.Italic else FontStyle.Normal,
+    )
+  if (entries.isEmpty()) {
+    // Legacy layout: a fontsBase serving bare TTFs without a manifest (the #2174 contract).
+    return try {
+      FontsState.Ready(
+        FontFamily(
+          Font(identity = "Roboto-Regular", data = fetchBytes(base + "Roboto-Regular.ttf")),
           Font(
-            identity = e.file,
-            data = fetchBytes(base + e.file),
-            weight = FontWeight(e.weight),
-            style = if (e.italic) FontStyle.Italic else FontStyle.Normal,
-          )
-        }
+            identity = "Roboto-Medium",
+            data = fetchBytes(base + "Roboto-Medium.ttf"),
+            weight = FontWeight.Medium,
+          ),
+        )
       )
+    } catch (e: Throwable) {
+      consoleWarn("compose-ai wasm catalog: font load failed (${e.message}); using bundled font")
+      FontsState.Ready(null)
     }
-  } catch (e: Throwable) {
-    consoleWarn("compose-ai wasm catalog: font load failed (${e.message}); using bundled font")
-    null
   }
+  // Each family loads fail-soft in isolation: a 404'd/blocked generic TTF (partial deploy, custom
+  // fontsBase rollout) must not take the already-loadable default Roboto — and with it every
+  // component's text parity — down with it. A failed family just drops to its bundled fallback.
+  val default =
+    try {
+      entries
+        .filter { it.role == "default" }
+        .takeIf { it.isNotEmpty() }
+        ?.let { list -> FontFamily(list.map { load(it) }) }
+    } catch (e: Throwable) {
+      consoleWarn(
+        "compose-ai wasm catalog: default font load failed (${e.message}); using bundled font"
+      )
+      null
+    }
+  // Generic-family substitutes, grouped by the name genericFontFamily() looks up (`serif`, …).
+  val generics = mutableMapOf<String, FontFamily>()
+  entries
+    .filter { it.role == "generic" && it.family.isNotEmpty() }
+    .groupBy { it.family }
+    .forEach { (name, list) ->
+      try {
+        generics[name] = FontFamily(list.map { load(it) })
+      } catch (e: Throwable) {
+        consoleWarn(
+          "compose-ai wasm catalog: generic family '$name' load failed (${e.message}); " +
+            "using platform fallback"
+        )
+      }
+    }
+  return FontsState.Ready(default, generics)
 }
 
 /** One font file declared by `fonts.json`, flattened out of its family entry. */

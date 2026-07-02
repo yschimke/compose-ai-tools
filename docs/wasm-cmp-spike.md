@@ -61,10 +61,13 @@ so ticking "Run in browser (Wasm)" swaps with no white flash and (fonts aside) n
 
 ![Snapshot vs Wasm vs 50/50 blend vs amplified diff](images/wasm-parity-checkbox-dark.png)
 
-Text matches because the app fetches **the same Roboto the Android renderer rasterizes with**
-(Regular + Medium, extracted from Robolectric's `nativeruntime-dist-compat`, vendored under
-`fonts/` in the dist) by URL at startup and holds the first-frame signal until they resolve —
-`?fontsBase=` re-points the fetch, and a failure degrades to the CMP bundled font. See
+Text matches because the app fetches **the same font files the Android renderer rasterizes with**
+(extracted from Robolectric's `nativeruntime-dist-compat`, vendored under `fonts/` in the dist,
+declared by the `fonts.json` manifest) by URL at startup and holds the first-frame signal until
+they resolve — `?fontsBase=` re-points the fetch, and a failure degrades to the CMP bundled font.
+Generic families (`FontFamily.Serif` / `Monospace` in the Android stickers) resolve through
+`genericFontFamily(...)` lookups against the manifest's `role: "generic"` entries — a composition
+local, because CMP's `FontFamily.Resolver` is sealed and can't be wrapped by apps. See
 [`fonts/README.md`](../samples/cmp-wasm-catalog/src/wasmJsMain/resources/fonts/README.md).
 
 The compose-web surface can't be transparent (it paints an opaque base), so the app draws the serve

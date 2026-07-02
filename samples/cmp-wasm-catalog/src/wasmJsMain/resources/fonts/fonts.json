@@ -8,6 +8,16 @@
         { "file": "Roboto-Regular.ttf", "weight": 400 },
         { "file": "Roboto-Medium.ttf", "weight": 500 }
       ]
+    },
+    {
+      "name": "serif",
+      "role": "generic",
+      "fonts": [{ "file": "NotoSerif-Regular.ttf", "weight": 400 }]
+    },
+    {
+      "name": "monospace",
+      "role": "generic",
+      "fonts": [{ "file": "DroidSansMono.ttf", "weight": 400 }]
     }
   ]
 }

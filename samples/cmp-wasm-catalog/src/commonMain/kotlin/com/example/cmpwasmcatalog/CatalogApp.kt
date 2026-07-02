@@ -33,6 +33,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -86,6 +87,14 @@ fun CatalogApp(
    * renderer baked into the snapshots. Null ⇒ the CMP bundled default (fetch failed/timed out).
    */
   fontFamily: FontFamily? = null,
+  /**
+   * Generic-family substitutes (`fonts.json` `role: "generic"`): family name (`serif`, `monospace`,
+   * …) → the URL-loaded [FontFamily] holding the same files Android's system font table resolves
+   * that name to. Provided as [LocalGenericFonts], which [genericFontFamily] consults — see that
+   * local's kdoc for why this is a lookup, not resolver interception. Empty ⇒ skiko's own
+   * (bundled-font) fallback, as before.
+   */
+  genericFamilies: Map<String, FontFamily> = emptyMap(),
   onFirstFrame: (() -> Unit)? = null,
 ) {
   val scheme = if (dark) darkColorScheme() else lightColorScheme()
@@ -99,7 +108,11 @@ fun CatalogApp(
   var frame by remember { mutableStateOf(IntSize.Zero) }
   var content by remember { mutableStateOf(IntSize.Zero) }
   var signalled by remember { mutableStateOf(false) }
-  CompositionLocalProvider(LocalDensity provides scaled, LocalLayoutDirection provides direction) {
+  CompositionLocalProvider(
+    LocalDensity provides scaled,
+    LocalLayoutDirection provides direction,
+    LocalGenericFonts provides genericFamilies,
+  ) {
     MaterialTheme(colorScheme = scheme, typography = catalogTypography(fontFamily)) {
       val component = catalogComponents[id]
       if (component != null) {
@@ -172,6 +185,34 @@ fun CatalogApp(
     }
   }
 }
+
+/**
+ * Generic-family substitutes for the running catalog: family name (`serif`, `monospace`, …) → the
+ * URL-loaded [FontFamily] holding the same files Android's system font table resolves that name to.
+ * Empty (the default) ⇒ [genericFontFamily] falls back to skiko's own generic constants.
+ *
+ * A composition local rather than a wrapped `FontFamily.Resolver` because CMP's
+ * `FontFamily.Resolver` is a **sealed** interface — it can't be implemented outside compose-ui, so
+ * true resolver-level interception isn't available to apps. Catalog components therefore say
+ * `genericFontFamily("serif")` where the Android catalog says `FontFamily.Serif`; the lookup is the
+ * only permitted divergence between the two.
+ */
+val LocalGenericFonts = staticCompositionLocalOf<Map<String, FontFamily>> { emptyMap() }
+
+/**
+ * The [FontFamily] for a generic family [name], preferring the catalog's URL-loaded substitute
+ * ([LocalGenericFonts]) and falling back to the platform's generic constant — which on skiko web
+ * renders as the bundled default, since there are no system fonts to resolve against.
+ */
+@Composable
+fun genericFontFamily(name: String): FontFamily =
+  LocalGenericFonts.current[name]
+    ?: when (name) {
+      "serif" -> FontFamily.Serif
+      "monospace" -> FontFamily.Monospace
+      "cursive" -> FontFamily.Cursive
+      else -> FontFamily.SansSerif
+    }
 
 /**
  * The stock M3 [Typography] with every style re-pointed at [fontFamily] — the type scale keeps its
