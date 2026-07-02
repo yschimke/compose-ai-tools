@@ -74,6 +74,10 @@ kotlin {
       // which discovery doesn't recognise — declaring the explicit coord
       // sidesteps that.
       implementation("org.jetbrains.compose.ui:ui-tooling-preview:1.10.3")
+      // The compose-preview annotations, consumed from `commonMain` — the KMP scenario the
+      // multiplatform `preview-annotations` artifact exists for (mirrors meshcore's
+      // `:meshcore-components`, whose tokens live in shared code). Exercised by `SharedTokens.kt`.
+      implementation(project(":preview-annotations"))
     }
   }
 }
