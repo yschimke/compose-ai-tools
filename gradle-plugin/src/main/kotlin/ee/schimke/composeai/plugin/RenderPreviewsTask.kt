@@ -332,13 +332,19 @@ abstract class RenderPreviewsTask : DefaultTask() {
           preview.params.showSystemUi.toString(),
           preview.params.uiMode.toString(),
           preview.params.device.orEmpty(),
-          // 25th–27th — `@AnimatedPreview` window. `0` durationMs signals "no animation intent"
-          // (the renderer falls through to scroll / single-frame). A positive durationMs dispatches
-          // to `renderAnimatedPreview` (a `runSkikoComposeUiTest` paused-clock loop that advances
-          // `mainClock` by frameIntervalMs across the window and encodes the frames as a GIF) —
-          // the desktop counterpart of the Android renderer's `@AnimatedPreview` path. `showCurves`
-          // is forwarded for parity; the desktop path emits a screenshot-only GIF (no curve strip).
-          (animation?.durationMs ?: 0).toString(),
+          // 25th–27th — `@AnimatedPreview` window. `-1` durationMs signals "no animation intent"
+          // (the renderer falls through to scroll / single-frame). `>= 0` means the annotation is
+          // present and dispatches to `renderAnimatedPreview` (a `runSkikoComposeUiTest`
+          // paused-clock loop that advances `mainClock` by frameIntervalMs across the window and
+          // encodes the frames as a GIF) — the desktop counterpart of the Android renderer's
+          // `@AnimatedPreview` path. `0` is the annotation's auto-detect sentinel and must NOT be
+          // collapsed into "no animation": a default-args `@AnimatedPreview` still needs the
+          // animated path or the `.gif` renderOutput gets a single PNG frame (issue #2190). An
+          // older renderer that predates the `-1` protocol parses it via `takeIf { it > 0 } ?: 0`,
+          // so the sentinel degrades to the old "no animation" behaviour rather than breaking.
+          // `showCurves` is forwarded for parity; the desktop path emits a screenshot-only GIF (no
+          // curve strip).
+          (animation?.durationMs ?: -1).toString(),
           (animation?.frameIntervalMs ?: 0).toString(),
           (animation?.showCurves ?: false).toString(),
         )

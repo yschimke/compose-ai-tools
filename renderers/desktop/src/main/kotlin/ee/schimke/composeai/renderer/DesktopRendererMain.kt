@@ -155,12 +155,15 @@ fun main(args: Array<String>) {
   val showSystemUi = args.getOrNull(21)?.toBoolean() ?: false
   val uiMode = args.getOrNull(22)?.toIntOrNull() ?: 0
   val device = args.getOrNull(23)?.takeIf { it.isNotBlank() }
-  // Args 25–27 — `@AnimatedPreview` window. A positive `animDurationMs` is the animation intent; it
-  // dispatches to [renderAnimatedPreview] (paused-clock GIF) ahead of the scroll / single-frame
-  // paths. `0` (the default for non-animated previews) leaves the existing behaviour untouched.
-  // Mutually exclusive with `@ScrollingPreview` in discovery, so no precedence ambiguity in
-  // practice; the renderer still checks animation first defensively.
-  val animDurationMs = args.getOrNull(24)?.toIntOrNull()?.takeIf { it > 0 } ?: 0
+  // Args 25–27 — `@AnimatedPreview` window. `-1` (or missing/unparseable, for older callers) means
+  // "no animation intent". `>= 0` means the annotation is present and dispatches to
+  // [renderAnimatedPreview] (paused-clock GIF) ahead of the scroll / single-frame paths — `0` is
+  // the annotation's auto-detect sentinel, NOT "no animation": collapsing it into the single-frame
+  // path wrote PNG bytes into the `.gif` renderOutput (issue #2190). Mutually exclusive with
+  // `@ScrollingPreview` in discovery, so no precedence ambiguity in practice; the renderer still
+  // checks animation first defensively.
+  val animDurationMs = args.getOrNull(24)?.toIntOrNull() ?: -1
+  val hasAnimation = animDurationMs >= 0
   val animFrameIntervalMs = args.getOrNull(25)?.toIntOrNull()?.coerceAtLeast(0) ?: 0
   val animShowCurves = args.getOrNull(26)?.toBoolean() ?: false
   if (previewKind == "LOTTIE") {
@@ -259,10 +262,10 @@ fun main(args: Array<String>) {
       // VS Code would surface yesterday's exception as if it were current.
       val sidecar = errorSidecarFor(targetFile)
       if (sidecar.exists()) sidecar.delete()
-      if (animDurationMs > 0) {
+      if (hasAnimation) {
         // `@AnimatedPreview` — advance a paused clock across the window and encode a GIF. Always
         // produces output (an animation has no "no scrollable" decline path), so no fallback to the
-        // single-frame render is needed.
+        // single-frame render is needed. durationMs == 0 asks the renderer to auto-detect.
         renderAnimatedPreview(
           className = className,
           functionName = functionName,
