@@ -17,17 +17,26 @@ class FanoutSiblingStemsTest {
   private fun render(name: String) = File(rendersDir, name)
 
   @Test
-  fun `returns same-directory stems extending the output stem`() {
+  fun `returns same-directory same-extension stems extending the output stem`() {
     val outputs =
       listOf(
         render("Foo.png"),
         render("Foo_Dark.png"),
-        render("Foo_Selected.gif"),
+        render("Foo_Selected.png"),
         render("Bar.png"),
       )
     assertThat(fanoutSiblingStems(outputs, render("Foo.png")))
       .containsExactly("Foo_Dark", "Foo_Selected")
       .inOrder()
+  }
+
+  @Test
+  fun `excludes siblings with a different extension`() {
+    // The cleanup for `Foo.png` only scans `.png` files, so a `.gif` sibling needs no
+    // protection — and shielding its stem would keep a stale `Foo_Dark.png` (left from before
+    // that sibling's capture became a GIF) on disk forever.
+    val outputs = listOf(render("Foo_Dark.gif"))
+    assertThat(fanoutSiblingStems(outputs, render("Foo.png"))).isEmpty()
   }
 
   @Test
@@ -52,8 +61,9 @@ class FanoutSiblingStemsTest {
 
   @Test
   fun `deduplicates stems shared by several captures`() {
-    // The same sibling stem can appear once per capture (e.g. a PNG and a GIF product).
-    val outputs = listOf(render("Foo_Dark.png"), render("Foo_Dark.gif"))
+    // The same output file can be claimed by several manifest rows (e.g. multi-mode captures
+    // resolving to the same path); the stem is still passed once.
+    val outputs = listOf(render("Foo_Dark.png"), render("Foo_Dark.png"))
     assertThat(fanoutSiblingStems(outputs, render("Foo.png"))).containsExactly("Foo_Dark")
   }
 }
