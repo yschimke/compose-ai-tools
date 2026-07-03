@@ -37,6 +37,17 @@ private const val MAX_ANIMATION_DURATION_MS = 5000
 private const val DEFAULT_ANIMATION_FRAME_INTERVAL_MS = 33
 
 /**
+ * Window used when `durationMs == 0` (the annotation's auto-detect sentinel). The Android renderer
+ * answers auto-detect by asking `PreviewAnimationClock` how long the discovered animations run and
+ * falls back to 1500ms when nothing was measured; the desktop test harness doesn't expose that
+ * inspection surface (see the [renderAnimatedPreview] note on [showCurves]), so auto-detect here
+ * always resolves to the same fallback the Android path uses when measurement comes up empty.
+ * Matches `DEFAULT_ANIMATION_DURATION_MS` in the `preview-annotations` KDoc and Android's
+ * `AUTO_DURATION_FALLBACK_MS`.
+ */
+private const val AUTO_DURATION_FALLBACK_MS = 1500
+
+/**
  * Renders an `@AnimatedPreview` capture on Compose Desktop as an animated GIF — the desktop
  * counterpart of the Android renderer's paused-clock animation path.
  *
@@ -50,6 +61,10 @@ private const val DEFAULT_ANIMATION_FRAME_INTERVAL_MS = 33
  *
  * Unlike the scroll path there's no "no scrollable found" decline — any composable produces frames
  * (a static one just yields identical frames) — so this always writes [outputFile] or throws.
+ *
+ * [durationMs] follows the annotation contract: a positive value is the explicit window; `0` (the
+ * auto-detect sentinel, and the annotation default) captures [AUTO_DURATION_FALLBACK_MS] because
+ * this backend can't measure the discovered animations — see the constant's KDoc.
  *
  * `LocalInspectionMode` is provided as `false` here (the scroll / single-frame paths use `true`):
  * some components short-circuit their animations when they detect preview/inspection mode, and an
@@ -96,7 +111,20 @@ fun renderAnimatedPreview(
 
   val frameInterval =
     if (frameIntervalMs > 0) frameIntervalMs else DEFAULT_ANIMATION_FRAME_INTERVAL_MS
-  val totalDuration = durationMs.coerceIn(frameInterval, MAX_ANIMATION_DURATION_MS)
+  // `0` is the annotation's auto-detect sentinel. Desktop can't measure the animation (no
+  // PreviewAnimationClock inspection on this harness), so it takes the same fallback window the
+  // Android path uses when measurement finds nothing — a real multi-frame GIF rather than the
+  // single PNG frame this case used to degrade to (issue #2190).
+  val autoDetect = durationMs <= 0
+  if (autoDetect) {
+    System.err.println(
+      "@AnimatedPreview(durationMs = 0) on ${outputFile.name}: duration auto-detection isn't " +
+        "supported on the desktop backend — capturing the ${AUTO_DURATION_FALLBACK_MS}ms fallback " +
+        "window (set an explicit durationMs to override)."
+    )
+  }
+  val requestedDuration = if (autoDetect) AUTO_DURATION_FALLBACK_MS else durationMs
+  val totalDuration = requestedDuration.coerceIn(frameInterval, MAX_ANIMATION_DURATION_MS)
   val frameCount = (totalDuration / frameInterval).coerceAtLeast(1)
 
   val pseudolocale = ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(localeTag)
