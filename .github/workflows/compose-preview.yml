@@ -4,9 +4,9 @@ name: Compose Preview
 # push-to-main, sticky diff comments on PRs, manual reruns via dispatch
 # (or the `/rerun previews` PR command — see pr-commands.yml).
 #
-# The four pipelines run as THREE PARALLEL JOBS (compose+resources / a11y /
-# notifications) rather than one serial `apply` invocation. They are
-# independent by construction — disjoint baseline/PR branches
+# The four pipelines run as TWO PARALLEL JOBS (compose+resources /
+# a11y+notifications) rather than one serial `apply` invocation. The two
+# jobs are independent — disjoint baseline/PR branches
 # (`compose-preview/{,resources/,a11y/,notifications/}…`) and disjoint
 # sticky-comment markers — and the old back-to-back ordering existed only
 # because one job shares a Gradle build lock and `.git`; separate runners
@@ -15,6 +15,14 @@ name: Compose Preview
 # used to serialize at 25–32 min; in parallel the PR gate is the slower of
 # the two). Compose and resources stay together: resources is cheap and its
 # comment reuses the compose run's `_base_sha` when available.
+# Notifications MUST stay in the same job as (and run after) a11y: its
+# staging globs whatever `*Notification*.png` the workspace accumulated,
+# and the FQN-named notification surface captures + `.notification.json`
+# sidecars in the notifications baseline come from the CLI/daemon-driven
+# a11y re-render, not from the raw `composePreviewRenderAll` invocation the
+# notifications pipeline itself makes. Running notifications on its own
+# runner stages only the two short-stem standard renders and falsely
+# reports every daemon-produced capture as removed (see PR #2195).
 #
 # Change-scoped rendering (.github/preview-scope.json): PR runs classify the
 # diff first — docs-only PRs skip all pipelines in under a minute, and PRs
@@ -44,9 +52,9 @@ concurrency:
 
 jobs:
   # Keeps the historical job id + check name ("Apply compose-preview") so
-  # existing branch-protection required checks continue to match. The a11y /
-  # notifications jobs below are new check names — add them to branch
-  # protection if they should gate merges too.
+  # existing branch-protection required checks continue to match. The
+  # a11y+notifications job below is a new check name — add it to branch
+  # protection if it should gate merges too.
   apply:
     if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     name: Apply compose-preview
@@ -83,7 +91,7 @@ jobs:
 
   a11y:
     if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
-    name: A11y previews
+    name: A11y + notification previews
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -93,7 +101,10 @@ jobs:
       - uses: ./.github/actions/apply
         with:
           cli-version: source
-          only: a11y
+          # Order matters: `apply` runs a11y before notifications, and the
+          # notifications staging depends on the renders the a11y pass
+          # leaves in the shared workspace (see header comment).
+          only: a11y,notifications
           # Empty = auto-detect every module the CLI knows about, so the a11y
           # baseline covers the whole sample suite (overlays + legends on each
           # preview) instead of just one module. CMP / desktop modules are
@@ -104,20 +115,5 @@ jobs:
           # stamp the misleading global "ATF data unavailable" banner.
           a11y-module: ''
           a11y-skip-modules: ''
-          timeout: '1800'
-
-  notifications:
-    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
-    name: Notification previews
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-      - uses: ./.github/actions/apply
-        with:
-          cli-version: source
-          only: notifications
           notifications-module: 'samples:android'
           timeout: '1800'
