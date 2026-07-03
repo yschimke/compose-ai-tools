@@ -1231,13 +1231,19 @@ abstract class RobolectricRenderTestBase(
                     // (`<renders>/../data/<previewId>/`) so consumers see the same on-disk
                     // layout whether a render came through the daemon or the gradle plugin.
                     if (job is CaptureRenderJob) {
+                        // Both producers share the previews-root `data/` dir and key on the
+                        // capture's file stem, not preview.id: a preview can emit several
+                        // captures (manual-clock fan-out, TOP/END scroll, focus/animated) and
+                        // preview.id would make later captures overwrite earlier siblings'
+                        // variants. Matches the desktop path.
+                        val productDataDir = (outputDir.parentFile ?: outputDir).resolve("data")
+                        val productPreviewId = outputFile.nameWithoutExtension
                         val displayFilters = DisplayFilterConfig.fromSystemProperties()
                         if (displayFilters.isNotEmpty()) {
                             try {
-                                val dfDataDir = (outputDir.parentFile ?: outputDir).resolve("data")
                                 DisplayFilterDataProducer.writeArtifacts(
-                                    rootDir = dfDataDir,
-                                    previewId = preview.id,
+                                    rootDir = productDataDir,
+                                    previewId = productPreviewId,
                                     pngFile = outputFile,
                                     filters = displayFilters,
                                 )
@@ -1257,15 +1263,9 @@ abstract class RobolectricRenderTestBase(
                         val deviceFrame = DeviceFrameConfig.fromSystemProperties()
                         if (deviceFrame != null) {
                             try {
-                                val frameDataDir =
-                                    (outputDir.parentFile ?: outputDir).resolve("data")
                                 DeviceFrameDataProducer.writeArtifacts(
-                                    rootDir = frameDataDir,
-                                    // Key on the capture's file stem, not preview.id: a preview can
-                                    // emit several captures (manual-clock fan-out, TOP/END scroll,
-                                    // focus/animated) and preview.id would make later captures
-                                    // overwrite earlier framed siblings. Matches the desktop path.
-                                    previewId = outputFile.nameWithoutExtension,
+                                    rootDir = productDataDir,
+                                    previewId = productPreviewId,
                                     pngFile = outputFile,
                                     device = preview.params.device,
                                     settings = deviceFrame,

@@ -349,13 +349,13 @@ fun main(args: Array<String>) {
       // simulations). Gated on `composeai.displayfilter.filters` being non-empty; the gradle plugin
       // forwards it from the `composePreview.displayFilter.filters` Gradle property. Wrapped in
       // try/catch so a filter failure does not invalidate the just-rendered PNG. Data dir mirrors
-      // the daemon's convention: `<renders-dir>/../data/<previewId>/`.
+      // the daemon's convention (`<renders-dir>/../data/<previewId>/`), resolved via
+      // [resolveDataDir] so scroll data products don't nest a second `data/`.
       val displayFilters = DisplayFilterConfig.fromSystemProperties()
       if (displayFilters.isNotEmpty()) {
         try {
-          val dataDir = (targetFile.parentFile?.parentFile ?: targetFile.parentFile).resolve("data")
           DisplayFilterDataProducer.writeArtifacts(
-            rootDir = dataDir,
+            rootDir = resolveDataDir(targetFile),
             previewId = targetFile.nameWithoutExtension,
             pngFile = targetFile,
             filters = displayFilters,
@@ -373,15 +373,8 @@ fun main(args: Array<String>) {
       val deviceFrame = DeviceFrameConfig.fromSystemProperties()
       if (deviceFrame != null) {
         try {
-          // Resolve the previews-root `data/` dir. For a normal `renders/<id>.png` capture that's
-          // the sibling `data/`; for a data-product output already under `data/<kind>/<id>.png`
-          // (LONG/GIF scroll products) the grandparent IS `data/`, so don't nest a second `data/`.
-          val captureDir = targetFile.parentFile
-          val dataDir =
-            if (captureDir?.parentFile?.name == "data") captureDir.parentFile!!
-            else (captureDir?.parentFile ?: captureDir ?: targetFile).resolve("data")
           DeviceFrameDataProducer.writeArtifacts(
-            rootDir = dataDir,
+            rootDir = resolveDataDir(targetFile),
             previewId = targetFile.nameWithoutExtension,
             pngFile = targetFile,
             device = device,
@@ -405,6 +398,19 @@ fun main(args: Array<String>) {
       // Continue with the next value — keep exit code 0 below.
     }
   }
+}
+
+/**
+ * Resolve the previews-root `data/` dir for a post-capture data producer (display filters, device
+ * frames). For a normal `renders/<id>.png` capture that's the sibling `data/`; for a data-product
+ * output already under `data/<kind>/<id>.png` (LONG/GIF scroll products) the grandparent IS
+ * `data/`, so don't nest a second `data/`. Shared by both producer call sites so the twin blocks
+ * can't drift.
+ */
+internal fun resolveDataDir(targetFile: File): File {
+  val captureDir = targetFile.parentFile
+  return if (captureDir?.parentFile?.name == "data") captureDir.parentFile!!
+  else (captureDir?.parentFile ?: captureDir ?: targetFile).resolve("data")
 }
 
 /**
