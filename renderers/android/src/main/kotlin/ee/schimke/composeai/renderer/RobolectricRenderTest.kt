@@ -131,12 +131,13 @@ object PreviewManifestLoader {
         // path (`composePreviewRenderLottie`), not Robolectric — there's no Android Lottie player
         // and the asset is portable IR. Drop both before any expansion so they never reach
         // `strategyFor`.
-        val expanded =
+        val expandedByEntry =
             manifest.previews
                 .filter {
                     it.params.kind != PreviewKind.XR_SUBSPACE && it.params.kind != PreviewKind.LOTTIE
                 }
-                .flatMap { expandParameterProvider(it) }
+                .map { it to expandParameterProvider(it) }
+        val expanded = expandedByEntry.flatMap { it.second }
         // Tier filter (set by the plugin via TierSystemPropProvider). When
         // `fast`, drop heavyweight captures and annotation-sourced data
         // products. Heavy outputs keep their previous files on disk and stay
@@ -156,8 +157,21 @@ object PreviewManifestLoader {
                 )
             }
         }
-        return assignToShard(filtered, shardCount, shardIndex)
-            .map { arrayOf<Any>(it.entry, it.previewArgs) }
+        val ours = assignToShard(filtered, shardCount, shardIndex)
+        // The renderer is authoritative about which fan-out files will exist
+        // for its parameterized previews — delete any `<stem>_*<ext>` files
+        // from prior runs that today's manifest doesn't account for. Guards
+        // against provider renames ("loading" → "busy") and the
+        // `_PARAM_<idx>` → `_<label>` migration leaving a mix of old-shape
+        // and new-shape PNGs on disk. Runs at shard-load time, before any
+        // test body writes to the directory.
+        deleteStaleFanoutFiles(
+            outDir = System.getProperty("composeai.render.outputDir")?.let(::File),
+            allEntries = manifest.previews,
+            expandedByEntry = expandedByEntry,
+            ownedIds = ours.map { it.entry.id }.toSet(),
+        )
+        return ours.map { arrayOf<Any>(it.entry, it.previewArgs) }
     }
 
     internal data class PreviewRow(val entry: RenderPreviewEntry, val previewArgs: List<Any?>)
@@ -245,44 +259,66 @@ object PreviewManifestLoader {
                 listOf(value),
             )
         }
-        // The renderer is authoritative about which fan-out files will exist
-        // for this preview — delete any `<stem>_*<ext>` files from prior runs
-        // that aren't in this run's expected output. Guards against provider
-        // renames ("loading" → "busy") and the `_PARAM_<idx>` → `_<label>`
-        // migration leaving a mix of old-shape and new-shape PNGs on disk.
-        // Runs at shard-load time so it fires once per parameterized preview,
-        // before any test body writes to the directory.
-        deleteStaleFanoutFiles(entry.captures, rows)
         return rows
     }
 
-    private fun deleteStaleFanoutFiles(
-        templateCaptures: List<RenderPreviewCapture>,
-        expanded: List<PreviewRow>,
+    /**
+     * Deletes stale `<stem>_*<ext>` fan-out files for the parameterized previews in
+     * [expandedByEntry].
+     *
+     * Two guards keep the prefix match from destroying correct sibling output (issue #2193):
+     * - **Manifest-wide expected set.** `@Preview(name = …)` / `@Preview(group = …)` variant
+     *   suffixes make a sibling preview's stem an underscore-extension of the base stem
+     *   (`Foo` vs `Foo_Dark`), so the sibling's base render and its own fan-out
+     *   (`Foo_Dark_<label>.png`) match `Foo_*`. The exclusion set therefore spans every manifest
+     *   entry's outputs — declared ([allEntries]) and expanded ([expandedByEntry]) — not just the
+     *   preview whose prefix is being swept.
+     * - **Shard-owned pass.** Every parallel fork (`maxParallelForks = shardCount`) expands the
+     *   whole manifest at shard load, at a time when sibling forks may already be rendering —
+     *   under the old per-entry expected set a late-loading fork would delete fan-out PNGs
+     *   another fork had just written. The manifest-wide set makes that impossible (every fork's
+     *   outputs are expected), and gating the sweep on [ownedIds] additionally keeps forks whose
+     *   shard was assigned none of a preview's fan-out from redundantly re-sweeping its prefix.
+     */
+    internal fun deleteStaleFanoutFiles(
+        outDir: File?,
+        allEntries: List<RenderPreviewEntry>,
+        expandedByEntry: List<Pair<RenderPreviewEntry, List<PreviewRow>>>,
+        ownedIds: Set<String>,
     ) {
-        val outDirPath = System.getProperty("composeai.render.outputDir") ?: return
-        val outDir = File(outDirPath)
-        if (!outDir.isDirectory) return
-        val expectedNames = expanded.flatMap { it.entry.captures }
-            .mapNotNull { fanoutLeaf(it.renderOutput) }
-            .toSet()
-        for (template in templateCaptures) {
-            val templateFile = File(outDir, template.renderOutput.substringAfter("renders/"))
-            val dir = templateFile.parentFile ?: continue
-            val stem = templateFile.nameWithoutExtension
-            val ext = ".${templateFile.extension}"
-            val prefix = stem + "_"
-            dir.listFiles()
-                ?.filter { f ->
-                    f.name.startsWith(prefix) &&
-                        f.name.endsWith(ext) &&
-                        f.name !in expectedNames
-                }
-                ?.forEach { f ->
-                    if (!f.delete()) {
-                        System.err.println("Failed to delete stale fan-out file: ${f.absolutePath}")
+        if (outDir == null || !outDir.isDirectory) return
+        val expectedNames = buildSet {
+            allEntries
+                .flatMap { it.captures }
+                .mapNotNullTo(this) { fanoutLeaf(it.renderOutput) }
+            expandedByEntry
+                .flatMap { it.second }
+                .flatMap { it.entry.captures }
+                .mapNotNullTo(this) { fanoutLeaf(it.renderOutput) }
+        }
+        for ((entry, rows) in expandedByEntry) {
+            if (entry.params.previewParameterProviderClassName == null) continue
+            if (rows.none { it.entry.id in ownedIds }) continue
+            for (template in entry.captures) {
+                val templateFile = File(outDir, template.renderOutput.substringAfter("renders/"))
+                val dir = templateFile.parentFile ?: continue
+                val stem = templateFile.nameWithoutExtension
+                val ext = ".${templateFile.extension}"
+                val prefix = stem + "_"
+                dir.listFiles()
+                    ?.filter { f ->
+                        f.name.startsWith(prefix) &&
+                            f.name.endsWith(ext) &&
+                            f.name !in expectedNames
                     }
-                }
+                    ?.forEach { f ->
+                        if (!f.delete()) {
+                            System.err.println(
+                                "Failed to delete stale fan-out file: ${f.absolutePath}",
+                            )
+                        }
+                    }
+            }
         }
     }
 
