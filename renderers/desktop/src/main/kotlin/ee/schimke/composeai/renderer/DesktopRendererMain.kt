@@ -68,6 +68,12 @@ import org.jetbrains.skia.EncodedImageFormat
  * inside a single JVM — instead of spawning one subprocess per value — avoids N× Compose cold-start
  * cost; the same `ImageComposeScene` is reused across values.
  *
+ * The optional 28th argument is a `|`-joined list of sibling stems: filenames (without extension)
+ * of OTHER manifest outputs in the same directory whose stem extends this preview's (`@Preview(name
+ * = "Dark")` on `Foo` yields sibling stem `Foo_Dark`). The `@PreviewParameter` stale fan-out
+ * cleanup must leave those siblings' files alone — see [deleteStaleFanoutFiles] (issue #2193). `|`
+ * is safe as a separator because discovery's `sanitizeForPath` strips it from every stem.
+ *
  * Args 15–18 carry `@ScrollingPreview` intent. When [scrollMode] is `"LONG"` or `"GIF"` the
  * renderer leaves the [ImageComposeScene] path and dispatches to [renderScrollPreview] (which uses
  * `runComposeUiTest` for paused-clock + semantic scroll). `"TOP"` / `"END"` / empty are handled by
@@ -163,6 +169,9 @@ fun main(args: Array<String>) {
   val animDurationMs = args.getOrNull(24)?.toIntOrNull()?.takeIf { it > 0 } ?: 0
   val animFrameIntervalMs = args.getOrNull(25)?.toIntOrNull()?.coerceAtLeast(0) ?: 0
   val animShowCurves = args.getOrNull(26)?.toBoolean() ?: false
+  // 28th — sibling stems for the stale fan-out cleanup (issue #2193). Missing / blank keeps the
+  // pre-#2193 behaviour (no sibling protection), so older callers stay arg-compatible.
+  val fanoutSiblingStems = args.getOrNull(27)?.split('|')?.filter { it.isNotBlank() } ?: emptyList()
   if (previewKind == "LOTTIE") {
     val assetPath = args.getOrNull(19)?.takeIf { it.isNotBlank() }
     val sidecar = errorSidecarFor(outputFile)
@@ -241,7 +250,7 @@ fun main(args: Array<String>) {
   // expected output. Guards against provider renames and the
   // `_PARAM_<idx>` → `_<label>` migration leaving stale PNGs behind.
   if (values.any { it !== NO_PARAM }) {
-    deleteStaleFanoutFiles(outputFile, targetFiles.map { it.name }.toSet())
+    deleteStaleFanoutFiles(outputFile, targetFiles.map { it.name }.toSet(), fanoutSiblingStems)
   }
   for ((idx, value) in values.withIndex()) {
     val targetFile = targetFiles[idx]
@@ -512,7 +521,22 @@ private fun jsonString(s: String): String {
 // short-circuits the file-path suffix logic instead.
 private val NO_PARAM = Any()
 
-private fun deleteStaleFanoutFiles(template: File, expectedNames: Set<String>) {
+/**
+ * Deletes `<stem>_*<ext>` files from prior runs that this render won't rewrite — stale fan-out left
+ * behind by provider renames ("loading" → "busy") and the `_PARAM_<idx>` → `_<label>` migration.
+ *
+ * The prefix match alone over-reaches (issue #2193): `@Preview(name = …)` / `@Preview(group = …)`
+ * variant suffixes make a sibling preview's stem an underscore-extension of [template]'s (`Foo` vs
+ * `Foo_Dark`), so the sibling's base render and its own fan-out (`Foo_Dark_<label>.png`) both match
+ * `Foo_*` while belonging to a different subprocess. The plugin — which has the manifest this
+ * subprocess doesn't — passes those stems in [protectedSiblingStems]; any file that is
+ * `<sibling>.<ext>` or `<sibling>_*` is theirs, not stale.
+ */
+internal fun deleteStaleFanoutFiles(
+  template: File,
+  expectedNames: Set<String>,
+  protectedSiblingStems: List<String> = emptyList(),
+) {
   val dir = template.parentFile ?: return
   if (!dir.isDirectory) return
   val stem = template.nameWithoutExtension
@@ -520,7 +544,14 @@ private fun deleteStaleFanoutFiles(template: File, expectedNames: Set<String>) {
   val prefix = stem + "_"
   dir
     .listFiles()
-    ?.filter { it.name.startsWith(prefix) && it.name.endsWith(ext) && it.name !in expectedNames }
+    ?.filter { f ->
+      f.name.startsWith(prefix) &&
+        f.name.endsWith(ext) &&
+        f.name !in expectedNames &&
+        protectedSiblingStems.none { sib ->
+          f.name.startsWith("$sib.") || f.name.startsWith("${sib}_")
+        }
+    }
     ?.forEach { f ->
       if (!f.delete()) {
         System.err.println("Failed to delete stale fan-out file: ${f.absolutePath}")

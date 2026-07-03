@@ -145,7 +145,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
     val outDir = outputDir.get().asFile
     outDir.mkdirs()
 
-    renderWithCompose(manifest, outDir)
+    renderWithCompose(manifest, rawManifest, outDir)
 
     val tierTag =
       if (isFastTier)
@@ -154,7 +154,11 @@ abstract class RenderPreviewsTask : DefaultTask() {
     logger.lifecycle("Rendered ${manifest.previews.size} preview(s)$tierTag")
   }
 
-  private fun renderWithCompose(manifest: PreviewManifest, outDir: java.io.File) {
+  private fun renderWithCompose(
+    manifest: PreviewManifest,
+    rawManifest: PreviewManifest,
+    outDir: java.io.File,
+  ) {
     // This path is only used for desktop rendering.
     // Android rendering uses a separate Test-type task (see ComposePreviewPlugin).
     val mainClass = "ee.schimke.composeai.renderer.DesktopRendererMainKt"
@@ -165,6 +169,17 @@ abstract class RenderPreviewsTask : DefaultTask() {
     // The `dataProductsDir` task output, when wired by the plugin, points at that same `data/`
     // directory so Gradle tracks the written artifacts for caching / up-to-date checks.
     val previewsRoot = outDir.parentFile
+
+    // Every output file the manifest lays claim to, resolved the same way the render loops below
+    // resolve theirs. Built from the RAW manifest — a tier/kind-filtered preview's files stay on
+    // disk and must still be protected from a sibling's stale fan-out cleanup (issue #2193).
+    val manifestOutputFiles =
+      rawManifest.previews.flatMap { p ->
+        p.captures.map { c ->
+          if (c.renderOutput.isNotEmpty()) previewsRoot.resolve(c.renderOutput)
+          else outDir.resolve("${p.id}.png")
+        } + p.dataProducts.filter { it.output.isNotBlank() }.map { previewsRoot.resolve(it.output) }
+      }
 
     // Device frame — prefetch the needed bezels (Ktor/OkHttp, here in the Gradle JVM) into the
     // shared cache before launching renderer subprocesses, which only read that cache. See
@@ -220,6 +235,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
           outputFile = outputFile,
           scroll = capture.scroll,
           animation = capture.animation,
+          fanoutSiblingStems = fanoutSiblingStems(manifestOutputFiles, outputFile),
         )
       }
 
@@ -241,6 +257,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
           heightPx = heightPx,
           outputFile = outputFile,
           scroll = product.scroll,
+          fanoutSiblingStems = fanoutSiblingStems(manifestOutputFiles, outputFile),
         )
       }
     }
@@ -256,6 +273,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
     outputFile: java.io.File,
     scroll: ScrollCapture?,
     animation: AnimationCapture? = null,
+    fanoutSiblingStems: List<String> = emptyList(),
   ) {
     execOperations.javaexec {
       classpath = renderClasspath
@@ -341,7 +359,36 @@ abstract class RenderPreviewsTask : DefaultTask() {
           (animation?.durationMs ?: 0).toString(),
           (animation?.frameIntervalMs ?: 0).toString(),
           (animation?.showCurves ?: false).toString(),
+          // 28th — sibling stems the renderer's `@PreviewParameter` stale fan-out cleanup must
+          // leave alone (issue #2193): manifest outputs in the same directory whose stem extends
+          // this capture's (`Foo` vs the `@Preview(name = "Dark")` sibling's `Foo_Dark`). The
+          // subprocess has no manifest, so without this it treats every `<stem>_*` file as its
+          // own fan-out and deletes the sibling's renders. Empty string signals "no siblings".
+          fanoutSiblingStems.joinToString("|"),
         )
     }
   }
+}
+
+/**
+ * Stems (filenames without extension) of manifest outputs in the same directory as [outputFile]
+ * whose name extends [outputFile]'s stem with an underscore — exactly the files the desktop
+ * renderer's prefix-greedy `deleteStaleFanoutFiles` would otherwise mistake for its own
+ * `@PreviewParameter` fan-out (issue #2193). `@Preview(name = "Dark")` on `Foo` yields the sibling
+ * stem `Foo_Dark`; both its base PNG and its own fan-out (`Foo_Dark_<label>.png`) match `Foo_*`.
+ *
+ * Joined with `|` on the renderer command line — discovery's `sanitizeForPath` strips `|` from
+ * every stem, so the separator can't collide.
+ */
+internal fun fanoutSiblingStems(
+  manifestOutputFiles: List<java.io.File>,
+  outputFile: java.io.File,
+): List<String> {
+  val prefix = outputFile.nameWithoutExtension + "_"
+  return manifestOutputFiles
+    .filter { it.parentFile == outputFile.parentFile && it != outputFile }
+    .map { it.nameWithoutExtension }
+    .filter { it.startsWith(prefix) }
+    .distinct()
+    .sorted()
 }
