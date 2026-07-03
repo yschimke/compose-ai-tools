@@ -195,6 +195,7 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 
 | Preview | Image |
 |---------|-------|
+| `AutoDetectDurationAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/AutoDetectDurationAnimatedPreview_Animated_Auto_Detect_Duration.gif" width="150" /> |
 | `FontScale100Preview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/FontScale100Preview_Font_scale_1_0x.png" width="150" /> |
 | `FontScale150Preview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/FontScale150Preview_Font_scale_1_5x.png" width="150" /> |
 | `FontScale200Preview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/FontScale200Preview_Font_scale_2_0x.png" width="150" /> |
