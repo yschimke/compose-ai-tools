@@ -1,0 +1,15 @@
+{
+  "//": "Change-scope config for the compose-preview apply action (see .github/actions/apply/README.md). PRs whose changes all live inside modules under scopedRoots render only those modules plus their Gradle dependents; PRs that only touch ignorePaths skip the preview pipelines. Anything else — the plugin, CLI, renderers, build wiring, CI — always triggers a full render.",
+  "scopedRoots": ["samples"],
+  "ignorePaths": [
+    "docs/**",
+    "**/*.md",
+    "vscode-extension/**",
+    ".githooks/**",
+    ".idea/**",
+    ".vscode/**",
+    "LICENSE",
+    ".gitignore",
+    ".gitattributes"
+  ]
+}

@@ -783,6 +783,107 @@ class CompareMarkdownTest(unittest.TestCase):
         self.assertNotIn("NowPlayingSpatialPreview", out)
 
 
+class ScopedCompareTest(unittest.TestCase):
+    """`--scope-modules` marks the render as partial: baseline entries for
+    out-of-scope modules were never rendered this run, so they must never be
+    reported as removed."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+
+    def _run(self, current_payload, baselines_payload, scope: str | None) -> str:
+        cli_path = self.tmp / "cli.json"
+        cli_path.write_text(json.dumps(current_payload))
+        bl_path = self.tmp / "baselines.json"
+        bl_path.write_text(json.dumps(baselines_payload))
+
+        import io
+        import contextlib
+        from types import SimpleNamespace
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            cp.cmd_compare(SimpleNamespace(
+                cli_json=str(cli_path),
+                baselines=str(bl_path),
+                repo="owner/repo",
+                base_ref="deadbeef",
+                head_ref="cafef00d",
+                scope_modules=scope,
+            ))
+        return buf.getvalue()
+
+    def test_out_of_scope_baselines_are_not_removed(self):
+        # Render scoped to `app`; the `wear` baselines were never rendered.
+        out = self._run(
+            {"previews": [_entry(id="X", module="app", sha="s1", png="/p.png")]},
+            {
+                "app/X": {"sha256": "s1", "functionName": "Fn", "module": "app"},
+                "wear/Y": {"sha256": "s2", "functionName": "WearFn", "module": "wear"},
+            },
+            scope="app",
+        )
+        self.assertNotIn("### Removed", out)
+        self.assertIn("No visual changes detected.", out)
+        self.assertIn("Change-scoped run", out)
+
+    def test_unscoped_run_still_reports_removed(self):
+        out = self._run(
+            {"previews": [_entry(id="X", module="app", sha="s1", png="/p.png")]},
+            {
+                "app/X": {"sha256": "s1", "functionName": "Fn", "module": "app"},
+                "wear/Y": {"sha256": "s2", "functionName": "WearFn", "module": "wear"},
+            },
+            scope=None,
+        )
+        self.assertIn("### Removed", out)
+        self.assertIn("WearFn", out)
+
+    def test_in_scope_removal_still_detected(self):
+        # A preview deleted inside a scoped module must still show as removed.
+        out = self._run(
+            {"previews": [_entry(id="X", module="app", sha="s1", png="/p.png")]},
+            {
+                "app/X": {"sha256": "s1", "functionName": "Fn", "module": "app"},
+                "app/Gone": {"sha256": "s3", "functionName": "GoneFn", "module": "app"},
+                "wear/Y": {"sha256": "s2", "functionName": "WearFn", "module": "wear"},
+            },
+            scope="app",
+        )
+        self.assertIn("### Removed", out)
+        self.assertIn("GoneFn", out)
+        self.assertNotIn("WearFn", out)
+        self.assertIn("Change-scoped run", out)
+
+    def test_scope_accepts_colon_prefixed_csv(self):
+        out = self._run(
+            {"previews": [_entry(id="X", module="samples:app", sha="s1", png="/p.png")]},
+            {
+                "samples:app/X": {"sha256": "s1", "functionName": "Fn",
+                                  "module": "samples:app"},
+                "samples:wear/Y": {"sha256": "s2", "functionName": "WearFn",
+                                   "module": "samples:wear"},
+            },
+            scope=":samples:app, :samples:phone",
+        )
+        self.assertNotIn("### Removed", out)
+        self.assertIn("No visual changes detected.", out)
+
+    def test_changes_inside_scope_carry_scope_note(self):
+        out = self._run(
+            {"previews": [_entry(id="X", module="app", sha="new", png="/p.png")]},
+            {
+                "app/X": {"sha256": "old", "functionName": "Fn", "module": "app"},
+                "wear/Y": {"sha256": "s2", "functionName": "WearFn", "module": "wear"},
+            },
+            scope="app",
+        )
+        self.assertIn("### Changed", out)
+        self.assertNotIn("### Removed", out)
+        self.assertIn("Change-scoped run", out)
+
+
 class MultiCaptureLoadTest(unittest.TestCase):
     """`@ScrollingPreview(modes = [TOP, END])` / time fan-out: one preview
     must surface as one row per capture so each PNG shows up in the diff."""

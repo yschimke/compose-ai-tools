@@ -111,6 +111,51 @@ with no plugin pinned in their build — are never tripped.
 | `source` | Build from the current checkout — internal CI only. |
 | `none` | Skip CLI install (pair with `skip-render: true` for non-Gradle build systems). |
 
+## Change-scoped rendering
+
+By default every PR run renders **every** preview module — correct, but the
+full render dominates CI latency even for a one-module change. Drop a JSON
+file at `.github/preview-scope.json` (override the path with the
+`scope-config` input) and PR comment runs classify the diff first:
+
+```json
+{
+  "scopedRoots": ["samples"],
+  "ignorePaths": ["docs/**", "**/*.md"]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `scopedRoots` | Directory prefixes whose modules are eligible for scoping. A changed file inside a module under one of these roots scopes the render to that module **plus every module that (transitively) depends on it** — the dependency graph is read from Gradle itself (`scope-project-graph.init.gradle`), so a shared-module change can never skip its dependents. |
+| `ignorePaths` | `**`-style globs (repo-relative) for files that provably cannot change a rendered preview (docs, licence, editor config). A PR that only touches these skips the pipelines entirely. Module ownership wins over `ignorePaths`: a markdown file *inside* a scoped module still scopes that module in, since module content can be fixture data. |
+
+Everything else is **fail-open — full render**: a changed file outside the
+scoped roots (build scripts, version catalogs, the plugin/CLI in this repo,
+CI config), a file that can't be attributed to a module (deleted module,
+loose file), a failed or missing Gradle graph probe, or a build with no
+statically applied compose-preview plugin (the CLI auto-inject path, where
+render modules can't be determined statically). Baseline runs (push to the
+development branch) and `workflow_dispatch` reruns always render everything,
+and `scope: full` forces it per invocation.
+
+Semantics of a scoped run:
+
+- Only the **compose** pipeline renders scoped (per-module
+  `compose-preview show --module`, envelopes merged). The resources / a11y /
+  notifications pipelines treat a partial scope as a full run; only the
+  "nothing render-affecting changed" case skips them.
+- The PR comment carries a `Change-scoped run: …` note, and baseline entries
+  for out-of-scope modules are treated as **unchanged**, never "Removed" —
+  they simply weren't rendered. Removals *inside* scoped modules are still
+  detected.
+- When the diff scopes to nothing but a previous push already posted sticky
+  comments, the run falls back to full so the stale comment is refreshed to
+  its resolved state instead of being left behind.
+
+A missing config file turns the feature off (purely additive), matching the
+A/B config pattern below.
+
 ## A/B comparison of preview variants
 
 By default the comment and gallery show one "hero" render per function and

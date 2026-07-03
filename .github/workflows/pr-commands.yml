@@ -1,0 +1,145 @@
+name: PR Commands
+
+# Slash commands in PR comments, for maintainers. GitHub Actions has no
+# trigger for comment *reactions*, so commands are the available shape —
+# the workflow ACKs with a 🚀 reaction so the comment thread stays clean.
+#
+#   /rerun               re-run the failed jobs of every failed / cancelled
+#                        run on the PR's current head SHA (flaky render,
+#                        stale baseline race, runner hiccup)
+#   /rerun <target>      full re-run of the latest run of one workflow on
+#                        the head SHA. <target> is a workflow file stem
+#                        (`compose-preview`, `ci`, ...) or an alias:
+#                        previews -> compose-preview, vscode ->
+#                        vscode-preview-comment
+#   /rerun all           full re-run of every completed run on the head SHA
+#
+# Re-runs execute against the same commit the original run used, which is
+# exactly right for the common cases: a flaked render, or re-diffing after
+# the baseline branches moved (baselines are fetched at run time, not baked
+# into the trigger). A new push still supersedes everything via the normal
+# pull_request trigger + per-PR concurrency groups.
+#
+# issue_comment workflows always run the workflow file from the default
+# branch, so a PR cannot smuggle changes into this logic; the author gate
+# below additionally restricts commands to owners / members / collaborators.
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+concurrency:
+  # One command at a time per PR; later commands queue rather than cancel.
+  group: pr-commands-${{ github.event.issue.number }}
+
+jobs:
+  rerun:
+    name: Rerun workflows
+    if: >-
+      ${{
+        github.event.issue.pull_request != null &&
+        startsWith(github.event.comment.body, '/rerun') &&
+        contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+      }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write        # POST .../runs/{id}/rerun
+      issues: write         # reaction ACK + fallback reply comment
+      pull-requests: read   # resolve the PR head SHA
+    steps:
+      - name: Acknowledge command
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
+            -f content=rocket >/dev/null
+
+      - name: Rerun matching workflow runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+
+          # First line only; everything after `/rerun` is the target.
+          cmd=$(printf '%s\n' "$COMMENT_BODY" | head -1 | tr -d '\r')
+          target=$(printf '%s' "$cmd" | sed -E 's|^/rerun[[:space:]]*||' \
+                   | tr '[:upper:]' '[:lower:]' | awk '{print $1}')
+
+          case "$target" in
+            previews) target="compose-preview" ;;
+            vscode)   target="vscode-preview-comment" ;;
+          esac
+
+          HEAD_SHA=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha')
+          echo "PR #${PR_NUMBER} head: ${HEAD_SHA}, target: '${target:-<failed>}'"
+
+          # Latest attempt of each workflow run on the head SHA.
+          runs=$(gh api "repos/${REPO}/actions/runs?head_sha=${HEAD_SHA}&per_page=100" \
+            --jq '[.workflow_runs[] | {id, path, status, conclusion, name}]')
+
+          reply() {
+            gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" -f body="$1" >/dev/null
+          }
+
+          count=$(printf '%s' "$runs" | jq 'length')
+          if [ "$count" -eq 0 ]; then
+            reply "\`/rerun\`: no workflow runs found for head \`${HEAD_SHA:0:8}\`."
+            exit 0
+          fi
+
+          rerun_one() {
+            local id="$1" mode="$2" name="$3"
+            if gh api -X POST "repos/${REPO}/actions/runs/${id}/${mode}" >/dev/null 2>&1; then
+              echo "re-ran ${name} (run ${id}, ${mode})"
+              return 0
+            fi
+            echo "could not re-run ${name} (run ${id}) — likely still in progress"
+            return 1
+          }
+
+          triggered=0
+          skipped=""
+          if [ -z "$target" ]; then
+            # Bare /rerun: failed jobs of failed / cancelled / timed-out runs.
+            while IFS=$'\t' read -r id status conclusion name; do
+              [ "$status" = "completed" ] || { skipped="$skipped $name(in-progress)"; continue; }
+              case "$conclusion" in
+                failure|cancelled|timed_out)
+                  rerun_one "$id" rerun-failed-jobs "$name" && triggered=$((triggered+1)) ;;
+              esac
+            done < <(printf '%s' "$runs" | jq -r '.[] | [.id, .status, .conclusion // "", .name] | @tsv')
+            if [ "$triggered" -eq 0 ]; then
+              reply "\`/rerun\`: nothing to re-run — no failed runs on head \`${HEAD_SHA:0:8}\`.${skipped:+ Still running:$skipped.} Use \`/rerun <workflow>\` (e.g. \`/rerun previews\`) to force a full re-run of a green workflow."
+            fi
+          elif [ "$target" = "all" ]; then
+            while IFS=$'\t' read -r id status conclusion name; do
+              [ "$status" = "completed" ] || { skipped="$skipped $name(in-progress)"; continue; }
+              rerun_one "$id" rerun "$name" && triggered=$((triggered+1))
+            done < <(printf '%s' "$runs" | jq -r '.[] | [.id, .status, .conclusion // "", .name] | @tsv')
+            [ "$triggered" -eq 0 ] && reply "\`/rerun all\`: nothing eligible — every run on head \`${HEAD_SHA:0:8}\` is still in progress."
+          else
+            # Named workflow: match the file stem under .github/workflows/.
+            match=$(printf '%s' "$runs" | jq -r --arg t "$target" \
+              '[.[] | select((.path | sub(".*/"; "") | sub("\\.ya?ml$"; "")) == $t)] | first // empty | [.id, .status, .name] | @tsv')
+            if [ -z "$match" ]; then
+              available=$(printf '%s' "$runs" | jq -r '[.[] | .path | sub(".*/"; "") | sub("\\.ya?ml$"; "")] | unique | join(", ")')
+              reply "\`/rerun ${target}\`: no run of that workflow on head \`${HEAD_SHA:0:8}\`. Workflows with runs on this commit: ${available}. Aliases: \`previews\`, \`vscode\`, \`all\`."
+              exit 0
+            fi
+            IFS=$'\t' read -r id status name <<< "$match"
+            if [ "$status" != "completed" ]; then
+              reply "\`/rerun ${target}\`: the latest **${name}** run is still in progress — wait for it to finish (or push again to restart it via the normal trigger)."
+              exit 0
+            fi
+            rerun_one "$id" rerun "$name" && triggered=$((triggered+1)) \
+              || reply "\`/rerun ${target}\`: GitHub refused to re-run **${name}** (run ${id}); see the Actions tab."
+          fi
+          echo "triggered: $triggered"
