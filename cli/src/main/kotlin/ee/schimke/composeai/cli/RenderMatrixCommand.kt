@@ -224,6 +224,12 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
    * `<module>/build/compose-previews/<id>-matrix-cells/`), one file per cell named from its axis
    * values (e.g. `en--light--1.5x.png`), so agents and importers (Figma push, design-artifact
    * bundles) get per-variant files without cropping the contact sheet.
+   *
+   * Stale `.png` files from a prior run are removed first: because each run only overwrites the
+   * cells it rendered, a later run that narrows the axes (or whose cell failed) would otherwise
+   * leave earlier variants behind, and an importer/human globbing the directory would consume them
+   * as if they belonged to the current matrix. Clearing makes the directory reflect exactly this
+   * run's cells. Only top-level `.png` files are removed — never subdirectories or other files.
    */
   private fun writeCells(
     module: PreviewModule,
@@ -236,6 +242,7 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
           "build/compose-previews" /
           "${previewId.replace(Regex("[^A-Za-z0-9._-]"), "_")}-matrix-cells")
     fileSystem.createDirectories(dirPath)
+    clearStaleCellPngs(fileSystem, dirPath)
     val written = mutableMapOf<MatrixCell, File>()
     for (cr in cells) {
       val png = cr.png ?: continue
@@ -395,6 +402,18 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
      * `id_pixel_5--dark.png`, `default.png`. Axis order matches [MatrixCell.label]; characters
      * outside `[A-Za-z0-9._-]` are replaced so device specs stay filesystem-safe.
      */
+    /**
+     * Remove stale top-level `.png` files from a `--cells-dir` so the directory reflects exactly
+     * the current run's cells (see [writeCells]). Only regular `.png` files at the top level are
+     * deleted — never subdirectories or non-PNG files. A missing directory is a no-op.
+     */
+    internal fun clearStaleCellPngs(fileSystem: okio.FileSystem, dirPath: okio.Path) {
+      runCatching { fileSystem.list(dirPath) }
+        .getOrDefault(emptyList())
+        .filter { it.name.endsWith(".png") && fileSystem.metadataOrNull(it)?.isRegularFile == true }
+        .forEach { fileSystem.delete(it) }
+    }
+
     internal fun cellFileName(cell: MatrixCell): String {
       val parts =
         listOfNotNull(cell.device, cell.locale, cell.uiMode, cell.fontScale?.let { "${it}x" })

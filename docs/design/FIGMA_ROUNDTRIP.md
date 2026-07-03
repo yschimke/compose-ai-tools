@@ -46,7 +46,10 @@ compose-preview render-matrix \
 
 - `--cells-dir` writes one PNG per cell (`en--light--1.0x.png`, …) and echoes
   each path as `pngPath` in the JSON summary — these are the files the import
-  step uploads. The contact sheet is the human/PR-comment artifact.
+  step uploads. The contact sheet is the human/PR-comment artifact. The
+  directory is cleared of stale `.png` files first, so a re-run with narrowed
+  axes (or a failed cell) never leaves an earlier variant behind for a globbing
+  importer to pick up.
 - Bounded at 24 cells; axes follow `render_matrix` (MCP) semantics exactly.
 
 For the editable-layer leg, also extract the data products:

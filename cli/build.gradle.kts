@@ -206,6 +206,10 @@ dependencies {
   }
 
   testImplementation(kotlin("test"))
+  // In-memory FileSystem for tests that assert on-disk output without touching the real FS
+  // (e.g. RenderMatrixCellNamesTest's stale-cell clearing). okio itself is on the compile
+  // classpath transitively via `common:io`; the fake ships separately.
+  testImplementation(libs.okio.fakefilesystem)
   // Gradle TestKit drives a real Gradle build inside [InitScriptExclusiveContentReproducerTest] —
   // the only way to assert that the rendered init script doesn't trip Gradle 9.3+'s
   // `exclusiveContent`-vs-`buildscript.repositories` validation when the consumer's
