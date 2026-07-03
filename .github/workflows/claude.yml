@@ -57,6 +57,12 @@ jobs:
       - uses: anthropics/claude-code-action@769e3bdff9bb7ecfb51bad4c9cba23d6f5fc5ea5 # v1.0.163
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Request the CI-read scope on the Claude App token the action
+          # mints for itself — the job-level `actions: read` grant above only
+          # covers the workflow token, and the get_ci_status /
+          # download_job_log tools key off this input.
+          additional_permissions: |
+            actions: read
           # House style (and meshcore CI) reject agent-named branch prefixes.
           branch_prefix: agent/
           # The No Agent Attribution gate rejects agent Co-authored-by
