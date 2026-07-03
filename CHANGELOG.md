@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.16.15](https://github.com/yschimke/compose-ai-tools/compare/v0.16.14...v0.16.15) (2026-07-03)
+
+
+### Features
+
+* **ci:** change-scoped preview renders, parallel pipelines, /rerun PR command ([#2195](https://github.com/yschimke/compose-ai-tools/issues/2195)) ([7c477f3](https://github.com/yschimke/compose-ai-tools/commit/7c477f36da68e3eedd2635bd5c81491dc13c6018))
+
+
+### Bug Fixes
+
+* honour @AnimatedPreview durationMs=0 auto-detect on the desktop renderer ([#2197](https://github.com/yschimke/compose-ai-tools/issues/2197)) ([e0757a1](https://github.com/yschimke/compose-ai-tools/commit/e0757a1d76aa7d765fc4d5435835ff3f43587534))
+* **renderer-desktop:** refuse single-frame fall-through into scroll data products ([#2196](https://github.com/yschimke/compose-ai-tools/issues/2196)) ([ade74a6](https://github.com/yschimke/compose-ai-tools/commit/ade74a6bb9c8a0cdfaec659bc80640b5f42a895c))
+* **renderers:** bring display-filter output paths to parity with device-frame ([#2199](https://github.com/yschimke/compose-ai-tools/issues/2199)) ([c0ccd4e](https://github.com/yschimke/compose-ai-tools/commit/c0ccd4ecd7579b73967bcd82a3c29b8812daca67))
+* restrict fan-out sibling protection to same-extension outputs ([#2200](https://github.com/yschimke/compose-ai-tools/issues/2200)) ([2e61069](https://github.com/yschimke/compose-ai-tools/commit/2e6106992442c39872bb5db30b864db9d47c3ae4))
+* stop stale fan-out cleanup deleting sibling previews' renders ([#2198](https://github.com/yschimke/compose-ai-tools/issues/2198)) ([af12d2a](https://github.com/yschimke/compose-ai-tools/commit/af12d2acae955d2d79659e1b49eb1147437ca9e2))
+
 ## [0.16.14](https://github.com/yschimke/compose-ai-tools/compare/v0.16.13...v0.16.14) (2026-07-02)
 
 
