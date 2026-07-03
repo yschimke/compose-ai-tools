@@ -457,6 +457,11 @@ def cmd_generate(args: argparse.Namespace) -> int:
             "sourceFile": info["sourceFile"],
             "renderBasename": info["renderBasename"],
             "captureLabel": info["captureLabel"],
+            # Also encoded in the key (`<module>/<id>`); persisted explicitly
+            # so scoped compares don't have to parse it back out. Entries
+            # carried over from pre-field baselines may lack it — readers
+            # must fall back to the key (see _baseline_module).
+            "module": info["module"],
         }
         for key, info in previews.items()
         if info["sha256"]  # skip entries without a rendered PNG
@@ -880,6 +885,20 @@ def _parse_scope_modules(args: argparse.Namespace) -> set[str] | None:
     return modules or None
 
 
+def _baseline_module(key: str, bl_info: dict) -> str:
+    """Module of a baseline entry.
+
+    Baselines written before `module` was persisted (and the composable
+    baselines generally — see cmd_generate) only encode the module in the
+    key, `<module>/<previewId>[#idx]`. Module gradle paths use `:` and never
+    contain `/`, so the first segment is always the module.
+    """
+    mod = bl_info.get("module")
+    if mod:
+        return mod
+    return key.split("/", 1)[0]
+
+
 def _scope_note(scope_modules: set[str]) -> str:
     mods = ", ".join(f"`{m}`" for m in sorted(scope_modules))
     return (
@@ -974,7 +993,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
         # for an out-of-scope module is absent from `current` because it was
         # never rendered, not because the preview went away — never report
         # it as removed.
-        if scope_modules is not None and bl_info.get("module") not in scope_modules:
+        if scope_modules is not None and _baseline_module(key, bl_info) not in scope_modules:
             continue
         if key not in current:
             removed.append((key, bl_info))
