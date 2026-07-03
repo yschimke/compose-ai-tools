@@ -381,11 +381,17 @@ abstract class RenderPreviewsTask : DefaultTask() {
 }
 
 /**
- * Stems (filenames without extension) of manifest outputs in the same directory as [outputFile]
- * whose name extends [outputFile]'s stem with an underscore — exactly the files the desktop
- * renderer's prefix-greedy `deleteStaleFanoutFiles` would otherwise mistake for its own
- * `@PreviewParameter` fan-out (issue #2193). `@Preview(name = "Dark")` on `Foo` yields the sibling
- * stem `Foo_Dark`; both its base PNG and its own fan-out (`Foo_Dark_<label>.png`) match `Foo_*`.
+ * Stems (filenames without extension) of manifest outputs in the same directory as [outputFile],
+ * with the same extension, whose name extends [outputFile]'s stem with an underscore — exactly the
+ * files the desktop renderer's prefix-greedy `deleteStaleFanoutFiles` would otherwise mistake for
+ * its own `@PreviewParameter` fan-out (issue #2193). `@Preview(name = "Dark")` on `Foo` yields the
+ * sibling stem `Foo_Dark`; both its base PNG and its own fan-out (`Foo_Dark_<label>.png`) match
+ * `Foo_*`.
+ *
+ * The same-extension restriction matters in both directions: the cleanup only scans files with
+ * [outputFile]'s extension, so a different-extension sibling (`Foo_Dark.gif`) needs no protection —
+ * and shielding its stem anyway would keep a genuinely stale `Foo_Dark.png`, left from before that
+ * sibling's capture became a GIF, on disk forever.
  *
  * Joined with `|` on the renderer command line — discovery's `sanitizeForPath` strips `|` from
  * every stem, so the separator can't collide.
@@ -396,7 +402,11 @@ internal fun fanoutSiblingStems(
 ): List<String> {
   val prefix = outputFile.nameWithoutExtension + "_"
   return manifestOutputFiles
-    .filter { it.parentFile == outputFile.parentFile && it != outputFile }
+    .filter {
+      it.parentFile == outputFile.parentFile &&
+        it != outputFile &&
+        it.extension == outputFile.extension
+    }
     .map { it.nameWithoutExtension }
     .filter { it.startsWith(prefix) }
     .distinct()
