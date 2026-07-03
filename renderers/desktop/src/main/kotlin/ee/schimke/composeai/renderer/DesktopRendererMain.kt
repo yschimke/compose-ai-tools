@@ -281,9 +281,16 @@ fun main(args: Array<String>) {
           fontScale = fontScale,
         )
       } else if (scrollDispatchMode != null) {
-        // @ScrollingPreview(modes = [LONG, GIF]) — drive the dedicated scroll path. Falls
-        // through to the default single-frame render on "no scrollable found" so a misuse
-        // produces SOMETHING on disk rather than a missing file.
+        // @ScrollingPreview(modes = [LONG, GIF]) — drive the dedicated scroll path. For a
+        // primary *capture*, falls through to the default single-frame render on "no
+        // scrollable found" so a misuse produces SOMETHING on disk rather than a missing
+        // file. For a *data product* output (under `data/render-scroll-*/`), mirror the
+        // Android renderer's rule (see RobolectricRenderTest's `productFellThrough`): a
+        // fall-through would write PNG bytes into a `.gif`-named product, or stamp the
+        // unscrolled first viewport into the long-scroll path, and the panel would surface
+        // a still frame under a "scroll gif" / "scroll long" label as if capture succeeded.
+        // Throw instead — the per-value catch below writes the structured `.error.json`
+        // sidecar so the panel surfaces the real failure.
         val didCapture =
           renderScrollPreview(
             className = className,
@@ -304,6 +311,13 @@ fun main(args: Array<String>) {
             fontScale = fontScale,
           )
         if (!didCapture) {
+          if (isDataProductOutput(targetFile)) {
+            throw IllegalStateException(
+              "@ScrollingPreview(${scrollDispatchMode.name}) on $className.$functionName: " +
+                "no scrollable composable found on axis ${scrollAxis.name} — refusing to " +
+                "write a single-frame capture into the data product path."
+            )
+          }
           renderPreview(
             className,
             functionName,
@@ -414,6 +428,15 @@ fun main(args: Array<String>) {
  */
 private fun errorSidecarFor(pngFile: File): File =
   File(pngFile.parentFile, pngFile.name + ".error.json")
+
+/**
+ * True when [outputFile] is a *data product* output — `<previews-root>/data/<kind>/<id>.<ext>`,
+ * e.g. the `data/render-scroll-{long,gif}/` paths `RenderPreviewsTask` resolves from
+ * `PreviewDataProduct.output` — rather than a primary capture (`renders/<id>.png`). Same
+ * grandparent-is-`data` convention the device-frame block in [main] uses to resolve the data dir.
+ */
+internal fun isDataProductOutput(outputFile: File): Boolean =
+  outputFile.parentFile?.parentFile?.name == "data"
 
 private fun writeErrorSidecar(
   pngFile: File,
