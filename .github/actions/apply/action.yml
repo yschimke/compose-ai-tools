@@ -900,7 +900,7 @@ runs:
           > _notification_comment.md
 
     - name: Upsert notification PR comment
-      if: steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.notifications == '1' && hashFiles('_notification_comment.md') != ''
+      if: steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.notifications == '1'
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
@@ -912,8 +912,25 @@ runs:
         set -euo pipefail
         export PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
         export MARKER="<!-- notification-previews -->"
-        export BODY_FILE="_notification_comment.md"
-        bash "$ACTION_PATH/lib/post-comment.sh"
+        if [ -s _notification_comment.md ]; then
+          export BODY_FILE="_notification_comment.md"
+          bash "$ACTION_PATH/lib/post-comment.sh"
+          exit 0
+        fi
+        # No-diff run. If an earlier push posted a sticky diff that no longer
+        # holds, PATCH it to the resolved state instead of leaving it stale —
+        # same four-state shape the resources comment uses. (PATCH doesn't
+        # notify; a no-diff run with no prior comment stays silent.)
+        [ -z "$PR_NUMBER" ] && exit 0
+        COMMENT_ID=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" \
+          --paginate \
+          --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" \
+          | head -1)
+        if [ -n "$COMMENT_ID" ]; then
+          RESOLVED_BODY="${MARKER}"$'\n'"## Notification Previews"$'\n\n'"_No notification preview changes in this PR's latest render._"
+          gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" \
+            -X PATCH -f body="$RESOLVED_BODY" >/dev/null
+        fi
 
     # Surface pipeline failures now that all pushes + comments have run.
     # Final exit code is the worst rc across pipelines: failed renders
