@@ -1,0 +1,75 @@
+name: Claude
+
+# Mention-triggered agent sessions: comment `@claude <request>` on any issue,
+# PR, or review thread and a Claude Code session runs on this runner with the
+# full thread as context. A follow-up `@claude` reply starts a fresh run that
+# re-reads the entire conversation plus the branch it already pushed, so a
+# thread behaves like one resumable session (on an open PR, repeated mentions
+# keep stacking commits onto the same branch). Only users with write access
+# to the repo can trigger it — the action enforces this at runtime in
+# addition to the `if:` gate below.
+#
+# One-time setup per repo: install the Claude GitHub App
+# (https://github.com/apps/claude) and add an ANTHROPIC_API_KEY secret (or
+# swap the input for `claude_code_oauth_token`). Full design, the visual-
+# evidence contract, and how to adopt this in another repo:
+# docs/AGENT_INVOCATION.md.
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  issues:
+    types: [opened, assigned]
+
+jobs:
+  claude:
+    name: Claude agent session
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # Queue (don't cancel) concurrent mentions on the same thread so two runs
+    # never race pushes to the same working branch.
+    concurrency:
+      group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      # Exchanged by the action for a short-lived Claude GitHub App token.
+      id-token: write
+      # Lets Claude read CI results on the PR it is working on.
+      actions: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # Full history so Claude can diff against main and reason about
+          # base-vs-head when rendering before/after evidence.
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      - uses: anthropics/claude-code-action@769e3bdff9bb7ecfb51bad4c9cba23d6f5fc5ea5 # v1.0.163
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # House style (and meshcore CI) reject agent-named branch prefixes.
+          branch_prefix: agent/
+          # The No Agent Attribution gate rejects agent Co-authored-by
+          # trailers — never let the CLI append one (CLAUDE.md "Git
+          # conventions"). Branch commits land as claude[bot], which the gate
+          # deliberately allows; squash-merge from PR title + body keeps main
+          # human-authored.
+          settings: |
+            {
+              "includeCoAuthoredBy": false,
+              "attribution": { "coAuthoredBy": false }
+            }
+          claude_args: >-
+            --max-turns 100
+            --allowedTools "Bash(./gradlew:*),Bash(git:*),Bash(python3:*)"
+            --append-system-prompt "Follow CLAUDE.md and docs/AGENTS.md conventions strictly. Visual evidence is mandatory for any UI-affecting request: render the affected @Preview composables before and after your change with the compose-preview pipeline (./gradlew :samples:android:composePreviewRenderAll, :samples:cmp:composePreviewRenderAll, or the specific module render task), commit the PNGs you cite to your working branch, push, and only then embed them inline in your comment and PR text as markdown images whose URLs are commit-SHA-pinned raw.githubusercontent.com links to those pushed files. Describing an image is not evidence; the reviewer must see pixels inline. When reviewing an existing PR, reuse renders already published on the compose-preview/pr and compose-preview/main branches where possible instead of re-rendering. Use conventional commit subjects (feat:, fix:, ci:, docs:, test:). Never add Co-authored-by trailers or any agent attribution to commits, PR titles, or PR bodies."
