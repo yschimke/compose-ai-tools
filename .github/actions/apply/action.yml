@@ -131,6 +131,27 @@ inputs:
       "Other variants" links. Absent file = feature off (purely additive).
       See `.github/actions/apply/README.md` for the schema.
     default: '.github/preview-abtest.json'
+  scope-config:
+    description: >
+      Path (relative to the checkout) to the change-scope config JSON. When
+      the file exists and the run is a PR comment run, changed files are
+      classified against it: PRs that only touch `ignorePaths` skip the
+      pipelines entirely, and PRs whose changes all live inside modules
+      under `scopedRoots` render only those modules plus their (transitive)
+      Gradle dependents — out-of-scope baselines are carried, never
+      reported as removed. Every ambiguous case (a file outside the scoped
+      roots, a deleted module, a failed dependency-graph probe, no
+      statically applied plugin) falls back to a full render, so scoping
+      can only skip work that provably cannot change a preview. Absent
+      file = feature off (purely additive). Baseline runs always render
+      everything. See `.github/actions/apply/README.md` for the schema.
+    default: '.github/preview-scope.json'
+  scope:
+    description: >
+      Override for change-scoped rendering: `auto` (default — honour
+      `scope-config` when present) or `full` (ignore the config and always
+      render everything; useful for a manual full rerun).
+    default: 'auto'
   skip-render:
     description: >
       When `true`, the compose and resources pipelines reuse pre-staged
@@ -219,6 +240,100 @@ runs:
           echo "::notice::No pipeline applicable for event=$EVENT_NAME ref=$REF_NAME — skipping."
         fi
 
+    # Change-scoped rendering (see compute-scope.py). Always runs so its
+    # `mode` output is the single source of truth downstream: it passes the
+    # resolved mode through unchanged, except when a PR's changed files
+    # provably cannot affect any preview — then mode flips to `skip` before
+    # the CLI install pays any cost. Partial scopes (a module subset) flow
+    # to the pipelines via the `modules` output; only the compose pipeline
+    # renders scoped (the graph probe is skipped for the others), everything
+    # else treats a partial scope as a full run. Fail-open throughout: any
+    # doubt = full render.
+    - name: Resolve change scope
+      id: scope
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        RESOLVE_MODE: ${{ steps.resolve.outputs.mode }}
+        EVENT_NAME: ${{ github.event_name }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        HEAD_SHA: ${{ github.sha }}
+        SCOPE_CONFIG: ${{ inputs.scope-config }}
+        SCOPE_OVERRIDE: ${{ inputs.scope }}
+        WANT_COMPOSE: ${{ steps.resolve.outputs.compose }}
+        WANT_RESOURCES: ${{ steps.resolve.outputs.resources }}
+        WANT_A11Y: ${{ steps.resolve.outputs.a11y }}
+        WANT_NOTIFICATIONS: ${{ steps.resolve.outputs.notifications }}
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        PR_INPUT_NUMBER: ${{ inputs.pr-number }}
+        EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: |
+        set -euo pipefail
+        MODE="$RESOLVE_MODE"
+        MODULES="full"
+        if [ "$MODE" = "comment" ] \
+           && [ "$EVENT_NAME" = "pull_request" ] \
+           && [ "$SCOPE_OVERRIDE" != "full" ] \
+           && [ -n "$BASE_SHA" ] \
+           && [ -f "$SCOPE_CONFIG" ]; then
+          # Base must be reachable for the diff; any fetch/diff failure makes
+          # compute-scope.py fall back to a full render. Token in the URL
+          # because the checkout runs with persist-credentials: false.
+          git fetch --no-tags --depth=1 \
+            "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" \
+            "$BASE_SHA" 2>/dev/null || true
+          # Only the compose pipeline renders scoped, so only it needs the
+          # Gradle dependency-graph probe; the other pipelines just need the
+          # none-vs-not-none answer.
+          WANT_GRAPH=0
+          [ "$WANT_COMPOSE" = "1" ] && WANT_GRAPH=1
+          MODULES=$(WORKSPACE="$GITHUB_WORKSPACE" \
+                    SCOPE_CONFIG="$SCOPE_CONFIG" \
+                    BASE_SHA="$BASE_SHA" HEAD_SHA="$HEAD_SHA" \
+                    WANT_GRAPH="$WANT_GRAPH" \
+                    python3 "$ACTION_PATH/compute-scope.py") || MODULES="full"
+          [ -z "$MODULES" ] && MODULES="full"
+
+          if [ "$MODULES" = "none" ]; then
+            # A previous push may have posted sticky comments that now need
+            # refreshing to their resolved state — in that case run full
+            # rather than leaving a stale diff on the PR. Marker set is
+            # limited to the pipelines this invocation owns.
+            PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
+            markers=()
+            [ "$WANT_COMPOSE" = "1" ] && markers+=("<!-- preview-diff -->")
+            [ "$WANT_RESOURCES" = "1" ] && markers+=("<!-- preview-diff-resources -->")
+            [ "$WANT_A11Y" = "1" ] && markers+=("<!-- a11y-report -->")
+            [ "$WANT_NOTIFICATIONS" = "1" ] && markers+=("<!-- notification-previews -->")
+            if [ -z "$PR_NUMBER" ]; then
+              echo "::notice::scope=none but no PR number to check for sticky comments — running full."
+              MODULES="full"
+            elif [ "${#markers[@]}" -gt 0 ]; then
+              # Sticky comments start with their marker, so the first 120
+              # chars of each body are enough to detect one.
+              existing=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" \
+                --paginate --jq '.[].body | .[0:120]' 2>/dev/null || true)
+              for mk in "${markers[@]}"; do
+                if printf '%s' "$existing" | grep -qF "$mk"; then
+                  echo "::notice::scope=none but a sticky comment ($mk) exists — running full so it gets refreshed."
+                  MODULES="full"
+                  break
+                fi
+              done
+            fi
+          fi
+
+          if [ "$MODULES" = "none" ]; then
+            MODE="skip"
+            echo "::notice::compose-preview/apply: no render-affecting changes in this PR — skipping pipelines."
+          elif [ "$MODULES" != "full" ]; then
+            echo "::notice::compose-preview/apply: change-scoped render — modules: $MODULES"
+          fi
+        fi
+        echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+        echo "modules=$MODULES" >> "$GITHUB_OUTPUT"
+
     # Resolve `cli-version: auto` (the default, issue #1920) to a concrete
     # value before any install runs. `auto` pins the CLI to the plugin version
     # detected in the consumer's checkout so a new release can't float the CLI
@@ -230,7 +345,7 @@ runs:
     # reuses the skew guard's tested detection (single source of truth).
     - name: Resolve CLI version
       id: clivers
-      if: steps.resolve.outputs.mode != 'skip'
+      if: steps.scope.outputs.mode != 'skip'
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -259,7 +374,7 @@ runs:
     # composite resolves against the consumer's $GITHUB_WORKSPACE, breaking
     # external use). Tag bumped per release by release-please.
     - name: Install CLI from source
-      if: steps.resolve.outputs.mode != 'skip' && steps.clivers.outputs.version == 'source'
+      if: steps.scope.outputs.mode != 'skip' && steps.clivers.outputs.version == 'source'
       # zizmor: ignore[known-vulnerable-actions] same-repo release action trips GitHub Advisories API 403 under GITHUB_TOKEN
       uses: yschimke/compose-ai-tools/.github/actions/install-cli@v0.11.5 # x-release-please-version
 
@@ -269,7 +384,7 @@ runs:
     # cleanly with "command not found" when selected without a CLI.
     - name: Install CLI from release
       id: install-release
-      if: steps.resolve.outputs.mode != 'skip' && steps.clivers.outputs.version != 'source' && steps.clivers.outputs.version != 'none'
+      if: steps.scope.outputs.mode != 'skip' && steps.clivers.outputs.version != 'source' && steps.clivers.outputs.version != 'none'
       # zizmor: ignore[known-vulnerable-actions] same-repo release action trips GitHub Advisories API 403 under GITHUB_TOKEN
       uses: yschimke/compose-ai-tools/.github/actions/install@v0.11.5 # x-release-please-version
       with:
@@ -288,7 +403,7 @@ runs:
     # no Gradle cost — runs before doctor so the headline is the skew, not the
     # confusing symptom.
     - name: Check CLI / plugin version skew
-      if: steps.resolve.outputs.mode != 'skip' && steps.clivers.outputs.version != 'source' && steps.clivers.outputs.version != 'none'
+      if: steps.scope.outputs.mode != 'skip' && steps.clivers.outputs.version != 'source' && steps.clivers.outputs.version != 'none'
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -309,7 +424,7 @@ runs:
     # actionable error. A non-zero doctor surfaces as a `::warning::`
     # annotation so it's still visible in the run summary.
     - name: Run compose-preview doctor
-      if: steps.resolve.outputs.mode != 'skip' && steps.clivers.outputs.version != 'none'
+      if: steps.scope.outputs.mode != 'skip' && steps.clivers.outputs.version != 'none'
       shell: bash
       run: |
         echo "::group::compose-preview doctor"
@@ -321,7 +436,7 @@ runs:
         fi
 
     - name: Install perceptual-diff dependencies
-      if: steps.resolve.outputs.mode == 'comment' && (steps.resolve.outputs.compose == '1' || steps.resolve.outputs.resources == '1')
+      if: steps.scope.outputs.mode == 'comment' && (steps.resolve.outputs.compose == '1' || steps.resolve.outputs.resources == '1')
       shell: bash
       run: |
         # pixelmatch collapses sub-pixel rounded-corner noise that Compose's
@@ -334,7 +449,7 @@ runs:
 
     - name: Run pipelines
       id: pipelines
-      if: steps.resolve.outputs.mode != 'skip'
+      if: steps.scope.outputs.mode != 'skip'
       shell: bash
       # Pipelines run back-to-back rather than in parallel: all four
       # invoke Gradle (directly or via the CLI) and all four `git fetch`
@@ -349,7 +464,7 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
         REPO: ${{ github.repository }}
         GITHUB_TOKEN_INLINE: ${{ github.token }}
-        MODE: ${{ steps.resolve.outputs.mode }}
+        MODE: ${{ steps.scope.outputs.mode }}
         RENDER_TIMEOUT: ${{ inputs.timeout }}
         PR_INPUT_NUMBER: ${{ inputs.pr-number }}
         EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -372,6 +487,7 @@ runs:
         WANT_NOTIFICATIONS: ${{ steps.resolve.outputs.notifications }}
         SKIP_RENDER: ${{ inputs.skip-render }}
         AB_CONFIG: ${{ inputs.ab-config }}
+        SCOPE_MODULES: ${{ steps.scope.outputs.modules }}
       run: |
         set +e
         export PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
@@ -456,13 +572,13 @@ runs:
     # GHA's `if:` can gate them per pipeline.
 
     - name: Push compose baseline / PR renders
-      if: steps.resolve.outputs.mode != 'skip' && steps.resolve.outputs.compose == '1'
+      if: steps.scope.outputs.mode != 'skip' && steps.resolve.outputs.compose == '1'
       shell: bash
       env:
         REPO: ${{ github.repository }}
         GITHUB_TOKEN_INLINE: ${{ github.token }}
         ACTION_PATH: ${{ github.action_path }}
-        MODE: ${{ steps.resolve.outputs.mode }}
+        MODE: ${{ steps.scope.outputs.mode }}
       run: |
         set -euo pipefail
         if [ "$MODE" = "baseline" ]; then
@@ -489,13 +605,13 @@ runs:
         bash "$ACTION_PATH/lib/push-branch.sh"
 
     - name: Push resource baseline / PR renders
-      if: steps.resolve.outputs.mode != 'skip' && steps.resolve.outputs.resources == '1'
+      if: steps.scope.outputs.mode != 'skip' && steps.resolve.outputs.resources == '1'
       shell: bash
       env:
         REPO: ${{ github.repository }}
         GITHUB_TOKEN_INLINE: ${{ github.token }}
         ACTION_PATH: ${{ github.action_path }}
-        MODE: ${{ steps.resolve.outputs.mode }}
+        MODE: ${{ steps.scope.outputs.mode }}
       run: |
         set -euo pipefail
         if [ "$MODE" = "baseline" ]; then
@@ -519,7 +635,7 @@ runs:
         bash "$ACTION_PATH/lib/push-branch.sh"
 
     - name: Generate compose PR comment body
-      if: steps.resolve.outputs.mode == 'comment' && steps.resolve.outputs.compose == '1'
+      if: steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.compose == '1'
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -527,6 +643,7 @@ runs:
         PR_HEAD_BRANCH: 'compose-preview/pr'
         RESOURCE_HEAD_BRANCH: 'compose-preview/resources/pr'
         AB_CONFIG: ${{ inputs.ab-config }}
+        SCOPE_MODULES: ${{ steps.scope.outputs.modules }}
       run: |
         set -euo pipefail
         # Compose comment is only meaningful when the compose pipeline
@@ -552,6 +669,13 @@ runs:
           AB_ARGS=(--ab-config "$AB_CONFIG")
         fi
 
+        # Change-scoped runs rendered a module subset — tell the comparator
+        # so out-of-scope baselines read as unchanged, not removed.
+        SCOPE_ARGS=()
+        if [ -n "${SCOPE_MODULES:-}" ] && [ "$SCOPE_MODULES" != "full" ]; then
+          SCOPE_ARGS=(--scope-modules "$SCOPE_MODULES")
+        fi
+
         python3 "$ACTION_PATH/../lib/compare-previews.py" compare _previews.json \
           --baselines _baselines/baselines.json \
           --baseline-renders _baselines/renders \
@@ -559,13 +683,14 @@ runs:
           --base-ref "$BASE_REF" \
           --head-ref "$HEAD_REF" \
           "${AB_ARGS[@]}" \
+          "${SCOPE_ARGS[@]}" \
           > _comment_body.md
 
     # Sibling step for the resources comment — separately gated on
     # `resources == '1'` so `only: resources` runs still produce the
     # resource sticky comment when compose is skipped.
     - name: Generate resource PR comment body
-      if: steps.resolve.outputs.mode == 'comment' && steps.resolve.outputs.resources == '1'
+      if: steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.resources == '1'
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -596,7 +721,7 @@ runs:
           > _comment_body_resources.md
 
     - name: Post or update compose PR comment
-      if: steps.resolve.outputs.mode == 'comment' && steps.resolve.outputs.compose == '1' && hashFiles('_comment_body.md') != ''
+      if: steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.compose == '1' && hashFiles('_comment_body.md') != ''
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
@@ -628,7 +753,7 @@ runs:
         bash "$ACTION_PATH/lib/post-comment.sh"
 
     - name: Post or update resource PR comment
-      if: steps.resolve.outputs.mode == 'comment' && steps.resolve.outputs.resources == '1' && hashFiles('_comment_body_resources.md') != ''
+      if: steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.resources == '1' && hashFiles('_comment_body_resources.md') != ''
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
@@ -671,7 +796,7 @@ runs:
 
     - name: Push a11y baseline / PR renders
       id: push-a11y
-      if: steps.resolve.outputs.mode != 'skip' && steps.resolve.outputs.a11y == '1'
+      if: steps.scope.outputs.mode != 'skip' && steps.resolve.outputs.a11y == '1'
       shell: bash
       env:
         REPO: ${{ github.repository }}
@@ -695,7 +820,7 @@ runs:
         echo "head_sha=$(cat "$SHA_OUTPUT_FILE" 2>/dev/null || true)" >> "$GITHUB_OUTPUT"
 
     - name: Re-render a11y comment body with pushed SHA
-      if: steps.resolve.outputs.mode == 'comment' && steps.resolve.outputs.a11y == '1' && hashFiles('_a11y_comment.md') != ''
+      if: steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.a11y == '1' && hashFiles('_a11y_comment.md') != ''
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -714,7 +839,7 @@ runs:
           > _a11y_comment.md
 
     - name: Upsert a11y PR comment
-      if: steps.resolve.outputs.mode == 'comment' && steps.resolve.outputs.a11y == '1' && hashFiles('_a11y_comment.md') != ''
+      if: steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.a11y == '1' && hashFiles('_a11y_comment.md') != ''
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
@@ -731,7 +856,7 @@ runs:
 
     - name: Push notifications baseline / PR renders
       id: push-notifications
-      if: steps.resolve.outputs.mode != 'skip' && steps.resolve.outputs.notifications == '1'
+      if: steps.scope.outputs.mode != 'skip' && steps.resolve.outputs.notifications == '1'
       shell: bash
       env:
         REPO: ${{ github.repository }}
@@ -755,7 +880,7 @@ runs:
         echo "head_sha=$(cat "$SHA_OUTPUT_FILE" 2>/dev/null || true)" >> "$GITHUB_OUTPUT"
 
     - name: Re-render notification comment body with pushed SHA
-      if: steps.resolve.outputs.mode == 'comment' && steps.resolve.outputs.notifications == '1' && hashFiles('_notification_comment.md') != ''
+      if: steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.notifications == '1' && hashFiles('_notification_comment.md') != ''
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -775,7 +900,7 @@ runs:
           > _notification_comment.md
 
     - name: Upsert notification PR comment
-      if: steps.resolve.outputs.mode == 'comment' && steps.resolve.outputs.notifications == '1' && hashFiles('_notification_comment.md') != ''
+      if: steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.notifications == '1'
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
@@ -787,15 +912,32 @@ runs:
         set -euo pipefail
         export PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
         export MARKER="<!-- notification-previews -->"
-        export BODY_FILE="_notification_comment.md"
-        bash "$ACTION_PATH/lib/post-comment.sh"
+        if [ -s _notification_comment.md ]; then
+          export BODY_FILE="_notification_comment.md"
+          bash "$ACTION_PATH/lib/post-comment.sh"
+          exit 0
+        fi
+        # No-diff run. If an earlier push posted a sticky diff that no longer
+        # holds, PATCH it to the resolved state instead of leaving it stale —
+        # same four-state shape the resources comment uses. (PATCH doesn't
+        # notify; a no-diff run with no prior comment stays silent.)
+        [ -z "$PR_NUMBER" ] && exit 0
+        COMMENT_ID=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" \
+          --paginate \
+          --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" \
+          | head -1)
+        if [ -n "$COMMENT_ID" ]; then
+          RESOLVED_BODY="${MARKER}"$'\n'"## Notification Previews"$'\n\n'"_No notification preview changes in this PR's latest render._"
+          gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" \
+            -X PATCH -f body="$RESOLVED_BODY" >/dev/null
+        fi
 
     # Surface pipeline failures now that all pushes + comments have run.
     # Final exit code is the worst rc across pipelines: failed renders
     # still get their artifacts uploaded + the PR diff posted before this
     # flips the workflow red.
     - name: Surface pipeline failures
-      if: steps.resolve.outputs.mode != 'skip'
+      if: steps.scope.outputs.mode != 'skip'
       shell: bash
       env:
         WORST_RC: ${{ steps.pipelines.outputs.worst }}

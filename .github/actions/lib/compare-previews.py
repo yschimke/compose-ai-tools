@@ -457,6 +457,11 @@ def cmd_generate(args: argparse.Namespace) -> int:
             "sourceFile": info["sourceFile"],
             "renderBasename": info["renderBasename"],
             "captureLabel": info["captureLabel"],
+            # Also encoded in the key (`<module>/<id>`); persisted explicitly
+            # so scoped compares don't have to parse it back out. Entries
+            # carried over from pre-field baselines may lack it — readers
+            # must fall back to the key (see _baseline_module).
+            "module": info["module"],
         }
         for key, info in previews.items()
         if info["sha256"]  # skip entries without a rendered PNG
@@ -863,6 +868,46 @@ def _emit_ab_comparisons(
             lines.append("")
 
 
+def _parse_scope_modules(args: argparse.Namespace) -> set[str] | None:
+    """Parse `--scope-modules` into a set of Gradle module paths, or None.
+
+    None means "full run" — every baseline entry participates in removed
+    detection. A set means the render was scoped to those modules only
+    (change-scoped PR run), so baseline entries for other modules must be
+    treated as unchanged rather than removed: their previews were simply
+    never rendered this run. Module paths are normalised without the
+    leading `:` to match the `module` field the CLI envelope carries.
+    """
+    raw = getattr(args, "scope_modules", None)
+    if not raw:
+        return None
+    modules = {m.strip().lstrip(":") for m in raw.split(",") if m.strip()}
+    return modules or None
+
+
+def _baseline_module(key: str, bl_info: dict) -> str:
+    """Module of a baseline entry.
+
+    Baselines written before `module` was persisted (and the composable
+    baselines generally — see cmd_generate) only encode the module in the
+    key, `<module>/<previewId>[#idx]`. Module gradle paths use `:` and never
+    contain `/`, so the first segment is always the module.
+    """
+    mod = bl_info.get("module")
+    if mod:
+        return mod
+    return key.split("/", 1)[0]
+
+
+def _scope_note(scope_modules: set[str]) -> str:
+    mods = ", ".join(f"`{m}`" for m in sorted(scope_modules))
+    return (
+        f"_Change-scoped run: only {len(scope_modules)} module(s) rendered "
+        f"({mods}); other modules were unaffected by this PR's changes and "
+        f"kept their baselines._"
+    )
+
+
 def cmd_compare(args: argparse.Namespace) -> int:
     cli_json = Path(args.cli_json)
     baselines_path = Path(args.baselines)
@@ -872,6 +917,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
     baseline_renders = (
         Path(args.baseline_renders) if getattr(args, "baseline_renders", None) else None
     )
+    scope_modules = _parse_scope_modules(args)
 
     current = load_cli_output(cli_json)
     baselines = _load_baselines(baselines_path)
@@ -943,6 +989,12 @@ def cmd_compare(args: argparse.Namespace) -> int:
     for key, bl_info in sorted(baselines.items()):
         if key in ab_keys:
             continue
+        # Change-scoped runs render a subset of modules; a baseline entry
+        # for an out-of-scope module is absent from `current` because it was
+        # never rendered, not because the preview went away — never report
+        # it as removed.
+        if scope_modules is not None and _baseline_module(key, bl_info) not in scope_modules:
+            continue
         if key not in current:
             removed.append((key, bl_info))
 
@@ -957,8 +1009,15 @@ def cmd_compare(args: argparse.Namespace) -> int:
         lines.append("")
         if unchanged:
             lines.append(f"_{len(unchanged)} preview(s) unchanged._")
+        if scope_modules is not None:
+            lines.append("")
+            lines.append(_scope_note(scope_modules))
         print("\n".join(lines))
         return 0
+
+    if scope_modules is not None:
+        lines.append(_scope_note(scope_modules))
+        lines.append("")
 
     if ab_groups:
         _emit_ab_comparisons(lines, ab_groups, repo, base_ref, head_ref)
@@ -1670,6 +1729,12 @@ def main() -> int:
                      help="Path to the A/B comparison config JSON "
                           "(default off; the apply action passes "
                           ".github/preview-abtest.json when present).")
+    cmp.add_argument("--scope-modules",
+                     help="Comma-separated Gradle module paths the render was "
+                          "scoped to (change-scoped PR runs). Baseline entries "
+                          "for modules outside this set are treated as "
+                          "unchanged instead of removed — they were never "
+                          "rendered this run. Omit for full runs.")
 
     cp = sub.add_parser("copy-changed", help="Copy new/changed PNGs to output dir")
     cp.add_argument("cli_json", help="Path to compose-preview show --json output")

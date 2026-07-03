@@ -1,15 +1,36 @@
 name: Compose Preview
 
 # Single entry point for the compose-preview CI surface: baselines on
-# push-to-main, sticky diff comments on PRs, manual reruns via dispatch.
-# Replaces preview-baselines.yml, preview-comment.yml, a11y-report.yml,
-# and notification-previews.yml — the `apply` composite picks baseline-vs-
-# comment from the triggering event and runs the four pipelines (compose /
-# resources / a11y / notifications) back-to-back — they share the Gradle
-# build lock and the same `.git`, so `apply` serializes them on purpose
-# (see action.yml "Run pipelines"). Concurrency lives *inside* the compose
-# render: `composePreview { shards }` fans previews across parallel JVM
-# forks.
+# push-to-main, sticky diff comments on PRs, manual reruns via dispatch
+# (or the `/rerun previews` PR command — see pr-commands.yml).
+#
+# The four pipelines run as TWO PARALLEL JOBS (compose+resources /
+# a11y+notifications) rather than one serial `apply` invocation. The two
+# jobs are independent — disjoint baseline/PR branches
+# (`compose-preview/{,resources/,a11y/,notifications/}…`) and disjoint
+# sticky-comment markers — and the old back-to-back ordering existed only
+# because one job shares a Gradle build lock and `.git`; separate runners
+# remove that constraint. Wall time drops from the sum of the pipelines to
+# the slowest one (the two full renders — compose and the a11y re-render —
+# used to serialize at 25–32 min; in parallel the PR gate is the slower of
+# the two). Compose and resources stay together: resources is cheap and its
+# comment reuses the compose run's `_base_sha` when available.
+# Notifications MUST stay in the same job as (and run after) a11y: its
+# staging globs whatever `*Notification*.png` the workspace accumulated,
+# and the FQN-named notification surface captures + `.notification.json`
+# sidecars in the notifications baseline come from the CLI/daemon-driven
+# a11y re-render, not from the raw `composePreviewRenderAll` invocation the
+# notifications pipeline itself makes. Running notifications on its own
+# runner stages only the two short-stem standard renders and falsely
+# reports every daemon-produced capture as removed (see PR #2195).
+#
+# Change-scoped rendering (.github/preview-scope.json): PR runs classify the
+# diff first — docs-only PRs skip all pipelines in under a minute, and PRs
+# that only touch `samples/**` render just the affected modules (plus Gradle
+# dependents) in the compose job. Anything touching the plugin / CLI /
+# renderers / build wiring renders everything, and baseline pushes on main
+# always render everything. Concurrency *within* a render is unchanged:
+# `composePreview { shards }` fans previews across parallel JVM forks.
 
 on:
   push:
@@ -30,6 +51,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Keeps the historical job id + check name ("Apply compose-preview") so
+  # existing branch-protection required checks continue to match. The
+  # a11y+notifications job below is a new check name — add it to branch
+  # protection if it should gate merges too.
   apply:
     if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     name: Apply compose-preview
@@ -47,17 +72,7 @@ jobs:
           # that change the previews.json schema don't render against a
           # stale released CLI. External consumers omit this input.
           cli-version: source
-          # Empty = auto-detect every module the CLI knows about, so the a11y
-          # baseline covers the whole sample suite (overlays + legends on each
-          # preview) instead of just one module. CMP / desktop modules are
-          # included too: ATF itself is Android-only, but the desktop daemon now
-          # produces an overlay-only a11y pass (the "what a screen reader sees"
-          # overlay + legend extracted from Compose semantics) with empty
-          # findings and `status=null`, so they show real overlays and never
-          # stamp the misleading global "ATF data unavailable" banner.
-          a11y-module: ''
-          a11y-skip-modules: ''
-          notifications-module: 'samples:android'
+          only: compose,resources
           # Per-Gradle-invocation ceiling for the render pipelines. The
           # action's 600s default is marginal for this repo's own all-module
           # render: identical jobs swing 23–32 minutes across runners, and on
@@ -73,3 +88,32 @@ jobs:
           # sheet, #2135) is marked `optional` at discovery, which the gate,
           # the CLI, and the diff bot all honour — see #2159 for the history
           # of the `warn` override this replaces.
+
+  a11y:
+    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    name: A11y + notification previews
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/apply
+        with:
+          cli-version: source
+          # Order matters: `apply` runs a11y before notifications, and the
+          # notifications staging depends on the renders the a11y pass
+          # leaves in the shared workspace (see header comment).
+          only: a11y,notifications
+          # Empty = auto-detect every module the CLI knows about, so the a11y
+          # baseline covers the whole sample suite (overlays + legends on each
+          # preview) instead of just one module. CMP / desktop modules are
+          # included too: ATF itself is Android-only, but the desktop daemon now
+          # produces an overlay-only a11y pass (the "what a screen reader sees"
+          # overlay + legend extracted from Compose semantics) with empty
+          # findings and `status=null`, so they show real overlays and never
+          # stamp the misleading global "ATF data unavailable" banner.
+          a11y-module: ''
+          a11y-skip-modules: ''
+          notifications-module: 'samples:android'
+          timeout: '1800'

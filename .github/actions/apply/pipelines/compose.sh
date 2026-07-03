@@ -22,6 +22,12 @@
 #                          non-Gradle build systems drive the baseline /
 #                          comment half of this pipeline with envelopes
 #                          produced by the Phase A CLIs.
+#   SCOPE_MODULES        — change-scoped runs: empty or "full" renders every
+#                          module (historical behaviour); a comma-separated
+#                          module list renders only those modules via
+#                          per-module `show --module` invocations and merges
+#                          the envelopes. "none" never reaches this script
+#                          (the action skips the pipelines entirely).
 set +e
 
 if [ "${SKIP_RENDER:-false}" = "true" ]; then
@@ -36,6 +42,40 @@ if [ "${SKIP_RENDER:-false}" = "true" ]; then
   fi
   echo "compose pipeline: skip-render=true; reusing pre-staged _previews.json."
   echo "0" > "$GITHUB_WORKSPACE/_compose_render_rc"
+elif [ -n "${SCOPE_MODULES:-}" ] && [ "${SCOPE_MODULES}" != "full" ]; then
+  # Change-scoped render: one `show --module` per affected module, envelopes
+  # merged into the same _previews.json shape a full run produces. The
+  # compare step passes the same scope so out-of-scope baselines are treated
+  # as unchanged rather than removed. A failed module keeps the loop going —
+  # like the full-run path, a partial envelope still drives the diff and the
+  # non-zero rc flips the job red at the end.
+  echo "compose pipeline: change-scoped render (${SCOPE_MODULES})."
+  WORST_RC=0
+  scope_inputs=()
+  i=0
+  IFS=',' read -r -a scope_arr <<< "$SCOPE_MODULES"
+  for m in "${scope_arr[@]}"; do
+    m="$(echo "$m" | xargs)"
+    [ -z "$m" ] && continue
+    out="_previews_scope_${i}.json"
+    i=$((i + 1))
+    show_args=(show --json --timeout "$RENDER_TIMEOUT" --module ":${m#:}")
+    if [ -n "${MISSING_RENDERS:-}" ]; then
+      show_args+=(--missing-renders "${MISSING_RENDERS}")
+    fi
+    compose-preview "${show_args[@]}" > "$out"
+    rc=$?
+    if [ "$rc" -ne 0 ] && [ "$WORST_RC" -eq 0 ]; then
+      WORST_RC=$rc
+    fi
+    scope_inputs+=("$out")
+  done
+  python3 "$ACTION_PATH/merge-envelopes.py" _previews.json "${scope_inputs[@]}"
+  merge_rc=$?
+  if [ "$merge_rc" -ne 0 ] && [ "$WORST_RC" -eq 0 ]; then
+    WORST_RC=$merge_rc
+  fi
+  echo "$WORST_RC" > "$GITHUB_WORKSPACE/_compose_render_rc"
 else
   # Render. Don't fail on non-zero — partial envelope still drives the rest.
   show_args=(show --json --timeout "$RENDER_TIMEOUT")

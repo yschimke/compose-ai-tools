@@ -783,6 +783,151 @@ class CompareMarkdownTest(unittest.TestCase):
         self.assertNotIn("NowPlayingSpatialPreview", out)
 
 
+class ScopedCompareTest(unittest.TestCase):
+    """`--scope-modules` marks the render as partial: baseline entries for
+    out-of-scope modules were never rendered this run, so they must never be
+    reported as removed."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+
+    def _run(self, current_payload, baselines_payload, scope: str | None) -> str:
+        cli_path = self.tmp / "cli.json"
+        cli_path.write_text(json.dumps(current_payload))
+        bl_path = self.tmp / "baselines.json"
+        bl_path.write_text(json.dumps(baselines_payload))
+
+        import io
+        import contextlib
+        from types import SimpleNamespace
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            cp.cmd_compare(SimpleNamespace(
+                cli_json=str(cli_path),
+                baselines=str(bl_path),
+                repo="owner/repo",
+                base_ref="deadbeef",
+                head_ref="cafef00d",
+                scope_modules=scope,
+            ))
+        return buf.getvalue()
+
+    # The baseline fixtures below deliberately omit the `module` field: real
+    # composable baselines written before it was persisted only encode the
+    # module in the key (`<module>/<id>`), so scope filtering must work from
+    # the key alone (Codex review on PR #2195).
+
+    def test_out_of_scope_baselines_are_not_removed(self):
+        # Render scoped to `app`; the `wear` baselines were never rendered.
+        out = self._run(
+            {"previews": [_entry(id="X", module="app", sha="s1", png="/p.png")]},
+            {
+                "app/X": {"sha256": "s1", "functionName": "Fn"},
+                "wear/Y": {"sha256": "s2", "functionName": "WearFn"},
+            },
+            scope="app",
+        )
+        self.assertNotIn("### Removed", out)
+        self.assertIn("No visual changes detected.", out)
+        self.assertIn("Change-scoped run", out)
+
+    def test_unscoped_run_still_reports_removed(self):
+        out = self._run(
+            {"previews": [_entry(id="X", module="app", sha="s1", png="/p.png")]},
+            {
+                "app/X": {"sha256": "s1", "functionName": "Fn"},
+                "wear/Y": {"sha256": "s2", "functionName": "WearFn"},
+            },
+            scope=None,
+        )
+        self.assertIn("### Removed", out)
+        self.assertIn("WearFn", out)
+
+    def test_in_scope_removal_still_detected_without_module_field(self):
+        # A preview deleted inside a scoped module must still show as removed,
+        # even though pre-field baselines carry no `module` value — the module
+        # is parsed from the key.
+        out = self._run(
+            {"previews": [_entry(id="X", module="app", sha="s1", png="/p.png")]},
+            {
+                "app/X": {"sha256": "s1", "functionName": "Fn"},
+                "app/Gone": {"sha256": "s3", "functionName": "GoneFn"},
+                "wear/Y": {"sha256": "s2", "functionName": "WearFn"},
+            },
+            scope="app",
+        )
+        self.assertIn("### Removed", out)
+        self.assertIn("GoneFn", out)
+        self.assertNotIn("WearFn", out)
+        self.assertIn("Change-scoped run", out)
+
+    def test_in_scope_removal_detected_with_module_field(self):
+        # Baselines written after `module` was persisted use the field directly.
+        out = self._run(
+            {"previews": [_entry(id="X", module="app", sha="s1", png="/p.png")]},
+            {
+                "app/X": {"sha256": "s1", "functionName": "Fn", "module": "app"},
+                "app/Gone": {"sha256": "s3", "functionName": "GoneFn", "module": "app"},
+                "wear/Y": {"sha256": "s2", "functionName": "WearFn", "module": "wear"},
+            },
+            scope="app",
+        )
+        self.assertIn("### Removed", out)
+        self.assertIn("GoneFn", out)
+        self.assertNotIn("WearFn", out)
+
+    def test_scope_accepts_colon_prefixed_csv(self):
+        out = self._run(
+            {"previews": [_entry(id="X", module="samples:app", sha="s1", png="/p.png")]},
+            {
+                "samples:app/X": {"sha256": "s1", "functionName": "Fn"},
+                "samples:wear/Y": {"sha256": "s2", "functionName": "WearFn"},
+            },
+            scope=":samples:app, :samples:phone",
+        )
+        self.assertNotIn("### Removed", out)
+        self.assertIn("No visual changes detected.", out)
+
+    def test_changes_inside_scope_carry_scope_note(self):
+        out = self._run(
+            {"previews": [_entry(id="X", module="app", sha="new", png="/p.png")]},
+            {
+                "app/X": {"sha256": "old", "functionName": "Fn"},
+                "wear/Y": {"sha256": "s2", "functionName": "WearFn"},
+            },
+            scope="app",
+        )
+        self.assertIn("### Changed", out)
+        self.assertNotIn("### Removed", out)
+        self.assertIn("Change-scoped run", out)
+
+    def test_generate_persists_module_in_baselines(self):
+        # New baselines carry `module` explicitly so future readers don't
+        # need the key parse (old baselines still go through it).
+        import io
+        import contextlib
+        from types import SimpleNamespace
+
+        cli_path = self.tmp / "cli.json"
+        png = self.tmp / "p.png"
+        png.write_bytes(b"png")
+        cli_path.write_text(json.dumps(
+            {"previews": [_entry(id="X", module="app", sha="s1", png=str(png))]}
+        ))
+        out_dir = self.tmp / "out"
+        with contextlib.redirect_stdout(io.StringIO()):
+            cp.cmd_generate(SimpleNamespace(
+                cli_json=str(cli_path),
+                output_dir=str(out_dir),
+                repo="owner/repo",
+                branch="compose-preview/main",
+            ))
+        baselines = json.loads((out_dir / "baselines.json").read_text())
+        self.assertEqual(baselines["app/X"]["module"], "app")
+
+
 class MultiCaptureLoadTest(unittest.TestCase):
     """`@ScrollingPreview(modes = [TOP, END])` / time fan-out: one preview
     must surface as one row per capture so each PNG shows up in the diff."""

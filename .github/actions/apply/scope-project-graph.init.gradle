@@ -1,0 +1,56 @@
+// Init script for the apply action's change-scoped rendering (compute-scope.py).
+//
+// Dumps the main build's project graph — project path, project directory,
+// whether the compose-preview plugin is applied, and declared project
+// dependencies — as JSON to the file named by the `composeai.scope.graph.out`
+// system property. compute-scope.py uses it to expand a PR's changed modules
+// into the full set of preview modules that could be affected (reverse
+// dependency closure), so a scoped render can never miss a downstream module.
+//
+// Runs at projectsEvaluated (configuration time, all projects), so invoke with
+// any task (`help`) and `--no-configuration-cache` — on a configuration-cache
+// hit the callback would never fire and the output file would be missing,
+// which compute-scope.py treats as "fall back to a full render" (fail-open).
+//
+// Included builds are deliberately not walked: their sources can't be mapped
+// to main-build modules, so changes there must be classified as global (full
+// render) by the caller's path rules.
+def outPath = System.getProperty('composeai.scope.graph.out')
+if (outPath != null) {
+  gradle.projectsEvaluated { g ->
+    def projects = []
+    g.rootProject.allprojects { p ->
+      def deps = new LinkedHashSet()
+      p.configurations.each { c ->
+        c.dependencies.each { d ->
+          if (d instanceof org.gradle.api.artifacts.ProjectDependency) {
+            def depPath = null
+            try {
+              // Gradle 8.11+ / 9: ProjectDependency.getPath()
+              depPath = d.path
+            } catch (Throwable ignored) {
+              try {
+                // Older Gradle: via the (since removed) dependencyProject
+                depPath = d.dependencyProject.path
+              } catch (Throwable alsoIgnored) {
+                // Unresolvable — leave null; compute-scope.py fails open on
+                // a project with a null dependency marker.
+              }
+            }
+            deps.add(depPath == null ? '?' : depPath)
+          }
+        }
+      }
+      def hasPlugin = p.plugins.hasPlugin('ee.schimke.composeai.preview') ||
+          p.plugins.hasPlugin('ee.schimke.composeai.preview.config')
+      projects.add([
+        path: p.path,
+        dir: p.projectDir.absolutePath,
+        hasPreviewPlugin: hasPlugin,
+        dependencies: deps.toList(),
+      ])
+    }
+    def json = groovy.json.JsonOutput.toJson([projects: projects])
+    new File(outPath).text = json
+  }
+}
