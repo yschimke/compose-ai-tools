@@ -341,7 +341,11 @@ abstract class RenderPreviewsTask : DefaultTask() {
           // collapsed into "no animation": a default-args `@AnimatedPreview` still needs the
           // animated path or the `.gif` renderOutput gets a single PNG frame (issue #2190). An
           // older renderer that predates the `-1` protocol parses it via `takeIf { it > 0 } ?: 0`,
-          // so the sentinel degrades to the old "no animation" behaviour rather than breaking.
+          // so the sentinel degrades to the old "no animation" behaviour rather than breaking. The
+          // reverse skew (an older plugin driving a newer renderer pinned on the
+          // `composePreviewRenderer` configuration) is guarded renderer-side: a bare `0` is only
+          // read as auto-detect when the capture is animation-shaped (a `.gif` output with no
+          // scroll intent).
           // `showCurves` is forwarded for parity; the desktop path emits a screenshot-only GIF (no
           // curve strip).
           (animation?.durationMs ?: -1).toString(),

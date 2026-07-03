@@ -104,6 +104,20 @@ class DesktopAnimatedRendererTest {
     assertTrue("no-animation renders stay PNG", isPng(outputFile))
   }
 
+  @Test
+  fun `main keeps a legacy caller's zero on the single-frame path for png outputs`() {
+    // A pre-fix RenderPreviewsTask (possible when a consumer pins a newer renderer on the
+    // `composePreviewRenderer` configuration while its plugin lags) sent `0` for every preview
+    // without an `@AnimatedPreview`. That `0` must not be read as auto-detect intent when the
+    // capture's shape says "static preview" — a `.png` renderOutput.
+    val outputFile = File(tempFolder.newFolder("renders"), "legacy.png")
+
+    main(rendererArgs(outputFile, animDurationMs = "0"))
+
+    assertTrue("PNG must exist and be non-empty", outputFile.exists() && outputFile.length() > 0)
+    assertTrue("legacy zero + .png output must stay a single-frame PNG", isPng(outputFile))
+  }
+
   /**
    * Builds the full 27-slot positional arg list `RenderPreviewsTask.invokeRenderer` sends, with
    * everything defaulted except the output path and the 25th (`animDurationMs`) slot under test.

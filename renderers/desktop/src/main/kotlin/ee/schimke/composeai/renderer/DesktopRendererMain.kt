@@ -162,8 +162,22 @@ fun main(args: Array<String>) {
   // path wrote PNG bytes into the `.gif` renderOutput (issue #2190). Mutually exclusive with
   // `@ScrollingPreview` in discovery, so no precedence ambiguity in practice; the renderer still
   // checks animation first defensively.
-  val animDurationMs = args.getOrNull(24)?.toIntOrNull() ?: -1
-  val hasAnimation = animDurationMs >= 0
+  //
+  // Version skew: a *pre-fix* plugin (a consumer can pin a newer renderer on the
+  // `composePreviewRenderer` configuration while its plugin lags) sent `0` for EVERY preview
+  // without an `@AnimatedPreview`, so a bare `0` is ambiguous between "legacy: no animation" and
+  // "new: auto-detect". Disambiguate by the capture's other intent signals: an animated capture
+  // never carries scroll intent and discovery always points its renderOutput at a `.gif`, while a
+  // legacy caller's `0` accompanies a `.png` output (static) or a scroll mode (scroll GIF). A `0`
+  // that fails that shape check falls through to the scroll / single-frame paths — exactly the
+  // legacy behaviour those callers expect.
+  val animDurationArg = args.getOrNull(24)?.toIntOrNull() ?: -1
+  val hasAnimation =
+    animDurationArg > 0 ||
+      (animDurationArg == 0 &&
+        scrollDispatchMode == null &&
+        outputFile.extension.equals("gif", ignoreCase = true))
+  val animDurationMs = animDurationArg.coerceAtLeast(0)
   val animFrameIntervalMs = args.getOrNull(25)?.toIntOrNull()?.coerceAtLeast(0) ?: 0
   val animShowCurves = args.getOrNull(26)?.toBoolean() ?: false
   if (previewKind == "LOTTIE") {
