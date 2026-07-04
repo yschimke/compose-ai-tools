@@ -168,6 +168,10 @@ include(":lottie-preview-runtime")
 
 project(":lottie-preview-runtime").projectDir = file("runtimes/lottie")
 
+include(":svg-preview-runtime")
+
+project(":svg-preview-runtime").projectDir = file("runtimes/svg")
+
 include(":samples:android")
 
 // Compose Material 3 **design catalog** — one `@Preview` per component in its

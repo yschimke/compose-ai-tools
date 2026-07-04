@@ -291,6 +291,48 @@ class BundleFunctionalTest {
   }
 
   @Test
+  fun `composePreviewBundle packs a discovered SVG as raw svg IR`() {
+    val projectDir = createTestProject()
+    // Drop an SVG under the module resources — discovery turns it into a `kind=SVG` preview, and
+    // the
+    // bundle must carry the raw `.svg` as IR (self-contained, like Lottie) rather than dropping it.
+    val svg =
+      """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24"/></svg>"""
+    File(projectDir, "src/main/resources/svg").apply { mkdirs() }
+    File(projectDir, "src/main/resources/svg/badge.svg").writeText(svg)
+    val svgId = "svg__svg_badge"
+
+    // Discover in its own invocation so `processResources` stages the `.svg` into the processed
+    // resources dir before the resource scan runs (the same dir the bundle later reads its IR
+    // from).
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewDiscover")
+      .withPluginClasspath()
+      .build()
+
+    val previewsJson = File(projectDir, "build/compose-previews/previews.json")
+    val manifest = json.decodeFromString(PreviewManifest.serializer(), previewsJson.readText())
+    val svgPreview = manifest.previews.singleOrNull { it.id == svgId }
+    assertThat(svgPreview).isNotNull()
+    assertThat(svgPreview!!.params.kind).isEqualTo(PreviewKind.SVG)
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewBundle", "-PbundlePreviewIds=$svgId", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+    assertThat(result.task(":composePreviewBundle")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val bundle = File(projectDir, "build/compose-previews/bundle.png")
+    // The raw SVG travels verbatim under `ir/<id>.svg`, so a player can re-render it with zero
+    // consumer bytecode.
+    assertThat(listEntries(bundle)).contains("ir/$svgId.svg")
+    assertThat(String(readZipEntry(bundle, "ir/$svgId.svg")!!, Charsets.UTF_8)).isEqualTo(svg)
+  }
+
+  @Test
   fun `composePreviewBundle packs the per-sheet catalog-token sidecar`() {
     val projectDir = createTestProject()
 

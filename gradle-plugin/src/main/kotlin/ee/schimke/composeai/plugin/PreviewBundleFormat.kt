@@ -264,7 +264,10 @@ data class BundleAndroidResources(
 data class BundleIr(
   /** Preview id this IR renders; matches an entry in [BundleManifest.previewIds]. */
   val previewId: String,
-  /** IR flavour: [IR_FORMAT_REMOTECOMPOSE], [IR_FORMAT_PROTOLAYOUT], or [IR_FORMAT_LOTTIE]. */
+  /**
+   * IR flavour: [IR_FORMAT_REMOTECOMPOSE], [IR_FORMAT_PROTOLAYOUT], [IR_FORMAT_LOTTIE], or
+   * [IR_FORMAT_SVG].
+   */
   val format: String,
   /** Posix zip path of the IR bytes, e.g. `ir/<id>.rcdoc` or `ir/<id>.tilelayout`. */
   val path: String,
@@ -460,6 +463,15 @@ const val IR_FORMAT_PROTOLAYOUT: String = "protolayout"
  * (`ir/<id>.json` or `ir/<id>.lottie`); `format` is what the replayer keys on.
  */
 const val IR_FORMAT_LOTTIE: String = "lottie"
+
+/**
+ * [BundleIr.format] for an SVG image asset. Like [IR_FORMAT_LOTTIE] its IR is the asset file itself
+ * — the raw `.svg` read straight off the module resources at pack time — so the bundle is
+ * self-contained and travels the source artwork regardless of which render subdir the still PNG
+ * landed in. The zip entry keeps the `.svg` extension (`ir/<id>.svg`); `format` is what a replayer
+ * keys on. Static, so there is no animated companion (contrast [IR_FORMAT_LOTTIE]).
+ */
+const val IR_FORMAT_SVG: String = "svg"
 
 /** Well-known directory inside the bundle zip holding per-preview IR bytes (`ir/<id>.<ext>`). */
 const val BUNDLE_IR_DIR: String = "ir"

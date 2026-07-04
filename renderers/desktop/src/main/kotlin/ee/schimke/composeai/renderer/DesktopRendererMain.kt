@@ -1,6 +1,5 @@
 package ee.schimke.composeai.renderer
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,7 +16,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
-import androidx.compose.ui.res.loadSvgPainter
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
@@ -28,6 +26,8 @@ import ee.schimke.composeai.daemon.DisplayFilterConfig
 import ee.schimke.composeai.daemon.DisplayFilterDataProducer
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.preview.lottie.LottiePreview
+import ee.schimke.composeai.preview.svg.SvgPreview
+import ee.schimke.composeai.preview.svg.loadSvgAsset
 import ee.schimke.composeai.scroll.ScrollAxis as ProductScrollAxis
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -950,11 +950,12 @@ private fun renderLottieAsset(
 }
 
 /**
- * Render a directly-discovered `.svg` asset to a single still PNG. No consumer composable is
- * involved — [loadSvgPainter] (Skia-backed, part of Compose Desktop) parses the bytes loaded off
- * the render classpath (the plugin links the processed-resources dir there) into a [Painter], drawn
- * inside a fixed sandbox with [ContentScale.Fit] so the artwork keeps its aspect ratio. Sibling of
- * [renderLottieAsset]; SVG is static, so there is no animated companion. `internal` (not `private`
+ * Render a directly-discovered `.svg` asset to a single still PNG. The consumer-facing [SvgPreview]
+ * runtime helper does the drawing (Skia-backed `loadSvgPainter` → `Painter` → `Image` at
+ * [ContentScale.Fit]), the same way [renderLottieAsset] delegates to `LottiePreview`. The asset is
+ * loaded **eagerly** via [loadSvgAsset] before composition so a missing file surfaces a clear
+ * [IllegalArgumentException] the caller can turn into an error sidecar, rather than throwing deep
+ * inside `render()`. SVG is static, so there is no animated companion. `internal` (not `private`
  * like [renderLottieAsset]) so the desktop renderer's unit test can drive it directly.
  */
 internal fun renderSvgAsset(
@@ -967,10 +968,8 @@ internal fun renderSvgAsset(
   outputFile: File,
   fileSystem: FileSystem = SystemFileSystem,
 ) {
-  val svgBytes = loadClasspathAsset(assetPath)
-  val densityObj = Density(density)
-  val painter = loadSvgPainter(ByteArrayInputStream(svgBytes), densityObj)
-  val scene = ImageComposeScene(width = widthPx, height = heightPx, density = densityObj)
+  val svgBytes = loadSvgAsset(assetPath)
+  val scene = ImageComposeScene(width = widthPx, height = heightPx, density = Density(density))
   try {
     scene.setContent {
       CompositionLocalProvider(LocalInspectionMode provides true) {
@@ -981,8 +980,8 @@ internal fun renderSvgAsset(
             else -> Color.Transparent
           }
         Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
-          Image(
-            painter = painter,
+          SvgPreview(
+            bytes = svgBytes,
             contentDescription = assetPath,
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Fit,
@@ -1000,30 +999,6 @@ internal fun renderSvgAsset(
   } finally {
     scene.close()
   }
-}
-
-/**
- * Read a resource off the render classpath as raw bytes. Tries the thread context classloader first
- * (the render subprocess installs the consumer's classes/resources there), then this file's own
- * loader as a fallback for plain JVM tests. A leading slash is tolerated. Mirrors the Lottie
- * runtime's `loadLottieAsset`, but returns bytes (SVG is XML text, but the painter reads a stream).
- *
- * @throws IllegalArgumentException when the resource is not on the classpath — a clear authoring
- *   error ("did you put it under src/main/resources?") rather than a downstream parse failure.
- */
-private fun loadClasspathAsset(assetPath: String): ByteArray {
-  val normalized = assetPath.removePrefix("/")
-  val loaders =
-    listOfNotNull(Thread.currentThread().contextClassLoader, object {}.javaClass.classLoader)
-  for (loader in loaders) {
-    loader.getResourceAsStream(normalized)?.use { stream ->
-      return stream.readBytes()
-    }
-  }
-  throw IllegalArgumentException(
-    "Asset '$assetPath' not found on the classpath. Put it under src/main/resources " +
-      "(e.g. src/main/resources/$normalized) so the preview plugin links and bundles it."
-  )
 }
 
 @Composable

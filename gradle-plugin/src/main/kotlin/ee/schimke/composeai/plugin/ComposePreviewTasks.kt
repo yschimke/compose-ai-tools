@@ -487,6 +487,14 @@ internal object ComposePreviewTasks {
       // bundle.
       rendersDir.set(previewOutputDir.map { it.dir("renders") })
       renderFiles.from(previewOutputDir.map { it.dir("renders") })
+      // The JVM asset passes render into disjoint sibling dirs (kept out of `renders/` so they
+      // don't
+      // fight the Robolectric render for build-cache); their covers/IR are resolved relative to the
+      // previews root, so track them as inputs too. Absent on desktop (SVG/Lottie land in
+      // `renders/`
+      // there) — an absent dir snapshots as empty, so this is a harmless no-op on that backend.
+      renderFiles.from(previewOutputDir.map { it.dir(AndroidPreviewSupport.SVG_RENDER_SUBDIR) })
+      renderFiles.from(previewOutputDir.map { it.dir(AndroidPreviewSupport.LOTTIE_RENDER_SUBDIR) })
       // Catalog-token sidecars live under `data/catalog-tokens/` (a sibling of `renders/`), outside
       // `renderFiles`' tree — track them as their own input so the bundle re-packs when a sidecar
       // appears/changes (see `catalogTokenFiles` on the task).
