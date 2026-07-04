@@ -20,9 +20,13 @@ face); after, the title renders in Roboto Medium and the body in Roboto Regular 
 type. Figma, which ships Roboto, matches by name on import; a browser/Chromium uses the embedded WOFF2.
 
 Embedding runs on **both backends** — desktop (`RenderEngine`) and Android (`ComposeFigmaSvgExtension`)
-— so a `data/fetch` for the figma-svg on either target yields the same self-contained SVG. It's opt-in
-so default renders stay deterministic and offline-safe (a failed/absent fetch degrades to the named
-`sans-serif`, never an error).
+— so a `data/fetch` for the figma-svg on either target yields the same self-contained SVG. The flag is
+read in the **daemon JVM**, so the Gradle plugin forwards `-Dcomposeai.figma.embedFonts=true` (or
+`-PcomposePreview.figmaEmbedFonts=true`) into the daemon's system properties
+(`AndroidPreviewClasspath.buildSystemProperties` + the daemon-start descriptors) — otherwise the flag
+set on the Gradle invocation would never reach the daemon that reads it. It's opt-in so default renders
+stay deterministic and offline-safe (a failed/absent fetch degrades to the named `sans-serif`, never an
+error).
 
 ## Desktop-render font gap (follow-up)
 

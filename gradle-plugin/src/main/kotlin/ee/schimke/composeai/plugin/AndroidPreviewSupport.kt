@@ -1881,6 +1881,7 @@ internal object AndroidPreviewSupport {
         // `fonts.googleapis.com`.
         val fontsOffline =
           project.providers.gradleProperty("composePreview.fontsOffline").orElse("false")
+        val figmaEmbedFonts = composeAiFigmaEmbedFonts(project)
         // Static system properties (Robolectric modes + the path-bearing composeai.*
         // values) live in [AndroidPreviewClasspath.buildSystemProperties] so the
         // preview daemon can replay the same set when launching its own JVM. The
@@ -1891,6 +1892,7 @@ internal object AndroidPreviewSupport {
             rendersDir = rendersDir.get(),
             fontsCacheDir = fontsCacheDir,
             fontsOffline = fontsOffline.get(),
+            figmaEmbedFonts = figmaEmbedFonts.get(),
           )
           .forEach { (k, v) -> systemProperty(k, v) }
 
@@ -2445,6 +2447,7 @@ internal object AndroidPreviewSupport {
     val daemonFontsCacheDir = composeAiFontsCacheDir(project)
     val daemonFontsOffline =
       project.providers.gradleProperty("composePreview.fontsOffline").orElse("false")
+    val daemonFigmaEmbedFonts = composeAiFigmaEmbedFonts(project)
     // Pre-resolved at configuration time — both feed @Input fields whose Provider chains
     // mustn't capture `project`. The cheap-signal set used to be collected at task-action
     // time so newly-added subproject scripts were seen on the same run, but doing it
@@ -2570,6 +2573,7 @@ internal object AndroidPreviewSupport {
       this.systemProperties.put("composeai.render.outputDir", rendersDir)
       this.systemProperties.put("composeai.fonts.cacheDir", daemonFontsCacheDir)
       this.systemProperties.put("composeai.fonts.offline", daemonFontsOffline)
+      this.systemProperties.put("composeai.figma.embedFonts", daemonFigmaEmbedFonts)
       this.systemProperties.put("composeai.daemon.protocolVersion", "1")
       this.systemProperties.put("composeai.daemon.idleTimeoutMs", "5000")
       this.systemProperties.put(

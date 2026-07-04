@@ -103,6 +103,32 @@ class AndroidPreviewClasspathTest {
       .contains("--add-opens=java.base/jdk.internal.access=ALL-UNNAMED")
   }
 
+  @Test
+  fun `buildSystemProperties forwards the figma-embed-fonts flag into the daemon jvm`() {
+    // Regression: the daemon JVM only sees the system properties this map forwards, so the
+    // documented `-Dcomposeai.figma.embedFonts=true` must land here or the Android export never
+    // embeds fonts (the flag set on the Gradle invocation wouldn't reach the daemon).
+    val props =
+      AndroidPreviewClasspath.buildSystemProperties(
+        manifestPath = "m.json",
+        rendersDir = "renders",
+        fontsCacheDir = "cache",
+        fontsOffline = "false",
+        figmaEmbedFonts = "true",
+      )
+    assertThat(props).containsEntry("composeai.figma.embedFonts", "true")
+    // Defaulted off when the caller doesn't opt in.
+    assertThat(
+        AndroidPreviewClasspath.buildSystemProperties(
+          manifestPath = "m.json",
+          rendersDir = "renders",
+          fontsCacheDir = "cache",
+          fontsOffline = "false",
+        )
+      )
+      .containsEntry("composeai.figma.embedFonts", "false")
+  }
+
   private fun writeAndroidJar(file: File) {
     writeJar(file, mapOf("android/app/Application.class" to ByteArray(16)))
   }
