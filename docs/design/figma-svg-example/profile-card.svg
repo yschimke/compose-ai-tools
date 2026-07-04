@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="236" viewBox="0 0 360 236" font-family="sans-serif">
+<g transform="translate(0, 0)">
+  <g id="ProfileCardPreview">
+    <g id="Surface" data-token="surface">
+      <title>Surface · surface</title>
+      <rect x="16" y="16" width="328" height="204" rx="16" ry="16" fill="#FFFBFE" stroke="#E7E0EC" stroke-width="1"/>
+      <g id="Avatar" data-token="primary">
+        <title>Avatar · primary</title>
+        <rect x="32" y="32" width="64" height="64" rx="32" ry="32" fill="#6750A4"/>
+      </g>
+      <g id="Title">
+        <text x="112" y="52" font-size="20" font-family="sans-serif" font-weight="600" fill="#1C1B1F">Compose → Figma</text>
+      </g>
+      <g id="Subtitle">
+        <text x="112" y="81.2" font-size="14" font-family="sans-serif" font-weight="400" fill="#49454F">Layered SVG export</text>
+      </g>
+      <g id="PrimaryButton" data-token="primary">
+        <title>PrimaryButton · primary</title>
+        <rect x="112" y="120" width="130" height="40" rx="20" ry="20" fill="#6750A4"/>
+        <g id="ButtonLabel">
+          <text x="140" y="143.19" font-size="14" font-family="sans-serif" font-weight="500" fill="#FFFFFF">Import</text>
+        </g>
+      </g>
+      <g id="OutlinedButton" data-token="primary">
+        <title>OutlinedButton · primary</title>
+        <rect x="252" y="120" width="76" height="40" rx="20" ry="20" fill="none" stroke="#6750A4" stroke-width="1"/>
+        <g id="OutlinedLabel">
+          <text x="268" y="143.19" font-size="14" font-family="sans-serif" font-weight="500" fill="#6750A4">Edit</text>
+        </g>
+      </g>
+      <g id="TopBadge" data-token="surfaceVariant">
+        <title>TopBadge · surfaceVariant</title>
+        <rect x="296" y="32" width="32" height="32" rx="8" ry="8" fill="#E7E0EC"/>
+      </g>
+    </g>
+  </g>
+</g>
+</svg>

@@ -1610,6 +1610,7 @@ open class RobolectricHost(
               ComposeSemanticsExtension.factory,
               ComposeSemanticsWireframeExtension.factory,
               LayoutInspectorExtension.factory,
+              ComposeFigmaSvgExtension.factory,
               I18nTranslationsExtension.factory,
               NavigationExtension.factory,
             )
