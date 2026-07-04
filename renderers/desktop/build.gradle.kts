@@ -34,6 +34,9 @@ dependencies {
   // `kind=LOTTIE` previews: DesktopRendererMain inflates a discovered Lottie asset via the
   // `LottiePreview` helper (brings Compottie + Compose foundation transitively).
   implementation(project(":lottie-preview-runtime"))
+  // `kind=SVG` previews: DesktopRendererMain draws a discovered SVG asset via the `SvgPreview`
+  // helper (Skia-backed `loadSvgPainter`, shared with the consumer-facing authoring path).
+  implementation(project(":svg-preview-runtime"))
   // Pure-JVM accent / bidi transforms + the `Pseudolocale` enum used to detect `en-XA` / `ar-XB`
   // tags. Renderer applies the around-composable inline (LocalLayoutDirection.Rtl for ar-XB) and
   // rewrites the locale tag before it reaches `LocaleList`.
