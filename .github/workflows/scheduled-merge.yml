@@ -1,0 +1,87 @@
+name: Scheduled Merge
+
+# Merges open PRs automatically once they pass the "Protect Main" merge
+# gates: every 30 minutes, any non-draft PR whose mergeable state is `clean`
+# (all required status checks green, no conflicts) is squash-merged.
+#
+# Opt-outs, checked per PR:
+#   - draft PRs are skipped
+#   - the `no-automerge` label blocks merging
+#   - release-please PRs (`autorelease: pending` label) are skipped so
+#     cutting a release stays a deliberate human action
+#
+# GITHUB_TOKEN merges don't fire push-to-main workflows, so after merging
+# this dispatches compose-preview.yml to refresh the render baselines.
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: scheduled-merge
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    name: Merge passing PRs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/github-script@v8.0.0
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const skipLabels = new Set(['no-automerge', 'autorelease: pending']);
+            // Only PRs targeting main — the CI gates this relies on are
+            // filtered to pull_request against main.
+            const prs = await github.paginate(github.rest.pulls.list, {
+              owner, repo, state: 'open', base: 'main', per_page: 100,
+            });
+            let merged = 0;
+            for (const stub of prs) {
+              if (stub.draft) continue;
+              if (stub.labels.some((l) => skipLabels.has(l.name))) {
+                core.info(`#${stub.number}: opt-out label — skip`);
+                continue;
+              }
+              // pulls.list doesn't populate mergeable_state; fetch the PR.
+              const { data: pr } = await github.rest.pulls.get({
+                owner, repo, pull_number: stub.number,
+              });
+              if (pr.mergeable_state !== 'clean') {
+                core.info(`#${pr.number}: ${pr.mergeable_state} — skip`);
+                continue;
+              }
+              try {
+                // sha guard: reject the merge if the head moved after the
+                // mergeable_state check (race with a new push).
+                await github.rest.pulls.merge({
+                  owner, repo, pull_number: pr.number, merge_method: 'squash',
+                  sha: pr.head.sha,
+                });
+                core.notice(`Merged #${pr.number}: ${pr.title}`);
+                merged++;
+              } catch (e) {
+                core.warning(`#${pr.number}: merge failed — ${e.message}`);
+              }
+            }
+            if (merged > 0) {
+              // GITHUB_TOKEN merges don't trigger push workflows; explicitly
+              // refresh the render baselines and the release-please PR.
+              for (const wf of ['compose-preview.yml', 'vscode-preview-baselines.yml', 'release-please.yml', 'design-artifacts.yml']) {
+                try {
+                  await github.rest.actions.createWorkflowDispatch({
+                    owner, repo, workflow_id: wf, ref: 'main',
+                  });
+                  core.info(`Dispatched ${wf}`);
+                } catch (e) {
+                  core.warning(`${wf} dispatch failed: ${e.message}`);
+                }
+              }
+            }
