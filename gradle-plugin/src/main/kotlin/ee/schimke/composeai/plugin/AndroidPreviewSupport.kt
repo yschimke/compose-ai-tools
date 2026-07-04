@@ -2404,6 +2404,15 @@ internal object AndroidPreviewSupport {
         },
       )
 
+    // Resolve `kind=SVG` / `kind=LOTTIE` asset IR off the Android source resource roots. AGP
+    // doesn't
+    // stage java resources into the JVM `build/resources/main` dir the shared bundle task probes
+    // for `moduleResourcesDir`, so without these roots the Android bundle drops the raw `.svg` /
+    // `.json` even though discovery found it under the same dirs. Same source set the Android
+    // render
+    // classpath links (`androidLottieResourceDirs`), so the assetPath discovery recorded resolves.
+    bundleTask.configure { moduleResourceRoots.from(androidLottieResourceDirs(project)) }
+
     // Feed the variant's OWN compiled classes into the bundle packer via AGP's scoped-artifact API,
     // mirroring the identical `forScope(PROJECT).toGet(CLASSES, …)` wiring `composePreviewDiscover`
     // uses (issue #1924). Discovery resolves previews from the scoped artifact, so without this the

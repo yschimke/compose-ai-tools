@@ -130,6 +130,22 @@ abstract class BundlePreviewTask : DefaultTask() {
   abstract val moduleResourcesDir: DirectoryProperty
 
   /**
+   * Additional module resource ROOT dirs to resolve data-driven asset IR (`kind=LOTTIE` /
+   * `kind=SVG`) against, tried after [moduleResourcesDir]. The Android path wires its source
+   * resource roots here (`src/main/resources`, `src/commonMain/resources`,
+   * `src/androidMain/resources` — the same dirs discovery scans and the JVM render classpath
+   * links), because AGP does not stage java resources into the JVM `build/resources/main` dir
+   * [moduleResourcesDir] probes — so without this an Android bundle drops the raw `.svg` / `.json`
+   * asset even though it was discovered and rendered. Empty on desktop (the processed-resources dir
+   * handles it), so this is a no-op there. `@InputFiles @Optional` so absent roots snapshot as
+   * empty rather than failing the build.
+   */
+  @get:InputFiles
+  @get:Optional
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val moduleResourceRoots: ConfigurableFileCollection
+
+  /**
    * Third-party runtime classpath jars. Used to drive the ClassGraph closure walk and to look up
    * source coordinates via [dependencyCoordinates] — jars themselves are NOT inlined into the
    * bundle (apart from project-dep fallbacks).
@@ -706,36 +722,46 @@ abstract class BundlePreviewTask : DefaultTask() {
   private fun sanitizeCatalogTokenId(id: String): String =
     id.replace(Regex("""[/\\:*?"<>|\s]"""), "_")
 
-  private fun resolvePreviewIr(preview: PreviewInfo): ResolvedIr? {
-    // kind=LOTTIE: the IR is the discovered asset file itself (no render-time capture). Read it
-    // straight off the module resources by the path discovery recorded, so the bundle carries the
-    // animation and replays it with zero consumer bytecode — same self-contained shape as a
-    // captured Remote Compose document.
-    if (preview.params.kind == PreviewKind.LOTTIE) {
-      val assetPath = preview.params.assetPath ?: return null
-      val resourcesRoot = moduleResourcesDir.orNull?.asFile ?: return null
-      val assetFile = File(resourcesRoot, assetPath)
-      if (!assetFile.isFile || assetFile.length() == 0L) return null
-      return ResolvedIr(
-        format = IR_FORMAT_LOTTIE,
-        ext = assetPath.substringAfterLast('.', missingDelimiterValue = "json"),
-        bytes = assetFile.readBytes(),
-      )
+  /**
+   * Resolve a data-driven asset preview's IR — the raw asset file itself ([PreviewKind.LOTTIE] /
+   * [PreviewKind.SVG]), read off the module resources by the path discovery recorded on
+   * [PreviewParams.assetPath]. Tries [moduleResourcesDir] (the desktop processed-resources dir)
+   * first, then each root in [moduleResourceRoots] (the Android source resource dirs), returning
+   * the first that holds a non-empty file at the asset path. Returns `null` when the asset has no
+   * path or isn't found under any root — the bundle then omits the IR rather than failing.
+   */
+  private fun resolveAssetIr(
+    preview: PreviewInfo,
+    format: String,
+    defaultExt: String,
+  ): ResolvedIr? {
+    val assetPath = preview.params.assetPath ?: return null
+    val roots = buildList {
+      moduleResourcesDir.orNull?.asFile?.let(::add)
+      addAll(moduleResourceRoots.files)
     }
+    for (root in roots) {
+      val assetFile = File(root, assetPath)
+      if (assetFile.isFile && assetFile.length() > 0L) {
+        return ResolvedIr(
+          format = format,
+          ext = assetPath.substringAfterLast('.', missingDelimiterValue = defaultExt),
+          bytes = assetFile.readBytes(),
+        )
+      }
+    }
+    return null
+  }
 
-    // kind=SVG: same self-contained shape as LOTTIE — the IR is the raw `.svg` read off the module
-    // resources, so the bundle carries the source artwork regardless of which render subdir
-    // (`svg-renders/` on Android) the still PNG landed in.
-    if (preview.params.kind == PreviewKind.SVG) {
-      val assetPath = preview.params.assetPath ?: return null
-      val resourcesRoot = moduleResourcesDir.orNull?.asFile ?: return null
-      val assetFile = File(resourcesRoot, assetPath)
-      if (!assetFile.isFile || assetFile.length() == 0L) return null
-      return ResolvedIr(
-        format = IR_FORMAT_SVG,
-        ext = assetPath.substringAfterLast('.', missingDelimiterValue = "svg"),
-        bytes = assetFile.readBytes(),
-      )
+  private fun resolvePreviewIr(preview: PreviewInfo): ResolvedIr? {
+    // kind=LOTTIE / kind=SVG: the IR is the discovered asset file itself (no render-time capture).
+    // Read it straight off the module resources by the path discovery recorded, so the bundle
+    // carries the animation / artwork and replays it with zero consumer bytecode — same
+    // self-contained shape as a captured Remote Compose document.
+    when (preview.params.kind) {
+      PreviewKind.LOTTIE -> return resolveAssetIr(preview, IR_FORMAT_LOTTIE, defaultExt = "json")
+      PreviewKind.SVG -> return resolveAssetIr(preview, IR_FORMAT_SVG, defaultExt = "svg")
+      else -> {}
     }
 
     val rendersRoot = rendersDir.orNull?.asFile ?: return null
