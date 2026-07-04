@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 204 preview(s) across 18 module(s) · 17 error(s) · 4 warning(s) · 26 info._
+_Auto-generated from `compose-preview/a11y/main`. 206 preview(s) across 18 module(s) · 17 error(s) · 4 warning(s) · 26 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -717,6 +717,18 @@ _No findings._
 ### `ShaderRenderEffectPreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/ShaderRenderEffectPreview_Shader_Gallery_RenderEffect_Distort.a11y.png" width="400" />
+
+_No findings._
+
+### `SvgBadgePreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/SvgBadgePreview.a11y.png" width="400" />
+
+_No findings._
+
+### `SvgStarTintedPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/SvgStarTintedPreview.a11y.png" width="400" />
 
 _No findings._
 

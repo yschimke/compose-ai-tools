@@ -1441,6 +1441,26 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "SvgBadgePreview.a11y.png",
+      "cleanBasename": "SvgBadgePreview.png",
+      "findings": [],
+      "functionName": "SvgBadgePreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.SvgPreviewsKt.SvgBadgePreview",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/SvgPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "SvgStarTintedPreview.a11y.png",
+      "cleanBasename": "SvgStarTintedPreview.png",
+      "findings": [],
+      "functionName": "SvgStarTintedPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.SvgPreviewsKt.SvgStarTintedPreview",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/SvgPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "",
       "cleanBasename": "",
       "findings": [],
