@@ -130,6 +130,13 @@ class RenderEngineTest {
       assertTrue("wireframe SVG must be valid", svg.readText().trimStart().startsWith("<svg"))
       assertTrue("wireframe PNG must be produced: ${png.absolutePath}", png.exists())
       assertTrue("wireframe PNG must be non-empty", png.length() > 0)
+      // The layered `compose/figma-svg` export rides the same captured trees as the wireframe.
+      val figma = File(previewDir, "compose-figma.svg")
+      assertTrue("figma layered SVG must be produced: ${figma.absolutePath}", figma.exists())
+      val figmaSvg = figma.readText()
+      assertTrue("figma SVG must be valid", figmaSvg.trimStart().startsWith("<svg"))
+      // The export is layered: at least the root composable is emitted as a named `<g id=…>` group.
+      assertTrue("figma SVG must carry named layer groups", figmaSvg.contains("<g id="))
     } finally {
       host.shutdown()
     }

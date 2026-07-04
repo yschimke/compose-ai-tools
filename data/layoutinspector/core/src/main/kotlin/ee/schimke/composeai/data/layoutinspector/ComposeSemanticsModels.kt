@@ -62,6 +62,20 @@ object ComposeSemanticsWireframeProduct {
   const val MEDIA_TYPE_PNG: String = "image/png"
 }
 
+/**
+ * `compose/figma-svg` — a **layered, editable SVG** export of the preview, produced from the same
+ * captured layout + semantics trees as [ComposeSemanticsWireframeProduct] but with design fidelity
+ * (real fills/strokes/corner radii and editable text) rather than a schematic skeleton. The design
+ * counterpart of the wireframe: the wireframe is for *reading* the structure, this is for *editing*
+ * it in Figma. One file per preview: the layered SVG. See [FigmaLayeredSvg] for the layer mapping.
+ */
+object ComposeFigmaSvgProduct {
+  const val KIND: String = "compose/figma-svg"
+  const val SCHEMA_VERSION: Int = 1
+  const val FILE_SVG: String = "compose-figma.svg"
+  const val MEDIA_TYPE_SVG: String = "image/svg+xml"
+}
+
 @Serializable data class ComposeSemanticsPayload(val root: ComposeSemanticsNode)
 
 @Serializable

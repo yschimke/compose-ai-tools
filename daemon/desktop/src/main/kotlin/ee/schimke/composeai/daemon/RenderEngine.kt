@@ -552,6 +552,23 @@ class RenderEngine(
             previewId = previewId,
             payload = payload,
           )
+          // `compose/figma-svg` — the layered, editable SVG export (design fidelity, not the
+          // schematic wireframe). Reuses the same captured root: the layout tree carries the
+          // composable names + container tokens, the semantics `payload` carries editable text.
+          LayoutInspectorDataProducer.buildPayload(
+              root = root,
+              slotTables = state.slotTableCapture?.snapshot().orEmpty(),
+              density = density,
+            )
+            ?.let { layout ->
+              ComposeFigmaSvgDataProducer.writeSvg(
+                rootDir = dataDir,
+                previewId = previewId,
+                layout = layout,
+                semantics = payload,
+                density = density,
+              )
+            }
         }
       }
     } catch (t: Throwable) {

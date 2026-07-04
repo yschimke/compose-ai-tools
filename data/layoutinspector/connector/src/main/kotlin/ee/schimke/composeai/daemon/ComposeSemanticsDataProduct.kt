@@ -661,6 +661,40 @@ object LayoutInspectorDataProducer {
     write(rootDir, previewId, capture, density, fileSystem)
   }
 
+  /**
+   * Builds the [LayoutInspectorPayload] from a captured [root] semantics node + composition
+   * [slotTables] without writing it — the in-memory sibling of [writeArtifacts] that lets a
+   * downstream producer (the `compose/figma-svg` export) reuse the same walked tree, with its
+   * composable [LayoutInspectorNode.component] names and resolved container tokens, that this
+   * product serialises to disk. Returns null when the layout tree can't be reached (same guard as
+   * [ComposeLayoutInspector.inspect]).
+   */
+  fun buildPayload(
+    root: SemanticsNode,
+    slotTables: List<CompositionData> = emptyList(),
+    density: Float = 1f,
+  ): LayoutInspectorPayload? {
+    val capture =
+      LayoutInspectorCaptureContext(
+        rootSemanticsNode = root,
+        slotTables = ExtensionSlotTables.of(slotTables),
+      )
+    val layoutRoot = ComposeLayoutInspector.inspect(capture, density) ?: return null
+    return LayoutInspectorPayload(root = layoutRoot)
+  }
+
+  /**
+   * Android in-memory sibling: build the layout payload from the engine-assembled [PreviewContext]
+   * (the same input [writeArtifacts] uses), so the `compose/figma-svg` extension can reuse the
+   * walked tree without re-reading the serialized file. Returns null when the layout tree can't be
+   * reached.
+   */
+  fun buildPayload(previewContext: PreviewContext, density: Float = 1f): LayoutInspectorPayload? {
+    val capture = LayoutInspectorCaptureContext.from(previewContext) ?: return null
+    val layoutRoot = ComposeLayoutInspector.inspect(capture, density) ?: return null
+    return LayoutInspectorPayload(root = layoutRoot)
+  }
+
   private fun write(
     rootDir: File,
     previewId: String,
