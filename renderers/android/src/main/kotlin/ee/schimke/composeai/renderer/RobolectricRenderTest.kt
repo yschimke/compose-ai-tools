@@ -129,12 +129,15 @@ object PreviewManifestLoader {
         // this Android image renderer (there's no `PreviewRenderStrategy` for them, by design).
         // LOTTIE assets discovered in an Android module are rendered by the JVM desktop Compottie
         // path (`composePreviewRenderLottie`), not Robolectric — there's no Android Lottie player
-        // and the asset is portable IR. Drop both before any expansion so they never reach
-        // `strategyFor`.
+        // and the asset is portable IR. SVG assets likewise render on the JVM desktop path
+        // (`composePreviewRenderSvg`) via Skia's `loadSvgPainter` — Robolectric has no SVG decoder.
+        // Drop all three before any expansion so they never reach `strategyFor`.
         val expandedByEntry =
             manifest.previews
                 .filter {
-                    it.params.kind != PreviewKind.XR_SUBSPACE && it.params.kind != PreviewKind.LOTTIE
+                    it.params.kind != PreviewKind.XR_SUBSPACE &&
+                        it.params.kind != PreviewKind.LOTTIE &&
+                        it.params.kind != PreviewKind.SVG
                 }
                 .map { it to expandParameterProvider(it) }
         val expanded = expandedByEntry.flatMap { it.second }

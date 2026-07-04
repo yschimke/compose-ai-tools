@@ -1216,6 +1216,10 @@ internal object ComposePreviewTasks {
       // so
       // its JVM Lottie render doesn't share `renders/` with the Robolectric render.
       lottieRenderSubdir.convention("renders")
+      // Same default as Lottie: SVG stills land in the shared `renders/` dir on desktop; the
+      // Android task overrides this in [configureDeps] to a disjoint dir so its JVM SVG render
+      // doesn't share `renders/` with the Robolectric render.
+      svgRenderSubdir.convention("renders")
       // `-PcomposePreview.failOnEmpty=true` wins over the extension, so
       // CI profiles and one-off triage runs can flip the gate without
       // touching build.gradle(.kts). Same pattern as

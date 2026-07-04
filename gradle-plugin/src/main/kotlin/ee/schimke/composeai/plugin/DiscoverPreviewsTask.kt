@@ -113,6 +113,14 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   @get:Input abstract val lottieRenderSubdir: Property<String>
 
   /**
+   * Subdirectory for `kind=SVG` capture `renderOutput` paths (see
+   * [PreviewDiscovery.Input.svgRenderSubdir]). Defaults to `"renders"`; the Android task sets a
+   * disjoint dir so its JVM SVG render doesn't share the `renders/` output with the Robolectric
+   * render.
+   */
+  @get:Input abstract val svgRenderSubdir: Property<String>
+
+  /**
    * Whether this module's render backend can draw `@ColorCatalog` sheets. The Android backend can
    * (default `true`); the desktop backend can't yet (#2135), so it passes `false` and discovery
    * marks the synthetic `CATALOG` captures `optional` — the single flag every consumer reads (the
@@ -146,6 +154,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         failOnEmpty = failOnEmpty.get(),
         resourceDirs = resourceDirs.files.toList(),
         lottieRenderSubdir = lottieRenderSubdir.getOrElse("renders"),
+        svgRenderSubdir = svgRenderSubdir.getOrElse("renders"),
         projectClassJars = scopedClassJars,
         catalogRenderSupported = catalogRenderSupported.getOrElse(true),
       )
