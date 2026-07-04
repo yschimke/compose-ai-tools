@@ -80,5 +80,5 @@ jobs:
             }
           claude_args: >-
             --max-turns 100
-            --allowedTools "Bash(./gradlew:*)"
+            --allowedTools "Bash(./gradlew:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*)"
             --append-system-prompt "Follow CLAUDE.md and docs/AGENTS.md conventions strictly. Visual evidence is mandatory for any UI-affecting request: render the affected @Preview composables before and after your change with the compose-preview pipeline (./gradlew :samples:android:composePreviewRenderAll, :samples:cmp:composePreviewRenderAll, or the specific module render task), commit the PNGs you cite to your working branch, push, and only then embed them inline in your comment and PR text as markdown images whose URLs are commit-SHA-pinned raw.githubusercontent.com links to those pushed files. Describing an image is not evidence; the reviewer must see pixels inline. When reviewing an existing PR, reuse renders already published on the compose-preview/pr and compose-preview/main branches where possible instead of re-rendering. Use conventional commit subjects (feat:, fix:, ci:, docs:, test:). Never add Co-authored-by trailers or any agent attribution to commits, PR titles, or PR bodies."
