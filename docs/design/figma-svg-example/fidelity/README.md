@@ -18,9 +18,13 @@ and a browser live). The pure scoring/compositing lives in `FigmaFidelity`; the 
 ![hybrid image fidelity](hybrid-image.png)
 
 **Composite card — ~95%.** A themed `Surface` with a title, body text, and a coloured box. The
-surface fill and box match exactly; the diff shows only faint residual on the text where the SVG
-baseline drifts by more than a pixel — a genuine, but small, structural signal to drive the text
-baseline/alignment fix from.
+surface fill and box match exactly. The `<text>` baseline is now placed from the captured typography
+— font ascent plus the line-height leading split above the first line — instead of a flat
+`top + 0.8·fontSize`, which dropped the card's mean per-pixel error by ~a third (4.0 → 2.7). The
+residual the diff still shows is **font shape**, not baseline: the export declares `sans-serif` and
+the browser substitutes its own face, whose glyph advances differ from the render's, so the words
+drift horizontally along the line. Closing that needs the resolved font embedded/referenced in the
+SVG — a separate axis from placement.
 
 ![card fidelity](card.png)
 

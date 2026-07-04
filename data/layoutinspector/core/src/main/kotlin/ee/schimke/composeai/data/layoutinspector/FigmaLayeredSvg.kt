@@ -140,10 +140,7 @@ object FigmaLayeredSvg {
   private fun text(layer: FigmaSvgLayer, options: Options): String {
     val t = layer.text!!
     val size = t.fontSizePx ?: options.defaultFontSizePx
-    // Baseline: place the text near the top of its box, offset by the cap so it sits inside — a
-    // designer repositions it in Figma anyway; this only needs to land it in the right
-    // neighbourhood.
-    val baseline = layer.top + size * 0.8
+    val baseline = layer.top + baselineOffset(t, size, (layer.bottom - layer.top).toDouble())
     val family = t.fontFamily?.let { """ font-family="${escapeAttr(svgFontFamily(it))}"""" } ?: ""
     val weight = t.fontWeight?.let { """ font-weight="$it"""" } ?: ""
     val style = if (t.italic) """ font-style="italic"""" else ""
@@ -151,6 +148,28 @@ object FigmaLayeredSvg {
       t.color?.let { """ fill="${it.hex}"${opacity("fill", it)}""" } ?: """ fill="#000000""""
     return """<text x="${layer.left}" y="${fmt(baseline)}" font-size="${fmt(size)}"$family$weight$style$fill>""" +
       "${escape(t.content)}</text>"
+  }
+
+  // Typical UI-font metrics as a fraction of the em (font size). Compose lays a line out as the
+  // font
+  // box (ascent + descent ≈ [FONT_BOX]·em) with any extra line-height leading split above and below
+  // it; the baseline then sits [ASCENT]·em below the top of that font box. Approximations, not the
+  // exact resolved face metrics — but close enough that the SVG text lands within a pixel of the
+  // render (the fidelity harness confirms it), and a designer nudges it in Figma regardless.
+  private const val ASCENT_EM = 0.93
+  private const val FONT_BOX_EM = 1.17
+
+  /**
+   * The first-line baseline offset from the layer's top, given the font [size] (px) and the layer's
+   * measured [boxHeight] (px). Uses the resolved line height when captured, else the measured box
+   * when it looks single-line, else a 1.2·em default; the leading beyond the font box is split so
+   * the baseline drops below a bare ascent-from-top — which is where Compose actually draws it.
+   */
+  private fun baselineOffset(t: FigmaSvgText, size: Double, boxHeight: Double): Double {
+    val lineHeight =
+      t.lineHeightPx ?: boxHeight.takeIf { it in (size * 0.9)..(size * 2.2) } ?: (size * 1.2)
+    val halfLeading = ((lineHeight - size * FONT_BOX_EM) / 2).coerceAtLeast(0.0)
+    return halfLeading + size * ASCENT_EM
   }
 
   /**
