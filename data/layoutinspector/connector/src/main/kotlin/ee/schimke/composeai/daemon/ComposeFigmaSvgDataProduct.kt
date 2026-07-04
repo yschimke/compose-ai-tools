@@ -6,6 +6,8 @@ import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 import ee.schimke.composeai.data.layoutinspector.FigmaLayeredSvg
+import ee.schimke.composeai.data.layoutinspector.FigmaSvgFontFace
+import ee.schimke.composeai.data.layoutinspector.FigmaSvgLayer
 import ee.schimke.composeai.data.layoutinspector.FigmaSvgModel
 import ee.schimke.composeai.data.layoutinspector.FigmaSvgRasterTarget
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorPayload
@@ -15,6 +17,7 @@ import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.Base64
 import javax.imageio.ImageIO
 import okio.FileSystem
 import okio.Path.Companion.toPath
@@ -65,6 +68,7 @@ object ComposeFigmaSvgDataProducer {
     colorNames: Map<String, String> = emptyMap(),
     density: Float = 1f,
     frameImage: File? = null,
+    fontResolver: FigmaFontResolver? = null,
     fileSystem: FileSystem = SystemFileSystem,
   ) {
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
@@ -78,10 +82,53 @@ object ComposeFigmaSvgDataProducer {
         rasterComponents =
           if (frame != null) FigmaSvgModel.DEFAULT_RASTER_COMPONENTS else emptySet(),
       )
-    val svg = FigmaLayeredSvg.render(model)
+    val fontFaces = fontResolver?.let { resolveFontFaces(model, it) }.orEmpty()
+    val svg =
+      if (fontFaces.isEmpty()) FigmaLayeredSvg.render(model)
+      else
+        FigmaLayeredSvg.render(
+          model,
+          FigmaLayeredSvg.Options(defaultFontFamily = DEFAULT_EMBED_FAMILY),
+          fontFaces,
+        )
     fileSystem.write(previewDir.resolve(FILE_SVG).path.toPath()) { writeUtf8(svg) }
     if (frame != null && model.rasterTargets.isNotEmpty()) {
       writeRasters(previewDir, frame, model.rasterTargets, fileSystem)
+    }
+  }
+
+  /** The face a generic/absent family maps to — Compose's default Material typeface. */
+  const val DEFAULT_EMBED_FAMILY: String = "Roboto"
+
+  /**
+   * Collects the distinct `(family, weight, italic)` the export's `<text>` needs — resolving
+   * generic families to [DEFAULT_EMBED_FAMILY] the same way the renderer names them — and asks
+   * [resolver] for each face's WOFF2, base64-encoding the ones it returns. Faces the resolver can't
+   * provide are simply not embedded (the text falls back to the named family).
+   */
+  private fun resolveFontFaces(
+    model: FigmaSvgModel,
+    resolver: FigmaFontResolver,
+  ): List<FigmaSvgFontFace> {
+    data class Key(val family: String, val weight: Int, val italic: Boolean)
+    val keys = LinkedHashSet<Key>()
+    fun walk(layer: FigmaSvgLayer) {
+      layer.text?.let { t ->
+        keys.add(
+          Key(
+            FigmaLayeredSvg.resolveFamily(t.fontFamily, DEFAULT_EMBED_FAMILY),
+            t.fontWeight ?: 400,
+            t.italic,
+          )
+        )
+      }
+      layer.children.forEach(::walk)
+    }
+    walk(model.root)
+    return keys.mapNotNull { k ->
+      resolver.woff2(k.family, k.weight, k.italic)?.let {
+        FigmaSvgFontFace(k.family, k.weight, k.italic, Base64.getEncoder().encodeToString(it))
+      }
     }
   }
 

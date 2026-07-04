@@ -27,15 +27,32 @@ object FigmaLayeredSvg {
     val annotateTokens: Boolean = true,
     /** Fallback text size (px) when a text node didn't resolve one. */
     val defaultFontSizePx: Double = 14.0,
+    /**
+     * Family a `<text>` gets when its captured family is null or a generic (`sans-serif`/`serif`/
+     * `monospace`). Left as `sans-serif` for the vector-only export; the font-embedding path sets
+     * it to the resolved default face (e.g. `Roboto`) so the emitted `@font-face` matches by name.
+     */
+    val defaultFontFamily: String = "sans-serif",
   )
 
-  fun render(model: FigmaSvgModel, options: Options = Options()): String {
+  /**
+   * @param fontFaces downloadable faces to embed as `@font-face` (via `<defs><style>`) so the text
+   *   renders with the real typeface in Chromium/Figma instead of a substituted `sans-serif`. Empty
+   *   (default) keeps the export vector-only with no embedded fonts.
+   */
+  fun render(
+    model: FigmaSvgModel,
+    options: Options = Options(),
+    fontFaces: List<FigmaSvgFontFace> = emptyList(),
+  ): String {
     val sb = StringBuilder()
+    val rootFamily = if (fontFaces.isNotEmpty()) options.defaultFontFamily else "sans-serif"
     sb.append(
       """<svg xmlns="http://www.w3.org/2000/svg" width="${model.width}" height="${model.height}" """ +
-        """viewBox="0 0 ${model.width} ${model.height}" font-family="sans-serif">"""
+        """viewBox="0 0 ${model.width} ${model.height}" font-family="${escapeAttr(rootFamily)}">"""
     )
     sb.append('\n')
+    if (fontFaces.isNotEmpty()) sb.append(fontFaceDefs(fontFaces))
     // Everything is drawn in root-pixel space; a single group translate drops the tree into the
     // padded canvas, keeping child coordinates absolute (matching Figma's absolute layout on
     // import).
@@ -140,11 +157,9 @@ object FigmaLayeredSvg {
   private fun text(layer: FigmaSvgLayer, options: Options): String {
     val t = layer.text!!
     val size = t.fontSizePx ?: options.defaultFontSizePx
-    // Baseline: place the text near the top of its box, offset by the cap so it sits inside — a
-    // designer repositions it in Figma anyway; this only needs to land it in the right
-    // neighbourhood.
-    val baseline = layer.top + size * 0.8
-    val family = t.fontFamily?.let { """ font-family="${escapeAttr(svgFontFamily(it))}"""" } ?: ""
+    val baseline = layer.top + baselineOffset(t, size, (layer.bottom - layer.top).toDouble())
+    val family =
+      """ font-family="${escapeAttr(resolveFamily(t.fontFamily, options.defaultFontFamily))}""""
     val weight = t.fontWeight?.let { """ font-weight="$it"""" } ?: ""
     val style = if (t.italic) """ font-style="italic"""" else ""
     val fill =
@@ -152,6 +167,56 @@ object FigmaLayeredSvg {
     return """<text x="${layer.left}" y="${fmt(baseline)}" font-size="${fmt(size)}"$family$weight$style$fill>""" +
       "${escape(t.content)}</text>"
   }
+
+  // Typical UI-font metrics as a fraction of the em (font size). Compose lays a line out as the
+  // font
+  // box (ascent + descent ≈ [FONT_BOX]·em) with any extra line-height leading split above and below
+  // it; the baseline then sits [ASCENT]·em below the top of that font box. Approximations, not the
+  // exact resolved face metrics — but close enough that the SVG text lands within a pixel of the
+  // render (the fidelity harness confirms it), and a designer nudges it in Figma regardless.
+  private const val ASCENT_EM = 0.93
+  private const val FONT_BOX_EM = 1.17
+
+  /**
+   * The first-line baseline offset from the layer's top, given the font [size] (px) and the layer's
+   * measured [boxHeight] (px). Uses the resolved line height when captured, else the measured box
+   * when it looks single-line, else a 1.2·em default; the leading beyond the font box is split so
+   * the baseline drops below a bare ascent-from-top — which is where Compose actually draws it.
+   */
+  private fun baselineOffset(t: FigmaSvgText, size: Double, boxHeight: Double): Double {
+    val lineHeight =
+      t.lineHeightPx ?: boxHeight.takeIf { it in (size * 0.9)..(size * 2.2) } ?: (size * 1.2)
+    val halfLeading = ((lineHeight - size * FONT_BOX_EM) / 2).coerceAtLeast(0.0)
+    return halfLeading + size * ASCENT_EM
+  }
+
+  /** CSS generic families that carry no real face — resolved to the default embedded family. */
+  private val GENERIC_FAMILIES =
+    setOf("sans-serif", "serif", "monospace", "cursive", "fantasy", "system-ui")
+
+  /**
+   * The family name to emit for a `<text>` — the captured face, or [defaultFamily] when the capture
+   * was null or a CSS generic (a bare `sans-serif` carries no real face to match). Shared with the
+   * producer so the name it emits matches the `@font-face` family it embeds.
+   */
+  fun resolveFamily(captured: String?, defaultFamily: String): String {
+    if (captured == null || captured.lowercase() in GENERIC_FAMILIES) return defaultFamily
+    return svgFontFamily(captured)
+  }
+
+  /** `<defs><style>` with one `@font-face` per embedded face, WOFF2 as a base64 data URI. */
+  private fun fontFaceDefs(faces: List<FigmaSvgFontFace>): String = buildString {
+    append("<defs><style>")
+    for (f in faces) {
+      append("@font-face{font-family:'").append(cssFamily(f.family)).append("';")
+      append("font-style:").append(if (f.italic) "italic" else "normal").append(';')
+      append("font-weight:").append(f.weight).append(';')
+      append("src:url(data:font/woff2;base64,").append(f.woff2Base64).append(") format('woff2');}")
+    }
+    append("</style></defs>\n")
+  }
+
+  private fun cssFamily(s: String): String = s.replace("\\", "\\\\").replace("'", "\\'")
 
   /**
    * Compose reports a `FontListFontFamily` as a resolved face identity (a file path or

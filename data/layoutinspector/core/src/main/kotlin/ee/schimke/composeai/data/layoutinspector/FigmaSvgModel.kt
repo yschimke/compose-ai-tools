@@ -47,6 +47,26 @@ data class FigmaSvgText(
   val fontWeight: Int? = null,
   val italic: Boolean = false,
   val color: FigmaSvgColor? = null,
+  /**
+   * Resolved line height in px (sp × density, or em × font size), when the capture resolved one.
+   * Used to place the `<text>` baseline within its box — the extra leading beyond the font's own
+   * ascent/descent is split above the first line, so the baseline sits lower than a bare
+   * ascent-from-top would put it.
+   */
+  val lineHeightPx: Double? = null,
+)
+
+/**
+ * A downloadable font face to embed in the export as an SVG `@font-face` so the `<text>` renders
+ * with the real typeface — closing the "browser/Figma substitutes its own `sans-serif`" fidelity
+ * gap. [woff2Base64] is the base64 of the face's WOFF2 bytes (WOFF2 because the SVG's consumers —
+ * Chromium and Figma — read it natively and it's ~half a TTF's size).
+ */
+data class FigmaSvgFontFace(
+  val family: String,
+  val weight: Int,
+  val italic: Boolean,
+  val woff2Base64: String,
 )
 
 /** Background-free raster standing in for an opaque, un-vectorisable subtree. */
@@ -322,7 +342,27 @@ data class FigmaSvgModel(
         fontWeight = node.typography?.fontWeight,
         italic = node.typography?.fontStyle == "italic",
         color = node.textColor?.foreground?.let { argbToColor(it, emptyMap()) },
+        lineHeightPx =
+          node.typography?.lineHeight?.let { lineHeightToPx(it, node.typography.fontSize, density) },
       )
+
+    /**
+     * Resolves a captured line-height string to px. `"20.0sp"` → sp × density; `"1.4em"` → em ×
+     * resolved font size (in px). Returns null when neither the value nor (for `em`) the font size
+     * parses.
+     */
+    fun lineHeightToPx(value: String, fontSize: String?, density: Float): Double? {
+      val trimmed = value.trim()
+      return when {
+        trimmed.endsWith("sp") -> spToPx(trimmed, density)
+        trimmed.endsWith("em") -> {
+          val em = trimmed.removeSuffix("em").trim().toDoubleOrNull() ?: return null
+          val fontPx = fontSize?.let { spToPx(it, density) } ?: return null
+          em * fontPx
+        }
+        else -> null
+      }
+    }
 
     private data class Extent(val minX: Int, val minY: Int, val maxX: Int, val maxY: Int)
 

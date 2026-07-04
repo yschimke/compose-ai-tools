@@ -244,6 +244,116 @@ class FigmaLayeredSvgTest {
     assertTrue(svg.contains("""fill="#202020""""))
   }
 
+  private fun textBaselineY(svg: String): Double =
+    Regex("""<text [^>]*\by="([0-9.]+)"""").find(svg)!!.groupValues[1].toDouble()
+
+  private fun textNodeWith(lineHeight: String?): String {
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 8, 8, 192, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "8,8,192,40",
+              text = "Hello",
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp", lineHeight = lineHeight),
+            )
+          ),
+      )
+    return render(layout, semantics = semantics)
+  }
+
+  @Test
+  fun textBaselineSitsBelowBareAscentAndWithinItsBox() {
+    // The baseline must land inside the text box (top=8, bottom=40) and *below* the old flat
+    // `top + 0.8·fontSize` heuristic (8 + 12.8 = 20.8) — Compose draws the baseline lower because
+    // the
+    // line-height leading is split above the first line. With fontSize 16 + lineHeight 24 the model
+    // is 8 + halfLeading((24 - 16·1.17)/2 = 2.64) + ascent(16·0.93 = 14.88) ≈ 25.5.
+    val y = textBaselineY(textNodeWith(lineHeight = "24.0sp"))
+    assertTrue("baseline $y must be below the bare-0.8em heuristic (20.8)", y > 20.8)
+    assertTrue("baseline $y must stay within the box bottom (40)", y < 40.0)
+    assertTrue("baseline $y must be near the leading+ascent model (~25.5)", y in 24.5..26.5)
+  }
+
+  @Test
+  fun largerLineHeightLowersTheBaseline() {
+    // More leading pushes the first line's baseline down (the extra space is split above it).
+    val tight = textBaselineY(textNodeWith(lineHeight = "18.0sp"))
+    val loose = textBaselineY(textNodeWith(lineHeight = "28.0sp"))
+    assertTrue(
+      "looser line height ($loose) must lower the baseline vs tight ($tight)",
+      loose > tight,
+    )
+  }
+
+  @Test
+  fun lineHeightToPxParsesSpAndEm() {
+    assertEquals(24.0, FigmaSvgModel.lineHeightToPx("24.0sp", "16.0sp", 1f)!!, 1e-9)
+    assertEquals(48.0, FigmaSvgModel.lineHeightToPx("24.0sp", "16.0sp", 2f)!!, 1e-9)
+    // em is relative to the resolved font size: 1.5em × 16sp = 24px at density 1.
+    assertEquals(24.0, FigmaSvgModel.lineHeightToPx("1.5em", "16.0sp", 1f)!!, 1e-9)
+    assertNull(FigmaSvgModel.lineHeightToPx("1.5em", null, 1f))
+    assertNull(FigmaSvgModel.lineHeightToPx("weird", "16.0sp", 1f))
+  }
+
+  @Test
+  fun resolveFamilyMapsGenericToDefaultButKeepsRealFaces() {
+    assertEquals("Roboto", FigmaLayeredSvg.resolveFamily(null, "Roboto"))
+    assertEquals("Roboto", FigmaLayeredSvg.resolveFamily("sans-serif", "Roboto"))
+    assertEquals("Roboto", FigmaLayeredSvg.resolveFamily("SANS-SERIF", "Roboto"))
+    assertEquals("Lobster", FigmaLayeredSvg.resolveFamily("Lobster", "Roboto"))
+  }
+
+  @Test
+  fun embeddedFontFacesEmitAtFontFaceAndNameTheText() {
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 8, 8, 192, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "8,8,192,40",
+              text = "Hi",
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp"), // generic family
+            )
+          ),
+      )
+    val model =
+      FigmaSvgModel.from(LayoutInspectorPayload(layout), ComposeSemanticsPayload(semantics))
+    val svg =
+      FigmaLayeredSvg.render(
+        model,
+        FigmaLayeredSvg.Options(defaultFontFamily = "Roboto"),
+        listOf(FigmaSvgFontFace("Roboto", 400, italic = false, woff2Base64 = "QUJD")),
+      )
+    assertTrue("must emit an @font-face", svg.contains("@font-face"))
+    assertTrue("face names the family", svg.contains("font-family:'Roboto'"))
+    assertTrue("face embeds the woff2 data URI", svg.contains("data:font/woff2;base64,QUJD"))
+    assertTrue("face declares the format", svg.contains("format('woff2')"))
+    // The generic-family text now names the embedded face rather than inheriting bare sans-serif.
+    assertTrue("text uses the embedded family", svg.contains("""font-family="Roboto""""))
+    assertFalse(
+      "root no longer defaults to sans-serif",
+      svg.contains("""font-family="sans-serif""""),
+    )
+  }
+
+  @Test
+  fun noFontFacesKeepsTheVectorOnlySansSerifDefault() {
+    val svg = render(layoutNode("Screen", 0, 0, 100, 100))
+    assertFalse(svg.contains("@font-face"))
+    assertTrue(svg.contains("""font-family="sans-serif""""))
+  }
+
   @Test
   fun textAttachesDespiteOffByOneBoundsSkew() {
     // Regression: semantics bounds truncate to Int while layout bounds round, so the same node can
