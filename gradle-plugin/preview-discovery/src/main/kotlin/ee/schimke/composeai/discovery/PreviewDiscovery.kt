@@ -9,6 +9,7 @@ import io.github.classgraph.MethodInfo
 import io.github.classgraph.MethodParameterInfo
 import io.github.classgraph.ScanResult
 import java.io.File
+import kotlin.math.roundToInt
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -72,6 +73,14 @@ object PreviewDiscovery {
      * relative to the `compose-previews` root, so any subdir validates uniformly.
      */
     val lottieRenderSubdir: String = "renders",
+    /**
+     * Subdirectory (under the `compose-previews` root) that [PreviewKind.SVG] capture
+     * `renderOutput` paths are placed in. Same rationale as [lottieRenderSubdir]: defaults to
+     * `"renders"` on the desktop backend (the desktop renderer is the only writer) and is
+     * overridden to a disjoint dir (e.g. `"svg-renders"`) on the Android backend so the JVM SVG
+     * render task doesn't share `renders/` with the Robolectric render.
+     */
+    val svgRenderSubdir: String = "renders",
     /**
      * JARs of compiled `.class` files belonging to the consumer module itself — the module's *own*
      * classes packaged as a jar rather than laid out in a [classDirs] directory. Unlike
@@ -376,7 +385,8 @@ object PreviewDiscovery {
                 warnings,
               )
             }
-            // `@ColorCatalog` / `@TypographyCatalog` design tokens: an annotated `Color` / `TextStyle`
+            // `@ColorCatalog` / `@TypographyCatalog` design tokens: an annotated `Color` /
+            // `TextStyle`
             // property's backing field. Collect the coordinates + display metadata here; the values
             // are reflected at render time.
             for (field in classInfo.fieldInfo) {
@@ -418,6 +428,7 @@ object PreviewDiscovery {
     val normalized =
       normalizeRenderOutputs(deduped) +
         discoverLottieAssets(input) +
+        discoverSvgAssets(input) +
         buildCatalogPreviews(
           rawColorCatalogTokens,
           input.catalogRenderSupported,
@@ -616,6 +627,105 @@ object PreviewDiscovery {
 
   private data class LottieDims(val width: Int?, val height: Int?)
 
+  /**
+   * Scan [Input.resourceDirs] for `.svg` image assets and turn each into a [PreviewKind.SVG]
+   * preview — no `@Preview`, no consumer composable, "just having the file is enough" (mirrors
+   * [discoverLottieAssets]). A `.svg` qualifies by extension when its content carries an `<svg`
+   * root element (the cheapest reliable fingerprint — guards against a stray file that merely ends
+   * in `.svg`). The asset's resource-relative path is recorded on [PreviewParams.assetPath] so the
+   * desktop renderer can load it off the classpath; the declared `viewBox` / `width` / `height`
+   * seed the canvas dimensions so the still matches the artwork's intrinsic aspect ratio.
+   *
+   * Unlike Lottie there is no animated companion — SVG is static (SMIL/CSS animation isn't replayed
+   * by `loadSvgPainter`), so each preview ships a single required still PNG.
+   *
+   * Best-effort and side-effect-free: unreadable / non-SVG files are skipped silently. Returns a
+   * list deduped by preview id and ordered by relative path for stable output.
+   */
+  private fun discoverSvgAssets(input: Input): List<PreviewInfo> {
+    if (input.resourceDirs.isEmpty()) return emptyList()
+    val found = LinkedHashMap<String, PreviewInfo>()
+    for (root in input.resourceDirs) {
+      if (!root.isDirectory) continue
+      root
+        .walkTopDown()
+        .filter { it.isFile }
+        .sortedBy { it.relativeTo(root).invariantSeparatorsPath }
+        .forEach { file ->
+          if (!file.extension.equals("svg", ignoreCase = true)) return@forEach
+          val relPath = file.relativeTo(root).invariantSeparatorsPath
+          val dims = svgDimensionsOrNull(file) ?: return@forEach
+          // Filename-safe id (see the Lottie note): lands verbatim in zip entry / render paths, so
+          // `:` / `/` from the resource path can't survive. The `svg__` prefix keeps it from
+          // colliding with a class-derived preview id or a `lottie__` asset id.
+          val safe = relPath.removeSuffix(".${file.extension}").replace(SANITIZE_RENDER_STEM, "_")
+          val stem = "svg__$safe"
+          val id = stem
+          if (found.containsKey(id)) return@forEach
+          found[id] =
+            PreviewInfo(
+              id = id,
+              functionName = relPath,
+              className = "",
+              params =
+                PreviewParams(
+                  name = file.nameWithoutExtension,
+                  kind = PreviewKind.SVG,
+                  assetPath = relPath,
+                  widthDp = dims.width,
+                  heightDp = dims.height,
+                ),
+              // Single required still — no animated companion (SVG has no replayed timeline).
+              captures = listOf(Capture(renderOutput = "${input.svgRenderSubdir}/$stem.png")),
+            )
+        }
+    }
+    return found.values.toList()
+  }
+
+  private data class SvgDims(val width: Int?, val height: Int?)
+
+  /**
+   * Read [file]'s intrinsic dimensions when it is an SVG, or `null` when it is not (no `<svg` root
+   * — a file that merely ends in `.svg`). Prefers an explicit `width`/`height` on the root element,
+   * falling back to the `viewBox`'s width/height (the common case for icon SVGs, which declare only
+   * a `viewBox`). Dimensions are rounded to whole pixels and used only to seed the render canvas'
+   * aspect ratio; a value of `null` on either axis lets the renderer fall back to its default size.
+   */
+  private fun svgDimensionsOrNull(file: File): SvgDims? {
+    val text = runCatching { file.readText() }.getOrNull() ?: return null
+    // Cheapest reliable SVG fingerprint: a `<svg` element tag. Guards against a mis-named file.
+    val svgTag = Regex("<svg\\b[^>]*>", RegexOption.IGNORE_CASE).find(text) ?: return null
+    val attrs = svgTag.value
+    fun lengthAttr(name: String): Int? {
+      // Anchor to a real attribute boundary: the name must NOT be preceded by a name char or `-`,
+      // so `stroke-width` / `stroke-height` don't masquerade as the root `width`/`height`. A plain
+      // `\b` word boundary matches the `-width` suffix and would size the canvas off the stroke
+      // (e.g. `<svg viewBox="0 0 24 24" stroke-width="2">` → a 2dp-wide canvas instead of 24dp).
+      val raw =
+        Regex("(?<![\\w-])$name\\s*=\\s*[\"']([^\"']+)[\"']", RegexOption.IGNORE_CASE)
+          .find(attrs)
+          ?.groupValues
+          ?.get(1) ?: return null
+      // Strip a unit suffix (px, pt, mm, %, …) — only the leading number seeds the canvas ratio.
+      return Regex("[-+]?\\d*\\.?\\d+").find(raw)?.value?.toFloatOrNull()?.roundToInt()
+    }
+    val explicitW = lengthAttr("width")?.takeIf { it > 0 }
+    val explicitH = lengthAttr("height")?.takeIf { it > 0 }
+    if (explicitW != null && explicitH != null) return SvgDims(explicitW, explicitH)
+    // Fall back to viewBox = "minX minY width height".
+    val viewBox =
+      Regex("\\bviewBox\\s*=\\s*[\"']([^\"']+)[\"']", RegexOption.IGNORE_CASE)
+        .find(attrs)
+        ?.groupValues
+        ?.get(1)
+        ?.trim()
+        ?.split(Regex("[\\s,]+"))
+    val vbW = viewBox?.getOrNull(2)?.toFloatOrNull()?.roundToInt()?.takeIf { it > 0 }
+    val vbH = viewBox?.getOrNull(3)?.toFloatOrNull()?.roundToInt()?.takeIf { it > 0 }
+    return SvgDims(explicitW ?: vbW, explicitH ?: vbH)
+  }
+
   /** Raw `@ColorCatalog` hit collected during the scan, before aggregation into sheets. */
   private data class RawCatalogToken(
     val className: String,
@@ -624,14 +734,15 @@ object PreviewDiscovery {
     val group: String,
   )
 
-  /** Raw `@ThemeCatalog` hit: the annotated `PreviewWrapperProvider` class + its display metadata. */
-  private data class RawThemeCatalog(
-    val className: String,
-    val name: String,
-    val group: String,
-  )
+  /**
+   * Raw `@ThemeCatalog` hit: the annotated `PreviewWrapperProvider` class + its display metadata.
+   */
+  private data class RawThemeCatalog(val className: String, val name: String, val group: String)
 
-  /** Builds a [RawCatalogToken] from an annotated field, applying Showkase-style name/group defaults. */
+  /**
+   * Builds a [RawCatalogToken] from an annotated field, applying Showkase-style name/group
+   * defaults.
+   */
   private fun rawCatalogToken(
     classInfo: ClassInfo,
     field: io.github.classgraph.FieldInfo,
@@ -746,12 +857,13 @@ object PreviewDiscovery {
   /**
    * Aggregates the collected `@ThemeCatalog` providers into synthetic [PreviewKind.THEME_CATALOG]
    * sheets — one per provider, keyed `themecatalog__<name>`. Because each provider is its own sheet
-   * (not aggregated like the token catalogs), the id must be unique per provider: two providers that
-   * share a display `name` (e.g. `"Light"` in different groups/packages) would otherwise derive the
-   * same id and `renders/<id>.png` and clobber each other, so a collision falls back to appending
-   * the provider's (unique) FQN. The provider FQN travels on [PreviewParams.wrapperClassName]; the
-   * renderer resolves it and composes its `Wrap(content)` around a canned specimen. `optional`
-   * exactly when the backend can't render (desktop), like the token catalogs.
+   * (not aggregated like the token catalogs), the id must be unique per provider: two providers
+   * that share a display `name` (e.g. `"Light"` in different groups/packages) would otherwise
+   * derive the same id and `renders/<id>.png` and clobber each other, so a collision falls back to
+   * appending the provider's (unique) FQN. The provider FQN travels on
+   * [PreviewParams.wrapperClassName]; the renderer resolves it and composes its `Wrap(content)`
+   * around a canned specimen. `optional` exactly when the backend can't render (desktop), like the
+   * token catalogs.
    */
   private fun buildThemeCatalogPreviews(
     themes: List<RawThemeCatalog>,
@@ -779,8 +891,7 @@ object PreviewDiscovery {
             kind = PreviewKind.THEME_CATALOG,
             wrapperClassName = theme.className,
           ),
-        captures =
-          listOf(Capture(renderOutput = "renders/$id.png", optional = !renderSupported)),
+        captures = listOf(Capture(renderOutput = "renders/$id.png", optional = !renderSupported)),
       )
     }
   }

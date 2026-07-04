@@ -37,6 +37,15 @@ internal object AndroidPreviewSupport {
   internal const val LOTTIE_RENDER_SUBDIR: String = "lottie-renders"
 
   /**
+   * Output subdirectory (under `build/compose-previews/`) for `kind=SVG` renders on the Android
+   * backend. Same rationale as [LOTTIE_RENDER_SUBDIR]: kept disjoint from the Robolectric
+   * `renders/` so the JVM SVG render (`composePreviewRenderSvg`) and the Robolectric render don't
+   * share an output directory. Used as the discovery `svgRenderSubdir` and as the render task's
+   * output dir.
+   */
+  internal const val SVG_RENDER_SUBDIR: String = "svg-renders"
+
+  /**
    * Floor version pinned on every plugin-injected `androidx.compose.*` coordinate that doesn't have
    * its own version source (`ui-test-manifest`, `ui-test-junit4`). Matches the Compose line that
    * `:renderer-android` compiles against (`compose-bom-compat` 2025.11.01 → Compose 1.9.5); the
@@ -620,6 +629,7 @@ internal object AndroidPreviewSupport {
         // (`composePreviewRenderLottie`) doesn't share an output directory with the Robolectric
         // `composePreviewRender` — overlapping task outputs disable Gradle's build cache for both.
         lottieRenderSubdir.set(LOTTIE_RENDER_SUBDIR)
+        svgRenderSubdir.set(SVG_RENDER_SUBDIR)
         if (screenshotTestEnabled) {
           dependsOn(project.tasks.matching { it.name in screenshotCompileTaskNames })
           screenshotTestRuntimeConfig?.let { stConfig ->
@@ -2292,10 +2302,41 @@ internal object AndroidPreviewSupport {
         dependsOn(discoverTask)
       }
 
+    // SVG assets discovered in an Android module render through the JVM desktop path too — Skia's
+    // `loadSvgPainter` inflates the portable `.svg`, and Robolectric has no SVG decoder (the
+    // Robolectric `composePreviewRender` skips `kind=SVG`, see `RobolectricRenderTest`). Mirrors
+    // the
+    // Lottie pass exactly: same `:renderer-desktop` classpath + the module's Java-resource dirs
+    // (where the `.svg` lives), a disjoint `svg-renders/` output dir so it never shares `renders/`
+    // with the Robolectric render, and folded into `composePreviewRenderAll` so the still is
+    // present
+    // when the missing-render gate validates.
+    val svgRendererConfig =
+      ComposePreviewTasks.ensureRendererDesktopConfig(project, "composePreviewSvgRenderer")
+    val svgRenderTask =
+      project.tasks.register("composePreviewRenderSvg", RenderPreviewsTask::class.java) {
+        group = "compose preview"
+        description = "Render kind=SVG previews via the desktop Skia renderer"
+        onlyIf { extension.enabled.get() }
+        previewsJson.set(previewOutputDir.map { it.file("previews.json") })
+        renderBackend.set("desktop")
+        tier.set(resolveTier(project))
+        displayFilterFilters.set(resolveDisplayFilterFilters(project))
+        deviceFrameDevice.set(resolveDeviceFrameDevice(project))
+        includeKinds.add(PreviewKind.SVG.name)
+        renderClasspath.from(svgRendererConfig.incoming.artifactView {}.files)
+        renderClasspath.from(androidLottieResourceDirs(project))
+        outputDir.set(previewOutputDir.map { it.dir(SVG_RENDER_SUBDIR) })
+        dataProductsDir.set(dataProductsDirectory)
+        dependsOn(discoverTask)
+      }
+
     ComposePreviewTasks.registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
     // Fold the JVM Lottie render into the aggregate so a `kind=LOTTIE` asset's PNG is produced
     // before the missing-render gate validates the manifest.
     project.tasks.named("composePreviewRenderAll").configure { dependsOn(lottieRenderTask) }
+    // Same for the JVM SVG render — a `kind=SVG` asset's PNG must exist before the gate validates.
+    project.tasks.named("composePreviewRenderAll").configure { dependsOn(svgRenderTask) }
     // Fold the XR render + composite into the user-facing aggregate so `composePreviewRenderAll`
     // produces scene.json alongside the PNGs, then bakes the composite stills (only when the XR
     // path is enabled / the tasks exist). `composePreviewCompositeXr` itself `dependsOn`

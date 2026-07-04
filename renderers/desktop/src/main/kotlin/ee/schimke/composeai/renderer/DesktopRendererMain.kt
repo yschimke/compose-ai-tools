@@ -1,5 +1,6 @@
 package ee.schimke.composeai.renderer
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,9 +13,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.res.loadSvgPainter
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
@@ -221,6 +224,31 @@ fun main(args: Array<String>) {
           outputFile = outputFile,
         )
       }
+    } catch (e: Throwable) {
+      writeErrorSidecar(outputFile, className, functionName, e)
+    }
+    return
+  }
+
+  // kind=SVG — a directly-discovered `.svg` asset, not a `@Composable`. Inflate the asset (arg 20,
+  // a
+  // classpath-relative path) via the Skia-backed `loadSvgPainter` and capture a single still frame.
+  // Static — no GIF companion, unlike LOTTIE. Short-circuits the reflection / scroll machinery.
+  if (previewKind == "SVG") {
+    val assetPath = args.getOrNull(19)?.takeIf { it.isNotBlank() }
+    val sidecar = errorSidecarFor(outputFile)
+    if (sidecar.exists()) sidecar.delete()
+    try {
+      requireNotNull(assetPath) { "kind=SVG preview is missing its asset path (renderer arg 20)" }
+      renderSvgAsset(
+        assetPath = assetPath,
+        widthPx = widthPx,
+        heightPx = heightPx,
+        density = density,
+        showBackground = showBackground,
+        backgroundColor = backgroundColor,
+        outputFile = outputFile,
+      )
     } catch (e: Throwable) {
       writeErrorSidecar(outputFile, className, functionName, e)
     }
@@ -919,6 +947,83 @@ private fun renderLottieAsset(
   } finally {
     scene.close()
   }
+}
+
+/**
+ * Render a directly-discovered `.svg` asset to a single still PNG. No consumer composable is
+ * involved — [loadSvgPainter] (Skia-backed, part of Compose Desktop) parses the bytes loaded off
+ * the render classpath (the plugin links the processed-resources dir there) into a [Painter], drawn
+ * inside a fixed sandbox with [ContentScale.Fit] so the artwork keeps its aspect ratio. Sibling of
+ * [renderLottieAsset]; SVG is static, so there is no animated companion. `internal` (not `private`
+ * like [renderLottieAsset]) so the desktop renderer's unit test can drive it directly.
+ */
+internal fun renderSvgAsset(
+  assetPath: String,
+  widthPx: Int,
+  heightPx: Int,
+  density: Float,
+  showBackground: Boolean,
+  backgroundColor: Long,
+  outputFile: File,
+  fileSystem: FileSystem = SystemFileSystem,
+) {
+  val svgBytes = loadClasspathAsset(assetPath)
+  val densityObj = Density(density)
+  val painter = loadSvgPainter(ByteArrayInputStream(svgBytes), densityObj)
+  val scene = ImageComposeScene(width = widthPx, height = heightPx, density = densityObj)
+  try {
+    scene.setContent {
+      CompositionLocalProvider(LocalInspectionMode provides true) {
+        val bgColor =
+          when {
+            backgroundColor != 0L -> Color(backgroundColor.toInt())
+            showBackground -> Color.White
+            else -> Color.Transparent
+          }
+        Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
+          Image(
+            painter = painter,
+            contentDescription = assetPath,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Fit,
+          )
+        }
+      }
+    }
+    scene.render()
+    val image = scene.render()
+    val pngData =
+      image.encodeToData(EncodedImageFormat.PNG)
+        ?: throw IllegalStateException("Failed to encode SVG frame to PNG")
+    outputFile.parentFile?.mkdirs()
+    fileSystem.write(outputFile.path.toPath()) { write(pngData.bytes) }
+  } finally {
+    scene.close()
+  }
+}
+
+/**
+ * Read a resource off the render classpath as raw bytes. Tries the thread context classloader first
+ * (the render subprocess installs the consumer's classes/resources there), then this file's own
+ * loader as a fallback for plain JVM tests. A leading slash is tolerated. Mirrors the Lottie
+ * runtime's `loadLottieAsset`, but returns bytes (SVG is XML text, but the painter reads a stream).
+ *
+ * @throws IllegalArgumentException when the resource is not on the classpath — a clear authoring
+ *   error ("did you put it under src/main/resources?") rather than a downstream parse failure.
+ */
+private fun loadClasspathAsset(assetPath: String): ByteArray {
+  val normalized = assetPath.removePrefix("/")
+  val loaders =
+    listOfNotNull(Thread.currentThread().contextClassLoader, object {}.javaClass.classLoader)
+  for (loader in loaders) {
+    loader.getResourceAsStream(normalized)?.use { stream ->
+      return stream.readBytes()
+    }
+  }
+  throw IllegalArgumentException(
+    "Asset '$assetPath' not found on the classpath. Put it under src/main/resources " +
+      "(e.g. src/main/resources/$normalized) so the preview plugin links and bundles it."
+  )
 }
 
 @Composable

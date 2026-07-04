@@ -30,6 +30,18 @@ enum class PreviewKind {
    */
   LOTTIE,
   /**
+   * An SVG image asset discovered directly as a file (no `@Preview`, no consumer composable): a
+   * `.svg` under the module's resources. Like [LOTTIE] the asset bytes *are* the preview's
+   * intermediate representation — the renderer inflates them via the Skia-backed `loadSvgPainter`
+   * (Compose Desktop), and a bundle can carry the bytes and replay them with zero consumer
+   * bytecode. Static (no timeline), so it captures a single still PNG — no animated companion. The
+   * asset's classpath-relative path travels on [PreviewParams.assetPath]; the declared `viewBox` /
+   * `width` / `height` seed [PreviewParams.widthDp] / [PreviewParams.heightDp] so the canvas
+   * matches the artwork's intrinsic aspect ratio. Rendered on the JVM/desktop backend (Skia has
+   * native SVG; Robolectric does not), mirroring the Lottie routing.
+   */
+  SVG,
+  /**
    * A synthetic design-token catalog sheet aggregated from `@ColorCatalog` (and, later,
    * `@TypographyCatalog`) properties — no `@Preview`, no consumer composable. Like [LOTTIE] this is
    * data-driven: the tokens to render travel on [PreviewParams.catalogTokens], and the renderer
@@ -54,7 +66,9 @@ enum class PreviewKind {
 enum class CatalogTokenKind {
   /** An `androidx.compose.ui.graphics.Color` property → a labelled swatch row. */
   COLOR,
-  /** An `androidx.compose.ui.text.TextStyle` property → a labelled sample-text row in that style. */
+  /**
+   * An `androidx.compose.ui.text.TextStyle` property → a labelled sample-text row in that style.
+   */
   TEXT_STYLE,
 }
 
