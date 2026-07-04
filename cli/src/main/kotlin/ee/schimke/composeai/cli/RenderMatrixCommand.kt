@@ -40,6 +40,16 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
         else null
       }
 
+  /** `--cells-dir` (default path) or `--cells-dir=<path>` / `--cells-dir <path>`. */
+  private val cellsDirRequested = args.any { it == "--cells-dir" || it.startsWith("--cells-dir=") }
+  private val cellsDirExplicitPath =
+    args.firstOrNull { it.startsWith("--cells-dir=") }?.substringAfter("=")
+      ?: run {
+        val idx = args.indexOf("--cells-dir")
+        if (idx >= 0 && idx + 1 < args.size && !args[idx + 1].startsWith("-")) args[idx + 1]
+        else null
+      }
+
   override fun run() {
     if ("--help" in args || "-h" in args) {
       printUsage()
@@ -181,12 +191,14 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
     previewId: String,
     cells: List<MatrixRenderFetcher.CellResult>,
   ) {
+    val cellFiles = if (cellsDirRequested) writeCells(module, previewId, cells) else emptyMap()
+
     var baselineSha: String? = null
     val rows = cells.map { cr ->
       val sha = cr.png?.let { sha256Hex(it) }
       val dims = cr.png?.let { pngDimensions(it) }
       if (baselineSha == null && sha != null) baselineSha = sha
-      Row(cr.cell, sha, dims, changed = sha != null && sha != baselineSha)
+      Row(cr.cell, sha, dims, changed = sha != null && sha != baselineSha, png = cellFiles[cr.cell])
     }
 
     val contactSheetWritten =
@@ -205,6 +217,40 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
     // Non-zero when no cell rendered at all; a partial render still exits 0 with the failures
     // logged.
     if (rows.none { it.sha != null }) exitProcess(2)
+  }
+
+  /**
+   * Write each rendered cell's PNG under the `--cells-dir` directory (default:
+   * `<module>/build/compose-previews/<id>-matrix-cells/`), one file per cell named from its axis
+   * values (e.g. `en--light--1.5x.png`), so agents and importers (Figma push, design-artifact
+   * bundles) get per-variant files without cropping the contact sheet.
+   *
+   * Stale `.png` files from a prior run are removed first: because each run only overwrites the
+   * cells it rendered, a later run that narrows the axes (or whose cell failed) would otherwise
+   * leave earlier variants behind, and an importer/human globbing the directory would consume them
+   * as if they belonged to the current matrix. Clearing makes the directory reflect exactly this
+   * run's cells. Only top-level `.png` files are removed — never subdirectories or other files.
+   */
+  private fun writeCells(
+    module: PreviewModule,
+    previewId: String,
+    cells: List<MatrixRenderFetcher.CellResult>,
+  ): Map<MatrixCell, File> {
+    val dirPath =
+      cellsDirExplicitPath?.toPath()
+        ?: (module.projectDir.path.toPath() /
+          "build/compose-previews" /
+          "${previewId.replace(Regex("[^A-Za-z0-9._-]"), "_")}-matrix-cells")
+    fileSystem.createDirectories(dirPath)
+    clearStaleCellPngs(fileSystem, dirPath)
+    val written = mutableMapOf<MatrixCell, File>()
+    for (cr in cells) {
+      val png = cr.png ?: continue
+      val target = dirPath / cellFileName(cr.cell)
+      fileSystem.write(target) { write(png) }
+      written[cr.cell] = File(target.toString())
+    }
+    return written
   }
 
   private fun writeContactSheet(
@@ -255,6 +301,7 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
                   put("heightPx", it.second)
                 }
                 put("changed", row.changed)
+                row.png?.let { put("pngPath", it.path) }
               } else {
                 put("rendered", false)
               }
@@ -289,6 +336,7 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
       println("  $mark $label  $detail")
     }
     contactSheet?.let { println("Contact sheet: ${it.path}") }
+    rows.firstNotNullOfOrNull { it.png }?.let { println("Cells dir: ${File(it.path).parent}") }
   }
 
   private fun printUsage() {
@@ -313,6 +361,11 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
 
         --contact-sheet[=path]  Also write a stitched grid PNG of every cell (default path:
                                 <module>/build/compose-previews/<id>-matrix.png).
+        --cells-dir[=path]      Also write each rendered cell as its own PNG named from its axis
+                                values, e.g. en--dark--1.5x.png (default path:
+                                <module>/build/compose-previews/<id>-matrix-cells/). Per-cell
+                                paths are echoed as `pngPath` in the --json summary — the
+                                per-variant files importers (e.g. a Figma push) consume directly.
         --json                  Emit the compose-preview-matrix/v1 JSON summary.
       """
         .trimIndent()
@@ -338,9 +391,38 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
     val sha: String?,
     val dims: Pair<Int, Int>?,
     val changed: Boolean,
+    val png: File? = null,
   )
 
-  private companion object {
-    val matrixJson = Json { prettyPrint = true }
+  companion object {
+    private val matrixJson = Json { prettyPrint = true }
+
+    /**
+     * Stable per-cell file name derived from the cell's axis values, e.g. `en--light--1.5x.png`,
+     * `id_pixel_5--dark.png`, `default.png`. Axis order matches [MatrixCell.label]; characters
+     * outside `[A-Za-z0-9._-]` are replaced so device specs stay filesystem-safe.
+     */
+    /**
+     * Remove stale top-level `.png` files from a `--cells-dir` so the directory reflects exactly
+     * the current run's cells (see [writeCells]). Only regular `.png` files at the top level are
+     * deleted — never subdirectories or non-PNG files. A missing directory is a no-op.
+     */
+    internal fun clearStaleCellPngs(fileSystem: okio.FileSystem, dirPath: okio.Path) {
+      runCatching { fileSystem.list(dirPath) }
+        .getOrDefault(emptyList())
+        .filter { it.name.endsWith(".png") && fileSystem.metadataOrNull(it)?.isRegularFile == true }
+        .forEach { fileSystem.delete(it) }
+    }
+
+    internal fun cellFileName(cell: MatrixCell): String {
+      val parts =
+        listOfNotNull(cell.device, cell.locale, cell.uiMode, cell.fontScale?.let { "${it}x" })
+      val slug =
+        (if (parts.isEmpty()) "default" else parts.joinToString("--")).replace(
+          Regex("[^A-Za-z0-9._-]"),
+          "_",
+        )
+      return "$slug.png"
+    }
   }
 }

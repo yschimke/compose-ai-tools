@@ -85,33 +85,51 @@ internal class MatrixRenderFetcher(
         .use {
           val results = mutableListOf<CellResult>()
           for (cell in cells) {
-            val latch = CountDownLatch(1)
-            pending.set(latch)
-            pngPath.set(null)
+            // The daemon clears its per-preview override-in-flight flag just *after* emitting
+            // `renderFinished` (JsonRpcServer), and every cell here re-queues the same previewId
+            // the moment the previous cell's `renderFinished` lands — so without honouring the
+            // daemon's coalesced-retry contract, cell 2 is rejected inside that window and the
+            // rejection loop then burns through every remaining cell while the flag is still set.
+            // Same bounded backoff as ServeRenderHost.
+            var attempt = 0
+            var queued = false
+            var failed: String? = null
+            var latch = CountDownLatch(1)
+            while (true) {
+              latch = CountDownLatch(1)
+              pending.set(latch)
+              pngPath.set(null)
 
-            val ack =
-              try {
-                live.renderNow(
-                  previewIds = listOf(previewId),
-                  reason = "render-matrix ${cell.label}",
-                  overrides = cell.toOverrides(),
-                  timeout = RENDER_ACK_TIMEOUT,
-                )
-              } catch (e: RenderSessionException) {
-                onLog("renderNow failed for cell '${cell.label}': ${e.message}")
-                null
+              val ack =
+                try {
+                  live.renderNow(
+                    previewIds = listOf(previewId),
+                    reason = "render-matrix ${cell.label}",
+                    overrides = cell.toOverrides(),
+                    timeout = RENDER_ACK_TIMEOUT,
+                  )
+                } catch (e: RenderSessionException) {
+                  // renderNow threw: nothing was queued, so no renderFinished will arrive — don't
+                  // burn the full render timeout waiting on a render that never started.
+                  failed = "renderNow failed for cell '${cell.label}': ${e.message}"
+                  break
+                }
+
+              val rejected = ack.rejected.firstOrNull { it.id == previewId }
+              if (rejected != null) {
+                if (rejected.reason.startsWith("coalesced") && attempt++ < MAX_COALESCED_RETRIES) {
+                  Thread.sleep(COALESCED_RETRY_BACKOFF_MS)
+                  continue
+                }
+                failed = "render rejected for cell '${cell.label}': ${rejected.reason}"
+                break
               }
-
-            // renderNow threw: nothing was queued, so no renderFinished will arrive — don't burn
-            // the full render timeout waiting on a render that never started.
-            if (ack == null) {
-              results += CellResult(cell, png = null)
-              continue
+              queued = true
+              break
             }
 
-            val rejected = ack.rejected.firstOrNull { it.id == previewId }
-            if (rejected != null) {
-              onLog("render rejected for cell '${cell.label}': ${rejected.reason}")
+            if (!queued) {
+              failed?.let(onLog)
               results += CellResult(cell, png = null)
               continue
             }
@@ -157,5 +175,13 @@ internal class MatrixRenderFetcher(
 
     /** Per-cell budget for the queued render to emit `renderFinished` (first pays cold start). */
     const val RENDER_TIMEOUT_SECONDS = 180L
+
+    /**
+     * Bounded retries when the daemon coalesces an override-bearing render already in flight — the
+     * same contract ServeRenderHost honours. The window only needs to outlast the daemon clearing
+     * its in-flight flag right after `renderFinished`.
+     */
+    const val MAX_COALESCED_RETRIES = 50
+    const val COALESCED_RETRY_BACKOFF_MS = 100L
   }
 }

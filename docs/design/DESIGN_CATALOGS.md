@@ -59,6 +59,11 @@ Claude Design. The branch holds only the generated bundle (`catalog.json`,
 `tokens.dtcg.json`, `figma-variables.json`, `images/`), regenerated from the
 code each week so it never drifts.
 
+For the programmatic alternative to the manual pull — an agent pushing rendered
+variant matrices and editable layer reconstructions straight onto a Figma
+canvas via the Figma MCP server — see
+[FIGMA_ROUNDTRIP.md](FIGMA_ROUNDTRIP.md).
+
 ## Rendering a catalog
 
 ```sh

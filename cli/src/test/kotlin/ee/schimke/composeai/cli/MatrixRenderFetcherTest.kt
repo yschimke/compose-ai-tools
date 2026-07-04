@@ -102,6 +102,32 @@ class MatrixRenderFetcherTest {
   }
 
   @Test
+  fun `a coalesced rejection is retried instead of failing the cell`() {
+    val projectDir = newTempFolder("matrix-coalesced")
+    writeDescriptor(projectDir)
+    // Models the daemon race: the per-preview override-in-flight flag clears just *after*
+    // `renderFinished`, so the very next cell's `renderNow` is rejected as coalesced exactly once
+    // before succeeding. Every cell after the first hits it.
+    val fetcher = MatrixRenderFetcher(factory = FakeFactory(coalesceWindow = true))
+
+    val cells =
+      listOf(MatrixCell(uiMode = "light"), MatrixCell(uiMode = "dark"), MatrixCell(locale = "ar"))
+    val outcome =
+      fetcher.fetch(
+        projectDir = projectDir,
+        moduleName = "sample",
+        previewId = "com.example.Red",
+        cells = cells,
+      )
+
+    assertTrue(outcome is MatrixRenderFetcher.Outcome.Ok, "expected Ok, got $outcome")
+    assertEquals(3, outcome.cells.size)
+    outcome.cells.forEachIndexed { i, cell ->
+      assertNotNull(cell.png, "cell $i must render despite the coalescing window")
+    }
+  }
+
+  @Test
   fun `identical overrides across cells produce identical bytes`() {
     val projectDir = newTempFolder("matrix-identical")
     writeDescriptor(projectDir)
@@ -183,6 +209,7 @@ class MatrixRenderFetcherTest {
   private class FakeFactory(
     private val rejectDevice: String? = null,
     private val throwOnRender: Boolean = false,
+    private val coalesceWindow: Boolean = false,
   ) : RenderSessionFactory {
     override val backendKind: RenderSessionBackend = RenderSessionBackend.Subprocess
 
@@ -191,6 +218,7 @@ class MatrixRenderFetcherTest {
         renderRoot = File(config.workspaceRoot, "build/compose-previews/renders"),
         rejectDevice = rejectDevice,
         throwOnRender = throwOnRender,
+        coalesceWindow = coalesceWindow,
       )
   }
 
@@ -211,9 +239,11 @@ class MatrixRenderFetcherTest {
     private val renderRoot: File,
     private val rejectDevice: String?,
     private val throwOnRender: Boolean = false,
+    private val coalesceWindow: Boolean = false,
   ) : RenderSession {
     private val listeners = java.util.concurrent.CopyOnWriteArrayList<NotificationListener>()
     private var counter = 0
+    private var inCoalesceWindow = false
 
     override val workspaceRoot: String = renderRoot.absolutePath
     override val modulePath: String = ":sample"
@@ -254,6 +284,20 @@ class MatrixRenderFetcherTest {
           rejected = listOf(RejectedRender(id, "bad device")),
         )
       }
+      if (coalesceWindow && inCoalesceWindow) {
+        inCoalesceWindow = false
+        return RenderNowResult(
+          queued = emptyList(),
+          rejected =
+            listOf(
+              RejectedRender(
+                id,
+                "coalesced: override-bearing render already in flight for this previewId",
+              )
+            ),
+        )
+      }
+      if (coalesceWindow) inCoalesceWindow = true
       // Bytes derived purely from the overrides, so identical cells share bytes and different cells
       // diverge — exactly the property the fetcher's per-cell hashing relies on.
       val content =
