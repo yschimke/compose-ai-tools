@@ -24,7 +24,7 @@ on:
   pull_request_review:
     types: [submitted]
   issues:
-    types: [opened, assigned]
+    types: [opened, assigned, labeled]
 
 jobs:
   claude:
@@ -33,7 +33,8 @@ jobs:
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude'))) ||
+      (github.event_name == 'issues' && github.event.action == 'labeled' && github.event.label.name == 'claude')
     runs-on: ubuntu-latest
     timeout-minutes: 90
     # Queue (don't cancel) concurrent mentions on the same thread so two runs
@@ -60,6 +61,9 @@ jobs:
           # Bills the Claude subscription's included usage (shared with
           # interactive Claude Code sessions) rather than per-token API spend.
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Applying the `claude` label to an issue starts a work session on it
+          # (the weekly triage shortlist suggests candidates).
+          label_trigger: claude
           # Request the CI-read scope on the Claude App token the action
           # mints for itself — the job-level `actions: read` grant above only
           # covers the workflow token, and the get_ci_status /
@@ -80,5 +84,5 @@ jobs:
             }
           claude_args: >-
             --max-turns 100
-            --allowedTools "Bash(./gradlew:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*)"
+            --allowedTools "Bash(./gradlew:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(javap:*)"
             --append-system-prompt "Follow CLAUDE.md and docs/AGENTS.md conventions strictly. Visual evidence is mandatory for any UI-affecting request: render the affected @Preview composables before and after your change with the compose-preview pipeline (./gradlew :samples:android:composePreviewRenderAll, :samples:cmp:composePreviewRenderAll, or the specific module render task), commit the PNGs you cite to your working branch, push, and only then embed them inline in your comment and PR text as markdown images whose URLs are commit-SHA-pinned raw.githubusercontent.com links to those pushed files. Describing an image is not evidence; the reviewer must see pixels inline. When reviewing an existing PR, reuse renders already published on the compose-preview/pr and compose-preview/main branches where possible instead of re-rendering. Use conventional commit subjects (feat:, fix:, ci:, docs:, test:). Never add Co-authored-by trailers or any agent attribution to commits, PR titles, or PR bodies."

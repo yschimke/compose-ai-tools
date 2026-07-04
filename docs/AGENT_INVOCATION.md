@@ -127,6 +127,19 @@ Sibling repos already wired: `meshcore-mobile` (JDK 21 setup, renders via the
 compose-preview `apply` action it already consumes) and `design-parity`
 (Node 22, report-html comparison pages).
 
+## Weekly triage and the `claude` label
+
+[`claude-triage.yml`](../.github/workflows/claude-triage.yml) runs every
+Friday evening (17:00 UTC) (and via workflow_dispatch) in the action's automation mode: it labels
+new issues, closes issues already fixed by merged PRs (commenting the
+evidence), and maintains a pinned-style **"Weekly triage"** summary issue
+whose final section is a *Ready for an agent* shortlist.
+
+To progress an issue, either apply the **`claude` label** (wired via
+`label_trigger` + the `issues: labeled` event in `claude.yml`) or comment
+`@claude <task>`. Each kicked-off issue gets its own agent session, branch,
+and PR, which then flows through the repo's merge gates.
+
 ## Limits
 
 - Claude cannot merge, approve, or formally review PRs; cannot force-push or
