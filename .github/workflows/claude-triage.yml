@@ -32,13 +32,25 @@ jobs:
         with:
           # Full history so recent commits can be matched against issues.
           fetch-depth: 0
+      # Pre-create the follow-up label deterministically: the GitHub MCP
+      # server bundled with the pinned action (v0.17.1) ships no label
+      # tools, and allowlisting label_write would also let a prompt-injected
+      # issue delete or rename any repository label.
+      - name: Ensure follow-up label exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create follow-up \
+            --repo "$GITHUB_REPOSITORY" \
+            --description "Deferred review feedback filed by weekly triage" \
+            --color BFD4F2 --force
       - uses: anthropics/claude-code-action@769e3bdff9bb7ecfb51bad4c9cba23d6f5fc5ea5 # v1.0.163
         with:
           # Bills the Claude subscription's included usage.
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: >-
             --max-turns 100
-            --allowedTools "mcp__github__list_issues,mcp__github__search_issues,mcp__github__get_issue,mcp__github__issue_read,mcp__github__create_issue,mcp__github__update_issue,mcp__github__issue_write,mcp__github__add_issue_comment,mcp__github__get_issue_comments,mcp__github__get_label,mcp__github__list_pull_requests,mcp__github__search_pull_requests,mcp__github__get_pull_request,mcp__github__pull_request_read,mcp__github__get_pull_request_comments,mcp__github__get_pull_request_reviews,mcp__github__list_commits,mcp__github__search_code,Bash(git log:*),Bash(git diff:*),Bash(git show:*)"
+            --allowedTools "mcp__github__list_issues,mcp__github__search_issues,mcp__github__get_issue,mcp__github__issue_read,mcp__github__create_issue,mcp__github__update_issue,mcp__github__issue_write,mcp__github__add_issue_comment,mcp__github__get_issue_comments,mcp__github__list_pull_requests,mcp__github__search_pull_requests,mcp__github__get_pull_request,mcp__github__pull_request_read,mcp__github__get_pull_request_comments,mcp__github__get_pull_request_review_comments,mcp__github__get_pull_request_reviews,mcp__github__list_commits,mcp__github__search_code,Bash(git log:*),Bash(git diff:*),Bash(git show:*)"
           prompt: |
             Run the weekly issue triage for this repository. Work through ALL
             open issues (skip pull requests):
@@ -69,8 +81,10 @@ jobs:
                threads, "follow up"/"later" replies, TODOs conceded in
                discussion); for each genuine loose end, file a follow-up
                issue titled "Follow-up: <short description>" linking the PR
-               and the comment, labeled follow-up - but first search
-               existing issues and skip any already filed.
+               and the comment. Apply the follow-up label (a workflow step
+               pre-creates it); if labeling fails, file the issue unlabeled
+               (the title prefix is the marker). First
+               search existing issues and skip any already filed.
 
             Rules: do not modify code or open PRs in this run. Be
             conservative about closing - only close with concrete evidence.
