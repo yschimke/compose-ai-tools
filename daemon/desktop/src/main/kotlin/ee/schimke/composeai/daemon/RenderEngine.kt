@@ -571,6 +571,17 @@ class RenderEngine(
                 // export as `<image>` layers backed by a real background-free crop of the frame.
                 frameImage = state.outputFile,
               )
+              // Fidelity harness (opt-in via -Dcomposeai.figma.fidelity=true): rasterise the SVG we
+              // just wrote and score it against this render, dropping a `render | figma-svg | diff`
+              // composite so drift in the vector export is measurable where the renderer runs.
+              if (FigmaSvgFidelity.enabled()) {
+                val previewDir = dataDir.resolve(previewId)
+                FigmaSvgFidelity.write(
+                  previewDir = previewDir,
+                  svgFile = previewDir.resolve(ComposeFigmaSvgDataProducer.FILE_SVG),
+                  renderPng = state.outputFile,
+                )
+              }
             }
         }
       }

@@ -68,3 +68,16 @@ Figma. The pure model still defaults to vector-only
 model-only callers with no frame stay safe. A future refinement can swap the
 frame crop for a truly isolated background-free re-render where transparency
 around a semi-opaque node matters.
+
+## Fidelity harness
+
+How faithfully does the layered SVG reproduce the render? The **fidelity harness**
+([`fidelity/`](fidelity)) rasterises each preview's `compose-figma.svg` (headless
+Chromium — the engine an imported SVG is interpreted by), aligns it to the render,
+and scores the agreement into a `render | figma-svg | diff` composite plus a
+`compose-figma-fidelity.json` sidecar. It's opt-in (`-Dcomposeai.figma.fidelity=true`)
+and runs on the desktop backend. The score drives the vector-vs-raster split and the
+structural fixes (text baselines, clip-to-rounded-parent, resolved `Surface`/`Card`
+fills) from evidence rather than per-component guessing — e.g. it already shows the
+hybrid raster is pixel-faithful (100%) while flagging a small text-baseline drift on a
+composite card.

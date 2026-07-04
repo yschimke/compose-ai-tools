@@ -5,9 +5,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -77,6 +80,26 @@ fun OpaqueImageSquare() {
       contentDescription = null,
       modifier = Modifier.size(32.dp),
     )
+  }
+}
+
+/**
+ * A composite, non-base fixture for the figma-svg **fidelity harness**: a themed `Surface` holding
+ * a title + body `Text` and a coloured `Box`. Unlike the single-fill squares this exercises several
+ * of the export's structural concerns at once — a resolved surface fill, text baselines/typography,
+ * and a nested container — so the fidelity score is meaningful rather than trivially 100%. Used by
+ * [RenderEngineTest.figmaSvgFidelityScoresARender].
+ */
+@Composable
+fun FidelityCardPreview() {
+  MaterialTheme(colorScheme = lightColorScheme()) {
+    Surface(color = MaterialTheme.colorScheme.surface) {
+      Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+        Text(text = "Fidelity", style = MaterialTheme.typography.titleMedium)
+        Text(text = "harness card", style = MaterialTheme.typography.bodyMedium)
+        Box(modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.primary))
+      }
+    }
   }
 }
 
