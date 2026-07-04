@@ -698,8 +698,12 @@ object PreviewDiscovery {
     val svgTag = Regex("<svg\\b[^>]*>", RegexOption.IGNORE_CASE).find(text) ?: return null
     val attrs = svgTag.value
     fun lengthAttr(name: String): Int? {
+      // Anchor to a real attribute boundary: the name must NOT be preceded by a name char or `-`,
+      // so `stroke-width` / `stroke-height` don't masquerade as the root `width`/`height`. A plain
+      // `\b` word boundary matches the `-width` suffix and would size the canvas off the stroke
+      // (e.g. `<svg viewBox="0 0 24 24" stroke-width="2">` → a 2dp-wide canvas instead of 24dp).
       val raw =
-        Regex("\\b$name\\s*=\\s*[\"']([^\"']+)[\"']", RegexOption.IGNORE_CASE)
+        Regex("(?<![\\w-])$name\\s*=\\s*[\"']([^\"']+)[\"']", RegexOption.IGNORE_CASE)
           .find(attrs)
           ?.groupValues
           ?.get(1) ?: return null

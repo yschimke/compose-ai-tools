@@ -78,6 +78,22 @@ class SvgAssetDiscoveryTest {
   }
 
   @Test
+  fun `stroke-width on the root does not masquerade as an explicit width`() {
+    val res = tempDir.newFolder("resources")
+    // A common icon shape: no explicit width/height, a 24-unit viewBox, and a stroke-width. The
+    // canvas must come from the viewBox (24x24), not the stroke (2).
+    res
+      .resolve("icon.svg")
+      .writeText(
+        """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 12h16"/></svg>"""
+      )
+
+    val p = discover(res).previews.single()
+    assertThat(p.params.widthDp).isEqualTo(24)
+    assertThat(p.params.heightDp).isEqualTo(24)
+  }
+
+  @Test
   fun `svg with neither dimensions nor viewBox still discovers with null size`() {
     val res = tempDir.newFolder("resources")
     res.resolve("bare.svg").writeText("""<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>""")

@@ -13,6 +13,10 @@ enum class PreviewKind {
     // rendered here — the JVM desktop Compottie path (`composePreviewRenderLottie`) owns it, and
     // `RobolectricRenderTest` filters it out. There is no Android Lottie player.
     LOTTIE,
+    // An SVG asset discovered in this module. Carried so `previews.json` deserialises, but never
+    // rendered here — the JVM desktop path (`composePreviewRenderSvg`) inflates it via Skia's
+    // `loadSvgPainter`, and `RobolectricRenderTest` filters it out. There is no Android SVG decoder.
+    SVG,
     // A synthetic design-token catalog sheet aggregated from `@ColorCatalog` properties. Rendered
     // here by `CatalogPreviewStrategy`, which reflects each token's value off the loaded consumer
     // class and lays them out as a labelled swatch sheet. Payload travels on
