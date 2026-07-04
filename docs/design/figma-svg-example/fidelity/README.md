@@ -17,13 +17,17 @@ and a browser live). The pure scoring/compositing lives in `FigmaFidelity`; the 
 
 ![hybrid image fidelity](hybrid-image.png)
 
-**Composite card — ~91%.** A themed `Surface` with a title, body text, and a coloured box. The
-surface fill and box match; the diff isolates a small **text-baseline drift** (the red ghosting on
-the text) — exactly the structural signal used to drive the text baseline/alignment fixes.
+**Composite card — ~95%.** A themed `Surface` with a title, body text, and a coloured box. The
+surface fill and box match exactly; the diff shows only faint residual on the text where the SVG
+baseline drifts by more than a pixel — a genuine, but small, structural signal to drive the text
+baseline/alignment fix from.
 
 ![card fidelity](card.png)
 
-The score is a per-pixel agreement fraction over a common opaque background, with a tolerance that
-absorbs antialiasing so it flags structural drift (missing shape, wrong fill, misplaced text) rather
-than sub-pixel noise. The `rasterizer` field in the sidecar records whether Chromium (text-inclusive)
-or the Skia fallback (shapes only) produced the score.
+The score is a per-pixel agreement fraction over a common opaque background. It's a **structural**
+metric: a per-channel colour tolerance absorbs antialiasing, and a **spatial tolerance** (a ±1px
+neighbourhood match) absorbs the sub-pixel baseline/edge drift that is unavoidable between the render
+and its SVG re-rasterisation — so the score flags real drift (missing shape, wrong fill, text off by
+more than a pixel) rather than being dominated by 1px text jitter. The `rasterizer` field in the
+sidecar records whether Chromium (text-inclusive) or the Skia fallback (shapes only) produced the
+score.
