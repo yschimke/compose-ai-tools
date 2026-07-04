@@ -38,7 +38,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: >-
             --max-turns 100
-            --allowedTools "mcp__github__list_issues,mcp__github__search_issues,mcp__github__get_issue,mcp__github__issue_read,mcp__github__create_issue,mcp__github__update_issue,mcp__github__issue_write,mcp__github__add_issue_comment,mcp__github__get_issue_comments,mcp__github__get_label,mcp__github__list_pull_requests,mcp__github__search_pull_requests,mcp__github__get_pull_request,mcp__github__pull_request_read,mcp__github__list_commits,mcp__github__search_code,Bash(git log:*),Bash(git diff:*),Bash(git show:*)"
+            --allowedTools "mcp__github__list_issues,mcp__github__search_issues,mcp__github__get_issue,mcp__github__issue_read,mcp__github__create_issue,mcp__github__update_issue,mcp__github__issue_write,mcp__github__add_issue_comment,mcp__github__get_issue_comments,mcp__github__get_label,mcp__github__list_pull_requests,mcp__github__search_pull_requests,mcp__github__get_pull_request,mcp__github__pull_request_read,mcp__github__get_pull_request_comments,mcp__github__get_pull_request_reviews,mcp__github__list_commits,mcp__github__search_code,Bash(git log:*),Bash(git diff:*),Bash(git show:*)"
           prompt: |
             Run the weekly issue triage for this repository. Work through ALL
             open issues (skip pull requests):
@@ -60,6 +60,17 @@ jobs:
                "Ready for an agent" shortlist of issues that are specified
                well enough to implement, each with a suggested kickoff:
                apply the `claude` label, or comment `@claude <one-line task>`.
+            4. Review-feedback sweep: for each open PR, find unresolved
+               review threads and reviewer comments that never got a reply
+               or a resulting change, and list them in a "Stalled review
+               feedback" section of the summary issue with links. For PRs
+               merged in the last 14 days, find review comments that were
+               deferred or left unaddressed at merge time (unresolved
+               threads, "follow up"/"later" replies, TODOs conceded in
+               discussion); for each genuine loose end, file a follow-up
+               issue titled "Follow-up: <short description>" linking the PR
+               and the comment, labeled follow-up - but first search
+               existing issues and skip any already filed.
 
             Rules: do not modify code or open PRs in this run. Be
             conservative about closing - only close with concrete evidence.
