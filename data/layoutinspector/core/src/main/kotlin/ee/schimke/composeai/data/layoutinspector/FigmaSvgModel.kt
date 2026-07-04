@@ -56,10 +56,7 @@ data class FigmaSvgText(
  * the component in isolation to that path. This is what lets a whole screen be *mostly* editable
  * vector with only a few rendered components — the hybrid the design workflow wants.
  */
-data class FigmaSvgRaster(
-  /** Relative href the `<image>` points at (e.g. `figma-raster/<nodeId>.png`). */
-  val href: String
-)
+data class FigmaSvgRaster(val href: String)
 
 /**
  * A component the exporter decided to rasterise: the layout [nodeId] to re-render in isolation, the
@@ -193,6 +190,12 @@ data class FigmaSvgModel(
      * @param density px-per-dp of the captured frame, used to convert dp corner radii and sp font
      *   sizes into the px coordinate space the bounds live in.
      * @param padding transparent margin around the extent.
+     * @param rasterComponents composable-name fragments to export as opaque `<image>` placeholders
+     *   (see [DEFAULT_RASTER_COMPONENTS]). **Defaults to empty — vector-only.** The hybrid mode is
+     *   opt-in on purpose: an `<image>` references a per-node PNG the caller must then actually
+     *   write (from [FigmaSvgModel.rasterTargets]), so enabling it before the render pipeline
+     *   captures those assets would emit SVGs with broken external references. Pass
+     *   [DEFAULT_RASTER_COMPONENTS] once the capture step is wired.
      */
     fun from(
       layout: LayoutInspectorPayload,
@@ -200,7 +203,7 @@ data class FigmaSvgModel(
       colorNames: Map<String, String> = emptyMap(),
       density: Float = 1f,
       padding: Int = DEFAULT_PADDING,
-      rasterComponents: Set<String> = DEFAULT_RASTER_COMPONENTS,
+      rasterComponents: Set<String> = emptySet(),
       rasterHref: (nodeId: String) -> String = ::defaultRasterHref,
     ): FigmaSvgModel {
       val textByNodeId =

@@ -55,3 +55,9 @@ reported on `FigmaSvgModel.rasterTargets` so the pipeline knows exactly which
 background-free PNGs to render. Which components are best rasterised vs.
 vectorised is tuned against the fidelity diff (render vs. SVG), so designers can
 trust the result.
+
+The hybrid is **opt-in** (`FigmaSvgModel.from(..., rasterComponents = …)`):
+until the render pipeline captures the per-node PNGs, the production export stays
+vector-only so it never emits `<image>` references to assets that don't exist
+yet. Wiring the isolated background-free capture (writing one PNG per
+`rasterTarget`) and flipping the default on is the immediate follow-up.

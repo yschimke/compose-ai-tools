@@ -419,7 +419,8 @@ class FigmaLayeredSvgTest {
           children = listOf(layoutNode("Image", 20, 20, 180, 120)),
         )
       )
-    val model = FigmaSvgModel.from(layout)
+    val model =
+      FigmaSvgModel.from(layout, rasterComponents = FigmaSvgModel.DEFAULT_RASTER_COMPONENTS)
     val svg = FigmaLayeredSvg.render(model)
     // The Image node is an <image> placeholder, not a vector shape.
     assertTrue(svg.contains("<image "))
@@ -458,20 +459,36 @@ class FigmaLayeredSvgTest {
             ),
         )
       )
-    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(layout))
+    val svg =
+      FigmaLayeredSvg.render(
+        FigmaSvgModel.from(layout, rasterComponents = FigmaSvgModel.DEFAULT_RASTER_COMPONENTS)
+      )
     assertTrue(svg.contains("<image "))
     assertFalse("opaque subtree must not emit its inner nodes", svg.contains("InnerVector"))
   }
 
   @Test
+  fun hybridIsOptInSoDefaultExportIsVectorOnly() {
+    // Regression: enabling raster by default emitted <image> refs to PNGs the producer never wrote,
+    // giving production SVGs broken external references. The default must stay vector-only until
+    // the
+    // capture step is wired.
+    val layout = LayoutInspectorPayload(layoutNode("Image", 0, 0, 100, 100))
+    val model = FigmaSvgModel.from(layout)
+    assertFalse(FigmaLayeredSvg.render(model).contains("<image "))
+    assertTrue(model.rasterTargets.isEmpty())
+  }
+
+  @Test
   fun rasterComponentSetIsConfigurable() {
     val layout = LayoutInspectorPayload(layoutNode("SparklineChartXyz", 0, 0, 100, 40))
-    // Not in a custom set that only rasterises "Gauge" → stays vector (no <image>).
+    // A custom set that only rasterises "Gauge" → this Chart stays vector (no <image>).
     val vectorOnly = FigmaSvgModel.from(layout, rasterComponents = setOf("Gauge"))
     assertTrue(FigmaLayeredSvg.render(vectorOnly).let { !it.contains("<image ") })
     assertTrue(vectorOnly.rasterTargets.isEmpty())
-    // Default set includes "Chart" → rasterised.
-    val hybrid = FigmaSvgModel.from(layout)
+    // The default preset includes "Chart" → rasterised when opted in.
+    val hybrid =
+      FigmaSvgModel.from(layout, rasterComponents = FigmaSvgModel.DEFAULT_RASTER_COMPONENTS)
     assertTrue(FigmaLayeredSvg.render(hybrid).contains("<image "))
     assertEquals(1, hybrid.rasterTargets.size)
   }
