@@ -613,27 +613,30 @@ abstract class BundlePreviewTask : DefaultTask() {
    */
   private fun resolvePreviewPng(preview: PreviewInfo): ByteArray? {
     val rendersRoot = rendersDir.orNull?.asFile ?: return null
-    // `renderOutput` is module-relative under `build/compose-previews/`, e.g. `renders/<id>.png`.
-    // The rendersDir input points at the `renders/` dir itself.
+    // `renderOutput` is relative to the compose-previews ROOT (the parent of `renders/`), e.g.
+    // `renders/<id>.png` — or `svg-renders/<id>.png` / `lottie-renders/<id>.png` for the JVM asset
+    // passes whose disjoint output dirs keep them build-cacheable. Resolve against that root (not
+    // the
+    // `renders/` leaf), the same way the renderer resolves `renderOutput`, so a cover living in a
+    // sibling subdir isn't missed and silently replaced by the stub gray cover.
+    val previewsRoot = rendersRoot.parentFile ?: rendersRoot
     val rel =
       preview.captures.firstOrNull()?.renderOutput?.takeIf { it.isNotEmpty() } ?: return null
-    val name = rel.substringAfterLast('/')
+    val primary = File(previewsRoot, rel)
+    val subdir = primary.parentFile ?: rendersRoot
+    val name = primary.name
     val base = name.substringBeforeLast('.')
 
     // Only read the primary-capture file directly when it's a PNG. A GIF (or any non-PNG) primary
     // capture is skipped here so its bytes never become the cover; the sibling search below is
     // already PNG-filtered.
-    if (name.endsWith(".png")) {
-      val exact = File(rendersRoot, name)
-      if (exact.isFile && exact.length() > 0) return exact.readBytes()
-    }
+    if (name.endsWith(".png") && primary.isFile && primary.length() > 0) return primary.readBytes()
 
     // No usable PNG at the primary capture's path: @PreviewParameter / multi-variant previews fan
-    // out into siblings (`<base>_<param>.png`, `<base>--<dimension>.png`). Bake the first sibling
-    // as
-    // a representative cover so the preview isn't silently dropped from the bundle.
-    if (!rendersRoot.isDirectory) return null
-    return rendersRoot
+    // out into siblings (`<base>_<param>.png`, `<base>--<dimension>.png`) in the same subdir. Bake
+    // the first sibling as a representative cover so the preview isn't silently dropped.
+    if (!subdir.isDirectory) return null
+    return subdir
       .listFiles { f ->
         f.isFile &&
           f.length() > 0 &&
@@ -716,6 +719,21 @@ abstract class BundlePreviewTask : DefaultTask() {
       return ResolvedIr(
         format = IR_FORMAT_LOTTIE,
         ext = assetPath.substringAfterLast('.', missingDelimiterValue = "json"),
+        bytes = assetFile.readBytes(),
+      )
+    }
+
+    // kind=SVG: same self-contained shape as LOTTIE — the IR is the raw `.svg` read off the module
+    // resources, so the bundle carries the source artwork regardless of which render subdir
+    // (`svg-renders/` on Android) the still PNG landed in.
+    if (preview.params.kind == PreviewKind.SVG) {
+      val assetPath = preview.params.assetPath ?: return null
+      val resourcesRoot = moduleResourcesDir.orNull?.asFile ?: return null
+      val assetFile = File(resourcesRoot, assetPath)
+      if (!assetFile.isFile || assetFile.length() == 0L) return null
+      return ResolvedIr(
+        format = IR_FORMAT_SVG,
+        ext = assetPath.substringAfterLast('.', missingDelimiterValue = "svg"),
         bytes = assetFile.readBytes(),
       )
     }

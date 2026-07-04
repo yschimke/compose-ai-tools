@@ -48,8 +48,9 @@ data class BundleManifest(
 data class BundleIr(
   val previewId: String,
   /**
-   * `remotecompose` (RC doc), `protolayout` (Wear tile Layout proto), or `lottie` (a Lottie
-   * animation asset packed straight from the module resources).
+   * `remotecompose` (RC doc), `protolayout` (Wear tile Layout proto), `lottie` (a Lottie animation
+   * asset packed straight from the module resources), or `svg` (a static SVG asset, likewise packed
+   * from the module resources).
    */
   val format: String,
   val path: String,
