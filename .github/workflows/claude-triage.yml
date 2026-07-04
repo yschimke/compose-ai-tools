@@ -1,0 +1,65 @@
+name: Claude Triage
+
+# Weekly issue triage in automation mode: labels new issues, closes ones
+# already fixed by merged PRs (with evidence), and maintains a "Weekly
+# triage" summary issue with a shortlist of items ready for an agent. To
+# start work on an issue, apply the `claude` label or comment
+# `@claude <task>` (see claude.yml). Manual run: Actions -> Claude Triage.
+
+on:
+  schedule:
+    # Mondays 08:00 UTC
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: claude-triage
+  cancel-in-progress: false
+
+jobs:
+  triage:
+    name: Triage open issues
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+      # Exchanged by the action for a short-lived Claude GitHub App token.
+      id-token: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # Full history so recent commits can be matched against issues.
+          fetch-depth: 0
+      - uses: anthropics/claude-code-action@769e3bdff9bb7ecfb51bad4c9cba23d6f5fc5ea5 # v1.0.163
+        with:
+          # Bills the Claude subscription's included usage.
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: >-
+            --max-turns 100
+            --allowedTools "Bash(git log:*),Bash(git diff:*),Bash(git show:*)"
+          prompt: |
+            Run the weekly issue triage for this repository. Work through ALL
+            open issues (skip pull requests):
+
+            1. Label new or unlabeled issues: bug, enhancement, question, or
+               needs-info, plus priority-high only when clearly urgent.
+               Create any missing labels.
+            2. For each open issue, check whether it has already been
+               resolved: search merged PRs and recent commits on main that
+               reference or plausibly fix it. If confident it is fixed,
+               comment with the evidence (PR/commit links) and close it as
+               completed. If plausible but unconfirmed, comment asking the
+               maintainer to confirm and apply needs-info; do not close.
+            3. Maintain a single open summary issue titled "Weekly triage"
+               (create it if missing, otherwise update the existing one by
+               editing its body): a table of open issues with labels, a
+               one-line status, and what is blocking each. End with a
+               "Ready for an agent" shortlist of issues that are specified
+               well enough to implement, each with a suggested kickoff:
+               apply the `claude` label, or comment `@claude <one-line task>`.
+
+            Rules: do not modify code or open PRs in this run. Be
+            conservative about closing - only close with concrete evidence.
+            Keep all comments brief and factual.
