@@ -38,12 +38,16 @@ class ComposeFigmaSvgExtension : PostCaptureProcessor {
       context.get(RenderDataArtifactContextKeys.SemanticsRoot)?.let {
         ComposeSemanticsDataProducer.buildPayload(it, density)
       }
+    // The captured frame PNG, when the engine threaded it, turns on hybrid raster export: opaque
+    // components become `<image>` layers backed by a background-free crop of the frame.
+    val frameImage = context.get(RenderDataArtifactContextKeys.OutputPng)
     ComposeFigmaSvgDataProducer.writeSvg(
       rootDir = rootDir,
       previewId = previewId,
       layout = layout,
       semantics = semantics,
       density = density,
+      frameImage = frameImage,
     )
   }
 

@@ -540,6 +540,7 @@ class RenderEngine(
                   add(RenderDataArtifactContextKeys.SemanticsRoot provides it)
                 }
                 add(RenderDataArtifactContextKeys.Density provides spec.density)
+                add(RenderDataArtifactContextKeys.OutputPng provides outputFile)
                 add(RenderDataArtifactContextKeys.HeldActivity provides rule.activity)
                 layoutInspectorPreviewContext?.let {
                   add(RenderDataArtifactContextKeys.LayoutInspectorPreviewContext provides it)

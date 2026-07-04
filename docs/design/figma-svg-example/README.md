@@ -56,8 +56,15 @@ background-free PNGs to render. Which components are best rasterised vs.
 vectorised is tuned against the fidelity diff (render vs. SVG), so designers can
 trust the result.
 
-The hybrid is **opt-in** (`FigmaSvgModel.from(..., rasterComponents = …)`):
-until the render pipeline captures the per-node PNGs, the production export stays
-vector-only so it never emits `<image>` references to assets that don't exist
-yet. Wiring the isolated background-free capture (writing one PNG per
-`rasterTarget`) and flipping the default on is the immediate follow-up.
+The hybrid is now **on by default in the daemon**: both backends hand the
+producer (`ComposeFigmaSvgDataProducer.writeSvg(..., frameImage = …)`) the frame
+PNG they already captured, and it crops each `rasterTarget`'s bounds out of that
+frame into `figma-raster/<node>.png` — every emitted `<image>` therefore has its
+PNG written before the export returns, so the SVG never references an asset that
+doesn't exist. Cropping the composited frame is coordinate-correct for an opaque
+node (its bounds are fully painted); a designer can retint or replace the crop in
+Figma. The pure model still defaults to vector-only
+(`FigmaSvgModel.from(..., rasterComponents = …)` is empty unless asked), so
+model-only callers with no frame stay safe. A future refinement can swap the
+frame crop for a truly isolated background-free re-render where transparency
+around a semi-opaque node matters.

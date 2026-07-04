@@ -567,6 +567,9 @@ class RenderEngine(
                 layout = layout,
                 semantics = payload,
                 density = density,
+                // Hand the just-written frame PNG so opaque components (Image/Icon/Canvas/charts)
+                // export as `<image>` layers backed by a real background-free crop of the frame.
+                frameImage = state.outputFile,
               )
             }
         }

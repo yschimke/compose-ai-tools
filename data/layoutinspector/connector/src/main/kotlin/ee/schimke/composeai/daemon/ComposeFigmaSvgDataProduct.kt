@@ -7,10 +7,15 @@ import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 import ee.schimke.composeai.data.layoutinspector.FigmaLayeredSvg
 import ee.schimke.composeai.data.layoutinspector.FigmaSvgModel
+import ee.schimke.composeai.data.layoutinspector.FigmaSvgRasterTarget
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorPayload
 import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
 import ee.schimke.composeai.io.SystemFileSystem
+import java.awt.image.BufferedImage
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
+import javax.imageio.ImageIO
 import okio.FileSystem
 import okio.Path.Companion.toPath
 
@@ -27,8 +32,21 @@ object ComposeFigmaSvgDataProducer {
   const val SCHEMA_VERSION: Int = ComposeFigmaSvgProduct.SCHEMA_VERSION
   const val FILE_SVG: String = ComposeFigmaSvgProduct.FILE_SVG
 
+  /** Directory (under the preview dir) that holds the per-node opaque-component rasters. */
+  const val RASTER_DIR: String = "figma-raster"
+
   /**
    * Writes `compose-figma.svg` under `<rootDir>/<previewId>/`.
+   *
+   * When [frameImage] is supplied (the render's already-captured frame PNG), the export runs in
+   * **hybrid** mode: opaque components ([FigmaSvgModel.DEFAULT_RASTER_COMPONENTS] —
+   * `Image`/`Icon`/`Canvas`/charts/…) are emitted as `<image>` placeholders and this producer crops
+   * the referenced background-free raster out of the frame — cropping the composited pixels is
+   * coordinate-correct for an opaque node (its bounds are fully painted) and reuses the frame every
+   * backend already renders, so no isolated re-render is needed. Every emitted `<image>` therefore
+   * has its PNG written before we return, so the SVG never references a raster that doesn't exist
+   * (the reason the hybrid was previously opt-in). With no [frameImage] the export stays
+   * vector-only.
    *
    * @param layout the layout-inspector tree (composable names + container tokens + nesting).
    * @param semantics optional semantics tree whose text nodes enrich matching layers with editable
@@ -36,6 +54,8 @@ object ComposeFigmaSvgDataProducer {
    * @param colorNames optional `#AARRGGBB` → theme-role-name map so named fills carry their
    *   variable.
    * @param density px-per-dp of the captured frame (dp/sp tokens are converted to px against it).
+   * @param frameImage the captured frame PNG in root-pixel space; when present, enables hybrid
+   *   raster export by cropping opaque-node rasters out of it.
    */
   fun writeSvg(
     rootDir: File,
@@ -44,25 +64,90 @@ object ComposeFigmaSvgDataProducer {
     semantics: ComposeSemanticsPayload? = null,
     colorNames: Map<String, String> = emptyMap(),
     density: Float = 1f,
+    frameImage: File? = null,
     fileSystem: FileSystem = SystemFileSystem,
   ) {
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
+    val frame = frameImage?.takeIf { it.exists() }
     val model =
       FigmaSvgModel.from(
         layout = layout,
         semantics = semantics,
         colorNames = colorNames,
         density = density,
+        rasterComponents =
+          if (frame != null) FigmaSvgModel.DEFAULT_RASTER_COMPONENTS else emptySet(),
       )
     val svg = FigmaLayeredSvg.render(model)
     fileSystem.write(previewDir.resolve(FILE_SVG).path.toPath()) { writeUtf8(svg) }
+    if (frame != null && model.rasterTargets.isNotEmpty()) {
+      writeRasters(previewDir, frame, model.rasterTargets, fileSystem)
+    }
   }
+
+  /**
+   * Crops each opaque-node [FigmaSvgRasterTarget] out of the captured [frameImage] and writes it to
+   * the [FigmaSvgRasterTarget.href] the SVG's `<image>` references (a `figma-raster/<node>.png`
+   * under the preview dir). The node bounds are absolute-to-root px — the same space the frame PNG
+   * is drawn in — so a straight sub-image crop lands the component's pixels. Bounds are intersected
+   * with the frame so a node measured partly off-canvas still yields a valid PNG; a degenerate
+   * intersection falls back to a 1×1 transparent pixel so the `<image>` reference always resolves.
+   * Decode/encode failures are swallowed per target — a missing raster degrades one placeholder, it
+   * never strands the SVG.
+   */
+  private fun writeRasters(
+    previewDir: File,
+    frameImage: File,
+    targets: List<FigmaSvgRasterTarget>,
+    fileSystem: FileSystem,
+  ) {
+    val frame =
+      try {
+        val bytes = fileSystem.read(frameImage.path.toPath()) { readByteArray() }
+        ImageIO.read(ByteArrayInputStream(bytes))
+      } catch (t: Throwable) {
+        null
+      } ?: return
+    for (target in targets) {
+      val dest = previewDir.resolve(target.href).also { it.parentFile?.mkdirs() }
+      val crop =
+        try {
+          cropOrTransparent(frame, target)
+        } catch (t: Throwable) {
+          transparentPixel()
+        }
+      try {
+        val out = ByteArrayOutputStream()
+        ImageIO.write(crop, "png", out)
+        fileSystem.write(dest.path.toPath()) { write(out.toByteArray()) }
+      } catch (t: Throwable) {
+        // Leave the placeholder unwritten rather than fail the whole export; better a single
+        // dangling ref than no SVG. In practice write only fails on IO the caller controls.
+      }
+    }
+  }
+
+  /**
+   * The [target] bounds clipped to [frame], cropped; a degenerate box → a 1×1 transparent pixel.
+   */
+  private fun cropOrTransparent(frame: BufferedImage, target: FigmaSvgRasterTarget): BufferedImage {
+    val x = target.left.coerceIn(0, frame.width)
+    val y = target.top.coerceIn(0, frame.height)
+    val right = target.right.coerceIn(x, frame.width)
+    val bottom = target.bottom.coerceIn(y, frame.height)
+    val w = right - x
+    val h = bottom - y
+    return if (w > 0 && h > 0) frame.getSubimage(x, y, w, h) else transparentPixel()
+  }
+
+  private fun transparentPixel(): BufferedImage = BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB)
 }
 
 /**
- * Registry for `compose/figma-svg`. A single path-transported SVG artifact — no baked PNG extra
- * (the vector *is* the deliverable here; raster capture for PNG-sticker components is a separate,
- * future mode). Mirrors [ComposeSemanticsWireframeDataProductRegistry] otherwise.
+ * Registry for `compose/figma-svg`. The path-transported deliverable is the SVG; in hybrid mode the
+ * producer also writes sibling `figma-raster/<node>.png` crops the SVG's `<image>` layers
+ * reference, but those travel with the SVG (relative hrefs) rather than as separately-fetchable
+ * products. Mirrors [ComposeSemanticsWireframeDataProductRegistry] otherwise.
  */
 class ComposeFigmaSvgDataProductRegistry(
   private val rootDir: File,
