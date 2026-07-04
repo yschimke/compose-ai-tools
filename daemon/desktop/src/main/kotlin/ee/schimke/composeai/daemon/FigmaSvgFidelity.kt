@@ -224,10 +224,15 @@ object FigmaSvgFidelity {
     return out.toByteArray()
   }
 
+  // Locale.ROOT so decimals are always `.`-separated — a comma-decimal host locale (e.g. de_DE)
+  // would otherwise emit `"score":0,91`, which is not valid JSON.
   private fun scoreJson(r: FigmaFidelity.Result, rasterizer: String): String =
-    """{"score":${"%.4f".format(r.score)},""" +
-      """"scorePercent":${"%.2f".format(r.scorePercent)},""" +
-      """"meanAbsError":${"%.3f".format(r.meanAbsError)},""" +
+    """{"score":${fmt("%.4f", r.score)},""" +
+      """"scorePercent":${fmt("%.2f", r.scorePercent)},""" +
+      """"meanAbsError":${fmt("%.3f", r.meanAbsError)},""" +
       """"rasterizer":"$rasterizer",""" +
       """"width":${r.width},"height":${r.height}}"""
+
+  private fun fmt(pattern: String, value: Double): String =
+    String.format(java.util.Locale.ROOT, pattern, value)
 }

@@ -53,7 +53,9 @@ class FigmaFidelityTest {
     g.color = Color(0xFFFFFF)
     g.fillRect(10, 0, 10, 20)
     g.dispose()
-    val r = FigmaFidelity.compare(a, b)
+    // Position-locked (radius 0) so the boundary column isn't bridged by the spatial tolerance —
+    // this asserts the raw agreement fraction.
+    val r = FigmaFidelity.compare(a, b, FigmaFidelity.Options(spatialRadius = 0))
     assertEquals(0.5, r.score, 1e-9)
   }
 
@@ -66,6 +68,35 @@ class FigmaFidelityTest {
     assertEquals(30, r.width)
     assertEquals(30, r.height)
     assertTrue("scaled-but-identical colour must score high, got ${r.score}", r.score > 0.99)
+  }
+
+  @Test
+  fun `one-pixel shift is absorbed by the default spatial tolerance`() {
+    // A thin vertical black bar, shifted right by 1px between the two images — the kind of
+    // sub-pixel
+    // drift a text baseline / edge shows between the render and its SVG re-rasterisation. With the
+    // default spatialRadius=1 this must score ~perfect; position-locked (radius 0) it must not.
+    fun barAt(col: Int): BufferedImage {
+      val img = BufferedImage(20, 20, BufferedImage.TYPE_INT_ARGB)
+      val g = img.createGraphics()
+      g.color = Color(0xFFFFFF)
+      g.fillRect(0, 0, 20, 20)
+      g.color = Color(0x000000)
+      g.fillRect(col, 0, 2, 20)
+      g.dispose()
+      return img
+    }
+    val a = barAt(8)
+    val b = barAt(9) // shifted 1px
+
+    assertTrue(
+      "1px shift must score ~perfect with spatial tolerance, got ${FigmaFidelity.compare(a, b).score}",
+      FigmaFidelity.compare(a, b).score > 0.99,
+    )
+    assertTrue(
+      "position-locked (radius 0) must flag the shifted bar",
+      FigmaFidelity.compare(a, b, FigmaFidelity.Options(spatialRadius = 0)).score < 0.95,
+    )
   }
 
   @Test

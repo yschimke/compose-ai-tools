@@ -80,4 +80,6 @@ and runs on the desktop backend. The score drives the vector-vs-raster split and
 structural fixes (text baselines, clip-to-rounded-parent, resolved `Surface`/`Card`
 fills) from evidence rather than per-component guessing — e.g. it already shows the
 hybrid raster is pixel-faithful (100%) while flagging a small text-baseline drift on a
-composite card.
+composite card (~95%). The score is structural: a colour tolerance plus a ±1px spatial
+tolerance absorb antialiasing and unavoidable sub-pixel text jitter, so only real drift
+counts.

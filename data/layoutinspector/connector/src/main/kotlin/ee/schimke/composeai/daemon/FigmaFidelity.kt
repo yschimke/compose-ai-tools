@@ -32,6 +32,15 @@ object FigmaFidelity {
   data class Options(
     /** Per-channel absolute difference (0..255) under which a pixel counts as matching. */
     val tolerance: Int = 24,
+    /**
+     * Neighbourhood radius (px) the match is allowed to shift within. A pixel counts as matching
+     * when *some* pixel of the other image within this radius is close — so a ≤`spatialRadius`-px
+     * shift of text baselines or shape edges (all but unavoidable between the render and its SVG
+     * re-rasterisation) reads as a match, not a structural defect. `0` restores an exact
+     * position-locked compare; `1` (default) absorbs the sub-pixel drift that otherwise makes text
+     * dominate the score.
+     */
+    val spatialRadius: Int = 1,
     /** Opaque background both images are flattened onto before comparison (ARGB). */
     val background: Int = 0xFFFFFFFF.toInt(),
     /** Gutter (px) between the panels of the side-by-side composite. */
@@ -72,22 +81,54 @@ object FigmaFidelity {
         options.background,
       )
 
+    val pxa = IntArray(w * h)
+    val pxb = IntArray(w * h)
+    a.getRGB(0, 0, w, h, pxa, 0, w)
+    b.getRGB(0, 0, w, h, pxb, 0, w)
     val diff = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
     var matched = 0L
     var errorSum = 0.0
     val total = w.toLong() * h.toLong()
+    val r = options.spatialRadius.coerceAtLeast(0)
     for (y in 0 until h) {
       for (x in 0 until w) {
-        val pa = a.getRGB(x, y)
-        val pb = b.getRGB(x, y)
-        val dr = Math.abs(((pa shr 16) and 0xFF) - ((pb shr 16) and 0xFF))
-        val dg = Math.abs(((pa shr 8) and 0xFF) - ((pb shr 8) and 0xFF))
-        val db = Math.abs((pa and 0xFF) - (pb and 0xFF))
-        errorSum += (dr + dg + db)
-        if (maxOf(dr, dg, db) <= options.tolerance) {
+        val pa = pxa[y * w + x]
+        val ar = (pa shr 16) and 0xFF
+        val ag = (pa shr 8) and 0xFF
+        val ab = pa and 0xFF
+        // Structural match: score this pixel against the *closest* pixel of b within `r`px, so a
+        // sub-pixel shift of an edge/glyph finds its match instead of reading as a mismatch. The
+        // (0,0) neighbour is always in bounds, so `bestMax` is always set.
+        var bestMax = Int.MAX_VALUE
+        var bestSum = 0
+        var dy = -r
+        while (dy <= r) {
+          val ny = y + dy
+          if (ny in 0 until h) {
+            var dx = -r
+            while (dx <= r) {
+              val nx = x + dx
+              if (nx in 0 until w) {
+                val pb = pxb[ny * w + nx]
+                val dr = Math.abs(ar - ((pb shr 16) and 0xFF))
+                val dg = Math.abs(ag - ((pb shr 8) and 0xFF))
+                val db = Math.abs(ab - (pb and 0xFF))
+                val mx = maxOf(dr, dg, db)
+                if (mx < bestMax) {
+                  bestMax = mx
+                  bestSum = dr + dg + db
+                }
+              }
+              dx++
+            }
+          }
+          dy++
+        }
+        errorSum += bestSum
+        if (bestMax <= options.tolerance) {
           matched++
           // Matching pixels: a dimmed grayscale of the render, so mismatches pop.
-          val gray = ((((pa shr 16) and 0xFF) + ((pa shr 8) and 0xFF) + (pa and 0xFF)) / 3)
+          val gray = (ar + ag + ab) / 3
           val dim = (gray * 3 / 5) + 100
           diff.setRGB(x, y, (dim shl 16) or (dim shl 8) or dim)
         } else {
@@ -144,7 +185,12 @@ object FigmaFidelity {
     g.color = Color(0xF3F4F6)
     g.fillRect(0, 0, outW, outH)
     val panels =
-      listOf("render" to render, "figma-svg" to svg, "diff ${"%.1f".format(score * 100)}%" to diff)
+      listOf(
+        "render" to render,
+        "figma-svg" to svg,
+        // Locale.ROOT keeps the label `.`-separated regardless of the host locale.
+        "diff ${String.format(java.util.Locale.ROOT, "%.1f", score * 100)}%" to diff,
+      )
     g.font = Font(Font.SANS_SERIF, Font.BOLD, 12)
     for ((i, panel) in panels.withIndex()) {
       val x = i * (w + gutter)
