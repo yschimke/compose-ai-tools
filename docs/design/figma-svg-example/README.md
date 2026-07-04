@@ -31,3 +31,33 @@ What to notice — and why it imports cleanly into Figma:
 The live artifact is produced per-render by both daemon backends; the desktop
 `RenderEngineTest` asserts a real render drops `compose-figma.svg` alongside the
 wireframe.
+
+## Hybrid: mostly vector + a few rendered components
+
+Some components can't be faithfully reproduced as vector — bitmaps (`Image` /
+`AsyncImage`), vector assets (`Icon`), custom `Canvas` drawing, gradients,
+charts. Rather than export those badly, the exporter classifies them as
+**opaque** and emits an `<image>` placeholder at the node's bounds, backed by a
+background-free raster the render pipeline captures in isolation. Everything else
+stays editable vector. So a whole screen is *mostly* parameterized SVG with only
+a few rendered components.
+
+[`hybrid-screen.svg`](hybrid-screen.svg) is a profile screen exported this way —
+the app bar, cards, buttons, borders, corner radii, and all text are vector,
+while the **avatar** (a photo) and the **activity chart** (a `Canvas`) are
+`<image>` references into [`figma-raster/`](figma-raster). Rasterised:
+
+![Hybrid compose/figma-svg screen](hybrid-screen.png)
+
+The classifier is driven by `FigmaSvgModel.DEFAULT_RASTER_COMPONENTS` (a
+per-design-system-tunable set of composable-name fragments); each opaque node is
+reported on `FigmaSvgModel.rasterTargets` so the pipeline knows exactly which
+background-free PNGs to render. Which components are best rasterised vs.
+vectorised is tuned against the fidelity diff (render vs. SVG), so designers can
+trust the result.
+
+The hybrid is **opt-in** (`FigmaSvgModel.from(..., rasterComponents = …)`):
+until the render pipeline captures the per-node PNGs, the production export stays
+vector-only so it never emits `<image>` references to assets that don't exist
+yet. Wiring the isolated background-free capture (writing one PNG per
+`rasterTarget`) and flipping the default on is the immediate follow-up.
