@@ -1527,6 +1527,22 @@
     "sha256": "6cc4aae724129b4f04900588489c2d0bdeb6496e0e4844d87922eed1771b02f5",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/ShaderPreviews.kt"
   },
+  "samples:cmp/com.example.samplecmp.SvgPreviewsKt.SvgBadgePreview": {
+    "captureLabel": "",
+    "functionName": "SvgBadgePreview",
+    "module": "samples:cmp",
+    "renderBasename": "SvgBadgePreview.png",
+    "sha256": "8bd3a88b1116d4844daf285ffa159a0dd4ee247f65122d82e3dd9c8924097495",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/SvgPreviews.kt"
+  },
+  "samples:cmp/com.example.samplecmp.SvgPreviewsKt.SvgStarTintedPreview": {
+    "captureLabel": "",
+    "functionName": "SvgStarTintedPreview",
+    "module": "samples:cmp",
+    "renderBasename": "SvgStarTintedPreview.png",
+    "sha256": "c6b2e017cafce93257be88c530988718f5bf956c99826c0e5e76e5d6d6075024",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/SvgPreviews.kt"
+  },
   "samples:cmp/lottie__lottie_spin": {
     "captureLabel": "",
     "functionName": "lottie/spin.json",
@@ -1549,6 +1565,14 @@
     "module": "samples:cmp",
     "renderBasename": "svg__svg_badge.png",
     "sha256": "3cb163e79ad2cbd3bf6b38bc1b6c256374d426a498d61c91e32e63c3f1513fe5",
+    "sourceFile": null
+  },
+  "samples:cmp/svg__svg_star": {
+    "captureLabel": "",
+    "functionName": "svg/star.svg",
+    "module": "samples:cmp",
+    "renderBasename": "svg__svg_star.png",
+    "sha256": "1f8da3a55c1d8f8347176d755e4505d857a5d6e20a1b11be161bb892f86e2d3d",
     "sourceFile": null
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.AssistChipSticker_Dark": {
