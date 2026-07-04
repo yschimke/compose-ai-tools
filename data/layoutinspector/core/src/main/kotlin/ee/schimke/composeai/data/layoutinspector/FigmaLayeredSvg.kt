@@ -49,6 +49,14 @@ object FigmaLayeredSvg {
 
   private fun renderLayer(layer: FigmaSvgLayer, sb: StringBuilder, options: Options, depth: Int) {
     val indent = "  ".repeat(depth)
+    // An opaque layer is a leaf `<image>` — the background-free raster stands in for a subtree the
+    // exporter can't vectorise. No shape/text/children; the group keeps the composable name.
+    if (layer.raster != null) {
+      sb.append("""$indent<g id="${escapeAttr(layer.name)}">""").append('\n')
+      sb.append(indent).append("  ").append(image(layer, layer.raster)).append('\n')
+      sb.append("$indent</g>\n")
+      return
+    }
     val tokenName = layer.fill?.tokenName ?: layer.stroke?.tokenName
     val dataToken =
       if (options.annotateTokens && tokenName != null) """ data-token="${escapeAttr(tokenName)}""""
@@ -69,6 +77,10 @@ object FigmaLayeredSvg {
     for (child in layer.children) renderLayer(child, sb, options, depth + 1)
     sb.append("$indent</g>\n")
   }
+
+  private fun image(layer: FigmaSvgLayer, raster: FigmaSvgRaster): String =
+    """<image href="${escapeAttr(raster.href)}" x="${layer.left}" y="${layer.top}" """ +
+      """width="${layer.width}" height="${layer.height}"/>"""
 
   private fun shape(layer: FigmaSvgLayer): String {
     val fillAttr =

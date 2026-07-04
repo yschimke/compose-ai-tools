@@ -402,4 +402,82 @@ class FigmaLayeredSvgTest {
       )
     assertEquals(render(layout), render(layout))
   }
+
+  @Test
+  fun opaqueComponentBecomesAnImagePlaceholderAndRasterTarget() {
+    // A screen that is mostly vector (a Surface) with one opaque component (an Image) that must be
+    // rendered rather than vectorised — the hybrid the design workflow wants.
+    val layout =
+      LayoutInspectorPayload(
+        layoutNode(
+          "Screen",
+          0,
+          0,
+          200,
+          200,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FFFFFBFE"),
+          children = listOf(layoutNode("Image", 20, 20, 180, 120)),
+        )
+      )
+    val model = FigmaSvgModel.from(layout)
+    val svg = FigmaLayeredSvg.render(model)
+    // The Image node is an <image> placeholder, not a vector shape.
+    assertTrue(svg.contains("<image "))
+    assertTrue(svg.contains("""href="figma-raster/"""))
+    // The vector part (the Surface fill) is still present.
+    assertTrue(svg.contains("""fill="#FFFBFE""""))
+    // The pipeline is told exactly what to capture.
+    assertEquals(1, model.rasterTargets.size)
+    val target = model.rasterTargets.single()
+    assertEquals("Image", target.nodeId)
+    assertEquals(20, target.left)
+    assertEquals(180, target.right)
+  }
+
+  @Test
+  fun opaqueNodeDropsItsSubtree() {
+    // An Icon with vector-looking children still rasterises as one image — its subtree is replaced.
+    val layout =
+      LayoutInspectorPayload(
+        layoutNode(
+          "IconButton",
+          0,
+          0,
+          48,
+          48,
+          children =
+            listOf(
+              layoutNode(
+                "Icon",
+                8,
+                8,
+                40,
+                40,
+                children = listOf(layoutNode("InnerVector", 8, 8, 40, 40)),
+              )
+            ),
+        )
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(layout))
+    assertTrue(svg.contains("<image "))
+    assertFalse("opaque subtree must not emit its inner nodes", svg.contains("InnerVector"))
+  }
+
+  @Test
+  fun rasterComponentSetIsConfigurable() {
+    val layout = LayoutInspectorPayload(layoutNode("SparklineChartXyz", 0, 0, 100, 40))
+    // Not in a custom set that only rasterises "Gauge" → stays vector (no <image>).
+    val vectorOnly = FigmaSvgModel.from(layout, rasterComponents = setOf("Gauge"))
+    assertTrue(FigmaLayeredSvg.render(vectorOnly).let { !it.contains("<image ") })
+    assertTrue(vectorOnly.rasterTargets.isEmpty())
+    // Default set includes "Chart" → rasterised.
+    val hybrid = FigmaSvgModel.from(layout)
+    assertTrue(FigmaLayeredSvg.render(hybrid).contains("<image "))
+    assertEquals(1, hybrid.rasterTargets.size)
+  }
+
+  @Test
+  fun defaultRasterHrefSanitizesNodeId() {
+    assertEquals("figma-raster/node_12_.png", FigmaSvgModel.defaultRasterHref("node:12/"))
+  }
 }

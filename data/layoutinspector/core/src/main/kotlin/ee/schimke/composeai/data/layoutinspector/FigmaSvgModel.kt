@@ -50,9 +50,37 @@ data class FigmaSvgText(
 )
 
 /**
+ * A reference from an **opaque** layer to a background-free raster that stands in for a subtree the
+ * exporter can't reproduce as vector (an `Image`, `Icon`, `Canvas`/`drawBehind`, gradient, chart,
+ * …). The layer emits an `<image>` at its bounds pointing at [href]; the render pipeline captures
+ * the component in isolation to that path. This is what lets a whole screen be *mostly* editable
+ * vector with only a few rendered components — the hybrid the design workflow wants.
+ */
+data class FigmaSvgRaster(
+  /** Relative href the `<image>` points at (e.g. `figma-raster/<nodeId>.png`). */
+  val href: String
+)
+
+/**
+ * A component the exporter decided to rasterise: the layout [nodeId] to re-render in isolation, the
+ * [href] its `<image>` points at, and the absolute bounds to capture. Emitted on
+ * [FigmaSvgModel.rasterTargets] so the render pipeline knows exactly what background-free PNGs to
+ * produce.
+ */
+data class FigmaSvgRasterTarget(
+  val nodeId: String,
+  val href: String,
+  val left: Int,
+  val top: Int,
+  val right: Int,
+  val bottom: Int,
+)
+
+/**
  * One layer in the export tree ⇒ one `<g>` in the SVG. A layer may draw a filled/stroked rectangle
- * (from container tokens), hold editable text, both, or neither (a pure grouping layer for
- * nesting).
+ * (from container tokens), hold editable text, be an opaque [raster] placeholder, some combination,
+ * or none (a pure grouping layer for nesting). A [raster] layer is a leaf — it replaces its
+ * subtree, so it carries no [children].
  */
 data class FigmaSvgLayer(
   /** Layer name — the composable name (plus a role/label hint when it disambiguates). */
@@ -72,6 +100,8 @@ data class FigmaSvgLayer(
   /** True for a `CircleShape`/all-50% shape — drawn with radius = min(w,h)/2. */
   val circle: Boolean = false,
   val text: FigmaSvgText? = null,
+  /** Set when this layer is an opaque component rendered as an `<image>` instead of vector. */
+  val raster: FigmaSvgRaster? = null,
   val children: List<FigmaSvgLayer> = emptyList(),
 ) {
   val width: Int
@@ -81,10 +111,11 @@ data class FigmaSvgLayer(
     get() = (bottom - top).coerceAtLeast(0)
 
   /**
-   * A layer draws pixels itself (vs. being a pure grouping container) when it has fill/stroke/text.
+   * A layer draws pixels itself (vs. a pure grouping container) when it
+   * fills/strokes/texts/rasters.
    */
   val paints: Boolean
-    get() = fill != null || stroke != null || text != null
+    get() = fill != null || stroke != null || text != null || raster != null
 }
 
 /**
@@ -100,6 +131,12 @@ data class FigmaSvgModel(
   val width: Int,
   val height: Int,
   val padding: Int,
+  /**
+   * The opaque components that were emitted as `<image>` placeholders and therefore need a
+   * background-free raster captured at their bounds. The render pipeline walks this to know what to
+   * render in isolation (one PNG per entry, written to its [FigmaSvgRasterTarget.href]).
+   */
+  val rasterTargets: List<FigmaSvgRasterTarget> = emptyList(),
 ) {
   val tx: Int
     get() = padding - minX
@@ -110,6 +147,31 @@ data class FigmaSvgModel(
   companion object {
     /** Default transparent margin (px) around the diagram extent. */
     const val DEFAULT_PADDING: Int = 16
+
+    /**
+     * Composable-name fragments (case-insensitive substring) whose nodes can't be faithfully
+     * reproduced from tokens + text and are therefore exported as an `<image>` placeholder backed
+     * by a background-free raster. Deliberately conservative — only components that genuinely draw
+     * pixels a vector can't recreate (bitmaps, vector assets, custom canvas, charts, platform
+     * views). Callers pass their own set to `from` to tune per design system.
+     */
+    val DEFAULT_RASTER_COMPONENTS: Set<String> =
+      setOf(
+        "Image",
+        "AsyncImage",
+        "Icon",
+        "Canvas",
+        "Chart",
+        "Graph",
+        "Map",
+        "Video",
+        "AndroidView",
+        "Painter",
+      )
+
+    /** Default `<image>` href for an opaque node: a per-node PNG under `figma-raster/`. */
+    fun defaultRasterHref(nodeId: String): String =
+      "figma-raster/${nodeId.map { if (it.isLetterOrDigit()) it else '_' }.joinToString("")}.png"
 
     /**
      * Per-edge slack (px) when matching a semantics text node to its layout layer. The two
@@ -138,14 +200,16 @@ data class FigmaSvgModel(
       colorNames: Map<String, String> = emptyMap(),
       density: Float = 1f,
       padding: Int = DEFAULT_PADDING,
+      rasterComponents: Set<String> = DEFAULT_RASTER_COMPONENTS,
+      rasterHref: (nodeId: String) -> String = ::defaultRasterHref,
     ): FigmaSvgModel {
       val textByNodeId =
         semantics?.let { assignTextToLayers(layout.root, it, density) } ?: emptyMap()
       val names = colorNames.mapKeys { it.key.uppercase() }
-      val rootLayer = layout.root.toLayer(textByNodeId, names, density)
+      val ctx = BuildContext(textByNodeId, names, density, rasterComponents, rasterHref)
+      val rootLayer = layout.root.toLayer(ctx)
       // No drawing layer (a tree of pure grouping nodes) → a minimal padding-square canvas,
-      // matching
-      // the wireframe's empty-tree convention.
+      // matching the wireframe's empty-tree convention.
       val extent = rootLayer.extent() ?: Extent(0, 0, 0, 0)
       return FigmaSvgModel(
         root = rootLayer,
@@ -154,18 +218,45 @@ data class FigmaSvgModel(
         width = (extent.maxX - extent.minX) + padding * 2,
         height = (extent.maxY - extent.minY) + padding * 2,
         padding = padding,
+        rasterTargets = ctx.rasterTargets,
       )
     }
 
-    private fun LayoutInspectorNode.toLayer(
-      textByNodeId: Map<String, FigmaSvgText>,
-      colorNames: Map<String, String>,
-      density: Float,
-    ): FigmaSvgLayer {
-      val fill = tokens?.backgroundColor?.let { argbToColor(it, colorNames) }
-      val stroke = tokens?.borderColor?.let { argbToColor(it, colorNames) }
+    /**
+     * Immutable build inputs plus the accumulating raster-target list threaded through the walk.
+     */
+    private class BuildContext(
+      val textByNodeId: Map<String, FigmaSvgText>,
+      val colorNames: Map<String, String>,
+      val density: Float,
+      val rasterComponents: Set<String>,
+      val rasterHref: (String) -> String,
+      val rasterTargets: MutableList<FigmaSvgRasterTarget> = mutableListOf(),
+    )
+
+    private fun LayoutInspectorNode.toLayer(ctx: BuildContext): FigmaSvgLayer {
+      // Opaque components (Image / Icon / Canvas / …) can't be reproduced as vector — emit an
+      // `<image>` placeholder over the node's bounds and stop; the subtree is replaced by the
+      // background-free raster the pipeline captures. Record the target so the pipeline knows to.
+      if (isOpaque(ctx.rasterComponents)) {
+        val href = ctx.rasterHref(nodeId)
+        ctx.rasterTargets.add(
+          FigmaSvgRasterTarget(nodeId, href, bounds.left, bounds.top, bounds.right, bounds.bottom)
+        )
+        return FigmaSvgLayer(
+          name = layerName(),
+          left = bounds.left,
+          top = bounds.top,
+          right = bounds.right,
+          bottom = bounds.bottom,
+          raster = FigmaSvgRaster(href),
+        )
+      }
+      val fill = tokens?.backgroundColor?.let { argbToColor(it, ctx.colorNames) }
+      val stroke = tokens?.borderColor?.let { argbToColor(it, ctx.colorNames) }
       val circle = tokens?.shape == "circle"
-      val corners = if (circle) null else tokens?.cornerRadius?.let { parseCornersPx(it, density) }
+      val corners =
+        if (circle) null else tokens?.cornerRadius?.let { parseCornersPx(it, ctx.density) }
       return FigmaSvgLayer(
         name = layerName(),
         left = bounds.left,
@@ -176,10 +267,14 @@ data class FigmaSvgModel(
         stroke = stroke,
         cornerRadiiPx = corners,
         circle = circle,
-        text = textByNodeId[nodeId],
-        children = children.map { it.toLayer(textByNodeId, colorNames, density) },
+        text = ctx.textByNodeId[nodeId],
+        children = children.map { it.toLayer(ctx) },
       )
     }
+
+    /** True when this node's composable name matches a known un-vectorizable [rasterComponents]. */
+    private fun LayoutInspectorNode.isOpaque(rasterComponents: Set<String>): Boolean =
+      rasterComponents.any { component.contains(it, ignoreCase = true) }
 
     private fun LayoutInspectorNode.layerName(): String = component.ifBlank { "Layer" }
 
