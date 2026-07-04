@@ -469,10 +469,10 @@ class FigmaLayeredSvgTest {
 
   @Test
   fun hybridIsOptInSoDefaultExportIsVectorOnly() {
-    // Regression: enabling raster by default emitted <image> refs to PNGs the producer never wrote,
-    // giving production SVGs broken external references. The default must stay vector-only until
-    // the
-    // capture step is wired.
+    // The pure model default stays vector-only: `from(...)` only emits <image> refs when a caller
+    // opts in with `rasterComponents`. The daemon producer opts in (and crops the PNGs those refs
+    // point at) only when it has the captured frame to crop from — a model-only caller with no
+    // frame must never emit an <image> ref to a PNG nobody wrote.
     val layout = LayoutInspectorPayload(layoutNode("Image", 0, 0, 100, 100))
     val model = FigmaSvgModel.from(layout)
     assertFalse(FigmaLayeredSvg.render(model).contains("<image "))

@@ -143,6 +143,61 @@ class RenderEngineTest {
   }
 
   @Test
+  fun figmaSvgExportRastersOpaqueImage() {
+    // End-to-end hybrid export: a real render of a screen containing an opaque `Image` must emit
+    // the
+    // Image as an `<image>` layer in `compose-figma.svg` AND crop the referenced background-free
+    // raster out of the captured frame into `figma-raster/` — so the SVG never dangles a reference
+    // (the reason the hybrid was previously opt-in). The crop must land on the Image's pixels
+    // (green)
+    // rather than the surrounding screen (red), proving the node bounds map onto the frame 1:1.
+    val outputDir = tempFolder.newFolder("renders-figma-raster")
+    val dataDir = tempFolder.newFolder("data-figma-raster")
+    val engine = RenderEngine(outputDir = outputDir, dataDir = dataDir)
+    val host = DesktopHost(engine = engine)
+    host.start()
+    try {
+      val request =
+        RenderRequest.Render(
+          payload =
+            "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+              "functionName=OpaqueImageSquare;" +
+              "widthPx=64;heightPx=64;density=1.0;" +
+              "showBackground=true;" +
+              "outputBaseName=figma-raster"
+        )
+      host.submit(request, timeoutMs = 60_000)
+
+      val previewDir = File(dataDir, "figma-raster")
+      val figma = File(previewDir, "compose-figma.svg")
+      assertTrue("figma layered SVG must be produced: ${figma.absolutePath}", figma.exists())
+      val figmaSvg = figma.readText()
+      assertTrue(
+        "figma SVG must emit the opaque Image as an <image> layer",
+        figmaSvg.contains("<image "),
+      )
+      assertTrue(
+        "figma SVG must reference a figma-raster PNG",
+        figmaSvg.contains("""href="figma-raster/"""),
+      )
+
+      val rasterDir = File(previewDir, "figma-raster")
+      val pngs = rasterDir.listFiles { f -> f.extension == "png" }?.toList().orEmpty()
+      assertTrue("hybrid export must write the referenced raster PNG(s)", pngs.isNotEmpty())
+      // The cropped raster must carry the Image's pixels (green), not the red screen behind it.
+      val cropped = javax.imageio.ImageIO.read(pngs.first())
+      assertNotNull("raster PNG must decode", cropped)
+      val center = java.awt.Color(cropped.getRGB(cropped.width / 2, cropped.height / 2))
+      assertTrue(
+        "raster crop must land on the Image (green-dominant), got $center",
+        center.green > center.red && center.green > center.blue,
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
   fun privateComposableRendersToValidPng() {
     // Regression: Kotlin `private fun` previews compile to JVM-private static methods. The daemon
     // resolves them via `getDeclaredComposableMethod` but the reflective `invoke` threw

@@ -64,6 +64,15 @@ object RenderDataArtifactContextKeys {
   val RenderedLocale: ExtensionContextKey<String> =
     ExtensionContextKey(name = "render-data-artifact.renderedLocale", type = String::class.java)
 
+  /**
+   * The captured frame PNG for the rendered preview (`<outputDir>/<outputBaseName>.png`). Threaded
+   * so extensions that composite raster crops out of the render — the `compose/figma-svg` hybrid
+   * export cropping opaque-component `<image>` layers — can read the frame the engine already wrote
+   * without re-rendering.
+   */
+  val OutputPng: ExtensionContextKey<File> =
+    ExtensionContextKey(name = "render-data-artifact.outputPng", type = File::class.java)
+
   /** Captured root semantics node for the rendered preview. */
   val SemanticsRoot: ExtensionContextKey<SemanticsNode> =
     ExtensionContextKey(

@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
@@ -23,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.rotary.onRotaryScrollEvent
@@ -89,6 +91,24 @@ fun BlueSquare() {
 @Composable
 private fun PrivateRedSquare() {
   Box(modifier = Modifier.fillMaxSize().background(Color(0xFFEF5350)))
+}
+
+/**
+ * Hybrid `compose/figma-svg` fixture (matches the desktop counterpart): a red screen with one
+ * **opaque** `Image` (a 32×32 green fill) in the top-left. The layout-inspector names the node so
+ * the exporter classifies it as opaque, emits it as an `<image>` layer, and crops the green region
+ * out of the captured frame into `figma-raster/`. Used by
+ * [RenderEngineTest.figmaSvgExportRastersOpaqueImage].
+ */
+@Composable
+fun OpaqueImageSquare() {
+  Box(modifier = Modifier.fillMaxSize().background(Color(0xFFEF5350))) {
+    Image(
+      painter = ColorPainter(Color(0xFF2E7D32)),
+      contentDescription = null,
+      modifier = Modifier.size(32.dp),
+    )
+  }
 }
 
 @Composable
