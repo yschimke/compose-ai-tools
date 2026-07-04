@@ -1191,6 +1191,14 @@
     "sha256": "d2c90315835a6f85fb3dd3ae57a3c0c71e01321d22cecdb42b475f96131b45ff",
     "sourceFile": null
   },
+  "samples:android/svg__svg_badge": {
+    "captureLabel": "",
+    "functionName": "svg/badge.svg",
+    "module": "samples:android",
+    "renderBasename": "svg__svg_badge.png",
+    "sha256": "3cb163e79ad2cbd3bf6b38bc1b6c256374d426a498d61c91e32e63c3f1513fe5",
+    "sourceFile": null
+  },
   "samples:android/themecatalog__Brand_Dark": {
     "captureLabel": "",
     "functionName": "Brand Dark theme",
@@ -1533,6 +1541,14 @@
     "module": "samples:cmp",
     "renderBasename": "lottie__lottie_spin.gif",
     "sha256": "d2c90315835a6f85fb3dd3ae57a3c0c71e01321d22cecdb42b475f96131b45ff",
+    "sourceFile": null
+  },
+  "samples:cmp/svg__svg_badge": {
+    "captureLabel": "",
+    "functionName": "svg/badge.svg",
+    "module": "samples:cmp",
+    "renderBasename": "svg__svg_badge.png",
+    "sha256": "3cb163e79ad2cbd3bf6b38bc1b6c256374d426a498d61c91e32e63c3f1513fe5",
     "sourceFile": null
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.AssistChipSticker_Dark": {
