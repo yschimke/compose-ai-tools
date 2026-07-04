@@ -48,6 +48,25 @@ class ComposeFigmaSvgExtension : PostCaptureProcessor {
       semantics = semantics,
       density = density,
       frameImage = frameImage,
+      // Embed the real (Google-downloadable) face so `<text>` renders faithfully — parity with the
+      // desktop export. On Android the render itself is Roboto, so the embedded face is the exact
+      // match. Opt-in; reuses the renderer's own font cache dir / offline switch.
+      fontResolver = figmaFontResolver(),
+    )
+  }
+
+  /**
+   * The Google-Fonts WOFF2 resolver for the export, or null when embedding is off. On when
+   * `composeai.figma.embedFonts=true`, or implicitly under the fidelity harness — matching the
+   * desktop wiring. Reuses the renderer's font cache dir / offline switch so a face is downloaded at
+   * most once per environment.
+   */
+  private fun figmaFontResolver(): FigmaFontResolver? {
+    fun on(prop: String) = System.getProperty(prop)?.lowercase() == "true"
+    if (!on("composeai.figma.embedFonts") && !on("composeai.figma.fidelity")) return null
+    return GoogleFontsWoff2Resolver(
+      cacheDir = System.getProperty("composeai.fonts.cacheDir")?.let { java.io.File(it) },
+      offline = on("composeai.fonts.offline"),
     )
   }
 
