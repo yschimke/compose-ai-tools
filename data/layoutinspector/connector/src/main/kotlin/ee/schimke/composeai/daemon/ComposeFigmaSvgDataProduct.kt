@@ -82,7 +82,7 @@ object ComposeFigmaSvgDataProducer {
         rasterComponents =
           if (frame != null) FigmaSvgModel.DEFAULT_RASTER_COMPONENTS else emptySet(),
       )
-    val fonts = fontResolver?.let { resolveFonts(model, it) }
+    val fonts = fontResolver?.let { resolveFonts(model, it, fileSystem) }
     val svg =
       if (fonts == null || fonts.faces.isEmpty()) FigmaLayeredSvg.render(model)
       else
@@ -109,10 +109,10 @@ object ComposeFigmaSvgDataProducer {
 
   /**
    * Resolves the faces the export's `<text>` needs. Two paths per captured family:
-   * - **The render loaded a real font file** (the capture recorded an absolute `.ttf`/`.otf`/`.ttc`
-   *   path — a downloaded Google font, a bundled/custom face, a variable font). Embed *that file's*
-   *   bytes and name the face by its real family (read from the font), so the export reproduces the
-   *   exact face the render drew — no name guessing.
+   * - **The render loaded a real single-face font file** (the capture recorded an absolute
+   *   `.ttf`/`.otf` path — a downloaded Google font, a bundled/custom face, a variable font). Embed
+   *   *that file's* bytes and name the face by its real family (read from the font), so the export
+   *   reproduces the exact face the render drew — no name guessing.
    * - **A generic / absent family** (`sans-serif` → [DEFAULT_EMBED_FAMILY]). Fetch the face's WOFF2
    *   from [resolver] (Google Fonts) by name.
    *
@@ -120,15 +120,25 @@ object ComposeFigmaSvgDataProducer {
    * `@font-face`. Faces that can't be produced are skipped (the text falls back to the named
    * family).
    */
-  private fun resolveFonts(model: FigmaSvgModel, resolver: FigmaFontResolver): FontPlan {
+  private fun resolveFonts(
+    model: FigmaSvgModel,
+    resolver: FigmaFontResolver,
+    fileSystem: FileSystem,
+  ): FontPlan {
     val faces = LinkedHashMap<String, FigmaSvgFontFace>()
     val overrides = HashMap<String, String>()
     fun add(captured: String?, weight: Int, italic: Boolean) {
-      val file = captured?.let(::asFontFile)
-      if (file != null) {
-        val bytes = runCatching { file.readBytes() }.getOrNull() ?: return
-        val family = fontFileFamily(file)
-        val format = if (file.extension.equals("otf", true)) "opentype" else "truetype"
+      val fontPath = captured?.let { fontFilePath(it, fileSystem) }
+      if (fontPath != null) {
+        // Read through the injected FileSystem (Okio, per docs/AGENTS.md) — a caller using a fake /
+        // in-memory FileSystem must see the bytes it exposed, not the host disk.
+        val bytes =
+          runCatching { fileSystem.read(fontPath) { readByteArray() } }
+            .getOrNull()
+            ?.takeIf { it.isNotEmpty() } ?: return
+        val family = fontFileFamily(bytes, fontPath)
+        val format =
+          if (fontPath.name.endsWith(".otf", ignoreCase = true)) "opentype" else "truetype"
         faces["$family|$weight|$italic|$format"] =
           FigmaSvgFontFace(
             family,
@@ -155,18 +165,26 @@ object ComposeFigmaSvgDataProducer {
     return FontPlan(faces.values.toList(), overrides)
   }
 
-  /** A captured family that is an on-disk font file (`.ttf`/`.otf`/`.ttc`), else null. */
-  private fun asFontFile(family: String): File? {
+  /**
+   * The captured family as an on-disk single-face font ([fileSystem]-visible `.ttf`/`.otf`), else
+   * null. `.ttc` collections are deliberately excluded: an SVG `@font-face` would need
+   * `format('collection')` plus a face selection (the collection carries several faces), which we
+   * don't emit — so a bare `truetype` src would be skipped and the text would silently fall back.
+   */
+  private fun fontFilePath(family: String, fileSystem: FileSystem): okio.Path? {
     val lower = family.lowercase()
-    if (!(lower.endsWith(".ttf") || lower.endsWith(".otf") || lower.endsWith(".ttc"))) return null
-    return File(family).takeIf { it.isFile && it.length() > 0 }
+    if (!(lower.endsWith(".ttf") || lower.endsWith(".otf"))) return null
+    val path = family.toPath()
+    return path.takeIf { runCatching { fileSystem.exists(it) }.getOrDefault(false) }
   }
 
-  /** The font's real family name (`"Lobster Two"`), read from the file; falls back to its stem. */
-  private fun fontFileFamily(file: File): String =
-    runCatching { java.awt.Font.createFont(java.awt.Font.TRUETYPE_FONT, file).family }
+  /** The font's real family name (`"Lobster Two"`), read from the bytes; falls back to the stem. */
+  private fun fontFileFamily(bytes: ByteArray, path: okio.Path): String =
+    runCatching {
+        java.awt.Font.createFont(java.awt.Font.TRUETYPE_FONT, ByteArrayInputStream(bytes)).family
+      }
       .getOrNull()
-      ?.takeIf { it.isNotBlank() } ?: file.nameWithoutExtension
+      ?.takeIf { it.isNotBlank() } ?: path.name.substringBeforeLast('.')
 
   /**
    * Crops each opaque-node [FigmaSvgRasterTarget] out of the captured [frameImage] and writes it to

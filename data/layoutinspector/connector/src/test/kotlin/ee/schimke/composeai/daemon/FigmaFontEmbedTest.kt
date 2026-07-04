@@ -199,6 +199,40 @@ class FigmaFontEmbedTest {
   }
 
   @Test
+  fun writeSvgSkipsTtcCollectionsRatherThanEmbedThemAsTruetype() {
+    // A `.ttc` collection can't be embedded as a bare `format('truetype')` src (it needs
+    // `format('collection')` + a face selection we don't emit), so the file path is not treated as
+    // an embeddable font — it falls through to the name path (which here resolves nothing).
+    val ttc = File(dir, "SomeCollection.ttc").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+    val semantics =
+      ComposeSemanticsPayload(
+        ComposeSemanticsNode(
+          nodeId = "root",
+          boundsInRoot = "0,0,200,100",
+          children =
+            listOf(
+              ComposeSemanticsNode(
+                nodeId = "Text",
+                boundsInRoot = "8,8,192,40",
+                text = "Hi",
+                typography =
+                  ComposeSemanticsTypography(fontSize = "16.0sp", fontFamily = ttc.absolutePath),
+              )
+            ),
+        )
+      )
+    ComposeFigmaSvgDataProducer.writeSvg(
+      rootDir = dir,
+      previewId = "p",
+      layout = LayoutInspectorPayload(textNode()),
+      semantics = semantics,
+      fontResolver = FigmaFontResolver { _, _, _ -> null },
+    )
+    val svg = dir.resolve("p").resolve(ComposeFigmaSvgDataProducer.FILE_SVG).readText()
+    assertFalse("a .ttc must not be embedded as truetype", svg.contains("@font-face"))
+  }
+
+  @Test
   fun writeSvgWithoutResolverStaysVectorOnly() {
     ComposeFigmaSvgDataProducer.writeSvg(
       rootDir = dir,
