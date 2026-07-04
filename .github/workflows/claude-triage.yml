@@ -8,8 +8,8 @@ name: Claude Triage
 
 on:
   schedule:
-    # Mondays 08:00 UTC
-    - cron: '0 8 * * 1'
+    # Friday evenings 17:00 UTC — shortlist ready for the weekend
+    - cron: '0 17 * * 5'
   workflow_dispatch:
 
 concurrency:

@@ -130,7 +130,7 @@ compose-preview `apply` action it already consumes) and `design-parity`
 ## Weekly triage and the `claude` label
 
 [`claude-triage.yml`](../.github/workflows/claude-triage.yml) runs every
-Monday (and via workflow_dispatch) in the action's automation mode: it labels
+Friday evening (17:00 UTC) (and via workflow_dispatch) in the action's automation mode: it labels
 new issues, closes issues already fixed by merged PRs (commenting the
 evidence), and maintains a pinned-style **"Weekly triage"** summary issue
 whose final section is a *Ready for an agent* shortlist.
