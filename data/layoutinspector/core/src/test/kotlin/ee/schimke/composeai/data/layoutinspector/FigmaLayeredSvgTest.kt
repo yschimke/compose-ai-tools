@@ -55,10 +55,7 @@ class FigmaLayeredSvgTest {
           400,
           800,
           children =
-            listOf(
-              layoutNode("Header", 0, 0, 400, 100),
-              layoutNode("Body", 0, 100, 400, 800),
-            ),
+            listOf(layoutNode("Header", 0, 0, 400, 100), layoutNode("Body", 0, 100, 400, 800)),
         )
       )
     assertTrue(svg.contains("""<g id="Screen""""))
@@ -104,10 +101,28 @@ class FigmaLayeredSvgTest {
   @Test
   fun opaqueFillHasNoOpacityAttributeButTranslucentDoes() {
     val opaque =
-      render(layoutNode("A", 0, 0, 10, 10, tokens = ComposeSemanticsTokens(backgroundColor = "#FF112233")))
+      render(
+        layoutNode(
+          "A",
+          0,
+          0,
+          10,
+          10,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FF112233"),
+        )
+      )
     assertFalse(opaque.contains("fill-opacity"))
     val translucent =
-      render(layoutNode("A", 0, 0, 10, 10, tokens = ComposeSemanticsTokens(backgroundColor = "#80112233")))
+      render(
+        layoutNode(
+          "A",
+          0,
+          0,
+          10,
+          10,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#80112233"),
+        )
+      )
     assertTrue(translucent.contains("fill-opacity"))
   }
 
@@ -213,7 +228,11 @@ class FigmaLayeredSvgTest {
               boundsInRoot = "8,8,192,40",
               text = "Hello",
               typography =
-                ComposeSemanticsTypography(fontSize = "16.0sp", fontWeight = 500, fontStyle = "normal"),
+                ComposeSemanticsTypography(
+                  fontSize = "16.0sp",
+                  fontWeight = 500,
+                  fontStyle = "normal",
+                ),
               textColor = ComposeSemanticsTextColor(foreground = "#FF202020"),
             )
           ),
@@ -223,6 +242,49 @@ class FigmaLayeredSvgTest {
     assertTrue(svg.contains("""font-size="16""""))
     assertTrue(svg.contains("""font-weight="500""""))
     assertTrue(svg.contains("""fill="#202020""""))
+  }
+
+  @Test
+  fun textAttachesDespiteOffByOneBoundsSkew() {
+    // Regression: semantics bounds truncate to Int while layout bounds round, so the same node can
+    // differ by up to 1px per edge. Exact-key matching dropped the text; tolerant matching keeps
+    // it.
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 8, 9, 192, 41)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "8,8,192,40", // skewed by 1px on two edges vs the layout node
+              text = "Hello",
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp"),
+            )
+          ),
+      )
+    val svg = render(layout, semantics = semantics)
+    assertTrue("text must still attach despite off-by-one bounds", svg.contains(">Hello</text>"))
+  }
+
+  @Test
+  fun textIsNotAttachedToAWildlyDifferentNode() {
+    // A text node far from any layout node must not be force-attached (tolerance is tight).
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Box", 8, 8, 192, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(nodeId = "t", boundsInRoot = "500,500,600,540", text = "Elsewhere")
+          ),
+      )
+    val svg = render(layout, semantics = semantics)
+    assertFalse("far-away text must not be attached", svg.contains("Elsewhere"))
   }
 
   @Test
@@ -248,7 +310,14 @@ class FigmaLayeredSvgTest {
   fun namedColorLookupIsCaseInsensitive() {
     val svg =
       render(
-        layoutNode("Surface", 0, 0, 10, 10, tokens = ComposeSemanticsTokens(backgroundColor = "#ff6750a4")),
+        layoutNode(
+          "Surface",
+          0,
+          0,
+          10,
+          10,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#ff6750a4"),
+        ),
         colorNames = mapOf("#FF6750A4" to "primary"),
       )
     assertTrue(svg.contains("""data-token="primary""""))

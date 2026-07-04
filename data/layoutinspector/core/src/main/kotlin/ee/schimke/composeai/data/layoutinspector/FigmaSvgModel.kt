@@ -1,5 +1,7 @@
 package ee.schimke.composeai.data.layoutinspector
 
+import kotlin.math.abs
+
 /**
  * Backend-agnostic model for the **layered Figma SVG** export — the design-fidelity counterpart to
  * the schematic [WireframeModel]. Where the wireframe is a flat list of stroked boxes meant to be
@@ -9,10 +11,10 @@ package ee.schimke.composeai.data.layoutinspector
  * editable string plus its typography.
  *
  * Built from the two trees the renderer already captures per frame:
- * - [LayoutInspectorPayload] provides the **structure**: the composable [LayoutInspectorNode.component]
- *   name (retained as the layer name so a component/screen becomes a named Figma layer), the full
- *   nesting, and the modifier-derived container [tokens] (background/border colour, corner radius,
- *   shape).
+ * - [LayoutInspectorPayload] provides the **structure**: the composable
+ *   [LayoutInspectorNode.component] name (retained as the layer name so a component/screen becomes
+ *   a named Figma layer), the full nesting, and the modifier-derived container [tokens]
+ *   (background/border colour, corner radius, shape).
  * - [ComposeSemanticsPayload] (optional) provides the **text**: a node's drawn string plus its
  *   [ComposeSemanticsTypography]/[ComposeSemanticsTextColor], matched onto the layout node with the
  *   same absolute bounds so the SVG carries editable `<text>` with the right face/size/colour.
@@ -49,7 +51,8 @@ data class FigmaSvgText(
 
 /**
  * One layer in the export tree ⇒ one `<g>` in the SVG. A layer may draw a filled/stroked rectangle
- * (from container tokens), hold editable text, both, or neither (a pure grouping layer for nesting).
+ * (from container tokens), hold editable text, both, or neither (a pure grouping layer for
+ * nesting).
  */
 data class FigmaSvgLayer(
   /** Layer name — the composable name (plus a role/label hint when it disambiguates). */
@@ -77,7 +80,9 @@ data class FigmaSvgLayer(
   val height: Int
     get() = (bottom - top).coerceAtLeast(0)
 
-  /** A layer draws pixels itself (vs. being a pure grouping container) when it has fill/stroke/text. */
+  /**
+   * A layer draws pixels itself (vs. being a pure grouping container) when it has fill/stroke/text.
+   */
   val paints: Boolean
     get() = fill != null || stroke != null || text != null
 }
@@ -107,14 +112,22 @@ data class FigmaSvgModel(
     const val DEFAULT_PADDING: Int = 16
 
     /**
+     * Per-edge slack (px) when matching a semantics text node to its layout layer. The two
+     * producers round the same float differently (truncate vs. round), so an exact match drops text
+     * on fractional pixels; 2px absorbs that skew without bleeding onto a genuinely different node.
+     */
+    const val BOUNDS_TOLERANCE_PX: Int = 2
+
+    /**
      * Builds the export model.
      *
      * @param layout the layout-inspector tree — the source of structure, composable names, and
      *   container tokens.
      * @param semantics optional semantics tree whose text nodes are matched by exact bounds to
      *   attach editable text + typography onto the corresponding layout layer.
-     * @param colorNames maps a normalized ARGB colour string (as tokens carry it, `#AARRGGBB`, upper
-     *   case) to a theme role name; a matched fill/stroke carries the name for variable binding.
+     * @param colorNames maps a normalized ARGB colour string (as tokens carry it, `#AARRGGBB`,
+     *   upper case) to a theme role name; a matched fill/stroke carries the name for variable
+     *   binding.
      * @param density px-per-dp of the captured frame, used to convert dp corner radii and sp font
      *   sizes into the px coordinate space the bounds live in.
      * @param padding transparent margin around the extent.
@@ -126,10 +139,12 @@ data class FigmaSvgModel(
       density: Float = 1f,
       padding: Int = DEFAULT_PADDING,
     ): FigmaSvgModel {
-      val textIndex = semantics?.let { buildTextIndex(it, density) } ?: emptyMap()
+      val textByNodeId =
+        semantics?.let { assignTextToLayers(layout.root, it, density) } ?: emptyMap()
       val names = colorNames.mapKeys { it.key.uppercase() }
-      val rootLayer = layout.root.toLayer(textIndex, names, density)
-      // No drawing layer (a tree of pure grouping nodes) → a minimal padding-square canvas, matching
+      val rootLayer = layout.root.toLayer(textByNodeId, names, density)
+      // No drawing layer (a tree of pure grouping nodes) → a minimal padding-square canvas,
+      // matching
       // the wireframe's empty-tree convention.
       val extent = rootLayer.extent() ?: Extent(0, 0, 0, 0)
       return FigmaSvgModel(
@@ -143,7 +158,7 @@ data class FigmaSvgModel(
     }
 
     private fun LayoutInspectorNode.toLayer(
-      textIndex: Map<String, FigmaSvgText>,
+      textByNodeId: Map<String, FigmaSvgText>,
       colorNames: Map<String, String>,
       density: Float,
     ): FigmaSvgLayer {
@@ -151,7 +166,6 @@ data class FigmaSvgModel(
       val stroke = tokens?.borderColor?.let { argbToColor(it, colorNames) }
       val circle = tokens?.shape == "circle"
       val corners = if (circle) null else tokens?.cornerRadius?.let { parseCornersPx(it, density) }
-      val boundsKey = boundsKey(bounds.left, bounds.top, bounds.right, bounds.bottom)
       return FigmaSvgLayer(
         name = layerName(),
         left = bounds.left,
@@ -162,42 +176,84 @@ data class FigmaSvgModel(
         stroke = stroke,
         cornerRadiiPx = corners,
         circle = circle,
-        text = textIndex[boundsKey],
-        children = children.map { it.toLayer(textIndex, colorNames, density) },
+        text = textByNodeId[nodeId],
+        children = children.map { it.toLayer(textByNodeId, colorNames, density) },
       )
     }
 
     private fun LayoutInspectorNode.layerName(): String = component.ifBlank { "Layer" }
 
-    /** Index semantics text nodes by their absolute bounds so a layout layer can pick up its text. */
-    private fun buildTextIndex(
+    /**
+     * Assigns each semantics text node to the single best-matching layout node, keyed by layout
+     * [LayoutInspectorNode.nodeId]. Matching is by bounds with a small tolerance rather than exact
+     * equality: the two producers round the same underlying float differently (semantics truncates
+     * to `Int`, layout rounds), so text laid out on fractional pixels — common at non-1 densities
+     * or with centring/dp offsets — would otherwise miss its layer and silently drop out of the
+     * export. Each layout node keeps only its closest text and each text lands on its closest
+     * layout node (favouring the tight `Text` leaf over a looser wrapper), so text is neither
+     * dropped nor duplicated across nested layers that share bounds.
+     */
+    private fun assignTextToLayers(
+      layoutRoot: LayoutInspectorNode,
       semantics: ComposeSemanticsPayload,
       density: Float,
     ): Map<String, FigmaSvgText> {
-      val out = mutableMapOf<String, FigmaSvgText>()
+      val candidates = mutableListOf<Pair<String, IntArray>>()
+      fun collect(n: LayoutInspectorNode) {
+        candidates.add(
+          n.nodeId to intArrayOf(n.bounds.left, n.bounds.top, n.bounds.right, n.bounds.bottom)
+        )
+        n.children.forEach(::collect)
+      }
+      collect(layoutRoot)
+
+      val textByNodeId = HashMap<String, FigmaSvgText>()
+      val bestDistForNode = HashMap<String, Int>()
       fun walk(node: ComposeSemanticsNode) {
         val content =
           node.text?.takeIf { it.isNotBlank() } ?: node.layoutText?.takeIf { it.isNotBlank() }
-        val bounds = parseBoundsList(node.boundsInRoot)
-        if (content != null && bounds != null) {
-          val key = boundsKey(bounds[0], bounds[1], bounds[2], bounds[3])
-          // Innermost wins: the pre-order walk visits ancestors first, so a nested text node with
-          // the same bounds (the actual Text leaf) overwrites a merged container that echoes it.
-          out[key] =
-            FigmaSvgText(
-              content = content,
-              fontSizePx = node.typography?.fontSize?.let { spToPx(it, density) },
-              fontFamily = node.typography?.fontFamily,
-              fontWeight = node.typography?.fontWeight,
-              italic = node.typography?.fontStyle == "italic",
-              color = node.textColor?.foreground?.let { argbToColor(it, emptyMap()) },
-            )
+        val b = parseBoundsList(node.boundsInRoot)
+        if (content != null && b != null) {
+          var bestId: String? = null
+          var bestDist = Int.MAX_VALUE
+          for ((id, lb) in candidates) {
+            val d0 = abs(lb[0] - b[0])
+            val d1 = abs(lb[1] - b[1])
+            val d2 = abs(lb[2] - b[2])
+            val d3 = abs(lb[3] - b[3])
+            if (maxOf(d0, d1, d2, d3) <= BOUNDS_TOLERANCE_PX) {
+              val d = d0 + d1 + d2 + d3
+              if (d < bestDist) {
+                bestDist = d
+                bestId = id
+              }
+            }
+          }
+          val chosen = bestId
+          if (chosen != null && bestDist < (bestDistForNode[chosen] ?: Int.MAX_VALUE)) {
+            textByNodeId[chosen] = textFrom(node, content, density)
+            bestDistForNode[chosen] = bestDist
+          }
         }
         node.children.forEach(::walk)
       }
       walk(semantics.root)
-      return out
+      return textByNodeId
     }
+
+    private fun textFrom(
+      node: ComposeSemanticsNode,
+      content: String,
+      density: Float,
+    ): FigmaSvgText =
+      FigmaSvgText(
+        content = content,
+        fontSizePx = node.typography?.fontSize?.let { spToPx(it, density) },
+        fontFamily = node.typography?.fontFamily,
+        fontWeight = node.typography?.fontWeight,
+        italic = node.typography?.fontStyle == "italic",
+        color = node.textColor?.foreground?.let { argbToColor(it, emptyMap()) },
+      )
 
     private data class Extent(val minX: Int, val minY: Int, val maxX: Int, val maxY: Int)
 
@@ -221,8 +277,6 @@ data class FigmaSvgModel(
       merge(this)
       return acc
     }
-
-    private fun boundsKey(l: Int, t: Int, r: Int, b: Int): String = "$l,$t,$r,$b"
 
     /** `"left,top,right,bottom"` → `[l,t,r,b]`, or null if malformed. */
     private fun parseBoundsList(s: String?): IntArray? {

@@ -33,7 +33,8 @@ object ComposeFigmaSvgDataProducer {
    * @param layout the layout-inspector tree (composable names + container tokens + nesting).
    * @param semantics optional semantics tree whose text nodes enrich matching layers with editable
    *   text + typography.
-   * @param colorNames optional `#AARRGGBB` → theme-role-name map so named fills carry their variable.
+   * @param colorNames optional `#AARRGGBB` → theme-role-name map so named fills carry their
+   *   variable.
    * @param density px-per-dp of the captured frame (dp/sp tokens are converted to px against it).
    */
   fun writeSvg(

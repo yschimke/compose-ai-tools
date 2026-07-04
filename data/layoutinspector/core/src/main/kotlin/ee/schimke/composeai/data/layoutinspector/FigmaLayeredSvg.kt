@@ -11,14 +11,14 @@ package ee.schimke.composeai.data.layoutinspector
  * - **Container tokens become real vector shapes**: a layer with a background token is a filled
  *   `<rect>` (or a rounded-corner `<path>` when the corners aren't uniform), a border token adds a
  *   stroke, and the resolved corner radius imports as Figma's editable corner radius.
- * - **Text is editable `<text>`**, not outlines — with the captured family/size/weight/colour — so a
- *   designer edits the string in place and the type stays live.
+ * - **Text is editable `<text>`**, not outlines — with the captured family/size/weight/colour — so
+ *   a designer edits the string in place and the type stays live.
  * - **Named theme colours ride along**: when a fill resolves to a theme role, the role name is
- *   emitted in a `<title>` and a `data-token` attribute, so the paired `figma-variables.json` (and a
- *   future live-variable import) can bind the fill to a variable instead of a raw literal.
+ *   emitted in a `<title>` and a `data-token` attribute, so the paired `figma-variables.json` (and
+ *   a future live-variable import) can bind the fill to a variable instead of a raw literal.
  *
- * Pure and deterministic: model in, SVG string out — no graphics toolkit, no IO — so it lives on the
- * render-subprocess-safe core classpath next to [SemanticsWireframeSvg].
+ * Pure and deterministic: model in, SVG string out — no graphics toolkit, no IO — so it lives on
+ * the render-subprocess-safe core classpath next to [SemanticsWireframeSvg].
  */
 object FigmaLayeredSvg {
 
@@ -37,7 +37,8 @@ object FigmaLayeredSvg {
     )
     sb.append('\n')
     // Everything is drawn in root-pixel space; a single group translate drops the tree into the
-    // padded canvas, keeping child coordinates absolute (matching Figma's absolute layout on import).
+    // padded canvas, keeping child coordinates absolute (matching Figma's absolute layout on
+    // import).
     sb.append("""<g transform="translate(${model.tx}, ${model.ty})">""")
     sb.append('\n')
     renderLayer(model.root, sb, options, depth = 1)
@@ -50,8 +51,7 @@ object FigmaLayeredSvg {
     val indent = "  ".repeat(depth)
     val tokenName = layer.fill?.tokenName ?: layer.stroke?.tokenName
     val dataToken =
-      if (options.annotateTokens && tokenName != null)
-        """ data-token="${escapeAttr(tokenName)}""""
+      if (options.annotateTokens && tokenName != null) """ data-token="${escapeAttr(tokenName)}""""
       else ""
     sb.append("""$indent<g id="${escapeAttr(layer.name)}"$dataToken>""")
     sb.append('\n')
@@ -129,7 +129,8 @@ object FigmaLayeredSvg {
     val t = layer.text!!
     val size = t.fontSizePx ?: options.defaultFontSizePx
     // Baseline: place the text near the top of its box, offset by the cap so it sits inside — a
-    // designer repositions it in Figma anyway; this only needs to land it in the right neighbourhood.
+    // designer repositions it in Figma anyway; this only needs to land it in the right
+    // neighbourhood.
     val baseline = layer.top + size * 0.8
     val family = t.fontFamily?.let { """ font-family="${escapeAttr(svgFontFamily(it))}"""" } ?: ""
     val weight = t.fontWeight?.let { """ font-weight="$it"""" } ?: ""
@@ -141,9 +142,9 @@ object FigmaLayeredSvg {
   }
 
   /**
-   * Compose reports a `FontListFontFamily` as a resolved face identity (a file path or `res/font/id`)
-   * rather than a display name. Strip it to a last path segment so the SVG carries something a font
-   * picker can match; a generic name (`sans-serif`) passes through unchanged.
+   * Compose reports a `FontListFontFamily` as a resolved face identity (a file path or
+   * `res/font/id`) rather than a display name. Strip it to a last path segment so the SVG carries
+   * something a font picker can match; a generic name (`sans-serif`) passes through unchanged.
    */
   private fun svgFontFamily(identity: String): String {
     if (!identity.contains('/') && !identity.contains('\\')) return identity

@@ -24,7 +24,9 @@ What to notice — and why it imports cleanly into Figma:
   family / size / weight / colour — so a designer edits the string in place.
 - **Named theme colours ride along** as a `<title>` + `data-token` on the layer
   (`Surface · surface`, `Avatar · primary`, …), to pair with the sibling
-  `figma-variables.json` when binding fills to variables.
+  `figma-variables.json` when binding fills to variables. (Shown here because
+  this example is generated with a theme colour-name map; wiring the live
+  `compose/theme` map into the render path is a tracked follow-up.)
 
 The live artifact is produced per-render by both daemon backends; the desktop
 `RenderEngineTest` asserts a real render drops `compose-figma.svg` alongside the
