@@ -302,6 +302,59 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun resolveFamilyMapsGenericToDefaultButKeepsRealFaces() {
+    assertEquals("Roboto", FigmaLayeredSvg.resolveFamily(null, "Roboto"))
+    assertEquals("Roboto", FigmaLayeredSvg.resolveFamily("sans-serif", "Roboto"))
+    assertEquals("Roboto", FigmaLayeredSvg.resolveFamily("SANS-SERIF", "Roboto"))
+    assertEquals("Lobster", FigmaLayeredSvg.resolveFamily("Lobster", "Roboto"))
+  }
+
+  @Test
+  fun embeddedFontFacesEmitAtFontFaceAndNameTheText() {
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 8, 8, 192, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "8,8,192,40",
+              text = "Hi",
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp"), // generic family
+            )
+          ),
+      )
+    val model =
+      FigmaSvgModel.from(LayoutInspectorPayload(layout), ComposeSemanticsPayload(semantics))
+    val svg =
+      FigmaLayeredSvg.render(
+        model,
+        FigmaLayeredSvg.Options(defaultFontFamily = "Roboto"),
+        listOf(FigmaSvgFontFace("Roboto", 400, italic = false, woff2Base64 = "QUJD")),
+      )
+    assertTrue("must emit an @font-face", svg.contains("@font-face"))
+    assertTrue("face names the family", svg.contains("font-family:'Roboto'"))
+    assertTrue("face embeds the woff2 data URI", svg.contains("data:font/woff2;base64,QUJD"))
+    assertTrue("face declares the format", svg.contains("format('woff2')"))
+    // The generic-family text now names the embedded face rather than inheriting bare sans-serif.
+    assertTrue("text uses the embedded family", svg.contains("""font-family="Roboto""""))
+    assertFalse(
+      "root no longer defaults to sans-serif",
+      svg.contains("""font-family="sans-serif""""),
+    )
+  }
+
+  @Test
+  fun noFontFacesKeepsTheVectorOnlySansSerifDefault() {
+    val svg = render(layoutNode("Screen", 0, 0, 100, 100))
+    assertFalse(svg.contains("@font-face"))
+    assertTrue(svg.contains("""font-family="sans-serif""""))
+  }
+
+  @Test
   fun textAttachesDespiteOffByOneBoundsSkew() {
     // Regression: semantics bounds truncate to Int while layout bounds round, so the same node can
     // differ by up to 1px per edge. Exact-key matching dropped the text; tolerant matching keeps

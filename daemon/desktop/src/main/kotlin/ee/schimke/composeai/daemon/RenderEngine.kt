@@ -570,6 +570,10 @@ class RenderEngine(
                 // Hand the just-written frame PNG so opaque components (Image/Icon/Canvas/charts)
                 // export as `<image>` layers backed by a real background-free crop of the frame.
                 frameImage = state.outputFile,
+                // Embed the real (Google-downloadable) face so `<text>` renders faithfully instead
+                // of a substituted `sans-serif`. Opt-in; also on when fidelity is being measured so
+                // the score reflects the embedded font. Reuses the renderer's own font cache dir.
+                fontResolver = figmaFontResolver(),
               )
               // Fidelity harness (opt-in via -Dcomposeai.figma.fidelity=true): rasterise the SVG we
               // just wrote and score it against this render, dropping a `render | figma-svg | diff`
@@ -1325,3 +1329,19 @@ private fun InspectablePreviewContent(
 
 private fun DeviceDimensions.DeviceSpec.previewDeviceSpec(): PreviewDeviceSpec =
   PreviewDeviceSpec(widthDp = widthDp, heightDp = heightDp, density = density, isRound = isRound)
+
+/**
+ * The Google-Fonts WOFF2 resolver for the `compose/figma-svg` export, or null when font embedding
+ * is off. On when `composeai.figma.embedFonts=true`, or implicitly when fidelity is being measured
+ * (`composeai.figma.fidelity=true`) so the score reflects the embedded face rather than the
+ * browser's substitute. Reuses the renderer's font cache dir / offline switch so a face is
+ * downloaded at most once per environment.
+ */
+private fun figmaFontResolver(): FigmaFontResolver? {
+  fun on(prop: String) = System.getProperty(prop)?.lowercase() == "true"
+  if (!on("composeai.figma.embedFonts") && !on("composeai.figma.fidelity")) return null
+  return GoogleFontsWoff2Resolver(
+    cacheDir = System.getProperty("composeai.fonts.cacheDir")?.let { File(it) },
+    offline = on("composeai.fonts.offline"),
+  )
+}

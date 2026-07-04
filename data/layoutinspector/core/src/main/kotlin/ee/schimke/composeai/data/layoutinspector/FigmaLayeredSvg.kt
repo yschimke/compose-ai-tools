@@ -27,15 +27,32 @@ object FigmaLayeredSvg {
     val annotateTokens: Boolean = true,
     /** Fallback text size (px) when a text node didn't resolve one. */
     val defaultFontSizePx: Double = 14.0,
+    /**
+     * Family a `<text>` gets when its captured family is null or a generic (`sans-serif`/`serif`/
+     * `monospace`). Left as `sans-serif` for the vector-only export; the font-embedding path sets
+     * it to the resolved default face (e.g. `Roboto`) so the emitted `@font-face` matches by name.
+     */
+    val defaultFontFamily: String = "sans-serif",
   )
 
-  fun render(model: FigmaSvgModel, options: Options = Options()): String {
+  /**
+   * @param fontFaces downloadable faces to embed as `@font-face` (via `<defs><style>`) so the text
+   *   renders with the real typeface in Chromium/Figma instead of a substituted `sans-serif`. Empty
+   *   (default) keeps the export vector-only with no embedded fonts.
+   */
+  fun render(
+    model: FigmaSvgModel,
+    options: Options = Options(),
+    fontFaces: List<FigmaSvgFontFace> = emptyList(),
+  ): String {
     val sb = StringBuilder()
+    val rootFamily = if (fontFaces.isNotEmpty()) options.defaultFontFamily else "sans-serif"
     sb.append(
       """<svg xmlns="http://www.w3.org/2000/svg" width="${model.width}" height="${model.height}" """ +
-        """viewBox="0 0 ${model.width} ${model.height}" font-family="sans-serif">"""
+        """viewBox="0 0 ${model.width} ${model.height}" font-family="${escapeAttr(rootFamily)}">"""
     )
     sb.append('\n')
+    if (fontFaces.isNotEmpty()) sb.append(fontFaceDefs(fontFaces))
     // Everything is drawn in root-pixel space; a single group translate drops the tree into the
     // padded canvas, keeping child coordinates absolute (matching Figma's absolute layout on
     // import).
@@ -141,7 +158,8 @@ object FigmaLayeredSvg {
     val t = layer.text!!
     val size = t.fontSizePx ?: options.defaultFontSizePx
     val baseline = layer.top + baselineOffset(t, size, (layer.bottom - layer.top).toDouble())
-    val family = t.fontFamily?.let { """ font-family="${escapeAttr(svgFontFamily(it))}"""" } ?: ""
+    val family =
+      """ font-family="${escapeAttr(resolveFamily(t.fontFamily, options.defaultFontFamily))}""""
     val weight = t.fontWeight?.let { """ font-weight="$it"""" } ?: ""
     val style = if (t.italic) """ font-style="italic"""" else ""
     val fill =
@@ -171,6 +189,34 @@ object FigmaLayeredSvg {
     val halfLeading = ((lineHeight - size * FONT_BOX_EM) / 2).coerceAtLeast(0.0)
     return halfLeading + size * ASCENT_EM
   }
+
+  /** CSS generic families that carry no real face — resolved to the default embedded family. */
+  private val GENERIC_FAMILIES =
+    setOf("sans-serif", "serif", "monospace", "cursive", "fantasy", "system-ui")
+
+  /**
+   * The family name to emit for a `<text>` — the captured face, or [defaultFamily] when the capture
+   * was null or a CSS generic (a bare `sans-serif` carries no real face to match). Shared with the
+   * producer so the name it emits matches the `@font-face` family it embeds.
+   */
+  fun resolveFamily(captured: String?, defaultFamily: String): String {
+    if (captured == null || captured.lowercase() in GENERIC_FAMILIES) return defaultFamily
+    return svgFontFamily(captured)
+  }
+
+  /** `<defs><style>` with one `@font-face` per embedded face, WOFF2 as a base64 data URI. */
+  private fun fontFaceDefs(faces: List<FigmaSvgFontFace>): String = buildString {
+    append("<defs><style>")
+    for (f in faces) {
+      append("@font-face{font-family:'").append(cssFamily(f.family)).append("';")
+      append("font-style:").append(if (f.italic) "italic" else "normal").append(';')
+      append("font-weight:").append(f.weight).append(';')
+      append("src:url(data:font/woff2;base64,").append(f.woff2Base64).append(") format('woff2');}")
+    }
+    append("</style></defs>\n")
+  }
+
+  private fun cssFamily(s: String): String = s.replace("\\", "\\\\").replace("'", "\\'")
 
   /**
    * Compose reports a `FontListFontFamily` as a resolved face identity (a file path or
