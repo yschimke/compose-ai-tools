@@ -134,6 +134,7 @@ tasks.register("functionalTestWithAndroid") {
 //     implementation :data-deviceframe-connector (device-art bezel compositing — post-capture)
 //       api :data-deviceframe-core
 //     implementation :lottie-preview-runtime (Compottie-backed kind=LOTTIE render path)
+//     implementation :svg-preview-runtime (Skia loadSvgPainter kind=SVG render path)
 //   plus :common-io (the Okio file-IO foundation those modules read/write through).
 val bundleRenderFunctionalTestPublishTargets =
   listOf(
@@ -151,6 +152,7 @@ val bundleRenderFunctionalTestPublishTargets =
     ":data-layoutinspector-core",
     ":data-theme-core",
     ":lottie-preview-runtime",
+    ":svg-preview-runtime",
     ":common-io",
   )
 
