@@ -108,9 +108,13 @@ Two one-time admin steps, then copy one file:
 1. **Install the Claude GitHub App** on the repo:
    <https://github.com/apps/claude> (or run `/install-github-app` from the
    Claude Code CLI, which walks through both steps).
-2. **Add the `ANTHROPIC_API_KEY` secret** (or use a Claude subscription via a
-   `CLAUDE_CODE_OAUTH_TOKEN` secret and the `claude_code_oauth_token` input
-   instead).
+2. **Add the `CLAUDE_CODE_OAUTH_TOKEN` secret** — generate it with
+   `claude setup-token` (requires a Claude Pro/Max subscription). Runs then
+   bill the subscription's included usage, sharing its rolling rate windows
+   with your interactive Claude Code sessions. To meter against API credits
+   instead (independent of personal usage, cappable via a dedicated
+   workspace), add an `ANTHROPIC_API_KEY` secret and swap the workflow input
+   to `anthropic_api_key`.
 3. **Copy `.github/workflows/claude.yml`** and adjust three things:
    - the toolchain setup step (this repo: JDK 17 + Gradle via
      `./.github/actions/setup`);
