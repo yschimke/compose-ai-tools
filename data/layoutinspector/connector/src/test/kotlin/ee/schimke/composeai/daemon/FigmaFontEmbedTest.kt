@@ -153,6 +153,52 @@ class FigmaFontEmbedTest {
   }
 
   @Test
+  fun writeSvgEmbedsTheActualFontFileTheRenderLoaded() {
+    // The capture records the *path* of the font the render loaded (a downloaded/bundled/custom
+    // face). The export must embed that file's bytes directly — no name-based Google fetch — and
+    // name the `<text>` by the font's family so it matches the `@font-face`.
+    val fontFile = File(dir, "MyFont.ttf").apply { writeBytes(byteArrayOf(10, 20, 30)) }
+    val semantics =
+      ComposeSemanticsPayload(
+        ComposeSemanticsNode(
+          nodeId = "root",
+          boundsInRoot = "0,0,200,100",
+          children =
+            listOf(
+              ComposeSemanticsNode(
+                nodeId = "Text",
+                boundsInRoot = "8,8,192,40",
+                text = "Hi",
+                typography =
+                  ComposeSemanticsTypography(
+                    fontSize = "16.0sp",
+                    fontFamily = fontFile.absolutePath,
+                  ),
+              )
+            ),
+        )
+      )
+    // Resolver returns nothing — the file path must NOT go through the Google fetch.
+    val resolver = FigmaFontResolver { _, _, _ -> null }
+
+    ComposeFigmaSvgDataProducer.writeSvg(
+      rootDir = dir,
+      previewId = "p",
+      layout = LayoutInspectorPayload(textNode()),
+      semantics = semantics,
+      fontResolver = resolver,
+    )
+
+    val svg = dir.resolve("p").resolve(ComposeFigmaSvgDataProducer.FILE_SVG).readText()
+    assertTrue("embeds a truetype @font-face", svg.contains("format('truetype')"))
+    assertTrue("uses the ttf mime + the file's bytes", svg.contains("data:font/ttf;base64,ChQe"))
+    // Garbage bytes → AWT can't read a family, so we fall back to the file stem, and the text names
+    // it so it matches the embedded face.
+    assertTrue("face named by the font (stem fallback here)", svg.contains("font-family:'MyFont'"))
+    assertTrue("text uses the embedded family", svg.contains("""font-family="MyFont""""))
+  }
+
+  @Test
   fun writeSvgWithoutResolverStaysVectorOnly() {
     ComposeFigmaSvgDataProducer.writeSvg(
       rootDir = dir,

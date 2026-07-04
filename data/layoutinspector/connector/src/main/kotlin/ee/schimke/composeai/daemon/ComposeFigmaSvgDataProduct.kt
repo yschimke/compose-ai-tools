@@ -82,14 +82,15 @@ object ComposeFigmaSvgDataProducer {
         rasterComponents =
           if (frame != null) FigmaSvgModel.DEFAULT_RASTER_COMPONENTS else emptySet(),
       )
-    val fontFaces = fontResolver?.let { resolveFontFaces(model, it) }.orEmpty()
+    val fonts = fontResolver?.let { resolveFonts(model, it) }
     val svg =
-      if (fontFaces.isEmpty()) FigmaLayeredSvg.render(model)
+      if (fonts == null || fonts.faces.isEmpty()) FigmaLayeredSvg.render(model)
       else
         FigmaLayeredSvg.render(
           model,
           FigmaLayeredSvg.Options(defaultFontFamily = DEFAULT_EMBED_FAMILY),
-          fontFaces,
+          fonts.faces,
+          fonts.familyOverrides,
         )
     fileSystem.write(previewDir.resolve(FILE_SVG).path.toPath()) { writeUtf8(svg) }
     if (frame != null && model.rasterTargets.isNotEmpty()) {
@@ -100,37 +101,72 @@ object ComposeFigmaSvgDataProducer {
   /** The face a generic/absent family maps to — Compose's default Material typeface. */
   const val DEFAULT_EMBED_FAMILY: String = "Roboto"
 
+  /** The `@font-face`s to embed plus the captured-family → emitted-family name map. */
+  private class FontPlan(
+    val faces: List<FigmaSvgFontFace>,
+    val familyOverrides: Map<String, String>,
+  )
+
   /**
-   * Collects the distinct `(family, weight, italic)` the export's `<text>` needs — resolving
-   * generic families to [DEFAULT_EMBED_FAMILY] the same way the renderer names them — and asks
-   * [resolver] for each face's WOFF2, base64-encoding the ones it returns. Faces the resolver can't
-   * provide are simply not embedded (the text falls back to the named family).
+   * Resolves the faces the export's `<text>` needs. Two paths per captured family:
+   * - **The render loaded a real font file** (the capture recorded an absolute `.ttf`/`.otf`/`.ttc`
+   *   path — a downloaded Google font, a bundled/custom face, a variable font). Embed *that file's*
+   *   bytes and name the face by its real family (read from the font), so the export reproduces the
+   *   exact face the render drew — no name guessing.
+   * - **A generic / absent family** (`sans-serif` → [DEFAULT_EMBED_FAMILY]). Fetch the face's WOFF2
+   *   from [resolver] (Google Fonts) by name.
+   *
+   * Also records, per captured family, the family name to emit on the `<text>` so it matches the
+   * `@font-face`. Faces that can't be produced are skipped (the text falls back to the named
+   * family).
    */
-  private fun resolveFontFaces(
-    model: FigmaSvgModel,
-    resolver: FigmaFontResolver,
-  ): List<FigmaSvgFontFace> {
-    data class Key(val family: String, val weight: Int, val italic: Boolean)
-    val keys = LinkedHashSet<Key>()
-    fun walk(layer: FigmaSvgLayer) {
-      layer.text?.let { t ->
-        keys.add(
-          Key(
-            FigmaLayeredSvg.resolveFamily(t.fontFamily, DEFAULT_EMBED_FAMILY),
-            t.fontWeight ?: 400,
-            t.italic,
+  private fun resolveFonts(model: FigmaSvgModel, resolver: FigmaFontResolver): FontPlan {
+    val faces = LinkedHashMap<String, FigmaSvgFontFace>()
+    val overrides = HashMap<String, String>()
+    fun add(captured: String?, weight: Int, italic: Boolean) {
+      val file = captured?.let(::asFontFile)
+      if (file != null) {
+        val bytes = runCatching { file.readBytes() }.getOrNull() ?: return
+        val family = fontFileFamily(file)
+        val format = if (file.extension.equals("otf", true)) "opentype" else "truetype"
+        faces["$family|$weight|$italic|$format"] =
+          FigmaSvgFontFace(
+            family,
+            weight,
+            italic,
+            Base64.getEncoder().encodeToString(bytes),
+            format,
           )
-        )
+        overrides[captured] = family
+        return
       }
+      val name = FigmaLayeredSvg.resolveFamily(captured, DEFAULT_EMBED_FAMILY)
+      resolver.woff2(name, weight, italic)?.let {
+        faces["$name|$weight|$italic|woff2"] =
+          FigmaSvgFontFace(name, weight, italic, Base64.getEncoder().encodeToString(it))
+        if (captured != null) overrides[captured] = name
+      }
+    }
+    fun walk(layer: FigmaSvgLayer) {
+      layer.text?.let { add(it.fontFamily, it.fontWeight ?: 400, it.italic) }
       layer.children.forEach(::walk)
     }
     walk(model.root)
-    return keys.mapNotNull { k ->
-      resolver.woff2(k.family, k.weight, k.italic)?.let {
-        FigmaSvgFontFace(k.family, k.weight, k.italic, Base64.getEncoder().encodeToString(it))
-      }
-    }
+    return FontPlan(faces.values.toList(), overrides)
   }
+
+  /** A captured family that is an on-disk font file (`.ttf`/`.otf`/`.ttc`), else null. */
+  private fun asFontFile(family: String): File? {
+    val lower = family.lowercase()
+    if (!(lower.endsWith(".ttf") || lower.endsWith(".otf") || lower.endsWith(".ttc"))) return null
+    return File(family).takeIf { it.isFile && it.length() > 0 }
+  }
+
+  /** The font's real family name (`"Lobster Two"`), read from the file; falls back to its stem. */
+  private fun fontFileFamily(file: File): String =
+    runCatching { java.awt.Font.createFont(java.awt.Font.TRUETYPE_FONT, file).family }
+      .getOrNull()
+      ?.takeIf { it.isNotBlank() } ?: file.nameWithoutExtension
 
   /**
    * Crops each opaque-node [FigmaSvgRasterTarget] out of the captured [frameImage] and writes it to

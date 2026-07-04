@@ -57,16 +57,18 @@ data class FigmaSvgText(
 )
 
 /**
- * A downloadable font face to embed in the export as an SVG `@font-face` so the `<text>` renders
- * with the real typeface — closing the "browser/Figma substitutes its own `sans-serif`" fidelity
- * gap. [woff2Base64] is the base64 of the face's WOFF2 bytes (WOFF2 because the SVG's consumers —
- * Chromium and Figma — read it natively and it's ~half a TTF's size).
+ * A font face to embed in the export as an SVG `@font-face` so the `<text>` renders with the real
+ * typeface — closing the "browser/Figma substitutes its own `sans-serif`" gap. [dataBase64] is the
+ * base64 of the face's bytes in [format]: `woff2` for the Google-Fonts fetch (smallest, and what
+ * the SVG's consumers read natively), or `truetype`/`opentype` when embedding the exact font *file*
+ * the render loaded (a downloaded / bundled / custom / variable face the capture recorded by path).
  */
 data class FigmaSvgFontFace(
   val family: String,
   val weight: Int,
   val italic: Boolean,
-  val woff2Base64: String,
+  val dataBase64: String,
+  val format: String = "woff2",
 )
 
 /** Background-free raster standing in for an opaque, un-vectorisable subtree. */

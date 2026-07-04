@@ -28,6 +28,28 @@ set on the Gradle invocation would never reach the daemon that reads it. It's op
 stay deterministic and offline-safe (a failed/absent fetch degrades to the named `sans-serif`, never an
 error).
 
+## Custom / downloaded / variable fonts — embed the face the render used
+
+Naming a face `sans-serif` and fetching **Roboto** by name only covers the Material default. Any other
+face — a downloaded Google font, a bundled/custom face, a variable font — is captured by the *path of
+the font file the render actually loaded* (e.g. `…/.cache/composeai/fonts/lobster-two-700.ttf`), not a
+Google family name, so a name-based fetch would miss it.
+
+So the export now **embeds that exact file**: when a text node's captured family is an on-disk
+`.ttf`/`.otf`/`.ttc`, `ComposeFigmaSvgDataProducer` reads its bytes, names the `@font-face` by the
+font's real family (read from the file), and points the `<text>` at it. The SVG reproduces the *same
+bytes the render drew* — faithful for any face, no name guessing — falling back to the Google-Fonts
+WOFF2 fetch only for generic families.
+
+| Before — custom font unresolved (falls to sans-serif) | After — embeds the actual face the render used |
+|---|---|
+| ![before](custom-font-before.png) | ![after](custom-font-after.png) |
+
+Both are the same exported SVG rendered by headless Chromium; only the `@font-face` differs. The
+render loaded **Lobster Two** (a downloaded Google font); before, the export couldn't reproduce it and
+Chromium substituted a serif; after, the SVG carries the real Lobster Two file and renders the script
+face — matching the render.
+
 ## Desktop-render font gap (follow-up)
 
 The desktop `compose-figma-fidelity` score doesn't move on the embed alone, because the desktop Skiko

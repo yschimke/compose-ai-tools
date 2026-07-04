@@ -333,7 +333,7 @@ class FigmaLayeredSvgTest {
       FigmaLayeredSvg.render(
         model,
         FigmaLayeredSvg.Options(defaultFontFamily = "Roboto"),
-        listOf(FigmaSvgFontFace("Roboto", 400, italic = false, woff2Base64 = "QUJD")),
+        listOf(FigmaSvgFontFace("Roboto", 400, italic = false, dataBase64 = "QUJD")),
       )
     assertTrue("must emit an @font-face", svg.contains("@font-face"))
     assertTrue("face names the family", svg.contains("font-family:'Roboto'"))
