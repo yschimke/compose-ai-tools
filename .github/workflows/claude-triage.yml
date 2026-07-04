@@ -38,14 +38,15 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: >-
             --max-turns 100
-            --allowedTools "Bash(git log:*),Bash(git diff:*),Bash(git show:*)"
+            --allowedTools "mcp__github__list_issues,mcp__github__search_issues,mcp__github__get_issue,mcp__github__issue_read,mcp__github__create_issue,mcp__github__update_issue,mcp__github__issue_write,mcp__github__add_issue_comment,mcp__github__get_issue_comments,mcp__github__get_label,mcp__github__list_pull_requests,mcp__github__search_pull_requests,mcp__github__get_pull_request,mcp__github__pull_request_read,mcp__github__list_commits,mcp__github__search_code,Bash(git log:*),Bash(git diff:*),Bash(git show:*)"
           prompt: |
             Run the weekly issue triage for this repository. Work through ALL
             open issues (skip pull requests):
 
             1. Label new or unlabeled issues: bug, enhancement, question, or
                needs-info, plus priority-high only when clearly urgent.
-               Create any missing labels.
+               If a needed label does not exist and cannot be created
+               with the available tools, note that in the summary instead.
             2. For each open issue, check whether it has already been
                resolved: search merged PRs and recent commits on main that
                reference or plausibly fix it. If confident it is fixed,
