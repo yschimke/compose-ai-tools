@@ -124,6 +124,53 @@ class RenderEngineTest {
   }
 
   @Test
+  fun figmaSvgExportEmbedsGoogleFontsWhenEnabled() {
+    // Parity with the desktop export: with `-Dcomposeai.figma.embedFonts=true` the Android export
+    // embeds each text node's face as an `@font-face` WOFF2 so the SVG renders the real typeface. We
+    // pre-seed the shared font cache (`composeai.fonts.cacheDir`) so the resolver serves from disk —
+    // deterministic, no network in CI. On Android the render itself is Roboto, so the embedded face
+    // is the exact match.
+    val outputDir = tempFolder.newFolder("renders-figma-fonts")
+    val fontCache = tempFolder.newFolder("font-cache")
+    // The generic `serif` family maps to the Material default (Roboto); text weight defaults to 400.
+    // Seed all plausible weights with the same sentinel bytes so the assertion is weight-agnostic.
+    val sentinel = byteArrayOf(1, 2, 3)
+    for (w in listOf(400, 500, 700)) File(fontCache, "roboto-$w.woff2").writeBytes(sentinel)
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    System.setProperty("composeai.figma.embedFonts", "true")
+    System.setProperty("composeai.fonts.cacheDir", fontCache.absolutePath)
+    val host = RobolectricHost()
+    host.start()
+    try {
+      host.submit(
+        RenderRequest.Render(
+          payload =
+            "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+              "functionName=SerifTextPreview;" +
+              "widthPx=200;heightPx=80;density=1.0;showBackground=true;outputBaseName=figma-fonts"
+        ),
+        timeoutMs = 120_000,
+      )
+
+      val svg =
+        outputDir.parentFile!!
+          .resolve("data")
+          .resolve("figma-fonts")
+          .resolve("compose-figma.svg")
+      assertTrue("figma SVG must be produced: ${svg.absolutePath}", svg.exists())
+      val text = svg.readText()
+      assertTrue("export must embed an @font-face", text.contains("@font-face"))
+      // base64 of {1,2,3} = "AQID" — the seeded face bytes, proving the resolver→embed wiring.
+      assertTrue("must embed the resolved WOFF2 data URI", text.contains("data:font/woff2;base64,AQID"))
+    } finally {
+      host.shutdown()
+      System.clearProperty("composeai.figma.embedFonts")
+      System.clearProperty("composeai.fonts.cacheDir")
+    }
+  }
+
+  @Test
   fun figmaSvgExportRastersOpaqueImage() {
     // Parity with the desktop backend: a real Robolectric render of a screen containing an opaque
     // `Image` must emit the Image as an `<image>` layer in `compose-figma.svg` AND crop the
