@@ -198,6 +198,68 @@ class RenderEngineTest {
   }
 
   @Test
+  fun figmaSvgFidelityScoresARender() {
+    // End-to-end fidelity harness: with -Dcomposeai.figma.fidelity=true, a real render of a
+    // composite themed card must, alongside the SVG, drop a `render | figma-svg | diff` composite
+    // and
+    // a score sidecar — the SVG rasterised (Skia), aligned to the render, and scored by
+    // FigmaFidelity.
+    // The score must be a real fraction in (0,1] (the card reproduces well but not
+    // pixel-perfectly),
+    // and the composite must be the three side-by-side panels.
+    System.setProperty("composeai.figma.fidelity", "true")
+    val outputDir = tempFolder.newFolder("renders-fidelity")
+    val dataDir = tempFolder.newFolder("data-fidelity")
+    val engine = RenderEngine(outputDir = outputDir, dataDir = dataDir)
+    val host = DesktopHost(engine = engine)
+    host.start()
+    try {
+      val request =
+        RenderRequest.Render(
+          payload =
+            "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+              "functionName=FidelityCardPreview;" +
+              "widthPx=120;heightPx=120;density=1.0;" +
+              "showBackground=true;" +
+              "outputBaseName=fidelity-card"
+        )
+      host.submit(request, timeoutMs = 60_000)
+
+      val previewDir = File(dataDir, "fidelity-card")
+      val composite = File(previewDir, FigmaSvgFidelity.FILE_COMPOSITE)
+      val scoreFile = File(previewDir, FigmaSvgFidelity.FILE_SCORE)
+      assertTrue(
+        "fidelity composite must be produced: ${composite.absolutePath}",
+        composite.exists(),
+      )
+      assertTrue(
+        "fidelity score sidecar must be produced: ${scoreFile.absolutePath}",
+        scoreFile.exists(),
+      )
+
+      val scoreJson = scoreFile.readText()
+      assertTrue("score json must carry a score field: $scoreJson", scoreJson.contains("\"score\""))
+      val score = Regex("\"score\":([0-9.]+)").find(scoreJson)?.groupValues?.get(1)?.toDouble()
+      assertNotNull("score must parse: $scoreJson", score)
+      assertTrue(
+        "score must be a real fraction in (0,1], was $score",
+        score!! > 0.0 && score <= 1.0,
+      )
+
+      // The composite is three render-width panels wide (render | figma-svg | diff) + gutters.
+      val img = javax.imageio.ImageIO.read(composite)
+      assertNotNull("composite must decode", img)
+      assertTrue(
+        "composite must be at least 3x render width wide, was ${img!!.width}",
+        img.width >= 120 * 3,
+      )
+    } finally {
+      host.shutdown()
+      System.clearProperty("composeai.figma.fidelity")
+    }
+  }
+
+  @Test
   fun privateComposableRendersToValidPng() {
     // Regression: Kotlin `private fun` previews compile to JVM-private static methods. The daemon
     // resolves them via `getDeclaredComposableMethod` but the reflective `invoke` threw
