@@ -6,11 +6,13 @@ import androidx.compose.foundation.interaction.FocusInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -20,6 +22,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
@@ -42,6 +45,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
@@ -117,6 +124,17 @@ fun CatalogComponent(id: String, interactive: Boolean) {
       Button(onClick = {}, interactionSource = pressedSource()) { Text("Pressed") }
     "button-filled-focused" ->
       Button(onClick = {}, interactionSource = focusedSource()) { Text("Focused") }
+    // Content axis (not a state): the same Filled button with a leading icon + label, so the
+    // catalog shows the icon-and-text configuration alongside the label-only default. The icon is
+    // an inline `ImageVector` (a plus glyph) — this module deliberately carries no icon library,
+    // and
+    // `Icon` tints it with the button's content color regardless of the vector's own fill.
+    "button-filled-icon-label" ->
+      Button(onClick = {}) {
+        Icon(addGlyph, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+        Text("Filled")
+      }
     "button-outlined-disabled" -> OutlinedButton(onClick = {}, enabled = false) { Text("Disabled") }
     "switch-off" ->
       if (interactive) StatefulSwitch(false) else Switch(checked = false, onCheckedChange = {})
@@ -175,6 +193,7 @@ val catalogComponentIds: List<String> =
     "textfield-outlined",
     "button-filled-pressed",
     "button-filled-focused",
+    "button-filled-icon-label",
     "button-outlined-disabled",
     "switch-off",
     "checkbox-unchecked",
@@ -184,6 +203,39 @@ val catalogComponentIds: List<String> =
     "text-serif",
     "text-monospace",
   )
+
+/**
+ * A minimal "add" (plus) glyph as an inline [ImageVector], for the `button-filled-icon-label`
+ * content variant. Built by hand because this catalog module carries no `material-icons`
+ * dependency; `Icon` recolors it to the button's content color, so the vector's own fill is
+ * irrelevant. A 12×12 plus centered in the standard 24dp icon viewport.
+ */
+private val addGlyph: ImageVector =
+  ImageVector.Builder(
+      name = "Add",
+      defaultWidth = 24.dp,
+      defaultHeight = 24.dp,
+      viewportWidth = 24f,
+      viewportHeight = 24f,
+    )
+    .apply {
+      path(fill = SolidColor(Color.Black)) {
+        moveTo(11f, 5f)
+        lineTo(13f, 5f)
+        lineTo(13f, 11f)
+        lineTo(19f, 11f)
+        lineTo(19f, 13f)
+        lineTo(13f, 13f)
+        lineTo(13f, 19f)
+        lineTo(11f, 19f)
+        lineTo(11f, 13f)
+        lineTo(5f, 13f)
+        lineTo(5f, 11f)
+        lineTo(11f, 11f)
+        close()
+      }
+    }
+    .build()
 
 // --- Interactive state holders: a browser visitor can actually toggle these. ---
 
