@@ -26,7 +26,18 @@
       "mcp__claude-code-remote__delete_trigger",
       "mcp__claude-code-remote__list_triggers",
       "mcp__claude-code-remote__fire_trigger",
-      "mcp__Figma"
+      "mcp__Figma",
+      "mcp__github__pull_request_read",
+      "mcp__github__get_job_logs",
+      "mcp__github__create_pull_request",
+      "mcp__github__update_pull_request",
+      "mcp__github__resolve_review_thread",
+      "mcp__github__add_reply_to_pull_request_comment",
+      "mcp__github__add_issue_comment",
+      "mcp__github__issue_write",
+      "mcp__github__subscribe_pr_activity",
+      "mcp__github__search_issues",
+      "mcp__github__list_pull_requests"
     ]
   }
 }
