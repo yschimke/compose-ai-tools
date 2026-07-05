@@ -7,6 +7,9 @@ import androidx.compose.foundation.interaction.FocusInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AssistChip
@@ -21,11 +24,14 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -34,6 +40,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -272,6 +279,47 @@ fun SegmentedToggle() =
         shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
       ) {
         Text("Off")
+      }
+    }
+  }
+
+// ---------------------------------------------------------------------------
+// Scaffold templates — full-screen, pre-built screen skeletons an app copies
+// whole. Rendered on a phone with `showSystemUi = true` so the capture reads as
+// a real screenshot: the OS status bar (clock, battery) at the top and the
+// gesture-pill nav bar at the bottom, drawn by the renderer's SystemBarsFrame,
+// framing the template's own Material chrome. Placed via [FullScreenM3], which
+// reserves [SYSTEM_BAR_INSET] top/bottom so the app chrome clears the OS overlay.
+// ---------------------------------------------------------------------------
+
+private val templateMessages =
+  listOf(
+    "Alex Kim" to "Lunch tomorrow?",
+    "Design team" to "Specs are ready for review",
+    "Priya Patel" to "Sent the render diff",
+    "Sam Rivera" to "Thanks — merged it",
+    "On-call" to "Deploy finished cleanly",
+  )
+
+// Full-screen app scaffold: a TopAppBar (the app's title strip under the OS
+// status bar), a scrolling list of ListItems, and a FloatingActionButton — the
+// canonical M3 screen an app starts a new surface from.
+@CatalogTemplate
+@Composable
+fun AppScaffoldTemplate() =
+  FullScreenM3 {
+    Scaffold(
+      topBar = { TopAppBar(title = { Text("Inbox") }) },
+      floatingActionButton = { FloatingActionButton(onClick = {}) { Text("+") } },
+    ) { padding ->
+      Column(Modifier.padding(padding).fillMaxSize()) {
+        templateMessages.forEachIndexed { index, (sender, preview) ->
+          ListItem(
+            headlineContent = { Text(sender) },
+            supportingContent = { Text(preview) },
+          )
+          if (index < templateMessages.lastIndex) HorizontalDivider()
+        }
       }
     }
   }

@@ -48,6 +48,14 @@
       ]
     },
     {
+      "name": "Scaffold templates",
+      "components": [
+        { "componentId": "Template/TimeText", "preview": "TimeTextScaffoldTemplate", "caption": "Full-screen list scaffold with the curved TimeText status strip — the base Wear screen." },
+        { "componentId": "Template/PageIndicator", "preview": "PageIndicatorScaffoldTemplate", "caption": "Horizontal pager scaffold with an edge-hugging HorizontalPageIndicator under the TimeText strip." },
+        { "componentId": "Template/EdgeButton", "preview": "EdgeButtonScaffoldTemplate", "caption": "List scaffold anchored by the screen-hugging EdgeButton, TimeText strip on top." }
+      ]
+    },
+    {
       "name": "Communication",
       "components": [
         { "componentId": "Progress/Circular", "preview": "CircularProgressSticker" }

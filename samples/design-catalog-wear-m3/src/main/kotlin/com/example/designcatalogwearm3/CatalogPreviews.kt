@@ -3,6 +3,7 @@ package com.example.designcatalogwearm3
 import androidx.compose.foundation.interaction.FocusInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.style.TextOverflow
@@ -17,6 +19,9 @@ import androidx.compose.ui.unit.dp
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
+import androidx.wear.compose.foundation.pager.HorizontalPager
+import androidx.wear.compose.foundation.pager.rememberPagerState
+import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.Card
 import androidx.wear.compose.material3.CheckboxButton
@@ -25,15 +30,18 @@ import androidx.wear.compose.material3.CircularProgressIndicator
 import androidx.wear.compose.material3.EdgeButton
 import androidx.wear.compose.material3.EdgeButtonSize
 import androidx.wear.compose.material3.FilledTonalButton
+import androidx.wear.compose.material3.HorizontalPageIndicator
 import androidx.wear.compose.material3.ListHeader
 import androidx.wear.compose.material3.OutlinedButton
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.SurfaceTransformation
 import androidx.wear.compose.material3.SwitchButton
 import androidx.wear.compose.material3.Text
+import androidx.wear.compose.material3.TimeText
 import androidx.wear.compose.material3.TitleCard
 import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
+import androidx.wear.compose.material3.timeTextCurvedText
 import ee.schimke.composeai.preview.ScrollMode
 import ee.schimke.composeai.preview.ScrollingPreview
 
@@ -223,6 +231,138 @@ fun BlankListLayout() =
             modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
             transformation = SurfaceTransformation(spec),
           ) {}
+        }
+      }
+    }
+  }
+
+// ---------------------------------------------------------------------------
+// Scaffold templates — full-screen, pre-built screen skeletons an app copies
+// whole, captured at every breakpoint. Unlike the [FullScreenWear] stickers
+// above (which drop the clock via `timeText = {}`), each template composes its
+// own `AppScaffold(timeText = { … })` so the curved status strip is part of the
+// capture. The clock is frozen at a fixed "10:10" so the weekly design-artifacts
+// bundle doesn't churn on the live system time.
+//
+// The three variants mirror the Wear status-strip archetypes: the base list
+// screen, a horizontal pager with a page indicator, and a screen anchored by an
+// edge-hugging button.
+// ---------------------------------------------------------------------------
+
+// A frozen curved TimeText: the real Wear M3 status strip drawing a fixed
+// "10:10" instead of the system clock, so every render is deterministic.
+@Composable
+private fun FixedTimeText() = TimeText { timeTextCurvedText("10:10") }
+
+private val templateListItems =
+  listOf(
+    "Morning run" to "5.2 km · 28 min",
+    "Heart rate" to "72 bpm",
+    "Sleep" to "7h 14m",
+    "Steps" to "6,482",
+  )
+
+// Base template: the canonical Wear list screen — TimeText status strip at the
+// curved top, a ListHeader, and a scaling TransformingLazyColumn of TitleCards.
+@CatalogWearBreakpoints
+@Composable
+fun TimeTextScaffoldTemplate() =
+  WearScaffoldTemplate {
+    AppScaffold(timeText = { FixedTimeText() }) {
+      val listState = rememberTransformingLazyColumnState()
+      val spec = rememberTransformationSpec()
+      ScreenScaffold(scrollState = listState) { contentPadding ->
+        TransformingLazyColumn(
+          state = listState,
+          contentPadding = contentPadding,
+          modifier = Modifier.fillMaxSize(),
+        ) {
+          item {
+            ListHeader(
+              modifier = Modifier.transformedHeight(this, spec),
+              transformation = SurfaceTransformation(spec),
+            ) {
+              Text("Activity")
+            }
+          }
+          items(templateListItems) { (title, subtitle) ->
+            TitleCard(
+              onClick = {},
+              title = { Text(title) },
+              subtitle = { Text(subtitle) },
+              modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+              transformation = SurfaceTransformation(spec),
+            )
+          }
+        }
+      }
+    }
+  }
+
+// Page-indicator template: a horizontal pager with the Wear M3
+// HorizontalPageIndicator hugging the bottom curve. Seeded on the middle page so
+// the indicator reads as a real multi-page carousel, under the TimeText strip.
+@CatalogWearBreakpoints
+@Composable
+fun PageIndicatorScaffoldTemplate() =
+  WearScaffoldTemplate {
+    AppScaffold(timeText = { FixedTimeText() }) {
+      val pagerState = rememberPagerState(initialPage = 1, pageCount = { 3 })
+      Box(Modifier.fillMaxSize()) {
+        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+          Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("Page ${page + 1}")
+          }
+        }
+        HorizontalPageIndicator(
+          pagerState = pagerState,
+          modifier = Modifier.align(Alignment.BottomCenter),
+        )
+      }
+    }
+  }
+
+// Edge-button template: a list screen anchored by the screen-hugging EdgeButton.
+// Like [EdgeButtonSticker], the ScreenScaffold reveals the edge button only once
+// the (overflowing) list settles at the bottom, so the template scrolls to the
+// end via @ScrollingPreview(END) to capture the button at its resting size — here
+// paired with the TimeText status strip the full template carries.
+@CatalogWearBreakpoints
+@ScrollingPreview(modes = [ScrollMode.END])
+@Composable
+fun EdgeButtonScaffoldTemplate() =
+  WearScaffoldTemplate {
+    AppScaffold(timeText = { FixedTimeText() }) {
+      val listState = rememberTransformingLazyColumnState()
+      val spec = rememberTransformationSpec()
+      ScreenScaffold(
+        scrollState = listState,
+        edgeButton = {
+          EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) { Text("Start") }
+        },
+      ) { contentPadding ->
+        TransformingLazyColumn(
+          state = listState,
+          contentPadding = contentPadding,
+          modifier = Modifier.fillMaxSize(),
+        ) {
+          item {
+            ListHeader(
+              modifier = Modifier.transformedHeight(this, spec),
+              transformation = SurfaceTransformation(spec),
+            ) {
+              Text("Workout")
+            }
+          }
+          items(edgeButtonHistory) { (title, subtitle) ->
+            TitleCard(
+              onClick = {},
+              title = { Text(title) },
+              subtitle = { Text(subtitle) },
+              modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+              transformation = SurfaceTransformation(spec),
+            )
+          }
         }
       }
     }
