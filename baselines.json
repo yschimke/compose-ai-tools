@@ -1591,6 +1591,22 @@
     "sha256": "1f8da3a55c1d8f8347176d755e4505d857a5d6e20a1b11be161bb892f86e2d3d",
     "sourceFile": null
   },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.AppScaffoldTemplate_Dark": {
+    "captureLabel": "",
+    "functionName": "AppScaffoldTemplate",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "AppScaffoldTemplate_Dark.png",
+    "sha256": "c2f5dbf131bd625e1051ea94af9acf944742469fca3dc3bda8d4175ba4191113",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.AppScaffoldTemplate_Light": {
+    "captureLabel": "",
+    "functionName": "AppScaffoldTemplate",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "AppScaffoldTemplate_Light.png",
+    "sha256": "c3dc5b49f3af91f206ea4af575b8ab1e58db85ddc45516b644c96eb5aa0af394",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.AssistChipSticker_Dark": {
     "captureLabel": "",
     "functionName": "AssistChipSticker",
@@ -1740,7 +1756,7 @@
     "functionName": "FilledButtonFocused",
     "module": "samples:design-catalog-m3",
     "renderBasename": "FilledButtonFocused_Dark.png",
-    "sha256": "acf04424152ff37afdf8f8b31551d41707a5eadc65cc0d91e9f31cd87a5b6ff8",
+    "sha256": "e80311b09ad3b8524f82970e2391c3be233d0a62b51d5b5e5eb11db38ae23694",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonFocused_Light": {
@@ -1748,7 +1764,7 @@
     "functionName": "FilledButtonFocused",
     "module": "samples:design-catalog-m3",
     "renderBasename": "FilledButtonFocused_Light.png",
-    "sha256": "0b4e96d33a01e0508d0d774d99f4d4d86acd0880a9ab58adb05cfc307898fc60",
+    "sha256": "7ec7fbf1b79ecdc81015a9fe5c733c444509d69bcca8f217a7b47d439d6d513f",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonPressed_Dark": {
@@ -1964,7 +1980,7 @@
     "functionName": "SliderMid",
     "module": "samples:design-catalog-m3",
     "renderBasename": "SliderMid_Dark.png",
-    "sha256": "adf6e58b3780da5d1979e65c88379aba256f5d6a71518ff476b59b2a9531c4d5",
+    "sha256": "ea804f0fc7e380a7310bf00d80657692e4891a1a4241b72a9715424ebb76c9ee",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SliderMid_Light": {
@@ -1972,7 +1988,7 @@
     "functionName": "SliderMid",
     "module": "samples:design-catalog-m3",
     "renderBasename": "SliderMid_Light.png",
-    "sha256": "6330677aabc93cfd8041852058f339249d903272fe3462ed836cd2ae1684780e",
+    "sha256": "bdd05fbb1a0fe59c3652883d027b944fa3792578377a82045b38f62ebf80b8a1",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SwitchOff_Dark": {
@@ -2223,6 +2239,30 @@
     "sha256": "3672656f9dc85dfe5389d63b707b17d700885fca26574eb1e7eca6498d6530f9",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonScaffoldTemplate_Extra Large Round": {
+    "captureLabel": "scroll end",
+    "functionName": "EdgeButtonScaffoldTemplate",
+    "module": "samples:design-catalog-wear-m3",
+    "renderBasename": "EdgeButtonScaffoldTemplate_Extra_Large_Round.png",
+    "sha256": "2f7e1a8121198aa46d40376d6e210061afd80ff5dcf74e4c0f796eba3c8a47e4",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonScaffoldTemplate_Large Round": {
+    "captureLabel": "scroll end",
+    "functionName": "EdgeButtonScaffoldTemplate",
+    "module": "samples:design-catalog-wear-m3",
+    "renderBasename": "EdgeButtonScaffoldTemplate_Large_Round.png",
+    "sha256": "0cf3bf50a9377911d56d35223682b07f67bbfd804ab44c5f5d234f20f072d854",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonScaffoldTemplate_Small Round": {
+    "captureLabel": "scroll end",
+    "functionName": "EdgeButtonScaffoldTemplate",
+    "module": "samples:design-catalog-wear-m3",
+    "renderBasename": "EdgeButtonScaffoldTemplate_Small_Round.png",
+    "sha256": "ee8be9612959dfde3a7e8ecc3daf35411aee5c0042daf39b72d9ae61468add0b",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
+  },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Extra Large Round": {
     "captureLabel": "scroll end",
     "functionName": "EdgeButtonSticker",
@@ -2279,6 +2319,30 @@
     "sha256": "38990af2e331c1fb28d7f1235789be0fe78b204fbac32d72103cef246503f475",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Extra Large Round": {
+    "captureLabel": "",
+    "functionName": "PageIndicatorScaffoldTemplate",
+    "module": "samples:design-catalog-wear-m3",
+    "renderBasename": "PageIndicatorScaffoldTemplate_Extra_Large_Round.png",
+    "sha256": "39352bb7657931574d7651d46447f7e47c3ec8a82a277ef775172cb9eb209983",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Large Round": {
+    "captureLabel": "",
+    "functionName": "PageIndicatorScaffoldTemplate",
+    "module": "samples:design-catalog-wear-m3",
+    "renderBasename": "PageIndicatorScaffoldTemplate_Large_Round.png",
+    "sha256": "d235bd29a61556977d7e14f36af44c8c70f736a3e40d16a507b07457d0e6eb9d",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Small Round": {
+    "captureLabel": "",
+    "functionName": "PageIndicatorScaffoldTemplate",
+    "module": "samples:design-catalog-wear-m3",
+    "renderBasename": "PageIndicatorScaffoldTemplate_Small_Round.png",
+    "sha256": "8aad29baacb232d16068273b4bdc1bc8e3cb482d472239de7cd4d799d7f233cc",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
+  },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Extra Large Round": {
     "captureLabel": "",
     "functionName": "ScalingListSticker",
@@ -2325,6 +2389,30 @@
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "TextMaxLinesTruncated.png",
     "sha256": "b509a768f367ab8162ed810803c7ec22aac0727c6fffa564b5d0a7ad187d6449",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Extra Large Round": {
+    "captureLabel": "",
+    "functionName": "TimeTextScaffoldTemplate",
+    "module": "samples:design-catalog-wear-m3",
+    "renderBasename": "TimeTextScaffoldTemplate_Extra_Large_Round.png",
+    "sha256": "2165d91fac71e6b40aaf73d371a69b257501a4ec047cbd6b27b945fdcd1e14b8",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Large Round": {
+    "captureLabel": "",
+    "functionName": "TimeTextScaffoldTemplate",
+    "module": "samples:design-catalog-wear-m3",
+    "renderBasename": "TimeTextScaffoldTemplate_Large_Round.png",
+    "sha256": "c0fdd59a022c9b5976b9c9bd3106a89bfe80d87d662525ace8594e3984b57980",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Small Round": {
+    "captureLabel": "",
+    "functionName": "TimeTextScaffoldTemplate",
+    "module": "samples:design-catalog-wear-m3",
+    "renderBasename": "TimeTextScaffoldTemplate_Small_Round.png",
+    "sha256": "922b74fb71e28c3ee5781c614a4378901b22fe1c0af52c4d45ca1bff9c95632d",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.TitleCardSticker": {
