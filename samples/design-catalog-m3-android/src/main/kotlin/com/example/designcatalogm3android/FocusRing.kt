@@ -55,16 +55,6 @@ private fun FocusRingSticker(content: @Composable () -> Unit) {
   }
 }
 
-/** Light + dark, matching the CMP catalog's `@CatalogModes` so the folded variant carries both. */
-@Preview(name = "Light", showBackground = true, group = "modes")
-@Preview(
-  name = "Dark",
-  showBackground = true,
-  uiMode = Configuration.UI_MODE_NIGHT_YES,
-  group = "modes",
-)
-private annotation class FocusModes
-
 /** Seed a held [FocusInteraction.Focus] so the resting capture shows the focus ring active. */
 @Composable
 private fun focusedSource(): MutableInteractionSource {
@@ -78,7 +68,16 @@ private fun focusedSource(): MutableInteractionSource {
  * The function name **must** stay `FilledButtonFocused` — the generator folds this render onto the
  * `Button/Filled` component's `keyboard-focus` variant in `catalog.spec.json` by matching it.
  */
-@FocusModes
+// Light + dark, matching the CMP catalog's `@CatalogModes` so the folded variant carries both.
+// The `@Preview`s are inlined (not a shared multipreview annotation) so discovery reliably resolves
+// them on this single-preview module.
+@Preview(name = "Light", showBackground = true, group = "modes")
+@Preview(
+  name = "Dark",
+  showBackground = true,
+  uiMode = Configuration.UI_MODE_NIGHT_YES,
+  group = "modes",
+)
 @Composable
 fun FilledButtonFocused() =
   FocusRingSticker { Button(onClick = {}, interactionSource = focusedSource()) { Text("Focused") } }
