@@ -40,6 +40,39 @@ test("index emits no figma links when none were carried", () => {
   assert.doesNotMatch(html, /figma svg ↗/);
 });
 
+test("index renders the hero <img> when the catalog carries images (not 'no render')", () => {
+  // Regression: renderIndexHtml must be fed the serialized catalog (which carries component.images),
+  // not the in-memory one — else every card falls back to the shot--missing "no render" placeholder.
+  const withImages = {
+    system: "compose-m3",
+    title: "Compose M3",
+    components: [
+      {
+        componentId: "button-filled",
+        group: "Buttons",
+        images: [
+          {
+            path: "images/button-filled/ideal__default__light.png",
+            variant: "ideal",
+            width: 200,
+            height: 100,
+          },
+        ],
+      },
+    ],
+  };
+  const html = renderIndexHtml(withImages, {});
+  assert.match(html, /<img[^>]*src="images\/button-filled\/ideal__default__light\.png"/);
+  // The card figure must be the rendered `shot`, not the `shot shot--missing` "no render" fallback
+  // (the bare `.shot--missing` CSS class still appears in the <style> block — match the card only).
+  assert.doesNotMatch(html, /class="shot shot--missing"/);
+});
+
+test("index shows 'no render' only when a component truly has no images", () => {
+  const html = renderIndexHtml({ components: [{ componentId: "x", group: "G", images: [] }] }, {});
+  assert.match(html, /class="shot shot--missing"/);
+});
+
 test("README glance reports the editable design-vector (figma-svg) count", () => {
   const md = renderReadmeMd(catalog, { imageCount: 4, wireframeCount: 2, figmaSvgCount: 2 });
   assert.match(md, /Editable design vectors \(figma-svg\)/);
