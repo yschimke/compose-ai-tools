@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.16.20](https://github.com/yschimke/compose-ai-tools/compare/v0.16.19...v0.16.20) (2026-07-05)
+
+
+### Features
+
+* extract and serve named preview slots ([#2248](https://github.com/yschimke/compose-ai-tools/issues/2248)) ([182ab29](https://github.com/yschimke/compose-ai-tools/commit/182ab29f10149b9acaca43b3445ef050bd3c7c82))
+* **serve:** live-render a trusted catalog from its carried bundle, no build ([#2246](https://github.com/yschimke/compose-ai-tools/issues/2246)) ([111f3cb](https://github.com/yschimke/compose-ai-tools/commit/111f3cbff4377ff8218b0895d129b468674fd74b))
+
+
+### Bug Fixes
+
+* **serve:** bridge catalog ids to the live daemon so deep links keep resolving ([#2249](https://github.com/yschimke/compose-ai-tools/issues/2249)) ([ce55207](https://github.com/yschimke/compose-ai-tools/commit/ce55207fd28f7a10b3eb789b26128c2d0784c446))
+
 ## [0.16.19](https://github.com/yschimke/compose-ai-tools/compare/v0.16.18...v0.16.19) (2026-07-05)
 
 
