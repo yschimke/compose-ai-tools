@@ -1783,6 +1783,22 @@
     "sha256": "64537e736798f78dcf75a446cf2d300137445ea75564c68c4c3e0de154b6cbfd",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonIconLabel_Dark": {
+    "captureLabel": "",
+    "functionName": "FilledButtonIconLabel",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "FilledButtonIconLabel_Dark.png",
+    "sha256": "8c6161f1425ab857a8ea98254197525a64a2de260d7b368ed4cf0752dda51196",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonIconLabel_Light": {
+    "captureLabel": "",
+    "functionName": "FilledButtonIconLabel",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "FilledButtonIconLabel_Light.png",
+    "sha256": "8c6161f1425ab857a8ea98254197525a64a2de260d7b368ed4cf0752dda51196",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonPressed_Dark": {
     "captureLabel": "",
     "functionName": "FilledButtonPressed",
@@ -2604,7 +2620,7 @@
     "functionName": "ActivityListLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round.png",
-    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
+    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
