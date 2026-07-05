@@ -36,14 +36,19 @@ object FigmaLayeredSvg {
   )
 
   /**
-   * @param fontFaces downloadable faces to embed as `@font-face` (via `<defs><style>`) so the text
-   *   renders with the real typeface in Chromium/Figma instead of a substituted `sans-serif`. Empty
-   *   (default) keeps the export vector-only with no embedded fonts.
+   * @param fontFaces faces to embed as `@font-face` (via `<defs><style>`) so the text renders with
+   *   the real typeface in Chromium/Figma instead of a substituted `sans-serif`. Empty (default)
+   *   keeps the export vector-only with no embedded fonts.
+   * @param familyOverrides maps a text node's *captured* [FigmaSvgText.fontFamily] (e.g. the
+   *   absolute path of the font file the render loaded) to the family name to emit on the `<text>`
+   *   — so it matches the `@font-face` the producer embedded for that file. Unmapped families fall
+   *   back to [resolveFamily].
    */
   fun render(
     model: FigmaSvgModel,
     options: Options = Options(),
     fontFaces: List<FigmaSvgFontFace> = emptyList(),
+    familyOverrides: Map<String, String> = emptyMap(),
   ): String {
     val sb = StringBuilder()
     val rootFamily = if (fontFaces.isNotEmpty()) options.defaultFontFamily else "sans-serif"
@@ -58,13 +63,19 @@ object FigmaLayeredSvg {
     // import).
     sb.append("""<g transform="translate(${model.tx}, ${model.ty})">""")
     sb.append('\n')
-    renderLayer(model.root, sb, options, depth = 1)
+    renderLayer(model.root, sb, options, familyOverrides, depth = 1)
     sb.append("</g>\n")
     sb.append("</svg>\n")
     return sb.toString()
   }
 
-  private fun renderLayer(layer: FigmaSvgLayer, sb: StringBuilder, options: Options, depth: Int) {
+  private fun renderLayer(
+    layer: FigmaSvgLayer,
+    sb: StringBuilder,
+    options: Options,
+    familyOverrides: Map<String, String>,
+    depth: Int,
+  ) {
     val indent = "  ".repeat(depth)
     // An opaque layer is a leaf `<image>` — the background-free raster stands in for a subtree the
     // exporter can't vectorise. No shape/text/children; the group keeps the composable name.
@@ -89,9 +100,9 @@ object FigmaLayeredSvg {
       sb.append(indent).append("  ").append(shape(layer)).append('\n')
     }
     if (layer.text != null) {
-      sb.append(indent).append("  ").append(text(layer, options)).append('\n')
+      sb.append(indent).append("  ").append(text(layer, options, familyOverrides)).append('\n')
     }
-    for (child in layer.children) renderLayer(child, sb, options, depth + 1)
+    for (child in layer.children) renderLayer(child, sb, options, familyOverrides, depth + 1)
     sb.append("$indent</g>\n")
   }
 
@@ -154,12 +165,18 @@ object FigmaLayeredSvg {
 
   private data class Quad(val a: Double, val b: Double, val c: Double, val d: Double)
 
-  private fun text(layer: FigmaSvgLayer, options: Options): String {
+  private fun text(
+    layer: FigmaSvgLayer,
+    options: Options,
+    familyOverrides: Map<String, String>,
+  ): String {
     val t = layer.text!!
     val size = t.fontSizePx ?: options.defaultFontSizePx
     val baseline = layer.top + baselineOffset(t, size, (layer.bottom - layer.top).toDouble())
-    val family =
-      """ font-family="${escapeAttr(resolveFamily(t.fontFamily, options.defaultFontFamily))}""""
+    val familyName =
+      t.fontFamily?.let { familyOverrides[it] }
+        ?: resolveFamily(t.fontFamily, options.defaultFontFamily)
+    val family = """ font-family="${escapeAttr(familyName)}""""
     val weight = t.fontWeight?.let { """ font-weight="$it"""" } ?: ""
     val style = if (t.italic) """ font-style="italic"""" else ""
     val fill =
@@ -204,14 +221,24 @@ object FigmaLayeredSvg {
     return svgFontFamily(captured)
   }
 
-  /** `<defs><style>` with one `@font-face` per embedded face, WOFF2 as a base64 data URI. */
+  /** `<defs><style>` with one `@font-face` per embedded face, its bytes as a base64 data URI. */
   private fun fontFaceDefs(faces: List<FigmaSvgFontFace>): String = buildString {
     append("<defs><style>")
     for (f in faces) {
+      val mime =
+        when (f.format) {
+          "truetype" -> "font/ttf"
+          "opentype" -> "font/otf"
+          else -> "font/woff2"
+        }
       append("@font-face{font-family:'").append(cssFamily(f.family)).append("';")
       append("font-style:").append(if (f.italic) "italic" else "normal").append(';')
       append("font-weight:").append(f.weight).append(';')
-      append("src:url(data:font/woff2;base64,").append(f.woff2Base64).append(") format('woff2');}")
+      append("src:url(data:$mime;base64,")
+        .append(f.dataBase64)
+        .append(") format('")
+        .append(f.format)
+        .append("');}")
     }
     append("</style></defs>\n")
   }
