@@ -37,6 +37,10 @@ kotlin {
 
   sourceSets {
     commonMain.dependencies {
+      // The authoritative M3 component set (its `wasmJs` variant) — the same
+      // composables the desktop `:samples:design-catalog-m3` catalog renders, so
+      // the in-browser tier and the baked sticker sheet never drift.
+      implementation(project(":samples:design-catalog-m3-shared"))
       // The string-typed `compose.*` accessors are deprecated in CMP 1.10 in
       // favour of explicit coords, but the renamed coords aren't reliably
       // published to every mirror yet — mirror `:samples:cmp-shared` and accept

@@ -1,49 +1,41 @@
-// `:samples:design-catalog-m3` — a Compose Material 3 **design catalog**: one
-// `@Preview` per component in its primary modes, authored so the upstream
-// `compose-preview` renderer can turn the module into an importable sticker
-// sheet (see `@design-parity/catalog-export` in yschimke/design-parity).
+// `:samples:design-catalog-m3` — a Compose **Multiplatform (desktop)** design
+// catalog: one `@Preview` per component in its primary modes, authored so the
+// `compose-preview` renderer turns the module into an importable sticker sheet
+// (see `@design-parity/catalog-export` in yschimke/design-parity).
 //
 // This is the code-led source of truth for the M3 sticker sheet: the renders,
 // the `compose/theme` token set, the `compose/semantics-wireframe` layout
-// variant, and the a11y findings all come from these previews. Kept deliberately
-// thin — only `material3` + the preview tooling — so it builds against the stable
-// Compose BOM. M3 Adaptive (window-size canonical layouts) is a planned
-// follow-up; breakpoints are exercised here via `@Preview(widthDp = …)`.
+// variant, and the a11y findings all come from these previews. The component
+// bodies live once in `:samples:design-catalog-m3-shared` (`commonMain`), shared
+// with the in-browser wasm tier (`:samples:cmp-wasm-catalog`); this module owns
+// the `@Preview` sticker layer + theme.
+//
+// **It's a desktop CMP module, not Android** — it applies `org.jetbrains.compose`
+// without any AGP plugin, so the compose-preview plugin routes it to the Desktop
+// renderer (`ImageComposeScene`, no Robolectric / Android SDK). That's what lets
+// the public **desktop-only** preview server build + live re-render it via the
+// daemon (`serve --allow-render-trusted`), which it could never do while the
+// catalog was an Android module.
 plugins {
   id("composeai.base-conventions")
-  id("composeai.android-conventions")
-  alias(libs.plugins.android.application)
+  id("composeai.jvm-conventions")
+  alias(libs.plugins.kotlin.jvm)
+  alias(libs.plugins.compose.multiplatform)
   alias(libs.plugins.compose.compiler)
   id("ee.schimke.composeai.preview")
 }
 
-composePreview {
-  // Match the sibling Android sample: pin Robolectric to SDK 35 (the project
-  // toolchain is JDK 17; Robolectric SDK 36 needs JDK 21+). Drop when the
-  // toolchain moves to JDK 21.
-  sdkVersion.set(35)
-}
-
-android {
-  namespace = "com.example.designcatalogm3"
-
-  defaultConfig {
-    applicationId = "com.example.designcatalogm3"
-    targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
-  }
-
-  buildFeatures { compose = true }
-
-  testOptions { unitTests.all { it.jvmArgs("-Xmx2048m") } }
-}
-
 dependencies {
-  implementation(platform(libs.compose.bom.stable))
-  implementation(libs.compose.ui)
-  implementation(libs.compose.material3)
-  implementation(libs.compose.foundation)
-  implementation(libs.compose.ui.tooling.preview)
-  debugImplementation("androidx.compose.ui:ui-tooling")
+  // The shared, authoritative M3 component set (its `desktop` JVM variant).
+  implementation(project(":samples:design-catalog-m3-shared"))
+
+  // Desktop CMP compose — mirrors the sibling `:samples:cmp` desktop sample.
+  implementation(compose.desktop.currentOs)
+  implementation(libs.jetbrains.compose.material3)
+  implementation(libs.jetbrains.compose.foundation)
+  implementation(libs.jetbrains.compose.ui)
+  implementation(libs.jetbrains.compose.ui.tooling)
+  // Republishes `androidx.compose.ui.tooling.preview.Preview` — the FQN
+  // `PreviewDiscovery` scans for — on the desktop JVM target.
+  implementation(libs.jetbrains.compose.components.ui.tooling.preview)
 }

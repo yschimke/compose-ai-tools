@@ -176,8 +176,15 @@ include(":samples:android")
 
 // Compose Material 3 **design catalog** — one `@Preview` per component in its
 // primary modes, authored so the renderer can export the module as an importable
-// sticker sheet (see `docs/design/DESIGN_CATALOGS.md`).
+// sticker sheet (see `docs/design/DESIGN_CATALOGS.md`). Now a Compose Multiplatform
+// (desktop) module rendered by the desktop daemon (no Android SDK), so the public
+// desktop preview server can also build + live re-render it (`--allow-render-trusted`).
 include(":samples:design-catalog-m3")
+
+// Single source of truth for the M3 catalog component set — shared `commonMain`
+// composables consumed by both `:samples:design-catalog-m3` (desktop `@Preview`
+// sticker sheet + live render) and `:samples:cmp-wasm-catalog` (in-browser wasm).
+include(":samples:design-catalog-m3-shared")
 
 include(":samples:android-alpha")
 

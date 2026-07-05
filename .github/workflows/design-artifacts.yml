@@ -60,6 +60,17 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/install-cli
 
+      # `compose-m3` is now a Compose Multiplatform (desktop) catalog, so its
+      # render goes through the Skiko desktop daemon (CPU raster) instead of
+      # Robolectric. Skiko's native lib links libGL.so.1, so Mesa's software GL
+      # must be present (same deps ci.yml installs for desktop renders; the Wear /
+      # Remote Android rows don't need them, but the packages are harmless there).
+      - name: Install desktop (Skiko) render deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb libgl1 libglx-mesa0 libgl1-mesa-dri libfreetype6 libfontconfig1 fontconfig
+
       # The export engine lives in the (private) design-parity repo, but its
       # building blocks are published to npm. The driver
       # (scripts/design-artifacts/) pins @design-parity/candidate +
@@ -89,10 +100,17 @@ jobs:
           # renderer already uses for the PNGs, and degrades to `sans-serif` if the
           # face is unreachable — so this never fails a render, only improves it.
           JAVA_TOOL_OPTIONS: -Dcomposeai.figma.embedFonts=true
+          # Force Mesa's software GL path (no GPU on the runner) for the desktop
+          # Skiko render; inert for the Robolectric (Android) catalog rows.
+          LIBGL_ALWAYS_SOFTWARE: '1'
         run: |
           set -euo pipefail
-          compose-preview bundle pack --module "$MODULE" --with-semantics \
-            -o "$GITHUB_WORKSPACE/$SYSTEM-bundle.png"
+          # Run under a virtual framebuffer so the Skiko desktop daemon has a
+          # display (matches ci.yml's desktop-render jobs); harmless for the
+          # Robolectric rows, which don't touch it.
+          xvfb-run -a -s "-screen 0 2000x1400x24" \
+            compose-preview bundle pack --module "$MODULE" --with-semantics \
+              -o "$GITHUB_WORKSPACE/$SYSTEM-bundle.png"
 
       # In-browser CMP tier: assemble the Kotlin/Wasm catalog app (webpack-free —
       # no Node/Binaryen toolchain, builds under FAIL_ON_PROJECT_REPOS). Its

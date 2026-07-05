@@ -167,11 +167,15 @@ It is **off by default** and gated three ways, all fail-closed: the catalog must
 clear the `--revisions-allow` allowlist, and its `source.repo` must be the server's own repo.
 
 **Never enable it on a box that can't build the catalog source.** Building runs the source's Gradle
-(code execution), and the published catalogs are **Android** modules — the desktop-only public image
-(`deploy/image`, `preview.coo.ee`) has no Android toolchain, so it leaves `SERVE_ALLOW_RENDER_TRUSTED`
-**unset** and relies on the Wasm tier for CMP. Enable it only on a box with the matching toolchain
-(set `SERVE_ALLOW_RENDER_TRUSTED=1` + `SERVE_REVISIONS_ALLOW=main`), where the heavier per-session
-Gradle build + live render is acceptable.
+(code execution). The **`compose-m3`** catalog is a Compose **Multiplatform (desktop)** module
+(`:samples:design-catalog-m3`), so it builds and live-renders with just the JVM/Skiko desktop daemon
+— **no Android toolchain** — which is exactly why the from-source public box (`deploy/vps`,
+`preview.coo.ee`) now turns this on for it (`SERVE_ALLOW_RENDER_TRUSTED=1` +
+`SERVE_REVISIONS_ALLOW=main` + a `SERVE_LIVE_SEATS` cap). The other published catalogs
+(`wear-m3`, `remote-m3`) are still **Android** modules; on the desktop-only box their trusted build
+isn't attempted and they fall back to baked PNG (fail-closed) — no error, just no live tier for them.
+The prebuilt released image (`deploy/image`) leaves it unset until a CLI release carries these serve
+features. Only enable it where the per-session Gradle build + live render is affordable.
 
 ### Bounding the live tier — `--live-seats` / `SERVE_LIVE_SEATS`
 

@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.platform.Font
 import androidx.compose.ui.window.ComposeViewport
+import com.example.designcatalogm3.shared.catalogComponentIds
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.io.encoding.Base64
@@ -69,7 +70,7 @@ fun main() {
     }
     val loaded = fonts as? FontsState.Ready ?: return@ComposeViewport
     val params by renderParams
-    val id = params["id"] ?: catalogComponents.keys.first()
+    val id = params["id"] ?: catalogComponentIds.first()
     val dark = params["uiMode"] == "dark"
     // Clamp to the viewer slider's range so a crafted query can't blow up layout.
     val fontScale = params["fontScale"]?.toFloatOrNull()?.coerceIn(0.5f, 2.0f) ?: 1f

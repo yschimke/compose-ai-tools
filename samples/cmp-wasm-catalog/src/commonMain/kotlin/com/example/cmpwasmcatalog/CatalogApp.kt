@@ -1,39 +1,23 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
-
 package com.example.cmpwasmcatalog
 
-import androidx.compose.foundation.interaction.FocusInteraction
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,12 +34,20 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import com.example.designcatalogm3.shared.CatalogComponent
+import com.example.designcatalogm3.shared.LocalGenericFonts
+import com.example.designcatalogm3.shared.catalogComponentIds
+import com.example.designcatalogm3.shared.catalogTypography
 
 /**
  * Mounts one catalog component by id inside the M3 theme, centred on the surface. `dark` flips the
  * color scheme so the viewer's `uiMode` deep-link parameter maps straight through; [fontScale] and
  * [rtl] map the viewer's font-scale slider and locale control so those overrides drive the
  * in-browser render too. An unknown id renders a visible diagnostic rather than a blank canvas.
+ *
+ * The component body itself is [CatalogComponent] from `:samples:design-catalog-m3-shared` — the
+ * exact same composables the desktop `:samples:design-catalog-m3` sticker sheet bakes — with
+ * `interactive = true` so a visitor can toggle switches, drag sliders and watch progress animate.
  *
  * **Snapshot parity is the contract.** The baked catalog PNG is `CatalogSticker` — a wrap-content
  * `Surface` holding the component behind 16dp padding — cropped to its bounds. This app reproduces
@@ -90,9 +82,8 @@ fun CatalogApp(
   /**
    * Generic-family substitutes (`fonts.json` `role: "generic"`): family name (`serif`, `monospace`,
    * …) → the URL-loaded [FontFamily] holding the same files Android's system font table resolves
-   * that name to. Provided as [LocalGenericFonts], which [genericFontFamily] consults — see that
-   * local's kdoc for why this is a lookup, not resolver interception. Empty ⇒ skiko's own
-   * (bundled-font) fallback, as before.
+   * that name to. Provided as `LocalGenericFonts`, which `genericFontFamily` (in the shared module)
+   * consults. Empty ⇒ skiko's own (bundled-font) fallback, as before.
    */
   genericFamilies: Map<String, FontFamily> = emptyMap(),
   onFirstFrame: (() -> Unit)? = null,
@@ -114,8 +105,7 @@ fun CatalogApp(
     LocalGenericFonts provides genericFamilies,
   ) {
     MaterialTheme(colorScheme = scheme, typography = catalogTypography(fontFamily)) {
-      val component = catalogComponents[id]
-      if (component != null) {
+      if (id in catalogComponentIds) {
         Box(
           modifier =
             Modifier.fillMaxSize()
@@ -136,14 +126,14 @@ fun CatalogApp(
               Modifier.onGloballyPositioned { content = it.size }
                 .graphicsLayer(scaleX = scale, scaleY = scale)
           ) {
-            // The sticker itself — a 1:1 port of the Android catalog's CatalogSticker (Surface at
-            // its default colour + 16dp padding), so the box the snapshot baked is the box we
-            // draw.
+            // The sticker itself — a 1:1 port of the shared `CatalogSticker` (Surface at its
+            // default
+            // colour + 16dp padding), so the box the snapshot baked is the box we draw.
             Surface(
               color = if (showBackground) MaterialTheme.colorScheme.surface else Color.Transparent,
               contentColor = MaterialTheme.colorScheme.onSurface,
             ) {
-              Box(Modifier.padding(16.dp)) { component() }
+              Box(Modifier.padding(16.dp)) { CatalogComponent(id, interactive = true) }
             }
           }
         }
@@ -187,61 +177,6 @@ fun CatalogApp(
 }
 
 /**
- * Generic-family substitutes for the running catalog: family name (`serif`, `monospace`, …) → the
- * URL-loaded [FontFamily] holding the same files Android's system font table resolves that name to.
- * Empty (the default) ⇒ [genericFontFamily] falls back to skiko's own generic constants.
- *
- * A composition local rather than a wrapped `FontFamily.Resolver` because CMP's
- * `FontFamily.Resolver` is a **sealed** interface — it can't be implemented outside compose-ui, so
- * true resolver-level interception isn't available to apps. Catalog components therefore say
- * `genericFontFamily("serif")` where the Android catalog says `FontFamily.Serif`; the lookup is the
- * only permitted divergence between the two.
- */
-val LocalGenericFonts = staticCompositionLocalOf<Map<String, FontFamily>> { emptyMap() }
-
-/**
- * The [FontFamily] for a generic family [name], preferring the catalog's URL-loaded substitute
- * ([LocalGenericFonts]) and falling back to the platform's generic constant — which on skiko web
- * renders as the bundled default, since there are no system fonts to resolve against.
- */
-@Composable
-fun genericFontFamily(name: String): FontFamily =
-  LocalGenericFonts.current[name]
-    ?: when (name) {
-      "serif" -> FontFamily.Serif
-      "monospace" -> FontFamily.Monospace
-      "cursive" -> FontFamily.Cursive
-      else -> FontFamily.SansSerif
-    }
-
-/**
- * The stock M3 [Typography] with every style re-pointed at [fontFamily] — the type scale keeps its
- * real Material sizes/weights/line-heights, only the typeface changes (to the URL-loaded Roboto the
- * baked snapshots were rendered with). Null ⇒ the untouched default scale.
- */
-private fun catalogTypography(fontFamily: FontFamily?): Typography {
-  val base = Typography()
-  if (fontFamily == null) return base
-  return Typography(
-    displayLarge = base.displayLarge.copy(fontFamily = fontFamily),
-    displayMedium = base.displayMedium.copy(fontFamily = fontFamily),
-    displaySmall = base.displaySmall.copy(fontFamily = fontFamily),
-    headlineLarge = base.headlineLarge.copy(fontFamily = fontFamily),
-    headlineMedium = base.headlineMedium.copy(fontFamily = fontFamily),
-    headlineSmall = base.headlineSmall.copy(fontFamily = fontFamily),
-    titleLarge = base.titleLarge.copy(fontFamily = fontFamily),
-    titleMedium = base.titleMedium.copy(fontFamily = fontFamily),
-    titleSmall = base.titleSmall.copy(fontFamily = fontFamily),
-    bodyLarge = base.bodyLarge.copy(fontFamily = fontFamily),
-    bodyMedium = base.bodyMedium.copy(fontFamily = fontFamily),
-    bodySmall = base.bodySmall.copy(fontFamily = fontFamily),
-    labelLarge = base.labelLarge.copy(fontFamily = fontFamily),
-    labelMedium = base.labelMedium.copy(fontFamily = fontFamily),
-    labelSmall = base.labelSmall.copy(fontFamily = fontFamily),
-  )
-}
-
-/**
  * The serve viewer's stage checkerboard, replicated pixel-for-pixel: CSS
  * `repeating-conic-gradient(<odd> 0% 25%, <even> 0% 50%) / 16px 16px` — 8px squares where the
  * tile's top-left square is the [even] colour. [dark] follows the *page's* `prefers-color-scheme`
@@ -273,68 +208,5 @@ private fun Modifier.stageCheckerboard(dark: Boolean, phase: Offset): Modifier =
     }
     y += cell
     row++
-  }
-}
-
-// --- Interactive state holders: a browser visitor can actually toggle these. ---
-
-@Composable
-fun StatefulCheckbox(initial: Boolean) {
-  var checked by remember { mutableStateOf(initial) }
-  Checkbox(checked = checked, onCheckedChange = { checked = it })
-}
-
-@Composable
-fun StatefulSwitch(initial: Boolean) {
-  var on by remember { mutableStateOf(initial) }
-  Switch(checked = on, onCheckedChange = { on = it })
-}
-
-@Composable
-fun StatefulSlider() {
-  var value by remember { mutableFloatStateOf(0.5f) }
-  Slider(value = value, onValueChange = { value = it })
-}
-
-@Composable
-fun StatefulFilterChip(initial: Boolean) {
-  var selected by remember { mutableStateOf(initial) }
-  FilterChip(selected = selected, onClick = { selected = !selected }, label = { Text("Filter") })
-}
-
-// --- Held interaction sources: seed a state so the resting state layer matches the catalog. ---
-
-@Composable
-fun pressedSource(): MutableInteractionSource {
-  val source = remember { MutableInteractionSource() }
-  LaunchedEffect(source) { source.emit(PressInteraction.Press(Offset.Zero)) }
-  return source
-}
-
-@Composable
-fun focusedSource(): MutableInteractionSource {
-  val source = remember { MutableInteractionSource() }
-  LaunchedEffect(source) { source.emit(FocusInteraction.Focus()) }
-  return source
-}
-
-@Composable
-fun SegmentedToggle() {
-  var selected by remember { mutableStateOf(0) }
-  SingleChoiceSegmentedButtonRow {
-    SegmentedButton(
-      selected = selected == 0,
-      onClick = { selected = 0 },
-      shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-    ) {
-      Text("On")
-    }
-    SegmentedButton(
-      selected = selected == 1,
-      onClick = { selected = 1 },
-      shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-    ) {
-      Text("Off")
-    }
   }
 }
