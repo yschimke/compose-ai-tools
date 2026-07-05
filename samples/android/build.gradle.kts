@@ -57,6 +57,18 @@ dependencies {
   implementation(libs.compose.ui)
   implementation(libs.compose.material3)
   implementation(libs.compose.ui.tooling.preview)
+  // `FontPreviewWrapper` extends `PreviewWrapperProvider`, which only exists in
+  // ui-tooling-preview 1.11+. The stable BOM above pins the older annotations-only artifact, so
+  // pin the 1.11 variant `compileOnly` (same shape as `:renderer-android`'s
+  // `SystemBarsPreviewWrapper`). It's an annotation/interface-only artifact — nothing extra ships
+  // in the APK.
+  compileOnly(libs.compose.ui.tooling.preview.wrapper)
+  // …and put it on the unit-test runtime too. The renderer loads `FontPreviewWrapper` reflectively
+  // from `wrapperClassName` during `composePreviewRender` (a Test task, `renderBeforeUnitTests`),
+  // and instantiating it needs its super-interface `PreviewWrapperProvider` on the runtime
+  // classpath. Without this, a BOM whose `ui-tooling-preview` lacks the class would make the
+  // wrapper silently fail to load (render falls back to no wrapper) instead of showing the font.
+  testImplementation(libs.compose.ui.tooling.preview.wrapper)
   implementation(libs.compose.foundation)
   implementation(libs.activity.compose)
   // NavHost-based sample (`NavHostPreview.kt`) exercises the daemon's

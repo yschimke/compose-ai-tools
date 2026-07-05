@@ -163,6 +163,11 @@ object PreviewDiscovery {
   // PreviewWrapperProvider. Matched by FQN so older apps (no such class on classpath)
   // simply never surface the annotation and discovery is a no-op.
   private const val PREVIEW_WRAPPER_FQN = "androidx.compose.ui.tooling.preview.PreviewWrapper"
+  // Project-side companion to @PreviewWrapper that also targets ANNOTATION_CLASS, so a
+  // multi-preview meta-annotation can declare the wrapper once (androidx's @PreviewWrapper is
+  // @Target(FUNCTION)-only and can't be hoisted). Carries the provider FQN as a String — see
+  // `PreviewWrapperClass.kt`. FQN-matched like the other project annotations.
+  private const val PREVIEW_WRAPPER_CLASS_FQN = "ee.schimke.composeai.preview.PreviewWrapperClass"
   // Our own opt-in for scrolling-screenshot capture. Matched by FQN so projects
   // that don't depend on `ee.schimke.composeai:preview-annotations` are unaffected.
   private const val SCROLLING_PREVIEW_FQN = "ee.schimke.composeai.preview.ScrollingPreview"
@@ -1223,7 +1228,7 @@ object PreviewDiscovery {
     // `@AnimatedPreview` is single-shot (one GIF per function) so it doesn't
     // fan out, but follows the same "one annotation per function, applies to
     // every preview expansion" policy.
-    val wrapperFqn = extractWrapperFqn(annotations)
+    val wrapperFqn = extractWrapperFqn(method, scanResult)
     val scrollSpecs = extractScrollSpecs(annotations)
     val animationSpec = extractAnimationSpec(annotations)
     val focusSpecs = extractFocusSpecs(annotations)
@@ -1841,15 +1846,75 @@ object PreviewDiscovery {
     return items.mapNotNull { it.parameterValues.getValue("advanceTimeMillis") as? Long }
   }
 
-  private fun extractWrapperFqn(annotations: List<AnnotationInfo>): String? {
-    val wrapperAnn = annotations.firstOrNull { it.name == PREVIEW_WRAPPER_FQN } ?: return null
-    // The `wrapper: KClass<out PreviewWrapperProvider>` parameter surfaces as an
-    // AnnotationClassRef — pull the FQN without triggering classloading.
-    return when (val value = wrapperAnn.parameterValues.getValue("wrapper")) {
-      is AnnotationClassRef -> value.name
-      is String -> value
-      else -> null
+  /**
+   * Resolves the `PreviewWrapperProvider` FQN for [method]'s previews.
+   *
+   * Must work off the method's **direct** annotations, not `method.annotationInfo` — ClassGraph
+   * flattens the whole meta-annotation closure into that list, so a function tagged with both a
+   * direct `@PreviewWrapperClass` and a multi-preview annotation that *also* hoists one would show
+   * two indistinguishable `@PreviewWrapperClass` entries and the direct-wins precedence would be
+   * decided by list order. `directOnly()` restores the distinction: a wrapper written directly on
+   * the function wins; otherwise it's inherited from a multi-preview annotation that hoists one.
+   */
+  private fun extractWrapperFqn(method: MethodInfo, scanResult: ScanResult): String? {
+    val directAnnotations = method.annotationInfo?.directOnly()?.toList() ?: emptyList()
+    // A wrapper declared directly on the function (androidx `@PreviewWrapper` or our
+    // `@PreviewWrapperClass`) wins over any inherited from a multi-preview meta-annotation.
+    directWrapperFqn(directAnnotations)?.let { return it }
+    // Otherwise inherit from a multi-preview annotation that carries the wrapper. androidx's
+    // `@PreviewWrapper` is `@Target(FUNCTION)`-only so it can never legally sit on an annotation
+    // class, but our `@PreviewWrapperClass` can — hoisting the wrapper onto the multi-preview
+    // saves repeating it on every tagged function.
+    val visited = mutableSetOf<String>()
+    for (ann in directAnnotations) {
+      wrapperFromMetaAnnotation(ann, scanResult, visited)?.let { return it }
     }
+    return null
+  }
+
+  /**
+   * Reads a wrapper FQN from a direct annotation list — androidx `@PreviewWrapper(wrapper = …)`
+   * first (its `KClass` surfaces as an [AnnotationClassRef]), then our
+   * `@PreviewWrapperClass(wrapperClassName = …)` (a plain String). Returns `null` if neither is
+   * present.
+   */
+  private fun directWrapperFqn(annotations: List<AnnotationInfo>): String? {
+    annotations.firstOrNull { it.name == PREVIEW_WRAPPER_FQN }?.let { ann ->
+      // The `wrapper: KClass<out PreviewWrapperProvider>` parameter surfaces as an
+      // AnnotationClassRef — pull the FQN without triggering classloading.
+      return when (val value = ann.parameterValues.getValue("wrapper")) {
+        is AnnotationClassRef -> value.name
+        is String -> value
+        else -> null
+      }
+    }
+    annotations.firstOrNull { it.name == PREVIEW_WRAPPER_CLASS_FQN }?.let { ann ->
+      return ann.parameterValues.getValue("wrapperClassName") as? String
+    }
+    return null
+  }
+
+  /**
+   * Recursively searches a multi-preview meta-annotation (and its own meta-annotations) for a
+   * hoisted wrapper declaration, mirroring [resolveMultiPreview]'s traversal + cycle guard. Skips
+   * `@Preview` itself and its repeatable container — a wrapper only ever rides on a custom
+   * multi-preview annotation.
+   */
+  private fun wrapperFromMetaAnnotation(
+    ann: AnnotationInfo,
+    scanResult: ScanResult,
+    visited: MutableSet<String>,
+  ): String? {
+    if (ann.name in visited) return null
+    if (isDirectPreview(ann) || isPreviewContainer(ann)) return null
+    visited.add(ann.name)
+    val annClassInfo = scanResult.getClassInfo(ann.name) ?: return null
+    val metaAnns = annClassInfo.annotationInfo.toList()
+    directWrapperFqn(metaAnns)?.let { return it }
+    for (metaAnn in metaAnns) {
+      wrapperFromMetaAnnotation(metaAnn, scanResult, visited)?.let { return it }
+    }
+    return null
   }
 
   /**
