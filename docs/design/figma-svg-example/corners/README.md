@@ -14,3 +14,17 @@ Both panels are the exported `compose/figma-svg` for the same filled box; the on
 the raw-pixel corner now survives capture (`ModifierTokenResolver.cornerRadiusPxWire` reflects the
 `PxCornerSize`) and maps straight to the layer's radii (`rx="20"`). The dp path is unchanged and still
 wins when both are present; the dp-only token-compliance consumer ignores the new field.
+
+## Cut corners (`CutCornerShape`)
+
+`CutCornerShape` reports its corner size on `cornerRadius` (like a rounded shape) plus a
+`shape="cut"` descriptor. The export used to ignore the descriptor and *round* the corner, so a
+bevelled component rendered wrong. The renderer now draws straight chamfer segments (a `<path>` with
+line commands, not arcs) when the shape is cut.
+
+| Before — `shape="cut"` ignored (rounded) | After — chamfered |
+|---|---|
+| ![before](cut-corner-before.png) | ![after](cut-corner-after.png) |
+
+Same corner size, same box; the only difference is that a cut corner now bevels instead of rounding
+(`…H96 L120,24 V96 L96,120…` — straight cuts). Rounded and circle shapes are unchanged.
