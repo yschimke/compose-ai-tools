@@ -198,6 +198,43 @@ class RenderEngineTest {
   }
 
   @Test
+  fun figmaSvgExportRoundsRawPixelCorner() {
+    // End-to-end raw-pixel corner: a real render of a box clipped with `RoundedCornerShape(20f)`
+    // (a PxCornerSize, which the dp `cornerRadius` token can't express) must export a *rounded*
+    // rect, not a sharp one. Exercises the whole chain — ModifierTokenResolver.cornerRadiusPxWire
+    // reflecting the PxCornerSize → the `cornerRadiusPx` token → FigmaSvgModel → the rounded SVG.
+    val outputDir = tempFolder.newFolder("renders-px-corner")
+    val dataDir = tempFolder.newFolder("data-px-corner")
+    val engine = RenderEngine(outputDir = outputDir, dataDir = dataDir)
+    val host = DesktopHost(engine = engine)
+    host.start()
+    try {
+      val request =
+        RenderRequest.Render(
+          payload =
+            "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+              "functionName=PxCornerSquare;" +
+              "widthPx=100;heightPx=100;density=1.0;" +
+              "showBackground=true;" +
+              "outputBaseName=px-corner"
+        )
+      host.submit(request, timeoutMs = 60_000)
+
+      val figma = File(File(dataDir, "px-corner"), "compose-figma.svg")
+      assertTrue("figma layered SVG must be produced: ${figma.absolutePath}", figma.exists())
+      val figmaSvg = figma.readText()
+      // The 20px corner is uniform, so the renderer emits a rounded `<rect rx ry>` — its presence
+      // proves the raw-px corner survived instead of dropping to a sharp rectangle.
+      assertTrue(
+        "figma SVG must round the RoundedCornerShape(20f) corner (rx=20), got:\n$figmaSvg",
+        figmaSvg.contains("""rx="20""""),
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
   fun figmaSvgFidelityScoresARender() {
     // End-to-end fidelity harness: with -Dcomposeai.figma.fidelity=true, a real render of a
     // composite themed card must, alongside the SVG, drop a `render | figma-svg | diff` composite

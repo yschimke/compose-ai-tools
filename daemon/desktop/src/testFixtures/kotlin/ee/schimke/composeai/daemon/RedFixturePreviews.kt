@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -100,6 +101,21 @@ fun FidelityCardPreview() {
         Box(modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.primary))
       }
     }
+  }
+}
+
+/**
+ * Raw-pixel corner fixture for the figma-svg export: a filled box clipped with
+ * `RoundedCornerShape(20f)` — a **pixel** corner (`PxCornerSize`), not dp. The dp `cornerRadius`
+ * token can't express it, so before the raw-px capture the export dropped it to a sharp rect; now
+ * `ModifierTokenResolver.cornerRadiusPxWire` reads the `PxCornerSize` and the export rounds it.
+ * Used by [RenderEngineTest.figmaSvgExportRoundsRawPixelCorner] — the padding keeps the rounded
+ * edge off the canvas edge so it's unmistakable in the SVG.
+ */
+@Composable
+fun PxCornerSquare() {
+  Box(modifier = Modifier.fillMaxSize().padding(10.dp)) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF6750A4), RoundedCornerShape(20f)))
   }
 }
 

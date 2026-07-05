@@ -177,6 +177,73 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun rawPixelCornerRadiusRendersRoundedRectWithoutDensityScaling() {
+    // `RoundedCornerShape(20f)` rides on `cornerRadiusPx` (not the dp `cornerRadius`) and is
+    // already
+    // in layer-space pixels — so it renders at 20, not 20*density, even at density 2.
+    val svg =
+      render(
+        layoutNode(
+          "PxRounded",
+          0,
+          0,
+          100,
+          100,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FFFFFFFF", cornerRadiusPx = "20.0px"),
+        ),
+        density = 2f,
+      )
+    assertTrue(svg.contains("""rx="20""""))
+    assertTrue(svg.contains("""ry="20""""))
+  }
+
+  @Test
+  fun nonUniformPxCornersBecomeAPath() {
+    val svg =
+      render(
+        layoutNode(
+          "TopPxRounded",
+          0,
+          0,
+          100,
+          100,
+          tokens =
+            ComposeSemanticsTokens(
+              backgroundColor = "#FFFFFFFF",
+              cornerRadiusPx = "20.0px,20.0px,0.0px,0.0px",
+            ),
+        )
+      )
+    assertTrue(svg.contains("<path"))
+    assertTrue(svg.contains(" A")) // arc commands for the rounded corners
+  }
+
+  @Test
+  fun dpCornerRadiusWinsOverPxWhenBothPresent() {
+    // Defensive: a shape resolvable to dp keeps the dp path (density-scaled), never the px
+    // fallback.
+    val svg =
+      render(
+        layoutNode(
+          "BothCorners",
+          0,
+          0,
+          100,
+          100,
+          tokens =
+            ComposeSemanticsTokens(
+              backgroundColor = "#FFFFFFFF",
+              cornerRadius = "8.0dp",
+              cornerRadiusPx = "20.0px",
+            ),
+        ),
+        density = 2f,
+      )
+    assertTrue(svg.contains("""rx="16"""")) // 8dp * 2 density, not the 20px fallback
+    assertFalse(svg.contains("""rx="20""""))
+  }
+
+  @Test
   fun nonUniformCornersBecomeAPath() {
     val svg =
       render(

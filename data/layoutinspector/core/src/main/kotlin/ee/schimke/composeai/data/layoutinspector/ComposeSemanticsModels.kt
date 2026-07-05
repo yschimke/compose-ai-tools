@@ -29,7 +29,10 @@ object ComposeSemanticsProduct {
   // (`ignoreUnknownKeys`) into the v6 model — so diffing a render across the bump won't surface
   // changes to those text fields. The loss is a one-time artifact of the consolidation, accepted
   // rather than carrying a legacy decode path; entries captured at v6+ diff normally.
-  const val SCHEMA_VERSION: Int = 6
+  // v7 (#1908 follow-up): tokens may carry `cornerRadiusPx` — the raw-pixel corner radius of a
+  // `RoundedCornerShape(<px>f)` that the dp-only `cornerRadius` couldn't express. Additive; older
+  // entries decode with `cornerRadiusPx = null`.
+  const val SCHEMA_VERSION: Int = 7
   const val FILE: String = "compose-semantics.json"
 }
 
@@ -42,7 +45,10 @@ object LayoutInspectorProduct {
   // onto `compose/semantics`). They stay mirrored on `compose/semantics` for the design-parity
   // consumer; both products feed the same `ModifierTokenResolver`. Additive — older
   // `layout-inspector.json` parses with `tokens = null`.
-  const val SCHEMA_VERSION: Int = 2
+  // v3 (#1908 follow-up): `tokens` may carry `cornerRadiusPx` (raw-pixel
+  // `RoundedCornerShape(<px>f)`
+  // corners the dp-only `cornerRadius` dropped). Additive — older entries parse with it null.
+  const val SCHEMA_VERSION: Int = 3
   const val FILE: String = "layout-inspector.json"
 }
 
@@ -236,6 +242,16 @@ data class ComposeSemanticsTokens(
    * (`RoundedCornerShape(12f)`) stay null — they can't be expressed as a fixed dp.
    */
   val cornerRadius: String? = null,
+  /**
+   * Resolved corner radius in **raw pixels** for a `RoundedCornerShape` built from pixel corner
+   * sizes (`RoundedCornerShape(20f)` / any `PxCornerSize`), which [cornerRadius] can't express as a
+   * fixed dp and drops. Same uniform-or-four-comma shape as [cornerRadius] but each value carries a
+   * `px` suffix (`"20.0px"`, or `"20.0px,10.0px,0.0px,0.0px"` top-start → bottom-start). Populated
+   * only when every corner is a pixel corner; a dp/percent `RoundedCornerShape` uses [cornerRadius]
+   * instead. The figma-svg export works in captured-pixel space, so this maps straight to the
+   * layer's corner radii with no density round-trip; the dp token-compliance consumer ignores it.
+   */
+  val cornerRadiusPx: String? = null,
   /**
    * Shape-family descriptor for shapes whose radius isn't a single dp number (issue #1908):
    * `"circle"` for a `CircleShape` / all-`CornerSize(50%)` rounded shape, `"cut"` for a
