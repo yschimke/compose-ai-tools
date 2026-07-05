@@ -20,4 +20,22 @@ data class ServeSessionState(
   val previews: List<ServePreview>,
   /** Human label for the tenant (e.g. the module's Gradle path, or `module@rev`). */
   val label: String,
+  /**
+   * Optional **catalog-id → daemon-preview-id** alias map, set only for a trusted-catalog live
+   * session ([ServeCatalogStore] / [ServeBundleDaemon]). The daemon knows previews by their
+   * function-based descriptor id (`FilledButton_Dark`), but the published catalog links and image
+   * routes use the componentId-slug id (`button-filled__ideal__default__dark`). This maps the
+   * latter to the former so the live host answers the published URLs. Empty for plain project /
+   * revision sessions (whose ids already match). See [bakedFallback].
+   */
+  val previewAliases: Map<String, String> = emptyMap(),
+  /**
+   * Optional factory for a **baked-PNG fallback host** covering catalog ids the daemon can't render
+   * (e.g. the Android-only inset focus-ring variant, absent from the desktop bundle). Set only for
+   * a trusted-catalog live session: [openHost][ServeCommand] wraps the daemon [ServeRenderHost] and
+   * this fallback in a [ServeCatalogLiveHost] so browsing, deep links, and thumbnails resolve to
+   * the baked catalog exactly as before while the mapped ids gain a live lane. Rebuilt on each
+   * resume (the baked dir persists), so suspend/resume is preserved. Null for plain sessions.
+   */
+  val bakedFallback: (() -> ServeHost)? = null,
 )

@@ -259,6 +259,67 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
 }
 // --- end vendored join --------------------------------------------------------
 
+/**
+ * Theme of a daemon preview id. The catalog's multipreview (`@CatalogModes` /
+ * `@CatalogTemplate`) renders each function in `name = "Light"` / `name = "Dark"`
+ * variants, so the discovered preview id ends with the mode
+ * (`FilledButton_Light` / `FilledButton_Dark`) — the same signal `layoutByFunction`
+ * keys off. Returns "light"/"dark", or null for an un-themed id.
+ */
+function themeOfPreviewId(id) {
+  const s = String(id ?? "").toLowerCase();
+  if (s.endsWith("dark")) return "dark";
+  if (s.endsWith("light")) return "light";
+  return null;
+}
+
+/**
+ * Bridge the two id namespaces so a trusted live serve can answer the published
+ * catalog URLs. A daemon knows previews by their function-based descriptor id
+ * (`FilledButton_Dark`); the published links/routes use the componentId-slug id
+ * derived from `image.path` (`button-filled__ideal__default__dark`). For each
+ * catalog image, resolve `(componentId, state)` → the spec's `@Preview` function,
+ * then `(function, theme)` → the desktop daemon preview id in the bundle, and
+ * record it as `image.previewId`. `ServeCatalogStore.previewAliasFor` reads it back.
+ *
+ * Skips images with no desktop source: a state whose function isn't in the bundle
+ * (nothing to run) and any function replaced by the Android-only supplement
+ * (`overriddenFunctions` — its baked pixels, e.g. the inset focus ring, differ from
+ * what the desktop daemon would draw). Those stay baked-PNG only, with no live lane.
+ */
+function bridgeLivePreviewIds(manifest, spec, bundle, overriddenFunctions) {
+  const previewForState = new Map();
+  for (const group of spec.groups ?? []) {
+    for (const component of group.components ?? []) {
+      previewForState.set(`${component.componentId} default`, component.preview);
+      for (const v of component.variants ?? []) {
+        if (v.state && v.preview) {
+          previewForState.set(`${component.componentId} ${v.state}`, v.preview);
+        }
+      }
+    }
+  }
+  const daemonIdFor = new Map();
+  for (const preview of bundle.previews ?? []) {
+    const fn = preview.functionName ?? preview.id;
+    const theme = themeOfPreviewId(preview.id);
+    if (theme) daemonIdFor.set(`${fn} ${theme}`, preview.id);
+  }
+  let mapped = 0;
+  for (const component of manifest.components ?? []) {
+    for (const image of component.images ?? []) {
+      const fn = previewForState.get(`${component.componentId} ${image.state ?? "default"}`);
+      if (!fn || overriddenFunctions.has(fn)) continue;
+      const daemonId = image.theme ? daemonIdFor.get(`${fn} ${image.theme}`) : undefined;
+      if (daemonId) {
+        image.previewId = daemonId;
+        mapped++;
+      }
+    }
+  }
+  console.log(`[${spec.system}] bridged ${mapped} live preview id(s) → daemon`);
+}
+
 const { values } = parseArgs({
   options: {
     spec: { type: "string" },
@@ -327,9 +388,14 @@ const { candidates, bundle } = await loadCandidates(rendersPath);
 // Android-only render (the material3 1.5.0-alpha inset focus ring, which CMP can't
 // draw) replace the CMP module's render of that function — so a mostly-CMP catalog
 // still carries the real focus-ring variant. The supplement's render + semantics win.
+// Functions whose render was replaced by the Android-only supplement. Their baked pixels differ
+// from what the desktop daemon (`bundle.previews`) would draw (e.g. the focus ring CMP can't paint),
+// so the live-preview bridge below MUST NOT map them to a desktop preview — they stay baked-only.
+const overriddenFunctions = new Set();
 if (values["extra-renders"]) {
   const { candidates: extra } = await loadCandidates(resolve(values["extra-renders"]));
   const overridden = new Set(extra.map(functionOf));
+  for (const fn of overridden) overriddenFunctions.add(fn);
   for (let i = candidates.length - 1; i >= 0; i--) {
     if (overridden.has(functionOf(candidates[i]))) candidates.splice(i, 1);
   }
@@ -470,6 +536,13 @@ if (values["publish-live-bundle"]) {
       module: values["source-module"],
     };
     console.log(`[${spec.system}] source → ${manifest.source.module}@${manifest.source.ref}`);
+  }
+  // Emit the catalog-id → daemon-id bridge whenever a live path can serve this catalog — a carried
+  // liveBundle OR a buildable source. A source-only catalog (wear-m3 / remote-m3) needs the aliases
+  // too: `ServeCatalogStore` builds the alias solely from `image.previewId`, so without this a
+  // `--allow-render-trusted` box would pay the Gradle build yet reach the daemon for no catalog id.
+  if (liveBundle || values["source-module"]) {
+    bridgeLivePreviewIds(manifest, spec, bundle, overriddenFunctions);
   }
   await writeFile(catalogJsonPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 }

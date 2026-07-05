@@ -7,6 +7,7 @@ import ee.schimke.composeai.cli.serve.ServeBundle
 import ee.schimke.composeai.cli.serve.ServeBundleDaemon
 import ee.schimke.composeai.cli.serve.ServeBundleHost
 import ee.schimke.composeai.cli.serve.ServeBundleStore
+import ee.schimke.composeai.cli.serve.ServeCatalogLiveHost
 import ee.schimke.composeai.cli.serve.ServeCatalogStore
 import ee.schimke.composeai.cli.serve.ServeHost
 import ee.schimke.composeai.cli.serve.ServeHttpServer
@@ -323,14 +324,23 @@ class ServeCommand(args: List<String>) : Command(args) {
     // saved state, so a long-lived server doesn't keep daemons running forever.
     val openHost: (ServeSessionState) -> ServeHost? = { state ->
       runCatching {
-          ServeRenderHost.open(
-            descriptorPath = state.descriptor,
-            workspaceRoot = state.workspaceRoot,
-            workspaceName = state.workspaceName,
-            previews = state.previews,
-            label = state.label,
-            onLog = { System.err.println("[daemon serve] $it") },
-          )
+          val daemon =
+            ServeRenderHost.open(
+              descriptorPath = state.descriptor,
+              workspaceRoot = state.workspaceRoot,
+              workspaceName = state.workspaceName,
+              previews = state.previews,
+              label = state.label,
+              onLog = { System.err.println("[daemon serve] $it") },
+            )
+          // A trusted-catalog live session carries a baked-PNG fallback + a catalog-id→daemon-id
+          // alias: front the daemon with the baked catalog so the published /p/<id> deep links and
+          // /render/<id>.png thumbnails resolve (and the Android-only variants fall back to baked),
+          // while the mapped ids gain a live lane. Rebuilt here on every resume, so suspend/resume
+          // works unchanged. Plain project / revision sessions carry no fallback → the bare daemon.
+          val fallback = state.bakedFallback
+          if (fallback != null) ServeCatalogLiveHost(state.previewAliases, daemon, fallback())
+          else daemon
         }
         .getOrNull()
     }
@@ -616,11 +626,19 @@ class ServeCommand(args: List<String>) : Command(args) {
             "serve: catalog $system carries an in-browser Wasm app (/wasm/$system/)"
           )
         },
-        buildTrustedBundle = { system, bundleFile ->
-          buildTrustedCatalogBundle(system, bundleFile, registry, openHost)
+        buildTrustedBundle = { system, bundleFile, alias, bakedFallback ->
+          buildTrustedCatalogBundle(system, bundleFile, alias, bakedFallback, registry, openHost)
         },
-        buildTrustedSource = { system, source ->
-          buildTrustedCatalogSource(system, source, registry, worktrees, openHost)
+        buildTrustedSource = { system, source, alias, bakedFallback ->
+          buildTrustedCatalogSource(
+            system,
+            source,
+            alias,
+            bakedFallback,
+            registry,
+            worktrees,
+            openHost,
+          )
         },
       )
     for (ref in catalogRefs) {
@@ -655,6 +673,8 @@ class ServeCommand(args: List<String>) : Command(args) {
   private fun buildTrustedCatalogBundle(
     system: String,
     bundleFile: File,
+    alias: Map<String, String>,
+    bakedFallback: () -> ServeHost,
     registry: ServeSessionRegistry,
     openHost: (ServeSessionState) -> ServeHost?,
   ): Boolean {
@@ -663,7 +683,14 @@ class ServeCommand(args: List<String>) : Command(args) {
       java.nio.file.Files.createTempDirectory("serve-catalog-bundle-$system").toFile().also {
         it.deleteOnExit()
       }
-    val state = ServeBundleDaemon.materialize(bundleFile, destDir, system) ?: return false
+    // Carry the catalog-id→daemon-id alias + the baked-PNG fallback on the state so openHost fronts
+    // the daemon with the baked catalog: the published /p/<id> deep links + /render/<id>.png
+    // thumbnails keep resolving (Android-only variants fall back to baked), while the mapped ids
+    // get
+    // a live lane. See ServeCatalogLiveHost.
+    val state =
+      ServeBundleDaemon.materialize(bundleFile, destDir, system)
+        ?.copy(previewAliases = alias, bakedFallback = bakedFallback) ?: return false
     val host = openHost(state) ?: return false
     registry.register(system, state, host = host)
     System.err.println("serve: catalog $system → LIVE from bundle (no build) (?session=$system)")
@@ -681,6 +708,8 @@ class ServeCommand(args: List<String>) : Command(args) {
   private fun buildTrustedCatalogSource(
     system: String,
     source: ServeCatalogStore.CatalogSource,
+    alias: Map<String, String>,
+    bakedFallback: () -> ServeHost,
     registry: ServeSessionRegistry,
     worktrees: GitWorktrees?,
     openHost: (ServeSessionState) -> ServeHost?,
@@ -733,6 +762,11 @@ class ServeCommand(args: List<String>) : Command(args) {
         workspaceName = built.moduleDir.name,
         previews = built.previews,
         label = "$system@${source.ref}",
+        // Same catalog-id bridge + baked fallback as the bundle path (a source build's daemon uses
+        // the same function-based ids), so a live source-rebuilt catalog also answers the published
+        // URLs and falls back to baked PNGs for ids it can't render.
+        previewAliases = alias,
+        bakedFallback = bakedFallback,
       )
     val host = openHost(state) ?: return false
     registry.register(system, state, host = host)
