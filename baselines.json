@@ -2028,7 +2028,7 @@
     "functionName": "SlottedCardSlotsSticker",
     "module": "samples:design-catalog-m3",
     "renderBasename": "SlottedCardSlotsSticker_Dark.png",
-    "sha256": "bf99f320d6d499260b04fbe293a5bcd5de284b1d0269bad804db54213e5130c5",
+    "sha256": "a781ca528d4976ee5d6805be5ac5f8167e91905ac58d966930946944f04219df",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SlottedCardSlotsSticker_Light": {
@@ -2036,7 +2036,7 @@
     "functionName": "SlottedCardSlotsSticker",
     "module": "samples:design-catalog-m3",
     "renderBasename": "SlottedCardSlotsSticker_Light.png",
-    "sha256": "bf99f320d6d499260b04fbe293a5bcd5de284b1d0269bad804db54213e5130c5",
+    "sha256": "a781ca528d4976ee5d6805be5ac5f8167e91905ac58d966930946944f04219df",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SlottedCardSticker_Dark": {
@@ -2652,7 +2652,7 @@
     "functionName": "ActivityListLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round.png",
-    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
+    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
