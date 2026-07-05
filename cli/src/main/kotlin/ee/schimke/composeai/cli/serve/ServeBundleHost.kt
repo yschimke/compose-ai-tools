@@ -4,8 +4,11 @@ import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamFrameParams
 import ee.schimke.composeai.data.overrides.PreviewOverridesPayload
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.json.Json
+import okio.FileSystem
+import okio.Path.Companion.toOkioPath
 
 /**
  * A [ServeHost] backed by a **portable bundle** on disk (the `ServeBundle` / WebEmbed layout:
@@ -37,6 +40,13 @@ class ServeBundleHost(
    * `catalog.json`'s `library`. Null when the catalog declares none (or for a plain bundle).
    */
   val subtitle: String? = null,
+  /**
+   * The local dir holding a catalog's `figma/<slug>.svg` exports (+ `<slug>.figma-raster/` crops),
+   * populated by [ServeCatalogStore]. When set, {@link renderSvg} serves the baked editable vector
+   * per preview; null for a plain uploaded bundle (which then 404s the `.svg` lane).
+   */
+  private val figmaDir: File? = null,
+  private val fileSystem: FileSystem = SystemFileSystem,
 ) : ServeHost {
 
   private val previewsDir = File(bundleDir, PREVIEWS_SUBDIR)
@@ -61,11 +71,11 @@ class ServeBundleHost(
   private fun readOverrides(
     id: String
   ): List<ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration> {
-    val sidecar = File(previewsDir, "$id$OVERRIDES_SUFFIX")
-    if (!sidecar.isFile) return emptyList()
+    val sidecar = File(previewsDir, "$id$OVERRIDES_SUFFIX").toOkioPath()
+    if (!fileSystem.exists(sidecar)) return emptyList()
     return try {
-      OVERRIDES_JSON.decodeFromString(PreviewOverridesPayload.serializer(), sidecar.readText())
-        .declarations
+      val json = fileSystem.read(sidecar) { readUtf8() }
+      OVERRIDES_JSON.decodeFromString(PreviewOverridesPayload.serializer(), json).declarations
     } catch (e: Exception) {
       emptyList()
     }
@@ -75,9 +85,29 @@ class ServeBundleHost(
 
   override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
     if (previewId !in previewIds) return RenderOutcome.NotFound
-    val png = File(previewsDir, "$previewId$PNG_SUFFIX")
-    if (!png.isFile) return RenderOutcome.NotFound
-    return RenderOutcome.Ok(png.readBytes())
+    val png = File(previewsDir, "$previewId$PNG_SUFFIX").toOkioPath()
+    if (!fileSystem.exists(png)) return RenderOutcome.NotFound
+    return RenderOutcome.Ok(fileSystem.read(png) { readByteArray() })
+  }
+
+  /**
+   * Serve the baked `compose/figma-svg` export for [previewId] from the catalog's [figmaDir], with
+   * its hybrid raster crops inlined so the SVG is self-contained. The SVG is per component **slug**
+   * (`figma/<slug>.svg`) and a preview id folds the slug + variant (`<slug>__<variant>`), so the
+   * slug is the id up to the first `__`. [SvgOutcome.NotFound] for a plain bundle (no [figmaDir]),
+   * an unknown id, or a preview whose component carried no figma-svg. Overrides don't apply
+   * (static).
+   */
+  override fun renderSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome {
+    val figma = figmaDir ?: return SvgOutcome.NotFound
+    if (previewId !in previewIds) return SvgOutcome.NotFound
+    val svgFile =
+      File(figma, "${previewId.substringBefore(SLUG_SEPARATOR)}$SVG_SUFFIX").toOkioPath()
+    if (!fileSystem.exists(svgFile)) return SvgOutcome.NotFound
+    val svg = fileSystem.read(svgFile) { readUtf8() }
+    return SvgOutcome.Ok(
+      inlineFigmaRasters(fileSystem, figma.toOkioPath(), svg).encodeToByteArray()
+    )
   }
 
   /**
@@ -100,6 +130,9 @@ class ServeBundleHost(
   companion object {
     private const val PREVIEWS_SUBDIR = "previews"
     private const val PNG_SUFFIX = ".png"
+    private const val SVG_SUFFIX = ".svg"
+    /** A preview id folds the component slug and variant as `<slug>__<variant>`. */
+    private const val SLUG_SEPARATOR = "__"
     private const val OVERRIDES_SUFFIX = ".overrides.json"
     private val OVERRIDES_JSON = Json { ignoreUnknownKeys = true }
 
