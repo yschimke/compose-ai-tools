@@ -83,6 +83,18 @@ class ServeCommand(args: List<String>) : Command(args) {
   private val allowRenderTrusted: Boolean = "--allow-render-trusted" in args
 
   /**
+   * Optional git repo root the trusted-catalog builder ([buildTrustedCatalogSource]) and its
+   * [GitWorktrees] use, instead of the served module's own project root ([findProjectRoot]). Lets a
+   * box whose primary `--module` is a standalone project (e.g. the prebuilt `deploy/image`, which
+   * serves a self-contained `sample-project`) still live-render a fetched catalog by pointing this
+   * at a separate checkout of the catalog's `source.repo` (which the entrypoint clones). The
+   * `source.repo == `[catalogRepo] and `--revisions-allow` gates are unchanged — this only moves
+   * the worktree root. Off ⇒ the served module's project root, as before.
+   */
+  private val catalogSourceRoot: File? =
+    args.flagValue("--catalog-source-root")?.takeIf { it.isNotBlank() }?.let { File(it) }
+
+  /**
    * Project mode revision policy (SECURITY/RCE): comma-separated refs whose history a requested
    * `?session=<rev>` must be reachable from to be checked out and built. Empty = nothing builds
    * (fail closed), since building runs that revision's Gradle. e.g. `--revisions-allow
@@ -322,11 +334,23 @@ class ServeCommand(args: List<String>) : Command(args) {
         .getOrNull()
     }
     // Project mode forks a session per git revision behind the registry's factory; off by default
-    // the factory yields nothing, so only the pinned current checkout is served.
-    // Worktrees back both project-mode revisions and the trusted-catalog source build; either flag
-    // opens them (gated by the same --revisions-allow ref allowlist).
-    val worktrees: GitWorktrees? =
-      if (revisions || allowRenderTrusted) openWorktrees(module) else null
+    // the factory yields nothing, so only the pinned current checkout is served. These worktrees
+    // are
+    // rooted at the served module's own project (`?session=<rev>` builds that module).
+    val worktrees: GitWorktrees? = if (revisions) openWorktrees(module) else null
+    // The trusted-catalog builder's worktrees. Rooted at --catalog-source-root when set (a separate
+    // checkout of the catalog's source repo — e.g. a prebuilt image serving a standalone module),
+    // else the served-project root (reusing [worktrees] when --revisions already opened one). Kept
+    // SEPARATE from [worktrees] so combining --revisions with --catalog-source-root still roots
+    // `?session=<rev>` at the served project rather than the catalog checkout. Both are gated by
+    // the
+    // same --revisions-allow ref allowlist.
+    val catalogWorktrees: GitWorktrees? =
+      when {
+        !allowRenderTrusted -> null
+        catalogSourceRoot != null -> openWorktrees(module, rootOverride = catalogSourceRoot)
+        else -> worktrees ?: openWorktrees(module)
+      }
     // The `?session=<rev>` factory (project mode) is gated on --revisions ONLY — NOT merely on
     // worktrees existing. Otherwise `--allow-render-trusted` (which also opens worktrees, but just
     // to
@@ -357,7 +381,8 @@ class ServeCommand(args: List<String>) : Command(args) {
     // A catalog that carries a `web/wasm/` app yields a system→dir entry so the in-browser tier
     // rides the same trusted branch (no local --wasm-dir build needed).
     val catalogWasm =
-      if (catalogRefs.isNotEmpty()) registerCatalogs(registry, worktrees, openHost) else emptyMap()
+      if (catalogRefs.isNotEmpty()) registerCatalogs(registry, catalogWorktrees, openHost)
+      else emptyMap()
     // Runtime ingestion (--accept-bundles): clients POST a bundle (or a ?url= to one) and it's
     // registered as a pinned session. Unpacked under a temp dir for this server's lifetime.
     val bundleStore =
@@ -442,6 +467,7 @@ class ServeCommand(args: List<String>) : Command(args) {
           runCatching { server.stop() }
           runCatching { registry.close() }
           runCatching { worktrees?.close() }
+          runCatching { if (catalogWorktrees !== worktrees) catalogWorktrees?.close() }
           done.countDown()
         }
       )
@@ -485,9 +511,12 @@ class ServeCommand(args: List<String>) : Command(args) {
   }
 
   /** Open the worktree manager rooted at the repo (project mode), gated to the allowed refs. */
-  private fun openWorktrees(module: PreviewModule): GitWorktrees {
+  private fun openWorktrees(module: PreviewModule, rootOverride: File? = null): GitWorktrees {
     val repoRoot =
-      findProjectRoot() ?: module.projectDir.absoluteFile.parentFile ?: module.projectDir
+      rootOverride
+        ?: findProjectRoot()
+        ?: module.projectDir.absoluteFile.parentFile
+        ?: module.projectDir
     if (revisionAllowRefs.isEmpty()) {
       System.err.println(
         "serve: --revisions has no --revisions-allow refs; no revision will build (fail closed). " +
@@ -631,7 +660,7 @@ class ServeCommand(args: List<String>) : Command(args) {
       return false
     }
     if (source.ref.isBlank() || source.module.isBlank()) return false
-    val repoRoot = findProjectRoot() ?: return false
+    val repoRoot = catalogSourceRoot ?: findProjectRoot() ?: return false
     // The ref allowlist is enforced here (fail-closed): null = unresolvable or not in
     // --revisions-allow.
     val worktree =
@@ -844,6 +873,13 @@ class ServeCommand(args: List<String>) : Command(args) {
                           box that can't build the catalog source (e.g. the desktop-only public
                           image can't build the Android catalogs) — leave it off and let the
                           in-browser Wasm tier carry CMP.
+        --catalog-source-root <dir>
+                          Git repo root the trusted-catalog builder (--allow-render-trusted)
+                          worktrees + builds from, instead of the served --module's own project. Use
+                          when --module is a standalone project but the catalog's source.repo is a
+                          separate checkout (e.g. a prebuilt image serving sample-project that clones
+                          the CMP catalog repo for live render). The trust + same-repo + ref-allowlist
+                          gates are unchanged.
         --live-seats <n>  Cap concurrent live (daemon-backed) stream sessions. Each seat holds a JVM
                           Compose daemon, so on a small box bound this (e.g. 1–2) when the live tier
                           is on (--allow-render-trusted) — an over-cap stream is refused (WS 1013)

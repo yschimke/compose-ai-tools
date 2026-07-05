@@ -174,8 +174,17 @@ clear the `--revisions-allow` allowlist, and its `source.repo` must be the serve
 `SERVE_REVISIONS_ALLOW=main` + a `SERVE_LIVE_SEATS` cap). The other published catalogs
 (`wear-m3`, `remote-m3`) are still **Android** modules; on the desktop-only box their trusted build
 isn't attempted and they fall back to baked PNG (fail-closed) — no error, just no live tier for them.
-The prebuilt released image (`deploy/image`) leaves it unset until a CLI release carries these serve
-features. Only enable it where the per-session Gradle build + live render is affordable.
+The prebuilt released image (`deploy/image`) serves a standalone `sample-project`, not a checkout of
+the catalog's source repo, so the trusted builder has nothing to worktree from by default. It can
+still opt in: set `SERVE_ALLOW_RENDER_TRUSTED=1` + `SERVE_REVISIONS_ALLOW=main` +
+`SERVE_CATALOG_SOURCE_REPO=yschimke/compose-ai-tools` (+ a `SERVE_LIVE_SEATS` cap), and the entrypoint
+**clones that repo at startup** and points `serve` at it with **`--catalog-source-root`** — so the
+CMP `compose-m3` catalog live-renders while the Android catalogs stay baked-PNG (fail-closed). The
+trade-off: the trusted build runs at startup, so the first boot after enabling (and after each
+Watchtower image update) does a one-time cold Gradle build of the catalog (minutes) before serving,
+and it needs a CLI release carrying `--catalog-source-root`. Left off, the image keeps its fast
+snapshot + in-browser-Wasm posture (CMP stays interactive via the Wasm tier). Only enable it where
+that per-boot build + live render is affordable.
 
 ### Bounding the live tier — `--live-seats` / `SERVE_LIVE_SEATS`
 

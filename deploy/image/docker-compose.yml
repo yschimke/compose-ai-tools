@@ -40,11 +40,24 @@ services:
       # Unused in public mode; required only when SERVE_PUBLIC=0.
       SERVE_TOKEN: "${SERVE_TOKEN:-}"
       SERVE_IDLE_EXIT: "0"
-      # Live (daemon-backed) preview tier — OFF by default (snapshot + in-browser Wasm only). To
-      # offer live CMP-JVM streaming on this box, set SERVE_ALLOW_RENDER_TRUSTED=1 (+ its ref
-      # allowlist) and cap the seats: each seat is a JVM Compose daemon, so on this 4 GB / 2 vCPU box
-      # keep it small (1–2). An over-cap viewer is refused (WS 1013) instead of OOM-ing the box.
-      # Flip on with a compose redeploy: set these in .env, then `docker compose up -d`.
+      # Live (daemon-backed) preview tier — OFF by default (snapshot + in-browser Wasm only, which
+      # already makes the CMP screens interactive). To offer server-side live CMP-JVM streaming on
+      # this prebuilt box, set ALL of:
+      #   SERVE_ALLOW_RENDER_TRUSTED=1
+      #   SERVE_REVISIONS_ALLOW=main               # the trusted source-ref allowlist
+      #   SERVE_CATALOG_SOURCE_REPO=yschimke/compose-ai-tools   # cloned at startup to build from
+      #   SERVE_LIVE_SEATS=1                        # each seat is a JVM daemon; cap it on a 4 GB box
+      # The image serves a standalone /project, so the entrypoint CLONES the catalog's source repo
+      # and points serve at it (--catalog-source-root); only the CMP `compose-m3` catalog is
+      # desktop-buildable here (the Android catalogs stay baked-PNG, fail-closed). NOTE: the trusted
+      # build runs at startup, so the first boot after enabling — and after each image update —
+      # does a one-time cold Gradle build of the catalog (minutes) before serving. Needs a CLI
+      # release carrying --catalog-source-root (this image's CP_VERSION). Flip on via .env, then
+      # `docker compose up -d`. Leave unset to keep the fast snapshot+Wasm posture.
+      SERVE_ALLOW_RENDER_TRUSTED: "${SERVE_ALLOW_RENDER_TRUSTED:-}"
+      SERVE_REVISIONS_ALLOW: "${SERVE_REVISIONS_ALLOW:-}"
+      SERVE_CATALOG_SOURCE_REPO: "${SERVE_CATALOG_SOURCE_REPO:-}"
+      SERVE_CATALOG_SOURCE_REF: "${SERVE_CATALOG_SOURCE_REF:-}"
       SERVE_LIVE_SEATS: "${SERVE_LIVE_SEATS:-}"
       PORT: "8080"
     # To pin your OWN producers, mount a trust store over the baked one and keep
