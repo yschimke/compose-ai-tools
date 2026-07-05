@@ -518,6 +518,16 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "FontWrapperShowcasePreview_Dark.a11y.png",
+      "cleanBasename": "FontWrapperShowcasePreview_Dark.png",
+      "findings": [],
+      "functionName": "FontWrapperShowcasePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.FontPreviewShowcaseKt.FontWrapperShowcasePreview_Dark",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/FontPreviewShowcase.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "GlanceWeatherWidgetPreview_Glance_widget_4_2.a11y.png",
       "cleanBasename": "GlanceWeatherWidgetPreview_Glance_widget_4_2.png",
       "findings": [],
@@ -1441,6 +1451,26 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "SvgBadgePreview.a11y.png",
+      "cleanBasename": "SvgBadgePreview.png",
+      "findings": [],
+      "functionName": "SvgBadgePreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.SvgPreviewsKt.SvgBadgePreview",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/SvgPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "SvgStarTintedPreview.a11y.png",
+      "cleanBasename": "SvgStarTintedPreview.png",
+      "findings": [],
+      "functionName": "SvgStarTintedPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.SvgPreviewsKt.SvgStarTintedPreview",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/SvgPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "",
       "cleanBasename": "",
       "findings": [],
@@ -1459,6 +1489,16 @@
       "previewId": "com.example.samplecmp.PreviewsKt.WallpaperDemoPreview_Wallpaper Demo",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt",
       "variant": ""
+    },
+    {
+      "annotatedBasename": "AppScaffoldTemplate_Dark.a11y.png",
+      "cleanBasename": "AppScaffoldTemplate_Dark.png",
+      "findings": [],
+      "functionName": "AppScaffoldTemplate",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.AppScaffoldTemplate_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": "pixel_8"
     },
     {
       "annotatedBasename": "AssistChipSticker_Dark.a11y.png",
@@ -1501,7 +1541,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "CircularProgressSticker_Dark.a11y.png",
+      "annotatedBasename": "",
       "cleanBasename": "CircularProgressSticker_Dark.png",
       "findings": [],
       "functionName": "CircularProgressSticker",
@@ -1621,7 +1661,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "LinearProgressSticker_Dark.a11y.png",
+      "annotatedBasename": "",
       "cleanBasename": "LinearProgressSticker_Dark.png",
       "findings": [],
       "functionName": "LinearProgressSticker",
@@ -1683,15 +1723,7 @@
     {
       "annotatedBasename": "SegmentedToggle_Dark.a11y.png",
       "cleanBasename": "SegmentedToggle_Dark.png",
-      "findings": [
-        {
-          "boundsInScreen": "164,43,279,169",
-          "level": "ERROR",
-          "message": "This item's width is 44dp. Consider making the width of this touch target 48dp or larger.",
-          "type": "TouchTargetSizeCheck",
-          "viewDescription": "android.view.View"
-        }
-      ],
+      "findings": [],
       "functionName": "SegmentedToggle",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.SegmentedToggle_Dark",
@@ -2007,6 +2039,16 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "PageIndicatorScaffoldTemplate_Large_Round.a11y.png",
+      "cleanBasename": "PageIndicatorScaffoldTemplate_Large_Round.png",
+      "findings": [],
+      "functionName": "PageIndicatorScaffoldTemplate",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Large Round",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "variant": "wearos_large_round"
+    },
+    {
       "annotatedBasename": "ScalingListSticker_Large_Round.a11y.png",
       "cleanBasename": "ScalingListSticker_Large_Round.png",
       "findings": [],
@@ -2045,6 +2087,16 @@
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TextMaxLinesTruncated",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
+    },
+    {
+      "annotatedBasename": "TimeTextScaffoldTemplate_Large_Round.a11y.png",
+      "cleanBasename": "TimeTextScaffoldTemplate_Large_Round.png",
+      "findings": [],
+      "functionName": "TimeTextScaffoldTemplate",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Large Round",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "variant": "wearos_large_round"
     },
     {
       "annotatedBasename": "TitleCardSticker.a11y.png",
