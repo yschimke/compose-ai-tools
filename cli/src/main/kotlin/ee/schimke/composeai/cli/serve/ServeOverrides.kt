@@ -54,6 +54,7 @@ object ServeOverrides {
       "heightPx",
       "orientation",
       "inspectionMode",
+      "slotMode",
     )
 
   /**
@@ -145,6 +146,19 @@ object ServeOverrides {
           }
         }
 
+    val slotMode =
+      params["slotMode"]
+        ?.takeIf { it.isNotBlank() }
+        ?.let {
+          when (it.lowercase()) {
+            "true",
+            "1" -> true
+            "false",
+            "0" -> false
+            else -> return OverrideParse.Invalid("slotMode must be a boolean, got '$it'")
+          }
+        }
+
     // Named-override knobs (`knob.<key>=<kind>:<value>`). A malformed typed value is a hard
     // Invalid (mirrors the numeric fields) rather than a silently-dropped edit.
     val namedOverrides = mutableMapOf<String, PreviewOverrideValue>()
@@ -191,6 +205,7 @@ object ServeOverrides {
         orientation = orientation,
         device = params["device"]?.takeIf { it.isNotBlank() },
         inspectionMode = inspectionMode,
+        slotMode = slotMode,
         namedOverrides = namedOverrides.ifEmpty { null },
       )
     )
@@ -214,6 +229,7 @@ object ServeOverrides {
       append("or=").append(o.orientation).append('|')
       append("dev=").append(o.device).append('|')
       append("insp=").append(o.inspectionMode).append('|')
+      append("slot=").append(o.slotMode).append('|')
       // Named overrides participate so a knob edit isn't coalesced onto the prior render. Sorted by
       // key for order-independence; the value data classes have stable toString.
       append("named=")

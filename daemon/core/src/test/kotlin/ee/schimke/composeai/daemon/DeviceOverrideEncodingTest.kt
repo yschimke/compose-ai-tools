@@ -96,6 +96,13 @@ class DeviceOverrideEncodingTest {
     assertContainsToken("inspectionMode=false", captured)
   }
 
+  @Test(timeout = 30_000)
+  fun slotModeOverrideThreadsThroughPayload() {
+    val captured = renderAndCapturePayload(overrides = """{"slotMode":true}""")
+
+    assertContainsToken("slotMode=true", captured)
+  }
+
   private fun assertContainsToken(token: String, payload: String) {
     val tokens = payload.split(';')
     assertTrue(

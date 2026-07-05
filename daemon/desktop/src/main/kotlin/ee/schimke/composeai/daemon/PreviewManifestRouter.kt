@@ -147,6 +147,7 @@ class PreviewManifestRouter(
             inbound["orientation"]?.let { append("orientation=").append(it).append(';') }
             inbound["captureAdvanceMs"]?.let { append("captureAdvanceMs=").append(it).append(';') }
             inbound["inspectionMode"]?.let { append("inspectionMode=").append(it).append(';') }
+            inbound["slotMode"]?.let { append("slotMode=").append(it).append(';') }
             inbound["overrides"]?.let { append("overrides=").append(it).append(';') }
             // `@PreviewWrapper(SomeProvider::class)` FQN sourced from `previews.json` (the
             // gradle plugin's `extractWrapperFqn` reads it off the class-file annotation tables
