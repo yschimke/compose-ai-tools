@@ -109,10 +109,37 @@ resolved token:
 ![Rendered preview vs semantics wireframe vs layout-inspector wireframe, for
 SegmentedButton and AssistChip](layout-wireframe-evidence.png)
 
+## Scaffold templates
+
+Beyond the per-component stickers, each catalog ships a **Scaffold templates**
+group: full-screen, pre-built screen skeletons an app copies whole, captured as
+a real screenshot (PNG, plus the layered `compose/figma-svg` vector). They sit on
+their own full-screen frame rather than the centred component sticker:
+
+- **Compose M3** — `FullScreenM3` places a template on a phone with
+  `showSystemUi = true`, so the renderer's `SystemBarsFrame` paints the OS status
+  bar (clock, battery) and gesture-pill nav around it; the wrapper reserves
+  `SYSTEM_BAR_INSET` top/bottom so the app's own chrome clears that overlay. The
+  `Template/AppScaffold` template is a `TopAppBar` + list + FAB — the canonical
+  "full screen layout with a status bar", rendered light + dark.
+- **Wear M3** — `WearScaffoldTemplate` supplies just the dark theme; each template
+  composes its own `AppScaffold(timeText = { … })` so the curved `TimeText` status
+  strip is part of the capture (unlike the `FullScreenWear` stickers, which drop
+  the clock). A frozen `10:10` keeps renders deterministic. Three variants cover
+  the status-strip archetypes: `Template/TimeText` (base list screen),
+  `Template/PageIndicator` (horizontal pager + `HorizontalPageIndicator`), and
+  `Template/EdgeButton` (list anchored by the screen-hugging `EdgeButton`), each
+  captured at every round breakpoint.
+
+Sample renders: [`scaffold-templates/`](scaffold-templates/).
+
 ## Adding a component
 
 1. Author a `@Composable` wrapped in the module's sticker theme, annotated with
-   `@CatalogModes` (and extra `@Preview`s for states / breakpoints).
+   `@CatalogModes` (and extra `@Preview`s for states / breakpoints). Full-screen
+   templates use the full-screen frame + multipreview instead — `FullScreenM3` +
+   `@CatalogTemplate` (M3) or `WearScaffoldTemplate` + `@CatalogWearBreakpoints`
+   (Wear).
 2. Add it to `catalog.spec.json` under its group with a caption and, if known,
    the seed-kit frame reference.
 3. The next render + export picks it up automatically — no harness change.
