@@ -40,6 +40,19 @@ compose-bom-stable = "2026.06.00"
 # raising the supported-Compose-minimum is a manual decision.
 compose-bom-compat = "2025.11.01"
 compose-multiplatform = "1.10.3"
+# The Compose M3 design catalog (`:samples:design-catalog-m3`) pins material3
+# FORWARD of `compose-bom-stable` (which carries 1.4.0) solely for the Material 3
+# **inset focus ring** APIs — `LocalRippleThemeConfiguration` +
+# `RippleDefaults.InsetFocusRingRippleThemeConfiguration`, added in
+# material3 1.5.0-alpha18. The catalog documents the focus indicator the design
+# system now ships, so it needs the real API; the override is scoped to that one
+# module (its build.gradle.kts) and nothing else in the repo rides the alpha.
+# Pinned to alpha18 specifically: it's the release that ADDED the inset ring while
+# still building on Compose 1.11.0-beta02 (compileSdk 36). alpha19+ jump to Compose
+# 1.12.0-alpha, which requires compileSdk 37 and would drag the whole module's
+# floor forward. Drop this and revert to `libs.compose.material3` once material3
+# 1.5.0 is stable in `compose-bom-stable`.
+compose-material3-catalog = "1.5.0-alpha18"
 # JetBrains Compose Multiplatform material3 tracks its own line: the
 # `org.jetbrains.compose` 1.10.3 plugin pins `compose.material3` to 1.9.0
 # (material3 multiplatform 1.10.x is still alpha), so the explicit coordinate
@@ -244,6 +257,10 @@ compose-bom-compat = { module = "androidx.compose:compose-bom", version.ref = "c
 compose-ui = { module = "androidx.compose.ui:ui" }
 compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
 compose-material3 = { module = "androidx.compose.material3:material3" }
+# Version-pinned material3 for the M3 design catalog's inset focus ring (see the
+# `compose-material3-catalog` version note). Overrides the stable BOM's 1.4.0 for
+# `:samples:design-catalog-m3` only.
+compose-material3-catalog = { module = "androidx.compose.material3:material3", version.ref = "compose-material3-catalog" }
 compose-foundation = { module = "androidx.compose.foundation:foundation" }
 compose-runtime = { module = "androidx.compose.runtime:runtime" }
 compose-runtime-tracing = { module = "androidx.compose.runtime:runtime-tracing" }
