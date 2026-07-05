@@ -584,6 +584,103 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
+  fun `composePreviewDiscover hoists PreviewWrapperClass from a multi-preview annotation`() {
+    val projectDir = createCmpTestProject()
+
+    // Stub our own @PreviewWrapperClass under its real FQN so the test doesn't need the
+    // preview-annotations artifact on the fixture classpath — same self-contained approach the
+    // @PreviewWrapper test below uses for the androidx annotation.
+    val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+    annDir.mkdirs()
+    File(annDir, "PreviewWrapperClass.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)
+        annotation class PreviewWrapperClass(val wrapperClassName: String)
+        """
+          .trimIndent()
+      )
+
+    // A multi-preview annotation that carries the wrapper once — no @PreviewWrapper on the
+    // function. Discovery must hoist `wrapperClassName` onto every expansion.
+    val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
+    srcFile.writeText(
+      """
+      package test
+
+      import androidx.compose.foundation.background
+      import androidx.compose.foundation.layout.Box
+      import androidx.compose.foundation.layout.size
+      import androidx.compose.runtime.Composable
+      import androidx.compose.ui.Modifier
+      import androidx.compose.ui.graphics.Color
+      import androidx.compose.ui.tooling.preview.Preview
+      import androidx.compose.ui.unit.dp
+      import ee.schimke.composeai.preview.PreviewWrapperClass
+
+      @Preview(name = "Light", backgroundColor = 0xFFFFFFFF, showBackground = true)
+      @Preview(name = "Dark", backgroundColor = 0xFF000000, showBackground = true)
+      @PreviewWrapperClass("test.FontWrapper")
+      annotation class FontPreview
+
+      @FontPreview
+      @Composable
+      fun HoistedPreview() {
+          Box(modifier = Modifier.size(50.dp).background(Color.Red))
+      }
+
+      // A wrapper declared directly on the function wins over the one hoisted from @FontPreview.
+      @FontPreview
+      @PreviewWrapperClass("test.OverrideWrapper")
+      @Composable
+      fun OverriddenPreview() {
+          Box(modifier = Modifier.size(50.dp).background(Color.Green))
+      }
+
+      @Preview
+      @Composable
+      fun PlainPreview() {
+          Box(modifier = Modifier.size(50.dp).background(Color.Blue))
+      }
+      """
+        .trimIndent()
+    )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+
+    val hoisted = manifest.previews.filter { it.functionName == "HoistedPreview" }
+    assertThat(hoisted).hasSize(2)
+    // The wrapper declared once on @FontPreview lands on every expansion.
+    assertThat(hoisted.map { it.params.wrapperClassName })
+      .containsExactly("test.FontWrapper", "test.FontWrapper")
+
+    // A direct @PreviewWrapperClass on the function overrides the hoisted one on every expansion.
+    val overridden = manifest.previews.filter { it.functionName == "OverriddenPreview" }
+    assertThat(overridden).hasSize(2)
+    assertThat(overridden.map { it.params.wrapperClassName })
+      .containsExactly("test.OverrideWrapper", "test.OverrideWrapper")
+
+    // A plain preview elsewhere in the module is unaffected.
+    val plain = manifest.previews.single { it.functionName == "PlainPreview" }
+    assertThat(plain.params.wrapperClassName).isNull()
+  }
+
+  @Test
   fun `composePreviewDiscover captures PreviewWrapper provider FQN`() {
     val projectDir = createCmpTestProject()
 
