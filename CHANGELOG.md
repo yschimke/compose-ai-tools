@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.16.18](https://github.com/yschimke/compose-ai-tools/compare/v0.16.17...v0.16.18) (2026-07-05)
+
+
+### Features
+
+* **design-catalog:** make compose-m3 a CMP catalog + enable live daemon render ([#2239](https://github.com/yschimke/compose-ai-tools/issues/2239)) ([8697aa0](https://github.com/yschimke/compose-ai-tools/commit/8697aa0307d8536b0a76bbce774bacce4f6c34f9))
+* **serve:** serve figma-svg per preview via /render/&lt;id&gt;.svg ([#2240](https://github.com/yschimke/compose-ai-tools/issues/2240)) ([57616a5](https://github.com/yschimke/compose-ai-tools/commit/57616a5d56ab72d6e6cc81913ac9a95ba1f572b5))
+
+
+### Bug Fixes
+
+* **figma-svg:** keep serif/monospace text families instead of collapsing to sans ([#2238](https://github.com/yschimke/compose-ai-tools/issues/2238)) ([5185307](https://github.com/yschimke/compose-ai-tools/commit/51853077f5335d9a746469491236d26c86bff5ad))
+
 ## [0.16.17](https://github.com/yschimke/compose-ai-tools/compare/v0.16.16...v0.16.17) (2026-07-05)
 
 
