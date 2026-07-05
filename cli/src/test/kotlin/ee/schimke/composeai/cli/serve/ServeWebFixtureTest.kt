@@ -475,6 +475,11 @@ class ServeWebFixtureTest {
     // can't take effect on a baked PNG, so they're disabled and a note explains why.
     val staticView = ServeWeb.viewerPage(previews.first(), token)
     assertTrue(staticView.contains("Pre-rendered snapshot"), "expected the static-snapshot note")
+    // The note links out to how a viewer can enable the live overrides — run their own serve.
+    assertTrue(
+      staticView.contains("public-preview-server.md#running-one\">Enable a local preview server."),
+      "snapshot note links to local preview server instructions",
+    )
     assertTrue(staticView.contains("value=\"1.0\" disabled"), "font scale disabled")
     assertTrue(staticView.contains("id=\"cp-device\" disabled"), "device disabled")
     assertTrue(staticView.contains("id=\"cp-orientation\" disabled"), "orientation disabled")
@@ -501,6 +506,10 @@ class ServeWebFixtureTest {
       "font scale enabled with a Wasm app",
     )
     assertTrue(wasmView.contains("autocomplete=\"off\">"), "locale enabled with a Wasm app")
+    assertTrue(
+      wasmView.contains("public-preview-server.md#running-one\">Enable a local preview server."),
+      "wasm-snapshot note also links to local preview server instructions",
+    )
     assertTrue(wasmView.contains("id=\"cp-device\" disabled"), "device stays server-only")
     assertTrue(wasmView.contains("id=\"cp-orientation\" disabled"), "orientation stays server-only")
     // The Wasm override-patch builder forwards the honoured params (theme/font scale/locale) to the
