@@ -12,6 +12,7 @@ import ee.schimke.composeai.render.session.RenderSessionException
 import ee.schimke.composeai.render.session.RenderSessionFactory
 import ee.schimke.composeai.render.session.subprocess.SubprocessRenderSessions
 import java.io.File
+import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -292,28 +293,51 @@ internal constructor(
         is RenderOutcome.Ok -> {} // rendered; the SVG for these overrides is now on disk
       }
 
-      val bytes =
+      val svgPath =
         try {
-          session
-            .fetchData(previewId, ComposeFigmaSvgProduct.KIND)
-            .path
-            ?.toPath()
-            ?.takeIf { fileSystem.exists(it) }
-            ?.let { p -> fileSystem.read(p) { readByteArray() } }
+          session.fetchData(previewId, ComposeFigmaSvgProduct.KIND).path?.toPath()
         } catch (e: Exception) {
           val reason = "figma-svg fetch failed: ${e.message}"
           onLog(reason)
           return@withLock SvgOutcome.Failed(reason)
         }
-      if (bytes == null) {
+      val raw =
+        svgPath
+          ?.takeIf { fileSystem.exists(it) }
+          ?.let { p -> fileSystem.read(p) { readByteArray() } }
+      if (raw == null || svgPath == null) {
         val reason = "render produced no SVG"
         onLog(reason)
         return@withLock SvgOutcome.Failed(reason)
       }
 
+      // Inline any hybrid figma-raster crops so the served SVG is self-contained (a vector-only SVG
+      // passes through untouched); Figma's importer can't resolve external hrefs.
+      val bytes = inlineRasters(svgPath, raw)
       svgCache.put(key, bytes)
       SvgOutcome.Ok(bytes)
     }
+  }
+
+  /**
+   * Inline a hybrid SVG's sibling `figma-raster/<node>.png` crops as `data:` URIs so the served SVG
+   * is self-contained — the Figma importer (and any consumer that can't resolve external hrefs)
+   * needs every layer embedded. A vector-only SVG has no such refs and passes through; a crop
+   * that's missing on disk is left as a plain ref rather than dropped.
+   */
+  private fun inlineRasters(svgPath: okio.Path, raw: ByteArray): ByteArray {
+    val svg = raw.decodeToString()
+    val dir = svgPath.parent
+    if (dir == null || !svg.contains("\"figma-raster/")) return raw
+    val inlined =
+      RASTER_HREF.replace(svg) { match ->
+        val href = match.groupValues[1]
+        val cropPath = "$dir/$href".toPath()
+        if (!fileSystem.exists(cropPath)) return@replace match.value
+        val crop = fileSystem.read(cropPath) { readByteArray() }
+        "href=\"data:image/png;base64,${Base64.getEncoder().encodeToString(crop)}\""
+      }
+    return inlined.encodeToByteArray()
   }
 
   /**
@@ -481,6 +505,11 @@ internal constructor(
     private const val COALESCED_RETRY_BACKOFF_MS = 100L
 
     private const val MAX_CACHE_ENTRIES = 256
+
+    /**
+     * `<image href="figma-raster/<node>.png">` refs a hybrid SVG carries, for data-URI inlining.
+     */
+    private val RASTER_HREF = Regex("href=\"(figma-raster/[^\"]+)\"")
 
     /**
      * Open a long-lived session against a daemon launch descriptor and wrap it. Mirrors

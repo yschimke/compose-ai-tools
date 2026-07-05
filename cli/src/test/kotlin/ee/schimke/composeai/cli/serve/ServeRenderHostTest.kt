@@ -85,6 +85,19 @@ class ServeRenderHostTest {
   }
 
   @Test
+  fun `renderSvg inlines hybrid figma-raster crops as data URIs`() {
+    val session = FakeRenderSession(newRenderRoot(), hybridSvg = true)
+    host(session).use { h ->
+      val out = h.renderSvg(previewId, PreviewOverrides())
+      assertTrue(out is SvgOutcome.Ok)
+      val svg = (out as SvgOutcome.Ok).svg.decodeToString()
+      val expected = java.util.Base64.getEncoder().encodeToString(byteArrayOf(1, 2, 3))
+      assertTrue(svg.contains("data:image/png;base64,$expected"), "raster inlined: $svg")
+      assertTrue(!svg.contains("figma-raster/"), "no dangling external ref remains: $svg")
+    }
+  }
+
+  @Test
   fun `concurrent identical requests coalesce to a single render`() {
     val session = FakeRenderSession(newRenderRoot())
     host(session).use { h ->

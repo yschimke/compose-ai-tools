@@ -68,6 +68,11 @@ internal class FakeRenderSession(
    * serve normally), modelling the override-in-flight coalescing the serve host must retry through.
    */
   private val coalescedOverrideRejections: Int = 0,
+  /**
+   * When true, the figma-svg written per render is a hybrid: an `<image href="figma-raster/…">`
+   * plus the sibling crop on disk, to exercise serve-side raster inlining.
+   */
+  private val hybridSvg: Boolean = false,
 ) : RenderSession {
   val renderCount = AtomicInteger(0)
   private val coalesceRemaining = AtomicInteger(coalescedOverrideRejections)
@@ -189,10 +194,15 @@ internal class FakeRenderSession(
   }
 
   private fun writeFigmaSvg(id: String, overrides: PreviewOverrides?) {
-    val svg = "svg:${overrides?.uiMode}:${overrides?.localeTag}:${overrides?.device}"
-    File(renderRoot, "$id/${ComposeFigmaSvgProduct.FILE_SVG}").apply {
-      parentFile?.mkdirs()
-      writeText(svg)
+    val previewDir = File(renderRoot, id).apply { mkdirs() }
+    if (hybridSvg) {
+      File(previewDir, "figma-raster").mkdirs()
+      File(previewDir, "figma-raster/node0.png").writeBytes(byteArrayOf(1, 2, 3))
+      File(previewDir, ComposeFigmaSvgProduct.FILE_SVG)
+        .writeText("<svg><image href=\"figma-raster/node0.png\"/></svg>")
+    } else {
+      val svg = "svg:${overrides?.uiMode}:${overrides?.localeTag}:${overrides?.device}"
+      File(previewDir, ComposeFigmaSvgProduct.FILE_SVG).writeText(svg)
     }
   }
 
