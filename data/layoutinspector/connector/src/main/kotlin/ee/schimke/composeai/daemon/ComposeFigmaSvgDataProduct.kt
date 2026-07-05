@@ -113,8 +113,10 @@ object ComposeFigmaSvgDataProducer {
    *   `.ttf`/`.otf` path — a downloaded Google font, a bundled/custom face, a variable font). Embed
    *   *that file's* bytes and name the face by its real family (read from the font), so the export
    *   reproduces the exact face the render drew — no name guessing.
-   * - **A generic / absent family** (`sans-serif` → [DEFAULT_EMBED_FAMILY]). Fetch the face's WOFF2
-   *   from [resolver] (Google Fonts) by name.
+   * - **A generic / absent family** — mapped to a concrete embeddable face by
+   *   [FigmaLayeredSvg.embedFamily] (`sans-serif` → [DEFAULT_EMBED_FAMILY], `serif` → Noto Serif,
+   *   `monospace` → Roboto Mono) and fetched from [resolver] (Google Fonts) by that name. A generic
+   *   with no concrete stand-in (`cursive` / `fantasy`) embeds nothing and falls back to the name.
    *
    * Also records, per captured family, the family name to emit on the `<text>` so it matches the
    * `@font-face`. Faces that can't be produced are skipped (the text falls back to the named
@@ -150,7 +152,9 @@ object ComposeFigmaSvgDataProducer {
         overrides[captured] = family
         return
       }
-      val name = FigmaLayeredSvg.resolveFamily(captured, DEFAULT_EMBED_FAMILY)
+      // A meaningful generic (serif/monospace) maps to a concrete embeddable family; a bare
+      // cursive/fantasy has none, so skip embedding and let the text fall back to the generic.
+      val name = FigmaLayeredSvg.embedFamily(captured, DEFAULT_EMBED_FAMILY) ?: return
       resolver.woff2(name, weight, italic)?.let {
         faces["$name|$weight|$italic|woff2"] =
           FigmaSvgFontFace(name, weight, italic, Base64.getEncoder().encodeToString(it))

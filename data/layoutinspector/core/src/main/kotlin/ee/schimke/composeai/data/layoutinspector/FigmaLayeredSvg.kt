@@ -28,9 +28,11 @@ object FigmaLayeredSvg {
     /** Fallback text size (px) when a text node didn't resolve one. */
     val defaultFontSizePx: Double = 14.0,
     /**
-     * Family a `<text>` gets when its captured family is null or a generic (`sans-serif`/`serif`/
-     * `monospace`). Left as `sans-serif` for the vector-only export; the font-embedding path sets
-     * it to the resolved default face (e.g. `Roboto`) so the emitted `@font-face` matches by name.
+     * Family a `<text>` gets when its captured family is null or a *sans* generic
+     * (`sans-serif`/`system-ui`). Left as `sans-serif` for the vector-only export; the
+     * font-embedding path sets it to the resolved default face (e.g. `Roboto`) so the emitted
+     * `@font-face` matches by name. Non-sans generics (`serif`/`monospace`) keep their own identity
+     * via [resolveFamily]/[embedFamily] rather than collapsing to this default.
      */
     val defaultFontFamily: String = "sans-serif",
   )
@@ -220,17 +222,54 @@ object FigmaLayeredSvg {
     return halfLeading + size * ASCENT_EM
   }
 
-  /** CSS generic families that carry no real face — resolved to the default embedded family. */
-  private val GENERIC_FAMILIES =
+  /** All CSS generic families — none carries a matchable face of its own. */
+  private val CSS_GENERICS =
     setOf("sans-serif", "serif", "monospace", "cursive", "fantasy", "system-ui")
 
   /**
-   * The family name to emit for a `<text>` — the captured face, or [defaultFamily] when the capture
-   * was null or a CSS generic (a bare `sans-serif` carries no real face to match). Shared with the
-   * producer so the name it emits matches the `@font-face` family it embeds.
+   * The sans generics: they resolve to Compose's Material default typeface, which is itself the
+   * default embedded face — so mapping them to [defaultFamily] is exact, not a substitution.
+   */
+  private val SANS_GENERICS = setOf("sans-serif", "system-ui")
+
+  /**
+   * Generics whose *style* has an embeddable Google-Fonts stand-in. A `serif` / `monospace`
+   * specimen is a `GenericFontFamily`, so the capture only knows the generic name (Compose resolves
+   * the concrete face inside the font engine, out of reach). Mapping it to a concrete same-style
+   * family lets the embedding path reproduce a real serif / monospace instead of the sans default —
+   * a far closer match than Roboto, and a designer re-picks the exact face in Figma regardless.
+   */
+  private val GENERIC_EMBED_FACE = mapOf("serif" to "Noto Serif", "monospace" to "Roboto Mono")
+
+  /**
+   * The family name to emit on a `<text>` when no embedded face overrides it — i.e. the vector-only
+   * export or a family the embedding path couldn't resolve. A null/sans-serif capture becomes
+   * [defaultFamily]; a meaningful generic (`serif`, `monospace`, `cursive`, `fantasy`) is emitted
+   * **as-is** so the viewer renders a real face of that style rather than the sans default (which
+   * is what lost serif/monospace specimens their identity); a real captured face keeps its name.
    */
   fun resolveFamily(captured: String?, defaultFamily: String): String {
-    if (captured == null || captured.lowercase() in GENERIC_FAMILIES) return defaultFamily
+    if (captured == null) return defaultFamily
+    val generic = captured.lowercase()
+    if (generic in SANS_GENERICS) return defaultFamily
+    if (generic in CSS_GENERICS) return generic
+    return svgFontFamily(captured)
+  }
+
+  /**
+   * The concrete family the producer should fetch + embed for a [captured] family, or null when
+   * there's no embeddable face (a bare `cursive` / `fantasy`) — the `<text>` then falls back to
+   * [resolveFamily] and the viewer supplies the generic. Shared with the producer so the name it
+   * embeds matches what [resolveFamily] would emit for the same capture.
+   */
+  fun embedFamily(captured: String?, defaultFamily: String): String? {
+    if (captured == null) return defaultFamily
+    val generic = captured.lowercase()
+    if (generic in SANS_GENERICS) return defaultFamily
+    GENERIC_EMBED_FACE[generic]?.let {
+      return it
+    }
+    if (generic in CSS_GENERICS) return null
     return svgFontFamily(captured)
   }
 
