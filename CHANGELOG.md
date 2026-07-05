@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.16.19](https://github.com/yschimke/compose-ai-tools/compare/v0.16.18...v0.16.19) (2026-07-05)
+
+
+### Features
+
+* **serve:** --catalog-source-root so deploy/image can live-render compose-m3 ([#2242](https://github.com/yschimke/compose-ai-tools/issues/2242)) ([7182d71](https://github.com/yschimke/compose-ai-tools/commit/7182d71792cbc6d7423b75f02096962ac8ea10cb))
+* **serve:** serve a catalog's baked figma-svg via /render/&lt;id&gt;.svg ([#2244](https://github.com/yschimke/compose-ai-tools/issues/2244)) ([0ef17b0](https://github.com/yschimke/compose-ai-tools/commit/0ef17b0481af055be3da8eae65692bbc71876f63))
+
+
+### Bug Fixes
+
+* **design-catalog:** inline @Preview on the Android focus-ring supplement ([#2243](https://github.com/yschimke/compose-ai-tools/issues/2243)) ([670cfe4](https://github.com/yschimke/compose-ai-tools/commit/670cfe4527d94276d9b5fac9bde7ba79a7ca72cb))
+
 ## [0.16.18](https://github.com/yschimke/compose-ai-tools/compare/v0.16.17...v0.16.18) (2026-07-05)
 
 
