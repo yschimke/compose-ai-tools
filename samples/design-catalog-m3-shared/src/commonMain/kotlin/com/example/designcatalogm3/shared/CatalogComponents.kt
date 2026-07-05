@@ -209,6 +209,7 @@ val catalogComponentIds: List<String> =
     "card-elevated",
     "card-outlined",
     "card-filled",
+    "card-slots",
     "fab",
     "progress-linear",
     "progress-circular",
