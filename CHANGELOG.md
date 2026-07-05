@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.16.22](https://github.com/yschimke/compose-ai-tools/compare/v0.16.21...v0.16.22) (2026-07-05)
+
+
+### Features
+
+* **catalog:** add a slotted M3 Card demonstrating PreviewSlot ([#2256](https://github.com/yschimke/compose-ai-tools/issues/2256)) ([d4c807d](https://github.com/yschimke/compose-ai-tools/commit/d4c807d93fd53b854ccc204cd616caba7a188764))
+* **design-catalog:** declare the icon+label content variant + fold props in regen ([#2257](https://github.com/yschimke/compose-ai-tools/issues/2257)) ([938329a](https://github.com/yschimke/compose-ai-tools/commit/938329aea1696d175c5a29bc0de7d555b81f6e16))
+
 ## [0.16.21](https://github.com/yschimke/compose-ai-tools/compare/v0.16.20...v0.16.21) (2026-07-05)
 
 
