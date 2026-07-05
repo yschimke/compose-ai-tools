@@ -153,6 +153,81 @@ class FigmaFontEmbedTest {
   }
 
   @Test
+  fun writeSvgEmbedsAConcreteSerifForAGenericSerifSpecimen() {
+    // A `FontFamily.Serif` specimen captures the generic name "serif" (Compose resolves the real
+    // face out of reach). The export must embed a concrete *serif* (Noto Serif) and name the text
+    // by it — not collapse to the sans default, which erased serif/monospace specimens' identity.
+    val semantics =
+      ComposeSemanticsPayload(
+        ComposeSemanticsNode(
+          nodeId = "root",
+          boundsInRoot = "0,0,200,100",
+          children =
+            listOf(
+              ComposeSemanticsNode(
+                nodeId = "Text",
+                boundsInRoot = "8,8,192,40",
+                text = "Hi",
+                typography =
+                  ComposeSemanticsTypography(
+                    fontSize = "16.0sp",
+                    fontWeight = 400,
+                    fontFamily = "serif",
+                  ),
+              )
+            ),
+        )
+      )
+    val resolver = FigmaFontResolver { family, weight, italic ->
+      if (family == "Noto Serif" && weight == 400 && !italic) byteArrayOf(7, 7, 7) else null
+    }
+
+    ComposeFigmaSvgDataProducer.writeSvg(
+      rootDir = dir,
+      previewId = "p",
+      layout = LayoutInspectorPayload(textNode()),
+      semantics = semantics,
+      fontResolver = resolver,
+    )
+
+    val svg = dir.resolve("p").resolve(ComposeFigmaSvgDataProducer.FILE_SVG).readText()
+    assertTrue("embeds a concrete serif face", svg.contains("font-family:'Noto Serif'"))
+    assertTrue("text names the embedded serif", svg.contains("""font-family="Noto Serif""""))
+    assertFalse("serif must not collapse to the Roboto sans default", svg.contains("'Roboto'"))
+  }
+
+  @Test
+  fun writeSvgVectorOnlyKeepsSerifGenericForTheViewer() {
+    // Without embedding, a serif specimen keeps `font-family="serif"` so the viewer renders a real
+    // serif — the previous default swallowed it into `sans-serif`.
+    val semantics =
+      ComposeSemanticsPayload(
+        ComposeSemanticsNode(
+          nodeId = "root",
+          boundsInRoot = "0,0,200,100",
+          children =
+            listOf(
+              ComposeSemanticsNode(
+                nodeId = "Text",
+                boundsInRoot = "8,8,192,40",
+                text = "Hi",
+                typography = ComposeSemanticsTypography(fontSize = "16.0sp", fontFamily = "serif"),
+              )
+            ),
+        )
+      )
+    ComposeFigmaSvgDataProducer.writeSvg(
+      rootDir = dir,
+      previewId = "p",
+      layout = LayoutInspectorPayload(textNode()),
+      semantics = semantics,
+    )
+    val svg = dir.resolve("p").resolve(ComposeFigmaSvgDataProducer.FILE_SVG).readText()
+    assertFalse("vector-only, no embedding", svg.contains("@font-face"))
+    assertTrue("keeps the serif generic", svg.contains("""font-family="serif""""))
+  }
+
+  @Test
   fun writeSvgEmbedsTheActualFontFileTheRenderLoaded() {
     // The capture records the *path* of the font the render loaded (a downloaded/bundled/custom
     // face). The export must embed that file's bytes directly — no name-based Google fetch — and

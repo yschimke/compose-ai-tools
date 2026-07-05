@@ -2,6 +2,7 @@ package com.example.designcatalogm3
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -56,6 +57,40 @@ fun CatalogSticker(content: @Composable () -> Unit) {
 @Preview(name = "Light", showBackground = true, group = "modes")
 @Preview(name = "Dark", showBackground = true, uiMode = 32, group = "modes")
 annotation class CatalogModes
+
+/**
+ * Frame for **full-screen scaffold templates** — as opposed to the centred component
+ * [CatalogSticker]. Just the stock [MaterialTheme] filling the device with the `background`
+ * surface; the template supplies its own `Scaffold` and drives the system-bar spacing through
+ * window insets (see [SYSTEM_BAR_INSET]).
+ */
+@Composable
+fun FullScreenM3(content: @Composable () -> Unit) {
+  val dark = isSystemInDarkTheme()
+  MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
+    Surface(Modifier.fillMaxSize()) { content() }
+  }
+}
+
+/**
+ * Height of the renderer's synthetic status / navigation bars (`SystemBarsFrame` draws both at
+ * 24dp). The render environment has no real window insets behind that overlay, so a template feeds
+ * this height to its `Scaffold`/`TopAppBar` `windowInsets` — reproducing a real edge-to-edge M3
+ * scaffold (the app bar paints under the status bar with its title below the OS clock; content and
+ * the FAB clear the gesture pill) rather than an outer padding that pushes the scaffold into a
+ * band.
+ */
+val SYSTEM_BAR_INSET = 24.dp
+
+/**
+ * Full-screen template multipreview: a phone (`id:pixel_8`) with `showSystemUi = true` so the
+ * capture carries the synthetic OS status + nav chrome, in both light and dark. The desktop
+ * renderer honours `device` + `showSystemUi` (see `:samples:cmp`'s Pixel-8 preview), so this frames
+ * the CMP template exactly as the Android render did.
+ */
+@Preview(name = "Light", device = "id:pixel_8", showSystemUi = true, group = "template")
+@Preview(name = "Dark", device = "id:pixel_8", showSystemUi = true, uiMode = 32, group = "template")
+annotation class CatalogTemplate
 
 // --- Fonts, loaded once from the bundled faces under src/main/resources/fonts/. ---
 // The same TTFs the wasm tier vendors, so desktop render + in-browser tier + the historical Android

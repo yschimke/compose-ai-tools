@@ -1,6 +1,20 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.example.designcatalogm3
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import com.example.designcatalogm3.shared.CatalogComponent
 
 // The M3 catalog sticker sheet: one `@Preview` per component, in light + dark (`@CatalogModes`).
@@ -91,3 +105,46 @@ import com.example.designcatalogm3.shared.CatalogComponent
 /** Every sticker is the shared component (deterministic frame) inside the catalog theme wrapper. */
 @Composable
 private fun Sticker(id: String) = CatalogSticker { CatalogComponent(id, interactive = false) }
+
+// ---------------------------------------------------------------------------
+// Scaffold templates — full-screen, pre-built screen skeletons an app copies
+// whole. Rendered on a phone with `showSystemUi = true` (see [CatalogTemplate])
+// so the capture reads as a real screenshot: the OS status bar at the top and
+// the gesture-pill nav bar at the bottom, drawn by the renderer's
+// SystemBarsFrame, framing the template's own Material chrome.
+// ---------------------------------------------------------------------------
+
+private val templateMessages =
+  listOf(
+    "Alex Kim" to "Lunch tomorrow?",
+    "Design team" to "Specs are ready for review",
+    "Priya Patel" to "Sent the render diff",
+    "Sam Rivera" to "Thanks — merged it",
+    "On-call" to "Deploy finished cleanly",
+  )
+
+/**
+ * Full-screen app scaffold: an edge-to-edge TopAppBar, a scrolling list of ListItems, and a
+ * FloatingActionButton — the canonical M3 screen an app starts a new surface from. The render
+ * environment has no real window insets behind the renderer's synthetic OS bars, so the scaffold
+ * supplies them itself ([SYSTEM_BAR_INSET]): the app bar paints under the status bar with its title
+ * below the OS clock, and the content/FAB clear the gesture pill.
+ */
+@CatalogTemplate
+@Composable
+fun AppScaffoldTemplate() = FullScreenM3 {
+  Scaffold(
+    contentWindowInsets = WindowInsets(bottom = SYSTEM_BAR_INSET),
+    topBar = {
+      TopAppBar(title = { Text("Inbox") }, windowInsets = WindowInsets(top = SYSTEM_BAR_INSET))
+    },
+    floatingActionButton = { FloatingActionButton(onClick = {}) { Text("+") } },
+  ) { padding ->
+    Column(Modifier.padding(padding).fillMaxSize()) {
+      templateMessages.forEachIndexed { index, (sender, preview) ->
+        ListItem(headlineContent = { Text(sender) }, supportingContent = { Text(preview) })
+        if (index < templateMessages.lastIndex) HorizontalDivider()
+      }
+    }
+  }
+}

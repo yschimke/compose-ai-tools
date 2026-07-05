@@ -423,11 +423,38 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
-  fun resolveFamilyMapsGenericToDefaultButKeepsRealFaces() {
+  fun resolveFamilyMapsSansGenericToDefaultButKeepsRealFaces() {
     assertEquals("Roboto", FigmaLayeredSvg.resolveFamily(null, "Roboto"))
     assertEquals("Roboto", FigmaLayeredSvg.resolveFamily("sans-serif", "Roboto"))
     assertEquals("Roboto", FigmaLayeredSvg.resolveFamily("SANS-SERIF", "Roboto"))
+    assertEquals("Roboto", FigmaLayeredSvg.resolveFamily("system-ui", "Roboto"))
     assertEquals("Lobster", FigmaLayeredSvg.resolveFamily("Lobster", "Roboto"))
+  }
+
+  @Test
+  fun resolveFamilyKeepsMeaningfulGenericsSoSerifStaysSerif() {
+    // The sans default must NOT swallow serif/monospace — that's what erased specimen identity.
+    assertEquals("serif", FigmaLayeredSvg.resolveFamily("serif", "Roboto"))
+    assertEquals("monospace", FigmaLayeredSvg.resolveFamily("monospace", "Roboto"))
+    assertEquals("serif", FigmaLayeredSvg.resolveFamily("SERIF", "Roboto"))
+    assertEquals("cursive", FigmaLayeredSvg.resolveFamily("cursive", "Roboto"))
+    assertEquals("fantasy", FigmaLayeredSvg.resolveFamily("fantasy", "Roboto"))
+  }
+
+  @Test
+  fun embedFamilyMapsGenericsToConcreteEmbeddableFaces() {
+    // sans generics ride the default embedded face; serif/monospace get a real same-style face.
+    assertEquals("Roboto", FigmaLayeredSvg.embedFamily(null, "Roboto"))
+    assertEquals("Roboto", FigmaLayeredSvg.embedFamily("sans-serif", "Roboto"))
+    assertEquals("Roboto", FigmaLayeredSvg.embedFamily("system-ui", "Roboto"))
+    assertEquals("Noto Serif", FigmaLayeredSvg.embedFamily("serif", "Roboto"))
+    assertEquals("Roboto Mono", FigmaLayeredSvg.embedFamily("monospace", "Roboto"))
+    assertEquals("Roboto Mono", FigmaLayeredSvg.embedFamily("MONOSPACE", "Roboto"))
+    // No concrete stand-in → null so the producer skips embedding and the text keeps the generic.
+    assertNull(FigmaLayeredSvg.embedFamily("cursive", "Roboto"))
+    assertNull(FigmaLayeredSvg.embedFamily("fantasy", "Roboto"))
+    // A real captured face is unchanged.
+    assertEquals("Lobster", FigmaLayeredSvg.embedFamily("Lobster", "Roboto"))
   }
 
   @Test

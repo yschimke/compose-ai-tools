@@ -1,5 +1,5 @@
 {
-  "$comment": "Phase-0 catalog spec for Compose Material 3. Code-led: this declares the component inventory, grouping, captions, primary modes, and breakpoints the sticker sheet covers, plus the published-kit frame each component seeds from. The kit reference is for the one-off import only — our render is authoritative. Consumed by @design-parity/catalog-export to populate ComponentSource group/caption/reference.",
+  "$comment": "Phase-0 catalog spec for Compose Material 3. Code-led: this declares the component inventory, grouping, captions, primary modes, and breakpoints the sticker sheet covers, plus the published-kit frame each component seeds from. The kit reference is for the one-off import only — our render is authoritative. Consumed by @design-parity/catalog-export to populate ComponentSource group/caption/reference. A component's `variants` fold extra state renders (pressed/focused/disabled/off/…) onto the same sticker: the default preview is what the grid shows, and each variant's render becomes a secondary image (tagged with its `state`) surfaced when you open the single-component view. Interaction/state stickers therefore live under their parent instead of a flat 'States' group.",
   "system": "compose-m3",
   "title": "Compose Material 3",
   "library": [
@@ -21,23 +21,36 @@
     {
       "name": "Buttons",
       "components": [
-        { "componentId": "Button/Filled", "preview": "FilledButton", "caption": "Highest emphasis; the primary action." },
+        { "componentId": "Button/Filled", "preview": "FilledButton", "caption": "Highest emphasis; the primary action.",
+          "variants": [
+            { "state": "pressed", "preview": "FilledButtonPressed", "caption": "Held PressInteraction → pressed state layer." },
+            { "state": "keyboard-focus", "preview": "FilledButtonFocused", "caption": "Keyboard focus (focus-visible) → M3 inset focus ring. This is the directional/keyboard focus indicator, not the pointer/hover state layer." },
+            { "state": "disabled", "preview": "FilledButtonDisabled", "caption": "Disabled state." }
+          ]
+        },
         { "componentId": "Button/Tonal", "preview": "FilledTonalButtonSticker", "caption": "Secondary, still prominent." },
-        { "componentId": "Button/Outlined", "preview": "OutlinedButtonSticker", "caption": "Medium emphasis on a busy surface." },
+        { "componentId": "Button/Outlined", "preview": "OutlinedButtonSticker", "caption": "Medium emphasis on a busy surface.",
+          "variants": [
+            { "state": "disabled", "preview": "OutlinedButtonDisabled", "caption": "Disabled state." }
+          ]
+        },
         { "componentId": "Button/Elevated", "preview": "ElevatedButtonSticker", "caption": "Outlined alternative needing separation." },
-        { "componentId": "Button/Text", "preview": "TextButtonSticker", "caption": "Lowest emphasis; inline actions." },
-        { "componentId": "Button/Filled-Disabled", "preview": "FilledButtonDisabled", "caption": "Disabled state." }
+        { "componentId": "Button/Text", "preview": "TextButtonSticker", "caption": "Lowest emphasis; inline actions." }
       ]
     },
     {
       "name": "Selection",
       "components": [
-        { "componentId": "Checkbox/Checked", "preview": "CheckboxChecked" },
-        { "componentId": "Switch/On", "preview": "SwitchOn" },
+        { "componentId": "Checkbox/Checked", "preview": "CheckboxChecked",
+          "variants": [ { "state": "unchecked", "preview": "CheckboxUnchecked", "caption": "Unchecked state." } ] },
+        { "componentId": "Switch/On", "preview": "SwitchOn",
+          "variants": [ { "state": "off", "preview": "SwitchOff", "caption": "Off state." } ] },
         { "componentId": "RadioButton/Selected", "preview": "RadioSelected" },
         { "componentId": "Slider", "preview": "SliderMid" },
-        { "componentId": "Chip/Filter-Selected", "preview": "FilterChipSelected" },
-        { "componentId": "Chip/Assist", "preview": "AssistChipSticker" }
+        { "componentId": "Chip/Filter-Selected", "preview": "FilterChipSelected",
+          "variants": [ { "state": "unselected", "preview": "FilterChipUnselected", "caption": "Unselected state." } ] },
+        { "componentId": "Chip/Assist", "preview": "AssistChipSticker" },
+        { "componentId": "SegmentedButton", "preview": "SegmentedToggle", "caption": "Single-choice toggle: selected + unselected segments." }
       ]
     },
     {
@@ -65,23 +78,17 @@
       ]
     },
     {
-      "name": "States",
-      "components": [
-        { "componentId": "Button/Filled-Pressed", "preview": "FilledButtonPressed", "caption": "Held PressInteraction → pressed state layer." },
-        { "componentId": "Button/Filled-Focused", "preview": "FilledButtonFocused", "caption": "Held FocusInteraction → focus state layer." },
-        { "componentId": "Button/Outlined-Disabled", "preview": "OutlinedButtonDisabled" },
-        { "componentId": "Switch/Off", "preview": "SwitchOff" },
-        { "componentId": "Checkbox/Unchecked", "preview": "CheckboxUnchecked" },
-        { "componentId": "Chip/Filter-Unselected", "preview": "FilterChipUnselected" },
-        { "componentId": "SegmentedButton", "preview": "SegmentedToggle", "caption": "Single-choice toggle: selected + unselected segments." }
-      ]
-    },
-    {
       "name": "Text options",
       "components": [
         { "componentId": "Text/MaxLines-Truncated", "preview": "TextMaxLinesTruncated", "caption": "maxLines=2 + ellipsis overflow — exercises the textOverflow product." },
         { "componentId": "Text/Serif", "preview": "TextSerifSpecimen", "caption": "Generic serif family (Noto Serif) — pins the Wasm tier’s font interception." },
         { "componentId": "Text/Monospace", "preview": "TextMonospaceSpecimen", "caption": "Generic monospace family (Droid Sans Mono) — pins the Wasm tier’s font interception." }
+      ]
+    },
+    {
+      "name": "Scaffold templates",
+      "components": [
+        { "componentId": "Template/AppScaffold", "preview": "AppScaffoldTemplate", "caption": "Full-screen layout with the OS status bar — TopAppBar, a list, and a FAB, captured with showSystemUi on a phone." }
       ]
     }
   ]

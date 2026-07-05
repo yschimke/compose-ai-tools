@@ -42,6 +42,7 @@ import {
 } from "@design-parity/candidate";
 import { buildCatalog, writeCatalog } from "@design-parity/catalog-export";
 
+import { foldVariants } from "./catalog-variants.mjs";
 import { renderIndexHtml } from "./render-index-html.mjs";
 import { renderReadmeMd } from "./render-readme-md.mjs";
 import {
@@ -222,10 +223,21 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
         continue;
       }
       if (!hasSemantics(candidate)) withoutSemantics.push(component.componentId);
+      // Fold the component's state `variants` (pressed / focused / disabled / off
+      // / …) onto the default render: the default images stay the grid hero, each
+      // variant's render is appended re-tagged with its `state` so the single-
+      // component view can show them as secondary previews. A variant preview that
+      // didn't render is reported as missing so the completeness gate still fires.
+      const { ideal, missing: missingVariants } = foldVariants(
+        candidate.images,
+        component,
+        byFunction,
+      );
+      missing.push(...missingVariants);
       const source = {
         componentId: component.componentId,
         group: group.name,
-        ideal: [...candidate.images],
+        ideal,
       };
       if (component.caption !== undefined) source.caption = component.caption;
       if (component.reference !== undefined) source.reference = component.reference;
@@ -489,18 +501,16 @@ for (const component of catalog.components) {
 // Browsable index next to catalog.json + images/ — a designer can open this
 // straight from the branch to skim every component (its a11y greenlines and the
 // editable wireframe) before importing the tokens/images into a design tool.
+//
+// Render from the written manifest (catalog.json), NOT the in-memory `catalog`:
+// `buildCatalog` keeps a component's captures under `variants.ideal` (each with a
+// source `uri`), while the manifest carries the flattened `images[]` with the
+// bundle-relative `path` the page must reference. `renderIndexHtml` reads
+// `component.images`, so passing the manifest is what makes the stickers actually
+// show (and lets the zoom view group them by `state`).
+const indexManifest = JSON.parse(await readFile(join(outPath, "catalog.json"), "utf8"));
 const indexPath = join(outPath, "index.html");
-// `renderIndexHtml`'s `heroImage` reads `component.images`, but the private `buildCatalog` keeps the
-// resolved image list off the in-memory `catalog` — it's only materialised on the serialized
-// `catalog.json` (by `writeCatalog`, then annotated with `livePreview` above). Feed the index the
-// serialized catalog so every card shows its render instead of a "no render" placeholder. The
-// wireframe/figma links keyed by `componentId` still match (same components).
-const indexCatalog = JSON.parse(await readFile(join(outPath, "catalog.json"), "utf8"));
-await writeFile(
-  indexPath,
-  renderIndexHtml(indexCatalog, { wireframeSlugs, figmaSvgSlugs }),
-  "utf8",
-);
+await writeFile(indexPath, renderIndexHtml(indexManifest, { wireframeSlugs, figmaSvgSlugs }), "utf8");
 
 // Branch landing page: htmlpreview link to index.html + a summary table. Written
 // into out/ so the publish step's force-push republishes it every run — the
