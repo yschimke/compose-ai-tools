@@ -1541,7 +1541,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "CircularProgressSticker_Dark.a11y.png",
+      "annotatedBasename": "",
       "cleanBasename": "CircularProgressSticker_Dark.png",
       "findings": [],
       "functionName": "CircularProgressSticker",
@@ -1661,7 +1661,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "LinearProgressSticker_Dark.a11y.png",
+      "annotatedBasename": "",
       "cleanBasename": "LinearProgressSticker_Dark.png",
       "findings": [],
       "functionName": "LinearProgressSticker",
@@ -1723,15 +1723,7 @@
     {
       "annotatedBasename": "SegmentedToggle_Dark.a11y.png",
       "cleanBasename": "SegmentedToggle_Dark.png",
-      "findings": [
-        {
-          "boundsInScreen": "164,43,279,169",
-          "level": "ERROR",
-          "message": "This item's width is 44dp. Consider making the width of this touch target 48dp or larger.",
-          "type": "TouchTargetSizeCheck",
-          "viewDescription": "android.view.View"
-        }
-      ],
+      "findings": [],
       "functionName": "SegmentedToggle",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.SegmentedToggle_Dark",

@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 210 preview(s) across 18 module(s) · 17 error(s) · 4 warning(s) · 26 info._
+_Auto-generated from `compose-preview/a11y/main`. 210 preview(s) across 18 module(s) · 16 error(s) · 4 warning(s) · 26 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -796,7 +796,7 @@ _No findings._
 
 ### `CircularProgressSticker`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/CircularProgressSticker_Dark.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/CircularProgressSticker_Dark.png" width="400" />
 
 _No findings._
 
@@ -868,7 +868,7 @@ _No findings._
 
 ### `LinearProgressSticker`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/LinearProgressSticker_Dark.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/LinearProgressSticker_Dark.png" width="400" />
 
 _No findings._
 
@@ -906,9 +906,7 @@ _No findings._
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/SegmentedToggle_Dark.a11y.png" width="400" />
 
-| # | Level | Rule | Element | Message |
-|--:|---|---|---|---|
-| 1 | ERROR | TouchTargetSizeCheck | android.view.View | This item's width is 44dp. Consider making the width of this touch target 48dp or larger. |
+_No findings._
 
 ### `SliderMid`
 
