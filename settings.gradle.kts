@@ -172,6 +172,10 @@ include(":svg-preview-runtime")
 
 project(":svg-preview-runtime").projectDir = file("runtimes/svg")
 
+include(":slot-preview-runtime")
+
+project(":slot-preview-runtime").projectDir = file("runtimes/slots")
+
 include(":samples:android")
 
 // Compose Material 3 **design catalog** — one `@Preview` per component in its
