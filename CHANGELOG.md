@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.16.21](https://github.com/yschimke/compose-ai-tools/compare/v0.16.20...v0.16.21) (2026-07-05)
+
+
+### Features
+
+* **design-catalog:** render an icon+label FilledButton (content-axis groundwork) ([#2252](https://github.com/yschimke/compose-ai-tools/issues/2252)) ([2b4b44b](https://github.com/yschimke/compose-ai-tools/commit/2b4b44bd5bf8ed0b7fbb6fc332f25247c89c4994))
+* **serve:** add the slotMode render override (desktop path) ([#2254](https://github.com/yschimke/compose-ai-tools/issues/2254)) ([9efd517](https://github.com/yschimke/compose-ai-tools/commit/9efd5175a2580f4f228e42d590707b1536628329))
+* **slots:** add slot-preview-runtime with the PreviewSlot marker ([#2251](https://github.com/yschimke/compose-ai-tools/issues/2251)) ([a6c7d1d](https://github.com/yschimke/compose-ai-tools/commit/a6c7d1d472416e0a4c5536818589a8db10c212fa))
+
 ## [0.16.20](https://github.com/yschimke/compose-ai-tools/compare/v0.16.19...v0.16.20) (2026-07-05)
 
 
