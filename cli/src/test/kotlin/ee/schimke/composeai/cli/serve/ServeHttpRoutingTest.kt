@@ -53,10 +53,12 @@ class ServeHttpRoutingTest {
     File(dir, "previews").apply { mkdirs() }
     File(dir, "previews/$previewId.png").writeBytes(png())
     if (overrides.isNotEmpty()) {
-      File(dir, "previews/$previewId.overrides.json")
-        .writeText(
-          Json.encodeToString(PreviewOverridesPayload.serializer(), PreviewOverridesPayload(overrides))
+      val sidecar =
+        Json.encodeToString(
+          PreviewOverridesPayload.serializer(),
+          PreviewOverridesPayload(overrides),
         )
+      File(dir, "previews/$previewId.overrides.json").writeText(sidecar)
     }
     return ServeBundleHost(dir, label = label)
   }
@@ -134,7 +136,7 @@ class ServeHttpRoutingTest {
     assertEquals(200, code)
     // v2 = the payload now carries per-preview override declarations.
     assertTrue(api.contains("\"schema\":\"compose-preview-serve/v2\""), "schema v2: $api")
-    // The declared `label` knob (from the overrides.json sidecar) surfaces to a programmatic client.
+    // The declared `label` knob (from the sidecar) surfaces to a programmatic client.
     assertTrue(api.contains("\"overrides\":["), "overrides array present: $api")
     assertTrue(api.contains("\"key\":\"label\""), "declared knob key: $api")
     assertTrue(api.contains("\"value\":\"Tap me\""), "declared knob default value: $api")
