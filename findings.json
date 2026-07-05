@@ -1761,6 +1761,26 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "SlottedCardSlotsSticker_Dark.a11y.png",
+      "cleanBasename": "SlottedCardSlotsSticker_Dark.png",
+      "findings": [],
+      "functionName": "SlottedCardSlotsSticker",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.SlottedCardSlotsSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "SlottedCardSticker_Dark.a11y.png",
+      "cleanBasename": "SlottedCardSticker_Dark.png",
+      "findings": [],
+      "functionName": "SlottedCardSticker",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.SlottedCardSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "SwitchOff_Dark.a11y.png",
       "cleanBasename": "SwitchOff_Dark.png",
       "findings": [],
