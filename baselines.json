@@ -28,8 +28,8 @@
     "fonts-browser.dark.png": {
       "fixture": "fonts-browser",
       "theme": "dark",
-      "sha256": "16a8dec157b38aa1f8c1371e2262d4cfa10ca967e89a87c5bff5e1f5ba03c5fc",
-      "size": 126386
+      "sha256": "c16b3489360e8fd642ffdd8a495b8a161cc8cf6c92f5561638188d7933df38d7",
+      "size": 127655
     },
     "fonts-browser.light.png": {
       "fixture": "fonts-browser",
@@ -228,6 +228,18 @@
       "theme": "light",
       "sha256": "4fc6b2b49fe83e2064f1017aafefd7e369a51c7827ce1b0661837b38c3500594",
       "size": 42898
+    },
+    "serve-viewer-wasm-live.dark.png": {
+      "fixture": "serve-viewer-wasm-live",
+      "theme": "dark",
+      "sha256": "d742e0c82a1b9d4ddd785361c119dd194979fec52bad668685adbdd8d323178a",
+      "size": 51608
+    },
+    "serve-viewer-wasm-live.light.png": {
+      "fixture": "serve-viewer-wasm-live",
+      "theme": "light",
+      "sha256": "87e587cd15052b01dab1e9976bf16760b24c2c4d6f12e8ddb6dcd8fb30c5bd26",
+      "size": 51657
     },
     "serve-viewer-wasm.dark.png": {
       "fixture": "serve-viewer-wasm",
