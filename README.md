@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 210 preview(s) across 18 module(s) · 16 error(s) · 4 warning(s) · 26 info._
+_Auto-generated from `compose-preview/a11y/main`. 211 preview(s) across 19 module(s) · 16 error(s) · 4 warning(s) · 26 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -953,6 +953,14 @@ _No findings._
 ### `TextSerifSpecimen`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/TextSerifSpecimen_Dark.a11y.png" width="400" />
+
+_No findings._
+
+## design-catalog-m3-android
+
+### `FilledButtonFocused`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3-android/FilledButtonFocused_Dark.a11y.png" width="400" />
 
 _No findings._
 

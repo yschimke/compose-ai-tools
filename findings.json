@@ -1491,6 +1491,16 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "FilledButtonFocused_Dark.a11y.png",
+      "cleanBasename": "FilledButtonFocused_Dark.png",
+      "findings": [],
+      "functionName": "FilledButtonFocused",
+      "module": "design-catalog-m3-android",
+      "previewId": "com.example.designcatalogm3android.FocusRingKt.FilledButtonFocused_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3android/FocusRing.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "AppScaffoldTemplate_Dark.a11y.png",
       "cleanBasename": "AppScaffoldTemplate_Dark.png",
       "findings": [],
