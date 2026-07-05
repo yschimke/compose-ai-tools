@@ -128,14 +128,15 @@ class RenderEngineTest {
     // Parity with the desktop export: with `-Dcomposeai.figma.embedFonts=true` the Android export
     // embeds each text node's face as an `@font-face` WOFF2 so the SVG renders the real typeface. We
     // pre-seed the shared font cache (`composeai.fonts.cacheDir`) so the resolver serves from disk —
-    // deterministic, no network in CI. On Android the render itself is Roboto, so the embedded face
-    // is the exact match.
+    // deterministic, no network in CI. The `SerifTextPreview` fixture is `FontFamily.Serif`, so the
+    // export must embed a concrete *serif* (Noto Serif) — not the Roboto sans default, which used to
+    // erase serif/monospace specimens' identity.
     val outputDir = tempFolder.newFolder("renders-figma-fonts")
     val fontCache = tempFolder.newFolder("font-cache")
-    // The generic `serif` family maps to the Material default (Roboto); text weight defaults to 400.
-    // Seed all plausible weights with the same sentinel bytes so the assertion is weight-agnostic.
+    // The generic `serif` family maps to Noto Serif; text weight defaults to 400. Seed all plausible
+    // weights with the same sentinel bytes so the assertion is weight-agnostic.
     val sentinel = byteArrayOf(1, 2, 3)
-    for (w in listOf(400, 500, 700)) File(fontCache, "roboto-$w.woff2").writeBytes(sentinel)
+    for (w in listOf(400, 500, 700)) File(fontCache, "noto-serif-$w.woff2").writeBytes(sentinel)
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
     System.setProperty("roborazzi.test.record", "true")
     System.setProperty("composeai.figma.embedFonts", "true")
@@ -163,6 +164,8 @@ class RenderEngineTest {
       assertTrue("export must embed an @font-face", text.contains("@font-face"))
       // base64 of {1,2,3} = "AQID" — the seeded face bytes, proving the resolver→embed wiring.
       assertTrue("must embed the resolved WOFF2 data URI", text.contains("data:font/woff2;base64,AQID"))
+      assertTrue("serif specimen must embed a concrete serif", text.contains("font-family:'Noto Serif'"))
+      assertTrue("text must name the serif face", text.contains("""font-family="Noto Serif""""))
     } finally {
       host.shutdown()
       System.clearProperty("composeai.figma.embedFonts")
