@@ -490,7 +490,17 @@ for (const component of catalog.components) {
 // straight from the branch to skim every component (its a11y greenlines and the
 // editable wireframe) before importing the tokens/images into a design tool.
 const indexPath = join(outPath, "index.html");
-await writeFile(indexPath, renderIndexHtml(catalog, { wireframeSlugs, figmaSvgSlugs }), "utf8");
+// `renderIndexHtml`'s `heroImage` reads `component.images`, but the private `buildCatalog` keeps the
+// resolved image list off the in-memory `catalog` — it's only materialised on the serialized
+// `catalog.json` (by `writeCatalog`, then annotated with `livePreview` above). Feed the index the
+// serialized catalog so every card shows its render instead of a "no render" placeholder. The
+// wireframe/figma links keyed by `componentId` still match (same components).
+const indexCatalog = JSON.parse(await readFile(join(outPath, "catalog.json"), "utf8"));
+await writeFile(
+  indexPath,
+  renderIndexHtml(indexCatalog, { wireframeSlugs, figmaSvgSlugs }),
+  "utf8",
+);
 
 // Branch landing page: htmlpreview link to index.html + a summary table. Written
 // into out/ so the publish step's force-push republishes it every run — the
