@@ -63,6 +63,7 @@ internal object CliFlags {
       "--catalogs-unlisted",
       "--catalog-repo",
       "--catalog-branch-prefix",
+      "--catalog-source-root",
       "--wasm-dir",
       "--revisions-allow",
       "--live-seats",

@@ -334,11 +334,23 @@ class ServeCommand(args: List<String>) : Command(args) {
         .getOrNull()
     }
     // Project mode forks a session per git revision behind the registry's factory; off by default
-    // the factory yields nothing, so only the pinned current checkout is served.
-    // Worktrees back both project-mode revisions and the trusted-catalog source build; either flag
-    // opens them (gated by the same --revisions-allow ref allowlist).
-    val worktrees: GitWorktrees? =
-      if (revisions || allowRenderTrusted) openWorktrees(module) else null
+    // the factory yields nothing, so only the pinned current checkout is served. These worktrees
+    // are
+    // rooted at the served module's own project (`?session=<rev>` builds that module).
+    val worktrees: GitWorktrees? = if (revisions) openWorktrees(module) else null
+    // The trusted-catalog builder's worktrees. Rooted at --catalog-source-root when set (a separate
+    // checkout of the catalog's source repo — e.g. a prebuilt image serving a standalone module),
+    // else the served-project root (reusing [worktrees] when --revisions already opened one). Kept
+    // SEPARATE from [worktrees] so combining --revisions with --catalog-source-root still roots
+    // `?session=<rev>` at the served project rather than the catalog checkout. Both are gated by
+    // the
+    // same --revisions-allow ref allowlist.
+    val catalogWorktrees: GitWorktrees? =
+      when {
+        !allowRenderTrusted -> null
+        catalogSourceRoot != null -> openWorktrees(module, rootOverride = catalogSourceRoot)
+        else -> worktrees ?: openWorktrees(module)
+      }
     // The `?session=<rev>` factory (project mode) is gated on --revisions ONLY — NOT merely on
     // worktrees existing. Otherwise `--allow-render-trusted` (which also opens worktrees, but just
     // to
@@ -369,7 +381,8 @@ class ServeCommand(args: List<String>) : Command(args) {
     // A catalog that carries a `web/wasm/` app yields a system→dir entry so the in-browser tier
     // rides the same trusted branch (no local --wasm-dir build needed).
     val catalogWasm =
-      if (catalogRefs.isNotEmpty()) registerCatalogs(registry, worktrees, openHost) else emptyMap()
+      if (catalogRefs.isNotEmpty()) registerCatalogs(registry, catalogWorktrees, openHost)
+      else emptyMap()
     // Runtime ingestion (--accept-bundles): clients POST a bundle (or a ?url= to one) and it's
     // registered as a pinned session. Unpacked under a temp dir for this server's lifetime.
     val bundleStore =
@@ -454,6 +467,7 @@ class ServeCommand(args: List<String>) : Command(args) {
           runCatching { server.stop() }
           runCatching { registry.close() }
           runCatching { worktrees?.close() }
+          runCatching { if (catalogWorktrees !== worktrees) catalogWorktrees?.close() }
           done.countDown()
         }
       )
@@ -497,9 +511,9 @@ class ServeCommand(args: List<String>) : Command(args) {
   }
 
   /** Open the worktree manager rooted at the repo (project mode), gated to the allowed refs. */
-  private fun openWorktrees(module: PreviewModule): GitWorktrees {
+  private fun openWorktrees(module: PreviewModule, rootOverride: File? = null): GitWorktrees {
     val repoRoot =
-      catalogSourceRoot
+      rootOverride
         ?: findProjectRoot()
         ?: module.projectDir.absoluteFile.parentFile
         ?: module.projectDir
