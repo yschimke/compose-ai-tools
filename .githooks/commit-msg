@@ -55,15 +55,13 @@ check_identity() {
     fail "$role email '$email' is an AI agent. Set git
 user.name/user.email to your own identity and recommit."
   fi
-  case "$name" in
-    *'[bot]') : ;;  # GitHub App identities are allowed on branches
-    *)
-      if printf '%s' "$name" | grep -Eqi "$AGENT_NAME"; then
-        fail "$role name '$name' is an AI agent. Set git
+  # Anchored to the whole name so an identity set literally to "Claude"/… is
+  # caught, but a human like "Claude Martin" / "Alice Copilotson" — and GitHub
+  # App bots ("claude[bot]") — are not.
+  if printf '%s' "$name" | grep -Eqi "^${AGENT_NAME}$"; then
+    fail "$role name '$name' is an AI agent. Set git
 user.name/user.email to your own identity and recommit."
-      fi
-      ;;
-  esac
+  fi
 }
 check_identity "author"    "$(git var GIT_AUTHOR_IDENT)"
 check_identity "committer" "$(git var GIT_COMMITTER_IDENT)"

@@ -72,11 +72,17 @@ jobs:
             --format='%H%x09author%x09%an%x09%ae%x0a%H%x09committer%x09%cn%x09%ce' \
             "${BASE_SHA}..${HEAD_SHA}" > idents.txt
           # tolower() rather than IGNORECASE so this holds on mawk (the default
-          # awk on ubuntu-latest) as well as gawk.
+          # awk on ubuntu-latest) as well as gawk. The email match is a
+          # substring (any …@anthropic.com / …@openai.com address), but the
+          # NAME match is anchored to the whole identity ("^…$") so it catches
+          # an identity set literally to "Claude"/"Codex"/… without snagging a
+          # human whose name merely contains the token ("Claude Martin", "Alice
+          # Copilotson") — and it naturally exempts GitHub App bots, whose name
+          # is "claude[bot]", not "claude".
           ident_hits="$(awk -F'\t' -v nre="$AGENT_NAME" -v ere="$AGENT_EMAIL" '
             BEGIN { nre = tolower(nre); ere = tolower(ere) }
-            tolower($4) ~ ere                          { print; next }
-            tolower($3) ~ nre && tolower($3) !~ /\[bot\]$/ { print }
+            tolower($4) ~ ere            { print; next }
+            tolower($3) ~ ("^" nre "$")  { print }
           ' idents.txt || true)"
           if [ -n "$ident_hits" ]; then
             problems="${problems}Commit author/committer identity is an agent:
