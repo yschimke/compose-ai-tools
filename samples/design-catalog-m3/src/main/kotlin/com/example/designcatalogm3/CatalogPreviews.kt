@@ -92,6 +92,8 @@ import com.example.designcatalogm3.shared.CatalogComponent
 
 @CatalogModes @Composable fun FilledButtonFocused() = Sticker("button-filled-focused")
 
+@CatalogModes @Composable fun FilledButtonIconLabel() = Sticker("button-filled-icon-label")
+
 @CatalogModes @Composable fun OutlinedButtonDisabled() = Sticker("button-outlined-disabled")
 
 @CatalogModes @Composable fun SwitchOff() = Sticker("switch-off")
