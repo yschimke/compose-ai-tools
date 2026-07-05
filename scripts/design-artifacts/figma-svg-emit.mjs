@@ -36,7 +36,14 @@ export function figmaRastersForId(bundle, id) {
   const out = new Map();
   const prefix = `previews/${id}.figma-raster/`;
   for (const [path, bytes] of Object.entries(bundle.entries ?? {})) {
-    if (path.startsWith(prefix)) out.set(path.slice(prefix.length), bytes);
+    if (!path.startsWith(prefix)) continue;
+    const name = path.slice(prefix.length);
+    // Zip-slip guard: the driver writes each crop to figma/<slug>.figma-raster/<name>, so a hostile
+    // bundle carrying `..`/absolute/nested crop names could escape that dir. The daemon only ever
+    // emits a bare `<node>.png` filename (see FigmaSvgModel.defaultRasterHref), so accept exactly
+    // that — reject anything with a path separator or a `.`/`..` segment.
+    if (!name || name === "." || name === ".." || /[\\/]/.test(name)) continue;
+    out.set(name, bytes);
   }
   return out;
 }

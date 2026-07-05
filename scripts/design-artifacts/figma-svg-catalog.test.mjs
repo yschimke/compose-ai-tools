@@ -77,6 +77,20 @@ test("figmaRastersForId returns only that preview's crops", () => {
   assert.deepEqual([...crops.keys()].sort(), ["node-1.png", "node-2.png"]);
 });
 
+test("figmaRastersForId rejects path-traversal / nested crop names (zip-slip guard)", () => {
+  const bundle = {
+    entries: {
+      "previews/Fab_Light.figma-raster/node-1.png": enc("ok"),
+      "previews/Fab_Light.figma-raster/../../README.md": enc("evil"),
+      "previews/Fab_Light.figma-raster/nested/x.png": enc("evil"),
+      "previews/Fab_Light.figma-raster/..": enc("evil"),
+    },
+  };
+  const crops = figmaRastersForId(bundle, "Fab_Light");
+  // Only the bare filename survives; anything with a separator or a `..` segment is dropped.
+  assert.deepEqual([...crops.keys()], ["node-1.png"]);
+});
+
 test("rewriteRasterHrefs re-points hrefs to a per-slug dir (no cross-slug collisions)", () => {
   const svg = '<image href="figma-raster/node-1.png"/><image href="figma-raster/node-2.png"/>';
   const out = rewriteRasterHrefs(svg, "fab");
