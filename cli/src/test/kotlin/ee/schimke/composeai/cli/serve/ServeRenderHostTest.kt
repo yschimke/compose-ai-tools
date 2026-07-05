@@ -51,6 +51,40 @@ class ServeRenderHostTest {
   }
 
   @Test
+  fun `renderSvg returns the figma-svg for the given overrides`() {
+    val session = FakeRenderSession(newRenderRoot())
+    host(session).use { h ->
+      val out = h.renderSvg(previewId, PreviewOverrides(uiMode = UiMode.DARK))
+      assertTrue(out is SvgOutcome.Ok)
+      assertEquals("svg:DARK:null:null", (out as SvgOutcome.Ok).svg.decodeToString())
+    }
+  }
+
+  @Test
+  fun `renderSvg serves identical requests from cache`() {
+    val session = FakeRenderSession(newRenderRoot())
+    host(session).use { h ->
+      h.renderSvg(previewId, PreviewOverrides(uiMode = UiMode.DARK))
+      h.renderSvg(previewId, PreviewOverrides(uiMode = UiMode.DARK))
+      assertEquals(1, session.renderCount.get(), "second identical SVG request must hit the cache")
+    }
+  }
+
+  @Test
+  fun `renderSvg is not stale when the png for those overrides is already cached`() {
+    val session = FakeRenderSession(newRenderRoot())
+    host(session).use { h ->
+      // Cache the dark PNG, then render light — the shared per-preview SVG file is now light's.
+      h.render(previewId, PreviewOverrides(uiMode = UiMode.DARK))
+      h.render(previewId, PreviewOverrides(uiMode = UiMode.LIGHT))
+      // A dark SVG request must re-render dark, not return the shared file's stale light SVG.
+      val out = h.renderSvg(previewId, PreviewOverrides(uiMode = UiMode.DARK))
+      assertTrue(out is SvgOutcome.Ok)
+      assertEquals("svg:DARK:null:null", (out as SvgOutcome.Ok).svg.decodeToString())
+    }
+  }
+
+  @Test
   fun `concurrent identical requests coalesce to a single render`() {
     val session = FakeRenderSession(newRenderRoot())
     host(session).use { h ->

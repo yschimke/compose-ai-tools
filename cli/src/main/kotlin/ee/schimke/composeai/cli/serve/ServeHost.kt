@@ -33,6 +33,13 @@ interface ServeHost : AutoCloseable {
   fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome
 
   /**
+   * Render [previewId] at [overrides] and return its figma-svg export, or [SvgOutcome.NotFound]
+   * when this host can't produce SVG. Defaults to `NotFound`: only the daemon-backed
+   * [ServeRenderHost] overrides this — a static [ServeBundleHost] has no daemon to export one.
+   */
+  fun renderSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome = SvgOutcome.NotFound
+
+  /**
    * Join the shared live stream for [previewId], or `null` when this host has no live lane (the
    * snapshot fallback is used instead — always the case for [ServeBundleHost]).
    */
