@@ -94,6 +94,7 @@ internal class DaemonSemanticsFetcher(
         layoutSidecarFile(projectDir, previewId).delete()
         fontsSidecarFile(projectDir, previewId).delete()
         figmaSvgSidecarFile(projectDir, previewId).delete()
+        figmaRasterDir(projectDir, previewId).deleteRecursively()
       }
 
       val pending = ConcurrentHashMap.newKeySet<String>().apply { addAll(previewIds) }
@@ -137,6 +138,7 @@ internal class DaemonSemanticsFetcher(
       val layoutById = LinkedHashMap<String, ByteArray>()
       val fontsById = LinkedHashMap<String, ByteArray>()
       val figmaSvgById = LinkedHashMap<String, ByteArray>()
+      val figmaRasterById = LinkedHashMap<String, Map<String, ByteArray>>()
       for (previewId in previewIds) {
         val file = sidecarFile(projectDir, previewId)
         if (file.isFile && file.length() > 0) {
@@ -167,6 +169,17 @@ internal class DaemonSemanticsFetcher(
         val figmaSvg = figmaSvgSidecarFile(projectDir, previewId)
         if (figmaSvg.isFile && figmaSvg.length() > 0) {
           figmaSvgById[previewId] = fileSystem.read(figmaSvg.path.toPath()) { readByteArray() }
+          // A hybrid figma-svg (opaque Image/Icon/Canvas node) references `figma-raster/<node>.png`
+          // crops the daemon wrote beside it. Carry them too so the SVG's `<image>` layers resolve
+          // once the export copies the SVG onto the delivery branch — else they'd dangle. Absent
+          // (empty) for a pure-vector export, which is the common case for a component catalog.
+          val crops =
+            figmaRasterDir(projectDir, previewId)
+              .listFiles { f -> f.isFile && f.name.endsWith(".png") }
+              ?.sortedBy { it.name }
+              ?.associate { it.name to fileSystem.read(it.path.toPath()) { readByteArray() } }
+              .orEmpty()
+          if (crops.isNotEmpty()) figmaRasterById[previewId] = crops
         }
       }
       Outcome.Ok(
@@ -174,6 +187,7 @@ internal class DaemonSemanticsFetcher(
         layoutById = layoutById,
         fontsById = fontsById,
         figmaSvgById = figmaSvgById,
+        figmaRasterById = figmaRasterById,
       )
     }
   }
@@ -190,6 +204,9 @@ internal class DaemonSemanticsFetcher(
   private fun figmaSvgSidecarFile(projectDir: File, previewId: String): File =
     File(projectDir, "build/compose-previews/data/$previewId/${ComposeFigmaSvgProduct.FILE_SVG}")
 
+  private fun figmaRasterDir(projectDir: File, previewId: String): File =
+    File(projectDir, "build/compose-previews/data/$previewId/${ComposeFigmaSvgProduct.RASTER_DIR}")
+
   sealed interface Outcome {
     /**
      * Session opened and renders attempted. [semanticsById] holds one entry per preview whose
@@ -199,13 +216,17 @@ internal class DaemonSemanticsFetcher(
      * holds the matching `fonts-used.json` (`fonts/used` — requested vs resolved font families) for
      * each preview whose backend runs the fonts recorder. [figmaSvgById] holds the matching
      * `compose-figma.svg` (the layered editable `compose/figma-svg` export) for each preview that
-     * produced drawing layers.
+     * produced drawing layers. [figmaRasterById] holds, for each preview whose figma-svg is
+     * **hybrid** (opaque Image/Icon/Canvas node), its `figma-raster/<node>.png` crops (filename →
+     * bytes) so the SVG's `<image>` layers still resolve once carried; empty for a vector-only
+     * export.
      */
     data class Ok(
       val semanticsById: Map<String, ByteArray>,
       val layoutById: Map<String, ByteArray> = emptyMap(),
       val fontsById: Map<String, ByteArray> = emptyMap(),
       val figmaSvgById: Map<String, ByteArray> = emptyMap(),
+      val figmaRasterById: Map<String, Map<String, ByteArray>> = emptyMap(),
     ) : Outcome
 
     data class DescriptorMissing(val expected: File) : Outcome

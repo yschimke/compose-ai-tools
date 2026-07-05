@@ -202,6 +202,32 @@ class BundleSemanticsInjectTest {
   }
 
   @Test
+  fun `injects hybrid figma-raster crops under a per-preview dir`() {
+    val cover = png(4, 8)
+    val file =
+      polyglot(
+        cover,
+        linkedMapOf(
+          "bundle.json" to "{}".toByteArray(),
+          "previews/a.png" to cover,
+          "previews/a.figma.svg" to
+            """<svg><image href="figma-raster/n1.png"/></svg>""".toByteArray(),
+        ),
+      )
+
+    val crop = png(6, 6)
+    val written = injectFigmaRasterIntoBundle(file, mapOf("a" to linkedMapOf("n1.png" to crop)))
+
+    assertEquals(1, written)
+    val names = entries(BundleReader.extractZipBytes(file))
+    // The crop lands under previews/<id>.figma-raster/, beside the SVG that references it.
+    assertTrue("previews/a.figma-raster/n1.png" in names.keys)
+    assertEquals(crop.toList(), names.getValue("previews/a.figma-raster/n1.png").toList())
+    // SVG untouched.
+    assertTrue("previews/a.figma.svg" in names.keys)
+  }
+
+  @Test
   fun `re-injection replaces a stale semantics entry without duplicating it`() {
     val cover = png()
     val file =
