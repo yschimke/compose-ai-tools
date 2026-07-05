@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="331" height="242" viewBox="0 0 331 242" font-family="sans-serif">
+<g transform="translate(16, 16)">
+  <g id="RootMeasurePolicy">
+    <g id="BoxMeasurePolicy">
+      <g id="BoxMeasurePolicy">
+        <rect x="0" y="0" width="299" height="210" fill="#FEF7FF"/>
+        <g id="BoxMeasurePolicy">
+          <g id="BoxMeasurePolicy">
+            <rect x="42" y="53" width="215" height="105" rx="52.5" ry="52.5" fill="#6750A4"/>
+            <g id="RowMeasurePolicy">
+              <g id="EmptyMeasurePolicy">
+                <text x="105" y="117.92" font-size="36.75" font-family="sans-serif" font-weight="500" fill="#FFFFFF">Filled</text>
+              </g>
+            </g>
+          </g>
+        </g>
+      </g>
+    </g>
+  </g>
+</g>
+</svg>

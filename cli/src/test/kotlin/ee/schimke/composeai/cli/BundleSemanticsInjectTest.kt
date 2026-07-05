@@ -176,6 +176,32 @@ class BundleSemanticsInjectTest {
   }
 
   @Test
+  fun `injects figma-svg sidecars beside semantics without disturbing either`() {
+    val cover = png(4, 8)
+    val file =
+      polyglot(
+        cover,
+        linkedMapOf(
+          "bundle.json" to "{}".toByteArray(),
+          "previews/a.png" to cover,
+          "previews/a.semantics.json" to """{"root":{"nodeId":"1"}}""".toByteArray(),
+        ),
+      )
+
+    val svg = """<svg xmlns="http://www.w3.org/2000/svg"><g id="Box"/></svg>"""
+    val written = injectFigmaSvgIntoBundle(file, mapOf("a" to svg.toByteArray()))
+
+    assertEquals(1, written)
+    val names = entries(BundleReader.extractZipBytes(file))
+    // Semantics blob untouched; the layered figma-svg lands beside it under .figma.svg.
+    assertEquals(
+      """{"root":{"nodeId":"1"}}""",
+      names.getValue("previews/a.semantics.json").toString(Charsets.UTF_8),
+    )
+    assertEquals(svg, names.getValue("previews/a.figma.svg").toString(Charsets.UTF_8))
+  }
+
+  @Test
   fun `re-injection replaces a stale semantics entry without duplicating it`() {
     val cover = png()
     val file =

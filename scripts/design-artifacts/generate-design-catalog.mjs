@@ -116,6 +116,27 @@ function layoutByFunction(bundle) {
   return out;
 }
 
+/**
+ * Map componentFunction → the layered `compose/figma-svg` export bytes carried in the bundle as
+ * `previews/<id>.figma.svg` (baked by `bundle pack --with-semantics`). Unlike the wireframe — which
+ * this driver *renders* from `layout.json` — the figma-svg is a complete SVG produced Kotlin-side
+ * (real fills/strokes/corner radii + editable text), so we carry its bytes verbatim. Prefer the
+ * light variant so a single deterministic sticker is emitted per component.
+ */
+function figmaSvgByFunction(bundle) {
+  const out = new Map();
+  const prefer = (id) => /(_|\b)light$/i.test(id);
+  for (const preview of bundle.previews) {
+    const bytes = bundle.entries?.[`previews/${preview.id}.figma.svg`];
+    if (!bytes) continue;
+    const fn = preview.functionName ?? preview.id;
+    if (out.has(fn) && !prefer(preview.id)) continue;
+    const svg = new TextDecoder().decode(bytes);
+    if (svg.includes("<svg")) out.set(fn, svg);
+  }
+  return out;
+}
+
 /** Drop `widthDp`/`heightDp` when serialized as JSON null so the published
  *  normalizeSize doesn't `.trim()` a null. */
 function sanitizeNullSizes(params) {
@@ -444,11 +465,31 @@ for (const component of catalog.components) {
   wireframeCount += 1;
 }
 
+// Editable, design-fidelity vectors next to the raster PNGs: the layered
+// `compose/figma-svg` export (real fills / strokes / corner radii + editable
+// text) carried per sticker in the bundle. Unlike the schematic wireframe above
+// this is the *design* SVG — a designer imports it into Figma for an editable
+// component rather than a flat screenshot. Written under figma/<slug>.svg; the
+// index links it. Components whose render produced no drawing layers are skipped.
+const figmaSvgByFn = figmaSvgByFunction(bundle);
+const figmaDir = join(outPath, "figma");
+await mkdir(figmaDir, { recursive: true });
+const figmaSvgSlugs = new Set();
+let figmaSvgCount = 0;
+for (const component of catalog.components) {
+  const fn = fnByComponentId.get(component.componentId);
+  const svg = fn ? figmaSvgByFn.get(fn) : undefined;
+  if (!svg) continue;
+  await writeFile(join(figmaDir, `${slug(component.componentId)}.svg`), svg, "utf8");
+  figmaSvgSlugs.add(slug(component.componentId));
+  figmaSvgCount += 1;
+}
+
 // Browsable index next to catalog.json + images/ — a designer can open this
 // straight from the branch to skim every component (its a11y greenlines and the
 // editable wireframe) before importing the tokens/images into a design tool.
 const indexPath = join(outPath, "index.html");
-await writeFile(indexPath, renderIndexHtml(catalog, { wireframeSlugs }), "utf8");
+await writeFile(indexPath, renderIndexHtml(catalog, { wireframeSlugs, figmaSvgSlugs }), "utf8");
 
 // Branch landing page: htmlpreview link to index.html + a summary table. Written
 // into out/ so the publish step's force-push republishes it every run — the
@@ -456,14 +497,20 @@ await writeFile(indexPath, renderIndexHtml(catalog, { wireframeSlugs }), "utf8")
 const readmePath = join(outPath, "README.md");
 await writeFile(
   readmePath,
-  renderReadmeMd(catalog, { imageCount: result.imageCount, wireframeCount, previewBase }),
+  renderReadmeMd(catalog, {
+    imageCount: result.imageCount,
+    wireframeCount,
+    figmaSvgCount,
+    previewBase,
+  }),
   "utf8",
 );
 
 console.log(
   `[${spec.system}] ${catalog.components.length} component(s), ${result.imageCount} image(s), ` +
     `${wireframeCount} wireframe(s) (${layoutWireframeCount} from layout-inspector, ` +
-    `${wireframeCount - layoutWireframeCount} greenline) → ${result.manifestPath}`,
+    `${wireframeCount - layoutWireframeCount} greenline), ${figmaSvgCount} figma-svg → ` +
+    `${result.manifestPath}`,
 );
 console.log(`[${spec.system}] index → ${indexPath}`);
 console.log(`[${spec.system}] readme → ${readmePath}`);

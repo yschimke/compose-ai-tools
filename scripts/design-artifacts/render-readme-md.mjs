@@ -37,7 +37,7 @@ function groupCounts(components) {
 
 /**
  * @param {object} catalog the in-memory catalog (system, title, library, …)
- * @param {object} opts { imageCount, wireframeCount, repo?, previewBase? }
+ * @param {object} opts { imageCount, wireframeCount, figmaSvgCount?, repo?, previewBase? }
  * @returns {string} README.md contents
  */
 export function renderReadmeMd(catalog, opts = {}) {
@@ -77,6 +77,7 @@ dark scheme.
 
   const imageCount = opts.imageCount ?? components.reduce((n, c) => n + (c.images?.length ?? 0), 0);
   const wireframeCount = opts.wireframeCount ?? 0;
+  const figmaSvgCount = opts.figmaSvgCount ?? 0;
   const greenlineCount = components.filter((c) => (c.greenlines?.length ?? 0) > 0).length;
   const library = Array.isArray(meta.library) ? meta.library : meta.library ? [meta.library] : [];
   const generated = (meta.generatedAt ?? "").slice(0, 10);
@@ -88,6 +89,7 @@ dark scheme.
     ["Components", `**${components.length}**`],
     ["Rendered images (PNG)", `**${imageCount}**`],
     ["Editable wireframes (SVG)", `**${wireframeCount}**`],
+    ["Editable design vectors (figma-svg)", `**${figmaSvgCount}**`],
     ["Components with a11y greenlines", `**${greenlineCount}**`],
     ["Library", library.map((l) => `\`${l}\``).join("<br>") || "—"],
     ["Renderer", renderer ? cell(renderer) : "—"],

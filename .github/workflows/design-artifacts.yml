@@ -1,10 +1,11 @@
 name: Design Artifacts
 
 # Weekly job: render each design-catalog module and publish its importable
-# sticker-sheet bundle (catalog.json + DTCG tokens + Figma variables + PNGs) to a
-# clean `design-artifacts/<system>` branch a designer can pull into Figma /
-# Stitch / Claude Design. The render is the source of truth — these branches are
-# regenerated from the committed @Preview catalogs every Monday.
+# sticker-sheet bundle (catalog.json + DTCG tokens + Figma variables + PNGs +
+# per-sticker editable figma-svg vectors) to a clean `design-artifacts/<system>`
+# branch a designer can pull into Figma / Stitch / Claude Design. The render is
+# the source of truth — these branches are regenerated from the committed
+# @Preview catalogs every Monday.
 #
 # Pipeline: compose-preview bundle pack  →  @design-parity/catalog-export driver
 #           →  force-push out/ to design-artifacts/<system>.
