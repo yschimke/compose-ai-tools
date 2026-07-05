@@ -32,8 +32,13 @@ The `compose/figma-svg` data product (`FigmaLayeredSvg` in
   (or a `<path>` for non-uniform corners), `border` → stroke, resolved radius →
   Figma's editable corner radius, `CircleShape` → a max-radius rounded rect.
 - **Text is editable `<text>`** carrying family/size/weight/colour.
-- **Named theme colours ride along** as `<title>` + `data-token` per layer, to
-  bind fills to variables from the sibling `figma-variables.json`.
+- **Named theme colours** *can* ride along as `<title>` + `data-token` per layer
+  (to bind fills to variables from the sibling `figma-variables.json`) — but only
+  when the render is given a colour-name map. The normal
+  `bundle pack --with-semantics` / catalog path calls `writeSvg` with no map
+  today (`colorNames` defaults empty), so shipped `figma/<slug>.svg` carries no
+  `data-token` yet; wiring the live `compose/theme` map into the render path is a
+  tracked follow-up.
 - **Hybrid capture** — components that can't be faithful vectors (`Image`,
   `Icon`, `Canvas`, gradients, charts) are classified opaque and emitted as an
   `<image>` placeholder over a background-free raster crop; everything else stays
