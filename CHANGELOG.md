@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.16.17](https://github.com/yschimke/compose-ai-tools/compare/v0.16.16...v0.16.17) (2026-07-05)
+
+
+### Features
+
+* **catalog:** add scaffold templates to the M3 and Wear M3 catalogs ([#2233](https://github.com/yschimke/compose-ai-tools/issues/2233)) ([4d01f07](https://github.com/yschimke/compose-ai-tools/commit/4d01f07a495b29f1464482d692cd3ac246407f04))
+* **design-catalog:** fold states into a single-component view; add M3 keyboard-focus ring ([#2236](https://github.com/yschimke/compose-ai-tools/issues/2236)) ([1c86c47](https://github.com/yschimke/compose-ai-tools/commit/1c86c47546111657207a5b851e01189b22b247fc))
+* model CutCornerShape (chamfer) in the figma-svg export ([#2229](https://github.com/yschimke/compose-ai-tools/issues/2229)) ([8f9340f](https://github.com/yschimke/compose-ai-tools/commit/8f9340f8d63a46f8b5de93bd58a64db03bc72432))
+* **serve:** link snapshot note to local preview server instructions ([#2234](https://github.com/yschimke/compose-ai-tools/issues/2234)) ([9a5630f](https://github.com/yschimke/compose-ai-tools/commit/9a5630fe032d9648ceb7b4791d638f5920142601))
+
+
+### Bug Fixes
+
+* **design-artifacts:** embed the measured Roboto face in published figma-svg exports ([#2232](https://github.com/yschimke/compose-ai-tools/issues/2232)) ([3cdaa5b](https://github.com/yschimke/compose-ai-tools/commit/3cdaa5b0c1538788f7113d25da217477bd1fa6de))
+* render the hero image in the design-catalog index (not "no render") ([#2231](https://github.com/yschimke/compose-ai-tools/issues/2231)) ([7c0c784](https://github.com/yschimke/compose-ai-tools/commit/7c0c784c1783ec1551453a20451ec942e77fb70e))
+* **wasm-catalog:** remove iframe scrollbar and restore snapshot size parity ([#2235](https://github.com/yschimke/compose-ai-tools/issues/2235)) ([6a8cbd7](https://github.com/yschimke/compose-ai-tools/commit/6a8cbd751ae49a8185a1c9f19cc1621de3730956))
+
 ## [0.16.16](https://github.com/yschimke/compose-ai-tools/compare/v0.16.15...v0.16.16) (2026-07-05)
 
 
