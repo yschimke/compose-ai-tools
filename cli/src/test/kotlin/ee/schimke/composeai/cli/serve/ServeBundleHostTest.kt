@@ -49,6 +49,63 @@ class ServeBundleHostTest {
   }
 
   @Test
+  fun `renderSvg serves the baked figma svg with hybrid rasters inlined`() {
+    val dir = bundle("button-filled__ideal__default__dark" to byteArrayOf(1))
+    val figma = File(dir, "figma").apply { mkdirs() }
+    File(figma, "button-filled.svg")
+      .writeText("<svg><image href=\"button-filled.figma-raster/n0.png\"/></svg>")
+    File(figma, "button-filled.figma-raster").mkdirs()
+    File(figma, "button-filled.figma-raster/n0.png").writeBytes(byteArrayOf(1, 2, 3))
+
+    val host = ServeBundleHost(dir, label = "compose-m3", figmaDir = figma)
+    val ok =
+      host.renderSvg("button-filled__ideal__default__dark", PreviewOverrides()) as SvgOutcome.Ok
+    val svg = ok.svg.decodeToString()
+    val expected = java.util.Base64.getEncoder().encodeToString(byteArrayOf(1, 2, 3))
+    assertTrue(svg.contains("data:image/png;base64,$expected"), "raster inlined: $svg")
+    assertFalse(svg.contains("figma-raster/"), "no dangling external ref: $svg")
+  }
+
+  @Test
+  fun `renderSvg is NotFound without a figma dir, for unknown ids, and for missing svgs`() {
+    val dir =
+      bundle("button-filled__ideal__default__dark" to byteArrayOf(1), "badge__x" to byteArrayOf(2))
+    val overrides = PreviewOverrides()
+
+    // A plain bundle (no figmaDir) 404s the .svg lane.
+    val plain = ServeBundleHost(dir, label = "b")
+    assertEquals(
+      SvgOutcome.NotFound,
+      plain.renderSvg("button-filled__ideal__default__dark", overrides),
+    )
+
+    // With a figma dir: a known id whose slug carried no svg, and an unknown id, both 404.
+    val figma = File(dir, "figma").apply { mkdirs() }
+    File(figma, "button-filled.svg").writeText("<svg/>")
+    val host = ServeBundleHost(dir, label = "b", figmaDir = figma)
+    assertEquals(SvgOutcome.NotFound, host.renderSvg("badge__x", overrides)) // slug badge: no svg
+    assertEquals(SvgOutcome.NotFound, host.renderSvg("nope__x", overrides)) // unknown id
+  }
+
+  @Test
+  fun `renderSvg does not inline a raster href that escapes the figma dir`() {
+    val dir = bundle("button-filled__ideal__default__dark" to byteArrayOf(1))
+    val figma = File(dir, "figma").apply { mkdirs() }
+    // A secret file OUTSIDE the figma dir; a traversal href must not read it.
+    File(dir, "secret.png").writeBytes(byteArrayOf(9, 9, 9))
+    File(figma, "button-filled.svg")
+      .writeText("<svg><image href=\"button-filled.figma-raster/../../secret.png\"/></svg>")
+
+    val host = ServeBundleHost(dir, label = "b", figmaDir = figma)
+    val ok =
+      host.renderSvg("button-filled__ideal__default__dark", PreviewOverrides()) as SvgOutcome.Ok
+    val svg = ok.svg.decodeToString()
+    val leaked = java.util.Base64.getEncoder().encodeToString(byteArrayOf(9, 9, 9))
+    assertFalse(svg.contains(leaked), "must not inline a file outside the figma dir: $svg")
+    assertTrue(svg.contains("../../secret.png"), "the escaping href is left as a plain ref: $svg")
+  }
+
+  @Test
   fun `a bundle host has no live lane`() {
     val host = ServeBundleHost(bundle("p" to byteArrayOf(1)), label = "b")
     assertNull(host.subscribeStream("p", PreviewOverrides(), null, null) {})

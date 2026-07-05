@@ -98,6 +98,8 @@ class ServeCatalogStore(
     val previewsDir = File(dir, "previews")
     val previewsRoot = previewsDir.canonicalFile.toPath()
     var count = 0
+    // The component slugs whose baked figma-svg to fetch (a slug is the preview id up to `__`).
+    val slugs = LinkedHashSet<String>()
     for (component in catalog.components) {
       for (image in component.images) {
         if (count >= maxImages) break
@@ -112,6 +114,7 @@ class ServeCatalogStore(
         if (!target.canonicalFile.toPath().startsWith(previewsRoot)) continue
         target.parentFile?.mkdirs()
         target.writeBytes(bytes)
+        slugs.add(id.substringBefore(SLUG_SEPARATOR))
         count++
       }
     }
@@ -147,6 +150,10 @@ class ServeCatalogStore(
       return Result.Ok(safe, count, "${BundleVerifier.summary(verdict)} (live)")
     }
 
+    // Fetch the catalog's baked editable vectors (figma/<slug>.svg + crops) so the host can serve
+    // an SVG per preview; null when the branch carried none (host then 404s the .svg lane).
+    val figmaDir = fetchFigmaSvgs(slugs, base, dir)
+
     val host =
       ServeBundleHost(
         dir,
@@ -155,6 +162,7 @@ class ServeCatalogStore(
         title = catalog.title?.takeIf { it.isNotBlank() },
         subtitle =
           catalog.library.filter { it.isNotBlank() }.take(2).joinToString(" · ").ifBlank { null },
+        figmaDir = figmaDir,
       )
     register(safe, host)
     return Result.Ok(safe, host.previews.size, BundleVerifier.summary(verdict))
@@ -198,6 +206,41 @@ class ServeCatalogStore(
   }
 
   /**
+   * Fetch the catalog's baked `figma/<slug>.svg` exports (+ each hybrid SVG's external
+   * `<slug>.figma-raster/<node>.png` crops) from [base] into `<dir>/figma/`, so the static host can
+   * serve an editable vector per preview. Best-effort per slug (a missing SVG just means that
+   * component carried none); each write is path-contained like the images. Returns the local
+   * `figma/` dir when at least one SVG was written, else null.
+   */
+  private fun fetchFigmaSvgs(slugs: Set<String>, base: String, dir: File): File? {
+    val figmaDir = File(dir, FIGMA_DIR)
+    val figmaRoot = figmaDir.canonicalFile.toPath()
+    var wrote = 0
+    for (slug in slugs) {
+      if (slug.isEmpty() || "/" in slug || ".." in slug) continue
+      val svgBytes = runCatching { fetch("$base$FIGMA_DIR/$slug.svg") }.getOrNull() ?: continue
+      val svgFile = File(figmaDir, "$slug.svg")
+      if (!svgFile.canonicalFile.toPath().startsWith(figmaRoot)) continue
+      svgFile.parentFile?.mkdirs()
+      svgFile.writeBytes(svgBytes)
+      wrote++
+      // A hybrid SVG references external `figma-raster/<node>.png` crops; carry them so the host
+      // can
+      // inline them. Enumerate from the SVG itself (raw.githubusercontent has no directory
+      // listing).
+      for (href in figmaRasterHrefs(svgBytes.toString(Charsets.UTF_8))) {
+        if (href.isEmpty() || ".." in href.split("/")) continue
+        val cropFile = File(figmaDir, href)
+        if (!cropFile.canonicalFile.toPath().startsWith(figmaRoot)) continue
+        val cropBytes = runCatching { fetch("$base$FIGMA_DIR/$href") }.getOrNull() ?: continue
+        cropFile.parentFile?.mkdirs()
+        cropFile.writeBytes(cropBytes)
+      }
+    }
+    return if (wrote > 0) figmaDir else null
+  }
+
+  /**
    * Minimal mirror of the `design-parity-catalog/v1` schema — only the bits we serve are needed.
    */
   @Serializable
@@ -236,6 +279,9 @@ class ServeCatalogStore(
     const val DEFAULT_BRANCH_PREFIX = "design-artifacts/"
     const val CATALOG_FILE = "catalog.json"
     const val IMAGES_DIR = "images"
+    const val FIGMA_DIR = "figma"
+    /** A preview id folds the component slug + variant as `<slug>__<variant>`. */
+    const val SLUG_SEPARATOR = "__"
     const val WEB_WASM_DIR = "web/wasm"
     const val WEB_RENDER_COMPOSE_WASM = "compose-wasm"
     private const val MAX_WASM_FILES = 64

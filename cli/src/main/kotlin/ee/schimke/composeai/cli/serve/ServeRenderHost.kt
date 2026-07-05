@@ -12,7 +12,6 @@ import ee.schimke.composeai.render.session.RenderSessionException
 import ee.schimke.composeai.render.session.RenderSessionFactory
 import ee.schimke.composeai.render.session.subprocess.SubprocessRenderSessions
 import java.io.File
-import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -322,22 +321,12 @@ internal constructor(
   /**
    * Inline a hybrid SVG's sibling `figma-raster/<node>.png` crops as `data:` URIs so the served SVG
    * is self-contained — the Figma importer (and any consumer that can't resolve external hrefs)
-   * needs every layer embedded. A vector-only SVG has no such refs and passes through; a crop
-   * that's missing on disk is left as a plain ref rather than dropped.
+   * needs every layer embedded. A vector-only SVG has no such refs and passes through. Shares the
+   * inlining with the static catalog path via {@link inlineFigmaRasters}.
    */
   private fun inlineRasters(svgPath: okio.Path, raw: ByteArray): ByteArray {
-    val svg = raw.decodeToString()
-    val dir = svgPath.parent
-    if (dir == null || !svg.contains("\"figma-raster/")) return raw
-    val inlined =
-      RASTER_HREF.replace(svg) { match ->
-        val href = match.groupValues[1]
-        val cropPath = "$dir/$href".toPath()
-        if (!fileSystem.exists(cropPath)) return@replace match.value
-        val crop = fileSystem.read(cropPath) { readByteArray() }
-        "href=\"data:image/png;base64,${Base64.getEncoder().encodeToString(crop)}\""
-      }
-    return inlined.encodeToByteArray()
+    val dir = svgPath.parent ?: return raw
+    return inlineFigmaRasters(fileSystem, dir, raw.decodeToString()).encodeToByteArray()
   }
 
   /**
@@ -505,11 +494,6 @@ internal constructor(
     private const val COALESCED_RETRY_BACKOFF_MS = 100L
 
     private const val MAX_CACHE_ENTRIES = 256
-
-    /**
-     * `<image href="figma-raster/<node>.png">` refs a hybrid SVG carries, for data-URI inlining.
-     */
-    private val RASTER_HREF = Regex("href=\"(figma-raster/[^\"]+)\"")
 
     /**
      * Open a long-lived session against a daemon launch descriptor and wrap it. Mirrors

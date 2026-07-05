@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -82,6 +83,32 @@ class ServeCatalogStoreTest {
     assertEquals(
       setOf("button-filled__ideal__default__dark", "button-filled__ideal__default__light"),
       host.previews.map { it.id }.toSet(),
+    )
+  }
+
+  @Test
+  fun `a catalog's baked figma svgs are fetched and served self-contained`() {
+    val svg = "<svg><image href=\"button-filled.figma-raster/n0.png\"/></svg>"
+    val crop = byteArrayOf(7, 7, 7)
+    val fetch: (String) -> ByteArray? = { url ->
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalogJson.toByteArray()
+        url.endsWith("figma/button-filled.svg") -> svg.toByteArray()
+        url.endsWith("figma/button-filled.figma-raster/n0.png") -> crop
+        url.endsWith(".png") -> png()
+        else -> null
+      }
+    }
+    store(TrustStore.EMPTY, fetch).load("compose-m3")
+
+    val host = registered.getValue("compose-m3")
+    val ok =
+      host.renderSvg("button-filled__ideal__default__dark", PreviewOverrides()) as SvgOutcome.Ok
+    val out = ok.svg.decodeToString()
+    val expected = java.util.Base64.getEncoder().encodeToString(crop)
+    assertTrue(
+      out.contains("data:image/png;base64,$expected"),
+      "crop inlined into served svg: $out",
     )
   }
 
