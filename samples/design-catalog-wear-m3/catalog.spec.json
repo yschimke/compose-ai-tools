@@ -1,5 +1,5 @@
 {
-  "$comment": "Phase-0 catalog spec for Wear Compose Material 3. Code-led: the render is authoritative; the kit references are for the one-off seed import only. Wear is dark-first, so the primary modes are the round size breakpoints (small/large round) rather than light/dark.",
+  "$comment": "Phase-0 catalog spec for Wear Compose Material 3. Code-led: the render is authoritative; the kit references are for the one-off seed import only. Wear is dark-first, so the primary modes are the round size breakpoints (small/large round) rather than light/dark. A component's `variants` fold extra state renders (pressed/focused/disabled/off/…) onto the same sticker: the default preview is what the grid shows, and each variant's render becomes a secondary image (tagged with its `state`) surfaced in the single-component view, so state stickers live under their parent instead of a flat 'States' group.",
   "system": "wear-m3",
   "title": "Wear Compose Material 3",
   "library": ["androidx.wear.compose:compose-material3"],
@@ -13,7 +13,13 @@
     {
       "name": "Buttons",
       "components": [
-        { "componentId": "Button/Filled", "preview": "FilledButton" },
+        { "componentId": "Button/Filled", "preview": "FilledButton",
+          "variants": [
+            { "state": "pressed", "preview": "ButtonPressed", "caption": "Held PressInteraction → pressed state layer." },
+            { "state": "focused", "preview": "ButtonFocused", "caption": "Held FocusInteraction → focus indicator (rotary / D-pad)." },
+            { "state": "disabled", "preview": "ButtonDisabled", "caption": "Disabled state." }
+          ]
+        },
         { "componentId": "Button/Tonal", "preview": "FilledTonalButtonSticker" },
         { "componentId": "Button/Outlined", "preview": "OutlinedButtonSticker" },
         { "componentId": "Button/Child", "preview": "ChildButtonSticker" },
@@ -23,8 +29,10 @@
     {
       "name": "Selection",
       "components": [
-        { "componentId": "SwitchButton/On", "preview": "SwitchButtonOn" },
-        { "componentId": "CheckboxButton/Checked", "preview": "CheckboxButtonChecked" }
+        { "componentId": "SwitchButton/On", "preview": "SwitchButtonOn",
+          "variants": [ { "state": "off", "preview": "SwitchButtonOff", "caption": "Off state." } ] },
+        { "componentId": "CheckboxButton/Checked", "preview": "CheckboxButtonChecked",
+          "variants": [ { "state": "unchecked", "preview": "CheckboxButtonUnchecked", "caption": "Unchecked state." } ] }
       ]
     },
     {
@@ -51,16 +59,6 @@
       "name": "Communication",
       "components": [
         { "componentId": "Progress/Circular", "preview": "CircularProgressSticker" }
-      ]
-    },
-    {
-      "name": "States",
-      "components": [
-        { "componentId": "Button/Pressed", "preview": "ButtonPressed", "caption": "Held PressInteraction → pressed state layer." },
-        { "componentId": "Button/Focused", "preview": "ButtonFocused", "caption": "Held FocusInteraction → focus indicator (rotary / D-pad)." },
-        { "componentId": "Button/Disabled", "preview": "ButtonDisabled" },
-        { "componentId": "SwitchButton/Off", "preview": "SwitchButtonOff" },
-        { "componentId": "CheckboxButton/Unchecked", "preview": "CheckboxButtonUnchecked" }
       ]
     },
     {

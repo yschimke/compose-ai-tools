@@ -46,13 +46,42 @@ function figmaSvgLink(component, figmaSvgSlugs) {
   return `<a class="wf" href="figma/${slug(component.componentId)}.svg" target="_blank" rel="noopener">figma svg ↗</a>`;
 }
 
-/** One representative image per component — the first `ideal` variant (largest
- *  first), falling back to whatever exists. Dedupes the size-duplicated entries. */
+/** A component's `ideal` capture images (excludes the `layout` wireframe variant). */
+function idealImages(component) {
+  return (component.images ?? []).filter((i) => i.variant === "ideal");
+}
+
+/** One representative image for the grid — the **default** state (largest first),
+ *  so folded state variants (pressed / focused / disabled / …) never win the hero.
+ *  Falls back to the largest ideal image, then to whatever exists. */
 function heroImage(component) {
-  const images = component.images ?? [];
-  const ideal = images.filter((i) => i.variant === "ideal");
-  const pool = ideal.length ? ideal : images;
-  return [...pool].sort((a, b) => (b.width ?? 0) - (a.width ?? 0))[0];
+  const ideal = idealImages(component);
+  const pool = ideal.length ? ideal : component.images ?? [];
+  const defaults = pool.filter((i) => (i.state ?? "default") === "default");
+  const chooseFrom = defaults.length ? defaults : pool;
+  return [...chooseFrom].sort((a, b) => (b.width ?? 0) - (a.width ?? 0))[0];
+}
+
+/** The component's ideal images grouped by `state`, default first, each state's
+ *  theme/size captures kept together — the single-component zoom view walks this. */
+function statesOf(component) {
+  const order = [];
+  const byState = new Map();
+  for (const image of idealImages(component)) {
+    const state = image.state ?? "default";
+    if (!byState.has(state)) {
+      byState.set(state, []);
+      order.push(state);
+    }
+    byState.get(state).push(image);
+  }
+  order.sort((a, b) => (a === "default" ? -1 : b === "default" ? 1 : 0));
+  return order.map((state) => ({ state, images: byState.get(state) }));
+}
+
+/** A short per-image label — the theme, then size, else the state. */
+function imageLabel(image) {
+  return esc(image.theme ?? image.size ?? image.state ?? "");
 }
 
 /** The component's a11y greenlines collapsed to short role/severity chips. */
@@ -72,17 +101,59 @@ function componentCard(component, wireframeSlugs, figmaSvgSlugs) {
   const img = heroImage(component);
   const id = component.componentId ?? "(unnamed)";
   const dims = img ? `${img.width}×${img.height}` : "";
+  // States beyond the default (pressed / focused / disabled / …), folded onto this
+  // sticker by the spec's `variants`. The grid shows only the default; the extras
+  // surface in the zoom view, hinted here by a chip.
+  const states = statesOf(component);
+  const extraStates = states.filter((s) => s.state !== "default").length;
+  const stateChip = extraStates
+    ? `<a class="statechip" href="#d-${slug(id)}">+${extraStates} state${extraStates > 1 ? "s" : ""}</a>`
+    : "";
   const figure = img
-    ? `<figure class="shot"><img loading="lazy" src="${esc(img.path)}" alt="${esc(id)}" /></figure>`
-    : `<figure class="shot shot--missing">no render</figure>`;
+    ? `<a class="shot" href="#d-${slug(id)}" aria-label="Zoom ${esc(id)}"><img loading="lazy" src="${esc(img.path)}" alt="${esc(id)}" /></a>`
+    : `<div class="shot shot--missing">no render</div>`;
   return `<article class="card" id="c-${slug(id)}">
   ${figure}
   <div class="meta">
-    <h3>${esc(id)}</h3>
-    <div class="sub">${esc(dims)}${wireframeLink(component, wireframeSlugs)}${figmaSvgLink(component, figmaSvgSlugs)}</div>
+    <h3><a class="ctitle" href="#d-${slug(id)}">${esc(id)}</a></h3>
+    <div class="sub">${esc(dims)}${stateChip}${wireframeLink(component, wireframeSlugs)}${figmaSvgLink(component, figmaSvgSlugs)}</div>
     ${greenlineChips(component)}
   </div>
 </article>`;
+}
+
+/**
+ * The single-component zoom view — a `:target`-driven overlay (no JS) opened by
+ * clicking a card. Shows the component's default render plus every folded state
+ * variant as a secondary preview, each labelled by state and theme/size. Closing
+ * links back to the card anchor so the page keeps its scroll position.
+ */
+function componentDetail(component) {
+  const id = component.componentId ?? "(unnamed)";
+  const close = `#c-${slug(id)}`;
+  const caption = component.caption
+    ? `<div class="detail-caption">${esc(component.caption)}</div>`
+    : "";
+  const stateBlocks = statesOf(component)
+    .map((group) => {
+      const shots = group.images
+        .map(
+          (image) =>
+            `<div class="state-shot"><img loading="lazy" src="${esc(image.path)}" alt="${esc(id)} ${esc(group.state)}" /><span>${imageLabel(image)}</span></div>`,
+        )
+        .join("");
+      return `<figure class="state"><figcaption>${esc(group.state)}</figcaption><div class="state-shots">${shots}</div></figure>`;
+    })
+    .join("");
+  return `<div class="detail" id="d-${slug(id)}" role="dialog" aria-label="${esc(id)}">
+  <a class="detail-scrim" href="${close}" aria-label="Close"></a>
+  <div class="detail-panel">
+    <a class="detail-x" href="${close}" aria-label="Close">×</a>
+    <h3>${esc(id)}</h3>
+    ${caption}
+    <div class="detail-states">${stateBlocks}</div>
+  </div>
+</div>`;
 }
 
 /**
@@ -139,6 +210,10 @@ export function renderIndexHtml(catalog, opts = {}) {
     })
     .join("\n");
 
+  // One zoom overlay per component (opened by clicking its card), appended once at
+  // the end of the document so the `:target` overlay sits above everything.
+  const details = components.map(componentDetail).join("\n");
+
   // buildCatalog() returns { meta, components }; writeCatalog() flattens meta
   // into catalog.json. Normalise so the header works on either shape.
   const meta = catalog.meta ?? catalog;
@@ -190,16 +265,46 @@ export function renderIndexHtml(catalog, opts = {}) {
       linear-gradient(-45deg,transparent 75%,#202022 75%);
     background-size:16px 16px; background-position:0 0,0 8px,8px -8px,-8px 0; }
   .shot img { max-width:100%; max-height:240px; height:auto; display:block; }
+  a.shot { cursor:zoom-in; text-decoration:none; }
   .shot--missing { color:var(--muted); font-style:italic; }
   .meta { padding:10px 12px 12px; border-top:1px solid var(--line); }
   .meta h3 { margin:0; font-size:13px; font-weight:600; word-break:break-word; }
-  .meta .sub { color:var(--muted); font-size:12px; margin-top:2px; display:flex; justify-content:space-between; gap:8px; }
+  .meta h3 a.ctitle { color:inherit; text-decoration:none; }
+  .meta h3 a.ctitle:hover { text-decoration:underline; }
+  .meta .sub { color:var(--muted); font-size:12px; margin-top:2px; display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; }
   .meta .sub .wf { color:#7dd87d; text-decoration:none; white-space:nowrap; }
   .meta .sub .wf:hover { text-decoration:underline; }
+  .statechip { font-size:11px; padding:1px 7px; border-radius:999px; border:1px solid var(--line); color:var(--muted); text-decoration:none; white-space:nowrap; }
+  .statechip:hover { color:var(--fg); border-color:var(--muted); }
   .greenlines { margin-top:8px; display:flex; flex-wrap:wrap; gap:4px; }
   .chip { font-size:11px; padding:1px 7px; border-radius:999px; border:1px solid var(--accent); color:var(--accent); }
   .chip--warn { border-color:#e0c060; color:#e0c060; }
   .chip--error { border-color:#e08080; color:#e08080; }
+  /* Single-component zoom view — a pure-CSS :target overlay, one per component. */
+  .detail { display:none; }
+  .detail:target { display:flex; position:fixed; inset:0; z-index:50; align-items:center; justify-content:center; padding:clamp(12px,4vw,40px); }
+  .detail-scrim { position:absolute; inset:0; background:rgba(0,0,0,0.72); }
+  .detail-panel { position:relative; z-index:1; background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    max-width:min(960px,94vw); max-height:88vh; overflow:auto; padding:20px 24px; }
+  .detail-panel h3 { margin:0 0 4px; font-size:15px; word-break:break-word; }
+  .detail-caption { color:var(--muted); font-size:13px; margin-bottom:14px; }
+  .detail-x { position:absolute; top:8px; right:14px; color:var(--muted); text-decoration:none; font-size:24px; line-height:1; }
+  .detail-x:hover { color:var(--fg); }
+  .detail-states { display:flex; flex-wrap:wrap; gap:18px; }
+  figure.state { margin:0; }
+  figure.state figcaption { font-size:12px; color:var(--muted); margin-bottom:6px; text-transform:capitalize; }
+  .state-shots { display:flex; flex-wrap:wrap; gap:10px; }
+  .state-shot { display:flex; flex-direction:column; align-items:center; gap:5px;
+    background-color:#161617;
+    background-image:
+      linear-gradient(45deg,#202022 25%,transparent 25%),
+      linear-gradient(-45deg,#202022 25%,transparent 25%),
+      linear-gradient(45deg,transparent 75%,#202022 75%),
+      linear-gradient(-45deg,transparent 75%,#202022 75%);
+    background-size:16px 16px; background-position:0 0,0 8px,8px -8px,-8px 0;
+    border:1px solid var(--line); border-radius:10px; padding:12px; }
+  .state-shot img { max-width:220px; max-height:220px; height:auto; display:block; }
+  .state-shot span { font-size:11px; color:var(--muted); text-transform:capitalize; }
   @media (max-width:720px){ .layout{ grid-template-columns:1fr; } nav.index{ position:static; max-height:none; border-right:0; border-bottom:1px solid var(--line);} }
 </style>
 </head>
@@ -212,6 +317,7 @@ export function renderIndexHtml(catalog, opts = {}) {
   <nav class="index">${nav}</nav>
   <main>${main}</main>
 </div>
+${details}
 </body>
 </html>
 `;
