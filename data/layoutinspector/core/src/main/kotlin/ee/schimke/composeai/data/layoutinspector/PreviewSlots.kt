@@ -38,6 +38,13 @@ object PreviewSlots {
   }
 }
 
+/**
+ * The wire response of the `/render/<id>.slots` serve route: the [slots] a preview declared, in
+ * depth-first order, tagged with the [previewId] they came from. A structured-screen builder reads
+ * this to lay out slot regions and size children to fill them.
+ */
+@Serializable data class PreviewSlotsPayload(val previewId: String, val slots: List<PreviewSlot>)
+
 /** One named slot region — its author-declared name and its box (absolute-to-root px). */
 @Serializable
 data class PreviewSlot(val name: String, val bounds: SlotBounds) {
