@@ -122,7 +122,7 @@
     "renderBasename": "resources/mipmap/ic_launcher_xhdpi_SHAPE_circle.png",
     "resourceId": "mipmap/ic_launcher",
     "resourceType": "ADAPTIVE_ICON",
-    "sha256": "fb3475817e92a57d95f92c4dcdccf740d3a01b18da50f52140e06df5e1d2386f",
+    "sha256": "5c98535b89d45320c57ce4a3c73bc92ab257f6b1da706ca7ea740106aeef4876",
     "shape": "CIRCLE"
   },
   "samples/android::mipmap/ic_launcher::renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_circle_themed-dark.png": {
@@ -149,7 +149,7 @@
     "renderBasename": "resources/mipmap/ic_launcher_xhdpi_SHAPE_rounded_square.png",
     "resourceId": "mipmap/ic_launcher",
     "resourceType": "ADAPTIVE_ICON",
-    "sha256": "5e2dc100ac7acdba0a460716594f8a15745a61654160ed7a0204731e18876dc0",
+    "sha256": "87aedb75ac4ff5060eaef7b6c17b2d716758ea5c0f4125bf2a3132156514d10d",
     "shape": "ROUNDED_SQUARE"
   },
   "samples/android::mipmap/ic_launcher::renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_rounded_square_themed-dark.png": {
@@ -176,7 +176,7 @@
     "renderBasename": "resources/mipmap/ic_launcher_xhdpi_SHAPE_square.png",
     "resourceId": "mipmap/ic_launcher",
     "resourceType": "ADAPTIVE_ICON",
-    "sha256": "284ff218357b40bb51b38c32f30edc24d63e5ffb71fc88650807b20b01a1ee1a",
+    "sha256": "a0f0e682e389cdcafdd5e6a912336db0cbe58ccd32761616074e50a6aed1b886",
     "shape": "SQUARE"
   },
   "samples/android::mipmap/ic_launcher::renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_square_themed-dark.png": {
@@ -203,7 +203,7 @@
     "renderBasename": "resources/mipmap/ic_launcher_xhdpi_SHAPE_squircle.png",
     "resourceId": "mipmap/ic_launcher",
     "resourceType": "ADAPTIVE_ICON",
-    "sha256": "9c619d7fb9e524f5fbcd21374c899fcee0e0e6271bf10ba674d47a4cf136ff99",
+    "sha256": "c8fa78fc4916827a0003e8c71dbe38914de4caf8e5887a9a55b1532cbedf7a03",
     "shape": "SQUIRCLE"
   },
   "samples/android::mipmap/ic_launcher::renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_squircle_themed-dark.png": {
@@ -239,7 +239,7 @@
     "renderBasename": "resources/mipmap/ic_launcher_round_xhdpi_SHAPE_circle.png",
     "resourceId": "mipmap/ic_launcher_round",
     "resourceType": "ADAPTIVE_ICON",
-    "sha256": "fb3475817e92a57d95f92c4dcdccf740d3a01b18da50f52140e06df5e1d2386f",
+    "sha256": "5c98535b89d45320c57ce4a3c73bc92ab257f6b1da706ca7ea740106aeef4876",
     "shape": "CIRCLE"
   },
   "samples/android::mipmap/ic_launcher_round::renders/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_circle_themed-dark.png": {
@@ -266,7 +266,7 @@
     "renderBasename": "resources/mipmap/ic_launcher_round_xhdpi_SHAPE_rounded_square.png",
     "resourceId": "mipmap/ic_launcher_round",
     "resourceType": "ADAPTIVE_ICON",
-    "sha256": "5e2dc100ac7acdba0a460716594f8a15745a61654160ed7a0204731e18876dc0",
+    "sha256": "87aedb75ac4ff5060eaef7b6c17b2d716758ea5c0f4125bf2a3132156514d10d",
     "shape": "ROUNDED_SQUARE"
   },
   "samples/android::mipmap/ic_launcher_round::renders/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_rounded_square_themed-dark.png": {
@@ -293,7 +293,7 @@
     "renderBasename": "resources/mipmap/ic_launcher_round_xhdpi_SHAPE_square.png",
     "resourceId": "mipmap/ic_launcher_round",
     "resourceType": "ADAPTIVE_ICON",
-    "sha256": "284ff218357b40bb51b38c32f30edc24d63e5ffb71fc88650807b20b01a1ee1a",
+    "sha256": "a0f0e682e389cdcafdd5e6a912336db0cbe58ccd32761616074e50a6aed1b886",
     "shape": "SQUARE"
   },
   "samples/android::mipmap/ic_launcher_round::renders/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_square_themed-dark.png": {
@@ -320,7 +320,7 @@
     "renderBasename": "resources/mipmap/ic_launcher_round_xhdpi_SHAPE_squircle.png",
     "resourceId": "mipmap/ic_launcher_round",
     "resourceType": "ADAPTIVE_ICON",
-    "sha256": "9c619d7fb9e524f5fbcd21374c899fcee0e0e6271bf10ba674d47a4cf136ff99",
+    "sha256": "c8fa78fc4916827a0003e8c71dbe38914de4caf8e5887a9a55b1532cbedf7a03",
     "shape": "SQUIRCLE"
   },
   "samples/android::mipmap/ic_launcher_round::renders/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_squircle_themed-dark.png": {
