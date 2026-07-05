@@ -703,7 +703,7 @@ object ServeWeb {
       """
       <p class="cp-head"><a href="$basePath/$q">← previews</a>${trustBadge(trust)}</p>
       <p class="cp-sub" title="$idText">$label</p>
-      <div class="cp-viewer" data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel"$wasmAttr>
+      <div class="cp-viewer" data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel"$wasmAttr>
         <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$wasmFrame</div>
         <div class="cp-controls">
           $snapshotNote
@@ -766,6 +766,11 @@ object ServeWeb {
       var canvas = document.getElementById("cp-canvas");
       var status = document.getElementById("cp-status");
       var live = document.getElementById("cp-live");
+      // Whether the snapshot lane is static (baked PNGs, no /render re-render) — the explicit signal
+      // for the wasm auto-enable below. NOT `live.disabled`: a trusted-catalog live session serves
+      // static snapshots yet leaves the Live toggle enabled, so `live.disabled` no longer implies
+      // "static".
+      var staticSnapshot = root.getAttribute("data-static-snapshot") === "true";
       var previewId = root.getAttribute("data-preview-id");
       // The session path prefix ("/<system>") when this viewer is served under a path — it sits at
       // "<base>/p/<id>", so stripping the trailing "/p/<id>" recovers the base ("" for the root
@@ -1092,13 +1097,13 @@ object ServeWeb {
         }
         if (live.checked && ws && ws.readyState === 1) {
           ws.send(JSON.stringify({ type: "setOverrides", overrides: overrides() }));
-        } else if (live.disabled && wasmToggle) {
+        } else if (staticSnapshot && wasmToggle) {
           // Static snapshot backed by a Wasm app: the baked PNG can't honour theme/font-scale/locale
           // (only the in-browser tier can), and /render can't re-render a published catalog. So a
           // wasm-honoured control change auto-enables the Wasm tier and applies there, instead of
-          // firing a dead refreshSnapshot the user sees as "the control does nothing". (live.disabled
-          // marks a non-renderable session; device/orientation stay disabled, so only the
-          // wasm-honoured controls reach here.)
+          // firing a dead refreshSnapshot the user sees as "the control does nothing". (staticSnapshot
+          // marks a non-renderable snapshot lane — true even for a live catalog whose Live toggle is
+          // enabled; device/orientation stay disabled, so only the wasm-honoured controls reach here.)
           wasmToggle.checked = true;
           openWasm();
         } else if (!live.checked) {
