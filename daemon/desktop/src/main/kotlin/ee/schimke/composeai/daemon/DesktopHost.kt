@@ -718,6 +718,7 @@ open class DesktopHost(
         },
       orientation = orientation,
       inspectionMode = map["inspectionMode"]?.toBooleanStrictOrNull() ?: base.inspectionMode,
+      slotMode = map["slotMode"]?.toBooleanStrictOrNull() ?: base.slotMode,
     )
   }
 
