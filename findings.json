@@ -1621,6 +1621,16 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "FilledButtonIconLabel_Dark.a11y.png",
+      "cleanBasename": "FilledButtonIconLabel_Dark.png",
+      "findings": [],
+      "functionName": "FilledButtonIconLabel",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonIconLabel_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "FilledButtonPressed_Dark.a11y.png",
       "cleanBasename": "FilledButtonPressed_Dark.png",
       "findings": [],

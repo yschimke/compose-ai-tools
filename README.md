@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 211 preview(s) across 19 module(s) · 16 error(s) · 4 warning(s) · 26 info._
+_Auto-generated from `compose-preview/a11y/main`. 212 preview(s) across 19 module(s) · 16 error(s) · 4 warning(s) · 26 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -833,6 +833,12 @@ _No findings._
 ### `FilledButtonFocused`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/FilledButtonFocused_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `FilledButtonIconLabel`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/FilledButtonIconLabel_Dark.a11y.png" width="400" />
 
 _No findings._
 
