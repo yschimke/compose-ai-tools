@@ -119,12 +119,16 @@ object FigmaLayeredSvg {
     return if (radii == null) {
       """<rect x="${layer.left}" y="${layer.top}" width="${layer.width}" height="${layer.height}" """ +
         """$fillAttr$strokeAttr/>"""
+    } else if (layer.cut) {
+      // A cut/chamfered corner can't be expressed as a `<rect rx>` — always a path with straight
+      // corner segments, uniform or not.
+      """<path d="${cornerRectPath(layer, radii, cut = true)}" $fillAttr$strokeAttr/>"""
     } else if (radii.distinct().size == 1) {
       val r = fmt(radii[0])
       """<rect x="${layer.left}" y="${layer.top}" width="${layer.width}" height="${layer.height}" """ +
         """rx="$r" ry="$r" $fillAttr$strokeAttr/>"""
     } else {
-      """<path d="${roundedRectPath(layer, radii)}" $fillAttr$strokeAttr/>"""
+      """<path d="${cornerRectPath(layer, radii, cut = false)}" $fillAttr$strokeAttr/>"""
     }
   }
 
@@ -138,10 +142,12 @@ object FigmaLayeredSvg {
   }
 
   /**
-   * A rounded rectangle path with independent corner radii (top-left, top-right, bottom-right,
-   * bottom-left), each clamped to half the shorter side so overlapping radii don't invert the path.
+   * A rectangle path with independent corner sizes (top-left, top-right, bottom-right,
+   * bottom-left), each clamped to half the shorter side so overlapping corners don't invert the
+   * path. Each corner is an arc (rounded) or — when [cut] — a straight chamfer segment between the
+   * same two points, so a `CutCornerShape` bevels where a `RoundedCornerShape` rounds.
    */
-  private fun roundedRectPath(layer: FigmaSvgLayer, radii: List<Double>): String {
+  private fun cornerRectPath(layer: FigmaSvgLayer, radii: List<Double>, cut: Boolean): String {
     val x = layer.left.toDouble()
     val y = layer.top.toDouble()
     val w = layer.width.toDouble()
@@ -149,16 +155,23 @@ object FigmaLayeredSvg {
     val cap = minOf(w, h) / 2.0
     val c = radii.map { it.coerceIn(0.0, cap) }
     val (tl, tr, br, bl) = Quad(c[0], c[1], c[2], c[3])
+    // A rounded corner is an arc to (ex,ey); a cut corner is a straight line to the same point.
+    fun corner(r: Double, ex: Double, ey: Double): String =
+      when {
+        r <= 0.0 -> ""
+        cut -> "L${fmt(ex)},${fmt(ey)} "
+        else -> "A${fmt(r)},${fmt(r)} 0 0 1 ${fmt(ex)},${fmt(ey)} "
+      }
     return buildString {
       append("M${fmt(x + tl)},${fmt(y)} ")
       append("H${fmt(x + w - tr)} ")
-      if (tr > 0) append("A${fmt(tr)},${fmt(tr)} 0 0 1 ${fmt(x + w)},${fmt(y + tr)} ")
+      append(corner(tr, x + w, y + tr))
       append("V${fmt(y + h - br)} ")
-      if (br > 0) append("A${fmt(br)},${fmt(br)} 0 0 1 ${fmt(x + w - br)},${fmt(y + h)} ")
+      append(corner(br, x + w - br, y + h))
       append("H${fmt(x + bl)} ")
-      if (bl > 0) append("A${fmt(bl)},${fmt(bl)} 0 0 1 ${fmt(x)},${fmt(y + h - bl)} ")
+      append(corner(bl, x, y + h - bl))
       append("V${fmt(y + tl)} ")
-      if (tl > 0) append("A${fmt(tl)},${fmt(tl)} 0 0 1 ${fmt(x + tl)},${fmt(y)} ")
+      append(corner(tl, x + tl, y))
       append("Z")
     }
   }

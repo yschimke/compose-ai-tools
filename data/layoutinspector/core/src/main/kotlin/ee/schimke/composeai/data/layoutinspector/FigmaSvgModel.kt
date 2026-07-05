@@ -106,6 +106,11 @@ data class FigmaSvgLayer(
   val cornerRadiiPx: List<Double>? = null,
   /** True for a `CircleShape`/all-50% shape — drawn with radius = min(w,h)/2. */
   val circle: Boolean = false,
+  /**
+   * True for a `CutCornerShape` — the corner sizes in [cornerRadiiPx] are drawn as straight
+   * chamfers (a bevelled corner) rather than arcs. Mutually exclusive with [circle].
+   */
+  val cut: Boolean = false,
   val text: FigmaSvgText? = null,
   /** Set when this layer is an opaque component rendered as an `<image>`. */
   val raster: FigmaSvgRaster? = null,
@@ -249,6 +254,11 @@ data class FigmaSvgModel(
       val fill = tokens?.backgroundColor?.let { argbToColor(it, ctx.colorNames) }
       val stroke = tokens?.borderColor?.let { argbToColor(it, ctx.colorNames) }
       val circle = tokens?.shape == "circle"
+      // A `CutCornerShape` reports its corner sizes on `cornerRadius`/`cornerRadiusPx` like a
+      // rounded
+      // shape, plus a `shape="cut"` descriptor; the renderer draws those sizes as straight
+      // chamfers.
+      val cut = tokens?.shape == "cut"
       val corners =
         if (circle) null
         else
@@ -266,6 +276,7 @@ data class FigmaSvgModel(
         stroke = stroke,
         cornerRadiiPx = corners,
         circle = circle,
+        cut = cut,
         text = ctx.textByNodeId[nodeId],
         children = children.map { it.toLayer(ctx) },
       )

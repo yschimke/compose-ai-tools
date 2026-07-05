@@ -235,6 +235,41 @@ class RenderEngineTest {
   }
 
   @Test
+  fun figmaSvgExportChamfersCutCorner() {
+    // End-to-end cut corner: a real render of a box clipped with `CutCornerShape(20.dp)` must
+    // export
+    // a bevelled path (straight `L` segments), not a rounded one (`A` arcs). Exercises the whole
+    // chain — ModifierTokenResolver emits `shape="cut"`, FigmaSvgModel sets `cut`, the renderer
+    // draws chamfers.
+    val outputDir = tempFolder.newFolder("renders-cut-corner")
+    val dataDir = tempFolder.newFolder("data-cut-corner")
+    val engine = RenderEngine(outputDir = outputDir, dataDir = dataDir)
+    val host = DesktopHost(engine = engine)
+    host.start()
+    try {
+      val request =
+        RenderRequest.Render(
+          payload =
+            "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+              "functionName=CutCornerSquare;" +
+              "widthPx=100;heightPx=100;density=1.0;" +
+              "showBackground=true;" +
+              "outputBaseName=cut-corner"
+        )
+      host.submit(request, timeoutMs = 60_000)
+
+      val figma = File(File(dataDir, "cut-corner"), "compose-figma.svg")
+      assertTrue("figma layered SVG must be produced: ${figma.absolutePath}", figma.exists())
+      val figmaSvg = figma.readText()
+      assertTrue("cut corner must be a <path>, got:\n$figmaSvg", figmaSvg.contains("<path"))
+      assertTrue("cut corner must chamfer (straight L segments)", figmaSvg.contains(" L"))
+      assertFalse("cut corner must not round (no arc A commands)", figmaSvg.contains(" A"))
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
   fun figmaSvgFidelityScoresARender() {
     // End-to-end fidelity harness: with -Dcomposeai.figma.fidelity=true, a real render of a
     // composite themed card must, alongside the SVG, drop a `render | figma-svg | diff` composite

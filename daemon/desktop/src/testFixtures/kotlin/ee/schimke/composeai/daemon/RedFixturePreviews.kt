@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -116,6 +117,19 @@ fun FidelityCardPreview() {
 fun PxCornerSquare() {
   Box(modifier = Modifier.fillMaxSize().padding(10.dp)) {
     Box(modifier = Modifier.fillMaxSize().background(Color(0xFF6750A4), RoundedCornerShape(20f)))
+  }
+}
+
+/**
+ * Cut-corner fixture for the figma-svg export: a filled box clipped with `CutCornerShape(20.dp)`.
+ * The capture reports the corner size on `cornerRadius` plus a `shape="cut"` descriptor; before it
+ * was consumed the export ignored the descriptor and *rounded* the corner, so a bevelled shape
+ * rendered wrong. Used by [RenderEngineTest.figmaSvgExportChamfersCutCorner].
+ */
+@Composable
+fun CutCornerSquare() {
+  Box(modifier = Modifier.fillMaxSize().padding(10.dp)) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF6750A4), CutCornerShape(20.dp)))
   }
 }
 

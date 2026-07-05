@@ -281,6 +281,60 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun cutCornerShapeChamfersInsteadOfRounding() {
+    // A CutCornerShape reports its corner size on `cornerRadius` plus `shape="cut"`; the export
+    // must
+    // bevel (straight line segments) rather than round (arcs) or drop to a rounded/sharp rect.
+    val svg =
+      render(
+        layoutNode(
+          "Cut",
+          0,
+          0,
+          100,
+          100,
+          tokens =
+            ComposeSemanticsTokens(
+              backgroundColor = "#FFFFFFFF",
+              cornerRadius = "12.0dp",
+              shape = "cut",
+            ),
+        )
+      )
+    assertTrue(svg.contains("<path"))
+    assertTrue("chamfers are straight line segments", svg.contains(" L"))
+    assertFalse("no arc commands for a cut corner", svg.contains(" A"))
+    assertFalse("a cut corner is never a rounded <rect rx>", svg.contains("rx="))
+  }
+
+  @Test
+  fun rawPixelCutCornerChamfers() {
+    // A CutCornerShape(<px>f) rides on `cornerRadiusPx` + `shape="cut"` — same chamfer, no density.
+    val svg =
+      render(
+        layoutNode(
+          "CutPx",
+          0,
+          0,
+          100,
+          100,
+          tokens =
+            ComposeSemanticsTokens(
+              backgroundColor = "#FFFFFFFF",
+              cornerRadiusPx = "20.0px",
+              shape = "cut",
+            ),
+        ),
+        density = 2f,
+      )
+    assertTrue(svg.contains("<path"))
+    assertTrue(svg.contains(" L"))
+    assertFalse(svg.contains(" A"))
+    // Raw px: the chamfer point is at x=20 (top-left ends where the top edge starts), not 40.
+    assertTrue("px chamfer uses raw pixels, no density scaling", svg.contains("M20"))
+  }
+
+  @Test
   fun textNodeIsMatchedByBoundsAndEmittedAsEditableText() {
     val layout =
       layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 8, 8, 192, 40)))
