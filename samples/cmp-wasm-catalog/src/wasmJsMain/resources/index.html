@@ -10,10 +10,29 @@
         margin: 0;
         height: 100%;
         background: transparent;
+        /*
+          No scrollbar — the embedding `serve` viewer sizes this iframe pixel-exactly to the
+          snapshot's rendered box and CatalogApp contain-fits the sticker to it. A scrollbar would
+          steal ~15px of width from #composeApp (width:100%), shrinking that fit box and shifting the
+          contain-fit scale — the visible size change when Wasm mode is enabled. Kept alongside the
+          `display:block` below (which removes the root-cause overflow) as a hard guarantee.
+        */
+        overflow: hidden;
       }
       #composeApp {
         width: 100%;
-        height: 100vh;
+        /* Fill the iframe's box. `100%` (of html/body height:100%) rather than `100vh`, since `vh`
+           ignores scrollbars and rounds independently of the box the viewer actually sized us to. */
+        height: 100%;
+      }
+      /*
+        ComposeViewport mounts a <canvas> here. A canvas is an inline replaced element by default, so
+        it rests on the text baseline and leaves a descender gap beneath it — enough to push the
+        document past the viewport and raise a vertical scrollbar. Making it block removes that gap,
+        so the content is exactly the iframe height and nothing overflows.
+      */
+      #composeApp canvas {
+        display: block;
       }
     </style>
     <!--
