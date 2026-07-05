@@ -51,32 +51,49 @@ function idealImages(component) {
   return (component.images ?? []).filter((i) => i.variant === "ideal");
 }
 
-/** One representative image for the grid — the **default** state (largest first),
- *  so folded state variants (pressed / focused / disabled / …) never win the hero.
- *  Falls back to the largest ideal image, then to whatever exists. */
+/** The variant axis an image belongs to — a folded `state` (pressed / disabled / …)
+ *  or a content-axis `props` set (e.g. `content: icon+label`). The label-only,
+ *  resting render is `state:default` with no props; every other axis is a secondary
+ *  variant. `key` groups images; `label` captions the group; `kind` drives wording. */
+function variantOf(image) {
+  const entries = Object.entries(image.props ?? {}).sort(([a], [b]) => a.localeCompare(b));
+  if (entries.length) {
+    const label = entries.map(([k, v]) => `${k}=${v}`).join(", ");
+    return { key: `props:${label}`, label, kind: "props" };
+  }
+  const state = image.state ?? "default";
+  return { key: `state:${state}`, label: state, kind: "state" };
+}
+
+const DEFAULT_KEY = "state:default";
+
+/** One representative image for the grid — the **default** render (largest first),
+ *  so neither a folded state (pressed / …) nor a content variant (icon+label, which
+ *  can be wider) ever wins the hero. Falls back to the largest ideal, then whatever. */
 function heroImage(component) {
   const ideal = idealImages(component);
   const pool = ideal.length ? ideal : component.images ?? [];
-  const defaults = pool.filter((i) => (i.state ?? "default") === "default");
+  const defaults = pool.filter((i) => variantOf(i).key === DEFAULT_KEY);
   const chooseFrom = defaults.length ? defaults : pool;
   return [...chooseFrom].sort((a, b) => (b.width ?? 0) - (a.width ?? 0))[0];
 }
 
-/** The component's ideal images grouped by `state`, default first, each state's
- *  theme/size captures kept together — the single-component zoom view walks this. */
-function statesOf(component) {
+/** The component's ideal images grouped by variant (state or props), default first,
+ *  each group's theme/size captures kept together — the single-component zoom view
+ *  walks this. Each group carries `{ key, label, kind, images }`. */
+function variantGroups(component) {
   const order = [];
-  const byState = new Map();
+  const byKey = new Map();
   for (const image of idealImages(component)) {
-    const state = image.state ?? "default";
-    if (!byState.has(state)) {
-      byState.set(state, []);
-      order.push(state);
+    const v = variantOf(image);
+    if (!byKey.has(v.key)) {
+      byKey.set(v.key, { key: v.key, label: v.label, kind: v.kind, images: [] });
+      order.push(v.key);
     }
-    byState.get(state).push(image);
+    byKey.get(v.key).images.push(image);
   }
-  order.sort((a, b) => (a === "default" ? -1 : b === "default" ? 1 : 0));
-  return order.map((state) => ({ state, images: byState.get(state) }));
+  order.sort((a, b) => (a === DEFAULT_KEY ? -1 : b === DEFAULT_KEY ? 1 : 0));
+  return order.map((k) => byKey.get(k));
 }
 
 /** A short per-image label — the theme, then size, else the state. */
@@ -101,13 +118,14 @@ function componentCard(component, wireframeSlugs, figmaSvgSlugs) {
   const img = heroImage(component);
   const id = component.componentId ?? "(unnamed)";
   const dims = img ? `${img.width}×${img.height}` : "";
-  // States beyond the default (pressed / focused / disabled / …), folded onto this
-  // sticker by the spec's `variants`. The grid shows only the default; the extras
-  // surface in the zoom view, hinted here by a chip.
-  const states = statesOf(component);
-  const extraStates = states.filter((s) => s.state !== "default").length;
-  const stateChip = extraStates
-    ? `<a class="statechip" href="#d-${slug(id)}">+${extraStates} state${extraStates > 1 ? "s" : ""}</a>`
+  // Variants beyond the default — folded states (pressed / focused / disabled / …)
+  // and content axes (icon+label) declared by the spec's `variants`. The grid shows
+  // only the default; the extras surface in the zoom view, hinted here by a chip.
+  // Wording stays "state(s)" when they're all states, else the general "variant(s)".
+  const extras = variantGroups(component).filter((g) => g.key !== DEFAULT_KEY);
+  const noun = extras.every((g) => g.kind === "state") ? "state" : "variant";
+  const stateChip = extras.length
+    ? `<a class="statechip" href="#d-${slug(id)}">+${extras.length} ${noun}${extras.length > 1 ? "s" : ""}</a>`
     : "";
   const figure = img
     ? `<a class="shot" href="#d-${slug(id)}" aria-label="Zoom ${esc(id)}"><img loading="lazy" src="${esc(img.path)}" alt="${esc(id)}" /></a>`
@@ -134,15 +152,15 @@ function componentDetail(component) {
   const caption = component.caption
     ? `<div class="detail-caption">${esc(component.caption)}</div>`
     : "";
-  const stateBlocks = statesOf(component)
+  const stateBlocks = variantGroups(component)
     .map((group) => {
       const shots = group.images
         .map(
           (image) =>
-            `<div class="state-shot"><img loading="lazy" src="${esc(image.path)}" alt="${esc(id)} ${esc(group.state)}" /><span>${imageLabel(image)}</span></div>`,
+            `<div class="state-shot"><img loading="lazy" src="${esc(image.path)}" alt="${esc(id)} ${esc(group.label)}" /><span>${imageLabel(image)}</span></div>`,
         )
         .join("");
-      return `<figure class="state"><figcaption>${esc(group.state)}</figcaption><div class="state-shots">${shots}</div></figure>`;
+      return `<figure class="state"><figcaption>${esc(group.label)}</figcaption><div class="state-shots">${shots}</div></figure>`;
     })
     .join("");
   return `<div class="detail" id="d-${slug(id)}" role="dialog" aria-label="${esc(id)}">

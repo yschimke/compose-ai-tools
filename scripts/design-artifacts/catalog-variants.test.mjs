@@ -154,3 +154,30 @@ test("a component with only a default state gets no states chip", () => {
   // but it still has a zoom overlay (to see light + dark larger)
   assert.match(html, /id="d-card-filled"/);
 });
+
+test("a content-axis (props) variant never wins the hero and is labelled in the zoom view", () => {
+  const catalog = {
+    meta: { system: "compose-m3", title: "Compose M3" },
+    components: [
+      {
+        componentId: "Button/Filled",
+        group: "Buttons",
+        greenlines: [],
+        images: [
+          // the label-only default is NARROWER than the icon+label render below,
+          // so the old "largest default-state" hero would have picked icon+label.
+          { variant: "ideal", state: "default", theme: "light", path: "images/button-filled/ideal__default__light.png", width: 120, height: 40 },
+          { variant: "ideal", state: "default", theme: "light", props: { content: "icon+label" }, path: "images/button-filled/ideal__default__light__content-icon-label.png", width: 168, height: 40 },
+        ],
+      },
+    ],
+  };
+  const html = renderIndexHtml(catalog);
+  // Hero is the label-only default, not the wider props render.
+  const shot = html.match(/<a class="shot"[^>]*>\s*<img[^>]*src="([^"]+)"/);
+  assert.ok(shot, "expected a card shot image");
+  assert.match(shot[1], /ideal__default__light\.png$/);
+  // The chip counts it as a variant (not a "state"), and the zoom view labels the axis.
+  assert.match(html, /class="statechip"[^>]*>\+1 variant</);
+  assert.match(html, /<figcaption>content=icon\+label<\/figcaption>/);
+});
