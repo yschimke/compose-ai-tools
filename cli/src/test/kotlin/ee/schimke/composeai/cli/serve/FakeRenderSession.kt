@@ -30,6 +30,10 @@ import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamFrameParams
 import ee.schimke.composeai.daemon.protocol.StreamStartResult
 import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
+import ee.schimke.composeai.data.layoutinspector.PreviewSlots
 import ee.schimke.composeai.render.session.NotificationListener
 import ee.schimke.composeai.render.session.RenderSession
 import ee.schimke.composeai.render.session.RenderSessionBackend
@@ -189,6 +193,9 @@ internal class FakeRenderSession(
       // Model the daemon writing the figma-svg to a shared per-preview path as a side effect of the
       // same render — overwritten each time, so distinct overrides overwrite one another's SVG.
       writeFigmaSvg(id, overrides)
+      // Likewise the compose/semantics tree, carrying two `dp-slot:` markers so the slots lane has
+      // something to extract.
+      writeSemantics(id)
     }
     return RenderNowResult(queued = previewIds, rejected = emptyList())
   }
@@ -206,6 +213,33 @@ internal class FakeRenderSession(
     }
   }
 
+  private fun writeSemantics(id: String) {
+    val previewDir = File(renderRoot, id).apply { mkdirs() }
+    val payload =
+      ComposeSemanticsPayload(
+        root =
+          ComposeSemanticsNode(
+            nodeId = "0",
+            boundsInRoot = "0,0,200,100",
+            children =
+              listOf(
+                ComposeSemanticsNode(
+                  nodeId = "1",
+                  boundsInRoot = "8,8,40,40",
+                  testTag = "${PreviewSlots.SLOT_TAG_PREFIX}leadingIcon",
+                ),
+                ComposeSemanticsNode(
+                  nodeId = "2",
+                  boundsInRoot = "48,44,192,64",
+                  testTag = "${PreviewSlots.SLOT_TAG_PREFIX}supporting",
+                ),
+              ),
+          )
+      )
+    File(previewDir, ComposeSemanticsProduct.FILE)
+      .writeText(streamJson.encodeToString(ComposeSemanticsPayload.serializer(), payload))
+  }
+
   override fun fetchData(
     previewId: String,
     kind: String,
@@ -218,6 +252,14 @@ internal class FakeRenderSession(
       return DataFetchResult(
         kind = kind,
         schemaVersion = ComposeFigmaSvgProduct.SCHEMA_VERSION,
+        path = file.absolutePath,
+      )
+    }
+    if (kind == ComposeSemanticsProduct.KIND) {
+      val file = File(renderRoot, "$previewId/${ComposeSemanticsProduct.FILE}")
+      return DataFetchResult(
+        kind = kind,
+        schemaVersion = ComposeSemanticsProduct.SCHEMA_VERSION,
         path = file.absolutePath,
       )
     }

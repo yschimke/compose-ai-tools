@@ -497,9 +497,9 @@ class ServeHttpServer(
 
   /**
    * `GET /render/{name}` (query) and `GET /{system}/render/{name}` (path): a preview's rendered
-   * bytes — a PNG for `<id>.png` (or no suffix), or the figma-svg export for `<id>.svg`. Both take
-   * the same override query params; SVG is only produced by a daemon-backed host (a static bundle
-   * 404s it).
+   * bytes — a PNG for `<id>.png` (or no suffix), the figma-svg export for `<id>.svg`, or the
+   * declared preview slots as JSON for `<id>.slots`. All take the same override query params; SVG
+   * and slots are only produced by a daemon-backed host (a static bundle 404s them).
    */
   private suspend fun RoutingContext.handleRender(sessionInPath: Boolean) {
     if (rejectBadToken()) return
@@ -510,7 +510,8 @@ class ServeHttpServer(
         return@withLeasedSession
       }
       val wantSvg = rawName.endsWith(".svg")
-      val previewId = rawName.removeSuffix(".png").removeSuffix(".svg")
+      val wantSlots = rawName.endsWith(".slots")
+      val previewId = rawName.removeSuffix(".png").removeSuffix(".svg").removeSuffix(".slots")
       // Forward the fixed render axes plus any author-declared knob params (`knob.<key>=…`, dynamic
       // keys not in SUPPORTED_KEYS) so a live knob edit reaches ServeOverrides.parse instead of
       // being
@@ -535,6 +536,10 @@ class ServeHttpServer(
         is OverrideParse.Ok -> {
           if (wantSvg) {
             renderSvgResponse(renderHost, previewId, parsed.overrides)
+            return@withLeasedSession
+          }
+          if (wantSlots) {
+            renderSlotsResponse(renderHost, previewId, parsed.overrides)
             return@withLeasedSession
           }
           // The render is blocking (renderNow + await); keep it off the request dispatcher. Cap
@@ -602,6 +607,39 @@ class ServeHttpServer(
         call.respondBytes(outcome.svg, ContentType.parse(ComposeFigmaSvgProduct.MEDIA_TYPE_SVG))
       SvgOutcome.NotFound -> call.respondText("no such preview", status = HttpStatusCode.NotFound)
       is SvgOutcome.Failed ->
+        call.respondText(outcome.reason, status = HttpStatusCode.InternalServerError)
+    }
+  }
+
+  /** Slots lane of [handleRender]: load-shed like the PNG lane, then respond the slots JSON. */
+  private suspend fun RoutingContext.renderSlotsResponse(
+    renderHost: ServeHost,
+    previewId: String,
+    overrides: PreviewOverrides,
+  ) {
+    val outcome =
+      withContext(Dispatchers.IO) {
+        if (!renderSemaphore.tryAcquire(RENDER_QUEUE_WAIT_SECONDS, TimeUnit.SECONDS)) {
+          null
+        } else {
+          try {
+            renderHost.renderSlots(previewId, overrides)
+          } finally {
+            renderSemaphore.release()
+          }
+        }
+      }
+    when (outcome) {
+      null -> {
+        call.response.headers.append(HttpHeaders.RetryAfter, "2")
+        call.respondText(
+          "render queue saturated; retry shortly",
+          status = HttpStatusCode.ServiceUnavailable,
+        )
+      }
+      is SlotsOutcome.Ok -> call.respondBytes(outcome.json, ContentType.Application.Json)
+      SlotsOutcome.NotFound -> call.respondText("no such preview", status = HttpStatusCode.NotFound)
+      is SlotsOutcome.Failed ->
         call.respondText(outcome.reason, status = HttpStatusCode.InternalServerError)
     }
   }

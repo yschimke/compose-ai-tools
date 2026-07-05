@@ -5,6 +5,10 @@ import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamFrameParams
 import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
+import ee.schimke.composeai.data.layoutinspector.PreviewSlots
+import ee.schimke.composeai.data.layoutinspector.PreviewSlotsPayload
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.render.session.RenderSession
 import ee.schimke.composeai.render.session.RenderSessionConfig
@@ -79,6 +83,20 @@ sealed interface SvgOutcome {
 }
 
 /**
+ * Result of a preview-slots request — the [PreviewSlotsPayload] JSON counterpart of
+ * [RenderOutcome].
+ */
+sealed interface SlotsOutcome {
+  data class Ok(val json: ByteArray) : SlotsOutcome
+
+  /** No such preview id, or this host can't extract slots (a static bundle has no daemon). */
+  data object NotFound : SlotsOutcome
+
+  /** The render or semantics fetch was attempted but failed. [reason] is human-readable. */
+  data class Failed(val reason: String) : SlotsOutcome
+}
+
+/**
  * Long-lived, thread-safe wrapper around **one** [RenderSession], fronting it for the
  * `compose-preview serve` HTTP server. The long-lived sibling of
  * [ee.schimke.composeai.cli.MatrixRenderFetcher]: same `renderNow` + await-`renderFinished` +
@@ -123,6 +141,13 @@ internal constructor(
 
   // The figma-svg counterpart of [cache], keyed the same way (previewId × overrides).
   private val svgCache = LruByteCache(MAX_CACHE_ENTRIES)
+
+  // The preview-slots counterpart of [cache], keyed the same way (previewId × overrides).
+  private val slotsCache = LruByteCache(MAX_CACHE_ENTRIES)
+
+  // Decodes a fetched compose/semantics payload and encodes the slots response; tolerant of the
+  // schema's additive fields (a v7 file read by this v-agnostic slot extractor).
+  private val dataJson = Json { ignoreUnknownKeys = true }
 
   private val renderLock = ReentrantLock()
 
@@ -327,6 +352,74 @@ internal constructor(
   private fun inlineRasters(svgPath: okio.Path, raw: ByteArray): ByteArray {
     val dir = svgPath.parent ?: return raw
     return inlineFigmaRasters(fileSystem, dir, raw.decodeToString()).encodeToByteArray()
+  }
+
+  /**
+   * Render [previewId] at [overrides] and return its declared **preview slots** as
+   * [PreviewSlotsPayload] JSON, serving a cached result when one exists. Thread-safe.
+   *
+   * The slots are the `dp-slot:<name>` markers the preview's author placed (see [PreviewSlots]);
+   * they're captured into the `compose/semantics` tree of the *same* render that produces the PNG,
+   * with their absolute-to-root bounds. Like [renderSvg] this renders (reusing [render] and its
+   * retry/timeout handling) then fetches the just-written product, both under [renderLock] with the
+   * PNG cache entry evicted first — the semantics file is shared per preview and overwritten by
+   * every render, so it must be read in the same critical section as the render that produced it.
+   */
+  override fun renderSlots(previewId: String, overrides: PreviewOverrides): SlotsOutcome {
+    check(!closed.get()) { "ServeRenderHost is closed" }
+    if (previewId !in previewIds) return SlotsOutcome.NotFound
+
+    val key = ServeOverrides.cacheKey(previewId, overrides)
+    slotsCache.get(key)?.let {
+      return SlotsOutcome.Ok(it)
+    }
+
+    return renderLock.withLock {
+      slotsCache.get(key)?.let {
+        return@withLock SlotsOutcome.Ok(it)
+      }
+
+      // Force a fresh render of these overrides so the shared per-preview semantics file on disk is
+      // theirs; the held lock keeps any other render from overwriting it before the fetch below.
+      cache.remove(key)
+      when (val pngOutcome = render(previewId, overrides)) {
+        RenderOutcome.NotFound -> return@withLock SlotsOutcome.NotFound
+        is RenderOutcome.Failed -> return@withLock SlotsOutcome.Failed(pngOutcome.reason)
+        is RenderOutcome.Ok -> {} // rendered; the semantics for these overrides is now on disk
+      }
+
+      val payload =
+        try {
+          fetchSemantics(previewId)
+        } catch (e: Exception) {
+          val reason = "compose/semantics fetch failed: ${e.message}"
+          onLog(reason)
+          return@withLock SlotsOutcome.Failed(reason)
+        } ?: return@withLock SlotsOutcome.Failed("render produced no semantics")
+
+      val slots = PreviewSlots.extractSlots(payload)
+      val json =
+        dataJson
+          .encodeToString(PreviewSlotsPayload.serializer(), PreviewSlotsPayload(previewId, slots))
+          .encodeToByteArray()
+      slotsCache.put(key, json)
+      SlotsOutcome.Ok(json)
+    }
+  }
+
+  /**
+   * Fetch and decode the freshly written `compose/semantics` tree for [previewId] from whichever
+   * transport the session used (inline payload or an on-disk path); null when the fetch yielded
+   * neither. Callers hold [renderLock] so the file read matches the render that produced it.
+   */
+  private fun fetchSemantics(previewId: String): ComposeSemanticsPayload? {
+    val result = session.fetchData(previewId, ComposeSemanticsProduct.KIND)
+    result.payload?.let {
+      return dataJson.decodeFromJsonElement(ComposeSemanticsPayload.serializer(), it)
+    }
+    val path = result.path?.toPath()?.takeIf { fileSystem.exists(it) } ?: return null
+    val text = fileSystem.read(path) { readUtf8() }
+    return dataJson.decodeFromString(ComposeSemanticsPayload.serializer(), text)
   }
 
   /**

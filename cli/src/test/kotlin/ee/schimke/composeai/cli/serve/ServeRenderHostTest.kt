@@ -2,6 +2,8 @@ package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.UiMode
+import ee.schimke.composeai.data.layoutinspector.PreviewSlotsPayload
+import ee.schimke.composeai.data.layoutinspector.SlotBounds
 import ee.schimke.composeai.render.session.RenderSession
 import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
@@ -12,6 +14,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.Json
 
 class ServeRenderHostTest {
 
@@ -81,6 +84,46 @@ class ServeRenderHostTest {
       val out = h.renderSvg(previewId, PreviewOverrides(uiMode = UiMode.DARK))
       assertTrue(out is SvgOutcome.Ok)
       assertEquals("svg:DARK:null:null", (out as SvgOutcome.Ok).svg.decodeToString())
+    }
+  }
+
+  @Test
+  fun `renderSlots returns the declared dp-slot markers for the given overrides`() {
+    val session = FakeRenderSession(newRenderRoot())
+    host(session).use { h ->
+      val out = h.renderSlots(previewId, PreviewOverrides(uiMode = UiMode.DARK))
+      assertTrue(out is SlotsOutcome.Ok)
+      val payload =
+        Json.decodeFromString(
+          PreviewSlotsPayload.serializer(),
+          (out as SlotsOutcome.Ok).json.decodeToString(),
+        )
+      assertEquals(previewId, payload.previewId)
+      assertEquals(listOf("leadingIcon", "supporting"), payload.slots.map { it.name })
+      assertEquals(SlotBounds(8, 8, 40, 40), payload.slots.first().bounds)
+      assertEquals(32, payload.slots.first().width)
+    }
+  }
+
+  @Test
+  fun `renderSlots serves identical requests from cache`() {
+    val session = FakeRenderSession(newRenderRoot())
+    host(session).use { h ->
+      h.renderSlots(previewId, PreviewOverrides(uiMode = UiMode.DARK))
+      h.renderSlots(previewId, PreviewOverrides(uiMode = UiMode.DARK))
+      assertEquals(
+        1,
+        session.renderCount.get(),
+        "second identical slots request must hit the cache",
+      )
+    }
+  }
+
+  @Test
+  fun `renderSlots is NotFound for an unknown preview`() {
+    val session = FakeRenderSession(newRenderRoot())
+    host(session).use { h ->
+      assertTrue(h.renderSlots("nope", PreviewOverrides()) is SlotsOutcome.NotFound)
     }
   }
 

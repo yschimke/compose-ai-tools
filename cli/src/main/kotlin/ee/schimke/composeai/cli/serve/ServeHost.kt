@@ -40,6 +40,15 @@ interface ServeHost : AutoCloseable {
   fun renderSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome = SvgOutcome.NotFound
 
   /**
+   * Render [previewId] at [overrides] and return its declared preview slots as JSON, or
+   * [SlotsOutcome.NotFound] when this host can't extract them. Defaults to `NotFound`: only the
+   * daemon-backed [ServeRenderHost] overrides this — a static [ServeBundleHost] has no daemon to
+   * capture a semantics tree.
+   */
+  fun renderSlots(previewId: String, overrides: PreviewOverrides): SlotsOutcome =
+    SlotsOutcome.NotFound
+
+  /**
    * Join the shared live stream for [previewId], or `null` when this host has no live lane (the
    * snapshot fallback is used instead — always the case for [ServeBundleHost]).
    */

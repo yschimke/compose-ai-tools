@@ -139,6 +139,15 @@ class ServeHttpRoutingTest {
   }
 
   @Test
+  fun `a static bundle 404s the slots render lane`() {
+    // The .slots lane is routed and dispatched, but a bundle host has no daemon to capture a
+    // semantics tree, so it resolves to NotFound (only a daemon-backed ServeRenderHost extracts
+    // slots).
+    val (code, _) = get("/compose-m3/render/$previewId.slots")
+    assertEquals(404, code)
+  }
+
+  @Test
   fun `api previews advertises v2 and carries author override declarations`() {
     val (code, api) = get("/compose-m3/api/previews")
     assertEquals(200, code)
