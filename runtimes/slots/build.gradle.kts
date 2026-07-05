@@ -12,7 +12,8 @@
 // `commonMain` — the shared catalog bodies in `:samples:design-catalog-m3-shared` (jvm + wasmJs),
 // whose slots then show on both the desktop render sheet and the in-browser wasm tier. No Android
 // target: an `androidJvm` consumer resolves the `jvm` variant, and declaring one would stamp a
-// `minSdk` floor onto the artifact for no benefit (same rationale as `:preview-annotations`, #2185).
+// `minSdk` floor onto the artifact for no benefit (same rationale as `:preview-annotations`,
+// #2185).
 //
 // Standalone on purpose — no compile dep on the renderer. The renderer/daemon depend *onto* this
 // module to `CompositionLocalProvider(LocalSlotMode provides …)` around the rendered content,
