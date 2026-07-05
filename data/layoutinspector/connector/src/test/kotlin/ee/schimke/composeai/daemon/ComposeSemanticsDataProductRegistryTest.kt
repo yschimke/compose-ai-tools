@@ -29,7 +29,7 @@ class ComposeSemanticsDataProductRegistryTest {
     val registry = ComposeSemanticsDataProductRegistry(rootDir)
     val cap = registry.capabilities.single()
     assertEquals("compose/semantics", cap.kind)
-    assertEquals(6, cap.schemaVersion)
+    assertEquals(7, cap.schemaVersion)
     assertTrue(cap.attachable)
     assertTrue(cap.fetchable)
     assertTrue(!cap.requiresRerender)
@@ -96,7 +96,8 @@ class ComposeSemanticsDataProductRegistryTest {
     val cap = registry.capabilities.single()
     assertEquals("layout/inspector", cap.kind)
     // v2 (#1903): per-node `tokens` added to LayoutInspectorNode.
-    assertEquals(2, cap.schemaVersion)
+    // v3 (#1908 follow-up): `tokens.cornerRadiusPx` added for raw-pixel RoundedCornerShape corners.
+    assertEquals(3, cap.schemaVersion)
     assertTrue(cap.attachable)
     assertTrue(cap.fetchable)
     assertTrue(!cap.requiresRerender)
