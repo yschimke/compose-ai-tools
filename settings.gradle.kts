@@ -186,6 +186,12 @@ include(":samples:design-catalog-m3")
 // sticker sheet + live render) and `:samples:cmp-wasm-catalog` (in-browser wasm).
 include(":samples:design-catalog-m3-shared")
 
+// Android-only supplement to the (CMP) M3 catalog — the few previews that need
+// androidx material3 APIs with no CMP equivalent (the material3 1.5.0-alpha inset
+// focus ring). Rendered via Robolectric and folded into the compose-m3 catalog by
+// the design-artifacts generator so those variants stay selectable.
+include(":samples:design-catalog-m3-android")
+
 include(":samples:android-alpha")
 
 include(":samples:android-library")
