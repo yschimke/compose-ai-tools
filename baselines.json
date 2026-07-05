@@ -2023,6 +2023,38 @@
     "sha256": "3933c7708885a4fb09198230e6227420ab9ac00c04024e42a344f58887e0bf3a",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SlottedCardSlotsSticker_Dark": {
+    "captureLabel": "",
+    "functionName": "SlottedCardSlotsSticker",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "SlottedCardSlotsSticker_Dark.png",
+    "sha256": "bf99f320d6d499260b04fbe293a5bcd5de284b1d0269bad804db54213e5130c5",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SlottedCardSlotsSticker_Light": {
+    "captureLabel": "",
+    "functionName": "SlottedCardSlotsSticker",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "SlottedCardSlotsSticker_Light.png",
+    "sha256": "bf99f320d6d499260b04fbe293a5bcd5de284b1d0269bad804db54213e5130c5",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SlottedCardSticker_Dark": {
+    "captureLabel": "",
+    "functionName": "SlottedCardSticker",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "SlottedCardSticker_Dark.png",
+    "sha256": "7cd1c4dbacac1b11111f3e15ffd82782c56b354736966be1dfe2d9f23cc243a9",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SlottedCardSticker_Light": {
+    "captureLabel": "",
+    "functionName": "SlottedCardSticker",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "SlottedCardSticker_Light.png",
+    "sha256": "7cd1c4dbacac1b11111f3e15ffd82782c56b354736966be1dfe2d9f23cc243a9",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SwitchOff_Dark": {
     "captureLabel": "",
     "functionName": "SwitchOff",
