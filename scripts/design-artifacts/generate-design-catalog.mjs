@@ -32,7 +32,7 @@
  * `design-artifacts/<system>` branch.
  */
 import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import { dirname, resolve, join, relative } from "node:path";
+import { basename, dirname, resolve, join, relative } from "node:path";
 import { parseArgs } from "node:util";
 
 import {
@@ -282,6 +282,13 @@ const { values } = parseArgs({
     // `FilledButtonFocused`, and this replaces the CMP module's ring-less render of
     // that function so the keyboard-focus variant shows the real ring.
     "extra-renders": { type: "string" },
+    // When set, copy the `--renders` executable bundle onto the branch under
+    // `out/bundle/<file>` and record `liveBundle: {path, file}` in catalog.json.
+    // `compose-preview serve --catalogs --allow-render-trusted` then fetches that
+    // bundle and launches a render daemon straight from it (no source build /
+    // checkout). Only for systems whose bundle is a DESKTOP bundle serve can run
+    // (compose-m3); the Android catalogs (wear/remote) stay baked-PNG.
+    "publish-live-bundle": { type: "boolean", default: false },
     // Optional buildable source for TRUSTED server-side re-render. When
     // --source-module is given, a `source: {repo, ref, module}` is written into
     // catalog.json so a `serve --allow-render-trusted` box (one with the toolchain
@@ -428,6 +435,23 @@ if (values["wasm-dist"]) {
   console.log(`[${spec.system}] bundled web/wasm/ (${files.length} files)`);
 }
 
+// Carry the executable bundle (the `--renders` portable bundle: minimized module
+// classes + previews.json + classpath manifest) onto the branch so a trusted
+// `serve --catalogs --allow-render-trusted` can fetch it and launch a render
+// daemon straight from it — no source checkout / Gradle build. Only when the
+// caller opts in (`--publish-live-bundle`), which the pipeline sets only for
+// systems whose bundle is a DESKTOP bundle serve can run (compose-m3); the
+// Android catalogs stay baked-PNG.
+let liveBundle = null;
+if (values["publish-live-bundle"]) {
+  const file = basename(rendersPath);
+  const dest = join(outPath, "bundle", file);
+  await mkdir(dirname(dest), { recursive: true });
+  await cp(rendersPath, dest);
+  liveBundle = { path: "bundle/", file };
+  console.log(`[${spec.system}] carried live bundle → bundle/${file}`);
+}
+
 {
   const catalogJsonPath = join(outPath, "catalog.json");
   const manifest = JSON.parse(await readFile(catalogJsonPath, "utf8"));
@@ -437,6 +461,7 @@ if (values["wasm-dist"]) {
     }
   }
   if (webRender) manifest.webRender = webRender;
+  if (liveBundle) manifest.liveBundle = liveBundle;
   // Buildable source for trusted server-side re-render (opt-in consumer side).
   if (values["source-module"]) {
     manifest.source = {
