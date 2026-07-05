@@ -59,6 +59,18 @@
         { "componentId": "Card/Elevated", "preview": "ElevatedCardSticker" },
         { "componentId": "Card/Outlined", "preview": "OutlinedCardSticker" },
         { "componentId": "Card/Filled", "preview": "FilledCardSticker" },
+        {
+          "componentId": "Card/Slots",
+          "preview": "SlottedCardSticker",
+          "caption": "A card with named PreviewSlot regions a structured-screen builder fills.",
+          "variants": [
+            {
+              "state": "slot-mode",
+              "preview": "SlottedCardSlotsSticker",
+              "caption": "Slot mode: each PreviewSlot draws its labelled placeholder."
+            }
+          ]
+        },
         { "componentId": "FAB", "preview": "FabSticker" }
       ]
     },

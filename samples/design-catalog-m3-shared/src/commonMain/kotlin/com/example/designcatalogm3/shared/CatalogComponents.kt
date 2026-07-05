@@ -2,11 +2,15 @@
 
 package com.example.designcatalogm3.shared
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.FocusInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AssistChip
@@ -43,6 +47,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -51,6 +56,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import ee.schimke.composeai.preview.slots.PreviewSlot
 
 /**
  * The **authoritative** Compose Material 3 catalog component set, shared by the desktop `@Preview`
@@ -101,6 +107,24 @@ fun CatalogComponent(id: String, interactive: Boolean) {
     "card-elevated" -> ElevatedCard { Box(Modifier.size(160.dp, 80.dp)) { Text("Elevated card") } }
     "card-outlined" -> OutlinedCard { Box(Modifier.size(160.dp, 80.dp)) { Text("Outlined card") } }
     "card-filled" -> Card { Box(Modifier.size(160.dp, 80.dp)) { Text("Filled card") } }
+    // A **slotted** card: each region is wrapped in `PreviewSlot(name) { … }`, a no-op in a normal
+    // render (draws the content, tagged `dp-slot:<name>`) that swaps to a labelled placeholder
+    // under
+    // slot mode. Each slot carries an explicit size, so the box a child fills — and the placeholder
+    // shown under slot mode — is well-defined. The structured-screen builder reads these slots from
+    // `/render/card-slots.slots` and fills each by rendering another component to that size.
+    "card-slots" ->
+      ElevatedCard {
+        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+          PreviewSlot("leadingIcon", Modifier.size(40.dp)) {
+            Box(Modifier.size(40.dp).background(Color(0xFF6750A4)))
+          }
+          Column(Modifier.padding(start = 12.dp)) {
+            PreviewSlot("headline", Modifier.size(140.dp, 20.dp)) { Text("Headline") }
+            PreviewSlot("supporting", Modifier.size(140.dp, 16.dp)) { Text("Supporting text") }
+          }
+        }
+      }
     "fab" -> FloatingActionButton(onClick = {}) { Text("+") }
 
     // Communication — progress + badge. The baked sticker keeps the deterministic `0.6` frame; the

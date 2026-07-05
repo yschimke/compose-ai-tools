@@ -62,6 +62,10 @@ kotlin {
       @Suppress("DEPRECATION") implementation(compose.foundation)
       @Suppress("DEPRECATION") implementation(compose.material3)
       @Suppress("DEPRECATION") implementation(compose.ui)
+      // `PreviewSlot` / `LocalSlotMode` for the slotted-card component. `api` so the desktop
+      // sticker
+      // sheet (`:samples:design-catalog-m3`) can provide `LocalSlotMode` for its slot-mode sticker.
+      api(project(":slot-preview-runtime"))
     }
   }
 }

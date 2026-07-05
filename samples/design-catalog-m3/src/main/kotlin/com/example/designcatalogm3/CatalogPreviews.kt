@@ -14,8 +14,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import com.example.designcatalogm3.shared.CatalogComponent
+import ee.schimke.composeai.preview.slots.LocalSlotMode
 
 // The M3 catalog sticker sheet: one `@Preview` per component, in light + dark (`@CatalogModes`).
 // Each is a thin wrapper — `CatalogSticker { CatalogComponent("<slug>", interactive = false) }` —
@@ -61,6 +63,19 @@ import com.example.designcatalogm3.shared.CatalogComponent
 @CatalogModes @Composable fun OutlinedCardSticker() = Sticker("card-outlined")
 
 @CatalogModes @Composable fun FilledCardSticker() = Sticker("card-filled")
+
+// A slotted card: its regions are `PreviewSlot` markers. The plain sticker renders normally (the
+// markers are no-ops); `SlottedCardSlots` provides `LocalSlotMode = true` so each marker draws its
+// labelled placeholder — the slot map a structured-screen builder fills. Same body, two modes.
+@CatalogModes @Composable fun SlottedCardSticker() = Sticker("card-slots")
+
+@CatalogModes
+@Composable
+fun SlottedCardSlotsSticker() = CatalogSticker {
+  CompositionLocalProvider(LocalSlotMode provides true) {
+    CatalogComponent("card-slots", interactive = false)
+  }
+}
 
 @CatalogModes @Composable fun FabSticker() = Sticker("fab")
 
