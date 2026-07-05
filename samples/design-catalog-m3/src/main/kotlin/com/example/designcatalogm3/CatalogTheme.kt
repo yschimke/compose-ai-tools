@@ -2,7 +2,6 @@ package com.example.designcatalogm3
 
 import android.content.res.Configuration
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -49,33 +48,27 @@ annotation class CatalogModes
 
 /**
  * Frame for **full-screen scaffold templates** — as opposed to the centred
- * component [CatalogSticker]. The stock [MaterialTheme] fills the device with the
- * `background` surface and the template supplies its own `Scaffold`.
- *
- * Templates render on a phone device with `showSystemUi = true`, so the renderer
- * paints its synthetic Android chrome (a 24dp status bar with the OS clock, a
- * 24dp gesture-pill nav bar — see `SystemBarsFrame` in renderer-android) as a
- * translucent overlay on top of the capture. That overlay *is* the "status bar"
- * the template demonstrates; the matching [SYSTEM_BAR_INSET] padding keeps the
- * template's own app chrome (TopAppBar, bottom bar) clear of the OS clock and
- * gesture pill rather than colliding with them.
+ * component [CatalogSticker]. Just the stock [MaterialTheme] filling the device
+ * with the `background` surface; the template supplies its own `Scaffold` and
+ * drives the system-bar spacing through real window insets (see
+ * [SYSTEM_BAR_INSET]).
  */
 @Composable
 fun FullScreenM3(content: @Composable () -> Unit) {
   val dark = isSystemInDarkTheme()
   MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
-    Surface(Modifier.fillMaxSize()) {
-      Box(Modifier.fillMaxSize().padding(top = SYSTEM_BAR_INSET, bottom = SYSTEM_BAR_INSET)) {
-        content()
-      }
-    }
+    Surface(Modifier.fillMaxSize()) { content() }
   }
 }
 
 /**
  * Height of the renderer's synthetic status / navigation bars (`SystemBarsFrame`
- * draws both at 24dp). Full-screen templates reserve this at the top and bottom
- * so their own chrome doesn't sit under the OS overlay.
+ * draws both at 24dp). The render environment has no real window insets behind
+ * that overlay, so a template feeds this height to its `Scaffold`/`TopAppBar`
+ * `windowInsets` — reproducing a real edge-to-edge M3 scaffold (the app bar
+ * paints under the status bar with its title below the OS clock; content and the
+ * FAB clear the gesture pill) rather than an outer padding that would push the
+ * whole scaffold down into a blank band.
  */
 val SYSTEM_BAR_INSET = 24.dp
 

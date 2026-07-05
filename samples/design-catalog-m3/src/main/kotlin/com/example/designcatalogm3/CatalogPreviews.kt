@@ -8,6 +8,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -288,8 +289,7 @@ fun SegmentedToggle() =
 // whole. Rendered on a phone with `showSystemUi = true` so the capture reads as
 // a real screenshot: the OS status bar (clock, battery) at the top and the
 // gesture-pill nav bar at the bottom, drawn by the renderer's SystemBarsFrame,
-// framing the template's own Material chrome. Placed via [FullScreenM3], which
-// reserves [SYSTEM_BAR_INSET] top/bottom so the app chrome clears the OS overlay.
+// framing the template's own Material chrome. Placed via [FullScreenM3].
 // ---------------------------------------------------------------------------
 
 private val templateMessages =
@@ -301,15 +301,25 @@ private val templateMessages =
     "On-call" to "Deploy finished cleanly",
   )
 
-// Full-screen app scaffold: a TopAppBar (the app's title strip under the OS
-// status bar), a scrolling list of ListItems, and a FloatingActionButton — the
-// canonical M3 screen an app starts a new surface from.
+// Full-screen app scaffold: an edge-to-edge TopAppBar, a scrolling list of
+// ListItems, and a FloatingActionButton — the canonical M3 screen an app starts
+// a new surface from. The render environment has no real window insets behind
+// the renderer's synthetic OS bars, so the scaffold supplies them itself
+// ([SYSTEM_BAR_INSET]): the app bar paints under the status bar with its title
+// below the OS clock, and the content/FAB clear the gesture pill — the same
+// inset-driven layout a real edge-to-edge M3 screen gets from the system.
 @CatalogTemplate
 @Composable
 fun AppScaffoldTemplate() =
   FullScreenM3 {
     Scaffold(
-      topBar = { TopAppBar(title = { Text("Inbox") }) },
+      contentWindowInsets = WindowInsets(bottom = SYSTEM_BAR_INSET),
+      topBar = {
+        TopAppBar(
+          title = { Text("Inbox") },
+          windowInsets = WindowInsets(top = SYSTEM_BAR_INSET),
+        )
+      },
       floatingActionButton = { FloatingActionButton(onClick = {}) { Text("+") } },
     ) { padding ->
       Column(Modifier.padding(padding).fillMaxSize()) {
