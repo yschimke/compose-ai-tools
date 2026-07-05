@@ -43,6 +43,18 @@ class ServeCatalogStore(
    */
   private val registerWasm: (system: String, dir: File) -> Unit = { _, _ -> },
   /**
+   * Trusted server-side re-render from a carried **executable bundle** (opt-in,
+   * `--allow-render-trusted`). When a catalog is `Trusted` AND declares a `liveBundle` (`{path,
+   * file}`), the bundle is fetched and this is invoked to stand up a daemon-backed, re-renderable
+   * session built straight from it — no Gradle build, no worktree, no repo clone. Preferred over
+   * [buildTrustedSource] (tried first): returns true when it registered such a session (then both
+   * the Gradle source path and the static [ServeBundleHost] are skipped); false ⇒ fall back to
+   * [buildTrustedSource], then the static catalog. Default ⇒ never. The callback owns the
+   * `--allow-render-trusted` gate; this store only reaches it for an already-`Trusted` catalog, and
+   * only after the whole declared bundle file fetched cleanly (fail-closed, like [fetchWasmApp]).
+   */
+  private val buildTrustedBundle: (system: String, bundleFile: File) -> Boolean = { _, _ -> false },
+  /**
    * Trusted server-side re-render (opt-in, `--allow-render-trusted`). When a catalog is `Trusted`
    * AND declares a `source` (`{repo, ref, module}`), this is invoked to stand up a **daemon-backed,
    * re-renderable** session built from that source — so the viewer's controls re-render live at
@@ -136,10 +148,23 @@ class ServeCatalogStore(
         BundleVerifier.Verdict.Trusted(listOf(BundleVerifier.Basis.Branch(repo, branch)))
       else BundleVerifier.Verdict.Unverified("branch $repo@$branch is not trusted")
 
-    // Trusted server-side re-render (opt-in): only a Trusted catalog that declares a source is even
-    // offered to the builder — an Unverified catalog NEVER reaches it, so a compromised/spoofed
-    // catalog can't trigger a build. When the builder takes over it registers a daemon-backed
-    // (re-renderable) session under this id, so we skip the static host below.
+    // Trusted server-side re-render from a carried EXECUTABLE BUNDLE (opt-in,
+    // --allow-render-trusted) — tried FIRST, ahead of the Gradle `source` build below: no clone, no
+    // worktree, no per-request Gradle invocation. Only a Trusted catalog that declares `liveBundle`
+    // is even offered to the builder — an Unverified catalog NEVER reaches it — and only once the
+    // whole declared bundle file has fetched cleanly (fail-closed, like fetchWasmApp above).
+    val liveBundle = catalog.liveBundle
+    if (verdict is BundleVerifier.Verdict.Trusted && liveBundle != null) {
+      val bundleFile = fetchLiveBundle(liveBundle, base, dir, safe)
+      if (bundleFile != null && buildTrustedBundle(safe, bundleFile)) {
+        return Result.Ok(safe, count, "${BundleVerifier.summary(verdict)} (live bundle)")
+      }
+    }
+
+    // Trusted server-side re-render from SOURCE (opt-in): only a Trusted catalog that declares a
+    // source is even offered to the builder — an Unverified catalog NEVER reaches it, so a
+    // compromised/spoofed catalog can't trigger a build. When the builder takes over it registers
+    // a daemon-backed (re-renderable) session under this id, so we skip the static host below.
     val src = catalog.source
     if (
       verdict is BundleVerifier.Verdict.Trusted &&
@@ -206,6 +231,44 @@ class ServeCatalogStore(
   }
 
   /**
+   * Fetch a catalog's `liveBundle` (`{path, file}`) — the executable preview bundle
+   * (`<system>-bundle.png`) `design-artifacts.yml` carries alongside the baked PNGs — from
+   * `<base><path>/<file>` into `<dir>/$LIVE_BUNDLE_DIR/<file>`. Fail-closed like [fetchWasmApp]: an
+   * invalid/escaping file entry or a fetch miss aborts and returns null, so the caller falls back
+   * to the Gradle `source` build (or, failing that, the static host). The file list is a single
+   * entry from the trusted catalog itself, not client input.
+   */
+  private fun fetchLiveBundle(
+    liveBundle: LiveBundle,
+    base: String,
+    dir: File,
+    system: String,
+  ): File? {
+    val name = liveBundle.file.trim('/')
+    if (name.isEmpty() || ".." in name.split("/")) {
+      System.err.println("serve: $system liveBundle has an invalid file entry — skipping")
+      return null
+    }
+    val bundleDir = File(dir, LIVE_BUNDLE_DIR)
+    val bundleRoot = bundleDir.canonicalFile.toPath()
+    val target = File(bundleDir, name)
+    if (!target.canonicalFile.toPath().startsWith(bundleRoot)) {
+      System.err.println("serve: $system liveBundle escaping entry '$name' — skipping")
+      return null
+    }
+    val prefix = liveBundle.path.trim('/')
+    val url = if (prefix.isEmpty()) "$base$name" else "$base$prefix/$name"
+    val bytes = runCatching { fetch(url) }.getOrNull()
+    if (bytes == null) {
+      System.err.println("serve: $system liveBundle fetch failed ($url) — skipping")
+      return null
+    }
+    target.parentFile?.mkdirs()
+    target.writeBytes(bytes)
+    return target
+  }
+
+  /**
    * Fetch the catalog's baked `figma/<slug>.svg` exports (+ each hybrid SVG's external
    * `<slug>.figma-raster/<node>.png` crops) from [base] into `<dir>/figma/`, so the static host can
    * serve an editable vector per preview. Best-effort per slug (a missing SVG just means that
@@ -254,7 +317,16 @@ class ServeCatalogStore(
     val webRender: WebRender? = null,
     /** Optional buildable source for trusted server-side re-render (`--allow-render-trusted`). */
     val source: Source? = null,
+    /**
+     * Optional executable preview bundle carried alongside the baked PNGs (desktop-CMP systems only
+     * — see `scripts/design-artifacts/generate-design-catalog.mjs`), preferred over [source] for
+     * trusted server-side re-render: no Gradle build, no worktree.
+     */
+    val liveBundle: LiveBundle? = null,
   )
+
+  /** `catalog.json`'s `liveBundle`: the executable bundle at `<path><file>` on this branch. */
+  @Serializable private data class LiveBundle(val path: String = "", val file: String = "")
 
   /** `catalog.json`'s `source`: the repo/ref/module to build to re-render this catalog live. */
   @Serializable
@@ -285,6 +357,8 @@ class ServeCatalogStore(
     const val WEB_WASM_DIR = "web/wasm"
     const val WEB_RENDER_COMPOSE_WASM = "compose-wasm"
     private const val MAX_WASM_FILES = 64
+    /** Local subdir a catalog's `liveBundle` file is fetched into (`<dir>/bundle/<file>`). */
+    const val LIVE_BUNDLE_DIR = "bundle"
 
     /**
      * The single-path-segment preview id for a catalog image path. The serve routes (`/p/{name}`,

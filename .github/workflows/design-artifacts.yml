@@ -158,6 +158,11 @@ jobs:
           WASM_DIST: ${{ matrix.wasmDist }}
           # Presence flag: fold the Android-only supplement render in (see above).
           EXTRA_RENDERS: ${{ matrix.androidExtraModule }}
+          # Carry the executable bundle onto the branch so a trusted serve can launch
+          # a render daemon from it (no build). Only for the DESKTOP CMP catalog
+          # (compose-m3, the only row with a wasm tier) — the Android catalogs' bundle
+          # can't run on the desktop-only public box, so they stay baked-PNG.
+          PUBLISH_LIVE_BUNDLE: ${{ matrix.wasmModule != '' && '1' || '' }}
           # Buildable source for trusted server-side re-render: catalog.json gets a
           # `source: {repo, ref, module}` so a `serve --allow-render-trusted` box can
           # rebuild + re-render this catalog live. Inert on the public desktop box,
@@ -174,6 +179,7 @@ jobs:
             --renderer "$(compose-preview --version | head -1)" \
             ${WASM_DIST:+--wasm-dist "$GITHUB_WORKSPACE/$WASM_DIST"} \
             ${EXTRA_RENDERS:+--extra-renders "$GITHUB_WORKSPACE/$SYSTEM-extra-bundle.png"} \
+            ${PUBLISH_LIVE_BUNDLE:+--publish-live-bundle} \
             --source-repo "$SOURCE_REPO" \
             --source-ref "$SOURCE_REF" \
             --source-module ":$SOURCE_MODULE"

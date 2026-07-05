@@ -74,12 +74,13 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
     // still has a class-backed preview must carry it, so gate on whether any preview id is NOT
     // covered by an intermediate representation rather than merely "has some IR".
     val irPreviewIds = manifest.intermediateRepresentations.mapTo(mutableSetOf()) { it.previewId }
-    expandAppJarAndManifest(
+    extractBundleClassesAndManifest(
       zipBytes,
       classesDir,
       previewsJson,
       file,
       requireAppJar = manifest.previewIds.any { it !in irPreviewIds },
+      fileSystem = fileSystem,
     )
     // Consumer classpath for the daemon's `userClassDirs` holder (dirs-before-jars ordered, see
     // UserClassLoaderHolder) — the extracted app classes plus the bundle's third-party deps. NOT
@@ -244,19 +245,19 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
   )
 
   private fun desktopDaemonLaunch(): DaemonLaunch {
-    val daemonJars = locateSidecarJars("lib-daemon-desktop")
+    val daemonJars = locateBundleSidecarJars("lib-daemon-desktop")
     if (daemonJars.isEmpty()) {
       System.err.println(
-        "bundle daemon: no daemon jars found. Looked in `${sidecarSearchDescription("lib-daemon-desktop")}`; " +
+        "bundle daemon: no daemon jars found. Looked in `${bundleSidecarSearchDescription("lib-daemon-desktop")}`; " +
           "either build the CLI via `./gradlew :cli:installDist` or set " +
           "`-Dcomposeai.cli.libDaemonDesktopDir=<install-root/lib-daemon-desktop>`."
       )
       exitProcess(1)
     }
-    val rendererJars = locateSidecarJars("lib-renderer")
+    val rendererJars = locateBundleSidecarJars("lib-renderer")
     if (rendererJars.isEmpty()) {
       System.err.println(
-        "bundle daemon: no renderer jars found. Looked in `${sidecarSearchDescription("lib-renderer")}`; " +
+        "bundle daemon: no renderer jars found. Looked in `${bundleSidecarSearchDescription("lib-renderer")}`; " +
           "either build the CLI via `./gradlew :cli:installDist` or set " +
           "`-Dcomposeai.cli.libRendererDir=<install-root/lib-renderer>`."
       )
@@ -291,14 +292,14 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
    * coverage lives in the SDK-gated `AndroidBundleDaemonRenderFunctionalTest`.
    */
   private fun androidDaemonLaunch(): DaemonLaunch {
-    val daemonJars = locateSidecarJars("lib-daemon-android")
+    val daemonJars = locateBundleSidecarJars("lib-daemon-android")
     if (daemonJars.isEmpty()) {
       System.err.println(
         "bundle daemon: backend=android needs the Android daemon sidecar (`lib-daemon-android/`), " +
           "which ships separately as `compose-preview-android-daemon-<version>.zip` (it's too large " +
           "to bundle in the CLI tarball). Download + unpack it and point at it via " +
           "`-Dcomposeai.cli.libDaemonAndroidDir=<dir>/lib-daemon-android`. Looked in " +
-          "`${sidecarSearchDescription("lib-daemon-android")}`."
+          "`${bundleSidecarSearchDescription("lib-daemon-android")}`."
       )
       exitProcess(1)
     }
@@ -366,16 +367,11 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
   }
 
   /**
-   * Extract `classes/app.jar` into [classesDir] and `previews.json` into [previewsJson]. Throws if
-   * either is missing — both are required for the daemon to come up against a usable preview index.
-   * Embedded `libs/` jars are extracted separately via [BundleReader.extractEmbeddedLibs].
-   */
-  /**
    * Extract the v5 IR artefacts from [zipBytes]: every `ir/<leaf>` entry into [irDir] (flattened to
    * its basename, since `BundleIr.path` is `ir/<previewId>.<ext>` and the daemon resolves by leaf),
    * plus `bundle.json` into [manifestFile] so the daemon can read `intermediateRepresentations`.
    * Each `ir/` destination is verified to live inside [irDir] — defeats Zip Slip on a hostile
-   * bundle, same guard as [extractEmbeddedLibs] / [expandJarBytesSafely].
+   * bundle, same guard as [extractEmbeddedLibs] / [expandBundleJarBytesSafely].
    */
   private fun extractIrArtifacts(
     zipBytes: ByteArray,
@@ -488,131 +484,9 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
     return root
   }
 
-  private fun expandAppJarAndManifest(
-    zipBytes: ByteArray,
-    classesDir: File,
-    previewsJson: File,
-    bundleFile: File,
-    requireAppJar: Boolean,
-  ) {
-    var sawAppJar = false
-    var sawPreviewsJson = false
-    ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
-      while (true) {
-        val entry = zin.nextEntry ?: break
-        when (entry.name) {
-          "previews.json" -> {
-            fileSystem.write(previewsJson.path.toPath()) { write(zin.readBytes()) }
-            sawPreviewsJson = true
-          }
-          "classes/app.jar" -> {
-            val appJarBytes = zin.readBytes()
-            expandJarBytesSafely(appJarBytes, classesDir)
-            sawAppJar = true
-          }
-        }
-        zin.closeEntry()
-      }
-    }
-    require(sawAppJar || !requireAppJar) {
-      "bundle daemon: classes/app.jar missing in ${bundleFile.path} — not a packed bundle"
-    }
-    require(sawPreviewsJson) {
-      "bundle daemon: previews.json missing in ${bundleFile.path} — not a packed bundle"
-    }
-  }
-
-  /**
-   * Unpack the bundled app jar, rejecting Zip Slip. Shared shape with `BundleRenderer`'s
-   * `expandJarBytes` — duplicated here to avoid widening that class's surface for a single caller;
-   * the helper is small enough that the duplication is cheaper than a refactor.
-   */
-  private fun expandJarBytesSafely(appJarBytes: ByteArray, targetDir: File) {
-    val targetPath = targetDir.canonicalFile.toPath()
-    ZipInputStream(ByteArrayInputStream(appJarBytes)).use { zin ->
-      while (true) {
-        val entry = zin.nextEntry ?: break
-        // Resolve + normalize the entry against the target and verify containment via
-        // Path.startsWith — the form CodeQL's java/zipslip recognizes as sanitization (the prior
-        // canonicalFile + String.startsWith guard was equally safe but flagged as a false
-        // positive).
-        val resolved = targetPath.resolve(entry.name).normalize()
-        if (!resolved.startsWith(targetPath)) {
-          throw SecurityException(
-            "bundle daemon: app jar entry escapes target dir: ${entry.name} → $resolved"
-          )
-        }
-        val candidate = resolved.toFile()
-        if (entry.isDirectory) {
-          candidate.mkdirs()
-        } else {
-          candidate.parentFile?.mkdirs()
-          fileSystem.write(candidate.path.toPath()) { writeAll(zin.source()) }
-        }
-        zin.closeEntry()
-      }
-    }
-  }
-
   private fun createTempWorkDir(): File {
     val base = System.getProperty("java.io.tmpdir") ?: "/tmp"
     return File(base, "compose-preview-bundle-daemon-${System.nanoTime()}").also { it.mkdirs() }
-  }
-
-  /**
-   * Locate a sidecar jar dir inside the CLI install. In order: explicit sysprop override
-   * (`composeai.cli.libDaemonDesktopDir` / `composeai.cli.libRendererDir`), `$APP_HOME/<name>`,
-   * `<jar-parent>/../<name>` (IDE / `JavaExec` runs).
-   */
-  private fun locateSidecarJars(sidecarName: String): List<File> {
-    val sysprop =
-      when (sidecarName) {
-        "lib-daemon-desktop" -> "composeai.cli.libDaemonDesktopDir"
-        "lib-daemon-android" -> "composeai.cli.libDaemonAndroidDir"
-        "lib-renderer" -> "composeai.cli.libRendererDir"
-        else -> "composeai.cli.${sidecarName.replace('-', '.')}Dir"
-      }
-    val override = System.getProperty(sysprop)
-    val appHome = System.getProperty("composeai.cli.appHome") ?: System.getenv("APP_HOME")
-    val candidates =
-      listOfNotNull(
-          override?.let { File(it) },
-          appHome?.let { File(it, sidecarName) },
-          inferSidecarFromClasspath(sidecarName),
-        )
-        .distinct()
-    val firstExistingDir = candidates.firstOrNull { it.isDirectory } ?: return emptyList()
-    return firstExistingDir
-      .listFiles { f -> f.isFile && f.name.endsWith(".jar") }
-      ?.sortedBy { it.name }
-      .orEmpty()
-  }
-
-  private fun sidecarSearchDescription(sidecarName: String): String {
-    val sysprop =
-      when (sidecarName) {
-        "lib-daemon-desktop" -> "composeai.cli.libDaemonDesktopDir"
-        "lib-daemon-android" -> "composeai.cli.libDaemonAndroidDir"
-        "lib-renderer" -> "composeai.cli.libRendererDir"
-        else -> "composeai.cli.${sidecarName.replace('-', '.')}Dir"
-      }
-    val override = System.getProperty(sysprop)
-    val appHome = System.getProperty("composeai.cli.appHome") ?: System.getenv("APP_HOME")
-    return listOfNotNull(
-        override?.let { "-D$sysprop=$it" },
-        appHome?.let { "$it/$sidecarName" },
-        "<classpath-parent>/../$sidecarName",
-      )
-      .joinToString(" or ")
-  }
-
-  private fun inferSidecarFromClasspath(sidecarName: String): File? {
-    val cp = System.getProperty("java.class.path") ?: return null
-    val firstEntry = cp.split(File.pathSeparator).firstOrNull { it.endsWith(".jar") } ?: return null
-    val libDir = File(firstEntry).parentFile ?: return null
-    val installRoot = libDir.parentFile ?: return null
-    val candidate = File(installRoot, sidecarName)
-    return candidate.takeIf { it.isDirectory }
   }
 
   private fun locateJava(): String {

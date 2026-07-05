@@ -156,35 +156,34 @@ current).
 
 By default a catalog serves **baked PNGs** — the viewer's device/orientation/etc. controls can't
 re-render a static image (they're disabled, with the in-browser Wasm tier carrying theme/font-scale/
-locale for CMP). For **full-fidelity** server-side overrides, a catalog can declare a buildable
-`source: { repo, ref, module }` in its `catalog.json` (the design-artifacts pipeline emits it), and
-an operator can opt in with `--allow-render-trusted`: a catalog that verifies **`Trusted`** *and*
-declares a `source` is then served by a live, daemon-backed session built from that source, so every
-control re-renders for real.
+locale for CMP). For **full-fidelity** server-side overrides, a **`Trusted`** catalog can be served
+by a live, daemon-backed session (`--allow-render-trusted`), so every control re-renders for real.
+There are two ways to stand that daemon up, both fail-closed on the `Trusted` verdict (an
+`Unverified`/spoofed catalog never reaches either — no RCE lever):
 
-It is **off by default** and gated three ways, all fail-closed: the catalog must be `Trusted`
-(an `Unverified`/spoofed catalog never reaches the builder — no RCE lever), its `source.ref` must
-clear the `--revisions-allow` allowlist, and its `source.repo` must be the server's own repo.
+1. **From a carried executable bundle (`liveBundle`) — no build (preferred, and now the default).**
+   The design-artifacts pipeline publishes the executable preview bundle (minimized module classes +
+   `previews.json` + classpath manifest) onto the branch under `bundle/` and records a `liveBundle`
+   in `catalog.json`. `serve` fetches that bundle like it fetches the Wasm app, resolves its
+   classpath from the local Maven/Gradle caches (or Central), and launches the render daemon
+   **straight from it** — no repo checkout, no Gradle build, no per-request compile. This is what the
+   public server uses for `compose-m3`. Desktop-backend only for now (the daemon is the Skiko desktop
+   renderer); a catalog whose bundle isn't a desktop bundle falls through to (2) or baked PNGs.
 
-**Never enable it on a box that can't build the catalog source.** Building runs the source's Gradle
-(code execution). The **`compose-m3`** catalog is a Compose **Multiplatform (desktop)** module
-(`:samples:design-catalog-m3`), so it builds and live-renders with just the JVM/Skiko desktop daemon
-— **no Android toolchain** — which is exactly why the from-source public box (`deploy/vps`,
-`preview.coo.ee`) now turns this on for it (`SERVE_ALLOW_RENDER_TRUSTED=1` +
-`SERVE_REVISIONS_ALLOW=main` + a `SERVE_LIVE_SEATS` cap). The other published catalogs
-(`wear-m3`, `remote-m3`) are still **Android** modules; on the desktop-only box their trusted build
-isn't attempted and they fall back to baked PNG (fail-closed) — no error, just no live tier for them.
-The prebuilt released image (`deploy/image`) serves a standalone `sample-project`, not a checkout of
-the catalog's source repo, so the trusted builder has nothing to worktree from by default. It can
-still opt in: set `SERVE_ALLOW_RENDER_TRUSTED=1` + `SERVE_REVISIONS_ALLOW=main` +
-`SERVE_CATALOG_SOURCE_REPO=yschimke/compose-ai-tools` (+ a `SERVE_LIVE_SEATS` cap), and the entrypoint
-**clones that repo at startup** and points `serve` at it with **`--catalog-source-root`** — so the
-CMP `compose-m3` catalog live-renders while the Android catalogs stay baked-PNG (fail-closed). The
-trade-off: the trusted build runs at startup, so the first boot after enabling (and after each
-Watchtower image update) does a one-time cold Gradle build of the catalog (minutes) before serving,
-and it needs a CLI release carrying `--catalog-source-root`. Left off, the image keeps its fast
-snapshot + in-browser-Wasm posture (CMP stays interactive via the Wasm tier). Only enable it where
-that per-boot build + live render is affordable.
+2. **From source (`source: { repo, ref, module }`) — Gradle build fallback.** For a catalog that
+   declares a buildable `source` but no `liveBundle`. This runs the source's Gradle (code execution),
+   so it's gated additionally by the `--revisions-allow` ref allowlist and a `source.repo` ==
+   server-repo check, and the box must have a checkout to worktree from — on the prebuilt image, set
+   `SERVE_CATALOG_SOURCE_REPO` so the entrypoint clones one and passes `--catalog-source-root`, which
+   pays a **one-time cold Gradle build at startup**. Not needed for the published catalogs; the
+   bundle path (1) covers them with no build.
+
+Because path (1) is cheap and safe, both public profiles turn it **on by default**: `deploy/vps`
+(from source) and the prebuilt `deploy/image` (`preview.coo.ee`) both default
+`SERVE_ALLOW_RENDER_TRUSTED=1` + `SERVE_LIVE_SEATS=1` — a bare image pull "just works" with live CMP,
+no clone and no build. Set `SERVE_ALLOW_RENDER_TRUSTED=0` to opt out (the Wasm tier still carries
+CMP). The other published catalogs (`wear-m3`, `remote-m3`) are **Android** — no desktop-runnable
+bundle — so they fall back to baked PNG (fail-closed): no error, just no daemon tier for them.
 
 ### Bounding the live tier — `--live-seats` / `SERVE_LIVE_SEATS`
 

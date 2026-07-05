@@ -4,6 +4,7 @@ import ee.schimke.composeai.cli.serve.GitWorktrees
 import ee.schimke.composeai.cli.serve.GradleRevisionBuilder
 import ee.schimke.composeai.cli.serve.RenderOutcome
 import ee.schimke.composeai.cli.serve.ServeBundle
+import ee.schimke.composeai.cli.serve.ServeBundleDaemon
 import ee.schimke.composeai.cli.serve.ServeBundleHost
 import ee.schimke.composeai.cli.serve.ServeBundleStore
 import ee.schimke.composeai.cli.serve.ServeCatalogStore
@@ -615,6 +616,9 @@ class ServeCommand(args: List<String>) : Command(args) {
             "serve: catalog $system carries an in-browser Wasm app (/wasm/$system/)"
           )
         },
+        buildTrustedBundle = { system, bundleFile ->
+          buildTrustedCatalogBundle(system, bundleFile, registry, openHost)
+        },
         buildTrustedSource = { system, source ->
           buildTrustedCatalogSource(system, source, registry, worktrees, openHost)
         },
@@ -635,6 +639,35 @@ class ServeCommand(args: List<String>) : Command(args) {
       }
     }
     return wasm
+  }
+
+  /**
+   * Build a `Trusted` catalog's carried `liveBundle` into a daemon-backed, re-renderable session —
+   * the executable-bundle counterpart of [buildTrustedCatalogSource], and the store's preferred
+   * path when a catalog declares one: [ServeBundleDaemon.materialize] extracts the fetched bundle,
+   * resolves its classpath, and synthesises a `daemon-launch.json` directly — no Gradle build, no
+   * worktree, no repo clone. The store only calls this for an already-`Trusted` catalog whose
+   * bundle fetched cleanly; here we add the remaining fail-closed gate: `--allow-render-trusted`
+   * must be set, same as the source path. Returns true once a daemon session is registered under
+   * [system] (the store then skips both the Gradle source path and the static baked-PNG host);
+   * false ⇒ caller falls back to `buildTrustedSource`, then the static host.
+   */
+  private fun buildTrustedCatalogBundle(
+    system: String,
+    bundleFile: File,
+    registry: ServeSessionRegistry,
+    openHost: (ServeSessionState) -> ServeHost?,
+  ): Boolean {
+    if (!allowRenderTrusted) return false
+    val destDir =
+      java.nio.file.Files.createTempDirectory("serve-catalog-bundle-$system").toFile().also {
+        it.deleteOnExit()
+      }
+    val state = ServeBundleDaemon.materialize(bundleFile, destDir, system) ?: return false
+    val host = openHost(state) ?: return false
+    registry.register(system, state, host = host)
+    System.err.println("serve: catalog $system → LIVE from bundle (no build) (?session=$system)")
+    return true
   }
 
   /**
