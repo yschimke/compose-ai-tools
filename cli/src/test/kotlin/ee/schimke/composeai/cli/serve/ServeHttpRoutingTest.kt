@@ -131,6 +131,14 @@ class ServeHttpRoutingTest {
   }
 
   @Test
+  fun `a static bundle 404s the svg render lane`() {
+    // The .svg lane is routed and dispatched, but a bundle host has no daemon to run the figma-svg
+    // export, so it resolves to NotFound (only a daemon-backed ServeRenderHost produces SVG).
+    val (code, _) = get("/compose-m3/render/$previewId.svg")
+    assertEquals(404, code)
+  }
+
+  @Test
   fun `api previews advertises v2 and carries author override declarations`() {
     val (code, api) = get("/compose-m3/api/previews")
     assertEquals(200, code)

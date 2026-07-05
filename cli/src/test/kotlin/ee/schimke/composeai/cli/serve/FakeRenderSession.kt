@@ -29,6 +29,7 @@ import ee.schimke.composeai.daemon.protocol.ServerCapabilities
 import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamFrameParams
 import ee.schimke.composeai.daemon.protocol.StreamStartResult
+import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
 import ee.schimke.composeai.render.session.NotificationListener
 import ee.schimke.composeai.render.session.RenderSession
 import ee.schimke.composeai.render.session.RenderSessionBackend
@@ -67,6 +68,11 @@ internal class FakeRenderSession(
    * serve normally), modelling the override-in-flight coalescing the serve host must retry through.
    */
   private val coalescedOverrideRejections: Int = 0,
+  /**
+   * When true, the figma-svg written per render is a hybrid: an `<image href="figma-raster/…">`
+   * plus the sibling crop on disk, to exercise serve-side raster inlining.
+   */
+  private val hybridSvg: Boolean = false,
 ) : RenderSession {
   val renderCount = AtomicInteger(0)
   private val coalesceRemaining = AtomicInteger(coalescedOverrideRejections)
@@ -180,8 +186,24 @@ internal class FakeRenderSession(
     } else {
       val content = "png:${overrides?.uiMode}:${overrides?.localeTag}:${overrides?.device}"
       emitFinished(id, content.toByteArray())
+      // Model the daemon writing the figma-svg to a shared per-preview path as a side effect of the
+      // same render — overwritten each time, so distinct overrides overwrite one another's SVG.
+      writeFigmaSvg(id, overrides)
     }
     return RenderNowResult(queued = previewIds, rejected = emptyList())
+  }
+
+  private fun writeFigmaSvg(id: String, overrides: PreviewOverrides?) {
+    val previewDir = File(renderRoot, id).apply { mkdirs() }
+    if (hybridSvg) {
+      File(previewDir, "figma-raster").mkdirs()
+      File(previewDir, "figma-raster/node0.png").writeBytes(byteArrayOf(1, 2, 3))
+      File(previewDir, ComposeFigmaSvgProduct.FILE_SVG)
+        .writeText("<svg><image href=\"figma-raster/node0.png\"/></svg>")
+    } else {
+      val svg = "svg:${overrides?.uiMode}:${overrides?.localeTag}:${overrides?.device}"
+      File(previewDir, ComposeFigmaSvgProduct.FILE_SVG).writeText(svg)
+    }
   }
 
   override fun fetchData(
@@ -190,7 +212,17 @@ internal class FakeRenderSession(
     inline: Boolean,
     params: JsonElement?,
     timeout: kotlin.time.Duration,
-  ): DataFetchResult = error("unused")
+  ): DataFetchResult {
+    if (kind == ComposeFigmaSvgProduct.KIND) {
+      val file = File(renderRoot, "$previewId/${ComposeFigmaSvgProduct.FILE_SVG}")
+      return DataFetchResult(
+        kind = kind,
+        schemaVersion = ComposeFigmaSvgProduct.SCHEMA_VERSION,
+        path = file.absolutePath,
+      )
+    }
+    error("unused")
+  }
 
   override fun subscribeData(
     previewId: String,

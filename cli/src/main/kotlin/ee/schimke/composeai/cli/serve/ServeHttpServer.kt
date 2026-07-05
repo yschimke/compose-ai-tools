@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli.serve
 import ee.schimke.composeai.cli.BUNDLE_VERSION
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
+import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -495,16 +496,21 @@ class ServeHttpServer(
   }
 
   /**
-   * `GET /render/{name}` (query) and `GET /{system}/render/{name}` (path): a preview's PNG bytes.
+   * `GET /render/{name}` (query) and `GET /{system}/render/{name}` (path): a preview's rendered
+   * bytes — a PNG for `<id>.png` (or no suffix), or the figma-svg export for `<id>.svg`. Both take
+   * the same override query params; SVG is only produced by a daemon-backed host (a static bundle
+   * 404s it).
    */
   private suspend fun RoutingContext.handleRender(sessionInPath: Boolean) {
     if (rejectBadToken()) return
     withLeasedSession(selectedSessionId(sessionInPath)) { renderHost ->
-      val previewId = call.parameters["name"]?.removeSuffix(".png")
-      if (previewId.isNullOrBlank()) {
+      val rawName = call.parameters["name"]
+      if (rawName.isNullOrBlank()) {
         call.respondText("missing preview id", status = HttpStatusCode.BadRequest)
         return@withLeasedSession
       }
+      val wantSvg = rawName.endsWith(".svg")
+      val previewId = rawName.removeSuffix(".png").removeSuffix(".svg")
       // Forward the fixed render axes plus any author-declared knob params (`knob.<key>=…`, dynamic
       // keys not in SUPPORTED_KEYS) so a live knob edit reaches ServeOverrides.parse instead of
       // being
@@ -527,6 +533,10 @@ class ServeHttpServer(
         is OverrideParse.Invalid ->
           call.respondText(parsed.message, status = HttpStatusCode.BadRequest)
         is OverrideParse.Ok -> {
+          if (wantSvg) {
+            renderSvgResponse(renderHost, previewId, parsed.overrides)
+            return@withLeasedSession
+          }
           // The render is blocking (renderNow + await); keep it off the request dispatcher. Cap
           // concurrent renders (default = CPU count) so a small box sheds a storm instead of
           // thrashing: wait briefly for a slot, else 503 + Retry-After. A null outcome signals the
@@ -559,6 +569,40 @@ class ServeHttpServer(
           }
         }
       }
+    }
+  }
+
+  /** SVG lane of [handleRender]: load-shed like the PNG lane, then respond the figma-svg bytes. */
+  private suspend fun RoutingContext.renderSvgResponse(
+    renderHost: ServeHost,
+    previewId: String,
+    overrides: PreviewOverrides,
+  ) {
+    val outcome =
+      withContext(Dispatchers.IO) {
+        if (!renderSemaphore.tryAcquire(RENDER_QUEUE_WAIT_SECONDS, TimeUnit.SECONDS)) {
+          null
+        } else {
+          try {
+            renderHost.renderSvg(previewId, overrides)
+          } finally {
+            renderSemaphore.release()
+          }
+        }
+      }
+    when (outcome) {
+      null -> {
+        call.response.headers.append(HttpHeaders.RetryAfter, "2")
+        call.respondText(
+          "render queue saturated; retry shortly",
+          status = HttpStatusCode.ServiceUnavailable,
+        )
+      }
+      is SvgOutcome.Ok ->
+        call.respondBytes(outcome.svg, ContentType.parse(ComposeFigmaSvgProduct.MEDIA_TYPE_SVG))
+      SvgOutcome.NotFound -> call.respondText("no such preview", status = HttpStatusCode.NotFound)
+      is SvgOutcome.Failed ->
+        call.respondText(outcome.reason, status = HttpStatusCode.InternalServerError)
     }
   }
 

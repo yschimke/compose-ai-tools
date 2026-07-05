@@ -4,6 +4,7 @@ import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamFrameParams
+import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.render.session.RenderSession
 import ee.schimke.composeai.render.session.RenderSessionConfig
@@ -11,6 +12,7 @@ import ee.schimke.composeai.render.session.RenderSessionException
 import ee.schimke.composeai.render.session.RenderSessionFactory
 import ee.schimke.composeai.render.session.subprocess.SubprocessRenderSessions
 import java.io.File
+import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -66,6 +68,17 @@ sealed interface RenderOutcome {
   data class Failed(val reason: String) : RenderOutcome
 }
 
+/** Result of a figma-svg render request — the SVG counterpart of [RenderOutcome]. */
+sealed interface SvgOutcome {
+  data class Ok(val svg: ByteArray) : SvgOutcome
+
+  /** No such preview id, or this host can't produce SVG (a static bundle has no daemon). */
+  data object NotFound : SvgOutcome
+
+  /** The render or SVG export was attempted but failed. [reason] is human-readable. */
+  data class Failed(val reason: String) : SvgOutcome
+}
+
 /**
  * Long-lived, thread-safe wrapper around **one** [RenderSession], fronting it for the
  * `compose-preview serve` HTTP server. The long-lived sibling of
@@ -108,6 +121,9 @@ internal constructor(
   // Bounded LRU of rendered PNGs keyed by ServeOverrides.cacheKey. A dev-facing server fronting one
   // module won't accumulate many distinct (preview × overrides) combos, so a small cap is plenty.
   private val cache = LruByteCache(MAX_CACHE_ENTRIES)
+
+  // The figma-svg counterpart of [cache], keyed the same way (previewId × overrides).
+  private val svgCache = LruByteCache(MAX_CACHE_ENTRIES)
 
   private val renderLock = ReentrantLock()
 
@@ -241,6 +257,87 @@ internal constructor(
       cache.put(key, bytes)
       RenderOutcome.Ok(bytes)
     }
+  }
+
+  /**
+   * Render [previewId] at [overrides] and return its **figma-svg** export (`compose/figma-svg`),
+   * serving a cached result when one exists. Thread-safe.
+   *
+   * The daemon writes the SVG to a per-preview path as a side effect of the *same* render that
+   * produces the PNG, so this renders (reusing [render] and its retry/timeout handling) and then
+   * fetches the just-written SVG. Both happen under [renderLock] with the PNG cache entry evicted
+   * first: the SVG file is shared per preview and overwritten by every render, so it must be
+   * fetched in the same critical section as the render that produced it — a PNG cache hit would
+   * otherwise skip the render and leave a prior render's (stale) SVG on disk.
+   */
+  override fun renderSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome {
+    check(!closed.get()) { "ServeRenderHost is closed" }
+    if (previewId !in previewIds) return SvgOutcome.NotFound
+
+    val key = ServeOverrides.cacheKey(previewId, overrides)
+    svgCache.get(key)?.let {
+      return SvgOutcome.Ok(it)
+    }
+
+    return renderLock.withLock {
+      svgCache.get(key)?.let {
+        return@withLock SvgOutcome.Ok(it)
+      }
+
+      // Force a fresh render of these overrides so the shared per-preview SVG file on disk is
+      // theirs; the held lock keeps any other render from overwriting it before the fetch below.
+      cache.remove(key)
+      when (val pngOutcome = render(previewId, overrides)) {
+        RenderOutcome.NotFound -> return@withLock SvgOutcome.NotFound
+        is RenderOutcome.Failed -> return@withLock SvgOutcome.Failed(pngOutcome.reason)
+        is RenderOutcome.Ok -> {} // rendered; the SVG for these overrides is now on disk
+      }
+
+      val svgPath =
+        try {
+          session.fetchData(previewId, ComposeFigmaSvgProduct.KIND).path?.toPath()
+        } catch (e: Exception) {
+          val reason = "figma-svg fetch failed: ${e.message}"
+          onLog(reason)
+          return@withLock SvgOutcome.Failed(reason)
+        }
+      val raw =
+        svgPath
+          ?.takeIf { fileSystem.exists(it) }
+          ?.let { p -> fileSystem.read(p) { readByteArray() } }
+      if (raw == null || svgPath == null) {
+        val reason = "render produced no SVG"
+        onLog(reason)
+        return@withLock SvgOutcome.Failed(reason)
+      }
+
+      // Inline any hybrid figma-raster crops so the served SVG is self-contained (a vector-only SVG
+      // passes through untouched); Figma's importer can't resolve external hrefs.
+      val bytes = inlineRasters(svgPath, raw)
+      svgCache.put(key, bytes)
+      SvgOutcome.Ok(bytes)
+    }
+  }
+
+  /**
+   * Inline a hybrid SVG's sibling `figma-raster/<node>.png` crops as `data:` URIs so the served SVG
+   * is self-contained — the Figma importer (and any consumer that can't resolve external hrefs)
+   * needs every layer embedded. A vector-only SVG has no such refs and passes through; a crop
+   * that's missing on disk is left as a plain ref rather than dropped.
+   */
+  private fun inlineRasters(svgPath: okio.Path, raw: ByteArray): ByteArray {
+    val svg = raw.decodeToString()
+    val dir = svgPath.parent
+    if (dir == null || !svg.contains("\"figma-raster/")) return raw
+    val inlined =
+      RASTER_HREF.replace(svg) { match ->
+        val href = match.groupValues[1]
+        val cropPath = "$dir/$href".toPath()
+        if (!fileSystem.exists(cropPath)) return@replace match.value
+        val crop = fileSystem.read(cropPath) { readByteArray() }
+        "href=\"data:image/png;base64,${Base64.getEncoder().encodeToString(crop)}\""
+      }
+    return inlined.encodeToByteArray()
   }
 
   /**
@@ -410,6 +507,11 @@ internal constructor(
     private const val MAX_CACHE_ENTRIES = 256
 
     /**
+     * `<image href="figma-raster/<node>.png">` refs a hybrid SVG carries, for data-URI inlining.
+     */
+    private val RASTER_HREF = Regex("href=\"(figma-raster/[^\"]+)\"")
+
+    /**
      * Open a long-lived session against a daemon launch descriptor and wrap it. Mirrors
      * [ee.schimke.composeai.cli.MatrixRenderFetcher] config; the caller supplies the servable
      * [previews] read from the module manifest. Throws [RenderSessionException] on open failure.
@@ -450,5 +552,10 @@ private class LruByteCache(private val maxEntries: Int) {
   @Synchronized
   fun put(key: String, value: ByteArray) {
     map[key] = value
+  }
+
+  @Synchronized
+  fun remove(key: String) {
+    map.remove(key)
   }
 }
