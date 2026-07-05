@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli.serve
 import ee.schimke.composeai.cli.BUNDLE_VERSION
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
+import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -417,7 +418,12 @@ class ServeHttpServer(
           trust = (renderHost as? ServeBundleHost)?.let { BundleVerifier.summary(it.trust) },
           previews =
             renderHost.previews.map { p ->
-              PreviewDto(id = p.id, label = p.label, modes = p.modes.map { it.wire })
+              PreviewDto(
+                id = p.id,
+                label = p.label,
+                modes = p.modes.map { it.wire },
+                overrides = p.overrides,
+              )
             },
         )
       call.respondText(
@@ -752,15 +758,18 @@ private data class VersionResponse(
   val schema: String = "compose-preview-serve/version/v1",
   /** The host CLI's released version ([BUNDLE_VERSION]). */
   val version: String,
-  /** The schema id the `/api/previews` + page surface speaks, so a client can feature-detect. */
-  val serveSchema: String = "compose-preview-serve/v1",
+  /**
+   * The schema id the `/api/previews` + page surface speaks, so a client can feature-detect. `v2`
+   * adds the per-preview `overrides` (author knob declarations) to `/api/previews`.
+   */
+  val serveSchema: String = "compose-preview-serve/v2",
   /** True when the box serves token-free (public preview server); false for a token-gated serve. */
   val public: Boolean,
 )
 
 @Serializable
 private data class PreviewsResponse(
-  val schema: String = "compose-preview-serve/v1",
+  val schema: String = "compose-preview-serve/v2",
   val module: String,
   /**
    * Producer-trust verdict for this session ([BundleVerifier.summary]) — `signature:<keyId>`,
@@ -772,7 +781,18 @@ private data class PreviewsResponse(
 )
 
 @Serializable
-private data class PreviewDto(val id: String, val label: String, val modes: List<String>)
+private data class PreviewDto(
+  val id: String,
+  val label: String,
+  val modes: List<String>,
+  /**
+   * The author-declared editable knobs this preview exposes (`compose/overrides`) — key, type,
+   * label, default/current value, and repeat index. Lets a programmatic client (the Figma plugin's
+   * override editor) present the controls without scraping the viewer HTML. Empty when the preview
+   * declares none (or the host doesn't carry them). Additive since `compose-preview-serve/v2`.
+   */
+  val overrides: List<PreviewOverrideDeclaration> = emptyList(),
+)
 
 @Serializable
 private data class BundleAcceptedResponse(

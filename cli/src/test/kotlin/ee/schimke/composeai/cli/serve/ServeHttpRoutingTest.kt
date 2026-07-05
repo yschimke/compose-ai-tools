@@ -1,5 +1,9 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
+import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
+import ee.schimke.composeai.data.overrides.PreviewOverrideType
+import ee.schimke.composeai.data.overrides.PreviewOverridesPayload
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -9,6 +13,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
@@ -30,18 +35,36 @@ class ServeHttpRoutingTest {
       .also { ImageIO.write(BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB), "png", it) }
       .toByteArray()
 
-  private fun bundle(label: String): ServeBundleHost {
+  /** An author-declared string knob, carried into the bundle as an `overrides.json` sidecar. */
+  private val labelKnob =
+    PreviewOverrideDeclaration(
+      key = "label",
+      type = PreviewOverrideType.STRING,
+      label = "Label",
+      default = PreviewOverrideValue.StringValue("Tap me"),
+    )
+
+  private fun bundle(
+    label: String,
+    overrides: List<PreviewOverrideDeclaration> = emptyList(),
+  ): ServeBundleHost {
     val dir = Files.createTempDirectory("routing-$label").toFile().also { it.deleteOnExit() }
     File(dir, "index.html").writeText("<html></html>")
     File(dir, "previews").apply { mkdirs() }
     File(dir, "previews/$previewId.png").writeBytes(png())
+    if (overrides.isNotEmpty()) {
+      File(dir, "previews/$previewId.overrides.json")
+        .writeText(
+          Json.encodeToString(PreviewOverridesPayload.serializer(), PreviewOverridesPayload(overrides))
+        )
+    }
     return ServeBundleHost(dir, label = label)
   }
 
   private val registry = ServeSessionRegistry(open = { null })
   private val server: ServeHttpServer by lazy {
     registry.register("default-mod", host = bundle("default-mod"), pinned = true)
-    registry.register("compose-m3", host = bundle("compose-m3"), pinned = true)
+    registry.register("compose-m3", host = bundle("compose-m3", listOf(labelKnob)), pinned = true)
     ServeHttpServer(
         host = "127.0.0.1",
         requestedPort = 0,
@@ -103,6 +126,18 @@ class ServeHttpRoutingTest {
     val (apiCode, api) = get("/compose-m3/api/previews")
     assertEquals(200, apiCode)
     assertTrue(api.contains("\"module\":\"compose-m3\""), "api for the path session: $api")
+  }
+
+  @Test
+  fun `api previews advertises v2 and carries author override declarations`() {
+    val (code, api) = get("/compose-m3/api/previews")
+    assertEquals(200, code)
+    // v2 = the payload now carries per-preview override declarations.
+    assertTrue(api.contains("\"schema\":\"compose-preview-serve/v2\""), "schema v2: $api")
+    // The declared `label` knob (from the overrides.json sidecar) surfaces to a programmatic client.
+    assertTrue(api.contains("\"overrides\":["), "overrides array present: $api")
+    assertTrue(api.contains("\"key\":\"label\""), "declared knob key: $api")
+    assertTrue(api.contains("\"value\":\"Tap me\""), "declared knob default value: $api")
   }
 
   @Test
