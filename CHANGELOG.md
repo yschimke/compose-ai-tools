@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.16.16](https://github.com/yschimke/compose-ai-tools/compare/v0.16.15...v0.16.16) (2026-07-05)
+
+
+### Features
+
+* add compose/figma-svg layered SVG export for Figma import ([#2203](https://github.com/yschimke/compose-ai-tools/issues/2203)) ([747e786](https://github.com/yschimke/compose-ai-tools/commit/747e786a6903ea1c4a85b42dc234c0a1e03bbdae))
+* add SVG asset discovery and rendering support ([#2207](https://github.com/yschimke/compose-ai-tools/issues/2207)) ([d688082](https://github.com/yschimke/compose-ai-tools/commit/d68808206a625ecdb6142b8961c0334229f05546))
+* carry figma-raster crops for hybrid figma-svg catalog stickers ([#2225](https://github.com/yschimke/compose-ai-tools/issues/2225)) ([1fe99cf](https://github.com/yschimke/compose-ai-tools/commit/1fe99cfc49e1ce6b7a41c9db9a151f66c0c8cc8c))
+* carry raw-px corner radii (RoundedCornerShape(&lt;px&gt;f)) into figma-svg ([#2227](https://github.com/yschimke/compose-ai-tools/issues/2227)) ([96641dc](https://github.com/yschimke/compose-ai-tools/commit/96641dc6dbb56bbd6e6b94e26b6462dfbd8df9d9))
+* **cli:** render-matrix --cells-dir per-cell output + coalesced-retry fix, Figma roundtrip docs ([#2202](https://github.com/yschimke/compose-ai-tools/issues/2202)) ([ce3bad8](https://github.com/yschimke/compose-ai-tools/commit/ce3bad87a27cc173f0ba5668886ea54002163e07))
+* embed Google downloadable fonts in the Android figma-svg export ([#2219](https://github.com/yschimke/compose-ai-tools/issues/2219)) ([2df314f](https://github.com/yschimke/compose-ai-tools/commit/2df314f86268284ac42d4fde29d389827087f646))
+* figma-svg embeds the actual font file the render loaded ([#2220](https://github.com/yschimke/compose-ai-tools/issues/2220)) ([0b237f8](https://github.com/yschimke/compose-ai-tools/commit/0b237f847e499dc6907d3d4175e7efae9d14413a))
+* figma-svg fidelity harness (render vs SVG score + composite) ([#2212](https://github.com/yschimke/compose-ai-tools/issues/2212)) ([7fffad8](https://github.com/yschimke/compose-ai-tools/commit/7fffad8b98b3024ad28ecfd8ac36c8c28bec9f89))
+* figma-svg text fidelity — typography baselines + embedded Google fonts ([#2218](https://github.com/yschimke/compose-ai-tools/issues/2218)) ([f6585fc](https://github.com/yschimke/compose-ai-tools/commit/f6585fc7f8b16eb256a87ea920849c09a1678385))
+* font preview wrapper + reusable @PreviewWrapperClass multi-preview ([#2221](https://github.com/yschimke/compose-ai-tools/issues/2221)) ([9f15e39](https://github.com/yschimke/compose-ai-tools/commit/9f15e395bc09fba63471f7a01920a10d3f47507c))
+* hybrid vector/PNG export for figma-svg (opaque components as &lt;image&gt;) ([#2204](https://github.com/yschimke/compose-ai-tools/issues/2204)) ([ae73989](https://github.com/yschimke/compose-ai-tools/commit/ae73989e91a971c1c4a5a6bc8e244db0946f443c))
+* portable SVG bundles + SvgPreview authoring composable ([#2215](https://github.com/yschimke/compose-ai-tools/issues/2215)) ([5b45012](https://github.com/yschimke/compose-ai-tools/commit/5b45012cdb99f8a4dff44f526f1722b4e7453dbf))
+* **serve:** expose per-preview override declarations on /api/previews ([#2228](https://github.com/yschimke/compose-ai-tools/issues/2228)) ([4ab78d9](https://github.com/yschimke/compose-ai-tools/commit/4ab78d9a658d31534dc52d8a1d86aea8739e9d1a))
+* ship the editable compose/figma-svg per sticker in design-catalog bundles ([#2223](https://github.com/yschimke/compose-ai-tools/issues/2223)) ([50cebc2](https://github.com/yschimke/compose-ai-tools/commit/50cebc20bd3abab360ea894604c0d126f7cad3c3))
+* turn on figma-svg hybrid raster export end-to-end ([#2206](https://github.com/yschimke/compose-ai-tools/issues/2206)) ([2c39508](https://github.com/yschimke/compose-ai-tools/commit/2c39508016ce6161b7e214d33b1db4e281f16954))
+
+
+### Bug Fixes
+
+* carry SVG/Lottie asset IR in Android bundles ([#2217](https://github.com/yschimke/compose-ai-tools/issues/2217)) ([3c83aa9](https://github.com/yschimke/compose-ai-tools/commit/3c83aa93885d5f40f53c8f2c32f056cda1a4aeec))
+* correct review-comment tool name and handle missing follow-up label ([#2214](https://github.com/yschimke/compose-ai-tools/issues/2214)) ([62d8e16](https://github.com/yschimke/compose-ai-tools/commit/62d8e161b66966f5f3a41b0a49d1cc19e6ec9b50))
+* reject path-traversal crop names in the design-catalog figma-raster carry ([#2226](https://github.com/yschimke/compose-ai-tools/issues/2226)) ([ec29552](https://github.com/yschimke/compose-ai-tools/commit/ec29552e865cf640a5b4704c791be22690bd42a0))
+* structural (±1px) fidelity diff + locale-stable score JSON ([#2213](https://github.com/yschimke/compose-ai-tools/issues/2213)) ([2688714](https://github.com/yschimke/compose-ai-tools/commit/2688714d7777ec73fa5213940988069ce0c90097))
+* use valid attribution settings keys and tighten Bash allowlist ([#2208](https://github.com/yschimke/compose-ai-tools/issues/2208)) ([0fb9369](https://github.com/yschimke/compose-ai-tools/commit/0fb936978a38d73375d5c06cf3e1094e5c7fddb7))
+
 ## [0.16.15](https://github.com/yschimke/compose-ai-tools/compare/v0.16.14...v0.16.15) (2026-07-03)
 
 
