@@ -328,6 +328,10 @@ private class PackSubcommand(private val args: List<String>) {
         // the
         // design-catalog export can ship an editable vector per sticker beside the raster PNG.
         val figmaSvgWritten = injectFigmaSvgIntoBundle(bundleFile, outcome.figmaSvgById)
+        // A hybrid figma-svg references `figma-raster/<node>.png` crops; carry them verbatim as
+        // `previews/<id>.figma-raster/<node>.png` so the SVG's `<image>` layers resolve once the
+        // export copies the SVG onto the delivery branch. Empty for the common vector-only case.
+        val figmaRasterWritten = injectFigmaRasterIntoBundle(bundleFile, outcome.figmaRasterById)
         val semanticsLine =
           "  semantics:     $written / ${previewIds.size} preview(s) carried as " +
             "previews/<id>$BUNDLE_SEMANTICS_SUFFIX" +
@@ -347,6 +351,11 @@ private class PackSubcommand(private val args: List<String>) {
             append(
               "\n  figma-svg:     $figmaSvgWritten / ${previewIds.size} preview(s) carried " +
                 "as previews/<id>$BUNDLE_FIGMA_SVG_SUFFIX"
+            )
+          if (figmaRasterWritten > 0)
+            append(
+              "\n  figma-raster:  $figmaRasterWritten crop(s) carried as " +
+                "previews/<id>$BUNDLE_FIGMA_RASTER_DIR_SUFFIX/<node>.png"
             )
         }
         return semanticsLine + extraLines
@@ -701,6 +710,15 @@ internal const val BUNDLE_FONTS_SUFFIX: String = ".fonts.json"
 internal const val BUNDLE_FIGMA_SVG_SUFFIX: String = ".figma.svg"
 
 /**
+ * Directory suffix for a hybrid figma-svg's per-node raster crops, carried beside its
+ * `previews/<id>.figma.svg` as `previews/<id>.figma-raster/<node>.png`. Mirrors the
+ * `figma-raster/<node>.png` hrefs the SVG's `<image>` layers reference so they resolve once the
+ * design-catalog export copies the SVG (and rewrites those hrefs) onto the delivery branch. Absent
+ * for a vector-only export.
+ */
+internal const val BUNDLE_FIGMA_RASTER_DIR_SUFFIX: String = ".figma-raster"
+
+/**
  * Inject `previews/<id>.semantics.json` entries (id → `compose-semantics.json` bytes) into
  * [bundleFile]'s zip portion **in place**, preserving the leading PNG cover and every existing
  * entry. Re-injecting replaces any prior semantics entry for the same id, so a second
@@ -752,6 +770,29 @@ internal fun injectFigmaSvgIntoBundle(
   figmaSvgById: Map<String, ByteArray>,
   fileSystem: FileSystem = SystemFileSystem,
 ): Int = injectSidecarsIntoBundle(bundleFile, figmaSvgById, BUNDLE_FIGMA_SVG_SUFFIX, fileSystem)
+
+/**
+ * Inject a hybrid figma-svg's per-node raster crops ([figmaRasterById]: preview id → (crop filename
+ * → PNG bytes)) into [bundleFile] as `previews/<id>.figma-raster/<node>.png`, so the SVG's `<image
+ * href="figma-raster/<node>.png">` layers resolve after the export carries them. Same in-place,
+ * idempotent, byte-stable contract as the other injectors. Returns the number of crops written
+ * across all previews.
+ */
+internal fun injectFigmaRasterIntoBundle(
+  bundleFile: File,
+  figmaRasterById: Map<String, Map<String, ByteArray>>,
+  fileSystem: FileSystem = SystemFileSystem,
+): Int {
+  val entries =
+    figmaRasterById.entries
+      .flatMap { (id, crops) ->
+        crops.map { (name, bytes) ->
+          "$BUNDLE_PREVIEWS_DIR/$id$BUNDLE_FIGMA_RASTER_DIR_SUFFIX/$name" to bytes
+        }
+      }
+      .toMap()
+  return injectRawZipEntries(bundleFile, entries, fileSystem)
+}
 
 /**
  * Inject `previews/<id><suffix>` entries (id → bytes) into [bundleFile]'s zip portion **in place**,

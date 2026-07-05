@@ -44,6 +44,11 @@ import { buildCatalog, writeCatalog } from "@design-parity/catalog-export";
 
 import { renderIndexHtml } from "./render-index-html.mjs";
 import { renderReadmeMd } from "./render-readme-md.mjs";
+import {
+  figmaRastersForId,
+  figmaSvgByFunction,
+  rewriteRasterHrefs,
+} from "./figma-svg-emit.mjs";
 import { renderWireframeSvg, slug } from "./render-wireframe-svg.mjs";
 import { renderLayoutWireframeSvg } from "./render-layout-wireframe-svg.mjs";
 import { DEFAULT_PREVIEW_BASE, livePreviewUrl } from "./live-preview.mjs";
@@ -116,26 +121,6 @@ function layoutByFunction(bundle) {
   return out;
 }
 
-/**
- * Map componentFunction → the layered `compose/figma-svg` export bytes carried in the bundle as
- * `previews/<id>.figma.svg` (baked by `bundle pack --with-semantics`). Unlike the wireframe — which
- * this driver *renders* from `layout.json` — the figma-svg is a complete SVG produced Kotlin-side
- * (real fills/strokes/corner radii + editable text), so we carry its bytes verbatim. Prefer the
- * light variant so a single deterministic sticker is emitted per component.
- */
-function figmaSvgByFunction(bundle) {
-  const out = new Map();
-  const prefer = (id) => /(_|\b)light$/i.test(id);
-  for (const preview of bundle.previews) {
-    const bytes = bundle.entries?.[`previews/${preview.id}.figma.svg`];
-    if (!bytes) continue;
-    const fn = preview.functionName ?? preview.id;
-    if (out.has(fn) && !prefer(preview.id)) continue;
-    const svg = new TextDecoder().decode(bytes);
-    if (svg.includes("<svg")) out.set(fn, svg);
-  }
-  return out;
-}
 
 /** Drop `widthDp`/`heightDp` when serialized as JSON null so the published
  *  normalizeSize doesn't `.trim()` a null. */
@@ -476,12 +461,28 @@ const figmaDir = join(outPath, "figma");
 await mkdir(figmaDir, { recursive: true });
 const figmaSvgSlugs = new Set();
 let figmaSvgCount = 0;
+let figmaRasterCount = 0;
 for (const component of catalog.components) {
   const fn = fnByComponentId.get(component.componentId);
-  const svg = fn ? figmaSvgByFn.get(fn) : undefined;
-  if (!svg) continue;
-  await writeFile(join(figmaDir, `${slug(component.componentId)}.svg`), svg, "utf8");
-  figmaSvgSlugs.add(slug(component.componentId));
+  const carried = fn ? figmaSvgByFn.get(fn) : undefined;
+  if (!carried) continue;
+  const componentSlug = slug(component.componentId);
+  let svg = carried.svg;
+  // A hybrid sticker's `<image href="figma-raster/<node>.png">` layers reference crops carried in
+  // the bundle. Copy them under a per-slug dir and rewrite the href prefix so they resolve next to
+  // figma/<slug>.svg (per-slug avoids <node>.png name collisions across components).
+  const rasters = figmaRastersForId(bundle, carried.id);
+  if (rasters.size) {
+    const rasterDir = `${componentSlug}.figma-raster`;
+    svg = rewriteRasterHrefs(svg, componentSlug);
+    await mkdir(join(figmaDir, rasterDir), { recursive: true });
+    for (const [name, bytes] of rasters) {
+      await writeFile(join(figmaDir, rasterDir, name), Buffer.from(bytes));
+      figmaRasterCount += 1;
+    }
+  }
+  await writeFile(join(figmaDir, `${componentSlug}.svg`), svg, "utf8");
+  figmaSvgSlugs.add(componentSlug);
   figmaSvgCount += 1;
 }
 
@@ -509,8 +510,8 @@ await writeFile(
 console.log(
   `[${spec.system}] ${catalog.components.length} component(s), ${result.imageCount} image(s), ` +
     `${wireframeCount} wireframe(s) (${layoutWireframeCount} from layout-inspector, ` +
-    `${wireframeCount - layoutWireframeCount} greenline), ${figmaSvgCount} figma-svg → ` +
-    `${result.manifestPath}`,
+    `${wireframeCount - layoutWireframeCount} greenline), ${figmaSvgCount} figma-svg ` +
+    `(${figmaRasterCount} raster crop(s)) → ${result.manifestPath}`,
 );
 console.log(`[${spec.system}] index → ${indexPath}`);
 console.log(`[${spec.system}] readme → ${readmePath}`);

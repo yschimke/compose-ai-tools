@@ -74,6 +74,14 @@ object ComposeFigmaSvgProduct {
   const val SCHEMA_VERSION: Int = 1
   const val FILE_SVG: String = "compose-figma.svg"
   const val MEDIA_TYPE_SVG: String = "image/svg+xml"
+
+  /**
+   * Directory (relative to the preview's output dir) holding the per-node `<node>.png` crops a
+   * **hybrid** export references via `<image href="figma-raster/<node>.png">`. Empty for a
+   * vector-only export. The single source of truth for the prefix [FigmaSvgModel.defaultRasterHref]
+   * emits and consumers (the design-catalog carrier) collect.
+   */
+  const val RASTER_DIR: String = "figma-raster"
 }
 
 @Serializable data class ComposeSemanticsPayload(val root: ComposeSemanticsNode)
