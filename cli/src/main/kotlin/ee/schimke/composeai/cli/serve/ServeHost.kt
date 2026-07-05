@@ -29,6 +29,18 @@ interface ServeHost : AutoCloseable {
   val canApplyOverrides: Boolean
     get() = false
 
+  /**
+   * Whether a **live daemon stream** ("Live (stream)") is available for this session — distinct
+   * from [canApplyOverrides], which governs whether the *snapshot* lane re-renders on override
+   * edits. The two usually coincide (a plain [ServeRenderHost] has both; a static [ServeBundleHost]
+   * neither), so this defaults to [canApplyOverrides]. A trusted-catalog live session
+   * ([ServeCatalogLiveHost]) is the exception: its snapshots stay baked (so browsing is instant and
+   * stays on the published pixels) while the live stream is still offered on demand —
+   * `canApplyOverrides = false` but `hasLiveStream = true`.
+   */
+  val hasLiveStream: Boolean
+    get() = canApplyOverrides
+
   /** Render [previewId] at [overrides] (cached where possible). */
   fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome
 

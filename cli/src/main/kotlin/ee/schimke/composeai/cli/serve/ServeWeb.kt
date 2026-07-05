@@ -601,6 +601,14 @@ object ServeWeb {
     token: String,
     sessionId: String? = null,
     canApplyOverrides: Boolean = false,
+    /**
+     * Whether the "Live (stream)" toggle is offered — the daemon live lane, distinct from
+     * [canApplyOverrides] (which drives whether *snapshots* re-render on override edits). Defaults
+     * to [canApplyOverrides] so plain daemon / static sessions are unchanged; a trusted-catalog
+     * live session ([ServeCatalogLiveHost]) passes `canApplyOverrides = false` (static, instant
+     * baked snapshots) with `hasLiveStream = true` (Live still offered on demand).
+     */
+    hasLiveStream: Boolean = canApplyOverrides,
     trust: String? = null,
     wasmSrc: String? = null,
     /**
@@ -667,6 +675,12 @@ object ServeWeb {
     val staticSnapshot = !canApplyOverrides
     // Server-render-only controls (no client-side path): disabled on a static snapshot.
     val serverDis = if (staticSnapshot) " disabled" else ""
+    // The "Live (stream)" toggle keys off [hasLiveStream], NOT staticSnapshot: a trusted-catalog
+    // live session serves static baked snapshots (staticSnapshot=true) yet still offers the daemon
+    // stream on demand. For plain daemon / static sessions hasLiveStream tracks canApplyOverrides,
+    // so
+    // this is unchanged there.
+    val liveDis = if (hasLiveStream) "" else " disabled"
     // Controls the in-browser Wasm app also honours — theme (uiMode), font scale (density), locale
     // (layout direction): live whenever the server can render OR a Wasm app backs the session.
     val wasmDis = if (staticSnapshot && wasmSrc == null) " disabled" else ""
@@ -693,7 +707,7 @@ object ServeWeb {
         <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$wasmFrame</div>
         <div class="cp-controls">
           $snapshotNote
-          <label class="cp-live-row"><input id="cp-live" type="checkbox"$serverDis> Live (stream)</label>
+          <label class="cp-live-row"><input id="cp-live" type="checkbox"$liveDis> Live (stream)</label>
           $wasmToggle
           <label>Theme
             <select id="cp-uiMode"$wasmDis>
