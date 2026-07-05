@@ -78,6 +78,17 @@ jobs:
         env:
           MODULE: ${{ matrix.module }}
           SYSTEM: ${{ matrix.system }}
+          # Embed the real (measured) face into each `compose/figma-svg` export.
+          # Without this the layered SVGs emit `font-family="sans-serif"` and a
+          # browser substitutes a wider fallback, so text drifts off the boxes we
+          # measured against Roboto (the button-label centering skew seen on the
+          # published stickers). The daemon's figma-svg export gates font embedding
+          # on `composeai.figma.embedFonts`; the daemon is spawned as a subprocess
+          # of `bundle pack`, so it inherits this via JAVA_TOOL_OPTIONS. It fetches
+          # the Roboto WOFF2 from the same Google-Fonts source (and cache) the
+          # renderer already uses for the PNGs, and degrades to `sans-serif` if the
+          # face is unreachable — so this never fails a render, only improves it.
+          JAVA_TOOL_OPTIONS: -Dcomposeai.figma.embedFonts=true
         run: |
           set -euo pipefail
           compose-preview bundle pack --module "$MODULE" --with-semantics \
