@@ -104,7 +104,7 @@ a:hover { text-decoration: underline; }
       <body>
               <p class="cp-head"><a href="/?token=demo-token-fixture">← previews</a> <span class="cp-badge cp-badge--unverified" title="producer trust: unverified">⚠ unverified</span></p>
       <p class="cp-sub" title="com.example.ProfileScreenPreview">Profile screen</p>
-      <div class="cp-viewer" data-preview-id="com.example.ProfileScreenPreview" data-mode="snapshot" data-modes="snapshot,live" data-snapshot-backend="Snapshot" data-live-backend="Live">
+      <div class="cp-viewer" data-preview-id="com.example.ProfileScreenPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="true" data-snapshot-backend="Snapshot" data-live-backend="Live">
         <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="Profile screen"><canvas id="cp-canvas" hidden></canvas></div>
         <div class="cp-controls">
           <div class="cp-note">Pre-rendered snapshot — overrides (device, locale, font scale, orientation) need the live server, not a published catalog. <a href="https://github.com/yschimke/compose-ai-tools/blob/main/docs/public-preview-server.md#running-one">Enable a local preview server.</a></div>
@@ -169,6 +169,11 @@ a:hover { text-decoration: underline; }
   var canvas = document.getElementById("cp-canvas");
   var status = document.getElementById("cp-status");
   var live = document.getElementById("cp-live");
+  // Whether the snapshot lane is static (baked PNGs, no /render re-render) — the explicit signal
+  // for the wasm auto-enable below. NOT `live.disabled`: a trusted-catalog live session serves
+  // static snapshots yet leaves the Live toggle enabled, so `live.disabled` no longer implies
+  // "static".
+  var staticSnapshot = root.getAttribute("data-static-snapshot") === "true";
   var previewId = root.getAttribute("data-preview-id");
   // The session path prefix ("/<system>") when this viewer is served under a path — it sits at
   // "<base>/p/<id>", so stripping the trailing "/p/<id>" recovers the base ("" for the root
@@ -495,13 +500,13 @@ a:hover { text-decoration: underline; }
     }
     if (live.checked && ws && ws.readyState === 1) {
       ws.send(JSON.stringify({ type: "setOverrides", overrides: overrides() }));
-    } else if (live.disabled && wasmToggle) {
+    } else if (staticSnapshot && wasmToggle) {
       // Static snapshot backed by a Wasm app: the baked PNG can't honour theme/font-scale/locale
       // (only the in-browser tier can), and /render can't re-render a published catalog. So a
       // wasm-honoured control change auto-enables the Wasm tier and applies there, instead of
-      // firing a dead refreshSnapshot the user sees as "the control does nothing". (live.disabled
-      // marks a non-renderable session; device/orientation stay disabled, so only the
-      // wasm-honoured controls reach here.)
+      // firing a dead refreshSnapshot the user sees as "the control does nothing". (staticSnapshot
+      // marks a non-renderable snapshot lane — true even for a live catalog whose Live toggle is
+      // enabled; device/orientation stay disabled, so only the wasm-honoured controls reach here.)
       wasmToggle.checked = true;
       openWasm();
     } else if (!live.checked) {

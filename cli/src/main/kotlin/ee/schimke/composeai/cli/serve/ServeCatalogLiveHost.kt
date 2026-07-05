@@ -5,8 +5,9 @@ import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamFrameParams
 
 /**
- * A [ServeHost] that fronts a trusted design-system catalog with **both** its baked-PNG render and
- * a live daemon lane, bridging the two id namespaces so the published catalog URLs keep working.
+ * A [ServeHost] that fronts a trusted design-system catalog with its baked-PNG render **and** an
+ * opt-in live daemon stream, bridging the two id namespaces so the published catalog URLs keep
+ * working.
  *
  * ## Why
  *
@@ -14,24 +15,23 @@ import ee.schimke.composeai.daemon.protocol.StreamFrameParams
  * (`FilledButton_Dark`), but the published `design-artifacts/<system>` catalog links + image routes
  * use the componentId-slug id (`button-filled__ideal__default__dark`) — and the two don't match.
  * Registering a bare [ServeRenderHost] for a catalog therefore 404s every published `/p/<id>` deep
- * link and `/render/<id>.png` thumbnail. It also can't serve the ids the desktop daemon simply
- * doesn't have (the Android-only inset focus-ring variant, rendered by a separate supplement and
- * baked in, with no runnable desktop preview).
+ * link and `/render/<id>.png` thumbnail, drops the catalog's title/trust badge (only a
+ * [ServeBundleHost] carries those), and — because a daemon host reports `canApplyOverrides = true`
+ * — flips the viewer into dynamic mode, so ordinary browsing renders every preview through the
+ * daemon (cold-start "rendering…") instead of showing the instant baked PNG.
  *
  * ## What
  *
- * This composite keeps the [baked] [ServeBundleHost] as the browse surface — so [previews], the
- * grid, deep links, and thumbnails resolve to the baked catalog **exactly as before** — and layers
- * the [live] daemon underneath for the ids [alias] maps (catalog id → daemon preview id):
- * - **Plain snapshot** (no overrides): served from the baked PNG, so ordinary browsing never wakes
- *   the daemon (thumbnails, deep-link default view).
- * - **Overridden snapshot** on an aliased id: routed to the daemon for a fresh render of the edit.
- * - **Live stream** on an aliased id: routed to the daemon; an unmapped id has no stream (the
- *   caller transparently falls back to the snapshot lane, i.e. the baked PNG).
+ * This composite keeps the [baked] [ServeBundleHost] as the whole **snapshot** surface —
+ * [previews], the grid, deep links, thumbnails, title, and trust badge all resolve to the baked
+ * catalog exactly as a static catalog would, and every snapshot is the baked PNG (so browsing never
+ * wakes the daemon). The [live] daemon is offered only through the **"Live (stream)"** toggle:
+ * [hasLiveStream] is true, so the viewer enables the checkbox, and [subscribeStream] maps the
+ * catalog id to the daemon preview id via [alias] and streams it. An id with no alias (an
+ * Android-only variant the desktop daemon can't render) simply has no stream and stays baked.
  *
- * The result: the whole published catalog resolves under its own ids, and the CMP components the
- * desktop daemon can run gain a live, interactive lane — while the Android-only variants degrade
- * gracefully to their baked pixels.
+ * The net effect: the published catalog behaves exactly as before (static, trusted, instant), plus
+ * the CMP components the desktop daemon can run gain an interactive live stream on demand.
  */
 class ServeCatalogLiveHost(
   /**
@@ -40,44 +40,39 @@ class ServeCatalogLiveHost(
   private val alias: Map<String, String>,
   /** The daemon-backed host, keyed by daemon preview ids (the [alias] values). */
   private val live: ServeHost,
-  /** The static baked-PNG host, keyed by catalog ids (the browse surface + fallback). */
+  /** The static baked-PNG host, keyed by catalog ids (the browse + snapshot surface). */
   private val baked: ServeHost,
 ) : ServeHost {
 
-  /** Browse surface is the baked catalog — its ids are the published catalog ids. */
+  /** Browse + snapshot surface is the baked catalog — its ids are the published catalog ids. */
   override val previews: List<ServePreview> = baked.previews
 
   override val label: String = baked.label
 
-  /** Some ids (the aliased ones) re-render live, so the viewer should offer editable knobs. */
-  override val canApplyOverrides: Boolean = true
+  /**
+   * Snapshots stay static (baked PNGs) so browsing is instant and the viewer shows the published
+   * pixels + trust badge — the live daemon is opt-in via [hasLiveStream], not the snapshot lane.
+   */
+  override val canApplyOverrides: Boolean = false
+
+  /** The "Live (stream)" toggle is offered (unlike a plain static catalog). */
+  override val hasLiveStream: Boolean = true
 
   /**
-   * Plain (no-override) snapshots come from the baked PNG so browsing never spins the daemon; an
-   * override edit on an aliased id renders fresh through the daemon. An unmapped id always serves
-   * baked (it has no runnable preview).
+   * The underlying baked catalog host, so the HTTP layer can read its title / subtitle / trust
+   * verdict (which only a [ServeBundleHost] carries) even though the session is fronted by this
+   * composite. See `ServeHttpServer.catalogBundleHost`.
    */
-  override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
-    val daemonId = alias[previewId]
-    return if (daemonId != null && overrides != EMPTY_OVERRIDES) {
-      live.render(daemonId, overrides)
-    } else {
-      baked.render(previewId, overrides)
-    }
-  }
+  internal val bakedHost: ServeHost = baked
 
-  override fun renderSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome {
-    val daemonId = alias[previewId]
-    return if (daemonId != null && overrides != EMPTY_OVERRIDES) {
-      live.renderSvg(daemonId, overrides)
-    } else {
-      baked.renderSvg(previewId, overrides)
-    }
-  }
+  /** Snapshots are the baked catalog PNGs — the daemon is reserved for the live stream lane. */
+  override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+    baked.render(previewId, overrides)
 
-  /**
-   * Live streaming is available only for aliased ids; others have no stream (snapshot fallback).
-   */
+  override fun renderSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome =
+    baked.renderSvg(previewId, overrides)
+
+  /** Live streaming is available only for aliased ids; others have no stream (snapshot only). */
   override fun subscribeStream(
     previewId: String,
     overrides: PreviewOverrides,
@@ -97,10 +92,5 @@ class ServeCatalogLiveHost(
     } finally {
       baked.close()
     }
-  }
-
-  private companion object {
-    /** All-default overrides = "no override" (what the snapshot lane passes for a plain view). */
-    private val EMPTY_OVERRIDES = PreviewOverrides()
   }
 }

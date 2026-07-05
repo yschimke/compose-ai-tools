@@ -360,7 +360,7 @@ class ServeHttpServer(
           renderHost.previews,
           token,
           webSessionId,
-          trust = (renderHost as? ServeBundleHost)?.let { BundleVerifier.summary(it.trust) },
+          trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           isPublic = isPublic,
           catalogs = catalogSessions,
           basePath = basePath,
@@ -369,6 +369,19 @@ class ServeHttpServer(
       )
     }
   }
+
+  /**
+   * The [ServeBundleHost] carrying a catalog's browse metadata (title / subtitle / trust verdict) —
+   * the host itself for a static catalog, or the baked host a [ServeCatalogLiveHost] fronts when
+   * the catalog is served live. Null for a plain daemon module session (no bundle metadata). Lets
+   * the trust badge + card title survive a catalog being fronted by the live composite.
+   */
+  private fun catalogBundleHost(host: ServeHost): ServeBundleHost? =
+    when (host) {
+      is ServeBundleHost -> host
+      is ServeCatalogLiveHost -> host.bakedHost as? ServeBundleHost
+      else -> null
+    }
 
   /**
    * The public server's front-page index of published design-system catalogs ([catalogSessions]).
@@ -384,7 +397,7 @@ class ServeHttpServer(
           val lease = sessions.lease(system) ?: return@mapNotNull null
           try {
             val host = lease.host
-            val bundle = host as? ServeBundleHost
+            val bundle = catalogBundleHost(host)
             ServeWeb.HomeSystem(
               system = system,
               title = bundle?.title?.takeIf { it.isNotBlank() } ?: host.label,
@@ -416,7 +429,7 @@ class ServeHttpServer(
           module = renderHost.label,
           // Producer-trust verdict for a bundle/catalog session (signature / branch / provenance /
           // unverified); null for a live daemon-backed module session.
-          trust = (renderHost as? ServeBundleHost)?.let { BundleVerifier.summary(it.trust) },
+          trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           previews =
             renderHost.previews.map { p ->
               PreviewDto(
@@ -485,7 +498,8 @@ class ServeHttpServer(
           token,
           webSessionId,
           canApplyOverrides = renderHost.canApplyOverrides,
-          trust = (renderHost as? ServeBundleHost)?.let { BundleVerifier.summary(it.trust) },
+          hasLiveStream = renderHost.hasLiveStream,
+          trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           wasmSrc = wasmSrc,
           basePath = basePath,
           isPublic = isPublic,

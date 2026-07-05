@@ -141,6 +141,21 @@ class ServeWebFixtureTest {
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         wasmSrc = "/wasm/compose-m3/?id=card-filled",
       )
+    // A trusted catalog served LIVE (ServeCatalogLiveHost): static baked snapshots
+    // (canApplyOverrides=false) yet the "Live (stream)" toggle is enabled (hasLiveStream=true), and
+    // it also carries the in-browser Wasm tier. Captures the chrome where Live is on AND Wasm is
+    // available AND snapshots stay static — the case the `staticSnapshot` (not `live.disabled`)
+    // wasm auto-enable signal exists for.
+    val wasmViewerLive =
+      ServeWeb.viewerPage(
+        previews.first { it.id.endsWith("CardPreview") },
+        token,
+        sessionId = "compose-m3",
+        canApplyOverrides = false,
+        hasLiveStream = true,
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        wasmSrc = "/wasm/compose-m3/?id=card-filled",
+      )
     // A catalog served under its canonical path (/meshcore-mobile/) rather than ?session=: same
     // pages, but links stay on the path (basePath) and drop the &session= param. Captures the
     // path-mounted landing + viewer the public server now serves these design systems at.
@@ -182,6 +197,7 @@ class ServeWebFixtureTest {
       File(pagesDir, "serve-home-index.html").writeText(homeIndex)
       File(pagesDir, "serve-viewer.html").writeText(viewer)
       File(pagesDir, "serve-viewer-wasm.html").writeText(wasmViewer)
+      File(pagesDir, "serve-viewer-wasm-live.html").writeText(wasmViewerLive)
       File(pagesDir, "serve-landing-path.html").writeText(landingPath)
       File(pagesDir, "serve-viewer-path.html").writeText(viewerPath)
       File(pagesDir, "serve-landing-themed.html").writeText(landingThemed)
@@ -194,6 +210,7 @@ class ServeWebFixtureTest {
     assertGolden(File(pagesDir, "serve-home-index.html"), homeIndex)
     assertGolden(File(pagesDir, "serve-viewer.html"), viewer)
     assertGolden(File(pagesDir, "serve-viewer-wasm.html"), wasmViewer)
+    assertGolden(File(pagesDir, "serve-viewer-wasm-live.html"), wasmViewerLive)
     assertGolden(File(pagesDir, "serve-landing-path.html"), landingPath)
     assertGolden(File(pagesDir, "serve-viewer-path.html"), viewerPath)
     assertGolden(File(pagesDir, "serve-landing-themed.html"), landingThemed)
@@ -518,9 +535,45 @@ class ServeWebFixtureTest {
     assertTrue(wasmView.contains("\"localeTag=\""), "locale forwarded to Wasm")
     // On a static snapshot, a wasm-honoured control change auto-enables the Wasm tier (rather than
     // firing a /render the published catalog can't serve), so the control actually takes effect.
+    // The
+    // signal is the explicit `staticSnapshot` flag, NOT `live.disabled` — a live catalog serves
+    // static snapshots yet leaves the Live toggle enabled.
     assertTrue(
-      wasmView.contains("else if (live.disabled && wasmToggle) {"),
+      wasmView.contains("data-static-snapshot=\"true\""),
+      "static-snapshot flag on the viewer",
+    )
+    assertTrue(
+      wasmView.contains("else if (staticSnapshot && wasmToggle) {"),
       "static-snapshot wasm controls auto-enable the in-browser tier",
+    )
+
+    // Trusted catalog served LIVE + Wasm (ServeCatalogLiveHost): snapshots stay static (so the wasm
+    // auto-enable + note still apply) but the Live toggle is ENABLED — the exact case
+    // `live.disabled`
+    // could no longer stand in for `staticSnapshot`.
+    val liveCatalogWasm =
+      ServeWeb.viewerPage(
+        previews.first { it.id.endsWith("CardPreview") },
+        token,
+        canApplyOverrides = false,
+        hasLiveStream = true,
+        wasmSrc = "/wasm/compose-m3/?id=card-filled",
+      )
+    assertTrue(
+      liveCatalogWasm.contains("id=\"cp-live\" type=\"checkbox\"> Live"),
+      "live catalog leaves the Live toggle enabled",
+    )
+    assertTrue(
+      liveCatalogWasm.contains("data-static-snapshot=\"true\""),
+      "live catalog still marks its snapshot lane static",
+    )
+    assertTrue(
+      liveCatalogWasm.contains("Pre-rendered snapshot"),
+      "live catalog keeps the static note",
+    )
+    assertTrue(
+      liveCatalogWasm.contains("id=\"cp-device\" disabled"),
+      "server-render-only controls stay disabled on a live catalog's static snapshot",
     )
 
     // Live daemon session (canApplyOverrides = true): everything enabled, no note.
@@ -528,6 +581,7 @@ class ServeWebFixtureTest {
     assertTrue(!liveView.contains("Pre-rendered snapshot"), "no static note on a live session")
     assertTrue(!liveView.contains("value=\"1.0\" disabled"), "font scale enabled on a live session")
     assertTrue(!liveView.contains("id=\"cp-device\" disabled"), "device enabled on a live session")
+    assertTrue(liveView.contains("data-static-snapshot=\"false\""), "live session is not static")
   }
 
   @Test
