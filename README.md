@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 206 preview(s) across 18 module(s) · 17 error(s) · 4 warning(s) · 26 info._
+_Auto-generated from `compose-preview/a11y/main`. 207 preview(s) across 18 module(s) · 17 error(s) · 4 warning(s) · 26 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -144,6 +144,12 @@ _No findings._
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
 | 1 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "The quick brown fox jumps over the lazy dog" is identical to that of 4 other item(s). |
+
+### `FontWrapperShowcasePreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/FontWrapperShowcasePreview_Dark.a11y.png" width="400" />
+
+_No findings._
 
 ### `GlanceWeatherWidgetPreview`
 

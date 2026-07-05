@@ -518,6 +518,16 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "FontWrapperShowcasePreview_Dark.a11y.png",
+      "cleanBasename": "FontWrapperShowcasePreview_Dark.png",
+      "findings": [],
+      "functionName": "FontWrapperShowcasePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.FontPreviewShowcaseKt.FontWrapperShowcasePreview_Dark",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/FontPreviewShowcase.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "GlanceWeatherWidgetPreview_Glance_widget_4_2.a11y.png",
       "cleanBasename": "GlanceWeatherWidgetPreview_Glance_widget_4_2.png",
       "findings": [],
