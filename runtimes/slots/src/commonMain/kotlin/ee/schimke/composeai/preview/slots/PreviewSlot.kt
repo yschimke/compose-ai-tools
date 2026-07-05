@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.compositionLocalOf
@@ -76,13 +77,23 @@ fun SlotPlaceholder(name: String, modifier: Modifier = Modifier) {
     modifier.fillMaxSize().background(SLOT_PLACEHOLDER_COLOR),
     contentAlignment = Alignment.Center,
   ) {
-    BasicText(name, style = SLOT_PLACEHOLDER_TEXT_STYLE)
+    BasicText(
+      name,
+      style = SLOT_PLACEHOLDER_TEXT_STYLE,
+      maxLines = 1,
+      // Scale the label down to fit the slot box on one line — a small icon slot's name won't fit
+      // at a fixed size (and wrapping mid-word reads worse than a smaller, whole label).
+      autoSize = TextAutoSize.StepBased(minFontSize = 6.sp, maxFontSize = 12.sp),
+    )
   }
 }
 
 /** The slot placeholder's fill — a distinct accent at 50% opacity (`0x80` alpha). */
 private val SLOT_PLACEHOLDER_COLOR: Color = Color(0x804F46E5)
 
-/** The slot label's text style — white, centred, small, so it reads on the translucent fill. */
+/**
+ * The slot label's text style — white + centred so it reads on the translucent fill. The size is
+ * driven by the `autoSize` on the [BasicText] (it scales to fit the slot box), not set here.
+ */
 private val SLOT_PLACEHOLDER_TEXT_STYLE: TextStyle =
-  TextStyle(color = Color.White, fontSize = 12.sp, textAlign = TextAlign.Center)
+  TextStyle(color = Color.White, textAlign = TextAlign.Center)
