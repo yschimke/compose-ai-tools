@@ -211,3 +211,29 @@ Until step 1 is wired into CI, the close is manual: `bundle pack` the built code
 and `upload_assets` the render (raster) or `figma.createNodeFromSvg()` the
 `figma-svg` (editable) into the mock's file. The raster push answers "the preview
 is back in Figma"; the `figma-svg` push is the real, editable close.
+
+### Design constraint — the only agent runs in CI
+
+The end state is fully plugin-automated, and **the `@claude` CI session is the
+only agent in the loop** — it generates code, nothing more. Every other step is
+deterministic: the plugin's kick-off *and* import, the GitHub App broker, and the
+CI publish. In particular, **the import back into Figma must be a pure function of
+the PR's published artifacts, never an agent action.**
+
+Concretely, the import contract:
+
+```
+CI on the design-led PR (deterministic):
+  compose-preview bundle pack --with-semantics  →  previews/<id>.figma.svg
+  publish to a predictable ref:  design-artifacts/pr-<n>/figma/<componentId>.svg  (+ manifest)
+
+figma-plugin (deterministic):
+  given the PR / componentId → fetch design-artifacts/pr-<n> → place / refresh
+```
+
+Same PR → the same byte-stable `compose/figma-svg` → the same import. The plugin
+reuses its existing catalog-import path (which already fetches `figma/<slug>.svg`
+from a `design-artifacts/<system>` branch over `raw.githubusercontent`), pointed
+at `pr-<n>` instead of `<system>`. The agent-driven `upload_assets` /
+`use_figma` push used to *prototype* the close is a shortcut for demos — no
+interactive agent belongs in the kick-off or the import.
