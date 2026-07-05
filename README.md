@@ -48,6 +48,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `ColorSchemeSpecimenDarkPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ColorSchemeSpecimenDarkPreview_ColorScheme_specimen_dark.png" width="150" /> |
 | `ColorSchemeSpecimenLightPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ColorSchemeSpecimenLightPreview_ColorScheme_specimen_light.png" width="150" /> |
 | `NamedColorPaletteSpecimenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/NamedColorPaletteSpecimenPreview_Named_colour_palette_specimen.png" width="150" /> |
+| `FontWrapperShowcasePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/FontWrapperShowcasePreview_Dark.png" width="150" /> |
+| `FontWrapperShowcasePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/FontWrapperShowcasePreview_Light.png" width="150" /> |
 | `KeyboardDemoPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/KeyboardDemoPreview_Keyboard_Demo.png" width="150" /> |
 | `NavHostHomePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/NavHostHomePreview_NavHost_Home.png" width="150" /> |
 | `bigTextNotificationPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/bigTextNotificationPreview.png" width="150" /> |

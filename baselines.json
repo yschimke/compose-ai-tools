@@ -431,6 +431,22 @@
     "sha256": "f53c4be2e7d155fe5c36967b7badcccc3ab751e25f61b7e0338cf886d0a152c9",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/ColorGallery.kt"
   },
+  "samples:android/com.example.sampleandroid.FontPreviewShowcaseKt.FontWrapperShowcasePreview_Dark": {
+    "captureLabel": "",
+    "functionName": "FontWrapperShowcasePreview",
+    "module": "samples:android",
+    "renderBasename": "FontWrapperShowcasePreview_Dark.png",
+    "sha256": "ff5facc1d296c487d6ff42e5664ffb435277e01595198fb80617b2cf794db585",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/FontPreviewShowcase.kt"
+  },
+  "samples:android/com.example.sampleandroid.FontPreviewShowcaseKt.FontWrapperShowcasePreview_Light": {
+    "captureLabel": "",
+    "functionName": "FontWrapperShowcasePreview",
+    "module": "samples:android",
+    "renderBasename": "FontWrapperShowcasePreview_Light.png",
+    "sha256": "ff5facc1d296c487d6ff42e5664ffb435277e01595198fb80617b2cf794db585",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/FontPreviewShowcase.kt"
+  },
   "samples:android/com.example.sampleandroid.KeyboardDemoPreviewKt.KeyboardDemoPreview_Keyboard Demo": {
     "captureLabel": "",
     "functionName": "KeyboardDemoPreview",
