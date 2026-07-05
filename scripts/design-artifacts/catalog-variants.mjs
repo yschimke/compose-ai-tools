@@ -1,29 +1,33 @@
 /**
- * Fold a catalog spec component's state `variants` onto its default render.
+ * Fold a catalog spec component's `variants` onto its default render.
  *
  * A catalog spec component names one default `preview` plus, optionally, a list
- * of `variants` — extra state renders (`pressed`, `focused`, `disabled`, `off`,
- * `unchecked`, …), each its own `@Preview` function. This helper joins them:
+ * of `variants` — each its own `@Preview` function, tagged by one of two axes:
+ * a `state` (`pressed`, `focused`, `disabled`, `off`, `unchecked`, …) or named
+ * `props` (a content axis, e.g. `content: icon+label`). This helper joins them:
  * the default preview's images stay first (they keep their own `state`, usually
  * `"default"`, so the grid hero is the resting component), and every variant's
- * images are appended, **re-tagged** with the variant's `state`. The result is
- * one sticker that carries the default plus each state, distinguished by
- * `Image.state` — so the catalog manifest gives each a collision-free path
- * (`images/<id>/ideal__<state>[__theme][__size].png`) and the single-component
- * view can surface the states as secondary previews.
+ * images are appended, **re-tagged** — a `state` variant replaces `Image.state`,
+ * a `props` variant merges onto `Image.props` while keeping the default state.
+ * The result is one sticker whose variants the catalog manifest gives
+ * collision-free paths (`images/<id>/ideal__<state>[__theme][__size][__k-v…].png`,
+ * the props segment keeping a props-only variant distinct from the default), and
+ * that the single-component view can surface as secondary previews.
  *
  * Pure and dependency-free (no `@design-parity/*`, no I/O) so it unit-tests
  * without an `npm ci`. Consumed by the vendored `catalogFromCandidates` join in
- * `generate-design-catalog.mjs`.
+ * `generate-design-catalog.mjs`. Mirrors the `@design-parity/catalog-export`
+ * fold so the workflow render matches the parity flow.
  *
  * @param {Array<{state?: string}>} defaultImages the default preview's images.
- * @param {{componentId: string, variants?: Array<{state: string, preview: string}>}} component
+ * @param {{componentId: string, variants?: Array<{state?: string, props?: Record<string,string>, preview: string}>}} component
  *   the spec component (its `variants` drive the fold).
  * @param {Map<string, {images: Array<object>}>} byFunction rendered candidates
  *   keyed by `@Preview` function name.
  * @returns {{ideal: Array<object>, missing: string[]}} the merged image list and
- *   any variant previews that produced no render (as `"<componentId> [<state>]"`),
- *   so the caller's completeness gate can still refuse a half-rendered sticker.
+ *   any variant previews that produced no render (as `"<componentId> [<label>]"`
+ *   where the label is the variant's state and/or `k=v` props), so the caller's
+ *   completeness gate can still refuse a half-rendered sticker.
  */
 export function foldVariants(defaultImages, component, byFunction) {
   const ideal = [...defaultImages];
@@ -31,10 +35,24 @@ export function foldVariants(defaultImages, component, byFunction) {
   for (const variant of component.variants ?? []) {
     const candidate = byFunction.get(variant.preview);
     if (!candidate || candidate.images.length === 0) {
-      missing.push(`${component.componentId} [${variant.state}]`);
+      missing.push(`${component.componentId} [${variantLabel(variant)}]`);
       continue;
     }
-    for (const image of candidate.images) ideal.push({ ...image, state: variant.state });
+    for (const image of candidate.images) {
+      const tagged = { ...image };
+      if (variant.state !== undefined) tagged.state = variant.state;
+      if (variant.props) tagged.props = { ...image.props, ...variant.props };
+      ideal.push(tagged);
+    }
   }
   return { ideal, missing };
+}
+
+/** A short label for a variant, for the missing-render report: its state and/or props. */
+function variantLabel(variant) {
+  const parts = [
+    ...(variant.state ? [variant.state] : []),
+    ...Object.entries(variant.props ?? {}).map(([k, v]) => `${k}=${v}`),
+  ];
+  return parts.join(", ") || variant.preview;
 }

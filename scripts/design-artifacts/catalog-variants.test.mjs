@@ -52,6 +52,41 @@ test("foldVariants is a no-op for a component without variants", () => {
   assert.deepEqual(ideal, defaults);
 });
 
+test("foldVariants folds a content-axis (props) variant, keeping the default state", () => {
+  const byFunction = new Map([
+    ["FilledButtonIconLabel", { images: [img("default", "light"), img("default", "dark")] }],
+  ]);
+  const component = {
+    componentId: "Button/Filled",
+    variants: [{ props: { content: "icon+label" }, preview: "FilledButtonIconLabel" }],
+  };
+  const { ideal, missing } = foldVariants(
+    [img("default", "light"), img("default", "dark")],
+    component,
+    byFunction,
+  );
+  assert.deepEqual(missing, []);
+  // 2 default (no props) + 2 icon+label (default state, content prop).
+  assert.equal(ideal.length, 4);
+  assert.equal(ideal[0].props, undefined);
+  assert.deepEqual(ideal[2].props, { content: "icon+label" });
+  assert.equal(ideal[2].state, "default"); // props variant keeps the default state
+  assert.equal(ideal[2].theme, "light");
+  assert.equal(ideal[3].theme, "dark");
+});
+
+test("foldVariants reports a props-only variant that did not render, labelled by its axes", () => {
+  const { missing } = foldVariants(
+    [img("default", "light")],
+    {
+      componentId: "Button/Filled",
+      variants: [{ props: { content: "icon+label" }, preview: "Missing" }],
+    },
+    new Map(),
+  );
+  assert.deepEqual(missing, ["Button/Filled [content=icon+label]"]);
+});
+
 // --- index.html: default in the grid, states in the zoom view -----------------
 
 const catalogWithStates = () => ({

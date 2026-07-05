@@ -287,14 +287,31 @@ function themeOfPreviewId(id) {
  * (`overriddenFunctions` — its baked pixels, e.g. the inset focus ring, differ from
  * what the desktop daemon would draw). Those stay baked-PNG only, with no live lane.
  */
+// Key an image/variant by componentId + state + sorted `props` — so a props-only
+// variant (e.g. `content: icon+label`, which keeps the default `state`) resolves to
+// its own `@Preview` function instead of colliding with the label-only default.
+// State-only variants carry no props, so the key stays `${id}\0${state}`, unchanged.
+function variantKey(componentId, state, props) {
+  const propsPart = Object.entries(props ?? {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}=${v}`)
+    .join(",");
+  return propsPart
+    ? `${componentId}${String.fromCharCode(0)}${state}${String.fromCharCode(0)}${propsPart}`
+    : `${componentId}${String.fromCharCode(0)}${state}`;
+}
+
 function bridgeLivePreviewIds(manifest, spec, bundle, overriddenFunctions) {
   const previewForState = new Map();
   for (const group of spec.groups ?? []) {
     for (const component of group.components ?? []) {
-      previewForState.set(`${component.componentId} default`, component.preview);
+      previewForState.set(variantKey(component.componentId, "default"), component.preview);
       for (const v of component.variants ?? []) {
-        if (v.state && v.preview) {
-          previewForState.set(`${component.componentId} ${v.state}`, v.preview);
+        if (v.preview && (v.state || v.props)) {
+          previewForState.set(
+            variantKey(component.componentId, v.state ?? "default", v.props),
+            v.preview,
+          );
         }
       }
     }
@@ -308,7 +325,9 @@ function bridgeLivePreviewIds(manifest, spec, bundle, overriddenFunctions) {
   let mapped = 0;
   for (const component of manifest.components ?? []) {
     for (const image of component.images ?? []) {
-      const fn = previewForState.get(`${component.componentId} ${image.state ?? "default"}`);
+      const fn = previewForState.get(
+        variantKey(component.componentId, image.state ?? "default", image.props),
+      );
       if (!fn || overriddenFunctions.has(fn)) continue;
       const daemonId = image.theme ? daemonIdFor.get(`${fn} ${image.theme}`) : undefined;
       if (daemonId) {

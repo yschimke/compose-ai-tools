@@ -1,5 +1,5 @@
 {
-  "$comment": "Phase-0 catalog spec for Compose Material 3. Code-led: this declares the component inventory, grouping, captions, primary modes, and breakpoints the sticker sheet covers, plus the published-kit frame each component seeds from. The kit reference is for the one-off import only — our render is authoritative. Consumed by @design-parity/catalog-export to populate ComponentSource group/caption/reference. A component's `variants` fold extra state renders (pressed/focused/disabled/off/…) onto the same sticker: the default preview is what the grid shows, and each variant's render becomes a secondary image (tagged with its `state`) surfaced when you open the single-component view. Interaction/state stickers therefore live under their parent instead of a flat 'States' group.",
+  "$comment": "Phase-0 catalog spec for Compose Material 3. Code-led: this declares the component inventory, grouping, captions, primary modes, and breakpoints the sticker sheet covers, plus the published-kit frame each component seeds from. The kit reference is for the one-off import only — our render is authoritative. Consumed by @design-parity/catalog-export to populate ComponentSource group/caption/reference. A component's `variants` fold extra renders onto the same sticker: the default preview is what the grid shows, and each variant's render becomes a secondary image surfaced when you open the single-component view. A variant is tagged either by `state` (pressed/focused/disabled/off/…) or by named `props` content axes (e.g. `content: icon+label` — the same button with a leading icon vs the label-only default). Interaction/state and content stickers therefore live under their parent instead of a flat 'States' group.",
   "system": "compose-m3",
   "title": "Compose Material 3",
   "library": [
@@ -25,7 +25,8 @@
           "variants": [
             { "state": "pressed", "preview": "FilledButtonPressed", "caption": "Held PressInteraction → pressed state layer." },
             { "state": "keyboard-focus", "preview": "FilledButtonFocused", "caption": "Keyboard focus (focus-visible) → M3 inset focus ring. This is the directional/keyboard focus indicator, not the pointer/hover state layer." },
-            { "state": "disabled", "preview": "FilledButtonDisabled", "caption": "Disabled state." }
+            { "state": "disabled", "preview": "FilledButtonDisabled", "caption": "Disabled state." },
+            { "props": { "content": "icon+label" }, "preview": "FilledButtonIconLabel", "caption": "Content axis (not a state): leading icon + label, vs the label-only default." }
           ]
         },
         { "componentId": "Button/Tonal", "preview": "FilledTonalButtonSticker", "caption": "Secondary, still prominent." },
