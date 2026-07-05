@@ -36,6 +36,16 @@ function wireframeLink(component, wireframeSlugs) {
   return `<a class="wf" href="wireframes/${slug(component.componentId)}.svg" target="_blank" rel="noopener">wireframe ↗</a>`;
 }
 
+/**
+ * A link to the component's editable, design-fidelity `compose/figma-svg` vector, when one was
+ * carried for it (keyed by the `figmaSvgSlugs` set the driver passes). This is the SVG a designer
+ * imports into Figma for an editable component — distinct from the schematic `wireframe ↗`.
+ */
+function figmaSvgLink(component, figmaSvgSlugs) {
+  if (!figmaSvgSlugs || !figmaSvgSlugs.has(slug(component.componentId))) return "";
+  return `<a class="wf" href="figma/${slug(component.componentId)}.svg" target="_blank" rel="noopener">figma svg ↗</a>`;
+}
+
 /** One representative image per component — the first `ideal` variant (largest
  *  first), falling back to whatever exists. Dedupes the size-duplicated entries. */
 function heroImage(component) {
@@ -58,7 +68,7 @@ function greenlineChips(component) {
   return `<div class="greenlines" title="accessibility greenlines">${chips}</div>`;
 }
 
-function componentCard(component, wireframeSlugs) {
+function componentCard(component, wireframeSlugs, figmaSvgSlugs) {
   const img = heroImage(component);
   const id = component.componentId ?? "(unnamed)";
   const dims = img ? `${img.width}×${img.height}` : "";
@@ -69,7 +79,7 @@ function componentCard(component, wireframeSlugs) {
   ${figure}
   <div class="meta">
     <h3>${esc(id)}</h3>
-    <div class="sub">${esc(dims)}${wireframeLink(component, wireframeSlugs)}</div>
+    <div class="sub">${esc(dims)}${wireframeLink(component, wireframeSlugs)}${figmaSvgLink(component, figmaSvgSlugs)}</div>
     ${greenlineChips(component)}
   </div>
 </article>`;
@@ -78,14 +88,15 @@ function componentCard(component, wireframeSlugs) {
 /**
  * Render the catalog to a complete HTML document.
  * @param {object} catalog the in-memory catalog (system, title, components, …)
- * @param {object} [opts] { wireframeSlugs?: Set<string> } — the slugs the driver
- *   actually wrote a wireframe for (layout-inspector or greenline), so the
- *   `wireframe ↗` link reflects what exists rather than re-deriving it.
+ * @param {object} [opts] { wireframeSlugs?: Set<string>, figmaSvgSlugs?: Set<string> } — the slugs
+ *   the driver actually wrote a wireframe / figma-svg for, so the `wireframe ↗` and `figma svg ↗`
+ *   links reflect what exists rather than re-deriving them.
  * @returns {string} a self-contained index.html
  */
 export function renderIndexHtml(catalog, opts = {}) {
   const components = catalog.components ?? [];
   const wireframeSlugs = opts.wireframeSlugs;
+  const figmaSvgSlugs = opts.figmaSvgSlugs;
 
   // Group preserving first-seen group order.
   const groupOrder = [];
@@ -119,7 +130,7 @@ export function renderIndexHtml(catalog, opts = {}) {
     .map((g) => {
       const cards = byGroup
         .get(g)
-        .map((c) => componentCard(c, wireframeSlugs))
+        .map((c) => componentCard(c, wireframeSlugs, figmaSvgSlugs))
         .join("\n");
       return `<section class="group" id="g-${slug(g)}">
       <h2>${esc(g)}</h2>

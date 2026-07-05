@@ -56,8 +56,15 @@ catalog module with `compose-preview bundle pack --with-semantics`, runs the
 to a clean **`design-artifacts/<system>`** branch — `design-artifacts/compose-m3`,
 `design-artifacts/wear-m3`, … — that a designer pulls into Figma / Stitch /
 Claude Design. The branch holds only the generated bundle (`catalog.json`,
-`tokens.dtcg.json`, `figma-variables.json`, `images/`), regenerated from the
-code each week so it never drifts.
+`tokens.dtcg.json`, `figma-variables.json`, `images/` PNGs, and `figma/` — the
+per-sticker layered **`compose/figma-svg`** vectors), regenerated from the code
+each week so it never drifts. Each component ships both the raster PNG (in
+`images/`) and its editable vector (`figma/<slug>.svg`): import the PNG for a
+pixel reference or the SVG for a real editable component — fills, strokes, corner
+radii, and text are live layers, not a flattened screenshot. The SVG is the same
+layered `compose/figma-svg` export produced per preview; the catalog pipeline
+carries it in the bundle (`previews/<id>.figma.svg`) and copies it onto the
+branch, exactly as it does the schematic `wireframes/`.
 
 For the programmatic alternative to the manual pull — an agent pushing rendered
 variant matrices and editable layer reconstructions straight onto a Figma

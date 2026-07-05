@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.data.fonts.FontsUsedDataProducer
+import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorProduct
 import ee.schimke.composeai.io.SystemFileSystem
@@ -92,6 +93,7 @@ internal class DaemonSemanticsFetcher(
         sidecarFile(projectDir, previewId).delete()
         layoutSidecarFile(projectDir, previewId).delete()
         fontsSidecarFile(projectDir, previewId).delete()
+        figmaSvgSidecarFile(projectDir, previewId).delete()
       }
 
       val pending = ConcurrentHashMap.newKeySet<String>().apply { addAll(previewIds) }
@@ -134,6 +136,7 @@ internal class DaemonSemanticsFetcher(
       val byId = LinkedHashMap<String, ByteArray>()
       val layoutById = LinkedHashMap<String, ByteArray>()
       val fontsById = LinkedHashMap<String, ByteArray>()
+      val figmaSvgById = LinkedHashMap<String, ByteArray>()
       for (previewId in previewIds) {
         val file = sidecarFile(projectDir, previewId)
         if (file.isFile && file.length() > 0) {
@@ -157,8 +160,21 @@ internal class DaemonSemanticsFetcher(
         if (fonts.isFile && fonts.length() > 0) {
           fontsById[previewId] = fileSystem.read(fonts.path.toPath()) { readByteArray() }
         }
+        // The layered `compose/figma-svg` export (real fills/strokes/corner radii + editable text)
+        // is baked by the same always-on daemon render; carry it so the design-catalog export can
+        // ship an editable vector per sticker alongside the raster PNG. Best-effort — absent for a
+        // render that produced no drawing layers.
+        val figmaSvg = figmaSvgSidecarFile(projectDir, previewId)
+        if (figmaSvg.isFile && figmaSvg.length() > 0) {
+          figmaSvgById[previewId] = fileSystem.read(figmaSvg.path.toPath()) { readByteArray() }
+        }
       }
-      Outcome.Ok(semanticsById = byId, layoutById = layoutById, fontsById = fontsById)
+      Outcome.Ok(
+        semanticsById = byId,
+        layoutById = layoutById,
+        fontsById = fontsById,
+        figmaSvgById = figmaSvgById,
+      )
     }
   }
 
@@ -171,6 +187,9 @@ internal class DaemonSemanticsFetcher(
   private fun fontsSidecarFile(projectDir: File, previewId: String): File =
     File(projectDir, "build/compose-previews/data/$previewId/${FontsUsedDataProducer.FILE}")
 
+  private fun figmaSvgSidecarFile(projectDir: File, previewId: String): File =
+    File(projectDir, "build/compose-previews/data/$previewId/${ComposeFigmaSvgProduct.FILE_SVG}")
+
   sealed interface Outcome {
     /**
      * Session opened and renders attempted. [semanticsById] holds one entry per preview whose
@@ -178,12 +197,15 @@ internal class DaemonSemanticsFetcher(
      * holds the matching `layout-inspector.json` (the full LayoutNode tree) for each preview that
      * produced one; a preview may have semantics but no layout tree, or vice versa. [fontsById]
      * holds the matching `fonts-used.json` (`fonts/used` — requested vs resolved font families) for
-     * each preview whose backend runs the fonts recorder.
+     * each preview whose backend runs the fonts recorder. [figmaSvgById] holds the matching
+     * `compose-figma.svg` (the layered editable `compose/figma-svg` export) for each preview that
+     * produced drawing layers.
      */
     data class Ok(
       val semanticsById: Map<String, ByteArray>,
       val layoutById: Map<String, ByteArray> = emptyMap(),
       val fontsById: Map<String, ByteArray> = emptyMap(),
+      val figmaSvgById: Map<String, ByteArray> = emptyMap(),
     ) : Outcome
 
     data class DescriptorMissing(val expected: File) : Outcome

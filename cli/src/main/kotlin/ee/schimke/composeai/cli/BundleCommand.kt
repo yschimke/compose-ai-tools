@@ -125,9 +125,11 @@ class BundleCommand(args: List<String>) : Command(args) {
                             the shape design-parity reads for contrast/a11y + token checks. Also
                             carries the layout-inspector tree (full LayoutNode walk with per-node
                             bounds + resolved design tokens) as previews/<id>.layout.json, for
-                            slot-level redlines/wireframes, and the fonts/used record (requested vs
+                            slot-level redlines/wireframes, the fonts/used record (requested vs
                             resolved font families) as previews/<id>.fonts.json, from which the
-                            design-catalog export generates the in-browser tier's fonts.json.
+                            design-catalog export generates the in-browser tier's fonts.json, and the
+                            layered compose/figma-svg export (editable vector) as
+                            previews/<id>.figma.svg, shipped per sticker beside the raster PNG.
                             Produced by a short-lived daemon render (no separate --with-extension
                             pass needed). Off by default; ignored with --no-render.
 
@@ -322,6 +324,10 @@ private class PackSubcommand(private val args: List<String>) {
         // The fonts/used record rides the same render (best-effort, Android daemon only): carried
         // so the design-catalog export can generate the Wasm tier's fonts.json from actual usage.
         val fontsWritten = injectFontsIntoBundle(bundleFile, outcome.fontsById)
+        // The layered `compose/figma-svg` export rides the same render (best-effort): carried so
+        // the
+        // design-catalog export can ship an editable vector per sticker beside the raster PNG.
+        val figmaSvgWritten = injectFigmaSvgIntoBundle(bundleFile, outcome.figmaSvgById)
         val semanticsLine =
           "  semantics:     $written / ${previewIds.size} preview(s) carried as " +
             "previews/<id>$BUNDLE_SEMANTICS_SUFFIX" +
@@ -336,6 +342,11 @@ private class PackSubcommand(private val args: List<String>) {
             append(
               "\n  fonts:         $fontsWritten / ${previewIds.size} preview(s) carried " +
                 "as previews/<id>$BUNDLE_FONTS_SUFFIX"
+            )
+          if (figmaSvgWritten > 0)
+            append(
+              "\n  figma-svg:     $figmaSvgWritten / ${previewIds.size} preview(s) carried " +
+                "as previews/<id>$BUNDLE_FIGMA_SVG_SUFFIX"
             )
         }
         return semanticsLine + extraLines
@@ -681,6 +692,15 @@ internal const val BUNDLE_LAYOUT_SUFFIX: String = ".layout.json"
 internal const val BUNDLE_FONTS_SUFFIX: String = ".fonts.json"
 
 /**
+ * Suffix for the per-preview layered SVG carried beside `previews/<id>.png`. The payload is the
+ * `compose/figma-svg` [ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct] export —
+ * an editable vector (real fills/strokes/corner radii + editable text), the same bytes a
+ * `data/fetch` for the figma-svg yields — baked by the daemon's always-on render. Carried so the
+ * design-catalog export can ship an editable vector per sticker alongside the raster PNG.
+ */
+internal const val BUNDLE_FIGMA_SVG_SUFFIX: String = ".figma.svg"
+
+/**
  * Inject `previews/<id>.semantics.json` entries (id → `compose-semantics.json` bytes) into
  * [bundleFile]'s zip portion **in place**, preserving the leading PNG cover and every existing
  * entry. Re-injecting replaces any prior semantics entry for the same id, so a second
@@ -719,6 +739,19 @@ internal fun injectFontsIntoBundle(
   fontsById: Map<String, ByteArray>,
   fileSystem: FileSystem = SystemFileSystem,
 ): Int = injectSidecarsIntoBundle(bundleFile, fontsById, BUNDLE_FONTS_SUFFIX, fileSystem)
+
+/**
+ * Inject `previews/<id>.figma.svg` entries (id → `compose-figma.svg` bytes) into [bundleFile] — the
+ * layered editable `compose/figma-svg` export the daemon bakes alongside the semantics blob.
+ * Carried so the design-catalog export can ship an editable vector per sticker next to the raster
+ * PNG. Same in-place, idempotent, byte-stable contract as [injectSemanticsIntoBundle]. Returns the
+ * number of entries written.
+ */
+internal fun injectFigmaSvgIntoBundle(
+  bundleFile: File,
+  figmaSvgById: Map<String, ByteArray>,
+  fileSystem: FileSystem = SystemFileSystem,
+): Int = injectSidecarsIntoBundle(bundleFile, figmaSvgById, BUNDLE_FIGMA_SVG_SUFFIX, fileSystem)
 
 /**
  * Inject `previews/<id><suffix>` entries (id → bytes) into [bundleFile]'s zip portion **in place**,
