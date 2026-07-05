@@ -84,6 +84,12 @@
         { "componentId": "Text/Serif", "preview": "TextSerifSpecimen", "caption": "Generic serif family (Noto Serif) — pins the Wasm tier’s font interception." },
         { "componentId": "Text/Monospace", "preview": "TextMonospaceSpecimen", "caption": "Generic monospace family (Droid Sans Mono) — pins the Wasm tier’s font interception." }
       ]
+    },
+    {
+      "name": "Scaffold templates",
+      "components": [
+        { "componentId": "Template/AppScaffold", "preview": "AppScaffoldTemplate", "caption": "Full-screen layout with the OS status bar — TopAppBar, a list, and a FAB, captured with showSystemUi on a phone." }
+      ]
     }
   ]
 }

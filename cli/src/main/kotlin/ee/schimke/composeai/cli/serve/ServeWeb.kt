@@ -676,10 +676,12 @@ object ServeWeb {
         wasmSrc != null ->
           "<div class=\"cp-note\">Pre-rendered snapshot — tick “Run in browser (Wasm)” to interact: " +
             "Theme, Font scale, Locale &amp; background apply in the browser. Device/Orientation " +
-            "need the live server.</div>"
+            "need the live server. <a href=\"$LOCAL_SERVER_DOCS\">Enable a local preview server.</a>" +
+            "</div>"
         else ->
           "<div class=\"cp-note\">Pre-rendered snapshot — overrides (device, locale, font scale, " +
-            "orientation) need the live server, not a published catalog.</div>"
+            "orientation) need the live server, not a published catalog. " +
+            "<a href=\"$LOCAL_SERVER_DOCS\">Enable a local preview server.</a></div>"
       }
     val backendLabel = WebEscaping.htmlEscape(snapshotBackend ?: "Snapshot")
     val liveLabel = WebEscaping.htmlEscape(liveBackend ?: "Live")
@@ -1248,6 +1250,16 @@ object ServeWeb {
    * the tokens are the `@Preview(device=…)` grammar the daemon resolves. TODO: source the full list
    * from the daemon's `DeviceDimensions` catalog so the menu always matches what the backend knows.
    */
+  /**
+   * Where the snapshot note sends a viewer who wants the disabled overrides to work: the doc that
+   * explains running your own `compose-preview serve` (the live, daemon-backed tier that re-renders
+   * device/orientation/locale/font-scale for real). A published catalog like `preview.coo.ee` only
+   * replays baked PNGs, so those knobs need a local live server. Points at the source doc on `main`
+   * (matching the landing page's `source` link) since the published docs site has no serve page.
+   */
+  private const val LOCAL_SERVER_DOCS =
+    "https://github.com/yschimke/compose-ai-tools/blob/main/docs/public-preview-server.md#running-one"
+
   private val COMMON_DEVICES: List<Pair<String, String>> =
     listOf(
       "id:pixel_5" to "Pixel 5",

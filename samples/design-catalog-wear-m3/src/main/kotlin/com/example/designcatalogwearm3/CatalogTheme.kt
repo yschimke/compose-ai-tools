@@ -49,6 +49,20 @@ fun FullScreenWear(content: @Composable () -> Unit) {
 }
 
 /**
+ * Frame for the **scaffold templates** — full-screen skeletons an app copies
+ * whole (list screen with a status strip, pager, edge-button screen). Unlike
+ * [FullScreenWear] it does *not* supply the [AppScaffold]/`timeText`: a template
+ * composes its own `AppScaffold(timeText = { … })` so the curved [TimeText]
+ * status strip it demonstrates is part of the capture. This wrapper is just the
+ * Wear dark [MaterialTheme] filling the round display black (the
+ * [CatalogWearBreakpoints] device previews paint the black background).
+ */
+@Composable
+fun WearScaffoldTemplate(content: @Composable () -> Unit) {
+  MaterialTheme { content() }
+}
+
+/**
  * Full-screen **size-breakpoint** multipreview: the three round Wear screen sizes
  * a layout must adapt to — 192 dp (small round), 227 dp (large round), and 240 dp
  * (extra-large round) — each black on the device shape. Stack on a full-screen
