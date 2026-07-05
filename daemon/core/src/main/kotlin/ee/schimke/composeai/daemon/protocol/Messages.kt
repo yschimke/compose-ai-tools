@@ -522,6 +522,14 @@ data class PreviewOverrides(
    */
   val inspectionMode: Boolean? = null,
   /**
+   * Per-render **slot mode** for one-shot renders. When `true`, a `PreviewSlot(name) { … }` marker
+   * (`:slot-preview-runtime`) renders a labelled placeholder in place of its content, so a
+   * structured-screen builder gets a visible slot map; `null`/`false` renders the content normally.
+   * The renderer applies it by providing `LocalSlotMode` around the preview. Backends that don't
+   * provide the local ignore it (the marker defaults to content).
+   */
+  val slotMode: Boolean? = null,
+  /**
    * Optional Material 3 theme token overrides applied by the renderer as a normal
    * `MaterialTheme(...) { preview() }` wrapper around the invoked preview. This lets callers test
    * components under alternate color, shape, or typography tokens without editing source previews.

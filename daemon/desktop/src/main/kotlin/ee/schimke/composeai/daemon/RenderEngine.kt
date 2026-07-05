@@ -301,6 +301,9 @@ class RenderEngine(
             }
           CompositionLocalProvider(
             LocalInspectionMode provides inspectionMode,
+            // Slot mode: a `PreviewSlot` marker renders a labelled placeholder instead of its
+            // content, so a structured-screen builder gets a visible slot map. Defaults false.
+            ee.schimke.composeai.preview.slots.LocalSlotMode provides (spec.slotMode ?: false),
             androidx.compose.ui.LocalSystemTheme provides systemTheme,
             LocalDensity provides density,
             // Interactive Lottie scrubbing: a non-null progress lands the captured frame at that
@@ -1060,6 +1063,12 @@ data class RenderSpec(
    */
   val inspectionMode: Boolean? = null,
   /**
+   * Per-render slot mode. When `true` the renderer provides `LocalSlotMode = true`, so a
+   * `PreviewSlot` marker renders a labelled placeholder instead of its content. Null/false renders
+   * content normally.
+   */
+  val slotMode: Boolean? = null,
+  /**
    * Per-call overrides bag, threaded through every registered [PreviewOverrideExtension]. The
    * renderer doesn't read individual fields directly — registered planners decide what to apply.
    * Direct-applied overrides like size, density, and locale stay on this spec's typed fields above
@@ -1147,6 +1156,7 @@ data class RenderSpec(
             else -> null
           },
         inspectionMode = map["inspectionMode"]?.toBooleanStrictOrNull(),
+        slotMode = map["slotMode"]?.toBooleanStrictOrNull(),
         overrides = map["overrides"]?.decodePreviewOverrides(),
         wrapperClassName = map["wrapperClassName"]?.takeIf { it.isNotBlank() },
       )

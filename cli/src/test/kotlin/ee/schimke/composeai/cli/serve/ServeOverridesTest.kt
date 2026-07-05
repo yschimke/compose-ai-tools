@@ -32,6 +32,7 @@ class ServeOverridesTest {
     assertNull(o.heightPx)
     assertNull(o.density)
     assertNull(o.inspectionMode)
+    assertNull(o.slotMode)
   }
 
   @Test
@@ -48,6 +49,7 @@ class ServeOverridesTest {
           "heightPx" to "800",
           "orientation" to "landscape",
           "inspectionMode" to "true",
+          "slotMode" to "true",
         )
       )
     assertEquals(UiMode.DARK, o.uiMode)
@@ -59,6 +61,7 @@ class ServeOverridesTest {
     assertEquals(800, o.heightPx)
     assertEquals(Orientation.LANDSCAPE, o.orientation)
     assertEquals(true, o.inspectionMode)
+    assertEquals(true, o.slotMode)
   }
 
   @Test
@@ -81,6 +84,7 @@ class ServeOverridesTest {
         mapOf("widthPx" to "wide"),
         mapOf("widthPx" to "-5"),
         mapOf("inspectionMode" to "maybe"),
+        mapOf("slotMode" to "maybe"),
       )) {
       val parsed = ServeOverrides.parse(bad)
       assertTrue(parsed is OverrideParse.Invalid, "expected Invalid for $bad, got $parsed")
@@ -106,6 +110,11 @@ class ServeOverridesTest {
     assertNotEquals(
       ServeOverrides.cacheKey("preview.A", base),
       ServeOverrides.cacheKey("preview.B", base),
+    )
+    // slotMode participates, so a slot-map render isn't coalesced onto the normal render's cache.
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("slotMode" to "true"))),
+      ServeOverrides.cacheKey("preview.A", ok(emptyMap())),
     )
   }
 

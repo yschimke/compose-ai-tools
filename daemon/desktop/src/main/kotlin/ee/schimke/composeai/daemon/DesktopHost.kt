@@ -206,6 +206,7 @@ open class DesktopHost(
     add("orientation")
     add("device")
     add("inspectionMode")
+    add("slotMode")
     add("material3Theme")
     add("wallpaper")
     // Issue #1205 — `renderNow.overrides.focus` is honoured by the planner registered in

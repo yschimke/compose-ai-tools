@@ -132,6 +132,9 @@ dependencies {
   // (brings Compottie transitively). Direct dep — `:renderer-desktop` carries it only as
   // `implementation`, so it isn't on this module's compile classpath otherwise.
   implementation(project(":lottie-preview-runtime"))
+  // Slot mode: RenderEngine provides `LocalSlotMode` (from `:slot-preview-runtime`) around the
+  // rendered content, so a `PreviewSlot` marker draws a placeholder when `slotMode` is set.
+  implementation(project(":slot-preview-runtime"))
 
   // Compose runtime / foundation / ui — the B-desktop.1.4 RenderEngine body
   // imports `ImageComposeScene`, `@Composable`, `currentComposer`,
