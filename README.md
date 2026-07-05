@@ -315,6 +315,13 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `TextSerifSpecimen` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextSerifSpecimen_Dark.png" width="150" /> |
 | `TextSerifSpecimen` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextSerifSpecimen_Light.png" width="150" /> |
 
+## samples:design-catalog-m3-android
+
+| Preview | Image |
+|---------|-------|
+| `FilledButtonFocused` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3-android/FilledButtonFocused_Dark.png" width="150" /> |
+| `FilledButtonFocused` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3-android/FilledButtonFocused_Light.png" width="150" /> |
+
 ## samples:design-catalog-remote-m3
 
 | Preview | Image |

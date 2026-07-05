@@ -1591,6 +1591,22 @@
     "sha256": "1f8da3a55c1d8f8347176d755e4505d857a5d6e20a1b11be161bb892f86e2d3d",
     "sourceFile": null
   },
+  "samples:design-catalog-m3-android/com.example.designcatalogm3android.FocusRingKt.FilledButtonFocused_Dark": {
+    "captureLabel": "",
+    "functionName": "FilledButtonFocused",
+    "module": "samples:design-catalog-m3-android",
+    "renderBasename": "FilledButtonFocused_Dark.png",
+    "sha256": "e80311b09ad3b8524f82970e2391c3be233d0a62b51d5b5e5eb11db38ae23694",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3android/FocusRing.kt"
+  },
+  "samples:design-catalog-m3-android/com.example.designcatalogm3android.FocusRingKt.FilledButtonFocused_Light": {
+    "captureLabel": "",
+    "functionName": "FilledButtonFocused",
+    "module": "samples:design-catalog-m3-android",
+    "renderBasename": "FilledButtonFocused_Light.png",
+    "sha256": "7ec7fbf1b79ecdc81015a9fe5c733c444509d69bcca8f217a7b47d439d6d513f",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3android/FocusRing.kt"
+  },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.AppScaffoldTemplate_Dark": {
     "captureLabel": "",
     "functionName": "AppScaffoldTemplate",
