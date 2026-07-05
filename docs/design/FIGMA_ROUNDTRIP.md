@@ -152,3 +152,62 @@ branch, `compose-preview.yml` posts the before/after diff, and once merged the
 a placed node's `/render/<id>.svg` against the latest code, so a designer updates
 a whole imported library without re-arranging the canvas; the MCP path refreshes
 a raster sheet in place by re-`upload_assets`-ing onto the existing `nodeId`.
+
+## Inbound: design → code (the reverse leg, design-led)
+
+Everything above is **code → Figma**. The reverse leg — a designer changes a
+mock in Figma and an agent brings the *code* to match — runs like this:
+
+```
+Figma mock (change a component)
+  → fat brief committed to the app repo  (reference.png + reference.figma.svg + brief.md/json)
+  → @claude comment on a draft PR         (the mention triggers claude.yml)
+  → @claude builds the code + renders a @Preview  (before/after evidence on the PR)
+  → [CLOSE] publish the built preview + bring it back into Figma  (see below)
+  → design-parity posts the parity verdict (built code vs the committed reference)
+```
+
+**Trigger.** `claude.yml` fires on `@claude` in an issue/PR **comment**, a PR
+review/review-comment, an issue body/title, or the `claude` label — *not* a PR
+description mention, and there is no `workflow_dispatch`. So the kick-off opens a
+draft PR carrying the brief, then posts an `@claude` **comment** on it.
+
+**Fat brief** (so CI needs no Figma token — it diffs the committed reference):
+`reference.png` + `reference.figma.svg` (the node exported as `figma-svg` — the
+structural spec), `tokens.json`, a `design-map.json` entry binding the target
+`code` handle → `figma:<fileKey>/<nodeId>`, `direction: design-led`, and a
+`brief.md`/`brief.json` naming the target module/file/composable.
+
+**Broker.** A designer's plugin can't reach the GitHub API (it's network-locked
+to `githubusercontent`), and design-parity's `action/src/github` can only comment
+and push branches — so the kick-off (open branch + commit brief + open PR + post
+the `@claude` comment) needs a **GitHub App**. Proven once by hand
+(`design-briefs/…` brief → PR → `@claude`); the App is the one production piece
+still to build.
+
+### Closing the loop — the built preview must come back
+
+The inbound flow is **only complete when the built code returns to Figma.** The
+`@claude` session by itself stops at rendered PNGs on the PR — that is *not* the
+close. To close it, reuse the outbound leg:
+
+1. **Publish a preview bundle of the built code.** CI runs
+   `compose-preview bundle pack --with-semantics` on the PR head → produces
+   `previews/<id>.figma.svg` (the built code as editable vector) + semantics, and
+   publishes it: push `figma/<id>.svg` to a `design-artifacts/pr-<n>` branch, or
+   stand up `compose-preview serve` (`/render/<id>.svg`, `ServeFigmaSvg`) against
+   the PR. This is the "preview bundle available somewhere" step — without it
+   there is no artifact for the designer or plugin to consume.
+2. **Bring it back into Figma.** The design-parity `figma-plugin` already
+   *places + refreshes* a live-rendered preview against `compose-preview serve`
+   (`src/live.ts` / `src/render.ts` / `src/previews.ts`) — point it at the PR's
+   served preview and the built code lands as **editable figma-svg next to the
+   mock**, so the designer confirms the code matches (or diverges).
+3. **Parity verdict.** design-parity diffs the built render vs the committed
+   reference (`direction: design-led`, `blocksPr: true`) and posts the verdict on
+   the PR.
+
+Until step 1 is wired into CI, the close is manual: `bundle pack` the built code
+and `upload_assets` the render (raster) or `figma.createNodeFromSvg()` the
+`figma-svg` (editable) into the mock's file. The raster push answers "the preview
+is back in Figma"; the `figma-svg` push is the real, editable close.
