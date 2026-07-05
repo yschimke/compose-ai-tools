@@ -31,10 +31,12 @@ plugins {
 }
 
 kotlin {
-  // JVM target so `commonMain` compiles against the Desktop flavor of compose-runtime — what the
-  // desktop renderer / daemon (`ImageComposeScene`) launches against, and what a plain-JVM/Android
-  // consumer resolves. Named "desktop" to mirror `:samples:design-catalog-m3-shared`.
-  jvm("desktop") {
+  // JVM target — the variant the desktop renderer / daemon (`ImageComposeScene`) launches against
+  // and a plain-JVM/Android consumer resolves. Unnamed `jvm()` (not `jvm("desktop")`, which the
+  // unpublished `:samples:design-catalog-m3-shared` uses) so the published JVM artifact carries the
+  // conventional `-jvm` classifier, matching the published KMP `:preview-annotations` — the JVM
+  // bytecode isn't desktop-specific (Android resolves it too), so `-desktop` would misname it.
+  jvm {
     compilations.configureEach {
       compileTaskProvider.configure {
         compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
@@ -56,9 +58,9 @@ kotlin {
     }
     // The `dp-slot:` tag prefix has a single source of truth in the reader
     // (`PreviewSlots.SLOT_TAG_PREFIX`); a test asserts this module's copy agrees so the two can't
-    // drift. JVM-only (the reader + junit are JVM), so it lives in the desktop test source set and
-    // the marker's common runtime classpath stays serialization-free.
-    val desktopTest by getting {
+    // drift. JVM-only (the reader + junit are JVM), so it lives in the JVM test source set and the
+    // marker's common runtime classpath stays serialization-free.
+    val jvmTest by getting {
       dependencies {
         implementation(project(":data-layoutinspector-core"))
         implementation(libs.junit)
