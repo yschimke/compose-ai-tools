@@ -84,6 +84,26 @@ GitHub comments can't carry file attachments via the API, so committed
 files + `raw.githubusercontent.com` is the only durable way for an Actions
 run to put pixels inline. It's also already this repo's convention.
 
+### The compose-preview-review skill
+
+The workflow's `settings` block enables the
+[`yschimke-skills`](https://github.com/yschimke/skills) plugin
+(`extraKnownMarketplaces` + `enabledPlugins`), so every agent session
+loads the **compose-preview-review** skill, and the appended system
+prompt points at the two references written for this environment:
+
+- `references/ci-agent-sessions.md` — running the review workflow on an
+  Actions runner: Gradle-only rendering, commit-SHA-pinned embedding,
+  and **discovering the repo's existing preview CI** (the sticky
+  `<!-- preview-diff -->` comment, `compose-preview/{main,pr}`
+  baselines, design-parity/design-artifacts pipelines) so the agent
+  cites renders CI already produced instead of re-rendering.
+- `references/stability.md` — triaging flaky previews: changed previews
+  whose source the PR doesn't touch (clocks/timestamps, randomness,
+  animation frames, network-loaded images) are treated as instability —
+  verified by rendering twice on the same commit and flagged with a
+  proposed fixture fix — not reported as regressions.
+
 ### Attribution
 
 Branch commits land as `claude[bot]` via the Claude GitHub App. That is
