@@ -86,11 +86,14 @@ run to put pixels inline. It's also already this repo's convention.
 
 ### The compose-preview-review skill
 
-The workflow's `settings` block enables the
-[`yschimke-skills`](https://github.com/yschimke/skills) plugin
-(`extraKnownMarketplaces` + `enabledPlugins`), so every agent session
-loads the **compose-preview-review** skill, and the appended system
-prompt points at the two references written for this environment:
+The workflow installs the
+[`yschimke-skills`](https://github.com/yschimke/skills) plugin via the
+action's `plugin_marketplaces` / `plugins` inputs (the action installs
+plugins from these inputs before the session starts; `enabledPlugins`
+in `settings` alone would not install anything on the runner), so every
+agent session loads the **compose-preview-review** skill, and the
+appended system prompt points at the two references written for this
+environment:
 
 - `references/ci-agent-sessions.md` — running the review workflow on an
   Actions runner: Gradle-only rendering, commit-SHA-pinned embedding,
