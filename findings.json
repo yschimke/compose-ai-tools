@@ -1491,6 +1491,16 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "AppScaffoldTemplate_Dark.a11y.png",
+      "cleanBasename": "AppScaffoldTemplate_Dark.png",
+      "findings": [],
+      "functionName": "AppScaffoldTemplate",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.AppScaffoldTemplate_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": "pixel_8"
+    },
+    {
       "annotatedBasename": "AssistChipSticker_Dark.a11y.png",
       "cleanBasename": "AssistChipSticker_Dark.png",
       "findings": [],
@@ -2037,6 +2047,16 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "PageIndicatorScaffoldTemplate_Large_Round.a11y.png",
+      "cleanBasename": "PageIndicatorScaffoldTemplate_Large_Round.png",
+      "findings": [],
+      "functionName": "PageIndicatorScaffoldTemplate",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Large Round",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "variant": "wearos_large_round"
+    },
+    {
       "annotatedBasename": "ScalingListSticker_Large_Round.a11y.png",
       "cleanBasename": "ScalingListSticker_Large_Round.png",
       "findings": [],
@@ -2075,6 +2095,16 @@
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TextMaxLinesTruncated",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
+    },
+    {
+      "annotatedBasename": "TimeTextScaffoldTemplate_Large_Round.a11y.png",
+      "cleanBasename": "TimeTextScaffoldTemplate_Large_Round.png",
+      "findings": [],
+      "functionName": "TimeTextScaffoldTemplate",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Large Round",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "variant": "wearos_large_round"
     },
     {
       "annotatedBasename": "TitleCardSticker.a11y.png",

@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 207 preview(s) across 18 module(s) · 17 error(s) · 4 warning(s) · 26 info._
+_Auto-generated from `compose-preview/a11y/main`. 210 preview(s) across 18 module(s) · 17 error(s) · 4 warning(s) · 26 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -764,6 +764,12 @@ _No findings._
 
 ## design-catalog-m3
 
+### `AppScaffoldTemplate` · `pixel_8`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/AppScaffoldTemplate_Dark.a11y.png" width="400" />
+
+_No findings._
+
 ### `AssistChipSticker`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/AssistChipSticker_Dark.a11y.png" width="400" />
@@ -1076,6 +1082,12 @@ _No findings._
 
 _No findings._
 
+### `PageIndicatorScaffoldTemplate` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/PageIndicatorScaffoldTemplate_Large_Round.a11y.png" width="400" />
+
+_No findings._
+
 ### `ScalingListSticker` · `wearos_large_round`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/ScalingListSticker_Large_Round.a11y.png" width="400" />
@@ -1097,6 +1109,12 @@ _No findings._
 ### `TextMaxLinesTruncated`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/TextMaxLinesTruncated.a11y.png" width="400" />
+
+_No findings._
+
+### `TimeTextScaffoldTemplate` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/TimeTextScaffoldTemplate_Large_Round.a11y.png" width="400" />
 
 _No findings._
 
