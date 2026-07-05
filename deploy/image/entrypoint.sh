@@ -47,24 +47,23 @@ fi
 : "${SERVE_TRUST_STORE:=/trust/producers.json}"
 [[ "${SERVE_TRUST_STORE}" != "none" ]] && args+=(--trust-store "${SERVE_TRUST_STORE}")
 [[ -n "${SERVE_WASM_DIR:-}" ]] && args+=(--wasm-dir "${SERVE_WASM_DIR}")
-# Trusted server-side re-render (opt-in, OFF by default). Only enable on a box that
-# can BUILD the catalog source — this desktop image CANNOT build the Android
-# catalogs, so leave SERVE_ALLOW_RENDER_TRUSTED unset on the public preview server.
-# Needs SERVE_REVISIONS_ALLOW (the trusted ref allowlist) to build anything.
+# Trusted server-side re-render — ON by default, and cheap: for a Trusted catalog
+# that carries an executable `liveBundle` (the desktop CMP `compose-m3` does), serve
+# fetches that bundle from the trusted branch and launches a render daemon straight
+# from it — NO source checkout, NO Gradle build. So a bare image pull "just works"
+# with live CMP; set SERVE_ALLOW_RENDER_TRUSTED=0 to opt out (Wasm still carries CMP).
+# Safe/fail-closed: only Trusted catalogs execute, and a catalog with no runnable
+# bundle (the Android wear/remote) simply falls back to baked PNG.
+: "${SERVE_ALLOW_RENDER_TRUSTED:=1}"
 [[ -n "${SERVE_REVISIONS_ALLOW:-}" ]] && args+=(--revisions-allow "${SERVE_REVISIONS_ALLOW}")
-if [[ "${SERVE_ALLOW_RENDER_TRUSTED:-}" == "1" || "${SERVE_ALLOW_RENDER_TRUSTED:-}" == "true" ]]; then
+if [[ "${SERVE_ALLOW_RENDER_TRUSTED}" == "1" || "${SERVE_ALLOW_RENDER_TRUSTED}" == "true" ]]; then
   args+=(--allow-render-trusted)
-  # The prebuilt image serves a standalone /project, not a checkout of a catalog's
-  # source repo — so the trusted builder has nothing to worktree from by default.
-  # When SERVE_CATALOG_SOURCE_REPO is set, clone that repo here and point serve at it
-  # with --catalog-source-root, so a Trusted catalog whose source.repo matches can be
-  # built + live-rendered. Only the CMP `compose-m3` catalog is desktop-buildable on
-  # this Android-less image; the Android catalogs stay baked-PNG (fail-closed).
-  #
-  # COST: the trusted build runs at startup (and after each image update), so the
-  # first boot with this on does a one-time cold Gradle build of the catalog
-  # (minutes) before serving. Leave SERVE_CATALOG_SOURCE_REPO unset to keep the
-  # lightweight snapshot+Wasm posture (CMP stays interactive via the Wasm tier).
+  # Optional SOURCE-BUILD FALLBACK (not needed for the bundle path above). For a
+  # catalog that declares a Gradle `source` but no `liveBundle`, the prebuilt image
+  # has no checkout to worktree from; set SERVE_CATALOG_SOURCE_REPO to clone one and
+  # point serve at it with --catalog-source-root. This DOES pay a one-time cold Gradle
+  # build at startup — leave it unset (the default) unless you specifically need the
+  # source path; the bundle path covers the published catalogs with no build.
   if [[ -n "${SERVE_CATALOG_SOURCE_REPO:-}" ]]; then
     src_root="${SERVE_CATALOG_SOURCE_ROOT:-/catalog-src}"
     src_ref="${SERVE_CATALOG_SOURCE_REF:-main}"
@@ -79,11 +78,12 @@ if [[ "${SERVE_ALLOW_RENDER_TRUSTED:-}" == "1" || "${SERVE_ALLOW_RENDER_TRUSTED:
     args+=(--catalog-source-root "${src_root}")
   fi
 fi
-# Bound concurrent live (daemon-backed) stream seats. Only meaningful once the live tier is enabled
-# (SERVE_ALLOW_RENDER_TRUSTED) — each seat holds a JVM Compose daemon, so a small box (preview.coo.ee
-# is 4 GB / 2 vCPU) should cap it (e.g. SERVE_LIVE_SEATS=1) so an over-cap viewer is refused rather
-# than OOM-ing the box. Unset ⇒ unbounded (fine for a beefy box or the snapshot/Wasm-only default).
-[[ -n "${SERVE_LIVE_SEATS:-}" ]] && args+=(--live-seats "${SERVE_LIVE_SEATS}")
+# Bound concurrent live (daemon-backed) stream seats — each seat holds a JVM Compose daemon, so with
+# the live tier on by default we default the cap to 1 for the reference 4 GB / 2 vCPU box
+# (preview.coo.ee): an over-cap viewer is refused (WS 1013) rather than OOM-ing the box. Raise it on
+# a beefier box (SERVE_LIVE_SEATS=4), or set 0 for unbounded.
+: "${SERVE_LIVE_SEATS:=1}"
+[[ -n "${SERVE_LIVE_SEATS}" ]] && args+=(--live-seats "${SERVE_LIVE_SEATS}")
 if [[ "${SERVE_ACCEPT_BUNDLES:-}" == "1" || "${SERVE_ACCEPT_BUNDLES:-}" == "true" ]]; then
   args+=(--accept-bundles)
   [[ -n "${SERVE_ACCEPT_BUNDLES_FROM:-}" ]] &&
