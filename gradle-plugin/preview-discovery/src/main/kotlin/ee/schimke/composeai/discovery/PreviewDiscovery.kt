@@ -1228,7 +1228,7 @@ object PreviewDiscovery {
     // `@AnimatedPreview` is single-shot (one GIF per function) so it doesn't
     // fan out, but follows the same "one annotation per function, applies to
     // every preview expansion" policy.
-    val wrapperFqn = extractWrapperFqn(annotations, scanResult)
+    val wrapperFqn = extractWrapperFqn(method, scanResult)
     val scrollSpecs = extractScrollSpecs(annotations)
     val animationSpec = extractAnimationSpec(annotations)
     val focusSpecs = extractFocusSpecs(annotations)
@@ -1846,19 +1846,27 @@ object PreviewDiscovery {
     return items.mapNotNull { it.parameterValues.getValue("advanceTimeMillis") as? Long }
   }
 
-  private fun extractWrapperFqn(
-    annotations: List<AnnotationInfo>,
-    scanResult: ScanResult,
-  ): String? {
+  /**
+   * Resolves the `PreviewWrapperProvider` FQN for [method]'s previews.
+   *
+   * Must work off the method's **direct** annotations, not `method.annotationInfo` — ClassGraph
+   * flattens the whole meta-annotation closure into that list, so a function tagged with both a
+   * direct `@PreviewWrapperClass` and a multi-preview annotation that *also* hoists one would show
+   * two indistinguishable `@PreviewWrapperClass` entries and the direct-wins precedence would be
+   * decided by list order. `directOnly()` restores the distinction: a wrapper written directly on
+   * the function wins; otherwise it's inherited from a multi-preview annotation that hoists one.
+   */
+  private fun extractWrapperFqn(method: MethodInfo, scanResult: ScanResult): String? {
+    val directAnnotations = method.annotationInfo?.directOnly()?.toList() ?: emptyList()
     // A wrapper declared directly on the function (androidx `@PreviewWrapper` or our
     // `@PreviewWrapperClass`) wins over any inherited from a multi-preview meta-annotation.
-    directWrapperFqn(annotations)?.let { return it }
+    directWrapperFqn(directAnnotations)?.let { return it }
     // Otherwise inherit from a multi-preview annotation that carries the wrapper. androidx's
     // `@PreviewWrapper` is `@Target(FUNCTION)`-only so it can never legally sit on an annotation
     // class, but our `@PreviewWrapperClass` can — hoisting the wrapper onto the multi-preview
     // saves repeating it on every tagged function.
     val visited = mutableSetOf<String>()
-    for (ann in annotations) {
+    for (ann in directAnnotations) {
       wrapperFromMetaAnnotation(ann, scanResult, visited)?.let { return it }
     }
     return null
