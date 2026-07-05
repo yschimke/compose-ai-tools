@@ -527,10 +527,7 @@ if (values["publish-live-bundle"]) {
     }
   }
   if (webRender) manifest.webRender = webRender;
-  if (liveBundle) {
-    manifest.liveBundle = liveBundle;
-    bridgeLivePreviewIds(manifest, spec, bundle, overriddenFunctions);
-  }
+  if (liveBundle) manifest.liveBundle = liveBundle;
   // Buildable source for trusted server-side re-render (opt-in consumer side).
   if (values["source-module"]) {
     manifest.source = {
@@ -539,6 +536,13 @@ if (values["publish-live-bundle"]) {
       module: values["source-module"],
     };
     console.log(`[${spec.system}] source → ${manifest.source.module}@${manifest.source.ref}`);
+  }
+  // Emit the catalog-id → daemon-id bridge whenever a live path can serve this catalog — a carried
+  // liveBundle OR a buildable source. A source-only catalog (wear-m3 / remote-m3) needs the aliases
+  // too: `ServeCatalogStore` builds the alias solely from `image.previewId`, so without this a
+  // `--allow-render-trusted` box would pay the Gradle build yet reach the daemon for no catalog id.
+  if (liveBundle || values["source-module"]) {
+    bridgeLivePreviewIds(manifest, spec, bundle, overriddenFunctions);
   }
   await writeFile(catalogJsonPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 }
