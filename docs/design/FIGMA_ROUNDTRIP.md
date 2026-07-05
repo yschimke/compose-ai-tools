@@ -192,12 +192,15 @@ The inbound flow is **only complete when the built code returns to Figma.** The
 close. To close it, reuse the outbound leg:
 
 1. **Publish a preview bundle of the built code.** CI runs
-   `compose-preview bundle pack --with-semantics` on the PR head → produces
-   `previews/<id>.figma.svg` (the built code as editable vector) + semantics, and
+   `compose-preview bundle pack --module <target> --with-semantics` on the PR head
+   → produces `previews/<id>.figma.svg` (the built code as editable vector) +
+   semantics, and
    publishes it: push `figma/<id>.svg` to a `design-artifacts/pr-<n>` branch, or
    stand up `compose-preview serve` (`/render/<id>.svg`, `ServeFigmaSvg`) against
    the PR. This is the "preview bundle available somewhere" step — without it
-   there is no artifact for the designer or plugin to consume.
+   there is no artifact for the designer or plugin to consume. (`--module` is
+   required in multi-module apps — `bundle pack` fails on ambiguity otherwise;
+   the brief already names the target module, so pass it.)
 2. **Bring it back into Figma.** The design-parity `figma-plugin` already
    *places + refreshes* a live-rendered preview against `compose-preview serve`
    (`src/live.ts` / `src/render.ts` / `src/previews.ts`) — point it at the PR's
@@ -224,7 +227,7 @@ Concretely, the import contract:
 
 ```
 CI on the design-led PR (deterministic):
-  compose-preview bundle pack --with-semantics  →  previews/<id>.figma.svg
+  compose-preview bundle pack --module <target> --with-semantics  →  previews/<id>.figma.svg
   publish to a predictable ref:  design-artifacts/pr-<n>/figma/<componentId>.svg  (+ manifest)
 
 figma-plugin (deterministic):
