@@ -250,7 +250,12 @@ data class FigmaSvgModel(
       val stroke = tokens?.borderColor?.let { argbToColor(it, ctx.colorNames) }
       val circle = tokens?.shape == "circle"
       val corners =
-        if (circle) null else tokens?.cornerRadius?.let { parseCornersPx(it, ctx.density) }
+        if (circle) null
+        else
+          tokens?.cornerRadius?.let { parseCornersPx(it, ctx.density) }
+            // A `RoundedCornerShape(<px>f)` has no dp radius; its raw-pixel corners ride on
+            // `cornerRadiusPx` and map straight to layer space with no density conversion.
+            ?: tokens?.cornerRadiusPx?.let { parseRawCornersPx(it) }
       return FigmaSvgLayer(
         name = layerName(),
         left = bounds.left,
@@ -418,6 +423,26 @@ data class FigmaSvgModel(
       // Token order is top-start, top-end, bottom-end, bottom-start (LTR) — which is already
       // top-left, top-right, bottom-right, bottom-left. Keep it.
       return dps?.takeIf { it.any { r -> r > 0.0 } }
+    }
+
+    /**
+     * Parses a `cornerRadiusPx` token — `"20.0px"` (uniform) or `"20.0px,10.0px,0.0px,0.0px"`
+     * (top-start, top-end, bottom-end, bottom-left) — into layer-space pixel radii. Unlike
+     * [parseCornersPx] these are already pixels (a `RoundedCornerShape(<px>f)` corner), so there's
+     * no density conversion. Returns null when unreadable or all corners are zero.
+     */
+    fun parseRawCornersPx(value: String): List<Double>? {
+      val parts = value.split(",").map { it.trim().removeSuffix("px") }
+      val px =
+        when (parts.size) {
+          1 -> parts[0].toDoubleOrNull()?.let { listOf(it, it, it, it) }
+          4 -> {
+            val vals = parts.map { it.toDoubleOrNull() }
+            if (vals.any { it == null }) null else vals.map { it!! }
+          }
+          else -> null
+        }
+      return px?.takeIf { it.any { r -> r > 0.0 } }
     }
 
     private fun String.dpToPxOrNull(density: Float): Double? {

@@ -48,6 +48,7 @@ internal object ModifierTokenResolver {
     var backgroundColor: String? = null
     var borderColor: String? = null
     var cornerRadius: String? = null
+    var cornerRadiusPx: String? = null
     var shape: String? = null
     var padding: ComposeSemanticsInsets? = null
     // `CircleShape` / `CornerSize(50%)` resolve to dp against the node's shorter measured side.
@@ -77,6 +78,12 @@ internal object ModifierTokenResolver {
       val nodeShape = shapeOf(mod, elements)
       if (nodeShape != null) {
         if (cornerRadius == null) cornerRadius = nodeShape.cornerRadiusWire(minSidePx, density)
+        // A `RoundedCornerShape(<px>f)` has no dp `cornerRadius`; capture its raw-pixel radii so
+        // the
+        // figma-svg export can still round the corner instead of dropping to a sharp rect.
+        if (cornerRadius == null && cornerRadiusPx == null) {
+          cornerRadiusPx = nodeShape.cornerRadiusPxWire()
+        }
         if (shape == null) shape = nodeShape.shapeDescriptor()
       }
     }
@@ -85,6 +92,7 @@ internal object ModifierTokenResolver {
       backgroundColor == null &&
         borderColor == null &&
         cornerRadius == null &&
+        cornerRadiusPx == null &&
         shape == null &&
         gap == null &&
         padding == null
@@ -95,6 +103,7 @@ internal object ModifierTokenResolver {
         backgroundColor = backgroundColor,
         borderColor = borderColor,
         cornerRadius = cornerRadius,
+        cornerRadiusPx = cornerRadiusPx,
         shape = shape,
         gap = gap,
         padding = padding,
@@ -238,6 +247,35 @@ internal object ModifierTokenResolver {
     val values = corners.filterNotNull()
     return if (values.distinct().size == 1) "${values.first()}dp"
     else values.joinToString(",") { "${it}dp" }
+  }
+
+  /**
+   * Raw-pixel counterpart to [cornerRadiusWire] for a shape built from pixel corners
+   * (`RoundedCornerShape(20f)` → four `PxCornerSize`). Emits one value for a uniform shape, four
+   * comma-separated otherwise, each with a `px` suffix (`"20.0px"`). Returns null unless **every**
+   * corner is a pixel corner — a dp/percent shape is already carried by [cornerRadiusWire] /
+   * [shapeDescriptor], so this stays signal for the case those two drop.
+   */
+  private fun Shape.cornerRadiusPxWire(): String? {
+    val corners =
+      listOf("getTopStart", "getTopEnd", "getBottomEnd", "getBottomStart").map { getter ->
+        cornerSizePx(invokeNoArg(getter))
+      }
+    if (corners.any { it == null }) return null
+    val values = corners.filterNotNull()
+    return if (values.distinct().size == 1) "${values.first()}px"
+    else values.joinToString(",") { "${it}px" }
+  }
+
+  private fun cornerSizePx(corner: Any?): Float? {
+    corner ?: return null
+    // `PxCornerSize` (`RoundedCornerShape(12f)`) stores its pixel radius in a `size` field.
+    if (corner.javaClass.simpleName != "PxCornerSize") return null
+    return runCatching {
+        val field = corner.javaClass.getDeclaredField("size").apply { isAccessible = true }
+        (field.get(corner) as? Float)
+      }
+      .getOrNull()
   }
 
   private fun cornerSizeDp(corner: Any?, minSidePx: Int, density: Float): Float? {
