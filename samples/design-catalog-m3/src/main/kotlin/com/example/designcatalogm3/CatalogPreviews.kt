@@ -2,294 +2,116 @@
 
 package com.example.designcatalogm3
 
-import android.content.res.Configuration
-import androidx.compose.foundation.interaction.FocusInteraction
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.PressInteraction
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Badge
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ElevatedButton
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedCard
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
+import com.example.designcatalogm3.shared.CatalogComponent
 
-// ---------------------------------------------------------------------------
-// Buttons — the five M3 emphasis levels, plus a disabled state.
-// ---------------------------------------------------------------------------
+// The M3 catalog sticker sheet: one `@Preview` per component, in light + dark (`@CatalogModes`).
+// Each is a thin wrapper — `CatalogSticker { CatalogComponent("<slug>", interactive = false) }` —
+// over the shared component set in `:samples:design-catalog-m3-shared`, so the bodies live in one
+// place (also mounted live by the in-browser wasm tier). `interactive = false` renders the
+// deterministic baked frame (static toggles / determinate progress) the published catalog shows.
+//
+// Function names are the join key the export driver matches against `catalog.spec.json`'s `preview`
+// field (`PreviewDiscovery` keys off the function name), so they must not change.
 
-@CatalogModes
+// --- Buttons — the five M3 emphasis levels, plus a disabled state. ---
+
+@CatalogModes @Composable fun FilledButton() = Sticker("button-filled")
+
+@CatalogModes @Composable fun FilledTonalButtonSticker() = Sticker("button-tonal")
+
+@CatalogModes @Composable fun OutlinedButtonSticker() = Sticker("button-outlined")
+
+@CatalogModes @Composable fun ElevatedButtonSticker() = Sticker("button-elevated")
+
+@CatalogModes @Composable fun TextButtonSticker() = Sticker("button-text")
+
+@CatalogModes @Composable fun FilledButtonDisabled() = Sticker("button-filled-disabled")
+
+// --- Selection controls — checked/selected states (the primary mode to show). ---
+
+@CatalogModes @Composable fun CheckboxChecked() = Sticker("checkbox-checked")
+
+@CatalogModes @Composable fun SwitchOn() = Sticker("switch-on")
+
+@CatalogModes @Composable fun RadioSelected() = Sticker("radiobutton-selected")
+
+@CatalogModes @Composable fun SliderMid() = Sticker("slider")
+
+@CatalogModes @Composable fun FilterChipSelected() = Sticker("chip-filter-selected")
+
+@CatalogModes @Composable fun AssistChipSticker() = Sticker("chip-assist")
+
+// --- Containment — cards and the FAB. ---
+
+@CatalogModes @Composable fun ElevatedCardSticker() = Sticker("card-elevated")
+
+@CatalogModes @Composable fun OutlinedCardSticker() = Sticker("card-outlined")
+
+@CatalogModes @Composable fun FilledCardSticker() = Sticker("card-filled")
+
+@CatalogModes @Composable fun FabSticker() = Sticker("fab")
+
+// --- Communication — progress + badge. ---
+
+@CatalogModes @Composable fun LinearProgressSticker() = Sticker("progress-linear")
+
+@CatalogModes @Composable fun CircularProgressSticker() = Sticker("progress-circular")
+
+@CatalogModes @Composable fun BadgeSticker() = Sticker("badge")
+
+// --- Text fields. ---
+
+@CatalogModes @Composable fun TextFieldSticker() = Sticker("textfield-filled")
+
+@CatalogModes @Composable fun OutlinedTextFieldSticker() = Sticker("textfield-outlined")
+
+// --- Text options — maxLines + ellipsis overflow, generic-family specimens. ---
+
+@CatalogModes @Composable fun TextMaxLinesTruncated() = Sticker("text-maxlines-truncated")
+
+@CatalogModes @Composable fun TextSerifSpecimen() = Sticker("text-serif")
+
+@CatalogModes @Composable fun TextMonospaceSpecimen() = Sticker("text-monospace")
+
+// --- States — interaction (pressed / focused), disabled, and toggle off↔on. ---
+
+@CatalogModes @Composable fun FilledButtonPressed() = Sticker("button-filled-pressed")
+
+@CatalogModes @Composable fun FilledButtonFocused() = Sticker("button-filled-focused")
+
+@CatalogModes @Composable fun OutlinedButtonDisabled() = Sticker("button-outlined-disabled")
+
+@CatalogModes @Composable fun SwitchOff() = Sticker("switch-off")
+
+@CatalogModes @Composable fun CheckboxUnchecked() = Sticker("checkbox-unchecked")
+
+@CatalogModes @Composable fun FilterChipUnselected() = Sticker("chip-filter-unselected")
+
+@CatalogModes @Composable fun SegmentedToggle() = Sticker("segmentedbutton")
+
+/** Every sticker is the shared component (deterministic frame) inside the catalog theme wrapper. */
 @Composable
-fun FilledButton() = CatalogSticker { Button(onClick = {}) { Text("Filled") } }
-
-@CatalogModes
-@Composable
-fun FilledTonalButtonSticker() =
-  CatalogSticker { FilledTonalButton(onClick = {}) { Text("Tonal") } }
-
-@CatalogModes
-@Composable
-fun OutlinedButtonSticker() =
-  CatalogSticker { OutlinedButton(onClick = {}) { Text("Outlined") } }
-
-@CatalogModes
-@Composable
-fun ElevatedButtonSticker() =
-  CatalogSticker { ElevatedButton(onClick = {}) { Text("Elevated") } }
-
-@CatalogModes
-@Composable
-fun TextButtonSticker() = CatalogSticker { TextButton(onClick = {}) { Text("Text") } }
-
-@CatalogModes
-@Composable
-fun FilledButtonDisabled() =
-  CatalogSticker { Button(onClick = {}, enabled = false) { Text("Disabled") } }
-
-// ---------------------------------------------------------------------------
-// Selection controls — checked/selected states (the primary mode to show).
-// ---------------------------------------------------------------------------
-
-@CatalogModes
-@Composable
-fun CheckboxChecked() = CatalogSticker { Checkbox(checked = true, onCheckedChange = {}) }
-
-@CatalogModes
-@Composable
-fun SwitchOn() = CatalogSticker { Switch(checked = true, onCheckedChange = {}) }
-
-@CatalogModes
-@Composable
-fun RadioSelected() = CatalogSticker { RadioButton(selected = true, onClick = {}) }
-
-@CatalogModes
-@Composable
-fun SliderMid() =
-  CatalogSticker { Box(Modifier.width(220.dp)) { Slider(value = 0.5f, onValueChange = {}) } }
-
-@CatalogModes
-@Composable
-fun FilterChipSelected() =
-  CatalogSticker { FilterChip(selected = true, onClick = {}, label = { Text("Filter") }) }
-
-@CatalogModes
-@Composable
-fun AssistChipSticker() =
-  CatalogSticker { AssistChip(onClick = {}, label = { Text("Assist") }) }
-
-// ---------------------------------------------------------------------------
-// Containment — cards and the FAB.
-// ---------------------------------------------------------------------------
-
-@CatalogModes
-@Composable
-fun ElevatedCardSticker() =
-  CatalogSticker {
-    ElevatedCard { Box(Modifier.size(160.dp, 80.dp)) { Text("Elevated card") } }
-  }
-
-@CatalogModes
-@Composable
-fun OutlinedCardSticker() =
-  CatalogSticker { OutlinedCard { Box(Modifier.size(160.dp, 80.dp)) { Text("Outlined card") } } }
-
-@CatalogModes
-@Composable
-fun FilledCardSticker() =
-  CatalogSticker { Card { Box(Modifier.size(160.dp, 80.dp)) { Text("Filled card") } } }
-
-@CatalogModes
-@Composable
-fun FabSticker() =
-  CatalogSticker { FloatingActionButton(onClick = {}) { Text("+") } }
-
-// ---------------------------------------------------------------------------
-// Communication — progress + badge.
-// ---------------------------------------------------------------------------
-
-@CatalogModes
-@Composable
-fun LinearProgressSticker() =
-  CatalogSticker { Box(Modifier.width(220.dp)) { LinearProgressIndicator(progress = { 0.6f }) } }
-
-@CatalogModes
-@Composable
-fun CircularProgressSticker() =
-  CatalogSticker { CircularProgressIndicator(progress = { 0.6f }) }
-
-@CatalogModes
-@Composable
-fun BadgeSticker() = CatalogSticker { Badge { Text("8") } }
-
-// ---------------------------------------------------------------------------
-// Text fields.
-// ---------------------------------------------------------------------------
-
-@CatalogModes
-@Composable
-fun TextFieldSticker() =
-  CatalogSticker { TextField(value = "Filled", onValueChange = {}, label = { Text("Label") }) }
-
-@CatalogModes
-@Composable
-fun OutlinedTextFieldSticker() =
-  CatalogSticker {
-    OutlinedTextField(value = "Outlined", onValueChange = {}, label = { Text("Label") })
-  }
-
-// ---------------------------------------------------------------------------
-// Text options — exercises the `compose/semantics` textOverflow product
-// (maxLines / lineCount / truncated / overflow) the sticker sheet annotates.
-// ---------------------------------------------------------------------------
-
-@Preview(name = "Light", showBackground = true, group = "modes", widthDp = 160)
-@Preview(
-  name = "Dark",
-  showBackground = true,
-  group = "modes",
-  widthDp = 160,
-  uiMode = Configuration.UI_MODE_NIGHT_YES,
-)
-@Composable
-fun TextMaxLinesTruncated() =
-  CatalogSticker {
-    Text(
-      "This body text is deliberately long so it overflows two lines and truncates.",
-      maxLines = 2,
-      overflow = TextOverflow.Ellipsis,
-    )
-  }
-
-// Generic-family specimens: the two non-default families Android resolves through its system font
-// table (serif → Noto Serif, monospace → Droid Sans Mono). They exist to pin the in-browser Wasm
-// tier's font interception — its resolver substitutes URL-loaded copies of the same font files —
-// so keep the strings/styles in lockstep with the CMP port in `samples/cmp-wasm-catalog`.
-
-@CatalogModes
-@Composable
-fun TextSerifSpecimen() =
-  CatalogSticker { Text("Serif specimen 0123", fontFamily = FontFamily.Serif) }
-
-@CatalogModes
-@Composable
-fun TextMonospaceSpecimen() =
-  CatalogSticker { Text("Mono specimen 0123", fontFamily = FontFamily.Monospace) }
-
-// ---------------------------------------------------------------------------
-// States — interaction (pressed / focused), disabled, and toggle off↔on.
-// A held interaction is seeded into the InteractionSource so the static capture
-// shows that state's resting state-layer (the design contract for the state),
-// not the default resting button.
-// ---------------------------------------------------------------------------
-
-@Composable
-private fun pressedSource(): MutableInteractionSource {
-  val source = remember { MutableInteractionSource() }
-  LaunchedEffect(source) { source.emit(PressInteraction.Press(Offset.Zero)) }
-  return source
-}
-
-@Composable
-private fun focusedSource(): MutableInteractionSource {
-  val source = remember { MutableInteractionSource() }
-  LaunchedEffect(source) { source.emit(FocusInteraction.Focus()) }
-  return source
-}
-
-@CatalogModes
-@Composable
-fun FilledButtonPressed() =
-  CatalogSticker { Button(onClick = {}, interactionSource = pressedSource()) { Text("Pressed") } }
-
-@CatalogModes
-@Composable
-fun FilledButtonFocused() =
-  CatalogSticker { Button(onClick = {}, interactionSource = focusedSource()) { Text("Focused") } }
-
-@CatalogModes
-@Composable
-fun OutlinedButtonDisabled() =
-  CatalogSticker { OutlinedButton(onClick = {}, enabled = false) { Text("Disabled") } }
-
-@CatalogModes
-@Composable
-fun SwitchOff() = CatalogSticker { Switch(checked = false, onCheckedChange = {}) }
-
-@CatalogModes
-@Composable
-fun CheckboxUnchecked() = CatalogSticker { Checkbox(checked = false, onCheckedChange = {}) }
-
-@CatalogModes
-@Composable
-fun FilterChipUnselected() =
-  CatalogSticker { FilterChip(selected = false, onClick = {}, label = { Text("Filter") }) }
-
-@CatalogModes
-@Composable
-fun SegmentedToggle() =
-  CatalogSticker {
-    SingleChoiceSegmentedButtonRow {
-      SegmentedButton(
-        selected = true,
-        onClick = {},
-        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-      ) {
-        Text("On")
-      }
-      SegmentedButton(
-        selected = false,
-        onClick = {},
-        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-      ) {
-        Text("Off")
-      }
-    }
-  }
+private fun Sticker(id: String) = CatalogSticker { CatalogComponent(id, interactive = false) }
 
 // ---------------------------------------------------------------------------
 // Scaffold templates — full-screen, pre-built screen skeletons an app copies
-// whole. Rendered on a phone with `showSystemUi = true` so the capture reads as
-// a real screenshot: the OS status bar (clock, battery) at the top and the
-// gesture-pill nav bar at the bottom, drawn by the renderer's SystemBarsFrame,
-// framing the template's own Material chrome. Placed via [FullScreenM3].
+// whole. Rendered on a phone with `showSystemUi = true` (see [CatalogTemplate])
+// so the capture reads as a real screenshot: the OS status bar at the top and
+// the gesture-pill nav bar at the bottom, drawn by the renderer's
+// SystemBarsFrame, framing the template's own Material chrome.
 // ---------------------------------------------------------------------------
 
 private val templateMessages =
@@ -301,35 +123,28 @@ private val templateMessages =
     "On-call" to "Deploy finished cleanly",
   )
 
-// Full-screen app scaffold: an edge-to-edge TopAppBar, a scrolling list of
-// ListItems, and a FloatingActionButton — the canonical M3 screen an app starts
-// a new surface from. The render environment has no real window insets behind
-// the renderer's synthetic OS bars, so the scaffold supplies them itself
-// ([SYSTEM_BAR_INSET]): the app bar paints under the status bar with its title
-// below the OS clock, and the content/FAB clear the gesture pill — the same
-// inset-driven layout a real edge-to-edge M3 screen gets from the system.
+/**
+ * Full-screen app scaffold: an edge-to-edge TopAppBar, a scrolling list of ListItems, and a
+ * FloatingActionButton — the canonical M3 screen an app starts a new surface from. The render
+ * environment has no real window insets behind the renderer's synthetic OS bars, so the scaffold
+ * supplies them itself ([SYSTEM_BAR_INSET]): the app bar paints under the status bar with its title
+ * below the OS clock, and the content/FAB clear the gesture pill.
+ */
 @CatalogTemplate
 @Composable
-fun AppScaffoldTemplate() =
-  FullScreenM3 {
-    Scaffold(
-      contentWindowInsets = WindowInsets(bottom = SYSTEM_BAR_INSET),
-      topBar = {
-        TopAppBar(
-          title = { Text("Inbox") },
-          windowInsets = WindowInsets(top = SYSTEM_BAR_INSET),
-        )
-      },
-      floatingActionButton = { FloatingActionButton(onClick = {}) { Text("+") } },
-    ) { padding ->
-      Column(Modifier.padding(padding).fillMaxSize()) {
-        templateMessages.forEachIndexed { index, (sender, preview) ->
-          ListItem(
-            headlineContent = { Text(sender) },
-            supportingContent = { Text(preview) },
-          )
-          if (index < templateMessages.lastIndex) HorizontalDivider()
-        }
+fun AppScaffoldTemplate() = FullScreenM3 {
+  Scaffold(
+    contentWindowInsets = WindowInsets(bottom = SYSTEM_BAR_INSET),
+    topBar = {
+      TopAppBar(title = { Text("Inbox") }, windowInsets = WindowInsets(top = SYSTEM_BAR_INSET))
+    },
+    floatingActionButton = { FloatingActionButton(onClick = {}) { Text("+") } },
+  ) { padding ->
+    Column(Modifier.padding(padding).fillMaxSize()) {
+      templateMessages.forEachIndexed { index, (sender, preview) ->
+        ListItem(headlineContent = { Text(sender) }, supportingContent = { Text(preview) })
+        if (index < templateMessages.lastIndex) HorizontalDivider()
       }
     }
   }
+}

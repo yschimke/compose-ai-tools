@@ -41,6 +41,11 @@ jobs:
             # Wear has no wasm target (androidx.wear.compose), so it's omitted.
             wasmModule: 'samples:cmp-wasm-catalog'
             wasmDist: 'samples/cmp-wasm-catalog/build/wasmDist'
+            # Android-only supplement (Robolectric): renders the material3
+            # 1.5.0-alpha inset focus ring, which CMP can't draw, and the generator
+            # folds it in (--extra-renders) so the keyboard-focus variant keeps its
+            # real ring. Its previews override same-named CMP functions.
+            androidExtraModule: 'samples:design-catalog-m3-android'
           - system: wear-m3
             module: 'samples:design-catalog-wear-m3'
             spec: 'samples/design-catalog-wear-m3/catalog.spec.json'
@@ -59,6 +64,17 @@ jobs:
       # render matches the in-repo plugin/renderer schema.
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/install-cli
+
+      # `compose-m3` is now a Compose Multiplatform (desktop) catalog, so its
+      # render goes through the Skiko desktop daemon (CPU raster) instead of
+      # Robolectric. Skiko's native lib links libGL.so.1, so Mesa's software GL
+      # must be present (same deps ci.yml installs for desktop renders; the Wear /
+      # Remote Android rows don't need them, but the packages are harmless there).
+      - name: Install desktop (Skiko) render deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb libgl1 libglx-mesa0 libgl1-mesa-dri libfreetype6 libfontconfig1 fontconfig
 
       # The export engine lives in the (private) design-parity repo, but its
       # building blocks are published to npm. The driver
@@ -89,10 +105,32 @@ jobs:
           # renderer already uses for the PNGs, and degrades to `sans-serif` if the
           # face is unreachable — so this never fails a render, only improves it.
           JAVA_TOOL_OPTIONS: -Dcomposeai.figma.embedFonts=true
+          # Force Mesa's software GL path (no GPU on the runner) for the desktop
+          # Skiko render; inert for the Robolectric (Android) catalog rows.
+          LIBGL_ALWAYS_SOFTWARE: '1'
         run: |
           set -euo pipefail
-          compose-preview bundle pack --module "$MODULE" --with-semantics \
-            -o "$GITHUB_WORKSPACE/$SYSTEM-bundle.png"
+          # Run under a virtual framebuffer so the Skiko desktop daemon has a
+          # display (matches ci.yml's desktop-render jobs); harmless for the
+          # Robolectric rows, which don't touch it.
+          xvfb-run -a -s "-screen 0 2000x1400x24" \
+            compose-preview bundle pack --module "$MODULE" --with-semantics \
+              -o "$GITHUB_WORKSPACE/$SYSTEM-bundle.png"
+
+      # Android-only supplement (Robolectric): render the previews that need androidx
+      # material3 APIs with no CMP equivalent (the inset focus ring). Robolectric
+      # renders headless — no Skiko/xvfb/GL. The generator folds these in below,
+      # overriding the CMP module's same-named (ring-less) renders.
+      - name: Render Android-only supplement
+        if: ${{ matrix.androidExtraModule != '' }}
+        env:
+          EXTRA_MODULE: ${{ matrix.androidExtraModule }}
+          SYSTEM: ${{ matrix.system }}
+          JAVA_TOOL_OPTIONS: -Dcomposeai.figma.embedFonts=true
+        run: |
+          set -euo pipefail
+          compose-preview bundle pack --module "$EXTRA_MODULE" --with-semantics \
+            -o "$GITHUB_WORKSPACE/$SYSTEM-extra-bundle.png"
 
       # In-browser CMP tier: assemble the Kotlin/Wasm catalog app (webpack-free —
       # no Node/Binaryen toolchain, builds under FAIL_ON_PROJECT_REPOS). Its
@@ -118,6 +156,8 @@ jobs:
           # Set only for systems with an in-browser tier; the generator copies
           # this dir into out/web/wasm/ and writes the catalog.json webRender.
           WASM_DIST: ${{ matrix.wasmDist }}
+          # Presence flag: fold the Android-only supplement render in (see above).
+          EXTRA_RENDERS: ${{ matrix.androidExtraModule }}
           # Buildable source for trusted server-side re-render: catalog.json gets a
           # `source: {repo, ref, module}` so a `serve --allow-render-trusted` box can
           # rebuild + re-render this catalog live. Inert on the public desktop box,
@@ -133,6 +173,7 @@ jobs:
             --out "$GITHUB_WORKSPACE/out" \
             --renderer "$(compose-preview --version | head -1)" \
             ${WASM_DIST:+--wasm-dist "$GITHUB_WORKSPACE/$WASM_DIST"} \
+            ${EXTRA_RENDERS:+--extra-renders "$GITHUB_WORKSPACE/$SYSTEM-extra-bundle.png"} \
             --source-repo "$SOURCE_REPO" \
             --source-ref "$SOURCE_REF" \
             --source-module ":$SOURCE_MODULE"

@@ -34,6 +34,19 @@ services:
       SERVE_CATALOGS_UNLISTED: "${SERVE_CATALOGS_UNLISTED:-meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose}"
       SERVE_TRUST_STORE: "${SERVE_TRUST_STORE:-trust/producers.json}"
       SERVE_WASM_DIR: "${SERVE_WASM_DIR:-compose-m3=samples/cmp-wasm-catalog/build/wasmDist}"
+      # Live (daemon-backed) server-side re-render. Now that compose-m3 is a
+      # Compose Multiplatform (desktop) catalog, this desktop-only box CAN build
+      # + re-render it from source (Skiko desktop daemon, no Android SDK) — so the
+      # viewer's "Live (stream)" control actually works for the CMP screens. It
+      # stays fail-closed: only a Trusted catalog whose source.repo is ours and
+      # source.ref is in the allowlist is built; wear-m3 / remote-m3 are Android
+      # and fall back to baked PNG on this box.
+      SERVE_ALLOW_RENDER_TRUSTED: "${SERVE_ALLOW_RENDER_TRUSTED:-1}"
+      SERVE_REVISIONS_ALLOW: "${SERVE_REVISIONS_ALLOW:-main}"
+      # Cap concurrent live daemon streams — each holds a JVM Compose render
+      # session, so bound it on this small box (an over-cap viewer gets WS 1013
+      # "try again shortly" rather than an OOM). Raise on a larger box.
+      SERVE_LIVE_SEATS: "${SERVE_LIVE_SEATS:-1}"
       SERVE_TOKEN: "${SERVE_TOKEN:-}"
       PORT: "8080"
     expose:

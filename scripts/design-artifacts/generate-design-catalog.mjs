@@ -275,6 +275,13 @@ const { values } = parseArgs({
     // descriptor is written into catalog.json — so the branch carries the live
     // renderer and `serve --catalogs` fetches it from the same trusted origin.
     "wasm-dist": { type: "string" },
+    // Optional supplementary render bundle whose previews OVERRIDE same-named
+    // functions in --renders. Used to fold an Android-only render into an
+    // otherwise-CMP catalog: e.g. `:samples:design-catalog-m3-android` renders the
+    // material3 1.5.0-alpha inset focus ring (no CMP equivalent) for
+    // `FilledButtonFocused`, and this replaces the CMP module's ring-less render of
+    // that function so the keyboard-focus variant shows the real ring.
+    "extra-renders": { type: "string" },
     // Optional buildable source for TRUSTED server-side re-render. When
     // --source-module is given, a `source: {repo, ref, module}` is written into
     // catalog.json so a `serve --allow-render-trusted` box (one with the toolchain
@@ -308,6 +315,23 @@ const spec = JSON.parse(await readFile(specPath, "utf8"));
 // only by an appended `_<mode>`) onto one component. See `loadCandidates` (which
 // also works around the published null-widthDp crash) and the vendored join.
 const { candidates, bundle } = await loadCandidates(rendersPath);
+
+// Fold a supplementary render bundle in, overriding same-named functions. Lets an
+// Android-only render (the material3 1.5.0-alpha inset focus ring, which CMP can't
+// draw) replace the CMP module's render of that function — so a mostly-CMP catalog
+// still carries the real focus-ring variant. The supplement's render + semantics win.
+if (values["extra-renders"]) {
+  const { candidates: extra } = await loadCandidates(resolve(values["extra-renders"]));
+  const overridden = new Set(extra.map(functionOf));
+  for (let i = candidates.length - 1; i >= 0; i--) {
+    if (overridden.has(functionOf(candidates[i]))) candidates.splice(i, 1);
+  }
+  candidates.push(...extra);
+  console.log(
+    `[${spec.system}] folded ${extra.length} extra render(s), overriding: ` +
+      `${[...overridden].join(", ")}`,
+  );
+}
 
 // System tokens declared via `@ColorCatalog` / `@TypographyCatalog` — carried in the
 // bundle as `previews/<id>.catalog.json` sidecars (compose-ai-tools#2167), which the

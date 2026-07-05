@@ -3,7 +3,7 @@
   "system": "compose-m3",
   "title": "Compose Material 3",
   "library": [
-    "androidx.compose.material3:material3",
+    "org.jetbrains.compose.material3:material3",
     "androidx.compose.material3.adaptive:adaptive (planned)"
   ],
   "module": "samples:design-catalog-m3",
