@@ -66,10 +66,12 @@ layered `compose/figma-svg` export produced per preview; the catalog pipeline
 carries it in the bundle (`previews/<id>.figma.svg`) and copies it onto the
 branch, exactly as it does the schematic `wireframes/`.
 
-For the programmatic alternative to the manual pull — an agent pushing rendered
-variant matrices and editable layer reconstructions straight onto a Figma
-canvas via the Figma MCP server — see
-[FIGMA_ROUNDTRIP.md](FIGMA_ROUNDTRIP.md).
+For editable Figma layers the per-sticker `figma/<slug>.svg` is the
+`compose/figma-svg` export (see [`figma-svg-example/`](figma-svg-example/) and
+[`design-artifacts-figma-svg/`](design-artifacts-figma-svg/)); the design-parity
+`figma-plugin` imports it as native component sets. For the ad-hoc alternative —
+an agent pushing rendered *variant matrices* onto a Figma canvas via the Figma
+MCP server for live review — see [FIGMA_ROUNDTRIP.md](FIGMA_ROUNDTRIP.md).
 
 ## Rendering a catalog
 
