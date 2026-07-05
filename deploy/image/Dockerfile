@@ -19,7 +19,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       libfreetype6 libfontconfig1 fontconfig fonts-dejavu-core \
       libgl1 libglx-mesa0 libgl1-mesa-dri \
-      curl ca-certificates \
+      curl ca-certificates git \
  && rm -rf /var/lib/apt/lists/*
 ENV LIBGL_ALWAYS_SOFTWARE=1 \
     GRADLE_USER_HOME=/root/.gradle

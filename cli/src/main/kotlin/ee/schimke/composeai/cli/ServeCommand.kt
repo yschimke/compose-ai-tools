@@ -83,6 +83,18 @@ class ServeCommand(args: List<String>) : Command(args) {
   private val allowRenderTrusted: Boolean = "--allow-render-trusted" in args
 
   /**
+   * Optional git repo root the trusted-catalog builder ([buildTrustedCatalogSource]) and its
+   * [GitWorktrees] use, instead of the served module's own project root ([findProjectRoot]). Lets a
+   * box whose primary `--module` is a standalone project (e.g. the prebuilt `deploy/image`, which
+   * serves a self-contained `sample-project`) still live-render a fetched catalog by pointing this
+   * at a separate checkout of the catalog's `source.repo` (which the entrypoint clones). The
+   * `source.repo == `[catalogRepo] and `--revisions-allow` gates are unchanged — this only moves
+   * the worktree root. Off ⇒ the served module's project root, as before.
+   */
+  private val catalogSourceRoot: File? =
+    args.flagValue("--catalog-source-root")?.takeIf { it.isNotBlank() }?.let { File(it) }
+
+  /**
    * Project mode revision policy (SECURITY/RCE): comma-separated refs whose history a requested
    * `?session=<rev>` must be reachable from to be checked out and built. Empty = nothing builds
    * (fail closed), since building runs that revision's Gradle. e.g. `--revisions-allow
@@ -487,7 +499,10 @@ class ServeCommand(args: List<String>) : Command(args) {
   /** Open the worktree manager rooted at the repo (project mode), gated to the allowed refs. */
   private fun openWorktrees(module: PreviewModule): GitWorktrees {
     val repoRoot =
-      findProjectRoot() ?: module.projectDir.absoluteFile.parentFile ?: module.projectDir
+      catalogSourceRoot
+        ?: findProjectRoot()
+        ?: module.projectDir.absoluteFile.parentFile
+        ?: module.projectDir
     if (revisionAllowRefs.isEmpty()) {
       System.err.println(
         "serve: --revisions has no --revisions-allow refs; no revision will build (fail closed). " +
@@ -631,7 +646,7 @@ class ServeCommand(args: List<String>) : Command(args) {
       return false
     }
     if (source.ref.isBlank() || source.module.isBlank()) return false
-    val repoRoot = findProjectRoot() ?: return false
+    val repoRoot = catalogSourceRoot ?: findProjectRoot() ?: return false
     // The ref allowlist is enforced here (fail-closed): null = unresolvable or not in
     // --revisions-allow.
     val worktree =
@@ -844,6 +859,13 @@ class ServeCommand(args: List<String>) : Command(args) {
                           box that can't build the catalog source (e.g. the desktop-only public
                           image can't build the Android catalogs) — leave it off and let the
                           in-browser Wasm tier carry CMP.
+        --catalog-source-root <dir>
+                          Git repo root the trusted-catalog builder (--allow-render-trusted)
+                          worktrees + builds from, instead of the served --module's own project. Use
+                          when --module is a standalone project but the catalog's source.repo is a
+                          separate checkout (e.g. a prebuilt image serving sample-project that clones
+                          the CMP catalog repo for live render). The trust + same-repo + ref-allowlist
+                          gates are unchanged.
         --live-seats <n>  Cap concurrent live (daemon-backed) stream sessions. Each seat holds a JVM
                           Compose daemon, so on a small box bound this (e.g. 1–2) when the live tier
                           is on (--allow-render-trusted) — an over-cap stream is refused (WS 1013)

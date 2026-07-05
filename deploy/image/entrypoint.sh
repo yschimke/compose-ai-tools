@@ -54,6 +54,30 @@ fi
 [[ -n "${SERVE_REVISIONS_ALLOW:-}" ]] && args+=(--revisions-allow "${SERVE_REVISIONS_ALLOW}")
 if [[ "${SERVE_ALLOW_RENDER_TRUSTED:-}" == "1" || "${SERVE_ALLOW_RENDER_TRUSTED:-}" == "true" ]]; then
   args+=(--allow-render-trusted)
+  # The prebuilt image serves a standalone /project, not a checkout of a catalog's
+  # source repo — so the trusted builder has nothing to worktree from by default.
+  # When SERVE_CATALOG_SOURCE_REPO is set, clone that repo here and point serve at it
+  # with --catalog-source-root, so a Trusted catalog whose source.repo matches can be
+  # built + live-rendered. Only the CMP `compose-m3` catalog is desktop-buildable on
+  # this Android-less image; the Android catalogs stay baked-PNG (fail-closed).
+  #
+  # COST: the trusted build runs at startup (and after each image update), so the
+  # first boot with this on does a one-time cold Gradle build of the catalog
+  # (minutes) before serving. Leave SERVE_CATALOG_SOURCE_REPO unset to keep the
+  # lightweight snapshot+Wasm posture (CMP stays interactive via the Wasm tier).
+  if [[ -n "${SERVE_CATALOG_SOURCE_REPO:-}" ]]; then
+    src_root="${SERVE_CATALOG_SOURCE_ROOT:-/catalog-src}"
+    src_ref="${SERVE_CATALOG_SOURCE_REF:-main}"
+    if [[ ! -d "${src_root}/.git" ]]; then
+      echo "entrypoint: cloning ${SERVE_CATALOG_SOURCE_REPO}@${src_ref} → ${src_root} for trusted live render" >&2
+      git clone --branch "${src_ref}" "https://github.com/${SERVE_CATALOG_SOURCE_REPO}.git" "${src_root}"
+    else
+      git -C "${src_root}" fetch --quiet origin "${src_ref}" && \
+        git -C "${src_root}" checkout --quiet -B "${src_ref}" "origin/${src_ref}" || \
+        echo "entrypoint: refresh of ${src_root} failed — building from the existing checkout" >&2
+    fi
+    args+=(--catalog-source-root "${src_root}")
+  fi
 fi
 # Bound concurrent live (daemon-backed) stream seats. Only meaningful once the live tier is enabled
 # (SERVE_ALLOW_RENDER_TRUSTED) — each seat holds a JVM Compose daemon, so a small box (preview.coo.ee
