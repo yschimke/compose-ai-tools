@@ -121,6 +121,53 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `a trusted liveBundle catalog hands the builder the catalog-id to daemon-id alias`() {
+    // A catalog that carries a liveBundle and per-image previewId: the store fetches the bundle and
+    // invokes the live builder with the catalog-id → daemon-id alias so it can bridge the two id
+    // namespaces (see ServeCatalogLiveHost). Only the image that declares a previewId is aliased.
+    val json =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "liveBundle":{"path":"bundle/","file":"compose-m3-bundle.png"},
+       "components":[{"componentId":"Button/Filled","images":[
+         {"path":"images/button-filled/ideal__default__dark.png","theme":"dark","previewId":"FilledButton_Dark"},
+         {"path":"images/button-filled/ideal__keyboard-focus__dark.png","theme":"dark"}]}]}
+      """
+        .trimIndent()
+    val fetch: (String) -> ByteArray? = { url ->
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> json.toByteArray()
+        url.endsWith("bundle/compose-m3-bundle.png") -> byteArrayOf(1, 2, 3)
+        url.endsWith(".png") -> png()
+        else -> null
+      }
+    }
+    val trust =
+      TrustStore(
+        branches = listOf(TrustedBranch("yschimke/compose-ai-tools", "design-artifacts/*"))
+      )
+    var captured: Map<String, String>? = null
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = trust,
+        fetch = fetch,
+        buildTrustedBundle = { _, _, alias, _ ->
+          captured = alias
+          true // pretend the live host took over, so no static host is registered
+        },
+      )
+    val result = store.load("compose-m3")
+
+    assertTrue(result is ServeCatalogStore.Result.Ok)
+    // Only the previewId-bearing image is aliased; the keyboard-focus (Android-only) image is not.
+    assertEquals(mapOf("button-filled__ideal__default__dark" to "FilledButton_Dark"), captured)
+    // The live builder claimed the session, so nothing was registered as a plain static host.
+    assertTrue(registered["compose-m3"] == null)
+  }
+
+  @Test
   fun `an untrusted branch still serves the catalog but unverified`() {
     val result = store(TrustStore.EMPTY).load("compose-m3")
     assertEquals(ServeCatalogStore.Result.Ok("compose-m3", 2, "unverified"), result)
@@ -263,7 +310,7 @@ class ServeCatalogStoreTest {
           else -> null
         }
       },
-      buildTrustedSource = { system, source ->
+      buildTrustedSource = { system, source, _, _ ->
         buildCalls += system to source
         builderResult
       },

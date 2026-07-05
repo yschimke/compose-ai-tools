@@ -46,30 +46,66 @@ class ServeCatalogStore(
    * Trusted server-side re-render from a carried **executable bundle** (opt-in,
    * `--allow-render-trusted`). When a catalog is `Trusted` AND declares a `liveBundle` (`{path,
    * file}`), the bundle is fetched and this is invoked to stand up a daemon-backed, re-renderable
-   * session built straight from it — no Gradle build, no worktree, no repo clone. Preferred over
-   * [buildTrustedSource] (tried first): returns true when it registered such a session (then both
-   * the Gradle source path and the static [ServeBundleHost] are skipped); false ⇒ fall back to
-   * [buildTrustedSource], then the static catalog. Default ⇒ never. The callback owns the
-   * `--allow-render-trusted` gate; this store only reaches it for an already-`Trusted` catalog, and
-   * only after the whole declared bundle file fetched cleanly (fail-closed, like [fetchWasmApp]).
+   * session built straight from it — no Gradle build, no worktree, no repo clone. It's handed the
+   * catalog-id→daemon-id `alias` and a `bakedFallback` factory so it can front the baked catalog
+   * with the daemon ([ServeCatalogLiveHost]) rather than replace it — the published `/p/<id>` links
+   * keep resolving and unmapped ids fall back to baked PNGs. Preferred over [buildTrustedSource]
+   * (tried first): returns true when it registered such a session (then both the Gradle source path
+   * and the plain static registration are skipped); false ⇒ fall back to [buildTrustedSource], then
+   * the static catalog. Default ⇒ never. The callback owns the `--allow-render-trusted` gate; this
+   * store only reaches it for an already-`Trusted` catalog, and only after the whole declared
+   * bundle file fetched cleanly (fail-closed, like [fetchWasmApp]).
    */
-  private val buildTrustedBundle: (system: String, bundleFile: File) -> Boolean = { _, _ -> false },
+  private val buildTrustedBundle:
+    (
+      system: String, bundleFile: File, alias: Map<String, String>, bakedFallback: () -> ServeHost,
+    ) -> Boolean =
+    { _, _, _, _ ->
+      false
+    },
   /**
    * Trusted server-side re-render (opt-in, `--allow-render-trusted`). When a catalog is `Trusted`
    * AND declares a `source` (`{repo, ref, module}`), this is invoked to stand up a **daemon-backed,
    * re-renderable** session built from that source — so the viewer's controls re-render live at
-   * full fidelity instead of replaying baked PNGs. Returns true when it registered such a session
-   * (then the static [ServeBundleHost] is skipped); false ⇒ fall back to the static catalog.
-   * Default ⇒ never (the safe default + what every public deploy uses). The callback owns the
-   * ref-allowlist + build gates; this store only reaches it for an already-`Trusted` catalog.
+   * full fidelity instead of replaying baked PNGs. Like [buildTrustedBundle] it's handed the
+   * catalog-id→daemon-id `alias` + a `bakedFallback` factory and fronts the baked catalog with the
+   * daemon rather than replacing it. Returns true when it registered such a session (then the plain
+   * static registration is skipped); false ⇒ fall back to the static catalog. Default ⇒ never (the
+   * safe default + what every public deploy uses). The callback owns the ref-allowlist + build
+   * gates; this store only reaches it for an already-`Trusted` catalog.
    */
-  private val buildTrustedSource: (system: String, source: CatalogSource) -> Boolean = { _, _ ->
-    false
-  },
+  private val buildTrustedSource:
+    (
+      system: String,
+      source: CatalogSource,
+      alias: Map<String, String>,
+      bakedFallback: () -> ServeHost,
+    ) -> Boolean =
+    { _, _, _, _ ->
+      false
+    },
 ) {
 
   /** A catalog's buildable source — where to check out + build to re-render it live. */
   data class CatalogSource(val repo: String, val ref: String, val module: String)
+
+  /**
+   * Build the **catalog-id → daemon-preview-id** alias from a catalog's images: each image's
+   * route-safe id ([previewIdFor] of its `path`) mapped to the `previewId` the exporter recorded.
+   * Images with no `previewId` (Android-only variants, older catalogs) are skipped — they have no
+   * live lane. Later duplicates keep the first mapping (the theme/state variants are distinct ids,
+   * so collisions shouldn't arise).
+   */
+  private fun previewAliasFor(catalog: Catalog): Map<String, String> {
+    val alias = LinkedHashMap<String, String>()
+    for (component in catalog.components) {
+      for (image in component.images) {
+        val daemonId = image.previewId?.takeIf { it.isNotBlank() } ?: continue
+        alias.putIfAbsent(previewIdFor(image.path), daemonId)
+      }
+    }
+    return alias
+  }
 
   sealed interface Result {
     data class Ok(val system: String, val previewCount: Int, val trust: String) : Result
@@ -148,38 +184,15 @@ class ServeCatalogStore(
         BundleVerifier.Verdict.Trusted(listOf(BundleVerifier.Basis.Branch(repo, branch)))
       else BundleVerifier.Verdict.Unverified("branch $repo@$branch is not trusted")
 
-    // Trusted server-side re-render from a carried EXECUTABLE BUNDLE (opt-in,
-    // --allow-render-trusted) — tried FIRST, ahead of the Gradle `source` build below: no clone, no
-    // worktree, no per-request Gradle invocation. Only a Trusted catalog that declares `liveBundle`
-    // is even offered to the builder — an Unverified catalog NEVER reaches it — and only once the
-    // whole declared bundle file has fetched cleanly (fail-closed, like fetchWasmApp above).
-    val liveBundle = catalog.liveBundle
-    if (verdict is BundleVerifier.Verdict.Trusted && liveBundle != null) {
-      val bundleFile = fetchLiveBundle(liveBundle, base, dir, safe)
-      if (bundleFile != null && buildTrustedBundle(safe, bundleFile)) {
-        return Result.Ok(safe, count, "${BundleVerifier.summary(verdict)} (live bundle)")
-      }
-    }
-
-    // Trusted server-side re-render from SOURCE (opt-in): only a Trusted catalog that declares a
-    // source is even offered to the builder — an Unverified catalog NEVER reaches it, so a
-    // compromised/spoofed catalog can't trigger a build. When the builder takes over it registers
-    // a daemon-backed (re-renderable) session under this id, so we skip the static host below.
-    val src = catalog.source
-    if (
-      verdict is BundleVerifier.Verdict.Trusted &&
-        src != null &&
-        src.module.isNotBlank() &&
-        buildTrustedSource(safe, CatalogSource(src.repo, src.ref, src.module))
-    ) {
-      return Result.Ok(safe, count, "${BundleVerifier.summary(verdict)} (live)")
-    }
-
     // Fetch the catalog's baked editable vectors (figma/<slug>.svg + crops) so the host can serve
     // an SVG per preview; null when the branch carried none (host then 404s the .svg lane).
     val figmaDir = fetchFigmaSvgs(slugs, base, dir)
 
-    val host =
+    // The static baked-PNG host — the browse surface (grid, deep links, thumbnails), keyed by the
+    // catalog ids. This is ALWAYS what a viewer sees; a live builder below fronts it with a daemon
+    // rather than replacing it, so the published /p/<id> links keep resolving. Built lazily so the
+    // registry can rebuild it on each resume of a live session.
+    val bakedFallback: () -> ServeBundleHost = {
       ServeBundleHost(
         dir,
         safe,
@@ -189,6 +202,47 @@ class ServeCatalogStore(
           catalog.library.filter { it.isNotBlank() }.take(2).joinToString(" · ").ifBlank { null },
         figmaDir = figmaDir,
       )
+    }
+
+    // The catalog-id → daemon-preview-id bridge: a live daemon knows previews by their
+    // function-based
+    // descriptor id (`FilledButton_Dark`), but the published links/routes use the catalog id
+    // (`button-filled__ideal__default__dark`). The exporter records each image's source daemon id
+    // in
+    // `previewId`; map it against the route-safe catalog id so a live host can answer the published
+    // URLs (and unmapped ids — the Android-only variants — fall back to baked PNGs).
+    val alias = previewAliasFor(catalog)
+
+    // Trusted server-side re-render from a carried EXECUTABLE BUNDLE (opt-in,
+    // --allow-render-trusted) — tried FIRST, ahead of the Gradle `source` build below: no clone, no
+    // worktree, no per-request Gradle invocation. Only a Trusted catalog that declares `liveBundle`
+    // is even offered to the builder — an Unverified catalog NEVER reaches it — and only once the
+    // whole declared bundle file has fetched cleanly (fail-closed, like fetchWasmApp above). The
+    // builder fronts [bakedFallback] with the daemon (see ServeCatalogLiveHost), so the baked
+    // catalog still serves browsing + the ids the daemon can't render.
+    val liveBundle = catalog.liveBundle
+    if (verdict is BundleVerifier.Verdict.Trusted && liveBundle != null) {
+      val bundleFile = fetchLiveBundle(liveBundle, base, dir, safe)
+      if (bundleFile != null && buildTrustedBundle(safe, bundleFile, alias, bakedFallback)) {
+        return Result.Ok(safe, count, "${BundleVerifier.summary(verdict)} (live bundle)")
+      }
+    }
+
+    // Trusted server-side re-render from SOURCE (opt-in): only a Trusted catalog that declares a
+    // source is even offered to the builder — an Unverified catalog NEVER reaches it, so a
+    // compromised/spoofed catalog can't trigger a build. Like the bundle path, the builder fronts
+    // the baked host with the daemon rather than replacing it.
+    val src = catalog.source
+    if (
+      verdict is BundleVerifier.Verdict.Trusted &&
+        src != null &&
+        src.module.isNotBlank() &&
+        buildTrustedSource(safe, CatalogSource(src.repo, src.ref, src.module), alias, bakedFallback)
+    ) {
+      return Result.Ok(safe, count, "${BundleVerifier.summary(verdict)} (live)")
+    }
+
+    val host = bakedFallback()
     register(safe, host)
     return Result.Ok(safe, host.previews.size, BundleVerifier.summary(verdict))
   }
@@ -334,7 +388,17 @@ class ServeCatalogStore(
 
   @Serializable private data class Component(val images: List<Image> = emptyList())
 
-  @Serializable private data class Image(val path: String)
+  @Serializable
+  private data class Image(
+    val path: String,
+    /**
+     * The **daemon preview id** that produced this image (`FilledButton_Dark`), recorded by the
+     * exporter so a live host can bridge the route-safe catalog id ([previewIdFor] of [path]) to
+     * it. Null when the exporter couldn't map it (an older catalog, or an Android-only variant with
+     * no runnable desktop preview) — then the id has no live lane and stays baked-PNG.
+     */
+    val previewId: String? = null,
+  )
 
   /**
    * `catalog.json`'s `webRender`: an app under [path] (e.g. `web/wasm/`) with its [files] listed.
