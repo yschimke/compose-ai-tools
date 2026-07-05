@@ -7,8 +7,10 @@
 // the `compose/theme` token set, the `compose/semantics-wireframe` layout
 // variant, and the a11y findings all come from these previews. Kept deliberately
 // thin — only `material3` + the preview tooling — so it builds against the stable
-// Compose BOM. M3 Adaptive (window-size canonical layouts) is a planned
-// follow-up; breakpoints are exercised here via `@Preview(widthDp = …)`.
+// Compose BOM, with one exception: `material3` is pinned forward to a 1.5.0 alpha
+// (see `libs.compose.material3.catalog`) for the Material 3 **inset focus ring**
+// APIs the catalog documents. M3 Adaptive (window-size canonical layouts) is a
+// planned follow-up; breakpoints are exercised here via `@Preview(widthDp = …)`.
 plugins {
   id("composeai.base-conventions")
   id("composeai.android-conventions")
@@ -42,7 +44,8 @@ android {
 dependencies {
   implementation(platform(libs.compose.bom.stable))
   implementation(libs.compose.ui)
-  implementation(libs.compose.material3)
+  // Forward-pinned off the BOM for the inset focus ring APIs (material3 1.5.0-alpha).
+  implementation(libs.compose.material3.catalog)
   implementation(libs.compose.foundation)
   implementation(libs.compose.ui.tooling.preview)
   debugImplementation("androidx.compose.ui:ui-tooling")
