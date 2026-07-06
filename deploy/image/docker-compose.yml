@@ -84,7 +84,7 @@ services:
     restart: always
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    command: --label-enable --cleanup --interval 3600
+    command: --label-enable --cleanup --interval 1200
 
   caddy:
     image: caddy:2
