@@ -408,13 +408,20 @@ fun CheckboxButtonChecked() =
 // ---------------------------------------------------------------------------
 
 // The card content regions are wrapped in `PreviewSlot(name)` markers: a no-op in a normal render
-// (the label draws unchanged, tagged `dp-slot:<name>` so its bounds land in the slot map the
-// structured-screen builder reads), swapping to a labelled placeholder under `LocalSlotMode`.
+// (the label draws unchanged, tagged `dp-slot:<name>`), swapping to a labelled placeholder under
+// `LocalSlotMode`. Each slot is `fillMaxWidth` so its captured `dp-slot:*` bounds are the card's
+// full fillable content width — the region a structured-screen fill targets — not just the label
+// box. Height wraps the content, and Wear card/title content is already start-aligned and
+// full-width, so the baked render is unchanged.
 @CatalogWearModes
 @Composable
 fun CardSticker() =
   WearSticker {
-    Card(onClick = {}) { PreviewSlot("content") { Text(previewOverrideString("label", "Card")) } }
+    Card(onClick = {}) {
+      PreviewSlot("content", Modifier.fillMaxWidth()) {
+        Text(previewOverrideString("label", "Card"))
+      }
+    }
   }
 
 @CatalogWearModes
@@ -423,18 +430,25 @@ fun TitleCardSticker() =
   WearSticker {
     TitleCard(
       onClick = {},
-      title = { PreviewSlot("title") { Text(previewOverrideString("title", "Morning run")) } },
+      title = {
+        PreviewSlot("title", Modifier.fillMaxWidth()) {
+          Text(previewOverrideString("title", "Morning run"))
+        }
+      },
     ) {
-      PreviewSlot("subtitle") { Text(previewOverrideString("subtitle", "5.2 km · 28 min")) }
+      PreviewSlot("subtitle", Modifier.fillMaxWidth()) {
+        Text(previewOverrideString("subtitle", "5.2 km · 28 min"))
+      }
     }
   }
 
+// No slot marker on the ListHeader: its content is horizontally centred, so a `fillMaxWidth` slot
+// box would left-shift the label in the baked render, and a header isn't a drop target the
+// structured-screen builder fills. The label stays an editable override knob.
 @CatalogWearModes
 @Composable
 fun ListHeaderSticker() =
-  WearSticker {
-    ListHeader { PreviewSlot("content") { Text(previewOverrideString("label", "Today")) } }
-  }
+  WearSticker { ListHeader { Text(previewOverrideString("label", "Today")) } }
 
 // ---------------------------------------------------------------------------
 // Communication.
