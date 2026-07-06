@@ -290,7 +290,7 @@
         "@playwright/test": "~1.61.0",
         "@types/mocha": "^10.0.0",
         "@types/node": "^24.0.0",
-        "@types/three": "^0.184.1",
+        "@types/three": "^0.185.0",
         "@types/vscode": "^1.85.0",
         "@vscode/codicons": "^0.0.45",
         "@vscode/test-electron": "^3.0.0",
@@ -308,6 +308,6 @@
         "serialize-javascript": "^7.0.5"
     },
     "dependencies": {
-        "three": "^0.184.0"
+        "three": "^0.185.0"
     }
 }
