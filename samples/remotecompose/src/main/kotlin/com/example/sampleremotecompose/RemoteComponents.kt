@@ -2,7 +2,7 @@
 
 package com.example.sampleremotecompose
 
-import androidx.compose.remote.creation.compose.action.HostAction
+import androidx.compose.remote.creation.compose.action.hostAction
 import androidx.compose.remote.creation.compose.layout.RemoteAlignment
 import androidx.compose.remote.creation.compose.layout.RemoteBox
 import androidx.compose.remote.creation.compose.layout.RemoteComposable
@@ -40,11 +40,11 @@ import androidx.wear.compose.remote.material3.buttonSizeModifier
  *      [RemoteButtonWithBorderPreview]).
  */
 
-// A shared action used by every sample button — [HostAction] is the Remote
+// A shared action used by every sample button — `hostAction(...)` is the Remote
 // Compose equivalent of `onClick = { ... }`. The two arguments are a remote
 // string payload and a remote-float handler id, both hoisted out so the
 // per-button code stays focused on layout.
-private val testAction = HostAction("testAction".rs, 1.rf)
+private val testAction = hostAction("testAction".rs, 1.rf)
 
 @Composable
 @RemoteComposable

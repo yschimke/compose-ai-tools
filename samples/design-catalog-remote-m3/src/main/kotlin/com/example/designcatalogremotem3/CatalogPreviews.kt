@@ -2,7 +2,7 @@
 
 package com.example.designcatalogremotem3
 
-import androidx.compose.remote.creation.compose.action.HostAction
+import androidx.compose.remote.creation.compose.action.hostAction
 import androidx.compose.remote.creation.compose.layout.RemoteAlignment
 import androidx.compose.remote.creation.compose.layout.RemoteBox
 import androidx.compose.remote.creation.compose.modifier.RemoteModifier
@@ -35,10 +35,10 @@ import androidx.wear.compose.remote.material3.buttonSizeModifier
 // surface exercised by `:samples:remotecompose`, arranged as a sticker sheet.
 // ---------------------------------------------------------------------------
 
-// A shared action used by every sample button — [HostAction] is the Remote
+// A shared action used by every sample button — `hostAction(...)` is the Remote
 // Compose equivalent of `onClick = { ... }`. The two arguments are a remote
 // string payload and a remote-float handler id.
-private val testAction = HostAction("catalogAction".rs, 1.rf)
+private val testAction = hostAction("catalogAction".rs, 1.rf)
 
 // ---------------------------------------------------------------------------
 // Buttons — the Remote Material 3 button plus its border / shape variants.

@@ -4,7 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.remote.creation.profile.RcPlatformProfiles
-import androidx.compose.remote.tooling.preview.RemotePreview
+import androidx.compose.remote.tooling.preview.RemoteContentPreview
 
 @Suppress("RestrictedApiAndroidX")
 class MainActivity : ComponentActivity() {
@@ -15,7 +15,7 @@ class MainActivity : ComponentActivity() {
             // sample has a launchable activity. The preview functions live in
             // `Previews.kt` — this activity is only here to satisfy the
             // `android.application` plugin.
-            RemotePreview(profile = RcPlatformProfiles.ANDROIDX) {
+            RemoteContentPreview(profile = RcPlatformProfiles.ANDROIDX) {
                 Container { RemoteButtonEnabled() }
             }
         }

@@ -2,7 +2,8 @@
 
 package ee.schimke.composeai.daemon
 
-import androidx.compose.remote.creation.compose.action.HostAction
+import androidx.compose.remote.creation.compose.action.Action
+import androidx.compose.remote.creation.compose.action.hostAction
 import androidx.compose.remote.creation.compose.state.rf
 import androidx.compose.remote.creation.compose.state.rs
 import androidx.compose.remote.creation.profile.Profile
@@ -175,13 +176,14 @@ fun RemoteComposeProfile.toRcPlatformProfile(): Profile =
   }
 
 /**
- * Build a `HostAction` from the protocol payload. Mirrors the alpha API's constructor —
- * `HostAction(payload: RemoteString, handlerId: RemoteFloat)` — wrapping the wire `(String,
- * Float)` pair via the same `.rs` / `.rf` helpers the sample uses. Useful for user code that
- * wants to materialise a daemon-supplied action descriptor into a live `RemoteButton(onClick =
- * …)`.
+ * Build a host-action [Action] from the protocol payload. Mirrors the alpha API's factory —
+ * `hostAction(payload: RemoteString, handlerId: RemoteFloat)` — wrapping the wire `(String,
+ * Float)` pair via the same `.rs` / `.rf` helpers the sample uses. (The concrete `HostAction`
+ * type went `internal` in compose-remote alpha13; `hostAction(...)` is its public replacement.)
+ * Useful for user code that wants to materialise a daemon-supplied action descriptor into a live
+ * `RemoteButton(onClick = …)`.
  */
-fun RemoteHostAction.toHostAction(): HostAction = HostAction(payload.rs, handlerId.rf)
+fun RemoteHostAction.toHostAction(): Action = hostAction(payload.rs, handlerId.rf)
 
 /**
  * `AroundComposable` extension that owns the Remote Compose surface. The extension is **always

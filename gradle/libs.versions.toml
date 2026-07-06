@@ -134,8 +134,15 @@ horologist = "0.7.15"
 #    inside `RemoteButtonImpl` at preview render time.
 #  * Renovate's `gradle-minorpatch` bump to the `compose-remote alpha11` /
 #    `wear-compose-remote alpha04` pair broke CI (Kotlin compile + daemon-
-#    harness render), so the pair is held at the last green pre-bump versions
-#    until a mutually-rebuilt pair is verified together.
+#    harness render), so the pair was previously held at the last green
+#    pre-bump versions until a mutually-rebuilt pair could be verified together.
+#    alpha13 / alpha06 is that mutually-rebuilt pair: the connector + samples
+#    were migrated to the new API (`HostAction` went `internal` — build actions
+#    via the public `hostAction(...)` factory returning `Action`;
+#    `captureSingleRemoteDocument` now takes `RemoteCreationDisplayInfo` +
+#    `RemoteDensity` + `LayoutDirection`; the `RemotePreview` composable became
+#    `RemoteContentPreview`), so the pair now tracks the latest
+#    verified-together alpha.
 compose-remote = "1.0.0-alpha13"
 wear-compose-remote = "1.0.0-alpha06"
 # Pre-release compose-ui artifacts used by `:samples:remotecompose`, which
