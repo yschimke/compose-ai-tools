@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.16.25](https://github.com/yschimke/compose-ai-tools/compare/v0.16.24...v0.16.25) (2026-07-06)
+
+
+### Features
+
+* **bundle:** externalize fonts from the bundle, rehydrate from a server cache ([#2272](https://github.com/yschimke/compose-ai-tools/issues/2272)) ([c2838f4](https://github.com/yschimke/compose-ai-tools/commit/c2838f4c7bce06fadc284caee459812f221293c7))
+
+
+### Bug Fixes
+
+* **deps:** update dependency androidx.compose.material3:material3 to v1.5.0-alpha22 ([#2270](https://github.com/yschimke/compose-ai-tools/issues/2270)) ([dc9248f](https://github.com/yschimke/compose-ai-tools/commit/dc9248f5d84aa5f71e55f634b8ecbc91546d7ee7))
+
 ## [0.16.24](https://github.com/yschimke/compose-ai-tools/compare/v0.16.23...v0.16.24) (2026-07-06)
 
 
