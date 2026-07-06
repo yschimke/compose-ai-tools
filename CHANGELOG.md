@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.16.26](https://github.com/yschimke/compose-ai-tools/compare/v0.16.25...v0.16.26) (2026-07-06)
+
+
+### Features
+
+* **design-catalog:** apply preview overrides + Figma slot placeholders across the M3 and Wear M3 catalogs ([#2281](https://github.com/yschimke/compose-ai-tools/issues/2281)) ([c07a446](https://github.com/yschimke/compose-ai-tools/commit/c07a446387ff44d26b766186beecdc5a620b26d3))
+
+
+### Bug Fixes
+
+* **samples:** build design-catalog-m3-android at compileSdk 37 for material3 alpha22 ([#2275](https://github.com/yschimke/compose-ai-tools/issues/2275)) ([3f1e13e](https://github.com/yschimke/compose-ai-tools/commit/3f1e13ebca708216af46e0f09ea84492afd2bdd5))
+* **serve:** stop the preview jumping when Live mode is toggled ([#2274](https://github.com/yschimke/compose-ai-tools/issues/2274)) ([d50974d](https://github.com/yschimke/compose-ai-tools/commit/d50974db95be6f92104465cb58dfe959e823676b))
+
 ## [0.16.25](https://github.com/yschimke/compose-ai-tools/compare/v0.16.24...v0.16.25) (2026-07-06)
 
 
