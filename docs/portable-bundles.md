@@ -138,6 +138,37 @@ The minimizer (`BundlePreviewTask.closureWalk`) already takes a flat
 `scanPaths = classDirs + jars` — it has **no Gradle dependency**, so a contrib
 producer can reuse the same reachability pruning over Bazel/Amper outputs.
 
+### Externalized resources (post-pack, opt-in) — fonts fetched, not carried
+
+A desktop-CMP catalog embeds its real font faces (Roboto / Noto Serif / Droid
+Sans Mono, ~570 KB) inside `classes/app.jar` so the live daemon rasterises text
+with the same faces the baked stickers used. Carrying those bytes on **every**
+`design-artifacts/<system>` branch — re-fetched on each catalog reload — bloats
+the ~600 KB bundle for data that rarely changes and is identical across variants.
+
+`compose-preview bundle externalize <bundle.png> --res-out <dir>` lifts them out:
+
+```
+classes/app.jar        # fonts/*.ttf REMOVED (only classes + small resources remain) → ~30 KB
+bundle.json            # externalResources: [{path, sha256, size}] records each lifted resource
+<res-out>/<sha256>     # each font's bytes, content-addressed (identical fonts dedupe to one file)
+```
+
+The publish pipeline (`generate-design-catalog.mjs`) runs it after copying the
+live bundle and carries the pool once per branch at `bundle/res/<sha256>`. A
+trusted, re-rendering server (`serve --allow-render-trusted`) reads
+`externalResources` from the fetched bundle, fetches each `bundle/res/<sha256>`
+into a **shared, content-addressed on-disk cache** (`<root>/.res-cache/`), and
+materializes them at their recorded classpath path onto the daemon classpath, so
+`getResourceAsStream("/fonts/…")` resolves exactly as it did with the fonts
+inline. Fail-closed: a declared-but-unfetchable resource skips the live tier
+(serving baked PNGs) rather than render with the font missing.
+
+Additive + post-pack (like signing): a normal `bundle pack` stays
+self-contained (`externalResources` empty), the step doesn't bump
+`schemaVersion`, and a pre-externalize reader just finds fewer resources in the
+jar. Idempotent — re-running finds the fonts already gone and changes nothing.
+
 ### Proposed additive schema (v3) for cross-build-system portability
 
 Today `ClasspathEntry` (in both `PreviewBundleFormat.kt` and the viewer's mirror

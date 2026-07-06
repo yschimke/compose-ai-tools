@@ -8,6 +8,7 @@ import java.nio.file.Files
 import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -153,7 +154,7 @@ class ServeCatalogStoreTest {
         register = { n, h -> registered[n] = h },
         trust = trust,
         fetch = fetch,
-        buildTrustedBundle = { _, _, alias, _ ->
+        buildTrustedBundle = { _, _, _, alias, _ ->
           captured = alias
           true // pretend the live host took over, so no static host is registered
         },
@@ -165,6 +166,165 @@ class ServeCatalogStoreTest {
     assertEquals(mapOf("button-filled__ideal__default__dark" to "FilledButton_Dark"), captured)
     // The live builder claimed the session, so nothing was registered as a plain static host.
     assertTrue(registered["compose-m3"] == null)
+  }
+
+  @Test
+  fun `a trusted liveBundle's externalized fonts are fetched into a cache and materialized`() {
+    // The bundle's manifest declares an externalized font (lifted out of classes/app.jar by
+    // `bundle externalize`); the store must fetch it from bundle/res/<sha>, verify the hash, cache
+    // it under <root>/.res-cache/, and hand the builder a materialized classpath dir where the font
+    // sits at its recorded path so the daemon's `getResourceAsStream("/fonts/…")` resolves.
+    val font = ByteArray(2048) { (it % 131).toByte() }
+    val sha =
+      java.security.MessageDigest.getInstance("SHA-256").digest(font).joinToString("") {
+        "%02x".format(it)
+      }
+    val bundleBytes =
+      polyglotBundle(
+        manifest =
+          """
+          {"schemaVersion":8,"backend":"desktop","previewIds":["a"],"coverPreviewId":"a",
+           "classpath":[{"kind":"module","path":"classes/app.jar"}],
+           "modulePath":":samples:design-catalog-m3","producedBy":"test",
+           "externalResources":[{"path":"fonts/Roboto-Regular.ttf","sha256":"$sha","size":2048}]}
+          """
+            .trimIndent()
+      )
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "liveBundle":{"path":"bundle/","file":"compose-m3-bundle.png"},
+       "components":[{"componentId":"Button/Filled","images":[
+         {"path":"images/button-filled/ideal__default__dark.png","theme":"dark","previewId":"FilledButton_Dark"}]}]}
+      """
+        .trimIndent()
+    val fetch: (String) -> ByteArray? = { url ->
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.toByteArray()
+        url.endsWith("bundle/compose-m3-bundle.png") -> bundleBytes
+        url.endsWith("bundle/res/$sha") -> font
+        url.endsWith(".png") -> png()
+        else -> null
+      }
+    }
+    val trust =
+      TrustStore(
+        branches = listOf(TrustedBranch("yschimke/compose-ai-tools", "design-artifacts/*"))
+      )
+    val root = tempRoot()
+    var capturedDir: File? = null
+    val store =
+      ServeCatalogStore(
+        root = root,
+        register = { n, h -> registered[n] = h },
+        trust = trust,
+        fetch = fetch,
+        buildTrustedBundle = { _, _, externalResourcesDir, _, _ ->
+          capturedDir = externalResourcesDir
+          true
+        },
+      )
+    val result = store.load("compose-m3")
+
+    assertTrue(result is ServeCatalogStore.Result.Ok)
+    // The builder got a materialized dir with the font at its recorded classpath path.
+    val dir = capturedDir
+    assertTrue(dir != null && dir.isDirectory, "expected a materialized external-resources dir")
+    val materializedFont = File(dir, "fonts/Roboto-Regular.ttf")
+    assertTrue(materializedFont.isFile, "font materialized at its classpath path")
+    assertEquals(font.toList(), materializedFont.readBytes().toList())
+    // It was cached content-addressed under the shared cache dir.
+    assertTrue(File(root, "${ServeCatalogStore.RES_CACHE_DIR}/$sha").isFile)
+  }
+
+  @Test
+  fun `a liveBundle whose externalized font fails to fetch skips the live bundle`() {
+    // Fail-closed: a declared external resource that can't be fetched must NOT stand up a live
+    // daemon (it would render with the font missing) — the store falls through to the static host.
+    val sha = "a".repeat(64)
+    val bundleBytes =
+      polyglotBundle(
+        manifest =
+          """
+          {"schemaVersion":8,"backend":"desktop","previewIds":["a"],"coverPreviewId":"a",
+           "classpath":[{"kind":"module","path":"classes/app.jar"}],
+           "modulePath":":m","producedBy":"test",
+           "externalResources":[{"path":"fonts/x.ttf","sha256":"$sha","size":10}]}
+          """
+            .trimIndent()
+      )
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "liveBundle":{"path":"bundle/","file":"compose-m3-bundle.png"},
+       "components":[{"componentId":"Button/Filled","images":[
+         {"path":"images/button-filled/ideal__default__dark.png","theme":"dark"}]}]}
+      """
+        .trimIndent()
+    val fetch: (String) -> ByteArray? = { url ->
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.toByteArray()
+        url.endsWith("bundle/compose-m3-bundle.png") -> bundleBytes
+        // bundle/res/<sha> intentionally 404s
+        url.endsWith(".png") -> png()
+        else -> null
+      }
+    }
+    val trust =
+      TrustStore(
+        branches = listOf(TrustedBranch("yschimke/compose-ai-tools", "design-artifacts/*"))
+      )
+    var builderCalled = false
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = trust,
+        fetch = fetch,
+        buildTrustedBundle = { _, _, _, _, _ ->
+          builderCalled = true
+          true
+        },
+      )
+    val result = store.load("compose-m3")
+
+    assertTrue(result is ServeCatalogStore.Result.Ok)
+    // The builder was never reached (fail-closed), and the static baked host serves instead.
+    assertFalse(builderCalled, "live builder must not run when a declared font can't be fetched")
+    assertTrue(registered["compose-m3"] != null, "static host registered as the fallback")
+  }
+
+  /** Build a minimal desktop-bundle polyglot (PNG cover + zip) with the given bundle.json. */
+  private fun polyglotBundle(manifest: String): ByteArray {
+    val cover = png()
+    val appJar =
+      ByteArrayOutputStream()
+        .also { baos ->
+          java.util.zip.ZipOutputStream(baos).use { z ->
+            z.putNextEntry(java.util.zip.ZipEntry("com/example/CatalogKt.class"))
+            z.write(byteArrayOf(0xCA.toByte(), 0xFE.toByte(), 0, 0))
+            z.closeEntry()
+          }
+        }
+        .toByteArray()
+    val zip =
+      ByteArrayOutputStream()
+        .also { baos ->
+          java.util.zip.ZipOutputStream(baos).use { z ->
+            for ((name, bytes) in
+              linkedMapOf(
+                "bundle.json" to manifest.toByteArray(),
+                "previews.json" to """{"previews":[{"id":"a","functionName":"A"}]}""".toByteArray(),
+                "classes/app.jar" to appJar,
+              )) {
+              z.putNextEntry(java.util.zip.ZipEntry(name))
+              z.write(bytes)
+              z.closeEntry()
+            }
+          }
+        }
+        .toByteArray()
+    return cover + zip
   }
 
   @Test
