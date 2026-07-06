@@ -470,6 +470,24 @@ internal object ComposePreviewTasks {
       previewsJson.set(previewOutputDir.map { it.file("previews.json") })
       moduleClassDirs.from(sourceClassDirs)
       moduleResourcesDir.set(moduleResourcesDirProvider)
+      // Also wire the processed-resource dirs as an EXECUTION-time FileCollection:
+      // [moduleResourcesDir]
+      // above is resolved by a config-time `isDirectory` probe, so on a clean configuration-cached
+      // build it snapshots as null before `processResources` runs and the jar ships classes-only —
+      // fine for a baked snapshot, but a live re-render from the bundle then can't load a
+      // `@Preview`'s
+      // classpath resources (e.g. `/fonts/*.ttf`). This collection resolves at execution (after the
+      // resource-processing dependency below), so it reliably carries them into `classes/app.jar`.
+      // Non-existent candidates are skipped when packing, so this is a harmless no-op on the
+      // Android
+      // path (which wires its own source resource roots separately).
+      moduleResourceRoots.from(
+        project.files(
+          project.layout.buildDirectory.dir("resources/main"),
+          project.layout.buildDirectory.dir("processedResources/jvm/main"),
+          project.layout.buildDirectory.dir("processedResources/desktop/main"),
+        )
+      )
       depJarFiles?.let { dependencyJars.from(it) }
       dependencyCoordinates.set(coordMapProvider)
       // (v6 Android) Inputs for protolayout resource carriage; null on desktop (no-op). The
@@ -524,6 +542,18 @@ internal object ComposePreviewTasks {
       // when only bundle is requested — render still doesn't run unless the caller asks for it.
       mustRunAfter("composePreviewRender")
       dependsOn(discoverTaskName)
+      // Pack the module's PROCESSED resources into `classes/app.jar` ([moduleResourcesDir] points
+      // at
+      // `build/resources/main`), so a bundle carries the runtime resources a live re-render needs —
+      // e.g. a `@Preview` theme that loads `/fonts/*.ttf` from the classpath. Without this
+      // dependency
+      // the bundle task can run before `processResources` on a clean build, so `moduleResourcesDir`
+      // resolves empty and the jar ships classes-only: the baked render (which DOES depend on
+      // resource processing) is fine, but launching a daemon from the bundle then fails at
+      // composition (`ExceptionInInitializerError`: font resource missing) and the live stream
+      // falls
+      // back to a static snapshot. Same candidate set the render/daemon tasks depend on.
+      dependsOn(project.tasks.matching { it.name in DESKTOP_RESOURCE_TASK_CANDIDATES })
     }
   }
 
