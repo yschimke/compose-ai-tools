@@ -27,10 +27,15 @@ composePreview {
 
 android {
   namespace = "com.example.designcatalogm3android"
+  // material3 1.5.0-alpha22 (the inset-focus-ring artifact this supplement rides) jumped onto the
+  // Compose 1.12.0-alpha line, whose AAR metadata declares minCompileSdk 37 — so this module
+  // diverges from the repo's default `compileSdk = 36` (Robolectric stays pinned to 35 above, since
+  // the project toolchain is JDK 17). Same divergence as `:samples:design-catalog-remote-m3`.
+  compileSdk = 37
 
   defaultConfig {
     applicationId = "com.example.designcatalogm3android"
-    targetSdk = 36
+    targetSdk = 37
     versionCode = 1
     versionName = "1.0"
   }

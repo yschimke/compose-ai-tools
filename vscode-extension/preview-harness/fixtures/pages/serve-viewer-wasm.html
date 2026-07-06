@@ -345,6 +345,18 @@ a:hover { text-decoration: underline; }
   canvas.addEventListener("keyup", function (ev) { keyInput("keyUp", ev); });
   function openStream() {
     root.setAttribute("data-mode", "live");
+    // Seed the canvas with the current snapshot at its natural size *before* the img→canvas
+    // swap. Otherwise the canvas shows at its default 300x150 box until the first frame lands
+    // (drawFrame sets its real size), so the stage collapses then snaps back — the same jump
+    // the Wasm tier avoids by holding the snapshot's layout slot. The live frames are the same
+    // preview at the same dimensions, so this box is also the final one — no shift either way —
+    // and drawing the snapshot in means no blank flash while "connecting…". The first frame
+    // overwrites it.
+    if (img.naturalWidth && img.naturalHeight) {
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      try { canvas.getContext("2d").drawImage(img, 0, 0); } catch (e) {}
+    }
     img.hidden = true;
     canvas.hidden = false;
     status.textContent = "connecting…";

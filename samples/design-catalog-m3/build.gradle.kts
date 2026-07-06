@@ -29,6 +29,12 @@ dependencies {
   // The shared, authoritative M3 component set (its `desktop` JVM variant).
   implementation(project(":samples:design-catalog-m3-shared"))
 
+  // `previewOverride*` for the scaffold template's editable knobs (title / FAB / per-row text).
+  // The shared module keeps this JVM-only runtime as a non-`api` desktop dependency, so this
+  // consumer declares it directly. `PreviewSlot` is already reachable via the shared module's
+  // `api(":slot-preview-runtime")`.
+  implementation(project(":data-preview-overrides-runtime"))
+
   // Desktop CMP compose — mirrors the sibling `:samples:cmp` desktop sample.
   implementation(compose.desktop.currentOs)
   implementation(libs.jetbrains.compose.material3)

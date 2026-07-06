@@ -67,5 +67,13 @@ kotlin {
       // sheet (`:samples:design-catalog-m3`) can provide `LocalSlotMode` for its slot-mode sticker.
       api(project(":slot-preview-runtime"))
     }
+
+    // The named-override runtime (`previewOverride*`) is a plain JVM artifact with no wasm klib, so
+    // it can only back the desktop `actual`s of the `catalogOverride*` wrappers (the `wasmJs`
+    // actuals return the author default). Desktop is the target the renderer / daemon builds, so
+    // that's exactly where the knobs resolve against real daemon seeds.
+    val desktopMain by getting {
+      dependencies { implementation(project(":data-preview-overrides-runtime")) }
+    }
   }
 }
