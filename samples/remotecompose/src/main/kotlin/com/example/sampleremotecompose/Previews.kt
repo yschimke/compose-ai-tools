@@ -3,7 +3,7 @@
 package com.example.sampleremotecompose
 
 import androidx.compose.remote.creation.profile.RcPlatformProfiles
-import androidx.compose.remote.tooling.preview.RemotePreview
+import androidx.compose.remote.tooling.preview.RemoteContentPreview
 import androidx.compose.remote.tooling.preview.RemotePreviewWrapper
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
@@ -17,11 +17,11 @@ import androidx.compose.ui.tooling.preview.PreviewWrapper
  */
 
 // ---------------------------------------------------------------------------
-// Approach 1 — `RemotePreview(profile = ...) { ... }` called inside the
+// Approach 1 — `RemoteContentPreview(profile = ...) { ... }` called inside the
 // `@Preview`-annotated UI composable.
 //
 // Matches the `remote-material3/samples` pattern, where each `*Preview`
-// function wraps its component with an explicit `RemotePreview { Container
+// function wraps its component with an explicit `RemoteContentPreview { Container
 // { ... } }`. Verbose for many previews but works today — no reliance on
 // the `@PreviewWrapper` tooling annotation (which only exists in
 // compose-ui 1.11.0-beta+ and isn't yet understood by Android Studio
@@ -31,7 +31,7 @@ import androidx.compose.ui.tooling.preview.PreviewWrapper
 @Preview(showBackground = true, widthDp = 200, heightDp = 200)
 @Composable
 fun RemoteButtonEnabledPreview() {
-    RemotePreview(profile = RcPlatformProfiles.ANDROIDX) {
+    RemoteContentPreview(profile = RcPlatformProfiles.ANDROIDX) {
         Container { RemoteButtonEnabled() }
     }
 }
@@ -39,7 +39,7 @@ fun RemoteButtonEnabledPreview() {
 @Preview(showBackground = true, widthDp = 200, heightDp = 200)
 @Composable
 fun RemoteButtonWithShapePreview() {
-    RemotePreview(profile = RcPlatformProfiles.ANDROIDX) {
+    RemoteContentPreview(profile = RcPlatformProfiles.ANDROIDX) {
         Container { RemoteButtonWithShape() }
     }
 }

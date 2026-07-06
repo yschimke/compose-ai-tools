@@ -1,5 +1,5 @@
 [versions]
-kotlin = "2.3.21"
+kotlin = "2.4.0"
 # Kotlin language/api floor for published modules. Set lower than `kotlin`
 # so consumers on an older Kotlin can still link against our artifacts —
 # tapmoc enforces this and fails the build if a transitive API dep raises
@@ -52,6 +52,10 @@ compose-multiplatform = "1.10.3"
 # 1.12.0-alpha, which requires compileSdk 37 and would drag the whole module's
 # floor forward. Drop this and revert to `libs.compose.material3` once material3
 # 1.5.0 is stable in `compose-bom-stable`.
+#  * Renovate's `gradle-minorpatch` bump to alpha22 crossed that boundary and
+#    pulled `androidx.compose.animation:animation-core-android:1.12.0-alpha03`
+#    (minCompileSdk 37), failing `:samples:design-catalog-m3-android`'s
+#    `checkDebugAarMetadata` at compileSdk 36 — so the pin stays at alpha18.
 compose-material3-catalog = "1.5.0-alpha18"
 # JetBrains Compose Multiplatform material3 tracks its own line: the
 # `org.jetbrains.compose` 1.10.3 plugin pins `compose.material3` to 1.9.0
@@ -134,10 +138,17 @@ horologist = "0.7.15"
 #    inside `RemoteButtonImpl` at preview render time.
 #  * Renovate's `gradle-minorpatch` bump to the `compose-remote alpha11` /
 #    `wear-compose-remote alpha04` pair broke CI (Kotlin compile + daemon-
-#    harness render), so the pair is held at the last green pre-bump versions
-#    until a mutually-rebuilt pair is verified together.
-compose-remote = "1.0.0-alpha010"
-wear-compose-remote = "1.0.0-alpha03"
+#    harness render), so the pair was previously held at the last green
+#    pre-bump versions until a mutually-rebuilt pair could be verified together.
+#    alpha13 / alpha06 is that mutually-rebuilt pair: the connector + samples
+#    were migrated to the new API (`HostAction` went `internal` — build actions
+#    via the public `hostAction(...)` factory returning `Action`;
+#    `captureSingleRemoteDocument` now takes `RemoteCreationDisplayInfo` +
+#    `RemoteDensity` + `LayoutDirection`; the `RemotePreview` composable became
+#    `RemoteContentPreview`), so the pair now tracks the latest
+#    verified-together alpha.
+compose-remote = "1.0.0-alpha13"
+wear-compose-remote = "1.0.0-alpha06"
 # Pre-release compose-ui artifacts used by `:samples:remotecompose`, which
 # deliberately diverges from `compose-bom-stable` (1.10.x) to track what
 # wear-compose-remote-material3 alpha pulls in transitively — compose 1.11.0+
@@ -190,7 +201,7 @@ material-kolor = "4.0.5"
 # subtree (see `settings.gradle.kts`) — the rest of the repo can keep
 # building under JDK 17. Kotlin 2.3.21 is supported per Metro's
 # compatibility table (`docs/compatibility.md` upstream).
-metro = "1.1.1"
+metro = "1.2.1"
 # Jake Wharton's Mosaic — Compose-based TUI library, used by the `:tui-cli` module.
 # 0.18.0-1 is a release published by the fork at `yschimke/mosaic@compose-ai-tools` under the
 # `ee.schimke.composeai.mosaic` group, which adds the `RawText` + `Image` composables proposed
@@ -202,7 +213,7 @@ metro = "1.1.1"
 mosaic = "0.18.0-1"
 # Ktor HTTP client (+ OkHttp engine) for downloading bundles given a URL. Ktor 3.x is current and
 # compatible with Kotlin 2.3 / coroutines 1.11; OkHttp 5.x is the stable engine backing it.
-ktor = "3.5.0"
+ktor = "3.5.1"
 okhttp = "5.4.0"
 # Pure-Java mDNS/DNS-SD (Bonjour) responder used by `compose-preview serve --lan` to advertise the
 # `_composeai._tcp` service the mobile/wear clients browse for. No slf4j dep (uses java.util.logging),
@@ -221,8 +232,8 @@ dadb = "1.2.10"
 # protobuf message classes (pure-Kotlin codegen — no `protoc` — `rpcRole = none`, messages only); the
 # gRPC server is bound by hand into grpc-netty via grpc-java's `ServerCalls` + a tiny Wire
 # `MethodDescriptor.Marshaller`. (Wire dropped its own server-side gRPC artifact after 4.9.11.)
-grpc = "1.82.0"
-wire = "6.4.0"
+grpc = "1.82.1"
+wire = "6.4.1"
 
 [libraries]
 dadb = { module = "dev.mobile:dadb", version.ref = "dadb" }

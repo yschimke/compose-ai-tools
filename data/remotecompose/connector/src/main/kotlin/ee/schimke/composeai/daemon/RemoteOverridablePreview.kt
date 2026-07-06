@@ -2,7 +2,8 @@
 
 package ee.schimke.composeai.daemon
 
-import androidx.compose.remote.creation.CreationDisplayInfo
+import androidx.compose.remote.creation.compose.capture.RemoteCreationDisplayInfo
+import androidx.compose.remote.creation.compose.capture.RemoteDensity
 import androidx.compose.remote.creation.compose.capture.captureSingleRemoteDocument
 import androidx.compose.remote.creation.compose.layout.RemoteComposable
 import androidx.compose.remote.creation.profile.Profile
@@ -14,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.tooling.preview.PreviewWrapperProvider
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import ee.schimke.composeai.data.render.IrSidecarChannel
@@ -77,7 +79,7 @@ fun RemoteOverridablePreview(
 
   val displayMetrics = context.resources.displayMetrics
   val displayInfo =
-    CreationDisplayInfo(
+    RemoteCreationDisplayInfo(
       displayMetrics.widthPixels,
       displayMetrics.heightPixels,
       displayMetrics.densityDpi,
@@ -88,7 +90,16 @@ fun RemoteOverridablePreview(
   val remoteDocument =
     remember(profile, content) {
       runBlocking {
-        val bytes = captureSingleRemoteDocument(context, displayInfo, profile, content).bytes
+        val bytes =
+          captureSingleRemoteDocument(
+              context,
+              displayInfo,
+              RemoteDensity.from(displayInfo, context),
+              LayoutDirection.Ltr,
+              profile = profile,
+              content = content,
+            )
+            .bytes
         // Offer the captured RC doc so a bundle can carry + replay it without this composable's
         // bytecode; the render harness drains it into the `renders/<stem>.rcdoc` sidecar that
         // `BundlePreviewTask.resolvePreviewIr` packs. No-op outside a daemon/test render (no
@@ -107,8 +118,8 @@ fun RemoteOverridablePreview(
 
   RemoteDocumentPlayer(
     document = remoteDocument.document,
-    documentWidth = displayInfo.width,
-    documentHeight = displayInfo.height,
+    documentWidth = displayMetrics.widthPixels,
+    documentHeight = displayMetrics.heightPixels,
     modifier = modifier,
     init = { player -> applyConnectorOverrides(player.stateUpdater, seededOverrides) },
   )
