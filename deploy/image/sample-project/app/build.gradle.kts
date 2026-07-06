@@ -8,9 +8,9 @@
 // (no material3) to avoid the Compose-MP material3 version-skew the upstream
 // catalog calls out, and to keep the dependency graph tiny.
 plugins {
-  kotlin("jvm") version "2.3.21"
+  kotlin("jvm") version "2.4.0"
   id("org.jetbrains.compose") version "1.10.3"
-  id("org.jetbrains.kotlin.plugin.compose") version "2.3.21"
+  id("org.jetbrains.kotlin.plugin.compose") version "2.4.0"
 }
 
 repositories {
