@@ -294,6 +294,82 @@ class ServeCatalogStoreTest {
     assertTrue(registered["compose-m3"] != null, "static host registered as the fallback")
   }
 
+  @Test
+  fun `a same-size but corrupt cache entry is re-fetched, not trusted`() {
+    // The cache key is a sha256, so a pre-existing cache file with the right size but wrong bytes
+    // (a partial write / disk fault) must be re-fetched and repaired — not silently materialized.
+    val font = ByteArray(2048) { (it % 131).toByte() }
+    val sha = shaHex(font)
+    val bundleBytes =
+      polyglotBundle(
+        manifest =
+          """
+          {"schemaVersion":8,"backend":"desktop","previewIds":["a"],"coverPreviewId":"a",
+           "classpath":[{"kind":"module","path":"classes/app.jar"}],
+           "modulePath":":m","producedBy":"test",
+           "externalResources":[{"path":"fonts/Roboto-Regular.ttf","sha256":"$sha","size":2048}]}
+          """
+            .trimIndent()
+      )
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "liveBundle":{"path":"bundle/","file":"compose-m3-bundle.png"},
+       "components":[{"componentId":"Button/Filled","images":[
+         {"path":"images/button-filled/ideal__default__dark.png","theme":"dark","previewId":"FilledButton_Dark"}]}]}
+      """
+        .trimIndent()
+    var resFetches = 0
+    val fetch: (String) -> ByteArray? = { url ->
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.toByteArray()
+        url.endsWith("bundle/compose-m3-bundle.png") -> bundleBytes
+        url.endsWith("bundle/res/$sha") -> {
+          resFetches++
+          font
+        }
+        url.endsWith(".png") -> png()
+        else -> null
+      }
+    }
+    val trust =
+      TrustStore(
+        branches = listOf(TrustedBranch("yschimke/compose-ai-tools", "design-artifacts/*"))
+      )
+    val root = tempRoot()
+    // Pre-seed the shared cache with a same-size but WRONG-content entry.
+    val cacheFile =
+      File(root, "${ServeCatalogStore.RES_CACHE_DIR}/$sha").apply {
+        parentFile.mkdirs()
+        writeBytes(ByteArray(2048) { 0 })
+      }
+    var capturedDir: File? = null
+    val store =
+      ServeCatalogStore(
+        root = root,
+        register = { n, h -> registered[n] = h },
+        trust = trust,
+        fetch = fetch,
+        buildTrustedBundle = { _, _, externalResourcesDir, _, _ ->
+          capturedDir = externalResourcesDir
+          true
+        },
+      )
+    store.load("compose-m3")
+
+    // The corrupt entry was refetched (not trusted by size alone) and the cache repaired.
+    assertEquals(1, resFetches)
+    assertEquals(font.toList(), cacheFile.readBytes().toList())
+    // The materialized font on the classpath is the correct bytes.
+    val materializedFont = File(capturedDir!!, "fonts/Roboto-Regular.ttf")
+    assertEquals(font.toList(), materializedFont.readBytes().toList())
+  }
+
+  private fun shaHex(bytes: ByteArray) =
+    java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") {
+      "%02x".format(it)
+    }
+
   /** Build a minimal desktop-bundle polyglot (PNG cover + zip) with the given bundle.json. */
   private fun polyglotBundle(manifest: String): ByteArray {
     val cover = png()

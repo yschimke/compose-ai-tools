@@ -402,10 +402,19 @@ class ServeCatalogStore(
         )
         return ResRehydrate.Unavailable
       }
-      // Content-addressed cache: fetch once, reuse across systems + reloads. A cache hit is trusted
-      // by (sha, size); a corrupt/short file is refetched.
+      // Content-addressed cache: fetch once, reuse across systems + reloads. The cache key IS the
+      // sha256, so a hit is only trusted after its bytes hash back to that key — a same-length but
+      // corrupt entry (partial write, disk fault) must be refetched, not silently put on the
+      // classpath. Verifying on read is cheap (fonts are small, reloads infrequent) and is the
+      // whole
+      // point of a content-addressed store.
       val cached = File(cacheDir, sha)
-      if (!cached.isFile || cached.length() != res.size) {
+      val cacheValid =
+        cached.isFile &&
+          cached.length() == res.size &&
+          runCatching { sha256Hex(cached.readBytes()) == sha }.getOrDefault(false)
+      if (!cacheValid) {
+        cached.delete()
         val url =
           if (prefix.isEmpty()) "$base$RES_POOL_DIR/$sha" else "$base$prefix/$RES_POOL_DIR/$sha"
         val bytes = runCatching { fetch(url) }.getOrNull()
