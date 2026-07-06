@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.16.23](https://github.com/yschimke/compose-ai-tools/compare/v0.16.22...v0.16.23) (2026-07-06)
+
+
+### Bug Fixes
+
+* **serve:** keep a live catalog static-snapshot + trusted, live on demand ([#2263](https://github.com/yschimke/compose-ai-tools/issues/2263)) ([8984252](https://github.com/yschimke/compose-ai-tools/commit/8984252ae789f18fc11ef682ac8b520adcddbc77))
+* **slots:** autosize the slot placeholder label to fit its box ([#2261](https://github.com/yschimke/compose-ai-tools/issues/2261)) ([b877e3f](https://github.com/yschimke/compose-ai-tools/commit/b877e3f87dade5ad404c75b4b896254344eecb6f))
+
 ## [0.16.22](https://github.com/yschimke/compose-ai-tools/compare/v0.16.21...v0.16.22) (2026-07-05)
 
 
