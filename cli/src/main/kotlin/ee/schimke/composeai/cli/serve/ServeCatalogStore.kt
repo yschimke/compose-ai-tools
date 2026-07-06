@@ -1,8 +1,10 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.cli.BundleReader
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -54,13 +56,20 @@ class ServeCatalogStore(
    * and the plain static registration are skipped); false ⇒ fall back to [buildTrustedSource], then
    * the static catalog. Default ⇒ never. The callback owns the `--allow-render-trusted` gate; this
    * store only reaches it for an already-`Trusted` catalog, and only after the whole declared
-   * bundle file fetched cleanly (fail-closed, like [fetchWasmApp]).
+   * bundle file fetched cleanly (fail-closed, like [fetchWasmApp]). `externalResourcesDir` is the
+   * rehydrated font/resource pool the daemon adds to its classpath (see
+   * [rehydrateExternalResources]) — null when the bundle carried its resources inline (a
+   * self-contained pack).
    */
   private val buildTrustedBundle:
     (
-      system: String, bundleFile: File, alias: Map<String, String>, bakedFallback: () -> ServeHost,
+      system: String,
+      bundleFile: File,
+      externalResourcesDir: File?,
+      alias: Map<String, String>,
+      bakedFallback: () -> ServeHost,
     ) -> Boolean =
-    { _, _, _, _ ->
+    { _, _, _, _, _ ->
       false
     },
   /**
@@ -223,8 +232,22 @@ class ServeCatalogStore(
     val liveBundle = catalog.liveBundle
     if (verdict is BundleVerifier.Verdict.Trusted && liveBundle != null) {
       val bundleFile = fetchLiveBundle(liveBundle, base, dir, safe)
-      if (bundleFile != null && buildTrustedBundle(safe, bundleFile, alias, bakedFallback)) {
-        return Result.Ok(safe, count, "${BundleVerifier.summary(verdict)} (live bundle)")
+      if (bundleFile != null) {
+        // Rehydrate any resources the bundle externalized (fonts lifted out of classes/app.jar)
+        // from
+        // the branch's content-addressed pool into a shared cache + a materialized classpath dir.
+        // Fail-closed: a declared-but-unfetchable resource means the daemon would render with the
+        // fonts missing (the exact ExceptionInInitializerError this feature exists to avoid), so we
+        // skip the live bundle and fall through to the source/static path rather than serve a
+        // broken
+        // live tier.
+        when (val res = rehydrateExternalResources(bundleFile, base, liveBundle.path, dir, safe)) {
+          is ResRehydrate.Ready ->
+            if (buildTrustedBundle(safe, bundleFile, res.dir, alias, bakedFallback)) {
+              return Result.Ok(safe, count, "${BundleVerifier.summary(verdict)} (live bundle)")
+            }
+          ResRehydrate.Unavailable -> {} // fall through to source/static
+        }
       }
     }
 
@@ -320,6 +343,114 @@ class ServeCatalogStore(
     target.parentFile?.mkdirs()
     target.writeBytes(bytes)
     return target
+  }
+
+  /**
+   * Outcome of rehydrating a live bundle's externalized resources. See
+   * [rehydrateExternalResources].
+   */
+  private sealed interface ResRehydrate {
+    /**
+     * Ready to serve: [dir] is the materialized classpath dir, or null when nothing was external.
+     */
+    data class Ready(val dir: File?) : ResRehydrate
+
+    /**
+     * A resource was declared but couldn't be fetched/verified — the live bundle must be skipped.
+     */
+    data object Unavailable : ResRehydrate
+  }
+
+  /**
+   * Rehydrate the resources [bundleFile]'s manifest lifted out with `bundle externalize` (fonts,
+   * recorded in `externalResources` by name+sha256+size). Each is fetched — once, shared across
+   * systems + catalog reloads — into a content-addressed cache under `<root>/$RES_CACHE_DIR/<sha>`,
+   * verified against its sha256, then materialized at its recorded classpath [path] under
+   * `<dir>/$RES_MATERIALIZED_DIR/` so the daemon's classloader resolves `/fonts/…` exactly as it
+   * did with the fonts inline. The pool lives beside the bundle on the trusted branch
+   * (`<liveBundle.path>/$RES_POOL_DIR/<sha>`), enumerated by the trusted manifest (not client
+   * input) and each write path-contained.
+   *
+   * Returns [ResRehydrate.Ready] with a null dir when the bundle externalized nothing
+   * (self-contained — the caller passes no extra classpath), the materialized dir when it did, or
+   * [ResRehydrate.Unavailable] (fail-closed) if any declared resource has a bad sha/path or can't
+   * be fetched/verified — the caller then skips the live bundle rather than run the daemon with the
+   * fonts missing.
+   */
+  private fun rehydrateExternalResources(
+    bundleFile: File,
+    base: String,
+    bundlePathPrefix: String,
+    dir: File,
+    system: String,
+  ): ResRehydrate {
+    val resources =
+      runCatching { BundleReader.readMetadata(bundleFile).manifest.externalResources }.getOrNull()
+        ?: emptyList()
+    if (resources.isEmpty()) return ResRehydrate.Ready(null)
+
+    val cacheDir = File(root, RES_CACHE_DIR).apply { mkdirs() }
+    val materialized = File(dir, RES_MATERIALIZED_DIR)
+    val matRoot = materialized.canonicalFile.toPath()
+    val prefix = bundlePathPrefix.trim('/')
+
+    for (res in resources) {
+      val sha = res.sha256
+      if (sha.length != 64 || sha.any { it !in '0'..'9' && it !in 'a'..'f' }) {
+        System.err.println(
+          "serve: $system external resource '$sha' is not a sha256 — skipping live bundle"
+        )
+        return ResRehydrate.Unavailable
+      }
+      // Content-addressed cache: fetch once, reuse across systems + reloads. The cache key IS the
+      // sha256, so a hit is only trusted after its bytes hash back to that key — a same-length but
+      // corrupt entry (partial write, disk fault) must be refetched, not silently put on the
+      // classpath. Verifying on read is cheap (fonts are small, reloads infrequent) and is the
+      // whole
+      // point of a content-addressed store.
+      val cached = File(cacheDir, sha)
+      val cacheValid =
+        cached.isFile &&
+          cached.length() == res.size &&
+          runCatching { sha256Hex(cached.readBytes()) == sha }.getOrDefault(false)
+      if (!cacheValid) {
+        cached.delete()
+        val url =
+          if (prefix.isEmpty()) "$base$RES_POOL_DIR/$sha" else "$base$prefix/$RES_POOL_DIR/$sha"
+        val bytes = runCatching { fetch(url) }.getOrNull()
+        if (bytes == null) {
+          System.err.println(
+            "serve: $system external resource fetch failed ($url) — skipping live bundle"
+          )
+          return ResRehydrate.Unavailable
+        }
+        if (sha256Hex(bytes) != sha) {
+          System.err.println(
+            "serve: $system external resource sha256 mismatch ($url) — skipping live bundle"
+          )
+          return ResRehydrate.Unavailable
+        }
+        cached.parentFile?.mkdirs()
+        cached.writeBytes(bytes)
+      }
+      // Materialize at the recorded classpath path (path-contained — reject traversal/absolute).
+      if (res.path.isBlank() || res.path.startsWith("/") || ".." in res.path.split("/")) {
+        System.err.println(
+          "serve: $system external resource path '${res.path}' is invalid — skipping live bundle"
+        )
+        return ResRehydrate.Unavailable
+      }
+      val dest = File(materialized, res.path)
+      if (!dest.canonicalFile.toPath().startsWith(matRoot)) {
+        System.err.println(
+          "serve: $system external resource path '${res.path}' escapes — skipping live bundle"
+        )
+        return ResRehydrate.Unavailable
+      }
+      dest.parentFile?.mkdirs()
+      cached.copyTo(dest, overwrite = true)
+    }
+    return ResRehydrate.Ready(materialized)
   }
 
   /**
@@ -423,6 +554,29 @@ class ServeCatalogStore(
     private const val MAX_WASM_FILES = 64
     /** Local subdir a catalog's `liveBundle` file is fetched into (`<dir>/bundle/<file>`). */
     const val LIVE_BUNDLE_DIR = "bundle"
+
+    /**
+     * Branch-relative subdir (under the `liveBundle.path`) holding the bundle's externalized
+     * resources, content-addressed by sha256 (`<liveBundle.path>/res/<sha>`). Written by `bundle
+     * externalize`'s `--res-out` publish step; fetched by [rehydrateExternalResources].
+     */
+    const val RES_POOL_DIR = "res"
+
+    /**
+     * Shared, content-addressed on-disk cache for externalized resources, under the store root
+     * (`<root>/.res-cache/<sha>`). Shared across systems + reloads so a font fetched for one
+     * catalog is reused by the next.
+     */
+    const val RES_CACHE_DIR = ".res-cache"
+
+    /**
+     * Per-system subdir the rehydrated resources are materialized into at their classpath paths.
+     */
+    const val RES_MATERIALIZED_DIR = "bundle-res"
+
+    /** Lowercase-hex SHA-256 of [bytes] — the content-address a rehydrated resource is keyed by. */
+    private fun sha256Hex(bytes: ByteArray): String =
+      MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
     /**
      * The single-path-segment preview id for a catalog image path. The serve routes (`/p/{name}`,

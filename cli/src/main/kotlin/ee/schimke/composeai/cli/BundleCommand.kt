@@ -63,6 +63,7 @@ class BundleCommand(args: List<String>) : Command(args) {
       "inspect" -> InspectSubcommand(subArgs).run()
       "extract" -> ExtractSubcommand(subArgs).run()
       "embed" -> EmbedSubcommand(subArgs).run()
+      "externalize" -> ExternalizeSubcommand(subArgs).run()
       "render" -> RenderSubcommand(subArgs).run()
       "keygen" -> KeygenSubcommand(subArgs).run()
       "sign" -> SignSubcommand(subArgs).run()
@@ -95,6 +96,7 @@ class BundleCommand(args: List<String>) : Command(args) {
         compose-preview bundle inspect <bundle.png | URL>
         compose-preview bundle extract <bundle.png | URL> [-o <dir>]
         compose-preview bundle embed   <bundle.png | URL> [-o <dir|file.png>] [--title T] [--external-images] [--in-bundle]
+        compose-preview bundle externalize <bundle.png | URL> --res-out <dir> [-o <file.png>] [--ext ttf,otf,woff,woff2] [--json]
         compose-preview bundle render  <bundle.png | URL> [-o <dir>]   (v1: stub — prints what would render)
         compose-preview bundle keygen  [-o <key.pem>] [--key-id <id>]  (mint an Ed25519 signing keypair)
         compose-preview bundle sign    <bundle.png> --key <private-key> --key-id <id> [--producer <name>]
@@ -145,6 +147,17 @@ class BundleCommand(args: List<String>) : Command(args) {
         --in-bundle         Embed the web resources into the bundle's own zip under web/ instead of
                             a loose directory — the .png stays a valid polyglot and now carries a
                             web/index.html you can open after unzipping. Idempotent.
+
+      Externalize flags:
+        --res-out <dir>     Directory the lifted resources are written to, content-addressed by
+                            sha256 (`<dir>/<sha256>`). Required. The publish pipeline carries this
+                            pool once per branch and a re-rendering server rehydrates from it.
+        -o, --output <file> Write the externalized bundle here instead of rewriting in place
+                            (required for a URL input, which is a temp file).
+        --ext <list>        Comma-separated file extensions to lift out. Default: ttf,otf,woff,woff2
+                            (the fonts that dominate a catalog bundle).
+        --json              Print a machine-readable summary (bundle path, res dir, externalized
+                            {path,sha256,size} list) instead of the human summary.
       """
         .trimIndent()
     )
@@ -1011,7 +1024,16 @@ internal object BundleReader {
      * `BundleDataExtension` in `PreviewBundleFormat.kt`.
      */
     val dataExtensions: List<DataExtension> = emptyList(),
+    /**
+     * v8 post-pack: resources lifted out of `classes/app.jar` by `bundle externalize` and fetched
+     * on demand (fonts, …). Empty on a normal self-contained bundle. See `BundleExternalResource`
+     * in `PreviewBundleFormat.kt`.
+     */
+    val externalResources: List<ExternalResource> = emptyList(),
   )
+
+  /** v8 mirror of `BundleExternalResource` in `PreviewBundleFormat.kt`. */
+  @Serializable data class ExternalResource(val path: String, val sha256: String, val size: Long)
 
   /** v7+ mirror of `BundleDataExtension` in `PreviewBundleFormat.kt`. */
   @Serializable data class DataExtension(val extensionId: String, val path: String)

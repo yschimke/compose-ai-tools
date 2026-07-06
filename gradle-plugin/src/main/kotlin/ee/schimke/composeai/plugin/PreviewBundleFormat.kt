@@ -212,6 +212,42 @@ data class BundleManifest(
    * both resolve inside the bundle (the producer's original module-relative report paths don't).
    */
   val dataExtensions: List<BundleDataExtension> = emptyList(),
+  /**
+   * (v8, post-pack) Large binary resources (fonts, …) that were **lifted out** of `classes/app.jar`
+   * by the `compose-preview bundle externalize` step and are fetched on demand instead of carried
+   * inline. Each entry records the resource's original classpath path (e.g.
+   * `fonts/Roboto-Regular.ttf`), the lowercase-hex SHA-256 of its bytes, and its size. The
+   * externalize step publishes the bytes content-addressed (by [BundleExternalResource.sha256])
+   * beside the bundle, and a re-rendering server rehydrates them into a shared hash-keyed cache and
+   * back onto the daemon classpath at their recorded [BundleExternalResource.path], so
+   * `getResourceAsStream("/fonts/…")` resolves exactly as it did with the fonts inline. Empty on a
+   * normal pack (the bundle stays self-contained) — populated only after an explicit externalize,
+   * which is why it's additive and doesn't bump [schemaVersion] (a post-pack transform, like
+   * signing). A pre-externalize reader ignores it and just finds fewer resources in the jar; a
+   * font-parity render needs the rehydration. See [BundleExternalResource].
+   */
+  val externalResources: List<BundleExternalResource> = emptyList(),
+)
+
+/**
+ * One resource lifted out of `classes/app.jar` by `bundle externalize` and fetched on demand. See
+ * [BundleManifest.externalResources]. The bytes are published content-addressed by [sha256] beside
+ * the bundle (`bundle/res/<sha256>` on the design-artifacts branch); a server rehydrates them onto
+ * the daemon classpath at [path] so resource lookups resolve unchanged.
+ */
+@Serializable
+data class BundleExternalResource(
+  /**
+   * The resource's classpath-relative path inside the original jar, e.g.
+   * `fonts/Roboto-Regular.ttf`.
+   */
+  val path: String,
+  /**
+   * Lowercase-hex SHA-256 of the resource bytes — the content-addressed key it's published under.
+   */
+  val sha256: String,
+  /** Size of the resource in bytes, for diagnostics + a fetch sanity check. */
+  val size: Long,
 )
 
 /**

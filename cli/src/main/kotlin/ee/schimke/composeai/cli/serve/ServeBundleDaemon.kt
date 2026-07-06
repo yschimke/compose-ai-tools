@@ -48,6 +48,13 @@ internal object ServeBundleDaemon {
     destDir: File,
     system: String,
     offline: Boolean = false,
+    /**
+     * Extra classpath directories prepended after the bundle's own `classes/` — the rehydrated
+     * [BundleReader.Manifest.externalResources] pool (fonts lifted out of `classes/app.jar` by
+     * `bundle externalize`, materialized at their original resource paths so
+     * `getResourceAsStream("/fonts/…")` resolves). Empty for a self-contained bundle.
+     */
+    extraClasspathDirs: List<File> = emptyList(),
     fileSystem: FileSystem = SystemFileSystem,
     onLog: (String) -> Unit = { System.err.println("[serve bundle] $it") },
   ): ServeSessionState? {
@@ -107,10 +114,11 @@ internal object ServeBundleDaemon {
         )
         .resolveAll(mavenCoords)
         .mapNotNull { it.file }
+    // The rehydrated external-resource dirs go right after the bundle's own classes so a lifted
+    // font resolves at the same `/fonts/…` classpath path it did when carried inline.
     val userClassPath =
-      (listOf(classesDir) + libJars + resolvedJars).joinToString(File.pathSeparator) {
-        it.absolutePath
-      }
+      (listOf(classesDir) + extraClasspathDirs.filter { it.isDirectory } + libJars + resolvedJars)
+        .joinToString(File.pathSeparator) { it.absolutePath }
 
     val daemonJars = locateBundleSidecarJars("lib-daemon-desktop")
     if (daemonJars.isEmpty()) {

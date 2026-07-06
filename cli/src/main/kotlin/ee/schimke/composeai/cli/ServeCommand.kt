@@ -626,8 +626,16 @@ class ServeCommand(args: List<String>) : Command(args) {
             "serve: catalog $system carries an in-browser Wasm app (/wasm/$system/)"
           )
         },
-        buildTrustedBundle = { system, bundleFile, alias, bakedFallback ->
-          buildTrustedCatalogBundle(system, bundleFile, alias, bakedFallback, registry, openHost)
+        buildTrustedBundle = { system, bundleFile, externalResourcesDir, alias, bakedFallback ->
+          buildTrustedCatalogBundle(
+            system,
+            bundleFile,
+            externalResourcesDir,
+            alias,
+            bakedFallback,
+            registry,
+            openHost,
+          )
         },
         buildTrustedSource = { system, source, alias, bakedFallback ->
           buildTrustedCatalogSource(
@@ -673,6 +681,7 @@ class ServeCommand(args: List<String>) : Command(args) {
   private fun buildTrustedCatalogBundle(
     system: String,
     bundleFile: File,
+    externalResourcesDir: File?,
     alias: Map<String, String>,
     bakedFallback: () -> ServeHost,
     registry: ServeSessionRegistry,
@@ -687,9 +696,16 @@ class ServeCommand(args: List<String>) : Command(args) {
     // the daemon with the baked catalog: the published /p/<id> deep links + /render/<id>.png
     // thumbnails keep resolving (Android-only variants fall back to baked), while the mapped ids
     // get
-    // a live lane. See ServeCatalogLiveHost.
+    // a live lane. See ServeCatalogLiveHost. The rehydrated external-resource pool (fonts lifted
+    // out
+    // of classes/app.jar) joins the daemon classpath so text rasterises with the same faces.
     val state =
-      ServeBundleDaemon.materialize(bundleFile, destDir, system)
+      ServeBundleDaemon.materialize(
+          bundleFile,
+          destDir,
+          system,
+          extraClasspathDirs = listOfNotNull(externalResourcesDir),
+        )
         ?.copy(previewAliases = alias, bakedFallback = bakedFallback) ?: return false
     val host = openHost(state) ?: return false
     registry.register(system, state, host = host)

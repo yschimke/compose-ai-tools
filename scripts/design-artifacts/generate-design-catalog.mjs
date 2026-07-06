@@ -31,6 +31,7 @@
  * The caller (the weekly workflow) commits the result to the system's
  * `design-artifacts/<system>` branch.
  */
+import { execFileSync } from "node:child_process";
 import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve, join, relative } from "node:path";
 import { parseArgs } from "node:util";
@@ -535,6 +536,33 @@ if (values["publish-live-bundle"]) {
   await cp(rendersPath, dest);
   liveBundle = { path: "bundle/", file };
   console.log(`[${spec.system}] carried live bundle → bundle/${file}`);
+
+  // Lift the heavy font resources out of the carried bundle's classes/app.jar and publish them
+  // content-addressed under bundle/res/<sha256>, so the ~600 KB bundle drops to ~30 KB and the
+  // fonts (which rarely change and are identical across variants) are fetched once per branch. The
+  // `bundle externalize` step records each in the bundle's own manifest by name+sha256+size; a
+  // trusted `serve --allow-render-trusted` box rehydrates them from bundle/res/ into a shared cache
+  // and back onto the daemon classpath. Non-fatal: if the CLI can't externalize (older CLI, no
+  // fonts), the self-contained bundle is still published as-is.
+  try {
+    const resOut = join(outPath, "bundle", "res");
+    const out = execFileSync(
+      "compose-preview",
+      ["bundle", "externalize", dest, "--res-out", resOut, "--json"],
+      { encoding: "utf8" },
+    );
+    const summary = JSON.parse(out);
+    const total = (summary.externalized ?? []).reduce((n, r) => n + (r.size ?? 0), 0);
+    console.log(
+      `[${spec.system}] externalized ${(summary.externalized ?? []).length} font resource(s) ` +
+        `(${total} B) → bundle/res/  (bundle now ${summary.size} B)`,
+    );
+  } catch (err) {
+    console.warn(
+      `[${spec.system}] bundle externalize skipped (${err.message?.split("\n")[0] ?? err}) — ` +
+        `publishing the self-contained bundle`,
+    );
+  }
 }
 
 {

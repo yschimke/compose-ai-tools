@@ -102,6 +102,9 @@ internal object CliFlags {
       "--locale",
       "--ui-mode",
       "--font-scale",
+      // bundle externalize
+      "--res-out",
+      "--ext",
     )
 
   /**
