@@ -651,6 +651,37 @@ class BundleFunctionalTest {
   }
 
   @Test
+  fun `module runtime resources are packed into the app jar for a live re-render`() {
+    // A bundle must carry the module's processed resources so the daemon can *re-render* a preview
+    // that loads a classpath resource at runtime (e.g. a theme reading `/fonts/*.ttf` in a static
+    // initializer). Regression guard for the config-cache trap: on a CLEAN configuration-cached
+    // build (this test's temp project — same shape) the single processed-resources dir input was
+    // resolved by a config-time `isDirectory` probe that snapshots null before `processResources`
+    // runs, dropping every resource. The baked snapshot still rendered, but launching a daemon from
+    // the bundle then failed at composition (ExceptionInInitializerError: resource missing). The
+    // fix
+    // ALSO packs resources from an execution-time file collection, so they always land in the jar.
+    val projectDir = createTestProject()
+    File(projectDir, "src/main/resources/data").apply { mkdirs() }
+    File(projectDir, "src/main/resources/data/marker.txt").writeText("live-resource")
+    val redId = "test.RedKt.RedBoxPreview"
+
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewBundle", "-PbundlePreviewIds=$redId", "--stacktrace")
+      .withPluginClasspath()
+      .build()
+
+    val bundle = File(projectDir, "build/compose-previews/bundle.png")
+    val appJarBytes = readZipEntry(bundle, "classes/app.jar")
+    assertThat(appJarBytes).isNotNull()
+    val entries = listEntries(appJarBytes!!)
+    assertThat(entries).contains("data/marker.txt")
+    assertThat(readZipEntry(appJarBytes, "data/marker.txt")!!.toString(Charsets.UTF_8))
+      .isEqualTo("live-resource")
+  }
+
+  @Test
   fun `minimization report counts entry classes and dropped deps`() {
     val projectDir = createTestProject()
     val redId = "test.RedKt.RedBoxPreview"

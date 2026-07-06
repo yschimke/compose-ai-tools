@@ -372,7 +372,19 @@ abstract class BundlePreviewTask : DefaultTask() {
     val keptModuleClassFiles =
       packModuleClasses(classDirsList, reachableModuleClasses) +
         packModuleClassesFromJars(scopedClassJars, reachableModuleClasses)
-    val appJarBytes = buildJar(keptModuleClassFiles, moduleResourcesDir.orNull?.asFile)
+    // Pack the module's runtime resources into the jar so a bundle can be *re-rendered* live (the
+    // daemon composes the real `@Preview`, which may load a classpath resource — e.g.
+    // `/fonts/*.ttf`
+    // in a theme's static initializer). [moduleResourcesDir] is a single processed-resources dir
+    // resolved by a config-time filesystem probe, so on a clean configuration-cached build it can
+    // snapshot as null before `processResources` runs; [moduleResourceRoots] is an execution-time
+    // [ConfigurableFileCollection] wired to those same dirs, so it reliably carries them. Pack both
+    // (deduped) — either alone would leave the bundle classes-only and break live re-render.
+    val appJarBytes =
+      buildJar(
+        keptModuleClassFiles,
+        (listOfNotNull(moduleResourcesDir.orNull?.asFile) + moduleResourceRoots.files).distinct(),
+      )
 
     val coordMap = dependencyCoordinates.getOrElse(emptyMap())
     val depDecisions = buildDepDecisions(jarsList, closure.perElement, coordMap)
@@ -1143,17 +1155,21 @@ abstract class BundlePreviewTask : DefaultTask() {
     return digest.digest().joinToString("") { "%02x".format(it) }
   }
 
-  private fun buildJar(classes: Map<String, ByteArray>, resourcesDir: File?): ByteArray {
+  private fun buildJar(classes: Map<String, ByteArray>, resourceDirs: List<File>): ByteArray {
     val baos = ByteArrayOutputStream()
     ZipOutputStream(baos).use { zip ->
       classes.forEach { (path, bytes) -> zip.writeFile(path, bytes) }
-      if (resourcesDir != null && resourcesDir.isDirectory) {
+      // Track written entries so a resource present in more than one root dir (or already a class)
+      // is packed exactly once — a duplicate zip entry is invalid.
+      val written = HashSet(classes.keys)
+      for (resourcesDir in resourceDirs) {
+        if (!resourcesDir.isDirectory) continue
         resourcesDir
           .walkTopDown()
           .filter { it.isFile }
           .forEach { f ->
             val rel = f.relativeTo(resourcesDir).path.replace(File.separatorChar, '/')
-            if (rel !in classes) zip.writeFile(rel, f.readBytes())
+            if (written.add(rel)) zip.writeFile(rel, f.readBytes())
           }
       }
     }
