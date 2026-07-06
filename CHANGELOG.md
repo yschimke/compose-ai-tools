@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.16.24](https://github.com/yschimke/compose-ai-tools/compare/v0.16.23...v0.16.24) (2026-07-06)
+
+
+### Bug Fixes
+
+* **bundle:** pack module runtime resources so a bundle can re-render live ([#2269](https://github.com/yschimke/compose-ai-tools/issues/2269)) ([386a3f9](https://github.com/yschimke/compose-ai-tools/commit/386a3f94cfb421ad9edb8a6d422816de015b15dc))
+* **deps:** update gradle minor/patch ([#2266](https://github.com/yschimke/compose-ai-tools/issues/2266)) ([faab5b9](https://github.com/yschimke/compose-ai-tools/commit/faab5b9061e1b433b9a5fbf57bfd09c11ccc4fe7))
+* **deps:** update npm minor/patch ([#2268](https://github.com/yschimke/compose-ai-tools/issues/2268)) ([c07a255](https://github.com/yschimke/compose-ai-tools/commit/c07a255126caa9064bb4ba08bddcc8fa4f2600ab))
+
 ## [0.16.23](https://github.com/yschimke/compose-ai-tools/compare/v0.16.22...v0.16.23) (2026-07-06)
 
 
