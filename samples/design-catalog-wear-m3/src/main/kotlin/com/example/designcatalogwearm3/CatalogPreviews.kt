@@ -42,8 +42,11 @@ import androidx.wear.compose.material3.TitleCard
 import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
 import androidx.wear.compose.material3.timeTextCurvedText
+import ee.schimke.composeai.overrides.previewOverrideBoolean
+import ee.schimke.composeai.overrides.previewOverrideString
 import ee.schimke.composeai.preview.ScrollMode
 import ee.schimke.composeai.preview.ScrollingPreview
+import ee.schimke.composeai.preview.slots.PreviewSlot
 
 // ---------------------------------------------------------------------------
 // Buttons — the Wear M3 emphasis levels plus the screen-hugging EdgeButton.
@@ -51,21 +54,23 @@ import ee.schimke.composeai.preview.ScrollingPreview
 
 @CatalogWearModes
 @Composable
-fun FilledButton() = WearSticker { Button(onClick = {}) { Text("Filled") } }
+fun FilledButton() =
+  WearSticker { Button(onClick = {}) { Text(previewOverrideString("label", "Filled")) } }
 
 @CatalogWearModes
 @Composable
 fun FilledTonalButtonSticker() =
-  WearSticker { FilledTonalButton(onClick = {}) { Text("Tonal") } }
+  WearSticker { FilledTonalButton(onClick = {}) { Text(previewOverrideString("label", "Tonal")) } }
 
 @CatalogWearModes
 @Composable
 fun OutlinedButtonSticker() =
-  WearSticker { OutlinedButton(onClick = {}) { Text("Outlined") } }
+  WearSticker { OutlinedButton(onClick = {}) { Text(previewOverrideString("label", "Outlined")) } }
 
 @CatalogWearModes
 @Composable
-fun ChildButtonSticker() = WearSticker { ChildButton(onClick = {}) { Text("Child") } }
+fun ChildButtonSticker() =
+  WearSticker { ChildButton(onClick = {}) { Text(previewOverrideString("label", "Child")) } }
 
 // A workout history the EdgeButton sticker scrolls through. Long enough to
 // overflow the viewport by a few screens so, scrolled to the end, the list fills
@@ -109,7 +114,9 @@ fun EdgeButtonSticker() =
     ScreenScaffold(
       scrollState = listState,
       edgeButton = {
-        EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) { Text("Start") }
+        EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) {
+          Text(previewOverrideString("edgeLabel", "Start"))
+        }
       },
     ) { contentPadding ->
       TransformingLazyColumn(
@@ -122,7 +129,7 @@ fun EdgeButtonSticker() =
             modifier = Modifier.transformedHeight(this, spec),
             transformation = SurfaceTransformation(spec),
           ) {
-            Text("Workout")
+            Text(previewOverrideString("header", "Workout"))
           }
         }
         items(edgeButtonHistory) { (title, subtitle) ->
@@ -171,7 +178,7 @@ fun ScalingListSticker() =
             modifier = Modifier.transformedHeight(this, spec),
             transformation = SurfaceTransformation(spec),
           ) {
-            Text("Activity")
+            Text(previewOverrideString("header", "Activity"))
           }
         }
         items(scalingListItems) { (title, subtitle) ->
@@ -282,7 +289,7 @@ fun TimeTextScaffoldTemplate() =
               modifier = Modifier.transformedHeight(this, spec),
               transformation = SurfaceTransformation(spec),
             ) {
-              Text("Activity")
+              Text(previewOverrideString("header", "Activity"))
             }
           }
           items(templateListItems) { (title, subtitle) ->
@@ -311,7 +318,7 @@ fun PageIndicatorScaffoldTemplate() =
       Box(Modifier.fillMaxSize()) {
         HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
           Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Page ${page + 1}")
+            Text(previewOverrideString("page", "Page ${page + 1}", index = page))
           }
         }
         HorizontalPageIndicator(
@@ -338,7 +345,9 @@ fun EdgeButtonScaffoldTemplate() =
       ScreenScaffold(
         scrollState = listState,
         edgeButton = {
-          EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) { Text("Start") }
+          EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) {
+            Text(previewOverrideString("edgeLabel", "Start"))
+          }
         },
       ) { contentPadding ->
         TransformingLazyColumn(
@@ -351,7 +360,7 @@ fun EdgeButtonScaffoldTemplate() =
               modifier = Modifier.transformedHeight(this, spec),
               transformation = SurfaceTransformation(spec),
             ) {
-              Text("Workout")
+              Text(previewOverrideString("header", "Workout"))
             }
           }
           items(edgeButtonHistory) { (title, subtitle) ->
@@ -376,34 +385,56 @@ fun EdgeButtonScaffoldTemplate() =
 @Composable
 fun SwitchButtonOn() =
   WearSticker {
-    SwitchButton(checked = true, onCheckedChange = {}, label = { Text("Wifi") })
+    SwitchButton(
+      checked = previewOverrideBoolean("checked", true),
+      onCheckedChange = {},
+      label = { Text(previewOverrideString("label", "Wifi")) },
+    )
   }
 
 @CatalogWearModes
 @Composable
 fun CheckboxButtonChecked() =
   WearSticker {
-    CheckboxButton(checked = true, onCheckedChange = {}, label = { Text("Sync") })
+    CheckboxButton(
+      checked = previewOverrideBoolean("checked", true),
+      onCheckedChange = {},
+      label = { Text(previewOverrideString("label", "Sync")) },
+    )
   }
 
 // ---------------------------------------------------------------------------
 // Containment + headers.
 // ---------------------------------------------------------------------------
 
+// The card content regions are wrapped in `PreviewSlot(name)` markers: a no-op in a normal render
+// (the label draws unchanged, tagged `dp-slot:<name>` so its bounds land in the slot map the
+// structured-screen builder reads), swapping to a labelled placeholder under `LocalSlotMode`.
 @CatalogWearModes
 @Composable
-fun CardSticker() = WearSticker { Card(onClick = {}) { Text("Card") } }
+fun CardSticker() =
+  WearSticker {
+    Card(onClick = {}) { PreviewSlot("content") { Text(previewOverrideString("label", "Card")) } }
+  }
 
 @CatalogWearModes
 @Composable
 fun TitleCardSticker() =
   WearSticker {
-    TitleCard(onClick = {}, title = { Text("Morning run") }) { Text("5.2 km · 28 min") }
+    TitleCard(
+      onClick = {},
+      title = { PreviewSlot("title") { Text(previewOverrideString("title", "Morning run")) } },
+    ) {
+      PreviewSlot("subtitle") { Text(previewOverrideString("subtitle", "5.2 km · 28 min")) }
+    }
   }
 
 @CatalogWearModes
 @Composable
-fun ListHeaderSticker() = WearSticker { ListHeader { Text("Today") } }
+fun ListHeaderSticker() =
+  WearSticker {
+    ListHeader { PreviewSlot("content") { Text(previewOverrideString("label", "Today")) } }
+  }
 
 // ---------------------------------------------------------------------------
 // Communication.
@@ -423,7 +454,10 @@ fun CircularProgressSticker() =
 fun TextMaxLinesTruncated() =
   WearSticker {
     Text(
-      "This Wear body text is long enough to overflow two lines and truncate.",
+      previewOverrideString(
+        "text",
+        "This Wear body text is long enough to overflow two lines and truncate.",
+      ),
       modifier = Modifier.width(140.dp),
       maxLines = 2,
       overflow = TextOverflow.Ellipsis,
@@ -453,28 +487,46 @@ private fun focusedSource(): MutableInteractionSource {
 @CatalogWearModes
 @Composable
 fun ButtonPressed() =
-  WearSticker { Button(onClick = {}, interactionSource = pressedSource()) { Text("Pressed") } }
+  WearSticker {
+    Button(onClick = {}, interactionSource = pressedSource()) {
+      Text(previewOverrideString("label", "Pressed"))
+    }
+  }
 
 @CatalogWearModes
 @Composable
 fun ButtonFocused() =
-  WearSticker { Button(onClick = {}, interactionSource = focusedSource()) { Text("Focused") } }
+  WearSticker {
+    Button(onClick = {}, interactionSource = focusedSource()) {
+      Text(previewOverrideString("label", "Focused"))
+    }
+  }
 
 @CatalogWearModes
 @Composable
 fun ButtonDisabled() =
-  WearSticker { Button(onClick = {}, enabled = false) { Text("Disabled") } }
+  WearSticker {
+    Button(onClick = {}, enabled = false) { Text(previewOverrideString("label", "Disabled")) }
+  }
 
 @CatalogWearModes
 @Composable
 fun SwitchButtonOff() =
   WearSticker {
-    SwitchButton(checked = false, onCheckedChange = {}, label = { Text("Wifi") })
+    SwitchButton(
+      checked = previewOverrideBoolean("checked", false),
+      onCheckedChange = {},
+      label = { Text(previewOverrideString("label", "Wifi")) },
+    )
   }
 
 @CatalogWearModes
 @Composable
 fun CheckboxButtonUnchecked() =
   WearSticker {
-    CheckboxButton(checked = false, onCheckedChange = {}, label = { Text("Sync") })
+    CheckboxButton(
+      checked = previewOverrideBoolean("checked", false),
+      onCheckedChange = {},
+      label = { Text(previewOverrideString("label", "Sync")) },
+    )
   }

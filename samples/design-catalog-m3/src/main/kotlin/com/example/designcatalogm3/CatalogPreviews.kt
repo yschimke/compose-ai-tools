@@ -17,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import com.example.designcatalogm3.shared.CatalogComponent
+import ee.schimke.composeai.overrides.previewOverrideString
 import ee.schimke.composeai.preview.slots.LocalSlotMode
 
 // The M3 catalog sticker sheet: one `@Preview` per component, in light + dark (`@CatalogModes`).
@@ -153,13 +154,23 @@ fun AppScaffoldTemplate() = FullScreenM3 {
   Scaffold(
     contentWindowInsets = WindowInsets(bottom = SYSTEM_BAR_INSET),
     topBar = {
-      TopAppBar(title = { Text("Inbox") }, windowInsets = WindowInsets(top = SYSTEM_BAR_INSET))
+      TopAppBar(
+        title = { Text(previewOverrideString("title", "Inbox")) },
+        windowInsets = WindowInsets(top = SYSTEM_BAR_INSET),
+      )
     },
-    floatingActionButton = { FloatingActionButton(onClick = {}) { Text("+") } },
+    floatingActionButton = {
+      FloatingActionButton(onClick = {}) { Text(previewOverrideString("fab", "+")) }
+    },
   ) { padding ->
     Column(Modifier.padding(padding).fillMaxSize()) {
       templateMessages.forEachIndexed { index, (sender, preview) ->
-        ListItem(headlineContent = { Text(sender) }, supportingContent = { Text(preview) })
+        // Each row's sender + preview are indexed override knobs (`sender[i]` / `preview[i]`), so a
+        // daemon-backed render can reseed any individual row from the `compose/overrides` surface.
+        ListItem(
+          headlineContent = { Text(previewOverrideString("sender", sender, index = index)) },
+          supportingContent = { Text(previewOverrideString("preview", preview, index = index)) },
+        )
         if (index < templateMessages.lastIndex) HorizontalDivider()
       }
     }
