@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -77,36 +78,91 @@ import ee.schimke.composeai.preview.slots.PreviewSlot
  *
  * The pressed/focused button states seed a held interaction on **both** surfaces — the resting
  * state-layer is the design contract for that state, not an animation.
+ *
+ * **Editable knobs.** Each component's author-facing values — labels, the entered text-field value,
+ * selection/toggle flags, slider & progress values, the badge count, the slotted card's accent —
+ * are declared through the `catalogOverride*` wrappers, the catalog's bridge to the opt-in
+ * `previewOverride*` surface (see [catalogOverrideString]). Every knob returns its author default
+ * when nothing is seeded, so the baked sticker sheet is pixel-unchanged; a daemon-backed render can
+ * seed replacements and the `compose/overrides` producer can enumerate what's editable per sticker.
+ *
+ * **Fillable slots.** The content region of each card is wrapped in a `PreviewSlot(name)` marker
+ * (the Figma slot placeholder added for the structured-screen builder): a no-op in a normal render,
+ * it swaps to a labelled placeholder under `LocalSlotMode` so a designer sees exactly where a child
+ * drops in.
  */
 @Composable
 fun CatalogComponent(id: String, interactive: Boolean) {
   when (id) {
-    // Buttons — the five M3 emphasis levels, plus disabled.
-    "button-filled" -> Button(onClick = {}) { Text("Filled") }
-    "button-tonal" -> FilledTonalButton(onClick = {}) { Text("Tonal") }
-    "button-outlined" -> OutlinedButton(onClick = {}) { Text("Outlined") }
-    "button-elevated" -> ElevatedButton(onClick = {}) { Text("Elevated") }
-    "button-text" -> TextButton(onClick = {}) { Text("Text") }
-    "button-filled-disabled" -> Button(onClick = {}, enabled = false) { Text("Disabled") }
+    // Buttons — the five M3 emphasis levels, plus disabled. The label of each is an editable
+    // `catalogOverrideString("label", …)` knob, so a daemon-backed render can retitle the button
+    // from the `compose/overrides` surface; with no seed the author default renders unchanged.
+    "button-filled" -> Button(onClick = {}) { Text(catalogOverrideString("label", "Filled")) }
+    "button-tonal" ->
+      FilledTonalButton(onClick = {}) { Text(catalogOverrideString("label", "Tonal")) }
+    "button-outlined" ->
+      OutlinedButton(onClick = {}) { Text(catalogOverrideString("label", "Outlined")) }
+    "button-elevated" ->
+      ElevatedButton(onClick = {}) { Text(catalogOverrideString("label", "Elevated")) }
+    "button-text" -> TextButton(onClick = {}) { Text(catalogOverrideString("label", "Text")) }
+    "button-filled-disabled" ->
+      Button(onClick = {}, enabled = false) { Text(catalogOverrideString("label", "Disabled")) }
 
-    // Selection controls — primary (checked/selected) state.
-    "checkbox-checked" -> if (interactive) StatefulCheckbox(true) else Checkbox(true, {})
-    "switch-on" ->
-      if (interactive) StatefulSwitch(true) else Switch(checked = true, onCheckedChange = {})
-    "radiobutton-selected" -> RadioButton(selected = true, onClick = {})
+    // Selection controls — primary (checked/selected) state. The checked/selected flag is a
+    // `catalogOverrideBoolean` knob so a render can flip the state; it also seeds the interactive
+    // widget's initial value.
+    "checkbox-checked" -> {
+      val checked = catalogOverrideBoolean("checked", true)
+      if (interactive) StatefulCheckbox(checked) else Checkbox(checked, {})
+    }
+    "switch-on" -> {
+      val on = catalogOverrideBoolean("checked", true)
+      if (interactive) StatefulSwitch(on) else Switch(checked = on, onCheckedChange = {})
+    }
+    "radiobutton-selected" ->
+      RadioButton(selected = catalogOverrideBoolean("selected", true), onClick = {})
     "slider" ->
       Box(Modifier.width(220.dp)) {
-        if (interactive) StatefulSlider() else Slider(value = 0.5f, onValueChange = {})
+        val value = catalogOverrideFloat("value", 0.5f)
+        if (interactive) StatefulSlider() else Slider(value = value, onValueChange = {})
       }
-    "chip-filter-selected" ->
-      if (interactive) StatefulFilterChip(true)
-      else FilterChip(selected = true, onClick = {}, label = { Text("Filter") })
-    "chip-assist" -> AssistChip(onClick = {}, label = { Text("Assist") })
+    "chip-filter-selected" -> {
+      val selected = catalogOverrideBoolean("selected", true)
+      val label = catalogOverrideString("label", "Filter")
+      if (interactive) StatefulFilterChip(selected, label)
+      else FilterChip(selected = selected, onClick = {}, label = { Text(label) })
+    }
+    "chip-assist" ->
+      AssistChip(onClick = {}, label = { Text(catalogOverrideString("label", "Assist")) })
 
-    // Containment — cards and the FAB.
-    "card-elevated" -> ElevatedCard { Box(Modifier.size(160.dp, 80.dp)) { Text("Elevated card") } }
-    "card-outlined" -> OutlinedCard { Box(Modifier.size(160.dp, 80.dp)) { Text("Outlined card") } }
-    "card-filled" -> Card { Box(Modifier.size(160.dp, 80.dp)) { Text("Filled card") } }
+    // Containment — cards and the FAB. Each card's body is wrapped in a `PreviewSlot("content")`
+    // filling the fixed 160×80 box: a no-op in a normal render (draws the — now editable — label,
+    // tagged `dp-slot:content`), it swaps to a labelled placeholder under slot mode so a
+    // structured-screen builder can drop a child into that exact box.
+    "card-elevated" ->
+      ElevatedCard {
+        Box(Modifier.size(160.dp, 80.dp)) {
+          PreviewSlot("content", Modifier.fillMaxSize()) {
+            Text(catalogOverrideString("label", "Elevated card"))
+          }
+        }
+      }
+    "card-outlined" ->
+      OutlinedCard {
+        Box(Modifier.size(160.dp, 80.dp)) {
+          PreviewSlot("content", Modifier.fillMaxSize()) {
+            Text(catalogOverrideString("label", "Outlined card"))
+          }
+        }
+      }
+    "card-filled" ->
+      Card {
+        Box(Modifier.size(160.dp, 80.dp)) {
+          PreviewSlot("content", Modifier.fillMaxSize()) {
+            Text(catalogOverrideString("label", "Filled card"))
+          }
+        }
+      }
     // A **slotted** card: each region is wrapped in `PreviewSlot(name) { … }`, a no-op in a normal
     // render (draws the content, tagged `dp-slot:<name>`) that swaps to a labelled placeholder
     // under
@@ -117,37 +173,60 @@ fun CatalogComponent(id: String, interactive: Boolean) {
       ElevatedCard {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
           PreviewSlot("leadingIcon", Modifier.size(40.dp)) {
-            Box(Modifier.size(40.dp).background(Color(0xFF6750A4)))
+            Box(
+              Modifier.size(40.dp).background(catalogOverrideColor("iconColor", Color(0xFF6750A4)))
+            )
           }
           Column(Modifier.padding(start = 12.dp)) {
-            PreviewSlot("headline", Modifier.size(140.dp, 20.dp)) { Text("Headline") }
-            PreviewSlot("supporting", Modifier.size(140.dp, 16.dp)) { Text("Supporting text") }
+            PreviewSlot("headline", Modifier.size(140.dp, 20.dp)) {
+              Text(catalogOverrideString("headline", "Headline"))
+            }
+            PreviewSlot("supporting", Modifier.size(140.dp, 16.dp)) {
+              Text(catalogOverrideString("supporting", "Supporting text"))
+            }
           }
         }
       }
-    "fab" -> FloatingActionButton(onClick = {}) { Text("+") }
+    "fab" -> FloatingActionButton(onClick = {}) { Text(catalogOverrideString("label", "+")) }
 
     // Communication — progress + badge. The baked sticker keeps the deterministic `0.6` frame; the
     // in-browser tier runs the indeterminate (animated) variant so it's visibly live.
     "progress-linear" ->
       Box(Modifier.width(220.dp)) {
-        if (interactive) LinearProgressIndicator() else LinearProgressIndicator(progress = { 0.6f })
+        val progress = catalogOverrideFloat("progress", 0.6f)
+        if (interactive) LinearProgressIndicator()
+        else LinearProgressIndicator(progress = { progress })
       }
-    "progress-circular" ->
+    "progress-circular" -> {
+      val progress = catalogOverrideFloat("progress", 0.6f)
       if (interactive) CircularProgressIndicator()
-      else CircularProgressIndicator(progress = { 0.6f })
-    "badge" -> Badge { Text("8") }
+      else CircularProgressIndicator(progress = { progress })
+    }
+    "badge" -> Badge { Text(catalogOverrideInt("count", 8).toString()) }
 
-    // Text fields.
-    "textfield-filled" -> TextField(value = "Filled", onValueChange = {}, label = { Text("Label") })
+    // Text fields — both the entered value and the floating label are editable knobs.
+    "textfield-filled" ->
+      TextField(
+        value = catalogOverrideString("value", "Filled"),
+        onValueChange = {},
+        label = { Text(catalogOverrideString("label", "Label")) },
+      )
     "textfield-outlined" ->
-      OutlinedTextField(value = "Outlined", onValueChange = {}, label = { Text("Label") })
+      OutlinedTextField(
+        value = catalogOverrideString("value", "Outlined"),
+        onValueChange = {},
+        label = { Text(catalogOverrideString("label", "Label")) },
+      )
 
     // States — interaction (pressed / focused), disabled, and toggle off↔on.
     "button-filled-pressed" ->
-      Button(onClick = {}, interactionSource = pressedSource()) { Text("Pressed") }
+      Button(onClick = {}, interactionSource = pressedSource()) {
+        Text(catalogOverrideString("label", "Pressed"))
+      }
     "button-filled-focused" ->
-      Button(onClick = {}, interactionSource = focusedSource()) { Text("Focused") }
+      Button(onClick = {}, interactionSource = focusedSource()) {
+        Text(catalogOverrideString("label", "Focused"))
+      }
     // Content axis (not a state): the same Filled button with a leading icon + label, so the
     // catalog shows the icon-and-text configuration alongside the label-only default. The icon is
     // an inline `ImageVector` (a plus glyph) — this module deliberately carries no icon library,
@@ -157,15 +236,26 @@ fun CatalogComponent(id: String, interactive: Boolean) {
       Button(onClick = {}) {
         Icon(addGlyph, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
         Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-        Text("Filled")
+        Text(catalogOverrideString("label", "Filled"))
       }
-    "button-outlined-disabled" -> OutlinedButton(onClick = {}, enabled = false) { Text("Disabled") }
-    "switch-off" ->
-      if (interactive) StatefulSwitch(false) else Switch(checked = false, onCheckedChange = {})
-    "checkbox-unchecked" -> if (interactive) StatefulCheckbox(false) else Checkbox(false, {})
-    "chip-filter-unselected" ->
-      if (interactive) StatefulFilterChip(false)
-      else FilterChip(selected = false, onClick = {}, label = { Text("Filter") })
+    "button-outlined-disabled" ->
+      OutlinedButton(onClick = {}, enabled = false) {
+        Text(catalogOverrideString("label", "Disabled"))
+      }
+    "switch-off" -> {
+      val on = catalogOverrideBoolean("checked", false)
+      if (interactive) StatefulSwitch(on) else Switch(checked = on, onCheckedChange = {})
+    }
+    "checkbox-unchecked" -> {
+      val checked = catalogOverrideBoolean("checked", false)
+      if (interactive) StatefulCheckbox(checked) else Checkbox(checked, {})
+    }
+    "chip-filter-unselected" -> {
+      val selected = catalogOverrideBoolean("selected", false)
+      val label = catalogOverrideString("label", "Filter")
+      if (interactive) StatefulFilterChip(selected, label)
+      else FilterChip(selected = selected, onClick = {}, label = { Text(label) })
+    }
     "segmentedbutton" -> SegmentedToggle(interactive)
 
     // Text options — maxLines + ellipsis overflow. The 128dp box reproduces the wrap/truncation
@@ -174,7 +264,10 @@ fun CatalogComponent(id: String, interactive: Boolean) {
     "text-maxlines-truncated" ->
       Box(Modifier.width(128.dp)) {
         Text(
-          "This body text is deliberately long so it overflows two lines and truncates.",
+          catalogOverrideString(
+            "text",
+            "This body text is deliberately long so it overflows two lines and truncates.",
+          ),
           maxLines = 2,
           overflow = TextOverflow.Ellipsis,
         )
@@ -183,8 +276,16 @@ fun CatalogComponent(id: String, interactive: Boolean) {
     // this uses `genericFontFamily(...)` so both the desktop render and the wasm tier can
     // substitute
     // the URL-loaded copy of the same file the platform's system font table resolves that name to.
-    "text-serif" -> Text("Serif specimen 0123", fontFamily = genericFontFamily("serif"))
-    "text-monospace" -> Text("Mono specimen 0123", fontFamily = genericFontFamily("monospace"))
+    "text-serif" ->
+      Text(
+        catalogOverrideString("text", "Serif specimen 0123"),
+        fontFamily = genericFontFamily("serif"),
+      )
+    "text-monospace" ->
+      Text(
+        catalogOverrideString("text", "Mono specimen 0123"),
+        fontFamily = genericFontFamily("monospace"),
+      )
   }
 }
 
@@ -283,9 +384,9 @@ fun StatefulSlider() {
 }
 
 @Composable
-fun StatefulFilterChip(initial: Boolean) {
+fun StatefulFilterChip(initial: Boolean, label: String = "Filter") {
   var selected by remember { mutableStateOf(initial) }
-  FilterChip(selected = selected, onClick = { selected = !selected }, label = { Text("Filter") })
+  FilterChip(selected = selected, onClick = { selected = !selected }, label = { Text(label) })
 }
 
 /**
@@ -295,20 +396,22 @@ fun StatefulFilterChip(initial: Boolean) {
 @Composable
 fun SegmentedToggle(interactive: Boolean) {
   var selected by remember { mutableStateOf(0) }
+  val onLabel = catalogOverrideString("onLabel", "On")
+  val offLabel = catalogOverrideString("offLabel", "Off")
   SingleChoiceSegmentedButtonRow {
     SegmentedButton(
       selected = if (interactive) selected == 0 else true,
       onClick = { if (interactive) selected = 0 },
       shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
     ) {
-      Text("On")
+      Text(onLabel)
     }
     SegmentedButton(
       selected = if (interactive) selected == 1 else false,
       onClick = { if (interactive) selected = 1 },
       shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
     ) {
-      Text("Off")
+      Text(offLabel)
     }
   }
 }

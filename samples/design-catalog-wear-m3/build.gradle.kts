@@ -51,5 +51,12 @@ dependencies {
   // lists) reveal their bottom-anchored chrome only after the scroll settles, so
   // the catalog captures them scrolled to the end rather than at the resting top.
   implementation(project(":preview-annotations"))
+  // `previewOverride*` — each sticker's editable labels/values become override knobs the daemon can
+  // seed and the `compose/overrides` producer can enumerate. JVM artifact; the Android compose on
+  // this classpath supplies the matching `androidx.compose.*` symbols it compiles against.
+  implementation(project(":data-preview-overrides-runtime"))
+  // `PreviewSlot` / `LocalSlotMode` — the Figma slot placeholders for the fillable regions of the
+  // Wear cards, list rows, and scaffold templates.
+  implementation(project(":slot-preview-runtime"))
   debugImplementation("androidx.compose.ui:ui-tooling")
 }
