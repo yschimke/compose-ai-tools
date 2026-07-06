@@ -129,7 +129,7 @@ jobs:
           # deps the image's Gradle cache resolves on its own).
           tar -czf maven-local-ee.tgz -C "${HOME}/.m2/repository" ee
       - name: Upload Maven local artifact for the prebuilt image
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: preview-host-maven
           path: maven-local-ee.tgz
