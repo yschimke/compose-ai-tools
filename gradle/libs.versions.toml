@@ -52,7 +52,11 @@ compose-multiplatform = "1.10.3"
 # 1.12.0-alpha, which requires compileSdk 37 and would drag the whole module's
 # floor forward. Drop this and revert to `libs.compose.material3` once material3
 # 1.5.0 is stable in `compose-bom-stable`.
-compose-material3-catalog = "1.5.0-alpha22"
+#  * Renovate's `gradle-minorpatch` bump to alpha22 crossed that boundary and
+#    pulled `androidx.compose.animation:animation-core-android:1.12.0-alpha03`
+#    (minCompileSdk 37), failing `:samples:design-catalog-m3-android`'s
+#    `checkDebugAarMetadata` at compileSdk 36 — so the pin stays at alpha18.
+compose-material3-catalog = "1.5.0-alpha18"
 # JetBrains Compose Multiplatform material3 tracks its own line: the
 # `org.jetbrains.compose` 1.10.3 plugin pins `compose.material3` to 1.9.0
 # (material3 multiplatform 1.10.x is still alpha), so the explicit coordinate
