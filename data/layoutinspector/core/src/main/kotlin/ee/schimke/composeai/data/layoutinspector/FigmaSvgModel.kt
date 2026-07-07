@@ -54,7 +54,16 @@ data class FigmaSvgText(
    * ascent-from-top would put it.
    */
   val lineHeightPx: Double? = null,
+  /**
+   * Per-line runs for wrapped text, in px relative to the layer's top-left, in draw order. When
+   * present (2+ lines) the renderer emits one positioned `<tspan>` per line instead of a single
+   * baseline — so text wraps exactly where the render wrapped it. Null for single-line text.
+   */
+  val lines: List<FigmaSvgTextLine>? = null,
 )
+
+/** One laid-out line of a wrapped [FigmaSvgText], px offsets from the text layer's top-left. */
+data class FigmaSvgTextLine(val content: String, val left: Int, val baseline: Int)
 
 /**
  * A font face to embed in the export as an SVG `@font-face` so the `<text>` renders with the real
@@ -390,7 +399,17 @@ data class FigmaSvgModel(
         italic = node.typography?.fontStyle == "italic",
         color = node.textColor?.foreground?.let { argbToColor(it, emptyMap()) },
         lineHeightPx =
-          node.typography?.lineHeight?.let { lineHeightToPx(it, node.typography.fontSize, density) },
+          node.typography?.lineHeight?.let {
+            lineHeightToPx(it, node.typography.fontSize, density)
+          },
+        // Carry per-line runs only for genuinely wrapped text (2+ lines). The captured offsets are
+        // already in render px (same space as the node bounds), so they map straight to layer space
+        // with no density conversion.
+        lines =
+          node.textOverflow
+            ?.lines
+            ?.takeIf { it.size > 1 }
+            ?.map { FigmaSvgTextLine(content = it.text, left = it.left, baseline = it.baseline) },
       )
 
     /**

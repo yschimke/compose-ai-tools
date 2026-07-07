@@ -258,6 +258,28 @@ object ComposeSemanticsDataProducer {
         .distinct()
         .singleOrNull()
         ?.takeIf { it.isNotBlank() }
+    // Per-line geometry for wrapped text — only for a single [TextLayoutResult] (so line offsets
+    // share one origin, the node's top-left) that actually wrapped (2+ lines). Each line's visible
+    // substring + left edge + baseline, in px relative to the layout origin, lets the export place
+    // one run per line instead of collapsing the string onto a single baseline. An ellipsised line
+    // gets the "…" the render draws re-appended (the visible end excludes it).
+    val lines =
+      results
+        .singleOrNull()
+        ?.takeIf { it.lineCount >= 2 }
+        ?.let { r ->
+          val str = r.layoutInput.text.text
+          (0 until r.lineCount).map { i ->
+            val start = r.getLineStart(i).coerceIn(0, str.length)
+            val end = r.getLineEnd(i, true).coerceIn(start, str.length)
+            val ellipsis = if (r.isLineEllipsized(i)) "…" else ""
+            ComposeSemanticsTextLine(
+              text = str.substring(start, end) + ellipsis,
+              left = r.getLineLeft(i).roundToInt(),
+              baseline = r.getLineBaseline(i).roundToInt(),
+            )
+          }
+        }
     return LayoutTextDetails(
       text = text,
       fontSize = fontSize,
@@ -278,6 +300,7 @@ object ComposeSemanticsDataProducer {
       truncated = truncated.takeIf { results.isNotEmpty() },
       didOverflowWidth = didOverflowWidth.takeIf { results.isNotEmpty() },
       didOverflowHeight = didOverflowHeight.takeIf { results.isNotEmpty() },
+      lines = lines,
     )
   }
 
@@ -473,6 +496,7 @@ object ComposeSemanticsDataProducer {
     val truncated: Boolean?,
     val didOverflowWidth: Boolean?,
     val didOverflowHeight: Boolean?,
+    val lines: List<ComposeSemanticsTextLine>?,
   )
 
   /**
@@ -528,6 +552,7 @@ object ComposeSemanticsDataProducer {
         truncated = truncated,
         didOverflowWidth = didOverflowWidth,
         didOverflowHeight = didOverflowHeight,
+        lines = lines,
       )
 
   private fun androidx.compose.ui.geometry.Rect.toWireBounds(): String =
@@ -597,6 +622,9 @@ typealias ComposeSemanticsTextColor =
 
 typealias ComposeSemanticsTextOverflow =
   ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTextOverflow
+
+typealias ComposeSemanticsTextLine =
+  ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTextLine
 
 typealias ComposeSemanticsInsets = ee.schimke.composeai.data.layoutinspector.ComposeSemanticsInsets
 

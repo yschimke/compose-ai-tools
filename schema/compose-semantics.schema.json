@@ -5,7 +5,7 @@
   "description": "Payload for the `compose/semantics` data product: the Compose semantics tree projected for a render. Kotlin source of truth: ComposeSemanticsPayload / ComposeSemanticsNode in :data-layoutinspector-core. Each node carries a stable `ref` (see #1784).",
   "x-composeai": {
     "kind": "compose/semantics",
-    "schemaVersion": 7,
+    "schemaVersion": 8,
     "kotlinType": "ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload",
     "kotlinConst": "ComposeSemanticsProduct.SCHEMA_VERSION",
     "fixture": "vscode-extension/preview-harness/fixtures/inspection-tree.json"
@@ -65,7 +65,17 @@
         "overflow": { "type": ["string", "null"], "description": "The TextOverflow mode (`Clip` / `Ellipsis` / `Visible`)." },
         "truncated": { "type": ["boolean", "null"], "description": "Whether any text had visual overflow." },
         "didOverflowWidth": { "type": ["boolean", "null"], "description": "Whether the text overflowed its width." },
-        "didOverflowHeight": { "type": ["boolean", "null"], "description": "Whether the text overflowed its height." }
+        "didOverflowHeight": { "type": ["boolean", "null"], "description": "Whether the text overflowed its height." },
+        "lines": { "anyOf": [{ "type": "array", "items": { "$ref": "#/definitions/ComposeSemanticsTextLine" } }, { "type": "null" }], "description": "Per-line geometry for wrapped text (v8): each visible line's substring + left + baseline, px relative to the node's top-left. Present only for 2+ lines; omitted for single-line text." }
+      }
+    },
+    "ComposeSemanticsTextLine": {
+      "type": "object",
+      "description": "One laid-out line of a wrapped text node (v8), px relative to the node's boundsInRoot top-left.",
+      "properties": {
+        "text": { "type": "string", "description": "The line's visible substring (with the ellipsis re-appended when the line is ellipsised)." },
+        "left": { "type": "integer", "description": "The line's left edge (non-zero for centred/right-aligned text)." },
+        "baseline": { "type": "integer", "description": "The baseline the line's glyphs sit on." }
       }
     },
     "ComposeSemanticsTokens": {
