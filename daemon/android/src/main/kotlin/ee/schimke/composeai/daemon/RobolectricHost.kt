@@ -1316,6 +1316,12 @@ open class RobolectricHost(
           null -> null
         },
       inspectionMode = merged.inspectionMode,
+      // `clearBackground` isn't a `mergePreviewOverrides` display-geometry field, so carry it
+      // straight from the override bag onto the held/recording spec (it then flows into
+      // `InteractiveCommand.Start` and the sandbox render). Without this the live `stream/start`
+      // path keeps the opaque background when the viewer sends `PreviewOverrides(clearBackground =
+      // true)`. Null preserves the discovery-time value.
+      clearBackground = overrides?.clearBackground ?: base.clearBackground,
       overrides = merged.toExtensionOverrides(),
       // Recording sessions consume this on disk (`recordings/<recordingId>/...`); interactive
       // sessions pass `"interactive-$previewId"` and never read the field. The `recording-`
