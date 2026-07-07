@@ -103,10 +103,22 @@ class ServeCatalogLiveHost(
     else baked.render(previewId, overrides)
   }
 
+  /**
+   * SVG export mirrors [render]'s knob routing, plus a fallback: the SVG row is advertised whenever
+   * *either* lane can export ([hasSvgExport]), but a specific mapped preview may have no baked
+   * `figma/<slug>.svg` (or the whole catalog carried none and only the daemon exports). So when the
+   * baked lane can't produce the vector, fall back to the daemon for a mapped id rather than 404
+   * the advertised link. Unlike PNG browsing, an SVG export is an explicit user action (the
+   * Download / Copy link), so waking the daemon here is fine.
+   */
   override fun renderSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome {
-    val daemonId = daemonIdForOverrideRender(previewId, overrides)
-    return if (daemonId != null) live.renderSvg(daemonId, overrides)
-    else baked.renderSvg(previewId, overrides)
+    daemonIdForOverrideRender(previewId, overrides)?.let {
+      return live.renderSvg(it, overrides)
+    }
+    val bakedOutcome = baked.renderSvg(previewId, overrides)
+    if (bakedOutcome !is SvgOutcome.NotFound) return bakedOutcome
+    val daemonId = alias[previewId] ?: return bakedOutcome
+    return live.renderSvg(daemonId, overrides)
   }
 
   /**

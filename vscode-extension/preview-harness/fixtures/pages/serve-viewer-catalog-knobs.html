@@ -154,6 +154,12 @@ a:hover { text-decoration: underline; }
               <option value="landscape">Landscape</option>
             </select>
           </label>
+          <label>Background
+            <select id="cp-background" disabled>
+              <option value="">(default)</option>
+              <option value="clear">Clear (crisp outline)</option>
+            </select>
+          </label>
                 <div class="cp-knobs">
         <div class="cp-knobs-head">Declared overrides — edit a value to re-render.</div>
         <label>label
@@ -227,7 +233,7 @@ a:hover { text-decoration: underline; }
   // scale slider has no empty state, so it's gated separately: we only send fontScale once the
   // user moves it (fontScaleTouched), otherwise the slider's standing 1.0 would override a
   // preview's declared default font scale and the first render wouldn't match the thumbnail.
-  var fields = ["uiMode", "device", "localeTag", "orientation"];
+  var fields = ["uiMode", "device", "localeTag", "orientation", "background"];
   var fs = document.getElementById("cp-fontScale");
   var fsVal = document.getElementById("cp-fontScale-val");
   var fontScaleTouched = false;
@@ -240,6 +246,25 @@ a:hover { text-decoration: underline; }
       if (el && el.value) o[f] = el.value;
     });
     if (fontScaleTouched && fs) o.fontScale = fs.value;
+    return o;
+  }
+  // The live-stream override map: the display fields PLUS the author-declared knob values as
+  // `knob.<key>` entries (the daemon's setOverrides parses the same map /render does, and
+  // ServeOverrides reads knob.* keys). Kept separate from overrides() so query() and the Wasm
+  // patch — which append/ignore knobs their own way — are unaffected; without this a knob edit
+  // during an active Live (stream) would send only the display fields and the daemon would reset
+  // the knob to its default.
+  function liveOverrides() {
+    var o = overrides();
+    document.querySelectorAll(".cp-knob").forEach(function (el) {
+      if (el.disabled) return;
+      var key = el.getAttribute("data-knob-key");
+      var kind = el.getAttribute("data-knob-kind") || "string";
+      if (!key) return;
+      var val = (el.type === "checkbox") ? (el.checked ? "true" : "false") : el.value;
+      if (val === "") return;
+      o["knob." + key] = kind + ":" + val;
+    });
     return o;
   }
   function query() {
@@ -590,7 +615,7 @@ a:hover { text-decoration: underline; }
       return;
     }
     if (live.checked && ws && ws.readyState === 1) {
-      ws.send(JSON.stringify({ type: "setOverrides", overrides: overrides() }));
+      ws.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
     } else if (staticSnapshot && wasmToggle) {
       // Static snapshot backed by a Wasm app: the baked PNG can't honour theme/font-scale/locale
       // (only the in-browser tier can), and /render can't re-render a published catalog. So a
@@ -662,7 +687,7 @@ a:hover { text-decoration: underline; }
   function onKnobChanged() {
     refreshLinks();
     if (live.checked && ws && ws.readyState === 1) {
-      ws.send(JSON.stringify({ type: "setOverrides", overrides: overrides() }));
+      ws.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
     } else if (canRenderOverrides) {
       refreshSnapshot();
     }

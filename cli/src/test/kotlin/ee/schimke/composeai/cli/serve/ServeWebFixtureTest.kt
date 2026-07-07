@@ -662,6 +662,19 @@ class ServeWebFixtureTest {
       catalogKnobs.contains("function onKnobChanged()"),
       "knob edits have a dedicated handler that hits /render",
     )
+    // During an active Live (stream), the override map sent over the WebSocket must carry the knob
+    // values too (as knob.<key> entries), not just the display fields — otherwise the daemon resets
+    // an edited knob to its default. The setOverrides sends use liveOverrides(), which folds them
+    // in.
+    assertTrue(
+      catalogKnobs.contains("function liveOverrides()") &&
+        catalogKnobs.contains("o[\"knob.\" + key]"),
+      "the live-stream override map includes the declared knob values",
+    )
+    assertFalse(
+      catalogKnobs.contains("setOverrides\", overrides: overrides()"),
+      "live-stream setOverrides sends liveOverrides() (knobs included), not the display-only map",
+    )
     // A plain static bundle (no daemon) still shows the knobs as DISABLED, informational controls.
     val staticKnobs = ServeWeb.viewerPage(knobPreview, token)
     assertTrue(

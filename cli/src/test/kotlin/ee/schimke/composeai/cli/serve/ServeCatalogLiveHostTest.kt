@@ -28,6 +28,8 @@ class ServeCatalogLiveHostTest {
     override val previews: List<ServePreview>,
     private val tag: String,
     private val streaming: Boolean = false,
+    /** When true, `renderSvg` reports `NotFound` (a baked catalog missing this slug's vector). */
+    private val svgNotFound: Boolean = false,
   ) : ServeHost {
     override val label: String = tag
     override val canApplyOverrides: Boolean = streaming
@@ -46,6 +48,7 @@ class ServeCatalogLiveHostTest {
     override fun renderSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome {
       lastSvgId = previewId
       lastRenderOverrides = overrides
+      if (svgNotFound) return SvgOutcome.NotFound
       return SvgOutcome.Ok("$tag-svg:$previewId".encodeToByteArray())
     }
 
@@ -159,6 +162,53 @@ class ServeCatalogLiveHostTest {
     val out = composite.renderSvg(catalogId, knobOverride()) as SvgOutcome.Ok
     assertEquals("live-svg:$daemonId", out.svg.decodeToString())
     assertEquals(daemonId, live.lastSvgId)
+  }
+
+  @Test
+  fun `a plain SVG export falls back to the daemon when the baked vector is absent`() {
+    // The SVG row is advertised because a lane can export, but this mapped preview has no baked
+    // figma/<slug>.svg — the baked lane 404s. Rather than 404 the advertised link, a plain
+    // (no-knob)
+    // SVG export falls back to the daemon (an explicit action, so waking it is fine).
+    val baked =
+      RecordingHost(
+        previews = listOf(ServePreview(catalogId, catalogId)),
+        tag = "baked",
+        svgNotFound = true,
+      )
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        streaming = true,
+      )
+    val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
+
+    val out = composite.renderSvg(catalogId, PreviewOverrides()) as SvgOutcome.Ok
+    assertEquals("live-svg:$daemonId", out.svg.decodeToString())
+    assertEquals(daemonId, live.lastSvgId)
+  }
+
+  @Test
+  fun `a plain SVG export of an unmapped id with no baked vector stays NotFound`() {
+    // No daemon twin → nothing to fall back to; surface the baked NotFound rather than inventing
+    // one.
+    val baked =
+      RecordingHost(
+        previews = listOf(ServePreview(androidOnlyId, androidOnlyId)),
+        tag = "baked",
+        svgNotFound = true,
+      )
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        streaming = true,
+      )
+    val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
+
+    assertEquals(SvgOutcome.NotFound, composite.renderSvg(androidOnlyId, PreviewOverrides()))
+    assertNull(live.lastSvgId)
   }
 
   @Test
