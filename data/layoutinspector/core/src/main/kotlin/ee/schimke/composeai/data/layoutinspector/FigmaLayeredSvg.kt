@@ -190,10 +190,15 @@ object FigmaLayeredSvg {
     val t = layer.text!!
     val size = t.fontSizePx ?: options.defaultFontSizePx
     val baseline = layer.top + baselineOffset(t, size, (layer.bottom - layer.top).toDouble())
+    // An embedded face (via `familyOverrides`) is guaranteed present in the SVG's `@font-face`, so
+    // it
+    // stays a bare family name. Only the *unbacked* path — a captured face with no embedded bytes,
+    // where the viewer would otherwise substitute its default serif — gets a style-correct generic
+    // fallback appended.
     val familyName =
       t.fontFamily?.let { familyOverrides[it] }
-        ?: resolveFamily(t.fontFamily, options.defaultFontFamily)
-    val family = """ font-family="${escapeAttr(withGenericFallback(familyName))}""""
+        ?: withGenericFallback(resolveFamily(t.fontFamily, options.defaultFontFamily))
+    val family = """ font-family="${escapeAttr(familyName)}""""
     val weight = t.fontWeight?.let { """ font-weight="$it"""" } ?: ""
     val style = if (t.italic) """ font-style="italic"""" else ""
     val fill =
