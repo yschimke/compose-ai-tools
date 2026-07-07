@@ -11,7 +11,7 @@ import org.junit.Test
  * `:samples:android`'s `TransparentBackgroundPreviewPixelTest`, on the other channel.
  *
  * Glimmer's display model is additive: pure black pixels render as 100% transparent on-device,
- * so the design (`docs/design/GLIMMER_PREVIEW.md` § "Capture encoding") picks Encoding B —
+ * so the capture uses **Encoding B** —
  * opaque RGB on a `Color.Black` background, then `ADD`-blend onto an environment image to
  * recover what a wearer sees. The contract this test guards:
  *

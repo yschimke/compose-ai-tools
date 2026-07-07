@@ -28,7 +28,7 @@ import androidx.xr.glimmer.TitleChip
  * pixels render as 100% transparent on-device, so the SKILL.md mandates a `Color.Black`
  * background on the root projected-activity container. Captures here mirror that intent:
  * `showBackground = true, backgroundColor = 0xFF000000` so the rendered PNG is opaque RGB
- * (Encoding B in `docs/design/GLIMMER_PREVIEW.md`) with `RGB == (0, 0, 0)` everywhere the
+ * (Encoding B) with `RGB == (0, 0, 0)` everywhere the
  * Glimmer UI didn't paint — that's the additive-zero baseline an env compositor would later
  * `ADD`-blend onto a Light / Dark / Busy / Venice-canal-cats backdrop.
  *

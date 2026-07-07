@@ -36,7 +36,7 @@ into a long-lived, extensible render service.
 >
 > **Still to do:** the XR a11y kinds (`xr/a11y` structure + `xr/a11y-overlay` PNG). The design is now
 > settled — a two-level model (spatial structure between panels + 2D Compose a11y within each panel),
-> with level 1 already shipped as `xr/structure`. See [XR_A11Y.md](XR_A11Y.md); the remaining work is
+> with level 1 already shipped as `xr/structure`. The remaining work is
 > the producer capturing per-panel 2D semantics plus the `xr/a11y` / `xr/a11y-overlay` kinds.
 
 ## Motivation
@@ -124,10 +124,10 @@ CLI flag baked into a one-shot:
 
 - `xr/composite` — the baked still (the increment, promoted to a kind).
 - `xr/structure` — the spatial panel tree + poses + semantics as inline JSON (mirrors
-  `a11y/hierarchy`); **shipped**, and doubles as level 1 of XR a11y (see [XR_A11Y.md](XR_A11Y.md)).
+  `a11y/hierarchy`); **shipped**, and doubles as level 1 of XR a11y.
 - `xr/a11y` / `xr/a11y-overlay` — XR accessibility as a two-level model (spatial structure between
   panels + 2D Compose a11y within each panel); structure JSON and a per-panel overlay PNG, mirroring
-  `a11y/hierarchy` + `a11y/overlay`. Design: [XR_A11Y.md](XR_A11Y.md).
+  `a11y/hierarchy` + `a11y/overlay`.
 
 The C++ side mirrors the `DataProductRegistry` seam: a capabilities list + dispatch by kind, with
 **no `if (kind == …)`** scattered through the renderer — same rule the JVM side enforces.
@@ -195,8 +195,8 @@ panels-in-previews increment.
 5. **IDL — hand-mirror the C++ types + shared fixtures for now**, consistent with the existing
    Kotlin↔TS approach. Moving to a single-source IDL with codegen (e.g. protobuf) is tracked as
    follow-up in [#1729](https://github.com/yschimke/compose-ai-tools/issues/1729) — worthwhile once
-   the third (C++) mirror actually exists. That follow-up has been evaluated: see
-   [WIRE_IDL_CODEGEN.md](../WIRE_IDL_CODEGEN.md). Conclusion: keep the JSON wire and the hand-mirror +
+   the third (C++) mirror actually exists. That follow-up was evaluated; the conclusion: keep the
+   JSON wire and the hand-mirror +
    fixture approach until the C++ mirror is real; when it is, prefer a **JSON-preserving** IDL
    (JSON-Schema codegen, or proto3-with-canonical-JSON), migrated one message family at a time with
    the fixture corpus as the conformance ratchet — not a binary wire swap.

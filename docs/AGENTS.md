@@ -10,7 +10,7 @@ A Gradle plugin (`ee.schimke.composeai.preview`) plus supporting tools that disc
 
 Two audiences, two doc trees. Don't conflate them:
 
-- **This file + `docs/`** — contributor docs for working on *this repo*: editing the plugin, CLI, renderer modules, or VS Code extension; running the in-repo samples through `includeBuild("gradle-plugin")`; publishing releases. Build commands here use `./gradlew` against the local source tree.
+- **This file + `docs/`** — contributor docs for working on *this repo*: editing the plugin, CLI, renderer modules, or VS Code extension; running the in-repo samples through `includeBuild("gradle-plugin")`; publishing releases. Build commands here use `./gradlew` against the local source tree. [`docs/README.md`](README.md) is the index of the contributor doc tree.
 - **[`yschimke/skills`](https://github.com/yschimke/skills)** — consumer docs for the *published* plugin and CLI live in a separate content repo. Two skill bundles:
   - [`compose-preview`](https://github.com/yschimke/skills/tree/main/skills/compose-preview) — applying `id("ee.schimke.composeai.preview")` to a downstream project and driving `compose-preview` against it. The `references/` subtree is per-target-stack and per-feature guidance:
     - [`permissions.md`](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/permissions.md) — agent allowlists, staging PNGs under `build/`

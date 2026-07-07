@@ -17,8 +17,8 @@ plugins {
 // normally, while `Subspace { SpatialPanel { … } }` content is *ignored* (Google's
 // own behaviour — see `SubspaceDemo.kt`). The previews here capture the 2D
 // fallback, which is what Android Studio's `@Preview` shows for an XR app's UI in
-// Home Space too. The full rationale and rendering model live in
-// docs/design/XR_SPATIAL_PREVIEW.md.
+// Home Space too. The full rendering model lives in the `@XrSubspacePreview`
+// annotation KDoc and `SubspaceSceneRecorder`.
 
 composePreview {
   // Pin Robolectric to SDK 35. `androidx.xr.compose:compose`'s AAR metadata

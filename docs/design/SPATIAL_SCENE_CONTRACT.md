@@ -5,10 +5,10 @@ recovers a Compose-XR subspace layout and renders each panel's 2D content to a P
 **consumer** — the VS Code webview's WebGL 3D spatial-layout viewer. Both sides build to this shape so
 they can be developed in parallel and meet here.
 
-- **Source of truth:** [`schema/spatial-scene.schema.json`](../../schema/spatial-scene.schema.json) — the Kotlin ([`SpatialScene.kt`](../../api/preview-data-api/src/main/kotlin/ee/schimke/composeai/xr/SpatialScene.kt)), TypeScript ([`spatialScene.ts`](../../vscode-extension/src/webview/shared/spatialScene.ts)), and native C++ ([`spatial_scene.hpp`](../../renderers/xr-composite/src/spatial_scene.hpp)) mirrors are **generated** from it by [`scripts/codegen/gen-spatial-scene.mjs`](../../scripts/codegen/gen-spatial-scene.mjs) (CI gate: `--check`). Edit the schema, not the mirrors. Rationale: [`WIRE_IDL_CODEGEN.md`](WIRE_IDL_CODEGEN.md).
+- **Source of truth:** [`schema/spatial-scene.schema.json`](../../schema/spatial-scene.schema.json) — the Kotlin ([`SpatialScene.kt`](../../api/preview-data-api/src/main/kotlin/ee/schimke/composeai/xr/SpatialScene.kt)), TypeScript ([`spatialScene.ts`](../../vscode-extension/src/webview/shared/spatialScene.ts)), and native C++ ([`spatial_scene.hpp`](../../renderers/xr-composite/src/spatial_scene.hpp)) mirrors are **generated** from it by [`scripts/codegen/gen-spatial-scene.mjs`](../../scripts/codegen/gen-spatial-scene.mjs) (CI gate: `--check`). Edit the schema, not the mirrors.
 - **Sample fixture:** [`vscode-extension/preview-harness/fixtures/spatial-scene/`](../../vscode-extension/preview-harness/fixtures/spatial-scene/) (`scene.json` + `top.png` / `bottom.png`)
-- **Background:** [`XR_SPATIAL_PREVIEW.md`](XR_SPATIAL_PREVIEW.md) (how poses are recovered offline)
-- **Still-image consumer:** [`xr-spatial/COMPOSITOR.md`](xr-spatial/COMPOSITOR.md) (the `xr-composite` native tool that bakes this scene to a composite PNG, headless/GPU-free)
+- **Background:** how poses are recovered offline — see the `SubspaceSceneRecorder` KDoc (`:renderer-xr`).
+- **Still-image consumer:** [`renderers/xr-composite`](../../renderers/xr-composite/README.md) — the `xr-composite` native tool that bakes this scene to a composite PNG, headless/GPU-free.
 
 This is a **WebGL** viewer contract (Three.js/Babylon), **not** WebXR — VS Code ships stock Electron
 with WebXR disabled, so there is no `navigator.xr` and no immersive session. The viewer is an inline
@@ -78,7 +78,7 @@ The optional `environment` selects the scene backdrop and is **swappable**:
   custom gradient. Omit `environment` entirely to take the compositor's default `warm-room`.
 
 The compositor also accepts a `--environment <preset | color:#RRGGBB>` CLI flag that **overrides**
-whatever the scene specifies (see the [compositor](xr-spatial/COMPOSITOR.md) and its
+whatever the scene specifies (see the compositor's
 [README](../../renderers/xr-composite/README.md)).
 
 ## Producer mapping (`:renderer-xr`, Phase A)

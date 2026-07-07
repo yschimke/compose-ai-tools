@@ -27,8 +27,8 @@ import org.robolectric.annotation.Config
  * Recovers the *real* subspace layout — panel poses and sizes computed by `androidx.xr.compose` —
  * offline, with no headset, no OpenXR, and no SceneCore native code.
  *
- * This is the proof-of-concept behind the "harvest poses → project to 2D" path discussed in
- * [docs/design/XR_SPATIAL_PREVIEW.md](../../../../../../../docs/design/XR_SPATIAL_PREVIEW.md). It
+ * This is the proof-of-concept behind the "harvest poses → project to 2D" path implemented by
+ * `SubspaceSceneRecorder` (see its KDoc). It
  * also doubles as the **canary** for the alpha XR testing stack: if a future
  * `androidx.xr.*:…-testing` release changes how the fake runtime is discovered, how spatial UI is
  * gated, or the subspace semantics surface, this test fails loudly instead of the capability

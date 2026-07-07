@@ -26,8 +26,8 @@ import ee.schimke.composeai.xr.Vec3
 
 /**
  * Recovers a [SpatialScene] from a Compose-XR `Subspace` that has already been composed under a
- * fake XR runtime (no headset / OpenXR / SceneCore native — see
- * docs/design/XR_SPATIAL_PREVIEW.md and `:samples:xr-spatial`'s `SubspaceLayoutPoseTest`).
+ * fake XR runtime (no headset / OpenXR / SceneCore native — see `:samples:xr-spatial`'s
+ * `SubspaceLayoutPoseTest` for a worked example).
  *
  * This reads each named panel's `poseInRoot` and `size` from the public spatial-semantics tree and
  * maps them to the [SpatialScene] wire shape. It also recovers each panel's live content [View] (see
