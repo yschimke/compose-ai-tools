@@ -262,6 +262,8 @@ export class PreviewApp extends LitElement {
     @query("#recording-format") private _recordingFormat!: HTMLSelectElement;
     @query("#btn-touch-overlay") private _btnTouchOverlay!: HTMLButtonElement;
     @query("#btn-keyboard-band") private _btnKeyboardBand!: HTMLButtonElement;
+    @query("#btn-clear-background")
+    private _btnClearBackground!: HTMLButtonElement;
     @query("#btn-controls") private _btnControls!: HTMLButtonElement;
     @query("#btn-launcher-widget")
     private _btnLauncherWidget!: HTMLButtonElement;
@@ -414,6 +416,19 @@ export class PreviewApp extends LitElement {
                 >
                     <i
                         class="codicon codicon-symbol-keyword"
+                        aria-hidden="true"
+                    ></i>
+                </button>
+                <button
+                    class="icon-button"
+                    id="btn-clear-background"
+                    title="Clear background (render a crisp transparent outline)"
+                    aria-label="Clear background (render a crisp transparent outline)"
+                    aria-pressed="false"
+                    hidden
+                >
+                    <i
+                        class="codicon codicon-color-mode"
                         aria-hidden="true"
                     ></i>
                 </button>
@@ -673,6 +688,7 @@ export class PreviewApp extends LitElement {
         const recordingFormat = this._recordingFormat;
         const btnTouchOverlay = this._btnTouchOverlay;
         const btnKeyboardBand = this._btnKeyboardBand;
+        const btnClearBackground = this._btnClearBackground;
         const btnControls = this._btnControls;
         const btnLauncherWidget = this._btnLauncherWidget;
         const launcherWidgetPickerPopover = this._launcherWidgetPickerPopover;
@@ -686,6 +702,7 @@ export class PreviewApp extends LitElement {
             btnRecording,
             btnTouchOverlay,
             btnKeyboardBand,
+            btnClearBackground,
             btnControls,
             btnLauncherWidget,
             btnExportBundle,
@@ -3057,6 +3074,23 @@ export class PreviewApp extends LitElement {
             const enabled =
                 btnKeyboardBand.getAttribute("aria-pressed") === "true";
             liveState.toggleKeyboardBandForCard(card, !enabled);
+        });
+        btnClearBackground.addEventListener("click", () => {
+            const card = focusController.focusedCard();
+            if (!card) return;
+            const previewId = card.dataset.previewId;
+            if (!previewId) return;
+            const next =
+                btnClearBackground.getAttribute("aria-pressed") !== "true";
+            // Update the sticky per-preview state + button (and restart a live
+            // stream to pick up the override), then ask the host to re-render the
+            // snapshot with `renderNow.overrides.clearBackground` for the non-live case.
+            liveState.toggleClearBackgroundForCard(card, next);
+            vscode.postMessage({
+                command: "toggleClearBackground",
+                previewId,
+                enabled: next,
+            });
         });
         btnControls.addEventListener("click", () => {
             const card = focusController.focusedCard();

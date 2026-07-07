@@ -30,6 +30,7 @@ export interface FocusToolbarElements {
     btnRecording: HTMLButtonElement;
     btnTouchOverlay: HTMLButtonElement;
     btnKeyboardBand: HTMLButtonElement;
+    btnClearBackground: HTMLButtonElement;
     btnControls: HTMLButtonElement;
     btnLauncherWidget: HTMLButtonElement;
     btnExportBundle: HTMLButtonElement;
@@ -97,6 +98,14 @@ export interface FocusedToggleButtonState {
     advertised: boolean;
     /** Current per-preview toggle state for the focused card. */
     enabled: boolean;
+    /**
+     * True in a bundle-viewer panel. The bundle viewer's message switch handles
+     * none of the per-preview override edits (permissions / lottie / clear-background),
+     * so a toggle that re-renders via a host `renderNow` is inert there — the button is
+     * hidden rather than shown dead. Only consumed by the clear-background toggle today
+     * (the others are already capability-gated off in bundle mode). Absent ⇒ not bundle.
+     */
+    bundleMode?: boolean;
 }
 
 export class FocusToolbarController {
@@ -258,6 +267,36 @@ export class FocusToolbarController {
         this.el.btnTouchOverlay.setAttribute(
             "aria-label",
             this.el.btnTouchOverlay.title,
+        );
+    }
+
+    /**
+     * "Clear background" (crisp outline) toggle for the focused preview. Unlike the
+     * touch-overlay / keyboard-band toggles this is **not** gated on a daemon-advertised
+     * capability — `clearBackground` is a display override both backends always honour —
+     * so the button shows whenever a card is in focus. [FocusedToggleButtonState.advertised]
+     * is ignored here.
+     */
+    applyClearBackgroundButtonState(s: FocusedToggleButtonState): void {
+        // Hidden in bundle viewers — that panel's message switch has no
+        // `toggleClearBackground` handler, so the toggle can't reach a daemon there.
+        const visible =
+            s.inFocus && s.focusedPreviewId !== null && !s.bundleMode;
+        this.el.btnClearBackground.hidden = !visible;
+        if (!visible) {
+            this.el.btnClearBackground.setAttribute("aria-pressed", "false");
+            return;
+        }
+        this.el.btnClearBackground.setAttribute(
+            "aria-pressed",
+            s.enabled ? "true" : "false",
+        );
+        this.el.btnClearBackground.title = s.enabled
+            ? "Restore preview background"
+            : "Clear background (render a crisp transparent outline)";
+        this.el.btnClearBackground.setAttribute(
+            "aria-label",
+            this.el.btnClearBackground.title,
         );
     }
 
