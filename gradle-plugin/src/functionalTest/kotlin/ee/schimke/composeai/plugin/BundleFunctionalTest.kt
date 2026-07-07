@@ -413,6 +413,77 @@ class BundleFunctionalTest {
   }
 
   @Test
+  fun `composePreviewBundle packs the per-theme catalog-token sidecar`() {
+    val projectDir = createTestProject()
+
+    // Plant a `@ThemeCatalog` provider so discovery emits a real `PreviewKind.THEME_CATALOG` sheet
+    // (annotation matched by FQN, declared locally so the test needs no external artifact). Guards
+    // the regression where `resolvePreviewCatalogTokens` gated on `CATALOG` only and dropped theme
+    // sidecars — the whole point of #2179's export axis.
+    val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview").apply { mkdirs() }
+    File(annDir, "ThemeCatalog.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.CLASS)
+        annotation class ThemeCatalog(val name: String = "", val group: String = "")
+        """
+          .trimIndent()
+      )
+    File(projectDir, "src/main/kotlin/test/Themes.kt")
+      .writeText(
+        """
+        package test
+
+        import ee.schimke.composeai.preview.ThemeCatalog
+
+        @ThemeCatalog(name = "Brand Light") class BrandLightTheme
+        """
+          .trimIndent()
+      )
+
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewDiscover")
+      .withPluginClasspath()
+      .build()
+
+    val previewsJson = File(projectDir, "build/compose-previews/previews.json")
+    val manifest = json.decodeFromString(PreviewManifest.serializer(), previewsJson.readText())
+    val themeId =
+      manifest.previews
+        .first { it.params.kind == PreviewKind.THEME_CATALOG }
+        .id
+        .also { assertThat(it).isEqualTo("themecatalog__Brand_Light") }
+
+    fun pack() {
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewBundle", "-PbundlePreviewIds=$themeId", "--build-cache")
+        .withPluginClasspath()
+        .build()
+    }
+
+    // Seed the per-theme resolved-token sidecar as the renderer's `CatalogTokenSidecar.writeResolved`
+    // would — keyed by the sheet id, carrying the `theme` name — then pack and assert it lands.
+    val themeJson =
+      """{"schema":"compose-preview-catalog-tokens/v1","previewId":"$themeId",""" +
+        """"theme":"Brand Light","tokens":[{"label":"primary","kind":"COLOR",""" +
+        """"color":{"hex":"#FFFF6F61","argb":-37023}}]}"""
+    File(projectDir, "build/compose-previews/data/catalog-tokens")
+      .apply { mkdirs() }
+      .also { File(it, "$themeId.catalog.json").writeText(themeJson) }
+
+    pack()
+    val bundle = File(projectDir, "build/compose-previews/bundle.png")
+    assertThat(listEntries(bundle)).contains("previews/$themeId.catalog.json")
+    assertThat(String(readZipEntry(bundle, "previews/$themeId.catalog.json")!!, Charsets.UTF_8))
+      .isEqualTo(themeJson)
+  }
+
+  @Test
   fun `composePreviewBundle re-packs when renders appear after a render-less pack`() {
     val projectDir = createTestProject()
     val redId = "test.RedKt.RedBoxPreview"

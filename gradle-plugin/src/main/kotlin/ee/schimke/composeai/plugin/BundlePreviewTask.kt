@@ -525,8 +525,8 @@ abstract class BundlePreviewTask : DefaultTask() {
     // role/type table keyed by theme — the renderer wrote under `data/catalog-tokens/<id>.catalog.json`,
     // packed by convention under `previews/<id>.catalog.json` — same shape as the override sidecars
     // so a detached reader (design-parity's `catalog-export`) can import the palette / type scale
-    // without re-rendering. `PreviewKind.CATALOG` and `THEME_CATALOG` sheets carry one; resolution is
-    // by on-disk id, so no kind gate is needed here.
+    // without re-rendering. Only `PreviewKind.CATALOG` and `THEME_CATALOG` sheets carry one (the
+    // gate lives in `resolvePreviewCatalogTokens`).
     val catalogTokenEntries = LinkedHashMap<String, ByteArray>()
     for (preview in selected) {
       resolvePreviewCatalogTokens(preview)?.let {
@@ -717,14 +717,20 @@ abstract class BundlePreviewTask : DefaultTask() {
 
   /**
    * Look for the per-sheet catalog-token sidecar the render step wrote for a `PreviewKind.CATALOG`
-   * [preview] (`<rendersRoot>/../data/catalog-tokens/<id>.catalog.json`, issue #2167). Unlike the
-   * override / IR sidecars, it lives under the `data/` tree keyed by the sheet id (not the PNG
-   * stem), so resolution mirrors the renderer's `CatalogTokenSidecar` path + sanitize. Returns the
-   * raw bytes (copied verbatim — the producer never parses them) or `null` for non-catalog previews
-   * and sheets that resolved no tokens.
+   * (issue #2167) or `PreviewKind.THEME_CATALOG` (issue #2179) [preview]
+   * (`<rendersRoot>/../data/catalog-tokens/<id>.catalog.json`). Unlike the override / IR sidecars,
+   * it lives under the `data/` tree keyed by the sheet id (not the PNG stem), so resolution mirrors
+   * the renderer's `CatalogTokenSidecar` path + sanitize. Returns the raw bytes (copied verbatim —
+   * the producer never parses them) or `null` for previews of any other kind and sheets that
+   * resolved no tokens.
    */
   private fun resolvePreviewCatalogTokens(preview: PreviewInfo): ByteArray? {
-    if (preview.params.kind != PreviewKind.CATALOG) return null
+    if (
+      preview.params.kind != PreviewKind.CATALOG &&
+        preview.params.kind != PreviewKind.THEME_CATALOG
+    ) {
+      return null
+    }
     val rendersRoot = rendersDir.orNull?.asFile ?: return null
     val dataDir = File(rendersRoot.parentFile ?: rendersRoot, "data/catalog-tokens")
     val name = sanitizeCatalogTokenId(preview.id) + ".$BUNDLE_CATALOG_TOKENS_SIDECAR_EXT"
