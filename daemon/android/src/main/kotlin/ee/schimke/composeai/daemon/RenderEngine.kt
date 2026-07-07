@@ -356,7 +356,13 @@ class RenderEngine(
                 // through rather than parking under the paused clock — same trade the standalone
                 // renderer already pays in its always-on a11y pass.
                 val inspectionMode = if (effectiveRunAccessibility) false else spec.inspectionMode ?: true
-                CompositionLocalProvider(LocalInspectionMode provides inspectionMode) {
+                CompositionLocalProvider(
+                  LocalInspectionMode provides inspectionMode,
+                  // Cleared background ("crisp outline"): a composable drawing its own opaque fill
+                  // drops it to match the transparent decor-view background. Defaults false.
+                  ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
+                    spec.clearBackground,
+                ) {
                   CaptureMaterialTheme { _, typography, shapes, payload ->
                     themeFallbackCapture.capture(typography, shapes)
                     themeFallbackCapture.capture(payload)
@@ -911,7 +917,11 @@ class RenderEngine(
           val bgArgb = resolveBackgroundColor(spec).toArgb()
           val heightDp = pxToDp(spec.heightPx, spec.density)
           rule.setContent {
-            CompositionLocalProvider(LocalInspectionMode provides false) {
+            CompositionLocalProvider(
+              LocalInspectionMode provides false,
+              ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
+                spec.clearBackground,
+            ) {
               Box(modifier = Modifier.fillMaxSize().background(Color(bgArgb))) {
                 InvokeComposable(composableMethod)
               }
@@ -998,6 +1008,7 @@ class RenderEngine(
 
   private fun resolveBackgroundColor(spec: RenderSpec): Color =
     when {
+      spec.clearBackground -> Color.Transparent
       spec.backgroundColor != 0L -> Color(spec.backgroundColor.toInt())
       spec.showBackground -> Color.White
       else -> Color.Transparent
@@ -1376,6 +1387,13 @@ data class RenderSpec(
   val showBackground: Boolean = true,
   val backgroundColor: Long = 0L,
   /**
+   * Per-render cleared-background toggle ("crisp outline"). When `true` the harness background is
+   * forced transparent (overriding [showBackground]/[backgroundColor]) and
+   * `LocalPreviewBackgroundCleared = true` is provided around the preview. Default `false` preserves
+   * the discovery-time background.
+   */
+  val clearBackground: Boolean = false,
+  /**
    * Raw `@Preview(device = …)` string when known — `id:wearos_small_round`,
    * `spec:width=…,isRound=true`, `id:pixel_5`, etc. Used by the render body to detect round Wear
    * devices and apply the circular crop / `round` resource qualifier; non-round / null values are
@@ -1484,6 +1502,7 @@ data class RenderSpec(
         density = map["density"]?.toFloatOrNull() ?: defaults.density,
         showBackground = map["showBackground"]?.toBoolean() ?: defaults.showBackground,
         backgroundColor = map["backgroundColor"]?.toLongOrNull() ?: defaults.backgroundColor,
+        clearBackground = map["clearBackground"]?.toBoolean() ?: defaults.clearBackground,
         device = map["device"]?.takeIf { it.isNotBlank() } ?: defaults.device,
         renderMode = map["mode"]?.takeIf { it.isNotBlank() },
         outputBaseName = map["outputBaseName"] ?: defaults.outputBaseName,

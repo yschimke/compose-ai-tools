@@ -61,6 +61,9 @@ dependencies {
   // path); the Android registry advertises the kind from a stub that returns NotAvailable
   // until the in-sandbox observer install lands in a follow-up.
   implementation(project(":data-recomposition-core"))
+  // `LocalPreviewBackgroundCleared` — provided around the rendered preview so a composable that
+  // draws its own opaque fill can drop it under the `clearBackground` ("crisp outline") override.
+  implementation(project(":slot-preview-runtime"))
   implementation(project(":data-fonts-connector"))
   implementation(project(":data-render-connector"))
   implementation(project(":data-history-connector"))

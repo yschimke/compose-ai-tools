@@ -735,6 +735,12 @@ object ServeWeb {
               <option value="landscape">Landscape</option>
             </select>
           </label>
+          <label>Background
+            <select id="cp-background"$serverDis>
+              <option value="">(default)</option>
+              <option value="clear">Clear (crisp outline)</option>
+            </select>
+          </label>
           ${overrideKnobsHtml(preview, canApplyOverrides)}
           <div class="cp-status" id="cp-status"></div>
         </div>
@@ -784,7 +790,7 @@ object ServeWeb {
       // scale slider has no empty state, so it's gated separately: we only send fontScale once the
       // user moves it (fontScaleTouched), otherwise the slider's standing 1.0 would override a
       // preview's declared default font scale and the first render wouldn't match the thumbnail.
-      var fields = ["uiMode", "device", "localeTag", "orientation"];
+      var fields = ["uiMode", "device", "localeTag", "orientation", "background"];
       var fs = document.getElementById("cp-fontScale");
       var fsVal = document.getElementById("cp-fontScale-val");
       var fontScaleTouched = false;

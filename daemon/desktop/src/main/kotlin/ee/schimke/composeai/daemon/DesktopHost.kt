@@ -207,6 +207,7 @@ open class DesktopHost(
     add("device")
     add("inspectionMode")
     add("slotMode")
+    add("clearBackground")
     add("material3Theme")
     add("wallpaper")
     // Issue #1205 — `renderNow.overrides.focus` is honoured by the planner registered in
@@ -571,6 +572,12 @@ open class DesktopHost(
       uiMode = uiMode,
       orientation = orientation,
       inspectionMode = merged.inspectionMode,
+      // `clearBackground` isn't a `mergePreviewOverrides` field (it's not a display-geometry knob),
+      // so carry it straight from the override bag onto the held/recording spec — otherwise the
+      // live `stream/start` + recording paths would keep the opaque background when the viewer's
+      // Background → Clear toggle sends `PreviewOverrides(clearBackground = true)`. Null preserves
+      // the discovery-time value.
+      clearBackground = overrides?.clearBackground ?: base.clearBackground,
       overrides = merged.toExtensionOverrides(),
       outputBaseName = "recording-$recordingId",
     )
@@ -719,6 +726,7 @@ open class DesktopHost(
       orientation = orientation,
       inspectionMode = map["inspectionMode"]?.toBooleanStrictOrNull() ?: base.inspectionMode,
       slotMode = map["slotMode"]?.toBooleanStrictOrNull() ?: base.slotMode,
+      clearBackground = map["clearBackground"]?.toBoolean() ?: base.clearBackground,
     )
   }
 

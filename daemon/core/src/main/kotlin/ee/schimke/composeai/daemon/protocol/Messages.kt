@@ -530,6 +530,18 @@ data class PreviewOverrides(
    */
   val slotMode: Boolean? = null,
   /**
+   * Per-render **cleared background** — the "crisp outline" toggle. When `true`, the renderer
+   * forces a transparent harness background (overriding the discovery-time
+   * `@Preview(showBackground=…)` / `backgroundColor`) AND provides `LocalPreviewBackgroundCleared =
+   * true` around the preview, so a composable that draws its own opaque fill (a Material 3
+   * `Surface`, a catalog sticker) can drop it to match. The result is a component silhouette on
+   * transparency rather than a solid card — the "clean outline" a downstream viewer
+   * (`compose-preview serve`'s `?background=clear`) can toggle with a live re-render.
+   * `null`/`false` preserves the discovery-time background exactly, so an untoggled render is
+   * byte-identical to before. Both backends honour it.
+   */
+  val clearBackground: Boolean? = null,
+  /**
    * Optional Material 3 theme token overrides applied by the renderer as a normal
    * `MaterialTheme(...) { preview() }` wrapper around the invoked preview. This lets callers test
    * components under alternate color, shape, or typography tokens without editing source previews.

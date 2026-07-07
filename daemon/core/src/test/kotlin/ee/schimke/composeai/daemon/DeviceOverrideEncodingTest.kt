@@ -103,6 +103,23 @@ class DeviceOverrideEncodingTest {
     assertContainsToken("slotMode=true", captured)
   }
 
+  @Test(timeout = 30_000)
+  fun clearBackgroundOverrideThreadsThroughPayload() {
+    val captured = renderAndCapturePayload(overrides = """{"clearBackground":true}""")
+
+    assertContainsToken("clearBackground=true", captured)
+  }
+
+  @Test(timeout = 30_000)
+  fun noClearBackgroundOverrideLeavesPayloadClean() {
+    val captured = renderAndCapturePayload(overrides = """{"uiMode":"dark"}""")
+
+    assertTrue(
+      "clearBackground must not appear when the override is unset: '$captured'",
+      "clearBackground=" !in captured,
+    )
+  }
+
   private fun assertContainsToken(token: String, payload: String) {
     val tokens = payload.split(';')
     assertTrue(

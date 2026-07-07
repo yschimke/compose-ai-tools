@@ -487,6 +487,14 @@ export interface PreviewOverrides {
      */
     inspectionMode?: boolean;
     /**
+     * Per-render cleared-background ("crisp outline") toggle. `true` forces a transparent harness
+     * background (overriding `@Preview(showBackground=…)` / `backgroundColor`) and provides
+     * `LocalPreviewBackgroundCleared = true` so a composable drawing its own opaque fill (a Material 3
+     * `Surface`) can drop it. Undefined/false preserves the discovery-time background. The panel's
+     * background chip flips this; both daemon backends honour it.
+     */
+    clearBackground?: boolean;
+    /**
      * Opt-in touch-event visualization for live / recording sessions. `true` installs the
      * `TouchOverlayExtension` `AroundComposable` so the captured / streamed frames carry
      * cyan rings at every pressed pointer plus short-lived expanding pulses on down/up —
