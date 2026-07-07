@@ -30,6 +30,7 @@ export interface FocusToolbarElements {
     btnRecording: HTMLButtonElement;
     btnTouchOverlay: HTMLButtonElement;
     btnKeyboardBand: HTMLButtonElement;
+    btnClearBackground: HTMLButtonElement;
     btnControls: HTMLButtonElement;
     btnLauncherWidget: HTMLButtonElement;
     btnExportBundle: HTMLButtonElement;
@@ -258,6 +259,33 @@ export class FocusToolbarController {
         this.el.btnTouchOverlay.setAttribute(
             "aria-label",
             this.el.btnTouchOverlay.title,
+        );
+    }
+
+    /**
+     * "Clear background" (crisp outline) toggle for the focused preview. Unlike the
+     * touch-overlay / keyboard-band toggles this is **not** gated on a daemon-advertised
+     * capability — `clearBackground` is a display override both backends always honour —
+     * so the button shows whenever a card is in focus. [FocusedToggleButtonState.advertised]
+     * is ignored here.
+     */
+    applyClearBackgroundButtonState(s: FocusedToggleButtonState): void {
+        const visible = s.inFocus && s.focusedPreviewId !== null;
+        this.el.btnClearBackground.hidden = !visible;
+        if (!visible) {
+            this.el.btnClearBackground.setAttribute("aria-pressed", "false");
+            return;
+        }
+        this.el.btnClearBackground.setAttribute(
+            "aria-pressed",
+            s.enabled ? "true" : "false",
+        );
+        this.el.btnClearBackground.title = s.enabled
+            ? "Restore preview background"
+            : "Clear background (render a crisp transparent outline)";
+        this.el.btnClearBackground.setAttribute(
+            "aria-label",
+            this.el.btnClearBackground.title,
         );
     }
 

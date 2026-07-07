@@ -178,3 +178,46 @@ describe("LiveStateController — launcher-widget override", () => {
         assert.strictEqual(changes.length, 0);
     });
 });
+
+describe("LiveStateController — clear-background toggle", () => {
+    it("is off by default", () => {
+        const live = makeController();
+        assert.strictEqual(live.isClearBackgroundEnabled("preview:A"), false);
+        assert.strictEqual(live.overridesForPreview("preview:A"), undefined);
+    });
+
+    it("toggleClearBackgroundForCard surfaces clearBackground in overridesForPreview", () => {
+        const live = makeController();
+        const card = makeCard("preview:A");
+        live.toggleClearBackgroundForCard(card, true);
+        assert.strictEqual(live.isClearBackgroundEnabled("preview:A"), true);
+        assert.deepStrictEqual(live.overridesForPreview("preview:A"), {
+            clearBackground: true,
+        });
+    });
+
+    it("toggling off removes the override branch", () => {
+        const live = makeController();
+        const card = makeCard("preview:A");
+        live.toggleClearBackgroundForCard(card, true);
+        live.toggleClearBackgroundForCard(card, false);
+        assert.strictEqual(live.isClearBackgroundEnabled("preview:A"), false);
+        assert.strictEqual(live.overridesForPreview("preview:A"), undefined);
+    });
+
+    it("scopes the toggle per-preview", () => {
+        const live = makeController();
+        live.toggleClearBackgroundForCard(makeCard("preview:A"), true);
+        assert.deepStrictEqual(live.overridesForPreview("preview:A"), {
+            clearBackground: true,
+        });
+        assert.strictEqual(live.overridesForPreview("preview:B"), undefined);
+    });
+
+    it("is a no-op when card has no previewId", () => {
+        const live = makeController();
+        const card = document.createElement("div");
+        live.toggleClearBackgroundForCard(card, true);
+        assert.strictEqual(live.overridesForPreview(""), undefined);
+    });
+});

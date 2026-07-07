@@ -151,6 +151,11 @@ export class LiveStateController {
     // stops live, and starts again gets the same overlay back.
     private touchOverlayEnabledPreviewIds: Set<string> = new Set<string>();
     private keyboardBandForcedPreviewIds: Set<string> = new Set<string>();
+    // Per-preview "clear background" (crisp outline) toggle. Sticky across live
+    // tear-down like the overlay toggles; carried into a live stream restart via
+    // `overridesForPreview` (`overrides.clearBackground`), and mirrored to the host
+    // as a snapshot `renderNow` from the focus-bar click handler in `main.ts`.
+    private clearBackgroundEnabledPreviewIds: Set<string> = new Set<string>();
     // Per-preview launcher-widget cell-size override. Read by `overridesForPreview`
     // when building the `requestStreamStart` payload so the daemon's session
     // installs a `LauncherWidgetExtension` planning to the chosen cells. The
@@ -349,6 +354,11 @@ export class LiveStateController {
         return this.touchOverlayEnabledPreviewIds.has(previewId);
     }
 
+    /** Current per-preview "clear background" (crisp outline) toggle state. */
+    isClearBackgroundEnabled(previewId: string): boolean {
+        return this.clearBackgroundEnabledPreviewIds.has(previewId);
+    }
+
     /** Current per-preview soft-keyboard band override state. */
     isKeyboardBandForced(previewId: string): boolean {
         return this.keyboardBandForcedPreviewIds.has(previewId);
@@ -433,6 +443,24 @@ export class LiveStateController {
         this.applyControlsToggleButtons();
     }
 
+    /**
+     * Per-card "clear background" (crisp outline) toggle. Updates the sticky per-preview
+     * state and refreshes the focus-bar button. If the card is live, restarts the stream
+     * so the daemon picks up `overrides.clearBackground` (via [overridesForPreview]); the
+     * snapshot re-render for the non-live case is dispatched host-side by the click
+     * handler in `main.ts` (`toggleClearBackground` message → `renderNow`).
+     */
+    toggleClearBackgroundForCard(card: HTMLElement, enabled: boolean): void {
+        const previewId = card.dataset.previewId;
+        if (!previewId) return;
+        const was = this.clearBackgroundEnabledPreviewIds.has(previewId);
+        if (was === enabled) return;
+        if (enabled) this.clearBackgroundEnabledPreviewIds.add(previewId);
+        else this.clearBackgroundEnabledPreviewIds.delete(previewId);
+        this.restartLiveIfActive(previewId);
+        this.applyControlsToggleButtons();
+    }
+
     /** Daemon advertises the launcher-widget container-size extension on any known module. */
     isLauncherWidgetAdvertised(): boolean {
         return this.anyModuleAdvertisesExtension(LAUNCHER_WIDGET_EXTENSION_ID);
@@ -509,12 +537,15 @@ export class LiveStateController {
     overridesForPreview(previewId: string): PreviewOverrides | undefined {
         const touch = this.touchOverlayEnabledPreviewIds.has(previewId);
         const keyboardOn = this.keyboardBandForcedPreviewIds.has(previewId);
+        const clearBg = this.clearBackgroundEnabledPreviewIds.has(previewId);
         const launcherCells =
             this.launcherWidgetCellsByPreviewId.get(previewId);
-        if (!touch && !keyboardOn && !launcherCells) return undefined;
+        if (!touch && !keyboardOn && !clearBg && !launcherCells)
+            return undefined;
         const overrides: PreviewOverrides = {};
         if (touch) overrides.touchOverlay = true;
         if (keyboardOn) overrides.keyboard = { visible: true };
+        if (clearBg) overrides.clearBackground = true;
         if (launcherCells) overrides.launcherWidget = { cells: launcherCells };
         return overrides;
     }

@@ -1222,7 +1222,16 @@ export type WebviewToExtension =
           command: "setPermissionsOverride";
           previewId: string;
           change: PermissionsChangeDetail;
-      };
+      }
+    /**
+     * Focus-toolbar "clear background" (crisp outline) toggle. Re-renders the
+     * focused preview's snapshot with `renderNow.overrides.clearBackground`, so the
+     * daemon forces a transparent harness background and provides
+     * `LocalPreviewBackgroundCleared` — a composable drawing its own opaque fill (a
+     * Material 3 `Surface`) drops it for a crisp component silhouette. `enabled =
+     * false` reverts to the discovery-time background.
+     */
+    | { command: "toggleClearBackground"; previewId: string; enabled: boolean };
 
 /**
  * Narrow shape the History panel reads off each sidecar JSON entry. The

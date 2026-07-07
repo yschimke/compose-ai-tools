@@ -5971,6 +5971,15 @@ function handleWebviewMessage(msg: WebviewToExtension) {
                 void handleSetPermissionsOverride(msg.previewId, msg.change);
             }
             break;
+        case "toggleClearBackground":
+            // Focus-toolbar "clear background" (crisp outline) toggle. Re-renders the
+            // focused preview's snapshot with `renderNow.overrides.clearBackground`, so
+            // the daemon forces a transparent harness background AND provides
+            // `LocalPreviewBackgroundCleared`. Always available (not gated on early
+            // features) — it's a stable display override both backends honour, so the
+            // focus-bar button never sits dead.
+            void handleToggleClearBackground(msg.previewId, msg.enabled);
+            break;
         case "openResourceFile":
             void openResourceFile(
                 {
@@ -6418,6 +6427,38 @@ async function handleSetPermissionsOverride(
         "fast",
         "permissions-edit",
         { permissions: next },
+    );
+}
+
+/**
+ * Focus-toolbar "clear background" toggle. Re-renders the preview's snapshot with
+ * `renderNow.overrides.clearBackground = enabled`, so the daemon forces a transparent
+ * harness background and provides `LocalPreviewBackgroundCleared` for the crisp-outline
+ * capture. The webview owns the sticky per-preview toggle state (it reflects the button's
+ * pressed state and carries the override into a live stream restart via
+ * `overridesForPreview`); this host handler just dispatches the snapshot render. `enabled
+ * = false` sends `undefined` so the render reverts to the discovery-time background.
+ */
+async function handleToggleClearBackground(
+    previewId: string,
+    enabled: boolean,
+): Promise<void> {
+    if (!daemonScheduler) {
+        return;
+    }
+    const moduleInfo = previewModuleIndex.get(previewId);
+    if (!moduleInfo) {
+        return;
+    }
+    logInfo(
+        `[panel] clearBackground ${enabled ? "on" : "off"} for ${previewId} via renderNow`,
+    );
+    void daemonScheduler.renderNow(
+        moduleInfo,
+        [previewId],
+        "fast",
+        "clear-background-toggle",
+        { clearBackground: enabled || undefined },
     );
 }
 
