@@ -2,7 +2,7 @@
 
 > **Status:** v2 contract. Pre-1.0 — wire shape may break across minor versions in a coordinated daemon + client release. v2 made `initialize.capabilities.{dataProducts,dataExtensions,previewExtensions}` opt-in via `extensions/enable` (see § 3a); v1 clients fail the `protocolVersion` check.
 
-This document is the authoritative wire-format spec for the JSON-RPC channel between the VS Code extension and the per-module preview daemon. It is referenced by [DESIGN.md § 5](DESIGN.md). Open protocol work is tracked in [ROADMAP.md](ROADMAP.md).
+This document is the authoritative wire-format spec for the JSON-RPC channel between the VS Code extension and the per-module preview daemon. It is referenced by [DESIGN.md § 5](DESIGN.md).
 
 ## 1. Transport
 

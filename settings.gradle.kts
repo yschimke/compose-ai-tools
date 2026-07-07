@@ -222,7 +222,7 @@ include(":samples:cmp")
 include(":samples:cmp-shared")
 
 // In-browser CMP tier — a `wasmJs` Compose app rendering the M3 catalog in the
-// browser sandbox (Workstream C / `docs/wasm-cmp-spike.md`). wasmJs-only, no
+// browser sandbox (a `wasmJs` Compose app). wasmJs-only, no
 // renderable `@Preview`, so it sits outside the desktop/Android render path.
 include(":samples:cmp-wasm-catalog")
 
@@ -560,7 +560,7 @@ project(":render-cli").projectDir = file("render-session/cli")
 // Fake Android emulator — impersonates a running emulator (ADB device transport, emulator console,
 // emulator gRPC control + screenshot video) so the compose-preview render pipeline can be driven by
 // `adb` / Android Studio and a preview launched via the `am start … PreviewActivity` intent. See
-// docs/fake-emulator/DESIGN.md. Split so the verifiable, dependency-light ADB core stays free of the
+// docs/fake-emulator/README.md. Split so the verifiable, dependency-light ADB core stays free of the
 // protobuf/grpc toolchain and the render classpath.
 //
 //  * `:fake-emulator-core` — pure-Kotlin ADB transport + console + screencap + the `am start`

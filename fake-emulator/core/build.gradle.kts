@@ -8,7 +8,7 @@ plugins {
 // console, screencap, the `am start … PreviewActivity` preview-launch parser, and the
 // FrameSource / PreviewLauncher SPIs. Deliberately dependency-light (coroutines + okio only) and
 // free of the render classpath + protobuf/grpc toolchain so its `dadb` tests run fast and
-// hermetically. See docs/fake-emulator/DESIGN.md.
+// hermetically. See docs/fake-emulator/README.md.
 dependencies {
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.okio)

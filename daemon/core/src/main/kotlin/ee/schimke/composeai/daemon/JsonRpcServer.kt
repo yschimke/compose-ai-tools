@@ -202,7 +202,7 @@ class JsonRpcServer(
   /**
    * Experimental gate for `history/diff`. The metadata-mode handler exists (H3) but the broader
    * history surface — pixel mode (H5), git-ref write modes, LFS/squash-GC handling — is incomplete
-   * (see `docs/daemon/ROADMAP.md` § History). For 1.0 the dispatcher returns method-not-found
+   *. For 1.0 the dispatcher returns method-not-found
    * unless this flag is on, so consumers don't accidentally code against an interface that's still
    * moving. Defaults to the [HISTORY_DIFF_EXPERIMENTAL_PROP] sysprop (off in production); tests
    * that assert on the diff handler pass `historyDiffExperimental = true` explicitly.

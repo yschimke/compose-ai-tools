@@ -75,4 +75,3 @@ not as separate docs — read them next to the code.
 
 - [fake-emulator/](fake-emulator/README.md) — the unpublished fake-emulator module.
 - [clients/](clients/SESSION-VIEWER.md) — mobile/Wear session-viewer apps and their publishing.
-- [wasm-cmp-spike.md](wasm-cmp-spike.md) — the Kotlin/Wasm preview-server spike (wired into the build).
