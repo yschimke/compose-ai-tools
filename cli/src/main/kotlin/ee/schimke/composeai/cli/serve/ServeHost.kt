@@ -30,6 +30,28 @@ interface ServeHost : AutoCloseable {
     get() = false
 
   /**
+   * Whether the host can produce a **freshly rendered** snapshot when an override is supplied —
+   * even if the *default* (override-free) snapshot lane is baked. Governs whether the viewer offers
+   * the author-declared knob controls as live (an edit re-renders via `/render`) rather than
+   * disabled, informational ones. It defaults to [canApplyOverrides], so a plain daemon host (both
+   * true) and a plain static bundle (both false) are unchanged. A trusted-catalog live session
+   * ([ServeCatalogLiveHost]) is the exception: `canApplyOverrides = false` (browsing stays baked
+   * and instant) but `canRenderOverrides = true` — an override-bearing `/render` re-renders through
+   * the carried daemon on demand, so a `?knob.<key>=…` (or display-axis) URL returns fresh pixels.
+   */
+  val canRenderOverrides: Boolean
+    get() = canApplyOverrides
+
+  /**
+   * Whether [renderSvg] can actually produce a `compose/figma-svg` export for this session's
+   * previews — a daemon-backed host always can, a static bundle only when it carried baked
+   * `figma/<slug>.svg` vectors (a design catalog). Drives whether the viewer offers a copyable SVG
+   * download URL alongside the PNG one. Defaults to false (a plain bundle 404s the `.svg` lane).
+   */
+  val hasSvgExport: Boolean
+    get() = false
+
+  /**
    * Whether a **live daemon stream** ("Live (stream)") is available for this session — distinct
    * from [canApplyOverrides], which governs whether the *snapshot* lane re-renders on override
    * edits. The two usually coincide (a plain [ServeRenderHost] has both; a static [ServeBundleHost]

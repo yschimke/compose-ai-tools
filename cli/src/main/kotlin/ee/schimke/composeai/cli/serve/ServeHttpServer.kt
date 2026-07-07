@@ -498,6 +498,8 @@ class ServeHttpServer(
           token,
           webSessionId,
           canApplyOverrides = renderHost.canApplyOverrides,
+          canRenderOverrides = renderHost.canRenderOverrides,
+          hasSvgExport = renderHost.hasSvgExport,
           hasLiveStream = renderHost.hasLiveStream,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           wasmSrc = wasmSrc,

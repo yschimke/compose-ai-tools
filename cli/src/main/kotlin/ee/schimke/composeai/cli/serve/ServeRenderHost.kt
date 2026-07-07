@@ -130,6 +130,10 @@ internal constructor(
   // A daemon backs this host, so an override edit actually re-renders (unlike a static bundle).
   override val canApplyOverrides: Boolean = true
 
+  // The daemon can export a `compose/figma-svg` for any preview, so the viewer can offer an SVG
+  // download link alongside the PNG.
+  override val hasSvgExport: Boolean = true
+
   private val previewIds: Set<String> = previews.map { it.id }.toHashSet()
 
   // Decodes streamFrame notification params for the live-stream lane (startStream).

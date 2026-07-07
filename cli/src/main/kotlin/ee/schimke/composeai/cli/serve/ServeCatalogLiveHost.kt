@@ -44,8 +44,15 @@ class ServeCatalogLiveHost(
   private val baked: ServeHost,
 ) : ServeHost {
 
-  /** Browse + snapshot surface is the baked catalog — its ids are the published catalog ids. */
-  override val previews: List<ServePreview> = baked.previews
+  /**
+   * Browse + snapshot surface is the baked catalog — its ids are the published catalog ids. The
+   * author-declared knobs ([ServePreview.overrides]), however, are carried by the *daemon* previews
+   * (read from the live bundle's `previews/<daemon-id>.overrides.json` sidecars, keyed by the
+   * daemon descriptor id), not by the baked catalog images. So graft each mapped catalog preview's
+   * knob declarations across from its daemon twin via [alias]; an unmapped (Android-only) preview
+   * keeps the baked entry as-is (no live lane, no editable knobs).
+   */
+  override val previews: List<ServePreview> = mergeDeclaredKnobs(baked.previews, live.previews)
 
   override val label: String = baked.label
 
@@ -54,6 +61,21 @@ class ServeCatalogLiveHost(
    * pixels + trust badge — the live daemon is opt-in via [hasLiveStream], not the snapshot lane.
    */
   override val canApplyOverrides: Boolean = false
+
+  /**
+   * The carried daemon CAN re-render a snapshot on demand, so an override-bearing `/render` (a
+   * `?knob.<key>=…` edit, or a display-axis change on a mapped id) returns fresh pixels — see
+   * [render] / [renderSvg]. This leaves [canApplyOverrides] false (ordinary browsing never wakes
+   * the daemon) while enabling the viewer's knob controls as live rather than baked-and-disabled.
+   */
+  override val canRenderOverrides: Boolean = true
+
+  /**
+   * SVG is exportable when either lane can produce it — the baked catalog carries
+   * `figma/<slug>.svg` vectors, and the daemon exports a `compose/figma-svg` for a knob-bearing
+   * render.
+   */
+  override val hasSvgExport: Boolean = baked.hasSvgExport || live.hasSvgExport
 
   /** The "Live (stream)" toggle is offered (unlike a plain static catalog). */
   override val hasLiveStream: Boolean = true
@@ -65,12 +87,35 @@ class ServeCatalogLiveHost(
    */
   internal val bakedHost: ServeHost = baked
 
-  /** Snapshots are the baked catalog PNGs — the daemon is reserved for the live stream lane. */
-  override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
-    baked.render(previewId, overrides)
+  /**
+   * Ordinary browsing serves the baked catalog PNG — instant, and never wakes the daemon (a viewer
+   * that replays a sticky theme override into the snapshot URL must still land on baked pixels).
+   * The one exception is an **author-declared knob** edit ([PreviewOverrides.namedOverrides]):
+   * those knobs (`label`, a color, …) can only be honoured by re-running the composable, which the
+   * baked PNG can't do, so a knob-bearing render on a mapped id is routed to the [live] daemon
+   * (which also applies any display axes carried alongside). Display-axis-only overrides stay baked
+   * — the published variant already encodes its theme, and keeping them baked preserves instant
+   * browsing.
+   */
+  override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
+    val daemonId = daemonIdForOverrideRender(previewId, overrides)
+    return if (daemonId != null) live.render(daemonId, overrides)
+    else baked.render(previewId, overrides)
+  }
 
-  override fun renderSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome =
-    baked.renderSvg(previewId, overrides)
+  override fun renderSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome {
+    val daemonId = daemonIdForOverrideRender(previewId, overrides)
+    return if (daemonId != null) live.renderSvg(daemonId, overrides)
+    else baked.renderSvg(previewId, overrides)
+  }
+
+  /**
+   * The daemon preview id to route a [render] / [renderSvg] to, or null to stay baked. Non-null
+   * only when [previewId] is a mapped (daemon-renderable) id AND the request carries an
+   * author-declared knob override — the sole case the baked PNG can't satisfy.
+   */
+  private fun daemonIdForOverrideRender(previewId: String, overrides: PreviewOverrides): String? =
+    if (overrides.namedOverrides.isNullOrEmpty()) null else alias[previewId]
 
   /** Live streaming is available only for aliased ids; others have no stream (snapshot only). */
   override fun subscribeStream(
@@ -85,6 +130,25 @@ class ServeCatalogLiveHost(
   }
 
   override fun activeStreamCount(): Int = live.activeStreamCount()
+
+  /**
+   * Graft the daemon previews' author-declared knobs onto the baked browse surface. The daemon
+   * knows its previews by descriptor id (`FilledButton_Dark`) and carries their
+   * [ServePreview.overrides] (from the bundle sidecars); the baked catalog keys by catalog id
+   * (`button-filled__ideal__default__dark`) and carries none. For each mapped baked preview, copy
+   * its daemon twin's declarations across so `/api/previews` + the viewer advertise the editable
+   * knobs. Unmapped previews (Android-only variants with no daemon lane) are returned unchanged.
+   */
+  private fun mergeDeclaredKnobs(
+    bakedPreviews: List<ServePreview>,
+    livePreviews: List<ServePreview>,
+  ): List<ServePreview> {
+    val knobsByDaemonId = livePreviews.associate { it.id to it.overrides }
+    return bakedPreviews.map { p ->
+      val knobs = alias[p.id]?.let { knobsByDaemonId[it] }
+      if (knobs.isNullOrEmpty()) p else p.copy(overrides = knobs)
+    }
+  }
 
   override fun close() {
     try {

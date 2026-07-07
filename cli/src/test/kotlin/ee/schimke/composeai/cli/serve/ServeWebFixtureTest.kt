@@ -1,5 +1,8 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
+import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
+import ee.schimke.composeai.data.overrides.PreviewOverrideType
 import java.awt.Color
 import java.awt.Font
 import java.awt.GradientPaint
@@ -66,6 +69,28 @@ class ServeWebFixtureTest {
       ServePreview("switch-on__ideal__default__light", "Switch · On (light)"),
       ServePreview("switch-on__ideal__default__dark", "Switch · On (dark)"),
       ServePreview("badge", "Badge"),
+    )
+
+  // A trusted-catalog preview that declares author knobs (a `label` string + an accent `color`) —
+  // the `compose/overrides` payload PR #2281 added across the M3 catalog. On a live catalog session
+  // (ServeCatalogLiveHost) these render as LIVE controls that re-render via `/render` on edit.
+  private val knobPreview =
+    ServePreview(
+      "button-filled__ideal__default__light",
+      "Button · Filled (light)",
+      overrides =
+        listOf(
+          PreviewOverrideDeclaration(
+            key = "label",
+            type = PreviewOverrideType.STRING,
+            default = PreviewOverrideValue.StringValue("Filled"),
+          ),
+          PreviewOverrideDeclaration(
+            key = "iconColor",
+            type = PreviewOverrideType.COLOR,
+            default = PreviewOverrideValue.ColorValue("#FF6750A4"),
+          ),
+        ),
     )
 
   @Test
@@ -156,6 +181,24 @@ class ServeWebFixtureTest {
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         wasmSrc = "/wasm/compose-m3/?id=card-filled",
       )
+    // A trusted catalog served LIVE (ServeCatalogLiveHost) whose preview declares author knobs:
+    // snapshots stay baked (canApplyOverrides=false) but the carried daemon CAN re-render an
+    // override on demand (canRenderOverrides=true), so the declared knob controls render ENABLED
+    // and
+    // an edit re-renders via /render. This is the surface PR #2281's overrides feed into — captured
+    // so the visual-diff bot covers the knob panel.
+    val viewerCatalogKnobs =
+      ServeWeb.viewerPage(
+        knobPreview,
+        token,
+        sessionId = "compose-m3",
+        canApplyOverrides = false,
+        canRenderOverrides = true,
+        hasSvgExport = true,
+        hasLiveStream = true,
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        wasmSrc = "/wasm/compose-m3/?id=button-filled",
+      )
     // A catalog served under its canonical path (/meshcore-mobile/) rather than ?session=: same
     // pages, but links stay on the path (basePath) and drop the &session= param. Captures the
     // path-mounted landing + viewer the public server now serves these design systems at.
@@ -198,6 +241,7 @@ class ServeWebFixtureTest {
       File(pagesDir, "serve-viewer.html").writeText(viewer)
       File(pagesDir, "serve-viewer-wasm.html").writeText(wasmViewer)
       File(pagesDir, "serve-viewer-wasm-live.html").writeText(wasmViewerLive)
+      File(pagesDir, "serve-viewer-catalog-knobs.html").writeText(viewerCatalogKnobs)
       File(pagesDir, "serve-landing-path.html").writeText(landingPath)
       File(pagesDir, "serve-viewer-path.html").writeText(viewerPath)
       File(pagesDir, "serve-landing-themed.html").writeText(landingThemed)
@@ -211,6 +255,7 @@ class ServeWebFixtureTest {
     assertGolden(File(pagesDir, "serve-viewer.html"), viewer)
     assertGolden(File(pagesDir, "serve-viewer-wasm.html"), wasmViewer)
     assertGolden(File(pagesDir, "serve-viewer-wasm-live.html"), wasmViewerLive)
+    assertGolden(File(pagesDir, "serve-viewer-catalog-knobs.html"), viewerCatalogKnobs)
     assertGolden(File(pagesDir, "serve-landing-path.html"), landingPath)
     assertGolden(File(pagesDir, "serve-viewer-path.html"), viewerPath)
     assertGolden(File(pagesDir, "serve-landing-themed.html"), landingThemed)
@@ -574,6 +619,84 @@ class ServeWebFixtureTest {
     assertTrue(
       liveCatalogWasm.contains("id=\"cp-device\" disabled"),
       "server-render-only controls stay disabled on a live catalog's static snapshot",
+    )
+
+    // Trusted catalog served LIVE whose preview declares author knobs (ServeCatalogLiveHost with
+    // canRenderOverrides): snapshots stay baked, but the carried daemon re-renders a knob edit on
+    // demand, so the declared knob controls render ENABLED (not the disabled, informational form a
+    // plain static bundle shows) and route knob edits to /render.
+    val catalogKnobs =
+      ServeWeb.viewerPage(
+        knobPreview,
+        token,
+        sessionId = "compose-m3",
+        canApplyOverrides = false,
+        canRenderOverrides = true,
+        hasSvgExport = true,
+        hasLiveStream = true,
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+      )
+    assertTrue(catalogKnobs.contains("cp-knobs"), "declared knobs render as a control list")
+    assertTrue(
+      catalogKnobs.contains("data-knob-key=\"label\"") &&
+        catalogKnobs.contains("data-knob-key=\"iconColor\""),
+      "each declared knob gets a labelled control",
+    )
+    assertTrue(
+      catalogKnobs.contains("data-can-render-overrides=\"true\""),
+      "the viewer is flagged as override-renderable",
+    )
+    // The knobs are ENABLED — a live control, not the disabled/informational form. The `label` knob
+    // is a text input; assert it renders enabled (no trailing ` disabled`).
+    assertTrue(
+      catalogKnobs.contains("data-knob-key=\"label\" data-knob-kind=\"string\" value=\"Filled\">"),
+      "declared knobs are enabled on an override-renderable session",
+    )
+    assertTrue(
+      catalogKnobs.contains("edit a value to re-render"),
+      "the knob note invites editing rather than saying values are baked in",
+    )
+    // A knob edit routes to the server /render (the only tier that honours a named override — the
+    // Wasm tier's catalogOverride* returns the author default), never the wasm auto-enable path.
+    assertTrue(
+      catalogKnobs.contains("function onKnobChanged()"),
+      "knob edits have a dedicated handler that hits /render",
+    )
+    // A plain static bundle (no daemon) still shows the knobs as DISABLED, informational controls.
+    val staticKnobs = ServeWeb.viewerPage(knobPreview, token)
+    assertTrue(
+      staticKnobs.contains(
+        "data-knob-key=\"label\" data-knob-kind=\"string\" value=\"Filled\" disabled"
+      ),
+      "a plain static bundle leaves declared knobs disabled",
+    )
+    assertTrue(
+      staticKnobs.contains("static bundle, values are baked in"),
+      "a plain static bundle keeps the baked-in note",
+    )
+
+    // Copyable direct links: every viewer offers a PNG URL row (copy + download); a session that
+    // can
+    // export SVG (a catalog / daemon) also offers an SVG row. The URLs are built client-side from
+    // location.origin with the current overrides so a copied link reproduces the on-screen render.
+    assertTrue(catalogKnobs.contains("class=\"cp-links\""), "the direct-links panel is shown")
+    assertTrue(
+      catalogKnobs.contains("id=\"cp-url-png\"") && catalogKnobs.contains("id=\"cp-dl-png\""),
+      "the PNG URL row has a copyable field and a download link",
+    )
+    assertTrue(
+      catalogKnobs.contains("id=\"cp-url-svg\"") && catalogKnobs.contains("id=\"cp-dl-svg\""),
+      "an SVG-exporting session also offers an SVG URL row",
+    )
+    assertTrue(
+      catalogKnobs.contains("function refreshLinks()") && catalogKnobs.contains("location.origin"),
+      "the links are rebuilt from location.origin as the controls change",
+    )
+    // A plain static bundle can't export SVG, so it shows the PNG row but not the SVG one.
+    assertTrue(staticKnobs.contains("id=\"cp-url-png\""), "PNG URL row shows on any viewer")
+    assertFalse(
+      staticKnobs.contains("id=\"cp-url-svg\""),
+      "no SVG URL row when the session can't export SVG",
     )
 
     // Live daemon session (canApplyOverrides = true): everything enabled, no note.
