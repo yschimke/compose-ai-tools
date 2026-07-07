@@ -466,7 +466,8 @@ class BundleFunctionalTest {
         .build()
     }
 
-    // Seed the per-theme resolved-token sidecar as the renderer's `CatalogTokenSidecar.writeResolved`
+    // Seed the per-theme resolved-token sidecar as the renderer's
+    // `CatalogTokenSidecar.writeResolved`
     // would — keyed by the sheet id, carrying the `theme` name — then pack and assert it lands.
     val themeJson =
       """{"schema":"compose-preview-catalog-tokens/v1","previewId":"$themeId",""" +
