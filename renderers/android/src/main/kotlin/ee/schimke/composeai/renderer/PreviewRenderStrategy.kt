@@ -316,7 +316,11 @@ private object ThemeCatalogStrategy : PreviewRenderStrategy {
     override fun Render(preview: RenderPreviewEntry, widthDp: Int, heightDp: Int, previewArgs: List<Any?>) {
         val wrapperFqn = preview.params.wrapperClassName ?: return
         val resolved = remember(wrapperFqn) { resolveWrapper(wrapperFqn) }
-        val specimen: @Composable () -> Unit = { ThemeSpecimen() }
+        // Key the emitted per-theme token sidecar by the theme's display name (falls back to the
+        // preview id). `params.name` is the clean theme name discovery stamped on the synthetic
+        // entry (e.g. "Brand Light").
+        val themeName = preview.params.name ?: preview.id
+        val specimen: @Composable () -> Unit = { ThemeSpecimen(preview.id, themeName) }
         resolved.first.invoke(currentComposer, resolved.second, specimen)
     }
 }
@@ -329,7 +333,7 @@ private object ThemeCatalogStrategy : PreviewRenderStrategy {
  * for a dark theme too; the swatches carry the theme's colours, the samples its type scale.
  */
 @Composable
-private fun ThemeSpecimen() {
+private fun ThemeSpecimen(previewId: String, themeName: String) {
     val scheme = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
     val roles =
@@ -353,6 +357,19 @@ private fun ThemeSpecimen() {
             "bodyLarge" to typography.bodyLarge,
             "labelSmall" to typography.labelSmall,
         )
+    // Emit the resolved-token sidecar (issue #2179) once per sheet, alongside the PNG — the live
+    // `MaterialTheme` values above, captured *inside* the theme's composition (the differentiator
+    // from the reflection-only `@ColorCatalog` / `@TypographyCatalog` sidecars). Keyed by theme so
+    // design-parity's `catalog-export` maps each onto a Figma variable mode. `remember(previewId)`
+    // fires on first composition only — the render composes exactly once.
+    remember(previewId) {
+        CatalogTokenSidecar.writeResolved(
+            previewId,
+            themeName,
+            roles.map { (label, color) -> CatalogTokenSidecar.ResolvedToken.Colour(label, color) } +
+                types.map { (label, style) -> CatalogTokenSidecar.ResolvedToken.Type(label, style) },
+        )
+    }
     Box(Modifier.fillMaxSize().background(CATALOG_SHEET_BACKGROUND).padding(16.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             for ((label, color) in roles) CatalogSwatchRow(label = label, color = color)

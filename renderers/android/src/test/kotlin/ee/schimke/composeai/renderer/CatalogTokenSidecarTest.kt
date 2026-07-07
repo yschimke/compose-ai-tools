@@ -1,5 +1,9 @@
 package ee.schimke.composeai.renderer
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import java.nio.file.Files
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -47,6 +51,61 @@ class CatalogTokenSidecarTest {
       assertTrue(json.contains("\"fontSizeSp\":57.0"))
       assertTrue(json.contains("\"fontWeight\":500"))
       assertTrue(json.contains("\"member\":\"ProbeDisplay\""))
+    } finally {
+      if (previous == null) System.clearProperty("composeai.render.outputDir")
+      else System.setProperty("composeai.render.outputDir", previous)
+    }
+  }
+
+  @Test
+  fun `writes resolved theme tokens keyed by theme name`() {
+    val renders = Files.createTempDirectory("theme-sidecar").resolve("renders").toFile()
+    val previous = System.getProperty("composeai.render.outputDir")
+    System.setProperty("composeai.render.outputDir", renders.path)
+    try {
+      val tokens =
+        listOf(
+          CatalogTokenSidecar.ResolvedToken.Colour("primary", Color(0xFFFF6F61)),
+          CatalogTokenSidecar.ResolvedToken.Colour("surface", Color(0x80112233)),
+          CatalogTokenSidecar.ResolvedToken.Type(
+            "displaySmall",
+            TextStyle(fontSize = 36.sp, fontWeight = FontWeight.Medium),
+          ),
+        )
+      CatalogTokenSidecar.writeResolved("themecatalog__Brand_Light", "Brand Light", tokens)
+
+      val sidecar = CatalogTokenSidecar.pathFor(renders, "themecatalog__Brand_Light")
+      assertTrue("sidecar not written at ${sidecar.path}", sidecar.exists())
+      val json = sidecar.readText()
+
+      assertTrue(json.contains("\"schema\":\"${CatalogTokenSidecar.SCHEMA}\""))
+      assertTrue(json.contains("\"previewId\":\"themecatalog__Brand_Light\""))
+      // The theme key is the per-theme axis design-parity maps onto a Figma variable mode.
+      assertTrue(json.contains("\"theme\":\"Brand Light\""))
+      // Live resolved role → hex, alpha preserved, keyed by the M3 role label.
+      assertTrue(json.contains("\"label\":\"primary\""))
+      assertTrue(json.contains("\"kind\":\"COLOR\""))
+      assertTrue(json.contains("\"hex\":\"#FFFF6F61\""))
+      assertTrue(json.contains("\"hex\":\"#80112233\""))
+      // Live resolved type role → metrics.
+      assertTrue(json.contains("\"label\":\"displaySmall\""))
+      assertTrue(json.contains("\"kind\":\"TEXT_STYLE\""))
+      assertTrue(json.contains("\"fontSizeSp\":36.0"))
+      assertTrue(json.contains("\"fontWeight\":500"))
+    } finally {
+      if (previous == null) System.clearProperty("composeai.render.outputDir")
+      else System.setProperty("composeai.render.outputDir", previous)
+    }
+  }
+
+  @Test
+  fun `theme sidecar no-ops for empty tokens`() {
+    val renders = Files.createTempDirectory("theme-sidecar-empty").resolve("renders").toFile()
+    val previous = System.getProperty("composeai.render.outputDir")
+    System.setProperty("composeai.render.outputDir", renders.path)
+    try {
+      CatalogTokenSidecar.writeResolved("themecatalog__empty", "Empty", emptyList())
+      assertFalse(CatalogTokenSidecar.pathFor(renders, "themecatalog__empty").exists())
     } finally {
       if (previous == null) System.clearProperty("composeai.render.outputDir")
       else System.setProperty("composeai.render.outputDir", previous)
