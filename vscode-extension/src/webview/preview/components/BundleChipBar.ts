@@ -4,8 +4,8 @@
 // starts subscriptions to the bundle's default-ON kinds; re-pressing
 // it tears them down. The chip + the tab `×` are deliberately
 // redundant so the dismiss path is reachable from wherever the user's
-// eye lands (see `docs/design/EXTENSION_DATA_EXPOSURE.md` § "Chip ↔
-// tab ↔ overlay state machine").
+// eye lands (the chip-toggle = full-teardown contract; see
+// `bundleRegistry.ts`).
 //
 // The component is read-only state — `BundleController` owns the
 // truth and pushes updates via `setState`. User clicks fire

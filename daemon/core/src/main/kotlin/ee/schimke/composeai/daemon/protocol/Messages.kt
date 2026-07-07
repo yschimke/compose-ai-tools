@@ -390,7 +390,7 @@ enum class ChangeType {
 }
 
 /**
- * Stage-2 in-process compile (COMPILE-IN-PROCESS.md).
+ * Stage-2 in-process compile.
  *
  * Client → daemon request: "compile these sources via the BTA host inside the daemon JVM and swap
  * the user classloader once the new `.class` files are on disk". The daemon side does the same

@@ -517,10 +517,9 @@ include(":daemon:harness")
 // Standalone Kotlin Build Tools API parity/soak harness (#1332). The stage-2 spike it began as
 // has SHIPPED: in-process compile is wired into `:daemon:core` (`bta/BtaCompileSession`,
 // `bta/DefaultBtaCompileService`, the `compileSources` JSON-RPC method) behind the experimental
-// workspace flag `composePreview.daemon.compileInProcess` — see docs/daemon/COMPILE-IN-PROCESS.md.
+// workspace flag `composePreview.daemon.compileInProcess`.
 // Nothing in production depends on this module; it's retained only for its BTA-impl parity, IC,
-// and classloader-leak soak tests (`./gradlew :daemon:bta-host:test`, see
-// docs/daemon/BTA-SPIKE.md).
+// and classloader-leak soak tests (`./gradlew :daemon:bta-host:test`).
 include(":daemon:bta-host")
 
 // Companion fixture for `:daemon:bta-host` — same Kotlin source compiled through Gradle's

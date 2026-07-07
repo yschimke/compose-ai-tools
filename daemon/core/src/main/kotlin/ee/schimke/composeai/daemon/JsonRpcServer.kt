@@ -246,7 +246,7 @@ class JsonRpcServer(
       ?: DEFAULT_DATA_FETCH_RERENDER_BUDGET_MS,
   private val interactiveFrameIntervalMs: Long = INTERACTIVE_FRAME_INTERVAL_MS,
   /**
-   * Stage-2 in-process compile (COMPILE-IN-PROCESS.md). When non-null, `compileSources` requests
+   * Stage-2 in-process compile. When non-null, `compileSources` requests
    * dispatch through this service; on `Ok` we swap the user classloader the same way
    * `fileChanged({kind:source})` does. When null (fake-mode harness scenarios, integration tests
    * that don't opt in, daemons whose launch descriptor lacks `btaCompilerClasspath`) the handler
@@ -3354,8 +3354,7 @@ class JsonRpcServer(
   }
 
   /**
-   * Stage-2 `compileSources` handler — see
-   * [docs/daemon/COMPILE-IN-PROCESS.md](../../../../../../docs/daemon/COMPILE-IN-PROCESS.md).
+   * Stage-2 `compileSources` handler.
    *
    * Routes to the injected [btaCompileService] when one is wired, then mirrors the
    * `fileChanged({kind:"source"})` side-effects on success (host classloader swap + the deferred

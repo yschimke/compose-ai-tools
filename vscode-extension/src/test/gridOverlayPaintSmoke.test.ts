@@ -9,8 +9,8 @@
 // Note: production `main.ts` scopes bundle overlays to the focused
 // preview only (`paintBundleBoxesForFocus`) — it does NOT paint every
 // grid card, since the chip bar / data tabs are hidden outside focus
-// layout (#1567, settled "Open question 1" in
-// `docs/design/EXTENSION_DATA_EXPOSURE.md`). This suite drives the
+// layout (#1567; bundles scope to the focused preview — see
+// `bundleRegistry.ts`). This suite drives the
 // `paintBundleBoxesEverywhere` primitive directly via a test-local
 // `wireBundleToOverlay` helper to pin the multi-card paint/clear
 // mechanics of the primitive itself.

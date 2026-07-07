@@ -15,8 +15,6 @@
 // Shape-wise this presenter does defensive `typeof` checks, applies
 // the same TOP_N truncation as the legacy renderers it replaced, and
 // suppresses the redundant `metrics.tookMs` key.
-//
-// See `docs/design/EXTENSION_DATA_EXPOSURE.md` § Performance.
 
 import { html, type TemplateResult } from "lit";
 import type { DataTableColumn } from "./components/DataTable";

@@ -316,7 +316,7 @@ fun runDaemon(
   // the editor falls back to stage 1 (`gradle --continuous`) or stage 0. The editor
   // only dispatches `compileSources` when the VS Code workspace setting
   // `composePreview.daemon.compileInProcess` is on, so a non-null service still costs
-  // nothing until that switch is flipped. See docs/daemon/COMPILE-IN-PROCESS.md.
+  // nothing until that switch is flipped.
   val btaCompileService = ee.schimke.composeai.daemon.bta.DefaultBtaCompileService.fromSysprops()
   if (btaCompileService != null) {
     System.err.println(

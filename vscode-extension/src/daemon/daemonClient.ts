@@ -204,7 +204,7 @@ export class DaemonClient {
     }
 
     /**
-     * Stage-2 in-process compile — see COMPILE-IN-PROCESS.md. Returns `{result:"ok"}` after
+     * Stage-2 in-process compile. Returns `{result:"ok"}` after
      * the daemon swapped its user classloader against the freshly-compiled bytecode (the
      * next `renderNow` reads the new classes), `{result:"compileError", errors}` when BTA
      * surfaced Kotlin diagnostics, or `{result:"fallback", …}` when the daemon refused

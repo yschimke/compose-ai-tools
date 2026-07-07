@@ -8,8 +8,7 @@ import { CompileError } from "../compileErrors";
 /**
  * Long-running `gradle --continuous :<module>:composePreviewCompile` worker.
  *
- * Spike behind `composePreview.daemon.continuousCompile`
- * ([docs/daemon/CONTINUOUS-COMPILE.md](../../../docs/daemon/CONTINUOUS-COMPILE.md)).
+ * Spike behind `composePreview.daemon.continuousCompile`.
  * Removes the per-save Gradle configuration + Tooling-API round-trip from
  * the daemon save loop: a single Gradle invocation stays resident,
  * re-running `composePreviewCompile` whenever Gradle's continuous-mode

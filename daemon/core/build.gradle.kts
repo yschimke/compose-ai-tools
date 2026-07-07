@@ -57,7 +57,7 @@ dependencies {
   // :daemon:desktop modules consume from this module's `api`.
   implementation(libs.classgraph)
 
-  // Stage-2 in-process compile (COMPILE-IN-PROCESS.md). `BtaCompileSession` +
+  // Stage-2 in-process compile. `BtaCompileSession` +
   // `DefaultBtaCompileService.fromSysprops` link against the Build Tools API
   // unconditionally at daemon startup, so the API jar must be on the daemon JVM's
   // main classpath even before the editor opts in via the VS Code workspace
