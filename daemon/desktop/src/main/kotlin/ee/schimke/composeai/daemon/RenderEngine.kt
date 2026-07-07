@@ -304,6 +304,10 @@ class RenderEngine(
             // Slot mode: a `PreviewSlot` marker renders a labelled placeholder instead of its
             // content, so a structured-screen builder gets a visible slot map. Defaults false.
             ee.schimke.composeai.preview.slots.LocalSlotMode provides (spec.slotMode ?: false),
+            // Cleared background ("crisp outline"): a composable drawing its own opaque fill drops
+            // it to match the transparent harness background below. Defaults false.
+            ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
+              spec.clearBackground,
             androidx.compose.ui.LocalSystemTheme provides systemTheme,
             LocalDensity provides density,
             // Interactive Lottie scrubbing: a non-null progress lands the captured frame at that
@@ -324,6 +328,7 @@ class RenderEngine(
             val content: @Composable () -> Unit = {
               val bgColor =
                 when {
+                  spec.clearBackground -> Color.Transparent
                   spec.backgroundColor != 0L -> Color(spec.backgroundColor.toInt())
                   spec.showBackground -> Color.White
                   else -> Color.Transparent
@@ -1069,6 +1074,13 @@ data class RenderSpec(
    */
   val slotMode: Boolean? = null,
   /**
+   * Per-render cleared-background toggle. When `true` the harness background is forced transparent
+   * (overriding [showBackground]/[backgroundColor]) and `LocalPreviewBackgroundCleared = true` is
+   * provided around the preview, so a composable that paints its own opaque fill can drop it for a
+   * crisp transparent outline. Default `false` preserves the discovery-time background.
+   */
+  val clearBackground: Boolean = false,
+  /**
    * Per-call overrides bag, threaded through every registered [PreviewOverrideExtension]. The
    * renderer doesn't read individual fields directly — registered planners decide what to apply.
    * Direct-applied overrides like size, density, and locale stay on this spec's typed fields above
@@ -1157,6 +1169,7 @@ data class RenderSpec(
           },
         inspectionMode = map["inspectionMode"]?.toBooleanStrictOrNull(),
         slotMode = map["slotMode"]?.toBooleanStrictOrNull(),
+        clearBackground = map["clearBackground"]?.toBoolean() ?: defaults.clearBackground,
         overrides = map["overrides"]?.decodePreviewOverrides(),
         wrapperClassName = map["wrapperClassName"]?.takeIf { it.isNotBlank() },
       )

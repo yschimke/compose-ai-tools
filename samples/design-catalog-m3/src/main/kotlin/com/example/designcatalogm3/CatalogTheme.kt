@@ -11,6 +11,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -19,6 +20,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.designcatalogm3.shared.LocalGenericFonts
 import com.example.designcatalogm3.shared.catalogTypography
+import ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared
 
 /**
  * The catalog's theme wrapper. Each sticker is a stock [MaterialTheme] — the default light/dark
@@ -39,7 +41,18 @@ fun CatalogSticker(content: @Composable () -> Unit) {
       colorScheme = if (dark) darkColorScheme() else lightColorScheme(),
       typography = catalogTypography(Roboto),
     ) {
-      Surface { Box(Modifier.padding(16.dp)) { content() } }
+      // Honour the renderer's `clearBackground` ("crisp outline") toggle: drop the opaque
+      // `colorScheme.surface` fill for a transparent one so the sticker is a component silhouette,
+      // but keep `onSurface` as the content colour so text/icons stay readable on whatever the
+      // downstream viewer paints behind the transparent PNG. Untoggled, this is pixel-identical to
+      // the previous `Surface { … }` (same default colour + content colour).
+      val cleared = LocalPreviewBackgroundCleared.current
+      Surface(
+        color = if (cleared) Color.Transparent else MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+      ) {
+        Box(Modifier.padding(16.dp)) { content() }
+      }
     }
   }
 }

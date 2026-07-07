@@ -207,6 +207,7 @@ open class DesktopHost(
     add("device")
     add("inspectionMode")
     add("slotMode")
+    add("clearBackground")
     add("material3Theme")
     add("wallpaper")
     // Issue #1205 — `renderNow.overrides.focus` is honoured by the planner registered in
@@ -719,6 +720,7 @@ open class DesktopHost(
       orientation = orientation,
       inspectionMode = map["inspectionMode"]?.toBooleanStrictOrNull() ?: base.inspectionMode,
       slotMode = map["slotMode"]?.toBooleanStrictOrNull() ?: base.slotMode,
+      clearBackground = map["clearBackground"]?.toBoolean() ?: base.clearBackground,
     )
   }
 
