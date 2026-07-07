@@ -184,6 +184,13 @@ class ServeSessionRegistry(
   /** Total known sessions (resident + suspended). */
   fun activeCount(): Int = lock.withLock { sessions.size }
 
+  /**
+   * Any registered session id, or null when none are — used by the module-less server to pick a
+   * landing session so `/` resolves to something. Insertion order isn't guaranteed (HashMap), so
+   * the caller prefers a specific id (a catalog / the first bundle) and only falls back to this.
+   */
+  fun anySessionId(): String? = lock.withLock { sessions.keys.firstOrNull() }
+
   /** Sessions with a live daemon right now (resident, not suspended). */
   fun residentCount(): Int = lock.withLock { sessions.values.count { it.host != null } }
 

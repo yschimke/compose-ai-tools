@@ -112,6 +112,44 @@ compose-preview serve \
   construction**: rendering a bundle/catalog executes no code, re-rendering untrusted Compose is
   refused, uploads are size-capped, and the `?url=` fetch is SSRF-gated (`--accept-bundles-from`).
 
+### Serving any fetched bundle — no module upfront (`--bundle`)
+
+A catalog is the *packaged* form of "a trusted producer publishes a branch". When you just have a
+**preview bundle** — the executable `.bundle` the export pipeline emits, sitting on a GitHub branch or
+a local disk — you don't need a `catalog.json` wrapper (or a local module to build) to render it
+live. `--bundle <url|path>` (repeatable, `--bundle <name>=<url|path>` to name the session) fetches
+the bundle at startup and stands it up as its own `/<name>/` session:
+
+```bash
+# A pure preview server — no --module, no local checkout, no Gradle build.
+compose-preview serve \
+  --public \
+  --allow-render-trusted \
+  --trust-store trust/producers.json \
+  --bundle https://raw.githubusercontent.com/yschimke/compose-ai-tools/design-artifacts/compose-m3/bundle/compose-m3-bundle.png
+# Opens the fetched bundle live at http://localhost:8723/compose-m3-bundle/
+```
+
+Same **trust × format** rules as a catalog, and the same fail-closed gate — a fetched bundle earns
+the **live** (server-side re-render) lane only when it verifies `Trusted` **and** the operator passed
+`--allow-render-trusted`:
+
+- **Trusted by branch origin.** A `raw.githubusercontent.com/<owner>/<repo>/<ref>/…` URL is attributed
+  to `<owner>/<repo>@<ref>`; if that branch is in the `--trust-store`, the bundle is
+  `Trusted(Branch)` with no signature needed (same origin trust the `--catalogs` fetch uses).
+- **Trusted by signature.** Any bundle (including a local `--bundle /path/app.bundle`) carrying an
+  Ed25519 `signatures.json` signed by a key in the store is `Trusted(Signature)`.
+- **Otherwise `Unverified`** → served **read-only as its baked PNGs**; its executable Compose is never
+  re-rendered on the server (no RCE lever). The data tiers serve either way.
+
+Desktop-backend only for the live lane (it rides the same `liveBundle` daemon path `compose-m3` uses:
+`ServeBundleDaemon.materialize` extracts the bundle, resolves its classpath, and launches the render
+daemon straight from it — no build). An Android bundle falls back to baked PNGs, fail-closed. A URL is
+fetched from the operator's own command line, so — unlike the client `?url=` upload path — it is **not**
+SSRF-gated (`--accept-bundles-from` doesn't apply); the operator chose the address. `--bundle` also
+works **alongside** a `--module` (both are served); run it with no `--module` outside a Gradle project
+to get the pure module-less server above.
+
 ## Deploying `preview.coo.ee`
 
 Both container profiles take this config from env (the entrypoint maps `SERVE_PUBLIC`,
