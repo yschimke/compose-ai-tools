@@ -221,7 +221,7 @@ jmdns = "3.6.3"
 # `testImplementation` in `:fake-emulator-core` to drive the fake emulator's ADB server end-to-end
 # (connect handshake, `shell,v2`, `screencap`, the `am start … PreviewActivity` preview-launch
 # intent) in a hermetic unit test.
-dadb = "1.2.10"
+dadb = "2.0.0"
 # gRPC + Wire — only `:fake-emulator-grpc`, which serves a subset of the Android emulator's
 # `android.emulation.control.EmulatorController` gRPC API (the surface Studio's embedded "Running
 # Devices" view + screenshot video stream consume) from a vendored `emulator_controller.proto`.
