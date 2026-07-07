@@ -256,7 +256,8 @@ class JsonRpcServer(
   private val fileSystem: FileSystem = SystemFileSystem,
   private val onExit: (Int) -> Unit = { code -> System.exit(code) },
   /**
-   * RENDERER_SERVICE.md — factory for the native XR render server. When non-null the daemon
+   * Factory for the native XR render server (see the "XR render service" section in
+   * `protocol/Messages.kt`). When non-null the daemon
    * advertises `capabilities.xr` and serves `xr/start` / `xr/updatePanels` / `xr/stop`, spawning
    * one `xr-composite --serve` child per session. When null (the in-process integration tests,
    * fake-mode harness, daemons whose host has no XR binary) the `xr/…` methods reply
@@ -486,7 +487,7 @@ class JsonRpcServer(
   private val streamSessions = ConcurrentHashMap<String, InteractiveSession>()
 
   /**
-   * RENDERER_SERVICE.md — held native XR render sessions, one per `frameStreamId`, present only
+   * Held native XR render sessions, one per `frameStreamId`, present only
    * when [xrServerFactory] was wired. The daemon's `xr/…` handlers drive it and feed each returned
    * frame out as a `streamFrame` notification.
    */
@@ -787,8 +788,8 @@ class JsonRpcServer(
             // held-scene recording driver (DesktopHost). `false` keeps `recording/start` behind a
             // `MethodNotFound` reply so clients can grey out the toggle.
             recording = host.supportsRecording,
-            // RENDERER_SERVICE.md — `true` when the daemon can front the native XR render server
-            // (the `xrServerFactory` was wired). Gates the `xr/…` methods.
+            // `true` when the daemon can front the native XR render server (the `xrServerFactory`
+            // was wired). Gates the `xr/…` methods.
             xr = xrSessions != null,
             // RECORDING.md § "encoded formats" — list of wire format spellings the host can
             // produce (`"apng"`, `"mp4"`, `"webm"`). APNG is always present when recording is
@@ -2466,7 +2467,8 @@ class JsonRpcServer(
   // XR render service — `xr/start` (request) / `xr/updatePanels` + `xr/stop`
   // (notifications). Fronts the native `xr-composite --serve` via [xrSessions].
   // Frames flow out as `streamFrame` notifications, same wire shape as the
-  // interactive/stream surfaces. See docs/design/xr-spatial/RENDERER_SERVICE.md.
+  // interactive/stream surfaces. See the "XR render service" section in
+  // `protocol/Messages.kt` for the protocol shape.
   // --------------------------------------------------------------------------
 
   private fun handleXrStart(req: JsonRpcRequest) {

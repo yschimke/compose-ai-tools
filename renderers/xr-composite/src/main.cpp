@@ -6,7 +6,8 @@
 //   * server (--serve): a long-lived JSON-RPC peer over stdio (LSP-style Content-Length framing,
 //     the same framing the daemon's subprocess backend speaks). Holds one Filament Engine/Scene
 //     across frames so panels can be updated per-frame (`xr/updatePanels`) and rendered frames
-//     streamed back out (`streamFrame`). See docs/design/xr-spatial/RENDERER_SERVICE.md.
+//     streamed back out (`streamFrame`). The daemon fronts this server; see the "XR render service"
+//     section in daemon/core's protocol/Messages.kt for the protocol shape.
 
 // Third-party headers FIRST: Filament's utils/debug.h defines an `assert_invariant`
 // macro that otherwise clobbers nlohmann::json's member function of the same name.

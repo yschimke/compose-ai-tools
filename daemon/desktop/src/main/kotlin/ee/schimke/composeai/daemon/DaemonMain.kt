@@ -331,7 +331,7 @@ fun runDaemon(
     )
   }
 
-  // RENDERER_SERVICE.md — front the native `xr-composite --serve` only when its binary + compiled
+  // Front the native `xr-composite --serve` render server only when its binary + compiled
   // materials actually resolve (env override or the shared provisioning cache for this daemon's
   // version). Resolve once and capture the paths in the factory so `xr/start` starts the same
   // binary

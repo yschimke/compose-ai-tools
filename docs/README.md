@@ -63,7 +63,6 @@ The `design/` tree used to hold many speculative proposals; what remains are the
 specs the code actually depends on:
 
 - [design/SPATIAL_SCENE_CONTRACT.md](design/SPATIAL_SCENE_CONTRACT.md) — the XR scene wire format (schema-generated Kotlin/TS/C++ mirrors).
-- [design/xr-spatial/RENDERER_SERVICE.md](design/xr-spatial/RENDERER_SERVICE.md) — the XR render-service protocol.
 - [design/DESIGN_CATALOGS.md](design/DESIGN_CATALOGS.md) — the code-led sticker-sheet catalog system.
 
 Component-level contracts (the XR semantics tree, `FigmaLayeredSvg`, the font

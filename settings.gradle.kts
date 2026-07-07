@@ -255,7 +255,7 @@ include(":renderer-xr")
 
 project(":renderer-xr").projectDir = file("renderers/xr")
 
-// JVM client for the native `xr-composite --serve` render server (RENDERER_SERVICE RFC). The
+// JVM client for the native `xr-composite --serve` render server that the daemon fronts. The
 // daemon's future XR RenderSession backend wraps this.
 include(":renderer-xr-client")
 

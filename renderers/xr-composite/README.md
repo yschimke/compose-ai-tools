@@ -9,7 +9,9 @@ VS Code WebGL viewer shows interactively.
 It runs two ways: **one-shot** (`--scene` → one PNG → exit) and a long-lived
 **server** (`--serve`) that speaks JSON-RPC over stdio, holds one Filament engine
 across frames, and streams rendered frames back as panels are updated per-frame —
-the first increment of the [renderer-service RFC](../../docs/design/xr-spatial/RENDERER_SERVICE.md).
+the first increment of the daemon-fronted native XR render server (the daemon spawns and
+multiplexes this process; the protocol lives in daemon/core's `protocol/Messages.kt`, the
+"XR render service" section).
 The `SpatialScene` types it parses are generated from
 [`schema/spatial-scene.schema.json`](../../schema/spatial-scene.schema.json) (see
 [`spatial_scene.hpp`](src/spatial_scene.hpp)).
@@ -24,7 +26,7 @@ binary rather than via JNI.
 > `scene.json`, places a textured quad per panel, orbit camera, reads pixels to
 > PNG — all GPU-free in ~1s), and `--serve` adds a working per-frame JSON-RPC
 > server (CI-smoked). **Not yet daemon-fronted** — the daemon spawning/proxying
-> this process (RENDERER_SERVICE RFC) is the next step — and only the Linux build
+> this process is the next step — and only the Linux build
 > is runtime-exercised. See "Roadmap" below.
 
 ## Build
@@ -61,7 +63,7 @@ relative to its directory. A panel whose texture is missing is skipped.
 
 `--serve` turns the tool into a long-lived JSON-RPC peer over stdio, framed with LSP-style
 `Content-Length` headers — the same framing the daemon's subprocess render-session backend speaks, so
-the daemon can front it (RENDERER_SERVICE RFC). One Filament engine/scene is held for the life of the
+the daemon can front it. One Filament engine/scene is held for the life of the
 process; panels can be mutated per-frame and each render is streamed back.
 
 ```sh
@@ -183,8 +185,9 @@ plugin's version + host platform). The CLI is the only writer; the plugin never 
 
 Everything is best-effort: an offline machine, a missing asset for a local `-SNAPSHOT` build (no
 published release → 404), or an unsupported platform logs a concise note and the composite still is
-simply absent — the render is never failed. Daemon-side auto-provisioning is a follow-up (see
-`docs/design/xr-spatial/RENDERER_SERVICE.md` decision #6).
+simply absent — the render is never failed. Only the CLI auto-provisions the binary today (into the
+shared cache the plugin reads); daemon-side auto-provisioning is a follow-up, tied to the daemon
+actually producing composites.
 
 ## Implementation notes / gotchas
 
