@@ -442,6 +442,52 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun concreteTextFamilyCarriesAStyleGenericFallbackSoItNeverRendersAsSerif() {
+    // A concrete face with no embedded @font-face fell back to the viewer's default *serif* in
+    // Chromium/Figma (the visible bug). It must now carry a style-correct generic fallback.
+    assertEquals(
+      "Roboto-Regular, sans-serif",
+      FigmaLayeredSvg.withGenericFallback("Roboto-Regular"),
+    )
+    assertEquals(
+      "NotoSerif-Regular, serif",
+      FigmaLayeredSvg.withGenericFallback("NotoSerif-Regular"),
+    )
+    assertEquals("DroidSansMono, monospace", FigmaLayeredSvg.withGenericFallback("DroidSansMono"))
+    assertEquals("'Noto Serif', serif", FigmaLayeredSvg.withGenericFallback("Noto Serif"))
+    // A bare generic is already a fallback — left unchanged, no double list.
+    assertEquals("sans-serif", FigmaLayeredSvg.withGenericFallback("sans-serif"))
+    assertEquals("serif", FigmaLayeredSvg.withGenericFallback("serif"))
+    assertEquals("monospace", FigmaLayeredSvg.withGenericFallback("monospace"))
+  }
+
+  @Test
+  fun textEmitsTheGenericFallbackInline() {
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 8, 8, 192, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "8,8,192,40",
+              text = "Hi",
+              typography =
+                ComposeSemanticsTypography(fontSize = "16.0sp", fontFamily = "Roboto-Regular"),
+            )
+          ),
+      )
+    val svg = render(layout, semantics = semantics)
+    assertTrue(
+      "concrete text family must carry a generic fallback",
+      svg.contains("""font-family="Roboto-Regular, sans-serif""""),
+    )
+  }
+
+  @Test
   fun embedFamilyMapsGenericsToConcreteEmbeddableFaces() {
     // sans generics ride the default embedded face; serif/monospace get a real same-style face.
     assertEquals("Roboto", FigmaLayeredSvg.embedFamily(null, "Roboto"))
