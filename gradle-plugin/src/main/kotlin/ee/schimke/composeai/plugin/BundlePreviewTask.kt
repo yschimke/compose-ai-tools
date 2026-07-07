@@ -521,10 +521,12 @@ abstract class BundlePreviewTask : DefaultTask() {
     }
 
     // Per-sheet catalog-token sidecars (issue #2167): the resolved `@ColorCatalog` /
-    // `@TypographyCatalog` values the renderer wrote under `data/catalog-tokens/<id>.catalog.json`,
+    // `@TypographyCatalog` values — and, per #2179, each `@ThemeCatalog` theme's live resolved
+    // role/type table keyed by theme — the renderer wrote under `data/catalog-tokens/<id>.catalog.json`,
     // packed by convention under `previews/<id>.catalog.json` — same shape as the override sidecars
     // so a detached reader (design-parity's `catalog-export`) can import the palette / type scale
-    // without re-rendering. Only `PreviewKind.CATALOG` sheets carry one.
+    // without re-rendering. `PreviewKind.CATALOG` and `THEME_CATALOG` sheets carry one; resolution is
+    // by on-disk id, so no kind gate is needed here.
     val catalogTokenEntries = LinkedHashMap<String, ByteArray>()
     for (preview in selected) {
       resolvePreviewCatalogTokens(preview)?.let {

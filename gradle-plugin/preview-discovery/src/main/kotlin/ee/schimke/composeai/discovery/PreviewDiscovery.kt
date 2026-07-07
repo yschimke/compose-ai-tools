@@ -892,7 +892,10 @@ object PreviewDiscovery {
         className = theme.className,
         params =
           PreviewParams(
-            name = "${theme.name} theme",
+            // Clean theme name (no " theme" suffix): the renderer keys the per-theme token sidecar
+            // (#2179) by this. The display label lives on `functionName` above.
+            name = theme.name,
+            group = theme.group.ifEmpty { null },
             kind = PreviewKind.THEME_CATALOG,
             wrapperClassName = theme.className,
           ),

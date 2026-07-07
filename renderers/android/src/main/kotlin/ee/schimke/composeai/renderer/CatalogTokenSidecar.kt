@@ -12,16 +12,20 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
- * Per-sheet structured-token sidecar for `@ColorCatalog` / `@TypographyCatalog` renders. Sibling of
- * the specimen PNG, placed under `<renders-parent>/data/catalog-tokens/<sanitized-id>.catalog.json`
- * — the same `<outputDir>/data/<kind>/` convention [NotificationSidecar] uses.
+ * Per-sheet structured-token sidecar for `@ColorCatalog` / `@TypographyCatalog` / `@ThemeCatalog`
+ * renders. Sibling of the specimen PNG, placed under
+ * `<renders-parent>/data/catalog-tokens/<sanitized-id>.catalog.json` — the same
+ * `<outputDir>/data/<kind>/` convention [NotificationSidecar] uses.
  *
  * Where the PNG shows the tokens as *pixels*, this carries their **resolved values** — the exact
  * `#AARRGGBB` a `@ColorCatalog` colour reflects to, and the resolved `fontSize` / `fontWeight` /
  * metrics a `@TypographyCatalog` `TextStyle` reflects to. That turns an annotation-declared palette
  * or type scale into importable data (design-parity's `catalog-export`, the `design-artifacts`
- * kits), not just a viewable sheet — see issue #2167. Correct by construction: the values come from
- * the very reflection the specimen sheet already runs ([CatalogValueReflection]).
+ * kits), not just a viewable sheet — see issue #2167. For the static token catalogs ([write]) the
+ * values come from the very reflection the specimen sheet runs ([CatalogValueReflection]); for a
+ * `@ThemeCatalog` theme ([writeResolved], issue #2179) they come from the live
+ * `MaterialTheme.colorScheme` / `.typography` the wrapper resolved to *inside* composition, keyed by
+ * theme so each becomes a Figma variable mode downstream.
  *
  * Hand-rolled JSON, best-effort — same rationale as [NotificationSidecar]: the renderer-android
  * runtime classpath deliberately omits `kotlinx-serialization`, and a per-token failure must not
@@ -56,6 +60,84 @@ internal object CatalogTokenSidecar {
     } catch (e: Throwable) {
       System.err.println("Failed to write catalog-token sidecar for $previewId: ${e.message}")
     }
+  }
+
+  /**
+   * A single composition-resolved catalog token — a Material 3 role/style [label] paired with the
+   * value the live theme resolved it to. Sibling of [CatalogToken], but carrying the *value*
+   * directly instead of a `className`/`member` to reflect, because a `@ThemeCatalog` theme's tokens
+   * only exist inside composition (`MaterialTheme.colorScheme` / `.typography`), not as static vals.
+   */
+  sealed interface ResolvedToken {
+    val label: String
+
+    data class Colour(override val label: String, val color: Color) : ResolvedToken
+
+    data class Type(override val label: String, val style: TextStyle) : ResolvedToken
+  }
+
+  /**
+   * Theme-catalog variant of [write] (issue #2179). The [tokens] are already resolved from the live
+   * composition — the `MaterialTheme.colorScheme` roles and `MaterialTheme.typography` styles the
+   * `@ThemeCatalog` provider produced — so no reflection is involved; the specimen sheet read them
+   * to paint the swatches, this serialises the same values. Carries the theme's display [themeName]
+   * at the top level so a detached reader keys each token set by theme — the per-theme axis
+   * design-parity's `catalog-export` maps onto a Figma variable mode (#2179 step 5). Same location,
+   * schema, and best-effort discipline as [write]; silently no-ops when the output dir is unset or
+   * [tokens] is empty.
+   */
+  fun writeResolved(
+    previewId: String,
+    themeName: String,
+    tokens: List<ResolvedToken>,
+    fileSystem: FileSystem = SystemFileSystem,
+  ) {
+    if (tokens.isEmpty()) return
+    try {
+      val rendersDirPath = System.getProperty("composeai.render.outputDir") ?: return
+      val json = buildResolvedJson(previewId, themeName, tokens) ?: return
+      val sidecar = pathFor(File(rendersDirPath), previewId)
+      sidecar.parentFile?.mkdirs()
+      fileSystem.write(sidecar.path.toPath()) { writeUtf8(json) }
+    } catch (e: Throwable) {
+      System.err.println("Failed to write theme-catalog token sidecar for $previewId: ${e.message}")
+    }
+  }
+
+  /** Returns the theme sidecar JSON, or null when nothing serialised (nothing worth writing). */
+  private fun buildResolvedJson(
+    previewId: String,
+    themeName: String,
+    tokens: List<ResolvedToken>,
+  ): String? {
+    val entries = tokens.map { resolvedTokenJson(it) }
+    if (entries.isEmpty()) return null
+    val sb = StringBuilder()
+    sb.append('{')
+    sb.append("\"schema\":").append(jsonString(SCHEMA)).append(',')
+    sb.append("\"previewId\":").append(jsonString(previewId)).append(',')
+    sb.append("\"theme\":").append(jsonString(themeName)).append(',')
+    sb.append("\"tokens\":[")
+    entries.forEachIndexed { i, e ->
+      if (i > 0) sb.append(',')
+      sb.append(e)
+    }
+    sb.append("]}")
+    return sb.toString()
+  }
+
+  /**
+   * One resolved token object. Mirrors [tokenJson]'s shape minus the `className`/`member` reflection
+   * coordinates (a composition-resolved token has none), so a reader handles both sidecar flavours
+   * uniformly: `{ "label", "kind", "color"|"textStyle" }`.
+   */
+  private fun resolvedTokenJson(token: ResolvedToken): String {
+    val value =
+      when (token) {
+        is ResolvedToken.Colour -> "\"kind\":\"COLOR\"," + colorJson(token.color)
+        is ResolvedToken.Type -> "\"kind\":\"TEXT_STYLE\"," + textStyleJson(token.style)
+      }
+    return "{\"label\":${jsonString(token.label)},$value}"
   }
 
   /** Returns the sidecar JSON, or null when no token resolved (nothing worth writing). */
