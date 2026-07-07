@@ -99,6 +99,15 @@ data class FigmaSvgLayer(
   val fill: FigmaSvgColor? = null,
   val stroke: FigmaSvgColor? = null,
   /**
+   * Stroke width in px for [stroke]. The layout inspector doesn't capture a `Modifier.border`
+   * width, so this defaults to one density-independent pixel scaled into the render's px space
+   * (`density`) — the width of a Material hairline outline (`OutlinedCard`/`OutlinedButton`/chip),
+   * which is 1dp. At the desktop 2× capture density a 1dp border is 2px, so a hardcoded `1` drew
+   * every outline at half width and lost fidelity along the whole edge; scaling by density matches
+   * the render. `1.0` (the data-class default) keeps density-1 callers and fixtures unchanged.
+   */
+  val strokeWidthPx: Double = 1.0,
+  /**
    * Per-corner radius in px, in the order top-left, top-right, bottom-right, bottom-left. `null`
    * means a sharp rectangle. A uniform radius still lists four equal values so the renderer has one
    * path to walk. A [circle] layer leaves this null and is drawn as a max-radius rounded rect.
@@ -153,7 +162,21 @@ data class FigmaSvgModel(
     /** Default transparent margin (px) around the diagram extent. */
     const val DEFAULT_PADDING: Int = 16
 
-    /** Composable-name fragments exported as opaque `<image>` placeholders (opt in via `from`). */
+    /**
+     * Composable-name fragments exported as opaque `<image>` placeholders (opt in via `from`).
+     *
+     * Two families live here. First, the obviously un-vectorisable leaves — bitmaps (`Image`),
+     * vector assets (`Icon`), custom `Canvas`/chart drawing. Second, **Material components whose
+     * chrome is drawn imperatively** (a `drawWithContent`/`Canvas` inside the component, not a
+     * `Modifier.background`/`border` the layout inspector can read as a container token): the
+     * filled & outlined `TextField` container + indicator, and the `Slider` track + thumb. Their
+     * fills never surface as tokens, so a token-driven vector export drops them entirely — the
+     * filled `TextField` was the worst sticker in the fidelity audit (dark: 66%, container box
+     * missing). Rasterising the component's measure-policy node (`TextFieldMeasurePolicy`,
+     * `OutlinedTextFieldMeasurePolicy`, `SliderKt`) crops its faithful pixels out of the frame
+     * while the rest of the screen stays editable vector — the sanctioned hybrid split, tuned by
+     * the fidelity diff (render vs. SVG) rather than guessed per-component.
+     */
     val DEFAULT_RASTER_COMPONENTS: Set<String> =
       setOf(
         "Image",
@@ -166,6 +189,8 @@ data class FigmaSvgModel(
         "Video",
         "AndroidView",
         "Painter",
+        "TextField",
+        "Slider",
       )
 
     /** Default `<image>` href for an opaque node: a per-node PNG under `figma-raster/`. */
@@ -274,6 +299,10 @@ data class FigmaSvgModel(
         bottom = bounds.bottom,
         fill = fill,
         stroke = stroke,
+        // A Material outline is a 1dp hairline; the inspector doesn't carry its width, so scale a
+        // single dp into the render's px space. `coerceAtLeast(1.0)` keeps a visible hairline at
+        // density < 1.
+        strokeWidthPx = if (stroke != null) ctx.density.toDouble().coerceAtLeast(1.0) else 1.0,
         cornerRadiiPx = corners,
         circle = circle,
         cut = cut,
