@@ -28,6 +28,30 @@ SVG — a separate axis from placement.
 
 ![card fidelity](card.png)
 
+## Fixes tuned by the harness
+
+The diff is the signal for *which* export bugs to fix. Three systemic ones the harness surfaced on
+the `compose-m3` catalog (mean fidelity across 70 stickers **97.54% → 98.59%**, no regressions):
+
+**Text no longer collapses to serif.** A concrete `<text>` family (`Roboto-Regular`) carried no CSS
+generic fallback, so with no `@font-face` embedded the browser/Figma substituted their default
+*serif*. Emitting a style-correct fallback (`Roboto-Regular, sans-serif`; serif/monospace specimens
+keep their style) puts the text back in the right typeface — the middle panel below goes from serif
+to the render's sans-serif. **Rasterise the imperatively-drawn Material chrome.** The filled/outlined
+`TextField` container + indicator and the `Slider` track are drawn in a `Canvas`, never surface as a
+container token, and so dropped out of the vector entirely — the filled `TextField` was the worst
+sticker (dark: **66.5%**, whole box missing). It now exports as a hybrid `<image>` crop. **Scale the
+outline stroke by density** — a 1dp Material hairline is 2px at the 2× capture density, not the
+hardcoded 1px.
+
+| before | after |
+| --- | --- |
+| ![TextField dark before](textfield-dark-before.png) | ![TextField dark after](textfield-dark-after.png) |
+| ![OutlinedCard before](outlinedcard-before.png) | ![OutlinedCard after](outlinedcard-after.png) |
+
+The residual red on the card is the render's two-line wrap (the SVG keeps one line — the capture
+records `lineCount` but not the line-break positions yet) and the remaining font-shape drift.
+
 The score is a per-pixel agreement fraction over a common opaque background. It's a **structural**
 metric: a per-channel colour tolerance absorbs antialiasing, and a **spatial tolerance** (a ±1px
 neighbourhood match) absorbs the sub-pixel baseline/edge drift that is unavoidable between the render
