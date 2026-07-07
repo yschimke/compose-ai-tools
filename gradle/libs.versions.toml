@@ -154,7 +154,7 @@ wear-compose-remote = "1.0.0-alpha06"
 compose-ui-prerelease = "1.11.3"
 kotlinx-coroutines = "1.11.0"
 kotlinx-serialization = "1.11.0"
-mcp-kotlin-sdk = "0.13.0"
+mcp-kotlin-sdk = "0.14.0"
 okio = "3.17.0"
 junit = "4.13.2"
 truth = "1.4.5"
@@ -230,7 +230,7 @@ dadb = "1.2.10"
 # gRPC server is bound by hand into grpc-netty via grpc-java's `ServerCalls` + a tiny Wire
 # `MethodDescriptor.Marshaller`. (Wire dropped its own server-side gRPC artifact after 4.9.11.)
 grpc = "1.82.1"
-wire = "6.4.1"
+wire = "6.4.5"
 
 [libraries]
 dadb = { module = "dev.mobile:dadb", version.ref = "dadb" }
