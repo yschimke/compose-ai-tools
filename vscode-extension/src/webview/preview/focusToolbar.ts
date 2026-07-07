@@ -98,6 +98,14 @@ export interface FocusedToggleButtonState {
     advertised: boolean;
     /** Current per-preview toggle state for the focused card. */
     enabled: boolean;
+    /**
+     * True in a bundle-viewer panel. The bundle viewer's message switch handles
+     * none of the per-preview override edits (permissions / lottie / clear-background),
+     * so a toggle that re-renders via a host `renderNow` is inert there — the button is
+     * hidden rather than shown dead. Only consumed by the clear-background toggle today
+     * (the others are already capability-gated off in bundle mode). Absent ⇒ not bundle.
+     */
+    bundleMode?: boolean;
 }
 
 export class FocusToolbarController {
@@ -270,7 +278,10 @@ export class FocusToolbarController {
      * is ignored here.
      */
     applyClearBackgroundButtonState(s: FocusedToggleButtonState): void {
-        const visible = s.inFocus && s.focusedPreviewId !== null;
+        // Hidden in bundle viewers — that panel's message switch has no
+        // `toggleClearBackground` handler, so the toggle can't reach a daemon there.
+        const visible =
+            s.inFocus && s.focusedPreviewId !== null && !s.bundleMode;
         this.el.btnClearBackground.hidden = !visible;
         if (!visible) {
             this.el.btnClearBackground.setAttribute("aria-pressed", "false");
