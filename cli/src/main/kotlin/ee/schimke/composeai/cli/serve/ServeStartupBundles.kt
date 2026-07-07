@@ -81,20 +81,35 @@ internal object ServeStartupBundles {
     runCatching { URI(source).scheme?.lowercase() in setOf("http", "https") }.getOrDefault(false)
 
   /**
-   * Derive a branch [BundleVerifier.Origin] from a
+   * Candidate branch [BundleVerifier.Origin]s for a
    * `raw.githubusercontent.com/<owner>/<repo>/<ref>/…` URL — the same host `--catalogs` fetches
    * from — so a bundle pulled from a trusted branch earns `Trusted(Branch)` without a signature.
-   * Any other host (or a local path) yields `null`, so trust then rests solely on a pinned Ed25519
+   *
+   * A raw URL is `.../<owner>/<repo>/<ref>/<path…>`, but `<ref>` may itself contain slashes (a
+   * branch like `design-artifacts/compose-m3`), and the boundary between the ref and the file path
+   * isn't recoverable from the string alone (GitHub resolves it server-side). So this enumerates
+   * every split that leaves at least one path segment — `design-artifacts`, then
+   * `design-artifacts/compose-m3`, … — shortest ref first. The caller picks the one the trust store
+   * actually trusts (a `design-artifacts/<slug>` branch glob matches the two-segment branch, not
+   * the bare `design-artifacts`), which is what disambiguates the split. A non-github host / local
+   * path / too-short URL yields an empty list, so trust then rests solely on a pinned Ed25519
    * signature.
    */
-  fun originOf(source: String): BundleVerifier.Origin? {
-    val uri = runCatching { URI(source) }.getOrNull() ?: return null
-    if (uri.host?.lowercase() != RAW_GITHUB_HOST) return null
-    val segments = uri.path.trim('/').split('/')
-    if (segments.size < 4) return null
-    val (owner, repo, ref) = Triple(segments[0], segments[1], segments[2])
-    if (owner.isBlank() || repo.isBlank() || ref.isBlank()) return null
-    return BundleVerifier.Origin(repo = "$owner/$repo", branch = ref)
+  fun candidateOrigins(source: String): List<BundleVerifier.Origin> {
+    val uri = runCatching { URI(source) }.getOrNull() ?: return emptyList()
+    if (uri.host?.lowercase() != RAW_GITHUB_HOST) return emptyList()
+    val segments = (uri.path ?: "").trim('/').split('/').filter { it.isNotEmpty() }
+    if (segments.size < 4) return emptyList()
+    val owner = segments[0]
+    val repo = segments[1]
+    if (owner.isBlank() || repo.isBlank()) return emptyList()
+    // ref spans segments[2..refEnd]; leave ≥1 trailing path segment (refEnd ≤ size-2).
+    return (2..(segments.size - 2)).map { refEnd ->
+      BundleVerifier.Origin(
+        repo = "$owner/$repo",
+        branch = segments.subList(2, refEnd + 1).joinToString("/"),
+      )
+    }
   }
 
   /** Fetch [url] into memory, http/https only, capped + time-bounded; null on any failure. */

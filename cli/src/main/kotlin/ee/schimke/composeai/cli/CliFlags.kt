@@ -57,6 +57,7 @@ internal object CliFlags {
       "--token",
       "--export",
       "--bundles",
+      "--bundle",
       "--accept-bundles-from",
       "--trust-store",
       "--catalogs",

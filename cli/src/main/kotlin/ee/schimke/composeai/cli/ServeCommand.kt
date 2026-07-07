@@ -462,9 +462,13 @@ class ServeCommand(args: List<String>) : Command(args) {
     // Pick a landing session so `/` resolves: the first registered catalog, else the first bundle.
     val defaultSessionId =
       registeredCatalogs.firstOrNull() ?: registeredStartup.firstOrNull() ?: registry.anySessionId()
-    if (defaultSessionId == null) {
+    // An `--accept-bundles` server legitimately starts with no sessions — they arrive at runtime
+    // via
+    // POST /bundles — so only bail when there's genuinely nothing to serve and no way to add any.
+    if (defaultSessionId == null && !acceptBundles) {
       System.err.println(
-        "serve: nothing to serve — no --bundle / --bundles / --catalogs registered a session."
+        "serve: nothing to serve — no --bundle / --bundles / --catalogs registered a session, and " +
+          "--accept-bundles is off."
       )
       exitProcess(3)
     }
@@ -472,7 +476,8 @@ class ServeCommand(args: List<String>) : Command(args) {
     bringUpServer(
       registry = registry,
       token = token,
-      defaultSessionId = defaultSessionId,
+      // Upload-only server: no landing session yet (routes 404 until the first upload lands).
+      defaultSessionId = defaultSessionId ?: "",
       bundleStore = bundleStore,
       wasmCatalogs = wasmCatalogs,
       bannerLabel = "(no module — hosting fetched bundles/catalogs)",
@@ -746,7 +751,13 @@ class ServeCommand(args: List<String>) : Command(args) {
       val bytes = obtainBundleBytes(spec) ?: continue
       // Branch-origin trust for a raw.githubusercontent.com URL (a bundle pulled from a trusted
       // branch); null for any other URL / a local path (then only a signature can make it Trusted).
-      val origin = ServeStartupBundles.originOf(spec.source)
+      // A raw URL's ref can span slashes (`design-artifacts/compose-m3`), so try each candidate
+      // split and prefer the one the trust store actually trusts; else fall back to the shortest
+      // (harmless — an untrusted-branch origin just adds no basis).
+      val origins = ServeStartupBundles.candidateOrigins(spec.source)
+      val origin =
+        origins.firstOrNull { resolvedTrust.trustsBranch(it.repo, it.branch) }
+          ?: origins.firstOrNull()
       val bundleFile = File(root, "${spec.name}.bundle")
       try {
         bundleFile.writeBytes(bytes)

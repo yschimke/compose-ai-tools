@@ -3,7 +3,6 @@ package ee.schimke.composeai.cli.serve
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ServeStartupBundlesTest {
@@ -62,20 +61,46 @@ class ServeStartupBundlesTest {
   }
 
   @Test
-  fun `origin is derived only from a raw githubusercontent url`() {
-    val origin =
-      ServeStartupBundles.originOf(
-        "https://raw.githubusercontent.com/yschimke/compose-ai-tools/design-artifacts/compose-m3/bundle/app.bundle"
+  fun `candidate origins are enumerated only for a raw githubusercontent url`() {
+    val origins =
+      ServeStartupBundles.candidateOrigins(
+        "https://raw.githubusercontent.com/o/r/main/bundle/app.bundle"
       )
-    assertEquals("yschimke/compose-ai-tools", origin?.repo)
-    assertEquals("design-artifacts", origin?.branch)
+    // ref splits leaving ≥1 path segment: "main", "main/bundle".
+    assertEquals(listOf("o/r"), origins.map { it.repo }.distinct())
+    assertEquals(listOf("main", "main/bundle"), origins.map { it.branch })
   }
 
   @Test
-  fun `origin is null for a non-github host or a local path`() {
-    assertNull(ServeStartupBundles.originOf("https://example.com/o/r/main/app.bundle"))
-    assertNull(ServeStartupBundles.originOf("/tmp/app.bundle"))
-    assertNull(ServeStartupBundles.originOf("https://raw.githubusercontent.com/only/two"))
+  fun `candidate origins is empty for a non-github host or a local path`() {
+    assertTrue(
+      ServeStartupBundles.candidateOrigins("https://example.com/o/r/main/app.bundle").isEmpty()
+    )
+    assertTrue(ServeStartupBundles.candidateOrigins("/tmp/app.bundle").isEmpty())
+    assertTrue(
+      ServeStartupBundles.candidateOrigins("https://raw.githubusercontent.com/only/two").isEmpty()
+    )
+  }
+
+  @Test
+  fun `a slash-containing branch matches a branch glob in the trust store`() {
+    // Regression: design-artifacts URLs are published from branches like
+    // `design-artifacts/compose-m3`
+    // (the branch name itself has a slash). The trust store globs are `design-artifacts/*`, so the
+    // caller must be able to pick the two-segment branch, not the bare `design-artifacts`.
+    val trust =
+      TrustStore(
+        branches =
+          listOf(TrustedBranch(repo = "yschimke/compose-ai-tools", branch = "design-artifacts/*"))
+      )
+    val origins =
+      ServeStartupBundles.candidateOrigins(
+        "https://raw.githubusercontent.com/yschimke/compose-ai-tools/design-artifacts/compose-m3/bundle/app.bundle"
+      )
+    // The caller's selection: first candidate the trust store trusts.
+    val trusted = origins.firstOrNull { trust.trustsBranch(it.repo, it.branch) }
+    assertEquals("design-artifacts/compose-m3", trusted?.branch)
+    assertEquals("yschimke/compose-ai-tools", trusted?.repo)
   }
 
   @Test
@@ -84,7 +109,10 @@ class ServeStartupBundlesTest {
     // gate the startup --bundle live path reuses. Verify the verdict the branch origin produces.
     val trust = TrustStore(branches = listOf(TrustedBranch(repo = "o/r", branch = "*")))
     val origin =
-      ServeStartupBundles.originOf("https://raw.githubusercontent.com/o/r/main/b/app.bundle")!!
+      ServeStartupBundles.candidateOrigins(
+          "https://raw.githubusercontent.com/o/r/main/b/app.bundle"
+        )
+        .first { trust.trustsBranch(it.repo, it.branch) }
     // An unsigned bundle (no signatures.json); origin alone must still make it Trusted (branch
     // basis), which is what unlocks the live lane for a branch-fetched bundle.
     val bundle = ServeBundle.zip(linkedMapOf("previews/x.png" to byteArrayOf(1)))
@@ -96,7 +124,10 @@ class ServeStartupBundlesTest {
   @Test
   fun `without a matching trusted branch a fetched bundle stays Unverified`() {
     val origin =
-      ServeStartupBundles.originOf("https://raw.githubusercontent.com/o/r/main/b/app.bundle")!!
+      ServeStartupBundles.candidateOrigins(
+          "https://raw.githubusercontent.com/o/r/main/b/app.bundle"
+        )
+        .first()
     val bundle = ServeBundle.zip(linkedMapOf("previews/x.png" to byteArrayOf(1)))
     val verdict = BundleVerifier.verify(bundle, TrustStore.EMPTY, origin)
     assertTrue(verdict is BundleVerifier.Verdict.Unverified)
