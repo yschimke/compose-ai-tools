@@ -3,7 +3,7 @@
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Profile screen — compose-preview</title>
+        <title>Button · Filled (light) — compose-preview</title>
         <style>:root { color-scheme: light dark; }
 * { box-sizing: border-box; }
 body { margin: 0; padding: 24px; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
@@ -114,16 +114,17 @@ a:hover { text-decoration: underline; }
 }</style>
       </head>
       <body>
-              <p class="cp-head"><a href="/meshcore-mobile/?token=demo-token-fixture">← previews</a> <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile">✓ branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile</span></p>
-      <p class="cp-sub" title="com.example.ProfileScreenPreview">Profile screen</p>
-      <div class="cp-viewer" data-preview-id="com.example.ProfileScreenPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="true" data-can-render-overrides="false" data-snapshot-backend="Snapshot" data-live-backend="Live">
-        <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="Profile screen"><canvas id="cp-canvas" hidden></canvas></div>
+              <p class="cp-head"><a href="/?token=demo-token-fixture&session=compose-m3">← previews</a> <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ branch:yschimke/compose-ai-tools@design-artifacts/compose-m3</span></p>
+      <p class="cp-sub" title="button-filled__ideal__default__light">Button · Filled (light)</p>
+      <div class="cp-viewer" data-preview-id="button-filled__ideal__default__light" data-mode="snapshot" data-modes="snapshot" data-static-snapshot="true" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live" data-wasm-src="/wasm/compose-m3/?id=button-filled">
+        <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="Button · Filled (light)"><canvas id="cp-canvas" hidden></canvas><iframe id="cp-wasm" hidden sandbox="allow-scripts" title="Button · Filled (light) (Wasm)"></iframe></div>
         <div class="cp-controls">
-          <div class="cp-note">Pre-rendered snapshot — overrides (device, locale, font scale, orientation) need the live server, not a published catalog. <a href="https://github.com/yschimke/compose-ai-tools/blob/main/docs/public-preview-server.md#running-one">Enable a local preview server.</a></div>
-          <label class="cp-live-row"><input id="cp-live" type="checkbox" disabled> Live (stream)</label>
-          
+          <div class="cp-note">Pre-rendered snapshot — tick “Run in browser (Wasm)” to interact: Theme, Font scale, Locale &amp; background apply in the browser. Device/Orientation need the live server. <a href="https://github.com/yschimke/compose-ai-tools/blob/main/docs/public-preview-server.md#running-one">Enable a local preview server.</a></div>
+          <label class="cp-live-row"><input id="cp-live" type="checkbox"> Live (stream)</label>
+          <label class="cp-live-row"><input id="cp-wasm-toggle" type="checkbox"> Run in browser (Wasm)</label>
+          <label class="cp-live-row"><input id="cp-wasm-bg" type="checkbox"> Component only (no background)</label>
           <label>Theme
-            <select id="cp-uiMode" disabled>
+            <select id="cp-uiMode">
               <option value="">(default)</option>
               <option value="light">Light</option>
               <option value="dark">Dark</option>
@@ -141,10 +142,10 @@ a:hover { text-decoration: underline; }
             </select>
           </label>
           <label>Locale (BCP-47)
-            <input id="cp-localeTag" type="text" placeholder="e.g. ar, ja-JP" autocomplete="off" disabled>
+            <input id="cp-localeTag" type="text" placeholder="e.g. ar, ja-JP" autocomplete="off">
           </label>
           <label>Font scale: <span id="cp-fontScale-val">default</span>
-            <input id="cp-fontScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0" disabled>
+            <input id="cp-fontScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0">
           </label>
           <label>Orientation
             <select id="cp-orientation" disabled>
@@ -159,7 +160,15 @@ a:hover { text-decoration: underline; }
               <option value="clear">Clear (crisp outline)</option>
             </select>
           </label>
-          
+                <div class="cp-knobs">
+        <div class="cp-knobs-head">Declared overrides — edit a value to re-render.</div>
+        <label>label
+  <input type="text" class="cp-knob" data-knob-key="label" data-knob-kind="string" value="Filled">
+</label>
+<label>iconColor
+  <input type="text" class="cp-knob" data-knob-key="iconColor" data-knob-kind="color" value="#FF6750A4">
+</label>
+      </div>
                 <div class="cp-links">
         <div class="cp-knobs-head">Direct links — the current view as a URL (overrides applied)</div>
         <div class="cp-link-row">
@@ -167,6 +176,12 @@ a:hover { text-decoration: underline; }
   <input id="cp-url-png" class="cp-url" type="text" readonly aria-label="PNG URL">
   <button type="button" class="cp-copy" data-copy-target="cp-url-png">Copy</button>
   <a id="cp-dl-png" class="cp-dl" download>Download</a>
+</div>
+<div class="cp-link-row">
+  <span class="cp-link-kind">SVG</span>
+  <input id="cp-url-svg" class="cp-url" type="text" readonly aria-label="SVG URL">
+  <button type="button" class="cp-copy" data-copy-target="cp-url-svg">Copy</button>
+  <a id="cp-dl-svg" class="cp-dl" download>Download</a>
 </div>
       </div>
           <div class="cp-status" id="cp-status"></div>

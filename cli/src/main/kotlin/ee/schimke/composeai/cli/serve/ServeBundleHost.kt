@@ -49,6 +49,10 @@ class ServeBundleHost(
   private val fileSystem: FileSystem = SystemFileSystem,
 ) : ServeHost {
 
+  // A catalog bundle that carried baked `figma/<slug>.svg` vectors can serve an SVG per preview; a
+  // plain uploaded bundle (no figmaDir) 404s the `.svg` lane, so it offers no SVG download link.
+  override val hasSvgExport: Boolean = figmaDir != null
+
   private val previewsDir = File(bundleDir, PREVIEWS_SUBDIR)
 
   override val previews: List<ServePreview> =

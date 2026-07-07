@@ -167,7 +167,16 @@ internal object ServeBundleDaemon {
       return null
     }
 
-    val previews = readPreviews(previewsJson, fileSystem)
+    // The author-declared knob sidecars (`previews/<id>.overrides.json`) ride alongside the PNGs in
+    // the bundle. Extract them so [readPreviews] can advertise each preview's editable knobs — the
+    // `compose/overrides` payload the viewer renders as live knob controls (and that
+    // ServeCatalogLiveHost grafts onto the baked browse surface). Best-effort: a bundle that
+    // carried
+    // none simply yields previews with no knobs.
+    val previewsDir = File(destDir, "previews").apply { mkdirs() }
+    extractOverrideSidecars(zipBytes, previewsDir, fileSystem)
+
+    val previews = readPreviews(previewsJson, previewsDir, fileSystem)
     if (previews.isEmpty()) {
       onLog("catalog $system: bundle previews.json carried no previews")
       return null
@@ -182,8 +191,17 @@ internal object ServeBundleDaemon {
     )
   }
 
-  /** Read the bundle's extracted `previews.json` into the [ServePreview] shape serve expects. */
-  private fun readPreviews(previewsJson: File, fileSystem: FileSystem): List<ServePreview> {
+  /**
+   * Read the bundle's extracted `previews.json` into the [ServePreview] shape serve expects,
+   * folding in each preview's author-declared knobs from its extracted
+   * `previews/<id>.overrides.json` sidecar (in [previewsDir]) so the daemon-backed session
+   * advertises what's editable.
+   */
+  private fun readPreviews(
+    previewsJson: File,
+    previewsDir: File,
+    fileSystem: FileSystem,
+  ): List<ServePreview> {
     val text =
       try {
         fileSystem.read(previewsJson.path.toPath()) { readUtf8() }
@@ -194,11 +212,75 @@ internal object ServeBundleDaemon {
       runCatching { previewsManifestJson.decodeFromString(PreviewManifest.serializer(), text) }
         .getOrNull() ?: return emptyList()
     return manifest.previews.map {
-      ServePreview(id = it.id, label = it.functionName.ifBlank { it.id })
+      ServePreview(
+        id = it.id,
+        label = it.functionName.ifBlank { it.id },
+        overrides = readOverrideSidecar(previewsDir, it.id, fileSystem),
+      )
     }
   }
 
+  /**
+   * Extract only the `previews/<id>.overrides.json` sidecars from [zipBytes] into [previewsDir]
+   * (zip-slip safe). Mirrors the PNG-side extraction in [ServeBundleStore]; other bundle entries
+   * are handled elsewhere ([extractBundleClassesAndManifest]).
+   */
+  private fun extractOverrideSidecars(
+    zipBytes: ByteArray,
+    previewsDir: File,
+    fileSystem: FileSystem,
+  ) {
+    val root = previewsDir.canonicalFile.toPath()
+    java.util.zip.ZipInputStream(java.io.ByteArrayInputStream(zipBytes)).use { zin ->
+      while (true) {
+        val entry = zin.nextEntry ?: break
+        val name = entry.name.replace('\\', '/')
+        if (
+          !entry.isDirectory &&
+            name.startsWith("previews/") &&
+            name.endsWith(OVERRIDES_SUFFIX) &&
+            ".." !in name.split("/")
+        ) {
+          // Strip the leading `previews/` so the file lands directly under previewsDir (keyed by
+          // id).
+          val target = File(previewsDir, name.removePrefix("previews/"))
+          if (target.canonicalFile.toPath().startsWith(root)) {
+            target.parentFile?.mkdirs()
+            val bytes = zin.readBytes()
+            fileSystem.write(target.path.toPath()) { write(bytes) }
+          }
+        }
+        zin.closeEntry()
+      }
+    }
+  }
+
+  /** Read [id]'s extracted `<id>.overrides.json` sidecar (the `compose/overrides` payload). */
+  private fun readOverrideSidecar(
+    previewsDir: File,
+    id: String,
+    fileSystem: FileSystem,
+  ): List<ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration> {
+    val sidecar = File(previewsDir, "$id$OVERRIDES_SUFFIX").path.toPath()
+    if (!fileSystem.exists(sidecar)) return emptyList()
+    return try {
+      val text = fileSystem.read(sidecar) { readUtf8() }
+      overridesJson
+        .decodeFromString(
+          ee.schimke.composeai.data.overrides.PreviewOverridesPayload.serializer(),
+          text,
+        )
+        .declarations
+    } catch (_: Exception) {
+      emptyList()
+    }
+  }
+
+  /** Suffix of the per-preview knob sidecar; lockstep with `PreviewBundleFormat`'s. */
+  private const val OVERRIDES_SUFFIX = ".overrides.json"
+
   private val json = Json { encodeDefaults = true }
+  private val overridesJson = Json { ignoreUnknownKeys = true }
   private val previewsManifestJson = Json {
     ignoreUnknownKeys = true
     isLenient = true

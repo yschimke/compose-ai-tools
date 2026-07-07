@@ -88,10 +88,22 @@ object ServeWeb {
     .cp-knobs { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
     .cp-knobs-head { font-size: 0.72rem; color: #6b6b70; }
     .cp-knobs input:disabled { opacity: 0.7; }
+    .cp-links { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .cp-link-row { display: flex; align-items: center; gap: 6px; }
+    .cp-link-kind { font-size: 0.72rem; font-weight: 600; color: #6b6b70; width: 30px; flex: none; }
+    .cp-url { flex: 1; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.72rem; padding: 4px 6px; border: 1px solid #d7d7de; border-radius: 6px;
+      background: #fff; color: #1b1b1f; }
+    .cp-copy, .cp-dl { font-size: 0.72rem; padding: 4px 8px; border-radius: 6px; border: 1px solid #d7d7de;
+      background: #fff; color: #5b5bd6; cursor: pointer; text-decoration: none; flex: none; }
+    .cp-copy:hover, .cp-dl:hover { background: #f0f0f3; }
     @media (prefers-color-scheme: dark) {
       body { color: #e6e6e9; background: #161618; }
       .cp-sub, .cp-id, .cp-status, .cp-about-links, .cp-sys-desc, .cp-sys-foot { color: #a0a0a8; }
-      .cp-card, .cp-stage, .cp-knobs, .cp-about { border-color: #34343a; }
+      .cp-card, .cp-stage, .cp-knobs, .cp-links, .cp-about { border-color: #34343a; }
+      .cp-url { background: #1d1d20; color: #e6e6e9; border-color: #34343a; }
+      .cp-copy, .cp-dl { background: #1d1d20; border-color: #34343a; }
+      .cp-copy:hover, .cp-dl:hover { background: #26262b; }
       .cp-card, .cp-about { background: #1d1d20; }
       .cp-about-body { color: #c9c9d0; }
       .cp-about-body code { background: #2a2a30; }
@@ -609,6 +621,21 @@ object ServeWeb {
      * baked snapshots) with `hasLiveStream = true` (Live still offered on demand).
      */
     hasLiveStream: Boolean = canApplyOverrides,
+    /**
+     * Whether an override-bearing `/render` returns fresh pixels even though the *default* snapshot
+     * lane is baked ([canApplyOverrides] false) — true for a trusted-catalog live session
+     * ([ServeCatalogLiveHost]), whose carried daemon re-renders author-declared knob edits on
+     * demand. Drives whether the declared knob controls are live (an edit re-renders via `/render`)
+     * or disabled + informational. Defaults to [canApplyOverrides] so plain daemon / static
+     * sessions are unchanged.
+     */
+    canRenderOverrides: Boolean = canApplyOverrides,
+    /**
+     * Whether the session can export a `compose/figma-svg` for its previews (a daemon-backed host
+     * or a catalog that carried baked vectors). Drives whether the copyable-links panel offers an
+     * SVG download URL alongside the PNG one. Defaults to false (a plain bundle has no SVG lane).
+     */
+    hasSvgExport: Boolean = false,
     trust: String? = null,
     wasmSrc: String? = null,
     /**
@@ -703,7 +730,7 @@ object ServeWeb {
       """
       <p class="cp-head"><a href="$basePath/$q">← previews</a>${trustBadge(trust)}</p>
       <p class="cp-sub" title="$idText">$label</p>
-      <div class="cp-viewer" data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel"$wasmAttr>
+      <div class="cp-viewer" data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel"$wasmAttr>
         <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$wasmFrame</div>
         <div class="cp-controls">
           $snapshotNote
@@ -741,7 +768,8 @@ object ServeWeb {
               <option value="clear">Clear (crisp outline)</option>
             </select>
           </label>
-          ${overrideKnobsHtml(preview, canApplyOverrides)}
+          ${overrideKnobsHtml(preview, canApplyOverrides || canRenderOverrides)}
+          ${downloadLinksHtml(hasSvgExport)}
           <div class="cp-status" id="cp-status"></div>
         </div>
       </div>
@@ -777,6 +805,10 @@ object ServeWeb {
       // static snapshots yet leaves the Live toggle enabled, so `live.disabled` no longer implies
       // "static".
       var staticSnapshot = root.getAttribute("data-static-snapshot") === "true";
+      // Whether an override-bearing /render returns fresh pixels even on a static snapshot lane (a
+      // trusted-catalog live session: its carried daemon re-renders author-declared knob edits on
+      // demand). When true, a knob edit re-points the snapshot /render URL rather than sitting dead.
+      var canRenderOverrides = root.getAttribute("data-can-render-overrides") === "true";
       var previewId = root.getAttribute("data-preview-id");
       // The session path prefix ("/<system>") when this viewer is served under a path — it sits at
       // "<base>/p/<id>", so stripping the trailing "/p/<id>" recovers the base ("" for the root
@@ -803,6 +835,25 @@ object ServeWeb {
           if (el && el.value) o[f] = el.value;
         });
         if (fontScaleTouched && fs) o.fontScale = fs.value;
+        return o;
+      }
+      // The live-stream override map: the display fields PLUS the author-declared knob values as
+      // `knob.<key>` entries (the daemon's setOverrides parses the same map /render does, and
+      // ServeOverrides reads knob.* keys). Kept separate from overrides() so query() and the Wasm
+      // patch — which append/ignore knobs their own way — are unaffected; without this a knob edit
+      // during an active Live (stream) would send only the display fields and the daemon would reset
+      // the knob to its default.
+      function liveOverrides() {
+        var o = overrides();
+        document.querySelectorAll(".cp-knob").forEach(function (el) {
+          if (el.disabled) return;
+          var key = el.getAttribute("data-knob-key");
+          var kind = el.getAttribute("data-knob-kind") || "string";
+          if (!key) return;
+          var val = (el.type === "checkbox") ? (el.checked ? "true" : "false") : el.value;
+          if (val === "") return;
+          o["knob." + key] = kind + ":" + val;
+        });
         return o;
       }
       function query() {
@@ -833,7 +884,44 @@ object ServeWeb {
         next.onload = function () { img.src = url; status.textContent = ""; };
         next.onerror = function () { status.textContent = "render failed"; };
         next.src = url;
+        refreshLinks();
       }
+      // The copyable direct-link panel: rebuild the absolute /render URLs (PNG + optional SVG) from
+      // the current controls so a copied/downloaded link reproduces exactly what's on screen. Built
+      // on location.origin so the link is absolute (curl-able / shareable), and kept in sync on
+      // every control or knob change — even the ones that don't re-render the snapshot themselves.
+      function renderUrl(ext) {
+        var qs = query();
+        return location.origin + base + "/render/" + encodeURIComponent(previewId) + ext +
+          (qs ? "?" + qs : "");
+      }
+      function refreshLinks() {
+        [["png", ".png"], ["svg", ".svg"]].forEach(function (pair) {
+          var field = document.getElementById("cp-url-" + pair[0]);
+          if (!field) return;
+          var url = renderUrl(pair[1]);
+          field.value = url;
+          var dl = document.getElementById("cp-dl-" + pair[0]);
+          if (dl) dl.href = url;
+        });
+      }
+      document.querySelectorAll(".cp-copy").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var field = document.getElementById(btn.getAttribute("data-copy-target"));
+          if (!field) return;
+          var done = function () {
+            var was = btn.textContent;
+            btn.textContent = "Copied";
+            setTimeout(function () { btn.textContent = was; }, 1200);
+          };
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(field.value).then(done, function () { field.select(); });
+          } else {
+            field.select();
+            try { document.execCommand("copy"); done(); } catch (e) {}
+          }
+        });
+      });
       function drawFrame(b64, codec) {
         var im = new Image();
         im.onload = function () {
@@ -1103,6 +1191,8 @@ object ServeWeb {
       function wasmActive() { return wasmToggle && wasmToggle.checked; }
 
       function onControlsChanged() {
+        // Keep the copyable direct links current no matter which transport handles the change.
+        refreshLinks();
         if (wasmActive()) {
           // Recompose in place once the app is up; before it's ready, re-point the initial src (the
           // fragment carries the overrides) — the load handler re-syncs the final state either way.
@@ -1114,7 +1204,7 @@ object ServeWeb {
           return;
         }
         if (live.checked && ws && ws.readyState === 1) {
-          ws.send(JSON.stringify({ type: "setOverrides", overrides: overrides() }));
+          ws.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
         } else if (staticSnapshot && wasmToggle) {
           // Static snapshot backed by a Wasm app: the baked PNG can't honour theme/font-scale/locale
           // (only the in-browser tier can), and /render can't re-render a published catalog. So a
@@ -1180,8 +1270,19 @@ object ServeWeb {
         if (el) el.addEventListener("change", onControlsChanged);
       });
       // Author-declared knobs re-render on edit (text/number debounce via "input", toggles "change").
+      // They route differently from the display axes: a named knob (label, a color, …) is honoured
+      // ONLY by the server daemon — the in-browser Wasm tier's `catalogOverride*` returns the author
+      // default — so a knob edit must hit /render (onKnobChanged), never the wasm auto-enable path.
+      function onKnobChanged() {
+        refreshLinks();
+        if (live.checked && ws && ws.readyState === 1) {
+          ws.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
+        } else if (canRenderOverrides) {
+          refreshSnapshot();
+        }
+      }
       document.querySelectorAll(".cp-knob").forEach(function (el) {
-        el.addEventListener(el.type === "checkbox" ? "change" : "input", onControlsChanged);
+        el.addEventListener(el.type === "checkbox" ? "change" : "input", onKnobChanged);
       });
       refreshSnapshot();
     })();
@@ -1204,6 +1305,36 @@ object ServeWeb {
     </html>
     """
       .trimIndent() + "\n"
+
+  /**
+   * The copyable direct-link panel: the `/render/<id>.png` (and, when [hasSvgExport], `.svg`) URL
+   * for the preview **with the current overrides applied**. Each row shows a read-only URL field, a
+   * Copy button, and a Download link (`<a download>`). The viewer JS keeps the URLs in sync as the
+   * controls / knobs change (see `refreshLinks`), so the copied URL always reflects the on-screen
+   * state — a shareable, scriptable handle on the exact render (a `curl`-able PNG/SVG). The URLs
+   * are built client-side from `location.origin` + the session base, so they're absolute and work
+   * from anywhere; the fields start empty and are filled on first render.
+   */
+  private fun downloadLinksHtml(hasSvgExport: Boolean): String {
+    fun row(kind: String, ext: String): String =
+      """
+      <div class="cp-link-row">
+        <span class="cp-link-kind">$kind</span>
+        <input id="cp-url-$ext" class="cp-url" type="text" readonly aria-label="$kind URL">
+        <button type="button" class="cp-copy" data-copy-target="cp-url-$ext">Copy</button>
+        <a id="cp-dl-$ext" class="cp-dl" download>Download</a>
+      </div>
+      """
+        .trimIndent()
+    val svgRow = if (hasSvgExport) "\n" + row("SVG", "svg") else ""
+    return """
+      <div class="cp-links">
+        <div class="cp-knobs-head">Direct links — the current view as a URL (overrides applied)</div>
+        ${row("PNG", "png")}$svgRow
+      </div>
+      """
+      .trimIndent()
+  }
 
   /**
    * Renders the preview's author-declared editable knobs (the `compose/overrides` payload carried

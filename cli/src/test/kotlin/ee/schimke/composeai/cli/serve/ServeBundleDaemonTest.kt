@@ -71,6 +71,19 @@ class ServeBundleDaemonTest {
 
     assertTrue(state.previews.isNotEmpty(), "materialize should discover at least one preview")
     assertEquals("compose-m3", state.label)
+
+    // The author-declared knob sidecars (`previews/<id>.overrides.json`) must be folded into the
+    // ServePreview set so the daemon-backed session (and, via ServeCatalogLiveHost, the baked
+    // browse
+    // surface) can advertise the editable knobs. The M3 catalog's FilledButton declares a `label`
+    // string knob; assert it round-trips from the packed bundle.
+    val filled = state.previews.firstOrNull { it.id.endsWith("FilledButton_Light") }
+    if (filled != null) {
+      assertTrue(
+        filled.overrides.any { it.key == "label" },
+        "FilledButton should carry its declared `label` knob, got ${filled.overrides}",
+      )
+    }
   }
 
   @Test
