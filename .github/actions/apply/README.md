@@ -101,16 +101,23 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: yschimke/compose-ai-tools/.github/actions/apply@v0.16.26
         with:
-          only: a11y
+          # a11y renders first, then notifications stages the captures it
+          # leaves behind — so the two must share a job (see below). Drop
+          # `,notifications` only if you render no notification previews.
+          only: a11y,notifications
           missing-renders: warn
 ```
 <!-- x-release-please-end -->
 
 Keep **compose + resources** together (resources is cheap and reuses the
-compose run's base SHA), and if you render notification previews keep
-**notifications in the same job as — and after — a11y** (its staging depends
-on the renders the a11y pass leaves in the shared workspace). The two jobs use
-disjoint baseline branches and sticky-comment markers, so they never collide.
+compose run's base SHA), and keep **notifications in the same job as — and
+after — a11y**: `apply` runs a11y first, and the notifications pipeline stages
+the renders the a11y pass leaves in the shared workspace, so splitting them
+onto separate runners makes notifications report every a11y-produced capture as
+removed. (`only: a11y` alone silently drops the notifications pipeline, since
+`only` clears every surface it doesn't name — so keep both unless you
+deliberately render no notification previews.) The two jobs use disjoint
+baseline branches and sticky-comment markers, so they never collide.
 
 ## Version skew
 
