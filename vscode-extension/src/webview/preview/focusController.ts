@@ -214,6 +214,18 @@ export class FocusController {
             enabled:
                 previewId !== null && live.isTouchOverlayEnabled(previewId),
         });
+        this.config.focusToolbar.applyClearBackgroundButtonState({
+            inFocus,
+            focusedPreviewId: previewId,
+            // Not capability-gated — both backends honour clearBackground — so the
+            // button shows whenever a card is focused (advertised is ignored)...
+            advertised: true,
+            // ...except in a bundle viewer, whose message switch can't route the
+            // toggle to a daemon; hidden there rather than shown dead.
+            bundleMode: this.config.bundleMode?.() ?? false,
+            enabled:
+                previewId !== null && live.isClearBackgroundEnabled(previewId),
+        });
         this.config.focusToolbar.applyKeyboardBandButtonState({
             inFocus,
             focusedPreviewId: previewId,

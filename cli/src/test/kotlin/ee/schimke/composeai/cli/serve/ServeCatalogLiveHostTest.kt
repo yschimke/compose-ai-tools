@@ -1,9 +1,12 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
+import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamFrameParams
+import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
+import ee.schimke.composeai.data.overrides.PreviewOverrideType
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -25,16 +28,28 @@ class ServeCatalogLiveHostTest {
     override val previews: List<ServePreview>,
     private val tag: String,
     private val streaming: Boolean = false,
+    /** When true, `renderSvg` reports `NotFound` (a baked catalog missing this slug's vector). */
+    private val svgNotFound: Boolean = false,
   ) : ServeHost {
     override val label: String = tag
     override val canApplyOverrides: Boolean = streaming
     var lastRenderId: String? = null
+    var lastRenderOverrides: PreviewOverrides? = null
+    var lastSvgId: String? = null
     var lastStreamId: String? = null
     var closed = false
 
     override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
       lastRenderId = previewId
+      lastRenderOverrides = overrides
       return RenderOutcome.Ok("$tag:$previewId".encodeToByteArray())
+    }
+
+    override fun renderSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome {
+      lastSvgId = previewId
+      lastRenderOverrides = overrides
+      if (svgNotFound) return SvgOutcome.NotFound
+      return SvgOutcome.Ok("$tag-svg:$previewId".encodeToByteArray())
     }
 
     override fun subscribeStream(
@@ -80,7 +95,7 @@ class ServeCatalogLiveHostTest {
       )
     val live =
       RecordingHost(
-        previews = listOf(ServePreview(daemonId, daemonId)),
+        previews = listOf(ServePreview(daemonId, daemonId, overrides = listOf(labelKnob))),
         tag = "live",
         streaming = true,
       )
@@ -88,17 +103,122 @@ class ServeCatalogLiveHostTest {
     return Triple(composite, live, baked)
   }
 
+  /** An author-declared `label` knob the daemon carries for the mapped preview. */
+  private val labelKnob =
+    PreviewOverrideDeclaration(
+      key = "label",
+      type = PreviewOverrideType.STRING,
+      default = PreviewOverrideValue.StringValue("Filled"),
+    )
+
+  /** A knob-bearing override — the sole case the baked PNG can't satisfy. */
+  private fun knobOverride() =
+    PreviewOverrides(namedOverrides = mapOf("label" to PreviewOverrideValue.StringValue("Tap me")))
+
   @Test
   fun `presents as a static-snapshot host that still offers Live`() {
     val (composite, _, baked) = host()
-    assertEquals(baked.previews, composite.previews)
+    // Same ids + order as the baked browse surface (deep links + grid resolve unchanged).
+    assertEquals(baked.previews.map { it.id }, composite.previews.map { it.id })
     // Snapshots stay static (baked, instant) so the viewer shows the published pixels + trust
     // badge…
     assertEquals(false, composite.canApplyOverrides)
-    // …but the "Live (stream)" toggle is still offered.
+    // …but the carried daemon CAN re-render an override on demand, so the knob controls are live…
+    assertTrue(composite.canRenderOverrides)
+    // …and the "Live (stream)" toggle is still offered.
     assertTrue(composite.hasLiveStream)
     // The baked host is exposed so the HTTP layer can read its title / subtitle / trust verdict.
     assertEquals(baked, composite.bakedHost)
+  }
+
+  @Test
+  fun `grafts the daemon's declared knobs onto the mapped baked preview`() {
+    val (composite, _, _) = host()
+    // The baked catalog images carry no knob declarations; the daemon does. The composite exposes
+    // the daemon's declarations on the browse surface so /api/previews + the viewer advertise them.
+    val mapped = composite.previews.first { it.id == catalogId }
+    assertEquals(listOf(labelKnob), mapped.overrides)
+    // An unmapped (Android-only) preview has no daemon twin, so it stays knob-free.
+    val unmapped = composite.previews.first { it.id == androidOnlyId }
+    assertTrue(unmapped.overrides.isEmpty())
+  }
+
+  @Test
+  fun `a knob-bearing render on a mapped id routes to the daemon`() {
+    val (composite, live, baked) = host()
+    val out = composite.render(catalogId, knobOverride()) as RenderOutcome.Ok
+    // A named-override edit can only be honoured by re-running the composable — routed to the
+    // daemon
+    // under its daemon id, with the override carried through.
+    assertEquals("live:$daemonId", out.png.decodeToString())
+    assertEquals(daemonId, live.lastRenderId)
+    assertEquals(knobOverride().namedOverrides, live.lastRenderOverrides?.namedOverrides)
+    assertNull(baked.lastRenderId)
+  }
+
+  @Test
+  fun `a knob-bearing SVG render on a mapped id routes to the daemon`() {
+    val (composite, live, _) = host()
+    val out = composite.renderSvg(catalogId, knobOverride()) as SvgOutcome.Ok
+    assertEquals("live-svg:$daemonId", out.svg.decodeToString())
+    assertEquals(daemonId, live.lastSvgId)
+  }
+
+  @Test
+  fun `a plain SVG export falls back to the daemon when the baked vector is absent`() {
+    // The SVG row is advertised because a lane can export, but this mapped preview has no baked
+    // figma/<slug>.svg — the baked lane 404s. Rather than 404 the advertised link, a plain
+    // (no-knob)
+    // SVG export falls back to the daemon (an explicit action, so waking it is fine).
+    val baked =
+      RecordingHost(
+        previews = listOf(ServePreview(catalogId, catalogId)),
+        tag = "baked",
+        svgNotFound = true,
+      )
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        streaming = true,
+      )
+    val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
+
+    val out = composite.renderSvg(catalogId, PreviewOverrides()) as SvgOutcome.Ok
+    assertEquals("live-svg:$daemonId", out.svg.decodeToString())
+    assertEquals(daemonId, live.lastSvgId)
+  }
+
+  @Test
+  fun `a plain SVG export of an unmapped id with no baked vector stays NotFound`() {
+    // No daemon twin → nothing to fall back to; surface the baked NotFound rather than inventing
+    // one.
+    val baked =
+      RecordingHost(
+        previews = listOf(ServePreview(androidOnlyId, androidOnlyId)),
+        tag = "baked",
+        svgNotFound = true,
+      )
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        streaming = true,
+      )
+    val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
+
+    assertEquals(SvgOutcome.NotFound, composite.renderSvg(androidOnlyId, PreviewOverrides()))
+    assertNull(live.lastSvgId)
+  }
+
+  @Test
+  fun `a knob-bearing render on an unmapped id stays baked`() {
+    // No daemon twin → nothing can honour the knob; serve the baked PNG rather than 404.
+    val (composite, live, baked) = host()
+    val out = composite.render(androidOnlyId, knobOverride()) as RenderOutcome.Ok
+    assertEquals("baked:$androidOnlyId", out.png.decodeToString())
+    assertEquals(androidOnlyId, baked.lastRenderId)
+    assertNull(live.lastRenderId)
   }
 
   @Test

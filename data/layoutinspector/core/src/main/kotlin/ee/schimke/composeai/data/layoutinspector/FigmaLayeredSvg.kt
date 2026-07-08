@@ -116,7 +116,9 @@ object FigmaLayeredSvg {
     val fillAttr =
       layer.fill?.let { """fill="${it.hex}"${opacity("fill", it)}""" } ?: """fill="none""""
     val strokeAttr =
-      layer.stroke?.let { """ stroke="${it.hex}"${opacity("stroke", it)} stroke-width="1"""" } ?: ""
+      layer.stroke?.let {
+        """ stroke="${it.hex}"${opacity("stroke", it)} stroke-width="${fmt(layer.strokeWidthPx)}""""
+      } ?: ""
     val radii = effectiveRadii(layer)
     return if (radii == null) {
       """<rect x="${layer.left}" y="${layer.top}" width="${layer.width}" height="${layer.height}" """ +
@@ -188,9 +190,14 @@ object FigmaLayeredSvg {
     val t = layer.text!!
     val size = t.fontSizePx ?: options.defaultFontSizePx
     val baseline = layer.top + baselineOffset(t, size, (layer.bottom - layer.top).toDouble())
+    // An embedded face (via `familyOverrides`) is guaranteed present in the SVG's `@font-face`, so
+    // it
+    // stays a bare family name. Only the *unbacked* path — a captured face with no embedded bytes,
+    // where the viewer would otherwise substitute its default serif — gets a style-correct generic
+    // fallback appended.
     val familyName =
       t.fontFamily?.let { familyOverrides[it] }
-        ?: resolveFamily(t.fontFamily, options.defaultFontFamily)
+        ?: withGenericFallback(resolveFamily(t.fontFamily, options.defaultFontFamily))
     val family = """ font-family="${escapeAttr(familyName)}""""
     val weight = t.fontWeight?.let { """ font-weight="$it"""" } ?: ""
     val style = if (t.italic) """ font-style="italic"""" else ""
@@ -254,6 +261,31 @@ object FigmaLayeredSvg {
     if (generic in SANS_GENERICS) return defaultFamily
     if (generic in CSS_GENERICS) return generic
     return svgFontFamily(captured)
+  }
+
+  /**
+   * Appends a CSS **generic fallback** to a concrete `<text>` family so text never collapses to the
+   * viewer's default *serif* when the named face is unavailable — the common case, since
+   * `@font-face` embedding needs a font resolver (and Figma may drop the embedded face on import).
+   * `Roboto-Regular` alone renders as Times/serif in Chromium & Figma; `Roboto-Regular, sans-serif`
+   * renders in the right style. The generic is inferred from the face name (`…Mono` → `monospace`,
+   * `…Serif` → `serif`, else `sans-serif`) so a serif/monospace specimen keeps its style, not just
+   * sans. A name that is *already* a bare generic is returned unchanged; a multi-word face is
+   * quoted so the list parses. This is presentation-only — [embedFamily]/[resolveFamily] (the
+   * `@font-face` name and the override key) are untouched, so an embedded face still matches by its
+   * bare name.
+   */
+  fun withGenericFallback(family: String): String {
+    if (family.lowercase() in CSS_GENERICS) return family
+    val lower = family.lowercase()
+    val generic =
+      when {
+        "mono" in lower -> "monospace"
+        "serif" in lower -> "serif"
+        else -> "sans-serif"
+      }
+    val quoted = if (family.any { it == ' ' }) "'${cssFamily(family)}'" else family
+    return "$quoted, $generic"
   }
 
   /**

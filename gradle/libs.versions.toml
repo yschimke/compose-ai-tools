@@ -154,7 +154,7 @@ wear-compose-remote = "1.0.0-alpha06"
 compose-ui-prerelease = "1.11.3"
 kotlinx-coroutines = "1.11.0"
 kotlinx-serialization = "1.11.0"
-mcp-kotlin-sdk = "0.13.0"
+mcp-kotlin-sdk = "0.14.0"
 okio = "3.17.0"
 junit = "4.13.2"
 truth = "1.4.5"
@@ -221,7 +221,7 @@ jmdns = "3.6.3"
 # `testImplementation` in `:fake-emulator-core` to drive the fake emulator's ADB server end-to-end
 # (connect handshake, `shell,v2`, `screencap`, the `am start … PreviewActivity` preview-launch
 # intent) in a hermetic unit test.
-dadb = "1.2.10"
+dadb = "2.0.0"
 # gRPC + Wire — only `:fake-emulator-grpc`, which serves a subset of the Android emulator's
 # `android.emulation.control.EmulatorController` gRPC API (the surface Studio's embedded "Running
 # Devices" view + screenshot video stream consume) from a vendored `emulator_controller.proto`.
@@ -230,7 +230,7 @@ dadb = "1.2.10"
 # gRPC server is bound by hand into grpc-netty via grpc-java's `ServerCalls` + a tiny Wire
 # `MethodDescriptor.Marshaller`. (Wire dropped its own server-side gRPC artifact after 4.9.11.)
 grpc = "1.82.1"
-wire = "6.4.1"
+wire = "6.4.5"
 
 [libraries]
 dadb = { module = "dev.mobile:dadb", version.ref = "dadb" }

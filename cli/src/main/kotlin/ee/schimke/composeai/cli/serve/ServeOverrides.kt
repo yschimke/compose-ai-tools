@@ -55,6 +55,10 @@ object ServeOverrides {
       "orientation",
       "inspectionMode",
       "slotMode",
+      // "crisp outline" toggle. Friendly `background=clear` (aliases below) or the raw
+      // `clearBackground=true`; both map to `PreviewOverrides.clearBackground`.
+      "background",
+      "clearBackground",
     )
 
   /**
@@ -159,6 +163,40 @@ object ServeOverrides {
           }
         }
 
+    // Cleared background ("crisp outline"). Two spellings: the friendly `background=clear`
+    // (aliases `transparent` / `none` / `off`; `default` / `show` mean "keep the preview's
+    // background") and the raw boolean `clearBackground=true`. A present `background` key wins over
+    // `clearBackground`. Absent → null (discovery-time background).
+    val clearBackground: Boolean? =
+      when {
+        !blank("background") ->
+          when (params.getValue("background").lowercase()) {
+            "clear",
+            "transparent",
+            "none",
+            "off" -> true
+            "default",
+            "show",
+            "on" -> false
+            else ->
+              return OverrideParse.Invalid(
+                "background must be 'clear' or 'default', got '${params["background"]}'"
+              )
+          }
+        !blank("clearBackground") ->
+          when (params.getValue("clearBackground").lowercase()) {
+            "true",
+            "1" -> true
+            "false",
+            "0" -> false
+            else ->
+              return OverrideParse.Invalid(
+                "clearBackground must be a boolean, got '${params["clearBackground"]}'"
+              )
+          }
+        else -> null
+      }
+
     // Named-override knobs (`knob.<key>=<kind>:<value>`). A malformed typed value is a hard
     // Invalid (mirrors the numeric fields) rather than a silently-dropped edit.
     val namedOverrides = mutableMapOf<String, PreviewOverrideValue>()
@@ -206,6 +244,7 @@ object ServeOverrides {
         device = params["device"]?.takeIf { it.isNotBlank() },
         inspectionMode = inspectionMode,
         slotMode = slotMode,
+        clearBackground = clearBackground,
         namedOverrides = namedOverrides.ifEmpty { null },
       )
     )
@@ -230,6 +269,7 @@ object ServeOverrides {
       append("dev=").append(o.device).append('|')
       append("insp=").append(o.inspectionMode).append('|')
       append("slot=").append(o.slotMode).append('|')
+      append("clearbg=").append(o.clearBackground).append('|')
       // Named overrides participate so a knob edit isn't coalesced onto the prior render. Sorted by
       // key for order-independence; the value data classes have stable toString.
       append("named=")

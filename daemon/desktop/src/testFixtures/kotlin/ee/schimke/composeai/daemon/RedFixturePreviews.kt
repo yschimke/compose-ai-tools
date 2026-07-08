@@ -547,6 +547,36 @@ fun WallpaperAwareSquare() {
  * backends share the fixture so a wire-level mix-up between interactive and recording paths would
  * surface as the same colour transition test.
  */
+/**
+ * Mirrors the design-catalog `CatalogSticker`: a Material 3 [Surface] that paints an opaque
+ * `colorScheme.surface` fill by default, but drops it to `Color.Transparent` when the render sets
+ * [ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared] (the `clearBackground` "crisp
+ * outline" override). The content is a real M3 [OutlinedButton] — a component that is *itself*
+ * mostly transparent (a bordered outline with a text label), so clearing the surface leaves a crisp
+ * floating outline on transparency rather than a button embedded in a solid card. The corner pixels
+ * carry the *background* signal — opaque light surface when not cleared, fully transparent when
+ * cleared. Used by [RenderEngineClearBackgroundTest] to prove the override reaches both the harness
+ * background (Layer 1) and a composable's own fill (Layer 2), and to emit before/after visual
+ * evidence.
+ */
+@Composable
+fun SurfaceCardSquare() {
+  MaterialTheme(colorScheme = lightColorScheme()) {
+    val cleared = ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared.current
+    Surface(
+      color = if (cleared) Color.Transparent else MaterialTheme.colorScheme.surface,
+      contentColor = MaterialTheme.colorScheme.onSurface,
+    ) {
+      Box(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        contentAlignment = androidx.compose.ui.Alignment.Center,
+      ) {
+        androidx.compose.material3.OutlinedButton(onClick = {}) { Text("Outlined") }
+      }
+    }
+  }
+}
+
 @Composable
 fun KeyPressColorSquare() {
   var pressed by remember { mutableStateOf(false) }

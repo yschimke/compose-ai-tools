@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.cli.serve.BundleVerifier
 import ee.schimke.composeai.cli.serve.GitWorktrees
 import ee.schimke.composeai.cli.serve.GradleRevisionBuilder
 import ee.schimke.composeai.cli.serve.RenderOutcome
@@ -19,6 +20,7 @@ import ee.schimke.composeai.cli.serve.ServeRevisionFactory
 import ee.schimke.composeai.cli.serve.ServeSessionFactory
 import ee.schimke.composeai.cli.serve.ServeSessionRegistry
 import ee.schimke.composeai.cli.serve.ServeSessionState
+import ee.schimke.composeai.cli.serve.ServeStartupBundles
 import ee.schimke.composeai.cli.serve.ServeUrls
 import ee.schimke.composeai.cli.serve.TrustStore
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
@@ -125,6 +127,20 @@ class ServeCommand(args: List<String>) : Command(args) {
    * or build — the bundle's `previews/<id>.png` files are served directly.
    */
   private val bundlesDir: String? = args.flagValue("--bundles")?.takeIf { it.isNotBlank() }
+
+  /**
+   * Serve one or more **fetched** preview bundles directly (`--bundle <url|path>` / `--bundle
+   * <name>=<url|path>`, repeatable) — no `--module`, no local project, no Gradle build. A URL is
+   * fetched at startup (operator-supplied, so no SSRF gate — same trust level as `--catalogs`); a
+   * local path is read as-is. Each becomes a `/<name>/` session. A bundle that verifies `Trusted`
+   * (Ed25519 signature, or fetched from a trusted branch origin) is served **live** from a render
+   * daemon when `--allow-render-trusted` is set (desktop bundles); otherwise it's served read-only
+   * as its baked PNGs. This is what lets a public server live-render any trusted bundle pulled from
+   * a GitHub branch without knowing the module upfront.
+   */
+  private val bundleSpecs: List<ServeStartupBundles.Spec> by lazy {
+    ServeStartupBundles.parse(args.flagValuesAll("--bundle"))
+  }
 
   /**
    * Shared/public mode ingestion: enable `POST /bundles/{name}` so clients can contribute bundles
@@ -253,6 +269,18 @@ class ServeCommand(args: List<String>) : Command(args) {
       return
     }
 
+    // Module-less mode: no --module and no local Gradle project to build, but there ARE hosted
+    // sources (fetched --bundle(s) / --catalogs / --accept-bundles). Serve them directly with no
+    // discover/build — the "render any fetched bundle live from a trusted server" path. When run
+    // from inside a project (findProjectRoot != null), the module is still served as before and the
+    // hosted sources ride alongside it.
+    val hasHostedSources =
+      bundleSpecs.isNotEmpty() || bundlesDir != null || catalogRefs.isNotEmpty() || acceptBundles
+    if (explicitModule == null && hasHostedSources && findProjectRoot() == null) {
+      runBundleServer()
+      return
+    }
+
     // Discover + build the module(s) so manifests exist and previews resolve. `--module` scopes it.
     val outcome = renderAllModules(silenceStdout = false)
     if (!outcome.buildOk) {
@@ -322,28 +350,7 @@ class ServeCommand(args: List<String>) : Command(args) {
     // is
     // the default session; the registry suspends idle daemons and resumes them on demand from their
     // saved state, so a long-lived server doesn't keep daemons running forever.
-    val openHost: (ServeSessionState) -> ServeHost? = { state ->
-      runCatching {
-          val daemon =
-            ServeRenderHost.open(
-              descriptorPath = state.descriptor,
-              workspaceRoot = state.workspaceRoot,
-              workspaceName = state.workspaceName,
-              previews = state.previews,
-              label = state.label,
-              onLog = { System.err.println("[daemon serve] $it") },
-            )
-          // A trusted-catalog live session carries a baked-PNG fallback + a catalog-id→daemon-id
-          // alias: front the daemon with the baked catalog so the published /p/<id> deep links and
-          // /render/<id>.png thumbnails resolve (and the Android-only variants fall back to baked),
-          // while the mapped ids gain a live lane. Rebuilt here on every resume, so suspend/resume
-          // works unchanged. Plain project / revision sessions carry no fallback → the bare daemon.
-          val fallback = state.bakedFallback
-          if (fallback != null) ServeCatalogLiveHost(state.previewAliases, daemon, fallback())
-          else daemon
-        }
-        .getOrNull()
-    }
+    val openHost: (ServeSessionState) -> ServeHost? = ::openHost
     // Project mode forks a session per git revision behind the registry's factory; off by default
     // the factory yields nothing, so only the pinned current checkout is served. These worktrees
     // are
@@ -388,6 +395,9 @@ class ServeCommand(args: List<String>) : Command(args) {
     registerBundles().forEach { (id, bundleHost) ->
       registry.register(id, host = bundleHost, pinned = true)
     }
+    // Serve any operator-supplied `--bundle <url|path>` fetched bundles alongside the module — live
+    // from a daemon when Trusted + --allow-render-trusted, else read-only baked PNGs.
+    registerStartupBundles(registry)
     // Serve our published design systems from their trusted `design-artifacts/<system>` branches.
     // A catalog that carries a `web/wasm/` app yields a system→dir entry so the in-browser tier
     // rides the same trusted branch (no local --wasm-dir build needed).
@@ -396,56 +406,171 @@ class ServeCommand(args: List<String>) : Command(args) {
       else emptyMap()
     // Runtime ingestion (--accept-bundles): clients POST a bundle (or a ?url= to one) and it's
     // registered as a pinned session. Unpacked under a temp dir for this server's lifetime.
-    val bundleStore =
-      if (acceptBundles) {
-        val uploads =
-          java.nio.file.Files.createTempDirectory("serve-uploads").toFile().also {
-            it.deleteOnExit()
-          }
-        if (acceptBundlesFrom.isEmpty()) {
-          System.err.println(
-            "serve: --accept-bundles accepts uploads only; no ?url= host is allowed (SSRF fail " +
-              "closed). Pass --accept-bundles-from <host>[,<host>…] to permit URL fetches."
-          )
-        }
-        ServeBundleStore(
-          root = uploads,
-          register = { id, bundleHost -> registry.register(id, host = bundleHost, pinned = true) },
-          allowedHosts = acceptBundlesFrom,
-          trust = resolvedTrust,
-        )
-      } else {
-        null
-      }
-    // In-browser CMP tier: keep only the `--wasm-dir` entries whose directory actually holds the
-    // assembled app (index.html), warning on the rest, so a typo'd path doesn't silently advertise
-    // a
-    // broken "Run in browser" toggle.
-    val localWasm = wasmDirs.filter { (system, dir) ->
-      val ok = File(dir, "index.html").isFile
-      if (!ok) {
-        System.err.println(
-          "serve: --wasm-dir $system=${dir.path} has no index.html — skipping (build it with " +
-            ":samples:cmp-wasm-catalog:wasmCatalogDist)."
-        )
-      }
-      ok
-    }
+    val bundleStore = if (acceptBundles) openUploadStore(registry) else null
     // Merge the apps fetched from the catalog branches with the explicit `--wasm-dir` paths; a
-    // local
-    // `--wasm-dir` wins for a system so an operator can override the published app with a local
-    // build.
+    // local `--wasm-dir` wins for a system so an operator can override the published app.
+    val wasmCatalogs = catalogWasm + filterLocalWasm()
+    if (wasmCatalogs.isNotEmpty()) {
+      System.err.println("serve: in-browser Wasm tier for: ${wasmCatalogs.keys.joinToString(", ")}")
+    }
+    bringUpServer(
+      registry = registry,
+      token = token,
+      defaultSessionId = module.gradlePath,
+      bundleStore = bundleStore,
+      wasmCatalogs = wasmCatalogs,
+      bannerLabel = module.gradlePath,
+      bannerPreviewCount = previews.size,
+      mdnsModuleLabel = module.gradlePath,
+      mdnsPreviewIds = previews.map { it.id },
+      closeables = listOf(worktrees, catalogWorktrees.takeIf { it !== worktrees }),
+    )
+  }
+
+  /**
+   * Module-less mode: run a **pure preview server** — no `--module`, no local project, no Gradle
+   * build. Reached from [run] when there's nothing to build locally but there are hosted sources
+   * (`--bundle` / `--bundles` / `--catalogs` / `--accept-bundles`). This is the "render any fetched
+   * bundle live from a trusted server" path: `serve --bundle <github-branch-url> --public
+   * --allow-render-trusted` stands up a server that fetches the bundle and, if it verifies Trusted,
+   * live-renders it from a daemon — without ever knowing the module upfront.
+   *
+   * Trusted-catalog *source* builds (the Gradle fallback) are unavailable here (no repo to worktree
+   * from), so a `--catalogs` system that can't be served from its carried `liveBundle` falls back
+   * to baked PNGs — fail-closed, exactly like the desktop-only public image.
+   */
+  private fun runBundleServer() {
+    val token = tokenOverride ?: ServeUrls.generateToken()
+    val registry = ServeSessionRegistry(open = ::openHost)
+
+    registerBundles().forEach { (id, bundleHost) ->
+      registry.register(id, host = bundleHost, pinned = true)
+    }
+    val registeredStartup = registerStartupBundles(registry)
+    // No worktrees in module-less mode — catalogs live-render only from their carried `liveBundle`.
+    val catalogWasm =
+      if (catalogRefs.isNotEmpty()) registerCatalogs(registry, worktrees = null, ::openHost)
+      else emptyMap()
+    val bundleStore = if (acceptBundles) openUploadStore(registry) else null
+
+    val localWasm = filterLocalWasm()
     val wasmCatalogs = catalogWasm + localWasm
     if (wasmCatalogs.isNotEmpty()) {
       System.err.println("serve: in-browser Wasm tier for: ${wasmCatalogs.keys.joinToString(", ")}")
     }
+
+    // Pick a landing session so `/` resolves: the first registered catalog, else the first bundle.
+    val defaultSessionId =
+      registeredCatalogs.firstOrNull() ?: registeredStartup.firstOrNull() ?: registry.anySessionId()
+    // An `--accept-bundles` server legitimately starts with no sessions — they arrive at runtime
+    // via
+    // POST /bundles — so only bail when there's genuinely nothing to serve and no way to add any.
+    if (defaultSessionId == null && !acceptBundles) {
+      System.err.println(
+        "serve: nothing to serve — no --bundle / --bundles / --catalogs registered a session, and " +
+          "--accept-bundles is off."
+      )
+      exitProcess(3)
+    }
+
+    bringUpServer(
+      registry = registry,
+      token = token,
+      // Upload-only server: no landing session yet (routes 404 until the first upload lands).
+      defaultSessionId = defaultSessionId ?: "",
+      bundleStore = bundleStore,
+      wasmCatalogs = wasmCatalogs,
+      bannerLabel = "(no module — hosting fetched bundles/catalogs)",
+      bannerPreviewCount = registry.activeCount(),
+      // No module previews to advertise; discovery is a module-session nicety, so skip it here.
+      mdnsModuleLabel = null,
+      mdnsPreviewIds = null,
+      closeables = emptyList(),
+    )
+  }
+
+  /**
+   * Reopen a session's daemon-backed host from its [ServeSessionState] — the registry's `open`
+   * callback, used by every serve mode. A trusted-catalog / live-bundle session carries a baked-PNG
+   * fallback + a catalog-id→daemon-id alias, so the daemon is fronted by [ServeCatalogLiveHost]
+   * (published deep links + thumbnails keep resolving, Android-only variants fall back to baked,
+   * mapped ids gain a live lane). Rebuilt on every resume, so suspend/resume works unchanged. Plain
+   * project / revision / plain-bundle sessions carry no fallback → the bare daemon.
+   */
+  private fun openHost(state: ServeSessionState): ServeHost? =
+    runCatching {
+        val daemon =
+          ServeRenderHost.open(
+            descriptorPath = state.descriptor,
+            workspaceRoot = state.workspaceRoot,
+            workspaceName = state.workspaceName,
+            previews = state.previews,
+            label = state.label,
+            onLog = { System.err.println("[daemon serve] $it") },
+          )
+        val fallback = state.bakedFallback
+        if (fallback != null) ServeCatalogLiveHost(state.previewAliases, daemon, fallback())
+        else daemon
+      }
+      .getOrNull()
+
+  /** Build the `--accept-bundles` upload store (temp-dir backed), wired to [registry]. */
+  private fun openUploadStore(registry: ServeSessionRegistry): ServeBundleStore {
+    val uploads =
+      java.nio.file.Files.createTempDirectory("serve-uploads").toFile().also { it.deleteOnExit() }
+    if (acceptBundlesFrom.isEmpty()) {
+      System.err.println(
+        "serve: --accept-bundles accepts uploads only; no ?url= host is allowed (SSRF fail " +
+          "closed). Pass --accept-bundles-from <host>[,<host>…] to permit URL fetches."
+      )
+    }
+    return ServeBundleStore(
+      root = uploads,
+      register = { id, bundleHost -> registry.register(id, host = bundleHost, pinned = true) },
+      allowedHosts = acceptBundlesFrom,
+      trust = resolvedTrust,
+    )
+  }
+
+  /**
+   * Keep only `--wasm-dir` entries whose directory actually holds the assembled app (index.html).
+   */
+  private fun filterLocalWasm(): Map<String, File> = wasmDirs.filter { (system, dir) ->
+    val ok = File(dir, "index.html").isFile
+    if (!ok) {
+      System.err.println(
+        "serve: --wasm-dir $system=${dir.path} has no index.html — skipping (build it with " +
+          ":samples:cmp-wasm-catalog:wasmCatalogDist)."
+      )
+    }
+    ok
+  }
+
+  /**
+   * Construct the [ServeHttpServer], start it, advertise over mDNS (when [mdnsPreviewIds] is
+   * non-null and the bind is exposed), print the banner, and block until shutdown. Shared by the
+   * module-backed [run] and the module-less [runBundleServer]. [closeables] are extra resources
+   * (worktrees) closed on shutdown; nulls are ignored.
+   */
+  private fun bringUpServer(
+    registry: ServeSessionRegistry,
+    token: String,
+    defaultSessionId: String,
+    bundleStore: ServeBundleStore?,
+    wasmCatalogs: Map<String, File>,
+    bannerLabel: String,
+    bannerPreviewCount: Int,
+    mdnsModuleLabel: String?,
+    mdnsPreviewIds: List<String>?,
+    closeables: List<AutoCloseable?>,
+  ) {
     val server =
       ServeHttpServer(
         host = host,
         requestedPort = requestedPort,
         token = token,
         sessions = registry,
-        defaultSessionId = module.gradlePath,
+        defaultSessionId = defaultSessionId,
         bundleStore = bundleStore,
         isPublic = public,
         wasmCatalogs = wasmCatalogs,
@@ -457,11 +582,11 @@ class ServeCommand(args: List<String>) : Command(args) {
     // wear session-viewer clients can discover this server without a typed URL. Best-effort: a null
     // advertiser (no multicast / sandbox) just means discovery stays dark — the server is fine.
     val advertiser =
-      if (ServeUrls.isExposed(host)) {
+      if (mdnsModuleLabel != null && mdnsPreviewIds != null && ServeUrls.isExposed(host)) {
         ServeMdnsAdvertiser.start(
-          moduleLabel = module.gradlePath,
+          moduleLabel = mdnsModuleLabel,
           port = server.port,
-          previewIds = previews.map { it.id },
+          previewIds = mdnsPreviewIds,
           secure = false,
           onLog = { System.err.println("[serve] $it") },
         )
@@ -477,14 +602,13 @@ class ServeCommand(args: List<String>) : Command(args) {
           runCatching { advertiser?.close() }
           runCatching { server.stop() }
           runCatching { registry.close() }
-          runCatching { worktrees?.close() }
-          runCatching { if (catalogWorktrees !== worktrees) catalogWorktrees?.close() }
+          closeables.forEach { c -> runCatching { c?.close() } }
           done.countDown()
         }
       )
 
     server.start()
-    printBanner(module.gradlePath, server.port, token, previews.size)
+    printBanner(bannerLabel, server.port, token, bannerPreviewCount)
     val watchdog = if (exitWhenIdle) startIdleWatchdog(registry, done) else null
     done.await()
     watchdog?.shutdownNow()
@@ -597,6 +721,108 @@ class ServeCommand(args: List<String>) : Command(args) {
       )
     }
     return result
+  }
+
+  /**
+   * Register every `--bundle <url|path>` bundle as its own session. Each is fetched (URL) or read
+   * (local path), then served **live** from a render daemon when it verifies `Trusted` (signature
+   * or trusted branch origin) AND `--allow-render-trusted` is set AND it's a desktop bundle
+   * [ServeBundleDaemon.materialize] can stand up — otherwise served read-only as its baked PNGs
+   * ([ServeBundleStore.add]). Returns the ids that registered, so the module-less landing can pick
+   * a default session. Best-effort per bundle — one failing doesn't sink the others or the server.
+   *
+   * The live gate is the same fail-closed model as a catalog's `liveBundle`: an `Unverified` bundle
+   * is never re-rendered server-side (no RCE lever), it just serves its baked images.
+   */
+  private fun registerStartupBundles(registry: ServeSessionRegistry): List<String> {
+    if (bundleSpecs.isEmpty()) return emptyList()
+    val root =
+      java.nio.file.Files.createTempDirectory("serve-startup-bundles").toFile().also {
+        it.deleteOnExit()
+      }
+    val bakedStore =
+      ServeBundleStore(
+        root = File(root, "baked").apply { mkdirs() },
+        register = { id, host -> registry.register(id, host = host, pinned = true) },
+        trust = resolvedTrust,
+      )
+    val registered = mutableListOf<String>()
+    for (spec in bundleSpecs) {
+      val bytes = obtainBundleBytes(spec) ?: continue
+      // Branch-origin trust for a raw.githubusercontent.com URL (a bundle pulled from a trusted
+      // branch); null for any other URL / a local path (then only a signature can make it Trusted).
+      // A raw URL's ref can span slashes (`design-artifacts/compose-m3`), so try each candidate
+      // split and prefer the one the trust store actually trusts; else fall back to the shortest
+      // (harmless — an untrusted-branch origin just adds no basis).
+      val origins = ServeStartupBundles.candidateOrigins(spec.source)
+      val origin =
+        origins.firstOrNull { resolvedTrust.trustsBranch(it.repo, it.branch) }
+          ?: origins.firstOrNull()
+      val bundleFile = File(root, "${spec.name}.bundle")
+      try {
+        bundleFile.writeBytes(bytes)
+      } catch (e: Exception) {
+        System.err.println("serve: bundle ${spec.name} could not be staged (${e.message})")
+        continue
+      }
+      val verdict = BundleVerifier.verify(bundleFile, resolvedTrust, origin)
+      // Live lane: Trusted + operator opt-in. A desktop bundle materialises a daemon straight from
+      // the bundle (no build); a non-desktop/foreign/empty bundle returns null → falls to baked.
+      if (allowRenderTrusted && verdict is BundleVerifier.Verdict.Trusted) {
+        val destDir = File(root, "${spec.name}-live").apply { mkdirs() }
+        val state = ServeBundleDaemon.materialize(bundleFile, destDir, spec.name)
+        val host = state?.let { openHost(it) }
+        if (state != null && host != null) {
+          registry.register(spec.name, state, host = host)
+          System.err.println(
+            "serve: bundle ${spec.name} → LIVE from bundle (no build), " +
+              "trust=${BundleVerifier.summary(verdict)} (/${spec.name}/)"
+          )
+          registered += spec.name
+          continue
+        }
+      } else if (allowRenderTrusted) {
+        System.err.println(
+          "serve: bundle ${spec.name} is ${BundleVerifier.summary(verdict)} — not live-rendering; " +
+            "serving baked PNGs"
+        )
+      }
+      // Read-only fallback: serve the bundle's baked previews/<id>.png (executes no code).
+      when (val r = bakedStore.add(spec.name, bytes, isSecurityChecked = true, origin = origin)) {
+        is ServeBundleStore.Result.Ok -> {
+          registered += r.name
+          System.err.println(
+            "serve: bundle ${r.name} → ${r.previewCount} baked preview(s), trust=${r.trust} " +
+              "(/${r.name}/)"
+          )
+        }
+        is ServeBundleStore.Result.Failed ->
+          System.err.println("serve: bundle ${spec.name} not served: ${r.reason}")
+      }
+    }
+    return registered
+  }
+
+  /** Fetch (URL) or read (local path) a `--bundle` spec's bytes; null (logged) on any failure. */
+  private fun obtainBundleBytes(spec: ServeStartupBundles.Spec): ByteArray? {
+    if (ServeStartupBundles.isUrl(spec.source)) {
+      val bytes = ServeStartupBundles.fetch(spec.source)
+      if (bytes == null) {
+        System.err.println("serve: bundle ${spec.name} fetch failed (${spec.source})")
+      }
+      return bytes
+    }
+    val f = File(spec.source)
+    if (!f.isFile) {
+      System.err.println("serve: bundle ${spec.name} path not found: ${spec.source}")
+      return null
+    }
+    return try {
+      f.readBytes()
+    } catch (e: Exception) {
+      System.err.println("serve: bundle ${spec.name} read failed (${e.message})")
+      null
+    }
   }
 
   /**
@@ -920,7 +1146,17 @@ class ServeCommand(args: List<String>) : Command(args) {
       Read-only today; bound to loopback unless you opt into LAN exposure.
 
       Options:
-        --module <path>   Module to serve (required when the project has more than one).
+        --module <path>   Module to serve. Optional: when omitted outside a Gradle project, serve
+                          runs module-less — a pure server hosting only the fetched --bundle(s) /
+                          --catalogs / uploaded bundles, with no local discover/build.
+        --bundle <url|path>[, --bundle <name>=<url|path>, …]
+                          Serve one or more fetched preview bundles directly — no --module, no
+                          build. A URL is fetched at startup (operator-supplied, so no SSRF gate;
+                          e.g. a raw.githubusercontent.com/<owner>/<repo>/<branch>/… link); a local
+                          path is read. Each is served at /<name>/. A bundle that verifies Trusted
+                          (Ed25519 signature, or fetched from a trusted branch in --trust-store) is
+                          served LIVE from a render daemon when --allow-render-trusted is set
+                          (desktop bundles); otherwise read-only as its baked PNGs. Repeatable.
         --id <exact>      Only serve this exact preview id.
         --filter <substr> Only serve previews whose id contains this substring.
         --host <addr>     Bind address (default 127.0.0.1 — loopback only).

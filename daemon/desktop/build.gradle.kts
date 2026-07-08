@@ -213,6 +213,9 @@ dependencies {
   "testFixturesImplementation"(libs.jetbrains.compose.foundation)
   "testFixturesImplementation"(libs.jetbrains.compose.ui)
   "testFixturesImplementation"(libs.jetbrains.compose.material3)
+  // `LocalPreviewBackgroundCleared` — the `SurfaceCardSquare` fixture reads it to prove the
+  // `clearBackground` override reaches a composable that drops its own opaque fill.
+  "testFixturesImplementation"(project(":slot-preview-runtime"))
 }
 
 // Convenience task — equivalent to `java -cp $(runtimeClasspath) ee.schimke.composeai.daemon

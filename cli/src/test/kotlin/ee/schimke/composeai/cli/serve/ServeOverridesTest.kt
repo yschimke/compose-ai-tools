@@ -33,6 +33,7 @@ class ServeOverridesTest {
     assertNull(o.density)
     assertNull(o.inspectionMode)
     assertNull(o.slotMode)
+    assertNull(o.clearBackground)
   }
 
   @Test
@@ -85,11 +86,41 @@ class ServeOverridesTest {
         mapOf("widthPx" to "-5"),
         mapOf("inspectionMode" to "maybe"),
         mapOf("slotMode" to "maybe"),
+        mapOf("background" to "polkadot"),
+        mapOf("clearBackground" to "maybe"),
       )) {
       val parsed = ServeOverrides.parse(bad)
       assertTrue(parsed is OverrideParse.Invalid, "expected Invalid for $bad, got $parsed")
       assertTrue(parsed.message.isNotBlank())
     }
+  }
+
+  @Test
+  fun `background clear aliases map to clearBackground true`() {
+    for (v in listOf("clear", "transparent", "none", "off", "CLEAR")) {
+      assertEquals(true, ok(mapOf("background" to v)).clearBackground, "background=$v")
+    }
+    for (v in listOf("default", "show", "on")) {
+      assertEquals(false, ok(mapOf("background" to v)).clearBackground, "background=$v")
+    }
+    // Raw boolean spelling.
+    assertEquals(true, ok(mapOf("clearBackground" to "true")).clearBackground)
+    assertEquals(false, ok(mapOf("clearBackground" to "false")).clearBackground)
+    // `background` wins over `clearBackground` when both are present.
+    assertEquals(
+      true,
+      ok(mapOf("background" to "clear", "clearBackground" to "false")).clearBackground,
+    )
+    // Absent leaves it null (discovery-time background).
+    assertNull(ok(emptyMap()).clearBackground)
+  }
+
+  @Test
+  fun `cache key differs when clearBackground changes`() {
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", ok(emptyMap())),
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("background" to "clear"))),
+    )
   }
 
   @Test

@@ -1059,6 +1059,10 @@ class JsonRpcServer(
         if (isNotEmpty()) append(';')
         append("slotMode=").append(it)
       }
+      overrides.clearBackground?.let {
+        if (isNotEmpty()) append(';')
+        append("clearBackground=").append(it)
+      }
       // Extension-driven overrides ride along as a single base64-encoded `PreviewOverrides`
       // bag — the renderer's [PreviewOverrideExtensions] hands the bag to every registered
       // planner. New override-driven fields don't need a new wire token; they ride this bag.

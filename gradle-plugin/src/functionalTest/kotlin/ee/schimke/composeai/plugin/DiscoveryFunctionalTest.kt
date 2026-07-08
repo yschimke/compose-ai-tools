@@ -343,6 +343,10 @@ class DiscoveryFunctionalTest {
     // The provider FQN travels on `wrapperClassName` — that's what the renderer resolves + invokes.
     val light = themes.first { it.id == "themecatalog__Brand_Light" }
     assertThat(light.params.wrapperClassName).isEqualTo("test.BrandLightTheme")
+    // `params.name` is the clean theme name (the renderer keys the per-theme token sidecar by it);
+    // the " theme" display label lives on `functionName`.
+    assertThat(light.params.name).isEqualTo("Brand Light")
+    assertThat(light.functionName).isEqualTo("Brand Light theme")
     // A CMP/desktop project can't render catalog sheets, so the capture is optional
     // (expected-absent
     // rather than a missing-render regression) — same backend-aware policy as the token catalogs.

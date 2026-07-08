@@ -392,6 +392,9 @@ sealed interface InteractiveCommand {
     val density: Float,
     val backgroundColor: Long,
     val showBackground: Boolean,
+    /** Held-session cleared-background toggle; forces a transparent background and provides
+     * `LocalPreviewBackgroundCleared = true`. `false` preserves the discovery-time background. */
+    val clearBackground: Boolean = false,
     val device: String?,
     val outputBaseName: String,
     val replyLatch: CountDownLatch,

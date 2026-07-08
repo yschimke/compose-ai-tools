@@ -66,8 +66,18 @@ class ServeBundleStore(
    * passes `true` only once the request has cleared policy (here: token-gated `POST /bundles`). The
    * unpack itself is defended in depth — name sanitisation, zip-slip containment, size cap — but
    * the marker records that the *entry point* was authorised before risky bytes were processed.
+   *
+   * [origin] is non-null only when the *server itself* fetched the bundle from a known branch (the
+   * operator-supplied `--bundle <raw.githubusercontent…>` startup path), so a branch it trusts
+   * badges `Trusted(Branch)` even for an unsigned bundle. Client uploads pass `null` (origin trust
+   * is for server-fetched bundles, not arbitrary uploads).
    */
-  fun add(name: String, zipBytes: ByteArray, isSecurityChecked: Boolean): Result {
+  fun add(
+    name: String,
+    zipBytes: ByteArray,
+    isSecurityChecked: Boolean,
+    origin: BundleVerifier.Origin? = null,
+  ): Result {
     val safe = sanitizeName(name) ?: return Result.Failed("invalid bundle name: '$name'")
     val dir = File(root, safe)
     dir.deleteRecursively()
@@ -88,7 +98,7 @@ class ServeBundleStore(
     // Attribute the upload to a trusted producer if it carries a verifiable signature (origin trust
     // is for server-fetched catalogs, not client uploads, so no Origin here). The verdict travels
     // with the host for display; it never blocks serving the already-extracted data tiers.
-    val verdict = BundleVerifier.verify(zip, trust)
+    val verdict = BundleVerifier.verify(zip, trust, origin)
     val host = ServeBundleHost(dir, safe, verdict)
     register(safe, host)
     return Result.Ok(safe, host.previews.size, BundleVerifier.summary(verdict))
