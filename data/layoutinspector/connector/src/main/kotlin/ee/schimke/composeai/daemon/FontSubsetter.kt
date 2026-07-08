@@ -28,6 +28,17 @@ import org.apache.fontbox.ttf.TTFSubsetter
 object FontSubsetter {
 
   /**
+   * Printable ASCII (U+0020–U+007E): `a–z`, `A–Z`, `0–9`, space, and the common punctuation. Union
+   * this into the drawn code points so every Latin sticker asks for the **same** subset — one
+   * computation the caller can cache and reuse across the whole catalog — and so a *browser*-based
+   * SVG viewer/editor (where the embedded face is the only font) can still show an edited label.
+   * (Figma resolves fonts by family **name**, not from the embedded `@font-face`, so it isn't bound
+   * by the subset either way — see the note in `resolveFonts`.) Non-ASCII characters a sticker
+   * actually draws are added on top, so nothing rendered is lost.
+   */
+  val PRINTABLE_ASCII: Set<Int> = (0x20..0x7E).toSet()
+
+  /**
    * sfnt tables safe to drop for static, pre-shaped SVG text: OpenType layout + legacy kerning
    * (positioning/substitution we don't apply), the TrueType hinting program (irrelevant at the
    * SVG's fixed raster size), and device/metric hint tables. Everything else FontBox emits —

@@ -44,6 +44,17 @@ class FontSubsetterTest {
   }
 
   @Test
+  fun printableAsciiBaseCoversLettersDigitsAndPunctuationYetStaysSmall() {
+    val full = fixtureFont()
+    val subset = FontSubsetter.subset(full, FontSubsetter.PRINTABLE_ASCII)!!
+    // Still a fraction of the full face even carrying the whole ASCII base…
+    assertTrue("base subset stays small (${subset.size} B)", subset.size < full.size / 4)
+    // …and it draws the glyphs a designer would type — a–z, A–Z, digits, common punctuation.
+    val font = Font.createFont(Font.TRUETYPE_FONT, ByteArrayInputStream(subset))
+    for (c in "azAZ09.,:;!?()-/@#%&") assertTrue("base must display '$c'", font.canDisplay(c))
+  }
+
+  @Test
   fun subsetSkipsTextThatNeedsComplexShaping() {
     // Arabic (needs joining/reordering) and a Latin base + combining mark (needs mark positioning)
     // must not be glyf-subset — the shaping tables this path strips are required — so it returns
