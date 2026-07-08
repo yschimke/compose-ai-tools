@@ -36,6 +36,14 @@ jobs:
     if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
+    # The java-kotlin extractor lags the Kotlin release train: this repo builds
+    # with Kotlin 2.4.0, but CodeQL only supports versions below 2.3.30, so the
+    # compile step fails with "Kotlin version too new" (a CodeQL configuration
+    # error, not a code defect). Don't let that block CI. Scoped to java-kotlin
+    # only — JS/TS and Actions analysis still gate as normal, and once the
+    # extractor catches up to 2.4.0 the Kotlin job goes green again with no
+    # further change. Revisit / remove this once CodeQL supports Kotlin 2.4.0.
+    continue-on-error: ${{ matrix.language == 'java-kotlin' }}
     permissions:
       # Required for all workflows
       security-events: write
