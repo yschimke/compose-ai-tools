@@ -290,8 +290,7 @@ fun main(args: Array<String>) {
   // `extensions/enable` to opt in to specific contributions.
   val renderOutputDir = System.getProperty(RenderEngine.OUTPUT_DIR_PROP)
   val composeTraceEnabled = renderOutputDir != null && PerfettoTraceDataProducer.enabled()
-  val dataRoot: File? =
-    renderOutputDir?.let { File(it).parentFile?.resolve("data") ?: File(it) }
+  val dataRoot: File? = renderOutputDir?.let { File(it).parentFile?.resolve("data") ?: File(it) }
   val extensions =
     ExtensionRegistry(
       buildList {
@@ -308,8 +307,7 @@ fun main(args: Array<String>) {
             id = "device/background",
             displayName = "Device background",
             dataProductRegistry = DeviceBackgroundDataProductRegistry(previewIndex = previewIndex),
-            previewExtensionDescriptors =
-              listOf(RenderPreviewExtension.deviceBackgroundDescriptor),
+            previewExtensionDescriptors = listOf(RenderPreviewExtension.deviceBackgroundDescriptor),
           )
         }
         tryAdd("render/trace") {
@@ -452,7 +450,8 @@ fun main(args: Array<String>) {
           // do-not-acquire singleton, like `SandboxPermissionsBridge`) carries the declarations
           // across the boundary: the controller forwards each declared knob as JSON, and
           // `PreviewOverridesDataProductRegistry.onRender` reads them back by previewId — so
-          // `data/fetch?kind=compose/overrides` works on Android, matching desktop. (Bundle carriage
+          // `data/fetch?kind=compose/overrides` works on Android, matching desktop. (Bundle
+          // carriage
           // never needed the bridge: `RobolectricRenderTest.writeOverridesSidecar` reads the
           // controller from *within* the same sandbox.)
           Extension(
@@ -568,8 +567,7 @@ fun main(args: Array<String>) {
                 id = "compose/trace",
                 displayName = "Compose Perfetto trace",
                 dataProductRegistry = PerfettoTraceDataProductRegistry(rootDir = dataRoot),
-                previewExtensionDescriptors =
-                  listOf(RenderPreviewExtension.composeTraceDescriptor),
+                previewExtensionDescriptors = listOf(RenderPreviewExtension.composeTraceDescriptor),
               )
             }
           }
@@ -708,20 +706,19 @@ fun main(args: Array<String>) {
 }
 
 /**
- * Adds [build]'s result to the list, catching `LinkageError`
- * (`NoClassDefFoundError` / `ClassNotFoundException`-shaped failures) so one missing connector
- * module's class does not crash the entire daemon process.
+ * Adds [build]'s result to the list, catching `LinkageError` (`NoClassDefFoundError` /
+ * `ClassNotFoundException`-shaped failures) so one missing connector module's class does not crash
+ * the entire daemon process.
  *
  * The classpath the daemon JVM launches with comes from
- * `samples/<module>/build/compose-previews/daemon-launch.json`, materialised by the gradle
- * plugin's `composePreviewDaemonStart` task. A stale descriptor produced before a connector
- * module was wired in — e.g. after pulling PR #1226's extraction of
- * `NavigationDataProductRegistry` into `:data-navigation-connector` without re-running the
- * bootstrap — leaves the registry class off the classpath but DaemonMain still references it
- * directly, exploding the process on the very first registration. With this helper the spawn
- * survives one missing connector: the affected extension is skipped with a stderr line naming
- * the kind, so the user sees which classpath entry is missing and which `extensions/list` chip
- * will disappear until the descriptor refreshes.
+ * `samples/<module>/build/compose-previews/daemon-launch.json`, materialised by the gradle plugin's
+ * `composePreviewDaemonStart` task. A stale descriptor produced before a connector module was wired
+ * in — e.g. after pulling PR #1226's extraction of `NavigationDataProductRegistry` into
+ * `:data-navigation-connector` without re-running the bootstrap — leaves the registry class off the
+ * classpath but DaemonMain still references it directly, exploding the process on the very first
+ * registration. With this helper the spawn survives one missing connector: the affected extension
+ * is skipped with a stderr line naming the kind, so the user sees which classpath entry is missing
+ * and which `extensions/list` chip will disappear until the descriptor refreshes.
  */
 private inline fun MutableList<Extension>.tryAdd(label: String, build: () -> Extension) {
   try {

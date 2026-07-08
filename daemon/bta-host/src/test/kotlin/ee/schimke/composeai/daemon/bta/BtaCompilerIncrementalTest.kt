@@ -25,8 +25,8 @@ import org.junit.rules.TemporaryFolder
  *
  * - That IC was faster than non-IC for this fixture. The fixture is too small for BTA's
  *   classpath-snapshot reuse to dominate; per-compile cost is mostly compiler-frontend init, which
- *   is amortised across calls regardless of IC. Stage-2 promotion criteria measure that against
- *   a real consumer module.
+ *   is amortised across calls regardless of IC. Stage-2 promotion criteria measure that against a
+ *   real consumer module.
  * - That only the modified source was recompiled. The current `JvmCompilationOperation.compile` API
  *   doesn't surface the recompile-set as a structured return — KGP infers it from the IC working
  *   directory's `caches-jvm/inputs` / `compile-iteration` files, which is a more involved probe
