@@ -13,9 +13,9 @@ version of this repo, so consumer CI isn't exposed to changes on `main`.
   with:
     distribution: temurin
     java-version: 17
-- uses: yschimke/compose-ai-tools/.github/actions/install@v0.16.26
+- uses: yschimke/compose-ai-tools/.github/actions/install@v0.16.27
   with:
-    # Literal "0.16.26", "latest", or "catalog" (read from a Gradle
+    # Literal "0.16.27", "latest", or "catalog" (read from a Gradle
     # version catalog — see catalog-path / catalog-key inputs).
     version: latest
 ```
@@ -41,11 +41,11 @@ toolchain, declare it in `gradle/libs.versions.toml` and let
 ```toml
 # gradle/libs.versions.toml
 [versions]
-composePreviewCli = "0.16.26"
+composePreviewCli = "0.16.27"
 ```
 
 ```yaml
-- uses: yschimke/compose-ai-tools/.github/actions/install@v0.16.26
+- uses: yschimke/compose-ai-tools/.github/actions/install@v0.16.27
   with:
     version: catalog   # reads composePreviewCli from libs.versions.toml
 ```
@@ -82,11 +82,11 @@ See [`action.yml`](action.yml) for the full schema. Summary:
 
 ## Related actions
 
-- [`preview-baselines`](../preview-baselines/) — render previews and
-  push baselines on `main`.
-- [`preview-comment`](../preview-comment/) — render on a PR, post
-  before/after comparison comments.
-- [`a11y-report`](../a11y-report/) — accessibility findings per preview.
+- [`apply`](../apply/) — the unified compose-preview pipeline: baselines
+  on push, before/after PR comments, and the a11y + notification surfaces
+  in one step. Use this unless you only need the CLI on `$PATH`. It
+  supersedes the per-surface `preview-baselines` / `preview-comment` /
+  `a11y-report` composites (now thin, deprecated forwarders).
 
 The internal sibling `install-cli` action builds the CLI from source
 and exists so this repo's CI doesn't pin against a stale release; it

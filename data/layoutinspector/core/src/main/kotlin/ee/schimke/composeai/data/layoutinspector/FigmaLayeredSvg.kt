@@ -203,6 +203,18 @@ object FigmaLayeredSvg {
     val style = if (t.italic) """ font-style="italic"""" else ""
     val fill =
       t.color?.let { """ fill="${it.hex}"${opacity("fill", it)}""" } ?: """ fill="#000000""""
+    val lines = t.lines
+    if (lines != null && lines.size > 1) {
+      // Wrapped text: one positioned <tspan> per line at the exact place the render wrapped it,
+      // instead of collapsing the whole string onto one baseline. x/y are absolute (layer origin +
+      // the captured per-line offset), so line alignment (centre/right) and the real break points
+      // are preserved on Figma import.
+      val tspans =
+        lines.joinToString("") {
+          """<tspan x="${layer.left + it.left}" y="${layer.top + it.baseline}">${escape(it.content)}</tspan>"""
+        }
+      return """<text font-size="${fmt(size)}"$family$weight$style$fill>$tspans</text>"""
+    }
     return """<text x="${layer.left}" y="${fmt(baseline)}" font-size="${fmt(size)}"$family$weight$style$fill>""" +
       "${escape(t.content)}</text>"
   }

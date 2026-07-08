@@ -32,7 +32,11 @@ object ComposeSemanticsProduct {
   // v7 (#1908 follow-up): tokens may carry `cornerRadiusPx` — the raw-pixel corner radius of a
   // `RoundedCornerShape(<px>f)` that the dp-only `cornerRadius` couldn't express. Additive; older
   // entries decode with `cornerRadiusPx = null`.
-  const val SCHEMA_VERSION: Int = 7
+  // v8: `textOverflow` may carry `lines` — per-line geometry (visible substring + left + baseline,
+  // px relative to the node's top-left) for wrapped text, so the figma-svg export places one run
+  // per line at the render's break points instead of collapsing the string onto one baseline.
+  // Additive; older entries decode with `lines = null` (single-line rendering).
+  const val SCHEMA_VERSION: Int = 8
   const val FILE: String = "compose-semantics.json"
 }
 
@@ -214,7 +218,24 @@ data class ComposeSemanticsTextOverflow(
   val didOverflowWidth: Boolean? = null,
   /** Whether the text overflowed its height. */
   val didOverflowHeight: Boolean? = null,
+  /**
+   * Per-line geometry from the node's `TextLayoutResult`, in px **relative to the node's
+   * `boundsInRoot` top-left** (issue: wrapped text collapsed to one line in the figma-svg export).
+   * Carries each visible line's substring plus its left edge and baseline, so a consumer can place
+   * one `<tspan>`/run per line at the exact position the render wrapped it — the line-break points
+   * can't be recovered from the flat string + block bounds alone. Null for single-line text (the
+   * common case, drawn from the block baseline) and when the layout result was unavailable.
+   */
+  val lines: List<ComposeSemanticsTextLine>? = null,
 )
+
+/**
+ * One laid-out line of a wrapped text node, in px relative to the node's `boundsInRoot` top-left.
+ * [baseline] is where the glyphs sit (not the line top); [left] is the line's left edge (non-zero
+ * for centred/right-aligned text).
+ */
+@Serializable
+data class ComposeSemanticsTextLine(val text: String, val left: Int, val baseline: Int)
 
 /**
  * Resolved design-token data for a single semantics node (issues #1897, #1908). Populated from the
