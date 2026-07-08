@@ -14,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
@@ -54,45 +55,41 @@ import ee.schimke.composeai.preview.slots.PreviewSlot
 
 @CatalogWearModes
 @Composable
-fun FilledButton() = WearSticker {
-  Button(onClick = {}) { Text(previewOverrideString("label", "Filled")) }
-}
+fun FilledButton() =
+  WearSticker { Button(onClick = {}) { Text(previewOverrideString("label", stringResource(R.string.label_filled))) } }
 
 @CatalogWearModes
 @Composable
-fun FilledTonalButtonSticker() = WearSticker {
-  FilledTonalButton(onClick = {}) { Text(previewOverrideString("label", "Tonal")) }
-}
+fun FilledTonalButtonSticker() =
+  WearSticker { FilledTonalButton(onClick = {}) { Text(previewOverrideString("label", stringResource(R.string.label_tonal))) } }
 
 @CatalogWearModes
 @Composable
-fun OutlinedButtonSticker() = WearSticker {
-  OutlinedButton(onClick = {}) { Text(previewOverrideString("label", "Outlined")) }
-}
+fun OutlinedButtonSticker() =
+  WearSticker { OutlinedButton(onClick = {}) { Text(previewOverrideString("label", stringResource(R.string.label_outlined))) } }
 
 @CatalogWearModes
 @Composable
-fun ChildButtonSticker() = WearSticker {
-  ChildButton(onClick = {}) { Text(previewOverrideString("label", "Child")) }
-}
+fun ChildButtonSticker() =
+  WearSticker { ChildButton(onClick = {}) { Text(previewOverrideString("label", stringResource(R.string.label_child))) } }
 
 // A workout history the EdgeButton sticker scrolls through. Long enough to
 // overflow the viewport by a few screens so, scrolled to the end, the list fills
 // the space above the edge button.
 private val edgeButtonHistory =
   listOf(
-    "Morning run" to "5.2 km · 28 min",
-    "Heart rate" to "72 bpm",
-    "Sleep" to "7h 14m",
-    "Steps" to "6,482",
-    "Calories" to "412 kcal",
-    "Cycle" to "18 km · 41 min",
-    "Swim" to "1.2 km · 32 min",
-    "Hike" to "9.4 km · 1h 52m",
-    "Strength" to "45 min",
-    "Stretch" to "12 min",
-    "Yoga" to "30 min",
-    "Row" to "2.0 km · 9 min",
+    R.string.title_morning_run to "5.2 km · 28 min",
+    R.string.activity_heart_rate to "72 bpm",
+    R.string.activity_sleep to "7h 14m",
+    R.string.activity_steps to "6,482",
+    R.string.activity_calories to "412 kcal",
+    R.string.activity_cycle to "18 km · 41 min",
+    R.string.activity_swim to "1.2 km · 32 min",
+    R.string.activity_hike to "9.4 km · 1h 52m",
+    R.string.activity_strength to "45 min",
+    R.string.activity_stretch to "12 min",
+    R.string.activity_yoga to "30 min",
+    R.string.activity_row to "2.0 km · 9 min",
   )
 
 // EdgeButton hugs the bottom edge of the round screen via the
@@ -111,42 +108,43 @@ private val edgeButtonHistory =
 @CatalogWearBreakpoints
 @ScrollingPreview(modes = [ScrollMode.END])
 @Composable
-fun EdgeButtonSticker() = FullScreenWear {
-  val listState = rememberTransformingLazyColumnState()
-  val spec = rememberTransformationSpec()
-  ScreenScaffold(
-    scrollState = listState,
-    edgeButton = {
-      EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) {
-        Text(previewOverrideString("edgeLabel", "Start"))
-      }
-    },
-  ) { contentPadding ->
-    TransformingLazyColumn(
-      state = listState,
-      contentPadding = contentPadding,
-      modifier = Modifier.fillMaxSize(),
-    ) {
-      item {
-        ListHeader(
-          modifier = Modifier.transformedHeight(this, spec),
-          transformation = SurfaceTransformation(spec),
-        ) {
-          Text(previewOverrideString("header", "Workout"))
+fun EdgeButtonSticker() =
+  FullScreenWear {
+    val listState = rememberTransformingLazyColumnState()
+    val spec = rememberTransformationSpec()
+    ScreenScaffold(
+      scrollState = listState,
+      edgeButton = {
+        EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) {
+          Text(previewOverrideString("edgeLabel", stringResource(R.string.label_start)))
         }
-      }
-      items(edgeButtonHistory) { (title, subtitle) ->
-        TitleCard(
-          onClick = {},
-          title = { Text(title) },
-          subtitle = { Text(subtitle) },
-          modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-          transformation = SurfaceTransformation(spec),
-        )
+      },
+    ) { contentPadding ->
+      TransformingLazyColumn(
+        state = listState,
+        contentPadding = contentPadding,
+        modifier = Modifier.fillMaxSize(),
+      ) {
+        item {
+          ListHeader(
+            modifier = Modifier.transformedHeight(this, spec),
+            transformation = SurfaceTransformation(spec),
+          ) {
+            Text(previewOverrideString("header", stringResource(R.string.header_workout)))
+          }
+        }
+        items(edgeButtonHistory) { (titleRes, subtitle) ->
+          TitleCard(
+            onClick = {},
+            title = { Text(stringResource(titleRes)) },
+            subtitle = { Text(subtitle) },
+            modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+            transformation = SurfaceTransformation(spec),
+          )
+        }
       }
     }
   }
-}
 
 // ---------------------------------------------------------------------------
 // Lists — the Wear M3 scaling TransformingLazyColumn. Items scale + fade toward
@@ -156,45 +154,46 @@ fun EdgeButtonSticker() = FullScreenWear {
 
 private val scalingListItems =
   listOf(
-    "Morning run" to "5.2 km · 28 min",
-    "Heart rate" to "72 bpm",
-    "Sleep" to "7h 14m",
-    "Steps" to "6,482",
-    "Calories" to "412 kcal",
-    "Cycle" to "18 km · 41 min",
+    R.string.title_morning_run to "5.2 km · 28 min",
+    R.string.activity_heart_rate to "72 bpm",
+    R.string.activity_sleep to "7h 14m",
+    R.string.activity_steps to "6,482",
+    R.string.activity_calories to "412 kcal",
+    R.string.activity_cycle to "18 km · 41 min",
   )
 
 @CatalogWearBreakpoints
 @Composable
-fun ScalingListSticker() = FullScreenWear {
-  val listState = rememberTransformingLazyColumnState()
-  val spec = rememberTransformationSpec()
-  ScreenScaffold(scrollState = listState) { contentPadding ->
-    TransformingLazyColumn(
-      state = listState,
-      contentPadding = contentPadding,
-      modifier = Modifier.fillMaxSize(),
-    ) {
-      item {
-        ListHeader(
-          modifier = Modifier.transformedHeight(this, spec),
-          transformation = SurfaceTransformation(spec),
-        ) {
-          Text(previewOverrideString("header", "Activity"))
+fun ScalingListSticker() =
+  FullScreenWear {
+    val listState = rememberTransformingLazyColumnState()
+    val spec = rememberTransformationSpec()
+    ScreenScaffold(scrollState = listState) { contentPadding ->
+      TransformingLazyColumn(
+        state = listState,
+        contentPadding = contentPadding,
+        modifier = Modifier.fillMaxSize(),
+      ) {
+        item {
+          ListHeader(
+            modifier = Modifier.transformedHeight(this, spec),
+            transformation = SurfaceTransformation(spec),
+          ) {
+            Text(previewOverrideString("header", stringResource(R.string.header_activity)))
+          }
         }
-      }
-      items(scalingListItems) { (title, subtitle) ->
-        TitleCard(
-          onClick = {},
-          title = { Text(title) },
-          subtitle = { Text(subtitle) },
-          modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-          transformation = SurfaceTransformation(spec),
-        )
+        items(scalingListItems) { (titleRes, subtitle) ->
+          TitleCard(
+            onClick = {},
+            title = { Text(stringResource(titleRes)) },
+            subtitle = { Text(subtitle) },
+            modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+            transformation = SurfaceTransformation(spec),
+          )
+        }
       }
     }
   }
-}
 
 // ---------------------------------------------------------------------------
 // Layout templates — a blank skeleton of the common Wear list screen at every
@@ -212,37 +211,38 @@ fun ScalingListSticker() = FullScreenWear {
 @CatalogWearBreakpoints
 @ScrollingPreview(modes = [ScrollMode.END])
 @Composable
-fun BlankListLayout() = FullScreenWear {
-  val listState = rememberTransformingLazyColumnState()
-  val spec = rememberTransformationSpec()
-  ScreenScaffold(
-    scrollState = listState,
-    edgeButton = { EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) {} },
-  ) { contentPadding ->
-    TransformingLazyColumn(
-      state = listState,
-      contentPadding = contentPadding,
-      modifier = Modifier.fillMaxSize(),
-    ) {
-      item {
-        ListHeader(
-          modifier = Modifier.transformedHeight(this, spec),
-          transformation = SurfaceTransformation(spec),
-        ) {
-          Text("")
+fun BlankListLayout() =
+  FullScreenWear {
+    val listState = rememberTransformingLazyColumnState()
+    val spec = rememberTransformationSpec()
+    ScreenScaffold(
+      scrollState = listState,
+      edgeButton = { EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) {} },
+    ) { contentPadding ->
+      TransformingLazyColumn(
+        state = listState,
+        contentPadding = contentPadding,
+        modifier = Modifier.fillMaxSize(),
+      ) {
+        item {
+          ListHeader(
+            modifier = Modifier.transformedHeight(this, spec),
+            transformation = SurfaceTransformation(spec),
+          ) {
+            Text("")
+          }
         }
-      }
-      items(10) {
-        TitleCard(
-          onClick = {},
-          title = { Text("") },
-          modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-          transformation = SurfaceTransformation(spec),
-        ) {}
+        items(10) {
+          TitleCard(
+            onClick = {},
+            title = { Text("") },
+            modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+            transformation = SurfaceTransformation(spec),
+          ) {}
+        }
       }
     }
   }
-}
 
 // ---------------------------------------------------------------------------
 // Scaffold templates — full-screen, pre-built screen skeletons an app copies
@@ -259,73 +259,76 @@ fun BlankListLayout() = FullScreenWear {
 
 // A frozen curved TimeText: the real Wear M3 status strip drawing a fixed
 // "10:10" instead of the system clock, so every render is deterministic.
-@Composable private fun FixedTimeText() = TimeText { timeTextCurvedText("10:10") }
+@Composable
+private fun FixedTimeText() = TimeText { timeTextCurvedText("10:10") }
 
 private val templateListItems =
   listOf(
-    "Morning run" to "5.2 km · 28 min",
-    "Heart rate" to "72 bpm",
-    "Sleep" to "7h 14m",
-    "Steps" to "6,482",
+    R.string.title_morning_run to "5.2 km · 28 min",
+    R.string.activity_heart_rate to "72 bpm",
+    R.string.activity_sleep to "7h 14m",
+    R.string.activity_steps to "6,482",
   )
 
 // Base template: the canonical Wear list screen — TimeText status strip at the
 // curved top, a ListHeader, and a scaling TransformingLazyColumn of TitleCards.
 @CatalogWearBreakpoints
 @Composable
-fun TimeTextScaffoldTemplate() = WearScaffoldTemplate {
-  AppScaffold(timeText = { FixedTimeText() }) {
-    val listState = rememberTransformingLazyColumnState()
-    val spec = rememberTransformationSpec()
-    ScreenScaffold(scrollState = listState) { contentPadding ->
-      TransformingLazyColumn(
-        state = listState,
-        contentPadding = contentPadding,
-        modifier = Modifier.fillMaxSize(),
-      ) {
-        item {
-          ListHeader(
-            modifier = Modifier.transformedHeight(this, spec),
-            transformation = SurfaceTransformation(spec),
-          ) {
-            Text(previewOverrideString("header", "Activity"))
+fun TimeTextScaffoldTemplate() =
+  WearScaffoldTemplate {
+    AppScaffold(timeText = { FixedTimeText() }) {
+      val listState = rememberTransformingLazyColumnState()
+      val spec = rememberTransformationSpec()
+      ScreenScaffold(scrollState = listState) { contentPadding ->
+        TransformingLazyColumn(
+          state = listState,
+          contentPadding = contentPadding,
+          modifier = Modifier.fillMaxSize(),
+        ) {
+          item {
+            ListHeader(
+              modifier = Modifier.transformedHeight(this, spec),
+              transformation = SurfaceTransformation(spec),
+            ) {
+              Text(previewOverrideString("header", stringResource(R.string.header_activity)))
+            }
           }
-        }
-        items(templateListItems) { (title, subtitle) ->
-          TitleCard(
-            onClick = {},
-            title = { Text(title) },
-            subtitle = { Text(subtitle) },
-            modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-            transformation = SurfaceTransformation(spec),
-          )
+          items(templateListItems) { (titleRes, subtitle) ->
+            TitleCard(
+              onClick = {},
+              title = { Text(stringResource(titleRes)) },
+              subtitle = { Text(subtitle) },
+              modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+              transformation = SurfaceTransformation(spec),
+            )
+          }
         }
       }
     }
   }
-}
 
 // Page-indicator template: a horizontal pager with the Wear M3
 // HorizontalPageIndicator hugging the bottom curve. Seeded on the middle page so
 // the indicator reads as a real multi-page carousel, under the TimeText strip.
 @CatalogWearBreakpoints
 @Composable
-fun PageIndicatorScaffoldTemplate() = WearScaffoldTemplate {
-  AppScaffold(timeText = { FixedTimeText() }) {
-    val pagerState = rememberPagerState(initialPage = 1, pageCount = { 3 })
-    Box(Modifier.fillMaxSize()) {
-      HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-          Text(previewOverrideString("page", "Page ${page + 1}", index = page))
+fun PageIndicatorScaffoldTemplate() =
+  WearScaffoldTemplate {
+    AppScaffold(timeText = { FixedTimeText() }) {
+      val pagerState = rememberPagerState(initialPage = 1, pageCount = { 3 })
+      Box(Modifier.fillMaxSize()) {
+        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+          Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(previewOverrideString("page", stringResource(R.string.label_page, page + 1), index = page))
+          }
         }
+        HorizontalPageIndicator(
+          pagerState = pagerState,
+          modifier = Modifier.align(Alignment.BottomCenter),
+        )
       }
-      HorizontalPageIndicator(
-        pagerState = pagerState,
-        modifier = Modifier.align(Alignment.BottomCenter),
-      )
     }
   }
-}
 
 // Edge-button template: a list screen anchored by the screen-hugging EdgeButton.
 // Like [EdgeButtonSticker], the ScreenScaffold reveals the edge button only once
@@ -335,44 +338,45 @@ fun PageIndicatorScaffoldTemplate() = WearScaffoldTemplate {
 @CatalogWearBreakpoints
 @ScrollingPreview(modes = [ScrollMode.END])
 @Composable
-fun EdgeButtonScaffoldTemplate() = WearScaffoldTemplate {
-  AppScaffold(timeText = { FixedTimeText() }) {
-    val listState = rememberTransformingLazyColumnState()
-    val spec = rememberTransformationSpec()
-    ScreenScaffold(
-      scrollState = listState,
-      edgeButton = {
-        EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) {
-          Text(previewOverrideString("edgeLabel", "Start"))
-        }
-      },
-    ) { contentPadding ->
-      TransformingLazyColumn(
-        state = listState,
-        contentPadding = contentPadding,
-        modifier = Modifier.fillMaxSize(),
-      ) {
-        item {
-          ListHeader(
-            modifier = Modifier.transformedHeight(this, spec),
-            transformation = SurfaceTransformation(spec),
-          ) {
-            Text(previewOverrideString("header", "Workout"))
+fun EdgeButtonScaffoldTemplate() =
+  WearScaffoldTemplate {
+    AppScaffold(timeText = { FixedTimeText() }) {
+      val listState = rememberTransformingLazyColumnState()
+      val spec = rememberTransformationSpec()
+      ScreenScaffold(
+        scrollState = listState,
+        edgeButton = {
+          EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) {
+            Text(previewOverrideString("edgeLabel", stringResource(R.string.label_start)))
           }
-        }
-        items(edgeButtonHistory) { (title, subtitle) ->
-          TitleCard(
-            onClick = {},
-            title = { Text(title) },
-            subtitle = { Text(subtitle) },
-            modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-            transformation = SurfaceTransformation(spec),
-          )
+        },
+      ) { contentPadding ->
+        TransformingLazyColumn(
+          state = listState,
+          contentPadding = contentPadding,
+          modifier = Modifier.fillMaxSize(),
+        ) {
+          item {
+            ListHeader(
+              modifier = Modifier.transformedHeight(this, spec),
+              transformation = SurfaceTransformation(spec),
+            ) {
+              Text(previewOverrideString("header", stringResource(R.string.header_workout)))
+            }
+          }
+          items(edgeButtonHistory) { (titleRes, subtitle) ->
+            TitleCard(
+              onClick = {},
+              title = { Text(stringResource(titleRes)) },
+              subtitle = { Text(subtitle) },
+              modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+              transformation = SurfaceTransformation(spec),
+            )
+          }
         }
       }
     }
   }
-}
 
 // ---------------------------------------------------------------------------
 // Selection controls.
@@ -380,23 +384,25 @@ fun EdgeButtonScaffoldTemplate() = WearScaffoldTemplate {
 
 @CatalogWearModes
 @Composable
-fun SwitchButtonOn() = WearSticker {
-  SwitchButton(
-    checked = previewOverrideBoolean("checked", true),
-    onCheckedChange = {},
-    label = { Text(previewOverrideString("label", "Wifi")) },
-  )
-}
+fun SwitchButtonOn() =
+  WearSticker {
+    SwitchButton(
+      checked = previewOverrideBoolean("checked", true),
+      onCheckedChange = {},
+      label = { Text(previewOverrideString("label", stringResource(R.string.label_wifi))) },
+    )
+  }
 
 @CatalogWearModes
 @Composable
-fun CheckboxButtonChecked() = WearSticker {
-  CheckboxButton(
-    checked = previewOverrideBoolean("checked", true),
-    onCheckedChange = {},
-    label = { Text(previewOverrideString("label", "Sync")) },
-  )
-}
+fun CheckboxButtonChecked() =
+  WearSticker {
+    CheckboxButton(
+      checked = previewOverrideBoolean("checked", true),
+      onCheckedChange = {},
+      label = { Text(previewOverrideString("label", stringResource(R.string.label_sync))) },
+    )
+  }
 
 // ---------------------------------------------------------------------------
 // Containment + headers.
@@ -410,37 +416,40 @@ fun CheckboxButtonChecked() = WearSticker {
 // full-width, so the baked render is unchanged.
 @CatalogWearModes
 @Composable
-fun CardSticker() = WearSticker {
-  Card(onClick = {}) {
-    PreviewSlot("content", Modifier.fillMaxWidth()) { Text(previewOverrideString("label", "Card")) }
+fun CardSticker() =
+  WearSticker {
+    Card(onClick = {}) {
+      PreviewSlot("content", Modifier.fillMaxWidth()) {
+        Text(previewOverrideString("label", stringResource(R.string.label_card)))
+      }
+    }
   }
-}
 
 @CatalogWearModes
 @Composable
-fun TitleCardSticker() = WearSticker {
-  TitleCard(
-    onClick = {},
-    title = {
-      PreviewSlot("title", Modifier.fillMaxWidth()) {
-        Text(previewOverrideString("title", "Morning run"))
+fun TitleCardSticker() =
+  WearSticker {
+    TitleCard(
+      onClick = {},
+      title = {
+        PreviewSlot("title", Modifier.fillMaxWidth()) {
+          Text(previewOverrideString("title", stringResource(R.string.title_morning_run)))
+        }
+      },
+    ) {
+      PreviewSlot("subtitle", Modifier.fillMaxWidth()) {
+        Text(previewOverrideString("subtitle", "5.2 km · 28 min"))
       }
-    },
-  ) {
-    PreviewSlot("subtitle", Modifier.fillMaxWidth()) {
-      Text(previewOverrideString("subtitle", "5.2 km · 28 min"))
     }
   }
-}
 
 // No slot marker on the ListHeader: its content is horizontally centred, so a `fillMaxWidth` slot
 // box would left-shift the label in the baked render, and a header isn't a drop target the
 // structured-screen builder fills. The label stays an editable override knob.
 @CatalogWearModes
 @Composable
-fun ListHeaderSticker() = WearSticker {
-  ListHeader { Text(previewOverrideString("label", "Today")) }
-}
+fun ListHeaderSticker() =
+  WearSticker { ListHeader { Text(previewOverrideString("label", stringResource(R.string.header_today))) } }
 
 // ---------------------------------------------------------------------------
 // Communication.
@@ -448,9 +457,8 @@ fun ListHeaderSticker() = WearSticker {
 
 @CatalogWearModes
 @Composable
-fun CircularProgressSticker() = WearSticker {
-  CircularProgressIndicator(modifier = Modifier.size(48.dp))
-}
+fun CircularProgressSticker() =
+  WearSticker { CircularProgressIndicator(modifier = Modifier.size(48.dp)) }
 
 // ---------------------------------------------------------------------------
 // Text options — exercises the maxLines / overflow product on a round screen.
@@ -458,17 +466,15 @@ fun CircularProgressSticker() = WearSticker {
 
 @CatalogWearModes
 @Composable
-fun TextMaxLinesTruncated() = WearSticker {
-  Text(
-    previewOverrideString(
-      "text",
-      "This Wear body text is long enough to overflow two lines and truncate.",
-    ),
-    modifier = Modifier.width(140.dp),
-    maxLines = 2,
-    overflow = TextOverflow.Ellipsis,
-  )
-}
+fun TextMaxLinesTruncated() =
+  WearSticker {
+    Text(
+      previewOverrideString("text", stringResource(R.string.wear_body_overflow)),
+      modifier = Modifier.width(140.dp),
+      maxLines = 2,
+      overflow = TextOverflow.Ellipsis,
+    )
+  }
 
 // ---------------------------------------------------------------------------
 // States — interaction (pressed / focused; focus matters on Wear for rotary /
@@ -492,42 +498,47 @@ private fun focusedSource(): MutableInteractionSource {
 
 @CatalogWearModes
 @Composable
-fun ButtonPressed() = WearSticker {
-  Button(onClick = {}, interactionSource = pressedSource()) {
-    Text(previewOverrideString("label", "Pressed"))
+fun ButtonPressed() =
+  WearSticker {
+    Button(onClick = {}, interactionSource = pressedSource()) {
+      Text(previewOverrideString("label", stringResource(R.string.label_pressed)))
+    }
   }
-}
 
 @CatalogWearModes
 @Composable
-fun ButtonFocused() = WearSticker {
-  Button(onClick = {}, interactionSource = focusedSource()) {
-    Text(previewOverrideString("label", "Focused"))
+fun ButtonFocused() =
+  WearSticker {
+    Button(onClick = {}, interactionSource = focusedSource()) {
+      Text(previewOverrideString("label", stringResource(R.string.label_focused)))
+    }
   }
-}
 
 @CatalogWearModes
 @Composable
-fun ButtonDisabled() = WearSticker {
-  Button(onClick = {}, enabled = false) { Text(previewOverrideString("label", "Disabled")) }
-}
+fun ButtonDisabled() =
+  WearSticker {
+    Button(onClick = {}, enabled = false) { Text(previewOverrideString("label", stringResource(R.string.label_disabled))) }
+  }
 
 @CatalogWearModes
 @Composable
-fun SwitchButtonOff() = WearSticker {
-  SwitchButton(
-    checked = previewOverrideBoolean("checked", false),
-    onCheckedChange = {},
-    label = { Text(previewOverrideString("label", "Wifi")) },
-  )
-}
+fun SwitchButtonOff() =
+  WearSticker {
+    SwitchButton(
+      checked = previewOverrideBoolean("checked", false),
+      onCheckedChange = {},
+      label = { Text(previewOverrideString("label", stringResource(R.string.label_wifi))) },
+    )
+  }
 
 @CatalogWearModes
 @Composable
-fun CheckboxButtonUnchecked() = WearSticker {
-  CheckboxButton(
-    checked = previewOverrideBoolean("checked", false),
-    onCheckedChange = {},
-    label = { Text(previewOverrideString("label", "Sync")) },
-  )
-}
+fun CheckboxButtonUnchecked() =
+  WearSticker {
+    CheckboxButton(
+      checked = previewOverrideBoolean("checked", false),
+      onCheckedChange = {},
+      label = { Text(previewOverrideString("label", stringResource(R.string.label_sync))) },
+    )
+  }

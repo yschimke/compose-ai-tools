@@ -44,4 +44,10 @@ dependencies {
   // Republishes `androidx.compose.ui.tooling.preview.Preview` — the FQN
   // `PreviewDiscovery` scans for — on the desktop JVM target.
   implementation(libs.jetbrains.compose.components.ui.tooling.preview)
+
+  // Compose Multiplatform string resources: the scaffold template's title + message copy resolve
+  // from the shared module's generated (public) `Res`, so a `localeTag` override renders the
+  // template in the target language. Reachable transitively via the shared module's
+  // `api(compose.components.resources)`, but declared directly since this module uses it head-on.
+  implementation(libs.jetbrains.compose.components.resources)
 }

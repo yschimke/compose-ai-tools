@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="label_filled">भरा हुआ</string>
+  <string name="label_tonal">टोनल</string>
+  <string name="label_outlined">आउटलाइन</string>
+  <string name="label_child">चाइल्ड</string>
+  <string name="label_start">शुरू करें</string>
+  <string name="header_workout">वर्कआउट</string>
+  <string name="header_activity">गतिविधि</string>
+  <string name="header_today">आज</string>
+  <string name="label_wifi">वाई-फ़ाई</string>
+  <string name="label_sync">सिंक</string>
+  <string name="label_card">कार्ड</string>
+  <string name="title_morning_run">सुबह की दौड़</string>
+  <string name="wear_body_overflow">यह Wear टेक्स्ट इतना लंबा है कि दो लाइनों में फैलकर छोटा हो जाता है।</string>
+  <string name="label_pressed">दबाया गया</string>
+  <string name="label_focused">फ़ोकस</string>
+  <string name="label_disabled">अक्षम</string>
+  <string name="label_page">पेज %1$d</string>
+  <string name="activity_heart_rate">हृदय गति</string>
+  <string name="activity_sleep">नींद</string>
+  <string name="activity_steps">कदम</string>
+  <string name="activity_calories">कैलोरी</string>
+  <string name="activity_cycle">साइक्लिंग</string>
+  <string name="activity_swim">तैराकी</string>
+  <string name="activity_hike">हाइकिंग</string>
+  <string name="activity_strength">स्ट्रेंथ</string>
+  <string name="activity_stretch">स्ट्रेच</string>
+  <string name="activity_yoga">योग</string>
+  <string name="activity_row">रोइंग</string>
+</resources>

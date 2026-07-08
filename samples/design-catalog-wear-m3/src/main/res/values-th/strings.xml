@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="label_filled">เติมสี</string>
+  <string name="label_tonal">โทนสี</string>
+  <string name="label_outlined">เส้นขอบ</string>
+  <string name="label_child">ย่อย</string>
+  <string name="label_start">เริ่ม</string>
+  <string name="header_workout">ออกกำลังกาย</string>
+  <string name="header_activity">กิจกรรม</string>
+  <string name="header_today">วันนี้</string>
+  <string name="label_wifi">Wi-Fi</string>
+  <string name="label_sync">ซิงค์</string>
+  <string name="label_card">การ์ด</string>
+  <string name="title_morning_run">วิ่งตอนเช้า</string>
+  <string name="wear_body_overflow">ข้อความ Wear นี้ยาวพอที่จะล้นสองบรรทัดและถูกตัดทอน</string>
+  <string name="label_pressed">กด</string>
+  <string name="label_focused">โฟกัส</string>
+  <string name="label_disabled">ปิดใช้งาน</string>
+  <string name="label_page">หน้า %1$d</string>
+  <string name="activity_heart_rate">อัตราการเต้นหัวใจ</string>
+  <string name="activity_sleep">การนอน</string>
+  <string name="activity_steps">ก้าว</string>
+  <string name="activity_calories">แคลอรี</string>
+  <string name="activity_cycle">ปั่นจักรยาน</string>
+  <string name="activity_swim">ว่ายน้ำ</string>
+  <string name="activity_hike">เดินป่า</string>
+  <string name="activity_strength">เวทเทรนนิง</string>
+  <string name="activity_stretch">ยืดเหยียด</string>
+  <string name="activity_yoga">โยคะ</string>
+  <string name="activity_row">พายเรือ</string>
+</resources>

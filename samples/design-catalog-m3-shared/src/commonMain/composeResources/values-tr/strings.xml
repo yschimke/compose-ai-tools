@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="label_filled">Dolu</string>
+  <string name="label_tonal">Tonal</string>
+  <string name="label_outlined">Ana hatlı</string>
+  <string name="label_elevated">Yükseltilmiş</string>
+  <string name="label_text">Metin</string>
+  <string name="label_disabled">Devre dışı</string>
+  <string name="label_filter">Filtre</string>
+  <string name="label_assist">Yardım</string>
+  <string name="card_elevated">Yükseltilmiş kart</string>
+  <string name="card_outlined">Ana hatlı kart</string>
+  <string name="card_filled">Dolu kart</string>
+  <string name="slot_headline">Başlık</string>
+  <string name="slot_supporting">Destekleyici metin</string>
+  <string name="textfield_label">Etiket</string>
+  <string name="label_pressed">Basılı</string>
+  <string name="label_focused">Odaklı</string>
+  <string name="toggle_on">Açık</string>
+  <string name="toggle_off">Kapalı</string>
+  <string name="m3_body_overflow">Bu metin bilerek uzun tutuldu; böylece iki satırı aşar ve kısaltılır.</string>
+  <string name="template_title">Gelen kutusu</string>
+  <string name="msg_lunch">Yarın öğle yemeği?</string>
+  <string name="msg_specs">Özellikler incelemeye hazır</string>
+  <string name="msg_diff">Render farkını gönderdim</string>
+  <string name="msg_merged">Teşekkürler, birleştirdim</string>
+  <string name="msg_deploy">Dağıtım sorunsuz tamamlandı</string>
+</resources>

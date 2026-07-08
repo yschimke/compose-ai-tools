@@ -986,7 +986,18 @@ class RenderEngine(
       // pseudolocalisation is Android-only — see `site/reference/pseudolocale.md`.
       val effectiveTag =
         ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(tag)?.baseTag ?: tag
-      return arrayOf(local provides LocaleList(effectiveTag))
+      // A real RTL locale (`ar`, `he`, `fa`, …) also flips the layout, matching a real device —
+      // `ar-XB` (whose RTL is provided by `PseudolocaleOverrideExtensionDesktop`) isn't the only
+      // RTL case. `effectiveTag` is the base locale, so a pseudolocale never double-provides here.
+      return if (ee.schimke.composeai.data.pseudolocale.LocaleDirection.isRtl(effectiveTag)) {
+        arrayOf(
+          local provides LocaleList(effectiveTag),
+          androidx.compose.ui.platform.LocalLayoutDirection provides
+            androidx.compose.ui.unit.LayoutDirection.Rtl,
+        )
+      } else {
+        arrayOf(local provides LocaleList(effectiveTag))
+      }
     }
   }
 }

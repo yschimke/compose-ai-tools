@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="label_filled">เติมสี</string>
+  <string name="label_tonal">โทนสี</string>
+  <string name="label_outlined">เส้นขอบ</string>
+  <string name="label_elevated">ยกระดับ</string>
+  <string name="label_text">ข้อความ</string>
+  <string name="label_disabled">ปิดใช้งาน</string>
+  <string name="label_filter">ตัวกรอง</string>
+  <string name="label_assist">ช่วยเหลือ</string>
+  <string name="card_elevated">การ์ดยกระดับ</string>
+  <string name="card_outlined">การ์ดเส้นขอบ</string>
+  <string name="card_filled">การ์ดเติมสี</string>
+  <string name="slot_headline">หัวข้อ</string>
+  <string name="slot_supporting">ข้อความสนับสนุน</string>
+  <string name="textfield_label">ป้ายกำกับ</string>
+  <string name="label_pressed">กด</string>
+  <string name="label_focused">โฟกัส</string>
+  <string name="toggle_on">เปิด</string>
+  <string name="toggle_off">ปิด</string>
+  <string name="m3_body_overflow">ข้อความนี้ตั้งใจให้ยาวเพื่อให้ล้นสองบรรทัดและถูกตัดทอน</string>
+  <string name="template_title">กล่องขาเข้า</string>
+  <string name="msg_lunch">พรุ่งนี้ไปกินข้าวเที่ยงไหม</string>
+  <string name="msg_specs">ข้อกำหนดพร้อมให้ตรวจแล้ว</string>
+  <string name="msg_diff">ส่งไฟล์ diff การเรนเดอร์แล้ว</string>
+  <string name="msg_merged">ขอบคุณ รวมโค้ดแล้ว</string>
+  <string name="msg_deploy">ดีพลอยเสร็จเรียบร้อย</string>
+</resources>

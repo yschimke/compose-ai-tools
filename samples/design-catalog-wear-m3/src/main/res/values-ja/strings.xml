@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="label_filled">塗りつぶし</string>
+  <string name="label_tonal">トーナル</string>
+  <string name="label_outlined">アウトライン</string>
+  <string name="label_child">子</string>
+  <string name="label_start">開始</string>
+  <string name="header_workout">ワークアウト</string>
+  <string name="header_activity">アクティビティ</string>
+  <string name="header_today">今日</string>
+  <string name="label_wifi">Wi-Fi</string>
+  <string name="label_sync">同期</string>
+  <string name="label_card">カード</string>
+  <string name="title_morning_run">朝のラン</string>
+  <string name="wear_body_overflow">このWearの本文テキストは、2行を超えて省略されるほど長くなっています。</string>
+  <string name="label_pressed">押下</string>
+  <string name="label_focused">フォーカス</string>
+  <string name="label_disabled">無効</string>
+  <string name="label_page">%1$dページ</string>
+  <string name="activity_heart_rate">心拍数</string>
+  <string name="activity_sleep">睡眠</string>
+  <string name="activity_steps">歩数</string>
+  <string name="activity_calories">カロリー</string>
+  <string name="activity_cycle">サイクリング</string>
+  <string name="activity_swim">水泳</string>
+  <string name="activity_hike">ハイキング</string>
+  <string name="activity_strength">筋力トレーニング</string>
+  <string name="activity_stretch">ストレッチ</string>
+  <string name="activity_yoga">ヨガ</string>
+  <string name="activity_row">ローイング</string>
+</resources>

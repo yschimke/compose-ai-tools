@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="label_filled">Заполненная</string>
+  <string name="label_tonal">Тональная</string>
+  <string name="label_outlined">Контурная</string>
+  <string name="label_child">Дочерняя</string>
+  <string name="label_start">Старт</string>
+  <string name="header_workout">Тренировка</string>
+  <string name="header_activity">Активность</string>
+  <string name="header_today">Сегодня</string>
+  <string name="label_wifi">Wi-Fi</string>
+  <string name="label_sync">Синхр.</string>
+  <string name="label_card">Карточка</string>
+  <string name="title_morning_run">Утренняя пробежка</string>
+  <string name="wear_body_overflow">Этот текст Wear достаточно длинный, чтобы занять больше двух строк и обрезаться.</string>
+  <string name="label_pressed">Нажато</string>
+  <string name="label_focused">В фокусе</string>
+  <string name="label_disabled">Отключено</string>
+  <string name="label_page">Страница %1$d</string>
+  <string name="activity_heart_rate">Пульс</string>
+  <string name="activity_sleep">Сон</string>
+  <string name="activity_steps">Шаги</string>
+  <string name="activity_calories">Калории</string>
+  <string name="activity_cycle">Велосипед</string>
+  <string name="activity_swim">Плавание</string>
+  <string name="activity_hike">Поход</string>
+  <string name="activity_strength">Силовая</string>
+  <string name="activity_stretch">Растяжка</string>
+  <string name="activity_yoga">Йога</string>
+  <string name="activity_row">Гребля</string>
+</resources>

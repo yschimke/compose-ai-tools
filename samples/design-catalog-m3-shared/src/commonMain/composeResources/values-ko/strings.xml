@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="label_filled">채움</string>
+  <string name="label_tonal">톤</string>
+  <string name="label_outlined">외곽선</string>
+  <string name="label_elevated">높임</string>
+  <string name="label_text">텍스트</string>
+  <string name="label_disabled">사용 안 함</string>
+  <string name="label_filter">필터</string>
+  <string name="label_assist">어시스트</string>
+  <string name="card_elevated">높임 카드</string>
+  <string name="card_outlined">외곽선 카드</string>
+  <string name="card_filled">채운 카드</string>
+  <string name="slot_headline">제목</string>
+  <string name="slot_supporting">보조 텍스트</string>
+  <string name="textfield_label">라벨</string>
+  <string name="label_pressed">누름</string>
+  <string name="label_focused">포커스</string>
+  <string name="toggle_on">켜짐</string>
+  <string name="toggle_off">꺼짐</string>
+  <string name="m3_body_overflow">이 본문 텍스트는 두 줄을 넘겨 잘리도록 일부러 길게 작성했습니다.</string>
+  <string name="template_title">받은편지함</string>
+  <string name="msg_lunch">내일 점심 먹을래요?</string>
+  <string name="msg_specs">사양 검토 준비가 됐습니다</string>
+  <string name="msg_diff">렌더 diff를 보냈어요</string>
+  <string name="msg_merged">고마워요, 병합했어요</string>
+  <string name="msg_deploy">배포가 문제없이 끝났어요</string>
+</resources>

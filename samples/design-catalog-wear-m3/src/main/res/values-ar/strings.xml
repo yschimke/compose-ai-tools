@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="label_filled">ممتلئ</string>
+  <string name="label_tonal">لوني</string>
+  <string name="label_outlined">محدد</string>
+  <string name="label_child">فرعي</string>
+  <string name="label_start">ابدأ</string>
+  <string name="header_workout">تمرين</string>
+  <string name="header_activity">النشاط</string>
+  <string name="header_today">اليوم</string>
+  <string name="label_wifi">Wi-Fi</string>
+  <string name="label_sync">مزامنة</string>
+  <string name="label_card">بطاقة</string>
+  <string name="title_morning_run">جري صباحي</string>
+  <string name="wear_body_overflow">هذا النص في Wear طويل بما يكفي ليتجاوز سطرين ويُقتطع.</string>
+  <string name="label_pressed">مضغوط</string>
+  <string name="label_focused">مركّز</string>
+  <string name="label_disabled">معطّل</string>
+  <string name="label_page">صفحة %1$d</string>
+  <string name="activity_heart_rate">معدل ضربات القلب</string>
+  <string name="activity_sleep">النوم</string>
+  <string name="activity_steps">الخطوات</string>
+  <string name="activity_calories">السعرات الحرارية</string>
+  <string name="activity_cycle">ركوب الدراجة</string>
+  <string name="activity_swim">السباحة</string>
+  <string name="activity_hike">المشي لمسافات طويلة</string>
+  <string name="activity_strength">تمارين القوة</string>
+  <string name="activity_stretch">تمارين الإطالة</string>
+  <string name="activity_yoga">اليوغا</string>
+  <string name="activity_row">التجديف</string>
+</resources>

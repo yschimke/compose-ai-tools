@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="label_filled">填充</string>
+  <string name="label_tonal">色调</string>
+  <string name="label_outlined">描边</string>
+  <string name="label_child">子级</string>
+  <string name="label_start">开始</string>
+  <string name="header_workout">锻炼</string>
+  <string name="header_activity">活动</string>
+  <string name="header_today">今天</string>
+  <string name="label_wifi">WLAN</string>
+  <string name="label_sync">同步</string>
+  <string name="label_card">卡片</string>
+  <string name="title_morning_run">晨跑</string>
+  <string name="wear_body_overflow">这段 Wear 正文足够长，会超出两行并被截断。</string>
+  <string name="label_pressed">按下</string>
+  <string name="label_focused">聚焦</string>
+  <string name="label_disabled">已停用</string>
+  <string name="label_page">第 %1$d 页</string>
+  <string name="activity_heart_rate">心率</string>
+  <string name="activity_sleep">睡眠</string>
+  <string name="activity_steps">步数</string>
+  <string name="activity_calories">卡路里</string>
+  <string name="activity_cycle">骑行</string>
+  <string name="activity_swim">游泳</string>
+  <string name="activity_hike">徒步</string>
+  <string name="activity_strength">力量训练</string>
+  <string name="activity_stretch">拉伸</string>
+  <string name="activity_yoga">瑜伽</string>
+  <string name="activity_row">划船</string>
+</resources>

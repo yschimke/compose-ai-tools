@@ -62,6 +62,13 @@ kotlin {
       @Suppress("DEPRECATION") implementation(compose.foundation)
       @Suppress("DEPRECATION") implementation(compose.material3)
       @Suppress("DEPRECATION") implementation(compose.ui)
+      // Compose Multiplatform string resources: the catalog's component labels resolve from
+      // `commonMain/composeResources/values*/strings.xml`, so a `localeTag` override (or the
+      // `en-XA`/`ar-XB` pseudolocale) renders translated / pseudolocalised copy through the
+      // daemon's `LocaleList` provider. `api` so the desktop `@Preview` sticker sheet
+      // (`:samples:design-catalog-m3`) can reference the same generated `Res` for its
+      // scaffold-template strings without re-declaring its own resource set.
+      @Suppress("DEPRECATION") api(compose.components.resources)
       // `PreviewSlot` / `LocalSlotMode` for the slotted-card component. `api` so the desktop
       // sticker
       // sheet (`:samples:design-catalog-m3`) can provide `LocalSlotMode` for its slot-mode sticker.
@@ -76,4 +83,13 @@ kotlin {
       dependencies { implementation(project(":data-preview-overrides-runtime")) }
     }
   }
+}
+
+// Generate a **public** `Res` accessor so the desktop `@Preview` sticker sheet
+// (`:samples:design-catalog-m3`) can resolve the shared string resources for its scaffold
+// templates, not just the component bodies authored here. Default visibility is `internal`,
+// which would keep `Res` invisible across the module boundary.
+compose.resources {
+  publicResClass = true
+  packageOfResClass = "com.example.designcatalogm3.shared.generated.resources"
 }

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="label_filled">채움</string>
+  <string name="label_tonal">톤</string>
+  <string name="label_outlined">외곽선</string>
+  <string name="label_child">하위</string>
+  <string name="label_start">시작</string>
+  <string name="header_workout">운동</string>
+  <string name="header_activity">활동</string>
+  <string name="header_today">오늘</string>
+  <string name="label_wifi">Wi-Fi</string>
+  <string name="label_sync">동기화</string>
+  <string name="label_card">카드</string>
+  <string name="title_morning_run">아침 러닝</string>
+  <string name="wear_body_overflow">이 Wear 본문 텍스트는 두 줄을 넘겨 잘릴 만큼 깁니다.</string>
+  <string name="label_pressed">누름</string>
+  <string name="label_focused">포커스</string>
+  <string name="label_disabled">사용 안 함</string>
+  <string name="label_page">%1$d페이지</string>
+  <string name="activity_heart_rate">심박수</string>
+  <string name="activity_sleep">수면</string>
+  <string name="activity_steps">걸음 수</string>
+  <string name="activity_calories">칼로리</string>
+  <string name="activity_cycle">사이클링</string>
+  <string name="activity_swim">수영</string>
+  <string name="activity_hike">하이킹</string>
+  <string name="activity_strength">근력 운동</string>
+  <string name="activity_stretch">스트레칭</string>
+  <string name="activity_yoga">요가</string>
+  <string name="activity_row">로잉</string>
+</resources>

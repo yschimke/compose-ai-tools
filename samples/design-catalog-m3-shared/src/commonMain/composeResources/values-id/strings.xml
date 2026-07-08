@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="label_filled">Terisi</string>
+  <string name="label_tonal">Tonal</string>
+  <string name="label_outlined">Garis luar</string>
+  <string name="label_elevated">Ditinggikan</string>
+  <string name="label_text">Teks</string>
+  <string name="label_disabled">Nonaktif</string>
+  <string name="label_filter">Filter</string>
+  <string name="label_assist">Bantuan</string>
+  <string name="card_elevated">Kartu ditinggikan</string>
+  <string name="card_outlined">Kartu garis luar</string>
+  <string name="card_filled">Kartu terisi</string>
+  <string name="slot_headline">Judul</string>
+  <string name="slot_supporting">Teks pendukung</string>
+  <string name="textfield_label">Label</string>
+  <string name="label_pressed">Ditekan</string>
+  <string name="label_focused">Fokus</string>
+  <string name="toggle_on">Aktif</string>
+  <string name="toggle_off">Nonaktif</string>
+  <string name="m3_body_overflow">Teks ini sengaja dibuat panjang agar melampaui dua baris dan terpotong.</string>
+  <string name="template_title">Kotak masuk</string>
+  <string name="msg_lunch">Makan siang besok?</string>
+  <string name="msg_specs">Spesifikasi siap ditinjau</string>
+  <string name="msg_diff">Mengirim diff render</string>
+  <string name="msg_merged">Terima kasih — sudah digabungkan</string>
+  <string name="msg_deploy">Deploy selesai tanpa masalah</string>
+</resources>

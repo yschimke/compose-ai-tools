@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="label_filled">Terisi</string>
+  <string name="label_tonal">Tonal</string>
+  <string name="label_outlined">Garis luar</string>
+  <string name="label_child">Anak</string>
+  <string name="label_start">Mulai</string>
+  <string name="header_workout">Latihan</string>
+  <string name="header_activity">Aktivitas</string>
+  <string name="header_today">Hari ini</string>
+  <string name="label_wifi">Wi-Fi</string>
+  <string name="label_sync">Sinkron</string>
+  <string name="label_card">Kartu</string>
+  <string name="title_morning_run">Lari pagi</string>
+  <string name="wear_body_overflow">Teks Wear ini cukup panjang hingga melampaui dua baris dan terpotong.</string>
+  <string name="label_pressed">Ditekan</string>
+  <string name="label_focused">Fokus</string>
+  <string name="label_disabled">Nonaktif</string>
+  <string name="label_page">Halaman %1$d</string>
+  <string name="activity_heart_rate">Detak jantung</string>
+  <string name="activity_sleep">Tidur</string>
+  <string name="activity_steps">Langkah</string>
+  <string name="activity_calories">Kalori</string>
+  <string name="activity_cycle">Bersepeda</string>
+  <string name="activity_swim">Berenang</string>
+  <string name="activity_hike">Mendaki</string>
+  <string name="activity_strength">Kekuatan</string>
+  <string name="activity_stretch">Peregangan</string>
+  <string name="activity_yoga">Yoga</string>
+  <string name="activity_row">Mendayung</string>
+</resources>

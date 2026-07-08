@@ -17,8 +17,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import com.example.designcatalogm3.shared.CatalogComponent
+import com.example.designcatalogm3.shared.generated.resources.Res
+import com.example.designcatalogm3.shared.generated.resources.msg_deploy
+import com.example.designcatalogm3.shared.generated.resources.msg_diff
+import com.example.designcatalogm3.shared.generated.resources.msg_lunch
+import com.example.designcatalogm3.shared.generated.resources.msg_merged
+import com.example.designcatalogm3.shared.generated.resources.msg_specs
+import com.example.designcatalogm3.shared.generated.resources.template_title
 import ee.schimke.composeai.overrides.previewOverrideString
 import ee.schimke.composeai.preview.slots.LocalSlotMode
+import org.jetbrains.compose.resources.stringResource
 
 // The M3 catalog sticker sheet: one `@Preview` per component, in light + dark (`@CatalogModes`).
 // Each is a thin wrapper — `CatalogSticker { CatalogComponent("<slug>", interactive = false) }` —
@@ -132,13 +140,15 @@ private fun Sticker(id: String) = CatalogSticker { CatalogComponent(id, interact
 // SystemBarsFrame, framing the template's own Material chrome.
 // ---------------------------------------------------------------------------
 
+// Sender names stay literal (proper nouns aren't translated); each preview line is a string
+// resource so a `localeTag` override renders the message copy in the target language.
 private val templateMessages =
   listOf(
-    "Alex Kim" to "Lunch tomorrow?",
-    "Design team" to "Specs are ready for review",
-    "Priya Patel" to "Sent the render diff",
-    "Sam Rivera" to "Thanks — merged it",
-    "On-call" to "Deploy finished cleanly",
+    "Alex Kim" to Res.string.msg_lunch,
+    "Design team" to Res.string.msg_specs,
+    "Priya Patel" to Res.string.msg_diff,
+    "Sam Rivera" to Res.string.msg_merged,
+    "On-call" to Res.string.msg_deploy,
   )
 
 /**
@@ -155,7 +165,7 @@ fun AppScaffoldTemplate() = FullScreenM3 {
     contentWindowInsets = WindowInsets(bottom = SYSTEM_BAR_INSET),
     topBar = {
       TopAppBar(
-        title = { Text(previewOverrideString("title", "Inbox")) },
+        title = { Text(previewOverrideString("title", stringResource(Res.string.template_title))) },
         windowInsets = WindowInsets(top = SYSTEM_BAR_INSET),
       )
     },
@@ -164,12 +174,16 @@ fun AppScaffoldTemplate() = FullScreenM3 {
     },
   ) { padding ->
     Column(Modifier.padding(padding).fillMaxSize()) {
-      templateMessages.forEachIndexed { index, (sender, preview) ->
+      templateMessages.forEachIndexed { index, (sender, previewRes) ->
         // Each row's sender + preview are indexed override knobs (`sender[i]` / `preview[i]`), so a
         // daemon-backed render can reseed any individual row from the `compose/overrides` surface.
+        // The preview copy's author default is a string resource so a `localeTag` override
+        // translates it; the sender name stays a literal proper noun.
         ListItem(
           headlineContent = { Text(previewOverrideString("sender", sender, index = index)) },
-          supportingContent = { Text(previewOverrideString("preview", preview, index = index)) },
+          supportingContent = {
+            Text(previewOverrideString("preview", stringResource(previewRes), index = index))
+          },
         )
         if (index < templateMessages.lastIndex) HorizontalDivider()
       }

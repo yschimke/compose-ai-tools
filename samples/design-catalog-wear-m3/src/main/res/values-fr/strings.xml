@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="label_filled">Rempli</string>
+  <string name="label_tonal">Tonal</string>
+  <string name="label_outlined">Contour</string>
+  <string name="label_child">Enfant</string>
+  <string name="label_start">Démarrer</string>
+  <string name="header_workout">Entraînement</string>
+  <string name="header_activity">Activité</string>
+  <string name="header_today">Aujourd’hui</string>
+  <string name="label_wifi">Wi-Fi</string>
+  <string name="label_sync">Synchro</string>
+  <string name="label_card">Carte</string>
+  <string name="title_morning_run">Course matinale</string>
+  <string name="wear_body_overflow">Ce texte Wear est assez long pour dépasser deux lignes et être tronqué.</string>
+  <string name="label_pressed">Appuyé</string>
+  <string name="label_focused">Ciblé</string>
+  <string name="label_disabled">Désactivé</string>
+  <string name="label_page">Page %1$d</string>
+  <string name="activity_heart_rate">Fréquence cardiaque</string>
+  <string name="activity_sleep">Sommeil</string>
+  <string name="activity_steps">Pas</string>
+  <string name="activity_calories">Calories</string>
+  <string name="activity_cycle">Vélo</string>
+  <string name="activity_swim">Natation</string>
+  <string name="activity_hike">Randonnée</string>
+  <string name="activity_strength">Musculation</string>
+  <string name="activity_stretch">Étirements</string>
+  <string name="activity_yoga">Yoga</string>
+  <string name="activity_row">Aviron</string>
+</resources>

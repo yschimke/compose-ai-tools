@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="label_filled">Rempli</string>
+  <string name="label_tonal">Tonal</string>
+  <string name="label_outlined">Contour</string>
+  <string name="label_elevated">Surélevé</string>
+  <string name="label_text">Texte</string>
+  <string name="label_disabled">Désactivé</string>
+  <string name="label_filter">Filtre</string>
+  <string name="label_assist">Assistance</string>
+  <string name="card_elevated">Carte surélevée</string>
+  <string name="card_outlined">Carte à contour</string>
+  <string name="card_filled">Carte remplie</string>
+  <string name="slot_headline">Titre</string>
+  <string name="slot_supporting">Texte d’accompagnement</string>
+  <string name="textfield_label">Libellé</string>
+  <string name="label_pressed">Appuyé</string>
+  <string name="label_focused">Ciblé</string>
+  <string name="toggle_on">Activé</string>
+  <string name="toggle_off">Désactivé</string>
+  <string name="m3_body_overflow">Ce texte est volontairement long pour dépasser deux lignes et être tronqué.</string>
+  <string name="template_title">Boîte de réception</string>
+  <string name="msg_lunch">Déjeuner demain ?</string>
+  <string name="msg_specs">Les specs sont prêtes à être relues</string>
+  <string name="msg_diff">Diff de rendu envoyé</string>
+  <string name="msg_merged">Merci, fusionné</string>
+  <string name="msg_deploy">Déploiement terminé sans erreur</string>
+</resources>

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="label_filled">Dolu</string>
+  <string name="label_tonal">Tonal</string>
+  <string name="label_outlined">Ana hatlı</string>
+  <string name="label_child">Alt</string>
+  <string name="label_start">Başlat</string>
+  <string name="header_workout">Antrenman</string>
+  <string name="header_activity">Etkinlik</string>
+  <string name="header_today">Bugün</string>
+  <string name="label_wifi">Kablosuz</string>
+  <string name="label_sync">Eşitle</string>
+  <string name="label_card">Kart</string>
+  <string name="title_morning_run">Sabah koşusu</string>
+  <string name="wear_body_overflow">Bu Wear metni iki satırı aşacak ve kısaltılacak kadar uzun.</string>
+  <string name="label_pressed">Basılı</string>
+  <string name="label_focused">Odaklı</string>
+  <string name="label_disabled">Devre dışı</string>
+  <string name="label_page">Sayfa %1$d</string>
+  <string name="activity_heart_rate">Kalp atış hızı</string>
+  <string name="activity_sleep">Uyku</string>
+  <string name="activity_steps">Adımlar</string>
+  <string name="activity_calories">Kalori</string>
+  <string name="activity_cycle">Bisiklet</string>
+  <string name="activity_swim">Yüzme</string>
+  <string name="activity_hike">Doğa yürüyüşü</string>
+  <string name="activity_strength">Güç</string>
+  <string name="activity_stretch">Esneme</string>
+  <string name="activity_yoga">Yoga</string>
+  <string name="activity_row">Kürek</string>
+</resources>

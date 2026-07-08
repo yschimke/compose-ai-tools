@@ -1346,9 +1346,15 @@ abstract class RobolectricRenderTestBase(
     // `PseudolocaleOverrideExtension` wrapped in `setContent` above.
     val pseudo = ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(locale)
     val effectiveLocale = if (pseudo != null) pseudo.baseTag else locale
+    // A real RTL locale (`ar`, `he`, `fa`, …) also needs `ldrtl` so the layout mirrors like a real
+    // device — `ar-XB` isn't the only RTL case.
+    val rtl =
+      pseudo?.isRtl == true ||
+        (pseudo == null &&
+          ee.schimke.composeai.data.pseudolocale.LocaleDirection.isRtl(effectiveLocale))
     val qualifiers = buildList {
       if (!effectiveLocale.isNullOrBlank()) add(effectiveLocale)
-      if (pseudo?.isRtl == true) add("ldrtl")
+      if (rtl) add("ldrtl")
       if (widthDp > 0) add("w${widthDp}dp")
       if (heightDp > 0) add("h${heightDp}dp")
       if (isRound) add("round")

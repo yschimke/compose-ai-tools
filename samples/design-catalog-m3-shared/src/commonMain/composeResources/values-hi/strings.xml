@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="label_filled">भरा हुआ</string>
+  <string name="label_tonal">टोनल</string>
+  <string name="label_outlined">आउटलाइन</string>
+  <string name="label_elevated">एलिवेटेड</string>
+  <string name="label_text">टेक्स्ट</string>
+  <string name="label_disabled">अक्षम</string>
+  <string name="label_filter">फ़िल्टर</string>
+  <string name="label_assist">सहायता</string>
+  <string name="card_elevated">एलिवेटेड कार्ड</string>
+  <string name="card_outlined">आउटलाइन कार्ड</string>
+  <string name="card_filled">भरा हुआ कार्ड</string>
+  <string name="slot_headline">शीर्षक</string>
+  <string name="slot_supporting">सहायक टेक्स्ट</string>
+  <string name="textfield_label">लेबल</string>
+  <string name="label_pressed">दबाया गया</string>
+  <string name="label_focused">फ़ोकस</string>
+  <string name="toggle_on">चालू</string>
+  <string name="toggle_off">बंद</string>
+  <string name="m3_body_overflow">यह टेक्स्ट जान-बूझकर लंबा है ताकि यह दो लाइनों में फैलकर छोटा हो जाए।</string>
+  <string name="template_title">इनबॉक्स</string>
+  <string name="msg_lunch">कल लंच?</string>
+  <string name="msg_specs">स्पेक्स समीक्षा के लिए तैयार हैं</string>
+  <string name="msg_diff">रेंडर डिफ़ भेज दिया</string>
+  <string name="msg_merged">धन्यवाद — मर्ज कर दिया</string>
+  <string name="msg_deploy">डिप्लॉय बिना किसी दिक्कत के पूरा हुआ</string>
+</resources>

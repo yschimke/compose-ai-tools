@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="label_filled">ممتلئ</string>
+  <string name="label_tonal">لوني</string>
+  <string name="label_outlined">محدد</string>
+  <string name="label_elevated">مرتفع</string>
+  <string name="label_text">نص</string>
+  <string name="label_disabled">معطّل</string>
+  <string name="label_filter">فلتر</string>
+  <string name="label_assist">مساعدة</string>
+  <string name="card_elevated">بطاقة مرتفعة</string>
+  <string name="card_outlined">بطاقة محددة</string>
+  <string name="card_filled">بطاقة ممتلئة</string>
+  <string name="slot_headline">عنوان</string>
+  <string name="slot_supporting">نص داعم</string>
+  <string name="textfield_label">تسمية</string>
+  <string name="label_pressed">مضغوط</string>
+  <string name="label_focused">مركّز</string>
+  <string name="toggle_on">تشغيل</string>
+  <string name="toggle_off">إيقاف</string>
+  <string name="m3_body_overflow">هذا النص طويل عمدًا ليتجاوز سطرين ويُقتطع.</string>
+  <string name="template_title">الوارد</string>
+  <string name="msg_lunch">غداء غدًا؟</string>
+  <string name="msg_specs">المواصفات جاهزة للمراجعة</string>
+  <string name="msg_diff">أرسلت فرق العرض</string>
+  <string name="msg_merged">شكرًا — تم الدمج</string>
+  <string name="msg_deploy">اكتمل النشر بنجاح</string>
+</resources>
