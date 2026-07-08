@@ -965,9 +965,8 @@ export class PreviewApp extends LitElement {
          *
          * Bundles scope to the focused preview only — `bundleChipBar`
          * and `<data-tabs>` are hidden outside focus layout, so the
-         * bundles never act on an ambient grid selection (settled
-         * "Open question 1 — Multi-preview selection" in
-         * `docs/design/EXTENSION_DATA_EXPOSURE.md`). Outside focus mode
+         * bundles never act on an ambient grid selection (they scope
+         * to the focused preview — see `bundleRegistry.ts`). Outside focus mode
          * we therefore tear the layer down rather than paint: a box
          * stamped while a card was focused must not leak onto the grid
          * card the user later browses to (#1567).
@@ -1578,9 +1577,9 @@ export class PreviewApp extends LitElement {
             reflectLegendActiveTab();
             // Paint the merged hierarchy + findings overlay. In focus
             // mode only the focused card paints; in grid mode every
-            // visible card paints with its own per-card data. Realises
-            // "Open question 1" from
-            // `docs/design/EXTENSION_DATA_EXPOSURE.md`. Coexists with
+            // visible card paints with its own per-card data (bundles
+            // scope to the focused preview — see `bundleRegistry.ts`).
+            // Coexists with
             // the legacy `applyHierarchyOverlay` path in
             // `PreviewCard._repaintA11yOverlaysFromCache` for now; a
             // follow-up will remove the legacy paint once the new

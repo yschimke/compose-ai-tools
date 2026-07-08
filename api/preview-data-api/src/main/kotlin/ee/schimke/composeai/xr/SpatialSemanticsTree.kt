@@ -21,8 +21,7 @@ import kotlinx.serialization.Serializable
  *
  * Conventions match [SpatialScene] (shared [Vec3]/[Quat]/[SpatialPose]): linear quantities are
  * **dp**; axes are right-handed (+x right, +y up, +z toward the viewer); rotation is a unit
- * quaternion. See
- * [docs/design/SPATIAL_SEMANTICS_TREE.md](../../../../../../../../docs/design/SPATIAL_SEMANTICS_TREE.md).
+ * quaternion.
  *
  * Like `SpatialScene`, this is a wire DTO with a TypeScript mirror; a round-trip test against a
  * committed fixture keeps the two languages locked. Bump [SPATIAL_SEMANTICS_TREE_VERSION] on any

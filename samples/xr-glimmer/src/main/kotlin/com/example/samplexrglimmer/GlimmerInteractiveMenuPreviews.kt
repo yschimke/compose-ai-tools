@@ -32,8 +32,8 @@ import ee.schimke.composeai.preview.FocusedPreview
 
 /**
  * Interactive XR navigation demo — a Glimmer menu captured as an animated GIF per environment
- * backdrop the design names (`docs/design/GLIMMER_PREVIEW.md` § "Data extension:
- * `:data-glimmer-environment-connector`"). Each frame shows focus on a different menu item;
+ * backdrop (one per planned `:data-glimmer-environment-connector` env). Each frame shows focus on a
+ * different menu item;
  * the four-frame focus walk is the entire navigation signal.
  *
  * Glimmer's display model is **additive**: pure black pixels render as 100% transparent on-
@@ -139,7 +139,7 @@ private fun InteractiveMenuOnEnv(env: GlimmerEnvironment) {
  *
  * When `:data-glimmer-environment-connector` lands, this inline `ADD`-blend moves to a post-render
  * pass over the captured PNG and `GlimmerEnvSurface` reverts to the plain `Color.Black` base of
- * the static [NowPlayingCard] previews (Encoding B in `docs/design/GLIMMER_PREVIEW.md`).
+ * the static [NowPlayingCard] previews (Encoding B).
  */
 @Composable
 private fun GlimmerEnvSurface(env: GlimmerEnvironment, content: @Composable () -> Unit) {

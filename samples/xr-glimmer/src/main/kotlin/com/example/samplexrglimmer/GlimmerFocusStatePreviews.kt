@@ -105,9 +105,8 @@ import ee.schimke.composeai.preview.FocusedPreview
  * (`developer.android.com/develop/xr/jetpack-xr-sdk/jetpack-compose-glimmer/indirect-pointer`)
  * only fires from real Glasses-touchpad input, which Robolectric can't synthesise. The renderer's
  * focus-walk path (`@FocusedPreview`) already covers the *effect* of a `onSwipeForward` /
- * `onSwipeBackward` gesture on the focused composable, which is the part previews can capture;
- * the gesture-indicator design in `docs/design/glimmer-preview/` is the right surface for
- * annotating which gesture drove each step.
+ * `onSwipeBackward` gesture on the focused composable, which is the part previews can capture.
+ * Annotating which gesture drove each step would be a follow-up on top of that focus walk.
  */
 
 @Preview(

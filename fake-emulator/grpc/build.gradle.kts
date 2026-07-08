@@ -11,7 +11,7 @@ plugins {
 // (pure-Kotlin, no protoc); the gRPC server is bound by hand into grpc-netty via grpc-java's
 // `ServerCalls` + a small Wire `MethodDescriptor.Marshaller`. Isolated here so the codegen
 // toolchain
-// stays out of every other module. Unpublished tooling. See docs/fake-emulator/DESIGN.md.
+// stays out of every other module. Unpublished tooling. See docs/fake-emulator/README.md.
 wire {
   kotlin {
     // Messages only — we hand-roll the gRPC service binding, so skip Wire's service codegen.

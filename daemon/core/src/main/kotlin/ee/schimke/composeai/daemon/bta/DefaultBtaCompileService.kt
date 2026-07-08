@@ -19,8 +19,9 @@ import org.jetbrains.kotlin.buildtools.api.arguments.CompilerPluginOption
  * Three things this adapter owns that the underlying [BtaCompileSession] doesn't:
  *
  * 1. **Eligibility gate.** A non-null [ineligibilityReason] means the consumer's module isn't a
- *    stage-2 candidate (KSP/KAPT detected, AGP variant without resource-jar plumbing yet, etc. —
- *    see COMPILE-IN-PROCESS.md § "Eligibility"). Every compile call short-circuits to
+ *    stage-2 candidate (KSP/KAPT detected, AGP variant without resource-jar plumbing yet, etc.;
+ *    the gradle plugin's `detectStageTwoIneligibility` is the source of truth for the
+ *    predicate). Every compile call short-circuits to
  *    [BtaCompileService.Outcome.Fallback] with that reason verbatim. The gradle plugin decides the
  *    predicate at daemon-bootstrap time; the daemon never re-evaluates (Tier-1 dirty recycles the
  *    whole daemon, and with it this service).
@@ -93,7 +94,7 @@ class DefaultBtaCompileService(
     /**
      * System-property keys the gradle plugin's daemon-bootstrap task populates unconditionally
      * whenever the variant wiring resolved the BTA classpath. Mirror of `BtaCompileConfig` in the
-     * launch descriptor; see COMPILE-IN-PROCESS.md for the wire format. All path-list sysprops are
+     * launch descriptor; the sysprop names below are the wire format. All path-list sysprops are
      * `File.pathSeparator`-joined; an unset / empty value means "this part of the config is
      * missing" and [fromSysprops] returns null.
      */
@@ -105,7 +106,7 @@ class DefaultBtaCompileService(
     const val SYSPROP_IC_WORKING_DIR: String = "composeai.daemon.bta.icWorkingDir"
     /**
      * Optional. Non-empty value disables stage 2 for this module with the given reason surfaced
-     * verbatim in every `compileSources` result. See COMPILE-IN-PROCESS.md § "Eligibility".
+     * verbatim in every `compileSources` result.
      */
     const val SYSPROP_INELIGIBILITY_REASON: String = "composeai.daemon.bta.ineligibilityReason"
 
@@ -205,10 +206,10 @@ class DefaultBtaCompileService(
      * `sourceInformation=true` option.
      *
      * The option is load-bearing, not cosmetic. KGP enables `sourceInformation` by default and the
-     * markers it emits (`~236 byte` delta measured in BTA-SPIKE.md §4) are read by Compose
+     * markers it emits (a ~236-byte delta per compiled file) are read by Compose
      * Inspector / Live Literals / recomposition tooling. Without it, stage-2-emitted classes drift
-     * from the Gradle-emitted classes the daemon's hot-swap diffs against — see
-     * COMPILE-IN-PROCESS.md § "Compose plugin option drift". Returns an empty list when no plugin
+     * from the Gradle-emitted classes the daemon's hot-swap diffs against. Returns an empty list when
+     * no plugin
      * JARs were resolved (plain Kotlin/JVM module with no Compose plugin on the classpath).
      */
     internal fun composeCompilerPlugins(pluginJars: List<Path>): List<CompilerPlugin> =

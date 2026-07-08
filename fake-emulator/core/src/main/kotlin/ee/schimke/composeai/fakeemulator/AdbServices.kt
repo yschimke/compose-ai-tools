@@ -95,7 +95,7 @@ class AbbService(private val interpreter: ShellInterpreter, private val destinat
  * Minimal ADB sync service (`sync:`). Enough that file-transfer-shaped flows (e.g. an install
  * pushing an APK) don't hang: STAT reports "not present", SEND is captured into the [ApkStore] (so
  * a later `pm install <path>` can install its bytes) and OKAY'd, RECV fails cleanly, QUIT ends.
- * Full sync (real pull, v2 stat/list) is out of scope — see DESIGN.md.
+ * Full sync (real pull, v2 stat/list) is out of scope (see docs/fake-emulator/README.md § Scope).
  */
 class SyncService(private val apkStore: ApkStore = ApkStore()) : AdbService {
   override fun run(io: AdbStreamIo) {

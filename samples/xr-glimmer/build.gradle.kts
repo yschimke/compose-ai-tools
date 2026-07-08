@@ -9,8 +9,8 @@ plugins {
 // `:samples:xr-glimmer` — Jetpack Compose Glimmer previews for Android XR display
 // AI glasses. Glimmer (`androidx.xr.glimmer:glimmer`) is a separate Compose UI
 // toolkit (not Material 3): components carry their own theme, additive-display
-// colour tokens, depth effects, and focus model. The sample mirrors the per-env
-// naming the design in `docs/design/GLIMMER_PREVIEW.md` proposes so the
+// colour tokens, depth effects, and focus model. The sample uses a per-env
+// naming convention so the
 // captures land at predictable filenames (`Glimmer_·_Light` etc.) and slot in
 // when the `@GlimmerPreview*` meta-annotations from `:glimmer-preview-runtime`
 // arrive — until they do, plain `@Preview(name = "Glimmer · ...")` is enough

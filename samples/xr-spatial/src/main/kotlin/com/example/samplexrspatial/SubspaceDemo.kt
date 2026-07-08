@@ -27,7 +27,8 @@ import androidx.xr.compose.subspace.layout.width
  * ([OrbiterControlsPreview], [SpatialElevationPreview]) — those capture exactly what the panel and
  * orbiter show, and are what Android Studio's `@Preview` renders for this UI in Home Space too.
  *
- * See docs/design/XR_SPATIAL_PREVIEW.md for the full rendering model.
+ * See the `@XrSubspacePreview` annotation KDoc and `SubspaceSceneRecorder` for the full rendering
+ * model.
  */
 @Composable
 fun SubspaceXrLayout() {

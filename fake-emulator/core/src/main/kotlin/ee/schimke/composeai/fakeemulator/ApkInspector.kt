@@ -13,7 +13,7 @@ import java.util.zip.ZipInputStream
  * [declaresComposePreviews] is a cheap presence signal: it's `true` when a `classesN.dex` contains
  * the `@Preview` annotation's type descriptor. Enumerating the individual `@Preview` methods (their
  * FQNs, for `--es composable` validation) needs a full DEX annotations walk (dexlib2) and is a
- * documented follow-up — see docs/fake-emulator/DESIGN.md.
+ * documented follow-up — see docs/fake-emulator/README.md.
  */
 data class ApkInfo(
   /** `package` attribute of the `<manifest>` element, or `null` if it couldn't be parsed. */

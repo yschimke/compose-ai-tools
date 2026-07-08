@@ -676,7 +676,7 @@ fun main(args: Array<String>) {
   // through `BtaCompileService.Outcome.Fallback`). The editor's save loop only calls
   // `compileSources` when the VS Code workspace setting
   // `composePreview.daemon.compileInProcess` is on, so an active service still costs
-  // nothing until that switch is flipped. See docs/daemon/COMPILE-IN-PROCESS.md.
+  // nothing until that switch is flipped.
   val btaCompileService = ee.schimke.composeai.daemon.bta.DefaultBtaCompileService.fromSysprops()
   if (btaCompileService != null) {
     System.err.println(

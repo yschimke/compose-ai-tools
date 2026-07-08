@@ -4,6 +4,7 @@ import java.io.File
 import java.net.URLClassLoader
 import java.nio.file.Files
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertTrue
@@ -128,6 +129,41 @@ class UserClassLoaderHolderTest {
       if (previous != null) System.setProperty(UserClassLoaderHolder.USER_CLASS_DIRS_PROP, previous)
       else System.clearProperty(UserClassLoaderHolder.USER_CLASS_DIRS_PROP)
     }
+  }
+
+  @Test
+  fun `mustDelegateToParent keeps framework and shared-static packages on the parent`() {
+    // Framework / bootstrap packages must never be child-loaded.
+    assertTrue(UserClassLoaderHolder.mustDelegateToParent("java.lang.String"))
+    assertTrue(UserClassLoaderHolder.mustDelegateToParent("kotlin.Unit"))
+    assertTrue(UserClassLoaderHolder.mustDelegateToParent("androidx.compose.runtime.Composer"))
+    assertTrue(UserClassLoaderHolder.mustDelegateToParent("org.jetbrains.skia.Image"))
+    // Cross-classloader process-static bridges shared with the daemon.
+    assertTrue(
+      UserClassLoaderHolder.mustDelegateToParent(
+        "ee.schimke.composeai.daemon.bridge.SandboxPreviewOverridesBridge"
+      )
+    )
+    // The `previewOverride*` named-override runtime — PreviewOverrideController is a process-static
+    // the daemon seeds and the preview reads. If this were resolved child-first from a runtime jar
+    // on the bundle-backed live daemon's child URLs (ServeBundleDaemon / preview.coo.ee), the seed
+    // and the read would hit two different Class copies and every content override would no-op.
+    // Regression pin for that bug.
+    assertTrue(
+      UserClassLoaderHolder.mustDelegateToParent(
+        "ee.schimke.composeai.overrides.PreviewOverrideController"
+      )
+    )
+    assertTrue(
+      UserClassLoaderHolder.mustDelegateToParent(
+        "ee.schimke.composeai.overrides.ControllerPreviewOverrideHost"
+      )
+    )
+    // User preview classes (and unrelated app code) stay child-first so recompiles are picked up.
+    assertFalse(UserClassLoaderHolder.mustDelegateToParent("com.example.app.MyPreviewKt"))
+    assertFalse(
+      UserClassLoaderHolder.mustDelegateToParent("ee.schimke.composeai.preview.SomeUserPreview")
+    )
   }
 
   @Test

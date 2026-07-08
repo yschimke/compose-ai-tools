@@ -320,8 +320,7 @@ def _screen_on(verts, texture, normal="+z"):
     return dict(corners=corners, uv=uv, texture=np.asarray(texture), bezel=bezel)
 
 
-def main(model, out, screen_png="../../../../docs/design/xr-spatial/now-playing.png",
-         colour=None):
+def main(model, out, screen_png="now-playing.png", colour=None):
     # `model` is a committed .glb path or a runtime-fetched URL (DeviceModelCatalog).
     gltf, bin_ = _load_glb(model)
     verts, faces = _mesh(gltf, bin_)

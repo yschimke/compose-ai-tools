@@ -1,5 +1,5 @@
 // `:samples:cmp-wasm-catalog` — the **in-browser CMP tier** of the public
-// preview server (see `docs/wasm-cmp-spike.md`, Workstream C / model 1).
+// preview server (Workstream C / model 1).
 //
 // A Compose Multiplatform `wasmJs` app that holds the M3 catalog component
 // composables in `commonMain` (CMP `material3`, no Android `@Preview` tooling)
@@ -59,8 +59,7 @@ kotlin {
 // / Binaryen download toolchain the Kotlin JS/Wasm plugins want — which the
 // build's `FAIL_ON_PROJECT_REPOS` mode rejects — so the bundle builds in CI and
 // offline. Uses the development executable (unoptimized); enabling the Binaryen
-// `wasm-opt` production path is a deploy-time size optimization (see
-// `docs/wasm-cmp-spike.md`). Output: `build/wasmDist/` → serve as the preview
+// `wasm-opt` production path is a deploy-time size optimization). Output: `build/wasmDist/` → serve as the preview
 // server's `web/wasm/` carriage for the `compose-m3` catalog.
 tasks.register<Sync>("wasmCatalogDist") {
   description = "Assemble the webpack-free CMP Wasm catalog distribution (build/wasmDist)."

@@ -131,6 +131,22 @@ queues are loaded once. Bridge classes resolve via the parent's parent
 (the system classloader), unaffected by the child. Verified with a
 unit test that the bridge queues stay shared across child swaps.
 
+The same "shared process-static" rule applies to the `previewOverride*`
+named-override runtime (`ee.schimke.composeai.overrides.*`, notably
+`PreviewOverrideController`): the daemon connector seeds it before the
+preview composes and the preview reads it back during composition, so
+the two must see one `Class<?>`. `UserClassLoaderHolder.mustDelegateToParent`
+forces both `ee.schimke.composeai.daemon.*` and
+`ee.schimke.composeai.overrides.*` to the parent even when the child's
+URLs carry them. This is load-bearing for the **bundle-backed live
+daemon** (`ServeBundleDaemon`, the engine behind `--catalogs`
+`liveBundle` / `preview.coo.ee`), where the bundle's resolved maven
+classpath — including `:data-preview-overrides-runtime` — is on the
+child loader's URLs; without the delegation the child would load a
+second copy of the controller, the daemon's seed and the preview's read
+would land on different statics, and every content override (e.g.
+`previewOverrideString("label", "Filled")`) would silently no-op.
+
 ### Compose compiler plugin's per-class metadata
 
 The Compose compiler emits per-`@Composable` synthetic metadata
@@ -188,5 +204,4 @@ re-rendering what they're looking at.
 **v2 follow-up — per-preview resource-read tracking.** Instrument the
 Resources lookup path during a render to record which resource IDs
 the composition actually read; resolve the changed file's resource IDs
-via the merged `R.txt` and look them up in a reverse index. Tracked in
-[ROADMAP.md](ROADMAP.md). Not blocking.
+via the merged `R.txt` and look them up in a reverse index. Not blocking.

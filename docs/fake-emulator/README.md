@@ -12,8 +12,11 @@ screenshot, screenshot stream) into the existing daemon / `serve` render path.
 The emulator's "screen" is whatever the renderer last produced for the launched
 `@Preview`.
 
-See [DESIGN.md](DESIGN.md) for the architecture and the full scope /
-deferred-work breakdown.
+Data flow: `adb` / Studio / `dadb` speak the ADB transport (and the emulator
+console + `EmulatorController` gRPC) to `FakeEmulator`; an `am start …
+PreviewActivity` is parsed into a `PreviewLauncher` call, and `screencap` /
+gRPC screenshots read from a `FrameSource` whose frames are whatever the daemon
+/ `serve` render path last produced for the launched `@Preview`.
 
 ## Modules
 
@@ -55,4 +58,25 @@ adb -s emulator-5554 exec-out screencap -p > screen.png
 ```
 
 The ADB transport + preview-launch path is verified with `dadb`, which speaks
-the device protocol directly — no real `adb` or device required.
+the device protocol directly — no real `adb` or device required. Integration
+against a real `RenderSession` (full daemon + Robolectric) and a real Android
+Studio is manual / CI-gated, not in the unit suite.
+
+## Scope
+
+**Delivered:** the module layout + build wiring; the ADB transport core
+(`CNXN`/`OPEN`/`OKAY`/`WRTE`/`CLSE`, shell v2 + v1, minimal sync, `screencap`),
+the `am start` preview-launch parser, the emulator console, the discovery-file
+writer, the `FrameSource` / `PreviewLauncher` SPIs, the `RenderSession`-backed
+frame source, the `EmulatorController` gRPC subset + screenshot stream, a
+runnable launcher, and APK install (accept + inspect for package name / preview
+presence).
+
+**Deferred:** authenticated adb (RSA/TLS); the complete `EmulatorController`
+surface; pointer/key fidelity; sharing the emulator screen over a `serve` lane
+(`compose-preview fake-emulator --serve` → a `composeai://session` URL viewable
+with the mobile/wear clients — the display is already a `FrameSource`, so it's a
+wire-up, not new streaming code); and, for APK install, enumerating `@Preview`
+method FQNs from DEX (dexlib2) plus the experimental run-app-code-from-APK path.
+The vendored `emulator_controller.proto` models only the verbs we use — omitted
+verbs are dropped, not renumbered.
