@@ -4,7 +4,7 @@
     "functionName": "alarmPreview",
     "module": "app",
     "renderBasename": "alarmPreview_Large_Round_0_94f.png",
-    "sha256": "333435ea45c4eeb61502cf87a1412f2d047770509ab8df18953a6b47efc62a94",
+    "sha256": "b39b9c0d9364ecf82fd729820de9e4c72b07420c282c0f815aae3df3a2cdc5c0",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Alarm.kt"
   },
   "app/com.example.wear.tiles.golden.AlarmKt.alarmPreview_Large Round 1.00f": {
@@ -12,7 +12,7 @@
     "functionName": "alarmPreview",
     "module": "app",
     "renderBasename": "alarmPreview_Large_Round_1_00f.png",
-    "sha256": "c99556015e7d4d6cff78e9a6e7fa4dc88b91b51a9ff61fb13ce4b129a6a281a1",
+    "sha256": "9cdc6f6177f83cd60058240ca0a608122864104370faa3fc7d478789c2f636fd",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Alarm.kt"
   },
   "app/com.example.wear.tiles.golden.AlarmKt.alarmPreview_Large Round 1.24f": {
@@ -20,7 +20,7 @@
     "functionName": "alarmPreview",
     "module": "app",
     "renderBasename": "alarmPreview_Large_Round_1_24f.png",
-    "sha256": "042104ee3e67ba0d0d4ddad7ae7043d88a44d2d582493420885dcbc617acf0e8",
+    "sha256": "cd7799aadc50bc4b5938266c46873b779d2c724fcd3c6a759ca759b623ce9d63",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Alarm.kt"
   },
   "app/com.example.wear.tiles.golden.AlarmKt.alarmPreview_Small Round 0.94f": {
@@ -28,7 +28,7 @@
     "functionName": "alarmPreview",
     "module": "app",
     "renderBasename": "alarmPreview_Small_Round_0_94f.png",
-    "sha256": "e7ffbd4af40dc32da19692efc78227d5db4f3f04b7a85fcc4b936d42c6770b2c",
+    "sha256": "cffcb03d10c21c687973775bcb849b017ddf20c949075d6bfa20496e1d8e6b3a",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Alarm.kt"
   },
   "app/com.example.wear.tiles.golden.AlarmKt.alarmPreview_Small Round 1.00f": {
@@ -36,7 +36,7 @@
     "functionName": "alarmPreview",
     "module": "app",
     "renderBasename": "alarmPreview_Small_Round_1_00f.png",
-    "sha256": "c80c2f9f843cc023c565a3624bec9dcb6be6fc0cf33668c4b9b2028fae1e43d4",
+    "sha256": "8f68f937fe3e2057619154216eec9d3183c4be505f503a1047e3531879376f53",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Alarm.kt"
   },
   "app/com.example.wear.tiles.golden.AlarmKt.alarmPreview_Small Round 1.24f": {
@@ -44,7 +44,7 @@
     "functionName": "alarmPreview",
     "module": "app",
     "renderBasename": "alarmPreview_Small_Round_1_24f.png",
-    "sha256": "4856e752f79d3eac68cccb45b494594d126016b911cbea8b1d25cdfb2f87c096",
+    "sha256": "ebc43d56ecdd0f2c9657220f9a14769937b1c9fb979000d7df9d01e76a236458",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Alarm.kt"
   },
   "app/com.example.wear.tiles.golden.CalendarKt.calendar1Preview_Large Round 0.94f": {
@@ -100,7 +100,7 @@
     "functionName": "calendar2Preview",
     "module": "app",
     "renderBasename": "calendar2Preview_Large_Round_0_94f.png",
-    "sha256": "59170515a6c1a3c9a6978599319f405513979bc71e53994e2805010536e18d78",
+    "sha256": "9363a3499e07d8c0b73858487b8964c86c08a981371d6fb4fa0460a8d4ab86c3",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Calendar.kt"
   },
   "app/com.example.wear.tiles.golden.CalendarKt.calendar2Preview_Large Round 1.00f": {
@@ -108,7 +108,7 @@
     "functionName": "calendar2Preview",
     "module": "app",
     "renderBasename": "calendar2Preview_Large_Round_1_00f.png",
-    "sha256": "db5e7ed451712af88e05b4dc1ac89c4ebe9c771a1b2913d273e91e0168df15c1",
+    "sha256": "6038cde918610b8593a6678d5b5d2a8f27c66e9c9fe8c28bd0a49df216f29453",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Calendar.kt"
   },
   "app/com.example.wear.tiles.golden.CalendarKt.calendar2Preview_Large Round 1.24f": {
@@ -116,7 +116,7 @@
     "functionName": "calendar2Preview",
     "module": "app",
     "renderBasename": "calendar2Preview_Large_Round_1_24f.png",
-    "sha256": "c9cb5f075581de91a59befa268ddd7d397fba64eeea0ec45fa87e7f292fd4bea",
+    "sha256": "59e14f2703eccc6a11230ffd71a7afc4fea3c1583db45ce6a451f227a3faa842",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Calendar.kt"
   },
   "app/com.example.wear.tiles.golden.CalendarKt.calendar2Preview_Small Round 0.94f": {
@@ -124,7 +124,7 @@
     "functionName": "calendar2Preview",
     "module": "app",
     "renderBasename": "calendar2Preview_Small_Round_0_94f.png",
-    "sha256": "a22d62a722966778b05390436474d014218186bedd955def4fa8fd799b1a64e2",
+    "sha256": "f3954bd6240c1380c9d1c64473f6156a0ad37117127fb46a0735077803660bbd",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Calendar.kt"
   },
   "app/com.example.wear.tiles.golden.CalendarKt.calendar2Preview_Small Round 1.00f": {
@@ -132,7 +132,7 @@
     "functionName": "calendar2Preview",
     "module": "app",
     "renderBasename": "calendar2Preview_Small_Round_1_00f.png",
-    "sha256": "92f1766684d60c6af30dc4563748a0ebdf0dacb51156cdf6d291486a4a0ffea5",
+    "sha256": "34ddea3cd606db2441a0010e402a3860b8da08b8393b971c8806b6db7161f143",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Calendar.kt"
   },
   "app/com.example.wear.tiles.golden.CalendarKt.calendar2Preview_Small Round 1.24f": {
@@ -140,7 +140,7 @@
     "functionName": "calendar2Preview",
     "module": "app",
     "renderBasename": "calendar2Preview_Small_Round_1_24f.png",
-    "sha256": "627932d22b40b4fbb03963b13e4889c3ac362af53f16d38583a980846add2f69",
+    "sha256": "48f09dce856ea948bbb18fd9939b4851d40eae12208e169a06db84a162ab5c94",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Calendar.kt"
   },
   "app/com.example.wear.tiles.golden.GoalKt.goalPreview_Large Round 0.94f": {
@@ -148,7 +148,7 @@
     "functionName": "goalPreview",
     "module": "app",
     "renderBasename": "goalPreview_Large_Round_0_94f.png",
-    "sha256": "ced54d7ab50b632e76ad2a172cebc7484ac94d77262ec4449b24614239279770",
+    "sha256": "cba62218816449d6f5bf138cfaeffdfe7f7c99f26c2bdfe0c60911149f5bab46",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Goal.kt"
   },
   "app/com.example.wear.tiles.golden.GoalKt.goalPreview_Large Round 1.00f": {
@@ -156,7 +156,7 @@
     "functionName": "goalPreview",
     "module": "app",
     "renderBasename": "goalPreview_Large_Round_1_00f.png",
-    "sha256": "fbfd8846dde9ff610e5153078d7f2c9bcb31f8cb2a6b39ba07a3b716fb1836ce",
+    "sha256": "24dbe2fa66b09a8d05385624d32a58a655436410918195a64e609f1c0aece67e",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Goal.kt"
   },
   "app/com.example.wear.tiles.golden.GoalKt.goalPreview_Large Round 1.24f": {
@@ -164,7 +164,7 @@
     "functionName": "goalPreview",
     "module": "app",
     "renderBasename": "goalPreview_Large_Round_1_24f.png",
-    "sha256": "0a324726785710411b10487eab4143ca3c858aac28980de3ea5521d172b71355",
+    "sha256": "f46ec88ad7397d4e6d81115cea711f13fa591c64bd901e0b05468fab4f5dac92",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Goal.kt"
   },
   "app/com.example.wear.tiles.golden.GoalKt.goalPreview_Small Round 0.94f": {
@@ -172,7 +172,7 @@
     "functionName": "goalPreview",
     "module": "app",
     "renderBasename": "goalPreview_Small_Round_0_94f.png",
-    "sha256": "60e8077c9bd7049edafec7b40cb1793dca96f8f4129c7d9f0b490f46222608f0",
+    "sha256": "f744d7071862804fbb58780603c90cd09e8e7026cf42da7a8156bf0ee3cf921f",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Goal.kt"
   },
   "app/com.example.wear.tiles.golden.GoalKt.goalPreview_Small Round 1.00f": {
@@ -180,7 +180,7 @@
     "functionName": "goalPreview",
     "module": "app",
     "renderBasename": "goalPreview_Small_Round_1_00f.png",
-    "sha256": "e7d5650629d4e18d96e6d7063082105b88c94dc1add40a2a8d2d3026b1ce1b49",
+    "sha256": "0be7a56164b92461a1faaf4792cbc4ecdd0afee7ccb0dc1b13bcef1b51a06b9a",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Goal.kt"
   },
   "app/com.example.wear.tiles.golden.GoalKt.goalPreview_Small Round 1.24f": {
@@ -188,7 +188,7 @@
     "functionName": "goalPreview",
     "module": "app",
     "renderBasename": "goalPreview_Small_Round_1_24f.png",
-    "sha256": "ff6350435cc5a8c0adddb59acceba52601a812a75d635f34cec31631fe8248f6",
+    "sha256": "572be321a09286e417c3d0e7299cc022c26c87eb2832fd3362f8a866a28acc8a",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Goal.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.alarm_Large Round": {
@@ -196,7 +196,7 @@
     "functionName": "alarm",
     "module": "app",
     "renderBasename": "alarm_Large_Round.png",
-    "sha256": "c99556015e7d4d6cff78e9a6e7fa4dc88b91b51a9ff61fb13ce4b129a6a281a1",
+    "sha256": "9cdc6f6177f83cd60058240ca0a608122864104370faa3fc7d478789c2f636fd",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.alarm_Small Round": {
@@ -204,7 +204,7 @@
     "functionName": "alarm",
     "module": "app",
     "renderBasename": "alarm_Small_Round.png",
-    "sha256": "c80c2f9f843cc023c565a3624bec9dcb6be6fc0cf33668c4b9b2028fae1e43d4",
+    "sha256": "8f68f937fe3e2057619154216eec9d3183c4be505f503a1047e3531879376f53",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.calendar1_Large Round": {
@@ -228,7 +228,7 @@
     "functionName": "calendar2",
     "module": "app",
     "renderBasename": "calendar2_Large_Round.png",
-    "sha256": "db5e7ed451712af88e05b4dc1ac89c4ebe9c771a1b2913d273e91e0168df15c1",
+    "sha256": "6038cde918610b8593a6678d5b5d2a8f27c66e9c9fe8c28bd0a49df216f29453",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.calendar2_Small Round": {
@@ -236,7 +236,7 @@
     "functionName": "calendar2",
     "module": "app",
     "renderBasename": "calendar2_Small_Round.png",
-    "sha256": "92f1766684d60c6af30dc4563748a0ebdf0dacb51156cdf6d291486a4a0ffea5",
+    "sha256": "34ddea3cd606db2441a0010e402a3860b8da08b8393b971c8806b6db7161f143",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.contacts2_Large Round": {
@@ -244,7 +244,7 @@
     "functionName": "contacts2",
     "module": "app",
     "renderBasename": "contacts2_Large_Round.png",
-    "sha256": "4ba3f38ed5cda1b5f5a8e0793b5b0a1974f4dfb2e1e526d8bfe092370e49c585",
+    "sha256": "3ec840b4c130774462f6c66dd301d83661a771860eec93e7b45c88b8f9564b4b",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.contacts2_Small Round": {
@@ -252,7 +252,7 @@
     "functionName": "contacts2",
     "module": "app",
     "renderBasename": "contacts2_Small_Round.png",
-    "sha256": "a571638ea3e8037b75b54c16e3c8b101cb4c8da5fe8a14ac42b02abfeb3be03e",
+    "sha256": "ab6314e752a03ebb5c631422af5d1540a74099344d88e353345ba30c385bc88c",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.contacts5_Large Round": {
@@ -260,7 +260,7 @@
     "functionName": "contacts5",
     "module": "app",
     "renderBasename": "contacts5_Large_Round.png",
-    "sha256": "ff539e117667d8fc4950788d816ee74701dd729dbfcec50a16dd2fb09fc6591d",
+    "sha256": "66c0fc5a8525e6d12aa24c1f527b4ed25c861bfcedc86bc000b688196fb3afa7",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.contacts5_Small Round": {
@@ -268,7 +268,7 @@
     "functionName": "contacts5",
     "module": "app",
     "renderBasename": "contacts5_Small_Round.png",
-    "sha256": "8a52e0d7defd69cabe3158743c89d694b84bed1e417c7320234c3aa256296f44",
+    "sha256": "e004ed20bea3c3b59ed07265aa18a85bd61f2e231427d4aa45a377b78907562d",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.contacts6_Large Round": {
@@ -276,7 +276,7 @@
     "functionName": "contacts6",
     "module": "app",
     "renderBasename": "contacts6_Large_Round.png",
-    "sha256": "d99c0030bda35b5facaa01265381ad6bba78be17286ddf8ad279abde1cf71c5e",
+    "sha256": "78f089239ebf6fe53207b9f1d78df7a298d6c43b62249412299d36437f63e11f",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.contacts6_Small Round": {
@@ -284,7 +284,7 @@
     "functionName": "contacts6",
     "module": "app",
     "renderBasename": "contacts6_Small_Round.png",
-    "sha256": "8a52e0d7defd69cabe3158743c89d694b84bed1e417c7320234c3aa256296f44",
+    "sha256": "e004ed20bea3c3b59ed07265aa18a85bd61f2e231427d4aa45a377b78907562d",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.goal_Large Round": {
@@ -292,7 +292,7 @@
     "functionName": "goal",
     "module": "app",
     "renderBasename": "goal_Large_Round.png",
-    "sha256": "fbfd8846dde9ff610e5153078d7f2c9bcb31f8cb2a6b39ba07a3b716fb1836ce",
+    "sha256": "24dbe2fa66b09a8d05385624d32a58a655436410918195a64e609f1c0aece67e",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.goal_Small Round": {
@@ -300,7 +300,7 @@
     "functionName": "goal",
     "module": "app",
     "renderBasename": "goal_Small_Round.png",
-    "sha256": "e7d5650629d4e18d96e6d7063082105b88c94dc1add40a2a8d2d3026b1ce1b49",
+    "sha256": "0be7a56164b92461a1faaf4792cbc4ecdd0afee7ccb0dc1b13bcef1b51a06b9a",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.hike_Large Round": {
@@ -308,7 +308,7 @@
     "functionName": "hike",
     "module": "app",
     "renderBasename": "hike_Large_Round.png",
-    "sha256": "394a9ed81e7310091336b2395d10fc55e83082114a41de0a1b71ed87f309bf8f",
+    "sha256": "cabd43f860f5a0b1eeb8fe8fcde4ad3c0f6bc3c38e131e3940a29ea1ce2ade33",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.hike_Small Round": {
@@ -316,7 +316,7 @@
     "functionName": "hike",
     "module": "app",
     "renderBasename": "hike_Small_Round.png",
-    "sha256": "e5fd8d18f6e2cffcaf4a3c2f0fe734d450975ad122aa8af47d3ca9f0c038bd45",
+    "sha256": "e0838931adb706ac8e72448344833cd867d16da179868a93944965b3df061f3a",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.media_Large Round": {
@@ -324,7 +324,7 @@
     "functionName": "media",
     "module": "app",
     "renderBasename": "media_Large_Round.png",
-    "sha256": "d976ef21846f1eae6ca20478916517dab4b4371388b3ca95a82b60a7f703bd01",
+    "sha256": "dfeb2520c00d92223ef6db503c3dfc6ccb14ce725193c3e9a5143a0b9ac0e449",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.media_Small Round": {
@@ -332,7 +332,7 @@
     "functionName": "media",
     "module": "app",
     "renderBasename": "media_Small_Round.png",
-    "sha256": "b6d2e65ea7fec3f14ddefeb48b436caabc39485773dd132c209d34bf44a6b4ea",
+    "sha256": "22ca9cf4138ef78e89574008d310d2c1269c08ec4745da6da84a5705af09c441",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.mindfulness_Large Round": {
@@ -340,7 +340,7 @@
     "functionName": "mindfulness",
     "module": "app",
     "renderBasename": "mindfulness_Large_Round.png",
-    "sha256": "22ddf1c147d2403ebd1668b265d512d01cd1c1c358e6ca8c6aab39f51cb45fd2",
+    "sha256": "f1bbbc3d4374930d10662a68754f7f129ccca7a129a4b5b56a5919e1845f09fb",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.mindfulness_Small Round": {
@@ -348,7 +348,7 @@
     "functionName": "mindfulness",
     "module": "app",
     "renderBasename": "mindfulness_Small_Round.png",
-    "sha256": "901cd18c3958265cd1dcad4eb032140c8ad5efd453f2f6a9e053dd4669fe57b2",
+    "sha256": "e9da504ff5e150801872eb06f14b801ecc673b3f673b6b22fcd84553540e7f35",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.news_Large Round": {
@@ -356,7 +356,7 @@
     "functionName": "news",
     "module": "app",
     "renderBasename": "news_Large_Round.png",
-    "sha256": "ed1619c46ed6fdf67aa821e918e68b07a4dbbfb0a585ab3a111809410b5ec08f",
+    "sha256": "0ac4f34332bdc4e721a53d528f5c189ef16f40dcd1f3cc161c51a48da7e925fc",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.news_Small Round": {
@@ -364,7 +364,7 @@
     "functionName": "news",
     "module": "app",
     "renderBasename": "news_Small_Round.png",
-    "sha256": "ad151b75258f38c4c15143c7d96f3d07beb3187911a3567226e016821e38faea",
+    "sha256": "9ae3f697856f2af47167b10f0f38e4bb3f73b463edb554891e424b45ed8d2002",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.run_Large Round": {
@@ -372,7 +372,7 @@
     "functionName": "run",
     "module": "app",
     "renderBasename": "run_Large_Round.png",
-    "sha256": "5311e78ab16a25a86a04c410f89b7ee036a4c9cfdaca818bc81c5553de3e1ebd",
+    "sha256": "dae12c6bde4159af4c597bd7c7b20071ad21c69962eaf24000d125aa9a1aea5f",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.run_Small Round": {
@@ -380,7 +380,7 @@
     "functionName": "run",
     "module": "app",
     "renderBasename": "run_Small_Round.png",
-    "sha256": "f58ee0623d6ac03bc4a19520c959856ecaeee40fec458300a0fbec79fe750516",
+    "sha256": "b43788d842819e870ba6e9b6aaf8c8c688a0be1284c566662721998969f30398",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.ski_Large Round": {
@@ -404,7 +404,7 @@
     "functionName": "timer1",
     "module": "app",
     "renderBasename": "timer1_Large_Round.png",
-    "sha256": "0d2d17c070a81ecd8f773b4891dac9d9ac7bddaec2efb82ff71985f2855a7ebd",
+    "sha256": "5ec8c6c8687762231fd3f68411d2f6bc8c56b21496cf8e5fbaff4ea9c335854b",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.timer1_Small Round": {
@@ -412,7 +412,7 @@
     "functionName": "timer1",
     "module": "app",
     "renderBasename": "timer1_Small_Round.png",
-    "sha256": "094037e9d47f9a5441d49668d887fdeaedfbc216ef07a8d13121a99df95a63af",
+    "sha256": "c13e0ecb5a9272aaf0bb892c3604c42607372b4ae7c0a21a03a164a656b09b2f",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.timer2_Large Round": {
@@ -420,7 +420,7 @@
     "functionName": "timer2",
     "module": "app",
     "renderBasename": "timer2_Large_Round.png",
-    "sha256": "e78a9eb5a3bc60c5314e14f7b5a11da2779374db91962a0732d0753820e932d4",
+    "sha256": "a7f4880412bc6a77a10974b5c75a69a65eac44da305e3fe20f317ede3b29c91e",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.timer2_Small Round": {
@@ -428,7 +428,7 @@
     "functionName": "timer2",
     "module": "app",
     "renderBasename": "timer2_Small_Round.png",
-    "sha256": "ea6f0c233c804303c0febadd453394cec2cbe01e5dcba970ec9f9801ec58217a",
+    "sha256": "55f2a2acb2003b67c533a0552ad6c4b13b2b27adaaac59efd230e26dc22864b4",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.workout_Large Round": {
@@ -436,7 +436,7 @@
     "functionName": "workout",
     "module": "app",
     "renderBasename": "workout_Large_Round.png",
-    "sha256": "255da44eb297dc7dd1483827b6639ea42eef5789d0bd5d5efe0efe8314f39bb2",
+    "sha256": "87998e93a52cff3ef385b02cb85da003ada8b77dec88f4e3da0452a35ecbc97c",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.GoldenTilesKt.workout_Small Round": {
@@ -444,7 +444,7 @@
     "functionName": "workout",
     "module": "app",
     "renderBasename": "workout_Small_Round.png",
-    "sha256": "b75e7fd34ae9b6a7eefa4982bcd460fa9426e6eb751d7a592d55d8816b3bd7d6",
+    "sha256": "2e7c28c2bc82db6ab43459a805ea79f511b0bce886cf40ae99fb233160c8ae0b",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/GoldenTiles.kt"
   },
   "app/com.example.wear.tiles.golden.HikeKt.hikePreview_Large Round 0.94f": {
@@ -452,7 +452,7 @@
     "functionName": "hikePreview",
     "module": "app",
     "renderBasename": "hikePreview_Large_Round_0_94f.png",
-    "sha256": "e8c98fc15217aa806bfcf476ecf9c46dcb213972561552859f0e295580d8304f",
+    "sha256": "572b173f83550da33de02ba82efdb812d65a1721420bbf9efa6e7753d7729656",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Hike.kt"
   },
   "app/com.example.wear.tiles.golden.HikeKt.hikePreview_Large Round 1.00f": {
@@ -460,7 +460,7 @@
     "functionName": "hikePreview",
     "module": "app",
     "renderBasename": "hikePreview_Large_Round_1_00f.png",
-    "sha256": "394a9ed81e7310091336b2395d10fc55e83082114a41de0a1b71ed87f309bf8f",
+    "sha256": "cabd43f860f5a0b1eeb8fe8fcde4ad3c0f6bc3c38e131e3940a29ea1ce2ade33",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Hike.kt"
   },
   "app/com.example.wear.tiles.golden.HikeKt.hikePreview_Large Round 1.24f": {
@@ -468,7 +468,7 @@
     "functionName": "hikePreview",
     "module": "app",
     "renderBasename": "hikePreview_Large_Round_1_24f.png",
-    "sha256": "fae29b5d389a27dc1c03cbd6c09e77be854c9aa8008a3a91e029efcc60d7d85a",
+    "sha256": "e9fdb2c4d597ab0db66682312eb06407abad5c616eb0801637298c8f7697733b",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Hike.kt"
   },
   "app/com.example.wear.tiles.golden.HikeKt.hikePreview_Small Round 0.94f": {
@@ -476,7 +476,7 @@
     "functionName": "hikePreview",
     "module": "app",
     "renderBasename": "hikePreview_Small_Round_0_94f.png",
-    "sha256": "09d33cd8b45bd5e4027c4912aee2d0a8d8c3fa7e46b08f23748c2ddbc538e363",
+    "sha256": "43f1b42c3f2d0f6c70577639677abb3d4714797d438177f44c332e263bff8d90",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Hike.kt"
   },
   "app/com.example.wear.tiles.golden.HikeKt.hikePreview_Small Round 1.00f": {
@@ -484,7 +484,7 @@
     "functionName": "hikePreview",
     "module": "app",
     "renderBasename": "hikePreview_Small_Round_1_00f.png",
-    "sha256": "e5fd8d18f6e2cffcaf4a3c2f0fe734d450975ad122aa8af47d3ca9f0c038bd45",
+    "sha256": "e0838931adb706ac8e72448344833cd867d16da179868a93944965b3df061f3a",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Hike.kt"
   },
   "app/com.example.wear.tiles.golden.HikeKt.hikePreview_Small Round 1.24f": {
@@ -492,7 +492,7 @@
     "functionName": "hikePreview",
     "module": "app",
     "renderBasename": "hikePreview_Small_Round_1_24f.png",
-    "sha256": "4e3cd74db2587b0255ddac2588665b919cba22f8523dd99e506621a640702fb5",
+    "sha256": "404ca3f2e0d1755b4998bbdefaa7fbc1293761468decbc89a6321f68f2121132",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Hike.kt"
   },
   "app/com.example.wear.tiles.golden.MediaKt.mediaPreview_Large Round 0.94f": {
@@ -500,7 +500,7 @@
     "functionName": "mediaPreview",
     "module": "app",
     "renderBasename": "mediaPreview_Large_Round_0_94f.png",
-    "sha256": "8b01f0608d3e4de9e0d31b13d75ab1bfc5757855f687122db3a46df49515471a",
+    "sha256": "462b4e2459803337b8599dcfb5a9c4a71a605ee7429303b7ce6f77fc473d00d0",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Media.kt"
   },
   "app/com.example.wear.tiles.golden.MediaKt.mediaPreview_Large Round 1.00f": {
@@ -508,7 +508,7 @@
     "functionName": "mediaPreview",
     "module": "app",
     "renderBasename": "mediaPreview_Large_Round_1_00f.png",
-    "sha256": "d976ef21846f1eae6ca20478916517dab4b4371388b3ca95a82b60a7f703bd01",
+    "sha256": "dfeb2520c00d92223ef6db503c3dfc6ccb14ce725193c3e9a5143a0b9ac0e449",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Media.kt"
   },
   "app/com.example.wear.tiles.golden.MediaKt.mediaPreview_Large Round 1.24f": {
@@ -516,7 +516,7 @@
     "functionName": "mediaPreview",
     "module": "app",
     "renderBasename": "mediaPreview_Large_Round_1_24f.png",
-    "sha256": "5e666baead6beaba67024e6885f2eb389916230530d8a2e0708f7fed8f22c1db",
+    "sha256": "99c6820d832e3973d60b46f39b208984c0460ddaab7a984224fd38a497f8f00d",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Media.kt"
   },
   "app/com.example.wear.tiles.golden.MediaKt.mediaPreview_Small Round 0.94f": {
@@ -524,7 +524,7 @@
     "functionName": "mediaPreview",
     "module": "app",
     "renderBasename": "mediaPreview_Small_Round_0_94f.png",
-    "sha256": "e3be0c11c6561625fc8f63a067c1ef51f87ede5fe03ba007c3fcd2014d101a98",
+    "sha256": "4b52cb05d3fc939e5bec555b390469beb277fa7c4a6caff5089ddf5d01de8217",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Media.kt"
   },
   "app/com.example.wear.tiles.golden.MediaKt.mediaPreview_Small Round 1.00f": {
@@ -532,7 +532,7 @@
     "functionName": "mediaPreview",
     "module": "app",
     "renderBasename": "mediaPreview_Small_Round_1_00f.png",
-    "sha256": "b6d2e65ea7fec3f14ddefeb48b436caabc39485773dd132c209d34bf44a6b4ea",
+    "sha256": "22ca9cf4138ef78e89574008d310d2c1269c08ec4745da6da84a5705af09c441",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Media.kt"
   },
   "app/com.example.wear.tiles.golden.MediaKt.mediaPreview_Small Round 1.24f": {
@@ -540,7 +540,7 @@
     "functionName": "mediaPreview",
     "module": "app",
     "renderBasename": "mediaPreview_Small_Round_1_24f.png",
-    "sha256": "518f887bfdff3dd553f9ef3255c569766ae402f4c34c9850f9f07f0a3f08cad3",
+    "sha256": "d7b613291bd5d974929b226f9cd51431414ce490dc620d9f5af13f22ecb76bbe",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Media.kt"
   },
   "app/com.example.wear.tiles.golden.MeditationKt.mindfulnessPreview_Large Round 0.94f": {
@@ -548,7 +548,7 @@
     "functionName": "mindfulnessPreview",
     "module": "app",
     "renderBasename": "mindfulnessPreview_Large_Round_0_94f.png",
-    "sha256": "ba542cb16d324040a02c1d1e079c8f5203190629fd9158fffed16c53453f1558",
+    "sha256": "492798c72033cbf25ba80042bfaeeaf302c4c4b06a32c0023ac4c93594988e99",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Meditation.kt"
   },
   "app/com.example.wear.tiles.golden.MeditationKt.mindfulnessPreview_Large Round 1.00f": {
@@ -556,7 +556,7 @@
     "functionName": "mindfulnessPreview",
     "module": "app",
     "renderBasename": "mindfulnessPreview_Large_Round_1_00f.png",
-    "sha256": "22ddf1c147d2403ebd1668b265d512d01cd1c1c358e6ca8c6aab39f51cb45fd2",
+    "sha256": "f1bbbc3d4374930d10662a68754f7f129ccca7a129a4b5b56a5919e1845f09fb",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Meditation.kt"
   },
   "app/com.example.wear.tiles.golden.MeditationKt.mindfulnessPreview_Large Round 1.24f": {
@@ -564,7 +564,7 @@
     "functionName": "mindfulnessPreview",
     "module": "app",
     "renderBasename": "mindfulnessPreview_Large_Round_1_24f.png",
-    "sha256": "cad11944264689bd22b0107d6c63bc8d3b3d59aaafe3cc801f2d35ca6c9fb0eb",
+    "sha256": "4d64b9f9f3f18b424e9dbf28b2b4f51634ccdd1b91a0ace1bcdc296e5b1100a3",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Meditation.kt"
   },
   "app/com.example.wear.tiles.golden.MeditationKt.mindfulnessPreview_Small Round 0.94f": {
@@ -572,7 +572,7 @@
     "functionName": "mindfulnessPreview",
     "module": "app",
     "renderBasename": "mindfulnessPreview_Small_Round_0_94f.png",
-    "sha256": "f2cb549b856191a39ecf5465b9542fa9802d0da17df857fb46425e4ce5aed65a",
+    "sha256": "3c1809d2ae655263b4314e893256c4ee1f16c935a7fb3075137af699c5ba88ab",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Meditation.kt"
   },
   "app/com.example.wear.tiles.golden.MeditationKt.mindfulnessPreview_Small Round 1.00f": {
@@ -580,7 +580,7 @@
     "functionName": "mindfulnessPreview",
     "module": "app",
     "renderBasename": "mindfulnessPreview_Small_Round_1_00f.png",
-    "sha256": "901cd18c3958265cd1dcad4eb032140c8ad5efd453f2f6a9e053dd4669fe57b2",
+    "sha256": "e9da504ff5e150801872eb06f14b801ecc673b3f673b6b22fcd84553540e7f35",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Meditation.kt"
   },
   "app/com.example.wear.tiles.golden.MeditationKt.mindfulnessPreview_Small Round 1.24f": {
@@ -588,7 +588,7 @@
     "functionName": "mindfulnessPreview",
     "module": "app",
     "renderBasename": "mindfulnessPreview_Small_Round_1_24f.png",
-    "sha256": "78762368467dad269c4052027183d58c32cca05a850e46cb089c8b0a10414f18",
+    "sha256": "71e83e61e7c1e6a83cb0c1007775c38c2893ec204198b796c1bf964da741bb48",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Meditation.kt"
   },
   "app/com.example.wear.tiles.golden.NewsKt.newsPreview_Large Round 0.94f": {
@@ -596,7 +596,7 @@
     "functionName": "newsPreview",
     "module": "app",
     "renderBasename": "newsPreview_Large_Round_0_94f.png",
-    "sha256": "559d69f255ed84b020ee1f17f90e10627adfd5362db7c25079d8225731ae39bf",
+    "sha256": "627fef651a67b053d88a58e204fc85b634b68232486eeeaafb00debc5e377cd1",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/News.kt"
   },
   "app/com.example.wear.tiles.golden.NewsKt.newsPreview_Large Round 1.00f": {
@@ -604,7 +604,7 @@
     "functionName": "newsPreview",
     "module": "app",
     "renderBasename": "newsPreview_Large_Round_1_00f.png",
-    "sha256": "ed1619c46ed6fdf67aa821e918e68b07a4dbbfb0a585ab3a111809410b5ec08f",
+    "sha256": "0ac4f34332bdc4e721a53d528f5c189ef16f40dcd1f3cc161c51a48da7e925fc",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/News.kt"
   },
   "app/com.example.wear.tiles.golden.NewsKt.newsPreview_Large Round 1.24f": {
@@ -612,7 +612,7 @@
     "functionName": "newsPreview",
     "module": "app",
     "renderBasename": "newsPreview_Large_Round_1_24f.png",
-    "sha256": "a8829fd54b2fa834b87d5f9db4021a3c65340e0f1f597bea915586db7bdb92c7",
+    "sha256": "b1d5f09be44c131297fe4334305c2d4a6af0d4552a137f679e4c61bc4500c66a",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/News.kt"
   },
   "app/com.example.wear.tiles.golden.NewsKt.newsPreview_Small Round 0.94f": {
@@ -620,7 +620,7 @@
     "functionName": "newsPreview",
     "module": "app",
     "renderBasename": "newsPreview_Small_Round_0_94f.png",
-    "sha256": "f22668b3c1f608fb6b2b141ab38997a79ab147d91fd29494a30e4a8001888524",
+    "sha256": "31a0aef6d37f99423296fac09a7fe45ae68a115799da333a568aa9f2ad58007b",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/News.kt"
   },
   "app/com.example.wear.tiles.golden.NewsKt.newsPreview_Small Round 1.00f": {
@@ -628,7 +628,7 @@
     "functionName": "newsPreview",
     "module": "app",
     "renderBasename": "newsPreview_Small_Round_1_00f.png",
-    "sha256": "ad151b75258f38c4c15143c7d96f3d07beb3187911a3567226e016821e38faea",
+    "sha256": "9ae3f697856f2af47167b10f0f38e4bb3f73b463edb554891e424b45ed8d2002",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/News.kt"
   },
   "app/com.example.wear.tiles.golden.NewsKt.newsPreview_Small Round 1.24f": {
@@ -636,7 +636,7 @@
     "functionName": "newsPreview",
     "module": "app",
     "renderBasename": "newsPreview_Small_Round_1_24f.png",
-    "sha256": "0abd0fdb84d17c5279bb61d1aa961fdf766dbaf3e2850d968397d3dee8011652",
+    "sha256": "5f0731aaa80d22fc0f5a9010790969dec09fd6c1aa29b75905e1cad98b845108",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/News.kt"
   },
   "app/com.example.wear.tiles.golden.SkiKt.skiPreview_Large Round 0.94f": {
@@ -692,7 +692,7 @@
     "functionName": "socialPreview1",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview1_Large_Round_0_94f.png",
-    "sha256": "b00e23f7c7b25f10d6c7a42abcbecb57836f9446a4bc7c8e30b6258dc00059ce",
+    "sha256": "6e93d9f0e40816965993a21994e4dace5ca6b1d0f708e72d375872b4ebb3a5c8",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview1_Large Round 1.00f": {
@@ -700,7 +700,7 @@
     "functionName": "socialPreview1",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview1_Large_Round_1_00f.png",
-    "sha256": "55ad9b7af6db3c0a741b70684c8eb3751d8c0cdc6d2bf8c9d543b3ce9ba1cd3e",
+    "sha256": "1329d1efd9d0be674615bbadea6c2a807996cc9456ae835cfe88b091e7d2bf63",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview1_Large Round 1.24f": {
@@ -708,7 +708,7 @@
     "functionName": "socialPreview1",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview1_Large_Round_1_24f.png",
-    "sha256": "23035855e0f493e97747ec6a8ea25d9d2e2cadc20deda4bc118dbe70f25eeb99",
+    "sha256": "8339b50d6bbaa83aba22b31328f673029b22a28207a30a22080907c33eb4fde1",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview1_Small Round 0.94f": {
@@ -716,7 +716,7 @@
     "functionName": "socialPreview1",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview1_Small_Round_0_94f.png",
-    "sha256": "3fe4e2e66ac7fe51f3b60b6575f164af7a2344f3a56582a1c083ad4852400d5f",
+    "sha256": "931b38da7d5a634e18f0a8d18292f487f8700e1f6c490c378c52ae8034b922c8",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview1_Small Round 1.00f": {
@@ -724,7 +724,7 @@
     "functionName": "socialPreview1",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview1_Small_Round_1_00f.png",
-    "sha256": "de9d7bb7057ef4a36eb15c6659ae4f1ed4fa2e1d39c9e414c6ad8bf528b25510",
+    "sha256": "1f605c21cd21f1bc097ef22c0fe971d6109464adb5eec2e40c28ecbd12720e9d",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview1_Small Round 1.24f": {
@@ -732,7 +732,7 @@
     "functionName": "socialPreview1",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview1_Small_Round_1_24f.png",
-    "sha256": "51e977f231a8e9bcf60882779af6a07377ed75d5b50cf9bb993ae59f57150a7f",
+    "sha256": "525fe84290b09b90efa15536f321d2cc81fbd3a2d720ec8bbc6d9a3c9f11f3ee",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview2_Large Round 0.94f": {
@@ -740,7 +740,7 @@
     "functionName": "socialPreview2",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview2_Large_Round_0_94f.png",
-    "sha256": "7e4c83aaea3e1b97092eba72240b3ee52ff2c2b548dd4358d5798fe34976588c",
+    "sha256": "a66351f3822e51130d9add5f072564d465bfcf3ab0b8fb4ae4c812069d07d3c2",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview2_Large Round 1.00f": {
@@ -748,7 +748,7 @@
     "functionName": "socialPreview2",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview2_Large_Round_1_00f.png",
-    "sha256": "4ba3f38ed5cda1b5f5a8e0793b5b0a1974f4dfb2e1e526d8bfe092370e49c585",
+    "sha256": "3ec840b4c130774462f6c66dd301d83661a771860eec93e7b45c88b8f9564b4b",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview2_Large Round 1.24f": {
@@ -756,7 +756,7 @@
     "functionName": "socialPreview2",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview2_Large_Round_1_24f.png",
-    "sha256": "320c6035264d1b77b06e96b3e1411bfdb6e3f99796c470d87e4b67a35b8625f8",
+    "sha256": "dcc03833b0acd834145e876f1f0819075d4b232206334f043226b3d99d8556a0",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview2_Small Round 0.94f": {
@@ -764,7 +764,7 @@
     "functionName": "socialPreview2",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview2_Small_Round_0_94f.png",
-    "sha256": "e648f6c2cb411f6997f7063a1cdc41a2b0f4d0a496c333db97db61cd5a4900e3",
+    "sha256": "d95b389f935c79f5a32ca75bb5e1d2d25ac1b3f02f9ec7ba020482704eedabab",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview2_Small Round 1.00f": {
@@ -772,7 +772,7 @@
     "functionName": "socialPreview2",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview2_Small_Round_1_00f.png",
-    "sha256": "a571638ea3e8037b75b54c16e3c8b101cb4c8da5fe8a14ac42b02abfeb3be03e",
+    "sha256": "ab6314e752a03ebb5c631422af5d1540a74099344d88e353345ba30c385bc88c",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview2_Small Round 1.24f": {
@@ -780,7 +780,7 @@
     "functionName": "socialPreview2",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview2_Small_Round_1_24f.png",
-    "sha256": "96e66bee5861afeaebe7a89f1a447b29dfbaff14defc702f8cb023243021038d",
+    "sha256": "6943aae326a99723a4be2cbe504bac0dba21fbbd651672fa758b1928251f74c4",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview3_Large Round 0.94f": {
@@ -788,7 +788,7 @@
     "functionName": "socialPreview3",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview3_Large_Round_0_94f.png",
-    "sha256": "e37e9abad27c4a7063ab7eb51ccc94a47a18b8c0b08d9649967ee4d0cdd90449",
+    "sha256": "3898f29e3f6e0b8d097397bda840933386f10f26d9fcea0d14f3dad6b7835f84",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview3_Large Round 1.00f": {
@@ -796,7 +796,7 @@
     "functionName": "socialPreview3",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview3_Large_Round_1_00f.png",
-    "sha256": "7c2fc3cfc31e37e0b72869533ad9629278cd8235378a916403a9a60090b3bc8a",
+    "sha256": "0eb2307394de0b931c5366a635ebac07e4f353ab28eeac28e0c883a7007d630b",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview3_Large Round 1.24f": {
@@ -804,7 +804,7 @@
     "functionName": "socialPreview3",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview3_Large_Round_1_24f.png",
-    "sha256": "7c2fc3cfc31e37e0b72869533ad9629278cd8235378a916403a9a60090b3bc8a",
+    "sha256": "0eb2307394de0b931c5366a635ebac07e4f353ab28eeac28e0c883a7007d630b",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview3_Small Round 0.94f": {
@@ -812,7 +812,7 @@
     "functionName": "socialPreview3",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview3_Small_Round_0_94f.png",
-    "sha256": "c8aaf598d414a88b9be6a60d0a90be10417908d1e63a4ead79b6847d8480969d",
+    "sha256": "628bbe4950cd32449c7f013b3e7f60483756f21aadd7dbe1dc3f649abc7bf72d",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview3_Small Round 1.00f": {
@@ -820,7 +820,7 @@
     "functionName": "socialPreview3",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview3_Small_Round_1_00f.png",
-    "sha256": "b9b4399235ac2daed59115e51f770294e2a8f18f8931a4c11fdc6fdff8db6e57",
+    "sha256": "70595cdd36bb6f8a1d6aaa7829d78446aeb14fbdde523f3b38fb97e1be24c319",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview3_Small Round 1.24f": {
@@ -828,7 +828,7 @@
     "functionName": "socialPreview3",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview3_Small_Round_1_24f.png",
-    "sha256": "b9b4399235ac2daed59115e51f770294e2a8f18f8931a4c11fdc6fdff8db6e57",
+    "sha256": "70595cdd36bb6f8a1d6aaa7829d78446aeb14fbdde523f3b38fb97e1be24c319",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview4_Large Round 0.94f": {
@@ -836,7 +836,7 @@
     "functionName": "socialPreview4",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview4_Large_Round_0_94f.png",
-    "sha256": "baddcb0607f2b7a387a9016828aa1747a88d1b50232fc229ed1b109b4c5975e8",
+    "sha256": "537c76fba6d558bc65ef4d7b861d806a5de094e1ca13eff699d725374c198770",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview4_Large Round 1.00f": {
@@ -844,7 +844,7 @@
     "functionName": "socialPreview4",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview4_Large_Round_1_00f.png",
-    "sha256": "c5d438c9481a641d59828c8901d25185407ecd68963d101e0bbb6dba540f87c8",
+    "sha256": "3df27821f1c73697071a21bfdbe92d0f8d92802a4e9a25f6acd9a59b2294fdf5",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview4_Large Round 1.24f": {
@@ -852,7 +852,7 @@
     "functionName": "socialPreview4",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview4_Large_Round_1_24f.png",
-    "sha256": "c5d438c9481a641d59828c8901d25185407ecd68963d101e0bbb6dba540f87c8",
+    "sha256": "3df27821f1c73697071a21bfdbe92d0f8d92802a4e9a25f6acd9a59b2294fdf5",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview4_Small Round 0.94f": {
@@ -860,7 +860,7 @@
     "functionName": "socialPreview4",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview4_Small_Round_0_94f.png",
-    "sha256": "9e0dc718e1441b7674ec74441d2ef02a4cdaa905d5e3d2349694f6b3bedc321c",
+    "sha256": "7b1111d9d8cd59a462419e15cb198c7b3c46bc86ee23d72f7b0b2d3891f8946f",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview4_Small Round 1.00f": {
@@ -868,7 +868,7 @@
     "functionName": "socialPreview4",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview4_Small_Round_1_00f.png",
-    "sha256": "8a52e0d7defd69cabe3158743c89d694b84bed1e417c7320234c3aa256296f44",
+    "sha256": "e004ed20bea3c3b59ed07265aa18a85bd61f2e231427d4aa45a377b78907562d",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview4_Small Round 1.24f": {
@@ -876,7 +876,7 @@
     "functionName": "socialPreview4",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview4_Small_Round_1_24f.png",
-    "sha256": "8a52e0d7defd69cabe3158743c89d694b84bed1e417c7320234c3aa256296f44",
+    "sha256": "e004ed20bea3c3b59ed07265aa18a85bd61f2e231427d4aa45a377b78907562d",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview5_Large Round 0.94f": {
@@ -884,7 +884,7 @@
     "functionName": "socialPreview5",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview5_Large_Round_0_94f.png",
-    "sha256": "f28179ec8718e237d6787ffca4bbd6ae8c6dd0b9f0975ab172800f40ef8ba01e",
+    "sha256": "32c7157606d15ea7aa77fe12b754fcac214502fa56ace11bd4271a38fbc7e948",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview5_Large Round 1.00f": {
@@ -892,7 +892,7 @@
     "functionName": "socialPreview5",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview5_Large_Round_1_00f.png",
-    "sha256": "ff539e117667d8fc4950788d816ee74701dd729dbfcec50a16dd2fb09fc6591d",
+    "sha256": "66c0fc5a8525e6d12aa24c1f527b4ed25c861bfcedc86bc000b688196fb3afa7",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview5_Large Round 1.24f": {
@@ -900,7 +900,7 @@
     "functionName": "socialPreview5",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview5_Large_Round_1_24f.png",
-    "sha256": "ff539e117667d8fc4950788d816ee74701dd729dbfcec50a16dd2fb09fc6591d",
+    "sha256": "66c0fc5a8525e6d12aa24c1f527b4ed25c861bfcedc86bc000b688196fb3afa7",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview5_Small Round 0.94f": {
@@ -908,7 +908,7 @@
     "functionName": "socialPreview5",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview5_Small_Round_0_94f.png",
-    "sha256": "9e0dc718e1441b7674ec74441d2ef02a4cdaa905d5e3d2349694f6b3bedc321c",
+    "sha256": "7b1111d9d8cd59a462419e15cb198c7b3c46bc86ee23d72f7b0b2d3891f8946f",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview5_Small Round 1.00f": {
@@ -916,7 +916,7 @@
     "functionName": "socialPreview5",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview5_Small_Round_1_00f.png",
-    "sha256": "8a52e0d7defd69cabe3158743c89d694b84bed1e417c7320234c3aa256296f44",
+    "sha256": "e004ed20bea3c3b59ed07265aa18a85bd61f2e231427d4aa45a377b78907562d",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview5_Small Round 1.24f": {
@@ -924,7 +924,7 @@
     "functionName": "socialPreview5",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview5_Small_Round_1_24f.png",
-    "sha256": "8a52e0d7defd69cabe3158743c89d694b84bed1e417c7320234c3aa256296f44",
+    "sha256": "e004ed20bea3c3b59ed07265aa18a85bd61f2e231427d4aa45a377b78907562d",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview6_Large Round 0.94f": {
@@ -932,7 +932,7 @@
     "functionName": "socialPreview6",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview6_Large_Round_0_94f.png",
-    "sha256": "1838dabc2e927657e2211cbcfe3c8bbcd7acb7e09c3eab7a8ff438b37de6c4bc",
+    "sha256": "aa5126bd7fca206ed4f930507ae37aae1c36c65e4581b04d47414fc57f09a846",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview6_Large Round 1.00f": {
@@ -940,7 +940,7 @@
     "functionName": "socialPreview6",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview6_Large_Round_1_00f.png",
-    "sha256": "d99c0030bda35b5facaa01265381ad6bba78be17286ddf8ad279abde1cf71c5e",
+    "sha256": "78f089239ebf6fe53207b9f1d78df7a298d6c43b62249412299d36437f63e11f",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview6_Large Round 1.24f": {
@@ -948,7 +948,7 @@
     "functionName": "socialPreview6",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview6_Large_Round_1_24f.png",
-    "sha256": "d99c0030bda35b5facaa01265381ad6bba78be17286ddf8ad279abde1cf71c5e",
+    "sha256": "78f089239ebf6fe53207b9f1d78df7a298d6c43b62249412299d36437f63e11f",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview6_Small Round 0.94f": {
@@ -956,7 +956,7 @@
     "functionName": "socialPreview6",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview6_Small_Round_0_94f.png",
-    "sha256": "9e0dc718e1441b7674ec74441d2ef02a4cdaa905d5e3d2349694f6b3bedc321c",
+    "sha256": "7b1111d9d8cd59a462419e15cb198c7b3c46bc86ee23d72f7b0b2d3891f8946f",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview6_Small Round 1.00f": {
@@ -964,7 +964,7 @@
     "functionName": "socialPreview6",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview6_Small_Round_1_00f.png",
-    "sha256": "8a52e0d7defd69cabe3158743c89d694b84bed1e417c7320234c3aa256296f44",
+    "sha256": "e004ed20bea3c3b59ed07265aa18a85bd61f2e231427d4aa45a377b78907562d",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.SocialKt.socialPreview6_Small Round 1.24f": {
@@ -972,7 +972,7 @@
     "functionName": "socialPreview6",
     "module": "app",
     "renderBasename": "SocialKt.socialPreview6_Small_Round_1_24f.png",
-    "sha256": "8a52e0d7defd69cabe3158743c89d694b84bed1e417c7320234c3aa256296f44",
+    "sha256": "e004ed20bea3c3b59ed07265aa18a85bd61f2e231427d4aa45a377b78907562d",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Social.kt"
   },
   "app/com.example.wear.tiles.golden.TimerKt.timer1LayoutPreview_Large Round 0.94f": {
@@ -980,7 +980,7 @@
     "functionName": "timer1LayoutPreview",
     "module": "app",
     "renderBasename": "timer1LayoutPreview_Large_Round_0_94f.png",
-    "sha256": "810758182a3f4c328f4efb26afbb598d4206729c47b4059f6ef2be9d1c73790f",
+    "sha256": "c3198fb5a9f4f8c5d7697e2f6f5f0c527cba3f47471ca985db0602fe5086e5b1",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Timer.kt"
   },
   "app/com.example.wear.tiles.golden.TimerKt.timer1LayoutPreview_Large Round 1.00f": {
@@ -988,7 +988,7 @@
     "functionName": "timer1LayoutPreview",
     "module": "app",
     "renderBasename": "timer1LayoutPreview_Large_Round_1_00f.png",
-    "sha256": "0d2d17c070a81ecd8f773b4891dac9d9ac7bddaec2efb82ff71985f2855a7ebd",
+    "sha256": "5ec8c6c8687762231fd3f68411d2f6bc8c56b21496cf8e5fbaff4ea9c335854b",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Timer.kt"
   },
   "app/com.example.wear.tiles.golden.TimerKt.timer1LayoutPreview_Large Round 1.24f": {
@@ -996,7 +996,7 @@
     "functionName": "timer1LayoutPreview",
     "module": "app",
     "renderBasename": "timer1LayoutPreview_Large_Round_1_24f.png",
-    "sha256": "08249b869b248379f545e3db89c2dd6d3ac415a9b3dac742b0203e69b0616429",
+    "sha256": "8b07bbcf5f47ab5ef20be5ae845e54a6ec3127401e60525b18091d743afcf62a",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Timer.kt"
   },
   "app/com.example.wear.tiles.golden.TimerKt.timer1LayoutPreview_Small Round 0.94f": {
@@ -1004,7 +1004,7 @@
     "functionName": "timer1LayoutPreview",
     "module": "app",
     "renderBasename": "timer1LayoutPreview_Small_Round_0_94f.png",
-    "sha256": "81c3840d04b473f728752e36415862fa7c979afa1e4907973c36444ae1ca5072",
+    "sha256": "6c352aa455224581544d01e407f6939c671768f463110a5b0da56462cf5d4dac",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Timer.kt"
   },
   "app/com.example.wear.tiles.golden.TimerKt.timer1LayoutPreview_Small Round 1.00f": {
@@ -1012,7 +1012,7 @@
     "functionName": "timer1LayoutPreview",
     "module": "app",
     "renderBasename": "timer1LayoutPreview_Small_Round_1_00f.png",
-    "sha256": "094037e9d47f9a5441d49668d887fdeaedfbc216ef07a8d13121a99df95a63af",
+    "sha256": "c13e0ecb5a9272aaf0bb892c3604c42607372b4ae7c0a21a03a164a656b09b2f",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Timer.kt"
   },
   "app/com.example.wear.tiles.golden.TimerKt.timer1LayoutPreview_Small Round 1.24f": {
@@ -1020,7 +1020,7 @@
     "functionName": "timer1LayoutPreview",
     "module": "app",
     "renderBasename": "timer1LayoutPreview_Small_Round_1_24f.png",
-    "sha256": "2a706f3854c42ae12bb2cc2824ede993b19b70806969d45464b5435583dcd392",
+    "sha256": "db2c5b2499b4e8ad2d74e8dd53472fd48c88a076adc99cea437cc61b2e9e9e96",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Timer.kt"
   },
   "app/com.example.wear.tiles.golden.TimerKt.timer2LayoutPreview_Large Round 0.94f": {
@@ -1028,7 +1028,7 @@
     "functionName": "timer2LayoutPreview",
     "module": "app",
     "renderBasename": "timer2LayoutPreview_Large_Round_0_94f.png",
-    "sha256": "b81e277afff0c1981e3fb26389b67de5e543e9b1c31df6fd2e58fba53d20e744",
+    "sha256": "f7aee39251741fea5603e75392f2a53b4c9667d5481a518906d5bb42aea6196e",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Timer.kt"
   },
   "app/com.example.wear.tiles.golden.TimerKt.timer2LayoutPreview_Large Round 1.00f": {
@@ -1036,7 +1036,7 @@
     "functionName": "timer2LayoutPreview",
     "module": "app",
     "renderBasename": "timer2LayoutPreview_Large_Round_1_00f.png",
-    "sha256": "e78a9eb5a3bc60c5314e14f7b5a11da2779374db91962a0732d0753820e932d4",
+    "sha256": "a7f4880412bc6a77a10974b5c75a69a65eac44da305e3fe20f317ede3b29c91e",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Timer.kt"
   },
   "app/com.example.wear.tiles.golden.TimerKt.timer2LayoutPreview_Large Round 1.24f": {
@@ -1044,7 +1044,7 @@
     "functionName": "timer2LayoutPreview",
     "module": "app",
     "renderBasename": "timer2LayoutPreview_Large_Round_1_24f.png",
-    "sha256": "aab92fd9e32e8da5b3b36a62e9a127935c5b0a7ddc2e020925e98066eb3b452f",
+    "sha256": "801764d86d0cd01035412e3f4ced75798e19c5d396332ecde275a0536c7798d9",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Timer.kt"
   },
   "app/com.example.wear.tiles.golden.TimerKt.timer2LayoutPreview_Small Round 0.94f": {
@@ -1052,7 +1052,7 @@
     "functionName": "timer2LayoutPreview",
     "module": "app",
     "renderBasename": "timer2LayoutPreview_Small_Round_0_94f.png",
-    "sha256": "648f986c893d7486d383f5b1c3f30add6fe2eb4b77babf099a685e5d5efa53e8",
+    "sha256": "7c82e8aa80cb4208dfbc7d2f08f44d4b0de3ac3b954e72679dda9dfe71b79f5d",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Timer.kt"
   },
   "app/com.example.wear.tiles.golden.TimerKt.timer2LayoutPreview_Small Round 1.00f": {
@@ -1060,7 +1060,7 @@
     "functionName": "timer2LayoutPreview",
     "module": "app",
     "renderBasename": "timer2LayoutPreview_Small_Round_1_00f.png",
-    "sha256": "ea6f0c233c804303c0febadd453394cec2cbe01e5dcba970ec9f9801ec58217a",
+    "sha256": "55f2a2acb2003b67c533a0552ad6c4b13b2b27adaaac59efd230e26dc22864b4",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Timer.kt"
   },
   "app/com.example.wear.tiles.golden.TimerKt.timer2LayoutPreview_Small Round 1.24f": {
@@ -1068,7 +1068,7 @@
     "functionName": "timer2LayoutPreview",
     "module": "app",
     "renderBasename": "timer2LayoutPreview_Small_Round_1_24f.png",
-    "sha256": "066a31aa8a75814eef595da16436b05a541687dbb1328e5e5303b04315ada86a",
+    "sha256": "97adfd3416cf540651ed0ea23173008043bdaadb8279c8cfa23497f6248438db",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Timer.kt"
   },
   "app/com.example.wear.tiles.golden.WeatherKt.weatherPreview_Large Round 0.94f": {
@@ -1076,7 +1076,7 @@
     "functionName": "weatherPreview",
     "module": "app",
     "renderBasename": "weatherPreview_Large_Round_0_94f.png",
-    "sha256": "8e7b988543724ecb1331bfe73a362352c44038d362837a3ef5d95c14d5f356e8",
+    "sha256": "725af414b9226f1e9f73463094fcfdf0ae2cdf2cdb8bc1ea2417c44d93edd954",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Weather.kt"
   },
   "app/com.example.wear.tiles.golden.WeatherKt.weatherPreview_Large Round 1.00f": {
@@ -1084,7 +1084,7 @@
     "functionName": "weatherPreview",
     "module": "app",
     "renderBasename": "weatherPreview_Large_Round_1_00f.png",
-    "sha256": "0e0228ddf9c81a245277d3b9a0b2493d6999a5b3d86a48deb895790983f105af",
+    "sha256": "5f68451d323b4aa4b6f9092bee0077c4707fe9fb18b78cac42f6f02feadc9ff3",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Weather.kt"
   },
   "app/com.example.wear.tiles.golden.WeatherKt.weatherPreview_Large Round 1.24f": {
@@ -1092,7 +1092,7 @@
     "functionName": "weatherPreview",
     "module": "app",
     "renderBasename": "weatherPreview_Large_Round_1_24f.png",
-    "sha256": "a8d4613d8ab473f495f448a0e3ca2b024ce4fb20d03ccad7dacb108fb960c49d",
+    "sha256": "bfa84e2c41615fab35255031a3db1db01491b2a9f00b1880af98740b48b27bfc",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Weather.kt"
   },
   "app/com.example.wear.tiles.golden.WeatherKt.weatherPreview_Small Round 0.94f": {
@@ -1100,7 +1100,7 @@
     "functionName": "weatherPreview",
     "module": "app",
     "renderBasename": "weatherPreview_Small_Round_0_94f.png",
-    "sha256": "94a7bbcf8eb6ce2ff75f42284fddfbf7d29bfe3c8f1cc5740100341bd594b47d",
+    "sha256": "6baf90879f84c3f5460cdb098a6246a21093171a974e0f9f0ad4f05e4bfcfffc",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Weather.kt"
   },
   "app/com.example.wear.tiles.golden.WeatherKt.weatherPreview_Small Round 1.00f": {
@@ -1108,7 +1108,7 @@
     "functionName": "weatherPreview",
     "module": "app",
     "renderBasename": "weatherPreview_Small_Round_1_00f.png",
-    "sha256": "9021509a64543c72a5c9d7e17e0d7922fe6cb33c377b3b15b31b9b2cba307f17",
+    "sha256": "b4dd3377d2fc3d58008bc36808046f2232ba29a24cd3d7917faebda50de0a4e0",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Weather.kt"
   },
   "app/com.example.wear.tiles.golden.WeatherKt.weatherPreview_Small Round 1.24f": {
@@ -1116,7 +1116,7 @@
     "functionName": "weatherPreview",
     "module": "app",
     "renderBasename": "weatherPreview_Small_Round_1_24f.png",
-    "sha256": "d58e1c8fc7b7aed97a31aa2d5a653aab97e4a7050d5f766c4a9b3bad7bd73d71",
+    "sha256": "e5a3d69e517021205f54681de5a777c9aaa260c5d791848998bed44157149990",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Weather.kt"
   },
   "app/com.example.wear.tiles.golden.WorkoutKt.workoutLayout1Preview_Large Round 0.94f": {
@@ -1124,7 +1124,7 @@
     "functionName": "workoutLayout1Preview",
     "module": "app",
     "renderBasename": "workoutLayout1Preview_Large_Round_0_94f.png",
-    "sha256": "d58f5a4d51033119b87ff7cb57c4490d76ffe1f163bc282c71b299ad512ffc6a",
+    "sha256": "1fad4fb567793304e1d2e96a3fec92e7a5cd214212e143b0ebaa83c8f0c97a66",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Workout.kt"
   },
   "app/com.example.wear.tiles.golden.WorkoutKt.workoutLayout1Preview_Large Round 1.00f": {
@@ -1132,7 +1132,7 @@
     "functionName": "workoutLayout1Preview",
     "module": "app",
     "renderBasename": "workoutLayout1Preview_Large_Round_1_00f.png",
-    "sha256": "255da44eb297dc7dd1483827b6639ea42eef5789d0bd5d5efe0efe8314f39bb2",
+    "sha256": "87998e93a52cff3ef385b02cb85da003ada8b77dec88f4e3da0452a35ecbc97c",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Workout.kt"
   },
   "app/com.example.wear.tiles.golden.WorkoutKt.workoutLayout1Preview_Large Round 1.24f": {
@@ -1140,7 +1140,7 @@
     "functionName": "workoutLayout1Preview",
     "module": "app",
     "renderBasename": "workoutLayout1Preview_Large_Round_1_24f.png",
-    "sha256": "15f3e3b812e19c0cbcaad4c66fc040a372303acc53ef2187204ad9f3e2e202a8",
+    "sha256": "6fa4ea5ce230cff98a26d15ab2bf3afcc76e5a9549fb05dcd3878c11340765f5",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Workout.kt"
   },
   "app/com.example.wear.tiles.golden.WorkoutKt.workoutLayout1Preview_Small Round 0.94f": {
@@ -1148,7 +1148,7 @@
     "functionName": "workoutLayout1Preview",
     "module": "app",
     "renderBasename": "workoutLayout1Preview_Small_Round_0_94f.png",
-    "sha256": "58019fe848fdfe1d7f396df4cbebdaebc7275476d5e64b592c7a10a7ab748243",
+    "sha256": "6c46ba8d06e8ab9d2ba5dfc28dc5eda9a948967512e31616ea8791f5c77437b1",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Workout.kt"
   },
   "app/com.example.wear.tiles.golden.WorkoutKt.workoutLayout1Preview_Small Round 1.00f": {
@@ -1156,7 +1156,7 @@
     "functionName": "workoutLayout1Preview",
     "module": "app",
     "renderBasename": "workoutLayout1Preview_Small_Round_1_00f.png",
-    "sha256": "b75e7fd34ae9b6a7eefa4982bcd460fa9426e6eb751d7a592d55d8816b3bd7d6",
+    "sha256": "2e7c28c2bc82db6ab43459a805ea79f511b0bce886cf40ae99fb233160c8ae0b",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Workout.kt"
   },
   "app/com.example.wear.tiles.golden.WorkoutKt.workoutLayout1Preview_Small Round 1.24f": {
@@ -1164,7 +1164,7 @@
     "functionName": "workoutLayout1Preview",
     "module": "app",
     "renderBasename": "workoutLayout1Preview_Small_Round_1_24f.png",
-    "sha256": "05386355440a741a9abc0c0cd1488c99ba18eb207c922e549d05a478d4ef3352",
+    "sha256": "21b37271c4bba7fa6a6e2d4184515eb75388febfa62debc88d826403891e95d4",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Workout.kt"
   },
   "app/com.example.wear.tiles.golden.WorkoutKt.workoutLayout2Preview_Large Round 0.94f": {
@@ -1172,7 +1172,7 @@
     "functionName": "workoutLayout2Preview",
     "module": "app",
     "renderBasename": "workoutLayout2Preview_Large_Round_0_94f.png",
-    "sha256": "052bd2845e04f501194686a84610d2eef3812243d42c394e40ae7b5a6f5dc2e7",
+    "sha256": "eabd26fc2ecbc07b7e164c56210cb753437f0218f731dabfe91a136028f1baa1",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Workout.kt"
   },
   "app/com.example.wear.tiles.golden.WorkoutKt.workoutLayout2Preview_Large Round 1.00f": {
@@ -1180,7 +1180,7 @@
     "functionName": "workoutLayout2Preview",
     "module": "app",
     "renderBasename": "workoutLayout2Preview_Large_Round_1_00f.png",
-    "sha256": "5311e78ab16a25a86a04c410f89b7ee036a4c9cfdaca818bc81c5553de3e1ebd",
+    "sha256": "dae12c6bde4159af4c597bd7c7b20071ad21c69962eaf24000d125aa9a1aea5f",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Workout.kt"
   },
   "app/com.example.wear.tiles.golden.WorkoutKt.workoutLayout2Preview_Large Round 1.24f": {
@@ -1188,7 +1188,7 @@
     "functionName": "workoutLayout2Preview",
     "module": "app",
     "renderBasename": "workoutLayout2Preview_Large_Round_1_24f.png",
-    "sha256": "7657ac04ee421a461bff333b7777bf97500670995718a00a1a8701fd72df10b5",
+    "sha256": "9c651d4b11ba0b7e17e7190544cbfb4f2b3257a29f6afb057b1e6f382643f5f8",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Workout.kt"
   },
   "app/com.example.wear.tiles.golden.WorkoutKt.workoutLayout2Preview_Small Round 0.94f": {
@@ -1196,7 +1196,7 @@
     "functionName": "workoutLayout2Preview",
     "module": "app",
     "renderBasename": "workoutLayout2Preview_Small_Round_0_94f.png",
-    "sha256": "d6d22726ad007602e6bb45d5387823fce9ee42342dc83af554a6699ce5079a63",
+    "sha256": "551927a0c1ab112baab6423d2f0b433b2ad3ca9e899be38cf0b7226b5669653b",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Workout.kt"
   },
   "app/com.example.wear.tiles.golden.WorkoutKt.workoutLayout2Preview_Small Round 1.00f": {
@@ -1204,7 +1204,7 @@
     "functionName": "workoutLayout2Preview",
     "module": "app",
     "renderBasename": "workoutLayout2Preview_Small_Round_1_00f.png",
-    "sha256": "f58ee0623d6ac03bc4a19520c959856ecaeee40fec458300a0fbec79fe750516",
+    "sha256": "b43788d842819e870ba6e9b6aaf8c8c688a0be1284c566662721998969f30398",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Workout.kt"
   },
   "app/com.example.wear.tiles.golden.WorkoutKt.workoutLayout2Preview_Small Round 1.24f": {
@@ -1212,7 +1212,7 @@
     "functionName": "workoutLayout2Preview",
     "module": "app",
     "renderBasename": "workoutLayout2Preview_Small_Round_1_24f.png",
-    "sha256": "7bbe0c35b75687686a3a326024cf527033722a4da2f9a5d53c398eb8968b364e",
+    "sha256": "ed122c76e528d453f8e1f960357f5f3842d55b58294f5aa242400540cfaeffbb",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Workout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview1_Large Round 0.94f": {
@@ -1220,7 +1220,7 @@
     "functionName": "socialPreview1",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview1_Large_Round_0_94f.png",
-    "sha256": "b00e23f7c7b25f10d6c7a42abcbecb57836f9446a4bc7c8e30b6258dc00059ce",
+    "sha256": "b9b7518067db443e90ffabeb405b3f965f496b41802b1494d601e6dae4bbc2c8",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview1_Large Round 1.00f": {
@@ -1228,7 +1228,7 @@
     "functionName": "socialPreview1",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview1_Large_Round_1_00f.png",
-    "sha256": "55ad9b7af6db3c0a741b70684c8eb3751d8c0cdc6d2bf8c9d543b3ce9ba1cd3e",
+    "sha256": "d1eb72a079cda5bd56e77aa7287a26430c3eac2a924da213c8bf3735be97e069",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview1_Large Round 1.24f": {
@@ -1236,7 +1236,7 @@
     "functionName": "socialPreview1",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview1_Large_Round_1_24f.png",
-    "sha256": "23035855e0f493e97747ec6a8ea25d9d2e2cadc20deda4bc118dbe70f25eeb99",
+    "sha256": "99f5d0e852dcf5838822205c57a04b12c0b880b0abbf15c662e8b589359c0ded",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview1_Small Round 0.94f": {
@@ -1244,7 +1244,7 @@
     "functionName": "socialPreview1",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview1_Small_Round_0_94f.png",
-    "sha256": "3fe4e2e66ac7fe51f3b60b6575f164af7a2344f3a56582a1c083ad4852400d5f",
+    "sha256": "136e34153dc6b086a5f88abf363e6826b3e513aa6094fbd924aa5c7ab666ae2b",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview1_Small Round 1.00f": {
@@ -1252,7 +1252,7 @@
     "functionName": "socialPreview1",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview1_Small_Round_1_00f.png",
-    "sha256": "de9d7bb7057ef4a36eb15c6659ae4f1ed4fa2e1d39c9e414c6ad8bf528b25510",
+    "sha256": "25ed90ecd2b3607e985c4070d99eae5fe574acd30e4b5410d573729c4f3b74b8",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview1_Small Round 1.24f": {
@@ -1260,7 +1260,7 @@
     "functionName": "socialPreview1",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview1_Small_Round_1_24f.png",
-    "sha256": "51e977f231a8e9bcf60882779af6a07377ed75d5b50cf9bb993ae59f57150a7f",
+    "sha256": "e4f28a7b3e18a32e162b7914a38950b20efb34200eab19f95d1a7138a580a5a7",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview2_Large Round 0.94f": {
@@ -1268,7 +1268,7 @@
     "functionName": "socialPreview2",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview2_Large_Round_0_94f.png",
-    "sha256": "b00e23f7c7b25f10d6c7a42abcbecb57836f9446a4bc7c8e30b6258dc00059ce",
+    "sha256": "e3022313e31fa7124dfaca53f4b4c58ab522a1e482fefa1e46a6f100981f2daa",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview2_Large Round 1.00f": {
@@ -1276,7 +1276,7 @@
     "functionName": "socialPreview2",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview2_Large_Round_1_00f.png",
-    "sha256": "55ad9b7af6db3c0a741b70684c8eb3751d8c0cdc6d2bf8c9d543b3ce9ba1cd3e",
+    "sha256": "603b2696d0695d7cce325471e0e12326fa1edac2561d4fa672d9531e05fc1389",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview2_Large Round 1.24f": {
@@ -1284,7 +1284,7 @@
     "functionName": "socialPreview2",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview2_Large_Round_1_24f.png",
-    "sha256": "23035855e0f493e97747ec6a8ea25d9d2e2cadc20deda4bc118dbe70f25eeb99",
+    "sha256": "4b02c9d19df58f16629d9079844bba7951815cc26ebdc06bae61ed63e445ce31",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview2_Small Round 0.94f": {
@@ -1292,7 +1292,7 @@
     "functionName": "socialPreview2",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview2_Small_Round_0_94f.png",
-    "sha256": "3fe4e2e66ac7fe51f3b60b6575f164af7a2344f3a56582a1c083ad4852400d5f",
+    "sha256": "8d996233294268e15574eb580fb50ba44e707f64b5f1a00d97a70df2a2af9d45",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview2_Small Round 1.00f": {
@@ -1300,7 +1300,7 @@
     "functionName": "socialPreview2",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview2_Small_Round_1_00f.png",
-    "sha256": "de9d7bb7057ef4a36eb15c6659ae4f1ed4fa2e1d39c9e414c6ad8bf528b25510",
+    "sha256": "31c1f896757a779d0138ca568a863e2ae4218b1dcb916b89ae8395801a81aec6",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview2_Small Round 1.24f": {
@@ -1308,7 +1308,7 @@
     "functionName": "socialPreview2",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview2_Small_Round_1_24f.png",
-    "sha256": "51e977f231a8e9bcf60882779af6a07377ed75d5b50cf9bb993ae59f57150a7f",
+    "sha256": "b63d2b3c649509ebcf12ba4856d426217ecc9c4ef9b6b2a24635bc3a7158c5ba",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview3_Large Round 0.94f": {
@@ -1316,7 +1316,7 @@
     "functionName": "socialPreview3",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview3_Large_Round_0_94f.png",
-    "sha256": "251e4e8d783e99bb7dbe01e0416810f00515089161b24a7800fd80beedc1739f",
+    "sha256": "b0a7c2219d01092efb0d3729edef26a87824383e54c0c553c8cdcad6dbfa1e17",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview3_Large Round 1.00f": {
@@ -1324,7 +1324,7 @@
     "functionName": "socialPreview3",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview3_Large_Round_1_00f.png",
-    "sha256": "251e4e8d783e99bb7dbe01e0416810f00515089161b24a7800fd80beedc1739f",
+    "sha256": "b0a7c2219d01092efb0d3729edef26a87824383e54c0c553c8cdcad6dbfa1e17",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview3_Large Round 1.24f": {
@@ -1332,7 +1332,7 @@
     "functionName": "socialPreview3",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview3_Large_Round_1_24f.png",
-    "sha256": "251e4e8d783e99bb7dbe01e0416810f00515089161b24a7800fd80beedc1739f",
+    "sha256": "b0a7c2219d01092efb0d3729edef26a87824383e54c0c553c8cdcad6dbfa1e17",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview3_Small Round 0.94f": {
@@ -1340,7 +1340,7 @@
     "functionName": "socialPreview3",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview3_Small_Round_0_94f.png",
-    "sha256": "5602e33bac6f53ae2046dacffd67f83b4d0b9042a9b79df4813eb35fe1ba3e93",
+    "sha256": "b5d8a78f15aa6213d79b354e7d8a65af06596fb7362ec0a7751f21627733c900",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview3_Small Round 1.00f": {
@@ -1348,7 +1348,7 @@
     "functionName": "socialPreview3",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview3_Small_Round_1_00f.png",
-    "sha256": "5602e33bac6f53ae2046dacffd67f83b4d0b9042a9b79df4813eb35fe1ba3e93",
+    "sha256": "b5d8a78f15aa6213d79b354e7d8a65af06596fb7362ec0a7751f21627733c900",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview3_Small Round 1.24f": {
@@ -1356,7 +1356,7 @@
     "functionName": "socialPreview3",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview3_Small_Round_1_24f.png",
-    "sha256": "5602e33bac6f53ae2046dacffd67f83b4d0b9042a9b79df4813eb35fe1ba3e93",
+    "sha256": "b5d8a78f15aa6213d79b354e7d8a65af06596fb7362ec0a7751f21627733c900",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview4_Large Round 0.94f": {
@@ -1364,7 +1364,7 @@
     "functionName": "socialPreview4",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview4_Large_Round_0_94f.png",
-    "sha256": "251e4e8d783e99bb7dbe01e0416810f00515089161b24a7800fd80beedc1739f",
+    "sha256": "bb2a7cd6f0d784cefd8cc4249ce1acad7f05b3e77945f3b2729de3606dc6eaed",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview4_Large Round 1.00f": {
@@ -1372,7 +1372,7 @@
     "functionName": "socialPreview4",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview4_Large_Round_1_00f.png",
-    "sha256": "251e4e8d783e99bb7dbe01e0416810f00515089161b24a7800fd80beedc1739f",
+    "sha256": "bb2a7cd6f0d784cefd8cc4249ce1acad7f05b3e77945f3b2729de3606dc6eaed",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview4_Large Round 1.24f": {
@@ -1380,7 +1380,7 @@
     "functionName": "socialPreview4",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview4_Large_Round_1_24f.png",
-    "sha256": "251e4e8d783e99bb7dbe01e0416810f00515089161b24a7800fd80beedc1739f",
+    "sha256": "bb2a7cd6f0d784cefd8cc4249ce1acad7f05b3e77945f3b2729de3606dc6eaed",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview4_Small Round 0.94f": {
@@ -1388,7 +1388,7 @@
     "functionName": "socialPreview4",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview4_Small_Round_0_94f.png",
-    "sha256": "5602e33bac6f53ae2046dacffd67f83b4d0b9042a9b79df4813eb35fe1ba3e93",
+    "sha256": "a43ba4116d674c86f5ef236a9edb567eebdeaca38da0e348d7e17bf699bd84f2",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview4_Small Round 1.00f": {
@@ -1396,7 +1396,7 @@
     "functionName": "socialPreview4",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview4_Small_Round_1_00f.png",
-    "sha256": "5602e33bac6f53ae2046dacffd67f83b4d0b9042a9b79df4813eb35fe1ba3e93",
+    "sha256": "a43ba4116d674c86f5ef236a9edb567eebdeaca38da0e348d7e17bf699bd84f2",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview4_Small Round 1.24f": {
@@ -1404,7 +1404,7 @@
     "functionName": "socialPreview4",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview4_Small_Round_1_24f.png",
-    "sha256": "5602e33bac6f53ae2046dacffd67f83b4d0b9042a9b79df4813eb35fe1ba3e93",
+    "sha256": "a43ba4116d674c86f5ef236a9edb567eebdeaca38da0e348d7e17bf699bd84f2",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview5_Large Round 0.94f": {
@@ -1412,7 +1412,7 @@
     "functionName": "socialPreview5",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview5_Large_Round_0_94f.png",
-    "sha256": "251e4e8d783e99bb7dbe01e0416810f00515089161b24a7800fd80beedc1739f",
+    "sha256": "0f4c34dcd37eeb14105345158cccdb336adf1be028aa7d2deb7338fdab0190f3",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview5_Large Round 1.00f": {
@@ -1420,7 +1420,7 @@
     "functionName": "socialPreview5",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview5_Large_Round_1_00f.png",
-    "sha256": "251e4e8d783e99bb7dbe01e0416810f00515089161b24a7800fd80beedc1739f",
+    "sha256": "0f4c34dcd37eeb14105345158cccdb336adf1be028aa7d2deb7338fdab0190f3",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview5_Large Round 1.24f": {
@@ -1428,7 +1428,7 @@
     "functionName": "socialPreview5",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview5_Large_Round_1_24f.png",
-    "sha256": "251e4e8d783e99bb7dbe01e0416810f00515089161b24a7800fd80beedc1739f",
+    "sha256": "0f4c34dcd37eeb14105345158cccdb336adf1be028aa7d2deb7338fdab0190f3",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview5_Small Round 0.94f": {
@@ -1436,7 +1436,7 @@
     "functionName": "socialPreview5",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview5_Small_Round_0_94f.png",
-    "sha256": "5602e33bac6f53ae2046dacffd67f83b4d0b9042a9b79df4813eb35fe1ba3e93",
+    "sha256": "a43ba4116d674c86f5ef236a9edb567eebdeaca38da0e348d7e17bf699bd84f2",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview5_Small Round 1.00f": {
@@ -1444,7 +1444,7 @@
     "functionName": "socialPreview5",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview5_Small_Round_1_00f.png",
-    "sha256": "5602e33bac6f53ae2046dacffd67f83b4d0b9042a9b79df4813eb35fe1ba3e93",
+    "sha256": "a43ba4116d674c86f5ef236a9edb567eebdeaca38da0e348d7e17bf699bd84f2",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview5_Small Round 1.24f": {
@@ -1452,7 +1452,7 @@
     "functionName": "socialPreview5",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview5_Small_Round_1_24f.png",
-    "sha256": "5602e33bac6f53ae2046dacffd67f83b4d0b9042a9b79df4813eb35fe1ba3e93",
+    "sha256": "a43ba4116d674c86f5ef236a9edb567eebdeaca38da0e348d7e17bf699bd84f2",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview6_Large Round 0.94f": {
@@ -1460,7 +1460,7 @@
     "functionName": "socialPreview6",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview6_Large_Round_0_94f.png",
-    "sha256": "251e4e8d783e99bb7dbe01e0416810f00515089161b24a7800fd80beedc1739f",
+    "sha256": "2b696bb7ddfdb17799a4ffbe850be5dbe6d6327fae3d4a4d3d824d71e34725ff",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview6_Large Round 1.00f": {
@@ -1468,7 +1468,7 @@
     "functionName": "socialPreview6",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview6_Large_Round_1_00f.png",
-    "sha256": "251e4e8d783e99bb7dbe01e0416810f00515089161b24a7800fd80beedc1739f",
+    "sha256": "2b696bb7ddfdb17799a4ffbe850be5dbe6d6327fae3d4a4d3d824d71e34725ff",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview6_Large Round 1.24f": {
@@ -1476,7 +1476,7 @@
     "functionName": "socialPreview6",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview6_Large_Round_1_24f.png",
-    "sha256": "251e4e8d783e99bb7dbe01e0416810f00515089161b24a7800fd80beedc1739f",
+    "sha256": "2b696bb7ddfdb17799a4ffbe850be5dbe6d6327fae3d4a4d3d824d71e34725ff",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview6_Small Round 0.94f": {
@@ -1484,7 +1484,7 @@
     "functionName": "socialPreview6",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview6_Small_Round_0_94f.png",
-    "sha256": "5602e33bac6f53ae2046dacffd67f83b4d0b9042a9b79df4813eb35fe1ba3e93",
+    "sha256": "a43ba4116d674c86f5ef236a9edb567eebdeaca38da0e348d7e17bf699bd84f2",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview6_Small Round 1.00f": {
@@ -1492,7 +1492,7 @@
     "functionName": "socialPreview6",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview6_Small_Round_1_00f.png",
-    "sha256": "5602e33bac6f53ae2046dacffd67f83b4d0b9042a9b79df4813eb35fe1ba3e93",
+    "sha256": "a43ba4116d674c86f5ef236a9edb567eebdeaca38da0e348d7e17bf699bd84f2",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   },
   "app/com.example.wear.tiles.messaging.LayoutKt.socialPreview6_Small Round 1.24f": {
@@ -1500,7 +1500,7 @@
     "functionName": "socialPreview6",
     "module": "app",
     "renderBasename": "LayoutKt.socialPreview6_Small_Round_1_24f.png",
-    "sha256": "5602e33bac6f53ae2046dacffd67f83b4d0b9042a9b79df4813eb35fe1ba3e93",
+    "sha256": "a43ba4116d674c86f5ef236a9edb567eebdeaca38da0e348d7e17bf699bd84f2",
     "sourceFile": "src/main/java/com/example/wear/tiles/messaging/Layout.kt"
   }
 }
