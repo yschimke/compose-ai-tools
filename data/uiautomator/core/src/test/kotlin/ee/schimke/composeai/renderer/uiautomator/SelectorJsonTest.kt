@@ -37,10 +37,7 @@ class SelectorJsonTest {
     val json = original.encodeJson()
     val parsed = decodeSelectorJson(json)
     assertEquals(original, parsed)
-    assertEquals(
-      """{"desc":"row-2","hasDescendant":[{"text":"Bob"}]}""",
-      json,
-    )
+    assertEquals("""{"desc":"row-2","hasDescendant":[{"text":"Bob"}]}""", json)
   }
 
   @Test

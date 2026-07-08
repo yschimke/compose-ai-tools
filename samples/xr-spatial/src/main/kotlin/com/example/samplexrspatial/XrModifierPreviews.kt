@@ -26,14 +26,14 @@ import androidx.xr.runtime.math.Vector3
 import ee.schimke.composeai.preview.XrSubspacePreview
 
 /**
- * `@XrSubspacePreview`s that isolate the **pose-affecting `SubspaceModifier`s** —
- * `rotate(...)` (its Euler, axis-angle, and quaternion forms) and `offset` / `absoluteOffset` — so
- * the offline pose recovery + `xr-composite` bake can be checked against a *known* transform.
+ * `@XrSubspacePreview`s that isolate the **pose-affecting `SubspaceModifier`s** — `rotate(...)`
+ * (its Euler, axis-angle, and quaternion forms) and `offset` / `absoluteOffset` — so the offline
+ * pose recovery + `xr-composite` bake can be checked against a *known* transform.
  *
  * Why these exist: the showcase previews exercise position/rotation only indirectly (a
- * `SpatialCurvedRow` rotates panels along its arc, a `SpatialBox` z-`offset`s them for depth). These
- * drive a single modifier with explicit values, so a wrong axis, a flipped handedness, or a missing
- * perspective foreshortening in the compositor is obvious in the bake (and asserted in
+ * `SpatialCurvedRow` rotates panels along its arc, a `SpatialBox` z-`offset`s them for depth).
+ * These drive a single modifier with explicit values, so a wrong axis, a flipped handedness, or a
+ * missing perspective foreshortening in the compositor is obvious in the bake (and asserted in
  * `SubspaceModifierPoseTest`). Each `SpatialPanel` carries a unique `testTag`.
  *
  * `rotateToLookAtUser` (the "face the viewer" / billboard modifier) is here too: it sources the
@@ -43,18 +43,21 @@ import ee.schimke.composeai.preview.XrSubspacePreview
  * angle inward to face the viewer.
  */
 
-/** One tagged [SpatialPanel] with the dark [ReferencePanel] body — the unit these previews repeat. */
+/**
+ * One tagged [SpatialPanel] with the dark [ReferencePanel] body — the unit these previews repeat.
+ */
 @Composable
 private fun RefPanel(tag: String, modifier: SubspaceModifier, title: String) {
   SpatialPanel(SubspaceModifier.testTag(tag).then(modifier)) { ReferencePanel(title) }
 }
 
 /**
- * A fanned row of panels rotated about the vertical (Y / yaw) axis from −40° to +40°. The faces turn
- * away from the camera by a known angle, so the bake reveals whether the compositor's **perspective**
- * is right: the angled panels should foreshorten (narrow) with the cosine of their yaw, and the ones
- * turned toward/away should show near/far edges at different scales. A flat/orthographic projection
- * would show no foreshortening; a wrong FOV would over- or under-shorten them.
+ * A fanned row of panels rotated about the vertical (Y / yaw) axis from −40° to +40°. The faces
+ * turn away from the camera by a known angle, so the bake reveals whether the compositor's
+ * **perspective** is right: the angled panels should foreshorten (narrow) with the cosine of their
+ * yaw, and the ones turned toward/away should show near/far edges at different scales. A
+ * flat/orthographic projection would show no foreshortening; a wrong FOV would over- or
+ * under-shorten them.
  */
 @XrSubspacePreview
 @Composable
@@ -96,7 +99,9 @@ fun RotationFormsPreview() {
       RefPanel(
         tag = "rot-quat",
         modifier =
-          SubspaceModifier.width(320.dp).height(360.dp).rotate(Quaternion.fromEulerAngles(0f, 30f, 0f)),
+          SubspaceModifier.width(320.dp)
+            .height(360.dp)
+            .rotate(Quaternion.fromEulerAngles(0f, 30f, 0f)),
         title = "Quaternion",
       )
     }
@@ -132,7 +137,9 @@ fun OffsetModifiersPreview() {
       RefPanel(
         tag = "off-abs-left",
         modifier =
-          SubspaceModifier.width(300.dp).height(200.dp).absoluteOffset(x = (-360).dp, y = (-280).dp),
+          SubspaceModifier.width(300.dp)
+            .height(200.dp)
+            .absoluteOffset(x = (-360).dp, y = (-280).dp),
         title = "absoluteOffset",
       )
     }
@@ -141,12 +148,12 @@ fun OffsetModifiersPreview() {
 
 /**
  * The "face the viewer" / billboard modifier: three panels offset left / centre / right, each
- * `.rotateToLookAtUser()`. The modifier rotates each panel to face the user's head pose. Offline the
- * render path seeds that head pose in front of the panels (see `:renderer-xr`'s `FakeXrHeadPose`), so
- * on bake the centre panel faces head-on while the side panels visibly **angle inward** toward the
- * viewer — the billboard behaviour, recovered offline. `SubspaceModifierPoseTest` asserts the
- * recovered rotations (centre ≈ identity, sides turned about the vertical Y axis, never the old 180°
- * flip).
+ * `.rotateToLookAtUser()`. The modifier rotates each panel to face the user's head pose. Offline
+ * the render path seeds that head pose in front of the panels (see `:renderer-xr`'s
+ * `FakeXrHeadPose`), so on bake the centre panel faces head-on while the side panels visibly
+ * **angle inward** toward the viewer — the billboard behaviour, recovered offline.
+ * `SubspaceModifierPoseTest` asserts the recovered rotations (centre ≈ identity, sides turned about
+ * the vertical Y axis, never the old 180° flip).
  */
 @XrSubspacePreview
 @Composable

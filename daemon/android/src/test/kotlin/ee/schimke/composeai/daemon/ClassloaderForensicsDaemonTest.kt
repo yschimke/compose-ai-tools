@@ -19,8 +19,8 @@ import org.junit.Test
  *
  * **Why through the host?** The dump must run *inside the sandbox* with the child URLClassLoader
  * active. Calling [ee.schimke.composeai.daemon.forensics.ClassloaderForensics.capture] directly
- * from this test thread would just dump the test JVM's classloader graph — not what the daemon
- * sees during a render. Routing via [RobolectricHost.submit] guarantees the dump lands on the same
+ * from this test thread would just dump the test JVM's classloader graph — not what the daemon sees
+ * during a render. Routing via [RobolectricHost.submit] guarantees the dump lands on the same
  * sandbox thread that `RenderEngine.render` would run on, with the same context classloader
  * discipline (`Thread.currentThread().contextClassLoader = effectiveLoader`).
  *
@@ -110,9 +110,9 @@ class ClassloaderForensicsDaemonTest {
     // URL of the .class which we can walk back to the classes-root.
     val resourceName = "ee/schimke/composeai/daemon/RedFixturePreviewsKt.class"
     val url =
-      (Thread.currentThread().contextClassLoader ?: ClassLoader.getSystemClassLoader())
-        .getResource(resourceName)
-        ?: error("Can't locate testFixtures class on the test classpath: $resourceName")
+      (Thread.currentThread().contextClassLoader ?: ClassLoader.getSystemClassLoader()).getResource(
+        resourceName
+      ) ?: error("Can't locate testFixtures class on the test classpath: $resourceName")
     val urlString = url.toString()
     // Two cases: directory-style URL (file:.../classes/.../RedFixturePreviewsKt.class) or
     // jar-style (jar:file:.../testFixtures.jar!/ee/schimke/...). For the standard AGP unit-test
@@ -123,7 +123,8 @@ class ClassloaderForensicsDaemonTest {
       val pkgDepth = "ee/schimke/composeai/daemon".count { it == '/' } + 1
       var root: File = classFile.parentFile ?: error("classFile has no parent: $classFile")
       repeat(pkgDepth) {
-        root = root.parentFile ?: error("ran off the top of the classes-dir walking up from $classFile")
+        root =
+          root.parentFile ?: error("ran off the top of the classes-dir walking up from $classFile")
       }
       // Copy *only* the classes under `ee/schimke/composeai/daemon/Red*.class` etc — the survey
       // doesn't need the rest of the testFixtures, but copying the whole directory tree is
@@ -151,11 +152,10 @@ class ClassloaderForensicsDaemonTest {
   companion object {
 
     /**
-     * Mirrors `:renderer-android`'s `ClassloaderForensicsTest.COMMON_SURVEY_SET` so the
-     * standalone vs daemon diff is apples-to-apples. Duplicated rather than promoted to
-     * `:daemon:core` because the survey-set is a test-side concern, and promoting would
-     * widen the renderer-agnostic surface for a list that's likely to evolve as the diagnostic
-     * matures.
+     * Mirrors `:renderer-android`'s `ClassloaderForensicsTest.COMMON_SURVEY_SET` so the standalone
+     * vs daemon diff is apples-to-apples. Duplicated rather than promoted to `:daemon:core` because
+     * the survey-set is a test-side concern, and promoting would widen the renderer-agnostic
+     * surface for a list that's likely to evolve as the diagnostic matures.
      */
     val COMMON_SURVEY_SET: List<String> =
       listOf(

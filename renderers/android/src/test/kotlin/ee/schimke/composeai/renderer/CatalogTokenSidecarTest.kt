@@ -11,9 +11,9 @@ import org.junit.Test
 
 /**
  * Exercises the resolved-token sidecar end to end (issue #2167): reflect a `@ColorCatalog` colour
- * and a `@TypographyCatalog` `TextStyle` — reusing the probe `val`s from the reflection probe
- * tests — and assert the emitted `data/catalog-tokens/<id>.catalog.json` carries their resolved
- * values (hex for the colour, size/weight metrics for the type style).
+ * and a `@TypographyCatalog` `TextStyle` — reusing the probe `val`s from the reflection probe tests
+ * — and assert the emitted `data/catalog-tokens/<id>.catalog.json` carries their resolved values
+ * (hex for the colour, size/weight metrics for the type style).
  */
 class CatalogTokenSidecarTest {
 

@@ -6,16 +6,16 @@ import org.junit.Test
 
 /**
  * End-to-end verification that `@AmbientPreview` actually drives `LocalAmbientModeManager` through
- * the renderer's Compose pipeline. Reads the files produced by `:samples:wear:composePreviewRenderAll`
- * (wired in via `composePreview { renderBeforeUnitTests = true }`) and pixel-asserts that the
- * Interactive vs Ambient renders differ.
+ * the renderer's Compose pipeline. Reads the files produced by
+ * `:samples:wear:composePreviewRenderAll` (wired in via `composePreview { renderBeforeUnitTests =
+ * true }`) and pixel-asserts that the Interactive vs Ambient renders differ.
  *
  * What this guards against:
  *
  * * Renderer-side regressions where `RenderPreviewCapture.ambient` isn't honoured — the
  *   `AmbientOverrideExtension` wouldn't wrap the composition and both PNGs would render the
- *   `Interactive` fallback (the bug PR #907 fixed: previously horologist's `AmbientAware` fell
- *   back to `Inactive` and produced identical "Inactive" captures).
+ *   `Interactive` fallback (the bug PR #907 fixed: previously horologist's `AmbientAware` fell back
+ *   to `Inactive` and produced identical "Inactive" captures).
  * * Discovery-side regressions where the `@AmbientPreview` annotation is dropped from
  *   `previews.json`, the `ambient` capture field arrives null at the renderer, and the override
  *   never fires.
@@ -29,14 +29,13 @@ class AmbientPreviewPixelTest {
   private val interactivePng =
     File(rendersDir, "AmbientStatusInteractivePreview_Ambient_body_interactive.png")
 
-  private val ambientPng =
-    File(rendersDir, "AmbientStatusAmbientPreview_Ambient_body_ambient.png")
+  private val ambientPng = File(rendersDir, "AmbientStatusAmbientPreview_Ambient_body_ambient.png")
 
   /**
    * Both PNGs must exist and differ — same composition body, the only difference is the
-   * `@AmbientPreview` annotation on one of them. If they hash-match, the renderer didn't apply
-   * the connector's `AmbientOverrideExtension` for the annotated variant and the body fell back
-   * to `AmbientMode.Interactive` for both.
+   * `@AmbientPreview` annotation on one of them. If they hash-match, the renderer didn't apply the
+   * connector's `AmbientOverrideExtension` for the annotated variant and the body fell back to
+   * `AmbientMode.Interactive` for both.
    */
   @Test
   fun `Interactive and Ambient renders differ`() {

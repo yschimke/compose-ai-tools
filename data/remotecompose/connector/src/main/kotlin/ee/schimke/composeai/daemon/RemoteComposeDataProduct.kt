@@ -41,12 +41,12 @@ import kotlinx.serialization.json.JsonElement
  * [RemoteComposeOverrideExtension.AroundComposable] for every render so user code rendering a
  * `RemotePreview { ... }` block can:
  *
- *  * read [RemoteComposeHost.profile] (the daemon-requested platform profile) and pass it to the
- *    `RemotePreview(profile = …)` call,
- *  * read seeded named values via the typed `namedFloat` / `namedString` / `namedBoolean` /
- *    `namedInt` / `namedColor` helpers and bind them to a remote `RemoteFloat` / `RemoteString` /
- *    etc.,
- *  * report `HostAction` events the remote runtime fires through `reportHostAction(...)`.
+ * * read [RemoteComposeHost.profile] (the daemon-requested platform profile) and pass it to the
+ *   `RemotePreview(profile = …)` call,
+ * * read seeded named values via the typed `namedFloat` / `namedString` / `namedBoolean` /
+ *   `namedInt` / `namedColor` helpers and bind them to a remote `RemoteFloat` / `RemoteString` /
+ *   etc.,
+ * * report `HostAction` events the remote runtime fires through `reportHostAction(...)`.
  *
  * The composition local is always provided — even if no `renderNow.overrides.remoteCompose` was
  * sent — so user code can speculatively consult the host without crashing. When no override is
@@ -154,10 +154,9 @@ private object ControllerRemoteComposeHost : RemoteComposeHost {
 
 /**
  * Maps a protocol [RemoteComposeProfile] to the upstream
- * `androidx.compose.remote.creation.profile.Profile` constant carried by
- * [RcPlatformProfiles]. Exposed so user code passing
- * `LocalRemoteComposeHost.current.profile?.toRcPlatformProfile()` to `RemotePreview(profile = …)`
- * doesn't need to fork the enum mapping.
+ * `androidx.compose.remote.creation.profile.Profile` constant carried by [RcPlatformProfiles].
+ * Exposed so user code passing `LocalRemoteComposeHost.current.profile?.toRcPlatformProfile()` to
+ * `RemotePreview(profile = …)` doesn't need to fork the enum mapping.
  *
  * `RcPlatformProfiles` itself is a holder class with `static final Profile` fields — the
  * `RemotePreview` API takes a `Profile`, not the holder. Match the sample's call site:
@@ -177,32 +176,32 @@ fun RemoteComposeProfile.toRcPlatformProfile(): Profile =
 
 /**
  * Build a host-action [Action] from the protocol payload. Mirrors the alpha API's factory —
- * `hostAction(payload: RemoteString, handlerId: RemoteFloat)` — wrapping the wire `(String,
- * Float)` pair via the same `.rs` / `.rf` helpers the sample uses. (The concrete `HostAction`
- * type went `internal` in compose-remote alpha13; `hostAction(...)` is its public replacement.)
- * Useful for user code that wants to materialise a daemon-supplied action descriptor into a live
+ * `hostAction(payload: RemoteString, handlerId: RemoteFloat)` — wrapping the wire `(String, Float)`
+ * pair via the same `.rs` / `.rf` helpers the sample uses. (The concrete `HostAction` type went
+ * `internal` in compose-remote alpha13; `hostAction(...)` is its public replacement.) Useful for
+ * user code that wants to materialise a daemon-supplied action descriptor into a live
  * `RemoteButton(onClick = …)`.
  */
 fun RemoteHostAction.toHostAction(): Action = hostAction(payload.rs, handlerId.rf)
 
 /**
  * `AroundComposable` extension that owns the Remote Compose surface. The extension is **always
- * active** — the planner emits an instance for every render so [LocalRemoteComposeHost] is in
- * scope regardless of whether the client sent an explicit `RemoteComposeOverride`. User code that
+ * active** — the planner emits an instance for every render so [LocalRemoteComposeHost] is in scope
+ * regardless of whether the client sent an explicit `RemoteComposeOverride`. User code that
  * speculatively reads `LocalRemoteComposeHost.current.namedFloat("score", default = 0f)` always
  * gets a sensible answer.
  *
  * Lifecycle:
  *
- * * On enter — [RemoteComposeController.set] is called with the seed (clears the map / profile
- *   when null). `DisposableEffect(seed)` re-runs only when the override identity changes, so a
+ * * On enter — [RemoteComposeController.set] is called with the seed (clears the map / profile when
+ *   null). `DisposableEffect(seed)` re-runs only when the override identity changes, so a
  *   subsequent `renderNow.overrides.remoteCompose` with the same shape doesn't churn.
  * * On dispose — clears the override and any captured host-action buffer (`resetForNewSession`).
  *   Matches `KeyboardOverrideExtension` / `PermissionsOverrideExtension` semantics.
  *
  * Runs in [DataExtensionPhase.OuterEnvironment] so the composition local is in place before the
- * user-environment phase reaches preview content — `RemotePreview` blocks composed by user code
- * see the host.
+ * user-environment phase reaches preview content — `RemotePreview` blocks composed by user code see
+ * the host.
  */
 class RemoteComposeOverrideExtension(private val seed: RemoteComposeOverride? = null) :
   AroundComposableExtension(
@@ -232,8 +231,8 @@ class RemoteComposeOverrideExtension(private val seed: RemoteComposeOverride? = 
 /**
  * Planner that maps `renderNow.overrides.remoteCompose` to a [RemoteComposeOverrideExtension].
  * **Always** returns a non-null extension — like `KeyboardPreviewOverrideExtension` /
- * `PermissionsPreviewOverrideExtension`. The around-composable's [LocalRemoteComposeHost] needs
- * to be in place on every render so a screen that consults the host (or one whose embedded
+ * `PermissionsPreviewOverrideExtension`. The around-composable's [LocalRemoteComposeHost] needs to
+ * be in place on every render so a screen that consults the host (or one whose embedded
  * `RemotePreview` block reads the profile / named values) reaches the controller's tracking path.
  */
 class RemoteComposePreviewOverrideExtension : DataExtension<PreviewOverrides> {
@@ -258,8 +257,8 @@ class RemoteComposePreviewOverrideExtension : DataExtension<PreviewOverrides> {
  * the state by sending a fresh `renderNow.overrides.remoteCompose` (replaces named values +
  * profile, preserves host-action buffer) or by waiting for user code to call
  * [RemoteComposeHost.setNamedValue] / [RemoteComposeHost.reportHostAction] inside a held
- * interactive session — `addChangeListener` callbacks already wired through the controller wake
- * any active subscription.
+ * interactive session — `addChangeListener` callbacks already wired through the controller wake any
+ * active subscription.
  */
 class RemoteComposeDataProductRegistry : DataProductRegistry {
   private val latestPayloads = ConcurrentHashMap<String, RemoteComposePayload>()
@@ -338,11 +337,7 @@ class RemoteComposeDataProductRegistry : DataProductRegistry {
     }
     capture(
       previewId,
-      RemoteComposePayload(
-        namedValues = namedValues,
-        hostActions = hostActions,
-        profile = profile,
-      ),
+      RemoteComposePayload(namedValues = namedValues, hostActions = hostActions, profile = profile),
     )
   }
 

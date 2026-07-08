@@ -48,10 +48,7 @@ class OverlayExtensionTest {
           )
         )
       }
-    assertTrue(
-      ex.message!!,
-      ex.message!!.contains(OverlayContextKeys.OutputDirectory.name),
-    )
+    assertTrue(ex.message!!, ex.message!!.contains(OverlayContextKeys.OutputDirectory.name))
   }
 
   @Test

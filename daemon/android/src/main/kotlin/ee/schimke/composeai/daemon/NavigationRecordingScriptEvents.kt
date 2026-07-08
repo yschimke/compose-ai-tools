@@ -25,8 +25,8 @@ import ee.schimke.composeai.data.render.extensions.RecordingScriptEventDescripto
  * - `navigation.predictiveBackCommitted` — calls `onBackPressed()` to commit the gesture (no
  *   payload). Use after a `predictiveBackStarted` + N `predictiveBackProgressed` to land the back
  *   stack pop.
- * - `navigation.predictiveBackCancelled` — drives `dispatchOnBackCancelled()` (no payload). Use
- *   to verify the screen restores cleanly when the gesture is abandoned.
+ * - `navigation.predictiveBackCancelled` — drives `dispatchOnBackCancelled()` (no payload). Use to
+ *   verify the screen restores cleanly when the gesture is abandoned.
  *
  * **Why per-id discrimination instead of one `navigation.event` with an `actionKind` payload.**
  * Per-id ids let the MCP validator reject unknown actions at the kind level (no special payload
@@ -35,11 +35,11 @@ import ee.schimke.composeai.data.render.extensions.RecordingScriptEventDescripto
  * kind-level discrimination.
  *
  * Why this lives in `:daemon:android` (mirroring [LifecycleRecordingScriptEvents] /
- * [PreviewReloadRecordingScriptEvents]) and not in a separate `:data-navigation-connector`
- * module: navigation has no data products (no per-render JSON / overlay PNG), just dispatch arms
- * in [RobolectricHost.SandboxRunner.performNavigationAction]. The connector pattern's value is
- * shipping a separate matcher / overlay artefact across the daemon bridge — there's nothing of
- * that shape here.
+ * [PreviewReloadRecordingScriptEvents]) and not in a separate `:data-navigation-connector` module:
+ * navigation has no data products (no per-render JSON / overlay PNG), just dispatch arms in
+ * [RobolectricHost.SandboxRunner.performNavigationAction]. The connector pattern's value is
+ * shipping a separate matcher / overlay artefact across the daemon bridge — there's nothing of that
+ * shape here.
  */
 object NavigationRecordingScriptEvents {
 

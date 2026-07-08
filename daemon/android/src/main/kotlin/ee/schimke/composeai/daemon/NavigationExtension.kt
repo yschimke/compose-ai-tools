@@ -9,14 +9,14 @@ import ee.schimke.composeai.data.render.extensions.ExtensionPostCaptureContext
 import ee.schimke.composeai.data.render.extensions.PostCaptureProcessor
 
 /**
- * Always-on post-capture extension that walks the held [`androidx.activity.ComponentActivity`]
- * and writes the `data/navigation` artefact for the rendered preview — see
- * [NavigationDataProducer] for the payload shape and Robolectric caveats.
+ * Always-on post-capture extension that walks the held [`androidx.activity.ComponentActivity`] and
+ * writes the `data/navigation` artefact for the rendered preview — see [NavigationDataProducer] for
+ * the payload shape and Robolectric caveats.
  *
  * Pure post-capture: no Compose-side hook is needed because the activity reference is threaded
- * through [RenderDataArtifactContextKeys.HeldActivity]. Skips silently when the key isn't
- * populated (host with no `ComposeTestRule.activity` available — defensive, the production path
- * always populates it).
+ * through [RenderDataArtifactContextKeys.HeldActivity]. Skips silently when the key isn't populated
+ * (host with no `ComposeTestRule.activity` available — defensive, the production path always
+ * populates it).
  *
  * Mirrors the [I18nTranslationsExtension] / [ComposeSemanticsExtension] shape.
  */
@@ -41,7 +41,8 @@ class NavigationExtension : PostCaptureProcessor {
   companion object {
     val ID: DataExtensionId = DataExtensionId(NavigationDataProducer.KIND)
 
-    val factory: RenderDataArtifactExtensionFactory =
-      RenderDataArtifactExtensionFactory { _ -> NavigationExtension() }
+    val factory: RenderDataArtifactExtensionFactory = RenderDataArtifactExtensionFactory { _ ->
+      NavigationExtension()
+    }
   }
 }

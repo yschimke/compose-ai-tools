@@ -22,10 +22,10 @@ import org.robolectric.annotation.GraphicsMode
  *
  * Each case builds a real `NotificationCompat` notification, runs it through the primitive at a
  * Pixel-ish width, and asserts the resulting bitmap is non-null, non-empty, and contains at least
- * one non-default pixel (a basic sanity check that *something* drew rather than the View
- * collapsing to an invisible tree). We pin SDK 33 to match the rest of this module's Robolectric
- * suite — high enough that `Notification.Builder.recoverBuilder` and the modern RemoteViews path
- * are stable, low enough to avoid the API-37 Robolectric jar gap tracked in CI.
+ * one non-default pixel (a basic sanity check that *something* drew rather than the View collapsing
+ * to an invisible tree). We pin SDK 33 to match the rest of this module's Robolectric suite — high
+ * enough that `Notification.Builder.recoverBuilder` and the modern RemoteViews path are stable, low
+ * enough to avoid the API-37 Robolectric jar gap tracked in CI.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33])
@@ -65,8 +65,8 @@ class NotificationBitmapRendererTest {
           NotificationCompat.BigTextStyle()
             .bigText(
               "BigTextStyle expanded body — the Compose-free renderer should be able to draw " +
-                "this RemoteViews tree without pulling Jetpack Compose onto the test classpath.",
-            ),
+                "this RemoteViews tree without pulling Jetpack Compose onto the test classpath."
+            )
         )
         .build()
 
@@ -83,7 +83,7 @@ class NotificationBitmapRendererTest {
       val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
       if (nm.getNotificationChannel(CHANNEL_ID) == null) {
         nm.createNotificationChannel(
-          NotificationChannel(CHANNEL_ID, "Test", NotificationManager.IMPORTANCE_DEFAULT),
+          NotificationChannel(CHANNEL_ID, "Test", NotificationManager.IMPORTANCE_DEFAULT)
         )
       }
     }
@@ -92,8 +92,8 @@ class NotificationBitmapRendererTest {
   /**
    * A bitmap is "drawn" if it has at least one pixel that differs from the fully-transparent
    * default `Bitmap.createBitmap(...)` fill (`0x00000000`). RemoteViews inflation always paints
-   * some chrome (title text, icon background, etc.) so any successful render trips this check;
-   * a zero-size or all-transparent bitmap would mean inflation produced nothing visible.
+   * some chrome (title text, icon background, etc.) so any successful render trips this check; a
+   * zero-size or all-transparent bitmap would mean inflation produced nothing visible.
    */
   private fun hasDrawnPixel(bitmap: android.graphics.Bitmap): Boolean {
     val w = bitmap.width

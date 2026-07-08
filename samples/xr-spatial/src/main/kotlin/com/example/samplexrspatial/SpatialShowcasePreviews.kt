@@ -21,15 +21,16 @@ import ee.schimke.composeai.preview.XrSubspacePreview
 
 /**
  * `@XrSubspacePreview`s that showcase the main spatial-Compose layout patterns from
- * `androidx.xr.compose`. Each composes a real `Subspace { … }` arrangement under the fake XR runtime
- * driven by `composePreviewRenderXr`, which recovers the panel poses/sizes into a `scene.json` (and
- * one `<testTag>.png` texture per panel) for the offline `xr-composite` compositor to bake.
+ * `androidx.xr.compose`. Each composes a real `Subspace { … }` arrangement under the fake XR
+ * runtime driven by `composePreviewRenderXr`, which recovers the panel poses/sizes into a
+ * `scene.json` (and one `<testTag>.png` texture per panel) for the offline `xr-composite`
+ * compositor to bake.
  *
  * Real Android XR apps don't `@Preview` the spatial arrangement itself — only the 2D panel content
- * — because a plain `@Preview` of a `Subspace` captures an empty Home-Space frame (the subspace body
- * is skipped when spatialization is off). These previews exist precisely to exercise the offline
- * subspace render path, so the spatial layout is genuinely measured and laid out rather than
- * fallen-back-to-2D.
+ * — because a plain `@Preview` of a `Subspace` captures an empty Home-Space frame (the subspace
+ * body is skipped when spatialization is off). These previews exist precisely to exercise the
+ * offline subspace render path, so the spatial layout is genuinely measured and laid out rather
+ * than fallen-back-to-2D.
  *
  * Invariant: **every `SpatialPanel` carries a unique `SubspaceModifier.testTag("<id>")`.** The tag
  * becomes the panel id in `scene.json` and the `<id>.png` texture filename; a duplicate or missing
@@ -51,7 +52,9 @@ fun SpatialRowPreview() {
       SpatialPanel(SubspaceModifier.testTag("row-now-playing").width(480.dp).height(440.dp)) {
         NowPlayingPanel()
       }
-      SpatialPanel(SubspaceModifier.testTag("row-queue").width(360.dp).height(440.dp)) { QueueList() }
+      SpatialPanel(SubspaceModifier.testTag("row-queue").width(360.dp).height(440.dp)) {
+        QueueList()
+      }
     }
   }
 }
@@ -106,10 +109,7 @@ fun SpatialDepthPreview() {
         LibraryGrid()
       }
       SpatialPanel(
-        SubspaceModifier.testTag("depth-foreground")
-          .width(420.dp)
-          .height(180.dp)
-          .offset(z = 120.dp)
+        SubspaceModifier.testTag("depth-foreground").width(420.dp).height(180.dp).offset(z = 120.dp)
       ) {
         AlbumArtCard()
       }

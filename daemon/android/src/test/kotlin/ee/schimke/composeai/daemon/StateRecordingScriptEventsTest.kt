@@ -11,9 +11,9 @@ import org.junit.Test
  * three state-related script events: `state.recreate`, `state.save`, `state.restore`.
  *
  * `state.recreate` is the single-event round-trip primitive (collapses save+restore into one
- * event). The pair `state.save` / `state.restore` is the named-checkpoint model — multiple
- * bundles, restore an arbitrary one by `checkpointId`. Both rely on the same
- * `SaveableStateRegistry` bridge in [RobolectricHost].
+ * event). The pair `state.save` / `state.restore` is the named-checkpoint model — multiple bundles,
+ * restore an arbitrary one by `checkpointId`. Both rely on the same `SaveableStateRegistry` bridge
+ * in [RobolectricHost].
  */
 class StateRecordingScriptEventsTest {
 

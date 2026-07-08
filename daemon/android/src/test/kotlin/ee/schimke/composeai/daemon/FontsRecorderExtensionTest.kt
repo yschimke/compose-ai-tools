@@ -49,9 +49,11 @@ class FontsRecorderExtensionTest {
 
       val artefact = rootDir.resolve("preview-base").resolve(FontsUsedDataProducer.FILE)
       assertTrue("expected fonts-used.json at $artefact", artefact.exists())
-      val payload =
-        FontsUsedDataProducer.json.parseToJsonElement(artefact.readText()).jsonObject
-      assertTrue("empty recorder should produce empty fonts list", payload["fonts"]!!.jsonArray.isEmpty())
+      val payload = FontsUsedDataProducer.json.parseToJsonElement(artefact.readText()).jsonObject
+      assertTrue(
+        "empty recorder should produce empty fonts list",
+        payload["fonts"]!!.jsonArray.isEmpty(),
+      )
     } finally {
       rootDir.deleteRecursively()
     }
@@ -80,7 +82,10 @@ class FontsRecorderExtensionTest {
 
       val byProtocolId = rootDir.resolve("protocol-id").resolve(FontsUsedDataProducer.FILE)
       val byBaseName = rootDir.resolve("fallback-base").resolve(FontsUsedDataProducer.FILE)
-      assertTrue("expected fonts artefact under protocol previewId: $byProtocolId", byProtocolId.exists())
+      assertTrue(
+        "expected fonts artefact under protocol previewId: $byProtocolId",
+        byProtocolId.exists(),
+      )
       assertTrue("must not also write under outputBaseName: $byBaseName", !byBaseName.exists())
     } finally {
       rootDir.deleteRecursively()

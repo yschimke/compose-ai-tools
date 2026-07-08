@@ -21,9 +21,10 @@ object ProbeTypeScale {
 
 /**
  * Sibling of [ColorValueReflectionProbeTest] for the `@TypographyCatalog` path. Pins the two ways a
- * `TextStyle` token can be declared — a file-level `val` (static backing field, `null` receiver) and
- * an `object` member (`INSTANCE` receiver) — so a regression in [CatalogValueReflection.reflectTextStyle]
- * surfaces here as a fast JVM failure instead of deep in the Robolectric render.
+ * `TextStyle` token can be declared — a file-level `val` (static backing field, `null` receiver)
+ * and an `object` member (`INSTANCE` receiver) — so a regression in
+ * [CatalogValueReflection.reflectTextStyle] surfaces here as a fast JVM failure instead of deep in
+ * the Robolectric render.
  */
 class TextStyleValueReflectionProbeTest {
 

@@ -5,13 +5,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Pins [LifecycleRecordingScriptEvents] — the Android-only lifecycle-driven script-event
- * descriptor that `RobolectricHost` advertises from `recordingScriptEventDescriptors()`.
+ * Pins [LifecycleRecordingScriptEvents] — the Android-only lifecycle-driven script-event descriptor
+ * that `RobolectricHost` advertises from `recordingScriptEventDescriptors()`.
  *
  * Each supported transition has its own event id (`lifecycle.pause` / `lifecycle.resume` /
  * `lifecycle.stop`) so the MCP validator can reject unknown transitions at the kind level. The
- * dispatch routing is pinned in [AndroidRecordingSessionTest]; this test keeps the descriptor
- * side honest.
+ * dispatch routing is pinned in [AndroidRecordingSessionTest]; this test keeps the descriptor side
+ * honest.
  */
 class LifecycleRecordingScriptEventsTest {
 
@@ -29,10 +29,7 @@ class LifecycleRecordingScriptEventsTest {
       ids,
     )
     val allSupported = descriptor.recordingScriptEvents.all { it.supported }
-    assertTrue(
-      "every wired lifecycle event id must advertise supported = true",
-      allSupported,
-    )
+    assertTrue("every wired lifecycle event id must advertise supported = true", allSupported)
   }
 
   @Test

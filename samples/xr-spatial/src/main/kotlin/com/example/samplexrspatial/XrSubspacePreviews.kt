@@ -14,8 +14,8 @@ import ee.schimke.composeai.preview.XrSubspacePreview
 /**
  * An `@XrSubspacePreview` — the real `Subspace` layout, rendered offline to a `scene.json` (panel
  * poses/sizes) by `composePreviewRenderXr`, for the VS Code 3D viewer. Unlike a plain `@Preview` of
- * a subspace (which captures an empty Home-Space frame), this is composed under a fake XR runtime so
- * the spatial layout is actually recovered. Each `SpatialPanel` carries a `testTag` — the tag
+ * a subspace (which captures an empty Home-Space frame), this is composed under a fake XR runtime
+ * so the spatial layout is actually recovered. Each `SpatialPanel` carries a `testTag` — the tag
  * becomes the panel's id (and `<id>.png` texture path) in the scene.
  */
 @XrSubspacePreview

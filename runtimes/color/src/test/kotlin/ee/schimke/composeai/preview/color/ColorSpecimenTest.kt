@@ -16,11 +16,11 @@ import org.robolectric.annotation.GraphicsMode
  * Smoke test for the colour specimen helpers. Each test composes the helper into a Robolectric
  * activity, waits for first composition, then asserts:
  *
- *  1. The helper renders without throwing (a composition-time exception would propagate out of
- *     `composeRule.setContent { … }` here).
- *  2. The expected labels surface in the semantics tree, counted by querying for each row's label
- *     string — same `onAllNodesWithText(...).fetchSemanticsNodes().size` approach the typography
- *     runtime uses, for the same merged-vs-unmerged-tree reason.
+ * 1. The helper renders without throwing (a composition-time exception would propagate out of
+ *    `composeRule.setContent { … }` here).
+ * 2. The expected labels surface in the semantics tree, counted by querying for each row's label
+ *    string — same `onAllNodesWithText(...).fetchSemanticsNodes().size` approach the typography
+ *    runtime uses, for the same merged-vs-unmerged-tree reason.
  *
  * The tests stay deliberately shape-only — they do NOT sample rendered swatch pixels. The helpers
  * are display surfaces whose visual correctness is verified through the compose-preview render
@@ -31,9 +31,7 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ColorSpecimenTest {
 
-  @Suppress("DEPRECATION")
-  @get:Rule
-  val composeRule = createAndroidComposeRule<ComponentActivity>()
+  @Suppress("DEPRECATION") @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
 
   @Test
   fun `ColorSchemeSpecimen renders one row per Material 3 colour role`() {

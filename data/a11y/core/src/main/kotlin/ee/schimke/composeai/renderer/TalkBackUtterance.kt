@@ -5,14 +5,14 @@ package ee.schimke.composeai.renderer
  * issue #1956, Phase 2.
  *
  * Until now the a11y data product surfaced `label` / `role` / `states` as *separate* fields and let
- * each consumer (the overlay legend, the CLI table) lay them out however it liked. Nothing assembled
- * the one continuous utterance a screen reader would actually speak. The TalkBack focus overlay
- * ([the caption card] and the exploratory TTS track both need exactly that string, so it lives here
- * as a single pure function the live overlay, the post-capture overlay, and any future spoken-audio
- * track all share — one definition, no drift between the caption you see and the audio you'd hear.
+ * each consumer (the overlay legend, the CLI table) lay them out however it liked. Nothing
+ * assembled the one continuous utterance a screen reader would actually speak. The TalkBack focus
+ * overlay ([the caption card] and the exploratory TTS track both need exactly that string, so it
+ * lives here as a single pure function the live overlay, the post-capture overlay, and any future
+ * spoken-audio track all share — one definition, no drift between the caption you see and the audio
+ * you'd hear.
  *
  * **Ordering** follows modern Android TalkBack's node announcement shape:
- *
  * ```
  * <label>, <role>, <state…>, <usage hint…>
  * ```
@@ -24,17 +24,17 @@ package ee.schimke.composeai.renderer
  *    always carry a non-blank label; a blank one is tolerated and simply dropped so the utterance
  *    starts with the role.)
  * 2. **role** — TalkBack speaks the control type after the name, lower-cased (`Button` → `button`,
- *    `CheckBox` → `checkbox`). `null` roles (plain text nodes) contribute nothing — TalkBack doesn't
- *    say "text view" for every label.
+ *    `CheckBox` → `checkbox`). `null` roles (plain text nodes) contribute nothing — TalkBack
+ *    doesn't say "text view" for every label.
  * 3. **state words** — `checked` / `not checked`, `disabled`, `edit box`, plus any verbatim
  *    `stateDescription` the extractor captured (a slider's `"70%"`, an expandable's `"Expanded"`).
  *    These map from the [AccessibilityNode.states] tokens the extractors emit
  *    ([AccessibilityChecker] on Android, the desktop node extractor on CMP).
  * 4. **usage hints** — the "how do I operate this" affix TalkBack appends from the node's actions:
  *    `double-tap to activate` (clickable), `double-tap to toggle` (a clickable that's also
- *    checkable), `double-tap and hold to long press` (long-clickable), and an explicit
- *    `hint: <text>` (the node's accessibility hint). Hints are **suppressed when the node is
- *    disabled** — TalkBack doesn't offer "double-tap to activate" on a control you can't operate.
+ *    checkable), `double-tap and hold to long press` (long-clickable), and an explicit `hint:
+ *    <text>` (the node's accessibility hint). Hints are **suppressed when the node is disabled** —
+ *    TalkBack doesn't offer "double-tap to activate" on a control you can't operate.
  *
  * The function is intentionally pure and dependency-free (no Compose, no Android) so it unit-tests
  * trivially and runs anywhere the [AccessibilityNode] model does.

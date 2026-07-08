@@ -29,8 +29,7 @@ class AmbientDataProductTest {
 
   @Test
   fun `ambient override extension declares around-composable hook`() {
-    val extension =
-      AmbientOverrideExtension(AmbientOverride(state = AmbientStateOverride.AMBIENT))
+    val extension = AmbientOverrideExtension(AmbientOverride(state = AmbientStateOverride.AMBIENT))
     val hook: AroundComposableHook = extension
 
     assertEquals(DataExtensionId(Material3AmbientProduct.KIND), extension.id)
@@ -44,7 +43,9 @@ class AmbientDataProductTest {
   fun `planner returns extension when ambient override present`() {
     val planner = AmbientPreviewOverrideExtension()
     val planned =
-      planner.plan(PreviewOverrides(ambient = AmbientOverride(state = AmbientStateOverride.AMBIENT)))
+      planner.plan(
+        PreviewOverrides(ambient = AmbientOverride(state = AmbientStateOverride.AMBIENT))
+      )
     assertTrue("expected planner to produce a hook", planned is AroundComposableHook)
     assertEquals(DataExtensionId(Material3AmbientProduct.KIND), planned!!.id)
   }
@@ -153,8 +154,7 @@ class AmbientDataProductTest {
           )
       )
     // Use a stub RenderResult — we only care that onRender captures something the fetch surfaces.
-    val stubResult =
-      RenderResult(id = 1L, classLoaderHashCode = 0, classLoaderName = "test")
+    val stubResult = RenderResult(id = 1L, classLoaderHashCode = 0, classLoaderName = "test")
     registry.onRender("preview-1", stubResult, overrides, null)
     val fetched = registry.fetch("preview-1", "compose/ambient", null, true)
     val ok = fetched as DataProductRegistry.Outcome.Ok

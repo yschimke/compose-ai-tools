@@ -41,8 +41,8 @@ import ee.schimke.composeai.preview.AnimatedPreview
  * Compose **1.11's shared-element visual debugging** (`LookaheadAnimationVisualDebugging`) captured
  * as GIFs.
  *
- * 1.11 added a runtime debug composable you wrap *around* a `SharedTransitionLayout`. While a shared
- * transition is in flight it paints, into the shared overlay:
+ * 1.11 added a runtime debug composable you wrap *around* a `SharedTransitionLayout`. While a
+ * shared transition is in flight it paints, into the shared overlay:
  * - the **target bounds** each element is animating toward (semi-transparent fill, [overlayColor]),
  * - **unmatched** elements — a shared key with no counterpart in the other state — in
  *   [unmatchedColor] (red), the single most common shared-element bug,
@@ -62,46 +62,51 @@ import ee.schimke.composeai.preview.AnimatedPreview
 private val debugBoundsSpec = BoundsTransform { _, _ -> tween(durationMillis = 600) }
 
 private enum class DebugScreen {
-    Collapsed,
-    Expanded,
+  Collapsed,
+  Expanded,
 }
 
 /**
  * A **well-formed** container transform under the debug overlay: every shared key (`avatar`,
- * `title`, `container`) has a matched counterpart, so the overlay only draws target-bounds rectangles
- * and key labels — no red, no green. This is the "what correct looks like" baseline.
+ * `title`, `container`) has a matched counterpart, so the overlay only draws target-bounds
+ * rectangles and key labels — no red, no green. This is the "what correct looks like" baseline.
  */
 @OptIn(ExperimentalLookaheadAnimationVisualDebugApi::class)
-@Preview(name = "Shared Element Debug — Matched", widthDp = 300, heightDp = 520, showBackground = true)
+@Preview(
+  name = "Shared Element Debug — Matched",
+  widthDp = 300,
+  heightDp = 520,
+  showBackground = true,
+)
 @AnimatedPreview(durationMs = 750)
 @Composable
 fun SharedElementDebugMatchedAnimatedPreview() {
-    var screen by remember { mutableStateOf(DebugScreen.Collapsed) }
-    LaunchedEffect(Unit) { screen = DebugScreen.Expanded }
-    MaterialTheme {
-        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
-            LookaheadAnimationVisualDebugging(isEnabled = true, isShowKeyLabelEnabled = true) {
-                SharedTransitionLayout(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                    AnimatedContent(
-                        targetState = screen,
-                        label = "debug-matched",
-                        modifier = Modifier.fillMaxSize(),
-                    ) { target ->
-                        when (target) {
-                            DebugScreen.Collapsed ->
-                                DebugCollapsed(
-                                    this@SharedTransitionLayout,
-                                    this@AnimatedContent,
-                                    includeBadge = false,
-                                )
-                            DebugScreen.Expanded ->
-                                DebugExpanded(this@SharedTransitionLayout, this@AnimatedContent)
-                        }
-                    }
-                }
+  var screen by remember { mutableStateOf(DebugScreen.Collapsed) }
+  LaunchedEffect(Unit) { screen = DebugScreen.Expanded }
+  MaterialTheme {
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+      LookaheadAnimationVisualDebugging(isEnabled = true, isShowKeyLabelEnabled = true) {
+        SharedTransitionLayout(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+          AnimatedContent(
+            targetState = screen,
+            label = "debug-matched",
+            modifier = Modifier.fillMaxSize(),
+          ) { target ->
+            when (target) {
+              DebugScreen.Collapsed ->
+                DebugCollapsed(
+                  this@SharedTransitionLayout,
+                  this@AnimatedContent,
+                  includeBadge = false,
+                )
+              DebugScreen.Expanded ->
+                DebugExpanded(this@SharedTransitionLayout, this@AnimatedContent)
             }
+          }
         }
+      }
     }
+  }
 }
 
 /**
@@ -112,148 +117,148 @@ fun SharedElementDebugMatchedAnimatedPreview() {
  */
 @OptIn(ExperimentalLookaheadAnimationVisualDebugApi::class)
 @Preview(
-    name = "Shared Element Debug — Unmatched",
-    widthDp = 300,
-    heightDp = 520,
-    showBackground = true,
+  name = "Shared Element Debug — Unmatched",
+  widthDp = 300,
+  heightDp = 520,
+  showBackground = true,
 )
 @AnimatedPreview(durationMs = 750)
 @Composable
 fun SharedElementDebugUnmatchedAnimatedPreview() {
-    var screen by remember { mutableStateOf(DebugScreen.Collapsed) }
-    LaunchedEffect(Unit) { screen = DebugScreen.Expanded }
-    MaterialTheme {
-        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
-            LookaheadAnimationVisualDebugging(
-                isEnabled = true,
-                unmatchedElementColor = Color(0xCCD32F2F),
-                isShowKeyLabelEnabled = true,
-            ) {
-                SharedTransitionLayout(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                    AnimatedContent(
-                        targetState = screen,
-                        label = "debug-unmatched",
-                        modifier = Modifier.fillMaxSize(),
-                    ) { target ->
-                        when (target) {
-                            DebugScreen.Collapsed ->
-                                DebugCollapsed(
-                                    this@SharedTransitionLayout,
-                                    this@AnimatedContent,
-                                    includeBadge = true,
-                                )
-                            DebugScreen.Expanded ->
-                                DebugExpanded(this@SharedTransitionLayout, this@AnimatedContent)
-                        }
-                    }
-                }
+  var screen by remember { mutableStateOf(DebugScreen.Collapsed) }
+  LaunchedEffect(Unit) { screen = DebugScreen.Expanded }
+  MaterialTheme {
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+      LookaheadAnimationVisualDebugging(
+        isEnabled = true,
+        unmatchedElementColor = Color(0xCCD32F2F),
+        isShowKeyLabelEnabled = true,
+      ) {
+        SharedTransitionLayout(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+          AnimatedContent(
+            targetState = screen,
+            label = "debug-unmatched",
+            modifier = Modifier.fillMaxSize(),
+          ) { target ->
+            when (target) {
+              DebugScreen.Collapsed ->
+                DebugCollapsed(
+                  this@SharedTransitionLayout,
+                  this@AnimatedContent,
+                  includeBadge = true,
+                )
+              DebugScreen.Expanded ->
+                DebugExpanded(this@SharedTransitionLayout, this@AnimatedContent)
             }
+          }
         }
+      }
     }
+  }
 }
 
 @Composable
 private fun DebugCollapsed(
-    sharedScope: SharedTransitionScope,
-    visibilityScope: AnimatedVisibilityScope,
-    includeBadge: Boolean,
+  sharedScope: SharedTransitionScope,
+  visibilityScope: AnimatedVisibilityScope,
+  includeBadge: Boolean,
 ) =
-    with(sharedScope) {
-        Row(
-            modifier =
-                Modifier.sharedBounds(
-                        rememberSharedContentState(key = "container"),
-                        animatedVisibilityScope = visibilityScope,
-                        boundsTransform = debugBoundsSpec,
-                    )
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xFFD7E3FF))
-                    .fillMaxWidth()
-                    .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier =
-                    Modifier.sharedElement(
-                            rememberSharedContentState(key = "avatar"),
-                            animatedVisibilityScope = visibilityScope,
-                            boundsTransform = debugBoundsSpec,
-                        )
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF345CA8))
+  with(sharedScope) {
+    Row(
+      modifier =
+        Modifier.sharedBounds(
+            rememberSharedContentState(key = "container"),
+            animatedVisibilityScope = visibilityScope,
+            boundsTransform = debugBoundsSpec,
+          )
+          .clip(RoundedCornerShape(20.dp))
+          .background(Color(0xFFD7E3FF))
+          .fillMaxWidth()
+          .padding(12.dp),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Box(
+        modifier =
+          Modifier.sharedElement(
+              rememberSharedContentState(key = "avatar"),
+              animatedVisibilityScope = visibilityScope,
+              boundsTransform = debugBoundsSpec,
             )
-            Spacer(Modifier.size(12.dp))
-            Text(
-                "Glacier trail",
-                modifier =
-                    Modifier.sharedBounds(
-                        rememberSharedContentState(key = "title"),
-                        animatedVisibilityScope = visibilityScope,
-                        boundsTransform = debugBoundsSpec,
-                    ),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            if (includeBadge) {
-                Spacer(Modifier.size(8.dp))
-                // This `badge` key exists only in the collapsed state — the overlay flags it as an
-                // unmatched (red) shared element while the transition runs.
-                Box(
-                    modifier =
-                        Modifier.sharedElement(
-                                rememberSharedContentState(key = "badge"),
-                                animatedVisibilityScope = visibilityScope,
-                                boundsTransform = debugBoundsSpec,
-                            )
-                            .size(20.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFFEF6C00))
-                )
-            }
-        }
+            .size(48.dp)
+            .clip(CircleShape)
+            .background(Color(0xFF345CA8))
+      )
+      Spacer(Modifier.size(12.dp))
+      Text(
+        "Glacier trail",
+        modifier =
+          Modifier.sharedBounds(
+            rememberSharedContentState(key = "title"),
+            animatedVisibilityScope = visibilityScope,
+            boundsTransform = debugBoundsSpec,
+          ),
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
+      )
+      if (includeBadge) {
+        Spacer(Modifier.size(8.dp))
+        // This `badge` key exists only in the collapsed state — the overlay flags it as an
+        // unmatched (red) shared element while the transition runs.
+        Box(
+          modifier =
+            Modifier.sharedElement(
+                rememberSharedContentState(key = "badge"),
+                animatedVisibilityScope = visibilityScope,
+                boundsTransform = debugBoundsSpec,
+              )
+              .size(20.dp)
+              .clip(CircleShape)
+              .background(Color(0xFFEF6C00))
+        )
+      }
     }
+  }
 
 @Composable
 private fun DebugExpanded(
-    sharedScope: SharedTransitionScope,
-    visibilityScope: AnimatedVisibilityScope,
+  sharedScope: SharedTransitionScope,
+  visibilityScope: AnimatedVisibilityScope,
 ) =
-    with(sharedScope) {
-        Column(
-            modifier =
-                Modifier.sharedBounds(
-                        rememberSharedContentState(key = "container"),
-                        animatedVisibilityScope = visibilityScope,
-                        boundsTransform = debugBoundsSpec,
-                    )
-                    .clip(RoundedCornerShape(28.dp))
-                    .background(Color(0xFFD7E3FF))
-                    .fillMaxSize()
-                    .padding(20.dp)
-        ) {
-            Box(
-                modifier =
-                    Modifier.sharedElement(
-                            rememberSharedContentState(key = "avatar"),
-                            animatedVisibilityScope = visibilityScope,
-                            boundsTransform = debugBoundsSpec,
-                        )
-                        .size(120.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF345CA8))
+  with(sharedScope) {
+    Column(
+      modifier =
+        Modifier.sharedBounds(
+            rememberSharedContentState(key = "container"),
+            animatedVisibilityScope = visibilityScope,
+            boundsTransform = debugBoundsSpec,
+          )
+          .clip(RoundedCornerShape(28.dp))
+          .background(Color(0xFFD7E3FF))
+          .fillMaxSize()
+          .padding(20.dp)
+    ) {
+      Box(
+        modifier =
+          Modifier.sharedElement(
+              rememberSharedContentState(key = "avatar"),
+              animatedVisibilityScope = visibilityScope,
+              boundsTransform = debugBoundsSpec,
             )
-            Spacer(Modifier.size(16.dp))
-            Text(
-                "Glacier trail",
-                modifier =
-                    Modifier.sharedBounds(
-                        rememberSharedContentState(key = "title"),
-                        animatedVisibilityScope = visibilityScope,
-                        boundsTransform = debugBoundsSpec,
-                    ),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-            )
-        }
+            .size(120.dp)
+            .clip(CircleShape)
+            .background(Color(0xFF345CA8))
+      )
+      Spacer(Modifier.size(16.dp))
+      Text(
+        "Glacier trail",
+        modifier =
+          Modifier.sharedBounds(
+            rememberSharedContentState(key = "title"),
+            animatedVisibilityScope = visibilityScope,
+            boundsTransform = debugBoundsSpec,
+          ),
+        style = MaterialTheme.typography.headlineSmall,
+        fontWeight = FontWeight.Bold,
+      )
     }
+  }

@@ -16,9 +16,9 @@ import ee.schimke.composeai.data.render.extensions.RecordingScriptEventDescripto
  * - `lifecycle.resume` → `Lifecycle.State.RESUMED` (activity goes through onResume)
  * - `lifecycle.stop` → `Lifecycle.State.CREATED` (activity goes through onPause + onStop)
  *
- * **Why three ids instead of one `lifecycle.event` with a `lifecycleEvent` payload.** Per-state
- * ids let the MCP validator reject unknown transitions at the kind level (no special payload
- * check needed), make the surface self-documenting in `list_data_products`, and align with
+ * **Why three ids instead of one `lifecycle.event` with a `lifecycleEvent` payload.** Per-state ids
+ * let the MCP validator reject unknown transitions at the kind level (no special payload check
+ * needed), make the surface self-documenting in `list_data_products`, and align with
  * `a11y.action.*` / `state.*` / `preview.*` shapes — every other extension uses kind-level
  * discrimination.
  *
@@ -26,11 +26,10 @@ import ee.schimke.composeai.data.render.extensions.RecordingScriptEventDescripto
  * down the scenario and break subsequent renders. If we wire it in a future PR it would land as
  * `lifecycle.destroy`.
  *
- * Why this lives in `:daemon:android` and not in a `:data-lifecycle-connector` module like the
- * a11y descriptors do: lifecycle has no data products (no per-render JSON / overlay PNG), so
- * there's no separate Android-only data module to colocate with. The dispatch end is in
- * [RobolectricHost.SandboxRunner.performLifecycleTransition]; the descriptor end lives next to
- * it.
+ * Why this lives in `:daemon:android` and not in a `:data-lifecycle-connector` module like the a11y
+ * descriptors do: lifecycle has no data products (no per-render JSON / overlay PNG), so there's no
+ * separate Android-only data module to colocate with. The dispatch end is in
+ * [RobolectricHost.SandboxRunner.performLifecycleTransition]; the descriptor end lives next to it.
  */
 object LifecycleRecordingScriptEvents {
 

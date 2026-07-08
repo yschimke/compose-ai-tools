@@ -86,11 +86,7 @@ object AtfChecksPreviewExtension {
       traits = setOf(PipelineStepTrait.Check),
       requires = setOf(PipelineCapability.AccessibilityNodes),
       provides = setOf(PipelineCapability.AccessibilityFindings),
-      extraction =
-        ExtractionSpec(
-          kind = KIND_ATF,
-          sampling = SamplingPolicy.End,
-        ),
+      extraction = ExtractionSpec(kind = KIND_ATF, sampling = SamplingPolicy.End),
     )
 
   val eachFrameChecker: PreviewPipelineStep =
@@ -151,10 +147,7 @@ object AccessibilityOverlayPreviewExtension {
       displayName = "Accessibility overlay annotations",
       traits = setOf(PipelineStepTrait.FrameProcessor),
       requires =
-        setOf(
-          PipelineCapability.AccessibilityNodes,
-          PipelineCapability.AccessibilityFindings,
-        ),
+        setOf(PipelineCapability.AccessibilityNodes, PipelineCapability.AccessibilityFindings),
       provides = setOf(PipelineCapability.OverlayAnnotations),
     )
 
@@ -162,12 +155,15 @@ object AccessibilityOverlayPreviewExtension {
     PreviewExtensionDescriptor(
       id = ID,
       displayName = "Accessibility overlay annotations",
-      componentExtensionIds = listOf(AccessibilitySemanticsPreviewExtension.ID, AtfChecksPreviewExtension.ID),
+      componentExtensionIds =
+        listOf(AccessibilitySemanticsPreviewExtension.ID, AtfChecksPreviewExtension.ID),
       steps = listOf(annotationProcessor),
     )
 }
 
-/** Suggested a11y annotated image composed from a11y data, ATF checks, and generic overlay legend. */
+/**
+ * Suggested a11y annotated image composed from a11y data, ATF checks, and generic overlay legend.
+ */
 object AccessibilityAnnotatedPreviewExtension {
   const val ID: String = "a11y-annotated-preview"
 
@@ -190,7 +186,13 @@ object AccessibilityAnnotatedPreviewExtension {
             displayName = "Render accessibility annotated previews",
             summary = "Discovers and renders suggested accessibility annotated preview extras.",
             command =
-              listOf("compose-preview", "extensions", "run", "a11y-annotated-preview.render", "--json"),
+              listOf(
+                "compose-preview",
+                "extensions",
+                "run",
+                "a11y-annotated-preview.render",
+                "--json",
+              ),
             usageModes = setOf(PreviewExtensionUsageMode.SuggestedExtraPreview),
           ),
           PreviewExtensionCliCommand(
@@ -209,7 +211,7 @@ object AccessibilityAnnotatedPreviewExtension {
                 "<path>",
               ),
             productKinds = listOf(AccessibilityOverlayPreviewExtension.KIND_OVERLAY),
-          )
+          ),
         ),
       steps =
         listOf(
@@ -222,4 +224,3 @@ object AccessibilityAnnotatedPreviewExtension {
         ),
     )
 }
-

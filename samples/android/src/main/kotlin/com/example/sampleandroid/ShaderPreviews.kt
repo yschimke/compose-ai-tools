@@ -34,9 +34,9 @@ import ee.schimke.composeai.preview.AnimatedPreview
  * jar's `RuntimeShaderNatives` JNI bindings) rather than skiko. This `@Preview` is the end-to-end
  * probe for whether that native AGSL compile + raster path captures cleanly.
  *
- * `RuntimeShader` is API 33+. The sample pins Robolectric to `sdk=35` (see the module build), so the
- * render sandbox satisfies the requirement; the `Build.VERSION.SDK_INT` guard keeps the composable
- * harmless on older on-device runs (it falls back to a flat fill).
+ * `RuntimeShader` is API 33+. The sample pins Robolectric to `sdk=35` (see the module build), so
+ * the render sandbox satisfies the requirement; the `Build.VERSION.SDK_INT` guard keeps the
+ * composable harmless on older on-device runs (it falls back to a flat fill).
  */
 // AGSL source (Android Graphics Shading Language) — a near-subset of SkSL.
 private const val GRADIENT_BLOB_AGSL =

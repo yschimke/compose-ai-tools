@@ -10,8 +10,8 @@ import org.junit.Test
 
 /**
  * State-only checks for [PermissionsController]. The Robolectric grant-sync path is exercised by
- * `:daemon:android`'s in-sandbox tests where `ShadowApplication` actually exists; here we cover
- * the snapshot-state behaviour the around-composable + data-product registry rely on.
+ * `:daemon:android`'s in-sandbox tests where `ShadowApplication` actually exists; here we cover the
+ * snapshot-state behaviour the around-composable + data-product registry rely on.
  */
 class PermissionsControllerTest {
 
@@ -39,8 +39,7 @@ class PermissionsControllerTest {
     // A subsequent override that drops CAMERA revokes it — no merge with previous state.
     PermissionsController.set(
       PermissionsOverride(
-        grants =
-          mapOf("android.permission.RECORD_AUDIO" to PermissionGrantStateOverride.DENIED)
+        grants = mapOf("android.permission.RECORD_AUDIO" to PermissionGrantStateOverride.DENIED)
       )
     )
     assertNull(PermissionsController.grantFor("android.permission.CAMERA"))

@@ -26,8 +26,18 @@ import ee.schimke.composeai.preview.PreviewWrapperClass
  * Tag any composable with `@FontPreview` and it gets both variants, each rendered through the font
  * wrapper — no theme wiring, no repeated wrapper annotation.
  */
-@Preview(name = "Light", uiMode = Configuration.UI_MODE_NIGHT_NO, showBackground = true, widthDp = 360)
-@Preview(name = "Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true, widthDp = 360)
+@Preview(
+  name = "Light",
+  uiMode = Configuration.UI_MODE_NIGHT_NO,
+  showBackground = true,
+  widthDp = 360,
+)
+@Preview(
+  name = "Dark",
+  uiMode = Configuration.UI_MODE_NIGHT_YES,
+  showBackground = true,
+  widthDp = 360,
+)
 @PreviewWrapperClass("com.example.sampleandroid.FontPreviewWrapper")
 annotation class FontPreview
 
@@ -45,9 +55,15 @@ fun FontWrapperShowcasePreview() {
   Column(modifier = Modifier.padding(16.dp)) {
     Text(text = "Display — MaterialTheme.typography", style = MaterialTheme.typography.displaySmall)
     Spacer(modifier = Modifier.size(8.dp))
-    Text(text = "Headline — inherited default font", style = MaterialTheme.typography.headlineMedium)
+    Text(
+      text = "Headline — inherited default font",
+      style = MaterialTheme.typography.headlineMedium,
+    )
     Spacer(modifier = Modifier.size(8.dp))
-    Text(text = "Body picks up the wrapper's typography role.", style = MaterialTheme.typography.bodyLarge)
+    Text(
+      text = "Body picks up the wrapper's typography role.",
+      style = MaterialTheme.typography.bodyLarge,
+    )
     Spacer(modifier = Modifier.size(8.dp))
     // No explicit style at all — resolves through LocalTextStyle, which the wrapper also seeds.
     Text(text = "Plain Text() with no style — still Lobster Two.")

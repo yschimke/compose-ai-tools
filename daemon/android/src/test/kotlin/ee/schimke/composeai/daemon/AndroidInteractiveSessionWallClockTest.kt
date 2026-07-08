@@ -21,13 +21,13 @@ import org.junit.Test
  * default produced animations that walked ~6× slower than wall-clock when each Robolectric capture
  * took ~200ms. The session-level substitution covered here keeps animations on real time:
  *
- *  * **Null advance, first render** → floored at the recompose-settle window so the initial
- *    capture still flushes the post-`setContent` recomposition pass.
- *  * **Null advance, subsequent render** → wall-clock delta since the previous render, clamped
- *    into `[floor, cap]`.
- *  * **Null advance after a long idle** → capped so a paused session doesn't lurch animations
- *    forward when the user returns.
- *  * **Explicit advance** → preserved verbatim (recording sessions pace frames themselves).
+ * * **Null advance, first render** → floored at the recompose-settle window so the initial capture
+ *   still flushes the post-`setContent` recomposition pass.
+ * * **Null advance, subsequent render** → wall-clock delta since the previous render, clamped into
+ *   `[floor, cap]`.
+ * * **Null advance after a long idle** → capped so a paused session doesn't lurch animations
+ *   forward when the user returns.
+ * * **Explicit advance** → preserved verbatim (recording sessions pace frames themselves).
  *
  * The test runs on plain JUnit (no Robolectric sandbox boot) by driving `slot.interactiveCommands`
  * directly: a poller thread drains each Render envelope and posts a synthetic [RenderResult] back

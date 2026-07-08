@@ -1,25 +1,25 @@
 package ee.schimke.composeai.renderer
 
-import ee.schimke.composeai.io.SystemFileSystem
-import okio.FileSystem
-import okio.Path.Companion.toPath
 import android.app.Notification
 import android.content.Context
 import android.os.Build
 import android.os.Bundle
 import android.os.Parcelable
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * Per-preview structured-fields sidecar for `@NotificationPreview` renders. Sibling of the PNG,
- * placed under `<renders-parent>/data/notifications/<sanitized-id>.notification.json`. Lets
- * agents / CI / tests assert on the *fields* of a built notification (channel, importance,
- * style, actions, EXTRA_*) without pixel-diffing the rendered PNG, and pairs structurally with
- * the existing `RenderErrorSidecar` per-PNG `.error.json` sibling.
+ * placed under `<renders-parent>/data/notifications/<sanitized-id>.notification.json`. Lets agents
+ * / CI / tests assert on the *fields* of a built notification (channel, importance, style, actions,
+ * EXTRA_*) without pixel-diffing the rendered PNG, and pairs structurally with the existing
+ * `RenderErrorSidecar` per-PNG `.error.json` sibling.
  *
  * Hand-rolled JSON. Same reason `RenderErrorSidecar` does it: the renderer-android runtime
- * classpath deliberately doesn't pull `kotlinx-serialization` (renderer-vs-consumer alignment;
- * see `docs/RENDERER_COMPATIBILITY.md`). The schema is shallow and stable.
+ * classpath deliberately doesn't pull `kotlinx-serialization` (renderer-vs-consumer alignment; see
+ * `docs/RENDERER_COMPATIBILITY.md`). The schema is shallow and stable.
  *
  * Best-effort. Failures here print to stderr but don't propagate — the goal is to keep notification
  * structured-field capture from derailing the PNG render path on a per-preview issue.
@@ -29,11 +29,14 @@ internal object NotificationSidecar {
   /**
    * Resolve where to write `<id>.notification.json`. Layout mirrors the project's data-product
    * convention: PNGs land in `<outputDir>/renders/`, structured data lands in
-   * `<outputDir>/data/<kind>/`. `composeai.render.outputDir` points at the renders dir; the
-   * sidecar goes one level up + `data/notifications`.
+   * `<outputDir>/data/<kind>/`. `composeai.render.outputDir` points at the renders dir; the sidecar
+   * goes one level up + `data/notifications`.
    */
   fun pathFor(rendersDir: File, previewId: String): File =
-    File(File(rendersDir.parentFile ?: rendersDir, "data/notifications"), sanitize(previewId) + ".notification.json")
+    File(
+      File(rendersDir.parentFile ?: rendersDir, "data/notifications"),
+      sanitize(previewId) + ".notification.json",
+    )
 
   /**
    * Write the structured-fields sidecar for [notification], keyed by [previewId]. Resolves the
@@ -41,7 +44,12 @@ internal object NotificationSidecar {
    * silently no-ops when the property isn't set (e.g. unit-test invocations that don't go through
    * the gradle plugin's render task).
    */
-  fun write(previewId: String, notification: Notification, context: Context, fileSystem: FileSystem = SystemFileSystem) {
+  fun write(
+    previewId: String,
+    notification: Notification,
+    context: Context,
+    fileSystem: FileSystem = SystemFileSystem,
+  ) {
     try {
       val rendersDirPath = System.getProperty("composeai.render.outputDir") ?: return
       val sidecar = pathFor(File(rendersDirPath), previewId)
@@ -50,9 +58,7 @@ internal object NotificationSidecar {
         writeUtf8(buildJson(previewId, notification, context))
       }
     } catch (e: Throwable) {
-      System.err.println(
-        "Failed to write notification sidecar for $previewId: ${e.message}"
-      )
+      System.err.println("Failed to write notification sidecar for $previewId: ${e.message}")
     }
   }
 
@@ -65,7 +71,10 @@ internal object NotificationSidecar {
     appendCategory(sb, n)
     appendGroup(sb, n)
     sb.append("\"ongoing\":").append((n.flags and Notification.FLAG_ONGOING_EVENT) != 0).append(',')
-    sb.append("\"autoCancel\":").append((n.flags and Notification.FLAG_AUTO_CANCEL) != 0).append(',')
+    sb
+      .append("\"autoCancel\":")
+      .append((n.flags and Notification.FLAG_AUTO_CANCEL) != 0)
+      .append(',')
     appendColor(sb, n)
     appendSmallIcon(sb, n, context)
     appendExtras(sb, n)
@@ -97,8 +106,7 @@ internal object NotificationSidecar {
   private fun appendSmallIcon(sb: StringBuilder, n: Notification, context: Context) {
     val icon = n.smallIcon ?: return
     val resId = icon.resId
-    val name =
-      runCatching { context.resources.getResourceName(resId) }.getOrNull()
+    val name = runCatching { context.resources.getResourceName(resId) }.getOrNull()
     sb.append("\"smallIcon\":{")
     sb.append("\"resourceId\":").append(resId)
     if (name != null) sb.append(",\"resourceName\":").append(jsonString(name))
@@ -147,8 +155,8 @@ internal object NotificationSidecar {
   /**
    * `MessagingStyle` notifications park each `Message` as a `Bundle` inside
    * `notification.extras[EXTRA_MESSAGES]`. Each bundle carries `KEY_TEXT`, `KEY_TIMESTAMP`, and
-   * `KEY_SENDER_PERSON` (a `Person` parcelable; we surface its display name only). Walks the
-   * array best-effort — missing or malformed entries skip silently.
+   * `KEY_SENDER_PERSON` (a `Person` parcelable; we surface its display name only). Walks the array
+   * best-effort — missing or malformed entries skip silently.
    */
   private fun appendMessages(sb: StringBuilder, n: Notification) {
     val extras = n.extras ?: return
@@ -185,13 +193,12 @@ internal object NotificationSidecar {
 
   /**
    * Best-effort read of a Message's sender display name. `Person` ships as a Parcelable under
-   * `sender_person`; older builders also put the raw name under `sender`. Cast through `Any?`
-   * since we don't want a compile-time dep on `androidx.core.app.Person` here (the renderer
-   * stays Compose- and AndroidX-light on its main classpath).
+   * `sender_person`; older builders also put the raw name under `sender`. Cast through `Any?` since
+   * we don't want a compile-time dep on `androidx.core.app.Person` here (the renderer stays
+   * Compose- and AndroidX-light on its main classpath).
    */
   private fun readSenderName(bundle: Bundle): String? {
-    val person: Parcelable? =
-      @Suppress("DEPRECATION") bundle.getParcelable("sender_person")
+    val person: Parcelable? = @Suppress("DEPRECATION") bundle.getParcelable("sender_person")
     if (person != null) {
       // Reflectively read `getName()` — both `android.app.Person` and
       // `androidx.core.app.Person` expose it. Avoids the hard dep.
@@ -205,8 +212,7 @@ internal object NotificationSidecar {
 
   private fun sanitize(s: String): String = s.replace(Regex("""[/\\:*?"<>|\s]"""), "_")
 
-  private fun jsonStringOrNull(s: String?): String =
-    if (s == null) "null" else jsonString(s)
+  private fun jsonStringOrNull(s: String?): String = if (s == null) "null" else jsonString(s)
 
   private fun jsonString(s: String): String {
     val sb = StringBuilder(s.length + 2)

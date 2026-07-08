@@ -46,303 +46,273 @@ import androidx.wear.compose.ui.tooling.preview.WearPreviewSmallRound
 import ee.schimke.composeai.preview.ScrollMode
 import ee.schimke.composeai.preview.ScrollingPreview
 
-
 private data class Item(val title: String, val subtitle: String)
 
-private val sampleItems = listOf(
+private val sampleItems =
+  listOf(
     Item("Morning run", "5.2 km · 28 min"),
     Item("Heart rate", "72 bpm"),
     Item("Sleep", "7h 14m"),
     Item("Steps", "6,482"),
     Item("Calories", "412 kcal"),
     Item("Timer", "12:30 remaining"),
-)
+  )
 
 @Composable
 fun WearApp() {
-    MaterialTheme {
-        AppScaffold(
-            // Real production app — let TimeText use the system clock.
-            // Previews that want a deterministic time supply their own
-            // `AppScaffold` with a `FixedPreviewTimeSource` (see [ActivityListPreview]).
-            timeText = { TimeText() },
-        ) {
-            ActivityListScreen()
-        }
+  MaterialTheme {
+    AppScaffold(
+      // Real production app — let TimeText use the system clock.
+      // Previews that want a deterministic time supply their own
+      // `AppScaffold` with a `FixedPreviewTimeSource` (see [ActivityListPreview]).
+      timeText = { TimeText() }
+    ) {
+      ActivityListScreen()
     }
+  }
 }
 
 @Composable
 fun ActivityListScreen() {
-    val listState = rememberTransformingLazyColumnState()
-    val transformationSpec = rememberTransformationSpec()
+  val listState = rememberTransformingLazyColumnState()
+  val transformationSpec = rememberTransformationSpec()
 
-    ScreenScaffold(
-        scrollState = listState,
-        // Suppress the transient scroll indicator when the renderer flips
-        // `LocalScrollCaptureInProgress = true` (e.g. for `@ScrollingPreview`).
-        // In a running app the local is always `false`, so the default
-        // indicator is drawn unchanged.
-        scrollIndicator = {
-            if (!LocalScrollCaptureInProgress.current) {
-                ScrollIndicator(listState)
-            }
-        },
-        edgeButton = {
-            EdgeButton(
-                onClick = {},
-                buttonSize = EdgeButtonSize.Large,
-            ) {
-                BasicText(
-                    text = "Start workout",
-                    maxLines = 1,
-                    autoSize = TextAutoSize.StepBased(),
-                    style = TextStyle(
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        textAlign = TextAlign.Center,
-                    ),
-                )
-            }
-        },
-    ) { contentPadding ->
-        TransformingLazyColumn(
-            state = listState,
-            contentPadding = contentPadding,
-            modifier = Modifier.fillMaxSize(),
+  ScreenScaffold(
+    scrollState = listState,
+    // Suppress the transient scroll indicator when the renderer flips
+    // `LocalScrollCaptureInProgress = true` (e.g. for `@ScrollingPreview`).
+    // In a running app the local is always `false`, so the default
+    // indicator is drawn unchanged.
+    scrollIndicator = {
+      if (!LocalScrollCaptureInProgress.current) {
+        ScrollIndicator(listState)
+      }
+    },
+    edgeButton = {
+      EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) {
+        BasicText(
+          text = "Start workout",
+          maxLines = 1,
+          autoSize = TextAutoSize.StepBased(),
+          style =
+            TextStyle(color = MaterialTheme.colorScheme.onPrimary, textAlign = TextAlign.Center),
+        )
+      }
+    },
+  ) { contentPadding ->
+    TransformingLazyColumn(
+      state = listState,
+      contentPadding = contentPadding,
+      modifier = Modifier.fillMaxSize(),
+    ) {
+      item {
+        ListHeader(
+          modifier =
+            Modifier.minimumVerticalContentPadding(
+                top = ListHeaderDefaults.minimumTopListContentPadding,
+                bottom = 0.dp,
+              )
+              .transformedHeight(this, transformationSpec),
+          transformation = SurfaceTransformation(transformationSpec),
         ) {
-            item {
-                ListHeader(
-                    modifier = Modifier
-                        .minimumVerticalContentPadding(
-                            top = ListHeaderDefaults.minimumTopListContentPadding,
-                            bottom = 0.dp,
-                        )
-                        .transformedHeight(this, transformationSpec),
-                    transformation = SurfaceTransformation(transformationSpec),
-                ) {
-                    Text("Today")
-                }
-            }
-            items(sampleItems) { item ->
-                TitleCard(
-                    onClick = {},
-                    title = { Text(item.title) },
-                    subtitle = { Text(item.subtitle) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .minimumVerticalContentPadding(CardDefaults.minimumVerticalListContentPadding)
-                        .transformedHeight(this, transformationSpec),
-                    transformation = SurfaceTransformation(transformationSpec),
-                )
-            }
+          Text("Today")
         }
+      }
+      items(sampleItems) { item ->
+        TitleCard(
+          onClick = {},
+          title = { Text(item.title) },
+          subtitle = { Text(item.subtitle) },
+          modifier =
+            Modifier.fillMaxWidth()
+              .minimumVerticalContentPadding(CardDefaults.minimumVerticalListContentPadding)
+              .transformedHeight(this, transformationSpec),
+          transformation = SurfaceTransformation(transformationSpec),
+        )
+      }
     }
+  }
 }
 
 @Composable
 private fun ButtonPreviewContent() {
-    var taps by remember { mutableStateOf(0) }
-    MaterialTheme {
-        AppScaffold(
-            timeText = { TimeText(timeSource = FixedPreviewTimeSource) },
+  var taps by remember { mutableStateOf(0) }
+  MaterialTheme {
+    AppScaffold(timeText = { TimeText(timeSource = FixedPreviewTimeSource) }) {
+      ScreenScaffold { contentPadding ->
+        Box(
+          modifier = Modifier.fillMaxSize().padding(contentPadding).padding(horizontal = 16.dp),
+          contentAlignment = Alignment.Center,
         ) {
-            ScreenScaffold { contentPadding ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(contentPadding)
-                        .padding(horizontal = 16.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Button(onClick = { taps += 1 }) {
-                        Text("Taps: $taps")
-                    }
-                }
-            }
+          Button(onClick = { taps += 1 }) { Text("Taps: $taps") }
         }
+      }
     }
+  }
 }
 
 @Composable
 private fun CircularProgressPreviewContent() {
-    MaterialTheme {
-        AppScaffold(
-            timeText = { TimeText(timeSource = FixedPreviewTimeSource) },
+  MaterialTheme {
+    AppScaffold(timeText = { TimeText(timeSource = FixedPreviewTimeSource) }) {
+      ScreenScaffold { contentPadding ->
+        Box(
+          modifier =
+            Modifier.fillMaxSize()
+              .padding(contentPadding)
+              .padding(CircularProgressIndicatorDefaults.FullScreenPadding),
+          contentAlignment = Alignment.Center,
         ) {
-            ScreenScaffold { contentPadding ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(contentPadding)
-                        .padding(CircularProgressIndicatorDefaults.FullScreenPadding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-            }
+          CircularProgressIndicator(modifier = Modifier.fillMaxSize())
         }
+      }
     }
+  }
 }
 
 @WearPreviewDevices
 @Composable
 fun ActivityListPreview() {
-    MaterialTheme {
-        AppScaffold(timeText = { TimeText(timeSource = FixedPreviewTimeSource) }) {
-            ActivityListScreen()
-        }
+  MaterialTheme {
+    AppScaffold(timeText = { TimeText(timeSource = FixedPreviewTimeSource) }) {
+      ActivityListScreen()
     }
+  }
 }
 
 @WearPreviewFontScales
 @Composable
 fun ActivityListFontScalesPreview() {
-    MaterialTheme {
-        AppScaffold(timeText = { TimeText(timeSource = FixedPreviewTimeSource) }) {
-            ActivityListScreen()
-        }
+  MaterialTheme {
+    AppScaffold(timeText = { TimeText(timeSource = FixedPreviewTimeSource) }) {
+      ActivityListScreen()
     }
+  }
 }
 
 @WearPreviewSmallRound
 @WearPreviewLargeRound
 @Composable
 fun ButtonPreview() {
-    ButtonPreviewContent()
+  ButtonPreviewContent()
 }
 
 @WearPreviewSmallRound
 @WearPreviewLargeRound
 @Composable
 fun CircularProgressIndicatorPreview() {
-    CircularProgressPreviewContent()
+  CircularProgressPreviewContent()
 }
 
 /**
- * Deliberately-broken Wear preview — a tiny unlabelled clickable Box
- * tucked into the centre of the round face. Exists so the a11y pipeline
- * produces a Wear-sized annotated PNG; exercises the stacked legend layout
- * (screenshot on top, legend below) used for square/round displays.
+ * Deliberately-broken Wear preview — a tiny unlabelled clickable Box tucked into the centre of the
+ * round face. Exists so the a11y pipeline produces a Wear-sized annotated PNG; exercises the
+ * stacked legend layout (screenshot on top, legend below) used for square/round displays.
  */
 @WearPreviewSmallRound
 @Composable
 fun BadWearButtonPreview() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Button(
-            onClick = { /* no-op */ },
-            modifier = Modifier.size(20.dp),
-        ) {}
-    }
+  Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    Button(onClick = { /* no-op */ }, modifier = Modifier.size(20.dp)) {}
+  }
 }
 
 /**
- * Screen-level long-scroll fixture: same `ScreenScaffold` +
- * `TransformingLazyColumn` + `EdgeButton` layout as [ActivityListScreen],
- * but with 15 items so the content overflows the viewport. The
- * `scrollIndicator` slot reads [LocalScrollCaptureInProgress] so the
- * `@ScrollingPreview(modes = [LONG])` capture doesn't pick up a fading
- * indicator at random opacities. The screen does NOT compose its own
- * `MaterialTheme` / `AppScaffold` — its caller (the preview, or production)
- * does, which keeps the preview free to swap in a [FixedPreviewTimeSource].
- * `ScreenScaffold` reveals the `EdgeButton` only when the list is pinned to
- * the bottom, so "Start workout" appears once, at the final slice.
+ * Screen-level long-scroll fixture: same `ScreenScaffold` + `TransformingLazyColumn` + `EdgeButton`
+ * layout as [ActivityListScreen], but with 15 items so the content overflows the viewport. The
+ * `scrollIndicator` slot reads [LocalScrollCaptureInProgress] so the `@ScrollingPreview(modes =
+ * [LONG])` capture doesn't pick up a fading indicator at random opacities. The screen does NOT
+ * compose its own `MaterialTheme` / `AppScaffold` — its caller (the preview, or production) does,
+ * which keeps the preview free to swap in a [FixedPreviewTimeSource]. `ScreenScaffold` reveals the
+ * `EdgeButton` only when the list is pinned to the bottom, so "Start workout" appears once, at the
+ * final slice.
  */
 @Composable
 fun LongActivityListScreen() {
-    val longItems = List(15) { i ->
-        when (i % 6) {
-            0 -> Item("Morning run ${i + 1}", "5.2 km · 28 min")
-            1 -> Item("Heart rate ${i + 1}", "${70 + i} bpm")
-            2 -> Item("Sleep day ${i + 1}", "7h ${(i * 3) % 60}m")
-            3 -> Item("Steps day ${i + 1}", "${6000 + i * 120}")
-            4 -> Item("Calories day ${i + 1}", "${400 + i * 5} kcal")
-            else -> Item("Timer ${i + 1}", "${10 + i}:${(i * 7) % 60} remaining")
-        }
+  val longItems =
+    List(15) { i ->
+      when (i % 6) {
+        0 -> Item("Morning run ${i + 1}", "5.2 km · 28 min")
+        1 -> Item("Heart rate ${i + 1}", "${70 + i} bpm")
+        2 -> Item("Sleep day ${i + 1}", "7h ${(i * 3) % 60}m")
+        3 -> Item("Steps day ${i + 1}", "${6000 + i * 120}")
+        4 -> Item("Calories day ${i + 1}", "${400 + i * 5} kcal")
+        else -> Item("Timer ${i + 1}", "${10 + i}:${(i * 7) % 60} remaining")
+      }
     }
-    val listState = rememberTransformingLazyColumnState()
-    val transformationSpec = rememberTransformationSpec()
-    ScreenScaffold(
-        scrollState = listState,
-        scrollIndicator = {
-            if (!LocalScrollCaptureInProgress.current) {
-                ScrollIndicator(listState)
-            }
-        },
-        edgeButton = {
-            EdgeButton(
-                onClick = {},
-                buttonSize = EdgeButtonSize.Large,
-            ) {
-                BasicText(
-                    text = "Start workout",
-                    maxLines = 1,
-                    autoSize = TextAutoSize.StepBased(),
-                    style = TextStyle(
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        textAlign = TextAlign.Center,
-                    ),
-                )
-            }
-        },
-    ) { contentPadding ->
-        TransformingLazyColumn(
-            state = listState,
-            contentPadding = contentPadding,
-            modifier = Modifier.fillMaxSize(),
+  val listState = rememberTransformingLazyColumnState()
+  val transformationSpec = rememberTransformationSpec()
+  ScreenScaffold(
+    scrollState = listState,
+    scrollIndicator = {
+      if (!LocalScrollCaptureInProgress.current) {
+        ScrollIndicator(listState)
+      }
+    },
+    edgeButton = {
+      EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) {
+        BasicText(
+          text = "Start workout",
+          maxLines = 1,
+          autoSize = TextAutoSize.StepBased(),
+          style =
+            TextStyle(color = MaterialTheme.colorScheme.onPrimary, textAlign = TextAlign.Center),
+        )
+      }
+    },
+  ) { contentPadding ->
+    TransformingLazyColumn(
+      state = listState,
+      contentPadding = contentPadding,
+      modifier = Modifier.fillMaxSize(),
+    ) {
+      item {
+        ListHeader(
+          modifier =
+            Modifier.minimumVerticalContentPadding(
+                top = ListHeaderDefaults.minimumTopListContentPadding,
+                bottom = 0.dp,
+              )
+              .transformedHeight(this, transformationSpec),
+          transformation = SurfaceTransformation(transformationSpec),
         ) {
-            item {
-                ListHeader(
-                    modifier = Modifier
-                        .minimumVerticalContentPadding(
-                            top = ListHeaderDefaults.minimumTopListContentPadding,
-                            bottom = 0.dp,
-                        )
-                        .transformedHeight(this, transformationSpec),
-                    transformation = SurfaceTransformation(transformationSpec),
-                ) {
-                    Text("Activity")
-                }
-            }
-            items(longItems) { item ->
-                TitleCard(
-                    onClick = {},
-                    title = { Text(item.title) },
-                    subtitle = { Text(item.subtitle) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .minimumVerticalContentPadding(CardDefaults.minimumVerticalListContentPadding)
-                        .transformedHeight(this, transformationSpec),
-                    transformation = SurfaceTransformation(transformationSpec),
-                )
-            }
+          Text("Activity")
         }
+      }
+      items(longItems) { item ->
+        TitleCard(
+          onClick = {},
+          title = { Text(item.title) },
+          subtitle = { Text(item.subtitle) },
+          modifier =
+            Modifier.fillMaxWidth()
+              .minimumVerticalContentPadding(CardDefaults.minimumVerticalListContentPadding)
+              .transformedHeight(this, transformationSpec),
+          transformation = SurfaceTransformation(transformationSpec),
+        )
+      }
     }
+  }
 }
 
 @WearPreviewLargeRound
 @ScrollingPreview(modes = [ScrollMode.LONG])
 @Composable
 fun ActivityListLongPreview() {
-    MaterialTheme {
-        AppScaffold(
-            timeText = { TimeText(timeSource = FixedPreviewTimeSource) },
-        ) {
-            LongActivityListScreen()
-        }
+  MaterialTheme {
+    AppScaffold(timeText = { TimeText(timeSource = FixedPreviewTimeSource) }) {
+      LongActivityListScreen()
     }
+  }
 }
 
 @WearPreviewLargeRound
 @ScrollingPreview(modes = [ScrollMode.GIF], reduceMotion = false)
 @Composable
 fun ActivityListGifPreview() {
-    MaterialTheme {
-        AppScaffold(
-            timeText = { TimeText(timeSource = FixedPreviewTimeSource) },
-        ) {
-            LongActivityListScreen()
-        }
+  MaterialTheme {
+    AppScaffold(timeText = { TimeText(timeSource = FixedPreviewTimeSource) }) {
+      LongActivityListScreen()
     }
+  }
 }

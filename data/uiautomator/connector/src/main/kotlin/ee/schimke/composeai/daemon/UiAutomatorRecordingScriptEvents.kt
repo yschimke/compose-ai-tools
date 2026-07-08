@@ -5,18 +5,18 @@ import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.RecordingScriptEventDescriptor
 
 /**
- * UIAutomator-shaped `record_preview` script events. Each `uia.<actionKind>` id targets a node by
- * a multi-axis [`SelectorJson`](https://github.com/yschimke/compose-ai-tools) (text, desc, clazz,
- * res, state predicates, tree predicates) — the agent supplies the predicate via the script
- * event's `selector` field — and dispatches the corresponding action. The handler routes through
+ * UIAutomator-shaped `record_preview` script events. Each `uia.<actionKind>` id targets a node by a
+ * multi-axis [`SelectorJson`](https://github.com/yschimke/compose-ai-tools) (text, desc, clazz,
+ * res, state predicates, tree predicates) — the agent supplies the predicate via the script event's
+ * `selector` field — and dispatches the corresponding action. The handler routes through
  * `interactive.dispatchUiAutomator(actionKind, selectorJson, useUnmergedTree, inputText)`; the
  * sandbox-side `when` arm in [`RobolectricHost.performUiAutomatorAction`] does the matcher
  * resolution + invocation via `:data-uiautomator-core`'s `UiAutomator.findObject` and the matched
  * `UiObject`'s action method.
  *
  * Why this lives in `:data-uiautomator-connector` and not in `RecordingScriptDataExtensions` in
- * `:data-render-core`: UIAutomator dispatch is Android-only (Robolectric `SemanticsOwner` /
- * `View` traversal); desktop daemons don't advertise this descriptor. The wiring point is
+ * `:data-render-core`: UIAutomator dispatch is Android-only (Robolectric `SemanticsOwner` / `View`
+ * traversal); desktop daemons don't advertise this descriptor. The wiring point is
  * `:daemon:android`'s [DaemonMain], which adds an `Extension(id="uiautomator", …)` carrying
  * [descriptor].
  *

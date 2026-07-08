@@ -35,25 +35,26 @@ import androidx.compose.ui.unit.sp
 import ee.schimke.composeai.preview.AnimatedPreview
 
 /**
- * AGSL feature-survey gallery — the Android twins of `:samples:cmp` `ShaderGalleryPreviews.kt`. Same
- * four programs (raymarched SDF, fBm noise, Julia escape-time, content-sampling render effect), but
- * compiled by `android.graphics.RuntimeShader` and captured through Robolectric NATIVE graphics
- * rather than skiko. Comparing each PNG against its CMP sibling is the cross-backend "what works /
- * what differs" matrix; AGSL is nearly a subset of SkSL, so the interesting question is whether the
- * native runtime's compiler + raster accept the same programs.
+ * AGSL feature-survey gallery — the Android twins of `:samples:cmp` `ShaderGalleryPreviews.kt`.
+ * Same four programs (raymarched SDF, fBm noise, Julia escape-time, content-sampling render
+ * effect), but compiled by `android.graphics.RuntimeShader` and captured through Robolectric NATIVE
+ * graphics rather than skiko. Comparing each PNG against its CMP sibling is the cross-backend "what
+ * works / what differs" matrix; AGSL is nearly a subset of SkSL, so the interesting question is
+ * whether the native runtime's compiler + raster accept the same programs.
  *
- * `RuntimeShader` is API 33+; the sample's Robolectric `sdk=35` satisfies it. `iTime` is pinned to a
- * fixed phase for deterministic stills.
+ * `RuntimeShader` is API 33+; the sample's Robolectric `sdk=35` satisfies it. `iTime` is pinned to
+ * a fixed phase for deterministic stills.
  *
  * Technique credits — textbook GPU techniques adapted from Inigo Quilez's writing/shaders (MIT
  * License); the AGSL is rewritten for Compose but the maths is his:
- *  - Raymarching loop, SDF primitives & tetrahedron-normal: https://iquilezles.org/articles/raymarchingdf/
- *    and https://iquilezles.org/articles/distfunctions/
- *  - Value noise + fBm and the `sin(dot(p, vec2(127.1, 311.7))) * 43758.5453` hash:
- *    https://www.shadertoy.com/view/lsf3WH and https://iquilezles.org/articles/fbm/
- *  - Cosine palette (`0.5 + 0.5*cos(...)`): https://iquilezles.org/articles/palettes/
- *  The Julia escape-time iteration is classic public-domain complex-dynamics maths; only its
- *  colouring uses the palette above.
+ * - Raymarching loop, SDF primitives & tetrahedron-normal:
+ *   https://iquilezles.org/articles/raymarchingdf/ and
+ *   https://iquilezles.org/articles/distfunctions/
+ * - Value noise + fBm and the `sin(dot(p, vec2(127.1, 311.7))) * 43758.5453` hash:
+ *   https://www.shadertoy.com/view/lsf3WH and https://iquilezles.org/articles/fbm/
+ * - Cosine palette (`0.5 + 0.5*cos(...)`): https://iquilezles.org/articles/palettes/ The Julia
+ *   escape-time iteration is classic public-domain complex-dynamics maths; only its colouring uses
+ *   the palette above.
  *
  * Boundary note — every loop here uses a **literal constant bound**. AGSL (like SkSL) rejects a
  * uniform/dynamic trip count with `error: loop index must be compared with a constant expression`;
@@ -78,9 +79,10 @@ private fun ShaderCard(agsl: String) {
 }
 
 /**
- * Animated twin of [ShaderCard]: a `rememberInfiniteTransition` ramps `iTime` from `0` to `2π` every
- * 2s, captured as a GIF by the Robolectric `@AnimatedPreview` path. Reading `time` in composition
- * resets the uniform each frame. Only used with programs that loop seamlessly over a `2π` `iTime`.
+ * Animated twin of [ShaderCard]: a `rememberInfiniteTransition` ramps `iTime` from `0` to `2π`
+ * every 2s, captured as a GIF by the Robolectric `@AnimatedPreview` path. Reading `time` in
+ * composition resets the uniform each frame. Only used with programs that loop seamlessly over a
+ * `2π` `iTime`.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @Composable
@@ -236,7 +238,8 @@ private const val JULIA_AGSL =
 fun ShaderJuliaPreview() = ShaderCard(JULIA_AGSL)
 
 // Animated companions — looped as GIFs via @AnimatedPreview. Each program is periodic in iTime
-// (raymarch light + wobble, Julia c-orbit, fBm domain orbit), so a 0..2π ramp is a seamless 2s loop.
+// (raymarch light + wobble, Julia c-orbit, fBm domain orbit), so a 0..2π ramp is a seamless 2s
+// loop.
 @Preview(name = "Shader Gallery — Raymarch SDF (animated, AGSL)")
 @AnimatedPreview(durationMs = 2000, frameIntervalMs = 50, showCurves = false)
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
@@ -292,7 +295,12 @@ fun ShaderRenderEffectPreview() {
         .background(Color(0xFF101820))
   ) {
     Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
-      Text("RenderEffect", color = Color(0xFF7DE2FF), fontWeight = FontWeight.Bold, fontSize = 26.sp)
+      Text(
+        "RenderEffect",
+        color = Color(0xFF7DE2FF),
+        fontWeight = FontWeight.Bold,
+        fontSize = 26.sp,
+      )
       Text("samples the", color = Color.White, fontSize = 20.sp)
       Text("composable beneath", color = Color(0xFFFFB86C), fontSize = 20.sp)
       Text("and warps it", color = Color.White, fontSize = 20.sp)

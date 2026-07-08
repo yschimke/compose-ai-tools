@@ -15,8 +15,8 @@ import java.io.File
  * - The factory is invoked per render with the render-time platform [Context], so the extension
  *   instance can stand up its recorder + `CompositionLocal` install before composition starts.
  *
- * The render engine threads the resulting list through the Compose data-extension pipeline (for
- * any [ee.schimke.composeai.data.render.extensions.compose.AroundComposableHook] members) and then
+ * The render engine threads the resulting list through the Compose data-extension pipeline (for any
+ * [ee.schimke.composeai.data.render.extensions.compose.AroundComposableHook] members) and then
  * iterates the same list for [ee.schimke.composeai.data.render.extensions.PostCaptureProcessor]
  * members during the post-capture pass — so one extension class can both install a recording
  * `CompositionLocal` during composition and write its typed artifact after capture.
@@ -34,11 +34,11 @@ class RenderDataArtifactExtensions(val factories: List<RenderDataArtifactExtensi
 }
 
 /**
- * Typed keys the render engine populates on [ee.schimke.composeai.data.render.extensions
- * .ExtensionPostCaptureContext.data] before invoking each always-on data extension. Lets the
- * extensions reach the per-preview output directory, the file-system base name, the requested
- * locale tag, and the captured semantics root through the same typed-key pattern other
- * post-capture extensions already use.
+ * Typed keys the render engine populates on
+ * [ee.schimke.composeai.data.render.extensions .ExtensionPostCaptureContext.data] before invoking
+ * each always-on data extension. Lets the extensions reach the per-preview output directory, the
+ * file-system base name, the requested locale tag, and the captured semantics root through the same
+ * typed-key pattern other post-capture extensions already use.
  */
 object RenderDataArtifactContextKeys {
   /** Per-preview data-product output root (`<dataDir>/<previewId>/<file>`). */
@@ -53,9 +53,9 @@ object RenderDataArtifactContextKeys {
     ExtensionContextKey(name = "render-data-artifact.outputBaseName", type = String::class.java)
 
   /**
-   * Protocol-level preview identifier (`spec.previewId`), if the caller supplied one. Distinct
-   * from [OutputBaseName]; some extensions (fonts) historically prefer this when present and fall
-   * back to the base name otherwise.
+   * Protocol-level preview identifier (`spec.previewId`), if the caller supplied one. Distinct from
+   * [OutputBaseName]; some extensions (fonts) historically prefer this when present and fall back
+   * to the base name otherwise.
    */
   val PreviewId: ExtensionContextKey<String> =
     ExtensionContextKey(name = "render-data-artifact.previewId", type = String::class.java)
@@ -89,11 +89,11 @@ object RenderDataArtifactContextKeys {
     ExtensionContextKey(name = "render-data-artifact.density", type = Float::class.javaObjectType)
 
   /**
-   * The held [`androidx.activity.ComponentActivity`] the rule launched for this render. Threaded
-   * to extensions that read activity-scoped state — `getIntent()` (deep-link routing audits),
+   * The held [`androidx.activity.ComponentActivity`] the rule launched for this render. Threaded to
+   * extensions that read activity-scoped state — `getIntent()` (deep-link routing audits),
    * `onBackPressedDispatcher.hasEnabledCallbacks()` (registered back callbacks). Robolectric's
-   * `ActivityScenario` boots the activity with a default `MAIN`/`LAUNCHER` Intent and no extras,
-   * so production renders typically see an empty intent — extensions handle that gracefully.
+   * `ActivityScenario` boots the activity with a default `MAIN`/`LAUNCHER` Intent and no extras, so
+   * production renders typically see an empty intent — extensions handle that gracefully.
    */
   val HeldActivity: ExtensionContextKey<androidx.activity.ComponentActivity> =
     ExtensionContextKey(
@@ -102,10 +102,10 @@ object RenderDataArtifactContextKeys {
     )
 
   /**
-   * Pre-built [PreviewContext] for the layout-inspector data product. Carries the
-   * captured slot tables, semantics root, device dimensions, and render-mode metadata that
-   * `LayoutInspectorDataProducer.writeArtifacts` consumes — assembled once by the render engine
-   * and shared with any extension that needs the same view of the rendered preview.
+   * Pre-built [PreviewContext] for the layout-inspector data product. Carries the captured slot
+   * tables, semantics root, device dimensions, and render-mode metadata that
+   * `LayoutInspectorDataProducer.writeArtifacts` consumes — assembled once by the render engine and
+   * shared with any extension that needs the same view of the rendered preview.
    */
   val LayoutInspectorPreviewContext: ExtensionContextKey<PreviewContext> =
     ExtensionContextKey(

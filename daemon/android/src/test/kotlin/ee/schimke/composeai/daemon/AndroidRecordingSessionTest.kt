@@ -36,9 +36,9 @@ import org.junit.rules.TemporaryFolder
  *
  * **Test cost.** This test pays the same ~2× cold-boot wall-clock as
  * [AndroidInteractiveSessionTest] (each sandbox download + instrumentation independent on a cold
- * cache) plus 4 paused-clock captures × ~500–1000 ms each. ~30 s on a warm cache is realistic;
- * we deliberately don't multiply this across more recording scenarios — the broader scripted
- * coverage stays on the desktop side where renders are sub-100 ms each.
+ * cache) plus 4 paused-clock captures × ~500–1000 ms each. ~30 s on a warm cache is realistic; we
+ * deliberately don't multiply this across more recording scenarios — the broader scripted coverage
+ * stays on the desktop side where renders are sub-100 ms each.
  *
  * Pixel-match helper inlined for the same reason `AndroidInteractiveSessionTest` and
  * `RenderEngineTest` inline theirs — pulling `:daemon:harness`'s `PixelDiff` would invert the
@@ -71,14 +71,7 @@ class AndroidRecordingSessionTest {
       )
 
     session.postScript(
-      listOf(
-        RecordingScriptEvent(
-          tMs = 67L,
-          kind = "input.click",
-          pixelX = 4,
-          pixelY = 4,
-        )
-      )
+      listOf(RecordingScriptEvent(tMs = 67L, kind = "input.click", pixelX = 4, pixelY = 4))
     )
     val result = session.stop()
 
@@ -150,17 +143,18 @@ class AndroidRecordingSessionTest {
       "non-testTag target should explain it resolves by testTag; got ${asserts[4].message}",
       asserts[4].message?.contains("testTag") == true,
     )
-    // The dangerous case: a role+text assert.notVisible must NOT pass just because the flat snapshot
+    // The dangerous case: a role+text assert.notVisible must NOT pass just because the flat
+    // snapshot
     // can't see a role+text node — it fails as unsupported instead of silently passing.
     assertEquals(RecordingScriptEventStatus.FAILED, asserts[5].status)
   }
 
   /**
-   * Issue #1966 — `assert.a11y` runs Android ATF against the held composition and fails the recording
-   * when findings breach the threshold (`inputText`: `errors` default | `warnings`). Verdict comes
-   * from the shared `evaluateA11yAssertion`; capture rides the `captureA11yFindings` bridge, faked
-   * here with canned findings so no Robolectric + ATF run is needed. `null` findings (backend can't
-   * run ATF) fail with a clear reason rather than silently passing.
+   * Issue #1966 — `assert.a11y` runs Android ATF against the held composition and fails the
+   * recording when findings breach the threshold (`inputText`: `errors` default | `warnings`).
+   * Verdict comes from the shared `evaluateA11yAssertion`; capture rides the `captureA11yFindings`
+   * bridge, faked here with canned findings so no Robolectric + ATF run is needed. `null` findings
+   * (backend can't run ATF) fail with a clear reason rather than silently passing.
    */
   @Test
   fun scriptedA11yAssertionsResolveAgainstCapturedFindings() {
@@ -246,7 +240,8 @@ class AndroidRecordingSessionTest {
       )
     }
 
-    // Capture unavailable (null): the check the user asked for can't run → FAILED, not a silent pass.
+    // Capture unavailable (null): the check the user asked for can't run → FAILED, not a silent
+    // pass.
     run {
       val interactive = RecordingDeltaSession(sourcePng).apply { a11yFindingsResult = null }
       val session =
@@ -268,7 +263,8 @@ class AndroidRecordingSessionTest {
       )
     }
 
-    // ATF throws (e.g. unsupported View state): must record FAILED evidence, NOT abort the recording
+    // ATF throws (e.g. unsupported View state): must record FAILED evidence, NOT abort the
+    // recording
     // — the recording must still stop cleanly with frames + the failed assert (issue #1966 review).
     run {
       val interactive =
@@ -300,7 +296,8 @@ class AndroidRecordingSessionTest {
   fun liveRecordingRoutesQueuedInputThroughTheSameRegistryAsScripted() {
     // Live mode used to call a separate `dispatchLiveInput` ladder; now both paths funnel through
     // `scriptHandlers.dispatch(...)`. Pin that the click in `liveInputs` reaches the same
-    // `interactive.dispatch(InteractiveInputParams)` call the scripted `kind = "input.click"` handler
+    // `interactive.dispatch(InteractiveInputParams)` call the scripted `kind = "input.click"`
+    // handler
     // makes — verifying the wireName translation + registry routing without standing up a real
     // Robolectric sandbox.
     val framesDir = tempFolder.newFolder("live-registry-frames")
@@ -411,14 +408,7 @@ class AndroidRecordingSessionTest {
     try {
       try {
         session.postScript(
-          listOf(
-            RecordingScriptEvent(
-              tMs = 0L,
-              kind = "input.click",
-              pixelX = 1,
-              pixelY = 1,
-            )
-          )
+          listOf(RecordingScriptEvent(tMs = 0L, kind = "input.click", pixelX = 1, pixelY = 1))
         )
         fail("expected live recording to reject postScript")
       } catch (expected: IllegalStateException) {
@@ -492,12 +482,7 @@ class AndroidRecordingSessionTest {
     try {
       session.postScript(
         listOf(
-          RecordingScriptEvent(
-            tMs = 0L,
-            kind = "input.click",
-            pixelX = 1,
-            pixelY = 1,
-          ),
+          RecordingScriptEvent(tMs = 0L, kind = "input.click", pixelX = 1, pixelY = 1),
           RecordingScriptEvent(
             tMs = 0L,
             kind = RecordingScriptDataExtensions.STATE_SAVE_EVENT,
@@ -513,7 +498,11 @@ class AndroidRecordingSessionTest {
       )
       val result = session.stop()
 
-      assertEquals("only the click should dispatch through interactive input", 1, interactive.dispatchCount)
+      assertEquals(
+        "only the click should dispatch through interactive input",
+        1,
+        interactive.dispatchCount,
+      )
       assertEquals(3, result.scriptEvents.size)
       assertEquals(
         ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.APPLIED,
@@ -681,7 +670,9 @@ class AndroidRecordingSessionTest {
     )
     // First next/previous move (true); the third call hits the boundary (false).
     val interactive =
-      RecordingDeltaSession(sourcePng).apply { semanticsActionResults = ArrayDeque(listOf(true, true, false)) }
+      RecordingDeltaSession(sourcePng).apply {
+        semanticsActionResults = ArrayDeque(listOf(true, true, false))
+      }
     val session =
       AndroidRecordingSession(
         previewId = INTERACTIVE_PREVIEW_ID,
@@ -810,9 +801,7 @@ class AndroidRecordingSessionTest {
       )
 
     try {
-      session.postScript(
-        listOf(RecordingScriptEvent(tMs = 0L, kind = "a11y.action.click"))
-      )
+      session.postScript(listOf(RecordingScriptEvent(tMs = 0L, kind = "a11y.action.click")))
       val result = session.stop()
 
       assertTrue(
@@ -866,9 +855,7 @@ class AndroidRecordingSessionTest {
           LifecycleRecordingScriptEvents.LIFECYCLE_RESUME_EVENT to "resume",
           LifecycleRecordingScriptEvents.LIFECYCLE_STOP_EVENT to "stop",
         )
-      session.postScript(
-        ids.map { (kind, _) -> RecordingScriptEvent(tMs = 0L, kind = kind) }
-      )
+      session.postScript(ids.map { (kind, _) -> RecordingScriptEvent(tMs = 0L, kind = kind) })
       val result = session.stop()
 
       // Each id routed through dispatchLifecycle with the matching pre-bound target string.
@@ -922,7 +909,10 @@ class AndroidRecordingSessionTest {
     try {
       session.postScript(
         listOf(
-          RecordingScriptEvent(tMs = 0L, kind = LifecycleRecordingScriptEvents.LIFECYCLE_PAUSE_EVENT)
+          RecordingScriptEvent(
+            tMs = 0L,
+            kind = LifecycleRecordingScriptEvents.LIFECYCLE_PAUSE_EVENT,
+          )
         )
       )
       val result = session.stop()
@@ -1544,10 +1534,7 @@ class AndroidRecordingSessionTest {
     try {
       session.postScript(
         listOf(
-          RecordingScriptEvent(
-            tMs = 0L,
-            kind = StateRecordingScriptEvents.STATE_RECREATE_EVENT,
-          )
+          RecordingScriptEvent(tMs = 0L, kind = StateRecordingScriptEvents.STATE_RECREATE_EVENT)
         )
       )
       val result = session.stop()
@@ -1601,10 +1588,7 @@ class AndroidRecordingSessionTest {
     try {
       session.postScript(
         listOf(
-          RecordingScriptEvent(
-            tMs = 0L,
-            kind = StateRecordingScriptEvents.STATE_RECREATE_EVENT,
-          )
+          RecordingScriptEvent(tMs = 0L, kind = StateRecordingScriptEvents.STATE_RECREATE_EVENT)
         )
       )
       val result = session.stop()
@@ -1880,8 +1864,8 @@ class AndroidRecordingSessionTest {
     var semanticsActionResult: Boolean? = null
 
     /**
-     * When non-null, [dispatchSemanticsAction] pops the next result from this queue per call (used by
-     * the next/previous test to model a focus walk that hits a boundary on its last step). Takes
+     * When non-null, [dispatchSemanticsAction] pops the next result from this queue per call (used
+     * by the next/previous test to model a focus walk that hits a boundary on its last step). Takes
      * precedence over [semanticsActionResult]; falls back to it once exhausted.
      */
     var semanticsActionResults: ArrayDeque<Boolean>? = null
@@ -1894,8 +1878,8 @@ class AndroidRecordingSessionTest {
     var lifecycleResult: Boolean? = null
 
     /**
-     * When non-null, [dispatch] throws a [SemanticsTargetUnresolvedException] carrying this reason —
-     * the host-side shape an unresolved semantic target (#1784) produces after the sandbox reply
+     * When non-null, [dispatch] throws a [SemanticsTargetUnresolvedException] carrying this reason
+     * — the host-side shape an unresolved semantic target (#1784) produces after the sandbox reply
      * crosses the bridge. Lets the recording-handler test assert candidate surfacing without a real
      * Robolectric sandbox.
      */
@@ -1914,9 +1898,7 @@ class AndroidRecordingSessionTest {
      * snapshot without standing up a real Robolectric sandbox — the same trick [dispatchTargetMiss]
      * uses for the target-miss path.
      */
-    var probeNodesResult:
-      List<ee.schimke.composeai.daemon.protocol.RecordingProbeNode>? =
-      null
+    var probeNodesResult: List<ee.schimke.composeai.daemon.protocol.RecordingProbeNode>? = null
 
     override fun captureProbeSemantics():
       List<ee.schimke.composeai.daemon.protocol.RecordingProbeNode>? = probeNodesResult
@@ -1926,9 +1908,7 @@ class AndroidRecordingSessionTest {
      * (issue #1966) exercise threshold evaluation against a known finding set without standing up a
      * real Robolectric sandbox + ATF run. `null` simulates a backend that can't run the check.
      */
-    var a11yFindingsResult:
-      List<ee.schimke.composeai.daemon.protocol.RecordingA11yFinding>? =
-      null
+    var a11yFindingsResult: List<ee.schimke.composeai.daemon.protocol.RecordingA11yFinding>? = null
 
     /**
      * When set, [captureA11yFindings] throws this instead of returning — simulating ATF blowing up
@@ -1963,8 +1943,8 @@ class AndroidRecordingSessionTest {
 
     /**
      * When non-null, [dispatchPreviewReload] returns this value verbatim and increments
-     * [previewReloadCount]. When null (the default), the inherited interface-level default
-     * (`return false`) is used so existing tests don't have to opt in.
+     * [previewReloadCount]. When null (the default), the inherited interface-level default (`return
+     * false`) is used so existing tests don't have to opt in.
      */
     var previewReloadResult: Boolean? = null
 
@@ -1978,8 +1958,8 @@ class AndroidRecordingSessionTest {
 
     /**
      * When non-null, [dispatchStateRecreate] returns this value verbatim and increments
-     * [stateRecreateCount]. When null (the default), the inherited interface-level default
-     * (`return false`) is used so existing tests don't have to opt in.
+     * [stateRecreateCount]. When null (the default), the inherited interface-level default (`return
+     * false`) is used so existing tests don't have to opt in.
      */
     var stateRecreateResult: Boolean? = null
 
@@ -2020,8 +2000,8 @@ class AndroidRecordingSessionTest {
 
     /**
      * When non-null, [dispatchNavigation] returns this value verbatim and records the call into
-     * [navigationCalls]. When null (the default), the inherited interface-level default
-     * (`return false`) is used so existing tests don't have to opt in.
+     * [navigationCalls]. When null (the default), the inherited interface-level default (`return
+     * false`) is used so existing tests don't have to opt in.
      */
     var navigationResult: Boolean? = null
 
@@ -2033,8 +2013,7 @@ class AndroidRecordingSessionTest {
     ): Boolean {
       navigationCalls += NavigationCall(actionKind, deepLinkUri, backProgress, backEdge)
       val override = navigationResult
-      return override
-        ?: super.dispatchNavigation(actionKind, deepLinkUri, backProgress, backEdge)
+      return override ?: super.dispatchNavigation(actionKind, deepLinkUri, backProgress, backEdge)
     }
 
     override fun render(requestId: Long, advanceTimeMs: Long?): RenderResult {

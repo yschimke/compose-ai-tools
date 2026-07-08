@@ -1,15 +1,15 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.protocol.AmbientOverride
+import ee.schimke.composeai.daemon.protocol.AmbientStateOverride
+import ee.schimke.composeai.daemon.protocol.KeyboardOverride
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.keyboard.Material3KeyboardProduct
 import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
 import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.compose.AroundComposableHook
 import ee.schimke.composeai.data.render.extensions.compose.hasAroundComposableHook
-import ee.schimke.composeai.daemon.protocol.AmbientOverride
-import ee.schimke.composeai.daemon.protocol.AmbientStateOverride
-import ee.schimke.composeai.daemon.protocol.KeyboardOverride
-import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -95,10 +95,7 @@ class KeyboardDataProductTest {
   fun `seed with visible false forces band hidden regardless of natural state`() {
     KeyboardController.notifyImeVisibility(true)
     KeyboardController.seed(KeyboardOverride(visible = false))
-    assertFalse(
-      "forced hidden wins over natural=true",
-      KeyboardController.softInputVisible.value,
-    )
+    assertFalse("forced hidden wins over natural=true", KeyboardController.softInputVisible.value)
   }
 
   @Test

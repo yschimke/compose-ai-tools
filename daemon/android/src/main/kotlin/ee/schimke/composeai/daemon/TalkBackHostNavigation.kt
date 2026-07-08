@@ -56,9 +56,9 @@ internal object TalkBackHostNavigation {
    * Whether a node with no label is still a TalkBack focus stop because it carries actionable /
    * stateful semantics — an empty edit field (`SetText` / `EditableText`), an unlabeled scrollable
    * (`ScrollBy` / a scroll-axis range), a clickable, a toggle, or a slider. Mirrors the desktop
-   * accessibility extractor's state-based keep filter so the cursor order matches the a11y hierarchy
-   * (a bare `Role` with nothing else is *not* a stop — e.g. an undescribed Image — matching the
-   * hierarchy, which only surfaces a roled node when it's also actionable / labelled).
+   * accessibility extractor's state-based keep filter so the cursor order matches the a11y
+   * hierarchy (a bare `Role` with nothing else is *not* a stop — e.g. an undescribed Image —
+   * matching the hierarchy, which only surfaces a roled node when it's also actionable / labelled).
    */
   private fun SemanticsNode.isStateOnlyFocusStop(): Boolean {
     val cfg = config

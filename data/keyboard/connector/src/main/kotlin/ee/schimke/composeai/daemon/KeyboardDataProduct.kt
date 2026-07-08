@@ -32,19 +32,18 @@ import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
 import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExtension
 
 /**
- * `AroundComposable` extension that owns the soft-keyboard (IME) overlay. The extension is
- * **always active** — the planner emits an instance for every render, with or without a
- * `KeyboardOverride` seed, so the around-composable can observe natural IME state and surface the
- * band when the app raises it.
+ * `AroundComposable` extension that owns the soft-keyboard (IME) overlay. The extension is **always
+ * active** — the planner emits an instance for every render, with or without a `KeyboardOverride`
+ * seed, so the around-composable can observe natural IME state and surface the band when the app
+ * raises it.
  *
  * Two control surfaces feed the [KeyboardController]:
  *
  * - **App-side, passive** — [KeyboardOverrideExtension.AroundComposable] installs a shadow
  *   `LocalSoftwareKeyboardController` whose `show()` / `hide()` calls land directly in
  *   [KeyboardController.notifyImeVisibility]. Compose's text input system calls `show()` on the
- *   ambient controller whenever a `BasicTextField` gains focus, so a normal focused field is
- *   enough to make the band appear. Explicit app code (`keyboardController.show()`) takes the same
- *   path.
+ *   ambient controller whenever a `BasicTextField` gains focus, so a normal focused field is enough
+ *   to make the band appear. Explicit app code (`keyboardController.show()`) takes the same path.
  * - **Daemon-side, active** — `AndroidInteractiveSession.dispatch` /
  *   `DesktopInteractiveSession.dispatch` forward `KEY_DOWN` / `KEY_UP` envelopes into
  *   [KeyboardController.notifyKeyDown] / [notifyKeyUp]; `renderNow.overrides.keyboard` seeds both
@@ -53,8 +52,8 @@ import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExten
  *   band even without the app focusing anything.
  *
  * Runs in [DataExtensionPhase.OuterEnvironment] so the shadow controller is in place before the
- * user-environment phase reaches preview content — text fields composed in user code see the
- * shadow rather than the platform default.
+ * user-environment phase reaches preview content — text fields composed in user code see the shadow
+ * rather than the platform default.
  */
 class KeyboardOverrideExtension(private val seed: KeyboardOverride? = null) :
   AroundComposableExtension(
@@ -83,8 +82,7 @@ class KeyboardOverrideExtension(private val seed: KeyboardOverride? = null) :
     CompositionLocalProvider(LocalSoftwareKeyboardController provides shadow) {
       val visible by KeyboardController.softInputVisible
       val pressedKey by KeyboardController.pressedKey
-      val night =
-        (LocalConfiguration.current.uiMode and UI_MODE_NIGHT_MASK) == UI_MODE_NIGHT_YES
+      val night = (LocalConfiguration.current.uiMode and UI_MODE_NIGHT_MASK) == UI_MODE_NIGHT_YES
 
       // Publish synthetic `WindowInsetsCompat.Type.ime()` insets on the host view so consumer code
       // reading `WindowInsets.ime` (e.g. `Modifier.imePadding()`,
@@ -125,8 +123,8 @@ class KeyboardOverrideExtension(private val seed: KeyboardOverride? = null) :
 
   /**
    * `SoftwareKeyboardController` that forwards `show()` / `hide()` into [KeyboardController]. The
-   * platform default fires Android's `InputMethodManager` IPC; we keep the IPC off (we don't have
-   * a real IME bound during preview rendering anyway) and instead drive the synthetic band.
+   * platform default fires Android's `InputMethodManager` IPC; we keep the IPC off (we don't have a
+   * real IME bound during preview rendering anyway) and instead drive the synthetic band.
    *
    * Marked stable rather than experimental even though the interface itself is opt-in — Compose's
    * own platform implementations carry the same opt-in.
@@ -157,8 +155,8 @@ class KeyboardOverrideExtension(private val seed: KeyboardOverride? = null) :
 /**
  * Build the synthetic `WindowInsetsCompat` payload dispatched to the host view on every IME
  * visibility change. Seeds the builder from `existing` so non-IME inset types (status bar,
- * navigation bar, system gestures, display cutout, …) survive the synthetic dispatch — without
- * this seed, every IME visibility toggle would zero status / navigation / safe-drawing insets on
+ * navigation bar, system gestures, display cutout, …) survive the synthetic dispatch — without this
+ * seed, every IME visibility toggle would zero status / navigation / safe-drawing insets on
  * `WindowInsetsHolder`, and consumer modifiers like `Modifier.systemBarsPadding()` or
  * `WindowInsets.safeDrawing.asPaddingValues()` would briefly collapse their padding.
  *

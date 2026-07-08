@@ -1863,14 +1863,18 @@ object PreviewDiscovery {
     val directAnnotations = method.annotationInfo?.directOnly()?.toList() ?: emptyList()
     // A wrapper declared directly on the function (androidx `@PreviewWrapper` or our
     // `@PreviewWrapperClass`) wins over any inherited from a multi-preview meta-annotation.
-    directWrapperFqn(directAnnotations)?.let { return it }
+    directWrapperFqn(directAnnotations)?.let {
+      return it
+    }
     // Otherwise inherit from a multi-preview annotation that carries the wrapper. androidx's
     // `@PreviewWrapper` is `@Target(FUNCTION)`-only so it can never legally sit on an annotation
     // class, but our `@PreviewWrapperClass` can — hoisting the wrapper onto the multi-preview
     // saves repeating it on every tagged function.
     val visited = mutableSetOf<String>()
     for (ann in directAnnotations) {
-      wrapperFromMetaAnnotation(ann, scanResult, visited)?.let { return it }
+      wrapperFromMetaAnnotation(ann, scanResult, visited)?.let {
+        return it
+      }
     }
     return null
   }
@@ -1882,18 +1886,22 @@ object PreviewDiscovery {
    * present.
    */
   private fun directWrapperFqn(annotations: List<AnnotationInfo>): String? {
-    annotations.firstOrNull { it.name == PREVIEW_WRAPPER_FQN }?.let { ann ->
-      // The `wrapper: KClass<out PreviewWrapperProvider>` parameter surfaces as an
-      // AnnotationClassRef — pull the FQN without triggering classloading.
-      return when (val value = ann.parameterValues.getValue("wrapper")) {
-        is AnnotationClassRef -> value.name
-        is String -> value
-        else -> null
+    annotations
+      .firstOrNull { it.name == PREVIEW_WRAPPER_FQN }
+      ?.let { ann ->
+        // The `wrapper: KClass<out PreviewWrapperProvider>` parameter surfaces as an
+        // AnnotationClassRef — pull the FQN without triggering classloading.
+        return when (val value = ann.parameterValues.getValue("wrapper")) {
+          is AnnotationClassRef -> value.name
+          is String -> value
+          else -> null
+        }
       }
-    }
-    annotations.firstOrNull { it.name == PREVIEW_WRAPPER_CLASS_FQN }?.let { ann ->
-      return ann.parameterValues.getValue("wrapperClassName") as? String
-    }
+    annotations
+      .firstOrNull { it.name == PREVIEW_WRAPPER_CLASS_FQN }
+      ?.let { ann ->
+        return ann.parameterValues.getValue("wrapperClassName") as? String
+      }
     return null
   }
 
@@ -1913,9 +1921,13 @@ object PreviewDiscovery {
     visited.add(ann.name)
     val annClassInfo = scanResult.getClassInfo(ann.name) ?: return null
     val metaAnns = annClassInfo.annotationInfo.toList()
-    directWrapperFqn(metaAnns)?.let { return it }
+    directWrapperFqn(metaAnns)?.let {
+      return it
+    }
     for (metaAnn in metaAnns) {
-      wrapperFromMetaAnnotation(metaAnn, scanResult, visited)?.let { return it }
+      wrapperFromMetaAnnotation(metaAnn, scanResult, visited)?.let {
+        return it
+      }
     }
     return null
   }

@@ -10,10 +10,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * A trivial constructor-injected collaborator so the VM isn't just holding
- * its own state — it depends on something the graph has to wire up. Any
- * `@Inject` class without an explicit scope is unscoped (a new instance
- * per request), which is fine for a stateless seed provider.
+ * A trivial constructor-injected collaborator so the VM isn't just holding its own state — it
+ * depends on something the graph has to wire up. Any `@Inject` class without an explicit scope is
+ * unscoped (a new instance per request), which is fine for a stateless seed provider.
  */
 @Inject
 class CounterRepository {

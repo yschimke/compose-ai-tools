@@ -23,9 +23,8 @@ import org.junit.rules.TemporaryFolder
 
 /**
  * End-to-end verification that a render driven through the sandbox surfaces the
- * `ContextCompat.checkSelfPermission(...)` queries the screen issued into the
- * `compose/permissions` data product the panel reads via `data/fetch`. Closes issue #1400 Part 3
- * step 3.
+ * `ContextCompat.checkSelfPermission(...)` queries the screen issued into the `compose/permissions`
+ * data product the panel reads via `data/fetch`. Closes issue #1400 Part 3 step 3.
  *
  * The pixel-flip leg ([PermissionsOverrideIntegrationTest]) already pins the grant-write side of
  * `renderNow.overrides.permissions` end-to-end — a granted override produces the green branch on
@@ -33,8 +32,8 @@ import org.junit.rules.TemporaryFolder
  * `ContextCompat.checkSelfPermission(CAMERA)` inside the sandbox must land CAMERA in the host-side
  * [PermissionsDataProductRegistry]'s `data/fetch` payload.
  *
- * **Why a cross-classloader bridge.** [PermissionsController] is loaded by the Robolectric
- * sandbox classloader (the `ee.schimke.composeai.daemon` package is acquired). The host-side
+ * **Why a cross-classloader bridge.** [PermissionsController] is loaded by the Robolectric sandbox
+ * classloader (the `ee.schimke.composeai.daemon` package is acquired). The host-side
  * [PermissionsDataProductRegistry] is loaded by the daemon classloader. Each classloader has its
  * own static `PermissionsController` instance, so the shadow's sandbox-side `recordQuery(...)`
  * writes are invisible to the host-CL registry. [SandboxPermissionsBridge] sits in the
@@ -44,9 +43,9 @@ import org.junit.rules.TemporaryFolder
  *
  * **Out of scope.** This test does NOT go through `JsonRpcServer.handleDataFetch` — the JSON-RPC
  * envelope leg is already covered by `:daemon:core`'s `DataFetchRerenderTest` and the registry
- * dispatch shape doesn't change here. We exercise the registry directly to keep the test focused
- * on the cross-classloader path that #1400 calls out, and use the same render-result wire shape
- * the JSON-RPC server would feed to `extensions.activeDataProducts().onRender(...)`.
+ * dispatch shape doesn't change here. We exercise the registry directly to keep the test focused on
+ * the cross-classloader path that #1400 calls out, and use the same render-result wire shape the
+ * JSON-RPC server would feed to `extensions.activeDataProducts().onRender(...)`.
  */
 class PermissionsDataFetchE2ETest {
 
@@ -99,12 +98,10 @@ class PermissionsDataFetchE2ETest {
         PreviewOverrides(
           permissions =
             PermissionsOverride(
-              grants =
-                mapOf("android.permission.CAMERA" to PermissionGrantStateOverride.GRANTED)
+              grants = mapOf("android.permission.CAMERA" to PermissionGrantStateOverride.GRANTED)
             )
         )
-      val payload =
-        "previewId=$previewId;overrides=${encodeOverridesBag(overrideBag)}"
+      val payload = "previewId=$previewId;overrides=${encodeOverridesBag(overrideBag)}"
       SandboxPermissionsBridge.resetAll()
       val result = host.submit(RenderRequest.Render(payload = payload), timeoutMs = 120_000)
 
@@ -153,18 +150,14 @@ class PermissionsDataFetchE2ETest {
       // of the cross-classloader bridge. Asserted here so a future refactor that moves the seed
       // to sandbox-side construction doesn't silently break the grants leg too.
       val grants = obj["grants"]!!.jsonObject
-      assertEquals(
-        "granted",
-        grants["android.permission.CAMERA"]?.jsonPrimitive?.content,
-      )
+      assertEquals("granted", grants["android.permission.CAMERA"]?.jsonPrimitive?.content)
     } finally {
       host.shutdown()
     }
   }
 
   private fun encodeOverridesBag(bag: PreviewOverrides): String {
-    val bytes =
-      json.encodeToString(PreviewOverrides.serializer(), bag).toByteArray(Charsets.UTF_8)
+    val bytes = json.encodeToString(PreviewOverrides.serializer(), bag).toByteArray(Charsets.UTF_8)
     return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
   }
 

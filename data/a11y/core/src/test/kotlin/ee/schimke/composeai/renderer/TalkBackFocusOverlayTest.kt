@@ -46,11 +46,7 @@ class TalkBackFocusOverlayTest {
         boundsInScreen = "40,140,360,210",
       ),
       // An unmerged child — must NOT be treated as a focus stop.
-      AccessibilityNode(
-        label = "inner",
-        merged = false,
-        boundsInScreen = "50,150,200,200",
-      ),
+      AccessibilityNode(label = "inner", merged = false, boundsInScreen = "50,150,200,200"),
     )
 
   @Test
@@ -65,7 +61,10 @@ class TalkBackFocusOverlayTest {
     // The focused node (stop 1) bounds are 40,140..360,210. The green stroke rings just outside;
     // sample the top stroke row a few px above the bounds top.
     val greenHitsFocused = countGreenAlong(bm, y = 140 - 6, xRange = 40..360)
-    assertTrue("focused node should be ringed in green: hits=$greenHitsFocused", greenHitsFocused > 50)
+    assertTrue(
+      "focused node should be ringed in green: hits=$greenHitsFocused",
+      greenHitsFocused > 50,
+    )
 
     // Stop 0 (the heading) is NOT focused, so its bounds top should have no green focus stroke.
     val greenHitsUnfocused = countGreenAlong(bm, y = 40 - 6, xRange = 40..360)
@@ -80,7 +79,8 @@ class TalkBackFocusOverlayTest {
     val source = blackSource(400, 400)
     val bm =
       BitmapFactory.decodeFile(
-        TalkBackFocusOverlay.generate(source, nodes, focusedStop = 1, destPng = dest())!!.absolutePath
+        TalkBackFocusOverlay.generate(source, nodes, focusedStop = 1, destPng = dest())!!
+          .absolutePath
       )
     // The caption card is a near-opaque dark panel over the black source; its green accent bar on
     // the left edge is the easiest signal. Scan the left margin band in the bottom quarter.
@@ -90,7 +90,10 @@ class TalkBackFocusOverlayTest {
         if (isGreen(bm.getPixel(x, y))) accentHits++
       }
     }
-    assertTrue("caption accent bar should paint near the bottom-left: hits=$accentHits", accentHits > 20)
+    assertTrue(
+      "caption accent bar should paint near the bottom-left: hits=$accentHits",
+      accentHits > 20,
+    )
   }
 
   @Test
@@ -117,7 +120,9 @@ class TalkBackFocusOverlayTest {
   }
 
   private fun isGreen(px: Int): Boolean =
-    Color.green(px) > 140 && Color.green(px) > Color.red(px) + 40 && Color.green(px) > Color.blue(px) + 40
+    Color.green(px) > 140 &&
+      Color.green(px) > Color.red(px) + 40 &&
+      Color.green(px) > Color.blue(px) + 40
 
   private fun countGreenAlong(bm: Bitmap, y: Int, xRange: IntRange): Int {
     var hits = 0

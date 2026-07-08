@@ -53,7 +53,8 @@ class RemoteComposeDataProductTest {
         profile = RemoteComposeProfile.ANDROIDX,
         namedValues = mapOf("score" to RemoteNamedValue.FloatValue(0.75f)),
       )
-    val planned = RemoteComposePreviewOverrideExtension().plan(PreviewOverrides(remoteCompose = override))
+    val planned =
+      RemoteComposePreviewOverrideExtension().plan(PreviewOverrides(remoteCompose = override))
     assertTrue(planned is RemoteComposeOverrideExtension)
   }
 
@@ -117,10 +118,7 @@ class RemoteComposeDataProductTest {
     controller.set(
       RemoteComposeOverride(
         namedValues =
-          mapOf(
-            "a" to RemoteNamedValue.IntValue(1),
-            "b" to RemoteNamedValue.IntValue(2),
-          )
+          mapOf("a" to RemoteNamedValue.IntValue(1), "b" to RemoteNamedValue.IntValue(2))
       )
     )
     controller.setNamedValue("a", RemoteNamedValue.IntValue(42))
@@ -145,7 +143,9 @@ class RemoteComposeDataProductTest {
   fun controller_recordHostAction_caps_at_buffer_size() {
     val controller = RemoteComposeController
     val cap = RemoteComposePayload.HOST_ACTION_BUFFER_SIZE
-    repeat(cap + 5) { controller.recordHostAction(RemoteHostAction(payload = "p$it", handlerId = it.toFloat())) }
+    repeat(cap + 5) {
+      controller.recordHostAction(RemoteHostAction(payload = "p$it", handlerId = it.toFloat()))
+    }
     val captured = controller.hostActions.value
     assertEquals(cap, captured.size)
     assertEquals("p5", captured.first().payload)
@@ -177,10 +177,7 @@ class RemoteComposeDataProductTest {
   @Test
   fun on_render_clears_payload_when_controller_empty() {
     val registry = RemoteComposeDataProductRegistry()
-    registry.capture(
-      "preview-1",
-      RemoteComposePayload(profile = RemoteComposeProfile.ANDROIDX),
-    )
+    registry.capture("preview-1", RemoteComposePayload(profile = RemoteComposeProfile.ANDROIDX))
     registry.onRender(
       previewId = "preview-1",
       result = stubRenderResult(),

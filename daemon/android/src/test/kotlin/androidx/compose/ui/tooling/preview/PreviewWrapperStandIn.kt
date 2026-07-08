@@ -17,11 +17,11 @@ import kotlin.reflect.KClass
  * **Retention.** Mirrors upstream: `AnnotationRetention.BINARY` — the annotation is emitted into
  * the class file but **not** retained at runtime, so `Method.annotations` will never include it.
  * Issue #1440: an earlier version of this stand-in used `AnnotationRetention.RUNTIME`, which made
- * the daemon's `Method.annotations`-based `resolveWrapperOrNull` path appear to work in tests
- * even though production previews never resolved the wrapper. The production fix routes the
- * wrapper FQN from `previews.json` (read at discovery time from the class-file annotation
- * tables) into [ee.schimke.composeai.daemon.RenderSpec.wrapperClassName]; the regression test
- * now exercises that path explicitly.
+ * the daemon's `Method.annotations`-based `resolveWrapperOrNull` path appear to work in tests even
+ * though production previews never resolved the wrapper. The production fix routes the wrapper FQN
+ * from `previews.json` (read at discovery time from the class-file annotation tables) into
+ * [ee.schimke.composeai.daemon.RenderSpec.wrapperClassName]; the regression test now exercises that
+ * path explicitly.
  */
 @Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.BINARY)

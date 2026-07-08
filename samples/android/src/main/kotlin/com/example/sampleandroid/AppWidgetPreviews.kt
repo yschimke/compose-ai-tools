@@ -13,16 +13,15 @@ import androidx.glance.GlanceModifier
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
-import androidx.glance.color.ColorProvider
 import androidx.glance.layout.Column
 import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
-import androidx.glance.text.FontWeight
-import androidx.glance.text.Text
 import androidx.glance.preview.ExperimentalGlancePreviewApi
 import androidx.glance.preview.Preview as GlancePreview
+import androidx.glance.text.FontWeight
+import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider as GlanceFixedColorProvider
 import ee.schimke.composeai.preview.LauncherWidgetPreview
@@ -35,18 +34,18 @@ import ee.schimke.composeai.preview.glance.GlanceAppWidgetContent
  * Sample @Preview that hand-builds a `RemoteViews` from `widget_weather.xml` and renders it via
  * `AppWidgetContent` from `:appwidget-preview-runtime`. The runtime helper auto-discovers
  * `<appwidget-provider>` metadata for the inflated layout id (matched against
- * `AppWidgetManager.installedProviders`) and offers the resulting `supportedCells` /
- * `resizeAxes` into the launcher-widget data product. The sample's manifest registers a
- * `WeatherAppWidgetReceiver` for `R.layout.widget_weather` so the discovery has a target to
- * match. Same shape an `AppWidgetProvider.onUpdate` would push to the launcher.
+ * `AppWidgetManager.installedProviders`) and offers the resulting `supportedCells` / `resizeAxes`
+ * into the launcher-widget data product. The sample's manifest registers a
+ * `WeatherAppWidgetReceiver` for `R.layout.widget_weather` so the discovery has a target to match.
+ * Same shape an `AppWidgetProvider.onUpdate` would push to the launcher.
  *
- * `widthDp = 312` / `heightDp = 152` matches the dp footprint a `4×2` cell on the default
- * launcher grid (`cellSize = 72.dp`, `cellSpacing = 8.dp`) — the same arithmetic the
+ * `widthDp = 312` / `heightDp = 152` matches the dp footprint a `4×2` cell on the default launcher
+ * grid (`cellSize = 72.dp`, `cellSpacing = 8.dp`) — the same arithmetic the
  * `LauncherWidgetExtension` daemon-side override uses when a client sends
  * `renderNow.overrides.launcherWidget = LauncherWidgetOverride(cells = (4, 2))`. The hard-coded
  * dimensions here let the preview render through the gradle plugin path; the
- * `@LauncherWidgetPreview`-annotated samples below drive the same cell footprint from discovery
- * via the annotation in `:preview-annotations`.
+ * `@LauncherWidgetPreview`-annotated samples below drive the same cell footprint from discovery via
+ * the annotation in `:preview-annotations`.
  */
 @Preview(name = "RemoteViews widget — 4×2", widthDp = 312, heightDp = 152, showBackground = true)
 @Composable
@@ -76,10 +75,10 @@ fun RemoteViewsWeatherWidgetPreview() {
  * background colour. Mirrors [RemoteViewsWeatherWidgetPreview]'s content so the side-by-side
  * comparison is honest about what each rendering path produces.
  *
- * Overrides `providePreview(...)` rather than `provideGlance(...)`: `composeForPreview(...)`
- * reads from the former, the latter is the production runtime entry-point invoked when the
- * launcher binds the widget. Real consumers typically delegate `provideGlance` to a shared
- * content composable so the same tree runs in both surfaces; here we only need the preview.
+ * Overrides `providePreview(...)` rather than `provideGlance(...)`: `composeForPreview(...)` reads
+ * from the former, the latter is the production runtime entry-point invoked when the launcher binds
+ * the widget. Real consumers typically delegate `provideGlance` to a shared content composable so
+ * the same tree runs in both surfaces; here we only need the preview.
  */
 private class WeatherGlanceAppWidget : GlanceAppWidget() {
   override suspend fun providePreview(context: Context, widgetCategory: Int) {
@@ -99,10 +98,7 @@ private class WeatherGlanceAppWidget : GlanceAppWidget() {
             ),
         )
         Spacer(GlanceModifier.height(8.dp))
-        Text(
-          text = "67°",
-          style = TextStyle(color = GlanceFixedColorProvider(ComposeColor.White)),
-        )
+        Text(text = "67°", style = TextStyle(color = GlanceFixedColorProvider(ComposeColor.White)))
         Text(
           text = "Partly cloudy · H 70° / L 55°",
           style = TextStyle(color = GlanceFixedColorProvider(ComposeColor(0xB3FFFFFF))),
@@ -120,12 +116,11 @@ private class WeatherGlanceAppWidget : GlanceAppWidget() {
 }
 
 /**
- * Sample @Preview that materialises [WeatherGlanceAppWidget] via the
- * `GlanceAppWidgetContent` helper. Same `widthDp = 312 / heightDp = 152` (a `4×2` cell on the
- * default launcher grid) as the sibling RemoteViews preview so the two renders sit next to each
- * other in the gallery and any rendering differences between the legacy
- * `RemoteViews(layoutId, ...)` path and the Glance-compose-to-RemoteViews path are visually
- * obvious.
+ * Sample @Preview that materialises [WeatherGlanceAppWidget] via the `GlanceAppWidgetContent`
+ * helper. Same `widthDp = 312 / heightDp = 152` (a `4×2` cell on the default launcher grid) as the
+ * sibling RemoteViews preview so the two renders sit next to each other in the gallery and any
+ * rendering differences between the legacy `RemoteViews(layoutId, ...)` path and the
+ * Glance-compose-to-RemoteViews path are visually obvious.
  */
 @Preview(name = "Glance widget — 4×2", widthDp = 312, heightDp = 152, showBackground = true)
 @Composable
@@ -185,11 +180,16 @@ fun LauncherWidget4x2Preview() {
 }
 
 /**
- * Demonstrates clamping: requested `7×7` is pegged into the configured `1×3`..`4×5` bounds, so
- * the rendered footprint is `4×5`. Mirrors a real Android launcher's `minResizeWidth` /
+ * Demonstrates clamping: requested `7×7` is pegged into the configured `1×3`..`4×5` bounds, so the
+ * rendered footprint is `4×5`. Mirrors a real Android launcher's `minResizeWidth` /
  * `minResizeHeight` behaviour.
  */
-@Preview(name = "Launcher widget — clamped to 4×5", widthDp = 312, heightDp = 392, showBackground = true)
+@Preview(
+  name = "Launcher widget — clamped to 4×5",
+  widthDp = 312,
+  heightDp = 392,
+  showBackground = true,
+)
 @LauncherWidgetPreview(
   width = 7,
   height = 7,
@@ -211,11 +211,16 @@ fun LauncherWidgetClampedPreview() {
 
 /**
  * The original spec's `1×1 → 4×2` resize walk. `@LauncherWidgetResize` fans the function out into
- * one capture per whole-cell stop (`1×1, 2×1, 3×1, 4×1, 4×2` under the default `WidthFirst`
- * order); PNGs land at `renders/<id>_RESIZE_<w>x<h>.png` and can be flipped through like a
- * flipbook. A future Phase-B stitch will encode them into an animated GIF.
+ * one capture per whole-cell stop (`1×1, 2×1, 3×1, 4×1, 4×2` under the default `WidthFirst` order);
+ * PNGs land at `renders/<id>_RESIZE_<w>x<h>.png` and can be flipped through like a flipbook. A
+ * future Phase-B stitch will encode them into an animated GIF.
  */
-@Preview(name = "Launcher widget — resize 1×1 → 4×2", widthDp = 312, heightDp = 152, showBackground = true)
+@Preview(
+  name = "Launcher widget — resize 1×1 → 4×2",
+  widthDp = 312,
+  heightDp = 152,
+  showBackground = true,
+)
 @LauncherWidgetResize(
   fromWidth = 1,
   fromHeight = 1,
@@ -250,7 +255,12 @@ fun LauncherWidgetResize1x1To4x2Preview() {
  * [LauncherWidget4x2Preview]; `launcherMode = true` wraps it in the launcher chrome and the
  * phone-shaped `@Preview` window gives that chrome a full device to fill.
  */
-@Preview(name = "Launcher mode — 4×2 on home screen", widthDp = 411, heightDp = 914, showBackground = true)
+@Preview(
+  name = "Launcher mode — 4×2 on home screen",
+  widthDp = 411,
+  heightDp = 914,
+  showBackground = true,
+)
 @LauncherWidgetPreview(width = 4, height = 2, launcherMode = true)
 @Composable
 fun LauncherModeHomeScreenPreview() {
@@ -267,7 +277,12 @@ fun LauncherModeHomeScreenPreview() {
  * The `1×1 → 4×2` resize walk, each stop rendered on the launcher home screen — a flipbook of the
  * widget being resized on a real-looking device. PNGs land at `renders/<id>_RESIZE_<w>x<h>.png`.
  */
-@Preview(name = "Launcher mode — resize on home screen", widthDp = 411, heightDp = 914, showBackground = true)
+@Preview(
+  name = "Launcher mode — resize on home screen",
+  widthDp = 411,
+  heightDp = 914,
+  showBackground = true,
+)
 @LauncherWidgetResize(
   fromWidth = 1,
   fromHeight = 1,
@@ -324,10 +339,7 @@ fun NativeGlanceWidgetPreview() {
         ),
     )
     Spacer(GlanceModifier.height(8.dp))
-    Text(
-      text = "67°",
-      style = TextStyle(color = GlanceFixedColorProvider(ComposeColor.White)),
-    )
+    Text(text = "67°", style = TextStyle(color = GlanceFixedColorProvider(ComposeColor.White)))
     Text(
       text = "Discovered by FQN",
       style = TextStyle(color = GlanceFixedColorProvider(ComposeColor(0xB3FFFFFF))),

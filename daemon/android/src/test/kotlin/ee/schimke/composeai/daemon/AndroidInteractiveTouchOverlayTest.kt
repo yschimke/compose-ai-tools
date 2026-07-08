@@ -17,12 +17,12 @@ import org.junit.rules.TemporaryFolder
  * End-to-end touch-overlay verification on Robolectric — the Android counterpart of
  * `:daemon:desktop`'s `InteractiveTouchOverlayTest`.
  *
- * Pins the structural fix from this PR: the held-rule `setContent` now wraps
- * `InvokeHeldComposable` with `ComposeDataExtensionPipeline.Apply(extensions =
+ * Pins the structural fix from this PR: the held-rule `setContent` now wraps `InvokeHeldComposable`
+ * with `ComposeDataExtensionPipeline.Apply(extensions =
  * engine.previewOverrideExtensions.plan(...))`, so `TouchOverlayExtension`'s `AroundComposable`
  * actually paints the visualization rings on the held composition. Pre-fix, the extension was
- * registered on the engine and the override propagated correctly through #1317's plumbing, but
- * the held-rule `setContent` bypassed the extension chain entirely and the rings never appeared.
+ * registered on the engine and the override propagated correctly through #1317's plumbing, but the
+ * held-rule `setContent` bypassed the extension chain entirely and the rings never appeared.
  *
  * The single-pointer `pointerDown` (no matching `pointerUp`) keeps `activePointers` non-empty so
  * the overlay paints a ring at the press point. The dispatch loop's existing 100 ms `mainClock`
@@ -60,8 +60,7 @@ class AndroidInteractiveTouchOverlayTest {
         val pressed = session.render(requestId = RenderHost.nextRequestId())
         assertNotNull("pressed render must produce a PNG path", pressed.pngPath)
         val pressedImg = decode(File(pressed.pngPath!!))
-        val cyanMatch =
-          pixelMatchPct(pressedImg, expectedRgb = 0x00BCD4, perChannelTolerance = 60)
+        val cyanMatch = pixelMatchPct(pressedImg, expectedRgb = 0x00BCD4, perChannelTolerance = 60)
         assertTrue(
           "pressed frame must contain cyan overlay-ring pixels (interactive overlay enabled); " +
             "got ${"%.4f".format(cyanMatch * 100)}% — if 0, either the override didn't reach " +

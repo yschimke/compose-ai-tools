@@ -8,8 +8,8 @@ import ee.schimke.composeai.preview.TypographyCatalog
 /**
  * Design tokens annotated with `@TypographyCatalog` — the type-scale sibling of `@ColorCatalog` and
  * the analogue of Showkase's `@ShowkaseTypography`. No `@Preview` is written: the compose-preview
- * plugin discovers the annotated `TextStyle` properties from bytecode and synthesises catalog sheets
- * — one per `group`, plus a module-wide "All type styles" sheet — that the renderer draws by
+ * plugin discovers the annotated `TextStyle` properties from bytecode and synthesises catalog
+ * sheets — one per `group`, plus a module-wide "All type styles" sheet — that the renderer draws by
  * reflecting each value and setting a sample line in it. `name` defaults to the property name;
  * `Body Large` shows the annotation-name override.
  */

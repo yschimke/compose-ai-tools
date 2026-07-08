@@ -32,7 +32,9 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
-/** A stand-in `@XrSubspacePreview` — a top-level `@Composable` whose body is a tagged `Subspace`. */
+/**
+ * A stand-in `@XrSubspacePreview` — a top-level `@Composable` whose body is a tagged `Subspace`.
+ */
 @Composable
 fun SampleSpatialPreview() {
   Subspace {
@@ -57,8 +59,7 @@ class XrSubspaceRendererTest {
 
   // v2 rule API (StandardTestDispatcher) is not on the compat compile classpath yet;
   // suppress until the floor moves up. See renderer-android RobolectricRenderTest.
-  @Suppress("DEPRECATION")
-  @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
+  @Suppress("DEPRECATION") @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
   @Test
   fun rendersSceneJsonFromPreviewFunction() {
@@ -90,7 +91,8 @@ class XrSubspaceRendererTest {
     assertThat(scene.previewId).isEqualTo("sample-preview")
     assertThat(scene.panels.map { it.id }).containsExactly("now-playing", "controls")
     val byId = scene.panels.associateBy { it.id }
-    assertThat(byId.getValue("now-playing").sizeDp).isEqualTo(ee.schimke.composeai.xr.SizeDp(560, 220))
+    assertThat(byId.getValue("now-playing").sizeDp)
+      .isEqualTo(ee.schimke.composeai.xr.SizeDp(560, 220))
     // The recovered column stacks now-playing above controls.
     assertThat(byId.getValue("now-playing").poseInRoot.translation.y)
       .isGreaterThan(byId.getValue("controls").poseInRoot.translation.y)

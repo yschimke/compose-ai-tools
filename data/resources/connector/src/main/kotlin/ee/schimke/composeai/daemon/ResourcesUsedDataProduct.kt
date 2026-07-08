@@ -1,8 +1,5 @@
 package ee.schimke.composeai.daemon
 
-import ee.schimke.composeai.io.SystemFileSystem
-import okio.FileSystem
-import okio.Path.Companion.toPath
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.res.AssetManager
@@ -12,16 +9,15 @@ import android.content.res.TypedArray
 import android.content.res.XmlResourceParser
 import android.graphics.drawable.Drawable
 import android.util.TypedValue
-import ee.schimke.composeai.daemon.protocol.DataFetchResult
-import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.data.resources.ResourcesUsedProduct
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import java.util.Collections
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /** Producer for `resources/used`, the Android resources resolved while rendering a preview. */
 object ResourcesUsedDataProducer {
@@ -51,7 +47,12 @@ object ResourcesUsedDataProducer {
       override fun getAssets(): AssetManager = resources.assets
     }
 
-  fun writeArtifacts(rootDir: File, previewId: String, recorder: RecordingResources, fileSystem: FileSystem = SystemFileSystem) {
+  fun writeArtifacts(
+    rootDir: File,
+    previewId: String,
+    recorder: RecordingResources,
+    fileSystem: FileSystem = SystemFileSystem,
+  ) {
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
     val payload = ResourcesUsedPayload(references = recorder.references())
     fileSystem.write(previewDir.resolve(FILE).path.toPath()) {
@@ -61,7 +62,9 @@ object ResourcesUsedDataProducer {
 }
 
 typealias ResourcesUsedPayload = ee.schimke.composeai.data.resources.ResourcesUsedPayload
+
 typealias ResourceUsedReference = ee.schimke.composeai.data.resources.ResourceUsedReference
+
 typealias ResourceUsedConsumer = ee.schimke.composeai.data.resources.ResourceUsedConsumer
 
 @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
@@ -71,17 +74,17 @@ class RecordingResources(
   displayMetrics: android.util.DisplayMetrics,
   configuration: android.content.res.Configuration,
 ) : Resources(assets, displayMetrics, configuration) {
-  private val references =
-    Collections.synchronizedMap(linkedMapOf<String, ResourceUsedReference>())
+  private val references = Collections.synchronizedMap(linkedMapOf<String, ResourceUsedReference>())
 
   fun references(): List<ResourceUsedReference> =
-    synchronized(references) { references.values.toList().sortedWith(compareBy({ it.resourceType }, { it.resourceName })) }
+    synchronized(references) {
+      references.values.toList().sortedWith(compareBy({ it.resourceType }, { it.resourceName }))
+    }
 
   override fun getText(id: Int): CharSequence =
     base.getText(id).also { record(id, "string", it.toString()) }
 
-  override fun getString(id: Int): String =
-    base.getString(id).also { record(id, "string", it) }
+  override fun getString(id: Int): String = base.getString(id).also { record(id, "string", it) }
 
   override fun getString(id: Int, vararg formatArgs: Any?): String =
     base.getString(id, *formatArgs).also { record(id, "string", it) }
@@ -193,13 +196,16 @@ class RecordingResources(
   }
 
   private companion object {
-    val SUPPORTED_TYPES = setOf("string", "drawable", "color", "dimen", "layout", "plurals", "array")
+    val SUPPORTED_TYPES =
+      setOf("string", "drawable", "color", "dimen", "layout", "plurals", "array")
   }
 }
 
 private object ResourceSourceIndex {
   private val valuesEntry =
-    Regex("""<\s*(string|color|dimen|plurals|string-array|integer-array|array)\b[^>]*\bname\s*=\s*["']([^"']+)["']""")
+    Regex(
+      """<\s*(string|color|dimen|plurals|string-array|integer-array|array)\b[^>]*\bname\s*=\s*["']([^"']+)["']"""
+    )
 
   private val indexed: Map<String, String> by lazy { buildIndex() }
   private val relativeFiles: Map<String, String> by lazy { buildRelativeIndex() }
@@ -241,7 +247,8 @@ private object ResourceSourceIndex {
     valuesEntry.findAll(text).forEach { match ->
       val type =
         when (match.groupValues[1]) {
-          "string-array", "integer-array" -> "array"
+          "string-array",
+          "integer-array" -> "array"
           else -> match.groupValues[1]
         }
       val name = match.groupValues[2]
@@ -252,18 +259,16 @@ private object ResourceSourceIndex {
   private fun resDirs(): List<File> {
     val roots =
       listOfNotNull(
-        System.getProperty("composeai.daemon.moduleProjectDir"),
-        System.getProperty("composeai.daemon.workspaceRoot"),
-        System.getProperty("user.dir"),
-      ).distinct()
+          System.getProperty("composeai.daemon.moduleProjectDir"),
+          System.getProperty("composeai.daemon.workspaceRoot"),
+          System.getProperty("user.dir"),
+        )
+        .distinct()
     return roots.flatMap { root ->
       val rootFile = File(root)
       val src = rootFile.resolve("src")
       if (src.isDirectory) {
-        src.listFiles()
-          ?.map { it.resolve("res") }
-          ?.filter { it.isDirectory }
-          .orEmpty()
+        src.listFiles()?.map { it.resolve("res") }?.filter { it.isDirectory }.orEmpty()
       } else {
         emptyList()
       }

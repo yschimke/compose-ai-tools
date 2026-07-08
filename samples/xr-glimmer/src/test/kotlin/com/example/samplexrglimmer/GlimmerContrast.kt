@@ -3,21 +3,21 @@ package com.example.samplexrglimmer
 import java.awt.image.BufferedImage
 
 /**
- * Calibration helpers that encode the two quantitative rules Android Studio's Glimmer preview
- * pane exists to check, so our previews can be measured against them instead of merely *looking*
+ * Calibration helpers that encode the two quantitative rules Android Studio's Glimmer preview pane
+ * exists to check, so our previews can be measured against them instead of merely *looking*
  * additive. Both numbers come straight from Google's public Glimmer guidance:
  *
- *  - **Contrast.** The official skill (`android/skills` →
- *    `xr/display-glasses-with-jetpack-compose-glimmer`) mandates *"at least a 70% tone difference
- *    between foreground and background using the HCT color space."* HCT's **T** (tone) channel is
- *    *defined* as CIELAB **L\*** (identical 0–100 scale), so "70% tone difference" is `ΔL* ≥ 70`.
- *    [tone] computes L\* from an sRGB pixel; [STUDIO_MIN_TONE_DIFFERENCE] is the 70 bar.
- *  - **Angular sizing.** The type guidance
- *    (developer.android.com/design/ui/ai-glasses/guides/styles/type) pins the display at
- *    **30 pixels-per-degree** and a minimum readable text size of **0.6° = 18px** (restated as
- *    18sp in the skill). [PIXELS_PER_DEGREE], [MIN_TEXT_ANGLE_DEGREES] and [minReadableTextPx]
- *    capture that; they also justify the density-1.0 calibration of `AI_GLASSES_DEVICE_SPEC`
- *    (the 18sp == 18px == 0.6° identity only holds at density 1.0).
+ * - **Contrast.** The official skill (`android/skills` →
+ *   `xr/display-glasses-with-jetpack-compose-glimmer`) mandates *"at least a 70% tone difference
+ *   between foreground and background using the HCT color space."* HCT's **T** (tone) channel is
+ *   *defined* as CIELAB **L\*** (identical 0–100 scale), so "70% tone difference" is `ΔL* ≥ 70`.
+ *   [tone] computes L\* from an sRGB pixel; [STUDIO_MIN_TONE_DIFFERENCE] is the 70 bar.
+ * - **Angular sizing.** The type guidance
+ *   (developer.android.com/design/ui/ai-glasses/guides/styles/type) pins the display at **30
+ *   pixels-per-degree** and a minimum readable text size of **0.6° = 18px** (restated as 18sp in
+ *   the skill). [PIXELS_PER_DEGREE], [MIN_TEXT_ANGLE_DEGREES] and [minReadableTextPx] capture that;
+ *   they also justify the density-1.0 calibration of `AI_GLASSES_DEVICE_SPEC` (the 18sp == 18px ==
+ *   0.6° identity only holds at density 1.0).
  *
  * Additive-display physics: a real glasses display can only *add* light. The preview reproduces
  * that with `BlendMode.Plus` over the env backdrop ([additivePlus]); white UI light added onto any
@@ -69,9 +69,9 @@ internal object GlimmerContrast {
   fun toneDifference(fg: Int, bg: Int): Double = Math.abs(tone(fg) - tone(bg))
 
   /**
-   * Mean legibility tone-gap of white Glimmer text over [backdrop]: average, across every pixel,
-   * of the tone difference between the white text (additive-clamped to L\* 100) and the local
-   * panel (backdrop pixel + [GLIMMER_SURFACE] added). Higher = more readable;
+   * Mean legibility tone-gap of white Glimmer text over [backdrop]: average, across every pixel, of
+   * the tone difference between the white text (additive-clamped to L\* 100) and the local panel
+   * (backdrop pixel + [GLIMMER_SURFACE] added). Higher = more readable;
    * [STUDIO_MIN_TONE_DIFFERENCE] is the pass bar.
    */
   fun meanTextToneGap(backdrop: BufferedImage): Double {

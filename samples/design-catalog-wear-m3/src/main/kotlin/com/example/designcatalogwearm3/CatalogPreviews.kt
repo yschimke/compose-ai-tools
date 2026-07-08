@@ -54,23 +54,27 @@ import ee.schimke.composeai.preview.slots.PreviewSlot
 
 @CatalogWearModes
 @Composable
-fun FilledButton() =
-  WearSticker { Button(onClick = {}) { Text(previewOverrideString("label", "Filled")) } }
+fun FilledButton() = WearSticker {
+  Button(onClick = {}) { Text(previewOverrideString("label", "Filled")) }
+}
 
 @CatalogWearModes
 @Composable
-fun FilledTonalButtonSticker() =
-  WearSticker { FilledTonalButton(onClick = {}) { Text(previewOverrideString("label", "Tonal")) } }
+fun FilledTonalButtonSticker() = WearSticker {
+  FilledTonalButton(onClick = {}) { Text(previewOverrideString("label", "Tonal")) }
+}
 
 @CatalogWearModes
 @Composable
-fun OutlinedButtonSticker() =
-  WearSticker { OutlinedButton(onClick = {}) { Text(previewOverrideString("label", "Outlined")) } }
+fun OutlinedButtonSticker() = WearSticker {
+  OutlinedButton(onClick = {}) { Text(previewOverrideString("label", "Outlined")) }
+}
 
 @CatalogWearModes
 @Composable
-fun ChildButtonSticker() =
-  WearSticker { ChildButton(onClick = {}) { Text(previewOverrideString("label", "Child")) } }
+fun ChildButtonSticker() = WearSticker {
+  ChildButton(onClick = {}) { Text(previewOverrideString("label", "Child")) }
+}
 
 // A workout history the EdgeButton sticker scrolls through. Long enough to
 // overflow the viewport by a few screens so, scrolled to the end, the list fills
@@ -107,8 +111,232 @@ private val edgeButtonHistory =
 @CatalogWearBreakpoints
 @ScrollingPreview(modes = [ScrollMode.END])
 @Composable
-fun EdgeButtonSticker() =
-  FullScreenWear {
+fun EdgeButtonSticker() = FullScreenWear {
+  val listState = rememberTransformingLazyColumnState()
+  val spec = rememberTransformationSpec()
+  ScreenScaffold(
+    scrollState = listState,
+    edgeButton = {
+      EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) {
+        Text(previewOverrideString("edgeLabel", "Start"))
+      }
+    },
+  ) { contentPadding ->
+    TransformingLazyColumn(
+      state = listState,
+      contentPadding = contentPadding,
+      modifier = Modifier.fillMaxSize(),
+    ) {
+      item {
+        ListHeader(
+          modifier = Modifier.transformedHeight(this, spec),
+          transformation = SurfaceTransformation(spec),
+        ) {
+          Text(previewOverrideString("header", "Workout"))
+        }
+      }
+      items(edgeButtonHistory) { (title, subtitle) ->
+        TitleCard(
+          onClick = {},
+          title = { Text(title) },
+          subtitle = { Text(subtitle) },
+          modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+          transformation = SurfaceTransformation(spec),
+        )
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Lists — the Wear M3 scaling TransformingLazyColumn. Items scale + fade toward
+// the curved top/bottom edges via the SurfaceTransformation, the signature Wear
+// list treatment. Full-screen, captured at every size breakpoint.
+// ---------------------------------------------------------------------------
+
+private val scalingListItems =
+  listOf(
+    "Morning run" to "5.2 km · 28 min",
+    "Heart rate" to "72 bpm",
+    "Sleep" to "7h 14m",
+    "Steps" to "6,482",
+    "Calories" to "412 kcal",
+    "Cycle" to "18 km · 41 min",
+  )
+
+@CatalogWearBreakpoints
+@Composable
+fun ScalingListSticker() = FullScreenWear {
+  val listState = rememberTransformingLazyColumnState()
+  val spec = rememberTransformationSpec()
+  ScreenScaffold(scrollState = listState) { contentPadding ->
+    TransformingLazyColumn(
+      state = listState,
+      contentPadding = contentPadding,
+      modifier = Modifier.fillMaxSize(),
+    ) {
+      item {
+        ListHeader(
+          modifier = Modifier.transformedHeight(this, spec),
+          transformation = SurfaceTransformation(spec),
+        ) {
+          Text(previewOverrideString("header", "Activity"))
+        }
+      }
+      items(scalingListItems) { (title, subtitle) ->
+        TitleCard(
+          onClick = {},
+          title = { Text(title) },
+          subtitle = { Text(subtitle) },
+          modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+          transformation = SurfaceTransformation(spec),
+        )
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Layout templates — a blank skeleton of the common Wear list screen at every
+// breakpoint: empty ListHeader + TitleCard slots and an empty EdgeButton, no
+// content. Apps adopt the responsive structure (screen margins, slot sizing,
+// edge-button placement) at each size; the export's redlines annotate the slot
+// bounds/padding so the layout reads as a real spec, not just a picture.
+// ---------------------------------------------------------------------------
+
+// @ScrollingPreview(END): like EdgeButtonSticker, the ScreenScaffold edge button
+// is collapsed at the resting top and only reveals once the list settles at the
+// bottom — so the skeleton scrolls to the end (the renderer settles the reveal)
+// to actually show the edge-button slot. The slot count overflows the viewport on
+// every breakpoint so the button lands at its resting size.
+@CatalogWearBreakpoints
+@ScrollingPreview(modes = [ScrollMode.END])
+@Composable
+fun BlankListLayout() = FullScreenWear {
+  val listState = rememberTransformingLazyColumnState()
+  val spec = rememberTransformationSpec()
+  ScreenScaffold(
+    scrollState = listState,
+    edgeButton = { EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) {} },
+  ) { contentPadding ->
+    TransformingLazyColumn(
+      state = listState,
+      contentPadding = contentPadding,
+      modifier = Modifier.fillMaxSize(),
+    ) {
+      item {
+        ListHeader(
+          modifier = Modifier.transformedHeight(this, spec),
+          transformation = SurfaceTransformation(spec),
+        ) {
+          Text("")
+        }
+      }
+      items(10) {
+        TitleCard(
+          onClick = {},
+          title = { Text("") },
+          modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+          transformation = SurfaceTransformation(spec),
+        ) {}
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Scaffold templates — full-screen, pre-built screen skeletons an app copies
+// whole, captured at every breakpoint. Unlike the [FullScreenWear] stickers
+// above (which drop the clock via `timeText = {}`), each template composes its
+// own `AppScaffold(timeText = { … })` so the curved status strip is part of the
+// capture. The clock is frozen at a fixed "10:10" so the weekly design-artifacts
+// bundle doesn't churn on the live system time.
+//
+// The three variants mirror the Wear status-strip archetypes: the base list
+// screen, a horizontal pager with a page indicator, and a screen anchored by an
+// edge-hugging button.
+// ---------------------------------------------------------------------------
+
+// A frozen curved TimeText: the real Wear M3 status strip drawing a fixed
+// "10:10" instead of the system clock, so every render is deterministic.
+@Composable private fun FixedTimeText() = TimeText { timeTextCurvedText("10:10") }
+
+private val templateListItems =
+  listOf(
+    "Morning run" to "5.2 km · 28 min",
+    "Heart rate" to "72 bpm",
+    "Sleep" to "7h 14m",
+    "Steps" to "6,482",
+  )
+
+// Base template: the canonical Wear list screen — TimeText status strip at the
+// curved top, a ListHeader, and a scaling TransformingLazyColumn of TitleCards.
+@CatalogWearBreakpoints
+@Composable
+fun TimeTextScaffoldTemplate() = WearScaffoldTemplate {
+  AppScaffold(timeText = { FixedTimeText() }) {
+    val listState = rememberTransformingLazyColumnState()
+    val spec = rememberTransformationSpec()
+    ScreenScaffold(scrollState = listState) { contentPadding ->
+      TransformingLazyColumn(
+        state = listState,
+        contentPadding = contentPadding,
+        modifier = Modifier.fillMaxSize(),
+      ) {
+        item {
+          ListHeader(
+            modifier = Modifier.transformedHeight(this, spec),
+            transformation = SurfaceTransformation(spec),
+          ) {
+            Text(previewOverrideString("header", "Activity"))
+          }
+        }
+        items(templateListItems) { (title, subtitle) ->
+          TitleCard(
+            onClick = {},
+            title = { Text(title) },
+            subtitle = { Text(subtitle) },
+            modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+            transformation = SurfaceTransformation(spec),
+          )
+        }
+      }
+    }
+  }
+}
+
+// Page-indicator template: a horizontal pager with the Wear M3
+// HorizontalPageIndicator hugging the bottom curve. Seeded on the middle page so
+// the indicator reads as a real multi-page carousel, under the TimeText strip.
+@CatalogWearBreakpoints
+@Composable
+fun PageIndicatorScaffoldTemplate() = WearScaffoldTemplate {
+  AppScaffold(timeText = { FixedTimeText() }) {
+    val pagerState = rememberPagerState(initialPage = 1, pageCount = { 3 })
+    Box(Modifier.fillMaxSize()) {
+      HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+          Text(previewOverrideString("page", "Page ${page + 1}", index = page))
+        }
+      }
+      HorizontalPageIndicator(
+        pagerState = pagerState,
+        modifier = Modifier.align(Alignment.BottomCenter),
+      )
+    }
+  }
+}
+
+// Edge-button template: a list screen anchored by the screen-hugging EdgeButton.
+// Like [EdgeButtonSticker], the ScreenScaffold reveals the edge button only once
+// the (overflowing) list settles at the bottom, so the template scrolls to the
+// end via @ScrollingPreview(END) to capture the button at its resting size — here
+// paired with the TimeText status strip the full template carries.
+@CatalogWearBreakpoints
+@ScrollingPreview(modes = [ScrollMode.END])
+@Composable
+fun EdgeButtonScaffoldTemplate() = WearScaffoldTemplate {
+  AppScaffold(timeText = { FixedTimeText() }) {
     val listState = rememberTransformingLazyColumnState()
     val spec = rememberTransformationSpec()
     ScreenScaffold(
@@ -144,238 +372,7 @@ fun EdgeButtonSticker() =
       }
     }
   }
-
-// ---------------------------------------------------------------------------
-// Lists — the Wear M3 scaling TransformingLazyColumn. Items scale + fade toward
-// the curved top/bottom edges via the SurfaceTransformation, the signature Wear
-// list treatment. Full-screen, captured at every size breakpoint.
-// ---------------------------------------------------------------------------
-
-private val scalingListItems =
-  listOf(
-    "Morning run" to "5.2 km · 28 min",
-    "Heart rate" to "72 bpm",
-    "Sleep" to "7h 14m",
-    "Steps" to "6,482",
-    "Calories" to "412 kcal",
-    "Cycle" to "18 km · 41 min",
-  )
-
-@CatalogWearBreakpoints
-@Composable
-fun ScalingListSticker() =
-  FullScreenWear {
-    val listState = rememberTransformingLazyColumnState()
-    val spec = rememberTransformationSpec()
-    ScreenScaffold(scrollState = listState) { contentPadding ->
-      TransformingLazyColumn(
-        state = listState,
-        contentPadding = contentPadding,
-        modifier = Modifier.fillMaxSize(),
-      ) {
-        item {
-          ListHeader(
-            modifier = Modifier.transformedHeight(this, spec),
-            transformation = SurfaceTransformation(spec),
-          ) {
-            Text(previewOverrideString("header", "Activity"))
-          }
-        }
-        items(scalingListItems) { (title, subtitle) ->
-          TitleCard(
-            onClick = {},
-            title = { Text(title) },
-            subtitle = { Text(subtitle) },
-            modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-            transformation = SurfaceTransformation(spec),
-          )
-        }
-      }
-    }
-  }
-
-// ---------------------------------------------------------------------------
-// Layout templates — a blank skeleton of the common Wear list screen at every
-// breakpoint: empty ListHeader + TitleCard slots and an empty EdgeButton, no
-// content. Apps adopt the responsive structure (screen margins, slot sizing,
-// edge-button placement) at each size; the export's redlines annotate the slot
-// bounds/padding so the layout reads as a real spec, not just a picture.
-// ---------------------------------------------------------------------------
-
-// @ScrollingPreview(END): like EdgeButtonSticker, the ScreenScaffold edge button
-// is collapsed at the resting top and only reveals once the list settles at the
-// bottom — so the skeleton scrolls to the end (the renderer settles the reveal)
-// to actually show the edge-button slot. The slot count overflows the viewport on
-// every breakpoint so the button lands at its resting size.
-@CatalogWearBreakpoints
-@ScrollingPreview(modes = [ScrollMode.END])
-@Composable
-fun BlankListLayout() =
-  FullScreenWear {
-    val listState = rememberTransformingLazyColumnState()
-    val spec = rememberTransformationSpec()
-    ScreenScaffold(
-      scrollState = listState,
-      edgeButton = { EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) {} },
-    ) { contentPadding ->
-      TransformingLazyColumn(
-        state = listState,
-        contentPadding = contentPadding,
-        modifier = Modifier.fillMaxSize(),
-      ) {
-        item {
-          ListHeader(
-            modifier = Modifier.transformedHeight(this, spec),
-            transformation = SurfaceTransformation(spec),
-          ) {
-            Text("")
-          }
-        }
-        items(10) {
-          TitleCard(
-            onClick = {},
-            title = { Text("") },
-            modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-            transformation = SurfaceTransformation(spec),
-          ) {}
-        }
-      }
-    }
-  }
-
-// ---------------------------------------------------------------------------
-// Scaffold templates — full-screen, pre-built screen skeletons an app copies
-// whole, captured at every breakpoint. Unlike the [FullScreenWear] stickers
-// above (which drop the clock via `timeText = {}`), each template composes its
-// own `AppScaffold(timeText = { … })` so the curved status strip is part of the
-// capture. The clock is frozen at a fixed "10:10" so the weekly design-artifacts
-// bundle doesn't churn on the live system time.
-//
-// The three variants mirror the Wear status-strip archetypes: the base list
-// screen, a horizontal pager with a page indicator, and a screen anchored by an
-// edge-hugging button.
-// ---------------------------------------------------------------------------
-
-// A frozen curved TimeText: the real Wear M3 status strip drawing a fixed
-// "10:10" instead of the system clock, so every render is deterministic.
-@Composable
-private fun FixedTimeText() = TimeText { timeTextCurvedText("10:10") }
-
-private val templateListItems =
-  listOf(
-    "Morning run" to "5.2 km · 28 min",
-    "Heart rate" to "72 bpm",
-    "Sleep" to "7h 14m",
-    "Steps" to "6,482",
-  )
-
-// Base template: the canonical Wear list screen — TimeText status strip at the
-// curved top, a ListHeader, and a scaling TransformingLazyColumn of TitleCards.
-@CatalogWearBreakpoints
-@Composable
-fun TimeTextScaffoldTemplate() =
-  WearScaffoldTemplate {
-    AppScaffold(timeText = { FixedTimeText() }) {
-      val listState = rememberTransformingLazyColumnState()
-      val spec = rememberTransformationSpec()
-      ScreenScaffold(scrollState = listState) { contentPadding ->
-        TransformingLazyColumn(
-          state = listState,
-          contentPadding = contentPadding,
-          modifier = Modifier.fillMaxSize(),
-        ) {
-          item {
-            ListHeader(
-              modifier = Modifier.transformedHeight(this, spec),
-              transformation = SurfaceTransformation(spec),
-            ) {
-              Text(previewOverrideString("header", "Activity"))
-            }
-          }
-          items(templateListItems) { (title, subtitle) ->
-            TitleCard(
-              onClick = {},
-              title = { Text(title) },
-              subtitle = { Text(subtitle) },
-              modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-              transformation = SurfaceTransformation(spec),
-            )
-          }
-        }
-      }
-    }
-  }
-
-// Page-indicator template: a horizontal pager with the Wear M3
-// HorizontalPageIndicator hugging the bottom curve. Seeded on the middle page so
-// the indicator reads as a real multi-page carousel, under the TimeText strip.
-@CatalogWearBreakpoints
-@Composable
-fun PageIndicatorScaffoldTemplate() =
-  WearScaffoldTemplate {
-    AppScaffold(timeText = { FixedTimeText() }) {
-      val pagerState = rememberPagerState(initialPage = 1, pageCount = { 3 })
-      Box(Modifier.fillMaxSize()) {
-        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
-          Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(previewOverrideString("page", "Page ${page + 1}", index = page))
-          }
-        }
-        HorizontalPageIndicator(
-          pagerState = pagerState,
-          modifier = Modifier.align(Alignment.BottomCenter),
-        )
-      }
-    }
-  }
-
-// Edge-button template: a list screen anchored by the screen-hugging EdgeButton.
-// Like [EdgeButtonSticker], the ScreenScaffold reveals the edge button only once
-// the (overflowing) list settles at the bottom, so the template scrolls to the
-// end via @ScrollingPreview(END) to capture the button at its resting size — here
-// paired with the TimeText status strip the full template carries.
-@CatalogWearBreakpoints
-@ScrollingPreview(modes = [ScrollMode.END])
-@Composable
-fun EdgeButtonScaffoldTemplate() =
-  WearScaffoldTemplate {
-    AppScaffold(timeText = { FixedTimeText() }) {
-      val listState = rememberTransformingLazyColumnState()
-      val spec = rememberTransformationSpec()
-      ScreenScaffold(
-        scrollState = listState,
-        edgeButton = {
-          EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) {
-            Text(previewOverrideString("edgeLabel", "Start"))
-          }
-        },
-      ) { contentPadding ->
-        TransformingLazyColumn(
-          state = listState,
-          contentPadding = contentPadding,
-          modifier = Modifier.fillMaxSize(),
-        ) {
-          item {
-            ListHeader(
-              modifier = Modifier.transformedHeight(this, spec),
-              transformation = SurfaceTransformation(spec),
-            ) {
-              Text(previewOverrideString("header", "Workout"))
-            }
-          }
-          items(edgeButtonHistory) { (title, subtitle) ->
-            TitleCard(
-              onClick = {},
-              title = { Text(title) },
-              subtitle = { Text(subtitle) },
-              modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-              transformation = SurfaceTransformation(spec),
-            )
-          }
-        }
-      }
-    }
-  }
+}
 
 // ---------------------------------------------------------------------------
 // Selection controls.
@@ -383,25 +380,23 @@ fun EdgeButtonScaffoldTemplate() =
 
 @CatalogWearModes
 @Composable
-fun SwitchButtonOn() =
-  WearSticker {
-    SwitchButton(
-      checked = previewOverrideBoolean("checked", true),
-      onCheckedChange = {},
-      label = { Text(previewOverrideString("label", "Wifi")) },
-    )
-  }
+fun SwitchButtonOn() = WearSticker {
+  SwitchButton(
+    checked = previewOverrideBoolean("checked", true),
+    onCheckedChange = {},
+    label = { Text(previewOverrideString("label", "Wifi")) },
+  )
+}
 
 @CatalogWearModes
 @Composable
-fun CheckboxButtonChecked() =
-  WearSticker {
-    CheckboxButton(
-      checked = previewOverrideBoolean("checked", true),
-      onCheckedChange = {},
-      label = { Text(previewOverrideString("label", "Sync")) },
-    )
-  }
+fun CheckboxButtonChecked() = WearSticker {
+  CheckboxButton(
+    checked = previewOverrideBoolean("checked", true),
+    onCheckedChange = {},
+    label = { Text(previewOverrideString("label", "Sync")) },
+  )
+}
 
 // ---------------------------------------------------------------------------
 // Containment + headers.
@@ -415,40 +410,37 @@ fun CheckboxButtonChecked() =
 // full-width, so the baked render is unchanged.
 @CatalogWearModes
 @Composable
-fun CardSticker() =
-  WearSticker {
-    Card(onClick = {}) {
-      PreviewSlot("content", Modifier.fillMaxWidth()) {
-        Text(previewOverrideString("label", "Card"))
-      }
-    }
+fun CardSticker() = WearSticker {
+  Card(onClick = {}) {
+    PreviewSlot("content", Modifier.fillMaxWidth()) { Text(previewOverrideString("label", "Card")) }
   }
+}
 
 @CatalogWearModes
 @Composable
-fun TitleCardSticker() =
-  WearSticker {
-    TitleCard(
-      onClick = {},
-      title = {
-        PreviewSlot("title", Modifier.fillMaxWidth()) {
-          Text(previewOverrideString("title", "Morning run"))
-        }
-      },
-    ) {
-      PreviewSlot("subtitle", Modifier.fillMaxWidth()) {
-        Text(previewOverrideString("subtitle", "5.2 km · 28 min"))
+fun TitleCardSticker() = WearSticker {
+  TitleCard(
+    onClick = {},
+    title = {
+      PreviewSlot("title", Modifier.fillMaxWidth()) {
+        Text(previewOverrideString("title", "Morning run"))
       }
+    },
+  ) {
+    PreviewSlot("subtitle", Modifier.fillMaxWidth()) {
+      Text(previewOverrideString("subtitle", "5.2 km · 28 min"))
     }
   }
+}
 
 // No slot marker on the ListHeader: its content is horizontally centred, so a `fillMaxWidth` slot
 // box would left-shift the label in the baked render, and a header isn't a drop target the
 // structured-screen builder fills. The label stays an editable override knob.
 @CatalogWearModes
 @Composable
-fun ListHeaderSticker() =
-  WearSticker { ListHeader { Text(previewOverrideString("label", "Today")) } }
+fun ListHeaderSticker() = WearSticker {
+  ListHeader { Text(previewOverrideString("label", "Today")) }
+}
 
 // ---------------------------------------------------------------------------
 // Communication.
@@ -456,8 +448,9 @@ fun ListHeaderSticker() =
 
 @CatalogWearModes
 @Composable
-fun CircularProgressSticker() =
-  WearSticker { CircularProgressIndicator(modifier = Modifier.size(48.dp)) }
+fun CircularProgressSticker() = WearSticker {
+  CircularProgressIndicator(modifier = Modifier.size(48.dp))
+}
 
 // ---------------------------------------------------------------------------
 // Text options — exercises the maxLines / overflow product on a round screen.
@@ -465,18 +458,17 @@ fun CircularProgressSticker() =
 
 @CatalogWearModes
 @Composable
-fun TextMaxLinesTruncated() =
-  WearSticker {
-    Text(
-      previewOverrideString(
-        "text",
-        "This Wear body text is long enough to overflow two lines and truncate.",
-      ),
-      modifier = Modifier.width(140.dp),
-      maxLines = 2,
-      overflow = TextOverflow.Ellipsis,
-    )
-  }
+fun TextMaxLinesTruncated() = WearSticker {
+  Text(
+    previewOverrideString(
+      "text",
+      "This Wear body text is long enough to overflow two lines and truncate.",
+    ),
+    modifier = Modifier.width(140.dp),
+    maxLines = 2,
+    overflow = TextOverflow.Ellipsis,
+  )
+}
 
 // ---------------------------------------------------------------------------
 // States — interaction (pressed / focused; focus matters on Wear for rotary /
@@ -500,47 +492,42 @@ private fun focusedSource(): MutableInteractionSource {
 
 @CatalogWearModes
 @Composable
-fun ButtonPressed() =
-  WearSticker {
-    Button(onClick = {}, interactionSource = pressedSource()) {
-      Text(previewOverrideString("label", "Pressed"))
-    }
+fun ButtonPressed() = WearSticker {
+  Button(onClick = {}, interactionSource = pressedSource()) {
+    Text(previewOverrideString("label", "Pressed"))
   }
+}
 
 @CatalogWearModes
 @Composable
-fun ButtonFocused() =
-  WearSticker {
-    Button(onClick = {}, interactionSource = focusedSource()) {
-      Text(previewOverrideString("label", "Focused"))
-    }
+fun ButtonFocused() = WearSticker {
+  Button(onClick = {}, interactionSource = focusedSource()) {
+    Text(previewOverrideString("label", "Focused"))
   }
+}
 
 @CatalogWearModes
 @Composable
-fun ButtonDisabled() =
-  WearSticker {
-    Button(onClick = {}, enabled = false) { Text(previewOverrideString("label", "Disabled")) }
-  }
+fun ButtonDisabled() = WearSticker {
+  Button(onClick = {}, enabled = false) { Text(previewOverrideString("label", "Disabled")) }
+}
 
 @CatalogWearModes
 @Composable
-fun SwitchButtonOff() =
-  WearSticker {
-    SwitchButton(
-      checked = previewOverrideBoolean("checked", false),
-      onCheckedChange = {},
-      label = { Text(previewOverrideString("label", "Wifi")) },
-    )
-  }
+fun SwitchButtonOff() = WearSticker {
+  SwitchButton(
+    checked = previewOverrideBoolean("checked", false),
+    onCheckedChange = {},
+    label = { Text(previewOverrideString("label", "Wifi")) },
+  )
+}
 
 @CatalogWearModes
 @Composable
-fun CheckboxButtonUnchecked() =
-  WearSticker {
-    CheckboxButton(
-      checked = previewOverrideBoolean("checked", false),
-      onCheckedChange = {},
-      label = { Text(previewOverrideString("label", "Sync")) },
-    )
-  }
+fun CheckboxButtonUnchecked() = WearSticker {
+  CheckboxButton(
+    checked = previewOverrideBoolean("checked", false),
+    onCheckedChange = {},
+    label = { Text(previewOverrideString("label", "Sync")) },
+  )
+}

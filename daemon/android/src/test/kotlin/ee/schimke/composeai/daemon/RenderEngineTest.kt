@@ -4,8 +4,8 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
 import kotlin.math.abs
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -17,24 +17,23 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * B1.4 verification — exercises the real Robolectric/Compose render body inside a
- * [RobolectricHost] sandbox.
+ * B1.4 verification — exercises the real Robolectric/Compose render body inside a [RobolectricHost]
+ * sandbox.
  *
  * Two tests:
- * * **redSquareRendersToValidPng** — submit one render through a real [RobolectricHost]; assert
- *   the PNG file exists, decodes, and is mostly red. Mirrors the "is this mostly red?" assertion
+ * * **redSquareRendersToValidPng** — submit one render through a real [RobolectricHost]; assert the
+ *   PNG file exists, decodes, and is mostly red. Mirrors the "is this mostly red?" assertion
  *   pattern from `samples/android/.../ScrollPreviewPixelTest.kt` and from
  *   `:daemon:desktop/RenderEngineTest`.
- * * **fiveSequentialRendersExposeWarmRuntime** — log per-render wall-clock for 5 sequential
- *   renders so the warm-runtime amortisation is visible (first render pays Robolectric sandbox
- *   bootstrap; subsequent renders should drop sharply). The test only fails on render failure;
- *   the timing data is for the agent to report back, not a CI assertion. Robolectric init
- *   dominates so we use 5 renders rather than 10 to keep CI runtime under the daemon-module
- *   budget.
+ * * **fiveSequentialRendersExposeWarmRuntime** — log per-render wall-clock for 5 sequential renders
+ *   so the warm-runtime amortisation is visible (first render pays Robolectric sandbox bootstrap;
+ *   subsequent renders should drop sharply). The test only fails on render failure; the timing data
+ *   is for the agent to report back, not a CI assertion. Robolectric init dominates so we use 5
+ *   renders rather than 10 to keep CI runtime under the daemon-module budget.
  *
- * Pixel-diff helper is inlined here rather than imported from `:daemon:harness`'s
- * `PixelDiff` for the same reason as the desktop counterpart — `:daemon:android` ←
- * `:daemon:harness` would invert the dependency graph.
+ * Pixel-diff helper is inlined here rather than imported from `:daemon:harness`'s `PixelDiff` for
+ * the same reason as the desktop counterpart — `:daemon:android` ← `:daemon:harness` would invert
+ * the dependency graph.
  */
 class RenderEngineTest {
 
@@ -126,14 +125,18 @@ class RenderEngineTest {
   @Test
   fun figmaSvgExportEmbedsGoogleFontsWhenEnabled() {
     // Parity with the desktop export: with `-Dcomposeai.figma.embedFonts=true` the Android export
-    // embeds each text node's face as an `@font-face` WOFF2 so the SVG renders the real typeface. We
-    // pre-seed the shared font cache (`composeai.fonts.cacheDir`) so the resolver serves from disk —
+    // embeds each text node's face as an `@font-face` WOFF2 so the SVG renders the real typeface.
+    // We
+    // pre-seed the shared font cache (`composeai.fonts.cacheDir`) so the resolver serves from disk
+    // —
     // deterministic, no network in CI. The `SerifTextPreview` fixture is `FontFamily.Serif`, so the
-    // export must embed a concrete *serif* (Noto Serif) — not the Roboto sans default, which used to
+    // export must embed a concrete *serif* (Noto Serif) — not the Roboto sans default, which used
+    // to
     // erase serif/monospace specimens' identity.
     val outputDir = tempFolder.newFolder("renders-figma-fonts")
     val fontCache = tempFolder.newFolder("font-cache")
-    // The generic `serif` family maps to Noto Serif; text weight defaults to 400. Seed all plausible
+    // The generic `serif` family maps to Noto Serif; text weight defaults to 400. Seed all
+    // plausible
     // weights with the same sentinel bytes so the assertion is weight-agnostic.
     val sentinel = byteArrayOf(1, 2, 3)
     for (w in listOf(400, 500, 700)) File(fontCache, "noto-serif-$w.woff2").writeBytes(sentinel)
@@ -155,16 +158,19 @@ class RenderEngineTest {
       )
 
       val svg =
-        outputDir.parentFile!!
-          .resolve("data")
-          .resolve("figma-fonts")
-          .resolve("compose-figma.svg")
+        outputDir.parentFile!!.resolve("data").resolve("figma-fonts").resolve("compose-figma.svg")
       assertTrue("figma SVG must be produced: ${svg.absolutePath}", svg.exists())
       val text = svg.readText()
       assertTrue("export must embed an @font-face", text.contains("@font-face"))
       // base64 of {1,2,3} = "AQID" — the seeded face bytes, proving the resolver→embed wiring.
-      assertTrue("must embed the resolved WOFF2 data URI", text.contains("data:font/woff2;base64,AQID"))
-      assertTrue("serif specimen must embed a concrete serif", text.contains("font-family:'Noto Serif'"))
+      assertTrue(
+        "must embed the resolved WOFF2 data URI",
+        text.contains("data:font/woff2;base64,AQID"),
+      )
+      assertTrue(
+        "serif specimen must embed a concrete serif",
+        text.contains("font-family:'Noto Serif'"),
+      )
       assertTrue("text must name the serif face", text.contains("""font-family="Noto Serif""""))
     } finally {
       host.shutdown()
@@ -178,8 +184,10 @@ class RenderEngineTest {
     // Parity with the desktop backend: a real Robolectric render of a screen containing an opaque
     // `Image` must emit the Image as an `<image>` layer in `compose-figma.svg` AND crop the
     // referenced background-free raster out of the captured frame into `figma-raster/`, so the SVG
-    // never dangles a reference. This exercises the Android hybrid wiring: the render engine threads
-    // the frame PNG through `RenderDataArtifactContextKeys.OutputPng` and `ComposeFigmaSvgExtension`
+    // never dangles a reference. This exercises the Android hybrid wiring: the render engine
+    // threads
+    // the frame PNG through `RenderDataArtifactContextKeys.OutputPng` and
+    // `ComposeFigmaSvgExtension`
     // hands it to the shared producer.
     val outputDir = tempFolder.newFolder("renders-figma-raster")
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
@@ -202,8 +210,14 @@ class RenderEngineTest {
       val figma = previewDir.resolve("compose-figma.svg")
       assertTrue("figma layered SVG must be produced: ${figma.absolutePath}", figma.exists())
       val figmaSvg = figma.readText()
-      assertTrue("figma SVG must emit the opaque Image as an <image> layer", figmaSvg.contains("<image "))
-      assertTrue("figma SVG must reference a figma-raster PNG", figmaSvg.contains("href=\"figma-raster/"))
+      assertTrue(
+        "figma SVG must emit the opaque Image as an <image> layer",
+        figmaSvg.contains("<image "),
+      )
+      assertTrue(
+        "figma SVG must reference a figma-raster PNG",
+        figmaSvg.contains("href=\"figma-raster/"),
+      )
 
       val rasterDir = previewDir.resolve("figma-raster")
       val pngs = rasterDir.listFiles { f -> f.extension == "png" }?.toList().orEmpty()
@@ -214,7 +228,10 @@ class RenderEngineTest {
       val r = (center shr 16) and 0xFF
       val g = (center shr 8) and 0xFF
       val b = center and 0xFF
-      assertTrue("raster crop must land on the Image (green-dominant), got rgb=$r,$g,$b", g > r && g > b)
+      assertTrue(
+        "raster crop must land on the Image (green-dominant), got rgb=$r,$g,$b",
+        g > r && g > b,
+      )
     } finally {
       host.shutdown()
     }
@@ -227,7 +244,8 @@ class RenderEngineTest {
     // `IllegalAccessException: … cannot access a member … with modifiers "private static final"`
     // until [RenderEngine] started calling `asMethod().isAccessible = true` after resolution. The
     // `samples/android/.../Previews.kt`'s `RedBoxPreview` ships such a preview on purpose, so a
-    // regression here blanks one render and fails the whole baseline pipeline (MISSING_RENDERS=fail).
+    // regression here blanks one render and fails the whole baseline pipeline
+    // (MISSING_RENDERS=fail).
     val outputDir = tempFolder.newFolder("renders-private")
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
     System.setProperty("roborazzi.test.record", "true")
@@ -448,12 +466,14 @@ class RenderEngineTest {
         resourcesFile.exists(),
       )
       val references =
-        Json.parseToJsonElement(resourcesFile.readText())
-          .jsonObject["references"]!!
-          .jsonArray
-          .map { it.jsonObject }
+        Json.parseToJsonElement(resourcesFile.readText()).jsonObject["references"]!!.jsonArray.map {
+          it.jsonObject
+        }
       val byName = references.associateBy { it["resourceName"]!!.jsonPrimitive.content }
-      assertEquals("string", byName["compose_ai_resource_used_label"]!!["resourceType"]!!.jsonPrimitive.content)
+      assertEquals(
+        "string",
+        byName["compose_ai_resource_used_label"]!!["resourceType"]!!.jsonPrimitive.content,
+      )
       assertEquals(
         "Resource label",
         byName["compose_ai_resource_used_label"]!!["resolvedValue"]!!.jsonPrimitive.content,
@@ -464,16 +484,22 @@ class RenderEngineTest {
           .content
           .endsWith("src/main/res/values/resources_used.xml")
       )
-      assertEquals("color", byName["compose_ai_resource_used_color"]!!["resourceType"]!!.jsonPrimitive.content)
-      assertEquals("dimen", byName["compose_ai_resource_used_size"]!!["resourceType"]!!.jsonPrimitive.content)
+      assertEquals(
+        "color",
+        byName["compose_ai_resource_used_color"]!!["resourceType"]!!.jsonPrimitive.content,
+      )
+      assertEquals(
+        "dimen",
+        byName["compose_ai_resource_used_size"]!!["resourceType"]!!.jsonPrimitive.content,
+      )
     } finally {
       host.shutdown()
     }
   }
 
   /**
-   * Returns the fraction of pixels in [img] whose RGB channels are within [perChannelTolerance]
-   * of the expected `0xRRGGBB` colour. Inlined here rather than imported from the harness's
+   * Returns the fraction of pixels in [img] whose RGB channels are within [perChannelTolerance] of
+   * the expected `0xRRGGBB` colour. Inlined here rather than imported from the harness's
    * `PixelDiff` to avoid the circular dep noted in the file KDoc.
    */
   private fun pixelMatchPct(

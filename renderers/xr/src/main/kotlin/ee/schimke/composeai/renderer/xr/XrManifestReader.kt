@@ -8,9 +8,9 @@ import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Reads the `XR_SUBSPACE` entries out of the plugin's `previews.json` manifest. Parsed via the
- * `JsonElement` tree (not `@Serializable` classes) so `:renderer-xr` doesn't have to mirror the full
- * manifest schema or apply the serialization compiler plugin — it only needs the class/function/id
- * of each XR preview to reflect + render it.
+ * `JsonElement` tree (not `@Serializable` classes) so `:renderer-xr` doesn't have to mirror the
+ * full manifest schema or apply the serialization compiler plugin — it only needs the
+ * class/function/id of each XR preview to reflect + render it.
  */
 public object XrManifestReader {
 

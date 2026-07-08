@@ -22,10 +22,11 @@ import ee.schimke.composeai.clients.InputEvent
 import ee.schimke.composeai.clients.StreamFrame
 
 /**
- * Paints the latest streamed [StreamFrame] full-bleed (letterboxed-fit) and turns touches on it into
- * [InputEvent]s in the frame's image-natural pixel space, forwarding them through [onInput]. A tap →
- * `click`; a drag → `pointerDown` / `pointerMove`(s) / `pointerUp`, so the remote composition's
- * gesture pipeline sees a real drag. This is the surface that makes the stream feel like a local app.
+ * Paints the latest streamed [StreamFrame] full-bleed (letterboxed-fit) and turns touches on it
+ * into [InputEvent]s in the frame's image-natural pixel space, forwarding them through [onInput]. A
+ * tap → `click`; a drag → `pointerDown` / `pointerMove`(s) / `pointerUp`, so the remote
+ * composition's gesture pipeline sees a real drag. This is the surface that makes the stream feel
+ * like a local app.
  */
 @Composable
 fun FrameCanvas(frame: StreamFrame?, modifier: Modifier = Modifier, onInput: (InputEvent) -> Unit) {
@@ -67,7 +68,9 @@ fun FrameCanvas(frame: StreamFrame?, modifier: Modifier = Modifier, onInput: (In
           onDragStart = { offset ->
             toFramePixels(offset.x, offset.y)?.let {
               last = it
-              onInput(InputEvent(InputEvent.Kind.POINTER_DOWN, pixelX = it.first, pixelY = it.second))
+              onInput(
+                InputEvent(InputEvent.Kind.POINTER_DOWN, pixelX = it.first, pixelY = it.second)
+              )
             }
           },
           onDragEnd = { up() },

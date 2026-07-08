@@ -3,8 +3,8 @@ package ee.schimke.composeai.renderer.uiautomator
 /**
  * Pure selector-builder for the `uia/hierarchy` data product (#1059). Given one node from a
  * hierarchy snapshot plus the full node list, return a [Selector] / source-snippet that uniquely
- * targets the node — the same logic the VS Code extension's `uiaSelector.ts` mirrors for its
- * "Copy as selector" row action, factored out here so MCP / record-script paths can ship the same
+ * targets the node — the same logic the VS Code extension's `uiaSelector.ts` mirrors for its "Copy
+ * as selector" row action, factored out here so MCP / record-script paths can ship the same
  * snippets without re-implementing the rules.
  *
  * # Priority
@@ -52,11 +52,9 @@ public object HierarchySelectorBuilder {
     // iterate in reverse to find the smallest scope that disambiguates.
     for (i in node.testTagAncestors.indices.reversed()) {
       val parentTag = node.testTagAncestors[i].nonBlank() ?: continue
-      val matchCount =
-        nodes.count { other ->
-          anchor.matches(other) &&
-            other.testTagAncestors.any { it.nonBlank() == parentTag }
-        }
+      val matchCount = nodes.count { other ->
+        anchor.matches(other) && other.testTagAncestors.any { it.nonBlank() == parentTag }
+      }
       if (matchCount == 1) {
         return anchorSel.copy(children = listOf(Selector(res = TextMatch.Exact(parentTag))))
       }
@@ -94,11 +92,9 @@ public object HierarchySelectorBuilder {
     val anchor = pickAnchor(node) ?: return null
     for (i in node.testTagAncestors.indices.reversed()) {
       val parentTag = node.testTagAncestors[i].nonBlank() ?: continue
-      val matchCount =
-        nodes.count { other ->
-          anchor.matches(other) &&
-            other.testTagAncestors.any { it.nonBlank() == parentTag }
-        }
+      val matchCount = nodes.count { other ->
+        anchor.matches(other) && other.testTagAncestors.any { it.nonBlank() == parentTag }
+      }
       if (matchCount == 1) {
         return "${anchor.render()}.hasParent(By.testTag(${quote(parentTag)}))"
       }
@@ -140,8 +136,7 @@ public object HierarchySelectorBuilder {
     data class Text(override val value: String) : Anchor() {
       override fun render(): String = "By.text(${quote(value)})"
 
-      override fun matches(node: UiAutomatorHierarchyNode): Boolean =
-        node.text.nonBlank() == value
+      override fun matches(node: UiAutomatorHierarchyNode): Boolean = node.text.nonBlank() == value
 
       override fun toSelector(): Selector = Selector(text = TextMatch.Exact(value))
     }
