@@ -129,7 +129,7 @@ object ComposeFigmaSvgDataProducer {
   ): FontPlan {
     val faces = LinkedHashMap<String, FigmaSvgFontFace>()
     val overrides = HashMap<String, String>()
-    fun add(captured: String?, weight: Int, italic: Boolean) {
+    fun add(captured: String?, weight: Int, italic: Boolean, codePoints: Set<Int>) {
       val fontPath = captured?.let { fontFilePath(it, fileSystem) }
       if (fontPath != null) {
         // Read through the injected FileSystem (Okio, per docs/AGENTS.md) — a caller using a fake /
@@ -139,14 +139,24 @@ object ComposeFigmaSvgDataProducer {
             .getOrNull()
             ?.takeIf { it.isNotEmpty() } ?: return
         val family = fontFileFamily(bytes, fontPath)
+        // Embed only the glyphs this face draws — the exact outlines the render loaded, minus the
+        // layout/hinting tables static text doesn't need — so a ~300 KB font rides along at a few
+        // KB.
+        // Falls back to the full file when the face can't be subset (CFF `.otf`, parse failure).
+        val subset = FontSubsetter.subset(bytes, codePoints)
+        val embedBytes = subset ?: bytes
         val format =
-          if (fontPath.name.endsWith(".otf", ignoreCase = true)) "opentype" else "truetype"
+          when {
+            subset != null -> "truetype" // the subset output is always a glyf-flavoured sfnt
+            fontPath.name.endsWith(".otf", ignoreCase = true) -> "opentype"
+            else -> "truetype"
+          }
         faces["$family|$weight|$italic|$format"] =
           FigmaSvgFontFace(
             family,
             weight,
             italic,
-            Base64.getEncoder().encodeToString(bytes),
+            Base64.getEncoder().encodeToString(embedBytes),
             format,
           )
         overrides[captured] = family
@@ -161,11 +171,23 @@ object ComposeFigmaSvgDataProducer {
         if (captured != null) overrides[captured] = name
       }
     }
-    fun walk(layer: FigmaSvgLayer) {
-      layer.text?.let { add(it.fontFamily, it.fontWeight ?: 400, it.italic) }
-      layer.children.forEach(::walk)
+    // First gather the code points each face draws (across every `<text>` and wrapped `<tspan>`
+    // that
+    // uses it) so the subset carries exactly the glyphs the SVG shows and no more.
+    val codePointsByFace = LinkedHashMap<Triple<String?, Int, Boolean>, MutableSet<Int>>()
+    fun collect(layer: FigmaSvgLayer) {
+      layer.text?.let { t ->
+        val cps =
+          codePointsByFace.getOrPut(Triple(t.fontFamily, t.fontWeight ?: 400, t.italic)) {
+            LinkedHashSet()
+          }
+        t.content.codePoints().toArray().forEach { cps.add(it) }
+        t.lines?.forEach { line -> line.content.codePoints().toArray().forEach { cps.add(it) } }
+      }
+      layer.children.forEach(::collect)
     }
-    walk(model.root)
+    collect(model.root)
+    for ((key, cps) in codePointsByFace) add(key.first, key.second, key.third, cps)
     return FontPlan(faces.values.toList(), overrides)
   }
 
