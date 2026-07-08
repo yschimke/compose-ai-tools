@@ -1044,9 +1044,15 @@ class RenderEngine(
     // registered in `RobolectricHost`.
     val pseudo = ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(localeTag)
     val effectiveLocaleTag = if (pseudo != null) pseudo.baseTag else localeTag
+    // A real RTL locale (`ar`, `he`, `fa`, …) also needs `ldrtl` so the layout mirrors like a real
+    // device — `ar-XB` isn't the only RTL case.
+    val rtl =
+      pseudo?.isRtl == true ||
+        (pseudo == null &&
+          ee.schimke.composeai.data.pseudolocale.LocaleDirection.isRtl(effectiveLocaleTag))
     val qualifiers = buildList {
       if (!effectiveLocaleTag.isNullOrBlank()) add(localeTagToQualifier(effectiveLocaleTag))
-      if (pseudo?.isRtl == true) add("ldrtl")
+      if (rtl) add("ldrtl")
       if (widthDp > 0) add("w${widthDp}dp")
       if (heightDp > 0) add("h${heightDp}dp")
       if (isRound) add("round")
