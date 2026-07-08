@@ -83,9 +83,9 @@ object FontSubsetter {
   /**
    * Rebuilds an sfnt font keeping only the tables whose 4-char tag is **not** in [drop]. Rewrites
    * the table directory (sorted by tag, as the sfnt spec requires), repacks each kept table 4-byte
-   * aligned, recomputes each table checksum, and zeroes `head.checkSumAdjustment` (the whole-file
-   * checksum the stored value no longer matches after tables are removed — zero is the value tools
-   * emit and readers accept). Pure byte surgery: the kept tables' contents are copied verbatim.
+   * aligned, recomputes each table checksum, and rewrites `head.checkSumAdjustment` so the
+   * whole-font checksum stays consistent after tables are removed. Pure byte surgery: the kept
+   * tables' contents are copied verbatim.
    */
   private fun stripTables(font: ByteArray, drop: Set<String>): ByteArray {
     val input = ByteBuffer.wrap(font)
