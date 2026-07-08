@@ -28,22 +28,21 @@ import org.robolectric.annotation.Config
  * offline, with no headset, no OpenXR, and no SceneCore native code.
  *
  * This is the proof-of-concept behind the "harvest poses → project to 2D" path implemented by
- * `SubspaceSceneRecorder` (see its KDoc). It
- * also doubles as the **canary** for the alpha XR testing stack: if a future
- * `androidx.xr.*:…-testing` release changes how the fake runtime is discovered, how spatial UI is
- * gated, or the subspace semantics surface, this test fails loudly instead of the capability
- * silently regressing.
+ * `SubspaceSceneRecorder` (see its KDoc). It also doubles as the **canary** for the alpha XR
+ * testing stack: if a future `androidx.xr.*:…-testing` release changes how the fake runtime is
+ * discovered, how spatial UI is gated, or the subspace semantics surface, this test fails loudly
+ * instead of the capability silently regressing.
  *
  * How it works — entirely public API plus one Robolectric shadow:
- *  1. `FakeSceneRuntimeFactory` / `FakeRenderingRuntimeFactory` (from `scenecore-testing`) are
- *     registered for `ServiceLoader` via `src/test/resources/META-INF/services/…`, so
- *     `Session.create(activity)` yields a fake, JVM-only XR session.
- *  2. `Subspace` only takes its spatial path when
- *     `packageManager.hasSystemFeature("android.software.xr.api.spatial")` is true. Robolectric
- *     reports `false`, so we shadow it on with [ShadowPackageManager.setSystemFeature]. The
- *     session and `LocalComposeXrOwners` then auto-wire from the activity.
- *  3. The panel transforms are read from the public spatial-semantics tree
- *     (`onSubspaceNodeWithTag(tag).fetchSemanticsNode().poseInRoot` / `.size`).
+ * 1. `FakeSceneRuntimeFactory` / `FakeRenderingRuntimeFactory` (from `scenecore-testing`) are
+ *    registered for `ServiceLoader` via `src/test/resources/META-INF/services/…`, so
+ *    `Session.create(activity)` yields a fake, JVM-only XR session.
+ * 2. `Subspace` only takes its spatial path when
+ *    `packageManager.hasSystemFeature("android.software.xr.api.spatial")` is true. Robolectric
+ *    reports `false`, so we shadow it on with [ShadowPackageManager.setSystemFeature]. The session
+ *    and `LocalComposeXrOwners` then auto-wire from the activity.
+ * 3. The panel transforms are read from the public spatial-semantics tree
+ *    (`onSubspaceNodeWithTag(tag).fetchSemanticsNode().poseInRoot` / `.size`).
  *
  * Poses/sizes are in dp. A `SpatialColumn` of a 200dp-tall panel over a 160dp-tall panel resolves
  * to a 360dp-tall column with the top panel above the bottom one — which is what we assert.
@@ -54,8 +53,7 @@ class SubspaceLayoutPoseTest {
 
   // v2 rule API (StandardTestDispatcher) is not on the compat compile classpath yet;
   // suppress until the floor moves up. See renderer-android RobolectricRenderTest.
-  @Suppress("DEPRECATION")
-  @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
+  @Suppress("DEPRECATION") @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
   @Test
   fun recoversSubspacePanelPosesOffline() {

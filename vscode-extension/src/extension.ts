@@ -80,6 +80,7 @@ import {
 import { ContinuousCompileManager } from "./daemon/continuousCompileManager";
 import { mergeRemoteComposeChange } from "./daemon/remoteComposeMerge";
 import { mergePermissionsChange } from "./daemon/permissionsMerge";
+import { composePreviewOverrides } from "./daemon/previewOverrides";
 import {
     buildHistorySource,
     HistoryPanel,
@@ -345,6 +346,34 @@ const permissionsOverridesByPreview = new Map<
     string,
     import("./daemon/daemonProtocol").PermissionsOverride
 >();
+/**
+ * previewIds whose focus-toolbar "clear background" (crisp outline) toggle is on. Host-side
+ * mirror of the webview's sticky bit, kept here so the override composes with permissions /
+ * remoteCompose in [buildPreviewOverrides] when any edit handler re-renders the preview. Same
+ * activation-lifetime scope as the other override maps.
+ */
+const clearBackgroundByPreview = new Set<string>();
+
+/**
+ * Unified per-preview override bag for an edit-driven snapshot `renderNow`. Assembles every
+ * host-authoritative override (permissions + remoteCompose + clearBackground) so each edit resends
+ * the full set — otherwise editing one override drops the others, because the daemon reverts any
+ * authoritative override a render omits. Lottie is daemon-sticky and intentionally excluded (see
+ * [composePreviewOverrides]). `undefined` when nothing is active.
+ *
+ * Only the explicit edit handlers use this — the auto re-render paths (save / warm-up / heavy
+ * opt-in) deliberately stay override-free so a source-change render is never dropped by the
+ * daemon's override-in-flight coalescing (see the note in [dispatchDaemonRender]).
+ */
+function buildPreviewOverrides(
+    previewId: string,
+): import("./daemon/daemonProtocol").PreviewOverrides | undefined {
+    return composePreviewOverrides({
+        permissions: permissionsOverridesByPreview.get(previewId),
+        remoteCompose: remoteComposeOverridesByPreview.get(previewId),
+        clearBackground: clearBackgroundByPreview.has(previewId),
+    });
+}
 /** Last edited preview function name per Kotlin file, captured from in-memory edits and
  * consumed on save to prioritize that preview's refresh. */
 const lastEditedPreviewFunctionByFile = new Map<string, string>();
@@ -3153,6 +3182,12 @@ async function dispatchDaemonRender(
     const fullIds = heavyOptInsFor(module.modulePath, ids);
     const fastIds =
         fullIds.length === 0 ? ids : ids.filter((id) => !fullIds.includes(id));
+    // Deliberately NOT override-bearing: a source-change save must never be dropped, but the
+    // daemon coalesces (rejects) an override-bearing render when one is already in flight for the
+    // preview (JsonRpcServer's `previewIdsWithOverridesInFlight`), so attaching the override bag
+    // here would let a save that races an in-flight edit-render get silently dropped. The explicit
+    // edit handlers re-send the composed bag; making auto-re-renders sticky needs the daemon
+    // coalescing sorted first (tracked separately).
     if (fastIds.length > 0) {
         const ok = await daemonScheduler.renderNow(
             module,
@@ -6312,7 +6347,9 @@ async function handleSetRemoteComposeNamedValue(
         [previewId],
         "fast",
         "remotecompose-edit",
-        { remoteCompose: next },
+        // Full composed bag (not just `{ remoteCompose }`) so a preview that also has a
+        // permissions / clear-background override keeps it on this re-render.
+        buildPreviewOverrides(previewId),
     );
 }
 
@@ -6379,9 +6416,10 @@ async function handleSetLottieProgress(
         [previewId],
         "fast",
         "lottie-scrub",
-        {
-            lottie: { progress: clamped },
-        },
+        // Compose over the host-authoritative bag so scrubbing keeps a co-active
+        // permissions / remoteCompose / clear-background override. `lottie` itself is
+        // daemon-sticky, so it's added here inline rather than stored host-side.
+        { ...(buildPreviewOverrides(previewId) ?? {}), lottie: { progress: clamped } },
     );
 }
 
@@ -6425,7 +6463,8 @@ async function handleSetPermissionsOverride(
         [previewId],
         "fast",
         "permissions-edit",
-        { permissions: next },
+        // Full composed bag so a co-active remoteCompose / clear-background override survives.
+        buildPreviewOverrides(previewId),
     );
 }
 
@@ -6449,6 +6488,11 @@ async function handleToggleClearBackground(
     if (!moduleInfo) {
         return;
     }
+    if (enabled) {
+        clearBackgroundByPreview.add(previewId);
+    } else {
+        clearBackgroundByPreview.delete(previewId);
+    }
     logInfo(
         `[panel] clearBackground ${enabled ? "on" : "off"} for ${previewId} via renderNow`,
     );
@@ -6457,7 +6501,8 @@ async function handleToggleClearBackground(
         [previewId],
         "fast",
         "clear-background-toggle",
-        { clearBackground: enabled || undefined },
+        // Full composed bag so a co-active permissions / remoteCompose override survives.
+        buildPreviewOverrides(previewId),
     );
 }
 

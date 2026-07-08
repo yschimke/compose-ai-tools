@@ -202,10 +202,10 @@ class JsonRpcServer(
   /**
    * Experimental gate for `history/diff`. The metadata-mode handler exists (H3) but the broader
    * history surface — pixel mode (H5), git-ref write modes, LFS/squash-GC handling — is incomplete
-   *. For 1.0 the dispatcher returns method-not-found
-   * unless this flag is on, so consumers don't accidentally code against an interface that's still
-   * moving. Defaults to the [HISTORY_DIFF_EXPERIMENTAL_PROP] sysprop (off in production); tests
-   * that assert on the diff handler pass `historyDiffExperimental = true` explicitly.
+   * . For 1.0 the dispatcher returns method-not-found unless this flag is on, so consumers don't
+   * accidentally code against an interface that's still moving. Defaults to the
+   * [HISTORY_DIFF_EXPERIMENTAL_PROP] sysprop (off in production); tests that assert on the diff
+   * handler pass `historyDiffExperimental = true` explicitly.
    *
    * TODO(1.1): land H5 + the remaining roadmap items, flip the default to on, and remove this
    *   parameter.
@@ -246,22 +246,22 @@ class JsonRpcServer(
       ?: DEFAULT_DATA_FETCH_RERENDER_BUDGET_MS,
   private val interactiveFrameIntervalMs: Long = INTERACTIVE_FRAME_INTERVAL_MS,
   /**
-   * Stage-2 in-process compile. When non-null, `compileSources` requests
-   * dispatch through this service; on `Ok` we swap the user classloader the same way
-   * `fileChanged({kind:source})` does. When null (fake-mode harness scenarios, integration tests
-   * that don't opt in, daemons whose launch descriptor lacks `btaCompilerClasspath`) the handler
-   * returns `result=fallback` so the editor falls back to stage 1 / 0 without surface churn.
+   * Stage-2 in-process compile. When non-null, `compileSources` requests dispatch through this
+   * service; on `Ok` we swap the user classloader the same way `fileChanged({kind:source})` does.
+   * When null (fake-mode harness scenarios, integration tests that don't opt in, daemons whose
+   * launch descriptor lacks `btaCompilerClasspath`) the handler returns `result=fallback` so the
+   * editor falls back to stage 1 / 0 without surface churn.
    */
   private val btaCompileService: ee.schimke.composeai.daemon.bta.BtaCompileService? = null,
   private val fileSystem: FileSystem = SystemFileSystem,
   private val onExit: (Int) -> Unit = { code -> System.exit(code) },
   /**
    * Factory for the native XR render server (see the "XR render service" section in
-   * `protocol/Messages.kt`). When non-null the daemon
-   * advertises `capabilities.xr` and serves `xr/start` / `xr/updatePanels` / `xr/stop`, spawning
-   * one `xr-composite --serve` child per session. When null (the in-process integration tests,
-   * fake-mode harness, daemons whose host has no XR binary) the `xr/…` methods reply
-   * `MethodNotFound` — the one-shot composite path is unaffected.
+   * `protocol/Messages.kt`). When non-null the daemon advertises `capabilities.xr` and serves
+   * `xr/start` / `xr/updatePanels` / `xr/stop`, spawning one `xr-composite --serve` child per
+   * session. When null (the in-process integration tests, fake-mode harness, daemons whose host has
+   * no XR binary) the `xr/…` methods reply `MethodNotFound` — the one-shot composite path is
+   * unaffected.
    */
   private val xrServerFactory: XrRenderServerFactory? = null,
 ) {
@@ -487,9 +487,9 @@ class JsonRpcServer(
   private val streamSessions = ConcurrentHashMap<String, InteractiveSession>()
 
   /**
-   * Held native XR render sessions, one per `frameStreamId`, present only
-   * when [xrServerFactory] was wired. The daemon's `xr/…` handlers drive it and feed each returned
-   * frame out as a `streamFrame` notification.
+   * Held native XR render sessions, one per `frameStreamId`, present only when [xrServerFactory]
+   * was wired. The daemon's `xr/…` handlers drive it and feed each returned frame out as a
+   * `streamFrame` notification.
    */
   private val xrSessions: XrSessionManager? = xrServerFactory?.let { XrSessionManager(it) }
 

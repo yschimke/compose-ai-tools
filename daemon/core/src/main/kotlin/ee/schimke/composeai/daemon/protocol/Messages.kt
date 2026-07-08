@@ -172,10 +172,10 @@ data class ServerCapabilities(
   val recording: Boolean = false,
   /**
    * `true` when the daemon can front the native XR render server (`xr-composite --serve`) — see the
-   * "XR render service" section below. `xr/start` opens a held spatial-scene session, `xr/updatePanels`
-   * mutates it per-frame, and frames arrive as `streamFrame` notifications. `false` (the default
-   * for daemons without the native binary, or that pre-date the feature) means the `xr/…` methods
-   * reply `MethodNotFound`; clients fall back to the one-shot composite still.
+   * "XR render service" section below. `xr/start` opens a held spatial-scene session,
+   * `xr/updatePanels` mutates it per-frame, and frames arrive as `streamFrame` notifications.
+   * `false` (the default for daemons without the native binary, or that pre-date the feature) means
+   * the `xr/…` methods reply `MethodNotFound`; clients fall back to the one-shot composite still.
    */
   val xr: Boolean = false,
   /**
@@ -2479,18 +2479,22 @@ data class StreamFrameParams(
 
 // ---- XR render service --------------------------------------------------------------------------
 //
-// The daemon fronts the native `xr-composite --serve` render server so clients only ever talk to the
+// The daemon fronts the native `xr-composite --serve` render server so clients only ever talk to
+// the
 // daemon. `xr-composite --serve` is a long-lived C++ process speaking this same JSON-RPC +
-// LSP-style `Content-Length` framing over stdio; it holds Filament engine/scene state across frames.
+// LSP-style `Content-Length` framing over stdio; it holds Filament engine/scene state across
+// frames.
 // The daemon spawns and multiplexes it: one child fronting many held sessions keyed by
 // `frameStreamId`. `capabilities.xr` (see [ServerCapabilities.xr]) advertises when the daemon was
 // wired with the native binary; when it wasn't, the `xr/…` methods below reply `MethodNotFound` and
 // clients fall back to the one-shot composite still.
 //
-// Lifecycle: `xr/start` opens a session and mints a `frameStreamId`; `xr/updatePanels` mutates panel
+// Lifecycle: `xr/start` opens a session and mints a `frameStreamId`; `xr/updatePanels` mutates
+// panel
 // textures/poses per-frame; `xr/stop` tears the session down. Rendered frames flow back out as
 // `streamFrame` notifications — the same wire shape the interactive/stream surfaces use, so XR
-// reuses the `composestream/1` frame plane wholesale rather than inventing a new one. `xr/structure`
+// reuses the `composestream/1` frame plane wholesale rather than inventing a new one.
+// `xr/structure`
 // returns the held scene's panel tree + poses inline as JSON (mirrors `a11y/hierarchy`).
 
 /**

@@ -6,26 +6,25 @@ import javax.imageio.ImageIO
 import org.junit.Test
 
 /**
- * Asserts the additive-RGB capture contract that `:samples:xr-glimmer:composePreviewRenderAll`
- * is supposed to deliver — the renderer mirror of
- * `:samples:android`'s `TransparentBackgroundPreviewPixelTest`, on the other channel.
+ * Asserts the additive-RGB capture contract that `:samples:xr-glimmer:composePreviewRenderAll` is
+ * supposed to deliver — the renderer mirror of `:samples:android`'s
+ * `TransparentBackgroundPreviewPixelTest`, on the other channel.
  *
- * Glimmer's display model is additive: pure black pixels render as 100% transparent on-device,
- * so the capture uses **Encoding B** —
- * opaque RGB on a `Color.Black` background, then `ADD`-blend onto an environment image to
- * recover what a wearer sees. The contract this test guards:
+ * Glimmer's display model is additive: pure black pixels render as 100% transparent on-device, so
+ * the capture uses **Encoding B** — opaque RGB on a `Color.Black` background, then `ADD`-blend onto
+ * an environment image to recover what a wearer sees. The contract this test guards:
  *
- *  - The captured PNG carries an alpha plane (i.e. it's loaded as RGBA, not RGB-flattened).
- *  - Alpha is fully opaque in every pixel (`0xFF`) — Encoding B is NOT a transparent capture.
- *  - The four outer corners read `RGB == (0, 0, 0)` — additive-zero. These pixels sit well
- *    outside the centred title chip / card, so any drift away from black would mean either
- *    (a) the background-fill path lost the explicit `backgroundColor = 0xFF000000` from
- *    `@Preview`, or (b) a future env compositor mutated the original capture in place
- *    (it must write a sibling file instead).
+ * - The captured PNG carries an alpha plane (i.e. it's loaded as RGBA, not RGB-flattened).
+ * - Alpha is fully opaque in every pixel (`0xFF`) — Encoding B is NOT a transparent capture.
+ * - The four outer corners read `RGB == (0, 0, 0)` — additive-zero. These pixels sit well outside
+ *   the centred title chip / card, so any drift away from black would mean either (a) the
+ *   background-fill path lost the explicit `backgroundColor = 0xFF000000` from `@Preview`, or (b) a
+ *   future env compositor mutated the original capture in place (it must write a sibling file
+ *   instead).
  *
- * Without this test, Encoding-B drift slips through silently: an opaque-grey background still
- * looks "fine" in a manual review, but breaks the eventual `ADD`-blend env compositor because
- * grey + scene > 0 everywhere and the scene gets washed out across every pixel.
+ * Without this test, Encoding-B drift slips through silently: an opaque-grey background still looks
+ * "fine" in a manual review, but breaks the eventual `ADD`-blend env compositor because grey +
+ * scene > 0 everywhere and the scene gets washed out across every pixel.
  */
 class GlimmerCaptureAdditivePixelTest {
 
@@ -73,11 +72,11 @@ class GlimmerCaptureAdditivePixelTest {
   }
 
   /**
-   * The four `NowPlayingCard` captures are pixel-identical today — Encoding B doesn't see
-   * the env name at render time; the future `:data-glimmer-environment-connector` is what
-   * differentiates them by writing a sibling composited PNG. If a regression starts varying
-   * the captures across env names (e.g. the renderer accidentally reads `Preview.name` and
-   * synthesises something env-specific in-process), this test catches it.
+   * The four `NowPlayingCard` captures are pixel-identical today — Encoding B doesn't see the env
+   * name at render time; the future `:data-glimmer-environment-connector` is what differentiates
+   * them by writing a sibling composited PNG. If a regression starts varying the captures across
+   * env names (e.g. the renderer accidentally reads `Preview.name` and synthesises something
+   * env-specific in-process), this test catches it.
    */
   @Test
   fun `four NowPlayingCard env variants land at pixel-identical captures`() {
