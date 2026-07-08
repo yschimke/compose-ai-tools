@@ -425,6 +425,9 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `ButtonPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ButtonPreview_Devices_Small_Round.png" width="150" /> |
 | `CircularProgressIndicatorPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/CircularProgressIndicatorPreview_Devices_Large_Round.png" width="150" /> |
 | `CircularProgressIndicatorPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/CircularProgressIndicatorPreview_Devices_Small_Round.png" width="150" /> |
+| `DrawableImageTilePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/DrawableImageTilePreview_Drawable_Image.png" width="150" /> |
+| `InlineImageTilePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/InlineImageTilePreview_Inline_Image.png" width="150" /> |
+| `ScopeImageTilePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ScopeImageTilePreview_Scope_Image.png" width="150" /> |
 | `HelloTilePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/HelloTilePreview_Large_Round.png" width="150" /> |
 | `HelloTilePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/HelloTilePreview_Small_Round.png" width="150" /> |
 | `StepsTilePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/StepsTilePreview_Large_Round.png" width="150" /> |

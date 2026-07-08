@@ -2711,6 +2711,30 @@
     "sha256": "db99f08046c7235f255cb810cb4d73631a5a2108f2087e0e205d148207c784d9",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
+  "samples:wear/com.example.samplewear.TileImagePreviewsKt.DrawableImageTilePreview_Drawable Image": {
+    "captureLabel": "",
+    "functionName": "DrawableImageTilePreview",
+    "module": "samples:wear",
+    "renderBasename": "DrawableImageTilePreview_Drawable_Image.png",
+    "sha256": "867a048cac8e3083edcbfc3d89b717a168752a326422b67559c9892b680ae8f8",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/TileImagePreviews.kt"
+  },
+  "samples:wear/com.example.samplewear.TileImagePreviewsKt.InlineImageTilePreview_Inline Image": {
+    "captureLabel": "",
+    "functionName": "InlineImageTilePreview",
+    "module": "samples:wear",
+    "renderBasename": "InlineImageTilePreview_Inline_Image.png",
+    "sha256": "e85f7254041e7a994104bc2b70a3f7561f88410c001a04773eec505c4028db8c",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/TileImagePreviews.kt"
+  },
+  "samples:wear/com.example.samplewear.TileImagePreviewsKt.ScopeImageTilePreview_Scope Image": {
+    "captureLabel": "",
+    "functionName": "ScopeImageTilePreview",
+    "module": "samples:wear",
+    "renderBasename": "ScopeImageTilePreview_Scope_Image.png",
+    "sha256": "cf67a575b69a2ad57a09d1a872109494af1ad9f70062fac7c7a3f767f4a93240",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/TileImagePreviews.kt"
+  },
   "samples:wear/com.example.samplewear.TilePreviewsKt.HelloTilePreview_Large Round": {
     "captureLabel": "",
     "functionName": "HelloTilePreview",
