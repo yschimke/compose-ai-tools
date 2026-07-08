@@ -188,5 +188,4 @@ re-rendering what they're looking at.
 **v2 follow-up — per-preview resource-read tracking.** Instrument the
 Resources lookup path during a render to record which resource IDs
 the composition actually read; resolve the changed file's resource IDs
-via the merged `R.txt` and look them up in a reverse index. Tracked in
-[ROADMAP.md](ROADMAP.md). Not blocking.
+via the merged `R.txt` and look them up in a reverse index. Not blocking.

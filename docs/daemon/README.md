@@ -24,8 +24,7 @@ to MCP-aware agents.
 
 The daemon is configured with `composePreview.daemon { ... }` and
 defaults on for editor use. The Gradle `composePreviewRender` task remains
-the CI-canonical render path. Open work is tracked in
-[ROADMAP.md](ROADMAP.md).
+the CI-canonical render path.
 
 ## Files
 
@@ -77,9 +76,6 @@ the CI-canonical render path. Open work is tracked in
   corpus consumed by both the Kotlin and TypeScript test suites.
 - **[TEST-HARNESS.md](TEST-HARNESS.md)** — harness scenarios,
   FakeHost, image-baseline strategy, CI workflow.
-
-- **[ROADMAP.md](ROADMAP.md)** — open work, without historical task
-  diaries.
 
 ## Non-goals (v1)
 

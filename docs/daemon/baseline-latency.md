@@ -56,8 +56,9 @@ Stage 2 rows carry `phase=compile` (the real
 follows a successful compile). The stage-2 `render` leg is unchanged from stage
 0, so it is not re-measured — `benchCompileStages` reuses the stage-0
 `render,warm-after-1-line-edit` median when it evaluates the graduation verdict
-(`docs/daemon/stage-2-verdict-<target>.md`) against
-[COMPILE-IN-PROCESS.md](COMPILE-IN-PROCESS.md) § "Promote / demote criteria".
+(`docs/daemon/stage-2-verdict-<target>.md`) against the promote/demote thresholds
+(< 1 s warm save→pixel on desktop, < 2 s on Android, warm-path advantage over
+stage 1 above 200 ms).
 
 ## Phases (CSV column `phase`)
 

@@ -8,7 +8,7 @@ plugins {
 // Runnable launcher for the fake Android emulator. Wires the ADB core + the emulator gRPC service +
 // a RenderSession-backed FrameSource so a launched @Preview becomes the emulator display, and
 // writes
-// the Studio discovery file. Unpublished tooling. See docs/fake-emulator/DESIGN.md.
+// the Studio discovery file. Unpublished tooling. See docs/fake-emulator/README.md.
 dependencies {
   implementation(project(":fake-emulator-core"))
   implementation(project(":fake-emulator-grpc"))

@@ -52,10 +52,10 @@ The long-lived renderer. See **[daemon/README.md](daemon/README.md)** for its
 own index; the load-bearing specs are
 [daemon/DESIGN.md](daemon/DESIGN.md), [daemon/PROTOCOL.md](daemon/PROTOCOL.md)
 (wire format), [daemon/DATA-PRODUCTS.md](daemon/DATA-PRODUCTS.md), and
-[daemon/MCP.md](daemon/MCP.md). Several docs there (`BTA-SPIKE`,
-`COMPILE-IN-PROCESS`, `CONTINUOUS-COMPILE`) are the reference-of-record for
-shipped experimental features and are cited directly from the code — treat them
-as reference, not history.
+[daemon/MCP.md](daemon/MCP.md). The in-process / continuous-compile save loops
+(`composePreview.daemon.compileInProcess` and `composePreview.daemon.continuousCompile`)
+are experimental features whose behaviour is documented in the code that implements
+them — `:daemon:core`'s `bta/` package and the VS Code extension's daemon client.
 
 ## Specs behind shipped code (`design/`)
 
@@ -63,9 +63,7 @@ The `design/` tree used to hold many speculative proposals; what remains are the
 specs the code actually depends on:
 
 - [design/SPATIAL_SCENE_CONTRACT.md](design/SPATIAL_SCENE_CONTRACT.md) — the XR scene wire format (schema-generated Kotlin/TS/C++ mirrors).
-- [design/xr-spatial/RENDERER_SERVICE.md](design/xr-spatial/RENDERER_SERVICE.md) — the XR render-service protocol.
 - [design/DESIGN_CATALOGS.md](design/DESIGN_CATALOGS.md) — the code-led sticker-sheet catalog system.
-- [design/EXTENSION_DATA_EXPOSURE.md](design/EXTENSION_DATA_EXPOSURE.md) — the VS Code data-bundle/chip panel design.
 
 Component-level contracts (the XR semantics tree, `FigmaLayeredSvg`, the font
 preview wrapper, `@XrSubspacePreview`) now live as **KDoc on the owning class**,
@@ -75,4 +73,3 @@ not as separate docs — read them next to the code.
 
 - [fake-emulator/](fake-emulator/README.md) — the unpublished fake-emulator module.
 - [clients/](clients/SESSION-VIEWER.md) — mobile/Wear session-viewer apps and their publishing.
-- [wasm-cmp-spike.md](wasm-cmp-spike.md) — the Kotlin/Wasm preview-server spike (wired into the build).

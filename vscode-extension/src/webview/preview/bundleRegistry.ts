@@ -6,7 +6,19 @@
 // subscribed when the chip toggles on; expander-only kinds are
 // available via the per-tab "Configure…" expander.
 //
-// See `docs/design/EXTENSION_DATA_EXPOSURE.md` for the full design.
+// Model invariants the rest of the panel relies on:
+//   - Bundles scope to the focused preview. The chip bar and
+//     `<data-tabs>` are hidden outside focus layout, so a bundle's
+//     chip, tab, and card overlay only ever act on the focused card —
+//     never on an ambient grid selection.
+//   - A chip is a single toggle over {chip, tab, card overlay/legend}.
+//     Pressing it on subscribes the default-ON kinds, opens the tab,
+//     and paints the overlay on the focused card; pressing it off (or
+//     the tab's `×`) tears all three down together.
+//   - Chips are gated to the focused preview via an optional
+//     `appliesTo(previewContext)` predicate: when it returns false the
+//     chip (and its tab) are hidden for that preview. Bundles without a
+//     predicate are universal.
 
 import type { PreviewInfo } from "../shared/types";
 import { isWearPreview } from "./cardData";

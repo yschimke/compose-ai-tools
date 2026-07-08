@@ -14,8 +14,6 @@
 // rows light up as warnings). The caller (host shell wiring in
 // `main.ts`) is responsible for re-running this whenever the focused
 // preview, the cache, or the bundle's enabled-kinds set changes.
-//
-// See `docs/design/EXTENSION_DATA_EXPOSURE.md` § Text / i18n.
 
 import { html, type TemplateResult } from "lit";
 import type { DataTableColumn } from "./components/DataTable";

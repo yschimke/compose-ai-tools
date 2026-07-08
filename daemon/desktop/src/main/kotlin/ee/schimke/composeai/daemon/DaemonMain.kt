@@ -316,7 +316,7 @@ fun runDaemon(
   // the editor falls back to stage 1 (`gradle --continuous`) or stage 0. The editor
   // only dispatches `compileSources` when the VS Code workspace setting
   // `composePreview.daemon.compileInProcess` is on, so a non-null service still costs
-  // nothing until that switch is flipped. See docs/daemon/COMPILE-IN-PROCESS.md.
+  // nothing until that switch is flipped.
   val btaCompileService = ee.schimke.composeai.daemon.bta.DefaultBtaCompileService.fromSysprops()
   if (btaCompileService != null) {
     System.err.println(
@@ -331,7 +331,7 @@ fun runDaemon(
     )
   }
 
-  // RENDERER_SERVICE.md — front the native `xr-composite --serve` only when its binary + compiled
+  // Front the native `xr-composite --serve` render server only when its binary + compiled
   // materials actually resolve (env override or the shared provisioning cache for this daemon's
   // version). Resolve once and capture the paths in the factory so `xr/start` starts the same
   // binary

@@ -3,7 +3,7 @@
 // drive). The field NUMBERS and types of every message here are kept wire-compatible with the
 // canonical `emulator_controller.proto` (google-deepmind/android_env, AOSP external/qemu,
 // yschimke/emulator-tools), so a real Studio/emulator client decodes our responses. Fields/messages
-// we don't model are omitted, not renumbered. See docs/fake-emulator/DESIGN.md.
+// we don't model are omitted, not renumbered. See docs/fake-emulator/README.md.
 syntax = "proto3";
 
 package android.emulation.control;

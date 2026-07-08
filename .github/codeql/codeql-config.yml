@@ -8,5 +8,5 @@ name: "compose-ai-tools CodeQL config"
 paths-ignore:
   # Pinned @js-joda/core 5.7.0 ES-module build, vendored beside the CMP Wasm
   # catalog's index.html so the bundle resolves the bare `@js-joda/core` import
-  # offline (no CDN). Minified upstream library code — see docs/wasm-cmp-spike.md.
+  # offline (no CDN). Minified upstream library code.
   - 'samples/cmp-wasm-catalog/src/wasmJsMain/resources/js-joda.esm.js'

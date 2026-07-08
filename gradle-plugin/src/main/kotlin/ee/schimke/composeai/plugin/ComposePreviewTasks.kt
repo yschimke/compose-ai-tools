@@ -956,7 +956,7 @@ internal object ComposePreviewTasks {
    * Stage-2 BTA wiring for the CMP / desktop daemon-start task. Wires every BTA input on
    * [DaemonBootstrapTask] from the configurations + project layout. The configurations themselves
    * are created (and populated) by [setupBtaConfigurations], which must run BEFORE this method —
-   * see that method's KDoc for why. See `docs/daemon/COMPILE-IN-PROCESS.md` § "Module layout".
+   * see that method's KDoc for why.
    *
    * Kotlin version sniff currently reads our `libs.versions.toml` Kotlin entry — the
    * version-catalog convention this repo and its samples use. Out-of-repo consumers fall back to a
@@ -1082,8 +1082,8 @@ internal object ComposePreviewTasks {
 
   /**
    * Daemon-warm-time stage-2 eligibility predicate. Returns a human-readable string when the
-   * consumer's module is NOT eligible for in-process compile; `null` when eligible. Mirrors
-   * `docs/daemon/COMPILE-IN-PROCESS.md` § "Eligibility" — keep the two in sync.
+   * consumer's module is NOT eligible for in-process compile; `null` when eligible. This predicate
+   * is the single source of truth for stage-2 eligibility.
    *
    * - **KSP** modules need their generated sources recompiled on every save. BTA doesn't drive KSP;
    *   stage 1's `gradle --continuous` covers it because Gradle drives KSP for it.
@@ -1102,17 +1102,14 @@ internal object ComposePreviewTasks {
   private fun detectStageTwoIneligibility(project: Project): String? =
     when {
       project.plugins.hasPlugin("com.google.devtools.ksp") ->
-        "com.google.devtools.ksp plugin applied (stage 2 doesn't drive KSP yet — see " +
-          "docs/daemon/COMPILE-IN-PROCESS.md § Eligibility)"
+        "com.google.devtools.ksp plugin applied (stage 2 doesn't drive KSP yet)"
       project.plugins.hasPlugin("org.jetbrains.kotlin.kapt") ->
         "org.jetbrains.kotlin.kapt plugin applied (stage 2 doesn't drive KAPT yet)"
       project.plugins.hasPlugin("org.jetbrains.kotlin.multiplatform") ->
         "org.jetbrains.kotlin.multiplatform plugin applied (stage 2 covers single-source-set " +
-          "JVM/Android modules only; KMP source-set wiring stays on stage 1 — see " +
-          "docs/daemon/COMPILE-IN-PROCESS.md § Eligibility)"
+          "JVM/Android modules only; KMP source-set wiring stays on stage 1)"
       hasAnnotationProcessorDependencies(project) ->
-        "annotationProcessor dependencies declared (javac annotation processors aren't BTA-driven " +
-          "— see docs/daemon/COMPILE-IN-PROCESS.md § Eligibility)"
+        "annotationProcessor dependencies declared (javac annotation processors aren't BTA-driven)"
       else -> null
     }
 
@@ -1138,8 +1135,8 @@ internal object ComposePreviewTasks {
    *
    * Falls back to [KOTLIN_VERSION_FALLBACK] when no `libs.versions.toml` exists or no `kotlin`
    * entry is declared. The fallback matches our own plugin's bundled Kotlin — good for in-repo
-   * samples, wrong for arbitrary out-of-repo consumers. Tracked as "switch to KGP's
-   * KotlinPluginWrapper.kotlinPluginVersion" in `docs/daemon/COMPILE-IN-PROCESS.md` follow-ups.
+   * samples, wrong for arbitrary out-of-repo consumers. Tracked as a follow-up: switch to KGP's
+   * `KotlinPluginWrapper.kotlinPluginVersion`.
    */
   private fun resolveConsumerKotlinVersion(project: Project): String {
     val catalogs =
