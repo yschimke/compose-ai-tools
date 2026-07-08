@@ -25,19 +25,17 @@ import androidx.xr.glimmer.TitleChip
  * Sample Glimmer composables exercised by `:samples:xr-glimmer:composePreviewRenderAll`.
  *
  * Glimmer (`androidx.xr.glimmer:glimmer`) renders for additive display AI glasses — pure black
- * pixels render as 100% transparent on-device, so the SKILL.md mandates a `Color.Black`
- * background on the root projected-activity container. Captures here mirror that intent:
- * `showBackground = true, backgroundColor = 0xFF000000` so the rendered PNG is opaque RGB
- * (Encoding B) with `RGB == (0, 0, 0)` everywhere the
- * Glimmer UI didn't paint — that's the additive-zero baseline an env compositor would later
- * `ADD`-blend onto a Light / Dark / Busy / Venice-canal-cats backdrop.
+ * pixels render as 100% transparent on-device, so the SKILL.md mandates a `Color.Black` background
+ * on the root projected-activity container. Captures here mirror that intent: `showBackground =
+ * true, backgroundColor = 0xFF000000` so the rendered PNG is opaque RGB (Encoding B) with `RGB ==
+ * (0, 0, 0)` everywhere the Glimmer UI didn't paint — that's the additive-zero baseline an env
+ * compositor would later `ADD`-blend onto a Light / Dark / Busy / Venice-canal-cats backdrop.
  *
- * Preview `name` values track the per-env family proposed by the design doc
- * (`Glimmer · Light`, `Glimmer · Dark`, `Glimmer · Busy`, `Glimmer · VeniceCanalCats`,
- * `Glimmer · Input`) so when the `@GlimmerPreview*` meta-annotations from
- * `:glimmer-preview-runtime` land, this file's previews fold in as a drop-in replacement. The
- * four card variants produce identical captures today — they will diverge once
- * `:data-glimmer-environment-connector` wires the env compositor in.
+ * Preview `name` values track the per-env family proposed by the design doc (`Glimmer · Light`,
+ * `Glimmer · Dark`, `Glimmer · Busy`, `Glimmer · VeniceCanalCats`, `Glimmer · Input`) so when the
+ * `@GlimmerPreview*` meta-annotations from `:glimmer-preview-runtime` land, this file's previews
+ * fold in as a drop-in replacement. The four card variants produce identical captures today — they
+ * will diverge once `:data-glimmer-environment-connector` wires the env compositor in.
  */
 
 // Wraps content in `GlimmerTheme` against an additive-zero `Color.Black` base. Standalone helper
@@ -83,10 +81,7 @@ fun NowPlayingCard() {
     // and its associated card; hard-coded as a literal here to avoid pulling the composable
     // accessor (it's a @Composable getter that can't be inlined from a regular `val`) and
     // to keep the sample's dependency list to Glimmer + Compose foundation only.
-    Column(
-      modifier = Modifier.fillMaxWidth(),
-      horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
+    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
       TitleChip { Text("NOW PLAYING") }
       Spacer(Modifier.height(8.dp))
       Card(
@@ -102,12 +97,12 @@ fun NowPlayingCard() {
 }
 
 /**
- * Focusable-menu scenario. Drawn as three `ListItem`s stacked vertically (not a
- * `GlimmerLazyColumn` — the lazy container plays games with focus delegation that the static
- * `@Preview` clock can't drive deterministically; the design's `@GlimmerPreviewInput` overlay
- * is the right surface for that). Same additive-zero encoding as [NowPlayingCard]; SKILL.md's
- * documented `verticalArrangement = Arrangement.spacedBy(20.dp)` for `VerticalList` is the
- * source of the 20-dp gap here.
+ * Focusable-menu scenario. Drawn as three `ListItem`s stacked vertically (not a `GlimmerLazyColumn`
+ * — the lazy container plays games with focus delegation that the static `@Preview` clock can't
+ * drive deterministically; the design's `@GlimmerPreviewInput` overlay is the right surface for
+ * that). Same additive-zero encoding as [NowPlayingCard]; SKILL.md's documented
+ * `verticalArrangement = Arrangement.spacedBy(20.dp)` for `VerticalList` is the source of the 20-dp
+ * gap here.
  */
 @Preview(
   name = "Glimmer · Input",
@@ -118,10 +113,7 @@ fun NowPlayingCard() {
 @Composable
 fun FocusableMenu() {
   GlimmerSurface {
-    Column(
-      modifier = Modifier.fillMaxSize(),
-      verticalArrangement = Arrangement.spacedBy(20.dp),
-    ) {
+    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
       ListItem(onClick = {}) { Text("Next track") }
       ListItem(onClick = {}) { Text("Add to favourites") }
       ListItem(onClick = {}) { Text("Send to phone") }
