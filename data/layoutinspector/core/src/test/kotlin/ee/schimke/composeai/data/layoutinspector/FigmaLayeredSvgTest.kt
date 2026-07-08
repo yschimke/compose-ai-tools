@@ -488,6 +488,65 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun wrappedTextEmitsOnePositionedTspanPerLineInsteadOfOneBaseline() {
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 10, 10, 190, 90)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "10,10,190,90",
+              text = "Outlined card",
+              typography =
+                ComposeSemanticsTypography(fontSize = "16.0sp", fontFamily = "Roboto-Regular"),
+              textOverflow =
+                ComposeSemanticsTextOverflow(
+                  lineCount = 2,
+                  lines =
+                    listOf(
+                      ComposeSemanticsTextLine(text = "Outlined", left = 0, baseline = 20),
+                      ComposeSemanticsTextLine(text = "card", left = 0, baseline = 44),
+                    ),
+                ),
+            )
+          ),
+      )
+    val svg = render(layout, semantics = semantics)
+    // Two positioned tspans at layer origin (10,10) + each line's offset — not one collapsed line.
+    assertTrue("line 1 tspan", svg.contains("""<tspan x="10" y="30">Outlined</tspan>"""))
+    assertTrue("line 2 tspan", svg.contains("""<tspan x="10" y="54">card</tspan>"""))
+    // The single-baseline form must not also be emitted for this node.
+    assertFalse("no collapsed single line", svg.contains(""">Outlined card</text>"""))
+  }
+
+  @Test
+  fun singleLineTextKeepsThePlainBaselineForm() {
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 8, 8, 192, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "8,8,192,40",
+              text = "Hi",
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp"),
+            )
+          ),
+      )
+    val svg = render(layout, semantics = semantics)
+    assertFalse("no tspan for single-line text", svg.contains("<tspan"))
+    assertTrue("plain baseline text", svg.contains(">Hi</text>"))
+  }
+
+  @Test
   fun embedFamilyMapsGenericsToConcreteEmbeddableFaces() {
     // sans generics ride the default embedded face; serif/monospace get a real same-style face.
     assertEquals("Roboto", FigmaLayeredSvg.embedFamily(null, "Roboto"))

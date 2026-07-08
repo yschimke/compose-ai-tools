@@ -49,6 +49,15 @@ hardcoded 1px.
 | ![TextField dark before](textfield-dark-before.png) | ![TextField dark after](textfield-dark-after.png) |
 | ![OutlinedCard before](outlinedcard-before.png) | ![OutlinedCard after](outlinedcard-after.png) |
 
+**Wrap multi-line text where the render wrapped it.** The capture recorded `lineCount` but not the
+break positions, so wrapped text collapsed onto a single baseline. Capturing each line's substring +
+left + baseline from the node's `TextLayoutResult` and emitting one `<tspan>` per line puts the wrap
+back — the `OutlinedCard` title below returns to two lines matching the render:
+
+| before — one line | after — wrapped |
+| --- | --- |
+| ![OutlinedCard one line](outlinedcard-wrap-before.png) | ![OutlinedCard wrapped](outlinedcard-wrap-after.png) |
+
 The residual red on the card is the render's two-line wrap (the SVG keeps one line — the capture
 records `lineCount` but not the line-break positions yet) and the remaining font-shape drift.
 
