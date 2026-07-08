@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="label_filled">Preenchido</string>
+  <string name="label_tonal">Tonal</string>
+  <string name="label_outlined">Contornado</string>
+  <string name="label_elevated">Elevado</string>
+  <string name="label_text">Texto</string>
+  <string name="label_disabled">Desativado</string>
+  <string name="label_filter">Filtro</string>
+  <string name="label_assist">Assistente</string>
+  <string name="card_elevated">Cartão elevado</string>
+  <string name="card_outlined">Cartão contornado</string>
+  <string name="card_filled">Cartão preenchido</string>
+  <string name="slot_headline">Título</string>
+  <string name="slot_supporting">Texto de apoio</string>
+  <string name="textfield_label">Rótulo</string>
+  <string name="label_pressed">Pressionado</string>
+  <string name="label_focused">Focado</string>
+  <string name="toggle_on">Ativado</string>
+  <string name="toggle_off">Desativado</string>
+  <string name="m3_body_overflow">Este texto é propositalmente longo para ultrapassar duas linhas e ser truncado.</string>
+  <string name="template_title">Caixa de entrada</string>
+  <string name="msg_lunch">Almoço amanhã?</string>
+  <string name="msg_specs">As specificações estão prontas para revisão</string>
+  <string name="msg_diff">Enviei o diff do render</string>
+  <string name="msg_merged">Valeu, fiz o merge</string>
+  <string name="msg_deploy">Deploy concluído sem erros</string>
+</resources>

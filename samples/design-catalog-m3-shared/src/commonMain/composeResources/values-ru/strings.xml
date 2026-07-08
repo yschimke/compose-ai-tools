@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="label_filled">Заполненная</string>
+  <string name="label_tonal">Тональная</string>
+  <string name="label_outlined">Контурная</string>
+  <string name="label_elevated">Приподнятая</string>
+  <string name="label_text">Текстовая</string>
+  <string name="label_disabled">Отключено</string>
+  <string name="label_filter">Фильтр</string>
+  <string name="label_assist">Помощь</string>
+  <string name="card_elevated">Приподнятая карточка</string>
+  <string name="card_outlined">Контурная карточка</string>
+  <string name="card_filled">Заполненная карточка</string>
+  <string name="slot_headline">Заголовок</string>
+  <string name="slot_supporting">Вспомогательный текст</string>
+  <string name="textfield_label">Метка</string>
+  <string name="label_pressed">Нажато</string>
+  <string name="label_focused">В фокусе</string>
+  <string name="toggle_on">Вкл.</string>
+  <string name="toggle_off">Выкл.</string>
+  <string name="m3_body_overflow">Этот текст намеренно длинный, чтобы занять больше двух строк и обрезаться.</string>
+  <string name="template_title">Входящие</string>
+  <string name="msg_lunch">Пообедаем завтра?</string>
+  <string name="msg_specs">Спецификации готовы к проверке</string>
+  <string name="msg_diff">Отправил(а) diff рендера</string>
+  <string name="msg_merged">Спасибо, влил(а)</string>
+  <string name="msg_deploy">Развёртывание прошло без ошибок</string>
+</resources>

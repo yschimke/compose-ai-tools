@@ -14,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
@@ -55,22 +56,22 @@ import ee.schimke.composeai.preview.slots.PreviewSlot
 @CatalogWearModes
 @Composable
 fun FilledButton() =
-  WearSticker { Button(onClick = {}) { Text(previewOverrideString("label", "Filled")) } }
+  WearSticker { Button(onClick = {}) { Text(previewOverrideString("label", stringResource(R.string.label_filled))) } }
 
 @CatalogWearModes
 @Composable
 fun FilledTonalButtonSticker() =
-  WearSticker { FilledTonalButton(onClick = {}) { Text(previewOverrideString("label", "Tonal")) } }
+  WearSticker { FilledTonalButton(onClick = {}) { Text(previewOverrideString("label", stringResource(R.string.label_tonal))) } }
 
 @CatalogWearModes
 @Composable
 fun OutlinedButtonSticker() =
-  WearSticker { OutlinedButton(onClick = {}) { Text(previewOverrideString("label", "Outlined")) } }
+  WearSticker { OutlinedButton(onClick = {}) { Text(previewOverrideString("label", stringResource(R.string.label_outlined))) } }
 
 @CatalogWearModes
 @Composable
 fun ChildButtonSticker() =
-  WearSticker { ChildButton(onClick = {}) { Text(previewOverrideString("label", "Child")) } }
+  WearSticker { ChildButton(onClick = {}) { Text(previewOverrideString("label", stringResource(R.string.label_child))) } }
 
 // A workout history the EdgeButton sticker scrolls through. Long enough to
 // overflow the viewport by a few screens so, scrolled to the end, the list fills
@@ -115,7 +116,7 @@ fun EdgeButtonSticker() =
       scrollState = listState,
       edgeButton = {
         EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) {
-          Text(previewOverrideString("edgeLabel", "Start"))
+          Text(previewOverrideString("edgeLabel", stringResource(R.string.label_start)))
         }
       },
     ) { contentPadding ->
@@ -129,7 +130,7 @@ fun EdgeButtonSticker() =
             modifier = Modifier.transformedHeight(this, spec),
             transformation = SurfaceTransformation(spec),
           ) {
-            Text(previewOverrideString("header", "Workout"))
+            Text(previewOverrideString("header", stringResource(R.string.header_workout)))
           }
         }
         items(edgeButtonHistory) { (title, subtitle) ->
@@ -178,7 +179,7 @@ fun ScalingListSticker() =
             modifier = Modifier.transformedHeight(this, spec),
             transformation = SurfaceTransformation(spec),
           ) {
-            Text(previewOverrideString("header", "Activity"))
+            Text(previewOverrideString("header", stringResource(R.string.header_activity)))
           }
         }
         items(scalingListItems) { (title, subtitle) ->
@@ -289,7 +290,7 @@ fun TimeTextScaffoldTemplate() =
               modifier = Modifier.transformedHeight(this, spec),
               transformation = SurfaceTransformation(spec),
             ) {
-              Text(previewOverrideString("header", "Activity"))
+              Text(previewOverrideString("header", stringResource(R.string.header_activity)))
             }
           }
           items(templateListItems) { (title, subtitle) ->
@@ -318,7 +319,7 @@ fun PageIndicatorScaffoldTemplate() =
       Box(Modifier.fillMaxSize()) {
         HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
           Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(previewOverrideString("page", "Page ${page + 1}", index = page))
+            Text(previewOverrideString("page", stringResource(R.string.label_page, page + 1), index = page))
           }
         }
         HorizontalPageIndicator(
@@ -346,7 +347,7 @@ fun EdgeButtonScaffoldTemplate() =
         scrollState = listState,
         edgeButton = {
           EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) {
-            Text(previewOverrideString("edgeLabel", "Start"))
+            Text(previewOverrideString("edgeLabel", stringResource(R.string.label_start)))
           }
         },
       ) { contentPadding ->
@@ -360,7 +361,7 @@ fun EdgeButtonScaffoldTemplate() =
               modifier = Modifier.transformedHeight(this, spec),
               transformation = SurfaceTransformation(spec),
             ) {
-              Text(previewOverrideString("header", "Workout"))
+              Text(previewOverrideString("header", stringResource(R.string.header_workout)))
             }
           }
           items(edgeButtonHistory) { (title, subtitle) ->
@@ -388,7 +389,7 @@ fun SwitchButtonOn() =
     SwitchButton(
       checked = previewOverrideBoolean("checked", true),
       onCheckedChange = {},
-      label = { Text(previewOverrideString("label", "Wifi")) },
+      label = { Text(previewOverrideString("label", stringResource(R.string.label_wifi))) },
     )
   }
 
@@ -399,7 +400,7 @@ fun CheckboxButtonChecked() =
     CheckboxButton(
       checked = previewOverrideBoolean("checked", true),
       onCheckedChange = {},
-      label = { Text(previewOverrideString("label", "Sync")) },
+      label = { Text(previewOverrideString("label", stringResource(R.string.label_sync))) },
     )
   }
 
@@ -419,7 +420,7 @@ fun CardSticker() =
   WearSticker {
     Card(onClick = {}) {
       PreviewSlot("content", Modifier.fillMaxWidth()) {
-        Text(previewOverrideString("label", "Card"))
+        Text(previewOverrideString("label", stringResource(R.string.label_card)))
       }
     }
   }
@@ -432,7 +433,7 @@ fun TitleCardSticker() =
       onClick = {},
       title = {
         PreviewSlot("title", Modifier.fillMaxWidth()) {
-          Text(previewOverrideString("title", "Morning run"))
+          Text(previewOverrideString("title", stringResource(R.string.title_morning_run)))
         }
       },
     ) {
@@ -448,7 +449,7 @@ fun TitleCardSticker() =
 @CatalogWearModes
 @Composable
 fun ListHeaderSticker() =
-  WearSticker { ListHeader { Text(previewOverrideString("label", "Today")) } }
+  WearSticker { ListHeader { Text(previewOverrideString("label", stringResource(R.string.header_today))) } }
 
 // ---------------------------------------------------------------------------
 // Communication.
@@ -468,10 +469,7 @@ fun CircularProgressSticker() =
 fun TextMaxLinesTruncated() =
   WearSticker {
     Text(
-      previewOverrideString(
-        "text",
-        "This Wear body text is long enough to overflow two lines and truncate.",
-      ),
+      previewOverrideString("text", stringResource(R.string.wear_body_overflow)),
       modifier = Modifier.width(140.dp),
       maxLines = 2,
       overflow = TextOverflow.Ellipsis,
@@ -503,7 +501,7 @@ private fun focusedSource(): MutableInteractionSource {
 fun ButtonPressed() =
   WearSticker {
     Button(onClick = {}, interactionSource = pressedSource()) {
-      Text(previewOverrideString("label", "Pressed"))
+      Text(previewOverrideString("label", stringResource(R.string.label_pressed)))
     }
   }
 
@@ -512,7 +510,7 @@ fun ButtonPressed() =
 fun ButtonFocused() =
   WearSticker {
     Button(onClick = {}, interactionSource = focusedSource()) {
-      Text(previewOverrideString("label", "Focused"))
+      Text(previewOverrideString("label", stringResource(R.string.label_focused)))
     }
   }
 
@@ -520,7 +518,7 @@ fun ButtonFocused() =
 @Composable
 fun ButtonDisabled() =
   WearSticker {
-    Button(onClick = {}, enabled = false) { Text(previewOverrideString("label", "Disabled")) }
+    Button(onClick = {}, enabled = false) { Text(previewOverrideString("label", stringResource(R.string.label_disabled))) }
   }
 
 @CatalogWearModes
@@ -530,7 +528,7 @@ fun SwitchButtonOff() =
     SwitchButton(
       checked = previewOverrideBoolean("checked", false),
       onCheckedChange = {},
-      label = { Text(previewOverrideString("label", "Wifi")) },
+      label = { Text(previewOverrideString("label", stringResource(R.string.label_wifi))) },
     )
   }
 
@@ -541,6 +539,6 @@ fun CheckboxButtonUnchecked() =
     CheckboxButton(
       checked = previewOverrideBoolean("checked", false),
       onCheckedChange = {},
-      label = { Text(previewOverrideString("label", "Sync")) },
+      label = { Text(previewOverrideString("label", stringResource(R.string.label_sync))) },
     )
   }

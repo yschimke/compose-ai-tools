@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="label_filled">Wypełniony</string>
+  <string name="label_tonal">Tonalny</string>
+  <string name="label_outlined">Konturowy</string>
+  <string name="label_elevated">Uniesiony</string>
+  <string name="label_text">Tekstowy</string>
+  <string name="label_disabled">Wyłączony</string>
+  <string name="label_filter">Filtr</string>
+  <string name="label_assist">Asystent</string>
+  <string name="card_elevated">Karta uniesiona</string>
+  <string name="card_outlined">Karta konturowa</string>
+  <string name="card_filled">Karta wypełniona</string>
+  <string name="slot_headline">Nagłówek</string>
+  <string name="slot_supporting">Tekst pomocniczy</string>
+  <string name="textfield_label">Etykieta</string>
+  <string name="label_pressed">Wciśnięty</string>
+  <string name="label_focused">Aktywny</string>
+  <string name="toggle_on">Wł.</string>
+  <string name="toggle_off">Wył.</string>
+  <string name="m3_body_overflow">Ten tekst jest celowo długi, aby przekroczyć dwie linie i zostać skrócony.</string>
+  <string name="template_title">Odebrane</string>
+  <string name="msg_lunch">Jutro lunch?</string>
+  <string name="msg_specs">Specyfikacje gotowe do przeglądu</string>
+  <string name="msg_diff">Wysłano diff renderu</string>
+  <string name="msg_merged">Dzięki — scalono</string>
+  <string name="msg_deploy">Wdrożenie zakończone bez błędów</string>
+</resources>

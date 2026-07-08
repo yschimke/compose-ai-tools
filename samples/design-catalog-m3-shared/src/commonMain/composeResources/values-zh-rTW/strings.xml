@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="label_filled">填滿</string>
+  <string name="label_tonal">色調</string>
+  <string name="label_outlined">外框</string>
+  <string name="label_elevated">凸起</string>
+  <string name="label_text">文字</string>
+  <string name="label_disabled">已停用</string>
+  <string name="label_filter">篩選</string>
+  <string name="label_assist">輔助</string>
+  <string name="card_elevated">凸起資訊卡</string>
+  <string name="card_outlined">外框資訊卡</string>
+  <string name="card_filled">填滿資訊卡</string>
+  <string name="slot_headline">標題</string>
+  <string name="slot_supporting">輔助文字</string>
+  <string name="textfield_label">標籤</string>
+  <string name="label_pressed">按下</string>
+  <string name="label_focused">聚焦</string>
+  <string name="toggle_on">開</string>
+  <string name="toggle_off">關</string>
+  <string name="m3_body_overflow">這段內文刻意寫得很長，會超出兩行並被截斷。</string>
+  <string name="template_title">收件匣</string>
+  <string name="msg_lunch">明天一起吃午餐？</string>
+  <string name="msg_specs">規格已準備好待審查</string>
+  <string name="msg_diff">已傳送算繪差異</string>
+  <string name="msg_merged">謝謝，已合併</string>
+  <string name="msg_deploy">部署順利完成</string>
+</resources>

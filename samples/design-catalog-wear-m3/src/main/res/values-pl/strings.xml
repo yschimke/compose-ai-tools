@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="label_filled">Wypełniony</string>
+  <string name="label_tonal">Tonalny</string>
+  <string name="label_outlined">Konturowy</string>
+  <string name="label_child">Podrzędny</string>
+  <string name="label_start">Start</string>
+  <string name="header_workout">Trening</string>
+  <string name="header_activity">Aktywność</string>
+  <string name="header_today">Dziś</string>
+  <string name="label_wifi">Wi-Fi</string>
+  <string name="label_sync">Synchr.</string>
+  <string name="label_card">Karta</string>
+  <string name="title_morning_run">Poranny bieg</string>
+  <string name="wear_body_overflow">Ten tekst Wear jest wystarczająco długi, aby przekroczyć dwie linie i zostać skrócony.</string>
+  <string name="label_pressed">Wciśnięty</string>
+  <string name="label_focused">Aktywny</string>
+  <string name="label_disabled">Wyłączony</string>
+  <string name="label_page">Strona %1$d</string>
+</resources>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="label_filled">Gevuld</string>
+  <string name="label_tonal">Tonaal</string>
+  <string name="label_outlined">Omlijnd</string>
+  <string name="label_child">Onderliggend</string>
+  <string name="label_start">Starten</string>
+  <string name="header_workout">Training</string>
+  <string name="header_activity">Activiteit</string>
+  <string name="header_today">Vandaag</string>
+  <string name="label_wifi">Wifi</string>
+  <string name="label_sync">Synchr.</string>
+  <string name="label_card">Kaart</string>
+  <string name="title_morning_run">Ochtendloop</string>
+  <string name="wear_body_overflow">Deze Wear-tekst is lang genoeg om over twee regels te lopen en te worden afgekapt.</string>
+  <string name="label_pressed">Ingedrukt</string>
+  <string name="label_focused">Gefocust</string>
+  <string name="label_disabled">Uitgeschakeld</string>
+  <string name="label_page">Pagina %1$d</string>
+</resources>

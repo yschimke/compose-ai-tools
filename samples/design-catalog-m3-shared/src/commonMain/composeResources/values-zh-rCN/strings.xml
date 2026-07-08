@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="label_filled">填充</string>
+  <string name="label_tonal">色调</string>
+  <string name="label_outlined">描边</string>
+  <string name="label_elevated">浮起</string>
+  <string name="label_text">文本</string>
+  <string name="label_disabled">已停用</string>
+  <string name="label_filter">筛选</string>
+  <string name="label_assist">辅助</string>
+  <string name="card_elevated">浮起卡片</string>
+  <string name="card_outlined">描边卡片</string>
+  <string name="card_filled">填充卡片</string>
+  <string name="slot_headline">标题</string>
+  <string name="slot_supporting">辅助文本</string>
+  <string name="textfield_label">标签</string>
+  <string name="label_pressed">按下</string>
+  <string name="label_focused">聚焦</string>
+  <string name="toggle_on">开</string>
+  <string name="toggle_off">关</string>
+  <string name="m3_body_overflow">这段正文特意写得很长，会超出两行并被截断。</string>
+  <string name="template_title">收件箱</string>
+  <string name="msg_lunch">明天一起吃午饭？</string>
+  <string name="msg_specs">规格已准备好待审阅</string>
+  <string name="msg_diff">已发送渲染差异</string>
+  <string name="msg_merged">谢谢，已合并</string>
+  <string name="msg_deploy">部署顺利完成</string>
+</resources>

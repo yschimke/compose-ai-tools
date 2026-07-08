@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="label_filled">Gefüllt</string>
+  <string name="label_tonal">Tonal</string>
+  <string name="label_outlined">Umrandet</string>
+  <string name="label_elevated">Erhöht</string>
+  <string name="label_text">Text</string>
+  <string name="label_disabled">Deaktiviert</string>
+  <string name="label_filter">Filter</string>
+  <string name="label_assist">Assistent</string>
+  <string name="card_elevated">Erhöhte Karte</string>
+  <string name="card_outlined">Umrandete Karte</string>
+  <string name="card_filled">Gefüllte Karte</string>
+  <string name="slot_headline">Überschrift</string>
+  <string name="slot_supporting">Begleittext</string>
+  <string name="textfield_label">Label</string>
+  <string name="label_pressed">Gedrückt</string>
+  <string name="label_focused">Fokussiert</string>
+  <string name="toggle_on">Ein</string>
+  <string name="toggle_off">Aus</string>
+  <string name="m3_body_overflow">Dieser Text ist absichtlich lang, sodass er über zwei Zeilen läuft und abgeschnitten wird.</string>
+  <string name="template_title">Posteingang</string>
+  <string name="msg_lunch">Morgen Mittagessen?</string>
+  <string name="msg_specs">Die Specs sind bereit zur Prüfung</string>
+  <string name="msg_diff">Render-Diff gesendet</string>
+  <string name="msg_merged">Danke – gemergt</string>
+  <string name="msg_deploy">Deploy sauber abgeschlossen</string>
+</resources>

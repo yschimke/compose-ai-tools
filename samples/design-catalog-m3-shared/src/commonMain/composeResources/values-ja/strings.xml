@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="label_filled">塗りつぶし</string>
+  <string name="label_tonal">トーナル</string>
+  <string name="label_outlined">アウトライン</string>
+  <string name="label_elevated">浮き出し</string>
+  <string name="label_text">テキスト</string>
+  <string name="label_disabled">無効</string>
+  <string name="label_filter">フィルタ</string>
+  <string name="label_assist">アシスト</string>
+  <string name="card_elevated">浮き出しカード</string>
+  <string name="card_outlined">アウトラインカード</string>
+  <string name="card_filled">塗りつぶしカード</string>
+  <string name="slot_headline">見出し</string>
+  <string name="slot_supporting">補足テキスト</string>
+  <string name="textfield_label">ラベル</string>
+  <string name="label_pressed">押下</string>
+  <string name="label_focused">フォーカス</string>
+  <string name="toggle_on">オン</string>
+  <string name="toggle_off">オフ</string>
+  <string name="m3_body_overflow">この本文テキストは、2行を超えて省略されるようにわざと長くしています。</string>
+  <string name="template_title">受信トレイ</string>
+  <string name="msg_lunch">明日ランチする？</string>
+  <string name="msg_specs">仕様のレビュー準備ができました</string>
+  <string name="msg_diff">レンダーの差分を送りました</string>
+  <string name="msg_merged">ありがとう、マージしました</string>
+  <string name="msg_deploy">デプロイが正常に完了しました</string>
+</resources>
