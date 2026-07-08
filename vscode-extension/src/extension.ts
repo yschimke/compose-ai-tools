@@ -350,17 +350,21 @@ const permissionsOverridesByPreview = new Map<
 /**
  * previewIds whose focus-toolbar "clear background" (crisp outline) toggle is on. Host-side
  * mirror of the webview's sticky bit, kept here so the override composes with permissions /
- * remoteCompose in [buildPreviewOverrides] and survives host-driven auto re-renders (save /
- * warm-up / heavy opt-in). Same activation-lifetime scope as the other override maps.
+ * remoteCompose in [buildPreviewOverrides] when any edit handler re-renders the preview. Same
+ * activation-lifetime scope as the other override maps.
  */
 const clearBackgroundByPreview = new Set<string>();
 
 /**
- * Unified per-preview override bag for snapshot `renderNow`. Assembles every host-authoritative
- * override (permissions + remoteCompose + clearBackground) so each edit resends the full set and
- * the auto re-render paths can resend it too — otherwise editing one override drops the others,
- * because the daemon reverts any authoritative override a render omits. Lottie is daemon-sticky and
- * intentionally excluded (see [composePreviewOverrides]). `undefined` when nothing is active.
+ * Unified per-preview override bag for an edit-driven snapshot `renderNow`. Assembles every
+ * host-authoritative override (permissions + remoteCompose + clearBackground) so each edit resends
+ * the full set — otherwise editing one override drops the others, because the daemon reverts any
+ * authoritative override a render omits. Lottie is daemon-sticky and intentionally excluded (see
+ * [composePreviewOverrides]). `undefined` when nothing is active.
+ *
+ * Only the explicit edit handlers use this — the auto re-render paths (save / warm-up / heavy
+ * opt-in) deliberately stay override-free so a source-change render is never dropped by the
+ * daemon's override-in-flight coalescing (see the note in [dispatchDaemonRender]).
  */
 function buildPreviewOverrides(
     previewId: string,
@@ -3166,53 +3170,6 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
  * otherwise (including an empty id set, which is a no-op). Shared by the save
  * path and the discoveryUpdated handler so both render through the same tiering.
  */
-/**
- * Render [ids] at [tier], re-applying each preview's unified override bag
- * ([buildPreviewOverrides]) so a save / warm-up / heavy-opt-in re-render keeps any active
- * permissions / remoteCompose / clear-background override instead of reverting to the
- * discovery-time render. `renderNow` carries at most one bag per call, so previews that have an
- * override are rendered individually with theirs and the remainder (the common case — nothing
- * overridden) is batched in a single call, preserving the existing fast path. Returns `false` if
- * any underlying render fails.
- */
-async function renderIdsWithOverrides(
-    module: ModuleInfo,
-    ids: string[],
-    tier: import("./daemon/daemonProtocol").RenderTier,
-    reason: string,
-): Promise<boolean> {
-    if (!daemonScheduler || ids.length === 0) {
-        return true;
-    }
-    let ok = true;
-    const plain: string[] = [];
-    for (const id of ids) {
-        const overrides = buildPreviewOverrides(id);
-        if (!overrides) {
-            plain.push(id);
-            continue;
-        }
-        if (
-            !(await daemonScheduler.renderNow(
-                module,
-                [id],
-                tier,
-                reason,
-                overrides,
-            ))
-        ) {
-            ok = false;
-        }
-    }
-    if (
-        plain.length > 0 &&
-        !(await daemonScheduler.renderNow(module, plain, tier, reason))
-    ) {
-        ok = false;
-    }
-    return ok;
-}
-
 async function dispatchDaemonRender(
     module: ModuleInfo,
     ids: string[],
@@ -3226,17 +3183,33 @@ async function dispatchDaemonRender(
     const fullIds = heavyOptInsFor(module.modulePath, ids);
     const fastIds =
         fullIds.length === 0 ? ids : ids.filter((id) => !fullIds.includes(id));
-    if (
-        fastIds.length > 0 &&
-        !(await renderIdsWithOverrides(module, fastIds, "fast", fastReason))
-    ) {
-        return false;
+    // Deliberately NOT override-bearing: a source-change save must never be dropped, but the
+    // daemon coalesces (rejects) an override-bearing render when one is already in flight for the
+    // preview (JsonRpcServer's `previewIdsWithOverridesInFlight`), so attaching the override bag
+    // here would let a save that races an in-flight edit-render get silently dropped. The explicit
+    // edit handlers re-send the composed bag; making auto-re-renders sticky needs the daemon
+    // coalescing sorted first (tracked separately).
+    if (fastIds.length > 0) {
+        const ok = await daemonScheduler.renderNow(
+            module,
+            fastIds,
+            "fast",
+            fastReason,
+        );
+        if (!ok) {
+            return false;
+        }
     }
-    if (
-        fullIds.length > 0 &&
-        !(await renderIdsWithOverrides(module, fullIds, "full", fullReason))
-    ) {
-        return false;
+    if (fullIds.length > 0) {
+        const ok = await daemonScheduler.renderNow(
+            module,
+            fullIds,
+            "full",
+            fullReason,
+        );
+        if (!ok) {
+            return false;
+        }
     }
     return true;
 }
@@ -3920,9 +3893,7 @@ async function warmShownPreviewsForFile(
         // navigate away and back.
         await new Promise<void>((resolve) => setImmediate(resolve));
         await daemonScheduler.awaitPendingSubscribes(module.modulePath);
-        // Re-apply any active per-preview overrides on the view-open warm-up so a preview
-        // reopened after a clear-background / permissions edit keeps it.
-        await renderIdsWithOverrides(module, ids, "fast", reason);
+        await daemonScheduler.renderNow(module, ids, "fast", reason);
     } catch (err) {
         daemonShownPreviewWarmScopes.delete(scopeKey);
         logLine(
@@ -5846,8 +5817,7 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             if (mod) {
                 optInHeavyRefresh(mod.modulePath, msg.previewId);
                 if (daemonGate && daemonScheduler) {
-                    // Re-apply any active override on the explicit heavy refresh.
-                    void renderIdsWithOverrides(
+                    void daemonScheduler.renderNow(
                         mod,
                         [msg.previewId],
                         "full",

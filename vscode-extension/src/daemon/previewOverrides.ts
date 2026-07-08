@@ -6,9 +6,8 @@ import type {
 
 /**
  * Assemble the unified per-preview {@link PreviewOverrides} bag from the individual
- * host-authoritative override sources, so every snapshot `renderNow` — an explicit edit
- * *and* a later auto re-render (save / warm-up / heavy opt-in) — resends the full set
- * instead of one field. Without this, editing one override drops the others: the daemon
+ * host-authoritative override sources, so an edit-driven snapshot `renderNow` resends the full
+ * set instead of one field. Without this, editing one override drops the others: the daemon
  * treats each of these as authoritative-per-render and reverts any it doesn't receive.
  *
  * Only the host-authoritative overrides participate, because the daemon drops each when a
