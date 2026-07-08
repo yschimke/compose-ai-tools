@@ -163,6 +163,14 @@ class UserClassLoaderHolder(
    * `build/intermediates/...`), the child falls through to the parent. Per CLASSLOADER.md the
    * Compose runtime, AndroidX, and the daemon's helpers stay on the parent.
    *
+   * **Shared process-static bridges are forced to the parent even when the child's URLs carry
+   * them.** [mustDelegateToParent] lists the framework packages *plus*
+   * `ee.schimke.composeai.daemon.*` and `ee.schimke.composeai.overrides.*` — the latter is the
+   * `previewOverride*` named-override runtime, whose `PreviewOverrideController` static the daemon
+   * seeds and the preview reads. On the bundle-backed live daemon the runtime jar is on the child's
+   * URLs, so a bare child-first lookup would load a *second* copy and split the shared static; the
+   * explicit delegation keeps it a singleton. See [mustDelegateToParent] for the full rationale.
+   *
    * **Loaded-class cache discipline.** The JVM's `findLoadedClass` is checked first so a user class
    * loaded via the child stays the same `Class<?>` instance for repeated lookups within the
    * loader's lifetime — only [swap] rotates it.
@@ -178,22 +186,7 @@ class UserClassLoaderHolder(
           if (resolve) resolveClass(cached)
           return cached
         }
-        // System / JDK classes always go through the parent — punching holes here would break the
-        // JVM's bootstrap invariants. `java.*`, `javax.*`, `sun.*`, `jdk.*`, etc.
-        if (
-          name.startsWith("java.") ||
-            name.startsWith("javax.") ||
-            name.startsWith("sun.") ||
-            name.startsWith("jdk.") ||
-            name.startsWith("kotlin.") ||
-            name.startsWith("kotlinx.") ||
-            name.startsWith("androidx.") ||
-            name.startsWith("android.") ||
-            name.startsWith("org.robolectric.") ||
-            name.startsWith("com.github.takahirom.roborazzi.") ||
-            name.startsWith("org.jetbrains.skia.") ||
-            name.startsWith("ee.schimke.composeai.daemon.")
-        ) {
+        if (UserClassLoaderHolder.mustDelegateToParent(name)) {
           return super.loadClass(name, resolve)
         }
         // Try our own URLs first (child-first); fall back to parent if not present locally.
@@ -215,6 +208,46 @@ class UserClassLoaderHolder(
      * and constructs a [UserClassLoaderHolder] with the resolved URLs.
      */
     const val USER_CLASS_DIRS_PROP: String = "composeai.daemon.userClassDirs"
+
+    /**
+     * Whether [name] must be resolved via the parent loader instead of child-first (used by
+     * [ChildFirstURLClassLoader.loadClass]). Two reasons a class is on this list:
+     * 1. **Bootstrap / framework classes** — `java.*`, `kotlin.*`, `androidx.*`, Robolectric, Skiko,
+     *    etc. Punching holes in the JDK packages would break the JVM's bootstrap invariants, and the
+     *    Compose/AndroidX runtime must be the *one* copy the parent bootstrapped (child-loading it
+     *    would fail on classloader-identity skew).
+     * 2. **Process-static bridges shared with the daemon** — `ee.schimke.composeai.daemon.*` (the
+     *    cross-classloader handoff queues) and `ee.schimke.composeai.overrides.*` (the
+     *    `previewOverride*` named-override runtime: `PreviewOverrideController` is a process-static
+     *    the daemon's connector seeds *before* the preview composes, and the preview reads it back
+     *    during composition). These only work when the daemon and the user preview see the **same**
+     *    `Class<?>` — one shared static, not two per-classloader copies.
+     *
+     * The overrides runtime is the load-bearing case for the **bundle-backed live daemon**
+     * (`ServeBundleDaemon`, the engine behind `--catalogs` `liveBundle` / `preview.coo.ee`): there
+     * the bundle's resolved maven classpath — which includes `:data-preview-overrides-runtime` — is
+     * added to the child loader's URLs. Without this delegation the child would resolve
+     * `PreviewOverrideController` child-first from that jar, a *different* copy from the one the
+     * daemon connector seeds, so every `previewOverrideString("label", "Filled")` silently returns
+     * its author default and content overrides no-op. (On the ordinary Gradle-driven daemon the
+     * child URLs are only the module's compiled-class directory, which carries no runtime classes,
+     * so the child already falls through to the parent — this delegation just makes that guarantee
+     * explicit and independent of what's on the child's URLs.)
+     */
+    internal fun mustDelegateToParent(name: String): Boolean =
+      name.startsWith("java.") ||
+        name.startsWith("javax.") ||
+        name.startsWith("sun.") ||
+        name.startsWith("jdk.") ||
+        name.startsWith("kotlin.") ||
+        name.startsWith("kotlinx.") ||
+        name.startsWith("androidx.") ||
+        name.startsWith("android.") ||
+        name.startsWith("org.robolectric.") ||
+        name.startsWith("com.github.takahirom.roborazzi.") ||
+        name.startsWith("org.jetbrains.skia.") ||
+        name.startsWith("ee.schimke.composeai.daemon.") ||
+        name.startsWith("ee.schimke.composeai.overrides.")
 
     /**
      * Resolves [USER_CLASS_DIRS_PROP] into a list of [URL]s, dropping entries that don't exist on
