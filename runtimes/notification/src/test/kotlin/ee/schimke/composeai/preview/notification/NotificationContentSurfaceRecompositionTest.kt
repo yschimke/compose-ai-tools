@@ -26,25 +26,22 @@ import org.robolectric.annotation.GraphicsMode
  * Regression test for #1363 — `NotificationContent`'s [NotificationSurface] parameter used to be
  * read inside `AndroidView`'s `factory` block, which Compose only runs once per view instance. Any
  * caller binding `surface` to state (a runtime toggle between collapsed / expanded / heads-up)
- * would see the rendered notification freeze on whichever surface was active at first
- * composition.
+ * would see the rendered notification freeze on whichever surface was active at first composition.
  *
  * The fix wraps the `AndroidView` in `key(surface) { ... }`, which forces a fresh view instance
  * (and therefore a fresh RemoteViews inflation) whenever `surface` changes. We exercise that by
  * setting a Compose `mutableStateOf(NotificationSurface)`, asserting the initial render produced
  * the collapsed layout (no expanded big-text body visible), then flipping the state and asserting
- * the next composition produced the expanded layout. We compare against the structural signature
- * of the inflated RemoteViews tree — different surfaces inflate different layout XML, so the
- * resolved set of `TextView` strings differs.
+ * the next composition produced the expanded layout. We compare against the structural signature of
+ * the inflated RemoteViews tree — different surfaces inflate different layout XML, so the resolved
+ * set of `TextView` strings differs.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class NotificationContentSurfaceRecompositionTest {
 
-  @Suppress("DEPRECATION")
-  @get:Rule
-  val composeRule = createAndroidComposeRule<ComponentActivity>()
+  @Suppress("DEPRECATION") @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
 
   @Test
   fun `changing surface state re-inflates the notification tree`() {
@@ -53,9 +50,7 @@ class NotificationContentSurfaceRecompositionTest {
     var current by mutableStateOf(initial)
 
     composeRule.setContent {
-      NotificationContent(surface = current) { ctx ->
-        buildBigTextNotification(ctx)
-      }
+      NotificationContent(surface = current) { ctx -> buildBigTextNotification(ctx) }
     }
     composeRule.waitForIdle()
 
@@ -96,9 +91,7 @@ class NotificationContentSurfaceRecompositionTest {
     // and heads-up share the short-text layout on AOSP).
     var current by mutableStateOf(NotificationSurface.COLLAPSED)
     composeRule.setContent {
-      NotificationContent(surface = current) { ctx ->
-        buildBigTextNotification(ctx)
-      }
+      NotificationContent(surface = current) { ctx -> buildBigTextNotification(ctx) }
     }
     composeRule.waitForIdle()
 
@@ -155,7 +148,7 @@ class NotificationContentSurfaceRecompositionTest {
       val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
       if (nm.getNotificationChannel(CHANNEL_ID) == null) {
         nm.createNotificationChannel(
-          NotificationChannel(CHANNEL_ID, "Test", NotificationManager.IMPORTANCE_DEFAULT),
+          NotificationChannel(CHANNEL_ID, "Test", NotificationManager.IMPORTANCE_DEFAULT)
         )
       }
     }

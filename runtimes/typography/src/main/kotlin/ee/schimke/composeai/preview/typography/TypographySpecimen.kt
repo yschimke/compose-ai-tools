@@ -29,8 +29,8 @@ import androidx.compose.ui.unit.sp
  *
  * Sample text is the canonical English pangram so consumers can eyeball ascender / descender /
  * kerning behaviour across the scale. Localised pangrams aren't surfaced here on purpose — the
- * existing `@Preview(locale = …)` knob already fans the same composable out across locales when
- * the consumer needs per-script samples.
+ * existing `@Preview(locale = …)` knob already fans the same composable out across locales when the
+ * consumer needs per-script samples.
  */
 @Composable
 fun TypographySpecimen(typography: Typography, modifier: Modifier = Modifier) {
@@ -67,11 +67,11 @@ private fun typographyRoles(typography: Typography): List<Pair<String, TextStyle
   )
 
 /**
- * One specimen row: a fixed-width label column on the left, the sample text rendered at [style]
- * on the right. The label uses a small, role-agnostic size so a `displayLarge` row's label
- * doesn't itself span the whole row — labels are wayfinding, not content. The label column
- * width (140.dp) is tuned to hold the longest M3 role name (`displayMedium` / `headlineMedium` /
- * `labelMedium`) without wrapping at typical preview densities.
+ * One specimen row: a fixed-width label column on the left, the sample text rendered at [style] on
+ * the right. The label uses a small, role-agnostic size so a `displayLarge` row's label doesn't
+ * itself span the whole row — labels are wayfinding, not content. The label column width (140.dp)
+ * is tuned to hold the longest M3 role name (`displayMedium` / `headlineMedium` / `labelMedium`)
+ * without wrapping at typical preview densities.
  */
 @Composable
 internal fun SpecimenRow(label: String, style: TextStyle, text: String) {
@@ -85,11 +85,11 @@ internal fun SpecimenRow(label: String, style: TextStyle, text: String) {
 }
 
 /**
- * The fixed label style for specimen rows. Hard-coded to a small monospace size so the label
- * column reads consistently across `TypographySpecimen`, `FontFamilySpecimen`, and
- * `FallbackCoverageSpecimen` — including when the specimen is rendered against a `Typography`
- * whose own `labelSmall` has been heavily customised. Monospace keeps the column visually aligned
- * even when role names of different lengths share the column.
+ * The fixed label style for specimen rows. Hard-coded to a small monospace size so the label column
+ * reads consistently across `TypographySpecimen`, `FontFamilySpecimen`, and
+ * `FallbackCoverageSpecimen` — including when the specimen is rendered against a `Typography` whose
+ * own `labelSmall` has been heavily customised. Monospace keeps the column visually aligned even
+ * when role names of different lengths share the column.
  */
 internal val LabelStyle: TextStyle = TextStyle(fontSize = 12.sp, fontFamily = FontFamily.Monospace)
 

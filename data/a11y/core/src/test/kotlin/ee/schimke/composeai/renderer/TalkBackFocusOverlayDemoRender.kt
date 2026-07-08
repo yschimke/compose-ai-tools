@@ -51,7 +51,12 @@ class TalkBackFocusOverlayDemoRender {
 
   private fun mockScreenNodes(): List<AccessibilityNode> =
     listOf(
-      AccessibilityNode(label = "Settings", role = "Heading", merged = true, boundsInScreen = "40,60,440,120"),
+      AccessibilityNode(
+        label = "Settings",
+        role = "Heading",
+        merged = true,
+        boundsInScreen = "40,60,440,120",
+      ),
       AccessibilityNode(
         label = "Wi-Fi",
         role = "Switch",
@@ -103,7 +108,11 @@ class TalkBackFocusOverlayDemoRender {
           textSize = 30f
         }
       c.drawText(label, 64f, top + 50f, text)
-      val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = trailingColor; textSize = 26f }
+      val tp =
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+          color = trailingColor
+          textSize = 26f
+        }
       c.drawText(trailing, 320f, top + 50f, tp)
     }
     row(160f, "Wi-Fi", "On", Color.rgb(0x2E, 0x7D, 0x32))

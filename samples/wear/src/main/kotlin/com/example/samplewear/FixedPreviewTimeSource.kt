@@ -18,28 +18,24 @@ private const val nanosPerMinute = 60_000_000_000L
 private val previewStartTime: LocalTime = LocalTime.of(10, 10)
 
 object FixedPreviewTimeSource : TimeSource {
-    @Composable
-    override fun currentTime(): String {
-        var elapsedMinutes by remember { mutableLongStateOf(0L) }
-        LaunchedEffect(Unit) {
-            var startFrameNanos = -1L
-            while (true) {
-                withFrameNanos { frameNanos ->
-                    if (startFrameNanos < 0L) {
-                        startFrameNanos = frameNanos
-                    }
-                    elapsedMinutes = (frameNanos - startFrameNanos) / nanosPerMinute
-                }
-            }
+  @Composable
+  override fun currentTime(): String {
+    var elapsedMinutes by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(Unit) {
+      var startFrameNanos = -1L
+      while (true) {
+        withFrameNanos { frameNanos ->
+          if (startFrameNanos < 0L) {
+            startFrameNanos = frameNanos
+          }
+          elapsedMinutes = (frameNanos - startFrameNanos) / nanosPerMinute
         }
-
-        val currentTimeText by remember {
-            derivedStateOf {
-                previewStartTime
-                    .plusMinutes(elapsedMinutes)
-                    .format(timeFormatter)
-            }
-        }
-        return currentTimeText
+      }
     }
+
+    val currentTimeText by remember {
+      derivedStateOf { previewStartTime.plusMinutes(elapsedMinutes).format(timeFormatter) }
+    }
+    return currentTimeText
+  }
 }

@@ -24,8 +24,8 @@ import org.junit.Test
  * Producer writes `<rootDir>/<previewId>/uia-hierarchy.json`; registry advertises one
  * path-transport kind, hands back the absolute path on `inline=false` and a parsed payload on
  * `inline=true`. Unknown kinds route to `Outcome.Unknown`; missing files route to
- * `Outcome.NotAvailable`. Mirrors `AccessibilityDataProductRegistryTest` so contract drift
- * between the two surfaces shows up as a diff against the same shape of test.
+ * `Outcome.NotAvailable`. Mirrors `AccessibilityDataProductRegistryTest` so contract drift between
+ * the two surfaces shows up as a diff against the same shape of test.
  */
 class UiAutomatorDataProductRegistryTest {
 
@@ -61,7 +61,8 @@ class UiAutomatorDataProductRegistryTest {
   fun `fetch unknown kind returns Outcome Unknown`() {
     val registry = UiAutomatorDataProductRegistry(rootDir)
 
-    val outcome = registry.fetch(previewId = "p", kind = "uia/nonsense", params = null, inline = false)
+    val outcome =
+      registry.fetch(previewId = "p", kind = "uia/nonsense", params = null, inline = false)
     assertEquals(DataProductRegistry.Outcome.Unknown, outcome)
   }
 
@@ -119,8 +120,7 @@ class UiAutomatorDataProductRegistryTest {
         inline = true,
       ) as DataProductRegistry.Outcome.Ok
     assertNotNull("inline fetch must produce a parsed payload", inlineOutcome.result.payload)
-    val node =
-      (inlineOutcome.result.payload as JsonObject)["nodes"]!!.jsonArray.first().jsonObject
+    val node = (inlineOutcome.result.payload as JsonObject)["nodes"]!!.jsonArray.first().jsonObject
     assertEquals("Submit", node["text"]!!.jsonPrimitive.content)
     assertEquals("submit-button", node["testTag"]!!.jsonPrimitive.content)
   }
@@ -132,7 +132,10 @@ class UiAutomatorDataProductRegistryTest {
     val registry = UiAutomatorDataProductRegistry(rootDir)
 
     val attachments =
-      registry.attachmentsFor(previewId = "p", kinds = setOf(UiAutomatorDataProducts.KIND_HIERARCHY))
+      registry.attachmentsFor(
+        previewId = "p",
+        kinds = setOf(UiAutomatorDataProducts.KIND_HIERARCHY),
+      )
     assertEquals(1, attachments.size)
     val attachment = attachments.single()
     assertEquals(UiAutomatorDataProducts.KIND_HIERARCHY, attachment.kind)
@@ -142,7 +145,10 @@ class UiAutomatorDataProductRegistryTest {
 
     // No render for `q` → no file → no attachment, but the call must not throw.
     val emptyAttachments =
-      registry.attachmentsFor(previewId = "q", kinds = setOf(UiAutomatorDataProducts.KIND_HIERARCHY))
+      registry.attachmentsFor(
+        previewId = "q",
+        kinds = setOf(UiAutomatorDataProducts.KIND_HIERARCHY),
+      )
     assertTrue(emptyAttachments.isEmpty())
   }
 
@@ -174,8 +180,7 @@ class UiAutomatorDataProductRegistryTest {
       )
     UiAutomatorDataProducer.writeArtifacts(rootDir, previewId = "p", payload = second)
 
-    val file =
-      File(rootDir, "p").resolve(UiAutomatorDataProducer.FILE_HIERARCHY)
+    val file = File(rootDir, "p").resolve(UiAutomatorDataProducer.FILE_HIERARCHY)
     val parsed = Json.parseToJsonElement(file.readText()).jsonObject
     val node = parsed["nodes"]!!.jsonArray.first().jsonObject
     assertEquals("Updated", node["text"]!!.jsonPrimitive.content)

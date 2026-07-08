@@ -51,10 +51,11 @@ fun runAccessibilityPostCapturePipeline(
   store.put(CommonDataProducts.Density, RenderDensity(density))
   imageArtifact?.let { store.put(CommonDataProducts.ImageArtifact, it) }
 
-  val contextValues = buildList<ExtensionContextValue<*>> {
-    if (outputDirectory != null) add(OverlayContextKeys.OutputDirectory provides outputDirectory)
-    add(OverlayContextKeys.IsRound provides isRound)
-  }
+  val contextValues =
+    buildList<ExtensionContextValue<*>> {
+      if (outputDirectory != null) add(OverlayContextKeys.OutputDirectory provides outputDirectory)
+      add(OverlayContextKeys.IsRound provides isRound)
+    }
   val contextData = ExtensionContextData.of(*contextValues.toTypedArray())
 
   val initialProducts =
@@ -124,9 +125,9 @@ object AccessibilityPostCaptureExtensions {
 /**
  * Walks the dependency closure forward from [initialProducts] and returns the subset of
  * [extensions] whose full input chain is ultimately satisfied. Used to drop extensions whose
- * declared inputs (or transitive inputs through other extensions in the list) can't be produced
- * on this render so their unsatisfiable outputs don't poison [DataExtensionPlanner.planOutputs]
- * for the rest.
+ * declared inputs (or transitive inputs through other extensions in the list) can't be produced on
+ * this render so their unsatisfiable outputs don't poison [DataExtensionPlanner.planOutputs] for
+ * the rest.
  *
  * Fixpoint iteration over the producer map. O(n²) in the worst case for n extensions; n is small
  * (single-digit) for any realistic registered set, so the simple shape stays cheaper than a

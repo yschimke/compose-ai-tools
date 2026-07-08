@@ -36,10 +36,10 @@ import org.robolectric.annotation.GraphicsMode
  * Drives `I18nTranslationsDataProducer.writeArtifacts` + `I18nTranslationsDataProductRegistry`
  * against a Compose `Text` rendered with a known string, paired with a fixture `strings.xml`
  * catalog (`values/` + `values-fr/`). Asserts the producer:
- *   - reverse-matches the rendered text back to its `R.string.*` resource via the catalog,
- *   - lists every supported locale found in the catalog,
- *   - reports `renderedLocale` straight through from the call site,
- *   - surfaces the per-locale translations on the matched entry.
+ * - reverse-matches the rendered text back to its `R.string.*` resource via the catalog,
+ * - lists every supported locale found in the catalog,
+ * - reports `renderedLocale` straight through from the call site,
+ * - surfaces the per-locale translations on the matched entry.
  *
  * Companion to `TextStringsTruncationTest` and `ComposeSemanticsCoreFieldsTest` — same
  * fixture-backed pattern for a different `text/strings`-adjacent producer.
@@ -49,9 +49,7 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class I18nTranslationsFixtureTest {
 
-  @Suppress("DEPRECATION")
-  @get:Rule
-  val composeRule = createAndroidComposeRule<ComponentActivity>()
+  @Suppress("DEPRECATION") @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
 
   private lateinit var rootDir: File
   private lateinit var resDir: File
@@ -72,11 +70,12 @@ class I18nTranslationsFixtureTest {
 
   @Test
   fun `English render resolves rendered text to R_string and lists fr as a translation`() {
-    val payload = payloadFor(previewId = "english", renderedLocale = "en") {
-      Box(modifier = Modifier.size(200.dp, 32.dp).background(Color.White)) {
-        Text(text = "Hello")
+    val payload =
+      payloadFor(previewId = "english", renderedLocale = "en") {
+        Box(modifier = Modifier.size(200.dp, 32.dp).background(Color.White)) {
+          Text(text = "Hello")
+        }
       }
-    }
 
     assertEquals("en", payload["renderedLocale"]!!.jsonPrimitive.content)
     assertEquals("en", payload["defaultLocale"]!!.jsonPrimitive.content)
@@ -85,9 +84,11 @@ class I18nTranslationsFixtureTest {
     assertEquals(setOf("en", "fr"), supportedLocales)
 
     val entry =
-      payload["strings"]!!.jsonArray.map { it.jsonObject }.firstOrNull {
-        it["rendered"]?.jsonPrimitive?.content == "Hello"
-      } ?: error("expected a string entry for rendered=Hello; got $payload")
+      payload["strings"]!!
+        .jsonArray
+        .map { it.jsonObject }
+        .firstOrNull { it["rendered"]?.jsonPrimitive?.content == "Hello" }
+        ?: error("expected a string entry for rendered=Hello; got $payload")
     assertEquals("R.string.greeting", entry["resourceName"]!!.jsonPrimitive.content)
     val translations = entry["translations"]!!.jsonObject
     assertEquals("Hello", translations["en"]!!.jsonPrimitive.content)
@@ -96,32 +97,38 @@ class I18nTranslationsFixtureTest {
 
   @Test
   fun `French render reports renderedLocale=fr-FR and resolves the French value back to R_string`() {
-    val payload = payloadFor(previewId = "french", renderedLocale = "fr-FR") {
-      Box(modifier = Modifier.size(200.dp, 32.dp).background(Color.White)) {
-        Text(text = "Bonjour")
+    val payload =
+      payloadFor(previewId = "french", renderedLocale = "fr-FR") {
+        Box(modifier = Modifier.size(200.dp, 32.dp).background(Color.White)) {
+          Text(text = "Bonjour")
+        }
       }
-    }
 
     assertEquals("fr-FR", payload["renderedLocale"]!!.jsonPrimitive.content)
     val entry =
-      payload["strings"]!!.jsonArray.map { it.jsonObject }.firstOrNull {
-        it["rendered"]?.jsonPrimitive?.content == "Bonjour"
-      } ?: error("expected a string entry for rendered=Bonjour; got $payload")
+      payload["strings"]!!
+        .jsonArray
+        .map { it.jsonObject }
+        .firstOrNull { it["rendered"]?.jsonPrimitive?.content == "Bonjour" }
+        ?: error("expected a string entry for rendered=Bonjour; got $payload")
     assertEquals("R.string.greeting", entry["resourceName"]!!.jsonPrimitive.content)
   }
 
   @Test
   fun `Untranslated rendered text leaves resourceName null and the entry unmatched`() {
-    val payload = payloadFor(previewId = "unmatched", renderedLocale = "en") {
-      Box(modifier = Modifier.size(200.dp, 32.dp).background(Color.White)) {
-        Text(text = "Untranslated literal")
+    val payload =
+      payloadFor(previewId = "unmatched", renderedLocale = "en") {
+        Box(modifier = Modifier.size(200.dp, 32.dp).background(Color.White)) {
+          Text(text = "Untranslated literal")
+        }
       }
-    }
 
     val entry =
-      payload["strings"]!!.jsonArray.map { it.jsonObject }.firstOrNull {
-        it["rendered"]?.jsonPrimitive?.content == "Untranslated literal"
-      } ?: error("expected a string entry for rendered=Untranslated literal; got $payload")
+      payload["strings"]!!
+        .jsonArray
+        .map { it.jsonObject }
+        .firstOrNull { it["rendered"]?.jsonPrimitive?.content == "Untranslated literal" }
+        ?: error("expected a string entry for rendered=Untranslated literal; got $payload")
     assertEquals(null, entry["resourceName"]?.jsonPrimitive?.content)
     assertEquals(null, entry["translations"]?.jsonObject?.get("en")?.jsonPrimitive?.content)
   }
@@ -158,14 +165,13 @@ class I18nTranslationsFixtureTest {
 
   private fun writeStrings(valuesDirName: String, vararg entries: Pair<String, String>) {
     val valuesDir = resDir.resolve(valuesDirName).also { it.mkdirs() }
-    val xml =
-      buildString {
-        append("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<resources>\n")
-        for ((name, value) in entries) {
-          append("  <string name=\"$name\">$value</string>\n")
-        }
-        append("</resources>\n")
+    val xml = buildString {
+      append("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<resources>\n")
+      for ((name, value) in entries) {
+        append("  <string name=\"$name\">$value</string>\n")
       }
+      append("</resources>\n")
+    }
     valuesDir.resolve("strings.xml").writeText(xml)
   }
 }

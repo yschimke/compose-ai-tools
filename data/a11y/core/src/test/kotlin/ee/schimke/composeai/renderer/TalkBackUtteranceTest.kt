@@ -21,7 +21,9 @@ class TalkBackUtteranceTest {
   fun button() {
     assertEquals(
       "Buy now, button, double-tap to activate",
-      TalkBackUtterance.compose(node(label = "Buy now", role = "Button", states = listOf("clickable"))),
+      TalkBackUtterance.compose(
+        node(label = "Buy now", role = "Button", states = listOf("clickable"))
+      ),
     )
   }
 
@@ -32,7 +34,7 @@ class TalkBackUtteranceTest {
     assertEquals(
       "Remember me, checkbox, checked, double-tap to toggle",
       TalkBackUtterance.compose(
-        node(label = "Remember me", role = "CheckBox", states = listOf("checked", "clickable")),
+        node(label = "Remember me", role = "CheckBox", states = listOf("checked", "clickable"))
       ),
     )
   }
@@ -43,7 +45,7 @@ class TalkBackUtteranceTest {
     assertEquals(
       "Remember me, checkbox, not checked, double-tap to toggle",
       TalkBackUtterance.compose(
-        node(label = "Remember me", role = "CheckBox", states = listOf("unchecked", "clickable")),
+        node(label = "Remember me", role = "CheckBox", states = listOf("unchecked", "clickable"))
       ),
     )
   }
@@ -55,7 +57,7 @@ class TalkBackUtteranceTest {
     assertEquals(
       "Submit, button, disabled",
       TalkBackUtterance.compose(
-        node(label = "Submit", role = "Button", states = listOf("clickable", "disabled")),
+        node(label = "Submit", role = "Button", states = listOf("clickable", "disabled"))
       ),
     )
   }
@@ -89,7 +91,10 @@ class TalkBackUtteranceTest {
   @Test
   fun rolelessLabelOnly() {
     // A plain text node — no role, no states — is just its label. TalkBack doesn't say "text view".
-    assertEquals("Workouts this week", TalkBackUtterance.compose(node(label = "Workouts this week")))
+    assertEquals(
+      "Workouts this week",
+      TalkBackUtterance.compose(node(label = "Workouts this week")),
+    )
   }
 
   @Test
@@ -97,7 +102,7 @@ class TalkBackUtteranceTest {
     assertEquals(
       "Open, button, double-tap to activate, double-tap and hold to long press",
       TalkBackUtterance.compose(
-        node(label = "Open", role = "Button", states = listOf("clickable", "long-clickable")),
+        node(label = "Open", role = "Button", states = listOf("clickable", "long-clickable"))
       ),
     )
   }
@@ -110,16 +115,13 @@ class TalkBackUtteranceTest {
         node(
           label = "Email",
           states = listOf("editable", "clickable", "hint: Enter your work address"),
-        ),
+        )
       ),
     )
   }
 
   @Test
   fun blankLabelStartsWithRole() {
-    assertEquals(
-      "image",
-      TalkBackUtterance.compose(node(label = "  ", role = "Image")),
-    )
+    assertEquals("image", TalkBackUtterance.compose(node(label = "  ", role = "Image")))
   }
 }

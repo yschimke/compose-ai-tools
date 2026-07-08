@@ -14,8 +14,8 @@ import androidx.compose.ui.unit.sp
 /**
  * Renders the supplied [fontFamily] across [weights] as a labelled weight ladder so consumers can
  * verify a custom family ships every weight they target (a missing weight silently falls back to
- * the nearest available weight on-device and renders as a same-weight twin row here — easy to
- * spot in a PNG diff).
+ * the nearest available weight on-device and renders as a same-weight twin row here — easy to spot
+ * in a PNG diff).
  *
  * Pairs with a normal `@Preview`. Author one wrapper per family of interest (`Roboto`, a Google
  * Font, an OEM brand family) and the helper produces one row per [FontWeight] — each row labelled
@@ -28,13 +28,13 @@ import androidx.compose.ui.unit.sp
  *
  * @param fontFamily the family to specimen. Use the stock `FontFamily.SansSerif` / `Serif` /
  *   `Monospace` / `Cursive` constants if you don't have a custom family in mind, or a
- *   `FontFamily(Font(...))` built from the consumer's `res/font/` resources / Google Fonts
- *   provider for a real family check.
+ *   `FontFamily(Font(...))` built from the consumer's `res/font/` resources / Google Fonts provider
+ *   for a real family check.
  * @param sampleText the pangram rendered in every row. Defaults to the canonical English pangram;
  *   override with a localised pangram (e.g. German "Falsches Üben von Xylophonmusik quält jeden
  *   größeren Zwerg.") to exercise diacritics or non-Latin scripts at each weight.
- * @param weights the weights to render. Defaults to `Light / Normal / Medium / SemiBold / Bold`
- *   — the five tokens most custom families ship variants for. Pass a wider list (`Thin`,
+ * @param weights the weights to render. Defaults to `Light / Normal / Medium / SemiBold / Bold` —
+ *   the five tokens most custom families ship variants for. Pass a wider list (`Thin`,
  *   `ExtraLight`, `ExtraBold`, `Black`) when speciming a variable font.
  */
 @Composable
@@ -61,7 +61,13 @@ fun FontFamilySpecimen(
  * variable font or a family with extreme weights should pass an explicit list.
  */
 internal val DefaultWeights: List<FontWeight> =
-  listOf(FontWeight.Light, FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold)
+  listOf(
+    FontWeight.Light,
+    FontWeight.Normal,
+    FontWeight.Medium,
+    FontWeight.SemiBold,
+    FontWeight.Bold,
+  )
 
 /**
  * Maps a [FontWeight] to its M3 / token name so the specimen row labels read like the

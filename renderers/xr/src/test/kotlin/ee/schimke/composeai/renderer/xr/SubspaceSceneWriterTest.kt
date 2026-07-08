@@ -37,8 +37,7 @@ class SubspaceSceneWriterTest {
   // created with an Activity context (real panels are). The compose rule supplies one.
   // v2 rule API (StandardTestDispatcher) is not on the compat compile classpath yet;
   // suppress until the floor moves up. See renderer-android RobolectricRenderTest.
-  @Suppress("DEPRECATION")
-  @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
+  @Suppress("DEPRECATION") @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
   private fun tempDir(): File =
     File.createTempFile("xr-render", "").let {
@@ -53,8 +52,7 @@ class SubspaceSceneWriterTest {
     return Triple((argb shr 16) and 0xFF, (argb shr 8) and 0xFF, argb and 0xFF)
   }
 
-  private fun solidView(color: Int): View =
-    View(rule.activity).apply { setBackgroundColor(color) }
+  private fun solidView(color: Int): View = View(rule.activity).apply { setBackgroundColor(color) }
 
   @Test
   fun capturesPanelTexturesAtPanelSizeAndWritesScene() {
@@ -108,7 +106,12 @@ class SubspaceSceneWriterTest {
       SpatialScene(
         previewId = "test",
         camera =
-          OrbitCamera(target = Vec3(0.0, -10.0, 0.0), distance = 1200.0, yawDeg = 0.0, pitchDeg = -10.0),
+          OrbitCamera(
+            target = Vec3(0.0, -10.0, 0.0),
+            distance = 1200.0,
+            yawDeg = 0.0,
+            pitchDeg = -10.0,
+          ),
         panels = panels,
       )
 

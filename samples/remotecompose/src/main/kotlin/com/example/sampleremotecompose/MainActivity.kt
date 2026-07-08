@@ -8,16 +8,16 @@ import androidx.compose.remote.tooling.preview.RemoteContentPreview
 
 @Suppress("RestrictedApiAndroidX")
 class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContent {
-            // Stand up a single Remote Compose document at runtime so the
-            // sample has a launchable activity. The preview functions live in
-            // `Previews.kt` — this activity is only here to satisfy the
-            // `android.application` plugin.
-            RemoteContentPreview(profile = RcPlatformProfiles.ANDROIDX) {
-                Container { RemoteButtonEnabled() }
-            }
-        }
+  override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState)
+    setContent {
+      // Stand up a single Remote Compose document at runtime so the
+      // sample has a launchable activity. The preview functions live in
+      // `Previews.kt` — this activity is only here to satisfy the
+      // `android.application` plugin.
+      RemoteContentPreview(profile = RcPlatformProfiles.ANDROIDX) {
+        Container { RemoteButtonEnabled() }
+      }
     }
+  }
 }

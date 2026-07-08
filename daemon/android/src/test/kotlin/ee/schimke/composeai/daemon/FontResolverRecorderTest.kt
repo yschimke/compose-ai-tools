@@ -21,15 +21,14 @@ class FontResolverRecorderTest {
 
   private fun proxyResolver(): FontFamily.Resolver =
     Proxy.newProxyInstance(
-        FontFamily.Resolver::class.java.classLoader,
-        arrayOf(FontFamily.Resolver::class.java),
-      ) { proxy, method, args ->
-        when (method.name) {
-          "toString" -> "DelegateFontFamilyResolver"
-          "hashCode" -> System.identityHashCode(proxy)
-          "equals" -> proxy === args?.firstOrNull()
-          else -> error("Unexpected resolver method in equals test: ${method.name}")
-        }
+      FontFamily.Resolver::class.java.classLoader,
+      arrayOf(FontFamily.Resolver::class.java),
+    ) { proxy, method, args ->
+      when (method.name) {
+        "toString" -> "DelegateFontFamilyResolver"
+        "hashCode" -> System.identityHashCode(proxy)
+        "equals" -> proxy === args?.firstOrNull()
+        else -> error("Unexpected resolver method in equals test: ${method.name}")
       }
-      as FontFamily.Resolver
+    } as FontFamily.Resolver
 }

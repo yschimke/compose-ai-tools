@@ -93,6 +93,5 @@ class RenderDataArtifactExtensionsTest {
     assertTrue(DataExtensionHookKind.AfterCapture in i18n.hooks)
   }
 
-  private fun applicationContext(): Context =
-    ApplicationProvider.getApplicationContext<Context>()
+  private fun applicationContext(): Context = ApplicationProvider.getApplicationContext<Context>()
 }

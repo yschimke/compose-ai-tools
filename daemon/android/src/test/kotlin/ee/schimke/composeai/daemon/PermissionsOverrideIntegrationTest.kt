@@ -16,32 +16,32 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * End-to-end verification that `renderNow.overrides.permissions` actually drives a
- * permission-gated composable to its granted branch. Mirrors the
- * [OverrideIntegrationTest.uiModeOverrideFlipsDarkAwareComposable] shape — render the same
- * fixture twice with different overrides and assert the bytes differ in the expected way —
- * but targets the runtime-permissions surface added in #1370 / #1374 / #1381 / #1395 and
- * unblocks the panel-side override-toggle UI from #1400 part 2.
+ * End-to-end verification that `renderNow.overrides.permissions` actually drives a permission-gated
+ * composable to its granted branch. Mirrors the
+ * [OverrideIntegrationTest.uiModeOverrideFlipsDarkAwareComposable] shape — render the same fixture
+ * twice with different overrides and assert the bytes differ in the expected way — but targets the
+ * runtime-permissions surface added in #1370 / #1374 / #1381 / #1395 and unblocks the panel-side
+ * override-toggle UI from #1400 part 2.
  *
  * The override is built panel-side as a [PreviewOverrides] bag, base64-serialised by
  * [JsonRpcServer.encodeRenderPayload] into the wire payload's `overrides=<b64>` token, and
- * round-tripped on the renderer side via [RenderEngine]'s `decodePreviewOverrides`. The
- * planner ([PermissionsPreviewOverrideExtension]) lifts the override into a
- * [PermissionsOverrideExtension], whose around-composable seeds Robolectric's
- * `ShadowApplication.grantPermissions/denyPermissions`. From there the standard Android path
- * (`Context.checkSelfPermission(...)` → `ContextWrapper.checkPermission(String, int, int)`)
- * returns the requested value — including through the
- * [ShadowContextWrapperPermissionTracker] shadow, which forwards to the real implementation
- * before recording the query. Without all five rungs the pixels never flip.
+ * round-tripped on the renderer side via [RenderEngine]'s `decodePreviewOverrides`. The planner
+ * ([PermissionsPreviewOverrideExtension]) lifts the override into a [PermissionsOverrideExtension],
+ * whose around-composable seeds Robolectric's `ShadowApplication.grantPermissions/denyPermissions`.
+ * From there the standard Android path (`Context.checkSelfPermission(...)` →
+ * `ContextWrapper.checkPermission(String, int, int)`) returns the requested value — including
+ * through the [ShadowContextWrapperPermissionTracker] shadow, which forwards to the real
+ * implementation before recording the query. Without all five rungs the pixels never flip.
  *
- * Encoding the bag directly (rather than going through [JsonRpcServer]'s renderNow path) keeps
- * the test focused on the renderer-side leg and avoids the JSON-RPC plumbing — the encoder
- * leg is covered separately by [PermissionsOverrideEncodingTest] in `:daemon:core`. Together
- * the two tests pin the full panel → daemon → renderer → shadow chain.
+ * Encoding the bag directly (rather than going through [JsonRpcServer]'s renderNow path) keeps the
+ * test focused on the renderer-side leg and avoids the JSON-RPC plumbing — the encoder leg is
+ * covered separately by [PermissionsOverrideEncodingTest] in `:daemon:core`. Together the two tests
+ * pin the full panel → daemon → renderer → shadow chain.
  *
  * The data-fetch read-back leg — proving that the queries the shadow caught surface through
  * `data/fetch?kind=compose/permissions` — lives in [PermissionsDataFetchE2ETest]; it uses the
- * cross-classloader [bridge.SandboxPermissionsBridge][ee.schimke.composeai.daemon.bridge.SandboxPermissionsBridge]
+ * cross-classloader
+ * [bridge.SandboxPermissionsBridge][ee.schimke.composeai.daemon.bridge.SandboxPermissionsBridge]
  * seam the host-side registry reads. Pixel correctness here remains the strongest single signal
  * that the override-application chain works: it can only succeed if every rung wired up.
  */
@@ -99,16 +99,12 @@ class PermissionsOverrideIntegrationTest {
               permissions =
                 PermissionsOverride(
                   grants =
-                    mapOf(
-                      "android.permission.CAMERA" to
-                        PermissionGrantStateOverride.GRANTED
-                    )
+                    mapOf("android.permission.CAMERA" to PermissionGrantStateOverride.GRANTED)
                 )
             )
           )
       val granted = renderAndDecode(host, grantedPayload, "granted")
-      val grantedGreenPct =
-        pixelMatchPct(granted, expectedRgb = 0x66BB6A, perChannelTolerance = 8)
+      val grantedGreenPct = pixelMatchPct(granted, expectedRgb = 0x66BB6A, perChannelTolerance = 8)
       assertTrue(
         "override-applied render should be mostly green (granted branch); got" +
           " ${"%.2f".format(grantedGreenPct * 100)}% green. If this dropped, the wire bag may" +
@@ -126,10 +122,7 @@ class PermissionsOverrideIntegrationTest {
             PreviewOverrides(
               permissions =
                 PermissionsOverride(
-                  grants =
-                    mapOf(
-                      "android.permission.CAMERA" to PermissionGrantStateOverride.DENIED
-                    )
+                  grants = mapOf("android.permission.CAMERA" to PermissionGrantStateOverride.DENIED)
                 )
             )
           )
@@ -152,8 +145,7 @@ class PermissionsOverrideIntegrationTest {
    * `RenderEngine.kt` reverses this; the round-trip is what production daemons use.
    */
   private fun encodeOverridesBag(bag: PreviewOverrides): String {
-    val bytes =
-      json.encodeToString(PreviewOverrides.serializer(), bag).toByteArray(Charsets.UTF_8)
+    val bytes = json.encodeToString(PreviewOverrides.serializer(), bag).toByteArray(Charsets.UTF_8)
     return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
   }
 
@@ -172,9 +164,9 @@ class PermissionsOverrideIntegrationTest {
   }
 
   /**
-   * Fraction of pixels matching [expectedRgb] within [perChannelTolerance] per channel. Mirrors
-   * the helper in [OverrideIntegrationTest] verbatim; kept private here rather than promoted so
-   * the two tests stay independent.
+   * Fraction of pixels matching [expectedRgb] within [perChannelTolerance] per channel. Mirrors the
+   * helper in [OverrideIntegrationTest] verbatim; kept private here rather than promoted so the two
+   * tests stay independent.
    */
   private fun pixelMatchPct(
     img: java.awt.image.BufferedImage,

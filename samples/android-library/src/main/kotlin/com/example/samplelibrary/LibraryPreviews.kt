@@ -17,28 +17,24 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun LibraryGreeting(name: String, modifier: Modifier = Modifier) {
-    Text(text = "Library: $name", modifier = modifier)
+  Text(text = "Library: $name", modifier = modifier)
 }
 
 @Preview(name = "Library Greeting", showBackground = true)
 @Composable
 fun LibraryGreetingPreview() {
-    MaterialTheme {
-        Surface {
-            Column(modifier = Modifier.padding(16.dp)) {
-                LibraryGreeting("Hello")
-            }
-        }
-    }
+  MaterialTheme {
+    Surface { Column(modifier = Modifier.padding(16.dp)) { LibraryGreeting("Hello") } }
+  }
 }
 
 @Preview(name = "Library Box", showBackground = true, backgroundColor = 0xFFFFFFFF)
 @Composable
 fun LibraryBoxPreview() {
-    Box(
-        modifier = Modifier.size(120.dp).background(Color(0xFF336699)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text("Library", color = Color.White)
-    }
+  Box(
+    modifier = Modifier.size(120.dp).background(Color(0xFF336699)),
+    contentAlignment = Alignment.Center,
+  ) {
+    Text("Library", color = Color.White)
+  }
 }

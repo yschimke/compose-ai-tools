@@ -1,14 +1,12 @@
 package ee.schimke.composeai.daemon
 
-import ee.schimke.composeai.io.SystemFileSystem
-import okio.FileSystem
-import okio.Path.Companion.toPath
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductExtra
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.data.render.extensions.RenderImageArtifact
 import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
+import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.renderer.AccessibilityDataProducts
 import ee.schimke.composeai.renderer.AccessibilityFinding
 import ee.schimke.composeai.renderer.AccessibilityFindingsPayload
@@ -20,22 +18,25 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * D2 — writes the per-render a11y artefacts the data-product registry surfaces.
  *
  * One pair of files per render under `<rootDir>/<previewId>/`:
  *
- * - `a11y-atf.json` — `{ "findings": AccessibilityFinding[] }`. Inline-transport kind
- *   (`a11y/atf`) parses this into `payload`. Always written, even when `findings` is empty,
- *   so the registry can distinguish "no findings on this render" from "a11y didn't run".
+ * - `a11y-atf.json` — `{ "findings": AccessibilityFinding[] }`. Inline-transport kind (`a11y/atf`)
+ *   parses this into `payload`. Always written, even when `findings` is empty, so the registry can
+ *   distinguish "no findings on this render" from "a11y didn't run".
  * - `a11y-hierarchy.json` — `{ "nodes": AccessibilityNode[] }`. Path-transport kind
  *   (`a11y/hierarchy`) returns this file's absolute path; VS Code's webview reads it.
  * - `a11y-touchTargets.json` — `{ "targets": TouchTarget[] }`. Inline-transport kind
  *   (`a11y/touchTargets`) derives clickable target sizes + overlaps from the hierarchy.
  *
- * On-disk layout pinned by [docs/daemon/DATA-PRODUCTS.md](../../../../../../../docs/daemon/DATA-PRODUCTS.md)
- * § "On-disk layout".
+ * On-disk layout pinned by
+ * [docs/daemon/DATA-PRODUCTS.md](../../../../../../../docs/daemon/DATA-PRODUCTS.md) § "On-disk
+ * layout".
  */
 object AccessibilityDataProducer {
 
@@ -58,10 +59,9 @@ object AccessibilityDataProducer {
 
   /**
    * `a11y/overlay`. Path-transport kind whose only content is the Paparazzi-style annotated PNG
-   * produced by [OverlayExtension] inside [runAccessibilityPostCapturePipeline]. Lets clients
-   * fetch the picture directly without first asking for the JSON kinds. Also surfaces as an
-   * `overlay` extra on the JSON kinds, so a panel that subscribed to `a11y/atf` still has the
-   * PNG path handy.
+   * produced by [OverlayExtension] inside [runAccessibilityPostCapturePipeline]. Lets clients fetch
+   * the picture directly without first asking for the JSON kinds. Also surfaces as an `overlay`
+   * extra on the JSON kinds, so a panel that subscribed to `a11y/atf` still has the PNG path handy.
    */
   const val KIND_OVERLAY: String = AccessibilityDataProducts.KIND_OVERLAY
 
@@ -81,8 +81,8 @@ object AccessibilityDataProducer {
   /**
    * Writes ATF + hierarchy JSON to `<rootDir>/<previewId>/` and runs the typed post-capture
    * pipeline ([runAccessibilityPostCapturePipeline]) so [TouchTargetsExtension] writes the
-   * touch-targets JSON and [OverlayExtension] writes the overlay PNG. Idempotent — overwrites
-   * prior files.
+   * touch-targets JSON and [OverlayExtension] writes the overlay PNG. Idempotent — overwrites prior
+   * files.
    */
   fun writeArtifacts(
     rootDir: File,
@@ -106,7 +106,8 @@ object AccessibilityDataProducer {
     // Typed post-capture pipeline: TouchTargetsExtension always runs; OverlayExtension runs when
     // pngFile is supplied (it requires CommonDataProducts.ImageArtifact). Both write their
     // outputs through the typed product store and we serialize touchTargets here. Overlay
-    // writes its own PNG side-effectfully — the store carries the resulting AccessibilityOverlayArtifact
+    // writes its own PNG side-effectfully — the store carries the resulting
+    // AccessibilityOverlayArtifact
     // for any future consumer that wants the path inline.
     val store =
       runAccessibilityPostCapturePipeline(
@@ -120,24 +121,21 @@ object AccessibilityDataProducer {
       )
     store.get(AccessibilityDataProducts.TouchTargets)?.let { touchTargets ->
       fileSystem.write(previewDir.resolve(FILE_TOUCH_TARGETS).path.toPath()) {
-        writeUtf8(
-          json.encodeToString(AccessibilityTouchTargetsPayload.serializer(), touchTargets)
-        )
+        writeUtf8(json.encodeToString(AccessibilityTouchTargetsPayload.serializer(), touchTargets))
       }
     }
   }
 }
 
 /**
- * D2 — [DataProductRegistry] implementation that surfaces `a11y/atf` (inline) and
- * `a11y/hierarchy` (path) by reading the JSON files [AccessibilityDataProducer] writes during
- * each render. The renderer-side producer always writes when daemon-mode a11y is active; this
- * registry decides whether the data ends up on the wire based on the dispatcher's subscription
- * bookkeeping.
+ * D2 — [DataProductRegistry] implementation that surfaces `a11y/atf` (inline) and `a11y/hierarchy`
+ * (path) by reading the JSON files [AccessibilityDataProducer] writes during each render. The
+ * renderer-side producer always writes when daemon-mode a11y is active; this registry decides
+ * whether the data ends up on the wire based on the dispatcher's subscription bookkeeping.
  *
  * `attachable: true` — they ride `renderFinished.dataProducts` when the client has subscribed.
- * `fetchable: true` — pull-on-demand reads from the same files. `requiresRerender: true` (D2.2)
- * — when the latest render didn't run in a11y mode the artefact is absent, so [fetch] returns
+ * `fetchable: true` — pull-on-demand reads from the same files. `requiresRerender: true` (D2.2) —
+ * when the latest render didn't run in a11y mode the artefact is absent, so [fetch] returns
  * [DataProductRegistry.Outcome.RequiresRerender] and the dispatcher queues a `mode=a11y` re-render
  * before re-invoking. The cost of a11y mode is paid only when a panel actually subscribes, not on
  * every render.
@@ -158,7 +156,11 @@ class AccessibilityDataProductRegistry(private val rootDir: File) :
           requiresRerender = true,
           displayName = "Accessibility findings",
           facets =
-            listOf(DataProductFacet.STRUCTURED, DataProductFacet.CHECK, DataProductFacet.DIAGNOSTIC),
+            listOf(
+              DataProductFacet.STRUCTURED,
+              DataProductFacet.CHECK,
+              DataProductFacet.DIAGNOSTIC,
+            ),
           sampling = SamplingPolicy.End,
         ),
         DataProductCapability(
@@ -182,7 +184,11 @@ class AccessibilityDataProductRegistry(private val rootDir: File) :
           requiresRerender = true,
           displayName = "Touch target findings",
           facets =
-            listOf(DataProductFacet.STRUCTURED, DataProductFacet.CHECK, DataProductFacet.DIAGNOSTIC),
+            listOf(
+              DataProductFacet.STRUCTURED,
+              DataProductFacet.CHECK,
+              DataProductFacet.DIAGNOSTIC,
+            ),
           sampling = SamplingPolicy.End,
         ),
         DataProductCapability(
@@ -227,8 +233,8 @@ class AccessibilityDataProductRegistry(private val rootDir: File) :
   }
 
   /**
-   * D2.2 — every a11y kind is `requiresRerender = true`. A missing artefact means the latest
-   * render didn't run in a11y mode (the producer's writeArtifacts is gated on
+   * D2.2 — every a11y kind is `requiresRerender = true`. A missing artefact means the latest render
+   * didn't run in a11y mode (the producer's writeArtifacts is gated on
    * `effectiveRunAccessibility`); the dispatcher reacts by queueing a re-render with `mode=a11y`
    * and re-invoking fetch, which then finds the freshly-written file.
    */
@@ -238,9 +244,9 @@ class AccessibilityDataProductRegistry(private val rootDir: File) :
   /**
    * Every advertised kind here is gated on the renderer's a11y mode (`writeArtifacts` only fires
    * when `effectiveRunAccessibility` is true) — so a sticky subscription for any of them implies
-   * the next render must run with mode=a11y. Returning the mode from the producer puts the
-   * mapping next to the artefacts it produces; [JsonRpcServer.subscriptionDrivenRenderMode]
-   * routes through the registry instead of pattern-matching on the kind string.
+   * the next render must run with mode=a11y. Returning the mode from the producer puts the mapping
+   * next to the artefacts it produces; [JsonRpcServer.subscriptionDrivenRenderMode] routes through
+   * the registry instead of pattern-matching on the kind string.
    */
   override fun renderModeFor(kind: String): String? = if (isKnown(kind)) "a11y" else null
 
@@ -249,9 +255,9 @@ class AccessibilityDataProductRegistry(private val rootDir: File) :
     kind != AccessibilityDataProducer.KIND_OVERLAY
 
   /**
-   * The overlay PNG rides as an `extras` entry on every a11y kind so a panel that subscribed to
-   * any of them gets the picture handy without a follow-up `data/fetch`. Skips when the overlay
-   * file isn't on disk for [previewId].
+   * The overlay PNG rides as an `extras` entry on every a11y kind so a panel that subscribed to any
+   * of them gets the picture handy without a follow-up `data/fetch`. Skips when the overlay file
+   * isn't on disk for [previewId].
    */
   override fun extras(
     previewId: String,
@@ -272,9 +278,9 @@ class AccessibilityDataProductRegistry(private val rootDir: File) :
 
   /**
    * D2.2 — record `(previewId, kind)` so the next render of [previewId] can run in a11y mode.
-   * Idempotent across re-subscribes (the [Set] de-duplicates). Only the four advertised a11y
-   * kinds are tracked; an unrelated kind (the dispatcher routes here only after capability
-   * matching, but this is defensive) is ignored.
+   * Idempotent across re-subscribes (the [Set] de-duplicates). Only the four advertised a11y kinds
+   * are tracked; an unrelated kind (the dispatcher routes here only after capability matching, but
+   * this is defensive) is ignored.
    */
   override fun onSubscribe(previewId: String, kind: String, params: JsonElement?) {
     if (!isKnown(kind)) return
@@ -294,10 +300,11 @@ class AccessibilityDataProductRegistry(private val rootDir: File) :
   /**
    * D2.2 — `true` iff at least one a11y kind has a live subscription for [previewId]. Designed for
    * the host's render dispatcher: when this returns `true` the next `host.submit(...)` payload for
-   * [previewId] should carry `mode=a11y` so the renderer flips `LocalInspectionMode` and writes
-   * the ATF/hierarchy artefacts the subscribed kinds will read off disk on the next
-   * `attachmentsFor` pass.
+   * [previewId] should carry `mode=a11y` so the renderer flips `LocalInspectionMode` and writes the
+   * ATF/hierarchy artefacts the subscribed kinds will read off disk on the next `attachmentsFor`
+   * pass.
    */
-  fun isPreviewSubscribed(previewId: String): Boolean =
-    subscribedPairs.any { (id, _) -> id == previewId }
+  fun isPreviewSubscribed(previewId: String): Boolean = subscribedPairs.any { (id, _) ->
+    id == previewId
+  }
 }

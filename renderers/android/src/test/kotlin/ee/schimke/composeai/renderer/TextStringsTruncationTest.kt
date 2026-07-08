@@ -42,18 +42,16 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * Drives `ComposeSemanticsDataProducer.writeArtifacts` + `TextStringsDataProductRegistry` against
  * Compose composables that mirror the `TruncationPreviews` samples, then asserts each scenario
- * surfaces the specific check it isolates: `didOverflowWidth`, `didOverflowHeight`, the
- * `maxLines` cap, and `overflow=Ellipsis`. Schema-2 contract test for the `text/strings`
- * truncation fields added for compose-ai-tools#705.
+ * surfaces the specific check it isolates: `didOverflowWidth`, `didOverflowHeight`, the `maxLines`
+ * cap, and `overflow=Ellipsis`. Schema-2 contract test for the `text/strings` truncation fields
+ * added for compose-ai-tools#705.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class TextStringsTruncationTest {
 
-  @Suppress("DEPRECATION")
-  @get:Rule
-  val composeRule = createAndroidComposeRule<ComponentActivity>()
+  @Suppress("DEPRECATION") @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
 
   private lateinit var rootDir: File
 
@@ -137,12 +135,7 @@ private const val LongGerman =
 @Composable
 private fun TruncatedWidthNoWrapFixture() {
   Box(modifier = Modifier.size(width = 80.dp, height = 32.dp).background(Color.White)) {
-    Text(
-      text = LongGerman,
-      softWrap = false,
-      overflow = TextOverflow.Clip,
-      fontSize = 14.sp,
-    )
+    Text(text = LongGerman, softWrap = false, overflow = TextOverflow.Clip, fontSize = 14.sp)
   }
 }
 
@@ -156,11 +149,6 @@ private fun TruncatedHeightClipFixture() {
 @Composable
 private fun TruncatedMaxLinesEllipsisFixture() {
   Box(modifier = Modifier.size(width = 200.dp, height = 80.dp).background(Color.White)) {
-    Text(
-      text = LongGerman,
-      maxLines = 2,
-      overflow = TextOverflow.Ellipsis,
-      fontSize = 14.sp,
-    )
+    Text(text = LongGerman, maxLines = 2, overflow = TextOverflow.Ellipsis, fontSize = 14.sp)
   }
 }

@@ -1,172 +1,166 @@
 package ee.schimke.composeai.renderer
 
-import ee.schimke.composeai.io.SystemFileSystem
-import okio.FileSystem
-import okio.Path.Companion.toPath
 import androidx.compose.ui.text.font.FontWeight
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * Cache and CSS-API helpers that underpin [ShadowFontsContractCompat].
  *
  * `Font(GoogleFont("Lato"), provider)` on a real device goes through
- * `androidx.core.provider.FontsContractCompat.requestFont` → GMS Fonts'
- * ContentProvider. That provider doesn't exist in the Robolectric sandbox:
- * no `com.google.android.gms` package, no registered content provider for
- * `com.google.android.gms.fonts`. Compose's internal `GoogleFontTypefaceLoader`
- * swallows the failure into its async fallback and text silently renders in
- * the platform default (Roboto) — which is why consumers hit the "my
- * downloadable fonts aren't applied in screenshots" symptom when they try to
- * capture previews that use their production GoogleFont typography.
+ * `androidx.core.provider.FontsContractCompat.requestFont` → GMS Fonts' ContentProvider. That
+ * provider doesn't exist in the Robolectric sandbox: no `com.google.android.gms` package, no
+ * registered content provider for `com.google.android.gms.fonts`. Compose's internal
+ * `GoogleFontTypefaceLoader` swallows the failure into its async fallback and text silently renders
+ * in the platform default (Roboto) — which is why consumers hit the "my downloadable fonts aren't
+ * applied in screenshots" symptom when they try to capture previews that use their production
+ * GoogleFont typography.
  *
- * The fix ships as a Robolectric shadow ([ShadowFontsContractCompat]) that
- * intercepts `requestFont` before the provider lookup even runs: parse the
- * `FontRequest.query` (the same wire format Compose's `GoogleFont.kt`
- * builds), resolve a TTF from a local cache keyed by `(name, weight, italic)`,
- * and call the supplied callback synchronously with a [Typeface.createFromFile].
+ * The fix ships as a Robolectric shadow ([ShadowFontsContractCompat]) that intercepts `requestFont`
+ * before the provider lookup even runs: parse the `FontRequest.query` (the same wire format
+ * Compose's `GoogleFont.kt` builds), resolve a TTF from a local cache keyed by `(name, weight,
+ * italic)`, and call the supplied callback synchronously with a [Typeface.createFromFile].
  *
- * The cache lives in a shared, machine-local directory
- * (`$XDG_CACHE_HOME/composeai/fonts`, else `~/.cache/composeai/fonts`) — a
- * font keyed by `(family, weight, italic)` is identical across projects, so it
- * resolves once per machine and is reused by every render thereafter. The cache
- * directory is plumbed via the `composeai.fonts.cacheDir` system property by the
- * plugin's `composePreviewRender` `Test` task.
+ * The cache lives in a shared, machine-local directory (`$XDG_CACHE_HOME/composeai/fonts`, else
+ * `~/.cache/composeai/fonts`) — a font keyed by `(family, weight, italic)` is identical across
+ * projects, so it resolves once per machine and is reused by every render thereafter. The cache
+ * directory is plumbed via the `composeai.fonts.cacheDir` system property by the plugin's
+ * `composePreviewRender` `Test` task.
  *
- * Consumer code is unchanged: the same `Font(GoogleFont(...))` that runs on
- * device renders under Robolectric with zero `src/debug` fork, zero
- * `testImplementation` opt-in, zero plugin configuration.
+ * Consumer code is unchanged: the same `Font(GoogleFont(...))` that runs on device renders under
+ * Robolectric with zero `src/debug` fork, zero `testImplementation` opt-in, zero plugin
+ * configuration.
  */
 internal object GoogleFontCacheAccess {
-    /**
-     * The shadow reads this once at the first incoming `requestFont` call.
-     * Cached so repeated lookups are allocation-free; re-read is never
-     * needed because the system property is pinned for the Test task's
-     * lifetime.
-     */
-    private val cache: GoogleFontSource? by lazy {
-        val cacheDirPath = System.getProperty("composeai.fonts.cacheDir") ?: return@lazy null
-        val offline = System.getProperty("composeai.fonts.offline")?.lowercase() == "true"
-        GoogleFontCache(File(cacheDirPath), offline = offline)
-    }
+  /**
+   * The shadow reads this once at the first incoming `requestFont` call. Cached so repeated lookups
+   * are allocation-free; re-read is never needed because the system property is pinned for the Test
+   * task's lifetime.
+   */
+  private val cache: GoogleFontSource? by lazy {
+    val cacheDirPath = System.getProperty("composeai.fonts.cacheDir") ?: return@lazy null
+    val offline = System.getProperty("composeai.fonts.offline")?.lowercase() == "true"
+    GoogleFontCache(File(cacheDirPath), offline = offline)
+  }
 
-    fun load(name: String, weight: Int, italic: Boolean): File? =
-        cache?.load(GoogleFontKey(name, FontWeight(weight), italic))
+  fun load(name: String, weight: Int, italic: Boolean): File? =
+    cache?.load(GoogleFontKey(name, FontWeight(weight), italic))
 }
 
 /**
- * Represents a single resolved Google font file keyed by family + axes.
- * Serialised on disk as `<slug>-<weight>[-italic].ttf` so the cache is
- * human-readable under `~/.cache/composeai/fonts/`.
+ * Represents a single resolved Google font file keyed by family + axes. Serialised on disk as
+ * `<slug>-<weight>[-italic].ttf` so the cache is human-readable under `~/.cache/composeai/fonts/`.
  */
-internal data class GoogleFontKey(
-    val name: String,
-    val weight: FontWeight,
-    val italic: Boolean,
-) {
-    fun fileName(): String {
-        val slug = slugify(name)
-        val italicPart = if (italic) "-italic" else ""
-        return "$slug-${weight.weight}$italicPart.ttf"
-    }
+internal data class GoogleFontKey(val name: String, val weight: FontWeight, val italic: Boolean) {
+  fun fileName(): String {
+    val slug = slugify(name)
+    val italicPart = if (italic) "-italic" else ""
+    return "$slug-${weight.weight}$italicPart.ttf"
+  }
 
-    companion object {
-        /** Lowercase + replace non-alphanumerics with `-`, no leading/trailing hyphens. */
-        fun slugify(name: String): String = buildString {
-            var prevDash = true
-            for (ch in name) {
-                val lower = ch.lowercaseChar()
-                if (lower in 'a'..'z' || lower in '0'..'9') {
-                    append(lower)
-                    prevDash = false
-                } else if (!prevDash) {
-                    append('-')
-                    prevDash = true
-                }
+  companion object {
+    /** Lowercase + replace non-alphanumerics with `-`, no leading/trailing hyphens. */
+    fun slugify(name: String): String =
+      buildString {
+          var prevDash = true
+          for (ch in name) {
+            val lower = ch.lowercaseChar()
+            if (lower in 'a'..'z' || lower in '0'..'9') {
+              append(lower)
+              prevDash = false
+            } else if (!prevDash) {
+              append('-')
+              prevDash = true
             }
-        }.trim('-').ifEmpty { "font" }
-    }
+          }
+        }
+        .trim('-')
+        .ifEmpty { "font" }
+  }
 }
 
 /**
- * Abstraction over "hand me a cached TTF for `(name, weight, italic)`" so
- * tests can stub the download path with a preseeded directory.
+ * Abstraction over "hand me a cached TTF for `(name, weight, italic)`" so tests can stub the
+ * download path with a preseeded directory.
  */
 internal interface GoogleFontSource {
-    fun load(key: GoogleFontKey): File?
+  fun load(key: GoogleFontKey): File?
 }
 
 /**
- * Disk-backed [GoogleFontSource]. Downloads missing TTFs from the Google
- * Fonts CSS API on first access, then reuses the on-disk copy forever.
+ * Disk-backed [GoogleFontSource]. Downloads missing TTFs from the Google Fonts CSS API on first
+ * access, then reuses the on-disk copy forever.
  *
- * Two knobs, both off the same system-property surface the rest of the
- * renderer uses:
- *  - `composeai.fonts.cacheDir` — directory root.
- *  - `composeai.fonts.offline` — when `true`, skip network on cache miss
- *    so the render shows the fallback font instead of silently fetching
- *    from a non-deterministic endpoint.
+ * Two knobs, both off the same system-property surface the rest of the renderer uses:
+ * - `composeai.fonts.cacheDir` — directory root.
+ * - `composeai.fonts.offline` — when `true`, skip network on cache miss so the render shows the
+ *   fallback font instead of silently fetching from a non-deterministic endpoint.
  */
 internal class GoogleFontCache(
-    private val cacheDir: File,
-    private val offline: Boolean = false,
-    private val downloader: (GoogleFontKey, File) -> Boolean = ::downloadFromGoogleFonts,
+  private val cacheDir: File,
+  private val offline: Boolean = false,
+  private val downloader: (GoogleFontKey, File) -> Boolean = ::downloadFromGoogleFonts,
 ) : GoogleFontSource {
 
-    override fun load(key: GoogleFontKey): File? {
-        val file = File(cacheDir, key.fileName())
-        if (file.exists() && file.length() > 0) return file
-        if (offline) return null
-        cacheDir.mkdirs()
-        val tmp = File(cacheDir, "${file.name}.tmp")
-        val ok = runCatching { downloader(key, tmp) }.getOrDefault(false)
-        if (!ok || !tmp.exists() || tmp.length() == 0L) {
-            tmp.delete()
-            return null
-        }
-        if (!tmp.renameTo(file)) {
-            // Atomic rename can fail across filesystems. Fall back to copy.
-            tmp.copyTo(file, overwrite = true)
-            tmp.delete()
-        }
-        return file
+  override fun load(key: GoogleFontKey): File? {
+    val file = File(cacheDir, key.fileName())
+    if (file.exists() && file.length() > 0) return file
+    if (offline) return null
+    cacheDir.mkdirs()
+    val tmp = File(cacheDir, "${file.name}.tmp")
+    val ok = runCatching { downloader(key, tmp) }.getOrDefault(false)
+    if (!ok || !tmp.exists() || tmp.length() == 0L) {
+      tmp.delete()
+      return null
     }
+    if (!tmp.renameTo(file)) {
+      // Atomic rename can fail across filesystems. Fall back to copy.
+      tmp.copyTo(file, overwrite = true)
+      tmp.delete()
+    }
+    return file
+  }
 }
 
 /**
  * Fetches a TTF for [key] into [destination]. Returns `true` on success.
  *
  * Two-stage lookup:
- *  1. Try `wght@<exact>` — works for static families (Roboto, Lobster Two)
- *     and for the default weight of variable families.
- *  2. If that returns no TTF URL (purely-variable fonts like Roboto Flex
- *     reject single-weight requests at non-default weights), retry with
- *     `wght@<min>..<max>` covering the full 1–1000 range. For variable
- *     fonts the response is a single `@font-face` pointing at the variable
- *     TTF; for static fonts it's multiple blocks and we pick the closest
- *     to the requested weight.
+ * 1. Try `wght@<exact>` — works for static families (Roboto, Lobster Two) and for the default
+ *    weight of variable families.
+ * 2. If that returns no TTF URL (purely-variable fonts like Roboto Flex reject single-weight
+ *    requests at non-default weights), retry with `wght@<min>..<max>` covering the full 1–1000
+ *    range. For variable fonts the response is a single `@font-face` pointing at the variable TTF;
+ *    for static fonts it's multiple blocks and we pick the closest to the requested weight.
  *
- * The CSS2 endpoint serves WOFF2 by default (Android doesn't parse WOFF2
- * natively), so we send an Android-2.3 User-Agent — one of the few UAs for
- * which the API still returns TrueType. Same mechanism
- * `google-webfonts-helper` and similar offline caches rely on.
+ * The CSS2 endpoint serves WOFF2 by default (Android doesn't parse WOFF2 natively), so we send an
+ * Android-2.3 User-Agent — one of the few UAs for which the API still returns TrueType. Same
+ * mechanism `google-webfonts-helper` and similar offline caches rely on.
  */
-internal fun downloadFromGoogleFonts(key: GoogleFontKey, destination: File, fileSystem: FileSystem = SystemFileSystem): Boolean {
-    val exactUrl = httpGet(buildCssUrl(key), TTF_USER_AGENT)
-        ?.let { extractFirstTruetypeUrl(it) }
-    val url = exactUrl ?: run {
+internal fun downloadFromGoogleFonts(
+  key: GoogleFontKey,
+  destination: File,
+  fileSystem: FileSystem = SystemFileSystem,
+): Boolean {
+  val exactUrl = httpGet(buildCssUrl(key), TTF_USER_AGENT)?.let { extractFirstTruetypeUrl(it) }
+  val url =
+    exactUrl
+      ?: run {
         val rangeCss = httpGet(buildRangeCssUrl(key), TTF_USER_AGENT) ?: return false
         pickClosestTruetypeUrl(rangeCss, key.weight.weight) ?: return false
-    }
-    val bytes = httpGetBytes(url, userAgent = TTF_USER_AGENT) ?: return false
-    if (bytes.isEmpty()) return false
-    destination.parentFile?.mkdirs()
-    fileSystem.write(destination.path.toPath()) { write(bytes) }
-    return true
+      }
+  val bytes = httpGetBytes(url, userAgent = TTF_USER_AGENT) ?: return false
+  if (bytes.isEmpty()) return false
+  destination.parentFile?.mkdirs()
+  fileSystem.write(destination.path.toPath()) { write(bytes) }
+  return true
 }
 
 // The CSS2 endpoint picks the `src: url(...) format(...)` format based on
@@ -177,104 +171,110 @@ internal fun downloadFromGoogleFonts(key: GoogleFontKey, destination: File, file
 // the same approach `google-webfonts-helper` settled on for its "TTF only"
 // download mode.
 private const val TTF_USER_AGENT =
-    "Mozilla/5.0 (Linux; U; Android 2.3.3; en-us) AppleWebKit/533.1 (KHTML, like Gecko)"
+  "Mozilla/5.0 (Linux; U; Android 2.3.3; en-us) AppleWebKit/533.1 (KHTML, like Gecko)"
 
 internal fun buildCssUrl(key: GoogleFontKey): String =
-    buildCssUrlForAxis(key, if (key.italic) "ital,wght@1,${key.weight.weight}" else "wght@${key.weight.weight}")
+  buildCssUrlForAxis(
+    key,
+    if (key.italic) "ital,wght@1,${key.weight.weight}" else "wght@${key.weight.weight}",
+  )
 
 /**
- * Range-query variant. Returns a CSS response with either one `@font-face`
- * (variable font) or many (static families with multiple pre-rendered
- * weights). Used as a fallback when [buildCssUrl] produced no TTF URL —
- * purely variable families like Roboto Flex reject single-weight queries
- * at non-default weights.
+ * Range-query variant. Returns a CSS response with either one `@font-face` (variable font) or many
+ * (static families with multiple pre-rendered weights). Used as a fallback when [buildCssUrl]
+ * produced no TTF URL — purely variable families like Roboto Flex reject single-weight queries at
+ * non-default weights.
  *
- * `100..1000` is the conventional Google Fonts wght axis range and works
- * for Roboto Flex (wght 100..1000), Google Sans Flex (wght 100..1000), and
- * other variable families. Ranges outside a family's declared axis bounds
- * (e.g. `1..1000` on Roboto Flex) return a 400 "Font family not found"
- * HTML page, which our TTF regex correctly treats as a miss.
+ * `100..1000` is the conventional Google Fonts wght axis range and works for Roboto Flex (wght
+ * 100..1000), Google Sans Flex (wght 100..1000), and other variable families. Ranges outside a
+ * family's declared axis bounds (e.g. `1..1000` on Roboto Flex) return a 400 "Font family not
+ * found" HTML page, which our TTF regex correctly treats as a miss.
  */
 internal fun buildRangeCssUrl(key: GoogleFontKey): String =
-    buildCssUrlForAxis(key, if (key.italic) "ital,wght@1,100..1000" else "wght@100..1000")
+  buildCssUrlForAxis(key, if (key.italic) "ital,wght@1,100..1000" else "wght@100..1000")
 
 private fun buildCssUrlForAxis(key: GoogleFontKey, axis: String): String {
-    // `URLEncoder.encode(s, Charset)` is API 33+. The renderer runs inside
-    // Robolectric on JDK 17 where both overloads exist, but the library's
-    // `minSdk = 24` trips `lint`. The legacy `encode(s, charsetName)`
-    // overload is unchanged and the round-trip is identical.
-    @Suppress("DEPRECATION")
-    val family = URLEncoder.encode(key.name, "UTF-8").replace("+", "%20")
-    return "https://fonts.googleapis.com/css2?family=$family:$axis&display=swap"
+  // `URLEncoder.encode(s, Charset)` is API 33+. The renderer runs inside
+  // Robolectric on JDK 17 where both overloads exist, but the library's
+  // `minSdk = 24` trips `lint`. The legacy `encode(s, charsetName)`
+  // overload is unchanged and the round-trip is identical.
+  @Suppress("DEPRECATION") val family = URLEncoder.encode(key.name, "UTF-8").replace("+", "%20")
+  return "https://fonts.googleapis.com/css2?family=$family:$axis&display=swap"
 }
 
 internal fun extractFirstTruetypeUrl(css: String): String? {
-    // Matches `url(...) format('truetype')` inside an `@font-face` block.
-    val regex = Regex("""url\((https://[^)]+)\)\s*format\(['"]truetype['"]\)""")
-    return regex.find(css)?.groupValues?.get(1)
+  // Matches `url(...) format('truetype')` inside an `@font-face` block.
+  val regex = Regex("""url\((https://[^)]+)\)\s*format\(['"]truetype['"]\)""")
+  return regex.find(css)?.groupValues?.get(1)
 }
 
 /**
- * Parse a CSS response with one-or-many `@font-face` blocks and pick the
- * TTF URL whose declared `font-weight` is closest to [requestedWeight].
+ * Parse a CSS response with one-or-many `@font-face` blocks and pick the TTF URL whose declared
+ * `font-weight` is closest to [requestedWeight].
  *
- * - Variable-font responses have a single block with `font-weight: 400` but
- *   the TTF itself supports the full axis range — just return that URL.
- * - Static-family range responses carry one block per discrete weight
- *   (100, 200, …, 900); pick the nearest and the consumer's text renders
- *   in the closest existing static sub-font.
+ * - Variable-font responses have a single block with `font-weight: 400` but the TTF itself supports
+ *   the full axis range — just return that URL.
+ * - Static-family range responses carry one block per discrete weight (100, 200, …, 900); pick the
+ *   nearest and the consumer's text renders in the closest existing static sub-font.
  */
 internal fun pickClosestTruetypeUrl(css: String, requestedWeight: Int): String? {
-    val blockRegex = Regex(
-        """font-weight:\s*(\d+)[\s\S]*?url\((https://[^)]+)\)\s*format\(['"]truetype['"]\)""",
-    )
-    val matches = blockRegex.findAll(css).toList()
-    if (matches.isEmpty()) return extractFirstTruetypeUrl(css)
-    if (matches.size == 1) return matches[0].groupValues[2]
-    return matches
-        .minByOrNull { kotlin.math.abs(it.groupValues[1].toInt() - requestedWeight) }
-        ?.groupValues?.get(2)
+  val blockRegex =
+    Regex("""font-weight:\s*(\d+)[\s\S]*?url\((https://[^)]+)\)\s*format\(['"]truetype['"]\)""")
+  val matches = blockRegex.findAll(css).toList()
+  if (matches.isEmpty()) return extractFirstTruetypeUrl(css)
+  if (matches.size == 1) return matches[0].groupValues[2]
+  return matches
+    .minByOrNull { kotlin.math.abs(it.groupValues[1].toInt() - requestedWeight) }
+    ?.groupValues
+    ?.get(2)
 }
 
 private val fontHttpClient: OkHttpClient by lazy {
-    OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
-        .build()
+  OkHttpClient.Builder()
+    .connectTimeout(10, TimeUnit.SECONDS)
+    .readTimeout(15, TimeUnit.SECONDS)
+    .build()
 }
 
 private fun httpGet(url: String, userAgent: String): String? =
-    httpGetBytes(url, userAgent)?.toString(Charsets.UTF_8)
+  httpGetBytes(url, userAgent)?.toString(Charsets.UTF_8)
 
-private fun httpGetBytes(url: String, userAgent: String): ByteArray? = runCatching {
-    val request = Request.Builder().url(url).header("User-Agent", userAgent).build()
-    fontHttpClient.newCall(request).execute().use { response ->
+private fun httpGetBytes(url: String, userAgent: String): ByteArray? =
+  runCatching {
+      val request = Request.Builder().url(url).header("User-Agent", userAgent).build()
+      fontHttpClient.newCall(request).execute().use { response ->
         if (response.isSuccessful) response.body?.bytes() else null
+      }
     }
-}.getOrNull()
+    .getOrNull()
 
 /**
- * Parses the `FontRequest.query` wire format that Compose's `GoogleFont.kt`
- * builds into a [GoogleFontKey].
+ * Parses the `FontRequest.query` wire format that Compose's `GoogleFont.kt` builds into a
+ * [GoogleFontKey].
  *
  * Expected shape (from `androidx.compose.ui.text.googlefonts.GoogleFont`):
  * ```
  * name=<urlencoded>&weight=<int>&width=<float>&italic=<0.0|1.0>&besteffort=<bool>
  * ```
- * Any missing field falls back to sensible defaults so a slightly different
- * query shape (older or newer Compose, non-Compose callers) still resolves.
+ *
+ * Any missing field falls back to sensible defaults so a slightly different query shape (older or
+ * newer Compose, non-Compose callers) still resolves.
  */
 internal fun parseFontRequestQuery(query: String?): GoogleFontKey? {
-    query ?: return null
-    val pairs = query.split('&').mapNotNull { pair ->
+  query ?: return null
+  val pairs =
+    query
+      .split('&')
+      .mapNotNull { pair ->
         val idx = pair.indexOf('=').takeIf { i -> i > 0 } ?: return@mapNotNull null
         val key = pair.substring(0, idx)
         val raw = pair.substring(idx + 1)
         val value = runCatching { URLDecoder.decode(raw, "UTF-8") }.getOrDefault(raw)
         key to value
-    }.toMap()
-    val name = pairs["name"]?.takeIf { it.isNotBlank() } ?: return null
-    val weight = pairs["weight"]?.toIntOrNull() ?: 400
-    val italic = pairs["italic"]?.toFloatOrNull()?.let { it >= 0.5f } ?: false
-    return GoogleFontKey(name, FontWeight(weight), italic)
+      }
+      .toMap()
+  val name = pairs["name"]?.takeIf { it.isNotBlank() } ?: return null
+  val weight = pairs["weight"]?.toIntOrNull() ?: 400
+  val italic = pairs["italic"]?.toFloatOrNull()?.let { it >= 0.5f } ?: false
+  return GoogleFontKey(name, FontWeight(weight), italic)
 }

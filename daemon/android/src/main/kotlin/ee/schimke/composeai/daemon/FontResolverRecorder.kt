@@ -70,39 +70,37 @@ fun recordingFontFamilyResolver(
   delegate: FontFamily.Resolver,
   recorder: FontResolverRecorder,
 ): FontFamily.Resolver {
-  val handler =
-    InvocationHandler { proxy, method, args ->
-      if (method.declaringClass == Any::class.java) {
-        return@InvocationHandler when (method.name) {
-          "toString" -> "RecordingFontFamilyResolver($delegate)"
-          "hashCode" -> System.identityHashCode(proxy)
-          "equals" -> proxy === args?.firstOrNull()
-          else -> method.invoke(delegate, *(args ?: emptyArray()))
-        }
+  val handler = InvocationHandler { proxy, method, args ->
+    if (method.declaringClass == Any::class.java) {
+      return@InvocationHandler when (method.name) {
+        "toString" -> "RecordingFontFamilyResolver($delegate)"
+        "hashCode" -> System.identityHashCode(proxy)
+        "equals" -> proxy === args?.firstOrNull()
+        else -> method.invoke(delegate, *(args ?: emptyArray()))
       }
-      val result =
-        try {
-          method.invoke(delegate, *(args ?: emptyArray()))
-        } catch (e: InvocationTargetException) {
-          throw e.targetException ?: e
-        }
-      if (method.name.startsWith("resolve")) {
-        @Suppress("UNCHECKED_CAST") val state = result as? State<Any>
-        recorder.record(
-          fontFamily = args?.getOrNull(0) as? FontFamily,
-          fontWeight = args?.getOrNull(1) as? FontWeight,
-          fontStyle = args?.getOrNull(2),
-          resolved = state?.value,
-        )
-      }
-      result
     }
+    val result =
+      try {
+        method.invoke(delegate, *(args ?: emptyArray()))
+      } catch (e: InvocationTargetException) {
+        throw e.targetException ?: e
+      }
+    if (method.name.startsWith("resolve")) {
+      @Suppress("UNCHECKED_CAST") val state = result as? State<Any>
+      recorder.record(
+        fontFamily = args?.getOrNull(0) as? FontFamily,
+        fontWeight = args?.getOrNull(1) as? FontWeight,
+        fontStyle = args?.getOrNull(2),
+        resolved = state?.value,
+      )
+    }
+    result
+  }
   return Proxy.newProxyInstance(
-      FontFamily.Resolver::class.java.classLoader,
-      arrayOf(FontFamily.Resolver::class.java),
-      handler,
-    )
-    as FontFamily.Resolver
+    FontFamily.Resolver::class.java.classLoader,
+    arrayOf(FontFamily.Resolver::class.java),
+    handler,
+  ) as FontFamily.Resolver
 }
 
 private fun requestedFamily(fontFamily: FontFamily?): String =
@@ -154,17 +152,16 @@ private fun resourceId(font: Font): Int? =
 private fun resolvedFamily(resolved: Any?): String {
   if (resolved == null) return "<unresolved>"
   val reflected =
-    listOf("getFamilyName", "getFamily", "getName")
-      .firstNotNullOfOrNull { name ->
-        runCatching {
-            val value =
-              resolved.javaClass.methods
-                .firstOrNull { it.name == name && it.parameterCount == 0 }
-                ?.invoke(resolved)
-            value as? String
-          }
-          .getOrNull()
-      }
+    listOf("getFamilyName", "getFamily", "getName").firstNotNullOfOrNull { name ->
+      runCatching {
+          val value =
+            resolved.javaClass.methods
+              .firstOrNull { it.name == name && it.parameterCount == 0 }
+              ?.invoke(resolved)
+          value as? String
+        }
+        .getOrNull()
+    }
   return reflected?.takeIf { it.isNotBlank() } ?: resolved.toString()
 }
 

@@ -19,30 +19,29 @@ import org.junit.rules.TemporaryFolder
 
 /**
  * Integration coverage for the v3 Android-interactive held-rule loop (INTERACTIVE-ANDROID.md § 9).
- * This is the substantive PR B test — it boots two Robolectric sandboxes (`sandboxCount = 2`),
- * pins slot 1 to a held interactive session against the [ClickToggleSquare] testFixture, drives
- * the click into the held composition via [AndroidInteractiveSession.dispatch], and verifies the
- * second [AndroidInteractiveSession.render] reflects the flipped state.
+ * This is the substantive PR B test — it boots two Robolectric sandboxes (`sandboxCount = 2`), pins
+ * slot 1 to a held interactive session against the [ClickToggleSquare] testFixture, drives the
+ * click into the held composition via [AndroidInteractiveSession.dispatch], and verifies the second
+ * [AndroidInteractiveSession.render] reflects the flipped state.
  *
- * The empirical probe at `RobolectricInteractiveProbeTest` already confirmed the underlying
- * recipe (held rule + paused mainClock + dispatchTouchEvent + recapture) works under Robolectric.
- * This test adds the host plumbing on top: cross-classloader command marshalling through the
- * bridge, host-side `acquireInteractiveSession` precondition checks, the slot-pinning policy,
- * and the streamId / requestId correlation paths.
+ * The empirical probe at `RobolectricInteractiveProbeTest` already confirmed the underlying recipe
+ * (held rule + paused mainClock + dispatchTouchEvent + recapture) works under Robolectric. This
+ * test adds the host plumbing on top: cross-classloader command marshalling through the bridge,
+ * host-side `acquireInteractiveSession` precondition checks, the slot-pinning policy, and the
+ * streamId / requestId correlation paths.
  *
- * **Sandbox cold-boot cost.** With `sandboxCount = 2` the test pays ~2× the cold-boot wall-clock
- * of single-sandbox tests (each sandbox downloads + instruments `android-all` independently on a
- * cold cache). On a warm cache it's ≤ 5 s extra. Acceptable for a single integration test; we
- * don't multiply this across the harness — the broader S1-S8 coverage stays on the v1 stateless
- * path.
+ * **Sandbox cold-boot cost.** With `sandboxCount = 2` the test pays ~2× the cold-boot wall-clock of
+ * single-sandbox tests (each sandbox downloads + instruments `android-all` independently on a cold
+ * cache). On a warm cache it's ≤ 5 s extra. Acceptable for a single integration test; we don't
+ * multiply this across the harness — the broader S1-S8 coverage stays on the v1 stateless path.
  *
  * **No `assumeTrue` gate.** Unlike the standalone probe (`-Dcomposeai.probe.interactive=true`),
- * this test runs on every `:daemon:android:test` invocation. The probe stays gated because it's
- * an empirical experiment about Robolectric internals; this is the wired-up production path and
- * must not regress silently.
+ * this test runs on every `:daemon:android:test` invocation. The probe stays gated because it's an
+ * empirical experiment about Robolectric internals; this is the wired-up production path and must
+ * not regress silently.
  *
- * Pixel-match helper inlined for the same reason `RenderEngineTest` and the probe inline theirs
- * — pulling `:daemon:harness`'s `PixelDiff` would invert the dependency graph.
+ * Pixel-match helper inlined for the same reason `RenderEngineTest` and the probe inline theirs —
+ * pulling `:daemon:harness`'s `PixelDiff` would invert the dependency graph.
  */
 class AndroidInteractiveSessionTest {
 
@@ -499,7 +498,8 @@ class AndroidInteractiveSessionTest {
   fun nonComposableNotificationKindRendersInHeldSessionInsteadOfErroring() {
     // Regression: "TilePreview goes blank on enabled live mode". The held-rule loop used to call
     // `getDeclaredComposableMethod` unconditionally, which throws for non-composable preview kinds
-    // (tile / notification / Glance return `TilePreviewData` / `android.app.Notification` / a Glance
+    // (tile / notification / Glance return `TilePreviewData` / `android.app.Notification` / a
+    // Glance
     // widget — they never synthesise the `(Composer, Int)` method). The exception failed the
     // `interactive/start` reply, so enabling live mode blanked the preview. The fix branches on
     // `RenderSpec.kind` exactly like the one-shot `RenderEngine.render` path and routes these
@@ -516,7 +516,8 @@ class AndroidInteractiveSessionTest {
     val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
     host.start()
     try {
-      // Pre-fix this `acquire` threw (the start reply carried the NoSuchMethodException) — getting a
+      // Pre-fix this `acquire` threw (the start reply carried the NoSuchMethodException) — getting
+      // a
       // live session at all is the core of the regression.
       val session =
         host.acquireInteractiveSession(
@@ -654,10 +655,7 @@ class AndroidInteractiveSessionTest {
   fun idleLeaseAutoClosesAbandonedSession() {
     // Drive the watchdog with a 500ms lease so we don't burn a minute of CI per run. The host's
     // interactiveIdleLeaseMs forwards to every session it acquires.
-    System.setProperty(
-      RenderEngine.OUTPUT_DIR_PROP,
-      tempFolder.newFolder("zombie").absolutePath,
-    )
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, tempFolder.newFolder("zombie").absolutePath)
     System.setProperty("roborazzi.test.record", "true")
     val host =
       RobolectricHost(
@@ -710,10 +708,7 @@ class AndroidInteractiveSessionTest {
 
   @Test
   fun nestedAcquireRefusesUntilFirstSessionCloses() {
-    System.setProperty(
-      RenderEngine.OUTPUT_DIR_PROP,
-      tempFolder.newFolder("nested").absolutePath,
-    )
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, tempFolder.newFolder("nested").absolutePath)
     System.setProperty("roborazzi.test.record", "true")
     val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
     host.start()
@@ -759,11 +754,7 @@ class AndroidInteractiveSessionTest {
       tempFolder.newFolder("dark-overrides").absolutePath,
     )
     System.setProperty("roborazzi.test.record", "true")
-    val host =
-      RobolectricHost(
-        sandboxCount = 2,
-        previewSpecResolver = previewSpecResolver(),
-      )
+    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
     host.start()
     try {
       val session =
@@ -801,11 +792,7 @@ class AndroidInteractiveSessionTest {
       tempFolder.newFolder("classpath-dirty").absolutePath,
     )
     System.setProperty("roborazzi.test.record", "true")
-    val host =
-      RobolectricHost(
-        sandboxCount = 2,
-        previewSpecResolver = previewSpecResolver(),
-      )
+    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
     host.start()
     try {
       val session =
@@ -846,11 +833,7 @@ class AndroidInteractiveSessionTest {
       tempFolder.newFolder("shutdown-drain").absolutePath,
     )
     System.setProperty("roborazzi.test.record", "true")
-    val host =
-      RobolectricHost(
-        sandboxCount = 2,
-        previewSpecResolver = previewSpecResolver(),
-      )
+    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
     host.start()
     val session =
       host.acquireInteractiveSession(
@@ -923,7 +906,8 @@ class AndroidInteractiveSessionTest {
           pixelMatchPct(afterMiss, RED_RGB, perChannelTolerance = 8) >= 0.95,
         )
 
-        // The payload: a CLICK with NO pixel coords, only a testTag target. Resolved sandbox-side to
+        // The payload: a CLICK with NO pixel coords, only a testTag target. Resolved sandbox-side
+        // to
         // the corner node's centre → flips green.
         session.dispatch(
           InteractiveInputParams(

@@ -15,17 +15,17 @@ import kotlin.math.min
  * Renders the TalkBack focus visualization for one frame — issue #1956, Phase 1.
  *
  * Where [AccessibilityOverlay] paints a *static* Paparazzi-style legend of every node, this draws
- * what TalkBack *does*: a single green focus rectangle around the node TalkBack is currently stopped
- * on, the spoken announcement for that node in a caption card (so a silent capture still conveys
- * "what TalkBack says"), and faint traversal-order numbers on every focus stop so the path through
- * the screen reads at a glance.
+ * what TalkBack *does*: a single green focus rectangle around the node TalkBack is currently
+ * stopped on, the spoken announcement for that node in a caption card (so a silent capture still
+ * conveys "what TalkBack says"), and faint traversal-order numbers on every focus stop so the path
+ * through the screen reads at a glance.
  *
- * It composites onto the source screenshot at its native size (no side panel) so the output frame is
- * the same dimensions as the input — drop one of these per captured frame, advance [focusedStop] as
- * the walk progresses ([TalkBackOverlayFrames] maps frame index → stop), and the APNG / MP4 / GIF
- * encoder turns the sequence into an animated focus walk for free. The focus stops are the merged
- * nodes ([TalkBackTraversal.focusStops]); the caption text is [TalkBackUtterance.compose] of the
- * focused stop, so the rectangle, the number, and the words always agree.
+ * It composites onto the source screenshot at its native size (no side panel) so the output frame
+ * is the same dimensions as the input — drop one of these per captured frame, advance [focusedStop]
+ * as the walk progresses ([TalkBackOverlayFrames] maps frame index → stop), and the APNG / MP4 /
+ * GIF encoder turns the sequence into an animated focus walk for free. The focus stops are the
+ * merged nodes ([TalkBackTraversal.focusStops]); the caption text is [TalkBackUtterance.compose] of
+ * the focused stop, so the rectangle, the number, and the words always agree.
  *
  * Android-only (uses `Bitmap` / `Canvas`), same as [AccessibilityOverlay]. A desktop Skia variant
  * could mirror it the day live mode lands there.
@@ -91,12 +91,8 @@ object TalkBackFocusOverlay {
   }
 
   /** In-memory variant for tests / live drawing — returns the composited bitmap. */
-  fun compose(
-    source: Bitmap,
-    stops: List<AccessibilityNode>,
-    focusedStop: Int,
-  ): Bitmap {
-    val out = source.copy(Bitmap.Config.ARGB_8888, /* isMutable = */ true)
+  fun compose(source: Bitmap, stops: List<AccessibilityNode>, focusedStop: Int): Bitmap {
+    val out = source.copy(Bitmap.Config.ARGB_8888, /* isMutable= */ true)
     val canvas = Canvas(out)
     drawTraversalNumbers(canvas, stops, focusedStop)
     drawFocusRect(canvas, stops[focusedStop])
@@ -116,7 +112,11 @@ object TalkBackFocusOverlay {
     canvas.drawRect(r.left - o, r.top - o, r.right + o, r.bottom + o, stroke)
   }
 
-  private fun drawTraversalNumbers(canvas: Canvas, stops: List<AccessibilityNode>, focusedStop: Int) {
+  private fun drawTraversalNumbers(
+    canvas: Canvas,
+    stops: List<AccessibilityNode>,
+    focusedStop: Int,
+  ) {
     val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     val text =
       Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -151,16 +151,19 @@ object TalkBackFocusOverlay {
     val cardHeight = 2 * CAPTION_PADDING_PX + lines.size * CAPTION_LINE_PX
     val cardTop = height - CAPTION_MARGIN_PX - cardHeight
     val cardRect =
-      RectF(
-        CAPTION_MARGIN_PX,
-        cardTop,
-        width - CAPTION_MARGIN_PX,
-        height - CAPTION_MARGIN_PX,
-      )
-    val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; color = CAPTION_BG }
+      RectF(CAPTION_MARGIN_PX, cardTop, width - CAPTION_MARGIN_PX, height - CAPTION_MARGIN_PX)
+    val bg =
+      Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = CAPTION_BG
+      }
     canvas.drawRoundRect(cardRect, CAPTION_CORNER_PX, CAPTION_CORNER_PX, bg)
     // A green accent bar down the left edge ties the caption to the focus rectangle's colour.
-    val accent = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; color = CAPTION_ACCENT }
+    val accent =
+      Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = CAPTION_ACCENT
+      }
     canvas.drawRoundRect(
       RectF(cardRect.left, cardRect.top, cardRect.left + 6f, cardRect.bottom),
       CAPTION_CORNER_PX,

@@ -10,10 +10,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewWrapper
 
 /**
- * Two ways to preview a Remote Compose component — same output, different
- * code shape. The component-preview dimensions (200×200) are kept small and
- * square so the rendered PNG frames a single button cleanly; bump
- * `widthDp` / `heightDp` if you add components that need more room.
+ * Two ways to preview a Remote Compose component — same output, different code shape. The
+ * component-preview dimensions (200×200) are kept small and square so the rendered PNG frames a
+ * single button cleanly; bump `widthDp` / `heightDp` if you add components that need more room.
  */
 
 // ---------------------------------------------------------------------------
@@ -31,17 +30,17 @@ import androidx.compose.ui.tooling.preview.PreviewWrapper
 @Preview(showBackground = true, widthDp = 200, heightDp = 200)
 @Composable
 fun RemoteButtonEnabledPreview() {
-    RemoteContentPreview(profile = RcPlatformProfiles.ANDROIDX) {
-        Container { RemoteButtonEnabled() }
-    }
+  RemoteContentPreview(profile = RcPlatformProfiles.ANDROIDX) {
+    Container { RemoteButtonEnabled() }
+  }
 }
 
 @Preview(showBackground = true, widthDp = 200, heightDp = 200)
 @Composable
 fun RemoteButtonWithShapePreview() {
-    RemoteContentPreview(profile = RcPlatformProfiles.ANDROIDX) {
-        Container { RemoteButtonWithShape() }
-    }
+  RemoteContentPreview(profile = RcPlatformProfiles.ANDROIDX) {
+    Container { RemoteButtonWithShape() }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -68,37 +67,35 @@ fun RemoteButtonWithShapePreview() {
 @PreviewWrapper(RemotePreviewWrapper::class)
 @Composable
 fun RemoteButtonWithBorderPreview() {
-    Container { RemoteButtonWithBorder() }
+  Container { RemoteButtonWithBorder() }
 }
 
 /**
- * Companion preview for [RemoteButtonWithNamedLabel]. Annotated with the same
- * upstream `@PreviewWrapper(RemotePreviewWrapper::class)` as
- * [RemoteButtonWithBorderPreview]; the connector's substitution provider
- * decides at render time whether to swap to the override-aware wrapper.
- * Default render shows `"Tap me"`; the panel-side Remote Compose editor (or
- * any caller passing `renderNow.overrides.remoteCompose.namedValues =
- * {"label": ...}`) swaps that for a live label without rebuilding the
- * document.
+ * Companion preview for [RemoteButtonWithNamedLabel]. Annotated with the same upstream
+ * `@PreviewWrapper(RemotePreviewWrapper::class)` as [RemoteButtonWithBorderPreview]; the
+ * connector's substitution provider decides at render time whether to swap to the override-aware
+ * wrapper. Default render shows `"Tap me"`; the panel-side Remote Compose editor (or any caller
+ * passing `renderNow.overrides.remoteCompose.namedValues = {"label": ...}`) swaps that for a live
+ * label without rebuilding the document.
  */
 @Preview(showBackground = true, widthDp = 200, heightDp = 200)
 @PreviewWrapper(RemotePreviewWrapper::class)
 @Composable
 fun RemoteButtonWithNamedLabelPreview() {
-    Container { RemoteButtonWithNamedLabel() }
+  Container { RemoteButtonWithNamedLabel() }
 }
 
 /**
  * Preview for [RemoteShaderGradient] — a Remote Compose gradient-**shader** fill. Uses the same
  * `@PreviewWrapper(RemotePreviewWrapper::class)` path as the named-label preview so the connector's
- * substitution wires the `shaderColor` named value into the running player: the default render shows
- * the static gradient, and `renderNow.overrides.remoteCompose.namedValues = {"shaderColor": ...}`
- * recolours the shader live. This is the "shader control" surfaced through the existing
+ * substitution wires the `shaderColor` named value into the running player: the default render
+ * shows the static gradient, and `renderNow.overrides.remoteCompose.namedValues = {"shaderColor":
+ * ...}` recolours the shader live. This is the "shader control" surfaced through the existing
  * named-value override mechanism rather than a new control type.
  */
 @Preview(showBackground = true, widthDp = 200, heightDp = 200)
 @PreviewWrapper(RemotePreviewWrapper::class)
 @Composable
 fun RemoteShaderGradientPreview() {
-    Container { RemoteShaderGradient() }
+  Container { RemoteShaderGradient() }
 }

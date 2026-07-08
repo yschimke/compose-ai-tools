@@ -8,14 +8,15 @@ import org.robolectric.annotation.Implements
 /**
  * Pins the `@Implements` annotation form on [ShadowAmbientLifecycleObserver] (issue #1244).
  *
- * The shadow must declare `@Implements(className = "androidx.wear.ambient.AmbientLifecycleObserver")`
- * rather than `@Implements(value = AmbientLifecycleObserver::class)`. Robolectric's
- * `ShadowMap.obtainShadowInfo` reads `className()` first and only falls back to `value().getName()`
- * when `className` is empty; the class-literal form stores a deferred `Class<?>` reference in the
- * annotation proxy, and calling `.value()` forces the JVM's `AnnotationInvocationHandler` to
- * resolve `androidx.wear.ambient.AmbientLifecycleObserver` against the shadow's defining loader.
- * On daemon classpaths that ship the shadow next to a mismatched / stale wear AAR (the bug report
- * in issue #1244 surfaced this against the wear sample) that resolution throws
+ * The shadow must declare `@Implements(className =
+ * "androidx.wear.ambient.AmbientLifecycleObserver")` rather than `@Implements(value =
+ * AmbientLifecycleObserver::class)`. Robolectric's `ShadowMap.obtainShadowInfo` reads `className()`
+ * first and only falls back to `value().getName()` when `className` is empty; the class-literal
+ * form stores a deferred `Class<?>` reference in the annotation proxy, and calling `.value()`
+ * forces the JVM's `AnnotationInvocationHandler` to resolve
+ * `androidx.wear.ambient.AmbientLifecycleObserver` against the shadow's defining loader. On daemon
+ * classpaths that ship the shadow next to a mismatched / stale wear AAR (the bug report in
+ * issue #1244 surfaced this against the wear sample) that resolution throws
  * `TypeNotPresentException` deep inside Robolectric's `createClassLoaderConfig` loop — before
  * `SandboxHoldingRunner.getExtraShadows`'s gate has a chance to intercept the next sandbox.
  *

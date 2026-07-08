@@ -19,10 +19,9 @@ import androidx.compose.ui.unit.dp
 import dev.zacsweers.metrox.viewmodel.metroViewModel
 
 /**
- * Stateless presenter. Takes the data it needs and the callbacks it can
- * fire — no ViewModel reference, no `LocalMetroViewModelFactory` — so
- * `@Preview` can render it with a literal state and stub lambdas without
- * touching DI. This is the path to prefer for design previews.
+ * Stateless presenter. Takes the data it needs and the callbacks it can fire — no ViewModel
+ * reference, no `LocalMetroViewModelFactory` — so `@Preview` can render it with a literal state and
+ * stub lambdas without touching DI. This is the path to prefer for design previews.
  */
 @Composable
 fun CounterScreenContent(
@@ -44,17 +43,19 @@ fun CounterScreenContent(
         Button(onClick = onIncrement) { Text("+") }
       }
       Spacer(modifier = Modifier.size(4.dp))
-      Text("Initial value injected by CounterRepository", style = MaterialTheme.typography.labelSmall)
+      Text(
+        "Initial value injected by CounterRepository",
+        style = MaterialTheme.typography.labelSmall,
+      )
     }
   }
 }
 
 /**
- * Stateful entry point. `metroViewModel()` looks `LocalMetroViewModelFactory`
- * up from the composition and asks the standard Compose `viewModel()` to
- * resolve a [CounterViewModel] through it. The default `viewModelStoreOwner`
- * is `LocalViewModelStoreOwner.current` — Robolectric's `ComponentActivity`
- * provides one, so this works under the renderer the same as it does on a
+ * Stateful entry point. `metroViewModel()` looks `LocalMetroViewModelFactory` up from the
+ * composition and asks the standard Compose `viewModel()` to resolve a [CounterViewModel] through
+ * it. The default `viewModelStoreOwner` is `LocalViewModelStoreOwner.current` — Robolectric's
+ * `ComponentActivity` provides one, so this works under the renderer the same as it does on a
  * device.
  */
 @Composable

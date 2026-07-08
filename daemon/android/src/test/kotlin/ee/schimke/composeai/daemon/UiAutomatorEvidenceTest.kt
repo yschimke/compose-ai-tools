@@ -24,9 +24,9 @@ import org.robolectric.annotation.Config
 
 /**
  * Pins the typed-evidence heuristic for unsupported `uia.*` dispatches (#874 item #2). Drives
- * `UiAutomatorEvidence.compute(...)` against real Compose semantics trees through Robolectric
- * — same path the held-rule sandbox runs at dispatch time, so anything passing here matches
- * what an agent's `record_preview` response would look like in production.
+ * `UiAutomatorEvidence.compute(...)` against real Compose semantics trees through Robolectric —
+ * same path the held-rule sandbox runs at dispatch time, so anything passing here matches what an
+ * agent's `record_preview` response would look like in production.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "w400dp-h800dp")
@@ -71,12 +71,7 @@ class UiAutomatorEvidenceTest {
   @Test
   fun `ACTION_NOT_EXPOSED surfaces the matched node and the actions it does expose`() {
     rule.setContent {
-      Box(
-        modifier =
-          Modifier.size(80.dp)
-            .testTag("only-clickable")
-            .clickable(onClick = {})
-      )
+      Box(modifier = Modifier.size(80.dp).testTag("only-clickable").clickable(onClick = {}))
     }
 
     // The selector matches the only clickable node, but we asked for `inputText` — the
@@ -122,10 +117,7 @@ class UiAutomatorEvidenceTest {
         useUnmergedTree = false,
       )
     assertEquals(UiAutomatorUnsupportedReasonCode.MULTIPLE_MATCHES, reason.code)
-    assertTrue(
-      "expected matchCount >= 2, got ${reason.matchCount}",
-      reason.matchCount >= 2,
-    )
+    assertTrue("expected matchCount >= 2, got ${reason.matchCount}", reason.matchCount >= 2)
     assertNotNull("first matched node should be surfaced as the near-match", reason.nearMatch)
   }
 

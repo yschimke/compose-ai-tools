@@ -14,18 +14,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Wire-shape coverage for the v3 Android-interactive bridge primitives (INTERACTIVE-ANDROID.md
- * § 3, PR A scope). The held-rule loop and host-side `AndroidInteractiveSession` land in PR B —
- * here we only verify that the cross-classloader handoff surface itself is wired correctly:
+ * Wire-shape coverage for the v3 Android-interactive bridge primitives (INTERACTIVE-ANDROID.md § 3,
+ * PR A scope). The held-rule loop and host-side `AndroidInteractiveSession` land in PR B — here we
+ * only verify that the cross-classloader handoff surface itself is wired correctly:
  *
- *  * [InteractiveCommand] is a sealed family carrying only `java.*` types and bridge-package
- *    types, so it crosses the Robolectric do-not-acquire boundary unchanged.
- *  * [SandboxSlot.interactiveCommands] enqueues and dequeues each variant in FIFO order.
- *  * [DaemonHostBridge.reset] drains every slot's interactive queue and re-points slot 0 at a
- *    fresh `LinkedBlockingQueue`-equivalent (i.e. a leftover command from a previous host lifecycle
- *    cannot leak into the next `start`).
- *  * [DaemonHostBridge.configureSlotCount] allocates `interactiveCommands` for every standalone
- *    slot, so a v3-capable `sandboxCount=2` configuration has a queue on slot 1.
+ * * [InteractiveCommand] is a sealed family carrying only `java.*` types and bridge-package types,
+ *   so it crosses the Robolectric do-not-acquire boundary unchanged.
+ * * [SandboxSlot.interactiveCommands] enqueues and dequeues each variant in FIFO order.
+ * * [DaemonHostBridge.reset] drains every slot's interactive queue and re-points slot 0 at a fresh
+ *   `LinkedBlockingQueue`-equivalent (i.e. a leftover command from a previous host lifecycle cannot
+ *   leak into the next `start`).
+ * * [DaemonHostBridge.configureSlotCount] allocates `interactiveCommands` for every standalone
+ *   slot, so a v3-capable `sandboxCount=2` configuration has a queue on slot 1.
  *
  * Plain JUnit (no `@RunWith(SandboxHoldingRunner::class)`) — the bridge is host-side state, not
  * sandboxed; the do-not-acquire rule only applies inside Robolectric's `InstrumentingClassLoader`.
@@ -140,8 +140,7 @@ class InteractiveCommandTest {
       slot0.interactiveCommands,
       slot1.interactiveCommands,
     )
-    val cmd =
-      InteractiveCommand.Render(streamId = "stream-pinned-to-slot-1", requestId = 99L)
+    val cmd = InteractiveCommand.Render(streamId = "stream-pinned-to-slot-1", requestId = 99L)
     slot1.interactiveCommands.put(cmd)
     assertTrue(
       "enqueue on slot 1 must not appear on slot 0 — sandbox-pool isolation",

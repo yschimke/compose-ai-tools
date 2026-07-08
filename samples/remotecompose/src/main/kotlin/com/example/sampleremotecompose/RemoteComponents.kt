@@ -26,18 +26,16 @@ import androidx.wear.compose.remote.material3.RemoteText
 import androidx.wear.compose.remote.material3.buttonSizeModifier
 
 /**
- * Pure-remote composables — each one is the kind of component a real Remote
- * Compose screen is built from. Mirrors the upstream
- * `wear/compose/remote/remote-material3/samples` set, reduced to the three
- * button variants that don't need image-vector / bitmap fixtures.
+ * Pure-remote composables — each one is the kind of component a real Remote Compose screen is built
+ * from. Mirrors the upstream `wear/compose/remote/remote-material3/samples` set, reduced to the
+ * three button variants that don't need image-vector / bitmap fixtures.
  *
- * Exposed as the "unit of content" that the two preview approaches in
- * `Previews.kt` wrap differently:
- *   1. wrapper call inside the `@Preview`-annotated UI composable (see
- *      [RemoteButtonEnabledPreview]), and
- *   2. `@PreviewWrapper(RemotePreviewWrapper::class)` applied to a
- *      `@Preview`-annotated composable that only emits remote content (see
- *      [RemoteButtonWithBorderPreview]).
+ * Exposed as the "unit of content" that the two preview approaches in `Previews.kt` wrap
+ * differently:
+ * 1. wrapper call inside the `@Preview`-annotated UI composable (see [RemoteButtonEnabledPreview]),
+ *    and
+ * 2. `@PreviewWrapper(RemotePreviewWrapper::class)` applied to a `@Preview`-annotated composable
+ *    that only emits remote content (see [RemoteButtonWithBorderPreview]).
  */
 
 // A shared action used by every sample button — `hostAction(...)` is the Remote
@@ -49,25 +47,25 @@ private val testAction = hostAction("testAction".rs, 1.rf)
 @Composable
 @RemoteComposable
 fun RemoteButtonEnabled() {
-    RemoteButton(
-        onClick = testAction,
-        modifier = RemoteModifier.buttonSizeModifier(),
-        enabled = true.rb,
-        content = { RemoteText("Enabled".rs) },
-    )
+  RemoteButton(
+    onClick = testAction,
+    modifier = RemoteModifier.buttonSizeModifier(),
+    enabled = true.rb,
+    content = { RemoteText("Enabled".rs) },
+  )
 }
 
 @Composable
 @RemoteComposable
 fun RemoteButtonWithBorder() {
-    RemoteButton(
-        onClick = testAction,
-        modifier = RemoteModifier.buttonSizeModifier(),
-        border = 8.rdp,
-        borderColor = RemoteColor(Color.Green),
-    ) {
-        RemoteText("Bordered".rs)
-    }
+  RemoteButton(
+    onClick = testAction,
+    modifier = RemoteModifier.buttonSizeModifier(),
+    border = 8.rdp,
+    borderColor = RemoteColor(Color.Green),
+  ) {
+    RemoteText("Bordered".rs)
+  }
 }
 
 /**
@@ -80,23 +78,23 @@ fun RemoteButtonWithBorder() {
 @Composable
 @RemoteComposable
 fun RemoteButtonWithNamedLabel() {
-    val label = rememberNamedRemoteString("label", "Tap me")
-    RemoteButton(
-        onClick = testAction,
-        modifier = RemoteModifier.buttonSizeModifier(),
-        content = { RemoteText(label) },
-    )
+  val label = rememberNamedRemoteString("label", "Tap me")
+  RemoteButton(
+    onClick = testAction,
+    modifier = RemoteModifier.buttonSizeModifier(),
+    content = { RemoteText(label) },
+  )
 }
 
 @Composable
 @RemoteComposable
 fun RemoteButtonWithShape() {
-    RemoteButton(
-        onClick = testAction,
-        modifier = RemoteModifier.buttonSizeModifier(),
-        shape = RemoteRoundedCornerShape(4.rdp),
-        content = { RemoteText("Custom shape".rs) },
-    )
+  RemoteButton(
+    onClick = testAction,
+    modifier = RemoteModifier.buttonSizeModifier(),
+    shape = RemoteRoundedCornerShape(4.rdp),
+    content = { RemoteText("Custom shape".rs) },
+  )
 }
 
 /**
@@ -117,33 +115,28 @@ fun RemoteButtonWithShape() {
 @Composable
 @RemoteComposable
 fun RemoteShaderGradient() {
-    val shaderColor = rememberNamedRemoteColor("shaderColor", Color(0xFF7DE2FF))
-    val brush =
-        RemoteBrush.linearGradient(
-            listOf(
-                RemoteColor(Color(0xFF101820)),
-                shaderColor,
-                RemoteColor(Color(0xFFFFB86C)),
-            )
-        )
-    RemoteBox(
-        modifier = RemoteModifier.fillMaxSize().background(brush),
-        contentAlignment = RemoteAlignment.Center,
-        content = { RemoteText("Shader".rs) },
+  val shaderColor = rememberNamedRemoteColor("shaderColor", Color(0xFF7DE2FF))
+  val brush =
+    RemoteBrush.linearGradient(
+      listOf(RemoteColor(Color(0xFF101820)), shaderColor, RemoteColor(Color(0xFFFFB86C)))
     )
+  RemoteBox(
+    modifier = RemoteModifier.fillMaxSize().background(brush),
+    contentAlignment = RemoteAlignment.Center,
+    content = { RemoteText("Shader".rs) },
+  )
 }
 
 /**
- * Centers [content] inside a remote full-size box. Equivalent to the upstream
- * sample's `Container`; kept private to emphasise that its purpose is preview
- * framing, not production composition.
+ * Centers [content] inside a remote full-size box. Equivalent to the upstream sample's `Container`;
+ * kept private to emphasise that its purpose is preview framing, not production composition.
  */
 @Composable
 @RemoteComposable
 fun Container(content: @Composable @RemoteComposable () -> Unit) {
-    RemoteBox(
-        modifier = RemoteModifier.fillMaxSize(),
-        contentAlignment = RemoteAlignment.Center,
-        content = content,
-    )
+  RemoteBox(
+    modifier = RemoteModifier.fillMaxSize(),
+    contentAlignment = RemoteAlignment.Center,
+    content = content,
+  )
 }

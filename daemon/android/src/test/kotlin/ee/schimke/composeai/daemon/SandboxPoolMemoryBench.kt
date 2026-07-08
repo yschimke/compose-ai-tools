@@ -8,13 +8,12 @@ import org.junit.Test
 /**
  * SANDBOX-POOL.md bench — boots `RobolectricHost(sandboxCount = 4)` and prints heap and native
  * footprint before vs after, plus the per-sandbox marginal cost. The numbers are the empirical
- * basis for the "~750 MB per replica saved by Layer 3" claim in SANDBOX-POOL.md and the
- * CHANGELOG.
+ * basis for the "~750 MB per replica saved by Layer 3" claim in SANDBOX-POOL.md and the CHANGELOG.
  *
  * **Not a correctness test.** Asserts only loose sanity bounds (e.g. "the 4-sandbox pool spends
  * less heap than 4× a single sandbox would"); real measurement variation across hardware /
- * Robolectric versions makes tighter bounds flaky. The actual numbers are the artifact — they
- * print to the test's stdout/stderr and the JUnit XML's `<system-out>`.
+ * Robolectric versions makes tighter bounds flaky. The actual numbers are the artifact — they print
+ * to the test's stdout/stderr and the JUnit XML's `<system-out>`.
  *
  * Pair with [RobolectricHostTest] (which boots a single sandbox in the same JVM via the same
  * Robolectric stack) to compare absolute footprints. Run both, eyeball the deltas, write the
@@ -46,8 +45,12 @@ class SandboxPoolMemoryBench {
 
       val report = buildString {
         appendLine("---- sandbox-pool memory bench ----")
-        appendLine("baseline:    heap=${baseline.heapMb} MiB  nativeHeap=${baseline.nativeHeapMb} MiB")
-        appendLine("warm (×$sandboxCount): heap=${warm.heapMb} MiB  nativeHeap=${warm.nativeHeapMb} MiB")
+        appendLine(
+          "baseline:    heap=${baseline.heapMb} MiB  nativeHeap=${baseline.nativeHeapMb} MiB"
+        )
+        appendLine(
+          "warm (×$sandboxCount): heap=${warm.heapMb} MiB  nativeHeap=${warm.nativeHeapMb} MiB"
+        )
         appendLine("delta:       heap=$heapDeltaMb MiB    nativeHeap=$nativeDeltaMb MiB")
         appendLine(
           "per-sandbox amortized: heap≈$perSandboxHeapMb MiB  nativeHeap≈$perSandboxNativeMb MiB"

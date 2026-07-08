@@ -212,10 +212,10 @@ class UserClassLoaderHolder(
     /**
      * Whether [name] must be resolved via the parent loader instead of child-first (used by
      * [ChildFirstURLClassLoader.loadClass]). Two reasons a class is on this list:
-     * 1. **Bootstrap / framework classes** — `java.*`, `kotlin.*`, `androidx.*`, Robolectric, Skiko,
-     *    etc. Punching holes in the JDK packages would break the JVM's bootstrap invariants, and the
-     *    Compose/AndroidX runtime must be the *one* copy the parent bootstrapped (child-loading it
-     *    would fail on classloader-identity skew).
+     * 1. **Bootstrap / framework classes** — `java.*`, `kotlin.*`, `androidx.*`, Robolectric,
+     *    Skiko, etc. Punching holes in the JDK packages would break the JVM's bootstrap invariants,
+     *    and the Compose/AndroidX runtime must be the *one* copy the parent bootstrapped
+     *    (child-loading it would fail on classloader-identity skew).
      * 2. **Process-static bridges shared with the daemon** — `ee.schimke.composeai.daemon.*` (the
      *    cross-classloader handoff queues) and `ee.schimke.composeai.overrides.*` (the
      *    `previewOverride*` named-override runtime: `PreviewOverrideController` is a process-static

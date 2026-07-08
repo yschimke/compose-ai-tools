@@ -16,8 +16,8 @@ import org.robolectric.annotation.Config
 
 /**
  * Verifies `PseudolocaleResources` preserves `Spanned` metadata when transforming styled string
- * resources. Without this, every preview rendered against a styled `<b>foo</b>` /
- * `<annotation>` resource lost its emphasis under pseudolocale, hiding styling regressions.
+ * resources. Without this, every preview rendered against a styled `<b>foo</b>` / `<annotation>`
+ * resource lost its emphasis under pseudolocale, hiding styling regressions.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33])
@@ -65,11 +65,7 @@ class PseudolocaleResourcesSpanPreservationTest {
     val spans = out.getSpans(0, out.length, android.text.style.BulletSpan::class.java)
     assertEquals(1, spans.size)
     assertEquals("paragraph span must start at 0", 0, out.getSpanStart(spans[0]))
-    assertEquals(
-      "paragraph span must end at length",
-      out.length,
-      out.getSpanEnd(spans[0]),
-    )
+    assertEquals("paragraph span must end at length", out.length, out.getSpanEnd(spans[0]))
   }
 
   @Test
@@ -83,8 +79,8 @@ class PseudolocaleResourcesSpanPreservationTest {
   /**
    * Helper that exposes [PseudolocaleResources]'s private `pseudolocalise` over a test
    * `CharSequence`. We instantiate `PseudolocaleResources` against the application's real
-   * `Resources` so the constructor's `assets` / `displayMetrics` / `configuration` are valid,
-   * then route the input directly through the same code path `getText(int)` calls.
+   * `Resources` so the constructor's `assets` / `displayMetrics` / `configuration` are valid, then
+   * route the input directly through the same code path `getText(int)` calls.
    */
   private fun withSpannedGetText(raw: CharSequence) =
     object {
@@ -93,10 +89,9 @@ class PseudolocaleResourcesSpanPreservationTest {
         // Reflective access into the private helper. Keeps the test focused on the
         // span-preservation contract without exposing the helper publicly.
         val method =
-          PseudolocaleResources::class.java.getDeclaredMethod(
-            "pseudolocalise",
-            CharSequence::class.java,
-          )
+          PseudolocaleResources::class
+            .java
+            .getDeclaredMethod("pseudolocalise", CharSequence::class.java)
         method.isAccessible = true
         return method.invoke(pseudo, raw) as CharSequence
       }

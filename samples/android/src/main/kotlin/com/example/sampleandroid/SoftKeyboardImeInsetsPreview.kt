@@ -4,6 +4,7 @@ package com.example.sampleandroid
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -11,7 +12,6 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
@@ -29,11 +29,12 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 
 /**
- * Confirms the soft-keyboard data extension publishes real `WindowInsetsCompat.Type.ime()` insets
- * — not just a painted-on overlay. A `LazyColumn` with `Modifier.imePadding()` should shrink so its
- * last row sits **above** the band, not behind it. Pair-rendered against [ImeAwareListHiddenPreview]
- * as a same-content/different-IME-state diff: both show a 30-row list under the same heading; only
- * this one raises the IME (and thus shrinks the list to the band-relative viewport).
+ * Confirms the soft-keyboard data extension publishes real `WindowInsetsCompat.Type.ime()` insets —
+ * not just a painted-on overlay. A `LazyColumn` with `Modifier.imePadding()` should shrink so its
+ * last row sits **above** the band, not behind it. Pair-rendered against
+ * [ImeAwareListHiddenPreview] as a same-content/different-IME-state diff: both show a 30-row list
+ * under the same heading; only this one raises the IME (and thus shrinks the list to the
+ * band-relative viewport).
  *
  * Compose's IME inset story:
  *
@@ -62,9 +63,10 @@ fun ImeAwareListShownPreview() {
 }
 
 /**
- * Companion preview with the IME hidden. Same list, same scroll state, no `keyboardController.show()`
- * — the band stays down and the list runs to the bottom of the canvas. Diffing this against
- * [ImeAwareListShownPreview] makes the inset-driven viewport adaptation visible at a glance.
+ * Companion preview with the IME hidden. Same list, same scroll state, no
+ * `keyboardController.show()` — the band stays down and the list runs to the bottom of the canvas.
+ * Diffing this against [ImeAwareListShownPreview] makes the inset-driven viewport adaptation
+ * visible at a glance.
  */
 @Preview(name = "IME-aware list — keyboard hidden", widthDp = 360, heightDp = 640)
 @Composable
@@ -112,9 +114,7 @@ private fun ImeAwareList(showLabel: String) {
             fontWeight = FontWeight.Medium,
           ),
         modifier =
-          Modifier.align(Alignment.BottomCenter)
-            .windowInsetsPadding(WindowInsets.ime)
-            .padding(8.dp),
+          Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.ime).padding(8.dp),
       )
     }
   }
@@ -134,9 +134,8 @@ private data class ListEntry(val index: Int, val title: String)
 
 /**
  * 30 rows. The hidden-keyboard preview runs the canvas full-bleed so the last visible row hits
- * around row 12-14 (depending on font metrics); the keyboard-up preview shrinks the viewport by
- * the band's 240dp, which knocks the visible window down by ~4-5 rows. The diff is the proof the
- * inset is actually flowing through `WindowInsets.ime` and not just a painted-on overlay.
+ * around row 12-14 (depending on font metrics); the keyboard-up preview shrinks the viewport by the
+ * band's 240dp, which knocks the visible window down by ~4-5 rows. The diff is the proof the inset
+ * is actually flowing through `WindowInsets.ime` and not just a painted-on overlay.
  */
-private val LIST_ROWS: List<ListEntry> =
-  (1..30).map { ListEntry(index = it, title = "Item $it") }
+private val LIST_ROWS: List<ListEntry> = (1..30).map { ListEntry(index = it, title = "Item $it") }

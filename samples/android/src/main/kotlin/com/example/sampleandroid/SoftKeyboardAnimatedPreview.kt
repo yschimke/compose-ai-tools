@@ -59,20 +59,19 @@ fun SoftKeyboardAnimatedPreview() {
     onDispose { keyboardController?.hide() }
   }
   val transition = rememberInfiniteTransition(label = "typing")
-  val phase by transition.animateFloat(
-    initialValue = 0f,
-    targetValue = TYPING_SEQUENCE.size.toFloat(),
-    animationSpec =
-      infiniteRepeatable(animation = tween(durationMillis = 2400, easing = LinearEasing)),
-    label = "phase",
-  )
+  val phase by
+    transition.animateFloat(
+      initialValue = 0f,
+      targetValue = TYPING_SEQUENCE.size.toFloat(),
+      animationSpec =
+        infiniteRepeatable(animation = tween(durationMillis = 2400, easing = LinearEasing)),
+      label = "phase",
+    )
   val index = phase.toInt().coerceIn(0, TYPING_SEQUENCE.size - 1)
   val slot = TYPING_SEQUENCE[index]
   // Mirror the daemon's interactive `KEY_DOWN` / `KEY_UP` shape so the band's `pressedKey` state
   // reaches it through the supported `KeyboardController` API rather than a private back-channel.
-  LaunchedEffect(index) {
-    KeyboardController.notifyKeyDown(slot.pressed)
-  }
+  LaunchedEffect(index) { KeyboardController.notifyKeyDown(slot.pressed) }
   DisposableEffect(Unit) { onDispose { KeyboardController.notifyKeyUp() } }
 
   val running = buildString { for (i in 0..index) append(TYPING_SEQUENCE[i].typed) }
@@ -104,8 +103,9 @@ fun SoftKeyboardAnimatedPreview() {
 /**
  * Static counterpart that exercises only the app-side path: focusing nothing, calling
  * `keyboardController.show()` directly. The band appears because the around-composable's shadow
- * `LocalSoftwareKeyboardController` catches the call and flips `KeyboardController.notifyImeVisibility(true)`.
- * Useful as a baseline diff target against the animated preview.
+ * `LocalSoftwareKeyboardController` catches the call and flips
+ * `KeyboardController.notifyImeVisibility(true)`. Useful as a baseline diff target against the
+ * animated preview.
  */
 @Preview(name = "Soft Keyboard — idle", widthDp = 360, heightDp = 640)
 @Composable

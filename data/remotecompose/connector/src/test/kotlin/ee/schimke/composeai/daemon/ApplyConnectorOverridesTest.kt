@@ -16,7 +16,9 @@ import org.junit.Test
  */
 class ApplyConnectorOverridesTest {
 
-  /** [StateUpdater] capture stub — records every `setUserLocal*` call as a tag/name/value triple. */
+  /**
+   * [StateUpdater] capture stub — records every `setUserLocal*` call as a tag/name/value triple.
+   */
   private class CapturingStateUpdater : StateUpdater {
     val calls = mutableListOf<Triple<String, String, Any?>>()
 
@@ -91,14 +93,8 @@ class ApplyConnectorOverridesTest {
   @Test
   fun `color value decodes hash-AARRGGBB to packed int`() {
     val updater = CapturingStateUpdater()
-    applyConnectorOverrides(
-      updater,
-      mapOf("seed" to RemoteNamedValue.ColorValue("#FF3366FF")),
-    )
-    assertEquals(
-      listOf(Triple("color", "seed", 0xFF3366FF.toInt() as Any?)),
-      updater.calls,
-    )
+    applyConnectorOverrides(updater, mapOf("seed" to RemoteNamedValue.ColorValue("#FF3366FF")))
+    assertEquals(listOf(Triple("color", "seed", 0xFF3366FF.toInt() as Any?)), updater.calls)
   }
 
   @Test

@@ -32,9 +32,9 @@ import kotlinx.serialization.json.JsonElement
 /**
  * `AroundComposable` extension that primes [AmbientStateController] with the active override and
  * installs a [LocalAmbientModeManager] composition local backed by that controller, so consumer
- * code reading `LocalAmbientModeManager.current?.currentAmbientMode`
- * (the seam `androidx.wear.compose.foundation.samples.AmbientModeBasicSample` uses) sees the
- * requested state without touching the on-device Wear Services SDK.
+ * code reading `LocalAmbientModeManager.current?.currentAmbientMode` (the seam
+ * `androidx.wear.compose.foundation.samples.AmbientModeBasicSample` uses) sees the requested state
+ * without touching the on-device Wear Services SDK.
  *
  * Runs in the [DataExtensionPhase.OuterEnvironment] phase so the controller is set before the
  * `UserEnvironment` phase (where wallpaper / theme sit) — by the time the user code reaches
@@ -90,8 +90,8 @@ private object ControllerAmbientModeManager : AmbientModeManager {
 }
 
 /**
- * Planner that maps `renderNow.overrides.ambient` to an [AmbientOverrideExtension]. No-op when
- * the field is null — matches the wallpaper / theme planners.
+ * Planner that maps `renderNow.overrides.ambient` to an [AmbientOverrideExtension]. No-op when the
+ * field is null — matches the wallpaper / theme planners.
  */
 class AmbientPreviewOverrideExtension : DataExtension<PreviewOverrides> {
   override val id: DataExtensionId = AmbientOverrideExtension.ID
@@ -187,8 +187,7 @@ class AmbientDataProductRegistry : DataProductRegistry {
         applied.state == AmbientStateOverride.AMBIENT &&
           (applied.burnInProtectionRequired ?: false),
       deviceHasLowBitAmbient =
-        applied.state == AmbientStateOverride.AMBIENT &&
-          (applied.deviceHasLowBitAmbient ?: false),
+        applied.state == AmbientStateOverride.AMBIENT && (applied.deviceHasLowBitAmbient ?: false),
       updateTimeMillis = applied.updateTimeMillis ?: System.currentTimeMillis(),
     )
 

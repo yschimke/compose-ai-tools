@@ -6,15 +6,13 @@ import org.robolectric.annotation.Config
 import org.robolectric.internal.bytecode.InstrumentationConfiguration
 
 /**
- * Robolectric runner that excludes [ee.schimke.composeai.daemon.bridge] from
- * instrumentation so its static state (the request queue, result map, and
- * shutdown flag) is shared identically between the test thread and the
- * sandbox thread.
+ * Robolectric runner that excludes [ee.schimke.composeai.daemon.bridge] from instrumentation so its
+ * static state (the request queue, result map, and shutdown flag) is shared identically between the
+ * test thread and the sandbox thread.
  *
- * See [ee.schimke.composeai.daemon.bridge.DaemonHostBridge] for the rationale
- * — without this rule, Robolectric's `InstrumentingClassLoader` re-loads
- * `ee.schimke.composeai.daemon.*` classes in the sandbox, producing two
- * independent copies of the static handoff state.
+ * See [ee.schimke.composeai.daemon.bridge.DaemonHostBridge] for the rationale — without this rule,
+ * Robolectric's `InstrumentingClassLoader` re-loads `ee.schimke.composeai.daemon.*` classes in the
+ * sandbox, producing two independent copies of the static handoff state.
  *
  * **B2.0 — disposable user-class loader.** When `composeai.daemon.userClassPackages` is set
  * (colon-delimited list of user-module package prefixes — emitted by the Gradle plugin's launch
@@ -29,8 +27,8 @@ import org.robolectric.internal.bytecode.InstrumentationConfiguration
  * **Sandbox pool (SANDBOX-POOL.md).** When [SandboxHoldingHints.workerIndex] is set on the worker
  * thread that constructs this runner, [createClassLoaderConfig] adds a synthetic per-runner
  * discriminator so each pool worker's [InstrumentationConfiguration] differs and Robolectric's
- * sandbox cache builds a fresh sandbox per worker. Without this, multi-worker hosts share a
- * single cached sandbox (the cache key would be identical) and concurrent renders queue on one
+ * sandbox cache builds a fresh sandbox per worker. Without this, multi-worker hosts share a single
+ * cached sandbox (the cache key would be identical) and concurrent renders queue on one
  * single-thread executor.
  */
 open class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(testClass) {
@@ -38,9 +36,9 @@ open class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(tes
   /**
    * Snapshot of the worker-index hint at construction time. The ThreadLocal is set on the pool
    * worker thread before `JUnitCore.runClasses` instantiates the runner; capture it now because
-   * Robolectric subsequently invokes [createClassLoaderConfig] from at least two different
-   * threads (the worker thread initially, then the sandbox's main thread later) and ThreadLocal
-   * would silently miss on the latter — collapsing the cache to a single shared sandbox. Verified
+   * Robolectric subsequently invokes [createClassLoaderConfig] from at least two different threads
+   * (the worker thread initially, then the sandbox's main thread later) and ThreadLocal would
+   * silently miss on the latter — collapsing the cache to a single shared sandbox. Verified
    * empirically with a probe on Robolectric 4.16.1 (see SANDBOX-POOL.md "Layer 2 — empirical
    * finding").
    *
@@ -56,28 +54,31 @@ open class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(tes
    * `ee/schimke/composeai/renderer/robolectric.properties` for the Gradle `composePreviewRender`
    * path. That properties file is package-scoped — Robolectric only finds it for tests under
    * `ee.schimke.composeai.renderer`, so the daemon's [RobolectricHost.SandboxRunner] (package
-   * `ee.schimke.composeai.daemon`) never picks it up. Without an explicit override here, Robolectric
-   * falls back to the consumer's `AndroidManifest.xml` and invokes the production `Application`
-   * subclass, defeating the renderer's "previews shouldn't run app-lifecycle init" contract.
+   * `ee.schimke.composeai.daemon`) never picks it up. Without an explicit override here,
+   * Robolectric falls back to the consumer's `AndroidManifest.xml` and invokes the production
+   * `Application` subclass, defeating the renderer's "previews shouldn't run app-lifecycle init"
+   * contract.
    *
    * Setting the global config's `application` field is equivalent to the properties-file line: it
    * supplies the default that gets merged with `@Config` on the test class. The host loads
    * `android.app.Application` via the daemon-classpath's `android.jar`; the sandbox re-resolves it
    * by FQN through its instrumenting loader, same as Robolectric's own internals.
    *
-   * `composeai.daemon.useConsumerApplication=true` (sourced from `composePreview.useConsumerApplication`
-   * via [ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask]) restores the historical "Robolectric
+   * `composeai.daemon.useConsumerApplication=true` (sourced from
+   * `composePreview.useConsumerApplication` via
+   * [ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask]) restores the historical "Robolectric
    * reads the manifest" behaviour for previews that genuinely depend on consumer-Application init
    * (Koin/Hilt seeded in `onCreate`, etc.). Consumers opting in are responsible for making their
    * `Application.onCreate` Robolectric-safe — multiple sandbox workers run in the same JVM, so any
-   * process-global side effect (`URL.setURLStreamHandlerFactory`, static `init {}` blocks that throw
-   * on second invocation) must be idempotent.
+   * process-global side effect (`URL.setURLStreamHandlerFactory`, static `init {}` blocks that
+   * throw on second invocation) must be idempotent.
    *
    * `buildGlobalConfig` is `@Deprecated` in Robolectric 4.16 in favour of a `Configurer` extension,
-   * but it remains the documented seam for "default for tests in this runner" overrides and is still
-   * invoked by `RobolectricTestRunner.getConfig`. Migrating to a `Configurer` would require
-   * registering it via `META-INF/services` and rebuilding the merge ordering by hand; the deprecated
-   * hook does exactly what the consumer-side `robolectric.properties` line does without that churn.
+   * but it remains the documented seam for "default for tests in this runner" overrides and is
+   * still invoked by `RobolectricTestRunner.getConfig`. Migrating to a `Configurer` would require
+   * registering it via `META-INF/services` and rebuilding the merge ordering by hand; the
+   * deprecated hook does exactly what the consumer-side `robolectric.properties` line does without
+   * that churn.
    */
   @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
   override fun buildGlobalConfig(): Config {
@@ -88,8 +89,9 @@ open class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(tes
     return Config.Builder(parent).setApplication(android.app.Application::class.java).build()
   }
 
-  override fun createClassLoaderConfig(method: org.junit.runners.model.FrameworkMethod):
-    InstrumentationConfiguration {
+  override fun createClassLoaderConfig(
+    method: org.junit.runners.model.FrameworkMethod
+  ): InstrumentationConfiguration {
     val builder =
       InstrumentationConfiguration.Builder(super.createClassLoaderConfig(method))
         .doNotAcquirePackage("ee.schimke.composeai.daemon.bridge")
@@ -109,15 +111,14 @@ open class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(tes
     // The synthetic class name never matches a real class — it exists purely to break the cache
     // key.
     if (poolWorkerIndex != null) {
-      builder.doNotAcquireClass(
-        "composeai.sandbox.uniq.Runner${System.identityHashCode(this)}"
-      )
+      builder.doNotAcquireClass("composeai.sandbox.uniq.Runner${System.identityHashCode(this)}")
     }
     // B2.0: optional user-package exclusion. Empty when sysprop is unset; existing in-process
     // tests that rely on the default sandbox-classpath path are unaffected.
     val raw = System.getProperty("composeai.daemon.userClassPackages")
     if (!raw.isNullOrBlank()) {
-      raw.split(java.io.File.pathSeparator)
+      raw
+        .split(java.io.File.pathSeparator)
         .map { it.trim() }
         .filter { it.isNotEmpty() }
         .forEach { builder.doNotAcquirePackage(it) }
@@ -136,18 +137,19 @@ open class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(tes
    *    JVM annotation parser would resolve via the shadow's defining loader. That deferred
    *    resolution was the path that threw `TypeNotPresentException` mid-sandbox-bootstrap on Wear
    *    sample classpaths shipping the shadow next to a stale/mismatched wear AAR.
-   * 2. **This gate still hides the shadow when wear-ambient isn't loadable**, so the shadow class
-   *    — which references `AmbientLifecycleObserver` in field and method-parameter types — is
-   *    only ever returned to Robolectric on classpaths where its symbolic links can be resolved.
+   * 2. **This gate still hides the shadow when wear-ambient isn't loadable**, so the shadow class —
+   *    which references `AmbientLifecycleObserver` in field and method-parameter types — is only
+   *    ever returned to Robolectric on classpaths where its symbolic links can be resolved.
    *
    * The same gate is mirrored on the engine side in [ee.schimke.composeai.daemon.RobolectricHost]
-   * for `AmbientPreviewOverrideExtension` / `AmbientInputDispatchObserver` instantiation —
-   * those concrete classes call into `AmbientStateController` which directly imports wear API.
+   * for `AmbientPreviewOverrideExtension` / `AmbientInputDispatchObserver` instantiation — those
+   * concrete classes call into `AmbientStateController` which directly imports wear API.
    */
   override fun getExtraShadows(method: FrameworkMethod): Array<Class<*>> {
     val shadows = mutableListOf<Class<*>>()
     // Wear ambient shadow — only when the wear AAR is on the classpath (issue #1244) AND
-    // the daemon's connector module is also available. The connector (ShadowAmbientLifecycleObserver
+    // the daemon's connector module is also available. The connector
+    // (ShadowAmbientLifecycleObserver
     // and friends) is bundled inside the extension artifact; when the artifact predates the
     // connector being added, the wear AAR check passes but the connector class is absent,
     // causing NoClassDefFoundError mid-sandbox-bootstrap. Catching here lets the daemon
@@ -193,17 +195,13 @@ internal fun isWearAmbientAvailable(loader: ClassLoader?): Boolean {
  * supplied classloader. Used to gate `:data-remotecompose-connector` registration on the consumer
  * actually shipping the alpha `compose-remote` artifacts (`:samples:remotecompose` for the
  * reference setup) — the connector's own classes reference these alpha types directly, so
- * instantiating any of them on a non-Remote-Compose classpath raises `NoClassDefFoundError` at
- * the lazy-init line. Mirrors [isWearAmbientAvailable] for the Wear ambient connector.
+ * instantiating any of them on a non-Remote-Compose classpath raises `NoClassDefFoundError` at the
+ * lazy-init line. Mirrors [isWearAmbientAvailable] for the Wear ambient connector.
  */
 internal fun isRemoteComposeAvailable(loader: ClassLoader?): Boolean {
   val effective = loader ?: ClassLoader.getSystemClassLoader() ?: return false
   return try {
-    Class.forName(
-      "androidx.compose.remote.creation.compose.action.HostAction",
-      false,
-      effective,
-    )
+    Class.forName("androidx.compose.remote.creation.compose.action.HostAction", false, effective)
     true
   } catch (_: ClassNotFoundException) {
     false
@@ -230,9 +228,9 @@ internal object SandboxHoldingHints {
    *
    * Read **only** at runner construction (snapshotted into [SandboxHoldingRunner.poolWorkerIndex]).
    * Reading it elsewhere — particularly inside [SandboxHoldingRunner.createClassLoaderConfig] —
-   * silently misses on the second invocation (which Robolectric makes on the sandbox's main
-   * thread, where the ThreadLocal isn't set), so the discriminator vanishes and the cache key
-   * collapses across workers.
+   * silently misses on the second invocation (which Robolectric makes on the sandbox's main thread,
+   * where the ThreadLocal isn't set), so the discriminator vanishes and the cache key collapses
+   * across workers.
    */
   val workerIndex: ThreadLocal<Int?> = ThreadLocal()
 }

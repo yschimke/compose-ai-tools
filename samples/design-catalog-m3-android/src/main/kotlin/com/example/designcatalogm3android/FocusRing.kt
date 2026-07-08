@@ -79,5 +79,6 @@ private fun focusedSource(): MutableInteractionSource {
   group = "modes",
 )
 @Composable
-fun FilledButtonFocused() =
-  FocusRingSticker { Button(onClick = {}, interactionSource = focusedSource()) { Text("Focused") } }
+fun FilledButtonFocused() = FocusRingSticker {
+  Button(onClick = {}, interactionSource = focusedSource()) { Text("Focused") }
+}

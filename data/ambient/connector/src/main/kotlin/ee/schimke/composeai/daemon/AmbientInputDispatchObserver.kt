@@ -4,8 +4,8 @@ import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
 
 /**
  * `RecordingScriptDispatchObserver` that wakes [AmbientStateController] on activating input
- * gestures. Mirrors the AOSP `AmbientLifecycleObserver` wake semantics — only the gestures the
- * Wear OS system itself wakes on are listed:
+ * gestures. Mirrors the AOSP `AmbientLifecycleObserver` wake semantics — only the gestures the Wear
+ * OS system itself wakes on are listed:
  *
  * - `input.click` / `input.pointerDown` — touch-driven activation.
  * - `input.rotaryScroll` — rotary side-button activation.

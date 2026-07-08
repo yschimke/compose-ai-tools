@@ -1,19 +1,19 @@
 package ee.schimke.composeai.daemon
 
-import ee.schimke.composeai.io.SystemFileSystem
-import okio.FileSystem
-import okio.Path.Companion.toPath
 import android.content.Intent
 import androidx.activity.ComponentActivity
 import ee.schimke.composeai.data.navigation.NavigationBackPressedState
 import ee.schimke.composeai.data.navigation.NavigationDataProduct
 import ee.schimke.composeai.data.navigation.NavigationIntent
 import ee.schimke.composeai.data.navigation.NavigationPayload
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * Producer for `data/navigation`. Reads the held activity's `getIntent()` and the
@@ -87,8 +87,8 @@ object NavigationDataProducer {
    * primitive. Goes through the typed accessors instead of a single `Bundle.get(key)` call because
    * under Robolectric the `Bundle` returned by `Intent.getExtras()` can be in a state where
    * `keySet()` knows the keys but `Bundle.get(key)` returns null (parcel not fully materialised on
-   * the copy). The typed accessors take a different code path on the original intent and don't
-   * have that hazard.
+   * the copy). The typed accessors take a different code path on the original intent and don't have
+   * that hazard.
    *
    * Type detection uses two probes per integer / boolean / float type — one with a low sentinel,
    * one with a high one — so a real value that happens to equal a single sentinel can't be

@@ -5,8 +5,9 @@ package ee.schimke.composeai.renderer
  * issue #1956, Phase 1. The focus walk dwells [DEFAULT_DWELL_MS] on each stop (long enough to read
  * the caption), then advances to the next, holding on the final stop for the rest of the capture.
  *
- * Pure and deterministic so the silent recording path (drive [TalkBackFocusOverlay] per frame) and a
- * future spoken-audio track (schedule one utterance per stop at the same times) stay in lock-step.
+ * Pure and deterministic so the silent recording path (drive [TalkBackFocusOverlay] per frame) and
+ * a future spoken-audio track (schedule one utterance per stop at the same times) stay in
+ * lock-step.
  */
 object TalkBackOverlayFrames {
 
@@ -35,11 +36,7 @@ object TalkBackOverlayFrames {
    * Total frames a full walk over [stopCount] stops needs at [fps] (one [dwellMs] window per stop,
    * plus a final frame so the last stop is actually rendered). `0` when there's nothing to walk.
    */
-  fun totalFrames(
-    fps: Int,
-    stopCount: Int,
-    dwellMs: Long = DEFAULT_DWELL_MS,
-  ): Int {
+  fun totalFrames(fps: Int, stopCount: Int, dwellMs: Long = DEFAULT_DWELL_MS): Int {
     if (stopCount <= 0 || fps <= 0 || dwellMs <= 0L) return 0
     val durationMs = stopCount.toLong() * dwellMs
     return (durationMs * fps / 1000L).toInt() + 1

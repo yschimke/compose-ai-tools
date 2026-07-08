@@ -37,10 +37,7 @@ class AccessibilityHierarchyExtensionTest {
           )
         )
       }
-    assertTrue(
-      ex.message!!,
-      ex.message!!.contains(AccessibilityHierarchyContextKeys.ViewRoot.name),
-    )
+    assertTrue(ex.message!!, ex.message!!.contains(AccessibilityHierarchyContextKeys.ViewRoot.name))
   }
 
   @Test
@@ -102,9 +99,7 @@ class AccessibilityHierarchyExtensionTest {
     val tail = result.orderedExtensions.drop(1).map { it.id.value }
     assertTrue(
       "expected overlay + touchTargets after hierarchy, got $tail",
-      tail.containsAll(
-        listOf(OverlayExtension.EXTENSION_ID, TouchTargetsExtension.EXTENSION_ID)
-      ),
+      tail.containsAll(listOf(OverlayExtension.EXTENSION_ID, TouchTargetsExtension.EXTENSION_ID)),
     )
   }
 }

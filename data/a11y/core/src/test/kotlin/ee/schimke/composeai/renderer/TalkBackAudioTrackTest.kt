@@ -4,12 +4,19 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Coverage for the spoken-cue scheduling that backs the optional TTS track (issue #1956 Phase 4). */
+/**
+ * Coverage for the spoken-cue scheduling that backs the optional TTS track (issue #1956 Phase 4).
+ */
 class TalkBackAudioTrackTest {
 
   private val nodes =
     listOf(
-      AccessibilityNode(label = "Settings", role = "Heading", merged = true, boundsInScreen = "0,0,10,10"),
+      AccessibilityNode(
+        label = "Settings",
+        role = "Heading",
+        merged = true,
+        boundsInScreen = "0,0,10,10",
+      ),
       AccessibilityNode(
         label = "Buy now",
         role = "Button",
@@ -40,7 +47,12 @@ class TalkBackAudioTrackTest {
       assertEquals(
         "cue ${cue.stopIndex} must start as the overlay focuses that stop",
         cue.stopIndex,
-        TalkBackOverlayFrames.focusedStopForFrame(firstFrameOnStop, fps, stopCount = 2, dwellMs = dwell),
+        TalkBackOverlayFrames.focusedStopForFrame(
+          firstFrameOnStop,
+          fps,
+          stopCount = 2,
+          dwellMs = dwell,
+        ),
       )
     }
   }
@@ -52,7 +64,8 @@ class TalkBackAudioTrackTest {
 
   @Test
   fun `no focus stops yields no cues`() {
-    val onlyChild = listOf(AccessibilityNode(label = "x", merged = false, boundsInScreen = "0,0,1,1"))
+    val onlyChild =
+      listOf(AccessibilityNode(label = "x", merged = false, boundsInScreen = "0,0,1,1"))
     assertTrue(TalkBackAudioTrack.plan(onlyChild).isEmpty())
     assertEquals(0L, TalkBackAudioTrack.totalDurationMs(onlyChild))
   }

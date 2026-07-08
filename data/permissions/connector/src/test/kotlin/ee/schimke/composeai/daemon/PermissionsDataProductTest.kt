@@ -38,8 +38,7 @@ class PermissionsDataProductTest {
     val extension =
       PermissionsOverrideExtension(
         PermissionsOverride(
-          grants =
-            mapOf("android.permission.CAMERA" to PermissionGrantStateOverride.GRANTED)
+          grants = mapOf("android.permission.CAMERA" to PermissionGrantStateOverride.GRANTED)
         )
       )
     val hook: AroundComposableHook = extension
@@ -122,14 +121,8 @@ class PermissionsDataProductTest {
     val ok = fetched as DataProductRegistry.Outcome.Ok
     val obj = ok.result.payload!!.jsonObject
     val grants = obj["grants"]!!.jsonObject
-    assertEquals(
-      "granted",
-      grants["android.permission.CAMERA"]?.jsonPrimitive?.contentOrNull,
-    )
-    assertEquals(
-      "denied",
-      grants["android.permission.RECORD_AUDIO"]?.jsonPrimitive?.contentOrNull,
-    )
+    assertEquals("granted", grants["android.permission.CAMERA"]?.jsonPrimitive?.contentOrNull)
+    assertEquals("denied", grants["android.permission.RECORD_AUDIO"]?.jsonPrimitive?.contentOrNull)
     val queried = obj["queried"]!!.jsonArray.map { it.jsonPrimitive.content }
     assertEquals(
       listOf("android.permission.CAMERA", "android.permission.ACCESS_FINE_LOCATION"),

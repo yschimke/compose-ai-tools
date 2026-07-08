@@ -46,60 +46,55 @@ private val testAction = hostAction("catalogAction".rs, 1.rf)
 
 @CatalogRemoteModes
 @Composable
-fun FilledRemoteButton() =
-  RemoteSticker {
-    RemoteButton(
-      onClick = testAction,
-      modifier = RemoteModifier.buttonSizeModifier(),
-      enabled = true.rb,
-      content = { RemoteText("Enabled".rs) },
-    )
-  }
+fun FilledRemoteButton() = RemoteSticker {
+  RemoteButton(
+    onClick = testAction,
+    modifier = RemoteModifier.buttonSizeModifier(),
+    enabled = true.rb,
+    content = { RemoteText("Enabled".rs) },
+  )
+}
 
 @CatalogRemoteModes
 @Composable
-fun BorderedRemoteButton() =
-  RemoteSticker {
-    RemoteButton(
-      onClick = testAction,
-      modifier = RemoteModifier.buttonSizeModifier(),
-      border = 8.rdp,
-      borderColor = RemoteColor(Color.Green),
-      content = { RemoteText("Bordered".rs) },
-    )
-  }
+fun BorderedRemoteButton() = RemoteSticker {
+  RemoteButton(
+    onClick = testAction,
+    modifier = RemoteModifier.buttonSizeModifier(),
+    border = 8.rdp,
+    borderColor = RemoteColor(Color.Green),
+    content = { RemoteText("Bordered".rs) },
+  )
+}
 
 @CatalogRemoteModes
 @Composable
-fun CustomShapeRemoteButton() =
-  RemoteSticker {
-    RemoteButton(
-      onClick = testAction,
-      modifier = RemoteModifier.buttonSizeModifier(),
-      shape = RemoteRoundedCornerShape(4.rdp),
-      content = { RemoteText("Custom shape".rs) },
-    )
-  }
+fun CustomShapeRemoteButton() = RemoteSticker {
+  RemoteButton(
+    onClick = testAction,
+    modifier = RemoteModifier.buttonSizeModifier(),
+    shape = RemoteRoundedCornerShape(4.rdp),
+    content = { RemoteText("Custom shape".rs) },
+  )
+}
 
 /**
- * Reads its label from a Remote Compose named-value binding
- * ([rememberNamedRemoteString]). The default render shows `"Tap me"`, so the
- * sticker is a useful static capture; the connector's override path
- * (`renderNow.overrides.remoteCompose.namedValues = {"label": …}`) flips the
- * label live without rebuilding the document — the interactive story the
- * `:data-remotecompose-connector` demonstrates.
+ * Reads its label from a Remote Compose named-value binding ([rememberNamedRemoteString]). The
+ * default render shows `"Tap me"`, so the sticker is a useful static capture; the connector's
+ * override path (`renderNow.overrides.remoteCompose.namedValues = {"label": …}`) flips the label
+ * live without rebuilding the document — the interactive story the `:data-remotecompose-connector`
+ * demonstrates.
  */
 @CatalogRemoteModes
 @Composable
-fun NamedLabelRemoteButton() =
-  RemoteSticker {
-    val label = rememberNamedRemoteString("label", "Tap me")
-    RemoteButton(
-      onClick = testAction,
-      modifier = RemoteModifier.buttonSizeModifier(),
-      content = { RemoteText(label) },
-    )
-  }
+fun NamedLabelRemoteButton() = RemoteSticker {
+  val label = rememberNamedRemoteString("label", "Tap me")
+  RemoteButton(
+    onClick = testAction,
+    modifier = RemoteModifier.buttonSizeModifier(),
+    content = { RemoteText(label) },
+  )
+}
 
 // ---------------------------------------------------------------------------
 // Text — the Remote Material 3 text primitive on its own. An explicit dark
@@ -110,8 +105,9 @@ fun NamedLabelRemoteButton() =
 
 @CatalogRemoteModes
 @Composable
-fun RemoteTextSticker() =
-  RemoteSticker { RemoteText("Remote".rs, color = RemoteColor(Color(0xFF1D1B20))) }
+fun RemoteTextSticker() = RemoteSticker {
+  RemoteText("Remote".rs, color = RemoteColor(Color(0xFF1D1B20)))
+}
 
 // ---------------------------------------------------------------------------
 // Shaders — a document-level gradient fill (`remote-creation-compose` shaders),
@@ -122,20 +118,15 @@ fun RemoteTextSticker() =
 
 @CatalogRemoteModes
 @Composable
-fun ShaderGradientSticker() =
-  RemoteSticker {
-    val shaderColor = rememberNamedRemoteColor("shaderColor", Color(0xFF7DE2FF))
-    val brush =
-      RemoteBrush.linearGradient(
-        listOf(
-          RemoteColor(Color(0xFF101820)),
-          shaderColor,
-          RemoteColor(Color(0xFFFFB86C)),
-        )
-      )
-    RemoteBox(
-      modifier = RemoteModifier.fillMaxSize().background(brush),
-      contentAlignment = RemoteAlignment.Center,
-      content = { RemoteText("Shader".rs) },
+fun ShaderGradientSticker() = RemoteSticker {
+  val shaderColor = rememberNamedRemoteColor("shaderColor", Color(0xFF7DE2FF))
+  val brush =
+    RemoteBrush.linearGradient(
+      listOf(RemoteColor(Color(0xFF101820)), shaderColor, RemoteColor(Color(0xFFFFB86C)))
     )
-  }
+  RemoteBox(
+    modifier = RemoteModifier.fillMaxSize().background(brush),
+    contentAlignment = RemoteAlignment.Center,
+    content = { RemoteText("Shader".rs) },
+  )
+}

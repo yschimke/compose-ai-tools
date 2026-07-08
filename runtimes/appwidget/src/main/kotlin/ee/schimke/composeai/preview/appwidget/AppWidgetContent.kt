@@ -28,19 +28,19 @@ import kotlin.math.roundToInt
  * 2. `RemoteViews.apply(context, parent)` inflates the tree into a `View` we host inside the
  *    `AndroidView` factory — the same path `AppWidgetHost.createView(...)` walks on-device.
  * 3. Look up `AppWidgetManager.installedProviders` for any registered AppWidget whose
- *    `initialLayout` matches the inflated `RemoteViews.layoutId`. If found, translate the
- *    matching `AppWidgetProviderInfo` (`min/maxResizeWidth/Height`, `targetCellWidth/Height`,
- *    `resizeMode`) into a [LauncherWidgetMetadata] snapshot and offer it to the connector's
+ *    `initialLayout` matches the inflated `RemoteViews.layoutId`. If found, translate the matching
+ *    `AppWidgetProviderInfo` (`min/maxResizeWidth/Height`, `targetCellWidth/Height`, `resizeMode`)
+ *    into a [LauncherWidgetMetadata] snapshot and offer it to the connector's
  *    [LauncherWidgetMetadataChannel] so the launcher-widget data product surfaces it on its
- *    payload. Falls through silently when no match — picker behaviour is unchanged for
- *    one-off `RemoteViews` previews that aren't backed by a registered receiver.
+ *    payload. Falls through silently when no match — picker behaviour is unchanged for one-off
+ *    `RemoteViews` previews that aren't backed by a registered receiver.
  *
  * The inflated view is hosted inside `MATCH_PARENT × MATCH_PARENT` so a `@Preview(widthDp,
  * heightDp)` (or the `LauncherWidgetExtension` daemon-side override) controls the visible
  * footprint.
  *
- * @param factory consumer's `RemoteViews` factory. Typically
- *   `RemoteViews(context.packageName, R.layout.widget_x).apply { setTextViewText(...) }`.
+ * @param factory consumer's `RemoteViews` factory. Typically `RemoteViews(context.packageName,
+ *   R.layout.widget_x).apply { setTextViewText(...) }`.
  */
 @Composable
 fun AppWidgetContent(factory: (Context) -> RemoteViews) {
@@ -88,15 +88,12 @@ internal fun offerAppWidgetMetadata(context: Context, remoteViews: RemoteViews) 
 }
 
 /**
- * Translate an `AppWidgetProviderInfo` into a [LauncherWidgetMetadata] snapshot. Cell counts
- * derive from `targetCellWidth/Height` (Android 12+) when set, otherwise from the
- * `min/maxResizeWidth/Height` dp range using the same `72dp` cell / `8dp` spacing arithmetic
- * the connector applies — `cells = round((dp + spacing) / (cell + spacing))`, clamped to ≥ 1.
+ * Translate an `AppWidgetProviderInfo` into a [LauncherWidgetMetadata] snapshot. Cell counts derive
+ * from `targetCellWidth/Height` (Android 12+) when set, otherwise from the
+ * `min/maxResizeWidth/Height` dp range using the same `72dp` cell / `8dp` spacing arithmetic the
+ * connector applies — `cells = round((dp + spacing) / (cell + spacing))`, clamped to ≥ 1.
  */
-internal fun translate(
-  context: Context,
-  info: AppWidgetProviderInfo,
-): LauncherWidgetMetadata {
+internal fun translate(context: Context, info: AppWidgetProviderInfo): LauncherWidgetMetadata {
   val density = context.resources.displayMetrics.density
   // Prefer the explicit `targetCellWidth/Height` (API 31+) when set. Fall back to the
   // px-based `minResizeWidth/Height` → dp → cells path otherwise. `maxResizeWidth/Height`
@@ -105,11 +102,10 @@ internal fun translate(
   val minWidthCells =
     if (info.targetCellWidth > 0) info.targetCellWidth else pxToCells(info.minResizeWidth, density)
   val minHeightCells =
-    if (info.targetCellHeight > 0) info.targetCellHeight else pxToCells(info.minResizeHeight, density)
-  val maxWidthCells =
-    pxToCells(info.maxResizeWidth, density).coerceAtLeast(minWidthCells)
-  val maxHeightCells =
-    pxToCells(info.maxResizeHeight, density).coerceAtLeast(minHeightCells)
+    if (info.targetCellHeight > 0) info.targetCellHeight
+    else pxToCells(info.minResizeHeight, density)
+  val maxWidthCells = pxToCells(info.maxResizeWidth, density).coerceAtLeast(minWidthCells)
+  val maxHeightCells = pxToCells(info.maxResizeHeight, density).coerceAtLeast(minHeightCells)
 
   val resizeAxes =
     when {
@@ -125,8 +121,7 @@ internal fun translate(
   // singleton so a picker can render the read-only badge without inventing a range.
   val supportedCells: List<LauncherWidgetSize>? =
     when (resizeAxes) {
-      LauncherResizeAxes.NONE ->
-        listOf(LauncherWidgetSize(minWidthCells, minHeightCells))
+      LauncherResizeAxes.NONE -> listOf(LauncherWidgetSize(minWidthCells, minHeightCells))
       else -> {
         // Build a dense rectangle min..max along the resize axes; lock the non-resizable axis to
         // its `minResize` value.

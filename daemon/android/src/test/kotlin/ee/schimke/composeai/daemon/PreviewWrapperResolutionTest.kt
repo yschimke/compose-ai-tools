@@ -15,22 +15,21 @@ import org.junit.Test
  * `IllegalStateException: Invalid applier`.
  *
  * **Why the spec-driven path is the production path** (issue #1440). The upstream
- * `androidx.compose.ui.tooling.preview.PreviewWrapper` annotation has
- * `AnnotationRetention.BINARY`, so `Method.annotations` never returns it at runtime — the
- * `@Method.annotations`-based fallback inside [resolveWrapperOrNull] is a best-effort backup for
- * direct-payload callers and **does not** fire in real-world preview renders. The gradle plugin's
- * `extractWrapperFqn` reads the FQN from the class-file annotation tables and writes it into
- * `previews.json` (where the annotation IS still visible); the daemon threads it into
- * [RenderSpec.wrapperClassName] via [PreviewManifestRouter]. The first test below covers that
- * spec-driven production path; the second covers the reflection fallback by stamping the same
- * stand-in annotation on a fixture (note the stand-in deliberately uses
- * `AnnotationRetention.BINARY` now to mirror upstream — see `PreviewWrapperStandIn.kt`, so the
- * fallback path actually misses for the binary annotation, and the spec-driven path is the only
- * one that resolves).
+ * `androidx.compose.ui.tooling.preview.PreviewWrapper` annotation has `AnnotationRetention.BINARY`,
+ * so `Method.annotations` never returns it at runtime — the `@Method.annotations`-based fallback
+ * inside [resolveWrapperOrNull] is a best-effort backup for direct-payload callers and **does not**
+ * fire in real-world preview renders. The gradle plugin's `extractWrapperFqn` reads the FQN from
+ * the class-file annotation tables and writes it into `previews.json` (where the annotation IS
+ * still visible); the daemon threads it into [RenderSpec.wrapperClassName] via
+ * [PreviewManifestRouter]. The first test below covers that spec-driven production path; the second
+ * covers the reflection fallback by stamping the same stand-in annotation on a fixture (note the
+ * stand-in deliberately uses `AnnotationRetention.BINARY` now to mirror upstream — see
+ * `PreviewWrapperStandIn.kt`, so the fallback path actually misses for the binary annotation, and
+ * the spec-driven path is the only one that resolves).
  *
- * `:renderer-android` has a parallel test ([ee.schimke.composeai.renderer.PreviewWrapperTest])
- * for its own `resolveWrapper`; this one covers the duplicated daemon path that the v2
- * reconciliation (see [RenderEngine] kdoc) eventually folds back into a shared helper.
+ * `:renderer-android` has a parallel test ([ee.schimke.composeai.renderer.PreviewWrapperTest]) for
+ * its own `resolveWrapper`; this one covers the duplicated daemon path that the v2 reconciliation
+ * (see [RenderEngine] kdoc) eventually folds back into a shared helper.
  */
 class PreviewWrapperResolutionTest {
 
@@ -50,7 +49,8 @@ class PreviewWrapperResolutionTest {
 
   @Test
   fun `resolveWrapperOrNull returns null when spec FQN is absent and annotation has binary retention`() {
-    // `PreviewWrapperStandIn.kt`'s `@PreviewWrapper` mirrors upstream's `AnnotationRetention.BINARY`,
+    // `PreviewWrapperStandIn.kt`'s `@PreviewWrapper` mirrors upstream's
+    // `AnnotationRetention.BINARY`,
     // so `Method.annotations` won't include it. This guards issue #1440's first regression: the
     // pre-fix code relied on runtime reflection, which silently no-ops in production.
     val method =

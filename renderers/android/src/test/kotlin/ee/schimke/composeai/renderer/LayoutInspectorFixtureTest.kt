@@ -43,27 +43,24 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * Drives `LayoutInspectorDataProducer.writeArtifacts` + `LayoutInspectorDataProductRegistry`
- * against a Compose composition with a known size, then asserts the produced JSON tree carries
- * the structural facts the inspector promises at the root: a `LayoutInspectorNode` with
- * populated `bounds`, `size`, `component`, and `modifiers`. Companion to
- * `TextStringsTruncationTest`, `ComposeSemanticsCoreFieldsTest`, and
- * `I18nTranslationsFixtureTest`.
+ * against a Compose composition with a known size, then asserts the produced JSON tree carries the
+ * structural facts the inspector promises at the root: a `LayoutInspectorNode` with populated
+ * `bounds`, `size`, `component`, and `modifiers`. Companion to `TextStringsTruncationTest`,
+ * `ComposeSemanticsCoreFieldsTest`, and `I18nTranslationsFixtureTest`.
  *
- * Scope note: under a bare `setContent` + `waitForIdle()`, the producer's child-walk reflects
- * over `LayoutNode.getZSortedChildren$ui_release` which short-circuits to an empty iterable
- * before the LayoutNode has been z-sorted (the real `RenderEngine` walks it after `measure`
- * + `draw` have run, which Z-sorts the layout tree as a side effect). We therefore only assert
- * on what the root node always carries; deeper subtree + per-modifier assertions are covered
- * end-to-end by the gradle-plugin functional tests that exercise the full render pipeline.
+ * Scope note: under a bare `setContent` + `waitForIdle()`, the producer's child-walk reflects over
+ * `LayoutNode.getZSortedChildren$ui_release` which short-circuits to an empty iterable before the
+ * LayoutNode has been z-sorted (the real `RenderEngine` walks it after `measure`
+ * + `draw` have run, which Z-sorts the layout tree as a side effect). We therefore only assert on
+ *   what the root node always carries; deeper subtree + per-modifier assertions are covered
+ *   end-to-end by the gradle-plugin functional tests that exercise the full render pipeline.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class LayoutInspectorFixtureTest {
 
-  @Suppress("DEPRECATION")
-  @get:Rule
-  val composeRule = createAndroidComposeRule<ComponentActivity>()
+  @Suppress("DEPRECATION") @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
 
   private lateinit var rootDir: File
 
@@ -79,12 +76,13 @@ class LayoutInspectorFixtureTest {
 
   @Test
   fun `Box surfaces non-empty bounds + size and a populated modifier chain at the root`() {
-    val root = rootFor("box") {
-      Box(
-        modifier =
-          Modifier.testTag("hero").size(160.dp, 80.dp).background(Color.White).padding(8.dp)
-      )
-    }
+    val root =
+      rootFor("box") {
+        Box(
+          modifier =
+            Modifier.testTag("hero").size(160.dp, 80.dp).background(Color.White).padding(8.dp)
+        )
+      }
 
     assertEquals("RootMeasurePolicy", root["component"]!!.jsonPrimitive.content)
     val size = root["size"]!!.jsonObject
@@ -119,11 +117,11 @@ class LayoutInspectorFixtureTest {
   }
 
   /**
-   * Builds the producer's `PreviewContext` from the live ComposeRule semantics root, mirroring
-   * the real `RenderEngine`'s capture wiring: the content is wrapped in an inspection-aware
-   * composable that pumps `currentComposer.compositionData` into a `LocalInspectionTables` set,
-   * and the slot tables are passed through `addSlotTables(...)` so the producer can attach
-   * source/info to LayoutNode entries via the slot table walk.
+   * Builds the producer's `PreviewContext` from the live ComposeRule semantics root, mirroring the
+   * real `RenderEngine`'s capture wiring: the content is wrapped in an inspection-aware composable
+   * that pumps `currentComposer.compositionData` into a `LocalInspectionTables` set, and the slot
+   * tables are passed through `addSlotTables(...)` so the producer can attach source/info to
+   * LayoutNode entries via the slot table walk.
    */
   private fun rootFor(previewId: String, content: @Composable () -> Unit): JsonObject {
     val slotTables = mutableSetOf<CompositionData>()

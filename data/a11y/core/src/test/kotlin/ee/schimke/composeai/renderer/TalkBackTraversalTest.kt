@@ -11,12 +11,7 @@ import org.junit.Test
 class TalkBackTraversalTest {
 
   private fun node(ref: String, merged: Boolean = true): AccessibilityNode =
-    AccessibilityNode(
-      label = ref,
-      ref = ref,
-      merged = merged,
-      boundsInScreen = "0,0,10,10",
-    )
+    AccessibilityNode(label = ref, ref = ref, merged = merged, boundsInScreen = "0,0,10,10")
 
   // A header (stop), a clickable card (stop) with two merged-away text children (not stops),
   // and a button (stop). Focus stops in order: header, card, button.

@@ -19,6 +19,10 @@ plugins {
 
 dependencies {
   implementation(project(":common-io"))
+  // FontBox (from PDFBox) — pure-JVM TrueType/OpenType parsing + subsetting for the figma-svg font
+  // embed path: subset an embedded face to the glyphs the SVG actually draws so the exact typeface
+  // rides along at a few KB instead of the full multi-hundred-KB font file.
+  implementation(libs.fontbox)
   api(project(":data-layoutinspector-core"))
   api(project(":data-render-compose"))
   api(project(":daemon:core"))

@@ -1,8 +1,5 @@
 package ee.schimke.composeai.daemon
 
-import ee.schimke.composeai.io.SystemFileSystem
-import okio.FileSystem
-import okio.Path.Companion.toPath
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.InteractiveInputParams
 import ee.schimke.composeai.daemon.protocol.RecordingFormat
@@ -10,11 +7,14 @@ import ee.schimke.composeai.daemon.protocol.RecordingInputParams
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvidence
 import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
+import ee.schimke.composeai.io.SystemFileSystem
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.io.File
 import java.util.concurrent.ConcurrentLinkedQueue
 import javax.imageio.ImageIO
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * Android (Robolectric) [RecordingSession]. Wraps an [AndroidInteractiveSession] (the v3 held-rule
@@ -23,15 +23,15 @@ import javax.imageio.ImageIO
  * scripted timeline frame-by-frame on top of it.
  *
  * **Why wrap interactive.** The held-rule loop already handles all the hard cross-classloader
- * marshalling — `MotionEvent` synthesis, `mainClock` advance, `captureRoboImage` — and runs
- * inside Robolectric's instrumented sandbox. Recording layers on top: at [stop] we walk the
- * timeline frame-by-frame, calling `interactive.dispatch` for events whose `tMs` has elapsed and
- * `interactive.render` to capture each frame. Each render's PNG is copied (and scaled if
- * `scale != 1.0`) into a per-frame path the encoder reads.
+ * marshalling — `MotionEvent` synthesis, `mainClock` advance, `captureRoboImage` — and runs inside
+ * Robolectric's instrumented sandbox. Recording layers on top: at [stop] we walk the timeline
+ * frame-by-frame, calling `interactive.dispatch` for events whose `tMs` has elapsed and
+ * `interactive.render` to capture each frame. Each render's PNG is copied (and scaled if `scale !=
+ * 1.0`) into a per-frame path the encoder reads.
  *
  * **Slot pinning trade-off.** Android v3 supports only one held session at a time per host, so a
- * recording in progress excludes a concurrent interactive session against any preview in this
- * host. Documented constraint; we'll lift it when v4 ships multi-target Android.
+ * recording in progress excludes a concurrent interactive session against any preview in this host.
+ * Documented constraint; we'll lift it when v4 ships multi-target Android.
  *
  * **Live mode.** Real-time focus-view recording uses a background tick thread that drains
  * `recording/input` events and calls [InteractiveSession.render] once per frame. This intentionally
@@ -86,18 +86,17 @@ class AndroidRecordingSession(
   private val liveTickThread: Thread? =
     if (live) {
       framesDir.mkdirs()
-      Thread({ runLiveTickLoop() }, "compose-ai-daemon-android-recording-live-$recordingId")
-        .apply {
-          isDaemon = true
-          uncaughtExceptionHandler = Thread.UncaughtExceptionHandler { _, t ->
-            if (liveFailure == null) liveFailure = t
-            System.err.println(
-              "compose-ai-daemon: AndroidRecordingSession($recordingId) tick-thread uncaught " +
-                "${t.javaClass.simpleName}: ${t.message}"
-            )
-          }
-          start()
+      Thread({ runLiveTickLoop() }, "compose-ai-daemon-android-recording-live-$recordingId").apply {
+        isDaemon = true
+        uncaughtExceptionHandler = Thread.UncaughtExceptionHandler { _, t ->
+          if (liveFailure == null) liveFailure = t
+          System.err.println(
+            "compose-ai-daemon: AndroidRecordingSession($recordingId) tick-thread uncaught " +
+              "${t.javaClass.simpleName}: ${t.message}"
+          )
         }
+        start()
+      }
     } else null
 
   override fun postScript(events: List<RecordingScriptEvent>) {
@@ -183,10 +182,7 @@ class AndroidRecordingSession(
       val advanceTimeMs = if (frameIndex == 0) 0L else tMs - lastFrameTimeMs
       lastFrameTimeMs = tMs
       val rendered =
-        interactive.render(
-          requestId = RenderHost.nextRequestId(),
-          advanceTimeMs = advanceTimeMs,
-        )
+        interactive.render(requestId = RenderHost.nextRequestId(), advanceTimeMs = advanceTimeMs)
       val srcPath =
         rendered.pngPath
           ?: error(
@@ -243,131 +239,144 @@ class AndroidRecordingSession(
   }
 
   /**
-   * Per-session script-event handler registry. Built once so each handler closes over [interactive];
-   * [stopScripted]'s loop just calls `scriptHandlers.dispatch(...)` and never branches on event
-   * kind directly.
+   * Per-session script-event handler registry. Built once so each handler closes over
+   * [interactive]; [stopScripted]'s loop just calls `scriptHandlers.dispatch(...)` and never
+   * branches on event kind directly.
    *
    * Built-in input kinds (`click`, `pointerDown`, `pointerMove`, `pointerUp`, `rotaryScroll`,
-   * `keyDown`, `keyUp`) all route through the held-rule loop's [InteractiveSession.dispatch] —
-   * same path the live tick loop uses. Issue #1203 closed the keyboard no-op gap; the dispatch
-   * lands inside the sandbox via `rule.onRoot().performKeyInput { … }`. The probe extension
-   * handler appears once, here, instead of as a dispatch-loop special case.
+   * `keyDown`, `keyUp`) all route through the held-rule loop's [InteractiveSession.dispatch] — same
+   * path the live tick loop uses. Issue #1203 closed the keyboard no-op gap; the dispatch lands
+   * inside the sandbox via `rule.onRoot().performKeyInput { … }`. The probe extension handler
+   * appears once, here, instead of as a dispatch-loop special case.
    */
   private val scriptHandlers: RecordingScriptHandlerRegistry = buildScriptHandlers()
 
   private fun buildScriptHandlers(): RecordingScriptHandlerRegistry =
     RecordingScriptHandlerRegistry(
-      handlers = buildMap {
-        put(
-          InputTouchRecordingScriptEvents.CLICK_EVENT,
-          interactiveDispatchHandler(InteractiveInputKind.CLICK),
-        )
-        put(
-          InputTouchRecordingScriptEvents.POINTER_DOWN_EVENT,
-          interactiveDispatchHandler(InteractiveInputKind.POINTER_DOWN),
-        )
-        put(
-          InputTouchRecordingScriptEvents.POINTER_MOVE_EVENT,
-          interactiveDispatchHandler(InteractiveInputKind.POINTER_MOVE),
-        )
-        put(
-          InputTouchRecordingScriptEvents.POINTER_UP_EVENT,
-          interactiveDispatchHandler(InteractiveInputKind.POINTER_UP),
-        )
-        put(
-          InputRsbRecordingScriptEvents.ROTARY_SCROLL_EVENT,
-          interactiveDispatchHandler(InteractiveInputKind.ROTARY_SCROLL),
-        )
-        put(
-          InputKeyboardRecordingScriptEvents.KEY_DOWN_EVENT,
-          interactiveDispatchHandler(InteractiveInputKind.KEY_DOWN),
-        )
-        put(
-          InputKeyboardRecordingScriptEvents.KEY_UP_EVENT,
-          interactiveDispatchHandler(InteractiveInputKind.KEY_UP),
-        )
-        put(RecordingScriptDataExtensions.PROBE_EVENT, RecordingScriptEventHandler { e, _ ->
-          // Snapshot the live semantics at the probe (issue #1786) so the codegen path can diff
-          // consecutive probes into assertions. The capture is read-only against the held rule;
-          // a null result (nothing rendered / capture unsupported) leaves the probe a TODO stub.
-          val probeNodes = interactive.captureProbeSemantics()
-          appliedEvidence(e, "probe marker reached", probeSemantics = probeNodes)
-        })
-        // Assertions (issue #1964) — `assert.visible` / `assert.notVisible` resolved against the
-        // probe semantics snapshot. Reuses the same `captureProbeSemantics` bridge the probe event
-        // uses, so no new sandbox command is needed. Verdict logic is the shared, backend-agnostic
-        // `evaluateVisibilityAssertion` in `:daemon:core`.
-        put(
-          RecordingScriptDataExtensions.ASSERT_VISIBLE_EVENT,
-          assertVisibilityHandler(expectVisible = true),
-        )
-        put(
-          RecordingScriptDataExtensions.ASSERT_NOT_VISIBLE_EVENT,
-          assertVisibilityHandler(expectVisible = false),
-        )
-        // Accessibility assertion (issue #1966) — `assert.a11y` runs Android ATF against the held
-        // composition's View hierarchy and fails the recording when findings breach the threshold.
-        // Render-coupled (evaluated against the same scene being recorded) and Android-only; the
-        // desktop backend advertises no descriptor for it. `inputText` selects the threshold
-        // (`errors` default | `warnings`). Verdict logic is the shared `evaluateA11yAssertion` in
-        // `:daemon:core`; capture rides the `captureA11yFindings` bridge.
-        put(RecordingScriptDataExtensions.ASSERT_A11Y_EVENT, assertA11yHandler())
-        // Accessibility-driven dispatch — every `a11y.action.<name>` id with a clean Compose
-        // SemanticsActions equivalent registers here. Each handler shares the same shape:
-        // resolve a node by `nodeContentDescription`, route through
-        // `interactive.dispatchSemanticsAction(kind, description)`, surface applied / unsupported
-        // evidence with a specific reason. The action arm in
-        // [RobolectricHost.performSemanticsActionByContentDescription] does the actual lookup +
-        // invoke. Action ids without a clean equivalent (`accessibilityFocus`, `clearFocus`,
-        // `select`, granularity navigation) appear alongside the wired ones in
-        // `AccessibilityRecordingScriptEvents.descriptor` with `supported = false` and are
-        // rejected at MCP.
-        for (action in A11Y_SEMANTIC_ACTIONS) {
-          put("a11y.action.$action", a11ySemanticsActionHandler(action))
-        }
-        // TalkBack linear-navigation verbs (issue #1956). Unlike the content-description-targeted
-        // actions above, `next` / `previous` carry no target node — they advance the host-side
-        // focus cursor through the merged focus stops in traversal order. Routed through the same
-        // dispatchSemanticsAction bridge (the host branches on the action kind), so they share the
-        // settle window but skip the nodeContentDescription requirement.
-        put(AccessibilityRecordingScriptEvents.ACTION_NEXT, a11yNavigationHandler("next"))
-        put(AccessibilityRecordingScriptEvents.ACTION_PREVIOUS, a11yNavigationHandler("previous"))
-        // UIAutomator-shaped dispatch — every `uia.<actionKind>` id reads the event's `selector`
-        // JsonObject (multi-axis BySelector predicate), encodes it as a JSON string, and routes
-        // through `interactive.dispatchUiAutomator(actionKind, selectorJson, useUnmergedTree,
-        // inputText)`. The matching arm in `RobolectricHost.performUiAutomatorAction` decodes the
-        // selector and dispatches the named UiObject method. See [UiAutomatorRecordingScriptEvents]
-        // for the descriptor + supported-id list.
-        for (id in UiAutomatorRecordingScriptEvents.WIRED_EVENTS) {
-          val actionKind = id.removePrefix("uia.")
-          put(id, uiAutomatorActionHandler(actionKind))
-        }
-        // Lifecycle dispatch — one event id per state transition (`lifecycle.pause` /
-        // `lifecycle.resume` / `lifecycle.stop`). Each routes through
-        // `interactive.dispatchLifecycle(...)` → `ActivityScenario.moveToState(...)`. See
-        // [LifecycleRecordingScriptEvents] for the descriptor + state mapping.
-        put(LifecycleRecordingScriptEvents.LIFECYCLE_PAUSE_EVENT, lifecycleEventHandler("pause"))
-        put(LifecycleRecordingScriptEvents.LIFECYCLE_RESUME_EVENT, lifecycleEventHandler("resume"))
-        put(LifecycleRecordingScriptEvents.LIFECYCLE_STOP_EVENT, lifecycleEventHandler("stop"))
-        // Navigation dispatch — deep-link Intent + back / predictive-back gestures. Each
-        // `navigation.<actionKind>` id pre-binds the wire-name string at registration time and
-        // routes through `interactive.dispatchNavigation(...)` → `Activity.startActivity` /
-        // `OnBackPressedDispatcher.*`. See [NavigationRecordingScriptEvents] for the descriptor
-        // + payload mapping.
-        for (id in NavigationRecordingScriptEvents.WIRED_EVENTS) {
-          val actionKind = id.removePrefix("navigation.")
-          put(id, navigationEventHandler(actionKind))
-        }
-        // Preview reload — `preview.reload` forces a fresh composition via the held rule's
-        // `key(...)` reload counter. See [PreviewReloadRecordingScriptEvents].
-        put(PreviewReloadRecordingScriptEvents.PREVIEW_RELOAD_EVENT, previewReloadHandler())
-        // State events — `state.recreate` (single-event round-trip), `state.save`
-        // (named-checkpoint capture), `state.restore` (named-checkpoint apply). All ride on the
-        // host's SaveableStateRegistry bridge. See [StateRecordingScriptEvents].
-        put(StateRecordingScriptEvents.STATE_RECREATE_EVENT, stateRecreateHandler())
-        put(StateRecordingScriptEvents.STATE_SAVE_EVENT, stateSaveHandler())
-        put(StateRecordingScriptEvents.STATE_RESTORE_EVENT, stateRestoreHandler())
-      },
+      handlers =
+        buildMap {
+          put(
+            InputTouchRecordingScriptEvents.CLICK_EVENT,
+            interactiveDispatchHandler(InteractiveInputKind.CLICK),
+          )
+          put(
+            InputTouchRecordingScriptEvents.POINTER_DOWN_EVENT,
+            interactiveDispatchHandler(InteractiveInputKind.POINTER_DOWN),
+          )
+          put(
+            InputTouchRecordingScriptEvents.POINTER_MOVE_EVENT,
+            interactiveDispatchHandler(InteractiveInputKind.POINTER_MOVE),
+          )
+          put(
+            InputTouchRecordingScriptEvents.POINTER_UP_EVENT,
+            interactiveDispatchHandler(InteractiveInputKind.POINTER_UP),
+          )
+          put(
+            InputRsbRecordingScriptEvents.ROTARY_SCROLL_EVENT,
+            interactiveDispatchHandler(InteractiveInputKind.ROTARY_SCROLL),
+          )
+          put(
+            InputKeyboardRecordingScriptEvents.KEY_DOWN_EVENT,
+            interactiveDispatchHandler(InteractiveInputKind.KEY_DOWN),
+          )
+          put(
+            InputKeyboardRecordingScriptEvents.KEY_UP_EVENT,
+            interactiveDispatchHandler(InteractiveInputKind.KEY_UP),
+          )
+          put(
+            RecordingScriptDataExtensions.PROBE_EVENT,
+            RecordingScriptEventHandler { e, _ ->
+              // Snapshot the live semantics at the probe (issue #1786) so the codegen path can diff
+              // consecutive probes into assertions. The capture is read-only against the held rule;
+              // a null result (nothing rendered / capture unsupported) leaves the probe a TODO
+              // stub.
+              val probeNodes = interactive.captureProbeSemantics()
+              appliedEvidence(e, "probe marker reached", probeSemantics = probeNodes)
+            },
+          )
+          // Assertions (issue #1964) — `assert.visible` / `assert.notVisible` resolved against the
+          // probe semantics snapshot. Reuses the same `captureProbeSemantics` bridge the probe
+          // event
+          // uses, so no new sandbox command is needed. Verdict logic is the shared,
+          // backend-agnostic
+          // `evaluateVisibilityAssertion` in `:daemon:core`.
+          put(
+            RecordingScriptDataExtensions.ASSERT_VISIBLE_EVENT,
+            assertVisibilityHandler(expectVisible = true),
+          )
+          put(
+            RecordingScriptDataExtensions.ASSERT_NOT_VISIBLE_EVENT,
+            assertVisibilityHandler(expectVisible = false),
+          )
+          // Accessibility assertion (issue #1966) — `assert.a11y` runs Android ATF against the held
+          // composition's View hierarchy and fails the recording when findings breach the
+          // threshold.
+          // Render-coupled (evaluated against the same scene being recorded) and Android-only; the
+          // desktop backend advertises no descriptor for it. `inputText` selects the threshold
+          // (`errors` default | `warnings`). Verdict logic is the shared `evaluateA11yAssertion` in
+          // `:daemon:core`; capture rides the `captureA11yFindings` bridge.
+          put(RecordingScriptDataExtensions.ASSERT_A11Y_EVENT, assertA11yHandler())
+          // Accessibility-driven dispatch — every `a11y.action.<name>` id with a clean Compose
+          // SemanticsActions equivalent registers here. Each handler shares the same shape:
+          // resolve a node by `nodeContentDescription`, route through
+          // `interactive.dispatchSemanticsAction(kind, description)`, surface applied / unsupported
+          // evidence with a specific reason. The action arm in
+          // [RobolectricHost.performSemanticsActionByContentDescription] does the actual lookup +
+          // invoke. Action ids without a clean equivalent (`accessibilityFocus`, `clearFocus`,
+          // `select`, granularity navigation) appear alongside the wired ones in
+          // `AccessibilityRecordingScriptEvents.descriptor` with `supported = false` and are
+          // rejected at MCP.
+          for (action in A11Y_SEMANTIC_ACTIONS) {
+            put("a11y.action.$action", a11ySemanticsActionHandler(action))
+          }
+          // TalkBack linear-navigation verbs (issue #1956). Unlike the content-description-targeted
+          // actions above, `next` / `previous` carry no target node — they advance the host-side
+          // focus cursor through the merged focus stops in traversal order. Routed through the same
+          // dispatchSemanticsAction bridge (the host branches on the action kind), so they share
+          // the
+          // settle window but skip the nodeContentDescription requirement.
+          put(AccessibilityRecordingScriptEvents.ACTION_NEXT, a11yNavigationHandler("next"))
+          put(AccessibilityRecordingScriptEvents.ACTION_PREVIOUS, a11yNavigationHandler("previous"))
+          // UIAutomator-shaped dispatch — every `uia.<actionKind>` id reads the event's `selector`
+          // JsonObject (multi-axis BySelector predicate), encodes it as a JSON string, and routes
+          // through `interactive.dispatchUiAutomator(actionKind, selectorJson, useUnmergedTree,
+          // inputText)`. The matching arm in `RobolectricHost.performUiAutomatorAction` decodes the
+          // selector and dispatches the named UiObject method. See
+          // [UiAutomatorRecordingScriptEvents]
+          // for the descriptor + supported-id list.
+          for (id in UiAutomatorRecordingScriptEvents.WIRED_EVENTS) {
+            val actionKind = id.removePrefix("uia.")
+            put(id, uiAutomatorActionHandler(actionKind))
+          }
+          // Lifecycle dispatch — one event id per state transition (`lifecycle.pause` /
+          // `lifecycle.resume` / `lifecycle.stop`). Each routes through
+          // `interactive.dispatchLifecycle(...)` → `ActivityScenario.moveToState(...)`. See
+          // [LifecycleRecordingScriptEvents] for the descriptor + state mapping.
+          put(LifecycleRecordingScriptEvents.LIFECYCLE_PAUSE_EVENT, lifecycleEventHandler("pause"))
+          put(
+            LifecycleRecordingScriptEvents.LIFECYCLE_RESUME_EVENT,
+            lifecycleEventHandler("resume"),
+          )
+          put(LifecycleRecordingScriptEvents.LIFECYCLE_STOP_EVENT, lifecycleEventHandler("stop"))
+          // Navigation dispatch — deep-link Intent + back / predictive-back gestures. Each
+          // `navigation.<actionKind>` id pre-binds the wire-name string at registration time and
+          // routes through `interactive.dispatchNavigation(...)` → `Activity.startActivity` /
+          // `OnBackPressedDispatcher.*`. See [NavigationRecordingScriptEvents] for the descriptor
+          // + payload mapping.
+          for (id in NavigationRecordingScriptEvents.WIRED_EVENTS) {
+            val actionKind = id.removePrefix("navigation.")
+            put(id, navigationEventHandler(actionKind))
+          }
+          // Preview reload — `preview.reload` forces a fresh composition via the held rule's
+          // `key(...)` reload counter. See [PreviewReloadRecordingScriptEvents].
+          put(PreviewReloadRecordingScriptEvents.PREVIEW_RELOAD_EVENT, previewReloadHandler())
+          // State events — `state.recreate` (single-event round-trip), `state.save`
+          // (named-checkpoint capture), `state.restore` (named-checkpoint apply). All ride on the
+          // host's SaveableStateRegistry bridge. See [StateRecordingScriptEvents].
+          put(StateRecordingScriptEvents.STATE_RECREATE_EVENT, stateRecreateHandler())
+          put(StateRecordingScriptEvents.STATE_SAVE_EVENT, stateSaveHandler())
+          put(StateRecordingScriptEvents.STATE_RESTORE_EVENT, stateRestoreHandler())
+        },
       observers = dispatchObservers,
     )
 
@@ -377,13 +386,13 @@ class AndroidRecordingSession(
    * across the sandbox/host classloader boundary) and records APPLIED / FAILED via the shared
    * [evaluateVisibilityAssertion].
    *
-   * **`testTag` only (today).** The probe snapshot is a *flat* node list, so it can't reliably match
-   * a `role`+`text` target: common controls like `Button { Text("Add") }` emit the `role` on the
-   * button node and the `text` on a separate child, so checking both on one node would match nothing —
-   * making `assert.notVisible` *wrongly pass* while the control is on screen. `testTag` lands on a
-   * single node, so it resolves cleanly. `ref` (no refs in the snapshot) and `role`+`text` both fail
-   * with a clear message rather than risk a false pass; enriching the snapshot for `role`+`text` is a
-   * follow-up. A missing/empty target is itself a failed assertion.
+   * **`testTag` only (today).** The probe snapshot is a *flat* node list, so it can't reliably
+   * match a `role`+`text` target: common controls like `Button { Text("Add") }` emit the `role` on
+   * the button node and the `text` on a separate child, so checking both on one node would match
+   * nothing — making `assert.notVisible` *wrongly pass* while the control is on screen. `testTag`
+   * lands on a single node, so it resolves cleanly. `ref` (no refs in the snapshot) and
+   * `role`+`text` both fail with a clear message rather than risk a false pass; enriching the
+   * snapshot for `role`+`text` is a follow-up. A missing/empty target is itself a failed assertion.
    */
   private fun assertVisibilityHandler(expectVisible: Boolean): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, _ ->
@@ -416,13 +425,14 @@ class AndroidRecordingSession(
    * Accessibility assertion on the Android backend (issue #1966). Runs Android ATF
    * (`AccessibilityChecker.check`) against the held composition's View hierarchy via
    * [InteractiveSession.captureA11yFindings], then fails the recording when the findings breach the
-   * threshold carried in `event.inputText` (`errors` default | `warnings`). The verdict logic is the
-   * shared, backend-agnostic [evaluateA11yAssertion] in `:daemon:core`. A null capture means the
-   * backend can't run ATF (no held View / unsupported) — recorded as FAILED with a clear reason
-   * rather than a silent pass, since the user explicitly asked for the check. An ATF *throw* (e.g. an
-   * unsupported View state while building or checking the hierarchy) is mapped to the same FAILED
-   * evidence rather than rethrown: the advertised contract is "un-runnable check → FAILED", and a
-   * rethrow would abort `recording/stop` entirely, leaving the caller with no frames and no evidence.
+   * threshold carried in `event.inputText` (`errors` default | `warnings`). The verdict logic is
+   * the shared, backend-agnostic [evaluateA11yAssertion] in `:daemon:core`. A null capture means
+   * the backend can't run ATF (no held View / unsupported) — recorded as FAILED with a clear reason
+   * rather than a silent pass, since the user explicitly asked for the check. An ATF *throw* (e.g.
+   * an unsupported View state while building or checking the hierarchy) is mapped to the same
+   * FAILED evidence rather than rethrown: the advertised contract is "un-runnable check → FAILED",
+   * and a rethrow would abort `recording/stop` entirely, leaving the caller with no frames and no
+   * evidence.
    */
   private fun assertA11yHandler(): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, _ ->
@@ -448,19 +458,23 @@ class AndroidRecordingSession(
 
   /**
    * Forward an input event through the held-rule loop. Mirrors the live tick path's
-   * [dispatchLiveInput]; the wire-string kind translates to the typed [InteractiveInputKind]
-   * once at registration time so the handler body doesn't repeat the lookup.
+   * [dispatchLiveInput]; the wire-string kind translates to the typed [InteractiveInputKind] once
+   * at registration time so the handler body doesn't repeat the lookup.
    */
   private fun interactiveDispatchHandler(kind: InteractiveInputKind): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, _ ->
       // #1784 — a pointer event may carry a semantic `target` (ref/testTag/role+text) resolved
-      // sandbox-side to the node centre. The host's dispatch throws when the target matches no node;
+      // sandbox-side to the node centre. The host's dispatch throws when the target matches no
+      // node;
       // surface that as `unsupported` evidence rather than failing the whole recording (mirrors the
       // desktop recording path). Pixel events (no target) keep propagating real failures.
       val target = event.target
       val hasTarget =
         target != null &&
-          (target.ref != null || target.testTag != null || target.role != null || target.text != null)
+          (target.ref != null ||
+            target.testTag != null ||
+            target.role != null ||
+            target.text != null)
       try {
         interactive.dispatch(
           InteractiveInputParams(
@@ -474,7 +488,8 @@ class AndroidRecordingSession(
           )
         )
       } catch (t: SemanticsTargetUnresolvedException) {
-        // #1784 — structured miss: surface the candidate nodes so the agent can disambiguate without
+        // #1784 — structured miss: surface the candidate nodes so the agent can disambiguate
+        // without
         // re-rendering, mirroring the desktop recording path.
         return@RecordingScriptEventHandler unsupportedEvidence(
           event,
@@ -495,15 +510,15 @@ class AndroidRecordingSession(
 
   /**
    * Shared factory for every `a11y.action.<actionKind>` script event. Resolves a node by its
-   * visible content description and forwards to
-   * `interactive.dispatchSemanticsAction(actionKind, description)` — the sandbox-side `when` in
+   * visible content description and forwards to `interactive.dispatchSemanticsAction(actionKind,
+   * description)` — the sandbox-side `when` in
    * [RobolectricHost.performSemanticsActionByContentDescription] picks the matching
    * `SemanticsActions` constant.
    *
    * Reports `unsupported` (with a specific reason) when the agent didn't supply
    * `nodeContentDescription`, when no node matched, or when the matched node didn't expose the
-   * requested semantic action. Throws (propagating into stop()) only when the action body
-   * itself fails — same shape as a regular pointer dispatch under a Compose runtime error.
+   * requested semantic action. Throws (propagating into stop()) only when the action body itself
+   * fails — same shape as a regular pointer dispatch under a Compose runtime error.
    */
   private fun a11ySemanticsActionHandler(actionKind: String): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, _ ->
@@ -529,11 +544,11 @@ class AndroidRecordingSession(
     }
 
   /**
-   * Handler for the `a11y.action.next` / `a11y.action.previous` linear-navigation verbs (issue
-   * #1956). No target node — moves the host-side TalkBack focus cursor through the merged focus
-   * stops in traversal order via `interactive.dispatchSemanticsAction(direction, "")`. `matched` is
-   * `true` when focus moved, `false` at a list boundary (end of screen — no wrap), surfaced as
-   * applied / unsupported evidence respectively.
+   * Handler for the `a11y.action.next` / `a11y.action.previous` linear-navigation verbs
+   * (issue #1956). No target node — moves the host-side TalkBack focus cursor through the merged
+   * focus stops in traversal order via `interactive.dispatchSemanticsAction(direction, "")`.
+   * `matched` is `true` when focus moved, `false` at a list boundary (end of screen — no wrap),
+   * surfaced as applied / unsupported evidence respectively.
    */
   private fun a11yNavigationHandler(direction: String): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, _ ->
@@ -554,13 +569,13 @@ class AndroidRecordingSession(
    * `SelectorJson`), serialises it to a JSON string, and forwards to
    * `interactive.dispatchUiAutomator(actionKind, selectorJson, useUnmergedTree, inputText)`. The
    * arm in [RobolectricHost.performUiAutomatorAction] decodes the JSON, walks
-   * `UiAutomator.findObject(rule, selector, useUnmergedTree)`, and invokes the matching
-   * `UiObject` method.
+   * `UiAutomator.findObject(rule, selector, useUnmergedTree)`, and invokes the matching `UiObject`
+   * method.
    *
    * Reports `unsupported` (with a specific reason) when the agent didn't supply `selector`, when
-   * `inputText` is required (`uia.inputText`) but absent, when no node matched, or when the
-   * matched node didn't expose the requested action. Throws (propagating into stop()) only when
-   * the action body itself fails — same shape as the `a11y.action.*` path.
+   * `inputText` is required (`uia.inputText`) but absent, when no node matched, or when the matched
+   * node didn't expose the requested action. Throws (propagating into stop()) only when the action
+   * body itself fails — same shape as the `a11y.action.*` path.
    */
   private fun uiAutomatorActionHandler(actionKind: String): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, _ ->
@@ -632,9 +647,8 @@ class AndroidRecordingSession(
    * `interactive.dispatchPreviewReload()`. The Robolectric sandbox increments a `key(...)` reload
    * counter, which Compose detects as a key change and rebuilds the slot table from scratch.
    *
-   * Reports `unsupported` when the host can't dispatch reload (interactive returned `false`,
-   * e.g. on a backend without a held rule). No payload validation needed — the kind alone is
-   * sufficient.
+   * Reports `unsupported` when the host can't dispatch reload (interactive returned `false`, e.g.
+   * on a backend without a held rule). No payload validation needed — the kind alone is sufficient.
    */
   private fun previewReloadHandler(): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, _ ->
@@ -655,8 +669,8 @@ class AndroidRecordingSession(
    * `SaveableStateRegistry`, increments a recreate counter, and rebuilds the slot table with the
    * snapshot restored. `rememberSaveable` survives; `remember` resets.
    *
-   * Reports `unsupported` when the host can't dispatch recreate (interactive returned `false`,
-   * e.g. on a backend without the SaveableStateRegistry bridge wired).
+   * Reports `unsupported` when the host can't dispatch recreate (interactive returned `false`, e.g.
+   * on a backend without the SaveableStateRegistry bridge wired).
    */
   private fun stateRecreateHandler(): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, _ ->
@@ -680,8 +694,8 @@ class AndroidRecordingSession(
    * keyed by `event.checkpointId`. Doesn't rebuild the composition; pair with a later
    * `state.restore` carrying the same id to apply the saved bundle.
    *
-   * Reports `unsupported` when `checkpointId` is missing (the wire shape requires a non-blank
-   * id) or when the host can't dispatch save (interactive returned `false`).
+   * Reports `unsupported` when `checkpointId` is missing (the wire shape requires a non-blank id)
+   * or when the host can't dispatch save (interactive returned `false`).
    */
   private fun stateSaveHandler(): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, _ ->
@@ -694,10 +708,7 @@ class AndroidRecordingSession(
       }
       val applied = interactive.dispatchStateSave(checkpointId)
       if (applied) {
-        appliedEvidence(
-          event,
-          "rememberSaveable state captured under checkpointId='$checkpointId'",
-        )
+        appliedEvidence(event, "rememberSaveable state captured under checkpointId='$checkpointId'")
       } else {
         unsupportedEvidence(
           event,
@@ -711,10 +722,10 @@ class AndroidRecordingSession(
    * Handler for `state.restore` — looks up the bundle stashed by an earlier `state.save` with
    * matching `checkpointId` and rebuilds the held composition with that bundle restored.
    *
-   * Reports `unsupported` when `checkpointId` is missing, when no checkpoint with that id has
-   * been saved (the host returned `false` because the lookup missed), or when the host can't
-   * dispatch restore at all. Specific reason in each case so the agent can tell apart "I didn't
-   * provide an id" from "I provided an id no one saved" from "this host doesn't do restore".
+   * Reports `unsupported` when `checkpointId` is missing, when no checkpoint with that id has been
+   * saved (the host returned `false` because the lookup missed), or when the host can't dispatch
+   * restore at all. Specific reason in each case so the agent can tell apart "I didn't provide an
+   * id" from "I provided an id no one saved" from "this host doesn't do restore".
    */
   private fun stateRestoreHandler(): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, _ ->
@@ -727,10 +738,7 @@ class AndroidRecordingSession(
       }
       val applied = interactive.dispatchStateRestore(checkpointId)
       if (applied) {
-        appliedEvidence(
-          event,
-          "rememberSaveable state restored from checkpointId='$checkpointId'",
-        )
+        appliedEvidence(event, "rememberSaveable state restored from checkpointId='$checkpointId'")
       } else {
         unsupportedEvidence(
           event,
@@ -748,10 +756,10 @@ class AndroidRecordingSession(
    * Robolectric sandbox maps the string to a `Lifecycle.State` and calls
    * `ActivityScenario.moveToState(...)`.
    *
-   * Reports `unsupported` only when the host couldn't apply the transition (interactive
-   * returned `false` — typically because it has no ActivityScenario). Validation of the
-   * transition name happened up front: the registry only carries the three wired ids, so
-   * unknown lifecycle.* kinds are rejected at MCP via the descriptor's closed set.
+   * Reports `unsupported` only when the host couldn't apply the transition (interactive returned
+   * `false` — typically because it has no ActivityScenario). Validation of the transition name
+   * happened up front: the registry only carries the three wired ids, so unknown lifecycle.* kinds
+   * are rejected at MCP via the descriptor's closed set.
    */
   private fun lifecycleEventHandler(target: String): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, _ ->
@@ -768,15 +776,15 @@ class AndroidRecordingSession(
     }
 
   /**
-   * Shared factory for every `navigation.<actionKind>` script event. Pre-binds the wire-name
-   * string at registration time and forwards to `interactive.dispatchNavigation(actionKind, ...)`.
-   * The sandbox-side `when` in [RobolectricHost.SandboxRunner.performNavigationAction] picks the
+   * Shared factory for every `navigation.<actionKind>` script event. Pre-binds the wire-name string
+   * at registration time and forwards to `interactive.dispatchNavigation(actionKind, ...)`. The
+   * sandbox-side `when` in [RobolectricHost.SandboxRunner.performNavigationAction] picks the
    * matching `Activity.startActivity` / `OnBackPressedDispatcher` method.
    *
    * Reports `unsupported` (with a specific reason) when `actionKind = "deepLink"` is missing the
-   * `deepLinkUri` field, when the host returned `false` (unknown kind / no held activity), or
-   * when the matched action couldn't fire. Throws (propagating into stop()) only when the action
-   * body itself fails — same shape as the lifecycle / a11y / uia paths.
+   * `deepLinkUri` field, when the host returned `false` (unknown kind / no held activity), or when
+   * the matched action couldn't fire. Throws (propagating into stop()) only when the action body
+   * itself fails — same shape as the lifecycle / a11y / uia paths.
    */
   private fun navigationEventHandler(actionKind: String): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, _ ->
@@ -827,10 +835,7 @@ class AndroidRecordingSession(
         val advanceTimeMs = if (frameIndex == 0) 0L else (tMs - lastFrameTimeMs).coerceAtLeast(0L)
         lastFrameTimeMs = tMs
         val rendered =
-          interactive.render(
-            requestId = RenderHost.nextRequestId(),
-            advanceTimeMs = advanceTimeMs,
-          )
+          interactive.render(requestId = RenderHost.nextRequestId(), advanceTimeMs = advanceTimeMs)
         val srcPath =
           rendered.pngPath
             ?: error(
@@ -925,7 +930,9 @@ class AndroidRecordingSession(
     }
   }
 
-  /** Contiguous per-frame PNGs, asserted present, shared by the [ApngEncoder] / [GifEncoder] paths. */
+  /**
+   * Contiguous per-frame PNGs, asserted present, shared by the [ApngEncoder] / [GifEncoder] paths.
+   */
   private fun framePngs(frameCount: Int): List<File> =
     (0 until frameCount).map { i ->
       File(framesDir, "frame-${"%05d".format(i)}.png").also {
@@ -1017,10 +1024,10 @@ class AndroidRecordingSession(
      * `AccessibilityRecordingScriptEvents.descriptor` — each registers in [scriptHandlers] as
      * `a11y.action.<kind>` and fans out to a `when` arm in
      * [RobolectricHost.performSemanticsActionByContentDescription]. Adding a new entry requires
-     * three coordinated edits: (a) the descriptor in [AccessibilityRecordingScriptEvents], (b)
-     * this list, (c) the matching arm in `performSemanticsActionByContentDescription`. Test
-     * coverage is `AndroidRecordingSessionTest.a11ySemanticsActionsRouteThroughDispatch` which
-     * loops every entry here so a missing arm is caught at unit-test time.
+     * three coordinated edits: (a) the descriptor in [AccessibilityRecordingScriptEvents], (b) this
+     * list, (c) the matching arm in `performSemanticsActionByContentDescription`. Test coverage is
+     * `AndroidRecordingSessionTest.a11ySemanticsActionsRouteThroughDispatch` which loops every
+     * entry here so a missing arm is caught at unit-test time.
      */
     internal val A11Y_SEMANTIC_ACTIONS: List<String> =
       listOf(

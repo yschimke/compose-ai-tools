@@ -26,8 +26,7 @@ public class XrSubspaceRenderTest(private val preview: XrManifestReader.XrPrevie
 
   // v2 rule API (StandardTestDispatcher) is not on the compat compile classpath yet;
   // suppress until the floor moves up. See renderer-android RobolectricRenderTest.
-  @Suppress("DEPRECATION")
-  @get:Rule public val rule = createAndroidComposeRule<ComponentActivity>()
+  @Suppress("DEPRECATION") @get:Rule public val rule = createAndroidComposeRule<ComponentActivity>()
 
   @Test
   public fun renderScene() {
@@ -38,7 +37,9 @@ public class XrSubspaceRenderTest(private val preview: XrManifestReader.XrPrevie
 
     val rendersDir =
       File(
-        requireNotNull(System.getProperty(OUTPUT_DIR_PROP)) { "$OUTPUT_DIR_PROP system property not set" }
+        requireNotNull(System.getProperty(OUTPUT_DIR_PROP)) {
+          "$OUTPUT_DIR_PROP system property not set"
+        }
       )
     val outputDir = File(rendersDir, sanitize(preview.id)).apply { mkdirs() }
     XrSubspaceRenderer.render(

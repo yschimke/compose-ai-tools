@@ -20,17 +20,16 @@ import org.robolectric.annotation.Config
  * Demonstrates that the prototype's selectors + ANI-driven actions work end-to-end on a real
  * Android View tree under Robolectric — no Compose, no `UiAutomation`, no `adb`.
  *
- * The matcher walks the View tree (because `AccessibilityNodeInfo.getChild()` requires a
- * connected `AccessibilityInteractionClient`, which Robolectric doesn't provide). Actions
- * dispatch through `view.performAccessibilityAction(...)` rather than
- * `AccessibilityNodeInfo.performAction(...)` for the same reason — see
- * [UiAutomator.findObject]'s KDoc for the gory details.
+ * The matcher walks the View tree (because `AccessibilityNodeInfo.getChild()` requires a connected
+ * `AccessibilityInteractionClient`, which Robolectric doesn't provide). Actions dispatch through
+ * `view.performAccessibilityAction(...)` rather than `AccessibilityNodeInfo.performAction(...)` for
+ * the same reason — see [UiAutomator.findObject]'s KDoc for the gory details.
  *
- * **Note** about `Button`: the platform Button style applies `textAllCaps=true`, which rewrites
- * the displayed text (and the ANI's `text` field) to upper case. Tests use plain `TextView`
- * + an `OnClickListener` instead, which keeps the literal text. On-device this same caveat
- * applies to real UIAutomator runs — the selector for a Button labelled "Submit" needs to
- * either match the displayed `SUBMIT` or set `textAllCaps=false` upstream.
+ * **Note** about `Button`: the platform Button style applies `textAllCaps=true`, which rewrites the
+ * displayed text (and the ANI's `text` field) to upper case. Tests use plain `TextView`
+ * + an `OnClickListener` instead, which keeps the literal text. On-device this same caveat applies
+ *   to real UIAutomator runs — the selector for a Button labelled "Submit" needs to either match
+ *   the displayed `SUBMIT` or set `textAllCaps=false` upstream.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -170,9 +169,9 @@ class UiAutomatorPrototypeTest {
   }
 
   /**
-   * Sanity check — selectors should still see real `Button` instances even though we don't use
-   * them above. Documents the textAllCaps caveat so anyone reading the suite knows it's
-   * intentional, not an accident.
+   * Sanity check — selectors should still see real `Button` instances even though we don't use them
+   * above. Documents the textAllCaps caveat so anyone reading the suite knows it's intentional, not
+   * an accident.
    */
   @Test
   fun `Button textAllCaps is reflected in the ANI text field`() {

@@ -24,9 +24,9 @@ import androidx.navigation.compose.rememberNavController
  * NavHost-based preview that exercises the daemon's navigation surface end-to-end.
  *
  * **What this preview does (interactively):**
- * - Boots a `NavHost` with two destinations — `home` and `profile/{userId}` — and a
- *   [`BackHandler`] on the profile screen so an `OnBackPressedCallback` is registered with the
- *   activity's `onBackPressedDispatcher`.
+ * - Boots a `NavHost` with two destinations — `home` and `profile/{userId}` — and a [`BackHandler`]
+ *   on the profile screen so an `OnBackPressedCallback` is registered with the activity's
+ *   `onBackPressedDispatcher`.
  * - The home screen exposes a "Go to profile" button. The profile screen exposes a "Back" button
  *   that calls `navController.popBackStack()`.
  *
@@ -39,13 +39,12 @@ import androidx.navigation.compose.rememberNavController
  *   gesture's animation curve renders correctly, and finally `navigation.back` (or the gesture
  *   commit phase) to pop back to home.
  *
- * **Robolectric reality check.** Under `ActivityScenarioRule<ComponentActivity>`, the launch
- * Intent has `action = MAIN` / `category = LAUNCHER` and an empty extras bag — so the
- * `data/navigation` snapshot's `intent` block is sparse on the home preview. After a
- * `navigation.deepLink` script event the snapshot's `intent.action` flips to `VIEW` and
- * `intent.dataUri` carries the deep-link URI. See
- * [`NavigationDataProducer`][ee.schimke.composeai.daemon.NavigationDataProducer] for the wire
- * shape and the Robolectric-specific extras handling.
+ * **Robolectric reality check.** Under `ActivityScenarioRule<ComponentActivity>`, the launch Intent
+ * has `action = MAIN` / `category = LAUNCHER` and an empty extras bag — so the `data/navigation`
+ * snapshot's `intent` block is sparse on the home preview. After a `navigation.deepLink` script
+ * event the snapshot's `intent.action` flips to `VIEW` and `intent.dataUri` carries the deep-link
+ * URI. See [`NavigationDataProducer`][ee.schimke.composeai.daemon.NavigationDataProducer] for the
+ * wire shape and the Robolectric-specific extras handling.
  */
 @Preview(name = "NavHost — Home", showBackground = true, widthDp = 320, heightDp = 480)
 @Composable
@@ -53,9 +52,7 @@ fun NavHostHomePreview() {
   Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
     val navController = rememberNavController()
     NavHost(navController = navController, startDestination = "home") {
-      composable("home") {
-        HomeScreen(onProfile = { navController.navigate("profile/42") })
-      }
+      composable("home") { HomeScreen(onProfile = { navController.navigate("profile/42") }) }
       composable("profile/{userId}") { entry ->
         // BackHandler installs an OnBackPressedCallback(enabled = true) — that's what
         // `data/navigation`'s `onBackPressed.hasEnabledCallbacks` flips to true on this screen.

@@ -1,11 +1,11 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.io.SystemFileSystem
-import okio.FileSystem
-import okio.Path.Companion.toPath
 import java.io.File
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * Test/harness-only [RobolectricHost] subclass that re-packs an inbound `previewId=<id>` payload
@@ -16,9 +16,9 @@ import kotlinx.serialization.json.Json
  * [PreviewManifestRouter][ee.schimke.composeai.daemon.PreviewManifestRouter] (the desktop version)
  * exactly — same JSON schema, same payload reshape rules, same activation sysprop. Lives in this
  * module's main source set so [DaemonMain] can mount it when spawned by `:daemon:harness`'s
- * `RealAndroidHarnessLauncher` (D-harness.v2). Without this routing the real Android daemon
- * (driven by `JsonRpcServer.handleRenderNow`, which only forwards `previewId=<id>` in the payload —
- * see `JsonRpcServer.kt` line ~352) would fall through to [RobolectricHost.SandboxRunner]'s
+ * `RealAndroidHarnessLauncher` (D-harness.v2). Without this routing the real Android daemon (driven
+ * by `JsonRpcServer.handleRenderNow`, which only forwards `previewId=<id>` in the payload — see
+ * `JsonRpcServer.kt` line ~352) would fall through to [RobolectricHost.SandboxRunner]'s
  * `renderStub` path, producing no PNG.
  *
  * **Activated only when** `-Dcomposeai.harness.previewsManifest=<path>` is set on the JVM —
@@ -27,11 +27,11 @@ import kotlinx.serialization.json.Json
  * field on `RenderRequest`, at which point this whole routing concept folds into `JsonRpcServer`
  * itself and this class goes away.
  *
- * **Why duplicated rather than promoted to `:daemon:core`.** Per DESIGN § 4 + § 7 the
- * router constructs target-specific `RenderSpec` payloads which are themselves duplicated per
- * backend (B1.4 decision). Promoting the router would force promoting `RenderSpec`, which would
- * widen the renderer-agnostic surface for a type slated for replacement. Two near-identical
- * routers is the documented trade-off.
+ * **Why duplicated rather than promoted to `:daemon:core`.** Per DESIGN § 4 + § 7 the router
+ * constructs target-specific `RenderSpec` payloads which are themselves duplicated per backend
+ * (B1.4 decision). Promoting the router would force promoting `RenderSpec`, which would widen the
+ * renderer-agnostic surface for a type slated for replacement. Two near-identical routers is the
+ * documented trade-off.
  *
  * **Manifest schema** (`PreviewManifest`):
  * ```json
@@ -53,15 +53,16 @@ class PreviewManifestRouter(
   userClassloaderHolderFactory: ((sandboxClassLoader: ClassLoader) -> UserClassLoaderHolder)? =
     null,
   interactiveSessionListener: InteractiveSessionListener? = null,
-) : RobolectricHost(
-  userClassloaderHolder = userClassloaderHolder,
-  sandboxCount = sandboxCount,
-  userClassloaderHolderFactory = userClassloaderHolderFactory,
-  previewSpecResolver = { previewId ->
-    manifest.previews.firstOrNull { it.id == previewId }?.renderSpec()
-  },
-  interactiveSessionListener = interactiveSessionListener,
-) {
+) :
+  RobolectricHost(
+    userClassloaderHolder = userClassloaderHolder,
+    sandboxCount = sandboxCount,
+    userClassloaderHolderFactory = userClassloaderHolderFactory,
+    previewSpecResolver = { previewId ->
+      manifest.previews.firstOrNull { it.id == previewId }?.renderSpec()
+    },
+    interactiveSessionListener = interactiveSessionListener,
+  ) {
 
   private val byId: Map<String, PreviewManifestEntry> = manifest.previews.associateBy { it.id }
 
@@ -70,11 +71,7 @@ class PreviewManifestRouter(
       "Use shutdown() to stop the host, not submit(Shutdown)."
     }
     val typed = request as RenderRequest.Render
-    val routed =
-      RenderRequest.Render(
-        id = typed.id,
-        payload = routePayload(typed.payload),
-      )
+    val routed = RenderRequest.Render(id = typed.id, payload = routePayload(typed.payload))
     return super.submit(routed, timeoutMs)
   }
 
@@ -97,10 +94,9 @@ class PreviewManifestRouter(
     // renderer's `isRoundDevice(spec.device)` round-detection sees it (Wear devices applied via
     // override should still get the circular crop).
     val deviceOverride = inbound["device"]?.takeIf { it.isNotBlank() }
-    val deviceSpec =
-      deviceOverride?.let {
-        ee.schimke.composeai.daemon.devices.DeviceDimensions.resolve(it)
-      }
+    val deviceSpec = deviceOverride?.let {
+      ee.schimke.composeai.daemon.devices.DeviceDimensions.resolve(it)
+    }
     val baseWidthPx = deviceSpec?.let { (it.widthDp * it.density).toInt() } ?: resolved.widthPx
     val baseHeightPx = deviceSpec?.let { (it.heightDp * it.density).toInt() } ?: resolved.heightPx
     val baseDensity = deviceSpec?.density ?: resolved.density
@@ -118,9 +114,7 @@ class PreviewManifestRouter(
       if (resolved.backgroundColor != 0L) {
         append("backgroundColor=").append(resolved.backgroundColor).append(';')
       }
-      effectiveDevice?.takeIf { it.isNotBlank() }?.let {
-        append("device=").append(it).append(';')
-      }
+      effectiveDevice?.takeIf { it.isNotBlank() }?.let { append("device=").append(it).append(';') }
       // PROTOCOL.md § 5 (`renderNow.overrides`) — locale / fontScale / uiMode / orientation
       // pass straight through to the qualifier builder in `RenderEngine`. Wire-format twin
       // of the desktop router; keep both in lockstep so a single payload drives both.
@@ -128,18 +122,16 @@ class PreviewManifestRouter(
       inbound["fontScale"]?.let { append("fontScale=").append(it).append(';') }
       inbound["uiMode"]?.let { append("uiMode=").append(it).append(';') }
       inbound["orientation"]?.let { append("orientation=").append(it).append(';') }
-      inbound["captureAdvanceMs"]?.let {
-        append("captureAdvanceMs=").append(it).append(';')
-      }
+      inbound["captureAdvanceMs"]?.let { append("captureAdvanceMs=").append(it).append(';') }
       inbound["inspectionMode"]?.let { append("inspectionMode=").append(it).append(';') }
       inbound["clearBackground"]?.let { append("clearBackground=").append(it).append(';') }
       inbound["overrides"]?.let { append("overrides=").append(it).append(';') }
       inbound["mode"]?.let { append("mode=").append(it).append(';') }
       // Manifest-resolved kind forwards through verbatim; an inbound `kind=` override (rare —
       // currently only test fixtures emit one) wins for parity with the other override fields.
-      (inbound["kind"] ?: resolved.kind)?.takeIf { it.isNotBlank() }?.let {
-        append("kind=").append(it).append(';')
-      }
+      (inbound["kind"] ?: resolved.kind)
+        ?.takeIf { it.isNotBlank() }
+        ?.let { append("kind=").append(it).append(';') }
       // `@PreviewWrapper(SomeProvider::class)` FQN sourced from `previews.json` (the gradle
       // plugin's `extractWrapperFqn` reads it off the class-file annotation tables — the
       // upstream annotation is `AnnotationRetention.BINARY` and not visible via
@@ -147,9 +139,9 @@ class PreviewManifestRouter(
       // can recover the wrapper FQN for the render body). Forwarded into the `RenderSpec`
       // payload so [RenderEngine]'s `InvokeWithOptionalWrapper` can route through the
       // wrapper's `Wrap(content)` without resorting to runtime reflection on the composable.
-      resolved.wrapperClassName?.takeIf { it.isNotBlank() }?.let {
-        append("wrapperClassName=").append(it).append(';')
-      }
+      resolved.wrapperClassName
+        ?.takeIf { it.isNotBlank() }
+        ?.let { append("wrapperClassName=").append(it).append(';') }
       append("outputBaseName=").append(resolved.outputBaseName)
     }
   }
@@ -242,8 +234,8 @@ data class PreviewManifestEntry(
   val device: String? = null,
   val outputBaseName: String? = null,
   /**
-   * Flat-schema sibling of [PreviewParamsEntry.kind] — see kdoc there. Harness fixtures that
-   * use the flat shape can supply this directly; the production gradle plugin writes it under
+   * Flat-schema sibling of [PreviewParamsEntry.kind] — see kdoc there. Harness fixtures that use
+   * the flat shape can supply this directly; the production gradle plugin writes it under
    * `params.kind` instead. [resolved] consults the flat field first, then the nested one.
    */
   val kind: String? = null,
@@ -273,11 +265,10 @@ data class PreviewManifestEntry(
 }
 
 /**
- * Subset of the plugin's
- * [PreviewParams][ee.schimke.composeai.plugin.PreviewParams] the daemon's render path consumes.
- * Any plugin-side fields the daemon doesn't yet care about (fontScale, locale, uiMode, group, …)
- * are silently dropped via `ignoreUnknownKeys = true`. Add them here when the daemon grows the
- * matching render-path support.
+ * Subset of the plugin's [PreviewParams][ee.schimke.composeai.plugin.PreviewParams] the daemon's
+ * render path consumes. Any plugin-side fields the daemon doesn't yet care about (fontScale,
+ * locale, uiMode, group, …) are silently dropped via `ignoreUnknownKeys = true`. Add them here when
+ * the daemon grows the matching render-path support.
  */
 @Serializable
 data class PreviewParamsEntry(
@@ -291,24 +282,26 @@ data class PreviewParamsEntry(
    * `"COMPOSE"` / `"TILE"` / `"NOTIFICATION"` / `"GLANCE_APPWIDGET"` — mirrors
    * `ee.schimke.composeai.discovery.PreviewKind`. Forwarded through the router so the daemon's
    * render path can dispatch tile / notification / Glance previews to their dedicated renderer
-   * helpers instead of the Compose-method reflection path (which throws `NoSuchMethodException`
-   * on non-composable entrypoints, and produces an unwrapped misrender for Glance entrypoints).
+   * helpers instead of the Compose-method reflection path (which throws `NoSuchMethodException` on
+   * non-composable entrypoints, and produces an unwrapped misrender for Glance entrypoints).
    */
   val kind: String? = null,
   /**
-   * FQN of the `PreviewWrapperProvider` from `@PreviewWrapper(SomeProvider::class)` when the
-   * source preview is annotated. Read at discovery time by `extractWrapperFqn` against the
-   * class-file annotation tables — the upstream annotation has `AnnotationRetention.BINARY`, so
-   * `Method.annotations` is empty for it at runtime. The daemon's render path consumes this
-   * field to drive `InvokeWithOptionalWrapper`; without the manifest plumbing the daemon would
-   * see no wrapper present and render the preview body directly (the original "Invalid applier"
-   * crash that motivated `@PreviewWrapper` in the first place).
+   * FQN of the `PreviewWrapperProvider` from `@PreviewWrapper(SomeProvider::class)` when the source
+   * preview is annotated. Read at discovery time by `extractWrapperFqn` against the class-file
+   * annotation tables — the upstream annotation has `AnnotationRetention.BINARY`, so
+   * `Method.annotations` is empty for it at runtime. The daemon's render path consumes this field
+   * to drive `InvokeWithOptionalWrapper`; without the manifest plumbing the daemon would see no
+   * wrapper present and render the preview body directly (the original "Invalid applier" crash that
+   * motivated `@PreviewWrapper` in the first place).
    */
   val wrapperClassName: String? = null,
 )
 
-/** Output of [PreviewManifestEntry.resolved] — flat, fully-defaulted, ready to format into a
- *  `RenderSpec` payload. */
+/**
+ * Output of [PreviewManifestEntry.resolved] — flat, fully-defaulted, ready to format into a
+ * `RenderSpec` payload.
+ */
 data class ResolvedRenderParams(
   val widthPx: Int,
   val heightPx: Int,
