@@ -57,16 +57,8 @@ class HierarchySelectorBuilderTest {
 
   @Test
   fun `non-unique text chains to nearest disambiguating ancestor`() {
-    val a =
-      node(
-        text = "Item",
-        testTagAncestors = listOf("screen", "list-A"),
-      )
-    val b =
-      node(
-        text = "Item",
-        testTagAncestors = listOf("screen", "list-B"),
-      )
+    val a = node(text = "Item", testTagAncestors = listOf("screen", "list-A"))
+    val b = node(text = "Item", testTagAncestors = listOf("screen", "list-B"))
     val snippet = HierarchySelectorBuilder.buildSelectorSnippet(a, listOf(a, b))
     assertEquals("By.text(\"Item\").hasParent(By.testTag(\"list-A\"))", snippet)
   }
@@ -83,16 +75,8 @@ class HierarchySelectorBuilderTest {
 
   @Test
   fun `blank ancestors are skipped during walk`() {
-    val a =
-      node(
-        text = "Item",
-        testTagAncestors = listOf("screen", "", "list-A"),
-      )
-    val b =
-      node(
-        text = "Item",
-        testTagAncestors = listOf("screen", "", "list-B"),
-      )
+    val a = node(text = "Item", testTagAncestors = listOf("screen", "", "list-A"))
+    val b = node(text = "Item", testTagAncestors = listOf("screen", "", "list-B"))
     val snippet = HierarchySelectorBuilder.buildSelectorSnippet(a, listOf(a, b))
     assertEquals("By.text(\"Item\").hasParent(By.testTag(\"list-A\"))", snippet)
   }
@@ -116,10 +100,7 @@ class HierarchySelectorBuilderTest {
   fun `quote escapes special characters`() {
     val target = node(text = "Line 1\nLine 2 with \"quotes\"")
     val snippet = HierarchySelectorBuilder.buildSelectorSnippet(target, listOf(target))
-    assertEquals(
-      "By.text(\"Line 1\\nLine 2 with \\\"quotes\\\"\")",
-      snippet,
-    )
+    assertEquals("By.text(\"Line 1\\nLine 2 with \\\"quotes\\\"\")", snippet)
   }
 
   @Test

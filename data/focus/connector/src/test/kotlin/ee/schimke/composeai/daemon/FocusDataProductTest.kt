@@ -1,11 +1,11 @@
 package ee.schimke.composeai.daemon
 
-import ee.schimke.composeai.data.focus.Material3FocusProduct
 import ee.schimke.composeai.daemon.protocol.AmbientOverride
 import ee.schimke.composeai.daemon.protocol.AmbientStateOverride
 import ee.schimke.composeai.daemon.protocol.FocusDirection
 import ee.schimke.composeai.daemon.protocol.FocusOverride
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.data.focus.Material3FocusProduct
 import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
 import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
@@ -41,7 +41,8 @@ class FocusDataProductTest {
   @Test
   fun `planner returns extension when focus override present`() {
     val planner = FocusPreviewOverrideExtension()
-    val planned = planner.plan(PreviewOverrides(focus = FocusOverride(direction = FocusDirection.Next)))
+    val planned =
+      planner.plan(PreviewOverrides(focus = FocusOverride(direction = FocusDirection.Next)))
     assertTrue("expected planner to produce a hook", planned is AroundComposableHook)
     assertEquals(DataExtensionId(Material3FocusProduct.KIND), planned!!.id)
   }
@@ -53,7 +54,9 @@ class FocusDataProductTest {
     assertNull(planner.plan(PreviewOverrides(widthPx = 320)))
     // Sibling overrides (e.g. ambient) shouldn't trigger the focus planner.
     assertNull(
-      planner.plan(PreviewOverrides(ambient = AmbientOverride(state = AmbientStateOverride.AMBIENT)))
+      planner.plan(
+        PreviewOverrides(ambient = AmbientOverride(state = AmbientStateOverride.AMBIENT))
+      )
     )
   }
 

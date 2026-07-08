@@ -16,11 +16,11 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Pins the `compose/recomposition` producer's contract on Android (issue #1204) — the
- * in-sandbox observer install + cross-classloader counter bridge end-to-end. Mirrors the
- * desktop `RecompositionDataProductRegistryTest` shape but drives a real
- * [RobolectricHost] + sandbox + held interactive session so the full Robolectric / Compose
- * runtime / `findViewTreeCompositionContext` path is covered.
+ * Pins the `compose/recomposition` producer's contract on Android (issue #1204) — the in-sandbox
+ * observer install + cross-classloader counter bridge end-to-end. Mirrors the desktop
+ * `RecompositionDataProductRegistryTest` shape but drives a real [RobolectricHost] + sandbox + held
+ * interactive session so the full Robolectric / Compose runtime / `findViewTreeCompositionContext`
+ * path is covered.
  */
 class AndroidRecompositionDataProductRegistryTest {
 

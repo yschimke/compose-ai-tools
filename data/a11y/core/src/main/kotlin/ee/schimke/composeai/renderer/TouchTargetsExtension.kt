@@ -41,27 +41,27 @@ class TouchTargetsExtension : PostCaptureProcessor {
 }
 
 /**
- * Public counterpart to the previously-internal `AccessibilityDataProducer.buildTouchTargets`.
- * Kept here so both the extension and the on-disk producer call into the same logic until the
- * connector layer migrates to consuming the typed product directly.
+ * Public counterpart to the previously-internal `AccessibilityDataProducer.buildTouchTargets`. Kept
+ * here so both the extension and the on-disk producer call into the same logic until the connector
+ * layer migrates to consuming the typed product directly.
  */
 fun buildTouchTargets(
   nodes: List<AccessibilityNode>,
   density: Float,
 ): List<AccessibilityTouchTarget> {
   val scale = density.takeIf { it > 0f } ?: 1f
-  val candidates =
-    nodes.mapIndexedNotNull { index, node ->
-      if (!node.states.any { it == "clickable" || it == "long-clickable" }) return@mapIndexedNotNull null
-      val rect = parseBounds(node.boundsInScreen) ?: return@mapIndexedNotNull null
-      TouchTargetCandidate(
-        nodeId = "node-$index",
-        boundsInScreen = node.boundsInScreen,
-        rect = rect,
-        widthDp = rect.widthPx / scale,
-        heightDp = rect.heightPx / scale,
-      )
-    }
+  val candidates = nodes.mapIndexedNotNull { index, node ->
+    if (!node.states.any { it == "clickable" || it == "long-clickable" })
+      return@mapIndexedNotNull null
+    val rect = parseBounds(node.boundsInScreen) ?: return@mapIndexedNotNull null
+    TouchTargetCandidate(
+      nodeId = "node-$index",
+      boundsInScreen = node.boundsInScreen,
+      rect = rect,
+      widthDp = rect.widthPx / scale,
+      heightDp = rect.heightPx / scale,
+    )
+  }
 
   for (i in candidates.indices) {
     for (j in i + 1 until candidates.size) {

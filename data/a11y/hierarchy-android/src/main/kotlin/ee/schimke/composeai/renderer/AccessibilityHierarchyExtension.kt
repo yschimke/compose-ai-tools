@@ -46,9 +46,9 @@ data class AccessibilityAnalysis(
 /**
  * Default binding for [AccessibilityHierarchyExtractor]: invokes it after the bitmap is captured
  * and emits the typed products into the store. Reads the captured `View` root from
- * [AccessibilityHierarchyContextKeys.ViewRoot] — the host populates it from its own platform
- * handle (the daemon's RenderEngine has the View directly; the Robolectric test runner gets it
- * via `ViewRootForTest`).
+ * [AccessibilityHierarchyContextKeys.ViewRoot] — the host populates it from its own platform handle
+ * (the daemon's RenderEngine has the View directly; the Robolectric test runner gets it via
+ * `ViewRootForTest`).
  *
  * `targets = {Android}` — a future Compose Multiplatform Desktop hierarchy producer would target
  * `{Desktop}` and emit the same product keys; the planner's target filter selects exactly one.
@@ -83,8 +83,7 @@ class AccessibilityHierarchyExtension : PostCaptureProcessor, RenderSessionParti
    * Refuses to run when the host invokes the hook without opting the a11y extension into the
    * current [RenderSession]. The Robolectric runner gates per-preview ATF on this check, so a
    * misconfigured plugin/CLI invocation fails loudly with a pointer to `--with-extension a11y`
-   * instead of silently emitting an `accessibility.json` from a session that wasn't set up for
-   * it.
+   * instead of silently emitting an `accessibility.json` from a session that wasn't set up for it.
    */
   override fun validateSession(session: RenderSession) {
     check(session.isApplied(id)) {

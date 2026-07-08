@@ -29,10 +29,9 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * Producer-level tests for the `uia/hierarchy` extension (#874). Drives the extractor against
- * real Compose `SemanticsNode` trees through `ComposeContentTestRule` — same path the daemon
- * will use post-capture, so anything that passes here matches what an agent's `uia.click`
- * dispatch sees.
+ * Producer-level tests for the `uia/hierarchy` extension (#874). Drives the extractor against real
+ * Compose `SemanticsNode` trees through `ComposeContentTestRule` — same path the daemon will use
+ * post-capture, so anything that passes here matches what an agent's `uia.click` dispatch sees.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "w400dp-h800dp")
@@ -63,10 +62,7 @@ class UiAutomatorHierarchyExtensionTest {
     // Every emitted node must carry at least one supported uia.* action — that's the contract
     // of the default filter and what makes the snapshot useful as a dispatch target list.
     for (node in payload.nodes) {
-      assertTrue(
-        "default-filtered node carried no actions: $node",
-        node.actions.isNotEmpty(),
-      )
+      assertTrue("default-filtered node carried no actions: $node", node.actions.isNotEmpty())
       assertTrue(
         "node action '${node.actions}' contains an unsupported value",
         node.actions.all { it in UiAutomatorDataProducts.SUPPORTED_ACTIONS },
@@ -76,13 +72,7 @@ class UiAutomatorHierarchyExtensionTest {
 
   @Test
   fun `deeply nested clickable stays reachable through filtered parents`() {
-    rule.setContent {
-      Box {
-        Box {
-          Box { Button(onClick = {}) { Text("Deep") } }
-        }
-      }
-    }
+    rule.setContent { Box { Box { Box { Button(onClick = {}) { Text("Deep") } } } } }
 
     val payload = extractMerged()
     val deep = payload.nodes.firstOrNull { it.text == "Deep" }
@@ -244,17 +234,12 @@ class UiAutomatorHierarchyExtensionTest {
         renderMode = null,
         products = store2.scopedFor(extension),
         data =
-          ExtensionContextData.of(
-            UiAutomatorHierarchyContextKeys.SemanticsRoot provides rootNode
-          ),
+          ExtensionContextData.of(UiAutomatorHierarchyContextKeys.SemanticsRoot provides rootNode),
       )
     )
     val defaulted = store2.get(UiAutomatorDataProducts.Hierarchy)
     assertNotNull(defaulted)
-    assertTrue(
-      "default options must produce at least one node",
-      defaulted!!.nodes.isNotEmpty(),
-    )
+    assertTrue("default options must produce at least one node", defaulted!!.nodes.isNotEmpty())
     assertTrue(
       "default options imply merged=true on emitted nodes",
       defaulted.nodes.all { it.merged },

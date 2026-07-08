@@ -26,8 +26,7 @@ import ee.schimke.composeai.data.render.extensions.compose.ExtensionComposeConte
 class ResourcesRecorderExtension(private val baseContext: Context) :
   AroundComposableHook, PostCaptureProcessor {
   private val recorder: RecordingResources = ResourcesUsedDataProducer.recorder(baseContext)
-  private val recordingContext: Context =
-    ResourcesUsedDataProducer.context(baseContext, recorder)
+  private val recordingContext: Context = ResourcesUsedDataProducer.context(baseContext, recorder)
 
   override val id: DataExtensionId = ID
   override val hooks: Set<DataExtensionHookKind> =
@@ -55,6 +54,8 @@ class ResourcesRecorderExtension(private val baseContext: Context) :
     val ID: DataExtensionId = DataExtensionId(ResourcesUsedDataProducer.KIND)
 
     val factory: RenderDataArtifactExtensionFactory =
-      RenderDataArtifactExtensionFactory { context -> ResourcesRecorderExtension(context) }
+      RenderDataArtifactExtensionFactory { context ->
+        ResourcesRecorderExtension(context)
+      }
   }
 }

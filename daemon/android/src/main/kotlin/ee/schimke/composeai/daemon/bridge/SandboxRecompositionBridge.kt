@@ -20,9 +20,9 @@ import java.util.concurrent.ConcurrentHashMap
  * **Counter shape.** Per (previewId, streamId), the bridge holds a `ConcurrentHashMap<Int, Int>`
  * keyed by `System.identityHashCode(RecomposeScope)` and valued by the recomposition delta count.
  * The sandbox-side observer ([ee.schimke.composeai.daemon.RobolectricHost]'s held-rule loop)
- * increments via [markRecomposed]; the host-side registry drains via [drainCounters], which atomically
- * snapshots and clears the entries so each subsequent call carries only the delta since the previous
- * drain.
+ * increments via [markRecomposed]; the host-side registry drains via [drainCounters], which
+ * atomically snapshots and clears the entries so each subsequent call carries only the delta since
+ * the previous drain.
  *
  * **Wire shape across the bridge.** [drainCounters] returns `arrayOf(String[], long[], long[])`:
  * the first element holds the base-16 scope ids (sorted), the second the matching recomposition
@@ -34,18 +34,24 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object SandboxRecompositionBridge {
 
-  /** Composite key. Two strings + separator: previewId is supplied by the host, streamId by the host
-   *  acquire path. Kept as a single [String] so the inner map's hashing is one lookup, not two. */
+  /**
+   * Composite key. Two strings + separator: previewId is supplied by the host, streamId by the host
+   * acquire path. Kept as a single [String] so the inner map's hashing is one lookup, not two.
+   */
   private fun key(previewId: String, streamId: String): String = "$previewId|$streamId"
 
-  /** Per-stream counter maps. Outer map is concurrent; inner map is concurrent per the issue brief
-   *  ("thread-safe ConcurrentHashMap per (previewId, frameStreamId)"). */
+  /**
+   * Per-stream counter maps. Outer map is concurrent; inner map is concurrent per the issue brief
+   * ("thread-safe ConcurrentHashMap per (previewId, frameStreamId)").
+   */
   private val counters: ConcurrentHashMap<String, ConcurrentHashMap<Int, Int>> = ConcurrentHashMap()
 
-  /** Per-stream snapshot-invalidation maps (v2, #1605), keyed by `System.identityHashCode(scope)`.
-   *  Parallel to [counters]: bumped by [markInvalidated] when the runtime invalidates a scope with a
-   *  snapshot value, drained alongside the counts so the host can attribute STATE_READ vs
-   *  PARAMETER_CHANGE. */
+  /**
+   * Per-stream snapshot-invalidation maps (v2, #1605), keyed by `System.identityHashCode(scope)`.
+   * Parallel to [counters]: bumped by [markInvalidated] when the runtime invalidates a scope with a
+   * snapshot value, drained alongside the counts so the host can attribute STATE_READ vs
+   * PARAMETER_CHANGE.
+   */
   private val invalidations: ConcurrentHashMap<String, ConcurrentHashMap<Int, Int>> =
     ConcurrentHashMap()
 
@@ -72,8 +78,8 @@ object SandboxRecompositionBridge {
 
   /**
    * Sandbox-side: bump the recomposition counter for [scopeHash] within [previewId] + [streamId].
-   * Called from the `CompositionObserver.onScopeExit` callback the held-rule loop installs. Silently
-   * dropped if the slot has been closed in the meantime (race-free against [close]).
+   * Called from the `CompositionObserver.onScopeExit` callback the held-rule loop installs.
+   * Silently dropped if the slot has been closed in the meantime (race-free against [close]).
    */
   @JvmStatic
   fun markRecomposed(previewId: String, streamId: String, scopeHash: Int) {
@@ -84,7 +90,8 @@ object SandboxRecompositionBridge {
   /**
    * Sandbox-side (v2, #1605): bump the snapshot-invalidation counter for [scopeHash]. Called from
    * the `CompositionObserver.onScopeInvalidated` callback when the runtime invalidates a scope with
-   * a non-null snapshot value — the STATE_READ signal. Silently dropped if the slot has been closed.
+   * a non-null snapshot value — the STATE_READ signal. Silently dropped if the slot has been
+   * closed.
    */
   @JvmStatic
   fun markInvalidated(previewId: String, streamId: String, scopeHash: Int) {
@@ -108,13 +115,14 @@ object SandboxRecompositionBridge {
    * Wire shape: `arrayOf(String[] ids, long[] counts, long[] invalidationCounts)` where `ids[i]` is
    * `Integer.toHexString(hash)` for the i-th entry (sorted ascending by id for deterministic
    * payloads), `counts[i]` is the recomposition delta count since the previous drain, and
-   * `invalidationCounts[i]` (v2, #1605) is how many times that scope was invalidated with a snapshot
-   * value over the same window — the host derives each scope's `InvalidationReason` from the two.
-   * Returns `arrayOf(String[0], long[0], long[0])` when no observer is active for the slot — the
-   * caller treats that the same as a live-but-quiet slot, i.e. an empty `nodes: []` attachment.
+   * `invalidationCounts[i]` (v2, #1605) is how many times that scope was invalidated with a
+   * snapshot value over the same window — the host derives each scope's `InvalidationReason` from
+   * the two. Returns `arrayOf(String[0], long[0], long[0])` when no observer is active for the slot
+   * — the caller treats that the same as a live-but-quiet slot, i.e. an empty `nodes: []`
+   * attachment.
    *
-   * Reset is per-entry (`ConcurrentHashMap.remove`) so concurrent observer increments don't lose
-   * a count between snapshot and reset — same atomic pattern the desktop producer uses. The
+   * Reset is per-entry (`ConcurrentHashMap.remove`) so concurrent observer increments don't lose a
+   * count between snapshot and reset — same atomic pattern the desktop producer uses. The
    * invalidation map is keyed on the recomposed ids and any invalidate-but-didn't-recompose
    * leftovers are cleared so they don't mis-attribute a later structural recomposition.
    */

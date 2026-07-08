@@ -127,7 +127,11 @@ class AmbientStateControllerTest {
       AmbientStateController.set(AmbientOverride(state = AmbientStateOverride.INTERACTIVE))
       Thread.sleep(80)
       assertEquals(AmbientStateOverride.INTERACTIVE, AmbientStateController.current())
-      assertEquals("set replaced the override; original idle restoration must not fire", 1, cb.enterCount)
+      assertEquals(
+        "set replaced the override; original idle restoration must not fire",
+        1,
+        cb.enterCount,
+      )
     } finally {
       AmbientStateController.unregisterCallback(cb)
     }
@@ -165,15 +169,25 @@ class AmbientStateControllerTest {
   @Test
   fun `wake kinds list mirrors AOSP's activating gestures`() {
     // Sanity: dispatch observer wakes only on the gestures Wear OS itself wakes on.
-    assertTrue("input.click is an activating gesture",
-      "input.click" in AmbientInputDispatchObserver.WAKE_KINDS)
-    assertTrue("input.pointerDown is an activating gesture",
-      "input.pointerDown" in AmbientInputDispatchObserver.WAKE_KINDS)
-    assertTrue("input.rotaryScroll is an activating gesture",
-      "input.rotaryScroll" in AmbientInputDispatchObserver.WAKE_KINDS)
-    assertFalse("input.pointerMove is not activating",
-      "input.pointerMove" in AmbientInputDispatchObserver.WAKE_KINDS)
-    assertFalse("input.pointerUp is not activating",
-      "input.pointerUp" in AmbientInputDispatchObserver.WAKE_KINDS)
+    assertTrue(
+      "input.click is an activating gesture",
+      "input.click" in AmbientInputDispatchObserver.WAKE_KINDS,
+    )
+    assertTrue(
+      "input.pointerDown is an activating gesture",
+      "input.pointerDown" in AmbientInputDispatchObserver.WAKE_KINDS,
+    )
+    assertTrue(
+      "input.rotaryScroll is an activating gesture",
+      "input.rotaryScroll" in AmbientInputDispatchObserver.WAKE_KINDS,
+    )
+    assertFalse(
+      "input.pointerMove is not activating",
+      "input.pointerMove" in AmbientInputDispatchObserver.WAKE_KINDS,
+    )
+    assertFalse(
+      "input.pointerUp is not activating",
+      "input.pointerUp" in AmbientInputDispatchObserver.WAKE_KINDS,
+    )
   }
 }

@@ -45,16 +45,16 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35])
 class SubspaceSceneRecorderTreeTest {
 
-  @Suppress("DEPRECATION")
-  @get:Rule
-  val rule = createAndroidComposeRule<ComponentActivity>()
+  @Suppress("DEPRECATION") @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
   private fun enableSpatialFeature() {
     val pm = ApplicationProvider.getApplicationContext<Context>().packageManager
     shadowOf(pm).setSystemFeature(SubspaceSceneRecorder.XR_SPATIAL_FEATURE, true)
   }
 
-  /** Minimal `SemanticsNode -> ComposeSemanticsNode` projection (the daemon injects the real one). */
+  /**
+   * Minimal `SemanticsNode -> ComposeSemanticsNode` projection (the daemon injects the real one).
+   */
   private fun project(node: SemanticsNode): ComposeSemanticsNode =
     ComposeSemanticsNode(
       nodeId = node.id.toString(),
@@ -63,18 +63,18 @@ class SubspaceSceneRecorderTreeTest {
       children = node.children.map(::project),
     )
 
-  private fun ComposeSemanticsNode.collectTestTags(): Set<String> =
-    buildSet {
-      testTag?.let(::add)
-      children.forEach { addAll(it.collectTestTags()) }
-    }
+  private fun ComposeSemanticsNode.collectTestTags(): Set<String> = buildSet {
+    testTag?.let(::add)
+    children.forEach { addAll(it.collectTestTags()) }
+  }
 
   @Test
   fun recordsThreeDimensionalTreeWithPerPanelTwoDimensionalContent() {
     enableSpatialFeature()
     rule.setContent {
       Subspace {
-        // The column is left untagged: recordAll enumerates every *tagged* subspace node, so tagging
+        // The column is left untagged: recordAll enumerates every *tagged* subspace node, so
+        // tagging
         // only the panels keeps the tree's panel set to {top, bottom}. (Distinguishing container
         // kinds — row/column/box — from panels is a future recorder enhancement.)
         SpatialColumn {
@@ -91,7 +91,8 @@ class SubspaceSceneRecorderTreeTest {
     }
     rule.waitForIdle()
 
-    val tree = SubspaceSceneRecorder.recordTree(rule, previewId = "test", projectSemantics = ::project)
+    val tree =
+      SubspaceSceneRecorder.recordTree(rule, previewId = "test", projectSemantics = ::project)
 
     assertThat(tree.version).isEqualTo(SPATIAL_SEMANTICS_TREE_VERSION)
     assertThat(tree.units).isEqualTo("dp")

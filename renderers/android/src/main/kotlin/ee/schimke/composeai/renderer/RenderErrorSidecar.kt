@@ -1,28 +1,25 @@
 package ee.schimke.composeai.renderer
 
 import ee.schimke.composeai.io.SystemFileSystem
-import okio.FileSystem
-import okio.Path.Companion.toPath
 import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
- * Per-preview render-error sidecar writer for the Android (Robolectric)
- * renderer path. Mirrors the convention established by the desktop
- * renderer (`renderer-desktop/.../DesktopRendererMain.kt#writeErrorSidecar`)
- * and the schema defined in the gradle plugin
- * (`gradle-plugin/.../PreviewRenderError.kt`).
+ * Per-preview render-error sidecar writer for the Android (Robolectric) renderer path. Mirrors the
+ * convention established by the desktop renderer
+ * (`renderer-desktop/.../DesktopRendererMain.kt#writeErrorSidecar`) and the schema defined in the
+ * gradle plugin (`gradle-plugin/.../PreviewRenderError.kt`).
  *
- * Sibling placement of `<png>.error.json` keeps the renderer's filesystem
- * layout self-contained — no aggregation step in the gradle plugin —
- * and the VS Code extension finds the sidecar by trivial string-concat
- * on the manifest's existing `renderOutput` path.
+ * Sibling placement of `<png>.error.json` keeps the renderer's filesystem layout self-contained —
+ * no aggregation step in the gradle plugin — and the VS Code extension finds the sidecar by trivial
+ * string-concat on the manifest's existing `renderOutput` path.
  *
- * Hand-rolled JSON. The renderer-android runtime classpath deliberately
- * doesn't pull `kotlinx-serialization` (renderer-vs-consumer alignment;
- * see `docs/RENDERER_COMPATIBILITY.md`), so we encode a shallow object
- * directly. The schema is small and stable.
+ * Hand-rolled JSON. The renderer-android runtime classpath deliberately doesn't pull
+ * `kotlinx-serialization` (renderer-vs-consumer alignment; see `docs/RENDERER_COMPATIBILITY.md`),
+ * so we encode a shallow object directly. The schema is small and stable.
  */
 internal object RenderErrorSidecar {
 
@@ -30,12 +27,10 @@ internal object RenderErrorSidecar {
   fun pathFor(pngFile: File): File = File(pngFile.parentFile, pngFile.name + ".error.json")
 
   /**
-   * Write the sidecar for a preview render that threw [e]. Drops any
-   * stale PNG at the same path so the panel doesn't surface yesterday's
-   * image alongside today's error message. Best-effort — failures here
-   * (filesystem ENOSPC, permissions) print to stderr but don't propagate,
-   * since the goal is to *avoid* derailing the test on a per-preview
-   * issue.
+   * Write the sidecar for a preview render that threw [e]. Drops any stale PNG at the same path so
+   * the panel doesn't surface yesterday's image alongside today's error message. Best-effort —
+   * failures here (filesystem ENOSPC, permissions) print to stderr but don't propagate, since the
+   * goal is to *avoid* derailing the test on a per-preview issue.
    */
   fun write(pngFile: File, e: Throwable, fileSystem: FileSystem = SystemFileSystem) {
     try {
@@ -67,10 +62,9 @@ internal object RenderErrorSidecar {
   }
 
   /**
-   * Drop the sidecar for [pngFile] if one exists, regardless of whether
-   * the prior render succeeded. Called at the start of every render
-   * attempt so a fresh successful render doesn't leave yesterday's
-   * `.error.json` haunting the panel.
+   * Drop the sidecar for [pngFile] if one exists, regardless of whether the prior render succeeded.
+   * Called at the start of every render attempt so a fresh successful render doesn't leave
+   * yesterday's `.error.json` haunting the panel.
    */
   fun deleteStale(pngFile: File) {
     val sidecar = pathFor(pngFile)
@@ -78,15 +72,13 @@ internal object RenderErrorSidecar {
   }
 
   /**
-   * The first stack frame attributable to user code. Skips Compose
-   * scaffold, Kotlin stdlib, JDK frames, the renderer's own glue, the
-   * Robolectric harness, and JUnit so the `(at File.kt:42)` annotation
-   * the extension surfaces points where the bug actually is rather than
-   * deep into framework internals.
+   * The first stack frame attributable to user code. Skips Compose scaffold, Kotlin stdlib, JDK
+   * frames, the renderer's own glue, the Robolectric harness, and JUnit so the `(at File.kt:42)`
+   * annotation the extension surfaces points where the bug actually is rather than deep into
+   * framework internals.
    *
-   * Same idea as the desktop renderer's `pickTopAppFrame` plus the
-   * Android-specific framework prefixes that don't show up there
-   * (Robolectric, JUnit, Roborazzi).
+   * Same idea as the desktop renderer's `pickTopAppFrame` plus the Android-specific framework
+   * prefixes that don't show up there (Robolectric, JUnit, Roborazzi).
    */
   private fun pickTopAppFrame(e: Throwable): TopFrame? {
     val skipPrefixes =

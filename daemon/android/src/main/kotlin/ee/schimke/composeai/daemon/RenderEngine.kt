@@ -13,9 +13,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.InternalComposeApi
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.currentComposer
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.reflect.ComposableMethod
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.tooling.CompositionData
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -27,24 +27,24 @@ import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
+import ee.schimke.composeai.daemon.devices.DeviceDimensions
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.render.PreviewBackends
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.PreviewDeviceSpec
-import ee.schimke.composeai.data.render.extensions.compose.ComposeDataExtensionPipeline
-import ee.schimke.composeai.data.render.extensions.compose.RecordingExtensionCompositionSink
-import ee.schimke.composeai.data.theme.NodeThemeFacts
-import ee.schimke.composeai.data.theme.ThemeConsumerAttribution
-import ee.schimke.composeai.data.theme.ThemePayload
-import ee.schimke.composeai.daemon.devices.DeviceDimensions
-import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.render.extensions.ExtensionContextData
 import ee.schimke.composeai.data.render.extensions.ExtensionContextValue
 import ee.schimke.composeai.data.render.extensions.ExtensionPostCaptureContext
 import ee.schimke.composeai.data.render.extensions.PostCaptureProcessor
 import ee.schimke.composeai.data.render.extensions.RecordingDataProductStore
+import ee.schimke.composeai.data.render.extensions.compose.ComposeDataExtensionPipeline
+import ee.schimke.composeai.data.render.extensions.compose.RecordingExtensionCompositionSink
 import ee.schimke.composeai.data.render.extensions.loadIrReplayClass
 import ee.schimke.composeai.data.render.extensions.loadPreviewWrapperClass
 import ee.schimke.composeai.data.render.extensions.provides
+import ee.schimke.composeai.data.theme.NodeThemeFacts
+import ee.schimke.composeai.data.theme.ThemeConsumerAttribution
+import ee.schimke.composeai.data.theme.ThemePayload
 import ee.schimke.composeai.renderer.AccessibilityDataProducts
 import ee.schimke.composeai.renderer.AccessibilityHierarchyContextKeys
 import ee.schimke.composeai.renderer.AccessibilityHierarchyExtension
@@ -68,7 +68,8 @@ import okio.ByteString.Companion.decodeBase64
  * the daemon doesn't depend on the renderer's `@RunWith(ParameterizedRobolectricTestRunner)` entry
  * point. v2's reconciliation extracts the body into a shared helper. Until then any change to the
  * core render body landed here also has to land in `:renderer-android`'s `renderDefault` (and vice
- * versa); the `:samples:android-daemon-bench:composePreviewRender` task + CI pixel-diff catches drift.
+ * versa); the `:samples:android-daemon-bench:composePreviewRender` task + CI pixel-diff catches
+ * drift.
  *
  * **What's duplicated, what isn't.** This is the "small composable, no `@PreviewParameter`, no
  * `@AnimatedPreview`, no `@ScrollingPreview`" subset — the daemon's v1 surface only renders single
@@ -82,14 +83,14 @@ import okio.ByteString.Companion.decodeBase64
  * the rule itself. Per-render `ActivityScenario` construction is what the JUnit runner already
  * pays; we just sidestep the `@RunWith` machinery.
  *
- * **No-mid-render-cancellation invariant** (DESIGN § 9). Cleanup runs in `try/finally`:
- * `setContent { }` on a fresh empty body to give Compose a frame to dispose `LaunchedEffect` /
+ * **No-mid-render-cancellation invariant** (DESIGN § 9). Cleanup runs in `try/finally`: `setContent
+ * { }` on a fresh empty body to give Compose a frame to dispose `LaunchedEffect` /
  * `DisposableEffect`, then explicit `mainClock.advanceTimeBy(CAPTURE_ADVANCE_MS)` on the empty
  * tree. The `ActivityScenario` is closed by the rule's outer statement when `evaluate()` returns;
  * we never leave one open across renders. This is the Android equivalent of desktop's
  * `scene.close()` discipline (DESIGN § 10) — without the empty-setContent flush, a `LaunchedEffect`
- * holding a Job in the previous preview survives into the next render's composition and shows up
- * as cross-render visual drift.
+ * holding a Job in the previous preview survives into the next render's composition and shows up as
+ * cross-render visual drift.
  *
  * **B1.4 scope guard.** This file deliberately does NOT touch `ShadowPackageManager` cleanup,
  * `GoogleFontInterceptor` SandboxScope wiring, or the wider helper-by-helper audit — that's B1.7
@@ -118,8 +119,7 @@ class RenderEngine(
    * `null` disables the a11y-on-render path entirely — useful for the harness fake-mode runs that
    * don't exercise the producer.
    */
-  private val dataDir: File? =
-    (outputDir.parentFile ?: outputDir).resolve("data"),
+  private val dataDir: File? = (outputDir.parentFile ?: outputDir).resolve("data"),
   /**
    * Registered [PreviewOverrideExtension]s the renderer queries on every render. The renderer
    * doesn't read individual override fields like `wallpaper` or `material3Theme` directly — each
@@ -136,8 +136,8 @@ class RenderEngine(
   /**
    * Always-on data extensions (fonts, resources, i18n) that own their recorder + post-capture
    * artefact write. Distinct from [previewOverrideExtensions]: every factory here runs on every
-   * render rather than gating on a `renderNow.overrides` field. Each factory is invoked per
-   * render with the per-render Android [Context] so the extension can install recording
+   * render rather than gating on a `renderNow.overrides` field. Each factory is invoked per render
+   * with the per-render Android [Context] so the extension can install recording
    * `CompositionLocal`s before composition starts; the same instance is then asked to write its
    * typed artefact during the post-capture pass.
    */
@@ -161,24 +161,23 @@ class RenderEngine(
     classLoader: ClassLoader =
       RenderEngine::class.java.classLoader ?: ClassLoader.getSystemClassLoader(),
     /**
-     * B2.3 — per-sandbox lifecycle counters owned by [RobolectricHost.SandboxRunner]. Captured
-     * at sandbox-init time and incremented on every render-completion via
-     * [SandboxMeasurement.collect]. Defaults to a fresh per-call instance for unit tests that
-     * drive the engine directly without a sandbox; the resulting metrics still populate, just
-     * with a sandbox-age that resets per test render.
+     * B2.3 — per-sandbox lifecycle counters owned by [RobolectricHost.SandboxRunner]. Captured at
+     * sandbox-init time and incremented on every render-completion via
+     * [SandboxMeasurement.collect]. Defaults to a fresh per-call instance for unit tests that drive
+     * the engine directly without a sandbox; the resulting metrics still populate, just with a
+     * sandbox-age that resets per test render.
      */
     sandboxStats: SandboxLifecycleStats = SandboxLifecycleStats(),
     /**
-     * D2 / D2.2 — render in a11y mode (`LocalInspectionMode = false`) and dump
-     * `a11y-atf.json` + `a11y-hierarchy.json` under [dataDir] so the daemon's data-product
-     * registry can surface them as `a11y/atf` + `a11y/hierarchy`. Mirrors the design doc's
-     * "produce always, gate emission on subscriptions" approach — the cost is a few ms per
-     * render.
+     * D2 / D2.2 — render in a11y mode (`LocalInspectionMode = false`) and dump `a11y-atf.json` +
+     * `a11y-hierarchy.json` under [dataDir] so the daemon's data-product registry can surface them
+     * as `a11y/atf` + `a11y/hierarchy`. Mirrors the design doc's "produce always, gate emission on
+     * subscriptions" approach — the cost is a few ms per render.
      *
-     * `null` (the default) means *resolve from context*: a11y mode is on iff [RenderSpec.renderMode]
-     * is `"a11y"` (set by the daemon's `data/fetch` re-render path or by the host's per-preview
-     * subscription state). Pass `true` / `false` explicitly to force the mode regardless of context
-     * (used by tests).
+     * `null` (the default) means *resolve from context*: a11y mode is on iff
+     * [RenderSpec.renderMode] is `"a11y"` (set by the daemon's `data/fetch` re-render path or by
+     * the host's per-preview subscription state). Pass `true` / `false` explicitly to force the
+     * mode regardless of context (used by tests).
      */
     runAccessibility: Boolean? = null,
   ): RenderResult {
@@ -196,8 +195,7 @@ class RenderEngine(
     if (spec.renderMode == SCROLL_LONG_RENDER_MODE || spec.renderMode == SCROLL_GIF_RENDER_MODE) {
       return runScrollScenario(spec = spec, requestId = requestId, classLoader = classLoader)
     }
-    val effectiveRunAccessibility =
-      runAccessibility ?: (spec.renderMode == A11Y_RENDER_MODE)
+    val effectiveRunAccessibility = runAccessibility ?: (spec.renderMode == A11Y_RENDER_MODE)
     // Roborazzi defaults to "compare" mode — `captureRoboImage` reads the existing baseline at
     // the target path and *doesn't* write a new PNG. The daemon writes baselines, never compares,
     // so force record mode if the surrounding JVM didn't set it. Idempotent across renders;
@@ -217,10 +215,12 @@ class RenderEngine(
     val isTile = spec.kind.equals(TILE_KIND, ignoreCase = true)
     val isNotification = spec.kind.equals(NOTIFICATION_KIND, ignoreCase = true)
     val isGlanceAppWidget = spec.kind.equals(GLANCE_APPWIDGET_KIND, ignoreCase = true)
-    // v5 IR replay: a bundle may carry this preview's intermediate representation, in which case its
+    // v5 IR replay: a bundle may carry this preview's intermediate representation, in which case
+    // its
     // consumer class was dropped at pack time. We then inflate the IR via the matching runtime in
     // the setContent body below instead of reflecting the (absent) class. This handles protolayout;
-    // a Remote Compose IR preview falls through to the normal path (its class is still absent, so it
+    // a Remote Compose IR preview falls through to the normal path (its class is still absent, so
+    // it
     // errors as it did before, until its replay path lands).
     val irReplay = BundleIrReplayStore.lookup(spec.previewId)
     val isProtolayoutIr = irReplay?.format == BundleIrReplayStore.FORMAT_PROTOLAYOUT
@@ -240,12 +240,16 @@ class RenderEngine(
     val isIrReplay = isProtolayoutIr || rcReplayClass != null
     val clazz =
       if (isIrReplay) null
-      else trace.section("classloader:loadPreviewClass") { Class.forName(spec.className, true, classLoader) }
+      else
+        trace.section("classloader:loadPreviewClass") {
+          Class.forName(spec.className, true, classLoader)
+        }
     // Tile / notification previews are non-composable top-level functions returning
     // `TilePreviewData` / `android.app.Notification`; routing them through
     // `getDeclaredComposableMethod` would throw `NoSuchMethodException` (the Compose-method
     // lookup expects `(Composer, Int, …)` trailing params). Glance previews ARE `@Composable`
-    // but need to be hosted inside a `GlanceAppWidget.providePreview(...)` → `composeForPreview(...)`
+    // but need to be hosted inside a `GlanceAppWidget.providePreview(...)` →
+    // `composeForPreview(...)`
     // → `RemoteViews.apply` pipeline (handed off to `:renderer-android`'s
     // [renderer.GlanceAppWidgetPreviewComposable]); invoking them directly through the regular
     // Compose path would skip the `RemoteViews` materialisation entirely and render an unwrapped
@@ -255,7 +259,10 @@ class RenderEngine(
     val nonComposableInvocation = isTile || isNotification || isGlanceAppWidget || isIrReplay
     val composableMethod: ComposableMethod? =
       if (nonComposableInvocation) null
-      else trace.section("compose:resolveComposable") { clazz!!.getDeclaredComposableMethod(spec.functionName) }
+      else
+        trace.section("compose:resolveComposable") {
+          clazz!!.getDeclaredComposableMethod(spec.functionName)
+        }
     // Kotlin `private fun` previews compile to JVM-private methods. `getDeclaredComposableMethod`
     // still resolves them (it scans `declaredMethods`), but the reflective `invoke` in
     // [InvokeComposable] would throw IllegalAccessException, so open the method up first — mirrors
@@ -320,8 +327,7 @@ class RenderEngine(
     // long-term replacement, but we share the renderer's `compose-bom-compat`
     // (1.9.5) compile floor. Track [RobolectricRenderTest.renderDefault] when
     // the floor moves up.
-    @Suppress("DEPRECATION")
-    val rule = createAndroidComposeRule<ComponentActivity>()
+    @Suppress("DEPRECATION") val rule = createAndroidComposeRule<ComponentActivity>()
     // Per-node theme facts pulled from the semantics tree during the rule statement (the rule tears
     // the composition down once `evaluate()` returns) so theme consumer attribution (#1847) can run
     // against them afterwards, once the resolved tokens are assembled.
@@ -355,7 +361,8 @@ class RenderEngine(
                 // hierarchy walk to consume after capture. Tradeoff: infinite animations tick
                 // through rather than parking under the paused clock — same trade the standalone
                 // renderer already pays in its always-on a11y pass.
-                val inspectionMode = if (effectiveRunAccessibility) false else spec.inspectionMode ?: true
+                val inspectionMode =
+                  if (effectiveRunAccessibility) false else spec.inspectionMode ?: true
                 CompositionLocalProvider(
                   LocalInspectionMode provides inspectionMode,
                   // Cleared background ("crisp outline"): a composable drawing its own opaque fill
@@ -397,7 +404,8 @@ class RenderEngine(
                           // Non-composable @Preview from `androidx.wear.tiles.tooling.preview` —
                           // mirrors the standalone renderer's `TilePreviewStrategy`. The
                           // inflated tile View lands inside the `Box` via `AndroidView`, so
-                          // captureRoboImage walks the same Compose tree as for composable previews.
+                          // captureRoboImage walks the same Compose tree as for composable
+                          // previews.
                           ee.schimke.composeai.renderer.TilePreviewComposable(
                             className = spec.className,
                             functionName = spec.functionName,
@@ -482,17 +490,17 @@ class RenderEngine(
             // `Configuration.isScreenRound`. Both are needed for parity with the standalone
             // renderer's wear-round path.
             val roborazziOptions =
-              RoborazziOptions(recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = isRound))
+              RoborazziOptions(
+                recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = isRound)
+              )
             System.err.println(
               "compose-ai-daemon: [render] phase=captureRoboImage.start outputBaseName=${spec.outputBaseName}"
             )
-            rule
-              .onRoot()
-              .also {
-                trace.section("render:captureRoboImage") {
-                  it.captureRoboImage(file = outputFile, roborazziOptions = roborazziOptions)
-                }
+            rule.onRoot().also {
+              trace.section("render:captureRoboImage") {
+                it.captureRoboImage(file = outputFile, roborazziOptions = roborazziOptions)
               }
+            }
             System.err.println(
               "compose-ai-daemon: [render] phase=captureRoboImage.done outputBaseName=${spec.outputBaseName}"
             )
@@ -512,47 +520,47 @@ class RenderEngine(
             // preview context, locale) and lets each extension decide what to write.
             if (dataDir != null && builtDataArtifactExtensions.isNotEmpty()) {
               val resolvedSemanticsRoot =
-                runCatching { rule.onRoot(useUnmergedTree = true).fetchSemanticsNode() }
-                  .getOrNull()
-              val layoutInspectorPreviewContext =
-                resolvedSemanticsRoot?.let { semanticsRoot ->
-                  PreviewContext.Builder(
-                      previewId = spec.previewId,
-                      backend = PreviewBackends.ANDROID,
-                      renderMode = spec.renderMode,
-                      outputBaseName = spec.outputBaseName,
-                    )
-                    .deviceFromRenderPixels(
-                      spec.device,
-                      spec.widthPx,
-                      spec.heightPx,
-                      spec.density,
-                      resolvedDevice =
-                        spec.device?.let(DeviceDimensions::resolve)?.previewDeviceSpec(),
-                    )
-                    .parameterInformationCollected()
-                    .addSlotTables(slotTableCapture.snapshot())
-                    .rootForTest(semanticsRoot.root)
-                    .build()
-                }
-              val artifactContextData = buildList<ExtensionContextValue<*>> {
-                add(RenderDataArtifactContextKeys.RootDir provides dataDir)
-                add(RenderDataArtifactContextKeys.OutputBaseName provides spec.outputBaseName)
-                spec.previewId?.let { add(RenderDataArtifactContextKeys.PreviewId provides it) }
-                spec.localeTag?.takeIf { it.isNotBlank() }?.let {
-                  add(RenderDataArtifactContextKeys.RenderedLocale provides it)
-                }
-                resolvedSemanticsRoot?.let {
-                  add(RenderDataArtifactContextKeys.SemanticsRoot provides it)
-                }
-                add(RenderDataArtifactContextKeys.Density provides spec.density)
-                add(RenderDataArtifactContextKeys.OutputPng provides outputFile)
-                add(RenderDataArtifactContextKeys.HeldActivity provides rule.activity)
-                layoutInspectorPreviewContext?.let {
-                  add(RenderDataArtifactContextKeys.LayoutInspectorPreviewContext provides it)
-                }
+                runCatching { rule.onRoot(useUnmergedTree = true).fetchSemanticsNode() }.getOrNull()
+              val layoutInspectorPreviewContext = resolvedSemanticsRoot?.let { semanticsRoot ->
+                PreviewContext.Builder(
+                    previewId = spec.previewId,
+                    backend = PreviewBackends.ANDROID,
+                    renderMode = spec.renderMode,
+                    outputBaseName = spec.outputBaseName,
+                  )
+                  .deviceFromRenderPixels(
+                    spec.device,
+                    spec.widthPx,
+                    spec.heightPx,
+                    spec.density,
+                    resolvedDevice =
+                      spec.device?.let(DeviceDimensions::resolve)?.previewDeviceSpec(),
+                  )
+                  .parameterInformationCollected()
+                  .addSlotTables(slotTableCapture.snapshot())
+                  .rootForTest(semanticsRoot.root)
+                  .build()
               }
-              val extensionContextData = ExtensionContextData.of(*artifactContextData.toTypedArray())
+              val artifactContextData =
+                buildList<ExtensionContextValue<*>> {
+                  add(RenderDataArtifactContextKeys.RootDir provides dataDir)
+                  add(RenderDataArtifactContextKeys.OutputBaseName provides spec.outputBaseName)
+                  spec.previewId?.let { add(RenderDataArtifactContextKeys.PreviewId provides it) }
+                  spec.localeTag
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { add(RenderDataArtifactContextKeys.RenderedLocale provides it) }
+                  resolvedSemanticsRoot?.let {
+                    add(RenderDataArtifactContextKeys.SemanticsRoot provides it)
+                  }
+                  add(RenderDataArtifactContextKeys.Density provides spec.density)
+                  add(RenderDataArtifactContextKeys.OutputPng provides outputFile)
+                  add(RenderDataArtifactContextKeys.HeldActivity provides rule.activity)
+                  layoutInspectorPreviewContext?.let {
+                    add(RenderDataArtifactContextKeys.LayoutInspectorPreviewContext provides it)
+                  }
+                }
+              val extensionContextData =
+                ExtensionContextData.of(*artifactContextData.toTypedArray())
               val productStore = RecordingDataProductStore()
               for (ext in builtDataArtifactExtensions) {
                 if (ext !is PostCaptureProcessor) continue
@@ -789,12 +797,10 @@ class RenderEngine(
       ) ?: themeFallbackCapture.payload
     // Attribute consumers (#1847) against the facts captured while the scene was alive, keyed by
     // SemanticsNode id (matching `compose/semantics`) against the reported tokens.
-    val materialThemePayload =
-      baseThemePayload?.let { payload ->
-        val consumers =
-          ThemeConsumerAttribution.attribute(capturedThemeFacts, payload.resolvedTokens)
-        if (consumers.isEmpty()) payload else payload.copy(consumers = consumers)
-      }
+    val materialThemePayload = baseThemePayload?.let { payload ->
+      val consumers = ThemeConsumerAttribution.attribute(capturedThemeFacts, payload.resolvedTokens)
+      if (consumers.isEmpty()) payload else payload.copy(consumers = consumers)
+    }
     val previewContextBuilder =
       PreviewContext.Builder(
           previewId = spec.previewId,
@@ -832,15 +838,15 @@ class RenderEngine(
   /**
    * Issue #1528 — dispatch for `scroll-long` / `scroll-gif` render modes. Builds the held
    * `AndroidComposeTestRule`, paints the preview's `@Composable` body via
-   * [setHeldComposableContentForScroll], then calls the renderer's public scroll handlers to
-   * write the final stitched PNG / animated GIF under `<dataRoot>/render-scroll-{long,gif}/`.
+   * [setHeldComposableContentForScroll], then calls the renderer's public scroll handlers to write
+   * the final stitched PNG / animated GIF under `<dataRoot>/render-scroll-{long,gif}/`.
    *
    * Returns a [RenderResult] with `pngPath` pointing at the produced scroll artefact so the
    * dispatcher's second-fetch picks up the file. Throws [IllegalStateException] when the preview
    * has no `dataProducts[].scroll` metadata (the dispatcher surfaces this as
    * `ERR_DATA_PRODUCT_FETCH_FAILED` with the message body), or when the renderer's scroll handler
-   * returns `false` (no scrollable on the requested axis — the dispatcher surfaces the same
-   * error code so the host can fall back to its Gradle path or paint a "no scrollable" hint).
+   * returns `false` (no scrollable on the requested axis — the dispatcher surfaces the same error
+   * code so the host can fall back to its Gradle path or paint a "no scrollable" hint).
    *
    * Looks up the scroll intent by lazily loading the daemon's `previews.json`
    * ([PreviewIndex.PREVIEWS_JSON_PATH_PROP]) per render. The cost is one ~kB file read per
@@ -973,8 +979,8 @@ class RenderEngine(
   /**
    * Lazily reads the daemon's `previews.json` via [PreviewIndex.loadFromFile] using the
    * `composeai.daemon.previewsJsonPath` system property the gradle plugin populates. Falls back to
-   * [PreviewIndex.empty] when the property is unset (harness / fake-mode tests) — callers that
-   * need a real index check for an empty result and emit a structured error.
+   * [PreviewIndex.empty] when the property is unset (harness / fake-mode tests) — callers that need
+   * a real index check for an empty result and emit a structured error.
    */
   private fun loadPreviewIndexLazily(): PreviewIndex {
     val path = System.getProperty(PreviewIndex.PREVIEWS_JSON_PATH_PROP)
@@ -1099,16 +1105,16 @@ class RenderEngine(
 
     /**
      * D2.2 — `RenderSpec.renderMode` value the daemon stamps when a `data/fetch` for an a11y kind
-     * needs a fresh render, and when the host's per-preview subscription state demands a11y for
-     * the next dispatch. When this is set, the engine's [runAccessibility] auto-resolution flips
+     * needs a fresh render, and when the host's per-preview subscription state demands a11y for the
+     * next dispatch. When this is set, the engine's [runAccessibility] auto-resolution flips
      * `LocalInspectionMode = false` and writes ATF + hierarchy artefacts to `dataDir`.
      */
     const val A11Y_RENDER_MODE: String = "a11y"
 
     /**
      * Issue #1528 — scroll scenarios the daemon's `data/fetch` re-render path can request. The
-     * registry in `:data-scroll-connector` advertises `render/scroll/long` / `render/scroll/gif`
-     * as `requiresRerender = true`, so a missing scroll artefact returns
+     * registry in `:data-scroll-connector` advertises `render/scroll/long` / `render/scroll/gif` as
+     * `requiresRerender = true`, so a missing scroll artefact returns
      * `Outcome.RequiresRerender("scroll-long" | "scroll-gif")` and the dispatcher submits a render
      * with `spec.renderMode` set to one of these constants. [render] routes scroll-mode requests
      * into [runScrollScenario], which delegates to the renderer's public
@@ -1135,8 +1141,8 @@ class RenderEngine(
 
     /**
      * `RenderSpec.kind` value flagging an `@androidx.glance.preview.Preview` Glance app-widget
-     * preview. Routes through `:renderer-android`'s `GlanceAppWidgetPreviewComposable`, which
-     * hosts the user's `@GlanceComposable` inside a `GlanceAppWidget.providePreview(...)` and
+     * preview. Routes through `:renderer-android`'s `GlanceAppWidgetPreviewComposable`, which hosts
+     * the user's `@GlanceComposable` inside a `GlanceAppWidget.providePreview(...)` and
      * materialises the tree to `RemoteViews` via `composeForPreview(...)`. Mirrors
      * `ee.schimke.composeai.discovery.PreviewKind.GLANCE_APPWIDGET`.
      */
@@ -1144,8 +1150,8 @@ class RenderEngine(
 
     /**
      * Virtual time to advance before capture in the paused-`mainClock` path, in milliseconds.
-     * Mirrors `RobolectricRenderTest.CAPTURE_ADVANCE_MS` exactly so daemon-rendered PNGs match
-     * the standalone JUnit path's settle point.
+     * Mirrors `RobolectricRenderTest.CAPTURE_ADVANCE_MS` exactly so daemon-rendered PNGs match the
+     * standalone JUnit path's settle point.
      */
     private const val CAPTURE_ADVANCE_MS = 32L
   }
@@ -1164,16 +1170,13 @@ private fun DeviceDimensions.DeviceSpec.previewDeviceSpec(): PreviewDeviceSpec =
 internal fun isRoundDevice(device: String?): Boolean {
   if (device.isNullOrBlank()) return false
   val lower = device.lowercase()
-  return lower.contains("_round") ||
-    lower.contains("isround=true") ||
-    lower.contains("shape=round")
+  return lower.contains("_round") || lower.contains("isround=true") || lower.contains("shape=round")
 }
 
 /**
  * Tiny @Composable trampoline that invokes [composableMethod] reflectively against the current
- * composer. Mirrors `:daemon:desktop`'s and `:renderer-desktop`'s private
- * `InvokeComposable` — kept private+top-level so the compose-compiler plugin recognises it as a
- * composable function.
+ * composer. Mirrors `:daemon:desktop`'s and `:renderer-desktop`'s private `InvokeComposable` — kept
+ * private+top-level so the compose-compiler plugin recognises it as a composable function.
  */
 @Composable
 private fun InvokeComposable(composableMethod: ComposableMethod) {
@@ -1182,10 +1185,10 @@ private fun InvokeComposable(composableMethod: ComposableMethod) {
 
 /**
  * Wraps [InvokeComposable] in the preview's `@PreviewWrapper(SomeProvider::class)` `Wrap { … }` if
- * one is present, sourcing the wrapper FQN from [wrapperFqnFromSpec] (the discovery-time
- * class-file read) with a best-effort runtime-reflection fallback for direct-payload callers that
- * bypass the manifest. Without this the daemon would call the preview body directly and bypass
- * the wrapper — e.g. `@PreviewWrapper(RemotePreviewWrapper::class)` previews would crash with
+ * one is present, sourcing the wrapper FQN from [wrapperFqnFromSpec] (the discovery-time class-file
+ * read) with a best-effort runtime-reflection fallback for direct-payload callers that bypass the
+ * manifest. Without this the daemon would call the preview body directly and bypass the wrapper —
+ * e.g. `@PreviewWrapper(RemotePreviewWrapper::class)` previews would crash with
  * `IllegalStateException: Invalid applier` the moment they emit a `RemoteBox` / `RemoteColumn` /
  * `RemoteRow`, because those composables require the RemoteCompose applier the wrapper installs.
  * `:renderer-android` does the equivalent in
@@ -1194,10 +1197,10 @@ private fun InvokeComposable(composableMethod: ComposableMethod) {
  * **Why the FQN comes from the spec rather than `Method.annotations`.** The upstream
  * `androidx.compose.ui.tooling.preview.PreviewWrapper` annotation has `AnnotationRetention.BINARY`
  * (issue #1440): it's emitted into the class file but not retained at runtime, so
- * `jvmMethod.annotations` will never include it. The gradle plugin's `extractWrapperFqn` reads
- * the FQN off the class-file annotation tables via ClassGraph and writes it into `previews.json`;
- * the daemon's [PreviewManifestRouter] threads it into [RenderSpec.wrapperClassName] and we read
- * it from there. The runtime-reflection fallback is retained for legacy callers and the
+ * `jvmMethod.annotations` will never include it. The gradle plugin's `extractWrapperFqn` reads the
+ * FQN off the class-file annotation tables via ClassGraph and writes it into `previews.json`; the
+ * daemon's [PreviewManifestRouter] threads it into [RenderSpec.wrapperClassName] and we read it
+ * from there. The runtime-reflection fallback is retained for legacy callers and the
  * compose-bom-compat regression test (`PreviewWrapperResolutionTest`), which uses a same-FQN
  * stand-in annotation with binary retention to mirror the production retention exactly.
  *
@@ -1245,16 +1248,15 @@ private fun InvokeIrReplay(replayClass: Class<*>, bytes: ByteArray) {
  * instance.
  *
  * Strategy (in order):
- *  1. Use [wrapperFqnFromSpec] when supplied — production path, sourced from `previews.json`
- *     (the gradle plugin's `extractWrapperFqn` reads it from the class file at discovery time,
- *     where the `AnnotationRetention.BINARY` annotation is still visible).
- *  2. Otherwise, look up `@androidx.compose.ui.tooling.preview.PreviewWrapper` reflectively off
- *     [composableMethod]'s underlying JVM method. This is a fallback for direct-payload callers
- *     (a few internal tests and the legacy stub path) and **does not work in production** —
- *     the upstream annotation is `AnnotationRetention.BINARY`, so the lookup misses every
- *     real-world preview. Kept for compatibility with the existing
- *     `PreviewWrapperResolutionTest` regression guard, which now uses a binary-retained stand-in
- *     and the spec-driven path.
+ * 1. Use [wrapperFqnFromSpec] when supplied — production path, sourced from `previews.json` (the
+ *    gradle plugin's `extractWrapperFqn` reads it from the class file at discovery time, where the
+ *    `AnnotationRetention.BINARY` annotation is still visible).
+ * 2. Otherwise, look up `@androidx.compose.ui.tooling.preview.PreviewWrapper` reflectively off
+ *    [composableMethod]'s underlying JVM method. This is a fallback for direct-payload callers (a
+ *    few internal tests and the legacy stub path) and **does not work in production** — the
+ *    upstream annotation is `AnnotationRetention.BINARY`, so the lookup misses every real-world
+ *    preview. Kept for compatibility with the existing `PreviewWrapperResolutionTest` regression
+ *    guard, which now uses a binary-retained stand-in and the spec-driven path.
  *
  * Returns null when no wrapper is resolvable.
  *
@@ -1267,9 +1269,10 @@ internal fun resolveWrapperOrNull(
   composableMethod: ComposableMethod,
   wrapperFqnFromSpec: String? = null,
 ): Pair<ComposableMethod, Any>? {
-  val wrapperFqn = wrapperFqnFromSpec?.takeIf { it.isNotBlank() }
-    ?: resolveWrapperFqnViaReflection(composableMethod)
-    ?: return null
+  val wrapperFqn =
+    wrapperFqnFromSpec?.takeIf { it.isNotBlank() }
+      ?: resolveWrapperFqnViaReflection(composableMethod)
+      ?: return null
   return loadWrapperByFqnOrNull(wrapperFqn)
 }
 
@@ -1371,12 +1374,12 @@ private fun InspectablePreviewContent(
  * What [RenderEngine.render] needs to produce a single PNG. Decoupled from the protocol's
  * `RenderRequest` so the engine has no dependency on the JSON-RPC envelope shapes.
  *
- * **Duplicated from `:daemon:desktop`'s `RenderSpec`.** Kept duplicated rather than
- * promoted to `:daemon:core` per DESIGN § 7: the two backends could share this *today*
- * because the parser is pure-data, but promoting would widen the renderer-agnostic surface for a
- * type that's about to be replaced when `RenderRequest` grows a typed `previewId: String?` field
- * (B2.2 / `IncrementalDiscovery`). Duplication has a known reconciliation cost; promotion has a
- * known revert cost. We pay the duplication cost.
+ * **Duplicated from `:daemon:desktop`'s `RenderSpec`.** Kept duplicated rather than promoted to
+ * `:daemon:core` per DESIGN § 7: the two backends could share this *today* because the parser is
+ * pure-data, but promoting would widen the renderer-agnostic surface for a type that's about to be
+ * replaced when `RenderRequest` grows a typed `previewId: String?` field (B2.2 /
+ * `IncrementalDiscovery`). Duplication has a known reconciliation cost; promotion has a known
+ * revert cost. We pay the duplication cost.
  *
  * Wire format identical to desktop's so the harness's `PreviewManifestRouter` and any future
  * cross-backend driver can drive both backends with the same payload string.
@@ -1395,15 +1398,15 @@ data class RenderSpec(
   /**
    * Per-render cleared-background toggle ("crisp outline"). When `true` the harness background is
    * forced transparent (overriding [showBackground]/[backgroundColor]) and
-   * `LocalPreviewBackgroundCleared = true` is provided around the preview. Default `false` preserves
-   * the discovery-time background.
+   * `LocalPreviewBackgroundCleared = true` is provided around the preview. Default `false`
+   * preserves the discovery-time background.
    */
   val clearBackground: Boolean = false,
   /**
    * Raw `@Preview(device = …)` string when known — `id:wearos_small_round`,
    * `spec:width=…,isRound=true`, `id:pixel_5`, etc. Used by the render body to detect round Wear
-   * devices and apply the circular crop / `round` resource qualifier; non-round / null values are
-   * a no-op. Mirrors the standalone renderer's `RenderPreviewParams.device` for the v1 subset.
+   * devices and apply the circular crop / `round` resource qualifier; non-round / null values are a
+   * no-op. Mirrors the standalone renderer's `RenderPreviewParams.device` for the v1 subset.
    */
   val device: String? = null,
   /** Optional data-product render mode, e.g. `theme` for `compose/theme` fetch rerenders. */
@@ -1411,13 +1414,13 @@ data class RenderSpec(
   /** Stem used for the output PNG filename (e.g. "preview-A" → "<outputDir>/preview-A.png"). */
   val outputBaseName: String = "${className.substringAfterLast('.')}-$functionName",
   /**
-   * BCP-47 locale tag — overrides the default qualifier set when non-null. Threaded through the
-   * `+` qualifier prefix as `b+lang+region` (Robolectric grammar; see `applyPreviewQualifiers`).
+   * BCP-47 locale tag — overrides the default qualifier set when non-null. Threaded through the `+`
+   * qualifier prefix as `b+lang+region` (Robolectric grammar; see `applyPreviewQualifiers`).
    */
   val localeTag: String? = null,
   /**
-   * Font scale multiplier. Null means "use whatever Robolectric defaults to" (1.0). Non-null
-   * routes through `RuntimeEnvironment.setFontScale` — same `Configuration` knob `RoborazziCompose
+   * Font scale multiplier. Null means "use whatever Robolectric defaults to" (1.0). Non-null routes
+   * through `RuntimeEnvironment.setFontScale` — same `Configuration` knob `RoborazziCompose
    * FontScaleOption` uses.
    */
   val fontScale: Float? = null,
@@ -1426,10 +1429,10 @@ data class RenderSpec(
   /** Portrait/landscape override → `port` / `land` qualifier. Overrides the size-derived guess. */
   val orientation: SpecOrientation? = null,
   /**
-   * Paused-clock advance (ms) before capture. Null defaults to [CAPTURE_ADVANCE_MS]; values
-   * `<= 0` are treated as null (default). Routes per-render via PROTOCOL.md § 5
-   * (`renderNow.overrides.captureAdvanceMs`); animation-heavy previews can request a longer
-   * settle window without editing the render body.
+   * Paused-clock advance (ms) before capture. Null defaults to [CAPTURE_ADVANCE_MS]; values `<= 0`
+   * are treated as null (default). Routes per-render via PROTOCOL.md § 5
+   * (`renderNow.overrides.captureAdvanceMs`); animation-heavy previews can request a longer settle
+   * window without editing the render body.
    */
   val captureAdvanceMs: Long? = null,
   /**
@@ -1449,13 +1452,13 @@ data class RenderSpec(
    * Preview flavour, mirroring `ee.schimke.composeai.plugin.PreviewKind` (`"COMPOSE"` / `"TILE"` /
    * `"NOTIFICATION"` / `"GLANCE_APPWIDGET"`). Drives renderer selection: `"TILE"` routes through
    * [renderer.TilePreviewComposable], `"NOTIFICATION"` through `NotificationPreviewComposable`,
-   * `"GLANCE_APPWIDGET"` through `GlanceAppWidgetPreviewComposable`. `null` / `"COMPOSE"` render
-   * as a normal `@Composable`.
+   * `"GLANCE_APPWIDGET"` through `GlanceAppWidgetPreviewComposable`. `null` / `"COMPOSE"` render as
+   * a normal `@Composable`.
    */
   val kind: String? = null,
   /**
-   * FQN of the `PreviewWrapperProvider` from `@PreviewWrapper(SomeProvider::class)` when the
-   * source preview is annotated. Sourced from the gradle plugin's discovery JSON (`extractWrapperFqn`
+   * FQN of the `PreviewWrapperProvider` from `@PreviewWrapper(SomeProvider::class)` when the source
+   * preview is annotated. Sourced from the gradle plugin's discovery JSON (`extractWrapperFqn`
    * reads it off the class-file annotation tables — the upstream annotation has
    * `AnnotationRetention.BINARY` and is invisible to `Method.annotations` at runtime). The render
    * body drives `InvokeWithOptionalWrapper` off this field when set; null falls back to the
@@ -1482,9 +1485,9 @@ data class RenderSpec(
      * `showBackground`, `backgroundColor`, `device`, `outputBaseName`, `localeTag`, `fontScale`,
      * `uiMode` (`light`/`dark`), `orientation` (`portrait`/`landscape`), `inspectionMode`
      * (`true`/`false`). `className` and `functionName` are required; everything else falls back to
-     * the defaults on this data class.
-     * Returns `null` when the payload doesn't carry a `className=` token (the discriminator the
-     * host uses to route legacy stub-payload requests through the classloader-identity path).
+     * the defaults on this data class. Returns `null` when the payload doesn't carry a `className=`
+     * token (the discriminator the host uses to route legacy stub-payload requests through the
+     * classloader-identity path).
      */
     fun parseFromPayloadOrNull(payload: String): RenderSpec? {
       if (!payload.contains("className=")) return null

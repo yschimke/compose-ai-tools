@@ -101,6 +101,14 @@ object ComposeFigmaSvgDataProducer {
   /** The face a generic/absent family maps to — Compose's default Material typeface. */
   const val DEFAULT_EMBED_FAMILY: String = "Roboto"
 
+  /**
+   * Process-wide cache of file-embedded faces, keyed on font path + weight/italic + the exact
+   * subset code points. A catalog render asks every Latin sticker for the same (base-ASCII) subset
+   * of the same face, so the subset + base64 is computed once and reused for the rest — subsetting
+   * is a few ms per face, so this keeps a whole-catalog render's font work to one pass per face.
+   */
+  private val fontFaceCache = java.util.concurrent.ConcurrentHashMap<String, FigmaSvgFontFace>()
+
   /** The `@font-face`s to embed plus the captured-family → emitted-family name map. */
   private class FontPlan(
     val faces: List<FigmaSvgFontFace>,
@@ -129,27 +137,52 @@ object ComposeFigmaSvgDataProducer {
   ): FontPlan {
     val faces = LinkedHashMap<String, FigmaSvgFontFace>()
     val overrides = HashMap<String, String>()
-    fun add(captured: String?, weight: Int, italic: Boolean) {
+    fun add(captured: String?, weight: Int, italic: Boolean, codePoints: Set<Int>) {
       val fontPath = captured?.let { fontFilePath(it, fileSystem) }
       if (fontPath != null) {
-        // Read through the injected FileSystem (Okio, per docs/AGENTS.md) — a caller using a fake /
-        // in-memory FileSystem must see the bytes it exposed, not the host disk.
-        val bytes =
-          runCatching { fileSystem.read(fontPath) { readByteArray() } }
-            .getOrNull()
-            ?.takeIf { it.isNotEmpty() } ?: return
-        val family = fontFileFamily(bytes, fontPath)
-        val format =
-          if (fontPath.name.endsWith(".otf", ignoreCase = true)) "opentype" else "truetype"
-        faces["$family|$weight|$italic|$format"] =
-          FigmaSvgFontFace(
-            family,
-            weight,
-            italic,
-            Base64.getEncoder().encodeToString(bytes),
-            format,
-          )
-        overrides[captured] = family
+        // Subset to a stable base charset (printable ASCII) plus whatever this face actually draws,
+        // so every Latin sticker asks for the *same* subset — computed once, cached process-wide,
+        // and
+        // reused across the whole catalog. Note the embedded face drives *browser*-based rendering
+        // (the fidelity harness, the bundle's web embed): Figma itself resolves fonts by the
+        // family name on the `<text>` (matched against its own font library — Roboto/Noto/… are all
+        // there), not from the SVG's `@font-face`, so it renders and edits with the full font
+        // regardless of the subset. The subset keeps the *self-contained* SVG small and exact.
+        val cps = FontSubsetter.PRINTABLE_ASCII + codePoints
+        val cacheKey = "$fontPath|$weight|$italic|${cps.toSortedSet().joinToString(",")}"
+        val face =
+          fontFaceCache[cacheKey]
+            ?: run {
+              // Read through the injected FileSystem (Okio, per docs/AGENTS.md) — a caller using a
+              // fake / in-memory FileSystem must see the bytes it exposed, not the host disk.
+              val bytes =
+                runCatching { fileSystem.read(fontPath) { readByteArray() } }
+                  .getOrNull()
+                  ?.takeIf { it.isNotEmpty() } ?: return
+              val family = fontFileFamily(bytes, fontPath)
+              // Embed only the subset glyphs — the exact outlines the render loaded, minus the
+              // layout/hinting tables static text doesn't need — so a ~300 KB font rides along at a
+              // few KB. Falls back to the full file when it can't be subset (CFF `.otf`, parse
+              // fail).
+              val subset = FontSubsetter.subset(bytes, cps)
+              val embedBytes = subset ?: bytes
+              val format =
+                when {
+                  subset != null -> "truetype" // the subset output is always a glyf-flavoured sfnt
+                  fontPath.name.endsWith(".otf", ignoreCase = true) -> "opentype"
+                  else -> "truetype"
+                }
+              FigmaSvgFontFace(
+                  family,
+                  weight,
+                  italic,
+                  Base64.getEncoder().encodeToString(embedBytes),
+                  format,
+                )
+                .also { fontFaceCache[cacheKey] = it }
+            }
+        faces["${face.family}|$weight|$italic|${face.format}"] = face
+        overrides[captured] = face.family
         return
       }
       // A meaningful generic (serif/monospace) maps to a concrete embeddable family; a bare
@@ -161,11 +194,23 @@ object ComposeFigmaSvgDataProducer {
         if (captured != null) overrides[captured] = name
       }
     }
-    fun walk(layer: FigmaSvgLayer) {
-      layer.text?.let { add(it.fontFamily, it.fontWeight ?: 400, it.italic) }
-      layer.children.forEach(::walk)
+    // First gather the code points each face draws (across every `<text>` and wrapped `<tspan>`
+    // that
+    // uses it) so the subset carries exactly the glyphs the SVG shows and no more.
+    val codePointsByFace = LinkedHashMap<Triple<String?, Int, Boolean>, MutableSet<Int>>()
+    fun collect(layer: FigmaSvgLayer) {
+      layer.text?.let { t ->
+        val cps =
+          codePointsByFace.getOrPut(Triple(t.fontFamily, t.fontWeight ?: 400, t.italic)) {
+            LinkedHashSet()
+          }
+        t.content.codePoints().toArray().forEach { cps.add(it) }
+        t.lines?.forEach { line -> line.content.codePoints().toArray().forEach { cps.add(it) } }
+      }
+      layer.children.forEach(::collect)
     }
-    walk(model.root)
+    collect(model.root)
+    for ((key, cps) in codePointsByFace) add(key.first, key.second, key.third, cps)
     return FontPlan(faces.values.toList(), overrides)
   }
 

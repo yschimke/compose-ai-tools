@@ -12,9 +12,9 @@ import org.junit.Test
 
 /**
  * Pins the wrapper-substitution contract that lets preview authors keep their existing
- * `@PreviewWrapper(RemotePreviewWrapper::class)` annotation untouched when the connector is on
- * the classpath. Covers the provider's matching logic, the META-INF service registration, and
- * the renderer-facing [loadPreviewWrapperClass] helper that both `:renderer-android` and
+ * `@PreviewWrapper(RemotePreviewWrapper::class)` annotation untouched when the connector is on the
+ * classpath. Covers the provider's matching logic, the META-INF service registration, and the
+ * renderer-facing [loadPreviewWrapperClass] helper that both `:renderer-android` and
  * `:renderer-desktop` call from their `resolveWrapper`s.
  */
 class RemoteComposeWrapperSubstitutionTest {
@@ -37,8 +37,7 @@ class RemoteComposeWrapperSubstitutionTest {
 
   @Test
   fun `service file registers the provider on the classpath`() {
-    val providers =
-      ServiceLoader.load(PreviewWrapperSubstitutionProvider::class.java).toList()
+    val providers = ServiceLoader.load(PreviewWrapperSubstitutionProvider::class.java).toList()
     assertTrue(
       "META-INF/services must list RemoteComposeWrapperSubstitution; found $providers",
       providers.any { it is RemoteComposeWrapperSubstitution },

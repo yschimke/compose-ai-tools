@@ -91,6 +91,45 @@ function block(text, indent = "") {
 
 // ---- Kotlin ------------------------------------------------------------------------------------
 
+// ktfmt (googleStyle, 100-col) reflows the generated Kotlin, so emit exactly what it would produce
+// — otherwise the file oscillates between this generator (checked by `--check`) and the repo-wide
+// ktfmt gate. Two rules to match: KDoc is collapsed to `/** … */` when it fits on one line, else
+// greedy-wrapped to 100 cols; a data class collapses onto one `@Serializable`-prefixed line when it
+// has no per-parameter KDoc and fits, else `@Serializable` sits on its own line with trailing commas.
+const KT_MAX = 100;
+
+function ktWrap(words, width) {
+  const lines = [];
+  let cur = "";
+  for (const w of words) {
+    if (cur === "") cur = w;
+    else if (cur.length + 1 + w.length <= width) cur += " " + w;
+    else {
+      lines.push(cur);
+      cur = w;
+    }
+  }
+  if (cur !== "") lines.push(cur);
+  return lines;
+}
+
+function ktDoc(text, indent = "") {
+  if (!text) return [];
+  const paras = text.split(/\n\s*\n/).map((p) => p.split(/\s+/).filter(Boolean));
+  if (paras.length === 1) {
+    const oneLine = paras[0].join(" ");
+    // `${indent}/** ${text} */` — collapse when the whole comment fits on one line.
+    if (indent.length + 4 + oneLine.length + 3 <= KT_MAX) return [`${indent}/** ${oneLine} */`];
+  }
+  const width = KT_MAX - indent.length - 3; // room after the `${indent} * ` continuation prefix
+  const body = [];
+  paras.forEach((words, i) => {
+    if (i > 0) body.push(`${indent} *`); // blank line between paragraphs
+    for (const line of ktWrap(words, width)) body.push(`${indent} * ${line}`);
+  });
+  return [`${indent}/**`, ...body, `${indent} */`];
+}
+
 function ktType(p) {
   const scalar = { number: "Double", integer: "Int", string: "String", boolean: "Boolean" };
   if (p.kind === "array") return `List<${defs[p.item] ? p.item : scalar[p.item]}>`;
@@ -124,20 +163,24 @@ function emitKotlin() {
   out.push("");
   out.push("import kotlinx.serialization.Serializable");
   out.push("");
-  out.push(...block(schema.description));
+  out.push(...ktDoc(schema.description));
   out.push(`public const val ${VERSION_CONST}: Int = ${VERSION_VALUE}`);
   for (const name of typeOrder) {
     out.push("");
-    out.push(...block(defs[name].description));
-    out.push("@Serializable");
+    out.push(...ktDoc(defs[name].description));
     const props = properties(name);
-    out.push(`public data class ${name}(`);
-    props.forEach((p, i) => {
-      const comma = i < props.length - 1 ? "," : ",";
-      if (p.description) out.push(...block(p.description, "  "));
-      out.push(`  ${ktField(p)}${comma}`);
-    });
-    out.push(")");
+    const oneLine = `@Serializable public data class ${name}(${props.map(ktField).join(", ")})`;
+    if (!props.some((p) => p.description) && oneLine.length <= KT_MAX) {
+      out.push(oneLine);
+    } else {
+      out.push("@Serializable");
+      out.push(`public data class ${name}(`);
+      props.forEach((p) => {
+        if (p.description) out.push(...ktDoc(p.description, "  "));
+        out.push(`  ${ktField(p)},`);
+      });
+      out.push(")");
+    }
   }
   return out.join("\n") + "\n";
 }

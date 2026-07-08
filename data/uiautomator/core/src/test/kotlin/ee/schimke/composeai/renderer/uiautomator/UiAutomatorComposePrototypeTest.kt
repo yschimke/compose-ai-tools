@@ -25,10 +25,10 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * Demonstrates that the same [Selector] DSL targets Compose widgets via the `SemanticsNode`
- * backing — no `Button.textAllCaps` quirk, no View-tree dead-end at `AndroidComposeView`,
- * actions invoke `SemanticsActions` lambdas the same way `:daemon:android`'s host already
- * does for content-description-driven dispatches.
+ * Demonstrates that the same [Selector] DSL targets Compose widgets via the `SemanticsNode` backing
+ * — no `Button.textAllCaps` quirk, no View-tree dead-end at `AndroidComposeView`, actions invoke
+ * `SemanticsActions` lambdas the same way `:daemon:android`'s host already does for
+ * content-description-driven dispatches.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "w400dp-h800dp")
@@ -124,10 +124,10 @@ class UiAutomatorComposePrototypeTest {
   }
 
   /**
-   * Default (merged) tree puts text + OnClick on the same node — `.click()` fires. Unmerged
-   * tree separates them — `By.text("Submit")` finds the inner `Text`, which has no `OnClick`,
-   * so `.click()` reports unsupported. This pins the documented trade-off so it doesn't
-   * silently change.
+   * Default (merged) tree puts text + OnClick on the same node — `.click()` fires. Unmerged tree
+   * separates them — `By.text("Submit")` finds the inner `Text`, which has no `OnClick`, so
+   * `.click()` reports unsupported. This pins the documented trade-off so it doesn't silently
+   * change.
    */
   @Test
   fun `useUnmergedTree splits Button into separate text and click nodes`() {

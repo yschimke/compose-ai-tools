@@ -20,10 +20,10 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * D2 — pins the producer/registry contract for the daemon's a11y data products. Producer
- * writes to `<rootDir>/<previewId>/a11y-{atf,hierarchy}.json`; registry reads back what's
- * there and surfaces it as inline (`a11y/atf`) or path (`a11y/hierarchy`). Unknown kinds
- * route to `Outcome.Unknown`; missing files route to `Outcome.NotAvailable`.
+ * D2 — pins the producer/registry contract for the daemon's a11y data products. Producer writes to
+ * `<rootDir>/<previewId>/a11y-{atf,hierarchy}.json`; registry reads back what's there and surfaces
+ * it as inline (`a11y/atf`) or path (`a11y/hierarchy`). Unknown kinds route to `Outcome.Unknown`;
+ * missing files route to `Outcome.NotAvailable`.
  */
 class AccessibilityDataProductRegistryTest {
 
@@ -43,7 +43,10 @@ class AccessibilityDataProductRegistryTest {
   fun `capabilities advertise a11y atf hierarchy touch targets and overlay with the documented transports`() {
     val registry = AccessibilityDataProductRegistry(rootDir)
     val byKind = registry.capabilities.associateBy { it.kind }
-    assertEquals(setOf("a11y/atf", "a11y/hierarchy", "a11y/touchTargets", "a11y/overlay"), byKind.keys)
+    assertEquals(
+      setOf("a11y/atf", "a11y/hierarchy", "a11y/touchTargets", "a11y/overlay"),
+      byKind.keys,
+    )
     assertEquals(DataProductTransport.INLINE, byKind.getValue("a11y/atf").transport)
     assertEquals(DataProductTransport.PATH, byKind.getValue("a11y/hierarchy").transport)
     assertEquals(DataProductTransport.INLINE, byKind.getValue("a11y/touchTargets").transport)
@@ -97,10 +100,7 @@ class AccessibilityDataProductRegistryTest {
     val findings = (atf.payload as JsonObject)["findings"]?.jsonArray
     assertNotNull(findings)
     assertEquals(1, findings!!.size)
-    assertEquals(
-      "TouchTargetSizeCheck",
-      findings[0].jsonObject["type"]!!.toString().trim('"'),
-    )
+    assertEquals("TouchTargetSizeCheck", findings[0].jsonObject["type"]!!.toString().trim('"'))
 
     val hierarchy = byKind.getValue("a11y/hierarchy")
     assertNull("a11y/hierarchy travels by path, not inline", hierarchy.payload)
@@ -143,10 +143,7 @@ class AccessibilityDataProductRegistryTest {
 
     val touchFile = File(rootDir, "$previewId/${AccessibilityDataProducer.FILE_TOUCH_TARGETS}")
     val payload =
-      Json.decodeFromString(
-        AccessibilityTouchTargetsPayload.serializer(),
-        touchFile.readText(),
-      )
+      Json.decodeFromString(AccessibilityTouchTargetsPayload.serializer(), touchFile.readText())
     assertEquals(3, payload.targets.size)
 
     val small = payload.targets[0]
@@ -164,17 +161,23 @@ class AccessibilityDataProductRegistryTest {
 
     val parent = payload.targets[2]
     assertEquals(emptyList<String>(), parent.findings)
-    assertNull("parent-child containment should not be reported as overlap", parent.overlappingNodeIds)
+    assertNull(
+      "parent-child containment should not be reported as overlap",
+      parent.overlappingNodeIds,
+    )
 
     val attachment =
-      registry
-        .attachmentsFor(previewId = previewId, kinds = setOf("a11y/touchTargets"))
-        .single()
+      registry.attachmentsFor(previewId = previewId, kinds = setOf("a11y/touchTargets")).single()
     assertNotNull("a11y/touchTargets should travel inline", attachment.payload)
     assertNull("a11y/touchTargets must not also carry a path", attachment.path)
 
     val outcome =
-      registry.fetch(previewId = previewId, kind = "a11y/touchTargets", params = null, inline = false)
+      registry.fetch(
+        previewId = previewId,
+        kind = "a11y/touchTargets",
+        params = null,
+        inline = false,
+      )
     assertTrue(outcome is DataProductRegistry.Outcome.Ok)
     val result = (outcome as DataProductRegistry.Outcome.Ok).result
     assertNotNull(result.payload)
@@ -224,8 +227,7 @@ class AccessibilityDataProductRegistryTest {
     val previewId = "com.example.HomeKt#HomePreview"
 
     // Step 1 — pre-render. Artefact missing, dispatcher would re-render.
-    val pre =
-      registry.fetch(previewId = previewId, kind = "a11y/atf", params = null, inline = true)
+    val pre = registry.fetch(previewId = previewId, kind = "a11y/atf", params = null, inline = true)
     assertEquals(DataProductRegistry.Outcome.RequiresRerender("a11y"), pre)
 
     // Step 2 — re-render in a11y mode lands the artefacts.
@@ -239,7 +241,10 @@ class AccessibilityDataProductRegistryTest {
     // Step 3 — dispatcher re-invokes fetch; now Ok.
     val post =
       registry.fetch(previewId = previewId, kind = "a11y/atf", params = null, inline = true)
-    assertTrue("post-rerender fetch should be Ok, was $post", post is DataProductRegistry.Outcome.Ok)
+    assertTrue(
+      "post-rerender fetch should be Ok, was $post",
+      post is DataProductRegistry.Outcome.Ok,
+    )
     val result = (post as DataProductRegistry.Outcome.Ok).result
     assertNotNull(result.payload)
   }
@@ -369,10 +374,7 @@ class AccessibilityDataProductRegistryTest {
     registry.onSubscribe(previewId, "a11y/hierarchy", params = null)
 
     registry.onUnsubscribe(previewId, "a11y/atf")
-    assertTrue(
-      "still subscribed via a11y/hierarchy",
-      registry.isPreviewSubscribed(previewId),
-    )
+    assertTrue("still subscribed via a11y/hierarchy", registry.isPreviewSubscribed(previewId))
 
     registry.onUnsubscribe(previewId, "a11y/hierarchy")
     assertFalse(registry.isPreviewSubscribed(previewId))

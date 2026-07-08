@@ -40,24 +40,24 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.LooperMode
 
 /**
- * Proves the **`rotateToLookAtUser`** ("face the viewer" / billboard) `SubspaceModifier` works under
- * the offline fake XR runtime — the same recovery path `SubspaceSceneRecorder` drives for the
+ * Proves the **`rotateToLookAtUser`** ("face the viewer" / billboard) `SubspaceModifier` works
+ * under the offline fake XR runtime — the same recovery path `SubspaceSceneRecorder` drives for the
  * [RotateToLookAtUserPreview] `@XrSubspacePreview`.
  *
  * `rotateToLookAtUser` is driven by `RotateToLookAtUserNode`, which reads the user's head pose from
  * an ARCore `ArDevice` perception job. Out of the box offline that's unusable two ways: the default
- * `Session` is created with device tracking `DISABLED`, so the node never initialises `arDevice` and
- * crashes in its head-pose job (`UninitializedPropertyAccessException`); and with no head pose it
- * degenerates to a 180° Y-flip. [seedHeadPose] fixes both — it registers the fake perception runtime
- * (via `ServiceLoader`, see `src/test/resources/META-INF/services`), enables device tracking, and
- * seeds a **viewer head pose in front of the panels (+Z)** — so a centred panel ends up facing the
- * viewer (≈ identity) and side panels turn inward toward them. The render path seeds identically via
- * `:renderer-xr`'s `FakeXrHeadPose`.
+ * `Session` is created with device tracking `DISABLED`, so the node never initialises `arDevice`
+ * and crashes in its head-pose job (`UninitializedPropertyAccessException`); and with no head pose
+ * it degenerates to a 180° Y-flip. [seedHeadPose] fixes both — it registers the fake perception
+ * runtime (via `ServiceLoader`, see `src/test/resources/META-INF/services`), enables device
+ * tracking, and seeds a **viewer head pose in front of the panels (+Z)** — so a centred panel ends
+ * up facing the viewer (≈ identity) and side panels turn inward toward them. The render path seeds
+ * identically via `:renderer-xr`'s `FakeXrHeadPose`.
  *
  * Its own class (own Robolectric sandbox + PAUSED looper): the seeding calls `Session.configure` /
  * `ArDevice.update`, each an internal `runBlocking` that deadlocks under Robolectric's default
- * kotlinx-coroutines-test main dispatcher (PAUSED is the mode `:renderer-xr`'s render task runs in),
- * and isolating it keeps the live perception runtime it spins up from leaking into the plainer
+ * kotlinx-coroutines-test main dispatcher (PAUSED is the mode `:renderer-xr`'s render task runs
+ * in), and isolating it keeps the live perception runtime it spins up from leaking into the plainer
  * `SubspaceModifierPoseTest` cases.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -65,8 +65,7 @@ import org.robolectric.annotation.LooperMode
 @LooperMode(LooperMode.Mode.PAUSED)
 class RotateToLookAtUserPoseTest {
 
-  @Suppress("DEPRECATION")
-  @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
+  @Suppress("DEPRECATION") @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
   private fun enableSpatial() {
     val pm = ApplicationProvider.getApplicationContext<Context>().packageManager
@@ -81,9 +80,9 @@ class RotateToLookAtUserPoseTest {
 
   /**
    * Makes `rotateToLookAtUser` viable offline: pre-creates a `Session` with **device tracking
-   * enabled** and seeds the fake `ArDevice` with a **viewer head pose** in front of the panels (+Z).
-   * Mirrors `:renderer-xr`'s `FakeXrHeadPose`, inlined so the sample test stays free of a renderer
-   * dependency. The arcore types are reached reflectively so the sample only needs the
+   * enabled** and seeds the fake `ArDevice` with a **viewer head pose** in front of the panels
+   * (+Z). Mirrors `:renderer-xr`'s `FakeXrHeadPose`, inlined so the sample test stays free of a
+   * renderer dependency. The arcore types are reached reflectively so the sample only needs the
    * `arcore-testing` artifact on its classpath.
    *
    * Call **before** `setContent`, after the spatial feature is enabled.
@@ -127,9 +126,13 @@ class RotateToLookAtUserPoseTest {
     rule.setContent {
       Subspace {
         SpatialBox {
-          // Centred panel: already in front of the viewer, so it should face straight on (≈ identity).
+          // Centred panel: already in front of the viewer, so it should face straight on (≈
+          // identity).
           SpatialPanel(
-            SubspaceModifier.testTag("look-center").width(300.dp).height(200.dp).rotateToLookAtUser()
+            SubspaceModifier.testTag("look-center")
+              .width(300.dp)
+              .height(200.dp)
+              .rotateToLookAtUser()
           ) {
             ReferencePanel("center")
           }
@@ -157,7 +160,11 @@ class RotateToLookAtUserPoseTest {
         .poseInRoot
         .rotation
     val l =
-      rule.onSubspaceNodeWithTag("look-left").fetchSemanticsNode("no 'look-left'").poseInRoot.rotation
+      rule
+        .onSubspaceNodeWithTag("look-left")
+        .fetchSemanticsNode("no 'look-left'")
+        .poseInRoot
+        .rotation
     val cAngle = angleDeg(c.x, c.y, c.z, c.w)
     val lAngle = angleDeg(l.x, l.y, l.z, l.w)
     println("rotateToLookAtUser center -> quat=(${c.x}, ${c.y}, ${c.z}, ${c.w}) angle=$cAngle°")

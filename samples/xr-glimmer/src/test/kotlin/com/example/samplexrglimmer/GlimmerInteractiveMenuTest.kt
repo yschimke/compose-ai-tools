@@ -6,26 +6,25 @@ import org.junit.Test
 
 /**
  * Asserts the interactive XR menu navigation GIFs produced by
- * `:samples:xr-glimmer:composePreviewRenderAll` land at the right paths with the right shape,
- * and that each env actually composites a visibly different backdrop.
+ * `:samples:xr-glimmer:composePreviewRenderAll` land at the right paths with the right shape, and
+ * that each env actually composites a visibly different backdrop.
  *
- * Each top-level function (`GlimmerXrMenuLight` etc.) carries
- * `@FocusedPreview(indices = [0, 1, 2, 3], gif = true)`, so the renderer drives focus across
- * four Glimmer `ListItem`s (one `moveFocus(Enter)` on the first capture, then `moveFocus(Next)`
- * per subsequent step) and stitches each function's four captures into a single `.gif`. The
- * per-step PNG fan-out (`_FOCUS_0.png` etc.) must NOT be written — `gif = true` is supposed to
- * collapse it. Together the guards catch:
+ * Each top-level function (`GlimmerXrMenuLight` etc.) carries `@FocusedPreview(indices =
+ * [0, 1, 2, 3], gif = true)`, so the renderer drives focus across four Glimmer `ListItem`s (one
+ * `moveFocus(Enter)` on the first capture, then `moveFocus(Next)` per subsequent step) and stitches
+ * each function's four captures into a single `.gif`. The per-step PNG fan-out (`_FOCUS_0.png`
+ * etc.) must NOT be written — `gif = true` is supposed to collapse it. Together the guards catch:
  *
- *  - GIF stitching breakages (a file disappears or shrinks to zero / loses its magic header).
- *  - Regressions where the renderer writes both the GIF *and* the per-step PNGs (a duplicate-
- *    output mode would silently quadruple the `:samples:xr-glimmer` render budget here).
- *  - A future renderer change that renames the GIF (e.g. dropping the trailing `_FOCUS` suffix
- *    on the GIF path) — the new filename would land outside the assertion below.
- *  - **Env-backdrop drift.** Each env composites a different procedurally-drawn backdrop with
- *    the Glimmer UI additive-blended on top, so the four GIFs must be byte-distinct. If a
- *    regression accidentally drops the env backdrop layer or the `BlendMode.Plus` wrapper, all
- *    four GIFs collapse to identical opaque-black captures and this test surfaces it — that's
- *    exactly the failure mode that motivated this iteration of the demo.
+ * - GIF stitching breakages (a file disappears or shrinks to zero / loses its magic header).
+ * - Regressions where the renderer writes both the GIF *and* the per-step PNGs (a duplicate- output
+ *   mode would silently quadruple the `:samples:xr-glimmer` render budget here).
+ * - A future renderer change that renames the GIF (e.g. dropping the trailing `_FOCUS` suffix on
+ *   the GIF path) — the new filename would land outside the assertion below.
+ * - **Env-backdrop drift.** Each env composites a different procedurally-drawn backdrop with the
+ *   Glimmer UI additive-blended on top, so the four GIFs must be byte-distinct. If a regression
+ *   accidentally drops the env backdrop layer or the `BlendMode.Plus` wrapper, all four GIFs
+ *   collapse to identical opaque-black captures and this test surfaces it — that's exactly the
+ *   failure mode that motivated this iteration of the demo.
  */
 class GlimmerInteractiveMenuTest {
 
@@ -68,12 +67,12 @@ class GlimmerInteractiveMenuTest {
 
   /**
    * The four env GIFs must be visually distinct because each composites a different
-   * procedurally-drawn backdrop. Byte-comparing the GIFs is a strict-enough proxy — two
-   * different env backdrops painted with `BlendMode.Plus` on top of the same Glimmer UI
-   * produce different pixel data, which produces different GIF bytes after the renderer's
-   * stitcher quantises. Inverse of the assertion `GlimmerCaptureAdditivePixelTest` enforces
-   * on the `NowPlayingCard` PNG fan-out (which intentionally stays byte-identical across env
-   * names because that sample still uses Encoding B without inline compositing).
+   * procedurally-drawn backdrop. Byte-comparing the GIFs is a strict-enough proxy — two different
+   * env backdrops painted with `BlendMode.Plus` on top of the same Glimmer UI produce different
+   * pixel data, which produces different GIF bytes after the renderer's stitcher quantises. Inverse
+   * of the assertion `GlimmerCaptureAdditivePixelTest` enforces on the `NowPlayingCard` PNG fan-out
+   * (which intentionally stays byte-identical across env names because that sample still uses
+   * Encoding B without inline compositing).
    */
   @Test
   fun `four env GIFs render visually distinct backdrops`() {

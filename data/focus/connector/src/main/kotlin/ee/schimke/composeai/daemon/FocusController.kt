@@ -14,11 +14,11 @@ import ee.schimke.composeai.daemon.protocol.FocusOverride
  *
  * The flow is:
  *
- * 1. Plugin path (`@FocusedPreview` / `composePreviewRenderAll`): the renderer's per-capture loop calls
- *    [set] before each capture so the around-composable observes the next requested target.
- * 2. Daemon path (`renderNow.overrides.focus`): [FocusOverrideExtension.AroundComposable] seeds
- *    the controller from its constructor argument, the around-composable observes the same state
- *    via [activeFocus]'s snapshot read.
+ * 1. Plugin path (`@FocusedPreview` / `composePreviewRenderAll`): the renderer's per-capture loop
+ *    calls [set] before each capture so the around-composable observes the next requested target.
+ * 2. Daemon path (`renderNow.overrides.focus`): [FocusOverrideExtension.AroundComposable] seeds the
+ *    controller from its constructor argument, the around-composable observes the same state via
+ *    [activeFocus]'s snapshot read.
  *
  * Both paths share the [activeFocus] state and the [SETTLE_MS] settle window so the
  * `LaunchedEffect`-driven walk + the renderer's per-capture clock advance stay aligned without
@@ -43,9 +43,9 @@ object FocusController {
    * `FocusInteraction.{Focus, Unfocus}` to the interaction sources; the ripple's `IndicationNode`
    * collects the events and runs a fade animation (Material's focus indicator uses an
    * `Animatable<Float>` that crossfades over ~150ms). The paused-clock test environment doesn't
-   * auto-advance these animations, so we need enough virtual time to (a) emit the interactions,
-   * (b) crossfade out the previous capture's highlight, and (c) crossfade in the new one. 250ms ≈
-   * 16 frames at 16ms — a comfortable margin around Material's default highlight duration.
+   * auto-advance these animations, so we need enough virtual time to (a) emit the interactions, (b)
+   * crossfade out the previous capture's highlight, and (c) crossfade in the new one. 250ms ≈ 16
+   * frames at 16ms — a comfortable margin around Material's default highlight duration.
    */
   const val SETTLE_MS: Long = 250L
 
@@ -67,8 +67,8 @@ object FocusController {
  * [androidx.compose.ui.platform.LocalInputModeManager] so previews that call
  * `FocusRequester.requestFocus()` actually receive focus. Compose's `Modifier.clickable` registers
  * its focusable with `Focusability.SystemDefined`, which refuses focus while the host's input mode
- * is `InputMode.Touch` — Robolectric's permanent default. Forcing keyboard mode for the duration
- * of any focus-driven render unblocks the focus walk.
+ * is `InputMode.Touch` — Robolectric's permanent default. Forcing keyboard mode for the duration of
+ * any focus-driven render unblocks the focus walk.
  */
 object KeyboardInputModeManager : InputModeManager {
   override val inputMode: InputMode = InputMode.Keyboard

@@ -41,10 +41,7 @@ class ResourcesUsedDataProductRegistryTest {
   fun `fetch returns path by default and payload when inline requested`() {
     val previewId = "com.example.ResourcePreview"
     val file =
-      rootDir
-        .resolve(previewId)
-        .also { it.mkdirs() }
-        .resolve(ResourcesUsedDataProducer.FILE)
+      rootDir.resolve(previewId).also { it.mkdirs() }.resolve(ResourcesUsedDataProducer.FILE)
     file.writeText(
       """{"references":[{"resourceType":"string","resourceName":"app_name","packageName":"com.example","resolvedValue":"Demo","consumers":[]}]}"""
     )
@@ -65,8 +62,7 @@ class ResourcesUsedDataProductRegistryTest {
     assertNotNull(inlineResult.payload)
     assertEquals(
       "app_name",
-      inlineResult
-        .payload!!
+      inlineResult.payload!!
         .jsonObject["references"]!!
         .jsonArray
         .single()
@@ -83,10 +79,7 @@ class ResourcesUsedDataProductRegistryTest {
     assertEquals(emptyList<Any>(), registry.attachmentsFor(previewId, setOf("resources/used")))
 
     val file =
-      rootDir
-        .resolve(previewId)
-        .also { it.mkdirs() }
-        .resolve(ResourcesUsedDataProducer.FILE)
+      rootDir.resolve(previewId).also { it.mkdirs() }.resolve(ResourcesUsedDataProducer.FILE)
     file.writeText("""{"references":[]}""")
 
     val attachment = registry.attachmentsFor(previewId, setOf("resources/used")).single()

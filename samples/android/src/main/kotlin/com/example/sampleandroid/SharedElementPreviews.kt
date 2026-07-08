@@ -60,8 +60,8 @@ import ee.schimke.composeai.preview.AnimatedPreview
 private val boundsSpec = BoundsTransform { _, _ -> tween(durationMillis = 600) }
 
 private enum class CardScreen {
-    Collapsed,
-    Expanded,
+  Collapsed,
+  Expanded,
 }
 
 /**
@@ -74,128 +74,126 @@ private enum class CardScreen {
 @AnimatedPreview(durationMs = 750)
 @Composable
 fun ContainerTransformAnimatedPreview() {
-    var screen by remember { mutableStateOf(CardScreen.Collapsed) }
-    LaunchedEffect(Unit) { screen = CardScreen.Expanded }
-    MaterialTheme {
-        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
-            SharedTransitionLayout(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                AnimatedContent(
-                    targetState = screen,
-                    label = "container-transform",
-                    modifier = Modifier.fillMaxSize(),
-                ) { target ->
-                    when (target) {
-                        CardScreen.Collapsed ->
-                            CollapsedCard(this@SharedTransitionLayout, this@AnimatedContent)
-                        CardScreen.Expanded ->
-                            ExpandedCard(this@SharedTransitionLayout, this@AnimatedContent)
-                    }
-                }
-            }
+  var screen by remember { mutableStateOf(CardScreen.Collapsed) }
+  LaunchedEffect(Unit) { screen = CardScreen.Expanded }
+  MaterialTheme {
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+      SharedTransitionLayout(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        AnimatedContent(
+          targetState = screen,
+          label = "container-transform",
+          modifier = Modifier.fillMaxSize(),
+        ) { target ->
+          when (target) {
+            CardScreen.Collapsed -> CollapsedCard(this@SharedTransitionLayout, this@AnimatedContent)
+            CardScreen.Expanded -> ExpandedCard(this@SharedTransitionLayout, this@AnimatedContent)
+          }
         }
+      }
     }
+  }
 }
 
 @Composable
 private fun CollapsedCard(
-    sharedScope: SharedTransitionScope,
-    visibilityScope: AnimatedVisibilityScope,
+  sharedScope: SharedTransitionScope,
+  visibilityScope: AnimatedVisibilityScope,
 ) =
-    with(sharedScope) {
-        Row(
-            modifier =
-                Modifier.sharedBounds(
-                        rememberSharedContentState(key = "container"),
-                        animatedVisibilityScope = visibilityScope,
-                        boundsTransform = boundsSpec,
-                    )
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xFFE8DEF8))
-                    .fillMaxWidth()
-                    .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier =
-                    Modifier.sharedElement(
-                            rememberSharedContentState(key = "avatar"),
-                            animatedVisibilityScope = visibilityScope,
-                            boundsTransform = boundsSpec,
-                        )
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF6750A4))
+  with(sharedScope) {
+    Row(
+      modifier =
+        Modifier.sharedBounds(
+            rememberSharedContentState(key = "container"),
+            animatedVisibilityScope = visibilityScope,
+            boundsTransform = boundsSpec,
+          )
+          .clip(RoundedCornerShape(20.dp))
+          .background(Color(0xFFE8DEF8))
+          .fillMaxWidth()
+          .padding(12.dp),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Box(
+        modifier =
+          Modifier.sharedElement(
+              rememberSharedContentState(key = "avatar"),
+              animatedVisibilityScope = visibilityScope,
+              boundsTransform = boundsSpec,
             )
-            Spacer(Modifier.size(12.dp))
-            Text(
-                "Aurora ridge",
-                modifier =
-                    Modifier.sharedBounds(
-                        rememberSharedContentState(key = "title"),
-                        animatedVisibilityScope = visibilityScope,
-                        boundsTransform = boundsSpec,
-                    ),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
+            .size(48.dp)
+            .clip(CircleShape)
+            .background(Color(0xFF6750A4))
+      )
+      Spacer(Modifier.size(12.dp))
+      Text(
+        "Aurora ridge",
+        modifier =
+          Modifier.sharedBounds(
+            rememberSharedContentState(key = "title"),
+            animatedVisibilityScope = visibilityScope,
+            boundsTransform = boundsSpec,
+          ),
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
+      )
     }
+  }
 
 @Composable
 private fun ExpandedCard(
-    sharedScope: SharedTransitionScope,
-    visibilityScope: AnimatedVisibilityScope,
+  sharedScope: SharedTransitionScope,
+  visibilityScope: AnimatedVisibilityScope,
 ) =
-    with(sharedScope) {
-        Column(
-            modifier =
-                Modifier.sharedBounds(
-                        rememberSharedContentState(key = "container"),
-                        animatedVisibilityScope = visibilityScope,
-                        boundsTransform = boundsSpec,
-                    )
-                    .clip(RoundedCornerShape(28.dp))
-                    .background(Color(0xFFE8DEF8))
-                    .fillMaxSize()
-                    .padding(20.dp)
-        ) {
-            Box(
-                modifier =
-                    Modifier.sharedElement(
-                            rememberSharedContentState(key = "avatar"),
-                            animatedVisibilityScope = visibilityScope,
-                            boundsTransform = boundsSpec,
-                        )
-                        .size(120.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF6750A4))
+  with(sharedScope) {
+    Column(
+      modifier =
+        Modifier.sharedBounds(
+            rememberSharedContentState(key = "container"),
+            animatedVisibilityScope = visibilityScope,
+            boundsTransform = boundsSpec,
+          )
+          .clip(RoundedCornerShape(28.dp))
+          .background(Color(0xFFE8DEF8))
+          .fillMaxSize()
+          .padding(20.dp)
+    ) {
+      Box(
+        modifier =
+          Modifier.sharedElement(
+              rememberSharedContentState(key = "avatar"),
+              animatedVisibilityScope = visibilityScope,
+              boundsTransform = boundsSpec,
             )
-            Spacer(Modifier.size(16.dp))
-            Text(
-                "Aurora ridge",
-                modifier =
-                    Modifier.sharedBounds(
-                        rememberSharedContentState(key = "title"),
-                        animatedVisibilityScope = visibilityScope,
-                        boundsTransform = boundsSpec,
-                    ),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-            )
-            Spacer(Modifier.size(12.dp))
-            Text(
-                "A long ridgeline walk above the cloud line, finishing at a glacial tarn. " +
-                    "Body copy that only exists in the detail state fades in over the morphing " +
-                    "container.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+            .size(120.dp)
+            .clip(CircleShape)
+            .background(Color(0xFF6750A4))
+      )
+      Spacer(Modifier.size(16.dp))
+      Text(
+        "Aurora ridge",
+        modifier =
+          Modifier.sharedBounds(
+            rememberSharedContentState(key = "title"),
+            animatedVisibilityScope = visibilityScope,
+            boundsTransform = boundsSpec,
+          ),
+        style = MaterialTheme.typography.headlineSmall,
+        fontWeight = FontWeight.Bold,
+      )
+      Spacer(Modifier.size(12.dp))
+      Text(
+        "A long ridgeline walk above the cloud line, finishing at a glacial tarn. " +
+          "Body copy that only exists in the detail state fades in over the morphing " +
+          "container.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
     }
+  }
 
 private enum class FabScreen {
-    Fab,
-    Sheet,
+  Fab,
+  Sheet,
 }
 
 /**
@@ -209,80 +207,79 @@ private enum class FabScreen {
 @AnimatedPreview(durationMs = 750)
 @Composable
 fun FabToSheetAnimatedPreview() {
-    var screen by remember { mutableStateOf(FabScreen.Fab) }
-    LaunchedEffect(Unit) { screen = FabScreen.Sheet }
-    MaterialTheme {
-        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
-            SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
-                AnimatedContent(
-                    targetState = screen,
-                    label = "fab-to-sheet",
-                    modifier = Modifier.fillMaxSize(),
-                ) { target ->
-                    when (target) {
-                        FabScreen.Fab -> FabState(this@SharedTransitionLayout, this@AnimatedContent)
-                        FabScreen.Sheet ->
-                            SheetState(this@SharedTransitionLayout, this@AnimatedContent)
-                    }
-                }
-            }
+  var screen by remember { mutableStateOf(FabScreen.Fab) }
+  LaunchedEffect(Unit) { screen = FabScreen.Sheet }
+  MaterialTheme {
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+      SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
+        AnimatedContent(
+          targetState = screen,
+          label = "fab-to-sheet",
+          modifier = Modifier.fillMaxSize(),
+        ) { target ->
+          when (target) {
+            FabScreen.Fab -> FabState(this@SharedTransitionLayout, this@AnimatedContent)
+            FabScreen.Sheet -> SheetState(this@SharedTransitionLayout, this@AnimatedContent)
+          }
         }
+      }
     }
+  }
 }
 
 @Composable
 private fun FabState(sharedScope: SharedTransitionScope, visibilityScope: AnimatedVisibilityScope) =
-    with(sharedScope) {
-        Box(modifier = Modifier.fillMaxSize().padding(20.dp), contentAlignment = Alignment.BottomEnd) {
-            Box(
-                modifier =
-                    Modifier.sharedBounds(
-                            rememberSharedContentState(key = "fab-container"),
-                            animatedVisibilityScope = visibilityScope,
-                            enter = fadeIn(),
-                            exit = fadeOut(),
-                            boundsTransform = boundsSpec,
-                        )
-                        .size(64.dp)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(Color(0xFF6750A4)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("+", color = Color.White, fontSize = 28.sp)
-            }
-        }
+  with(sharedScope) {
+    Box(modifier = Modifier.fillMaxSize().padding(20.dp), contentAlignment = Alignment.BottomEnd) {
+      Box(
+        modifier =
+          Modifier.sharedBounds(
+              rememberSharedContentState(key = "fab-container"),
+              animatedVisibilityScope = visibilityScope,
+              enter = fadeIn(),
+              exit = fadeOut(),
+              boundsTransform = boundsSpec,
+            )
+            .size(64.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color(0xFF6750A4)),
+        contentAlignment = Alignment.Center,
+      ) {
+        Text("+", color = Color.White, fontSize = 28.sp)
+      }
     }
+  }
 
 @Composable
 private fun SheetState(
-    sharedScope: SharedTransitionScope,
-    visibilityScope: AnimatedVisibilityScope,
+  sharedScope: SharedTransitionScope,
+  visibilityScope: AnimatedVisibilityScope,
 ) =
-    with(sharedScope) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
-            Column(
-                modifier =
-                    Modifier.sharedBounds(
-                            rememberSharedContentState(key = "fab-container"),
-                            animatedVisibilityScope = visibilityScope,
-                            enter = fadeIn(),
-                            exit = fadeOut(),
-                            boundsTransform = boundsSpec,
-                        )
-                        .fillMaxWidth()
-                        .height(220.dp)
-                        .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                        .background(Color(0xFF6750A4))
-                        .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text("New reminder", color = Color.White, style = MaterialTheme.typography.titleLarge)
-                Text(
-                    "The FAB expands into the sheet surface — the same node, resized — while the " +
-                        "form content fades in on top.",
-                    color = Color.White.copy(alpha = 0.85f),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-        }
+  with(sharedScope) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+      Column(
+        modifier =
+          Modifier.sharedBounds(
+              rememberSharedContentState(key = "fab-container"),
+              animatedVisibilityScope = visibilityScope,
+              enter = fadeIn(),
+              exit = fadeOut(),
+              boundsTransform = boundsSpec,
+            )
+            .fillMaxWidth()
+            .height(220.dp)
+            .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+            .background(Color(0xFF6750A4))
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        Text("New reminder", color = Color.White, style = MaterialTheme.typography.titleLarge)
+        Text(
+          "The FAB expands into the sheet surface — the same node, resized — while the " +
+            "form content fades in on top.",
+          color = Color.White.copy(alpha = 0.85f),
+          style = MaterialTheme.typography.bodyMedium,
+        )
+      }
     }
+  }

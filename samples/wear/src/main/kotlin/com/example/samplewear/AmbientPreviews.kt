@@ -29,22 +29,18 @@ import ee.schimke.composeai.preview.AmbientPreview
 import ee.schimke.composeai.preview.AmbientPreviewState
 
 /**
- * Body for the ambient-aware demo. Reads its state from
- * [LocalAmbientModeManager] — the same composition-local seam
- * `androidx.wear.compose.foundation.samples.AmbientModeBasicSample` consumes via
- * `rememberAmbientModeManager()`. The `:data-ambient-connector`'s
- * `AmbientOverrideExtension` (an `AroundComposable` data extension planned from
- * `renderNow.overrides.ambient`) installs the manager backed by
- * `AmbientStateController`, so daemon-driven renders see the override and a real
- * activity runs `rememberAmbientModeManager()` against the on-device Wear Services
- * SDK; preview rendering without an in-flight override falls back to
- * [AmbientMode.Interactive].
+ * Body for the ambient-aware demo. Reads its state from [LocalAmbientModeManager] — the same
+ * composition-local seam `androidx.wear.compose.foundation.samples.AmbientModeBasicSample` consumes
+ * via `rememberAmbientModeManager()`. The `:data-ambient-connector`'s `AmbientOverrideExtension`
+ * (an `AroundComposable` data extension planned from `renderNow.overrides.ambient`) installs the
+ * manager backed by `AmbientStateController`, so daemon-driven renders see the override and a real
+ * activity runs `rememberAmbientModeManager()` against the on-device Wear Services SDK; preview
+ * rendering without an in-flight override falls back to [AmbientMode.Interactive].
  *
- * Visual treatment for the ambient state — desaturated greyscale with a 0.9× scale —
- * is borrowed from horologist's `AmbientAwareActivity` sample
- * (`com.google.android.horologist.ambient.ambientGray`), reimplemented here as a
- * local [Modifier.ambientGray] so this module doesn't pull in horologist just for
- * the styling.
+ * Visual treatment for the ambient state — desaturated greyscale with a 0.9× scale — is borrowed
+ * from horologist's `AmbientAwareActivity` sample
+ * (`com.google.android.horologist.ambient.ambientGray`), reimplemented here as a local
+ * [Modifier.ambientGray] so this module doesn't pull in horologist just for the styling.
  */
 @Composable
 fun AmbientStatusBody(now: () -> Long = System::currentTimeMillis) {
@@ -54,7 +50,8 @@ fun AmbientStatusBody(now: () -> Long = System::currentTimeMillis) {
   val textColor = if (isAmbient) Color(0xFFCFD8DC) else Color.White
 
   Box(
-    modifier = Modifier.fillMaxSize().background(background).ambientGray(ambientMode).padding(16.dp),
+    modifier =
+      Modifier.fillMaxSize().background(background).ambientGray(ambientMode).padding(16.dp),
     contentAlignment = Alignment.Center,
   ) {
     Column(
@@ -105,7 +102,11 @@ private fun Modifier.ambientGray(ambientMode: AmbientMode): Modifier =
     this
   }
 
-@Preview(name = "Ambient body — interactive", device = WearDevices.LARGE_ROUND, showBackground = true)
+@Preview(
+  name = "Ambient body — interactive",
+  device = WearDevices.LARGE_ROUND,
+  showBackground = true,
+)
 @Composable
 fun AmbientStatusInteractivePreview() {
   AmbientStatusBody(now = { 1_700_000_000_000L })
@@ -115,10 +116,10 @@ fun AmbientStatusInteractivePreview() {
  * Renders the body under `AmbientMode.Ambient(burnInProtectionRequired = true)`. The
  * `@AmbientPreview` annotation drives the renderer to wrap the composition with
  * `:data-ambient-connector`'s `AmbientOverrideExtension`, which installs `LocalAmbientModeManager`
- * — the same composition-local seam `androidx.wear.compose.foundation.samples.AmbientModeBasicSample`
- * reads from `rememberAmbientModeManager()`. Daemon-driven `renderNow.overrides.ambient` lands at
- * the same extension via the `AmbientPreviewOverrideExtension` planner registered in
- * `RobolectricHost`.
+ * — the same composition-local seam
+ * `androidx.wear.compose.foundation.samples.AmbientModeBasicSample` reads from
+ * `rememberAmbientModeManager()`. Daemon-driven `renderNow.overrides.ambient` lands at the same
+ * extension via the `AmbientPreviewOverrideExtension` planner registered in `RobolectricHost`.
  */
 @Preview(name = "Ambient body — ambient", device = WearDevices.LARGE_ROUND, showBackground = true)
 @AmbientPreview(state = AmbientPreviewState.Ambient, burnInProtectionRequired = true)

@@ -10,14 +10,15 @@ import org.robolectric.annotation.Config
 
 /**
  * Locks the daemon's [SandboxHoldingRunner.buildGlobalConfig] override that mirrors the
- * `application=android.app.Application` line [ee.schimke.composeai.plugin.GenerateRobolectricPropertiesTask]
- * writes for the consumer's `composePreviewRender` Test path. Without this override the daemon
- * sandbox falls back to the manifest-declared `Application`, whose `onCreate` runs once per
- * sandbox worker — and any process-global side effect (e.g. `URL.setURLStreamHandlerFactory`)
- * throws on worker 1+, taking the pool down.
+ * `application=android.app.Application` line
+ * [ee.schimke.composeai.plugin.GenerateRobolectricPropertiesTask] writes for the consumer's
+ * `composePreviewRender` Test path. Without this override the daemon sandbox falls back to the
+ * manifest-declared `Application`, whose `onCreate` runs once per sandbox worker — and any
+ * process-global side effect (e.g. `URL.setURLStreamHandlerFactory`) throws on worker 1+, taking
+ * the pool down.
  *
- * The dummy test class supplies the `RobolectricTestRunner(Class)` constructor with a valid
- * test class; we read the resolved [Config] back via the protected `buildGlobalConfig` exposer.
+ * The dummy test class supplies the `RobolectricTestRunner(Class)` constructor with a valid test
+ * class; we read the resolved [Config] back via the protected `buildGlobalConfig` exposer.
  */
 class SandboxHoldingRunnerApplicationOverrideTest {
 

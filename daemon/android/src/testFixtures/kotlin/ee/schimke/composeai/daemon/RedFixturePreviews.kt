@@ -5,8 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
@@ -16,8 +16,8 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.lightColorScheme
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -39,18 +39,18 @@ import androidx.compose.ui.unit.dp
 /**
  * Test fixtures for [RenderEngineTest] and the D-harness.v2 Android real-mode scenarios. Lives in
  * the `testFixtures` source set so `:daemon:harness`'s test runtime classpath can pull these
- * composables via `testImplementation(testFixtures(project(":daemon:android")))` — same
- * shape `:daemon:desktop`'s testFixtures already use. Promoted here from `src/test/...` in
- * D-harness.v2 (was previously test-source-only because B1.4 only needed same-module verification).
+ * composables via `testImplementation(testFixtures(project(":daemon:android")))` — same shape
+ * `:daemon:desktop`'s testFixtures already use. Promoted here from `src/test/...` in D-harness.v2
+ * (was previously test-source-only because B1.4 only needed same-module verification).
  *
  * Each preview is a single solid-colour fill, identical in coordinates and hue to the desktop
- * counterpart in [`daemon/desktop`'s `RedFixturePreviews`][
- * ee.schimke.composeai.daemon.RedSquare] (see also `daemon/harness/baselines/desktop/`).
- * Class FQN — `ee.schimke.composeai.daemon.RedFixturePreviewsKt` — and function names match
- * across both backends so a single `RealModePreview(className=…, functionName="RedSquare")` row in
- * the harness's `realModeScenario(...)` manifest resolves to the right composable on either
- * target. The PNG bytes will differ per target (Skiko AA vs Robolectric/HardwareRenderer) — that's
- * what the per-target baseline directories under `daemon/harness/baselines/<target>/` absorb.
+ * counterpart in [`daemon/desktop`'s `RedFixturePreviews`][ ee.schimke.composeai.daemon.RedSquare]
+ * (see also `daemon/harness/baselines/desktop/`). Class FQN —
+ * `ee.schimke.composeai.daemon.RedFixturePreviewsKt` — and function names match across both
+ * backends so a single `RealModePreview(className=…, functionName="RedSquare")` row in the
+ * harness's `realModeScenario(...)` manifest resolves to the right composable on either target. The
+ * PNG bytes will differ per target (Skiko AA vs Robolectric/HardwareRenderer) — that's what the
+ * per-target baseline directories under `daemon/harness/baselines/<target>/` absorb.
  */
 @Composable
 fun RedSquare() {
@@ -135,14 +135,15 @@ fun GreenSquare() {
 
 /**
  * Fixture for D-harness.v2's S2 Android real-mode test (drain semantics). Sleeps for ~500ms inside
- * the composition body so the harness can race a `shutdown` request against an in-flight render
- * and assert the render still completes (per
+ * the composition body so the harness can race a `shutdown` request against an in-flight render and
+ * assert the render still completes (per
  * [DESIGN.md § 9](../../../../../../docs/daemon/DESIGN.md#no-mid-render-cancellation--invariant--enforcement)).
  *
  * The sleep is deliberately *inside* the composition rather than around the capture — we want to
  * exercise the very window that's most dangerous to cancel: a partly-built Compose graph is the
- * worst leak shape per [PREDICTIVE.md § 9](../../../../../../docs/daemon/PREDICTIVE.md#9-decisions-made).
- * Mirrors the desktop counterpart's contract exactly.
+ * worst leak shape per
+ * [PREDICTIVE.md § 9](../../../../../../docs/daemon/PREDICTIVE.md#9-decisions-made). Mirrors the
+ * desktop counterpart's contract exactly.
  */
 @Composable
 fun SlowSquare() {
@@ -154,9 +155,9 @@ fun SlowSquare() {
  * Fixture for D-harness.v2's S5 Android real-mode test (renderFailed surfacing). Throws
  * unconditionally inside the composition body so [RenderEngine] propagates the exception out of
  * `setContent`, the dispatcher catch in [RobolectricHost.SandboxRunner] returns a stub fallback
- * rather than a real `RenderResult`, and `JsonRpcServer.runHostSubmitter` surfaces the failure as
- * a `renderFailed` notification (… or, today, falls through to `renderFinished` with the stub
- * path — see S5 Android test KDoc for the documented gap).
+ * rather than a real `RenderResult`, and `JsonRpcServer.runHostSubmitter` surfaces the failure as a
+ * `renderFailed` notification (… or, today, falls through to `renderFinished` with the stub path —
+ * see S5 Android test KDoc for the documented gap).
  *
  * The thrown message is matched literally by the test's assertion on
  * `renderFailed.params.error.message`. Kept short and obviously-test-only ("boom") to avoid being
@@ -170,13 +171,12 @@ fun BoomComposable() {
 /**
  * Reads `isSystemInDarkTheme()` and fills the box with white in light mode, black in dark mode.
  * Used by `OverrideIntegrationTest` to prove `renderNow.overrides.uiMode` actually flips the
- * resource qualifier — `setQualifiers("+night")` toggles `Configuration.UI_MODE_NIGHT_YES`,
- * which is what `isSystemInDarkTheme()` reads.
+ * resource qualifier — `setQualifiers("+night")` toggles `Configuration.UI_MODE_NIGHT_YES`, which
+ * is what `isSystemInDarkTheme()` reads.
  */
 @Composable
 fun DarkAwareSquare() {
-  val bg =
-    if (androidx.compose.foundation.isSystemInDarkTheme()) Color.Black else Color.White
+  val bg = if (androidx.compose.foundation.isSystemInDarkTheme()) Color.Black else Color.White
   Box(modifier = Modifier.fillMaxSize().background(bg))
 }
 
@@ -184,10 +184,11 @@ fun DarkAwareSquare() {
  * Reads `ContextCompat.checkSelfPermission(...)` for `android.permission.CAMERA` — the exact call
  * shape `samples/android`'s `PermissionGatedPreview` uses and the path the panel's permission UI
  * targets. Paints green when granted, red when denied. Used by `PermissionsOverrideIntegrationTest`
- * to prove `renderNow.overrides.permissions` reaches `PermissionsPreviewOverrideExtension.plan(...)`,
- * the around-composable seeds Robolectric's `ShadowApplication.grantPermissions`, and by
- * `PermissionsDataFetchE2ETest` to prove the `ShadowContextWrapperPermissionTracker` shadow
- * intercepts the call and records the query into the cross-classloader bridge the registry reads.
+ * to prove `renderNow.overrides.permissions` reaches
+ * `PermissionsPreviewOverrideExtension.plan(...)`, the around-composable seeds Robolectric's
+ * `ShadowApplication.grantPermissions`, and by `PermissionsDataFetchE2ETest` to prove the
+ * `ShadowContextWrapperPermissionTracker` shadow intercepts the call and records the query into the
+ * cross-classloader bridge the registry reads.
  *
  * **Why `ContextCompat.checkSelfPermission` and not `context.checkSelfPermission`.** They look
  * interchangeable but route differently inside the Android framework: `Context.checkSelfPermission
@@ -227,8 +228,7 @@ fun ResourceReadingPreview() {
   val size = dimensionResource(R.dimen.compose_ai_resource_used_size)
   Box(
     modifier =
-      Modifier
-        .width(size)
+      Modifier.width(size)
         .height(size)
         .background(if (label.isNotBlank()) color else Color.Transparent)
   )
@@ -243,14 +243,15 @@ fun ResourceReadingPreview() {
  *
  * Uses `awaitFirstDown` rather than `Modifier.clickable` because `clickable` sits on top of
  * `detectTapGestures`, whose coroutine timing under Compose's paused clock is non-trivial. The
- * `RobolectricInteractiveProbeTest` empirical probe verified `awaitFirstDown` fires reliably for
- * a synthesised `MotionEvent` dispatched through `decorView.dispatchTouchEvent` under the held
- * rule — the simplest pointerInput shape gives the cleanest yes/no answer for the wire-level
- * test and matches what the desktop counterpart already asserts on.
+ * `RobolectricInteractiveProbeTest` empirical probe verified `awaitFirstDown` fires reliably for a
+ * synthesised `MotionEvent` dispatched through `decorView.dispatchTouchEvent` under the held rule —
+ * the simplest pointerInput shape gives the cleanest yes/no answer for the wire-level test and
+ * matches what the desktop counterpart already asserts on.
  */
 @Composable
 fun ClickToggleSquare() {
-  var clicked by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+  var clicked by
+    androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
   val color = if (clicked) Color(0xFF66BB6A) else Color(0xFFEF5350)
   Box(
     modifier =
@@ -272,7 +273,8 @@ fun ClickToggleSquare() {
  */
 @Composable
 fun TaggedClickTargetSquare() {
-  var clicked by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+  var clicked by
+    androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
   val color = if (clicked) Color(0xFF66BB6A) else Color(0xFFEF5350)
   Box(modifier = Modifier.fillMaxSize().background(color)) {
     Box(modifier = Modifier.size(24.dp).testTag("target-box").clickable { clicked = true })
@@ -281,14 +283,10 @@ fun TaggedClickTargetSquare() {
 
 @Composable
 fun ClickableToggleSquare() {
-  var clicked by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+  var clicked by
+    androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
   val color = if (clicked) Color(0xFF66BB6A) else Color(0xFFEF5350)
-  Box(
-    modifier =
-      Modifier.fillMaxSize()
-        .clickable { clicked = true }
-        .background(color)
-  )
+  Box(modifier = Modifier.fillMaxSize().clickable { clicked = true }.background(color))
 }
 
 @Composable
@@ -302,9 +300,8 @@ fun DragScrollableSquare() {
 
 @Composable
 fun ReleasePositionSquare() {
-  var releasedNearTop by androidx.compose.runtime.remember {
-    androidx.compose.runtime.mutableStateOf(false)
-  }
+  var releasedNearTop by
+    androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
   val color = if (releasedNearTop) Color(0xFF66BB6A) else Color(0xFFEF5350)
   Box(
     modifier =
@@ -325,14 +322,14 @@ fun ReleasePositionSquare() {
 
 @Composable
 fun RotaryToggleSquare() {
-  var scrolled by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+  var scrolled by
+    androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
   val requester = androidx.compose.runtime.remember { FocusRequester() }
   LaunchedEffect(Unit) { requester.requestFocus() }
   val color = if (scrolled) Color(0xFF66BB6A) else Color(0xFFEF5350)
   Box(
     modifier =
-      Modifier
-        .fillMaxSize()
+      Modifier.fillMaxSize()
         .onRotaryScrollEvent {
           scrolled = true
           true

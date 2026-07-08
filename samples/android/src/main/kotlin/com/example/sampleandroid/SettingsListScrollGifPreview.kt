@@ -36,153 +36,121 @@ import ee.schimke.composeai.preview.ScrollMode
 import ee.schimke.composeai.preview.ScrollingPreview
 
 /**
- * A realistic scrolling-GIF demo: a 24-row settings-style list with a
- * leading colour-chip avatar + two-line text, and a right-aligned scroll
- * position indicator that tracks the visible window.
+ * A realistic scrolling-GIF demo: a 24-row settings-style list with a leading colour-chip avatar +
+ * two-line text, and a right-aligned scroll position indicator that tracks the visible window.
  *
- * This is the "what you'd actually screenshot in docs" fixture, sized
- * close to a small phone viewport (220×440dp ≈ 580×1155px at 2.625×). The
- * red-to-blue pixel-test fixture in [RedToBlueScrollGifPreview] stays
- * minimal; this one is the visual showcase for PRs / READMEs.
+ * This is the "what you'd actually screenshot in docs" fixture, sized close to a small phone
+ * viewport (220×440dp ≈ 580×1155px at 2.625×). The red-to-blue pixel-test fixture in
+ * [RedToBlueScrollGifPreview] stays minimal; this one is the visual showcase for PRs / READMEs.
  */
 @Preview(name = "SettingsListScrollGif", showBackground = true, widthDp = 220, heightDp = 440)
 @ScrollingPreview(modes = [ScrollMode.GIF])
 @Composable
 fun SettingsListScrollGifPreview() {
-    val state = rememberLazyListState()
-    Box(modifier = Modifier.fillMaxSize()) {
-        LazyColumn(
-            state = state,
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            items(SETTINGS_ROWS) { row ->
-                SettingsRow(row = row)
-                HorizontalDivider(
-                    thickness = 0.5.dp,
-                    color = MaterialTheme.colorScheme.outlineVariant,
-                )
-            }
-        }
-        ScrollPositionIndicator(
-            state = state,
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .padding(vertical = 8.dp, horizontal = 3.dp)
-                .width(3.dp)
-                .fillMaxHeight(),
-        )
+  val state = rememberLazyListState()
+  Box(modifier = Modifier.fillMaxSize()) {
+    LazyColumn(state = state, modifier = Modifier.fillMaxSize()) {
+      items(SETTINGS_ROWS) { row ->
+        SettingsRow(row = row)
+        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+      }
     }
+    ScrollPositionIndicator(
+      state = state,
+      modifier =
+        Modifier.align(Alignment.CenterEnd)
+          .padding(vertical = 8.dp, horizontal = 3.dp)
+          .width(3.dp)
+          .fillMaxHeight(),
+    )
+  }
 }
 
 @Composable
 private fun SettingsRow(row: SettingsRowData) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
+  Row(
+    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Box(modifier = Modifier.size(28.dp).background(row.tint, CircleShape))
+    Column(
+      modifier = Modifier.padding(start = 12.dp).weight(1f),
+      verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .size(28.dp)
-                .background(row.tint, CircleShape),
-        )
-        Column(
-            modifier = Modifier
-                .padding(start = 12.dp)
-                .weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(row.title, style = MaterialTheme.typography.titleSmall, maxLines = 1)
-            Text(
-                row.subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-            )
-        }
+      Text(row.title, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+      Text(
+        row.subtitle,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+      )
     }
+  }
 }
 
 /**
- * A thin scrollbar-style indicator that shows the visible window as a
- * rounded thumb on a faint track. Derives the thumb's top / height
- * fractions directly from [LazyListState.layoutInfo] — wrapping in
- * [derivedStateOf] so recomposition only triggers when the thumb actually
- * moves, not on every scroll frame.
+ * A thin scrollbar-style indicator that shows the visible window as a rounded thumb on a faint
+ * track. Derives the thumb's top / height fractions directly from [LazyListState.layoutInfo] —
+ * wrapping in [derivedStateOf] so recomposition only triggers when the thumb actually moves, not on
+ * every scroll frame.
  *
- * Rolled by hand rather than pulled from a library because (a) Compose
- * Material3 doesn't ship a `Scrollbar` today and (b) a few composables'
- * worth of code avoids pulling `accompanist` / `scrollbar` deps into the
- * sample module.
+ * Rolled by hand rather than pulled from a library because (a) Compose Material3 doesn't ship a
+ * `Scrollbar` today and (b) a few composables' worth of code avoids pulling `accompanist` /
+ * `scrollbar` deps into the sample module.
  */
 @Composable
-private fun ScrollPositionIndicator(
-    state: LazyListState,
-    modifier: Modifier = Modifier,
-) {
-    val thumb by remember {
-        derivedStateOf {
-            val info = state.layoutInfo
-            val visible = info.visibleItemsInfo
-            if (visible.isEmpty() || info.totalItemsCount == 0) {
-                0f to 0f
-            } else {
-                val total = info.totalItemsCount.toFloat()
-                val first = visible.first().index.toFloat()
-                val last = visible.last().index.toFloat()
-                (first / total) to ((last + 1f) / total)
-            }
-        }
+private fun ScrollPositionIndicator(state: LazyListState, modifier: Modifier = Modifier) {
+  val thumb by remember {
+    derivedStateOf {
+      val info = state.layoutInfo
+      val visible = info.visibleItemsInfo
+      if (visible.isEmpty() || info.totalItemsCount == 0) {
+        0f to 0f
+      } else {
+        val total = info.totalItemsCount.toFloat()
+        val first = visible.first().index.toFloat()
+        val last = visible.last().index.toFloat()
+        (first / total) to ((last + 1f) / total)
+      }
     }
-    val (start, end) = thumb
-    Box(modifier = modifier) {
-        // Track — faint, always visible so the indicator has a stable
-        // geometry reference even on a preview where nothing is being
-        // dragged.
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.06f), RoundedCornerShape(2.dp)),
-        )
-        // Thumb — positioned via BoxWithConstraints so the dp math uses
-        // the parent's actual measured height. `offset(y = ...)` and
-        // `height(...)` both accept Dp, so we do the Dp arithmetic
-        // inside the constraints scope.
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-            val h = maxHeight
-            Box(
-                Modifier
-                    .offset(y = h * start)
-                    .fillMaxWidth()
-                    .height(h * (end - start))
-                    .background(
-                        Color(0xFF6750A4).copy(alpha = 0.65f),
-                        RoundedCornerShape(2.dp),
-                    ),
-            )
-        }
+  }
+  val (start, end) = thumb
+  Box(modifier = modifier) {
+    // Track — faint, always visible so the indicator has a stable
+    // geometry reference even on a preview where nothing is being
+    // dragged.
+    Box(
+      Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.06f), RoundedCornerShape(2.dp))
+    )
+    // Thumb — positioned via BoxWithConstraints so the dp math uses
+    // the parent's actual measured height. `offset(y = ...)` and
+    // `height(...)` both accept Dp, so we do the Dp arithmetic
+    // inside the constraints scope.
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+      val h = maxHeight
+      Box(
+        Modifier.offset(y = h * start)
+          .fillMaxWidth()
+          .height(h * (end - start))
+          .background(Color(0xFF6750A4).copy(alpha = 0.65f), RoundedCornerShape(2.dp))
+      )
     }
+  }
 }
 
-private data class SettingsRowData(
-    val title: String,
-    val subtitle: String,
-    val tint: Color,
-)
+private data class SettingsRowData(val title: String, val subtitle: String, val tint: Color)
 
 /**
- * 24 rows, enough that a 220×440dp viewport shows ~7 at a time and the
- * scroll spans ~3 viewports — comfortably inside
- * `driveScrollByViewport`'s default 30-iteration budget even at GIF's
- * 20%-per-step cadence, so the last frame lands at the real end of the
- * list rather than getting clipped.
+ * 24 rows, enough that a 220×440dp viewport shows ~7 at a time and the scroll spans ~3 viewports —
+ * comfortably inside `driveScrollByViewport`'s default 30-iteration budget even at GIF's
+ * 20%-per-step cadence, so the last frame lands at the real end of the list rather than getting
+ * clipped.
  *
- * Tint palette walks through the hue wheel so consecutive rows are
- * visually distinct and the scroll animation reads as actual motion (if
- * every row looked the same, the scroll would feel static).
+ * Tint palette walks through the hue wheel so consecutive rows are visually distinct and the scroll
+ * animation reads as actual motion (if every row looked the same, the scroll would feel static).
  */
-private val SETTINGS_ROWS: List<SettingsRowData> = listOf(
+private val SETTINGS_ROWS: List<SettingsRowData> =
+  listOf(
     SettingsRowData("Wi-Fi", "HomeNet · 5 GHz", Color(0xFF1E88E5)),
     SettingsRowData("Bluetooth", "Off", Color(0xFF3949AB)),
     SettingsRowData("Mobile network", "Vodafone · 4G", Color(0xFF8E24AA)),
@@ -207,4 +175,4 @@ private val SETTINGS_ROWS: List<SettingsRowData> = listOf(
     SettingsRowData("Keyboard", "Gboard", Color(0xFF29B6F6)),
     SettingsRowData("Developer options", "USB debugging on", Color(0xFF7E57C2)),
     SettingsRowData("About phone", "Pixel 9 Pro · build TQ3A", Color(0xFFBDBDBD)),
-)
+  )

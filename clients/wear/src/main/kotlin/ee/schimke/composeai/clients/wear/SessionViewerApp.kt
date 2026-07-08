@@ -88,8 +88,18 @@ private fun StatusOverlay(state: SessionState, target: SessionTarget, onDismiss:
           is SessionState.Failed -> "Failed" to state.message
           is SessionState.Closed -> "Closed" to state.reason
         }
-      Text(title, color = Color.White, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
-      Text(detail, color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+      Text(
+        title,
+        color = Color.White,
+        style = MaterialTheme.typography.titleMedium,
+        textAlign = TextAlign.Center,
+      )
+      Text(
+        detail,
+        color = Color.White.copy(alpha = 0.7f),
+        style = MaterialTheme.typography.bodySmall,
+        textAlign = TextAlign.Center,
+      )
       Button(onClick = onDismiss) { Text("Back") }
     }
   }
@@ -98,11 +108,17 @@ private fun StatusOverlay(state: SessionState, target: SessionTarget, onDismiss:
 @Composable
 fun ConnectScreen(discoveredSessions: List<DiscoveredSession>, onConnect: (SessionLink) -> Unit) {
   Column(
-    Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 24.dp),
+    Modifier.fillMaxSize()
+      .verticalScroll(rememberScrollState())
+      .padding(horizontal = 12.dp, vertical = 24.dp),
     verticalArrangement = Arrangement.spacedBy(8.dp),
     horizontalAlignment = Alignment.CenterHorizontally,
   ) {
-    Text("Session Viewer", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+    Text(
+      "Session Viewer",
+      style = MaterialTheme.typography.titleMedium,
+      textAlign = TextAlign.Center,
+    )
     if (discoveredSessions.isEmpty()) {
       Text(
         "Open a session link from your phone, or wait for a server on this network.",
@@ -125,19 +141,39 @@ fun ConnectScreen(discoveredSessions: List<DiscoveredSession>, onConnect: (Sessi
 
 private val SAMPLE = SessionLink("192.168.1.20", 7341, "tok", SessionTarget.Preview("HomeTile"))
 
-@Preview(name = "Wear connecting", showBackground = true, backgroundColor = 0xFF000000, widthDp = 220, heightDp = 220)
+@Preview(
+  name = "Wear connecting",
+  showBackground = true,
+  backgroundColor = 0xFF000000,
+  widthDp = 220,
+  heightDp = 220,
+)
 @Composable
 private fun WearConnectingPreview() {
   MaterialTheme { StatusOverlay(SessionState.Connecting(SAMPLE), SAMPLE.target, onDismiss = {}) }
 }
 
-@Preview(name = "Wear failed", showBackground = true, backgroundColor = 0xFF000000, widthDp = 220, heightDp = 220)
+@Preview(
+  name = "Wear failed",
+  showBackground = true,
+  backgroundColor = 0xFF000000,
+  widthDp = 220,
+  heightDp = 220,
+)
 @Composable
 private fun WearFailedPreview() {
-  MaterialTheme { StatusOverlay(SessionState.Failed("No route to host"), SAMPLE.target, onDismiss = {}) }
+  MaterialTheme {
+    StatusOverlay(SessionState.Failed("No route to host"), SAMPLE.target, onDismiss = {})
+  }
 }
 
-@Preview(name = "Wear connect", showBackground = true, backgroundColor = 0xFF000000, widthDp = 220, heightDp = 220)
+@Preview(
+  name = "Wear connect",
+  showBackground = true,
+  backgroundColor = 0xFF000000,
+  widthDp = 220,
+  heightDp = 220,
+)
 @Composable
 private fun WearConnectPreview() {
   MaterialTheme { ConnectScreen(discoveredSessions = emptyList(), onConnect = {}) }

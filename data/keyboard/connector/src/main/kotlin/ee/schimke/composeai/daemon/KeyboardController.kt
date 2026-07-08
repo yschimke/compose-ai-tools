@@ -12,8 +12,8 @@ import ee.schimke.composeai.daemon.protocol.KeyboardOverride
  *
  * 1. **Around-composable observer** ([KeyboardOverrideExtension.AroundComposable]) — installs a
  *    shadow `LocalSoftwareKeyboardController` and listens for `show()` / `hide()` from app code
- *    (focused `BasicTextField`, explicit `keyboardController.show()`). Calls
- *    [notifyImeVisibility] on every transition.
+ *    (focused `BasicTextField`, explicit `keyboardController.show()`). Calls [notifyImeVisibility]
+ *    on every transition.
  * 2. **Interactive dispatch** (`AndroidInteractiveSession.dispatch` /
  *    `DesktopInteractiveSession.dispatch`) — `KEY_DOWN` / `KEY_UP` from a daemon client are also
  *    forwarded into [notifyKeyDown] / [notifyKeyUp] so an agent driving keyboard input lights the
@@ -41,15 +41,17 @@ object KeyboardController {
    */
   private val forcedVisible: MutableState<Boolean?> = mutableStateOf(null)
 
-  /** Currently held key, written by `interactive/input` `KEY_*` and `KeyboardOverride.pressedKey`. */
+  /**
+   * Currently held key, written by `interactive/input` `KEY_*` and `KeyboardOverride.pressedKey`.
+   */
   private val pressedKeyState: MutableState<String?> = mutableStateOf(null)
 
   /**
    * Effective "should the band render" signal — `forcedVisible` if set, else `naturalVisible OR a
    * key is currently pressed`. Pressing a key implicitly raises the band so an agent dispatching
    * `KEY_DOWN` against a fresh preview sees something — without this, an `interactive/input` typing
-   * sequence against a preview the app hasn't focused would update [pressedKeyState] but never
-   * make the band appear.
+   * sequence against a preview the app hasn't focused would update [pressedKeyState] but never make
+   * the band appear.
    */
   val softInputVisible: State<Boolean> =
     object : State<Boolean> {
@@ -67,9 +69,9 @@ object KeyboardController {
   }
 
   /**
-   * Mark [label] as currently pressed. Called from the daemon's interactive session
-   * (`KEY_DOWN` dispatch) and from `KeyboardOverride.pressedKey` seeding. Label format matches the
-   * band's key tokens (single lowercase letter or `"space"`/`"enter"`/`"shift"`/`"backspace"`).
+   * Mark [label] as currently pressed. Called from the daemon's interactive session (`KEY_DOWN`
+   * dispatch) and from `KeyboardOverride.pressedKey` seeding. Label format matches the band's key
+   * tokens (single lowercase letter or `"space"`/`"enter"`/`"shift"`/`"backspace"`).
    */
   fun notifyKeyDown(label: String) {
     pressedKeyState.value = label

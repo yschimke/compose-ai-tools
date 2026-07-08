@@ -12,8 +12,9 @@ import java.io.File
  * the (separate) `:renderer-xr` Robolectric render task drives per discovered preview.
  *
  * It reflects the preview's `@Composable` function (the same way the Compose `@Preview` renderer
- * does — [getDeclaredComposableMethod] + invoke through the current [currentComposer]), composes its
- * `Subspace` on [rule], then hands off to [SubspaceSceneRecorder.recordAll] + [SubspaceSceneWriter].
+ * does — [getDeclaredComposableMethod] + invoke through the current [currentComposer]), composes
+ * its `Subspace` on [rule], then hands off to
+ * [SubspaceSceneRecorder.recordAll] + [SubspaceSceneWriter].
  *
  * The caller owns the Robolectric environment: it must enable the
  * [SubspaceSceneRecorder.XR_SPATIAL_FEATURE] system feature **before** calling this (so `Subspace`
@@ -41,9 +42,12 @@ public object XrSubspaceRenderer {
     runCatching { method.asMethod().isAccessible = true }
     val receiver = resolveReceiver(clazz)
 
-    // Pre-create + configure the offline XR Session with device tracking + a seeded viewer head pose
-    // BEFORE setContent, so `rotateToLookAtUser` (the billboard modifier) can source a head pose and
-    // face the viewer instead of crashing on an uninitialised `arDevice`. Harmless for previews that
+    // Pre-create + configure the offline XR Session with device tracking + a seeded viewer head
+    // pose
+    // BEFORE setContent, so `rotateToLookAtUser` (the billboard modifier) can source a head pose
+    // and
+    // face the viewer instead of crashing on an uninitialised `arDevice`. Harmless for previews
+    // that
     // don't use it — it just hands `Subspace` a ready-configured session. See FakeXrHeadPose.
     FakeXrHeadPose.install(rule)
 
@@ -57,7 +61,8 @@ public object XrSubspaceRenderer {
     // Unified 3D-over-2D semantics tree (`compose/spatial-semantics`): the real multi-panel layout
     // with each panel carrying its 2D `ComposeSemanticsNode` tree, projected by the daemon-side
     // connector (the same projection `compose/semantics` + the wireframe use, supplied here rather
-    // than imported so the projection stays single-sourced). Best-effort and isolated — a projection
+    // than imported so the projection stays single-sourced). Best-effort and isolated — a
+    // projection
     // failure must never strand the `scene.json`/textures the compositor needs, so a panel whose
     // semantics can't be read just lands with a null `panelContent`.
     runCatching {
@@ -80,11 +85,15 @@ public object XrSubspaceRenderer {
   /**
    * The JVM receiver for the preview method: a Kotlin `object`'s `INSTANCE`, else a fresh
    * nullary-ctor instance for a regular class, else `null` for a top-level function (which compiles
-   * to a static method on the file's synthetic `…Kt` class). Mirrors `ComposeViewAdapter` /
-   * the Compose `@Preview` renderer's `resolvePreviewReceiver`.
+   * to a static method on the file's synthetic `…Kt` class). Mirrors `ComposeViewAdapter` / the
+   * Compose `@Preview` renderer's `resolvePreviewReceiver`.
    */
   private fun resolveReceiver(clazz: Class<*>): Any? {
-    runCatching { clazz.getField("INSTANCE").get(null) }.getOrNull()?.let { return it }
+    runCatching { clazz.getField("INSTANCE").get(null) }
+      .getOrNull()
+      ?.let {
+        return it
+      }
     return runCatching {
         val ctor = clazz.getDeclaredConstructor()
         ctor.isAccessible = true

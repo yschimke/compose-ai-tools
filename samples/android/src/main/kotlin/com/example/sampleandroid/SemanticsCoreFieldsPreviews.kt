@@ -16,10 +16,10 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 
 /**
- * Per-check fixtures for the `compose/semantics` core projection. Each preview isolates one
- * field that `ComposeSemanticsDataProducer` lifts off `SemanticsConfiguration`:
- * `testTag`, `label` (from `contentDescription`), `role` + `clickable`, and `mergeMode`.
- * `ComposeSemanticsCoreFieldsTest` mirrors these composables and asserts the produced JSON.
+ * Per-check fixtures for the `compose/semantics` core projection. Each preview isolates one field
+ * that `ComposeSemanticsDataProducer` lifts off `SemanticsConfiguration`: `testTag`, `label` (from
+ * `contentDescription`), `role` + `clickable`, and `mergeMode`. `ComposeSemanticsCoreFieldsTest`
+ * mirrors these composables and asserts the produced JSON.
  */
 @Preview(showBackground = true, widthDp = 200, heightDp = 32)
 @Composable

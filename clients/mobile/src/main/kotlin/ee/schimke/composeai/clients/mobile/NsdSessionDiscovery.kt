@@ -53,11 +53,7 @@ class NsdSessionDiscovery(context: Context) {
       }
     discoveryListener = listener
     runCatching {
-      nsd.discoverServices(
-        DiscoveredSession.SERVICE_TYPE,
-        NsdManager.PROTOCOL_DNS_SD,
-        listener,
-      )
+      nsd.discoverServices(DiscoveredSession.SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, listener)
     }
   }
 
@@ -75,8 +71,7 @@ class NsdSessionDiscovery(context: Context) {
       override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
         val host = serviceInfo.host?.hostAddress ?: return
         val attrs = serviceInfo.attributes ?: emptyMap()
-        fun txt(key: String): String? =
-          attrs[key]?.let { String(it, StandardCharsets.UTF_8) }
+        fun txt(key: String): String? = attrs[key]?.let { String(it, StandardCharsets.UTF_8) }
         val session =
           DiscoveredSession(
             name = serviceInfo.serviceName,

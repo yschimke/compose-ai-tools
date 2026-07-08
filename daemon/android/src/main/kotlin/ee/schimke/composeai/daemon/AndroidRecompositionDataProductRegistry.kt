@@ -32,22 +32,21 @@ import kotlinx.serialization.json.contentOrNull
  *
  * **Lifecycle.** The producer plugs into [RobolectricHost.InteractiveSessionListener] to learn
  * which (previewId, streamId, slot) tuple is currently held. The dispatcher's
- * `data/subscribe(mode=delta)` lands in [onSubscribe]; if the matching session is already live,
- * we enqueue StartObserve right away, otherwise we defer until the listener fires
+ * `data/subscribe(mode=delta)` lands in [onSubscribe]; if the matching session is already live, we
+ * enqueue StartObserve right away, otherwise we defer until the listener fires
  * [RobolectricHost.InteractiveSessionLifecycle.Acquired]. On `data/unsubscribe` / session release
  * we enqueue StopObserve (or — if the session is already gone — just drop the bridge counters).
  *
- * **Safety net.** Same shape as the desktop producer: a `LinkageError` / `NoSuchMethodError` on
- * the in-sandbox observer install path latches a per-JVM [globallyUnavailable] flag and
- * subsequent subscribes skip the install entirely. The kind stays advertised in
- * `initialize.capabilities` (we can't unsay that), but `attachmentsFor` returns `emptyList()` so
- * the panel sees no compose/recomposition entries on `renderFinished` instead of misleading
- * empty payloads.
+ * **Safety net.** Same shape as the desktop producer: a `LinkageError` / `NoSuchMethodError` on the
+ * in-sandbox observer install path latches a per-JVM [globallyUnavailable] flag and subsequent
+ * subscribes skip the install entirely. The kind stays advertised in `initialize.capabilities` (we
+ * can't unsay that), but `attachmentsFor` returns `emptyList()` so the panel sees no
+ * compose/recomposition entries on `renderFinished` instead of misleading empty payloads.
  *
- * **`fetch(mode=snapshot)`.** Snapshot mode requires a re-render; for v1 the renderer-side
- * sidecar isn't wired (same gap the desktop producer documents), so a snapshot fetch with no
- * cached payload returns [DataProductRegistry.Outcome.RequiresRerender] and the dispatcher
- * issues a recomposition-mode render. The held interactive path is the supported route for now.
+ * **`fetch(mode=snapshot)`.** Snapshot mode requires a re-render; for v1 the renderer-side sidecar
+ * isn't wired (same gap the desktop producer documents), so a snapshot fetch with no cached payload
+ * returns [DataProductRegistry.Outcome.RequiresRerender] and the dispatcher issues a
+ * recomposition-mode render. The held interactive path is the supported route for now.
  */
 open class AndroidRecompositionDataProductRegistry : DataProductRegistry {
 
@@ -63,7 +62,9 @@ open class AndroidRecompositionDataProductRegistry : DataProductRegistry {
     @Volatile var frameStreamId: String,
     @Volatile var mode: String,
     @Volatile var inputSeq: Long = 0L,
-    /** Sandbox stream id of the currently-held session for [previewId], or `null` when no session. */
+    /**
+     * Sandbox stream id of the currently-held session for [previewId], or `null` when no session.
+     */
     @Volatile var sandboxStreamId: String? = null,
     @Volatile var slot: SandboxSlot? = null,
     @Volatile var observerInstalled: Boolean = false,
@@ -327,8 +328,7 @@ open class AndroidRecompositionDataProductRegistry : DataProductRegistry {
 
   private fun snapshotCounters(previewId: String, streamId: String): List<RecompositionNode> {
     val drained = SandboxRecompositionBridge.drainCounters(previewId, streamId)
-    @Suppress("UNCHECKED_CAST")
-    val ids = drained[0] as Array<String>
+    @Suppress("UNCHECKED_CAST") val ids = drained[0] as Array<String>
     val counts = drained[1] as LongArray
     val invalidations = drained[2] as LongArray
     if (ids.isEmpty()) return emptyList()
@@ -344,8 +344,8 @@ open class AndroidRecompositionDataProductRegistry : DataProductRegistry {
 
   /**
    * Attribute a scope's recomposition from its recomposition count vs how many times the runtime
-   * invalidated it with a snapshot value this window — same derivation as the desktop producer.
-   * v2 (#1605). See [InvalidationReason].
+   * invalidated it with a snapshot value this window — same derivation as the desktop producer. v2
+   * (#1605). See [InvalidationReason].
    */
   private fun reasonFor(count: Int, invalidations: Int): InvalidationReason =
     when {

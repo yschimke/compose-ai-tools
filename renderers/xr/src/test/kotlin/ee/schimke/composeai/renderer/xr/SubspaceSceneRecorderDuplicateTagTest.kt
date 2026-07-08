@@ -30,8 +30,7 @@ class SubspaceSceneRecorderDuplicateTagTest {
 
   // v2 rule API (StandardTestDispatcher) is not on the compat compile classpath yet;
   // suppress until the floor moves up. See renderer-android RobolectricRenderTest.
-  @Suppress("DEPRECATION")
-  @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
+  @Suppress("DEPRECATION") @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
   @Test
   fun recordAllRejectsDuplicateTags() {
@@ -53,7 +52,8 @@ class SubspaceSceneRecorderDuplicateTagTest {
     rule.waitForIdle()
 
     val error =
-      runCatching { SubspaceSceneRecorder.recordAll(rule, previewId = "dup-test") }.exceptionOrNull()
+      runCatching { SubspaceSceneRecorder.recordAll(rule, previewId = "dup-test") }
+        .exceptionOrNull()
     assertThat(error).isInstanceOf(IllegalStateException::class.java)
     assertThat(error).hasMessageThat().contains("dup")
   }

@@ -23,8 +23,8 @@ import androidx.compose.ui.unit.sp
  * `Build.VERSION.RELEASE` (the matching Android release codename), and
  * `applicationInfo.targetSdkVersion` (what AGP stamped into the manifest from
  * `composeai.matrix.targetSdk`) — and renders them as text. The captured PNG is therefore
- * self-documenting: each matrix cell's artifact literally shows the observed values for that
- * cell. The nightly aggregator just reads the cells' pass/fail state and surfaces the PNGs.
+ * self-documenting: each matrix cell's artifact literally shows the observed values for that cell.
+ * The nightly aggregator just reads the cells' pass/fail state and surfaces the PNGs.
  */
 @Preview(name = "SdkMatrixPreview", widthDp = 280, heightDp = 160)
 @Composable

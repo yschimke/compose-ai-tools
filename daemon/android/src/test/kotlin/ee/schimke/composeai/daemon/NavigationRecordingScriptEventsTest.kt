@@ -5,9 +5,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Pins [NavigationRecordingScriptEvents] — the Android-only navigation script-event descriptor
- * that `RobolectricHost` advertises from `recordingScriptEventDescriptors()` and that
- * `DaemonMain` registers as a discoverable extension.
+ * Pins [NavigationRecordingScriptEvents] — the Android-only navigation script-event descriptor that
+ * `RobolectricHost` advertises from `recordingScriptEventDescriptors()` and that `DaemonMain`
+ * registers as a discoverable extension.
  *
  * Each supported action has its own event id (`navigation.deepLink` / `navigation.back` /
  * `navigation.predictiveBack{Started,Progressed,Committed,Cancelled}`) so the MCP validator can
@@ -33,10 +33,7 @@ class NavigationRecordingScriptEventsTest {
       ids,
     )
     val allSupported = descriptor.recordingScriptEvents.all { it.supported }
-    assertTrue(
-      "every wired navigation event id must advertise supported = true",
-      allSupported,
-    )
+    assertTrue("every wired navigation event id must advertise supported = true", allSupported)
   }
 
   @Test

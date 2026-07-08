@@ -10,7 +10,8 @@ class AccessibilityRefsTest {
     label: String,
     role: String? = null,
     boundsInScreen: String = "0,0,1,1",
-  ): AccessibilityNode = AccessibilityNode(label = label, role = role, boundsInScreen = boundsInScreen)
+  ): AccessibilityNode =
+    AccessibilityNode(label = label, role = role, boundsInScreen = boundsInScreen)
 
   @Test
   fun stampsRoleAnchoredRefDisambiguatedByIndex() {

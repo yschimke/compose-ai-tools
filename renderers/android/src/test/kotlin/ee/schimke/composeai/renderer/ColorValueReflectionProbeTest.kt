@@ -18,8 +18,8 @@ val ProbeAlpha: Color = Color(0x80112233)
  * `Color` property's *value* by reflection at render time. Because `Color` is a value class, its
  * backing field is the erased `long`, and turning that back into a `Color` needs the synthetic
  * `Color.box-impl(J)` factory rather than any public constructor. This test pins that mechanism
- * (mirrored by `CatalogValueReflection`) so a regression surfaces here as a fast JVM failure instead
- * of deep in the Robolectric render.
+ * (mirrored by `CatalogValueReflection`) so a regression surfaces here as a fast JVM failure
+ * instead of deep in the Robolectric render.
  */
 class ColorValueReflectionProbeTest {
 

@@ -38,7 +38,8 @@ class ComposeSemanticsExtension : PostCaptureProcessor {
   companion object {
     val ID: DataExtensionId = DataExtensionId(ComposeSemanticsDataProducer.KIND)
 
-    val factory: RenderDataArtifactExtensionFactory =
-      RenderDataArtifactExtensionFactory { _ -> ComposeSemanticsExtension() }
+    val factory: RenderDataArtifactExtensionFactory = RenderDataArtifactExtensionFactory { _ ->
+      ComposeSemanticsExtension()
+    }
   }
 }

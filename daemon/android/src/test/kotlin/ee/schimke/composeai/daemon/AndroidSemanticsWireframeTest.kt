@@ -16,8 +16,8 @@ import org.robolectric.annotation.Config
  * so it stays fast and graphics-mode-agnostic (asserts the PNG is written and non-empty rather than
  * decoding pixels, which legacy Robolectric graphics wouldn't paint).
  *
- * Pinned to `sdk = 35` like the other `:daemon:android` self-tests: Robolectric SDK 36 needs a
- * JDK 21 test JVM, and the repo toolchain is JDK 17.
+ * Pinned to `sdk = 35` like the other `:daemon:android` self-tests: Robolectric SDK 36 needs a JDK
+ * 21 test JVM, and the repo toolchain is JDK 17.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])

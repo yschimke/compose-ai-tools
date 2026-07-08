@@ -1,10 +1,8 @@
 package ee.schimke.composeai.daemon
 
-import ee.schimke.composeai.io.SystemFileSystem
-import okio.FileSystem
-import okio.Path.Companion.toPath
 import android.view.View
 import ee.schimke.composeai.daemon.protocol.FocusOverride
+import ee.schimke.composeai.io.SystemFileSystem
 import java.awt.BasicStroke
 import java.awt.Color
 import java.awt.Font
@@ -12,6 +10,8 @@ import java.awt.Rectangle
 import java.awt.RenderingHints
 import java.io.File
 import javax.imageio.ImageIO
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * Post-capture stroke + label overlay drawn over the focused element's bounds. Sourced from
@@ -19,8 +19,8 @@ import javax.imageio.ImageIO
  * compose-ui's public surface. Saves the pre-overlay capture as `<basename>.raw.png` alongside so
  * reviewers can A/B against the unmarked image.
  *
- * Skipped silently when the view isn't an AndroidComposeView, the focus owner has no active
- * focus, or the focus rect is empty — overlays are a review aid, not a render contract.
+ * Skipped silently when the view isn't an AndroidComposeView, the focus owner has no active focus,
+ * or the focus rect is empty — overlays are a review aid, not a render contract.
  */
 object FocusOverlay {
 
@@ -34,17 +34,22 @@ object FocusOverlay {
     val rect = readFocusRect(view) ?: return
     if (rect.width <= 0 || rect.height <= 0) return
 
-    val rawFile = File(outputFile.parentFile, outputFile.nameWithoutExtension + ".raw." + outputFile.extension)
-    runCatching {
-      outputFile.copyTo(rawFile, overwrite = true)
-    }
+    val rawFile =
+      File(outputFile.parentFile, outputFile.nameWithoutExtension + ".raw." + outputFile.extension)
+    runCatching { outputFile.copyTo(rawFile, overwrite = true) }
 
     val image =
-      runCatching { ImageIO.read(fileSystem.read(outputFile.path.toPath()) { readByteArray() }.inputStream()) }.getOrNull() ?: return
+      runCatching {
+          ImageIO.read(fileSystem.read(outputFile.path.toPath()) { readByteArray() }.inputStream())
+        }
+        .getOrNull() ?: return
     val g = image.createGraphics()
     try {
       g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-      g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+      g.setRenderingHint(
+        RenderingHints.KEY_TEXT_ANTIALIASING,
+        RenderingHints.VALUE_TEXT_ANTIALIAS_ON,
+      )
       g.color = Color(0xFF, 0x40, 0x40, 0xFF)
       g.stroke = BasicStroke(3f)
       g.drawRect(rect.x, rect.y, rect.width, rect.height)
@@ -82,26 +87,29 @@ object FocusOverlay {
 
   /**
    * Reflects into `AndroidComposeView.focusOwner.getFocusRect()` to retrieve the focused element's
-   * bounds. Returns `null` when the view isn't an AndroidComposeView, the focus owner has no
-   * active focus, or any reflective lookup fails. Failure here is silent because the overlay is a
-   * review aid, not a render contract.
+   * bounds. Returns `null` when the view isn't an AndroidComposeView, the focus owner has no active
+   * focus, or any reflective lookup fails. Failure here is silent because the overlay is a review
+   * aid, not a render contract.
    */
   private fun readFocusRect(view: View): Rectangle? {
     return runCatching {
-      val getFocusOwner = view::class.java.methods.firstOrNull { it.name == "getFocusOwner" } ?: return null
-      val owner = getFocusOwner.invoke(view) ?: return null
-      val getFocusRect = owner::class.java.methods.firstOrNull { it.name == "getFocusRect" } ?: return null
-      val rect = getFocusRect.invoke(owner) ?: return null
-      val left = (rect::class.java.getMethod("getLeft").invoke(rect) as? Float) ?: return null
-      val top = (rect::class.java.getMethod("getTop").invoke(rect) as? Float) ?: return null
-      val right = (rect::class.java.getMethod("getRight").invoke(rect) as? Float) ?: return null
-      val bottom = (rect::class.java.getMethod("getBottom").invoke(rect) as? Float) ?: return null
-      // Compose's `Rect` reports `left = top = Float.POSITIVE_INFINITY` (`Rect.Zero`) when no
-      // focus is active; clamp to int silently here.
-      if (!left.isFinite() || !top.isFinite() || !right.isFinite() || !bottom.isFinite()) {
-        return null
+        val getFocusOwner =
+          view::class.java.methods.firstOrNull { it.name == "getFocusOwner" } ?: return null
+        val owner = getFocusOwner.invoke(view) ?: return null
+        val getFocusRect =
+          owner::class.java.methods.firstOrNull { it.name == "getFocusRect" } ?: return null
+        val rect = getFocusRect.invoke(owner) ?: return null
+        val left = (rect::class.java.getMethod("getLeft").invoke(rect) as? Float) ?: return null
+        val top = (rect::class.java.getMethod("getTop").invoke(rect) as? Float) ?: return null
+        val right = (rect::class.java.getMethod("getRight").invoke(rect) as? Float) ?: return null
+        val bottom = (rect::class.java.getMethod("getBottom").invoke(rect) as? Float) ?: return null
+        // Compose's `Rect` reports `left = top = Float.POSITIVE_INFINITY` (`Rect.Zero`) when no
+        // focus is active; clamp to int silently here.
+        if (!left.isFinite() || !top.isFinite() || !right.isFinite() || !bottom.isFinite()) {
+          return null
+        }
+        Rectangle(left.toInt(), top.toInt(), (right - left).toInt(), (bottom - top).toInt())
       }
-      Rectangle(left.toInt(), top.toInt(), (right - left).toInt(), (bottom - top).toInt())
-    }.getOrNull()
+      .getOrNull()
   }
 }

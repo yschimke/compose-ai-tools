@@ -27,8 +27,8 @@ import org.robolectric.annotation.Config
 
 /**
  * Producer-side test for the `data/navigation` artefact. Builds a real `ComponentActivity` under
- * Robolectric so we exercise the genuine `Intent` + `OnBackPressedDispatcher` machinery instead
- * of a hand-rolled stub.
+ * Robolectric so we exercise the genuine `Intent` + `OnBackPressedDispatcher` machinery instead of
+ * a hand-rolled stub.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -114,7 +114,7 @@ class NavigationDataProductTest {
     val controller = Robolectric.buildActivity(ComponentActivity::class.java).setup()
     try {
       val callback =
-        object : OnBackPressedCallback(/* enabled = */ true) {
+        object : OnBackPressedCallback(/* enabled= */ true) {
           override fun handleOnBackPressed() {
             // no-op — we only care that the dispatcher reports the callback.
           }

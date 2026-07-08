@@ -10,7 +10,6 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.lifecycle.lifecycleScope
 import ee.schimke.composeai.clients.KtorStreamTransport
 import ee.schimke.composeai.clients.SessionLink
@@ -24,12 +23,14 @@ fun defaultTransportFactory(): StreamTransport.Factory = KtorStreamTransport.fac
 
 /**
  * Single activity. Tapping a `composeai://` (or serve viewer) link launches it here; [resolveLink]
- * turns the intent into a [SessionLink] and the UI connects. mDNS discovery runs only while resumed.
+ * turns the intent into a [SessionLink] and the UI connects. mDNS discovery runs only while
+ * resumed.
  */
 class MainActivity : ComponentActivity() {
 
   private val link = MutableStateFlow<SessionLink?>(null)
-  private val discovered = MutableStateFlow<List<ee.schimke.composeai.clients.discovery.DiscoveredSession>>(emptyList())
+  private val discovered =
+    MutableStateFlow<List<ee.schimke.composeai.clients.discovery.DiscoveredSession>>(emptyList())
   private val discovery by lazy { NsdSessionDiscovery(applicationContext) }
 
   override fun onCreate(savedInstanceState: Bundle?) {

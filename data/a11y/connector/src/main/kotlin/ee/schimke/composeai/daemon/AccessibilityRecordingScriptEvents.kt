@@ -9,7 +9,8 @@ import ee.schimke.composeai.data.render.extensions.RecordingScriptEventDescripto
  * [`compose-preview-review/references/agent-audits.md`](https://github.com/yschimke/skills/blob/main/skills/compose-preview-review/references/agent-audits.md)
  * § "Accessibility-driven interaction audit".
  *
- * Each id maps to one [`AccessibilityNodeInfo`](https://developer.android.com/reference/android/view/accessibility/AccessibilityNodeInfo)
+ * Each id maps to one
+ * [`AccessibilityNodeInfo`](https://developer.android.com/reference/android/view/accessibility/AccessibilityNodeInfo)
  * action constant. An `a11y.action.<name>` event in a recording script means "find the node by its
  * `nodeContentDescription` payload and dispatch the corresponding accessibility action against it"
  * — same path `AccessibilityNodeInfo.performAction(...)` walks via TalkBack.
@@ -21,16 +22,16 @@ import ee.schimke.composeai.data.render.extensions.RecordingScriptEventDescripto
  * daemon's `dataExtensions` when the a11y preview extension is enabled — same gate as the a11y
  * preview-extension publishers.
  *
- * **Single descriptor, mixed support.** All 22 a11y actions live in one
- * `DataExtensionDescriptor(id = "a11y", ...)`. Each event carries its own `supported` flag —
- * 15 wired ids report `supported = true` — 13 ride on `SemanticsActions` constants, plus the
- * TalkBack linear-navigation `next` / `previous` (issue #1956), which advance a host-side focus
- * cursor through the merged focus stops (`TalkBackTraversal`). The remaining 7 (`clearFocus`,
- * `accessibilityFocus`, `clearAccessibilityFocus`, `select`, `clearSelection`, `nextAtGranularity`,
+ * **Single descriptor, mixed support.** All 22 a11y actions live in one `DataExtensionDescriptor(id
+ * = "a11y", ...)`. Each event carries its own `supported` flag — 15 wired ids report `supported =
+ * true` — 13 ride on `SemanticsActions` constants, plus the TalkBack linear-navigation `next` /
+ * `previous` (issue #1956), which advance a host-side focus cursor through the merged focus stops
+ * (`TalkBackTraversal`). The remaining 7 (`clearFocus`, `accessibilityFocus`,
+ * `clearAccessibilityFocus`, `select`, `clearSelection`, `nextAtGranularity`,
  * `previousAtGranularity`) report `supported = false` because Compose doesn't expose a clean
- * equivalent today. Agents calling `list_data_products`
- * see one `a11y` extension with the full surface; the per-event flag is the source of truth for
- * "can `record_preview` accept this kind right now."
+ * equivalent today. Agents calling `list_data_products` see one `a11y` extension with the full
+ * surface; the per-event flag is the source of truth for "can `record_preview` accept this kind
+ * right now."
  */
 object AccessibilityRecordingScriptEvents {
 
@@ -79,13 +80,12 @@ object AccessibilityRecordingScriptEvents {
    * The unsupported entries each carry a per-event reason in their `summary`:
    * - `clearFocus` — Compose doesn't expose a `ClearFocus` semantic (focus is owned by the
    *   FocusManager; releasing focus is internal).
-   * - `accessibilityFocus` / `clearAccessibilityFocus` — TalkBack-internal screen-reader focus,
-   *   not a user-invokable Compose semantic.
+   * - `accessibilityFocus` / `clearAccessibilityFocus` — TalkBack-internal screen-reader focus, not
+   *   a user-invokable Compose semantic.
    * - `select` / `clearSelection` — Compose's `Selected` semantic is state, not action; toggling
    *   typically happens through `OnClick`. No `SetSelected` semantic action exists.
    * - `nextAtGranularity` / `previousAtGranularity` — text-cursor navigation needs a granularity
-   *   argument and ties into `SetSelection`; sketching the right wire shape is its own design
-   *   pass.
+   *   argument and ties into `SetSelection`; sketching the right wire shape is its own design pass.
    */
   val descriptor: DataExtensionDescriptor =
     DataExtensionDescriptor(
@@ -225,7 +225,10 @@ object AccessibilityRecordingScriptEvents {
   /** Convenience for the host wiring point — the daemon's `dataExtensions` takes a list. */
   val descriptors: List<DataExtensionDescriptor> = listOf(descriptor)
 
-  /** Wired event — `supported = true`; matches an entry in `AndroidRecordingSession.A11Y_SEMANTIC_ACTIONS`. */
+  /**
+   * Wired event — `supported = true`; matches an entry in
+   * `AndroidRecordingSession.A11Y_SEMANTIC_ACTIONS`.
+   */
   private fun supportedEvent(
     id: String,
     displayName: String,

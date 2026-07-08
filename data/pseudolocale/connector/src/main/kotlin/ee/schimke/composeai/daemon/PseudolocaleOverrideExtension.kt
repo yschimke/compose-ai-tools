@@ -56,9 +56,10 @@ class PseudolocaleOverrideExtension(private val mode: Pseudolocale) :
  * through the standard Robolectric qualifier path untouched.
  *
  * The qualifier emission side is handled in the renderer — see
- * `RenderEngine.applyPreviewQualifiers` (Android daemon) and `RobolectricRenderTest.applyPreviewQualifiers`
- * (plugin path), both of which call into `Pseudolocale.fromTag(...)` to substitute the base locale
- * before the qualifier string reaches `RuntimeEnvironment.setQualifiers`.
+ * `RenderEngine.applyPreviewQualifiers` (Android daemon) and
+ * `RobolectricRenderTest.applyPreviewQualifiers` (plugin path), both of which call into
+ * `Pseudolocale.fromTag(...)` to substitute the base locale before the qualifier string reaches
+ * `RuntimeEnvironment.setQualifiers`.
  */
 class PseudolocalePreviewOverrideExtension : DataExtension<PreviewOverrides> {
   override val id: DataExtensionId = PseudolocaleOverrideExtension.ID

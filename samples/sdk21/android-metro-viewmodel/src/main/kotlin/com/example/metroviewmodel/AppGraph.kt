@@ -12,17 +12,15 @@ import dev.zacsweers.metrox.viewmodel.ViewModelGraph
 import kotlin.reflect.KClass
 
 /**
- * App-scoped Metro graph. Extending [ViewModelGraph] gives us a
- * `metroViewModelFactory: MetroViewModelFactory` accessor plus the three
- * multibindings the factory needs (standard, assisted, manual-assisted).
- * The sample only uses the standard map — the other two stay empty.
+ * App-scoped Metro graph. Extending [ViewModelGraph] gives us a `metroViewModelFactory:
+ * MetroViewModelFactory` accessor plus the three multibindings the factory needs (standard,
+ * assisted, manual-assisted). The sample only uses the standard map — the other two stay empty.
  */
 @DependencyGraph(AppScope::class) interface AppGraph : ViewModelGraph
 
 /**
- * Binds [MetroViewModelFactory] in the graph by exposing the multibindings
- * Metro contributes for it. Lifted verbatim from the upstream
- * `compose-viewmodels` sample.
+ * Binds [MetroViewModelFactory] in the graph by exposing the multibindings Metro contributes for
+ * it. Lifted verbatim from the upstream `compose-viewmodels` sample.
  */
 @ContributesBinding(AppScope::class)
 @Inject

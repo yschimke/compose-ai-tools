@@ -18,7 +18,9 @@ import kotlinx.coroutines.flow.onEach
 /** The default transport: a Ktor WebSocket client over the OkHttp engine. */
 fun defaultTransportFactory(): StreamTransport.Factory = KtorStreamTransport.factory
 
-/** Single watch activity. A tapped/forwarded `composeai://` link opens straight into the session. */
+/**
+ * Single watch activity. A tapped/forwarded `composeai://` link opens straight into the session.
+ */
 class MainActivity : ComponentActivity() {
 
   private val link = MutableStateFlow<SessionLink?>(null)

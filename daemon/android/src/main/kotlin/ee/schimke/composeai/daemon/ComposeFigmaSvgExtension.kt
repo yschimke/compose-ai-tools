@@ -31,7 +31,8 @@ class ComposeFigmaSvgExtension : PostCaptureProcessor {
     // Key off the protocol previewId when present, matching the file-backed registry lookup and the
     // sibling wireframe extension so `data/fetch` finds the SVG.
     val previewId = context.get(RenderDataArtifactContextKeys.PreviewId) ?: outputBaseName
-    val previewContext = context.require(RenderDataArtifactContextKeys.LayoutInspectorPreviewContext)
+    val previewContext =
+      context.require(RenderDataArtifactContextKeys.LayoutInspectorPreviewContext)
     val density = context.get(RenderDataArtifactContextKeys.Density) ?: 1f
     val layout = LayoutInspectorDataProducer.buildPayload(previewContext, density) ?: return
     val semantics: ComposeSemanticsPayload? =
@@ -60,8 +61,8 @@ class ComposeFigmaSvgExtension : PostCaptureProcessor {
    * `composeai.figma.embedFonts=true` — the plugin forwards that flag into the daemon JVM (see
    * `AndroidPreviewClasspath.buildSystemProperties`). Unlike desktop this doesn't also honour the
    * fidelity flag: the fidelity harness is desktop-only, so there's nothing to imply embedding for
-   * here. Reuses the renderer's font cache dir / offline switch so a face is downloaded at most once
-   * per environment.
+   * here. Reuses the renderer's font cache dir / offline switch so a face is downloaded at most
+   * once per environment.
    */
   private fun figmaFontResolver(): FigmaFontResolver? {
     fun on(prop: String) = System.getProperty(prop)?.lowercase() == "true"
@@ -75,7 +76,8 @@ class ComposeFigmaSvgExtension : PostCaptureProcessor {
   companion object {
     val ID: DataExtensionId = DataExtensionId(ComposeFigmaSvgDataProducer.KIND)
 
-    val factory: RenderDataArtifactExtensionFactory =
-      RenderDataArtifactExtensionFactory { _ -> ComposeFigmaSvgExtension() }
+    val factory: RenderDataArtifactExtensionFactory = RenderDataArtifactExtensionFactory { _ ->
+      ComposeFigmaSvgExtension()
+    }
   }
 }
