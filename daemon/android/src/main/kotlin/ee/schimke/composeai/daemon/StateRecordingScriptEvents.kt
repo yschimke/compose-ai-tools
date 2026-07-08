@@ -6,22 +6,21 @@ import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
 import ee.schimke.composeai.data.render.extensions.RecordingScriptEventDescriptor
 
 /**
- * State-related `record_preview` script events. One descriptor — `state` — owning three events
- * that all ride on the held rule's `SaveableStateRegistry` bridge:
+ * State-related `record_preview` script events. One descriptor — `state` — owning three events that
+ * all ride on the held rule's `SaveableStateRegistry` bridge:
  *
  * - **`state.recreate`** — single-event round-trip. Snapshot current saveable state, tear down
- *   under a `key(...)` boundary, rebuild with the snapshot restored. `rememberSaveable`
- *   survives, `remember` resets. The pragmatic "did this preview survive a recreate?"
- *   primitive.
- * - **`state.save`** — named-checkpoint capture. Takes a `checkpointId` (agent-supplied string)
- *   and stores the current saveable bundle under that key without rebuilding the composition.
- *   Multiple checkpoints can coexist; a later `state.restore` picks one by id.
+ *   under a `key(...)` boundary, rebuild with the snapshot restored. `rememberSaveable` survives,
+ *   `remember` resets. The pragmatic "did this preview survive a recreate?" primitive.
+ * - **`state.save`** — named-checkpoint capture. Takes a `checkpointId` (agent-supplied string) and
+ *   stores the current saveable bundle under that key without rebuilding the composition. Multiple
+ *   checkpoints can coexist; a later `state.restore` picks one by id.
  * - **`state.restore`** — named-checkpoint restore. Takes a `checkpointId`, looks up the bundle
  *   stashed by an earlier `state.save`, and rebuilds the composition with that bundle restored.
  *
  * **Distinct from the other state-shaped events:**
- * - `lifecycle.event` (`pause`/`resume`/`stop`) — drives the activity lifecycle without
- *   destroying it. `rememberSaveable` AND `remember` both survive.
+ * - `lifecycle.event` (`pause`/`resume`/`stop`) — drives the activity lifecycle without destroying
+ *   it. `rememberSaveable` AND `remember` both survive.
  * - `preview.reload` — full cold composition. Both `remember` and `rememberSaveable` reset.
  *
  * **`state.save` / `state.restore` vs `state.recreate`.** The pair lets agents capture multiple

@@ -44,22 +44,27 @@ object PermissionsController {
 
   private val lock = Any()
 
-  /** Effective grant map. Persisted across renders so a session that flips a grant mid-flight is observable. */
+  /**
+   * Effective grant map. Persisted across renders so a session that flips a grant mid-flight is
+   * observable.
+   */
   private val grantsState: MutableState<Map<String, PermissionGrantStateOverride>> =
     mutableStateOf(emptyMap())
 
   /** Insertion-ordered tracking of which permissions the screen has queried. */
   private val queriedSet: MutableState<List<String>> = mutableStateOf(emptyList())
 
-  /** Hooks notified on grant-map changes — populated by the around-composable's `DisposableEffect`. */
+  /**
+   * Hooks notified on grant-map changes — populated by the around-composable's `DisposableEffect`.
+   */
   private val listeners: MutableList<() -> Unit> = CopyOnWriteArrayList()
 
   /** Cache of unique queried permissions for O(1) duplicate suppression in [recordQuery]. */
   private val queriedSeen: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
   /**
-   * previewId of the render whose composition is currently driving this controller, or `null` for
-   * a render with no previewId. Set by [PermissionsOverrideExtension]'s around-composable from
+   * previewId of the render whose composition is currently driving this controller, or `null` for a
+   * render with no previewId. Set by [PermissionsOverrideExtension]'s around-composable from
    * `ExtensionComposeContext.previewId` before the preview content composes, so the shadow-driven
    * [recordQuery] can stamp the cross-classloader bridge with the right scope (issue #1593).
    *
@@ -98,7 +103,9 @@ object PermissionsController {
     listeners.toList().forEach { it() }
   }
 
-  /** Read the current grant for [permission]. `null` means "no override applied" — caller defaults. */
+  /**
+   * Read the current grant for [permission]. `null` means "no override applied" — caller defaults.
+   */
   fun grantFor(permission: String): PermissionGrantStateOverride? = grantsState.value[permission]
 
   /**
@@ -107,8 +114,8 @@ object PermissionsController {
    * queries in roughly the sequence the composition issued them.
    *
    * Also forwards to the cross-classloader [SandboxPermissionsBridge][bridgeForwarder] so the
-   * daemon-side `PermissionsDataProductRegistry`, which lives in the host classloader, can read
-   * out the sandbox-side queries. Without the forward, the host registry's
+   * daemon-side `PermissionsDataProductRegistry`, which lives in the host classloader, can read out
+   * the sandbox-side queries. Without the forward, the host registry's
    * `PermissionsController.queried.value` read returns the host-CL controller's (empty) state and
    * `data/fetch?kind=compose/permissions` reports no queries even though
    * `ShadowContextWrapperPermissionTracker` caught them. The bridge is loaded reflectively so the
@@ -162,24 +169,22 @@ object PermissionsController {
 
   /**
    * Push the grant map into Robolectric's `ShadowApplication`. We reach into the
-   * `org.robolectric.Shadows.shadowOf(application)` API reflectively so a non-Robolectric
-   * classpath (impossible today, but defensive) doesn't link-error on the controller class itself.
-   * The shadow's `grantPermissions(vararg String)` / `denyPermissions(vararg String)` are the
-   * supported public API for seeding the platform permission path; everything `ContextCompat
+   * `org.robolectric.Shadows.shadowOf(application)` API reflectively so a non-Robolectric classpath
+   * (impossible today, but defensive) doesn't link-error on the controller class itself. The
+   * shadow's `grantPermissions(vararg String)` / `denyPermissions(vararg String)` are the supported
+   * public API for seeding the platform permission path; everything `ContextCompat
    * .checkSelfPermission` reaches eventually consults the same data structure.
    *
-   * Permissions present in the override are granted or denied per their wire state. Permissions
-   * NOT present in the override are explicitly denied so a re-render with a shrunk grant map
-   * doesn't leak the previous render's grants.
+   * Permissions present in the override are granted or denied per their wire state. Permissions NOT
+   * present in the override are explicitly denied so a re-render with a shrunk grant map doesn't
+   * leak the previous render's grants.
    */
   private fun syncRobolectricGrants(grants: Map<String, PermissionGrantStateOverride>) {
     try {
-      val rEnvCls =
-        Class.forName("org.robolectric.RuntimeEnvironment", true, javaClass.classLoader)
+      val rEnvCls = Class.forName("org.robolectric.RuntimeEnvironment", true, javaClass.classLoader)
       val app = rEnvCls.getMethod("getApplication").invoke(null) ?: return
       val shadowsCls = Class.forName("org.robolectric.Shadows", true, javaClass.classLoader)
-      val shadowOf =
-        shadowsCls.getMethod("shadowOf", Class.forName("android.app.Application"))
+      val shadowOf = shadowsCls.getMethod("shadowOf", Class.forName("android.app.Application"))
       val shadowApp = shadowOf.invoke(null, app) ?: return
       val granted =
         grants.filterValues { it == PermissionGrantStateOverride.GRANTED }.keys.toTypedArray()
@@ -189,10 +194,12 @@ object PermissionsController {
       // Clear the previously-granted set first by denying everything in the override; then grant
       // the explicit grants. Permissions outside the override stay at their post-deny default
       // (denied), which is what we want for "absent from map = revoke".
-      shadowAppCls.getMethod("denyPermissions", Array<String>::class.java)
+      shadowAppCls
+        .getMethod("denyPermissions", Array<String>::class.java)
         .invoke(shadowApp, denied + granted)
       if (granted.isNotEmpty()) {
-        shadowAppCls.getMethod("grantPermissions", Array<String>::class.java)
+        shadowAppCls
+          .getMethod("grantPermissions", Array<String>::class.java)
           .invoke(shadowApp, granted)
       }
     } catch (_: ClassNotFoundException) {
@@ -216,7 +223,8 @@ object PermissionsController {
   private val bridgeForwarder: BridgeForwarder? by lazy { BridgeForwarder.tryLoad() }
 
   /**
-   * Reflective handle to [bridge.SandboxPermissionsBridge][ee.schimke.composeai.daemon.bridge.SandboxPermissionsBridge].
+   * Reflective handle to
+   * [bridge.SandboxPermissionsBridge][ee.schimke.composeai.daemon.bridge.SandboxPermissionsBridge].
    * The bridge lives in `:daemon:android` (a downstream module the connector does NOT depend on),
    * so the connector reaches it through `Class.forName` — same shape as [syncRobolectricGrants]'s
    * reach into Robolectric. Connector-only consumers (no daemon-android on the classpath) see
@@ -250,7 +258,8 @@ object PermissionsController {
     }
 
     companion object {
-      private const val BRIDGE_FQN: String = "ee.schimke.composeai.daemon.bridge.SandboxPermissionsBridge"
+      private const val BRIDGE_FQN: String =
+        "ee.schimke.composeai.daemon.bridge.SandboxPermissionsBridge"
 
       fun tryLoad(): BridgeForwarder? =
         try {

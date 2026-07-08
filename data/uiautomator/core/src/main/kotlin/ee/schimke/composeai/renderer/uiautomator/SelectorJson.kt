@@ -11,17 +11,15 @@ import kotlinx.serialization.json.Json
  *
  * # JSON shape
  *
- * One flat object per selector, with regex variants as parallel keys (`textMatches` /
- * `descMatches` / `clazzMatches` / `resMatches`). Tree predicates carry nested selector arrays.
- * Every field is optional — a missing field means "this axis isn't filtered". Example:
- *
+ * One flat object per selector, with regex variants as parallel keys (`textMatches` / `descMatches`
+ * / `clazzMatches` / `resMatches`). Tree predicates carry nested selector arrays. Every field is
+ * optional — a missing field means "this axis isn't filtered". Example:
  * ```json
  * {
  *   "text": "Submit",
  *   "enabled": true
  * }
  * ```
- *
  * ```json
  * {
  *   "desc": "row-2",
@@ -32,14 +30,14 @@ import kotlinx.serialization.json.Json
  * # Why a separate DTO instead of `@Serializable` on `Selector`
  *
  * `Selector` carries `TextMatch` (sealed class with `Pattern` payload) which doesn't serialize
- * cleanly without polymorphic boilerplate. Splitting the regex variants into parallel string
- * keys (`text` for exact, `textMatches` for regex) flattens the wire shape and matches what
- * agents actually send — same convention `androidx.test.uiautomator.By` uses
- * (`By.text(String)` vs `By.text(Pattern)`).
+ * cleanly without polymorphic boilerplate. Splitting the regex variants into parallel string keys
+ * (`text` for exact, `textMatches` for regex) flattens the wire shape and matches what agents
+ * actually send — same convention `androidx.test.uiautomator.By` uses (`By.text(String)` vs
+ * `By.text(Pattern)`).
  *
  * Round-trip is **not** lossless for compiled `Pattern` flags: a `By.text(Pattern.compile("x",
- * CASE_INSENSITIVE))` round-trips to a flag-free pattern. Agents that need flags should use
- * inline syntax (`(?i)x`) — the same advice the upstream UIAutomator docs give.
+ * CASE_INSENSITIVE))` round-trips to a flag-free pattern. Agents that need flags should use inline
+ * syntax (`(?i)x`) — the same advice the upstream UIAutomator docs give.
  */
 @Serializable
 public data class SelectorJson(
@@ -75,11 +73,11 @@ private val WireFormat: Json = Json {
 
 /**
  * Render this [Selector] as a JSON string suitable for the daemon bridge and the MCP
- * `record_preview` script-event surface. The reverse is [decodeSelectorJson]. Round-trip is
- * stable for every chain the [By] factory produces; see [SelectorJson] for the regex-flag
- * caveat.
+ * `record_preview` script-event surface. The reverse is [decodeSelectorJson]. Round-trip is stable
+ * for every chain the [By] factory produces; see [SelectorJson] for the regex-flag caveat.
  */
-public fun Selector.encodeJson(): String = WireFormat.encodeToString(SelectorJson.serializer(), toJson())
+public fun Selector.encodeJson(): String =
+  WireFormat.encodeToString(SelectorJson.serializer(), toJson())
 
 /** Parse a JSON string produced by [encodeJson] (or hand-written by an agent) into a [Selector]. */
 public fun decodeSelectorJson(json: String): Selector =

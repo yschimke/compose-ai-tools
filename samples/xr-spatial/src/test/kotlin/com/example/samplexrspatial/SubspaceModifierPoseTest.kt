@@ -27,23 +27,24 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
- * Empirically pins down how the **pose-affecting `SubspaceModifier`s** behave under the offline fake
- * XR runtime — the same recovery path `SubspaceSceneRecorder` drives for `@XrSubspacePreview`s.
+ * Empirically pins down how the **pose-affecting `SubspaceModifier`s** behave under the offline
+ * fake XR runtime — the same recovery path `SubspaceSceneRecorder` drives for
+ * `@XrSubspacePreview`s.
  *
- *  - `rotate(...)` (Euler / axis-angle / quaternion) is recovered faithfully as the panel's
- *    `poseInRoot.rotation`, and the three forms agree. So rotation flows end-to-end into `scene.json`
- *    and the `xr-composite` bake (it's what [RotatedYawRowPreview] / [RotationFormsPreview] exercise).
- *  - `rotateToLookAtUser()` (the "face the viewer" / billboard modifier) **also works offline** now —
- *    its recovery has its own test, [RotateToLookAtUserPoseTest], because it needs a seeded head pose
- *    and a PAUSED looper. A centred panel ends up facing the viewer and side panels turn inward, which
- *    is what [RotateToLookAtUserPreview] bakes.
+ * - `rotate(...)` (Euler / axis-angle / quaternion) is recovered faithfully as the panel's
+ *   `poseInRoot.rotation`, and the three forms agree. So rotation flows end-to-end into
+ *   `scene.json` and the `xr-composite` bake (it's what [RotatedYawRowPreview] /
+ *   [RotationFormsPreview] exercise).
+ * - `rotateToLookAtUser()` (the "face the viewer" / billboard modifier) **also works offline** now
+ *   — its recovery has its own test, [RotateToLookAtUserPoseTest], because it needs a seeded head
+ *   pose and a PAUSED looper. A centred panel ends up facing the viewer and side panels turn
+ *   inward, which is what [RotateToLookAtUserPreview] bakes.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class SubspaceModifierPoseTest {
 
-  @Suppress("DEPRECATION")
-  @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
+  @Suppress("DEPRECATION") @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
   private fun enableSpatial() {
     val pm = ApplicationProvider.getApplicationContext<Context>().packageManager
@@ -73,7 +74,9 @@ class SubspaceModifierPoseTest {
     rule.waitForIdle()
 
     val r = rule.onSubspaceNodeWithTag("yaw30").fetchSemanticsNode("no 'yaw30'").poseInRoot.rotation
-    println("rotate(0,30,0) -> quat=(${r.x}, ${r.y}, ${r.z}, ${r.w}) angle=${angleDeg(r.x, r.y, r.z, r.w)}°")
+    println(
+      "rotate(0,30,0) -> quat=(${r.x}, ${r.y}, ${r.z}, ${r.w}) angle=${angleDeg(r.x, r.y, r.z, r.w)}°"
+    )
 
     // A ~30° turn is recovered (not identity), about the vertical (Y) axis.
     assertThat(angleDeg(r.x, r.y, r.z, r.w)).isWithin(2.0).of(30.0)

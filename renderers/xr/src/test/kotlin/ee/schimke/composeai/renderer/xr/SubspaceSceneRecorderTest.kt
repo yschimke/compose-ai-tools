@@ -28,8 +28,8 @@ import org.robolectric.annotation.Config
 
 /**
  * Exercises [SubspaceSceneRecorder] end-to-end: composes a real `Subspace` under the fake XR
- * runtime (registered for ServiceLoader in test resources) with the spatial system feature
- * shadowed on, then asserts the recovered [SpatialScene] matches the framework-computed layout and
+ * runtime (registered for ServiceLoader in test resources) with the spatial system feature shadowed
+ * on, then asserts the recovered [SpatialScene] matches the framework-computed layout and
  * serialises to the wire contract.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -38,8 +38,7 @@ class SubspaceSceneRecorderTest {
 
   // v2 rule API (StandardTestDispatcher) is not on the compat compile classpath yet;
   // suppress until the floor moves up. See renderer-android RobolectricRenderTest.
-  @Suppress("DEPRECATION")
-  @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
+  @Suppress("DEPRECATION") @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
   private fun enableSpatialFeature() {
     val pm = ApplicationProvider.getApplicationContext<Context>().packageManager

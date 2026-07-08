@@ -21,23 +21,22 @@ import kotlinx.serialization.json.Json
  * Android (Robolectric) [InteractiveSession]. Mirrors `:daemon:desktop`'s
  * [DesktopInteractiveSession] at the protocol surface; the difference is all in cross-classloader
  * marshalling — Compose pointer / Roborazzi capture types can't cross the sandbox boundary, so
- * `dispatch` / `render` ride [InteractiveCommand] envelopes through the
- * [bridge.DaemonHostBridge] and the actual `MotionEvent.dispatchTouchEvent` +
- * `captureRoboImage` happens inside the sandbox-side [RobolectricHost.SandboxRunner.runHeldInteractiveSession]
- * loop.
+ * `dispatch` / `render` ride [InteractiveCommand] envelopes through the [bridge.DaemonHostBridge]
+ * and the actual `MotionEvent.dispatchTouchEvent` + `captureRoboImage` happens inside the
+ * sandbox-side [RobolectricHost.SandboxRunner.runHeldInteractiveSession] loop.
  *
  * **Sandbox pinning** (INTERACTIVE-ANDROID.md § 2). Each session pins exactly one sandbox slot for
  * its lifetime. v3 ships with `INTERACTIVE_SLOT_INDEX = 1` so slot 0 stays the always-on
  * normal-render slot — that's enforced host-side in [RobolectricHost.acquireInteractiveSession]
- * (the constraint that `sandboxCount >= 2`). The session itself is slot-agnostic; it only carries
- * a reference to the slot it was constructed against.
+ * (the constraint that `sandboxCount >= 2`). The session itself is slot-agnostic; it only carries a
+ * reference to the slot it was constructed against.
  *
  * **Threading.** Per the [InteractiveSession] contract, callers are serialised — `JsonRpcServer`
- * dispatches one input per session at a time. Each public method enqueues an
- * [InteractiveCommand] and blocks the caller's thread on the per-command reply latch (or, for
- * [render], on the shared [DaemonHostBridge.results] queue). The sandbox-side held-rule statement
- * is single-threaded by construction (one `evaluate()` call), so command ordering on the wire
- * matches dispatch order in the composition.
+ * dispatches one input per session at a time. Each public method enqueues an [InteractiveCommand]
+ * and blocks the caller's thread on the per-command reply latch (or, for [render], on the shared
+ * [DaemonHostBridge.results] queue). The sandbox-side held-rule statement is single-threaded by
+ * construction (one `evaluate()` call), so command ordering on the wire matches dispatch order in
+ * the composition.
  *
  * **Lifecycle** (INTERACTIVE-ANDROID.md § 7).
  * - **Allocate** at `interactive/start`. The host enqueues [InteractiveCommand.Start] onto slot 1's
@@ -50,8 +49,8 @@ import kotlinx.serialization.json.Json
  *   [InteractiveCommand.Dispatch] (synthesised `MotionEvent`); [render] enqueues
  *   [InteractiveCommand.Render] and polls the global results map.
  * - **Release** at `interactive/stop` or daemon shutdown. [close] enqueues
- *   [InteractiveCommand.Close]; the held-rule statement returns from `evaluate()`, which causes
- *   the rule's outer wrapper to close the `ActivityScenario` — the same disposal point a one-shot
+ *   [InteractiveCommand.Close]; the held-rule statement returns from `evaluate()`, which causes the
+ *   rule's outer wrapper to close the `ActivityScenario` — the same disposal point a one-shot
  *   render hits.
  */
 class AndroidInteractiveSession
@@ -79,33 +78,31 @@ internal constructor(
   /**
    * Idle lease — auto-close the session if no [dispatch] / [render] arrives for this many
    * milliseconds. Defaults to [DEFAULT_IDLE_LEASE_MS] (1 minute) and is overridable via the
-   * `composeai.daemon.interactive.idleLeaseMs` sysprop so operators can tune for slow networks
-   * and tests can drive a sub-second lease without sleeping CI for a minute.
+   * `composeai.daemon.interactive.idleLeaseMs` sysprop so operators can tune for slow networks and
+   * tests can drive a sub-second lease without sleeping CI for a minute.
    *
    * Without this lease, a panel that crashes or a websocket that drops mid-session would leak a
    * pinned sandbox slot for the rest of the daemon's lifetime — slot 1 stays held with no
-   * `interactive/stop` ever arriving. v3 supports one held session at a time per host, so a
-   * single zombie burns the whole interactive capacity. Symmetry with the desktop story comes
-   * via the panel's auto-stop on editor change/scroll (#427); the lease is the daemon-side
-   * belt-and-braces.
+   * `interactive/stop` ever arriving. v3 supports one held session at a time per host, so a single
+   * zombie burns the whole interactive capacity. Symmetry with the desktop story comes via the
+   * panel's auto-stop on editor change/scroll (#427); the lease is the daemon-side belt-and-braces.
    *
    * Setting this to a non-positive value disables the watchdog entirely — useful for tests that
-   * verify the lease itself or for scenarios where an external lifecycle (e.g. a smoke test
-   * driver) owns the session's close path explicitly.
+   * verify the lease itself or for scenarios where an external lifecycle (e.g. a smoke test driver)
+   * owns the session's close path explicitly.
    */
   private val idleLeaseMs: Long =
     System.getProperty(IDLE_LEASE_PROP)?.toLongOrNull() ?: DEFAULT_IDLE_LEASE_MS,
   /**
-   * Invoked from [close] (after the bridge round-trip and `activeStreamRef` clear) so the host
-   * can drop its own reference to this session — see
-   * [RobolectricHost.activeInteractiveSession]. PR C wired this so the host's lifecycle hooks
-   * ([RobolectricHost.swapUserClassLoaders] and [RobolectricHost.shutdown]) can force-close a
-   * held session without keeping a strong reference that would survive an explicit
-   * `interactive/stop`.
+   * Invoked from [close] (after the bridge round-trip and `activeStreamRef` clear) so the host can
+   * drop its own reference to this session — see [RobolectricHost.activeInteractiveSession]. PR C
+   * wired this so the host's lifecycle hooks ([RobolectricHost.swapUserClassLoaders] and
+   * [RobolectricHost.shutdown]) can force-close a held session without keeping a strong reference
+   * that would survive an explicit `interactive/stop`.
    *
-   * Default is a no-op so tests and other callers that construct sessions directly don't have
-   * to wire a hook. Called exactly once per session — after the first [close]. Subsequent
-   * [close] calls (idempotent) skip the hook.
+   * Default is a no-op so tests and other callers that construct sessions directly don't have to
+   * wire a hook. Called exactly once per session — after the first [close]. Subsequent [close]
+   * calls (idempotent) skip the hook.
    */
   private val onCloseHook: () -> Unit = {},
 ) : InteractiveSession {
@@ -115,17 +112,17 @@ internal constructor(
   /**
    * Wall-clock millis at the most recent [dispatch] / [render] call (or session construction, the
    * implicit "first use"). The watchdog reads this every [idleLeaseMs]/4 ticks and triggers
-   * auto-close when the gap exceeds [idleLeaseMs]. Updated **before** the bridge enqueue so
-   * a long-running render doesn't look idle from the watchdog's perspective.
+   * auto-close when the gap exceeds [idleLeaseMs]. Updated **before** the bridge enqueue so a
+   * long-running render doesn't look idle from the watchdog's perspective.
    */
   private val lastUsedAtMs: AtomicLong = AtomicLong(System.currentTimeMillis())
 
   /**
    * Wall-clock millis at the most recent [render] call, or `-1L` until the first render lands.
-   * Drives the wall-clock-accurate auto-advance in [render]: when the caller passes
-   * `advanceTimeMs = null`, the held composition's clock advances by the wall-clock delta since
-   * this timestamp (clamped — see [render]). Single-writer (`render` is serialised by
-   * `JsonRpcServer`) but `AtomicLong` for memory-visibility symmetry with [lastUsedAtMs].
+   * Drives the wall-clock-accurate auto-advance in [render]: when the caller passes `advanceTimeMs
+   * = null`, the held composition's clock advances by the wall-clock delta since this timestamp
+   * (clamped — see [render]). Single-writer (`render` is serialised by `JsonRpcServer`) but
+   * `AtomicLong` for memory-visibility symmetry with [lastUsedAtMs].
    */
   private val lastRenderAtMs: AtomicLong = AtomicLong(-1L)
 
@@ -138,8 +135,8 @@ internal constructor(
 
   /**
    * Daemon-thread executor that runs the idle-lease check. Allocated lazily so a session
-   * constructed with `idleLeaseMs <= 0` doesn't pay the executor allocation. Cancelled by
-   * [close] — the executor is single-threaded so cancellation is bounded.
+   * constructed with `idleLeaseMs <= 0` doesn't pay the executor allocation. Cancelled by [close] —
+   * the executor is single-threaded so cancellation is bounded.
    */
   private val watchdog: ScheduledExecutorService? =
     if (idleLeaseMs > 0L) {
@@ -173,9 +170,9 @@ internal constructor(
 
   /**
    * Non-null when the session was force-closed by the idle-lease watchdog (rather than by an
-   * explicit [close] call). Carries the lease config + idle duration for diagnostics. Stays
-   * `null` when the session was closed explicitly — PR C's wire handler checks this to decide
-   * whether to surface a status-bar hint or treat the close as routine.
+   * explicit [close] call). Carries the lease config + idle duration for diagnostics. Stays `null`
+   * when the session was closed explicitly — PR C's wire handler checks this to decide whether to
+   * surface a status-bar hint or treat the close as routine.
    */
   fun autoClosedReason(): String? = autoClosedReason
 
@@ -217,7 +214,8 @@ internal constructor(
         InteractiveInputKind.KEY_DOWN -> "keyDown"
         InteractiveInputKind.KEY_UP -> "keyUp"
       }
-    val isKey = input.kind == InteractiveInputKind.KEY_DOWN || input.kind == InteractiveInputKind.KEY_UP
+    val isKey =
+      input.kind == InteractiveInputKind.KEY_DOWN || input.kind == InteractiveInputKind.KEY_UP
     val px = input.pixelX
     val py = input.pixelY
     val hasPixels = px != null && py != null
@@ -281,7 +279,8 @@ internal constructor(
     // A target that resolved to no node (or more than one) is reported as unmatched; throw a typed
     // [SemanticsTargetUnresolvedException] carrying the structured reason (issue #1784) so the
     // recording path can surface `targetUnresolvedReason` evidence with candidate nodes and
-    // interactive input logs the miss. The sandbox encoded the reason to JSON and passed it back over
+    // interactive input logs the miss. The sandbox encoded the reason to JSON and passed it back
+    // over
     // the bridge; decode it host-side. Pixel dispatch leaves [replyMatched] null and is unaffected.
     if (hasTarget && replyMatched?.get() == false) {
       val message =
@@ -298,25 +297,26 @@ internal constructor(
             }
             .getOrNull()
         }
-      if (reason != null) throw SemanticsTargetUnresolvedException(reason, message) else error(message)
+      if (reason != null) throw SemanticsTargetUnresolvedException(reason, message)
+      else error(message)
     }
   }
 
   /**
    * Override of [InteractiveSession.dispatchRemoteComposeChange]. Pushes the edit directly into
    * [RemoteComposeController] — the controller's snapshot state triggers a recomposition in the
-   * held sandbox composition without an extra `renderNow` round-trip, so the panel's editable-
-   * cell change repaints on the next streaming frame.
+   * held sandbox composition without an extra `renderNow` round-trip, so the panel's editable- cell
+   * change repaints on the next streaming frame.
    *
-   * The controller's `setProfile(...)` / `setNamedValue(...)` are the "merge, don't replace"
-   * facets — the live edit lands cleanly on top of whatever override the daemon last seeded via
+   * The controller's `setProfile(...)` / `setNamedValue(...)` are the "merge, don't replace" facets
+   * — the live edit lands cleanly on top of whatever override the daemon last seeded via
    * `renderNow.overrides.remoteCompose`. Returns `true` unconditionally on Android since the
-   * connector module is on `:daemon:android`'s classpath; the controller is a process-static
-   * Kotlin `object` so class init is at worst a single-thread first-touch cost.
+   * connector module is on `:daemon:android`'s classpath; the controller is a process-static Kotlin
+   * `object` so class init is at worst a single-thread first-touch cost.
    *
    * No-op when the session is closed — mirrors [dispatch]'s closed-check; the caller still gets
-   * `true` because the change was structurally valid (the wire-edge ignore happens at the JSON-
-   * RPC handler layer for a missing session, not here).
+   * `true` because the change was structurally valid (the wire-edge ignore happens at the JSON- RPC
+   * handler layer for a missing session, not here).
    */
   override fun dispatchRemoteComposeChange(change: RemoteComposeChange): Boolean {
     if (closed) return false
@@ -331,9 +331,9 @@ internal constructor(
 
   /**
    * Override of [InteractiveSession.dispatchSemanticsAction]. Enqueues a
-   * [InteractiveCommand.DispatchSemanticsAction] envelope through the bridge; the sandbox-side
-   * loop in [RobolectricHost.SandboxRunner.runHeldInteractiveSession] resolves the matching node
-   * by `hasContentDescription(...)` and invokes the corresponding `SemanticsActions` action.
+   * [InteractiveCommand.DispatchSemanticsAction] envelope through the bridge; the sandbox-side loop
+   * in [RobolectricHost.SandboxRunner.runHeldInteractiveSession] resolves the matching node by
+   * `hasContentDescription(...)` and invokes the corresponding `SemanticsActions` action.
    *
    * Returns `true` when the action fired against a matched node; `false` when no node matched
    * (caller surfaces unsupported evidence). Throws when the action body itself failed — same
@@ -371,14 +371,14 @@ internal constructor(
 
   /**
    * Override of [InteractiveSession.dispatchUiAutomator]. Enqueues a
-   * [InteractiveCommand.DispatchUiAutomator] envelope through the bridge; the sandbox-side loop
-   * in [RobolectricHost.SandboxRunner.runHeldInteractiveSession] decodes the selector JSON,
-   * resolves the matching node via `UiAutomator.findObject(rule, selector, useUnmergedTree)`,
-   * and invokes the corresponding `SemanticsActions` lambda.
+   * [InteractiveCommand.DispatchUiAutomator] envelope through the bridge; the sandbox-side loop in
+   * [RobolectricHost.SandboxRunner.runHeldInteractiveSession] decodes the selector JSON, resolves
+   * the matching node via `UiAutomator.findObject(rule, selector, useUnmergedTree)`, and invokes
+   * the corresponding `SemanticsActions` lambda.
    *
-   * Returns `true` when the action fired against a matched node; `false` when no node matched
-   * or the matched node didn't expose the action (caller surfaces unsupported evidence). Throws
-   * when the action body itself failed — same propagation path as [dispatchSemanticsAction].
+   * Returns `true` when the action fired against a matched node; `false` when no node matched or
+   * the matched node didn't expose the action (caller surfaces unsupported evidence). Throws when
+   * the action body itself failed — same propagation path as [dispatchSemanticsAction].
    */
   override fun dispatchUiAutomator(
     actionKind: String,
@@ -417,8 +417,8 @@ internal constructor(
   /**
    * Override of [InteractiveSession.findUiAutomatorEvidence] (#874 item #2). Enqueues a
    * [InteractiveCommand.FindUiAutomatorEvidence] envelope through the bridge; the sandbox-side
-   * `UiAutomatorEvidence.compute(...)` walks the held composition's `SemanticsOwner`, computes
-   * the matched-count + closest near-match node, and hands back a typed
+   * `UiAutomatorEvidence.compute(...)` walks the held composition's `SemanticsOwner`, computes the
+   * matched-count + closest near-match node, and hands back a typed
    * [`UiAutomatorUnsupportedReason`][ee.schimke.composeai.daemon.protocol.UiAutomatorUnsupportedReason].
    */
   override fun findUiAutomatorEvidence(
@@ -459,9 +459,9 @@ internal constructor(
   /**
    * Override of [InteractiveSession.captureProbeSemantics] (#1786). Enqueues an
    * [InteractiveCommand.CaptureProbeSemantics] envelope; the sandbox-side loop projects the held
-   * composition's unmerged semantics tree into the compact probe-node list and hands it back through
-   * [InteractiveCommand.CaptureProbeSemantics.replyNodesJson] as JSON. Read-only — no dispatch, no
-   * settle tick.
+   * composition's unmerged semantics tree into the compact probe-node list and hands it back
+   * through [InteractiveCommand.CaptureProbeSemantics.replyNodesJson] as JSON. Read-only — no
+   * dispatch, no settle tick.
    */
   override fun captureProbeSemantics():
     List<ee.schimke.composeai.daemon.protocol.RecordingProbeNode>? {
@@ -493,10 +493,11 @@ internal constructor(
    * Override of [InteractiveSession.captureA11yFindings] (#1966). Enqueues an
    * [InteractiveCommand.CaptureA11yFindings] envelope; the sandbox-side loop runs Android ATF
    * (`AccessibilityChecker.check`) against the held composition's View hierarchy and hands the
-   * findings back through [InteractiveCommand.CaptureA11yFindings.replyFindingsJson] as a serialized
-   * [ee.schimke.composeai.renderer.AccessibilityFindingsPayload]. Read-only — no dispatch, no settle
-   * tick. The host re-projects to the core [ee.schimke.composeai.daemon.protocol.RecordingA11yFinding]
-   * so `:daemon:core` stays free of the a11y dependency.
+   * findings back through [InteractiveCommand.CaptureA11yFindings.replyFindingsJson] as a
+   * serialized [ee.schimke.composeai.renderer.AccessibilityFindingsPayload]. Read-only — no
+   * dispatch, no settle tick. The host re-projects to the core
+   * [ee.schimke.composeai.daemon.protocol.RecordingA11yFinding] so `:daemon:core` stays free of the
+   * a11y dependency.
    */
   override fun captureA11yFindings():
     List<ee.schimke.composeai.daemon.protocol.RecordingA11yFinding>? {
@@ -573,10 +574,10 @@ internal constructor(
 
   /**
    * Override of [InteractiveSession.dispatchPreviewReload]. Enqueues a
-   * [InteractiveCommand.DispatchPreviewReload] envelope through the bridge; the sandbox-side
-   * loop in [RobolectricHost.SandboxRunner.runHeldInteractiveSession] increments the held
-   * `key(...)` reload counter, which Compose detects as a key change and rebuilds the
-   * composition slot table from scratch.
+   * [InteractiveCommand.DispatchPreviewReload] envelope through the bridge; the sandbox-side loop
+   * in [RobolectricHost.SandboxRunner.runHeldInteractiveSession] increments the held `key(...)`
+   * reload counter, which Compose detects as a key change and rebuilds the composition slot table
+   * from scratch.
    */
   override fun dispatchPreviewReload(): Boolean {
     if (closed) return false
@@ -665,9 +666,9 @@ internal constructor(
 
   /**
    * Override of [InteractiveSession.dispatchStateRestore]. Enqueues a
-   * [InteractiveCommand.DispatchStateRestore] envelope; the sandbox-side loop looks up the
-   * stashed bundle by [checkpointId] and rebuilds the composition with it restored. Returns
-   * `false` when no matching checkpoint has been saved.
+   * [InteractiveCommand.DispatchStateRestore] envelope; the sandbox-side loop looks up the stashed
+   * bundle by [checkpointId] and rebuilds the composition with it restored. Returns `false` when no
+   * matching checkpoint has been saved.
    */
   override fun dispatchStateRestore(checkpointId: String): Boolean {
     if (closed) return false
@@ -699,8 +700,8 @@ internal constructor(
    * Override of [InteractiveSession.dispatchNavigation]. Enqueues a
    * [InteractiveCommand.DispatchNavigation] envelope; the sandbox-side loop in
    * [RobolectricHost.SandboxRunner.runHeldInteractiveSession] resolves the wire-name string to
-   * either an `Activity.startActivity` call (for `deepLink`) or an `OnBackPressedDispatcher`
-   * method (for `back` / `predictiveBack*`).
+   * either an `Activity.startActivity` call (for `deepLink`) or an `OnBackPressedDispatcher` method
+   * (for `back` / `predictiveBack*`).
    *
    * Returns `true` when the named action fired; `false` when the named [actionKind] isn't
    * recognised (caller surfaces unsupported evidence). Throws when the action body itself failed.
@@ -769,8 +770,7 @@ internal constructor(
         advanceTimeMs = resolvedAdvance,
       )
     )
-    val resultQueue =
-      DaemonHostBridge.results.computeIfAbsent(requestId) { LinkedBlockingQueue() }
+    val resultQueue = DaemonHostBridge.results.computeIfAbsent(requestId) { LinkedBlockingQueue() }
     val raw =
       resultQueue.poll(RENDER_TIMEOUT_SEC, TimeUnit.SECONDS)
         ?: error(
@@ -842,23 +842,23 @@ internal constructor(
 
   companion object {
     /**
-     * Upper bound on a single `interactive/input` round-trip — sandbox synthesises the
-     * MotionEvent, dispatches on the UI thread, advances `mainClock` by `POINTER_HOLD_MS`, signals
-     * back. 30 s is generous; in practice well under 100 ms post-cold-boot.
+     * Upper bound on a single `interactive/input` round-trip — sandbox synthesises the MotionEvent,
+     * dispatches on the UI thread, advances `mainClock` by `POINTER_HOLD_MS`, signals back. 30 s is
+     * generous; in practice well under 100 ms post-cold-boot.
      */
     private const val DISPATCH_TIMEOUT_SEC: Long = 30L
 
     /**
      * JSON used to decode the [SemanticsTargetUnresolvedReason] the sandbox passed back over the
-     * bridge as a string (issue #1784). `ignoreUnknownKeys` keeps host/sandbox forward-compatible if
-     * the reason shape gains fields on one side first.
+     * bridge as a string (issue #1784). `ignoreUnknownKeys` keeps host/sandbox forward-compatible
+     * if the reason shape gains fields on one side first.
      */
     private val UNRESOLVED_REASON_JSON: Json = Json { ignoreUnknownKeys = true }
 
     /**
-     * Upper bound on a single capture — Roborazzi's `captureRoboImage` plus the disk write.
-     * Matches the v1 `RobolectricHost.submit` default (60s) so a slow first-render after the
-     * Roborazzi static init doesn't trip the timeout.
+     * Upper bound on a single capture — Roborazzi's `captureRoboImage` plus the disk write. Matches
+     * the v1 `RobolectricHost.submit` default (60s) so a slow first-render after the Roborazzi
+     * static init doesn't trip the timeout.
      */
     private const val RENDER_TIMEOUT_SEC: Long = 60L
 
@@ -872,17 +872,17 @@ internal constructor(
 
     /**
      * Sysprop knob for the idle-lease timeout (millis). When unset, sessions auto-close after
-     * [DEFAULT_IDLE_LEASE_MS] of inactivity. Operators can tune this for slow networks; tests
-     * pass a non-default via the constructor parameter directly.
+     * [DEFAULT_IDLE_LEASE_MS] of inactivity. Operators can tune this for slow networks; tests pass
+     * a non-default via the constructor parameter directly.
      */
     const val IDLE_LEASE_PROP: String = "composeai.daemon.interactive.idleLeaseMs"
 
     /**
-     * Default idle-lease timeout — 1 minute. Long enough that a user thinking about their
-     * preview between clicks doesn't get yanked out from under, short enough that a panel crash
-     * or a websocket drop returns the pinned slot to normal-render duty within a minute. The
-     * panel's own auto-stop on editor change/scroll already handles the "user moved on" case;
-     * this lease catches the "client disappeared" case PR C will explicitly wire to
+     * Default idle-lease timeout — 1 minute. Long enough that a user thinking about their preview
+     * between clicks doesn't get yanked out from under, short enough that a panel crash or a
+     * websocket drop returns the pinned slot to normal-render duty within a minute. The panel's own
+     * auto-stop on editor change/scroll already handles the "user moved on" case; this lease
+     * catches the "client disappeared" case PR C will explicitly wire to
      * `JsonRpcServer.onChannelClosed`.
      */
     const val DEFAULT_IDLE_LEASE_MS: Long = 60_000L
@@ -890,33 +890,31 @@ internal constructor(
     /**
      * Floor for the wall-clock-derived advance applied in [render] when the caller leaves
      * `advanceTimeMs` null. Matches `RobolectricHost.HELD_CAPTURE_ADVANCE_MS` — the same
-     * fixed-delta the held loop used unconditionally before the wall-clock substitution landed.
-     * Two reasons to floor at this value:
-     * - **First render** has no previous timestamp to subtract from, so `previousRenderAtMs <
-     *   0L`; the floor preserves the existing settle window the held loop relies on to flush
-     *   the initial composition.
+     * fixed-delta the held loop used unconditionally before the wall-clock substitution landed. Two
+     * reasons to floor at this value:
+     * - **First render** has no previous timestamp to subtract from, so `previousRenderAtMs < 0L`;
+     *   the floor preserves the existing settle window the held loop relies on to flush the initial
+     *   composition.
      * - **Back-to-back renders** (delta < 32ms — possible when the daemon batches a dispatch +
-     *   render arriving within a few ms of each other) still want at least one full recompose
-     *   tick before capture, otherwise effects scheduled by the dispatch may not have applied
-     *   yet.
+     *   render arriving within a few ms of each other) still want at least one full recompose tick
+     *   before capture, otherwise effects scheduled by the dispatch may not have applied yet.
      */
     private const val AUTO_ADVANCE_FLOOR_MS: Long = 32L
 
     /**
      * Cap on the wall-clock-derived advance applied in [render] when the caller leaves
-     * `advanceTimeMs` null. A session that's been idle for many seconds (user switched
-     * windows, network lag, etc.) shouldn't lurch animations forward by that whole gap on the
-     * next render — `rememberInfiniteTransition`-style animations would jump phase, and any
-     * `LaunchedEffect(Unit) { delay(...); ... }` that happens to straddle the gap could fire
-     * far past its intended trigger point.
+     * `advanceTimeMs` null. A session that's been idle for many seconds (user switched windows,
+     * network lag, etc.) shouldn't lurch animations forward by that whole gap on the next render —
+     * `rememberInfiniteTransition`-style animations would jump phase, and any `LaunchedEffect(Unit)
+     * { delay(...); ... }` that happens to straddle the gap could fire far past its intended
+     * trigger point.
      *
-     * 1000ms picks the largest jump a user might plausibly tolerate as "the animation just
-     * caught up": one second of skipped wall-clock applied in a single tick lands the
-     * composition at a sensible mid-animation frame for typical Material / Wear motion
-     * (durations ≤ 600ms), without the multi-second phase jumps that frustrate diagnosis.
-     * Beyond that the held clock simply lags real time — animations resume from where they
-     * left off, accepting that the live preview is showing "the animation 2s ago" rather
-     * than skipping ahead unpredictably.
+     * 1000ms picks the largest jump a user might plausibly tolerate as "the animation just caught
+     * up": one second of skipped wall-clock applied in a single tick lands the composition at a
+     * sensible mid-animation frame for typical Material / Wear motion (durations ≤ 600ms), without
+     * the multi-second phase jumps that frustrate diagnosis. Beyond that the held clock simply lags
+     * real time — animations resume from where they left off, accepting that the live preview is
+     * showing "the animation 2s ago" rather than skipping ahead unpredictably.
      */
     private const val MAX_AUTO_ADVANCE_MS: Long = 1_000L
   }

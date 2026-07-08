@@ -7,12 +7,12 @@ package ee.schimke.composeai.renderer
 data class TalkBackSpokenCue(val stopIndex: Int, val startMs: Long, val text: String)
 
 /**
- * Plans the timed spoken-announcement track for a TalkBack walk — issue #1956, Phase 4 (the
- * "read out the text" exploration). It assigns each focus stop the utterance
- * [TalkBackUtterance.compose] produces and the time the focus overlay lands on that stop, so a
- * downstream step can synthesize one TTS clip per cue, lay them out on a silent timeline at
- * [TalkBackSpokenCue.startMs], and mux the result into the MP4/WEBM via
- * [ee.schimke.composeai.daemon.FfmpegEncoder]'s optional audio track.
+ * Plans the timed spoken-announcement track for a TalkBack walk — issue #1956, Phase 4 (the "read
+ * out the text" exploration). It assigns each focus stop the utterance [TalkBackUtterance.compose]
+ * produces and the time the focus overlay lands on that stop, so a downstream step can synthesize
+ * one TTS clip per cue, lay them out on a silent timeline at [TalkBackSpokenCue.startMs], and mux
+ * the result into the MP4/WEBM via [ee.schimke.composeai.daemon.FfmpegEncoder]'s optional audio
+ * track.
  *
  * Crucially it dwells on the **same** [TalkBackOverlayFrames.DEFAULT_DWELL_MS] the silent overlay
  * uses, so the spoken word and the green focus rectangle land on each control at the same instant —
@@ -35,7 +35,8 @@ object TalkBackAudioTrack {
     val step = if (dwellMs > 0L) dwellMs else TalkBackOverlayFrames.DEFAULT_DWELL_MS
     return TalkBackTraversal.focusStops(nodes).mapIndexedNotNull { i, node ->
       val text = TalkBackUtterance.compose(node)
-      if (text.isEmpty()) null else TalkBackSpokenCue(stopIndex = i, startMs = i * step, text = text)
+      if (text.isEmpty()) null
+      else TalkBackSpokenCue(stopIndex = i, startMs = i * step, text = text)
     }
   }
 

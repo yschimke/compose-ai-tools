@@ -19,9 +19,9 @@ import org.robolectric.annotation.GraphicsMode
  * Mirrors `RobolectricRenderTest`'s bootstrap shape (see that class for the full
  * `@Config`/`@GraphicsMode` rationale): a JUnit `@Test` annotated `@RunWith(RobolectricTestRunner)`
  * + `@Config(sdk = 35)` + `@GraphicsMode(NATIVE)`. The dump runs after Robolectric's sandbox
- * bootstrap so every survey class resolves through the active `InstrumentingClassLoader` (or its
- * parent), reflecting the loaded-class graph as seen by the working `getDeclaredComposableMethod`
- * code path.
+ *   bootstrap so every survey class resolves through the active `InstrumentingClassLoader` (or its
+ *   parent), reflecting the loaded-class graph as seen by the working `getDeclaredComposableMethod`
+ *   code path.
  *
  * Output: `renderers/android/build/reports/classloader-forensics/standalone.json`. The diff tool
  * (`./gradlew :daemon:harness:dumpClassloaderDiff`) consumes both this JSON and the daemon
@@ -61,8 +61,8 @@ class ClassloaderForensicsTest {
   }
 
   /**
-   * Best-effort snapshot of the active Robolectric sandbox configuration. Most fields come from
-   * the public [RuntimeEnvironment] API; the instrumentation-filter lists require reflection into
+   * Best-effort snapshot of the active Robolectric sandbox configuration. Most fields come from the
+   * public [RuntimeEnvironment] API; the instrumentation-filter lists require reflection into
    * `InstrumentingClassLoader.config` (a private field) and are populated when reachable, empty
    * otherwise. Documented inline so a future Robolectric bump that renames the field surfaces here
    * cleanly rather than as a silent gap.
@@ -128,8 +128,9 @@ class ClassloaderForensicsTest {
    * 4.16 but is technically internal; a future rename would surface as empty lists in the dump
    * (visible in the diff) rather than a thrown exception.
    */
-  private fun readInstrumentationFilters(loader: ClassLoader?):
-    Triple<List<String>, List<String>, List<String>> {
+  private fun readInstrumentationFilters(
+    loader: ClassLoader?
+  ): Triple<List<String>, List<String>, List<String>> {
     if (loader == null) return Triple(emptyList(), emptyList(), emptyList())
     return try {
       val configField =

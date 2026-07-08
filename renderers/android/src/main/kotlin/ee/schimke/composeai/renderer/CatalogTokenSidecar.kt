@@ -24,8 +24,8 @@ import okio.Path.Companion.toPath
  * kits), not just a viewable sheet — see issue #2167. For the static token catalogs ([write]) the
  * values come from the very reflection the specimen sheet runs ([CatalogValueReflection]); for a
  * `@ThemeCatalog` theme ([writeResolved], issue #2179) they come from the live
- * `MaterialTheme.colorScheme` / `.typography` the wrapper resolved to *inside* composition, keyed by
- * theme so each becomes a Figma variable mode downstream.
+ * `MaterialTheme.colorScheme` / `.typography` the wrapper resolved to *inside* composition, keyed
+ * by theme so each becomes a Figma variable mode downstream.
  *
  * Hand-rolled JSON, best-effort — same rationale as [NotificationSidecar]: the renderer-android
  * runtime classpath deliberately omits `kotlinx-serialization`, and a per-token failure must not
@@ -36,7 +36,9 @@ internal object CatalogTokenSidecar {
 
   const val SCHEMA = "compose-preview-catalog-tokens/v1"
 
-  /** `<outputDir>/data/catalog-tokens/<id>.catalog.json`, mirroring [NotificationSidecar.pathFor]. */
+  /**
+   * `<outputDir>/data/catalog-tokens/<id>.catalog.json`, mirroring [NotificationSidecar.pathFor].
+   */
   fun pathFor(rendersDir: File, previewId: String): File =
     File(
       File(rendersDir.parentFile ?: rendersDir, "data/catalog-tokens"),
@@ -44,12 +46,16 @@ internal object CatalogTokenSidecar {
     )
 
   /**
-   * Write the resolved-token sidecar for [previewId] from its [tokens]. Resolves the output dir from
-   * the `composeai.render.outputDir` system property the PNG path uses; silently no-ops when it's
-   * unset (unit-test invocations that don't run through the plugin's render task) or when [tokens]
-   * is empty. A token whose value can't be reflected is skipped, not fatal.
+   * Write the resolved-token sidecar for [previewId] from its [tokens]. Resolves the output dir
+   * from the `composeai.render.outputDir` system property the PNG path uses; silently no-ops when
+   * it's unset (unit-test invocations that don't run through the plugin's render task) or when
+   * [tokens] is empty. A token whose value can't be reflected is skipped, not fatal.
    */
-  fun write(previewId: String, tokens: List<CatalogToken>, fileSystem: FileSystem = SystemFileSystem) {
+  fun write(
+    previewId: String,
+    tokens: List<CatalogToken>,
+    fileSystem: FileSystem = SystemFileSystem,
+  ) {
     if (tokens.isEmpty()) return
     try {
       val rendersDirPath = System.getProperty("composeai.render.outputDir") ?: return
@@ -66,7 +72,8 @@ internal object CatalogTokenSidecar {
    * A single composition-resolved catalog token — a Material 3 role/style [label] paired with the
    * value the live theme resolved it to. Sibling of [CatalogToken], but carrying the *value*
    * directly instead of a `className`/`member` to reflect, because a `@ThemeCatalog` theme's tokens
-   * only exist inside composition (`MaterialTheme.colorScheme` / `.typography`), not as static vals.
+   * only exist inside composition (`MaterialTheme.colorScheme` / `.typography`), not as static
+   * vals.
    */
   sealed interface ResolvedToken {
     val label: String
@@ -127,9 +134,9 @@ internal object CatalogTokenSidecar {
   }
 
   /**
-   * One resolved token object. Mirrors [tokenJson]'s shape minus the `className`/`member` reflection
-   * coordinates (a composition-resolved token has none), so a reader handles both sidecar flavours
-   * uniformly: `{ "label", "kind", "color"|"textStyle" }`.
+   * One resolved token object. Mirrors [tokenJson]'s shape minus the `className`/`member`
+   * reflection coordinates (a composition-resolved token has none), so a reader handles both
+   * sidecar flavours uniformly: `{ "label", "kind", "color"|"textStyle" }`.
    */
   private fun resolvedTokenJson(token: ResolvedToken): String {
     val value =
@@ -162,7 +169,9 @@ internal object CatalogTokenSidecar {
     val value =
       when (token.tokenKind) {
         CatalogTokenKind.COLOR ->
-          runCatching { colorJson(CatalogValueReflection.reflectColor(token.className, token.member)) }
+          runCatching {
+              colorJson(CatalogValueReflection.reflectColor(token.className, token.member))
+            }
             .getOrNull()
         CatalogTokenKind.TEXT_STYLE ->
           runCatching {

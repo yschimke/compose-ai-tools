@@ -113,12 +113,16 @@ class AccessibilityPreviewExtensionTest {
       AccessibilityAnnotatedPreviewExtension.descriptor.steps.single {
         it.id == RenderPreviewExtension.overlayLegendProcessor.id
       }
-    assertEquals(listOf(AccessibilityOverlayPreviewExtension.KIND_OVERLAY), overlayStep.productKinds)
+    assertEquals(
+      listOf(AccessibilityOverlayPreviewExtension.KIND_OVERLAY),
+      overlayStep.productKinds,
+    )
     assertTrue(overlayStep.provides.contains(PipelineCapability.AnnotatedImageArtifact))
 
     val command =
-      AccessibilityAnnotatedPreviewExtension.descriptor.cliCommands.single { it.id == "a11y-overlay.get" }
+      AccessibilityAnnotatedPreviewExtension.descriptor.cliCommands.single {
+        it.id == "a11y-overlay.get"
+      }
     assertEquals(listOf(AccessibilityOverlayPreviewExtension.KIND_OVERLAY), command.productKinds)
   }
-
 }

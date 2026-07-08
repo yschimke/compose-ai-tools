@@ -19,23 +19,17 @@ import ee.schimke.composeai.preview.typography.TypographySpecimen
 @Preview(name = "Typography specimen", widthDp = 420, heightDp = 720)
 @Composable
 fun TypographySpecimenPreview() {
-  MaterialTheme {
-    Surface { TypographySpecimen(typography = Typography()) }
-  }
+  MaterialTheme { Surface { TypographySpecimen(typography = Typography()) } }
 }
 
 @Preview(name = "FontFamily specimen", widthDp = 420, heightDp = 320)
 @Composable
 fun FontFamilySpecimenPreview() {
-  MaterialTheme {
-    Surface { FontFamilySpecimen(fontFamily = FontFamily.SansSerif) }
-  }
+  MaterialTheme { Surface { FontFamilySpecimen(fontFamily = FontFamily.SansSerif) } }
 }
 
 @Preview(name = "Fallback coverage specimen", widthDp = 420, heightDp = 280)
 @Composable
 fun FallbackCoverageSpecimenPreview() {
-  MaterialTheme {
-    Surface { FallbackCoverageSpecimen() }
-  }
+  MaterialTheme { Surface { FallbackCoverageSpecimen() } }
 }

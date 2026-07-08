@@ -23,10 +23,10 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Verifies the TalkBack linear-navigation core (issue #1956) against a *real* Compose semantics tree
- * via a Robolectric compose rule — exercising the actual focus-stop extraction (which merged nodes
- * are stops, reading order, refs) and the cursor walk through [TalkBackHostNavigation.move], the
- * same code path `RobolectricHost.performTalkBackNavigation` drives during a recording.
+ * Verifies the TalkBack linear-navigation core (issue #1956) against a *real* Compose semantics
+ * tree via a Robolectric compose rule — exercising the actual focus-stop extraction (which merged
+ * nodes are stops, reading order, refs) and the cursor walk through [TalkBackHostNavigation.move],
+ * the same code path `RobolectricHost.performTalkBackNavigation` drives during a recording.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -123,8 +123,5 @@ class TalkBackHostNavigationTest {
   }
 
   private fun textOf(move: TalkBackHostNavigation.Move): String? =
-    move.focusTarget
-      ?.config
-      ?.getOrNull(SemanticsProperties.Text)
-      ?.joinToString(" ") { it.text }
+    move.focusTarget?.config?.getOrNull(SemanticsProperties.Text)?.joinToString(" ") { it.text }
 }

@@ -15,11 +15,7 @@ private fun ensureVariantsChannel(context: Context) {
     val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     if (nm.getNotificationChannel(VARIANTS_CHANNEL_ID) == null) {
       nm.createNotificationChannel(
-        NotificationChannel(
-          VARIANTS_CHANNEL_ID,
-          "Variants",
-          NotificationManager.IMPORTANCE_DEFAULT,
-        )
+        NotificationChannel(VARIANTS_CHANNEL_ID, "Variants", NotificationManager.IMPORTANCE_DEFAULT)
       )
     }
   }
@@ -31,8 +27,8 @@ private fun ensureVariantsChannel(context: Context) {
  * One source function fans out into six PNGs — Light / Dark / Arabic / German / Japanese / Large
  * font — via the existing COMPOSE discovery path. No `@NotificationPreview` annotation involved;
  * the helper composable + stacked `@Preview` is what carries the variant matrix. Notification
- * strings come from `notification_strings.xml` (default + `values-ar/`, `values-de/`,
- * `values-ja/`) so the locale axis shows translated content, not just a layout-direction flip.
+ * strings come from `notification_strings.xml` (default + `values-ar/`, `values-de/`, `values-ja/`)
+ * so the locale axis shows translated content, not just a layout-direction flip.
  */
 @NotificationVariants
 @Composable
@@ -44,8 +40,7 @@ fun BigTextVariantsPreview() {
       .setContentTitle(ctx.getString(R.string.notif_variant_title))
       .setContentText(ctx.getString(R.string.notif_variant_text))
       .setStyle(
-        NotificationCompat.BigTextStyle()
-          .bigText(ctx.getString(R.string.notif_variant_big_text))
+        NotificationCompat.BigTextStyle().bigText(ctx.getString(R.string.notif_variant_big_text))
       )
       .build()
   }

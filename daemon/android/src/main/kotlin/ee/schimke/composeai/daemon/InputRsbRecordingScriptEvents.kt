@@ -9,13 +9,13 @@ import ee.schimke.composeai.data.render.extensions.RecordingScriptEventDescripto
  * `input.rsb` — advertising `input.rotaryScroll` as `supported = true` on the Android host.
  *
  * Lives in `:daemon:android` because RSB dispatch is Wear/Android-only — the held-rule loop's
- * native `MotionEvent.SOURCE_ROTARY_ENCODER + ACTION_SCROLL` path doesn't have a desktop
- * equivalent (`ImageComposeScene` exposes `sendPointerEvent` but no rotary channel). Only
- * `RobolectricHost.recordingScriptEventDescriptors()` advertises this descriptor; desktop
- * daemons skip it.
+ * native `MotionEvent.SOURCE_ROTARY_ENCODER + ACTION_SCROLL` path doesn't have a desktop equivalent
+ * (`ImageComposeScene` exposes `sendPointerEvent` but no rotary channel). Only
+ * `RobolectricHost.recordingScriptEventDescriptors()` advertises this descriptor; desktop daemons
+ * skip it.
  *
- * The companion touch / keyboard descriptors live in `:daemon:core` since both backends share
- * those contracts.
+ * The companion touch / keyboard descriptors live in `:daemon:core` since both backends share those
+ * contracts.
  */
 object InputRsbRecordingScriptEvents {
 

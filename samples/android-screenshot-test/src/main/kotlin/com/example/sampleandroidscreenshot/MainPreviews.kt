@@ -16,18 +16,20 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 
 /**
- * Regular top-level @Preview — same shape as every preview in `:samples:android`.
- * Confirms that applying the Google screenshot plugin hasn't broken our
- * ordinary discovery path (shared `sourceClassDirs` still picks up main).
+ * Regular top-level @Preview — same shape as every preview in `:samples:android`. Confirms that
+ * applying the Google screenshot plugin hasn't broken our ordinary discovery path (shared
+ * `sourceClassDirs` still picks up main).
  */
 @Preview(name = "main-square", showBackground = true)
 @Composable
 fun MainSquarePreview() {
-    MaterialTheme {
-        Surface(color = Color(0xFF4285F4)) {
-            Box(Modifier.size(96.dp).padding(16.dp).clip(RoundedCornerShape(12.dp)).background(Color.White)) {
-                Text("main")
-            }
-        }
+  MaterialTheme {
+    Surface(color = Color(0xFF4285F4)) {
+      Box(
+        Modifier.size(96.dp).padding(16.dp).clip(RoundedCornerShape(12.dp)).background(Color.White)
+      ) {
+        Text("main")
+      }
     }
+  }
 }

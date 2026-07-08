@@ -7,14 +7,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * B1.3 DoD: submit 10 dummy renders to a single host instance; assert all
- * complete and the sandbox classloader is reused across all of them.
+ * B1.3 DoD: submit 10 dummy renders to a single host instance; assert all complete and the sandbox
+ * classloader is reused across all of them.
  *
- * Reuse is the load-bearing property — without it the daemon's value
- * proposition collapses (every render would re-bootstrap the sandbox,
- * which is the multi-second cost we are trying to amortise; see DESIGN.md
- * § 13). If this test ever flips and starts seeing distinct classloader
- * hash codes per render, treat it as a sandbox-reuse regression.
+ * Reuse is the load-bearing property — without it the daemon's value proposition collapses (every
+ * render would re-bootstrap the sandbox, which is the multi-second cost we are trying to amortise;
+ * see DESIGN.md § 13). If this test ever flips and starts seeing distinct classloader hash codes
+ * per render, treat it as a sandbox-reuse regression.
  */
 class RobolectricHostTest {
 
@@ -62,9 +61,7 @@ class RobolectricHostTest {
       assertNotNull(name)
       assertTrue(
         "expected an instrumenting/sandbox classloader, got $name",
-        name.contains("Instrument") ||
-          name.contains("Sandbox") ||
-          name.contains("Robolectric"),
+        name.contains("Instrument") || name.contains("Sandbox") || name.contains("Robolectric"),
       )
     } finally {
       host.shutdown()

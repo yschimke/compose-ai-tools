@@ -27,8 +27,8 @@ import kotlinx.serialization.json.Json
  * Must run under Robolectric with the capture properties the gradle plugin sets
  * (`robolectric.graphicsMode=NATIVE`, `pixelCopyRenderMode=hardware`, `roborazzi.test.record=true`)
  * — `captureRoboImage` rasterises the panel content there exactly as the Compose `@Preview` path
- * does. `SubspaceSceneRecorder` recovers the poses + content views; this writes the textures + scene
- * that match.
+ * does. `SubspaceSceneRecorder` recovers the poses + content views; this writes the textures +
+ * scene that match.
  */
 public object SubspaceSceneWriter {
 
@@ -41,8 +41,8 @@ public object SubspaceSceneWriter {
    * Rasterises each panel's live content [View] (recovered by
    * [SubspaceSceneRecorder.recordAllWithViews]) to `<id>.png` under [outDir] — the same `<id>.png`
    * convention the recorder stamps into each panel's `texture`, so the scene and its textures line
-   * up. This is the production texture path: it captures the panel content exactly as it composed in
-   * the subspace, so the viewer shows real panels rather than placeholders.
+   * up. This is the production texture path: it captures the panel content exactly as it composed
+   * in the subspace, so the viewer shows real panels rather than placeholders.
    *
    * Each view is captured at its panel's true size ([SpatialPanel.sizeDp] × display density), so
    * content that `fillMaxSize()`s fills the panel the same way the scene geometry frames it — a
@@ -70,15 +70,16 @@ public object SubspaceSceneWriter {
    * Captures [view] to [file] at the panel's true pixel size ([SpatialPanel.sizeDp] × display
    * density).
    *
-   * The panel content only draws once its `AndroidComposeView` is attached to a window and laid out,
-   * so we re-parent the (detached) view into the activity content frame with *fixed* panel-sized
-   * layout params — the content frame then measures the child at exactly that size regardless of
-   * screen size, where roborazzi's own `View.captureRoboImage` would force `WRAP_CONTENT` and clamp a
-   * panel larger than the screen. After an idle so Compose lays out and draws, we draw the view into
-   * a panel-sized bitmap (real Compose pixels under Robolectric NATIVE graphics, the same way
-   * roborazzi's standalone-view capture does) and hand that to roborazzi to write — sidestepping the
-   * Espresso root resolution its view capture uses, which the fake panel/orbiter windows defeat. The
-   * view must already be detached from its fake-panel window (see [captureViewTextures]).
+   * The panel content only draws once its `AndroidComposeView` is attached to a window and laid
+   * out, so we re-parent the (detached) view into the activity content frame with *fixed*
+   * panel-sized layout params — the content frame then measures the child at exactly that size
+   * regardless of screen size, where roborazzi's own `View.captureRoboImage` would force
+   * `WRAP_CONTENT` and clamp a panel larger than the screen. After an idle so Compose lays out and
+   * draws, we draw the view into a panel-sized bitmap (real Compose pixels under Robolectric NATIVE
+   * graphics, the same way roborazzi's standalone-view capture does) and hand that to roborazzi to
+   * write — sidestepping the Espresso root resolution its view capture uses, which the fake
+   * panel/orbiter windows defeat. The view must already be detached from its fake-panel window (see
+   * [captureViewTextures]).
    */
   private fun captureViewAtPanelSize(view: View, panel: SpatialPanel, file: File) {
     val activity = activityOf(view) ?: return
@@ -105,8 +106,8 @@ public object SubspaceSceneWriter {
 
   /**
    * The fake panel entity hosts each panel's content view in its own `WindowManager` window. Detach
-   * it so it can be re-parented into the activity for capture. Rendering is already complete by this
-   * point, so removing the panel's window is harmless.
+   * it so it can be re-parented into the activity for capture. Rendering is already complete by
+   * this point, so removing the panel's window is harmless.
    */
   private fun detachFromWindow(view: View) {
     if (!view.isAttachedToWindow) return

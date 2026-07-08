@@ -15,13 +15,13 @@ import ee.schimke.composeai.renderer.AccessibilityHierarchyPayload
 import ee.schimke.composeai.renderer.AccessibilityNode
 import ee.schimke.composeai.renderer.OverlayExtension
 import ee.schimke.composeai.renderer.TouchTargetsExtension
-import org.junit.Rule
-import org.junit.rules.TemporaryFolder
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
 class AccessibilityPostCapturePipelineTest {
   @get:Rule val tempFolder: TemporaryFolder = TemporaryFolder()
@@ -29,10 +29,7 @@ class AccessibilityPostCapturePipelineTest {
   @Test
   fun defaultsIncludeBothTouchTargetsAndOverlay() {
     val ids = AccessibilityPostCaptureExtensions.defaults.map { it.id.value }
-    assertEquals(
-      listOf(TouchTargetsExtension.EXTENSION_ID, OverlayExtension.EXTENSION_ID),
-      ids,
-    )
+    assertEquals(listOf(TouchTargetsExtension.EXTENSION_ID, OverlayExtension.EXTENSION_ID), ids)
   }
 
   @Test
@@ -151,12 +148,13 @@ class AccessibilityPostCapturePipelineTest {
   @Test
   fun skipsImageDependentExtensionsWhenNoImageArtifact() {
     val invocations = mutableListOf<String>()
-    val imageRequiringExtension = recordingProcessor(
-      id = "image-requiring",
-      inputs = setOf(CommonDataProducts.ImageArtifact),
-      outputs = setOf(StringProductKey),
-      invocations = invocations,
-    )
+    val imageRequiringExtension =
+      recordingProcessor(
+        id = "image-requiring",
+        inputs = setOf(CommonDataProducts.ImageArtifact),
+        outputs = setOf(StringProductKey),
+        invocations = invocations,
+      )
 
     runAccessibilityPostCapturePipeline(
       previewId = "preview",
@@ -173,12 +171,13 @@ class AccessibilityPostCapturePipelineTest {
   @Test
   fun runsImageDependentExtensionsWhenImageArtifactSeeded() {
     val invocations = mutableListOf<String>()
-    val imageRequiringExtension = recordingProcessor(
-      id = "image-requiring",
-      inputs = setOf(CommonDataProducts.ImageArtifact),
-      outputs = setOf(StringProductKey),
-      invocations = invocations,
-    )
+    val imageRequiringExtension =
+      recordingProcessor(
+        id = "image-requiring",
+        inputs = setOf(CommonDataProducts.ImageArtifact),
+        outputs = setOf(StringProductKey),
+        invocations = invocations,
+      )
 
     runAccessibilityPostCapturePipeline(
       previewId = "preview",
@@ -246,8 +245,7 @@ class AccessibilityPostCapturePipelineTest {
     val failingExtension =
       object : PostCaptureProcessor {
         override val id: DataExtensionId = DataExtensionId("failing")
-        override val hooks: Set<DataExtensionHookKind> =
-          setOf(DataExtensionHookKind.AfterCapture)
+        override val hooks: Set<DataExtensionHookKind> = setOf(DataExtensionHookKind.AfterCapture)
         override val constraints: DataExtensionConstraints =
           DataExtensionConstraints(phase = DataExtensionPhase.PostProcess)
         override val outputs: Set<DataProductKey<*>> = setOf(FailingOutput)
@@ -301,8 +299,7 @@ class AccessibilityPostCapturePipelineTest {
         invocations += id
         outputs.forEach { key ->
           if (key.type == String::class.java) {
-            @Suppress("UNCHECKED_CAST")
-            context.products.put(key as DataProductKey<String>, "ok")
+            @Suppress("UNCHECKED_CAST") context.products.put(key as DataProductKey<String>, "ok")
           }
         }
       }

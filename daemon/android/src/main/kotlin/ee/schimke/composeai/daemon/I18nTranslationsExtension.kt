@@ -12,8 +12,8 @@ import ee.schimke.composeai.data.render.extensions.PostCaptureProcessor
  * Always-on post-capture extension that walks the captured semantics tree and writes the
  * `i18n/translations` artefact for the rendered preview.
  *
- * Pure post-capture: no Compose-side hook is needed because the producer reads the visible text
- * out of the rendered semantics root rather than recording during composition.
+ * Pure post-capture: no Compose-side hook is needed because the producer reads the visible text out
+ * of the rendered semantics root rather than recording during composition.
  */
 class I18nTranslationsExtension : PostCaptureProcessor {
   override val id: DataExtensionId = ID
@@ -39,7 +39,8 @@ class I18nTranslationsExtension : PostCaptureProcessor {
   companion object {
     val ID: DataExtensionId = DataExtensionId(I18nTranslationsDataProducer.KIND)
 
-    val factory: RenderDataArtifactExtensionFactory =
-      RenderDataArtifactExtensionFactory { _ -> I18nTranslationsExtension() }
+    val factory: RenderDataArtifactExtensionFactory = RenderDataArtifactExtensionFactory { _ ->
+      I18nTranslationsExtension()
+    }
   }
 }

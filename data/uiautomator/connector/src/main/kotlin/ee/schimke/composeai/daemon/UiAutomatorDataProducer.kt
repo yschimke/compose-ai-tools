@@ -1,16 +1,16 @@
 package ee.schimke.composeai.daemon
 
-import ee.schimke.composeai.io.SystemFileSystem
-import okio.FileSystem
-import okio.Path.Companion.toPath
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
+import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.renderer.uiautomator.UiAutomatorDataProducts
 import ee.schimke.composeai.renderer.uiautomator.UiAutomatorHierarchyPayload
 import java.io.File
 import kotlinx.serialization.json.Json
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * D2 — writes the per-render UIAutomator hierarchy artefact the data-product registry surfaces
@@ -21,9 +21,8 @@ import kotlinx.serialization.json.Json
  *   (`uia/hierarchy`) returns this file's absolute path; the JSON shape matches
  *   `UiAutomatorHierarchyPayload` so a downstream client can deserialise it directly.
  *
- * Always written after a successful render so the registry can distinguish "no actionable
- * nodes on this preview" (file present, `nodes: []`) from "preview never rendered" (file
- * missing).
+ * Always written after a successful render so the registry can distinguish "no actionable nodes on
+ * this preview" (file present, `nodes: []`) from "preview never rendered" (file missing).
  */
 object UiAutomatorDataProducer {
 
@@ -69,8 +68,8 @@ object UiAutomatorDataProducer {
  *
  * `attachable: true` so the kind rides `renderFinished.dataProducts` when the client has
  * subscribed; `fetchable: true` for pull-on-demand reads from the same file. Doesn't trigger a
- * re-render: the producer always runs in interactive-android mode, so the JSON is on disk for
- * any preview that has rendered at least once.
+ * re-render: the producer always runs in interactive-android mode, so the JSON is on disk for any
+ * preview that has rendered at least once.
  *
  * `rootDir` mirrors `RenderEngine`'s `dataDir`. Wired by [DaemonMain].
  */

@@ -26,18 +26,19 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 /**
- * Android resource renderer. Reads the `resources.json` written by `composePreviewDiscoverAndroidResources`
- * (path via `composeai.resources.manifest`), iterates every [RenderResourceCapture], and writes a
- * PNG / GIF to the directory pointed at by `composeai.resources.outputDir`.
+ * Android resource renderer. Reads the `resources.json` written by
+ * `composePreviewDiscoverAndroidResources` (path via `composeai.resources.manifest`), iterates
+ * every [RenderResourceCapture], and writes a PNG / GIF to the directory pointed at by
+ * `composeai.resources.outputDir`.
  *
  * Supported types: `VECTOR` (PNG), `ADAPTIVE_ICON` (PNG with shape mask + LEGACY fallback),
  * `ANIMATED_VECTOR` (GIF, plus a horizontal keyframe filmstrip PNG when
  * `composePreview.resourcePreviews.filmstrip` is enabled), `NINE_PATCH` (PNG per stretch variant).
  *
  * Robolectric setup mirrors [RobolectricRenderTest]'s pin: SDK 35, NATIVE graphics, paused looper,
- * hardware pixel-copy. The Gradle task wiring (`composePreviewRenderAndroidResources`) sets the same system
- * properties on this Test task as on `composePreviewRender`, so both paths share Robolectric's runtime
- * configuration.
+ * hardware pixel-copy. The Gradle task wiring (`composePreviewRenderAndroidResources`) sets the
+ * same system properties on this Test task as on `composePreviewRender`, so both paths share
+ * Robolectric's runtime configuration.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -222,23 +223,21 @@ class ResourcePreviewRenderTest {
   /**
    * Renders one adaptive-icon capture. Two surfaces, picked by [style]:
    * - [RenderAdaptiveStyle.FULL_COLOR] composites the consumer's `<background>` + `<foreground>`
-   *   into an offscreen bitmap, then masks with [shape]. This is the appearance launchers show
-   *   in app drawers / search.
+   *   into an offscreen bitmap, then masks with [shape]. This is the appearance launchers show in
+   *   app drawers / search.
    * - [RenderAdaptiveStyle.THEMED_LIGHT] / [RenderAdaptiveStyle.THEMED_DARK] take the
-   *   `<monochrome>` layer (Android 13+ only — `getMonochrome()` returns null when absent),
-   *   tint it with a Material 3 baseline 2-tone pair against a flat surface-container
-   *   background, then mask with [shape]. This is the home-screen "Themed icons" appearance.
-   *   Returns null with a warning when there's no `<monochrome>` layer to render — caller
-   *   skips the capture.
-   * - [RenderAdaptiveStyle.LEGACY] ignores the mask and draws the foreground against
-   *   transparent. Approximates the pre-O fallback; real legacy raster mipmaps
-   *   (`mipmap-mdpi/ic_launcher.png` etc.) aren't surfaced through
-   *   `AdaptiveIconDrawable.foreground`, and parsing the consumer's mipmap directory ourselves
-   *   is out of scope.
+   *   `<monochrome>` layer (Android 13+ only — `getMonochrome()` returns null when absent), tint it
+   *   with a Material 3 baseline 2-tone pair against a flat surface-container background, then mask
+   *   with [shape]. This is the home-screen "Themed icons" appearance. Returns null with a warning
+   *   when there's no `<monochrome>` layer to render — caller skips the capture.
+   * - [RenderAdaptiveStyle.LEGACY] ignores the mask and draws the foreground against transparent.
+   *   Approximates the pre-O fallback; real legacy raster mipmaps (`mipmap-mdpi/ic_launcher.png`
+   *   etc.) aren't surfaced through `AdaptiveIconDrawable.foreground`, and parsing the consumer's
+   *   mipmap directory ourselves is out of scope.
    *
    * The mask path uses [PorterDuff.Mode.SRC_IN] so anti-aliased edges come through cleanly —
-   * `Canvas.clipPath` is documented as not anti-aliased, which produces visible jaggies on
-   * circular masks at the densities we render at.
+   * `Canvas.clipPath` is documented as not anti-aliased, which produces visible jaggies on circular
+   * masks at the densities we render at.
    */
   private fun renderAdaptiveIcon(
     drawable: AdaptiveIconDrawable,
@@ -335,8 +334,8 @@ class ResourcePreviewRenderTest {
 
   /**
    * Material 3 baseline neutrals used to fake "Themed icons" without a live wallpaper-derived
-   * palette. Pair = (surface-container background, on-surface foreground tint). Reproducible
-   * across runs since they don't depend on the wallpaper / system theme.
+   * palette. Pair = (surface-container background, on-surface foreground tint). Reproducible across
+   * runs since they don't depend on the wallpaper / system theme.
    */
   private fun themedColors(style: RenderAdaptiveStyle): Pair<Int, Int> =
     when (style) {
@@ -351,28 +350,27 @@ class ResourcePreviewRenderTest {
    * Renders [drawable] (an `AnimatedVectorDrawable` / `AnimatedVectorDrawableCompat`) into a
    * multi-frame GIF.
    *
-   * **The Robolectric paused-looper detour.** We pin `looperMode=PAUSED` because Compose's
-   * render path needs it. Under PAUSED, the AVD's `ObjectAnimator` doesn't receive the
-   * `Choreographer` frame callbacks that would normally tick its values forward — so a naive
-   * `start()` + `setVisible(true, true)` + `idleFor(50ms)` loop captures the same t=0 state on
-   * every frame. We tried both that idiom and `@LooperMode(LEGACY)` (overridden by the system
-   * property anyway) for #259/#277; both leave every frame at t=0.
+   * **The Robolectric paused-looper detour.** We pin `looperMode=PAUSED` because Compose's render
+   * path needs it. Under PAUSED, the AVD's `ObjectAnimator` doesn't receive the `Choreographer`
+   * frame callbacks that would normally tick its values forward — so a naive `start()` +
+   * `setVisible(true, true)` + `idleFor(50ms)` loop captures the same t=0 state on every frame. We
+   * tried both that idiom and `@LooperMode(LEGACY)` (overridden by the system property anyway)
+   * for #259/#277; both leave every frame at t=0.
    *
    * **Workaround.** Reflect to the AVD's internal `AnimatorSet` and drive it manually via the
-   * public `setCurrentPlayTime(ms)` API. This bypasses Choreographer and the looper entirely:
-   * we walk frame times ourselves, set the animation clock, and capture each `draw()`. Works
-   * because `AnimatorSet.setCurrentPlayTime` synchronously updates each child animator's
-   * fraction and notifies its listeners (the AVD's `RenderNodeAnimatorSet`-equivalent path
-   * pokes the underlying `VectorDrawable`'s group/path properties), and the next `draw()`
-   * reflects those values.
+   * public `setCurrentPlayTime(ms)` API. This bypasses Choreographer and the looper entirely: we
+   * walk frame times ourselves, set the animation clock, and capture each `draw()`. Works because
+   * `AnimatorSet.setCurrentPlayTime` synchronously updates each child animator's fraction and
+   * notifies its listeners (the AVD's `RenderNodeAnimatorSet`-equivalent path pokes the underlying
+   * `VectorDrawable`'s group/path properties), and the next `draw()` reflects those values.
    *
-   * Falls back to a single-frame GIF (the previous behaviour) when reflection misses — e.g.
-   * an unfamiliar AVD subclass, or a future API where the field name changed. Single-frame is
-   * the safe degradation: the `.gif` extension stays intact so the manifest contract holds.
+   * Falls back to a single-frame GIF (the previous behaviour) when reflection misses — e.g. an
+   * unfamiliar AVD subclass, or a future API where the field name changed. Single-frame is the safe
+   * degradation: the `.gif` extension stays intact so the manifest contract holds.
    *
-   * Window length is bounded by [ANIMATED_DURATION_MS] regardless of `AnimatorSet.totalDuration`
-   * — looping animators (`repeatCount=-1`, e.g. the sample's pulse) report `DURATION_INFINITE`
-   * here, and even one-shot animators with `duration=10000` would produce an unwieldy GIF.
+   * Window length is bounded by [ANIMATED_DURATION_MS] regardless of `AnimatorSet.totalDuration` —
+   * looping animators (`repeatCount=-1`, e.g. the sample's pulse) report `DURATION_INFINITE` here,
+   * and even one-shot animators with `duration=10000` would produce an unwieldy GIF.
    */
   private fun renderAnimatedVector(drawable: Drawable, animatable: Animatable, outFile: File) {
     val width = drawable.intrinsicWidth.coerceAtLeast(1)
@@ -497,14 +495,14 @@ class ResourcePreviewRenderTest {
 
   /**
    * Extracts the internal `AnimatorSet` from an `AnimatedVectorDrawable` (platform) or
-   * `AnimatedVectorDrawableCompat` (support lib) via reflection. Returns `null` when the
-   * drawable isn't an AVD, or when the field layout has shifted in a way we don't handle —
-   * caller falls back to the single-frame path.
+   * `AnimatedVectorDrawableCompat` (support lib) via reflection. Returns `null` when the drawable
+   * isn't an AVD, or when the field layout has shifted in a way we don't handle — caller falls back
+   * to the single-frame path.
    *
-   * Both implementations stash the animator on a state class behind a field whose name has
-   * been stable since the support lib's introduction (`mAnimatedVectorState.mAnimatorSet` for
-   * platform; `mAnimatedVectorState.mAnimatorSet` for compat too). Search both class
-   * hierarchies so a future subclass override doesn't break us silently.
+   * Both implementations stash the animator on a state class behind a field whose name has been
+   * stable since the support lib's introduction (`mAnimatedVectorState.mAnimatorSet` for platform;
+   * `mAnimatedVectorState.mAnimatorSet` for compat too). Search both class hierarchies so a future
+   * subclass override doesn't break us silently.
    */
   private fun extractAnimatorSet(drawable: Drawable, animatable: Animatable): AnimatorSet? {
     // Walking the drawable's class hierarchy looking for any `AnimatorSet` field. Tries the
@@ -520,7 +518,10 @@ class ResourcePreviewRenderTest {
     animatable.start()
     return try {
       // Direct AnimatorSet field on the drawable (fast path — when populated).
-      findFieldValue(drawable) { it is AnimatorSet }?.let { return it as AnimatorSet }
+      findFieldValue(drawable) { it is AnimatorSet }
+        ?.let {
+          return it as AnimatorSet
+        }
 
       // Drawable.mAnimatorSet on the platform AVD is `VectorDrawableAnimator` (an interface
       // implemented by `VectorDrawableAnimatorRT` and `VectorDrawableAnimatorUI`); both
@@ -530,13 +531,19 @@ class ResourcePreviewRenderTest {
           ?: findFieldValueByName(drawable, "mAnimatorSetFromXml")
       if (animatorWrapper != null) {
         if (animatorWrapper is AnimatorSet) return animatorWrapper
-        findFieldValue(animatorWrapper) { it is AnimatorSet }?.let { return it as AnimatorSet }
+        findFieldValue(animatorWrapper) { it is AnimatorSet }
+          ?.let {
+            return it as AnimatorSet
+          }
       }
 
       // mAnimatedVectorState.<...>.AnimatorSet — search one level into the state.
       val state = findFieldValueByName(drawable, "mAnimatedVectorState")
       if (state != null) {
-        findFieldValue(state) { it is AnimatorSet }?.let { return it as AnimatorSet }
+        findFieldValue(state) { it is AnimatorSet }
+          ?.let {
+            return it as AnimatorSet
+          }
       }
 
       System.err.println(
@@ -572,11 +579,11 @@ class ResourcePreviewRenderTest {
   }
 
   /**
-   * Walks [target]'s class hierarchy (including superclasses) and returns the first non-null
-   * field value matching [predicate]. Skips static fields and tolerates per-field access
-   * failures (returns the next candidate rather than aborting). One-level only — no recursion
-   * into the returned objects, which is what kept the previous implementation safe from JDK
-   * 17+ module-access restrictions on private collection internals.
+   * Walks [target]'s class hierarchy (including superclasses) and returns the first non-null field
+   * value matching [predicate]. Skips static fields and tolerates per-field access failures
+   * (returns the next candidate rather than aborting). One-level only — no recursion into the
+   * returned objects, which is what kept the previous implementation safe from JDK 17+
+   * module-access restrictions on private collection internals.
    */
   private fun findFieldValue(target: Any, predicate: (Any?) -> Boolean): Any? {
     var cls: Class<*>? = target.javaClass
@@ -598,11 +605,11 @@ class ResourcePreviewRenderTest {
   }
 
   /**
-   * Walks the animator's timeline in [ANIMATED_FRAME_INTERVAL_MS] increments, captures one
-   * bitmap per frame. Caller has already called `setVisible(true, true)`. We `start()` the
-   * animator before stepping because `setCurrentPlayTime` on a never-started animator
-   * sometimes leaves children uninitialised; the explicit start ensures `mInitialized` is
-   * true on each child `ObjectAnimator`.
+   * Walks the animator's timeline in [ANIMATED_FRAME_INTERVAL_MS] increments, captures one bitmap
+   * per frame. Caller has already called `setVisible(true, true)`. We `start()` the animator before
+   * stepping because `setCurrentPlayTime` on a never-started animator sometimes leaves children
+   * uninitialised; the explicit start ensures `mInitialized` is true on each child
+   * `ObjectAnimator`.
    */
   private fun captureAnimatedFrames(
     drawable: Drawable,
@@ -662,8 +669,8 @@ class ResourcePreviewRenderTest {
     File(outputRoot, renderOutput.removePrefix("renders/"))
 
   /**
-   * Android `Bitmap` → AWT `BufferedImage`. Both use ARGB-packed ints with alpha in the high
-   * byte, so `getPixels` / `setRGB` round-trip directly without channel reordering.
+   * Android `Bitmap` → AWT `BufferedImage`. Both use ARGB-packed ints with alpha in the high byte,
+   * so `getPixels` / `setRGB` round-trip directly without channel reordering.
    */
   private fun Bitmap.toBufferedImage(): BufferedImage {
     val w = width
@@ -679,10 +686,10 @@ class ResourcePreviewRenderTest {
     val json = Json { ignoreUnknownKeys = true }
 
     /**
-     * Hard ceiling on AVD GIF length. Looping animators (`repeatCount=-1`, e.g. the sample's
-     * pulse) report `AnimatorSet.DURATION_INFINITE` from `totalDuration` and would otherwise
-     * walk forever; one-shot animators with `duration=10000` would produce an unwieldy GIF.
-     * 1.5s × 50ms/frame = 30 frames, enough to show ~2.5 cycles of a 600ms pulse.
+     * Hard ceiling on AVD GIF length. Looping animators (`repeatCount=-1`, e.g. the sample's pulse)
+     * report `AnimatorSet.DURATION_INFINITE` from `totalDuration` and would otherwise walk forever;
+     * one-shot animators with `duration=10000` would produce an unwieldy GIF. 1.5s × 50ms/frame =
+     * 30 frames, enough to show ~2.5 cycles of a 600ms pulse.
      */
     const val ANIMATED_DURATION_MS: Long = 1500L
 

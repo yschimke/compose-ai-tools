@@ -40,9 +40,9 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * Drives `ComposeSemanticsDataProducer.writeArtifacts` + `ComposeSemanticsDataProductRegistry`
- * against Compose composables that mirror the `SemanticsCoreFieldsPreviews` samples, then
- * asserts each scenario surfaces the specific core projection it isolates: `testTag`, `label`
- * (from `contentDescription`), `role` + `clickable`, and `mergeMode`. Companion to
+ * against Compose composables that mirror the `SemanticsCoreFieldsPreviews` samples, then asserts
+ * each scenario surfaces the specific core projection it isolates: `testTag`, `label` (from
+ * `contentDescription`), `role` + `clickable`, and `mergeMode`. Companion to
  * `TextStringsTruncationTest` for the layout-derived `text/strings` fields.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -50,9 +50,7 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ComposeSemanticsCoreFieldsTest {
 
-  @Suppress("DEPRECATION")
-  @get:Rule
-  val composeRule = createAndroidComposeRule<ComponentActivity>()
+  @Suppress("DEPRECATION") @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
 
   private lateinit var rootDir: File
 

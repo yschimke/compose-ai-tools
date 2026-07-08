@@ -10,52 +10,43 @@ import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.material3.MaterialTheme
 
 /**
- * The catalog's **component** sticker frame: a single component wrapped in the
- * stock Wear [MaterialTheme] on a **transparent** background, cropped tight to the
- * component. Transparency lets a designer drop the sticker onto any canvas; the
- * `compose/theme` tokens the renderer extracts still come from the real Wear
- * Material 3 system (read from the theme, not the pixels). Full-screen components
- * use [FullScreenWear] instead, which keeps the black round device shape.
+ * The catalog's **component** sticker frame: a single component wrapped in the stock Wear
+ * [MaterialTheme] on a **transparent** background, cropped tight to the component. Transparency
+ * lets a designer drop the sticker onto any canvas; the `compose/theme` tokens the renderer
+ * extracts still come from the real Wear Material 3 system (read from the theme, not the pixels).
+ * Full-screen components use [FullScreenWear] instead, which keeps the black round device shape.
  */
 @Composable
 fun WearSticker(content: @Composable () -> Unit) {
-  MaterialTheme {
-    Box(Modifier.padding(8.dp)) { content() }
-  }
+  MaterialTheme { Box(Modifier.padding(8.dp)) { content() } }
 }
 
 /**
- * The catalog's **component** multipreview: a single transparent capture, cropped
- * to the component (no device frame — that's for full-screen components, see
- * [CatalogWearBreakpoints]). `showBackground = false` keeps the background
- * transparent so the sticker carries alpha.
+ * The catalog's **component** multipreview: a single transparent capture, cropped to the component
+ * (no device frame — that's for full-screen components, see [CatalogWearBreakpoints]).
+ * `showBackground = false` keeps the background transparent so the sticker carries alpha.
  */
-@Preview(showBackground = false)
-annotation class CatalogWearModes
+@Preview(showBackground = false) annotation class CatalogWearModes
 
 /**
- * Frame for **full-screen** Wear components (scaffolds, lists, the EdgeButton) —
- * as opposed to the centred component [WearSticker]. The Wear dark [MaterialTheme]
- * fills the round display black and [AppScaffold] supplies the screen structure;
- * `timeText = {}` drops the status clock so the capture is deterministic (a live
- * clock would churn the weekly design-artifacts bundle). The content supplies its
- * own `ScreenScaffold`.
+ * Frame for **full-screen** Wear components (scaffolds, lists, the EdgeButton) — as opposed to the
+ * centred component [WearSticker]. The Wear dark [MaterialTheme] fills the round display black and
+ * [AppScaffold] supplies the screen structure; `timeText = {}` drops the status clock so the
+ * capture is deterministic (a live clock would churn the weekly design-artifacts bundle). The
+ * content supplies its own `ScreenScaffold`.
  */
 @Composable
 fun FullScreenWear(content: @Composable () -> Unit) {
-  MaterialTheme {
-    AppScaffold(timeText = {}) { content() }
-  }
+  MaterialTheme { AppScaffold(timeText = {}) { content() } }
 }
 
 /**
- * Frame for the **scaffold templates** — full-screen skeletons an app copies
- * whole (list screen with a status strip, pager, edge-button screen). Unlike
- * [FullScreenWear] it does *not* supply the [AppScaffold]/`timeText`: a template
- * composes its own `AppScaffold(timeText = { … })` so the curved [TimeText]
- * status strip it demonstrates is part of the capture. This wrapper is just the
- * Wear dark [MaterialTheme] filling the round display black (the
- * [CatalogWearBreakpoints] device previews paint the black background).
+ * Frame for the **scaffold templates** — full-screen skeletons an app copies whole (list screen
+ * with a status strip, pager, edge-button screen). Unlike [FullScreenWear] it does *not* supply the
+ * [AppScaffold]/`timeText`: a template composes its own `AppScaffold(timeText = { … })` so the
+ * curved [TimeText] status strip it demonstrates is part of the capture. This wrapper is just the
+ * Wear dark [MaterialTheme] filling the round display black (the [CatalogWearBreakpoints] device
+ * previews paint the black background).
  */
 @Composable
 fun WearScaffoldTemplate(content: @Composable () -> Unit) {
@@ -63,18 +54,18 @@ fun WearScaffoldTemplate(content: @Composable () -> Unit) {
 }
 
 /**
- * Full-screen **size-breakpoint** multipreview: the three round Wear screen sizes
- * a layout must adapt to — 192 dp (small round), 227 dp (large round), and 240 dp
- * (extra-large round) — each black on the device shape. Stack on a full-screen
- * component (placed via [FullScreenWear] + `ScreenScaffold`) to capture it at each
- * breakpoint, mirroring how the official Wear samples verify a screen across sizes.
+ * Full-screen **size-breakpoint** multipreview: the three round Wear screen sizes a layout must
+ * adapt to — 192 dp (small round), 227 dp (large round), and 240 dp (extra-large round) — each
+ * black on the device shape. Stack on a full-screen component (placed via [FullScreenWear] +
+ * `ScreenScaffold`) to capture it at each breakpoint, mirroring how the official Wear samples
+ * verify a screen across sizes.
  *
- * All three are **direct** `@Preview`s rather than the nested `@WearPreviewSmallRound`
- * / `@WearPreviewLargeRound` aliases: `PreviewDiscovery.resolveMultiPreview` returns
- * an annotation class's direct previews without recursing into nested multipreviews,
- * so a mix would silently drop the nested 192/227 and render only the last. All
- * three use the Wear tooling **device ids** (192/227/240, round, 2.0×) — the render
- * pipeline only exercises named-id devices, not custom `spec:` strings.
+ * All three are **direct** `@Preview`s rather than the nested `@WearPreviewSmallRound` /
+ * `@WearPreviewLargeRound` aliases: `PreviewDiscovery.resolveMultiPreview` returns an annotation
+ * class's direct previews without recursing into nested multipreviews, so a mix would silently drop
+ * the nested 192/227 and render only the last. All three use the Wear tooling **device ids**
+ * (192/227/240, round, 2.0×) — the render pipeline only exercises named-id devices, not custom
+ * `spec:` strings.
  */
 @Preview(
   name = "Small Round",

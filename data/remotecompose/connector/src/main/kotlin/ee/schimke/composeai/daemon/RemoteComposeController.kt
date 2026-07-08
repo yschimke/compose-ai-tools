@@ -28,17 +28,17 @@ import java.util.concurrent.CopyOnWriteArrayList
  * 3. **Active profile** — the [RemoteComposeProfile] the override last requested; null when no
  *    override is active. User code reads this via `LocalRemoteComposeHost.current.profile` and
  *    passes it to `RemotePreview(profile = …)`.
- * 4. **Accepted-action filter** — when the override carries [RemoteComposeOverride
- *    .acceptedHostActions], the controller only records actions whose `payload` is in the set.
- *    Null accepts everything. Lets a panel client constrain capture to events it actually wants
- *    surfaced without depending on remote-code-side filtering.
+ * 4. **Accepted-action filter** — when the override carries
+ *    [RemoteComposeOverride .acceptedHostActions], the controller only records actions whose
+ *    `payload` is in the set. Null accepts everything. Lets a panel client constrain capture to
+ *    events it actually wants surfaced without depending on remote-code-side filtering.
  *
  * Reads happen only from inside [RemoteComposeOverrideExtension.AroundComposable] (and from
  * `RemoteComposeDataProductRegistry.onRender`), which observe the snapshot-state via Compose's
  * normal subscription pipeline. Writers can be on any thread — the daemon's render thread for
- * `renderNow.overrides.remoteCompose` seeding, the composition thread for in-frame
- * [setNamedValue] / [recordHostAction] calls. Snapshot-state and `CopyOnWriteArrayList` carry
- * the cross-thread propagation.
+ * `renderNow.overrides.remoteCompose` seeding, the composition thread for in-frame [setNamedValue]
+ * / [recordHostAction] calls. Snapshot-state and `CopyOnWriteArrayList` carry the cross-thread
+ * propagation.
  */
 object RemoteComposeController {
 
@@ -108,8 +108,8 @@ object RemoteComposeController {
   /**
    * Replace just the active profile without touching named values or the accept-list. Mirrors
    * [setNamedValue]'s "merge, don't replace" semantics for the profile facet so a live edit
-   * dispatched by `interactive/setRemoteCompose` lands cleanly on top of an existing override
-   * bag. Idempotent — writing the same profile twice doesn't notify listeners.
+   * dispatched by `interactive/setRemoteCompose` lands cleanly on top of an existing override bag.
+   * Idempotent — writing the same profile twice doesn't notify listeners.
    */
   fun setProfile(profile: RemoteComposeProfile?) {
     if (profileState.value == profile) return
@@ -118,12 +118,12 @@ object RemoteComposeController {
   }
 
   /**
-   * Record a `HostAction` emission. Filtered against the override's [RemoteComposeOverride
-   * .acceptedHostActions] set when present (null accepts every action). The ring buffer is capped
-   * at [RemoteComposePayload.HOST_ACTION_BUFFER_SIZE] entries — once full, the oldest entry drops
-   * on each new append so the most recent activity always wins. Listeners fire after every
-   * accepted entry so a `data/subscribe(kind=compose/remotecompose)` session sees the event
-   * without waiting for the next render.
+   * Record a `HostAction` emission. Filtered against the override's
+   * [RemoteComposeOverride .acceptedHostActions] set when present (null accepts every action). The
+   * ring buffer is capped at [RemoteComposePayload.HOST_ACTION_BUFFER_SIZE] entries — once full,
+   * the oldest entry drops on each new append so the most recent activity always wins. Listeners
+   * fire after every accepted entry so a `data/subscribe(kind=compose/remotecompose)` session sees
+   * the event without waiting for the next render.
    */
   fun recordHostAction(action: RemoteHostAction) {
     val accepted = acceptedActionPayloads
@@ -149,8 +149,8 @@ object RemoteComposeController {
 
   /**
    * Cleanup hook for per-session reset (interactive close, recording stop, sandbox recycle). Drops
-   * the named-value map, the host-action buffer, and the active profile so the next preview
-   * starts fresh. Mirrors `KeyboardController.resetForNewSession` /
+   * the named-value map, the host-action buffer, and the active profile so the next preview starts
+   * fresh. Mirrors `KeyboardController.resetForNewSession` /
    * `PermissionsController.resetForNewSession`.
    */
   fun resetForNewSession() {

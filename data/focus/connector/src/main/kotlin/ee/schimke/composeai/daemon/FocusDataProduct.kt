@@ -32,24 +32,24 @@ import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
 import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExtension
 
 /**
- * `AroundComposable` extension that owns the focus / keyboard-traversal around-composable
- * concerns: installs `LocalInputModeManager provides KeyboardInputModeManager` and a
- * `LaunchedEffect`-driven focus walk that observes [FocusController.activeFocus] and dispatches
+ * `AroundComposable` extension that owns the focus / keyboard-traversal around-composable concerns:
+ * installs `LocalInputModeManager provides KeyboardInputModeManager` and a `LaunchedEffect`-driven
+ * focus walk that observes [FocusController.activeFocus] and dispatches
  * `FocusManager.moveFocus(...)` on every transition.
  *
  * The extension is the seam both render paths share:
  *
- * - **Plugin path** (`composePreviewRenderAll` / `RobolectricRenderTest`): the renderer wraps content
- *   with this extension whenever `@FocusedPreview` discovery emitted any per-capture focus state,
- *   and updates [FocusController.set] from the outer per-capture loop. The `LaunchedEffect`
+ * - **Plugin path** (`composePreviewRenderAll` / `RobolectricRenderTest`): the renderer wraps
+ *   content with this extension whenever `@FocusedPreview` discovery emitted any per-capture focus
+ *   state, and updates [FocusController.set] from the outer per-capture loop. The `LaunchedEffect`
  *   re-walks each time the controller's state flips.
  * - **Daemon path** (`renderNow.overrides.focus`): [FocusPreviewOverrideExtension] plans the
  *   extension and seeds the controller from the constructor argument so a single-frame render
  *   driven by the daemon picks up the requested focus target without going through the plugin's
  *   per-capture loop.
  *
- * Runs in the [DataExtensionPhase.OuterEnvironment] phase so the input-mode flip happens before
- * the user-environment phase reaches preview content.
+ * Runs in the [DataExtensionPhase.OuterEnvironment] phase so the input-mode flip happens before the
+ * user-environment phase reaches preview content.
  */
 class FocusOverrideExtension(private val seed: FocusOverride? = null) :
   AroundComposableExtension(
@@ -105,7 +105,8 @@ class FocusOverrideExtension(private val seed: FocusOverride? = null) :
           // `developer.android.com/develop/xr/jetpack-xr-sdk/jetpack-compose-glimmer/focus`),
           // `Enter` already lands focus directly on the requested child and the `+1 Next` advances
           // past it. The preview opts into the alternative walk by setting
-          // [FocusOverride.enterPlacesFocus] (driven by `@FocusedPreview(enterPlacesFocus = true)`).
+          // [FocusOverride.enterPlacesFocus] (driven by `@FocusedPreview(enterPlacesFocus =
+          // true)`).
           val enterPlacesFocus = cap.enterPlacesFocus
           val from = lastIndex.value
           if (from < 0) {
@@ -140,8 +141,8 @@ class FocusOverrideExtension(private val seed: FocusOverride? = null) :
 }
 
 /**
- * Planner that maps `renderNow.overrides.focus` to a [FocusOverrideExtension]. No-op when the
- * field is null — matches the wallpaper / theme / ambient planners.
+ * Planner that maps `renderNow.overrides.focus` to a [FocusOverrideExtension]. No-op when the field
+ * is null — matches the wallpaper / theme / ambient planners.
  */
 class FocusPreviewOverrideExtension : DataExtension<PreviewOverrides> {
   override val id: DataExtensionId = FocusOverrideExtension.ID
@@ -166,30 +167,28 @@ fun FocusManager.applyFocusOverride(override: FocusOverride?) {
  * focused element's pressed visual then renders before the renderer's per-capture clock advance
  * elapses.
  *
- * The matching Release isn't sent here — it's deferred to the next capture's `LaunchedEffect`
- * pass (via the `pressHeld` flag) so the composable stays in its pressed state for *this*
- * capture window (the "finger held on the touchpad" shape) and deliberately doesn't fire the
- * `onClick` lambda (a tap = Press+Release). The next capture, if any, dispatches
- * [dispatchIndirectRelease] before walking focus, clearing the prior target's
- * `PressInteraction.Press` while focus is still on it — without that step, a multi-index pressed
- * walk (`@FocusedPreview(indices = [0, 1], pressed = true)`) would leave item 0 still visually
- * pressed in the index-1 capture. After the final capture the JVM is recycled, so no terminal
- * Release is needed.
+ * The matching Release isn't sent here — it's deferred to the next capture's `LaunchedEffect` pass
+ * (via the `pressHeld` flag) so the composable stays in its pressed state for *this* capture window
+ * (the "finger held on the touchpad" shape) and deliberately doesn't fire the `onClick` lambda (a
+ * tap = Press+Release). The next capture, if any, dispatches [dispatchIndirectRelease] before
+ * walking focus, clearing the prior target's `PressInteraction.Press` while focus is still on it —
+ * without that step, a multi-index pressed walk (`@FocusedPreview(indices = [0, 1], pressed =
+ * true)`) would leave item 0 still visually pressed in the index-1 capture. After the final capture
+ * the JVM is recycled, so no terminal Release is needed.
  *
  * Reflection rather than a direct call: `AndroidComposeView` is `internal` at the Kotlin source
  * level (compiles to `public final class` at the JVM level — `internal` is module-scoped in the
  * Kotlin compiler only), so a direct `as AndroidComposeView` cast would fail to compile from
  * outside `androidx.compose.ui`. The bytecode-public `sendIndirectPointerEvent` is callable via
  * reflection without taking a compile-time dep on the internal class — same pattern the renderer's
- * focus-overlay reflection uses to read `AndroidComposeView` internals for the post-capture
- * stroke. We identify the view by class name rather than `isAssignableFrom` checks so the resolver
- * stays focused on the concrete platform class — wrappers and test stand-ins skip the dispatch
- * cleanly.
+ * focus-overlay reflection uses to read `AndroidComposeView` internals for the post-capture stroke.
+ * We identify the view by class name rather than `isAssignableFrom` checks so the resolver stays
+ * focused on the concrete platform class — wrappers and test stand-ins skip the dispatch cleanly.
  *
  * The motion event sets `source = SOURCE_TOUCHPAD` to match what real Glasses input carries;
  * coordinates are `(0, 0)` because indirect-pointer events have no screen position (the consumer
- * routes by focused target, not by hit-test). Axis is `X` — matches Glimmer's primary swipe axis
- * — but no axis is read for a Press with no motion, so the value is documentation more than
+ * routes by focused target, not by hit-test). Axis is `X` — matches Glimmer's primary swipe axis —
+ * but no axis is read for a Press with no motion, so the value is documentation more than
  * mechanism. We don't recycle the `MotionEvent` because Compose retains it as
  * `IndirectPointerEvent.nativeEvent` for the event lifetime, and recycling would null out fields
  * the consumer may still read.

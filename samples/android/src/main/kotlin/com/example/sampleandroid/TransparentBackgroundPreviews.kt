@@ -22,9 +22,9 @@ import androidx.compose.ui.unit.dp
 @Preview(name = "Circle Button Transparent", widthDp = 100, heightDp = 100)
 @Composable
 fun CircleButtonTransparentPreview() {
-    MaterialTheme {
-        Box(modifier = Modifier.size(100.dp), contentAlignment = Alignment.Center) {
-            Button(onClick = {}, shape = CircleShape, modifier = Modifier.size(60.dp)) { Text("") }
-        }
+  MaterialTheme {
+    Box(modifier = Modifier.size(100.dp), contentAlignment = Alignment.Center) {
+      Button(onClick = {}, shape = CircleShape, modifier = Modifier.size(60.dp)) { Text("") }
     }
+  }
 }

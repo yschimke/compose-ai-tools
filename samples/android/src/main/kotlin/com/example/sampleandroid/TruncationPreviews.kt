@@ -17,9 +17,9 @@ import androidx.compose.ui.unit.sp
 /**
  * Per-check fixtures for the `text/strings` v2 truncation fields. Each preview isolates one of
  * `didOverflowWidth`, `didOverflowHeight`, the `maxLines` cap, and `overflow=Ellipsis` so a
- * localisation reviewer can eyeball the rendered PNG against the data-product fields. The
- * matching `TextStringsTruncationTest` exercises the same composable bodies through the
- * producer and asserts each preview's expected check fires.
+ * localisation reviewer can eyeball the rendered PNG against the data-product fields. The matching
+ * `TextStringsTruncationTest` exercises the same composable bodies through the producer and asserts
+ * each preview's expected check fires.
  */
 private const val LongGerman =
   "Vollstaendig und unwiderruflich abgeschlossen, mit zusaetzlichen Erlaeuterungen"
@@ -28,12 +28,7 @@ private const val LongGerman =
 @Composable
 fun TruncatedWidthNoWrapPreview() {
   Box(modifier = Modifier.size(width = 80.dp, height = 32.dp).background(Color.White)) {
-    Text(
-      text = LongGerman,
-      softWrap = false,
-      overflow = TextOverflow.Clip,
-      fontSize = 14.sp,
-    )
+    Text(text = LongGerman, softWrap = false, overflow = TextOverflow.Clip, fontSize = 14.sp)
   }
 }
 
@@ -49,12 +44,7 @@ fun TruncatedHeightClipPreview() {
 @Composable
 fun TruncatedMaxLinesEllipsisPreview() {
   Box(modifier = Modifier.size(width = 200.dp, height = 80.dp).background(Color.White)) {
-    Text(
-      text = LongGerman,
-      maxLines = 2,
-      overflow = TextOverflow.Ellipsis,
-      fontSize = 14.sp,
-    )
+    Text(text = LongGerman, maxLines = 2, overflow = TextOverflow.Ellipsis, fontSize = 14.sp)
   }
 }
 

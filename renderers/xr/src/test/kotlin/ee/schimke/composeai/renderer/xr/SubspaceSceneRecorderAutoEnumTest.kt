@@ -35,8 +35,7 @@ class SubspaceSceneRecorderAutoEnumTest {
 
   // v2 rule API (StandardTestDispatcher) is not on the compat compile classpath yet;
   // suppress until the floor moves up. See renderer-android RobolectricRenderTest.
-  @Suppress("DEPRECATION")
-  @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
+  @Suppress("DEPRECATION") @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
   @Test
   fun recordAllDiscoversTaggedPanels() {
@@ -65,7 +64,8 @@ class SubspaceSceneRecorderAutoEnumTest {
 
     val scene = SubspaceSceneRecorder.recordAll(rule, previewId = "auto")
 
-    // All three tagged panels discovered, keyed by their tags; the column/row groups are not panels.
+    // All three tagged panels discovered, keyed by their tags; the column/row groups are not
+    // panels.
     assertThat(scene.panels.map { it.id }).containsExactly("main", "queue", "lyrics")
     assertThat(scene.panels.all { it.texture == "${it.id}.png" }).isTrue()
     assertThat(scene.panels.all { it.parentId == null }).isTrue()

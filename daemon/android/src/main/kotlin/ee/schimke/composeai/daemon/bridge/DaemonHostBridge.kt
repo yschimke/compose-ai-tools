@@ -12,31 +12,27 @@ import java.util.concurrent.atomic.AtomicReference
 /**
  * Cross-classloader handoff for the Robolectric-sandboxed [DaemonHost].
  *
- * **Why a separate package?** Robolectric's `InstrumentingClassLoader`
- * re-loads classes in the project's namespace by default — confirmed
- * empirically: a static `companion object` on `DaemonHost` resolves to
- * different instances when accessed from the test thread vs. from inside
- * the sandbox (`@Test fun holdSandboxOpen`). That breaks the
- * single-shared-queue assumption the daemon depends on.
+ * **Why a separate package?** Robolectric's `InstrumentingClassLoader` re-loads classes in the
+ * project's namespace by default — confirmed empirically: a static `companion object` on
+ * `DaemonHost` resolves to different instances when accessed from the test thread vs. from inside
+ * the sandbox (`@Test fun holdSandboxOpen`). That breaks the single-shared-queue assumption the
+ * daemon depends on.
  *
- * The fix is a custom Robolectric runner ([SandboxHoldingRunner]) that
- * registers `ee.schimke.composeai.daemon.bridge` as a do-not-acquire
- * package. Classes here are then loaded once by the system classloader
- * and visible identically from both sides of the sandbox boundary.
+ * The fix is a custom Robolectric runner ([SandboxHoldingRunner]) that registers
+ * `ee.schimke.composeai.daemon.bridge` as a do-not-acquire package. Classes here are then loaded
+ * once by the system classloader and visible identically from both sides of the sandbox boundary.
  *
- * Keep this file **trivial**: only `java.util.concurrent.*` types and
- * primitives. No Compose, no Robolectric, no `ee.schimke.composeai.*`
- * imports — those would drag the bridge back into the instrumented graph.
+ * Keep this file **trivial**: only `java.util.concurrent.*` types and primitives. No Compose, no
+ * Robolectric, no `ee.schimke.composeai.*` imports — those would drag the bridge back into the
+ * instrumented graph.
  *
- * **Multi-sandbox foundation (SANDBOX-POOL.md).** The bridge is now
- * **slot-keyed**: per-sandbox state (request queue, sandbox classloader
- * ref, child loader ref, ready latch) is wrapped in [SandboxSlot] and
- * exposed via [slots] / [slot]. Slot 0 is created eagerly and aliases the
- * legacy top-level fields so existing single-sandbox callers stay
- * source- and binary-compatible. Multi-sandbox callers (in-flight)
- * configure the slot count via [configureSlotCount] before the first
- * sandbox boots and use [registerSandbox] from inside each sandbox to
- * claim an exclusive slot.
+ * **Multi-sandbox foundation (SANDBOX-POOL.md).** The bridge is now **slot-keyed**: per-sandbox
+ * state (request queue, sandbox classloader ref, child loader ref, ready latch) is wrapped in
+ * [SandboxSlot] and exposed via [slots] / [slot]. Slot 0 is created eagerly and aliases the legacy
+ * top-level fields so existing single-sandbox callers stay source- and binary-compatible.
+ * Multi-sandbox callers (in-flight) configure the slot count via [configureSlotCount] before the
+ * first sandbox boots and use [registerSandbox] from inside each sandbox to claim an exclusive
+ * slot.
  */
 object DaemonHostBridge {
 
@@ -51,34 +47,31 @@ object DaemonHostBridge {
   @JvmField val requests: LinkedBlockingQueue<Any> = LinkedBlockingQueue()
 
   /**
-   * Per-request result queue, keyed by request id. Sized 1 in practice
-   * (one render per id) but typed as a queue for safe blocking semantics.
+   * Per-request result queue, keyed by request id. Sized 1 in practice (one render per id) but
+   * typed as a queue for safe blocking semantics.
    *
-   * **Shared across slots.** Render ids are monotonic and globally unique
-   * (see [ee.schimke.composeai.daemon.RenderHost.nextRequestId]); a single
-   * map keyed by id is unambiguous regardless of which sandbox slot
-   * produced the result.
+   * **Shared across slots.** Render ids are monotonic and globally unique (see
+   * [ee.schimke.composeai.daemon.RenderHost.nextRequestId]); a single map keyed by id is
+   * unambiguous regardless of which sandbox slot produced the result.
    */
-  @JvmField
-  val results: ConcurrentMap<Long, LinkedBlockingQueue<Any>> = ConcurrentHashMap()
+  @JvmField val results: ConcurrentMap<Long, LinkedBlockingQueue<Any>> = ConcurrentHashMap()
 
   /**
-   * Shutdown signal. The sandbox-side polling loop checks this on every
-   * iteration so a missed Shutdown message (e.g. due to a future
-   * classloader rule change reintroducing instrumentation) still
-   * terminates the loop in bounded time.
+   * Shutdown signal. The sandbox-side polling loop checks this on every iteration so a missed
+   * Shutdown message (e.g. due to a future classloader rule change reintroducing instrumentation)
+   * still terminates the loop in bounded time.
    *
-   * **Shared across slots.** A single flag tears down every sandbox in the
-   * pool — pool-wide shutdown is the only mode in v1.
+   * **Shared across slots.** A single flag tears down every sandbox in the pool — pool-wide
+   * shutdown is the only mode in v1.
    */
   @JvmField val shutdown: AtomicBoolean = AtomicBoolean(false)
 
   /**
-   * Disposable user-class child classloader (B2.0 — see
-   * docs/daemon/CLASSLOADER.md). Mirrored from `UserClassLoaderHolder` on the host thread so the
-   * sandbox-side `RenderEngine.render` reads the current loader without holding a reference to the
-   * core-side holder (which itself is double-loaded across the sandbox boundary, like every other
-   * `ee.schimke.composeai.daemon.*` class).
+   * Disposable user-class child classloader (B2.0 — see docs/daemon/CLASSLOADER.md). Mirrored from
+   * `UserClassLoaderHolder` on the host thread so the sandbox-side `RenderEngine.render` reads the
+   * current loader without holding a reference to the core-side holder (which itself is
+   * double-loaded across the sandbox boundary, like every other `ee.schimke.composeai.daemon.*`
+   * class).
    *
    * Set via [setCurrentChildLoader] from the host thread (host-side `RobolectricHost` calls it
    * after every `UserClassLoaderHolder.swap()`); read via [currentChildLoader] from the
@@ -89,8 +82,7 @@ object DaemonHostBridge {
    * **Slot-0 only.** Multi-slot callers should use [SandboxSlot.childLoaderRef] via [slot] /
    * [slots]. See SANDBOX-POOL.md for the layered plan.
    */
-  @JvmField
-  val childLoaderRef: AtomicReference<URLClassLoader?> = AtomicReference(null)
+  @JvmField val childLoaderRef: AtomicReference<URLClassLoader?> = AtomicReference(null)
 
   /** Sets the current child classloader (host-thread side). Slot-0 alias of [SandboxSlot]. */
   @JvmStatic
@@ -99,8 +91,7 @@ object DaemonHostBridge {
   }
 
   /** Reads the current child classloader (sandbox-thread side). Slot-0 alias of [SandboxSlot]. */
-  @JvmStatic
-  fun currentChildLoader(): URLClassLoader? = childLoaderRef.get()
+  @JvmStatic fun currentChildLoader(): URLClassLoader? = childLoaderRef.get()
 
   /**
    * Sandbox classloader, set by [SandboxHoldingRunner.holdSandboxOpen]'s prologue inside the
@@ -111,8 +102,8 @@ object DaemonHostBridge {
    * loader. See `docs/daemon/CLASSLOADER-FORENSICS.md`.
    *
    * The [sandboxReadyLatch] counts down once the ref is set, so the host can block until the
-   * sandbox is initialised before calling `holder.currentChildLoader()` (which would otherwise
-   * race against sandbox boot and throw).
+   * sandbox is initialised before calling `holder.currentChildLoader()` (which would otherwise race
+   * against sandbox boot and throw).
    *
    * **Slot-0 only.** Multi-slot callers should use [SandboxSlot.sandboxClassLoaderRef].
    */
@@ -136,18 +127,19 @@ object DaemonHostBridge {
     sandboxReadyLatch.countDown()
   }
 
-  /** Reads the current sandbox classloader. Null until [setSandboxClassLoader] runs. Slot-0 only. */
-  @JvmStatic
-  fun currentSandboxClassLoader(): ClassLoader? = sandboxClassLoaderRef.get()
+  /**
+   * Reads the current sandbox classloader. Null until [setSandboxClassLoader] runs. Slot-0 only.
+   */
+  @JvmStatic fun currentSandboxClassLoader(): ClassLoader? = sandboxClassLoaderRef.get()
 
   /**
-   * Blocks until the sandbox has registered itself via [setSandboxClassLoader], or until [timeoutMs]
-   * elapses. Returns true if the sandbox is ready, false on timeout. Host-side code that needs to
-   * allocate a child URLClassLoader with the sandbox loader as parent calls this before evaluating
-   * the holder's `parentSupplier`.
+   * Blocks until the sandbox has registered itself via [setSandboxClassLoader], or until
+   * [timeoutMs] elapses. Returns true if the sandbox is ready, false on timeout. Host-side code
+   * that needs to allocate a child URLClassLoader with the sandbox loader as parent calls this
+   * before evaluating the holder's `parentSupplier`.
    *
-   * **Slot-0 only.** Multi-slot callers should iterate [slots] and await each slot individually
-   * via [SandboxSlot.awaitSandboxReady].
+   * **Slot-0 only.** Multi-slot callers should iterate [slots] and await each slot individually via
+   * [SandboxSlot.awaitSandboxReady].
    */
   @JvmStatic
   fun awaitSandboxReady(timeoutMs: Long): Boolean =
@@ -210,8 +202,7 @@ object DaemonHostBridge {
   }
 
   /** Snapshot of the active slot list. Always non-empty. */
-  @JvmStatic
-  fun slots(): List<SandboxSlot> = slotsRef.get()
+  @JvmStatic fun slots(): List<SandboxSlot> = slotsRef.get()
 
   /** Returns slot at [index]. Throws if out of range. */
   @JvmStatic
@@ -228,8 +219,8 @@ object DaemonHostBridge {
    * register [loader] into it. Returns the slot index. Counts down the slot's ready latch so the
    * host's `awaitSandboxReady(slot)` returns.
    *
-   * Throws when every slot is already claimed — that means the host configured fewer slots than
-   * the sandbox-bootstrap pool is actually trying to register, which is a wiring bug rather than a
+   * Throws when every slot is already claimed — that means the host configured fewer slots than the
+   * sandbox-bootstrap pool is actually trying to register, which is a wiring bug rather than a
    * runtime condition.
    *
    * Each Robolectric sandbox has its own classloader; the CAS on `compareAndSet(null, loader)`
@@ -298,8 +289,8 @@ internal constructor(
   /** Disposable user-class child classloader for this sandbox's render path. */
   @JvmField val childLoaderRef: AtomicReference<URLClassLoader?>,
   /**
-   * Sandbox classloader, set inside the sandbox by [DaemonHostBridge.registerSandbox] (or, for
-   * slot 0, by the legacy [DaemonHostBridge.setSandboxClassLoader]).
+   * Sandbox classloader, set inside the sandbox by [DaemonHostBridge.registerSandbox] (or, for slot
+   * 0, by the legacy [DaemonHostBridge.setSandboxClassLoader]).
    */
   @JvmField val sandboxClassLoaderRef: AtomicReference<ClassLoader?>,
   /**
@@ -314,9 +305,9 @@ internal constructor(
    * the slot is in interactive-mode; until PR B lands, the queue exists as part of the bridge
    * surface but no sandbox-side code reads from it (callers can enqueue, nothing happens).
    *
-   * Separate from [requests] because the held-rule loop's lifecycle is different: it's allocated
-   * on `Start`, drained until `Close`, then the slot returns to draining [requests]. A single
-   * mixed queue would force the sandbox-side loop to discriminate per-poll.
+   * Separate from [requests] because the held-rule loop's lifecycle is different: it's allocated on
+   * `Start`, drained until `Close`, then the slot returns to draining [requests]. A single mixed
+   * queue would force the sandbox-side loop to discriminate per-poll.
    */
   @JvmField val interactiveCommands: LinkedBlockingQueue<InteractiveCommand> = LinkedBlockingQueue(),
 ) {
@@ -339,9 +330,9 @@ internal constructor(
 }
 
 /**
- * Cross-classloader command for the v3 Android-interactive held-rule loop (INTERACTIVE-ANDROID.md
- * § 3). The sandbox-side `SandboxRunner` reads from [SandboxSlot.interactiveCommands] when its
- * slot is pinned to an interactive session; commands are routed to the held rule's main thread.
+ * Cross-classloader command for the v3 Android-interactive held-rule loop (INTERACTIVE-ANDROID.md §
+ * 3). The sandbox-side `SandboxRunner` reads from [SandboxSlot.interactiveCommands] when its slot
+ * is pinned to an interactive session; commands are routed to the held rule's main thread.
  *
  * **Bridge-package-only.** This sealed interface and every member must use only `java.*` types or
  * other types in this `bridge` package — see the file KDoc on [DaemonHostBridge] for the
@@ -349,10 +340,10 @@ internal constructor(
  * types, no Roborazzi capture types, no `ee.schimke.composeai.daemon.*` imports outside this
  * package. Pixel coordinates ride as primitives; the sandbox synthesises the `MotionEvent` itself.
  *
- * **Wire-only in PR A.** The host enqueues nothing yet; no sandbox-side loop drains the queue.
- * PR B (INTERACTIVE-ANDROID.md § 4 + § 7) wires both ends and ships
- * `RobolectricHost.acquireInteractiveSession`. Lands here first so PR B doesn't have to widen
- * the bridge surface mid-rollout.
+ * **Wire-only in PR A.** The host enqueues nothing yet; no sandbox-side loop drains the queue. PR B
+ * (INTERACTIVE-ANDROID.md § 4 + § 7) wires both ends and ships
+ * `RobolectricHost.acquireInteractiveSession`. Lands here first so PR B doesn't have to widen the
+ * bridge surface mid-rollout.
  */
 sealed interface InteractiveCommand {
   /**
@@ -370,18 +361,18 @@ sealed interface InteractiveCommand {
    *
    * **Qualifier fields are encoded as primitives + Strings** rather than the daemon-side
    * [`RenderSpec.SpecUiMode`] / [`RenderSpec.SpecOrientation`] enums because those enums live in
-   * the instrumented `ee.schimke.composeai.daemon.*` package — passing them across the bridge
-   * would re-load the enum class inside the sandbox, breaking `==` equality. Strings cross the
-   * boundary as `java.lang.String` (do-not-acquire by default). PR C wired the extra qualifiers
-   * (`localeTag`, `fontScale`, `uiMode`, `orientation`) so the held composition reflects the
-   * same Configuration overrides a one-shot render would; PR B's Start carried only the v1
+   * the instrumented `ee.schimke.composeai.daemon.*` package — passing them across the bridge would
+   * re-load the enum class inside the sandbox, breaking `==` equality. Strings cross the boundary
+   * as `java.lang.String` (do-not-acquire by default). PR C wired the extra qualifiers
+   * (`localeTag`, `fontScale`, `uiMode`, `orientation`) so the held composition reflects the same
+   * Configuration overrides a one-shot render would; PR B's Start carried only the v1
    * size/density/round subset.
    *
    * @param replyError the sandbox sets this before counting down [replyLatch] when `setContent`
    *   throws; the host then surfaces a clean failure on the v2 `interactive/start` reply rather
-   *   than a wire-level timeout. Wrapping in [AtomicReference] keeps the field assignable from
-   *   the sandbox classloader without requiring Throwable types to cross the boundary as
-   *   anything other than the standard `java.lang.Throwable`.
+   *   than a wire-level timeout. Wrapping in [AtomicReference] keeps the field assignable from the
+   *   sandbox classloader without requiring Throwable types to cross the boundary as anything other
+   *   than the standard `java.lang.Throwable`.
    */
   data class Start(
     override val streamId: String,
@@ -392,8 +383,10 @@ sealed interface InteractiveCommand {
     val density: Float,
     val backgroundColor: Long,
     val showBackground: Boolean,
-    /** Held-session cleared-background toggle; forces a transparent background and provides
-     * `LocalPreviewBackgroundCleared = true`. `false` preserves the discovery-time background. */
+    /**
+     * Held-session cleared-background toggle; forces a transparent background and provides
+     * `LocalPreviewBackgroundCleared = true`. `false` preserves the discovery-time background.
+     */
     val clearBackground: Boolean = false,
     val device: String?,
     val outputBaseName: String,
@@ -401,9 +394,13 @@ sealed interface InteractiveCommand {
     val replyError: AtomicReference<Throwable?>,
     /** BCP-47 locale tag (e.g. `"en-US"`); `null` = no `b+lang+region` qualifier. */
     val localeTag: String? = null,
-    /** Font scale multiplier; `null` = leave Robolectric's `RuntimeEnvironment.setFontScale` at 1.0. */
+    /**
+     * Font scale multiplier; `null` = leave Robolectric's `RuntimeEnvironment.setFontScale` at 1.0.
+     */
     val fontScale: Float? = null,
-    /** `"light"` / `"dark"` / `null`; resolved sandbox-side to the `notnight` / `night` qualifier. */
+    /**
+     * `"light"` / `"dark"` / `null`; resolved sandbox-side to the `notnight` / `night` qualifier.
+     */
     val uiMode: String? = null,
     /** `"portrait"` / `"landscape"` / `null`; overrides the size-derived guess. */
     val orientation: String? = null,
@@ -412,12 +409,12 @@ sealed interface InteractiveCommand {
     /**
      * Decomposed `spec.overrides.touchOverlay`. When `true`, the held-rule loop wraps
      * `InvokeHeldComposable` with the planner output that includes `TouchOverlayExtension`, so a
-     * panel-driven `interactive/input` with multi-touch dispatch paints the visualization rings
-     * on the streamed frames. Threaded as a primitive (not the full `PreviewOverrides` bag)
-     * because the protocol's nested types live in the instrumented daemon package and don't
-     * cross the sandbox classloader boundary cleanly — same decomposition pattern the other
-     * `spec.*` qualifier fields above use. Other planner-relevant fields (keyboard,
-     * material3Theme, …) can be added the same way when their interactive use cases need them.
+     * panel-driven `interactive/input` with multi-touch dispatch paints the visualization rings on
+     * the streamed frames. Threaded as a primitive (not the full `PreviewOverrides` bag) because
+     * the protocol's nested types live in the instrumented daemon package and don't cross the
+     * sandbox classloader boundary cleanly — same decomposition pattern the other `spec.*`
+     * qualifier fields above use. Other planner-relevant fields (keyboard, material3Theme, …) can
+     * be added the same way when their interactive use cases need them.
      */
     val touchOverlay: Boolean? = null,
     /**
@@ -426,21 +423,20 @@ sealed interface InteractiveCommand {
      * session renders non-composable previews (tiles, notifications, Glance widgets) through their
      * dedicated `*PreviewComposable` strategies instead of trying to resolve a `@Composable` method
      * that those previews never synthesise — without this a tile preview goes blank the moment live
-     * mode is enabled (the resolution throws `NoSuchMethodException` and the start reply errors out).
-     * Threaded as the raw `java.lang.String` for the same do-not-acquire bridge reason as the other
-     * `spec.*` fields above.
+     * mode is enabled (the resolution throws `NoSuchMethodException` and the start reply errors
+     * out). Threaded as the raw `java.lang.String` for the same do-not-acquire bridge reason as the
+     * other `spec.*` fields above.
      */
     val kind: String? = null,
   ) : InteractiveCommand
 
   /**
    * Synthesise + dispatch a [android.view.MotionEvent] on the rule's main thread. [kind] mirrors
-   * the v2 wire `interactive/input` `kind` field — pointer events, `"rotaryScroll"` for Wear,
-   * and (issue #1203) `"keyDown"` / `"keyUp"` which route through the held rule's
-   * `performKeyInput`. Pixel coordinates are in the held composition's own pixel space — the host
-   * has already scaled from any `pixelDensity` ratio. For key events [pixelX] / [pixelY] are
-   * unused and may be zero; [keyCode] carries the Android `KEYCODE_*` int as a decimal string
-   * (see `InteractiveKeyCodes`).
+   * the v2 wire `interactive/input` `kind` field — pointer events, `"rotaryScroll"` for Wear, and
+   * (issue #1203) `"keyDown"` / `"keyUp"` which route through the held rule's `performKeyInput`.
+   * Pixel coordinates are in the held composition's own pixel space — the host has already scaled
+   * from any `pixelDensity` ratio. For key events [pixelX] / [pixelY] are unused and may be zero;
+   * [keyCode] carries the Android `KEYCODE_*` int as a decimal string (see `InteractiveKeyCodes`).
    */
   data class Dispatch(
     override val streamId: String,
@@ -455,10 +451,11 @@ sealed interface InteractiveCommand {
     val keyCode: String? = null,
     /**
      * Issue #1784 — optional semantic target. When any of these is set the sandbox resolves it to
-     * the matched node's centre (via `ComposeSemanticsDataProducer.buildPayload` + `SemanticsTargets`)
-     * and dispatches there instead of using [pixelX]/[pixelY]. Passed as plain `java.lang.String`s
-     * (like [keyCode] / `DispatchUiAutomator.selectorJson`) so no Compose / domain type crosses the
-     * classloader boundary. Precedence sandbox-side: ref → testTag → role+text.
+     * the matched node's centre (via `ComposeSemanticsDataProducer.buildPayload` +
+     * `SemanticsTargets`) and dispatches there instead of using [pixelX]/[pixelY]. Passed as plain
+     * `java.lang.String`s (like [keyCode] / `DispatchUiAutomator.selectorJson`) so no Compose /
+     * domain type crosses the classloader boundary. Precedence sandbox-side: ref → testTag →
+     * role+text.
      */
     val targetRef: String? = null,
     val targetTestTag: String? = null,
@@ -474,11 +471,11 @@ sealed interface InteractiveCommand {
     /**
      * Issue #1784 — set by the sandbox when a semantic target failed to resolve to exactly one node
      * (no match / ambiguous / no semantics tree yet): a JSON-encoded
-     * `SemanticsTargetUnresolvedReason` carrying the structured cause + candidate nodes. Travels as a
-     * plain `java.lang.String` (do-not-acquire) so no domain type crosses the classloader boundary;
-     * the host decodes it and rethrows as a `SemanticsTargetUnresolvedException` so the recording
-     * path can surface `targetUnresolvedReason` evidence. Null for a clean resolve and for pixel
-     * dispatch.
+     * `SemanticsTargetUnresolvedReason` carrying the structured cause + candidate nodes. Travels as
+     * a plain `java.lang.String` (do-not-acquire) so no domain type crosses the classloader
+     * boundary; the host decodes it and rethrows as a `SemanticsTargetUnresolvedException` so the
+     * recording path can surface `targetUnresolvedReason` evidence. Null for a clean resolve and
+     * for pixel dispatch.
      */
     val replyUnresolvedReasonJson: AtomicReference<String?>? = null,
     val replyLatch: CountDownLatch,
@@ -511,7 +508,8 @@ sealed interface InteractiveCommand {
    * Accessibility-driven dispatch: invoke a `SemanticsActions` action against the node whose
    * content description matches [nodeContentDescription]. The sandbox-side handler resolves the
    * node via `rule.onAllNodes(hasContentDescription(...), useUnmergedTree = true)` and invokes the
-   * matching action — same path a screen reader would walk in `AccessibilityNodeInfo.performAction`.
+   * matching action — same path a screen reader would walk in
+   * `AccessibilityNodeInfo.performAction`.
    *
    * [actionKind] is a short wire name (`"click"`, `"longClick"`, …); the sandbox maps it to the
    * corresponding `SemanticsActions` constant. New actions extend this list; the bridge shape
@@ -523,8 +521,8 @@ sealed interface InteractiveCommand {
    * `dispatchSemanticsAction` rethrows on the caller thread so the recording session sees the
    * failure rather than a silently-truncated playback.
    *
-   * Strings travel as `java.lang.String` (do-not-acquire). No Compose types cross the bridge —
-   * the sandbox does the matcher resolution itself.
+   * Strings travel as `java.lang.String` (do-not-acquire). No Compose types cross the bridge — the
+   * sandbox does the matcher resolution itself.
    */
   data class DispatchSemanticsAction(
     override val streamId: String,
@@ -536,31 +534,31 @@ sealed interface InteractiveCommand {
   ) : InteractiveCommand
 
   /**
-   * UIAutomator-shaped dispatch: resolve a node by a BySelector-style predicate and invoke a
-   * named action against it. The sandbox-side handler decodes [selectorJson] via
-   * `decodeSelectorJson(...)` (from `:data-uiautomator-core`), walks the rule's
-   * `SemanticsOwner` tree, and dispatches the matching `SemanticsActions` lambda — same path
-   * `:daemon:android`'s `performSemanticsActionByContentDescription` already uses, just behind
-   * a multi-axis selector instead of a single content-description string.
+   * UIAutomator-shaped dispatch: resolve a node by a BySelector-style predicate and invoke a named
+   * action against it. The sandbox-side handler decodes [selectorJson] via
+   * `decodeSelectorJson(...)` (from `:data-uiautomator-core`), walks the rule's `SemanticsOwner`
+   * tree, and dispatches the matching `SemanticsActions` lambda — same path `:daemon:android`'s
+   * `performSemanticsActionByContentDescription` already uses, just behind a multi-axis selector
+   * instead of a single content-description string.
    *
-   * [actionKind] is a short wire name (`"click"`, `"longClick"`, `"scrollForward"`, …); the
-   * sandbox maps it to the corresponding `UiObject` method. New actions extend the sandbox-side
-   * `when`; the bridge shape doesn't need to change per action. [inputText] is populated only
-   * for `actionKind = "inputText"` and ignored otherwise.
+   * [actionKind] is a short wire name (`"click"`, `"longClick"`, `"scrollForward"`, …); the sandbox
+   * maps it to the corresponding `UiObject` method. New actions extend the sandbox-side `when`; the
+   * bridge shape doesn't need to change per action. [inputText] is populated only for `actionKind =
+   * "inputText"` and ignored otherwise.
    *
-   * [useUnmergedTree] mirrors the prototype's option — defaults to `false` (merged) so the
-   * common `By.text("Submit")` + `.click()` shape targets a `Button { Text(...) }` as a
-   * single node, matching on-device UIAutomator's selector semantics. Agents that need to
-   * target inner nodes can opt into the unmerged tree.
+   * [useUnmergedTree] mirrors the prototype's option — defaults to `false` (merged) so the common
+   * `By.text("Submit")` + `.click()` shape targets a `Button { Text(...) }` as a single node,
+   * matching on-device UIAutomator's selector semantics. Agents that need to target inner nodes can
+   * opt into the unmerged tree.
    *
    * [replyMatched] is set by the sandbox before [replyLatch] counts down: `true` when a node
-   * matched and the action fired, `false` when no node matched or the matched node didn't
-   * expose the action (caller surfaces unsupported evidence). Throwables from the action body
-   * land in [replyError]; the host's `dispatchUiAutomator` rethrows on the caller thread so
-   * the recording session sees the failure rather than a silently-truncated playback.
+   * matched and the action fired, `false` when no node matched or the matched node didn't expose
+   * the action (caller surfaces unsupported evidence). Throwables from the action body land in
+   * [replyError]; the host's `dispatchUiAutomator` rethrows on the caller thread so the recording
+   * session sees the failure rather than a silently-truncated playback.
    *
-   * Strings travel as `java.lang.String` (do-not-acquire). No `Selector` / `UiObject` types
-   * cross the bridge — the sandbox does the JSON-decode + matcher resolution itself.
+   * Strings travel as `java.lang.String` (do-not-acquire). No `Selector` / `UiObject` types cross
+   * the bridge — the sandbox does the JSON-decode + matcher resolution itself.
    */
   data class DispatchUiAutomator(
     override val streamId: String,
@@ -621,11 +619,12 @@ sealed interface InteractiveCommand {
 
   /**
    * Run ATF against the held composition for an `assert.a11y` recording-script point (issue #1966).
-   * Mirrors [CaptureProbeSemantics]: the sandbox-side handler gets the held rule's root `View`, runs
-   * `AccessibilityChecker.check`, and serialises the findings as an `AccessibilityFindingsPayload`
-   * JSON string into [replyFindingsJson] (so only a String crosses the sandbox/host boundary — the
-   * ATF / Compose types never leak across). Read-only against the held composition. Throwables ride
-   * [replyError]; the host's `captureA11yFindings` rethrows on the caller thread.
+   * Mirrors [CaptureProbeSemantics]: the sandbox-side handler gets the held rule's root `View`,
+   * runs `AccessibilityChecker.check`, and serialises the findings as an
+   * `AccessibilityFindingsPayload` JSON string into [replyFindingsJson] (so only a String crosses
+   * the sandbox/host boundary — the ATF / Compose types never leak across). Read-only against the
+   * held composition. Throwables ride [replyError]; the host's `captureA11yFindings` rethrows on
+   * the caller thread.
    */
   data class CaptureA11yFindings(
     override val streamId: String,
@@ -636,14 +635,14 @@ sealed interface InteractiveCommand {
 
   /**
    * Lifecycle dispatch: move the held activity to the named lifecycle state via
-   * `ActivityScenario.moveToState(...)`. Used by `record_preview`'s `lifecycle.event` script
-   * events to drive `onPause` / `onResume` / `onStop` on the held composition.
+   * `ActivityScenario.moveToState(...)`. Used by `record_preview`'s `lifecycle.event` script events
+   * to drive `onPause` / `onResume` / `onStop` on the held composition.
    *
-   * [lifecycleEvent] is a wire-level string the sandbox maps to the matching
-   * `Lifecycle.State` value (`"pause"` → STARTED, `"resume"` → RESUMED, `"stop"` → CREATED).
-   * Unknown names set [replyApplied] to `false` so the caller can emit a precise unsupported
-   * reason. `"destroy"` is intentionally rejected — moving to DESTROYED mid-recording would tear
-   * down the scenario and break subsequent renders.
+   * [lifecycleEvent] is a wire-level string the sandbox maps to the matching `Lifecycle.State`
+   * value (`"pause"` → STARTED, `"resume"` → RESUMED, `"stop"` → CREATED). Unknown names set
+   * [replyApplied] to `false` so the caller can emit a precise unsupported reason. `"destroy"` is
+   * intentionally rejected — moving to DESTROYED mid-recording would tear down the scenario and
+   * break subsequent renders.
    *
    * Strings travel as `java.lang.String` (do-not-acquire). No `Lifecycle.State` types cross the
    * bridge — the sandbox owns the mapping internally.
@@ -658,16 +657,16 @@ sealed interface InteractiveCommand {
 
   /**
    * Force a fresh composition by tearing down the held content under its current `key(...)`
-   * boundary and rebuilding. Used by `record_preview`'s `preview.reload` script event to verify
-   * a screen recovers from a recompose-from-zero. The sandbox-side handler increments a
+   * boundary and rebuilding. Used by `record_preview`'s `preview.reload` script event to verify a
+   * screen recovers from a recompose-from-zero. The sandbox-side handler increments a
    * `mutableIntStateOf` reload counter that the wrapping `key(...)` block reads, which Compose
    * detects as a key change and rebuilds the slot table fresh.
    *
    * No payload — the reload target is implicit (the held composition this stream is driving).
    * `replyApplied` is set by the sandbox before [replyLatch] counts down: `true` on success,
-   * `false` if the host doesn't carry a reload counter (defensive — the production held-rule
-   * loop always wires one). Throwables from the rebuild ride [replyError] for the host's
-   * dispatch path to rethrow.
+   * `false` if the host doesn't carry a reload counter (defensive — the production held-rule loop
+   * always wires one). Throwables from the rebuild ride [replyError] for the host's dispatch path
+   * to rethrow.
    */
   data class DispatchPreviewReload(
     override val streamId: String,
@@ -677,14 +676,13 @@ sealed interface InteractiveCommand {
   ) : InteractiveCommand
 
   /**
-   * Force a Compose-level save+restore round-trip — exercise the `rememberSaveable` path
-   * without depending on Android's `onSaveInstanceState` / `onCreate(savedInstanceState)`. Used
-   * by `record_preview`'s `state.recreate` script event for "verify state survives a recreate"
-   * audits.
+   * Force a Compose-level save+restore round-trip — exercise the `rememberSaveable` path without
+   * depending on Android's `onSaveInstanceState` / `onCreate(savedInstanceState)`. Used by
+   * `record_preview`'s `state.recreate` script event for "verify state survives a recreate" audits.
    *
    * The sandbox-side handler snapshots the current `SaveableStateRegistry` via `performSave()`,
-   * stashes it, then increments a recreate counter that the wrapping `key(...)` block reads.
-   * The new composition initializes a fresh `SaveableStateRegistry` from the stashed map, so
+   * stashes it, then increments a recreate counter that the wrapping `key(...)` block reads. The
+   * new composition initializes a fresh `SaveableStateRegistry` from the stashed map, so
    * `rememberSaveable` reads see the saved values. `remember` state is lost (same as a real
    * activity recreate).
    *
@@ -702,8 +700,8 @@ sealed interface InteractiveCommand {
   /**
    * Capture the current `SaveableStateRegistry` snapshot into a named bundle keyed by
    * [checkpointId]. Used by `record_preview`'s `state.save` script event. Sandbox-side handler
-   * stores the bundle in a per-stream map; later `DispatchStateRestore` with the same id reads
-   * it. `replyApplied` is `true` on successful capture.
+   * stores the bundle in a per-stream map; later `DispatchStateRestore` with the same id reads it.
+   * `replyApplied` is `true` on successful capture.
    */
   data class DispatchStateSave(
     override val streamId: String,
@@ -714,10 +712,10 @@ sealed interface InteractiveCommand {
   ) : InteractiveCommand
 
   /**
-   * Look up the bundle stashed by `DispatchStateSave` with matching [checkpointId] and rebuild
-   * the held composition with it restored. Used by `record_preview`'s `state.restore` script
-   * event. `replyApplied` is `true` on successful restore, `false` when no checkpoint with that
-   * id has been saved (the caller surfaces a precise unsupported reason).
+   * Look up the bundle stashed by `DispatchStateSave` with matching [checkpointId] and rebuild the
+   * held composition with it restored. Used by `record_preview`'s `state.restore` script event.
+   * `replyApplied` is `true` on successful restore, `false` when no checkpoint with that id has
+   * been saved (the caller surfaces a precise unsupported reason).
    */
   data class DispatchStateRestore(
     override val streamId: String,
@@ -729,15 +727,14 @@ sealed interface InteractiveCommand {
 
   /**
    * Navigation dispatch: fire a deep-link Intent at the held activity, an instant back press, or
-   * one phase of a predictive-back gesture. Used by `record_preview`'s `navigation.*` script
-   * events (deep-link routing audits, back-stack pop verification, predictive-back animation
-   * audits).
+   * one phase of a predictive-back gesture. Used by `record_preview`'s `navigation.*` script events
+   * (deep-link routing audits, back-stack pop verification, predictive-back animation audits).
    *
    * [actionKind] is a short wire name — `"deepLink"`, `"back"`, `"predictiveBackStarted"`,
    * `"predictiveBackProgressed"`, `"predictiveBackCommitted"`, `"predictiveBackCancelled"`. The
    * sandbox-side handler maps each to the corresponding `Activity.startActivity` /
-   * `OnBackPressedDispatcher` method. Unknown names set [replyApplied] to `false` so the caller
-   * can emit a precise unsupported reason.
+   * `OnBackPressedDispatcher` method. Unknown names set [replyApplied] to `false` so the caller can
+   * emit a precise unsupported reason.
    *
    * Strings travel as `java.lang.String` (do-not-acquire). Floats are primitives. No
    * `BackEventCompat` / `Intent` types cross the bridge — the sandbox owns the construction
@@ -761,8 +758,8 @@ sealed interface InteractiveCommand {
   /**
    * Issue #1204 — start the `compose/recomposition` observer inside the held-rule loop. The
    * sandbox-side handler installs a `CompositionObserver` against the rule's `Recomposer` and
-   * routes per-scope recomposition counts into [SandboxRecompositionBridge] keyed by
-   * ([previewId], [streamId]).
+   * routes per-scope recomposition counts into [SandboxRecompositionBridge] keyed by ([previewId],
+   * [streamId]).
    *
    * **Opt-in latching.** [replyUnavailable] is set by the sandbox handler when the Compose runtime
    * doesn't expose the reflection targets the observer install needs (`LinkageError` /

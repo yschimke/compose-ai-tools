@@ -26,10 +26,7 @@ class TouchTargetsExtensionTest {
               states = listOf("clickable"),
               boundsInScreen = "0,0,80,80",
             ),
-            AccessibilityNode(
-              label = "Static text",
-              boundsInScreen = "100,0,200,80",
-            ),
+            AccessibilityNode(label = "Static text", boundsInScreen = "100,0,200,80"),
           )
       )
 

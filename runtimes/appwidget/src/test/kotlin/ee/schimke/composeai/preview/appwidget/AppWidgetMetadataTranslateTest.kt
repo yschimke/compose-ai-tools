@@ -14,15 +14,15 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 /**
- * Unit tests for [translate] — the `AppWidgetProviderInfo` → [LauncherWidgetMetadata] mapping.
- * Runs under Robolectric so `AppWidgetProviderInfo` is a real constructed instance with default
- * field values; we override the ones the translation reads (`min/maxResizeWidth/Height`,
+ * Unit tests for [translate] — the `AppWidgetProviderInfo` → [LauncherWidgetMetadata] mapping. Runs
+ * under Robolectric so `AppWidgetProviderInfo` is a real constructed instance with default field
+ * values; we override the ones the translation reads (`min/maxResizeWidth/Height`,
  * `targetCellWidth/Height`, `resizeMode`) and assert the cell math, axis-locking, and
  * supported-cells rectangle.
  *
  * Avoids spinning up a full `AppWidgetManager` mock — the cell math is the part that needs
- * pixel-exact coverage and Robolectric's default `Density(1.0)` makes the px→dp conversion easy
- * to reason about (`90px / 1.0 = 90dp`, snapping to `1×1` cells at the 72dp grid; etc.).
+ * pixel-exact coverage and Robolectric's default `Density(1.0)` makes the px→dp conversion easy to
+ * reason about (`90px / 1.0 = 90dp`, snapping to `1×1` cells at the 72dp grid; etc.).
  */
 // Robolectric SDK 36 requires JDK 21; the project toolchain is JDK 17, so the per-class default
 // pins to SDK 35. Same fix the `:data-uiautomator-*` self-tests apply.
@@ -170,8 +170,7 @@ class AppWidgetMetadataTranslateTest {
     // calling translate). The unit test surface for `translate` itself always receives a real
     // [AppWidgetProviderInfo] — null returns are a non-shape; this case is here as a fence to
     // remind future readers that translate is total (non-null in, non-null out).
-    @Suppress("RedundantNullableReturnType")
-    val sentinel: Nothing? = null
+    @Suppress("RedundantNullableReturnType") val sentinel: Nothing? = null
     assertNull(sentinel)
   }
 }

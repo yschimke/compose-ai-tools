@@ -1,8 +1,8 @@
 package ee.schimke.composeai.daemon
 
+import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.File
-import java.awt.image.BufferedImage
 import javax.imageio.ImageIO
 import kotlin.math.abs
 import org.junit.Assert.assertNotNull
@@ -19,8 +19,8 @@ import org.junit.rules.TemporaryFolder
  * preview body. A future refactor could quietly swap `InvokeWithOptionalWrapper` for raw
  * `InvokeComposable` and the unit test would stay green while production silently regressed back to
  * the original "Invalid applier" crash on samples like
- * [`RemoteButtonWithBorderPreview`][../../../../../../samples/remotecompose] (the bug that motivated
- * commit `006269f`).
+ * [`RemoteButtonWithBorderPreview`][../../../../../../samples/remotecompose] (the bug that
+ * motivated commit `006269f`).
  *
  * This test drives [PreviewManifestRouter] end-to-end with a manifest entry that nominates
  * [GreenBorderWrapper] via `params.wrapperClassName` — the same production path the gradle plugin's
@@ -38,8 +38,8 @@ import org.junit.rules.TemporaryFolder
  * [PreviewWrapperTest][ee.schimke.composeai.renderer.PreviewWrapperTest], which guards the same
  * path on the non-daemon side. The daemon test goes through [PreviewManifestRouter] (production
  * shape) rather than calling `resolveWrapper` directly, because the spec-driven FQN path is the
- * only one that fires for binary-retained `@PreviewWrapper` annotations in production (issue
- * #1440).
+ * only one that fires for binary-retained `@PreviewWrapper` annotations in production
+ * (issue #1440).
  */
 class WrappedPreviewRenderTest {
 
@@ -67,8 +67,7 @@ class WrappedPreviewRenderTest {
                   widthDp = 32,
                   heightDp = 32,
                   density = 1.0f,
-                  wrapperClassName =
-                    "ee.schimke.composeai.daemon.GreenBorderWrapper",
+                  wrapperClassName = "ee.schimke.composeai.daemon.GreenBorderWrapper",
                 ),
             )
           )
@@ -112,13 +111,7 @@ class WrappedPreviewRenderTest {
   private fun assertEdgePixelsAreGreen(img: BufferedImage) {
     val w = img.width
     val h = img.height
-    val samples =
-      listOf(
-        w / 2 to 2,
-        w / 2 to (h - 3),
-        2 to (h / 2),
-        (w - 3) to (h / 2),
-      )
+    val samples = listOf(w / 2 to 2, w / 2 to (h - 3), 2 to (h / 2), (w - 3) to (h / 2))
     for ((x, y) in samples) {
       val rgb = img.getRGB(x, y)
       val r = (rgb shr 16) and 0xFF

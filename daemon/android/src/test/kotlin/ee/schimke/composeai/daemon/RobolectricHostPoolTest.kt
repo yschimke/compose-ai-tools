@@ -17,21 +17,21 @@ import org.junit.Test
  *    didn't collapse the pool to a single shared sandbox via the
  *    [SandboxHoldingRunner]/[SandboxHoldingHints] discriminator + constructor-snapshot path.
  * 3. Renders dispatched to the same slot consistently see that slot's classloader (i.e. the slot
- *    dispatch in [RobolectricHost.submit] is stable — `Math.floorMod(id, sandboxCount)` is keyed
- *    on the request id which is monotonic per process).
+ *    dispatch in [RobolectricHost.submit] is stable — `Math.floorMod(id, sandboxCount)` is keyed on
+ *    the request id which is monotonic per process).
  *
- * **Why ids are bucketed by `id and 1`**: when the payload doesn't carry a `previewId=` key
- * (legacy stub payloads like `render-N`), [RobolectricHost.submit] hashes the request id instead.
- * For small positive Long ids `Long.hashCode()` is the low 32 bits as a signed int, so its parity
- * matches `id and 1L`; bucketing by that aligns with the actual dispatch path.
+ * **Why ids are bucketed by `id and 1`**: when the payload doesn't carry a `previewId=` key (legacy
+ * stub payloads like `render-N`), [RobolectricHost.submit] hashes the request id instead. For small
+ * positive Long ids `Long.hashCode()` is the low 32 bits as a signed int, so its parity matches `id
+ * and 1L`; bucketing by that aligns with the actual dispatch path.
  *
  * Affinity-aware dispatch (`previewId=<id>` in the payload) is covered by
  * [samePreviewIdAlwaysLandsOnSameSlot] below.
  *
  * **Why `legacyStubPayload` and not real RenderSpecs**: [RobolectricHostTest] already submits the
- * `payload="render-N"` shape that the B1.3-era stub path was built for. Reusing that path keeps
- * the assertion focused on slot dispatch and sandbox identity rather than the heavier render-
- * engine work (Roborazzi capture, bitmap save, etc.).
+ * `payload="render-N"` shape that the B1.3-era stub path was built for. Reusing that path keeps the
+ * assertion focused on slot dispatch and sandbox identity rather than the heavier render- engine
+ * work (Roborazzi capture, bitmap save, etc.).
  */
 class RobolectricHostPoolTest {
 
@@ -109,12 +109,11 @@ class RobolectricHostPoolTest {
       // independent of which slot any individual id lands on.
       val previewIds = (0 until 16).map { i -> "com.example.preview.Foo$i.method" }
       val rendersPerPreview = 4
-      val byPreview =
-        previewIds.associateWith { previewId ->
-          (1..rendersPerPreview).map { _ ->
-            host.submit(RenderRequest.Render(payload = "previewId=$previewId"))
-          }
+      val byPreview = previewIds.associateWith { previewId ->
+        (1..rendersPerPreview).map { _ ->
+          host.submit(RenderRequest.Render(payload = "previewId=$previewId"))
         }
+      }
 
       // Load-bearing: each previewId's renders all land on a single classloader (= same slot).
       for ((previewId, results) in byPreview) {
@@ -168,11 +167,7 @@ class RobolectricHostPoolTest {
     assertEquals(
       "when slot 1 is held by live interactive mode, normal renderNow dispatch must stay on slot 0",
       0,
-      host.chooseSlotIndexForTest(
-        payload = slotOnePayload,
-        id = 100L,
-        interactiveSlotPinned = true,
-      ),
+      host.chooseSlotIndexForTest(payload = slotOnePayload, id = 100L, interactiveSlotPinned = true),
     )
   }
 
@@ -272,11 +267,13 @@ class RobolectricHostPoolTest {
     // catch classloader-identity skew. This test drives real Compose reflection through a
     // UserClassLoaderHolder-backed child loader:
     //
-    // 1. Render a real fixture on slot 0 so the legacy slot-0 currentChildLoader alias is populated.
+    // 1. Render a real fixture on slot 0 so the legacy slot-0 currentChildLoader alias is
+    // populated.
     // 2. Render the same fixture on slot 1.
     //
     // The bug was that slot 1 read DaemonHostBridge.currentChildLoader() (slot 0's alias) instead
-    // of slot.childLoaderRef. That loaded RedFixturePreviewsKt with slot 0's sandbox as parent while
+    // of slot.childLoaderRef. That loaded RedFixturePreviewsKt with slot 0's sandbox as parent
+    // while
     // executing inside slot 1's sandbox, so Compose's Composer parameter type did not match and
     // getDeclaredComposableMethod reported the valid @Composable function as missing.
     val userClassesDir = stageFixtureClassesDir()
@@ -347,7 +344,9 @@ class RobolectricHostPoolTest {
     val probe = RobolectricHost(sandboxCount = 2)
     val slot0PreviewId =
       (0 until 128)
-        .map { i -> "ee.schimke.composeai.daemon.RedFixturePreviewsKt.RedSquare.interactive.slot0.$i" }
+        .map { i ->
+          "ee.schimke.composeai.daemon.RedFixturePreviewsKt.RedSquare.interactive.slot0.$i"
+        }
         .first { previewId ->
           probe.chooseSlotIndexForTest(
             payload = renderPayload(previewId, outputBaseName = "probe"),
@@ -405,10 +404,12 @@ class RobolectricHostPoolTest {
   fun swapUserClassLoadersBroadcastsToEverySlot() {
     // `fileChanged({ kind: "source" })` calls `host.swapUserClassLoaders()`, which must invalidate
     // every slot's holder so the next render to any slot allocates a fresh child loader.
-    val swapCallsPerSlot = java.util.concurrent.ConcurrentHashMap<Int, java.util.concurrent.atomic.AtomicInteger>()
+    val swapCallsPerSlot =
+      java.util.concurrent.ConcurrentHashMap<Int, java.util.concurrent.atomic.AtomicInteger>()
     val factory: (ClassLoader) -> UserClassLoaderHolder = { sandboxClassLoader ->
       val key = System.identityHashCode(sandboxClassLoader)
-      val counter = swapCallsPerSlot.computeIfAbsent(key) { java.util.concurrent.atomic.AtomicInteger() }
+      val counter =
+        swapCallsPerSlot.computeIfAbsent(key) { java.util.concurrent.atomic.AtomicInteger() }
       UserClassLoaderHolder(
         urls = emptyList(),
         parentSupplier = { sandboxClassLoader },
@@ -420,7 +421,9 @@ class RobolectricHostPoolTest {
       host.start()
       // Warm both slots so both holders are allocated. Without this the swap is a no-op for slots
       // whose factory has never been invoked.
-      (1..8).forEach { i -> host.submit(RenderRequest.Render(payload = "previewId=com.example.P$i")) }
+      (1..8).forEach { i ->
+        host.submit(RenderRequest.Render(payload = "previewId=com.example.P$i"))
+      }
       assertEquals("expected both slots warmed", 2, swapCallsPerSlot.size)
       // Trigger the broadcast.
       host.swapUserClassLoaders()
@@ -445,10 +448,7 @@ class RobolectricHostPoolTest {
         @Suppress("UNCHECKED_CAST")
         return t as T
       }
-      throw AssertionError(
-        "expected ${expected.name}, got ${t.javaClass.name}: ${t.message}",
-        t,
-      )
+      throw AssertionError("expected ${expected.name}, got ${t.javaClass.name}: ${t.message}", t)
     }
     throw AssertionError("expected ${expected.name} to be thrown")
   }
@@ -465,16 +465,17 @@ class RobolectricHostPoolTest {
     val tempDir = Files.createTempDirectory("pool-userClasses").toFile()
     val resourceName = "ee/schimke/composeai/daemon/RedFixturePreviewsKt.class"
     val url =
-      (Thread.currentThread().contextClassLoader ?: ClassLoader.getSystemClassLoader())
-        .getResource(resourceName)
-        ?: error("Can't locate testFixtures class on the test classpath: $resourceName")
+      (Thread.currentThread().contextClassLoader ?: ClassLoader.getSystemClassLoader()).getResource(
+        resourceName
+      ) ?: error("Can't locate testFixtures class on the test classpath: $resourceName")
     val urlString = url.toString()
     if (urlString.startsWith("file:")) {
       val classFile = File(url.toURI())
       val pkgDepth = "ee/schimke/composeai/daemon".count { it == '/' } + 1
       var root: File = classFile.parentFile ?: error("classFile has no parent: $classFile")
       repeat(pkgDepth) {
-        root = root.parentFile ?: error("ran off the top of the classes-dir walking up from $classFile")
+        root =
+          root.parentFile ?: error("ran off the top of the classes-dir walking up from $classFile")
       }
       root.copyRecursively(tempDir, overwrite = true)
       return tempDir

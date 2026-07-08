@@ -13,18 +13,17 @@ import org.junit.rules.TemporaryFolder
 
 /**
  * End-to-end verification that `renderNow.overrides` actually changes rendered pixels (PROTOCOL.md
- * § 5, INTERACTIVE.md § 8a). Drives [PreviewManifestRouter] directly with override-bearing
- * payloads so we exercise the same path `JsonRpcServer.encodeRenderPayload` produces — the
- * manifest router rewrites `previewId=…;widthPx=…;uiMode=…` into a full `RenderSpec` payload, and
- * the engine consumes the override-merged spec.
+ * § 5, INTERACTIVE.md § 8a). Drives [PreviewManifestRouter] directly with override-bearing payloads
+ * so we exercise the same path `JsonRpcServer.encodeRenderPayload` produces — the manifest router
+ * rewrites `previewId=…;widthPx=…;uiMode=…` into a full `RenderSpec` payload, and the engine
+ * consumes the override-merged spec.
  *
  * This isn't a wire-level test (no JSON-RPC plumbing) — that's already covered by the protocol
  * round-trip in [`MessagesTest`][ee.schimke.composeai.daemon.protocol.MessagesTest]. What we add
  * here is the missing rung: confirm the override fields actually reach `setQualifiers` /
- * `setFontScale` / the `RenderSpec` dimensions, by rendering the same fixture twice with
- * different overrides and asserting the bytes differ in the expected way. Without this, a
- * refactor on either side of the router could silently break overrides while the unit tests stay
- * green.
+ * `setFontScale` / the `RenderSpec` dimensions, by rendering the same fixture twice with different
+ * overrides and asserting the bytes differ in the expected way. Without this, a refactor on either
+ * side of the router could silently break overrides while the unit tests stay green.
  */
 class OverrideIntegrationTest {
 
@@ -59,12 +58,7 @@ class OverrideIntegrationTest {
       assertEquals("manifest default height should be honoured", 64, small.height)
 
       // Override pushes width and height to 128.
-      val large =
-        renderAndDecode(
-          host,
-          "previewId=red-square;widthPx=128;heightPx=128",
-          "large",
-        )
+      val large = renderAndDecode(host, "previewId=red-square;widthPx=128;heightPx=128", "large")
       assertEquals("widthPx override should reach the RenderSpec", 128, large.width)
       assertEquals("heightPx override should reach the RenderSpec", 128, large.height)
     } finally {
@@ -95,8 +89,7 @@ class OverrideIntegrationTest {
     val host = PreviewManifestRouter(manifest = manifest)
     host.start()
     try {
-      val light =
-        renderAndDecode(host, "previewId=dark-aware;uiMode=light", "uimode-light")
+      val light = renderAndDecode(host, "previewId=dark-aware;uiMode=light", "uimode-light")
       val dark = renderAndDecode(host, "previewId=dark-aware;uiMode=dark", "uimode-dark")
 
       // DarkAwareSquare paints white (#FFFFFF) in light mode, black (#000000) in dark mode.
@@ -195,8 +188,7 @@ class OverrideIntegrationTest {
     val host = PreviewManifestRouter(manifest = manifest)
     host.start()
     try {
-      val img =
-        renderAndDecode(host, "previewId=red-square;captureAdvanceMs=200", "advance-200")
+      val img = renderAndDecode(host, "previewId=red-square;captureAdvanceMs=200", "advance-200")
       assertEquals(32, img.width)
       assertEquals(32, img.height)
     } finally {
@@ -232,8 +224,8 @@ class OverrideIntegrationTest {
   }
 
   /**
-   * Returns the fraction of pixels in [img] whose RGB channels are within [perChannelTolerance]
-   * of the expected `0xRRGGBB` colour. Inlined here rather than imported from the harness's
+   * Returns the fraction of pixels in [img] whose RGB channels are within [perChannelTolerance] of
+   * the expected `0xRRGGBB` colour. Inlined here rather than imported from the harness's
    * `PixelDiff` to avoid the same circular dep that [RenderEngineTest]'s helper sidesteps.
    */
   private fun pixelMatchPct(

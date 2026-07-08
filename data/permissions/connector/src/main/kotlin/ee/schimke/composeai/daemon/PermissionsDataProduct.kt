@@ -27,36 +27,36 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 
 /**
- * `AroundComposable` extension that owns the runtime-permissions surface. The extension is
- * **always active** — the planner emits an instance for every render so the controller-driven
- * Robolectric grant state is seeded and the shadow tracker's `recordQuery` path is wired
- * regardless of whether the client sent an explicit `PermissionsOverride`.
+ * `AroundComposable` extension that owns the runtime-permissions surface. The extension is **always
+ * active** — the planner emits an instance for every render so the controller-driven Robolectric
+ * grant state is seeded and the shadow tracker's `recordQuery` path is wired regardless of whether
+ * the client sent an explicit `PermissionsOverride`.
  *
  * **No custom Compose API.** Consumer screens drive the standard Android permission APIs —
  * `ContextCompat.checkSelfPermission(...)`, `Activity.checkSelfPermission(...)`,
- * `PackageManager.checkPermission(...)`, accompanist's `rememberPermissionState`, and the
- * AndroidX `ActivityResultContracts.RequestPermission` launcher — and the connector hooks them
+ * `PackageManager.checkPermission(...)`, accompanist's `rememberPermissionState`, and the AndroidX
+ * `ActivityResultContracts.RequestPermission` launcher — and the connector hooks them
  * transparently:
  *
  * * **Apply overrides** — [PermissionsController.set] pushes the grant map into Robolectric's
- *   `ShadowApplication.grantPermissions/denyPermissions`, so the platform `checkPermission`
- *   path returns the requested value without the screen reaching for a connector-specific
- *   composition local.
+ *   `ShadowApplication.grantPermissions/denyPermissions`, so the platform `checkPermission` path
+ *   returns the requested value without the screen reaching for a connector-specific composition
+ *   local.
  * * **Track queries** — [ShadowContextWrapperPermissionTracker] intercepts every
- *   `ContextWrapper.checkPermission(...)` call (the union of all the public check APIs above)
- *   and records the queried permission in the controller for the `compose/permissions`
- *   data-product payload.
- * * **Live updates** — a follow-up `renderNow.overrides.permissions` re-renders the held
- *   preview with the new grants; the screen reads `ContextCompat.checkSelfPermission(...)` on
- *   recomposition and observes the new value through the standard platform call.
+ *   `ContextWrapper.checkPermission(...)` call (the union of all the public check APIs above) and
+ *   records the queried permission in the controller for the `compose/permissions` data-product
+ *   payload.
+ * * **Live updates** — a follow-up `renderNow.overrides.permissions` re-renders the held preview
+ *   with the new grants; the screen reads `ContextCompat.checkSelfPermission(...)` on recomposition
+ *   and observes the new value through the standard platform call.
  *
  * Lifecycle:
  *
- * * On construction (planner phase, before composition starts) — [PermissionsController.set]
- *   is called with the seed (clears the map when null). The seed must land **before** the
- *   first composition pass so that consumer code reading `Context.checkSelfPermission(...)` on
- *   the very first composition observes the override; a previous shape applied the seed inside
- *   a `DisposableEffect(seed)` whose block runs *after* composition, leaving the screen on the
+ * * On construction (planner phase, before composition starts) — [PermissionsController.set] is
+ *   called with the seed (clears the map when null). The seed must land **before** the first
+ *   composition pass so that consumer code reading `Context.checkSelfPermission(...)` on the very
+ *   first composition observes the override; a previous shape applied the seed inside a
+ *   `DisposableEffect(seed)` whose block runs *after* composition, leaving the screen on the
  *   pre-seed branch for one full render. See `PermissionsOverrideIntegrationTest` in
  *   `:daemon:android` for the regression that pins this.
  * * On dispose (composition leaves the tree) — clears the override (matches
@@ -128,13 +128,12 @@ class PermissionsPreviewOverrideExtension : DataExtension<PreviewOverrides> {
  * The registry tracks two facets per preview id:
  *
  * * The effective grant map applied by the last `renderNow.overrides.permissions`.
- * * The set of permissions the screen queried during the latest render (insertion order
- *   preserved).
+ * * The set of permissions the screen queried during the latest render (insertion order preserved).
  *
- * A `data/fetch` after a permission-aware render returns the combined payload; before any render
- * or after [clear], it returns [DataProductRegistry.Outcome.NotAvailable]. Clients update the
- * state by sending a fresh `renderNow.overrides.permissions`; the panel's "what's queried" chip
- * subscribes to refresh on every render.
+ * A `data/fetch` after a permission-aware render returns the combined payload; before any render or
+ * after [clear], it returns [DataProductRegistry.Outcome.NotAvailable]. Clients update the state by
+ * sending a fresh `renderNow.overrides.permissions`; the panel's "what's queried" chip subscribes
+ * to refresh on every render.
  */
 class PermissionsDataProductRegistry : DataProductRegistry {
   private val latestPayloads = ConcurrentHashMap<String, PermissionsPayload>()
@@ -223,10 +222,10 @@ class PermissionsDataProductRegistry : DataProductRegistry {
 
   /**
    * Read the queried-permission list with cross-classloader awareness. In production, the daemon's
-   * registry runs in the host classloader, while
-   * [ShadowContextWrapperPermissionTracker]-driven `recordQuery` writes land in the sandbox
-   * classloader's [PermissionsController] static state — different `static` per classloader, so the
-   * host-CL controller's `queried.value` is empty even though queries fired. The
+   * registry runs in the host classloader, while [ShadowContextWrapperPermissionTracker]-driven
+   * `recordQuery` writes land in the sandbox classloader's [PermissionsController] static state —
+   * different `static` per classloader, so the host-CL controller's `queried.value` is empty even
+   * though queries fired. The
    * [bridge.SandboxPermissionsBridge][ee.schimke.composeai.daemon.bridge.SandboxPermissionsBridge]
    * is a do-not-acquire singleton shared across the boundary, so we prefer it when reachable.
    *
@@ -250,17 +249,17 @@ class PermissionsDataProductRegistry : DataProductRegistry {
   }
 
   /**
-   * Reflective lookup of [bridge.SandboxPermissionsBridge][ee.schimke.composeai.daemon.bridge.SandboxPermissionsBridge].
+   * Reflective lookup of
+   * [bridge.SandboxPermissionsBridge][ee.schimke.composeai.daemon.bridge.SandboxPermissionsBridge].
    * Cached per JVM (object init). `null` means the bridge isn't on the classpath (connector-only
    * unit tests; non-daemon consumers) — the registry falls back to the in-CL controller state.
    */
   private class SandboxPermissionsBridgeReader(
-    private val snapshotMethod: java.lang.reflect.Method,
+    private val snapshotMethod: java.lang.reflect.Method
   ) {
     fun snapshot(scope: String): List<String> =
       try {
-        @Suppress("UNCHECKED_CAST")
-        (snapshotMethod.invoke(null, scope) as Array<String>).toList()
+        @Suppress("UNCHECKED_CAST") (snapshotMethod.invoke(null, scope) as Array<String>).toList()
       } catch (_: ReflectiveOperationException) {
         emptyList()
       }

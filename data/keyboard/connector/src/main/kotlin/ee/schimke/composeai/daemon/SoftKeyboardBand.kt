@@ -31,10 +31,10 @@ import androidx.compose.ui.unit.sp
  * `KeyboardOverride.visible = true` through `renderNow.overrides.keyboard`).
  *
  * @param pressedKey Currently held key label, lowercase letter or one of `"space"`, `"enter"`,
- *     `"shift"`, `"backspace"`, `"sym"`. `null` for an idle band.
+ *   `"shift"`, `"backspace"`, `"sym"`. `null` for an idle band.
  * @param night Use the dark palette. Wired from `(uiMode and UI_MODE_NIGHT_MASK) ==
- *     UI_MODE_NIGHT_YES` at the caller; kept Boolean-typed here so this file doesn't pull
- *     `android.content.res.Configuration`.
+ *   UI_MODE_NIGHT_YES` at the caller; kept Boolean-typed here so this file doesn't pull
+ *   `android.content.res.Configuration`.
  */
 @Composable
 internal fun SoftKeyboardBand(pressedKey: String?, night: Boolean, modifier: Modifier = Modifier) {
@@ -152,7 +152,12 @@ private fun ColumnScope.ActionRow(pressed: String?, palette: KeyboardPalette) {
 }
 
 @Composable
-private fun LetterKey(label: String, pressed: Boolean, palette: KeyboardPalette, modifier: Modifier) {
+private fun LetterKey(
+  label: String,
+  pressed: Boolean,
+  palette: KeyboardPalette,
+  modifier: Modifier,
+) {
   KeyCap(
     label = label,
     pressed = pressed,

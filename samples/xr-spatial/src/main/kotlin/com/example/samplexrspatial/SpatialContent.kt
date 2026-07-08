@@ -38,14 +38,14 @@ import androidx.compose.ui.unit.dp
 /**
  * Reusable 2D content for the XR spatial sample.
  *
- * The Jetpack XR docs recommend authoring your app UI as ordinary 2D Compose and then *placing*
- * it spatially — a `SpatialPanel` hosts a 2D panel, an `Orbiter` floats a 2D control strip beside
- * it. The composables here are that 2D content. They carry no XR dependency at all, so they're the
+ * The Jetpack XR docs recommend authoring your app UI as ordinary 2D Compose and then *placing* it
+ * spatially — a `SpatialPanel` hosts a 2D panel, an `Orbiter` floats a 2D control strip beside it.
+ * The composables here are that 2D content. They carry no XR dependency at all, so they're the
  * natural unit to `@Preview`: what renders offline is identical to what the panel shows on-device.
  *
  * [SpatialPreviews] reuses these inside `Orbiter` / `SpatialElevation` to show how the spatial
- * affordances degrade to a 2D layout when spatialization is unavailable (Home Space / non-XR /
- * the offline renderer).
+ * affordances degrade to a 2D layout when spatialization is unavailable (Home Space / non-XR / the
+ * offline renderer).
  */
 
 /** The "main panel" body — the kind of 2D surface you would host inside a `SpatialPanel`. */
@@ -103,7 +103,10 @@ fun LibraryGrid(modifier: Modifier = Modifier) {
       "Halcyon" to Color(0xFFF4511E),
       "Vesper" to Color(0xFF5E35B1),
     )
-  Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+  Surface(
+    modifier = modifier.fillMaxSize(),
+    color = MaterialTheme.colorScheme.surfaceContainerLow,
+  ) {
     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       Text("Library", style = MaterialTheme.typography.titleLarge)
       LazyVerticalGrid(
@@ -146,7 +149,10 @@ fun QueueList(modifier: Modifier = Modifier) {
       "Undertow" to "Drift",
       "Embers" to "Pulse",
     )
-  Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+  Surface(
+    modifier = modifier.fillMaxSize(),
+    color = MaterialTheme.colorScheme.surfaceContainerLow,
+  ) {
     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       Text("Up Next", style = MaterialTheme.typography.titleLarge)
       LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -184,7 +190,10 @@ fun QueueList(modifier: Modifier = Modifier) {
 /** A large album-art card with a gradient cover — the "detail"/foreground panel body. */
 @Composable
 fun AlbumArtCard(modifier: Modifier = Modifier) {
-  Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+  Surface(
+    modifier = modifier.fillMaxSize(),
+    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+  ) {
     Column(
       Modifier.padding(20.dp),
       verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -234,7 +243,10 @@ fun SearchBar(modifier: Modifier = Modifier) {
 /** A small equalizer / settings card with sliders — a distinct "controls" panel body. */
 @Composable
 fun EqualizerCard(modifier: Modifier = Modifier) {
-  Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+  Surface(
+    modifier = modifier.fillMaxSize(),
+    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+  ) {
     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
       Text("Equalizer", style = MaterialTheme.typography.titleLarge)
       EqBand("Bass", 0.75f)

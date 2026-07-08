@@ -1,8 +1,5 @@
 package ee.schimke.composeai.preview.notification
 
-import ee.schimke.composeai.io.SystemFileSystem
-import okio.FileSystem
-import okio.Path.Companion.toPath
 import android.app.Notification
 import android.content.Context
 import android.content.res.Configuration
@@ -19,7 +16,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * Composable helper that inflates a notification factory into the surrounding Compose tree.
@@ -36,26 +36,27 @@ import java.io.File
  * tinting) is drawn by SystemUI on-device and isn't reproducible under Robolectric.
  *
  * Pass [previewId] to opt into the structured-fields JSON sidecar — when the renderer's
- * `composeai.render.outputDir` system property is set (i.e. running under the
- * compose-preview Gradle plugin's render task), a `<sanitized-id>.notification.json` is written
- * alongside the PNG under `<outputDir>/../data/notifications/`. Same schema and convention as the
- * FQN-discovered `@NotificationPreview` strategy in `:renderer-android`. Helper-based call sites
- * that don't know their preview id at compile time can leave it `null`; sidecar emission is opt-in.
+ * `composeai.render.outputDir` system property is set (i.e. running under the compose-preview
+ * Gradle plugin's render task), a `<sanitized-id>.notification.json` is written alongside the PNG
+ * under `<outputDir>/../data/notifications/`. Same schema and convention as the FQN-discovered
+ * `@NotificationPreview` strategy in `:renderer-android`. Helper-based call sites that don't know
+ * their preview id at compile time can leave it `null`; sidecar emission is opt-in.
  *
  * Pass [surface] to render a specific notification surface: [NotificationSurface.EXPANDED]
  * (default, the shade-expanded `createBigContentView()` layout — the most informative variant and
- * what the rest of the gallery uses), [NotificationSurface.COLLAPSED]
- * (`createContentView()` — the one-line shade row), or [NotificationSurface.HEADS_UP]
- * (`createHeadsUpContentView()` — the popup variant shown for high-importance channels). On AOSP
- * heads-up returns the same `RemoteViews` as the expanded layout for most styles; the parameter
- * is still distinct in the API so multi-preview meta-annotations can author 3-way surface
- * fan-outs. [surface] is recomposition-aware: the composable is internally wrapped in
- * `key(surface)`, so binding it to state (e.g. a runtime toggle in an interactive session) causes
- * the inflated tree to re-render on change rather than sticking on the first-composition value.
+ * what the rest of the gallery uses), [NotificationSurface.COLLAPSED] (`createContentView()` — the
+ * one-line shade row), or [NotificationSurface.HEADS_UP] (`createHeadsUpContentView()` — the popup
+ * variant shown for high-importance channels). On AOSP heads-up returns the same `RemoteViews` as
+ * the expanded layout for most styles; the parameter is still distinct in the API so multi-preview
+ * meta-annotations can author 3-way surface fan-outs. [surface] is recomposition-aware: the
+ * composable is internally wrapped in `key(surface)`, so binding it to state (e.g. a runtime toggle
+ * in an interactive session) causes the inflated tree to re-render on change rather than sticking
+ * on the first-composition value.
  *
- * [previewId] is the first parameter so [factory] stays the trailing-lambda slot — `NotificationContent
- * { ctx -> ... }` is the common shape and shouldn't require named arguments. Pass `previewId` only
- * when you actually want the sidecar: `NotificationContent(previewId = "Foo") { ctx -> ... }`.
+ * [previewId] is the first parameter so [factory] stays the trailing-lambda slot —
+ * `NotificationContent { ctx -> ... }` is the common shape and shouldn't require named arguments.
+ * Pass `previewId` only when you actually want the sidecar: `NotificationContent(previewId = "Foo")
+ * { ctx -> ... }`.
  */
 @Composable
 fun NotificationContent(
@@ -125,18 +126,18 @@ fun NotificationContent(
 }
 
 /**
- * Notification surface the [NotificationContent] helper inflates. The three values map to the
- * three `Notification.Builder.createXxxContentView()` entry points SystemUI uses on-device:
+ * Notification surface the [NotificationContent] helper inflates. The three values map to the three
+ * `Notification.Builder.createXxxContentView()` entry points SystemUI uses on-device:
  *
- *  - [COLLAPSED] → `createContentView()`, the one-line row that appears when the shade lists
- *    the notification alongside others. Wide-and-short.
- *  - [EXPANDED] → `createBigContentView()`, the layout shown when the user taps to expand. Most
- *    style classes (`BigTextStyle`, `MessagingStyle`, `InboxStyle`, …) only differ from
- *    collapsed in this layout, so it's the most informative variant and the default.
- *  - [HEADS_UP] → `createHeadsUpContentView()`, the popup variant shown for high-importance
- *    channels (or `setPriority(PRIORITY_HIGH)` pre-O). On stock AOSP this returns the same
- *    `RemoteViews` tree as the expanded layout for most styles — we still surface it as a
- *    distinct value because OEM skins (and the platform's `MediaStyle`) do diverge.
+ * - [COLLAPSED] → `createContentView()`, the one-line row that appears when the shade lists the
+ *   notification alongside others. Wide-and-short.
+ * - [EXPANDED] → `createBigContentView()`, the layout shown when the user taps to expand. Most
+ *   style classes (`BigTextStyle`, `MessagingStyle`, `InboxStyle`, …) only differ from collapsed in
+ *   this layout, so it's the most informative variant and the default.
+ * - [HEADS_UP] → `createHeadsUpContentView()`, the popup variant shown for high-importance channels
+ *   (or `setPriority(PRIORITY_HIGH)` pre-O). On stock AOSP this returns the same `RemoteViews` tree
+ *   as the expanded layout for most styles — we still surface it as a distinct value because OEM
+ *   skins (and the platform's `MediaStyle`) do diverge.
  */
 enum class NotificationSurface {
   COLLAPSED,
@@ -146,10 +147,10 @@ enum class NotificationSurface {
 
 /**
  * Default notification surface width in dp. Mirrors the renderer's `SANDBOX_WIDTH_DP` so a
- * `@Preview` composable hosting [NotificationContent] without an explicit `widthDp` lays out at
- * the same width Android Studio's preview pane and the standalone renderer hand out. The AOSP
- * notification shade is 360–412dp wide on real devices; 400dp keeps the gallery / variant PNGs
- * the same shape as `@NotificationPreview`-routed previews.
+ * `@Preview` composable hosting [NotificationContent] without an explicit `widthDp` lays out at the
+ * same width Android Studio's preview pane and the standalone renderer hand out. The AOSP
+ * notification shade is 360–412dp wide on real devices; 400dp keeps the gallery / variant PNGs the
+ * same shape as `@NotificationPreview`-routed previews.
  */
 const val DEFAULT_NOTIFICATION_WIDTH_DP: Int = 400
 
@@ -160,9 +161,9 @@ const val DEFAULT_NOTIFICATION_WIDTH_DP: Int = 400
  * modes, so the title row's `?attr/textColorPrimary` (near-white under NIGHT_YES) renders
  * white-on-white. Hard-coding the two surface values keeps each variant's contrast correct.
  *
- * Values approximate `Theme.DeviceDefault.Notification` / `…Notification.Dark` (≈ `#FFFFFF`
- * day, `#1F1F1F` night) — close enough to AOSP that the rendered PNG reads like the shade
- * surface a stock device would draw.
+ * Values approximate `Theme.DeviceDefault.Notification` / `…Notification.Dark` (≈ `#FFFFFF` day,
+ * `#1F1F1F` night) — close enough to AOSP that the rendered PNG reads like the shade surface a
+ * stock device would draw.
  */
 private fun resolveBackgroundColor(context: Context): Int {
   val night =
@@ -188,8 +189,7 @@ private fun inflateNotificationView(
   val remoteViews =
     when (surface) {
       NotificationSurface.COLLAPSED -> builder.createContentView()
-      NotificationSurface.EXPANDED ->
-        builder.createBigContentView() ?: builder.createContentView()
+      NotificationSurface.EXPANDED -> builder.createBigContentView() ?: builder.createContentView()
       NotificationSurface.HEADS_UP ->
         builder.createHeadsUpContentView() ?: builder.createContentView()
     } ?: return null
@@ -198,9 +198,9 @@ private fun inflateNotificationView(
 
 /**
  * Per-preview structured-fields sidecar. Same schema and same on-disk convention as
- * `:renderer-android`'s `NotificationSidecar` — duplicated here on purpose so this module can
- * stand alone (no compile dep on `:renderer-android` for consumers in Bazel modules or JVM unit
- * tests that don't carry the renderer).
+ * `:renderer-android`'s `NotificationSidecar` — duplicated here on purpose so this module can stand
+ * alone (no compile dep on `:renderer-android` for consumers in Bazel modules or JVM unit tests
+ * that don't carry the renderer).
  *
  * Hand-rolled JSON for the same reason the renderer-side version is: the runtime classpath
  * deliberately doesn't pull `kotlinx-serialization`, and the schema is shallow and stable.
@@ -208,7 +208,12 @@ private fun inflateNotificationView(
  */
 private object NotificationSidecar {
 
-  fun write(previewId: String, notification: Notification, context: Context, fileSystem: FileSystem = SystemFileSystem) {
+  fun write(
+    previewId: String,
+    notification: Notification,
+    context: Context,
+    fileSystem: FileSystem = SystemFileSystem,
+  ) {
     try {
       val rendersDirPath = System.getProperty("composeai.render.outputDir") ?: return
       val rendersDir = File(rendersDirPath)
@@ -235,7 +240,10 @@ private object NotificationSidecar {
     appendCategory(sb, n)
     appendGroup(sb, n)
     sb.append("\"ongoing\":").append((n.flags and Notification.FLAG_ONGOING_EVENT) != 0).append(',')
-    sb.append("\"autoCancel\":").append((n.flags and Notification.FLAG_AUTO_CANCEL) != 0).append(',')
+    sb
+      .append("\"autoCancel\":")
+      .append((n.flags and Notification.FLAG_AUTO_CANCEL) != 0)
+      .append(',')
     appendColor(sb, n)
     appendSmallIcon(sb, n, context)
     appendExtras(sb, n)

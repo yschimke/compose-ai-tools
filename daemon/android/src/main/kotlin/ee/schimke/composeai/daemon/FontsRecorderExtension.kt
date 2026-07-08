@@ -13,7 +13,6 @@ import ee.schimke.composeai.data.render.extensions.ExtensionPostCaptureContext
 import ee.schimke.composeai.data.render.extensions.PostCaptureProcessor
 import ee.schimke.composeai.data.render.extensions.compose.AroundComposableHook
 import ee.schimke.composeai.data.render.extensions.compose.ExtensionComposeContext
-import java.io.File
 
 /**
  * Always-on data extension that records every font resolution made during composition and writes
@@ -64,6 +63,8 @@ class FontsRecorderExtension(context: Context? = null) :
 
     /** Factory wired into the render engine's data-artifact extension list. */
     val factory: RenderDataArtifactExtensionFactory =
-      RenderDataArtifactExtensionFactory { context: Context -> FontsRecorderExtension(context) }
+      RenderDataArtifactExtensionFactory { context: Context ->
+        FontsRecorderExtension(context)
+      }
   }
 }

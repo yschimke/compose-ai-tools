@@ -22,78 +22,62 @@ private val LABELS = listOf("Save", "Edit", "Share", "Delete")
 
 @Composable
 private fun ButtonRow() {
-    Row(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-        LABELS.forEach { label ->
-            Button(
-                onClick = {},
-                modifier = Modifier.padding(end = 8.dp),
-                shape = RoundedCornerShape(12.dp),
-            ) {
-                Text(label)
-            }
-        }
+  Row(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+    LABELS.forEach { label ->
+      Button(
+        onClick = {},
+        modifier = Modifier.padding(end = 8.dp),
+        shape = RoundedCornerShape(12.dp),
+      ) {
+        Text(label)
+      }
     }
+  }
 }
 
 @Composable
 private fun WithRippleConfig(config: RippleThemeConfiguration, content: @Composable () -> Unit) {
-    CompositionLocalProvider(LocalRippleThemeConfiguration provides config, content = content)
+  CompositionLocalProvider(LocalRippleThemeConfiguration provides config, content = content)
 }
 
-@Preview(
-    name = "Inset Focus Ring — fan-out",
-    widthDp = 480,
-    heightDp = 96,
-    showBackground = true,
-)
+@Preview(name = "Inset Focus Ring — fan-out", widthDp = 480, heightDp = 96, showBackground = true)
 @FocusedPreview(indices = [0, 1, 2, 3])
 @Composable
 fun InsetFocusRingFanOutPreview() {
-    MaterialTheme {
-        WithRippleConfig(RippleDefaults.InsetFocusRingRippleThemeConfiguration) { ButtonRow() }
-    }
+  MaterialTheme {
+    WithRippleConfig(RippleDefaults.InsetFocusRingRippleThemeConfiguration) { ButtonRow() }
+  }
 }
 
 /**
  * Moving inset focus ring as a single animated GIF. `@FocusedPreview(gif = true)` drives focus
- * through the same `FocusManager.moveFocus` path the per-PNG fan-out uses and stitches the
- * per-step captures into a GIF — so the sample stays plain `Row { Button(...) }` with no
+ * through the same `FocusManager.moveFocus` path the per-PNG fan-out uses and stitches the per-step
+ * captures into a GIF — so the sample stays plain `Row { Button(...) }` with no
  * `MutableInteractionSource` / `LaunchedEffect` focus-emission hacks (which lose the
  * `FocusInteraction.Unfocus` pairing and leave every visited button with a stale focus ring,
  * see #1020).
  */
-@Preview(
-    name = "Inset Focus Ring — moving",
-    widthDp = 480,
-    heightDp = 96,
-    showBackground = true,
-)
+@Preview(name = "Inset Focus Ring — moving", widthDp = 480, heightDp = 96, showBackground = true)
 @FocusedPreview(indices = [0, 1, 2, 3], gif = true)
 @Composable
 fun InsetFocusRingMovingPreview() {
-    MaterialTheme {
-        WithRippleConfig(RippleDefaults.InsetFocusRingRippleThemeConfiguration) { ButtonRow() }
-    }
+  MaterialTheme {
+    WithRippleConfig(RippleDefaults.InsetFocusRingRippleThemeConfiguration) { ButtonRow() }
+  }
 }
 
 /**
  * Opacity-focus baseline: the same row drawn under
- * `RippleDefaults.OpacityFocusRippleThemeConfiguration`. Pair-render with
- * the inset-ring fan-out to see the visual delta between the two
- * focus-indication strategies.
+ * `RippleDefaults.OpacityFocusRippleThemeConfiguration`. Pair-render with the inset-ring fan-out to
+ * see the visual delta between the two focus-indication strategies.
  */
-@Preview(
-    name = "Opacity Focus",
-    widthDp = 480,
-    heightDp = 96,
-    showBackground = true,
-)
+@Preview(name = "Opacity Focus", widthDp = 480, heightDp = 96, showBackground = true)
 @FocusedPreview(indices = [1])
 @Composable
 fun OpacityFocusPreview() {
-    MaterialTheme {
-        WithRippleConfig(RippleDefaults.OpacityFocusRippleThemeConfiguration) { ButtonRow() }
-    }
+  MaterialTheme {
+    WithRippleConfig(RippleDefaults.OpacityFocusRippleThemeConfiguration) { ButtonRow() }
+  }
 }
 
 /**
@@ -102,21 +86,16 @@ fun OpacityFocusPreview() {
  * asserting keyboard-nav order in PR diffs — each step is a separate PNG so reviewers see exactly
  * which focusable each move targets.
  */
-@Preview(
-    name = "Focus Traversal",
-    widthDp = 480,
-    heightDp = 96,
-    showBackground = true,
-)
+@Preview(name = "Focus Traversal", widthDp = 480, heightDp = 96, showBackground = true)
 @FocusedPreview(
-    traverse =
-        [FocusDirection.Next, FocusDirection.Next, FocusDirection.Previous, FocusDirection.Next],
+  traverse =
+    [FocusDirection.Next, FocusDirection.Next, FocusDirection.Previous, FocusDirection.Next]
 )
 @Composable
 fun FocusTraversalPreview() {
-    MaterialTheme {
-        WithRippleConfig(RippleDefaults.InsetFocusRingRippleThemeConfiguration) { ButtonRow() }
-    }
+  MaterialTheme {
+    WithRippleConfig(RippleDefaults.InsetFocusRingRippleThemeConfiguration) { ButtonRow() }
+  }
 }
 
 /**
@@ -125,16 +104,11 @@ fun FocusTraversalPreview() {
  * "supposed to" be focused regardless of whether the indication itself rendered correctly. The
  * pre-overlay capture is preserved alongside as `<basename>.raw.png`.
  */
-@Preview(
-    name = "Focus Overlay",
-    widthDp = 480,
-    heightDp = 96,
-    showBackground = true,
-)
+@Preview(name = "Focus Overlay", widthDp = 480, heightDp = 96, showBackground = true)
 @FocusedPreview(indices = [0, 1, 2, 3], overlay = true)
 @Composable
 fun FocusOverlayPreview() {
-    MaterialTheme {
-        WithRippleConfig(RippleDefaults.InsetFocusRingRippleThemeConfiguration) { ButtonRow() }
-    }
+  MaterialTheme {
+    WithRippleConfig(RippleDefaults.InsetFocusRingRippleThemeConfiguration) { ButtonRow() }
+  }
 }
