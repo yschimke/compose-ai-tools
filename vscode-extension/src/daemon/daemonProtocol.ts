@@ -416,7 +416,7 @@ export interface FileChangedParams {
 }
 
 /**
- * Stage-2 in-process compile (COMPILE-IN-PROCESS.md).
+ * Stage-2 in-process compile.
  *
  * Client → daemon request: "compile these sources via the BTA host inside the daemon JVM and
  * swap the user classloader once the new `.class` files are on disk". The daemon side does
@@ -1290,7 +1290,7 @@ export interface DaemonLaunchDescriptor {
     workingDirectory: string;
     manifestPath: string;
     /**
-     * Stage-2 in-process compile config (see `docs/daemon/COMPILE-IN-PROCESS.md`). Non-null when
+     * Stage-2 in-process compile config. Non-null when
      * the gradle plugin resolved the BTA classpath for this variant (the common case — KSP/KAPT
      * modules emit a populated block carrying an `ineligibilityReason` so the daemon can refuse
      * gracefully). Null only when the wiring is incomplete. The VS Code extension dispatches
@@ -1302,7 +1302,7 @@ export interface DaemonLaunchDescriptor {
 }
 
 /**
- * Stage-2 in-process compile config — see `docs/daemon/COMPILE-IN-PROCESS.md`. Mirrors the
+ * Stage-2 in-process compile config. Mirrors the
  * `BtaCompileConfig` data class in `DaemonClasspathDescriptor.kt`; field-for-field. The
  * extension doesn't act on these fields directly — they're for the daemon JVM, which reads
  * the launch JSON at startup and constructs a `DefaultBtaCompileService` from them. The

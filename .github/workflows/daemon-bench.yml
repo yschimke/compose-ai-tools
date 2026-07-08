@@ -9,7 +9,8 @@ name: Daemon Latency Bench
 #
 # This workflow runs weekly (and on demand) and publishes the measured CSV + the
 # stage-2 graduation verdict as artifacts. It feeds the "should stage 2 graduate from
-# experimental?" decision (COMPILE-IN-PROCESS.md § "Promote / demote criteria"); it
+# experimental?" decision (promote when warm save→pixel stays < 1 s on desktop /
+# < 2 s on Android and the advantage over stage 1 holds above 200 ms); it
 # does not change any default. Numbers from a shared CI runner are noisier than the
 # reference machine in docs/daemon/baseline-latency.md — treat them as trend, not gospel.
 #

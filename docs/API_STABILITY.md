@@ -1,6 +1,6 @@
 # API stability — design
 
-Cross-cutting design doc for what counts as a public contract in this repo, how each contract evolves, and how the two sides of each contract negotiate compatibility. Companion to [VERSIONING.md](VERSIONING.md) (the policy) and [ROADMAP_1_0.md](ROADMAP_1_0.md) (the pre-1.0 punch list).
+Cross-cutting design doc for what counts as a public contract in this repo, how each contract evolves, and how the two sides of each contract negotiate compatibility. Companion to [VERSIONING.md](VERSIONING.md) (the policy).
 
 ## 1. The contracts
 
@@ -153,7 +153,6 @@ Kotlin BCV runs on the plugin module and the annotations module. The daemon prot
 ## 6. References
 
 - [VERSIONING.md](VERSIONING.md) — the policy that operationalises this design.
-- [ROADMAP_1_0.md](ROADMAP_1_0.md) — what has to land before 1.0 to make the contracts above real.
 - [docs/daemon/PROTOCOL.md](daemon/PROTOCOL.md) — wire format.
 - [docs/daemon/DATA-PRODUCTS.md](daemon/DATA-PRODUCTS.md) — per-kind schemas.
 - [docs/RENDERER_COMPATIBILITY.md](RENDERER_COMPATIBILITY.md) — toolchain matrix.

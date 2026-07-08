@@ -57,7 +57,7 @@ Every enum that crosses a process boundary is decoded **tolerantly**:
 - Code branching on the enum has an explicit `else` / default arm.
 - The fixture corpus has at least one fixture per enum that exercises a synthetic future value to prove tolerance.
 
-Adding a new enum value is **additive** under this rule. Without tolerant decode, every new enum value is a silent break — the rule is what makes the additive promise real. See [ROADMAP_1_0.md § Enum tolerance](ROADMAP_1_0.md) for the migration.
+Adding a new enum value is **additive** under this rule. Without tolerant decode, every new enum value is a silent break — the rule is what makes the additive promise real.
 
 ### 4.2 Unknown fields
 
@@ -141,4 +141,4 @@ Adding a public type or annotation without updating the BCV golden file is a CI 
 
 Until `1.0.0`, the rules in §§ 2–5 are aspirational; the project may break any contract in any release with a CHANGELOG note. The contracts in [API_STABILITY.md](API_STABILITY.md) become enforceable at 1.0.
 
-The work needed to make 1.0 honourable is in [ROADMAP_1_0.md](ROADMAP_1_0.md).
+The work needed to make 1.0 honourable is tracked in the repo's open issues.

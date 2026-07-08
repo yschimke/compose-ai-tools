@@ -10,10 +10,10 @@
 //     showing data overlays.
 //   - `paintBundleBoxesEverywhere(bundleId, perCardData)` — grid
 //     mode: paints every visible `.preview-card` with that card's
-//     own per-bundle boxes. Realises the "Open question 1 —
-//     Multi-preview selection" fallback in
-//     `docs/design/EXTENSION_DATA_EXPOSURE.md`: focused preview wins,
-//     otherwise every visible card paints.
+//     own per-bundle boxes. The multi-preview fallback: focused
+//     preview wins, otherwise every visible card paints. (Production
+//     scopes overlays to the focused preview — see `bundleRegistry.ts`
+//     — so this path is exercised only by the grid-paint primitive.)
 //
 // Multiple bundles can paint simultaneously — each owns its own
 // `<box-overlay>` layer keyed on `data-bundle`. Teardown
@@ -133,8 +133,8 @@ function writePendingPaintMap(
  * Tear down the per-bundle layer on [card] (or every card when
  * omitted). Called from each bundle's deactivation path so chip
  * dismissal clears the boxes from every card the bundle touched —
- * preserves the chip-toggle = full-teardown contract from
- * `docs/design/EXTENSION_DATA_EXPOSURE.md`.
+ * preserves the chip-toggle = full-teardown contract (see
+ * `bundleRegistry.ts`).
  */
 export function clearBundleBoxes(
     card: HTMLElement | null,
@@ -228,8 +228,7 @@ export function paintBundleBoxesEverywhere(
  * for bundle overlays: bundles scope to the focused preview, and
  * `bundleChipBar` / `<data-tabs>` are hidden outside focus layout, so a
  * bundle must never paint an overlay on an ambient grid selection
- * (settled "Open question 1 — Multi-preview selection" in
- * `docs/design/EXTENSION_DATA_EXPOSURE.md`).
+ * (bundles scope to the focused preview — see `bundleRegistry.ts`).
  *
  * Passing `null` (grid/flow/column layout, or focus mode with no card
  * selected) clears every layer the bundle previously stamped — without

@@ -39,8 +39,8 @@ dependencies {
   // public surface keeps its java.io.File signatures.
   implementation(project(":common-io"))
 
-  // JVM client for the native XR render server — the daemon fronts it for `xr/…`
-  // (RENDERER_SERVICE). `api`, not `implementation`: `JsonRpcServer`'s public constructor exposes
+  // JVM client for the native XR render server — the daemon fronts it for `xr/…`.
+  // `api`, not `implementation`: `JsonRpcServer`'s public constructor exposes
   // `XrRenderServerFactory?`, so the type is part of this published module's compile ABI.
   api(project(":renderer-xr-client"))
 
@@ -57,7 +57,7 @@ dependencies {
   // :daemon:desktop modules consume from this module's `api`.
   implementation(libs.classgraph)
 
-  // Stage-2 in-process compile (COMPILE-IN-PROCESS.md). `BtaCompileSession` +
+  // Stage-2 in-process compile. `BtaCompileSession` +
   // `DefaultBtaCompileService.fromSysprops` link against the Build Tools API
   // unconditionally at daemon startup, so the API jar must be on the daemon JVM's
   // main classpath even before the editor opts in via the VS Code workspace

@@ -21,8 +21,7 @@ import org.jetbrains.kotlin.buildtools.api.jvm.JvmPlatformToolchain
 import org.jetbrains.kotlin.buildtools.api.jvm.operations.JvmCompilationOperation
 
 /**
- * Stage-2 in-process compiler session — see
- * [docs/daemon/COMPILE-IN-PROCESS.md](../../../../../../docs/daemon/COMPILE-IN-PROCESS.md).
+ * Stage-2 in-process compiler session.
  *
  * One session per daemon JVM. Holds the lazy [KotlinToolchains] (impl loaded into an isolated
  * classloader on first use), the per-module IC working directory, and the persistent classpath

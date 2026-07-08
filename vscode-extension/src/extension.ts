@@ -165,8 +165,7 @@ const DAEMON_SPAWN_PROGRESS_MS = 7_000;
 let gradleService: GradleService | null = null;
 let daemonGate: DaemonGate | null = null;
 let daemonScheduler: DaemonScheduler | null = null;
-/** Non-null only when `composePreview.daemon.continuousCompile` is set. Spike —
- *  see [docs/daemon/CONTINUOUS-COMPILE.md]. */
+/** Non-null only when `composePreview.daemon.continuousCompile` is set. */
 let continuousCompileManager: ContinuousCompileManager | null = null;
 let daemonStatusItem: vscode.StatusBarItem | null = null;
 let interactiveStatusItem: vscode.StatusBarItem | null = null;
@@ -1501,7 +1500,7 @@ export async function activate(
     // Continuous-compile worker manager (spike, opt-in via
     // `composePreview.daemon.continuousCompile`). Replaces the per-save
     // Gradle round-trip with a long-running `gradle --continuous` process
-    // per module. Off by default. See docs/daemon/CONTINUOUS-COMPILE.md.
+    // per module. Off by default.
     if (
         initialMode.mode !== "minimal" &&
         vscode.workspace
@@ -4454,7 +4453,7 @@ async function runDaemonCompileOnly(filePath: string): Promise<boolean> {
 
     invalidateModuleCache(filePath);
 
-    // Stage-2 in-process compile (COMPILE-IN-PROCESS.md). When the workspace
+    // Stage-2 in-process compile. When the workspace
     // setting is on AND the daemon's launch descriptor opted into BTA at the
     // build level, dispatch to the daemon's `compileSources` JSON-RPC method
     // and skip the Gradle round-trip entirely on success. Any non-ok outcome

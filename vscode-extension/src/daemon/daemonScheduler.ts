@@ -423,8 +423,7 @@ export class LiveDaemonScheduler implements DaemonScheduler {
     }
 
     /**
-     * Stage-2 in-process compile dispatch — see
-     * [docs/daemon/COMPILE-IN-PROCESS.md](https://github.com/yschimke/compose-ai-tools/blob/main/docs/daemon/COMPILE-IN-PROCESS.md).
+     * Stage-2 in-process compile dispatch.
      *
      * Sends a `compileSources` JSON-RPC request to the daemon. The daemon's handler
      * dispatches through `DefaultBtaCompileService` when its launch descriptor opted into

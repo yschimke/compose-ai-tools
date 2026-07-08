@@ -177,7 +177,7 @@ descriptor entirely at count=1).
 The disposable child URLClassLoader is single-instance today; per-slot
 child loaders are layered work for the `fileChanged` hot-reload path.
 The supervisor's production daemon path stays at `sandboxCount = 1`
-until that lands. Tracked in [ROADMAP.md](ROADMAP.md). Per-slot recycle
+until that lands. Per-slot recycle
 is the other main remaining item — heap-driven recycle could restart
 one sandbox instead of the whole daemon JVM.
 

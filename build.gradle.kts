@@ -128,7 +128,7 @@ tasks.register("functionalTestWithAndroid") {
 //     implementation :data-displayfilter-connector
 //       api :data-displayfilter-core
 //       api :daemon:core
-//         api :renderer-xr-client (daemon-core fronts the native XR render server — RENDERER_SERVICE)
+//         api :renderer-xr-client (daemon-core fronts the native XR render server)
 //         api :data-layoutinspector-core (semantics models + differ for `history/diff mode=semantics`, #1785)
 //         api :data-theme-core (theme-token models + differ for `history/diff mode=data`, #1873)
 //     implementation :data-deviceframe-connector (device-art bezel compositing — post-capture)

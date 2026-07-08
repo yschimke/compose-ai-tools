@@ -54,10 +54,8 @@ than re-measuring it. Stage 2 is driven by `javaexec`-ing `:daemon:core`'s
 — the same code path the daemon's `compileSources` handler runs — using the
 `btaCompile` block from this module's `daemon-launch.json`.
 
-The verdict evaluates the
-[COMPILE-IN-PROCESS.md](../../docs/daemon/COMPILE-IN-PROCESS.md) §
-"Promote / demote criteria" thresholds (< 1 s warm save→pixel on desktop;
-warm-path advantage over stage 1 ≥ 200 ms) and prints `PROMOTE CANDIDATE` /
+The verdict evaluates the promote/demote thresholds (< 1 s warm save→pixel on
+desktop; warm-path advantage over stage 1 ≥ 200 ms) and prints `PROMOTE CANDIDATE` /
 `DO NOT PROMOTE` / `INCONCLUSIVE`. The memory-delta criterion is reported
 informationally (the harness can't observe the stage-1 daemon's resident set).
 

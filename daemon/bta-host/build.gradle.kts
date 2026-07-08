@@ -4,9 +4,8 @@
 // the `compileSources` JSON-RPC method) behind `composePreview.daemon.compileInProcess`.
 //
 // NOT published. Nothing in production depends on this module; it's retained for its BTA-impl
-// parity, incremental-compile, and classloader-leak soak tests against Kotlin 2.3.21. See
-// docs/daemon/BTA-SPIKE.md for the checkpoints and docs/daemon/COMPILE-IN-PROCESS.md for the
-// production design these tests guard.
+// parity, incremental-compile, and classloader-leak soak tests against Kotlin 2.3.21. These
+// tests guard the production in-process compile path in `:daemon:core`.
 
 plugins {
   id("composeai.base-conventions")

@@ -1,8 +1,8 @@
 // SpatialSemanticsTree — the unified "3D-over-2D" wire contract: one tree whose top levels are 3D
 // (the subspace layout) and whose every panel carries a normal 2D semantics tree. The TypeScript
 // mirror of the Kotlin DTO in
-// api/preview-data-api/.../xr/SpatialSemanticsTree.kt; the prose spec is
-// docs/design/SPATIAL_SEMANTICS_TREE.md. Both languages decode the same committed fixture
+// api/preview-data-api/.../xr/SpatialSemanticsTree.kt (see its KDoc for the shape spec).
+// Both languages decode the same committed fixture
 // (preview-harness/fixtures/spatial-semantics-tree/tree.json) so the shapes stay locked. Bump
 // SPATIAL_SEMANTICS_TREE_VERSION on any breaking change.
 //

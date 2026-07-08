@@ -9,8 +9,7 @@ import org.junit.rules.TemporaryFolder
 /**
  * Pins the contract of [ComposePreviewTasks.detectStageTwoIneligibilityFor] — the daemon-warm-time
  * predicate that keeps modules off in-process compile (stage 2,
- * `composePreview.daemon.compileInProcess`) when BTA can't safely drive their build. Mirrors
- * `docs/daemon/COMPILE-IN-PROCESS.md` § "Eligibility".
+ * `composePreview.daemon.compileInProcess`) when BTA can't safely drive their build.
  *
  * The KSP / KAPT / KMP branches are plain `hasPlugin(<id>)` string checks — exercised end-to-end by
  * the functional tests where the real plugins are on the TestKit classpath. These unit tests cover

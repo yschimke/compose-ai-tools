@@ -13,9 +13,7 @@ import org.jetbrains.kotlin.buildtools.api.KotlinLogger
  * falling back to stage 1.
  *
  * The diagnostic format BTA emits to `error(...)` is the same `file:///path:line:col message` shape
- * kotlinc CLI prefixes with `e:` — see the spike's
- * [BTA-SPIKE.md](../../../../../../docs/daemon/BTA-SPIKE.md) sample output. The regex below
- * tolerates:
+ * kotlinc CLI prefixes with `e:`. The regex below tolerates:
  *
  * - `file:///abs/path/Foo.kt:42:5 message`
  * - `/abs/path/Foo.kt:42:5 message`

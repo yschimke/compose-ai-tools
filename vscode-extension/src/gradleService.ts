@@ -383,8 +383,7 @@ export class GradleService {
      * scheduler when `composePreview.daemon.continuousCompile` is enabled.
      * When a module has a worker, [compileOnly] awaits the worker's next
      * BUILD outcome instead of running a one-shot `composePreviewCompile`
-     * task. Spike behind opt-in flag — see
-     * [docs/daemon/CONTINUOUS-COMPILE.md].
+     * task. Spike behind opt-in flag.
      */
     private continuousWorkers = new Map<string, ContinuousCompileWorker>();
 

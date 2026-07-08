@@ -72,7 +72,7 @@ public data class DaemonClasspathDescriptor(
    */
   public val manifestPath: String,
   /**
-   * Stage-2 in-process compile config (see `docs/daemon/COMPILE-IN-PROCESS.md`). When non-null the
+   * Stage-2 in-process compile config. When non-null the
    * daemon constructs a `DefaultBtaCompileService` from these fields at startup and
    * `JsonRpcServer.compileSources` dispatches through it. `null` (the default) means the consumer
    * hasn't opted in via `composePreview { daemon { compileInProcess = true } }` and the daemon's
@@ -87,7 +87,7 @@ public data class DaemonClasspathDescriptor(
 )
 
 /**
- * Stage-2 in-process compile config — see `docs/daemon/COMPILE-IN-PROCESS.md`. Populated by the
+ * Stage-2 in-process compile config. Populated by the
  * gradle plugin's `DaemonBootstrapTask` whenever the variant wiring resolved the required inputs
  * (BTA-impl classpath, module name, output dir, IC dir). The daemon reads these into a
  * `DefaultBtaCompileService` once at startup but only loads BTA's classloader lazily — the editor
@@ -125,8 +125,8 @@ public data class BtaCompileConfig(
   public val outputDir: String,
   /**
    * Kotlin `MODULE_NAME` arg. Matches the consumer's Gradle module name so BTA-emitted
-   * `kotlin.Metadata.d2[]` agrees with Gradle's output. Stage-2 spike § 4 covers why this is
-   * load-bearing for the daemon's child classloader hot-swap.
+   * `kotlin.Metadata.d2[]` agrees with Gradle's output — load-bearing for the daemon's child
+   * classloader hot-swap, which diffs BTA-emitted classes against Gradle-emitted ones.
    */
   public val moduleName: String,
   /**
@@ -137,8 +137,8 @@ public data class BtaCompileConfig(
   public val icWorkingDir: String,
   /**
    * Daemon-warm-time decision: non-null means this module is NOT a stage-2 candidate (typically
-   * because KSP / KAPT / annotationProcessor is on the classpath, see COMPILE-IN-PROCESS.md §
-   * "Eligibility"). `JsonRpcServer.compileSources` returns `result=fallback` with this reason
+   * because KSP / KAPT / annotationProcessor is on the classpath). `JsonRpcServer.compileSources`
+   * returns `result=fallback` with this reason
    * verbatim. `null` means eligible — BTA actually runs.
    */
   public val ineligibilityReason: String? = null,
@@ -149,7 +149,6 @@ public data class BtaCompileConfig(
  *
  * Version history:
  * - **1** — initial schema (B1.2).
- * - **2** — added optional [DaemonClasspathDescriptor.btaCompile] for stage-2 in-process compile
- *   (see `docs/daemon/COMPILE-IN-PROCESS.md`).
+ * - **2** — added optional [DaemonClasspathDescriptor.btaCompile] for stage-2 in-process compile.
  */
 public const val DAEMON_DESCRIPTOR_SCHEMA_VERSION: Int = 2

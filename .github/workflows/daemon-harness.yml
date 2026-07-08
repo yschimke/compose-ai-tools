@@ -1,7 +1,7 @@
 name: Daemon Harness
 
 # End-to-end test harness for the preview daemon — see
-# docs/daemon/TEST-HARNESS.md and docs/daemon/ROADMAP.md.
+# docs/daemon/TEST-HARNESS.md.
 #
 # Three jobs run on every PR:
 #   * `desktop-fake` — FakeDaemonMain + FakeHost; deterministic-failure
@@ -76,7 +76,6 @@ jobs:
       #       sudo apt-get update
       #       sudo apt-get install -y libfreetype6 libfontconfig1
       #
-      # Track this in `docs/daemon/ROADMAP.md` if it lands.
       - name: Run harness scenarios (desktop, real)
         run: ./gradlew :daemon:harness:test -Pharness.host=real
       - name: Upload harness test results (desktop, real)
@@ -108,7 +107,7 @@ jobs:
       # `:samples:android` already bootstraps Robolectric on ubuntu-latest
       # so we expect no extra system packages. If this job ever fails with
       # missing native libs (libfontconfig, libfreetype), install them
-      # here. Document in `docs/daemon/ROADMAP.md` if it lands.
+      # here.
       - name: Run harness scenarios (android, real)
         run: ./gradlew :daemon:harness:test -Pharness.host=real -Pharness.target=android
       - name: Upload harness test results (android, real)

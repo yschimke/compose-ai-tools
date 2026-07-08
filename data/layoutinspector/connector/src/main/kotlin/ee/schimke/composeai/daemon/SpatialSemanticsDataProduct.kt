@@ -18,9 +18,8 @@ import okio.Path.Companion.toPath
 /**
  * Producer for **`compose/spatial-semantics`** — the unified 3D-over-2D [SpatialSemanticsTree] (the
  * subspace layout with each panel carrying its 2D [ComposeSemanticsPayload] tree). It is the
- * accessibility-and-structure view the `XR_A11Y.md` / `SPATIAL_SEMANTICS_TREE.md` designs converge
- * on: an agent walks the 3D level to pick a panel by spatial position, then reads the 2D level
- * within it.
+ * accessibility-and-structure view of a preview: an agent walks the 3D level to pick a panel by
+ * spatial position, then reads the 2D level within it.
  *
  * Two production sites write the **same** `compose-spatial-semantics.json`, both read back by
  * [SpatialSemanticsDataProductRegistry]:

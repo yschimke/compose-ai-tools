@@ -140,7 +140,7 @@ abstract class DaemonBootstrapTask : DefaultTask() {
   @get:PathSensitive(PathSensitivity.NAME_ONLY)
   abstract val previewsManifest: RegularFileProperty
 
-  // --- Stage-2 in-process compile (COMPILE-IN-PROCESS.md) -----------------------------------
+  // --- Stage-2 in-process compile -----------------------------------------------------------
   //
   // The descriptor's `btaCompile` field is populated when [btaImplClasspath] is non-empty
   // (i.e. the plugin's variant wiring actually resolved the BTA implementation JARs) and
@@ -186,7 +186,8 @@ abstract class DaemonBootstrapTask : DefaultTask() {
   /**
    * Kotlin `MODULE_NAME` for BTA's emitted classes. Matches the consumer's Gradle module name so
    * `kotlin.Metadata.d2[]` agrees with what Gradle's own `compileKotlin` produces — load-bearing
-   * for the daemon's child classloader hot-swap (see BTA-SPIKE.md § 4).
+   * for the daemon's child classloader hot-swap, which diffs BTA-emitted classes against
+   * Gradle-emitted ones.
    */
   @get:Input @get:Optional abstract val btaModuleName: Property<String>
 

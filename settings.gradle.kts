@@ -222,7 +222,7 @@ include(":samples:cmp")
 include(":samples:cmp-shared")
 
 // In-browser CMP tier — a `wasmJs` Compose app rendering the M3 catalog in the
-// browser sandbox (Workstream C / `docs/wasm-cmp-spike.md`). wasmJs-only, no
+// browser sandbox (a `wasmJs` Compose app). wasmJs-only, no
 // renderable `@Preview`, so it sits outside the desktop/Android render path.
 include(":samples:cmp-wasm-catalog")
 
@@ -255,7 +255,7 @@ include(":renderer-xr")
 
 project(":renderer-xr").projectDir = file("renderers/xr")
 
-// JVM client for the native `xr-composite --serve` render server (RENDERER_SERVICE RFC). The
+// JVM client for the native `xr-composite --serve` render server that the daemon fronts. The
 // daemon's future XR RenderSession backend wraps this.
 include(":renderer-xr-client")
 
@@ -517,10 +517,9 @@ include(":daemon:harness")
 // Standalone Kotlin Build Tools API parity/soak harness (#1332). The stage-2 spike it began as
 // has SHIPPED: in-process compile is wired into `:daemon:core` (`bta/BtaCompileSession`,
 // `bta/DefaultBtaCompileService`, the `compileSources` JSON-RPC method) behind the experimental
-// workspace flag `composePreview.daemon.compileInProcess` — see docs/daemon/COMPILE-IN-PROCESS.md.
+// workspace flag `composePreview.daemon.compileInProcess`.
 // Nothing in production depends on this module; it's retained only for its BTA-impl parity, IC,
-// and classloader-leak soak tests (`./gradlew :daemon:bta-host:test`, see
-// docs/daemon/BTA-SPIKE.md).
+// and classloader-leak soak tests (`./gradlew :daemon:bta-host:test`).
 include(":daemon:bta-host")
 
 // Companion fixture for `:daemon:bta-host` — same Kotlin source compiled through Gradle's
@@ -560,7 +559,7 @@ project(":render-cli").projectDir = file("render-session/cli")
 // Fake Android emulator — impersonates a running emulator (ADB device transport, emulator console,
 // emulator gRPC control + screenshot video) so the compose-preview render pipeline can be driven by
 // `adb` / Android Studio and a preview launched via the `am start … PreviewActivity` intent. See
-// docs/fake-emulator/DESIGN.md. Split so the verifiable, dependency-light ADB core stays free of the
+// docs/fake-emulator/README.md. Split so the verifiable, dependency-light ADB core stays free of the
 // protobuf/grpc toolchain and the render classpath.
 //
 //  * `:fake-emulator-core` — pure-Kotlin ADB transport + console + screencap + the `am start`

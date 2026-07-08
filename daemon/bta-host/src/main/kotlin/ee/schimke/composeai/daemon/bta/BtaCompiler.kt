@@ -115,7 +115,7 @@ class BtaCompiler(
    * [SourcesChanges.Known] for tighter incrementality.
    *
    * NOT production-ready. Open follow-ups: content-hash classpath cache keys, source-set wiring,
-   * KSP/KAPT, Android variants. See `docs/daemon/BTA-SPIKE.md`.
+   * KSP/KAPT, Android variants.
    */
   fun compileIncremental(
     sources: List<Path>,

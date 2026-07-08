@@ -67,11 +67,11 @@ carries it in the bundle (`previews/<id>.figma.svg`) and copies it onto the
 branch, exactly as it does the schematic `wireframes/`.
 
 For editable Figma layers the per-sticker `figma/<slug>.svg` is the
-`compose/figma-svg` export (see [`figma-svg-example/`](figma-svg-example/) and
-[`design-artifacts-figma-svg/`](design-artifacts-figma-svg/)); the design-parity
-`figma-plugin` imports it as native component sets. For the ad-hoc alternative —
-an agent pushing rendered *variant matrices* onto a Figma canvas via the Figma
-MCP server for live review — see [FIGMA_ROUNDTRIP.md](FIGMA_ROUNDTRIP.md).
+`compose/figma-svg` export (see the `FigmaLayeredSvg` KDoc in
+`:data-layoutinspector-core` for the emitted layer shape); the design-parity
+`figma-plugin` imports it as native component sets. An agent can also push
+rendered *variant matrices* onto a Figma canvas via the Figma MCP server for
+live review.
 
 ## Rendering a catalog
 
@@ -132,8 +132,6 @@ their own full-screen frame rather than the centred component sticker:
   `Template/PageIndicator` (horizontal pager + `HorizontalPageIndicator`), and
   `Template/EdgeButton` (list anchored by the screen-hugging `EdgeButton`), each
   captured at every round breakpoint.
-
-Sample renders: [`scaffold-templates/`](scaffold-templates/).
 
 ## Adding a component
 
