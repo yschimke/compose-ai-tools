@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.16.27](https://github.com/yschimke/compose-ai-tools/compare/v0.16.26...v0.16.27) (2026-07-08)
+
+
+### Features
+
+* add overrideable clearBackground ("crisp outline") preview toggle ([#2284](https://github.com/yschimke/compose-ai-tools/issues/2284)) ([dc8469e](https://github.com/yschimke/compose-ai-tools/commit/dc8469edcba9b6497d3362ee9aea3f0fd672cf92))
+* **serve:** render any fetched preview bundle live without a module ([#2289](https://github.com/yschimke/compose-ai-tools/issues/2289)) ([3325203](https://github.com/yschimke/compose-ai-tools/commit/3325203e122674ca1b8931ec210225321f20944b))
+* **theme-catalog:** emit per-theme resolved token sidecar ([#2288](https://github.com/yschimke/compose-ai-tools/issues/2288)) ([0aab11b](https://github.com/yschimke/compose-ai-tools/commit/0aab11b45346461014ba80c92a8fc208d1f27451))
+* **vscode:** add clear-background (crisp outline) focus-toolbar toggle ([#2293](https://github.com/yschimke/compose-ai-tools/issues/2293)) ([15ae0a5](https://github.com/yschimke/compose-ai-tools/commit/15ae0a5857029bb56f7b841c02bab5d7f04cf421))
+
+
+### Bug Fixes
+
+* **deps:** update dependency dev.mobile:dadb to v2 ([#2286](https://github.com/yschimke/compose-ai-tools/issues/2286)) ([7690bc8](https://github.com/yschimke/compose-ai-tools/commit/7690bc87c7e56701d65e73cb8ac369f5187a62e7))
+* **deps:** update gradle minor/patch ([#2285](https://github.com/yschimke/compose-ai-tools/issues/2285)) ([3dfe194](https://github.com/yschimke/compose-ai-tools/commit/3dfe194abbb93b9983dc4bed906e0f0bc70b7285))
+* **figma-svg:** faithful text typeface, rastered Material chrome, density strokes ([#2292](https://github.com/yschimke/compose-ai-tools/issues/2292)) ([6baeadb](https://github.com/yschimke/compose-ai-tools/commit/6baeadb8fe1aedc82b2be61be6b6df39296ea438))
+* **figma-svg:** wrap multi-line text where the render wrapped it ([#2295](https://github.com/yschimke/compose-ai-tools/issues/2295)) ([9dc8bc7](https://github.com/yschimke/compose-ai-tools/commit/9dc8bc741b2f23b198a899094705cc8326c06b7d))
+* **serve:** surface catalog knobs + copyable PNG/SVG override URLs ([#2287](https://github.com/yschimke/compose-ai-tools/issues/2287)) ([54c2bd3](https://github.com/yschimke/compose-ai-tools/commit/54c2bd397ae67f6b62143b67322d1c295ae23c5b))
+
 ## [0.16.26](https://github.com/yschimke/compose-ai-tools/compare/v0.16.25...v0.16.26) (2026-07-06)
 
 
