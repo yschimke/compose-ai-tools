@@ -82,11 +82,11 @@ See [`action.yml`](action.yml) for the full schema. Summary:
 
 ## Related actions
 
-- [`preview-baselines`](../preview-baselines/) — render previews and
-  push baselines on `main`.
-- [`preview-comment`](../preview-comment/) — render on a PR, post
-  before/after comparison comments.
-- [`a11y-report`](../a11y-report/) — accessibility findings per preview.
+- [`apply`](../apply/) — the unified compose-preview pipeline: baselines
+  on push, before/after PR comments, and the a11y + notification surfaces
+  in one step. Use this unless you only need the CLI on `$PATH`. It
+  supersedes the per-surface `preview-baselines` / `preview-comment` /
+  `a11y-report` composites (now thin, deprecated forwarders).
 
 The internal sibling `install-cli` action builds the CLI from source
 and exists so this repo's CI doesn't pin against a stale release; it

@@ -15,6 +15,7 @@
       "draft": true,
       "extra-files": [
         ".github/actions/install/README.md",
+        ".github/actions/apply/README.md",
         "vscode-extension/README.md",
         "docs/RELEASING.md",
         "site/index.md",

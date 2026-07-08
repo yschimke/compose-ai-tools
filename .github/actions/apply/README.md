@@ -9,27 +9,115 @@ per-surface `preview-baselines` / `preview-comment` / `a11y-report` /
 
 ## Basic usage
 
+Drop this in `.github/workflows/compose-preview.yml`. On a `pull_request` it
+renders the PR and posts before/after comparison comments; on a `push` to the
+development branch (`main` by default) it refreshes the committed baselines:
+
 <!-- x-release-please-start-version -->
 ```yaml
-- uses: actions/setup-java@v5
-  with:
-    distribution: temurin
-    java-version: 17
-- uses: yschimke/compose-ai-tools/.github/actions/apply@v0.15.9
+name: Compose Preview
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+# Required — the action pushes baselines (contents) and posts sticky
+# before/after PR comments (pull-requests). Omit these and the run fails.
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  # Per-PR group so concurrent PRs don't cancel each other; push + dispatch
+  # share one slot per ref.
+  group: compose-preview-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      # Android modules also need the SDK — add android-actions/setup-android@v3
+      # (and a Gradle cache) here, or factor java+SDK+cache into a local
+      # `./.github/actions/setup` composite as the reference workflows do.
+      - uses: yschimke/compose-ai-tools/.github/actions/apply@v0.16.26
 ```
 <!-- x-release-please-end -->
+
+The `permissions` block is **not optional**: without `contents: write` the
+action can't push baselines and without `pull-requests: write` it can't post
+the comparison comment, so the run fails.
 
 `cli-version` defaults to **`auto`**, which pins the CLI to the plugin version
 you already pin in your checkout — so the version skew described below can't
 happen on the happy path, with no extra config. See
 [Version skew](#version-skew) for what `auto` does and when to override it.
+(You may see older consumer workflows pass `cli-version: catalog` with
+`catalog-key: composePreviewPlugin`; `auto` reads the same pinned version off
+your `[plugins]` entry with no `catalog-key`, so prefer it.)
 
-On a `pull_request` this renders the PR and posts before/after comparison
-comments; on a `push` to the development branch (`main` by default) it
-refreshes the baselines. See [`action.yml`](action.yml) for the full input
-schema — there are ~20 inputs covering pipeline selection (`only` / `skip`),
-per-module allow/deny lists, the missing-render policy, and non-Gradle
-`skip-render` integration.
+See [`action.yml`](action.yml) for the full input schema — there are ~20 inputs
+covering pipeline selection (`only` / `skip`), per-module allow/deny lists, the
+missing-render policy, and non-Gradle `skip-render` integration.
+
+## Running the pipelines in parallel
+
+The single step above runs all four pipelines
+(compose / resources / a11y / notifications) back-to-back in one job. For a
+larger preview suite, split them across independent jobs so wall time drops
+from the sum of the pipelines to the slowest one — this is how the reference
+[`compose-preview.yml`](../../workflows/compose-preview.yml) is wired:
+
+<!-- x-release-please-start-version -->
+```yaml
+jobs:
+  apply:
+    name: Compose previews
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup           # your java + SDK + cache composite
+      - uses: yschimke/compose-ai-tools/.github/actions/apply@v0.16.26
+        with:
+          only: compose,resources
+          # `warn` keeps CI green when a handful of previews render nothing;
+          # the default `fail` gates every render (see missing-renders below).
+          missing-renders: warn
+
+  a11y:
+    name: A11y previews
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - uses: yschimke/compose-ai-tools/.github/actions/apply@v0.16.26
+        with:
+          # a11y renders first, then notifications stages the captures it
+          # leaves behind — so the two must share a job (see below). Drop
+          # `,notifications` only if you render no notification previews.
+          only: a11y,notifications
+          missing-renders: warn
+```
+<!-- x-release-please-end -->
+
+Keep **compose + resources** together (resources is cheap and reuses the
+compose run's base SHA), and keep **notifications in the same job as — and
+after — a11y**: `apply` runs a11y first, and the notifications pipeline stages
+the renders the a11y pass leaves in the shared workspace, so splitting them
+onto separate runners makes notifications report every a11y-produced capture as
+removed. (`only: a11y` alone silently drops the notifications pipeline, since
+`only` clears every surface it doesn't name — so keep both unless you
+deliberately render no notification previews.) The two jobs use disjoint
+baseline branches and sticky-comment markers, so they never collide.
 
 ## Version skew
 
@@ -56,7 +144,7 @@ the CLI follows it for free:
 ```toml
 # gradle/libs.versions.toml
 [versions]
-composePreviewPlugin = "0.15.9"
+composePreviewPlugin = "0.16.26"
 
 [plugins]
 composePreview = { id = "ee.schimke.composeai.preview", version.ref = "composePreviewPlugin" }
