@@ -15,6 +15,9 @@ import androidx.wear.protolayout.ResourceBuilders.IMAGE_FORMAT_ARGB_8888
 import androidx.wear.protolayout.ResourceBuilders.ImageResource
 import androidx.wear.protolayout.ResourceBuilders.InlineImageResource
 import androidx.wear.protolayout.ResourceBuilders.Resources
+import androidx.wear.protolayout.material3.avatarImage
+import androidx.wear.protolayout.material3.materialScopeWithResources
+import androidx.wear.protolayout.material3.primaryLayout
 import androidx.wear.tiles.tooling.preview.Preview
 import androidx.wear.tiles.tooling.preview.TilePreviewData
 import androidx.wear.tiles.tooling.preview.TilePreviewHelper
@@ -67,6 +70,19 @@ private fun heroImageBytes(): ByteArray {
   return buffer.array()
 }
 
+/** The [heroImageBytes] pixels wrapped as a self-contained inline [ImageResource]. */
+private fun heroImageResource(): ImageResource =
+  ImageResource.Builder()
+    .setInlineResource(
+      InlineImageResource.Builder()
+        .setData(heroImageBytes())
+        .setWidthPx(INLINE_IMAGE_PX)
+        .setHeightPx(INLINE_IMAGE_PX)
+        .setFormat(IMAGE_FORMAT_ARGB_8888)
+        .build()
+    )
+    .build()
+
 /**
  * Centres an `Image` of [imageId] on the watchface substrate. Shared by both variants so the only
  * thing that differs is how the resource id is backed in `onTileResourceRequest`.
@@ -105,19 +121,7 @@ fun InlineImageTilePreview(context: Context): TilePreviewData =
     onTileResourceRequest = {
       Resources.Builder()
         .setVersion("1")
-        .addIdToImageMapping(
-          INLINE_IMAGE_ID,
-          ImageResource.Builder()
-            .setInlineResource(
-              InlineImageResource.Builder()
-                .setData(heroImageBytes())
-                .setWidthPx(INLINE_IMAGE_PX)
-                .setHeightPx(INLINE_IMAGE_PX)
-                .setFormat(IMAGE_FORMAT_ARGB_8888)
-                .build()
-            )
-            .build(),
-        )
+        .addIdToImageMapping(INLINE_IMAGE_ID, heroImageResource())
         .build()
     },
     onTileRequest = { imageTile(INLINE_IMAGE_ID, INLINE_IMAGE_PX.toFloat()) },
@@ -146,3 +150,25 @@ fun DrawableImageTilePreview(context: Context): TilePreviewData =
     },
     onTileRequest = { imageTile(DRAWABLE_IMAGE_ID, 88f) },
   )
+
+/**
+ * Scope-registered image tile — the modern protolayout image API (`materialScopeWithResources` +
+ * `avatarImage`) that real Wear tiles use. The image is registered into the `TileRequest`'s
+ * `ProtoLayoutScope` during `onTileRequest` rather than through an `onTileResourceRequest` map, so
+ * `TilePreviewComposable` has to harvest the scope (see `mergeScopeResources`) to serve it. Before
+ * that harvest this rendered blank — the exact reason the wear-os-samples contact avatars
+ * (`avatarImage` + `materialScopeWithResources`) came out empty.
+ */
+@Preview(device = WearDevices.LARGE_ROUND, name = "Scope Image")
+fun ScopeImageTilePreview(context: Context): TilePreviewData = TilePreviewData { request ->
+  TilePreviewHelper.singleTimelineEntryTileBuilder(
+      materialScopeWithResources(context, request.scope, request.deviceConfiguration) {
+        primaryLayout(
+          mainSlot = {
+            avatarImage(resource = heroImageResource(), width = expand(), height = expand())
+          }
+        )
+      }
+    )
+    .build()
+}

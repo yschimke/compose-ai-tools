@@ -13,6 +13,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.wear.protolayout.DeviceParametersBuilders
 import androidx.wear.protolayout.DeviceParametersBuilders.DeviceParameters
 import androidx.wear.protolayout.LayoutElementBuilders
+import androidx.wear.protolayout.ProtoLayoutScope
 import androidx.wear.protolayout.ResourceBuilders
 import androidx.wear.protolayout.proto.LayoutElementProto
 import androidx.wear.protolayout.proto.ResourceProto
@@ -111,7 +112,14 @@ private fun renderTileInto(
       .setVersion(tile.resourcesVersion.ifEmpty { "1" })
       .setDeviceConfiguration(deviceParams)
       .build()
-  val resources = data.onTileResourceRequest(resourcesRequest)
+  // Merge the two ways a tile supplies images so both render: the classic
+  // `onTileResourceRequest` id -> ImageResource map, and images the modern scope API
+  // (`materialScopeWithResources` / `avatarImage` / `basicImage`) registers into the
+  // TileRequest's ProtoLayoutScope during `onTileRequest`. `TilePreviewData`'s default
+  // `onTileResourceRequest` returns an empty bundle and `TileRenderer` only inflates the
+  // `Resources` we pass it, so unharvested scope images (contact avatars) render blank.
+  val resources =
+    mergeScopeResources(data.onTileResourceRequest(resourcesRequest), tileRequest.scope)
 
   val layout =
     tile.tileTimeline?.timelineEntries?.firstOrNull()?.layout
@@ -133,6 +141,27 @@ private fun renderTileInto(
   }
 
   inflateLayoutInto(context, layout, resources, parent, "preview '$functionName'")
+}
+
+/**
+ * Combines the resources returned by `onTileResourceRequest` ([requested]) with any images the
+ * layout registered into the TileRequest's [scope] during `onTileRequest` — the modern
+ * `ProtoLayoutScope` image API (`materialScopeWithResources` / `avatarImage` / `basicImage`). Scope
+ * images are merged on top of the requested map (proto map merge is last-wins per id). Returns
+ * [requested] unchanged when the scope holds nothing, so the classic explicit-mapping path is
+ * byte-for-byte untouched.
+ */
+private fun mergeScopeResources(
+  requested: ResourceBuilders.Resources,
+  scope: ProtoLayoutScope,
+): ResourceBuilders.Resources {
+  if (!scope.hasResources()) return requested
+  val merged =
+    ResourceProto.Resources.newBuilder()
+      .mergeFrom(requested.toProto())
+      .mergeFrom(scope.collectResources().toProto())
+      .build()
+  return ResourceBuilders.Resources.fromProto(merged)
 }
 
 /**
