@@ -2,6 +2,8 @@ package ee.schimke.composeai.daemon
 
 import java.awt.Font
 import java.io.ByteArrayInputStream
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -39,6 +41,35 @@ class FontSubsetterTest {
     val font = Font.createFont(Font.TRUETYPE_FONT, ByteArrayInputStream(subset))
     assertTrue(font.canDisplay('A'))
     assertTrue("unused glyph must be dropped", !font.canDisplay('中'))
+  }
+
+  @Test
+  fun subsetSkipsTextThatNeedsComplexShaping() {
+    // Arabic (needs joining/reordering) and a Latin base + combining mark (needs mark positioning)
+    // must not be glyf-subset — the shaping tables this path strips are required — so it returns
+    // null and the caller embeds the full, intact face.
+    assertNull("arabic needs shaping", FontSubsetter.subset(fixtureFont(), codePoints("مرحبا")))
+    assertNull(
+      "combining mark needs shaping",
+      FontSubsetter.subset(fixtureFont(), codePoints("é")),
+    )
+    // Plain Latin + digits is simple — this one does subset.
+    assertNotNull(FontSubsetter.subset(fixtureFont(), codePoints("Filled 123")))
+  }
+
+  @Test
+  fun subsetHasAConsistentWholeFontChecksum() {
+    val subset = FontSubsetter.subset(fixtureFont(), codePoints("Filled card"))!!
+    // With head.checkSumAdjustment written correctly, the sum of the entire file as big-endian
+    // uint32 is exactly 0xB1B0AFBA — the invariant a strict sfnt sanitizer checks.
+    val buf = java.nio.ByteBuffer.wrap(subset)
+    var sum = 0
+    var p = 0
+    while (p + 4 <= subset.size) {
+      sum += buf.getInt(p)
+      p += 4
+    }
+    assertEquals(0xB1B0AFBA.toInt(), sum)
   }
 
   @Test

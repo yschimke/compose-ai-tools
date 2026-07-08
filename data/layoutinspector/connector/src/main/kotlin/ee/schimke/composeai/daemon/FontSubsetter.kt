@@ -60,6 +60,12 @@ object FontSubsetter {
    */
   fun subset(fontBytes: ByteArray, codePoints: Set<Int>): ByteArray? {
     if (fontBytes.isEmpty() || codePoints.isEmpty()) return null
+    // Complex scripts (Arabic/Indic/…) and combining marks are shaped at render time from the
+    // font's `GSUB`/`GPOS`/`GDEF` tables — which this path strips, and which FontBox anyway copies
+    // with pre-subset glyph IDs. Rather than emit a font that would shape wrong, don't subset such
+    // text: return null so the caller embeds the full, intact face. Simple scripts (Latin, Greek,
+    // Cyrillic, CJK, …) render one glyph per code point with no reordering, so stripping is safe.
+    if (requiresShaping(codePoints)) return null
     return runCatching {
         val ttf = TTFParser(true).parse(ByteArrayInputStream(fontBytes))
         // TTFSubsetter rebuilds `glyf`/`loca`; a CFF/PostScript-outline `.otf` has no `glyf`, so
@@ -119,14 +125,57 @@ object FontSubsetter {
       val rec = 12 + i * 16
       System.arraycopy(r.tag.toByteArray(Charsets.ISO_8859_1), 0, out, rec, 4)
       System.arraycopy(font, r.offset, out, newOffsets[i], r.length)
-      if (r.tag == "head") headOutOffset = newOffsets[i]
+      // `head.checkSumAdjustment` (bytes 8..11) must be treated as 0 when its own table checksum is
+      // computed and the whole-font checksum is taken (sfnt spec), so zero it *before*
+      // checksumming.
+      if (r.tag == "head" && r.length >= 12) {
+        headOutOffset = newOffsets[i]
+        ob.putInt(headOutOffset + 8, 0)
+      }
       ob.putInt(rec + 4, tableChecksum(out, newOffsets[i], r.length))
       ob.putInt(rec + 8, newOffsets[i])
       ob.putInt(rec + 12, r.length)
     }
-    // The stored checkSumAdjustment no longer matches once tables are removed; zero it.
-    if (headOutOffset >= 0 && headOutOffset + 12 <= out.size) ob.putInt(headOutOffset + 8, 0)
+    // Now that every table (head included, adjustment=0) is in place, write the real whole-font
+    // adjustment: 0xB1B0AFBA minus the sum of the entire file as uint32. Readers recompute head's
+    // checksum with this field treated as 0, so writing it here keeps a consistent sfnt checksum.
+    if (headOutOffset >= 0) {
+      val fontChecksum = tableChecksum(out, 0, out.size)
+      ob.putInt(headOutOffset + 8, 0xB1B0AFBA.toInt() - fontChecksum)
+    }
     return out
+  }
+
+  /**
+   * Scripts that lay out one glyph per code point with no reordering, mark stacking, or mandatory
+   * ligatures — so a glyf-only subset (with the shaping tables dropped) renders them exactly.
+   * Everything outside this set, and any combining mark, is treated as needing shaping.
+   */
+  private val SIMPLE_SCRIPTS: Set<Character.UnicodeScript> =
+    setOf(
+      Character.UnicodeScript.COMMON,
+      Character.UnicodeScript.LATIN,
+      Character.UnicodeScript.GREEK,
+      Character.UnicodeScript.CYRILLIC,
+      Character.UnicodeScript.ARMENIAN,
+      Character.UnicodeScript.GEORGIAN,
+      Character.UnicodeScript.HAN,
+      Character.UnicodeScript.HIRAGANA,
+      Character.UnicodeScript.KATAKANA,
+      Character.UnicodeScript.HANGUL,
+      Character.UnicodeScript.BOPOMOFO,
+    )
+
+  /**
+   * True when any code point needs complex text shaping (combining mark or a non-simple script).
+   */
+  private fun requiresShaping(codePoints: Set<Int>): Boolean = codePoints.any { cp ->
+    when (Character.getType(cp)) {
+      Character.NON_SPACING_MARK.toInt(),
+      Character.COMBINING_SPACING_MARK.toInt(),
+      Character.ENCLOSING_MARK.toInt() -> true
+      else -> runCatching { Character.UnicodeScript.of(cp) }.getOrNull() !in SIMPLE_SCRIPTS
+    }
   }
 
   private fun align4(n: Int): Int = (n + 3) and 3.inv()
