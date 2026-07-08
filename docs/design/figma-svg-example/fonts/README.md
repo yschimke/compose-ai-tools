@@ -50,6 +50,32 @@ render loaded **Lobster Two** (a downloaded Google font); before, the export cou
 Chromium substituted a serif; after, the SVG carries the real Lobster Two file and renders the script
 face — matching the render.
 
+## Subset to the drawn glyphs — exact face, a few KB
+
+Embedding the *exact file* the render loaded is faithful but a whole font is 100–300 KB, base64'd
+into every sticker — a catalog of SVGs balloons by megabytes. So the embed is **subset** to just the
+code points the SVG's `<text>`/`<tspan>` actually draw (`FontSubsetter`, pure-JVM via FontBox): keep
+those glyphs' outlines, then strip the OpenType layout + hinting tables — `GPOS`/`GSUB`/`GDEF`/`kern`,
+`fpgm`/`prep`/`cvt`/`gasp` — that static, pre-laid-out SVG text never applies. For a UI font `GPOS`
+alone is 60–70 KB, dwarfing the ~2 KB of real outlines, so that's where the weight goes.
+
+| face | full file | subset embedded | reduction |
+| --- | --- | --- | --- |
+| Roboto-Regular | 306 KB | ~3 KB | ~100× |
+| Noto Serif | 247 KB | ~4 KB | ~60× |
+| Droid Sans Mono | 108 KB | ~4 KB | ~24× |
+
+The `glyf` outlines are untouched, so the shapes stay identical to the render — exact typeface, a
+fraction of the bytes. Below, the render's full Roboto and the subset embedded in the SVG draw the
+title identically (the diff is edge antialiasing only):
+
+![subset vs full font — identical glyphs, 305 KB → ~1.6 KB](subset-embed.png)
+
+Best-effort: a CFF `.otf` (no `glyf`) or any parse failure falls back to embedding the full file, so
+a face is never dropped. The dropped `GPOS` kerning is sub-pixel for UI labels and absorbed by the
+fidelity harness's tolerance; the Google-Fonts WOFF2 path (generic families) already ships a bounded
+`latin` subset, so it's left as-is.
+
 ## Desktop-render font gap (follow-up)
 
 The desktop `compose-figma-fidelity` score doesn't move on the embed alone, because the desktop Skiko
