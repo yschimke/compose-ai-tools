@@ -72,12 +72,12 @@ public data class DaemonClasspathDescriptor(
    */
   public val manifestPath: String,
   /**
-   * Stage-2 in-process compile config. When non-null the
-   * daemon constructs a `DefaultBtaCompileService` from these fields at startup and
-   * `JsonRpcServer.compileSources` dispatches through it. `null` (the default) means the consumer
-   * hasn't opted in via `composePreview { daemon { compileInProcess = true } }` and the daemon's
-   * `compileSources` handler returns `result=fallback` for every call — the editor falls back to
-   * stage 1 (`gradle --continuous`) or stage 0 (one-shot Gradle).
+   * Stage-2 in-process compile config. When non-null the daemon constructs a
+   * `DefaultBtaCompileService` from these fields at startup and `JsonRpcServer.compileSources`
+   * dispatches through it. `null` (the default) means the consumer hasn't opted in via
+   * `composePreview { daemon { compileInProcess = true } }` and the daemon's `compileSources`
+   * handler returns `result=fallback` for every call — the editor falls back to stage 1 (`gradle
+   * --continuous`) or stage 0 (one-shot Gradle).
    *
    * Schema-version bumped to 2 when this field landed (the v1 reader in the VS Code extension fails
    * the descriptor on any unknown field, even null-defaulted ones, so adding the field IS a
@@ -87,13 +87,13 @@ public data class DaemonClasspathDescriptor(
 )
 
 /**
- * Stage-2 in-process compile config. Populated by the
- * gradle plugin's `DaemonBootstrapTask` whenever the variant wiring resolved the required inputs
- * (BTA-impl classpath, module name, output dir, IC dir). The daemon reads these into a
- * `DefaultBtaCompileService` once at startup but only loads BTA's classloader lazily — the editor
- * has to call `compileSources` to trigger that, and the call is itself gated by the VS Code
- * workspace setting `composePreview.daemon.compileInProcess`. So a `non-null btaCompile` block in
- * the descriptor costs nothing at the daemon level unless the editor actually opts in.
+ * Stage-2 in-process compile config. Populated by the gradle plugin's `DaemonBootstrapTask`
+ * whenever the variant wiring resolved the required inputs (BTA-impl classpath, module name, output
+ * dir, IC dir). The daemon reads these into a `DefaultBtaCompileService` once at startup but only
+ * loads BTA's classloader lazily — the editor has to call `compileSources` to trigger that, and the
+ * call is itself gated by the VS Code workspace setting `composePreview.daemon.compileInProcess`.
+ * So a `non-null btaCompile` block in the descriptor costs nothing at the daemon level unless the
+ * editor actually opts in.
  */
 @Serializable
 public data class BtaCompileConfig(
@@ -138,8 +138,7 @@ public data class BtaCompileConfig(
   /**
    * Daemon-warm-time decision: non-null means this module is NOT a stage-2 candidate (typically
    * because KSP / KAPT / annotationProcessor is on the classpath). `JsonRpcServer.compileSources`
-   * returns `result=fallback` with this reason
-   * verbatim. `null` means eligible — BTA actually runs.
+   * returns `result=fallback` with this reason verbatim. `null` means eligible — BTA actually runs.
    */
   public val ineligibilityReason: String? = null,
 )

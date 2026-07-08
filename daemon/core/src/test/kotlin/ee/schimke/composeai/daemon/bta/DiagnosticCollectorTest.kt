@@ -11,8 +11,7 @@ import org.junit.Test
 
 /**
  * Unit tests for [DiagnosticCollector]. Covers the line-shape parser against the BTA diagnostic
- * formats the spike captured in real runs, plus the delegation
- * contract for non-error events.
+ * formats the spike captured in real runs, plus the delegation contract for non-error events.
  *
  * `KotlinLogger.error(msg, throwable)` is the only call that feeds the diagnostic list; everything
  * else (`info`, `debug`, `lifecycle`, `warn`) passes through to the optional delegate logger

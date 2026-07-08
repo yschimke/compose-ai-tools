@@ -13,8 +13,8 @@ import androidx.xr.compose.testing.onSubspaceNodeWithTag
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
 import ee.schimke.composeai.xr.OrbitCamera
 import ee.schimke.composeai.xr.Quat
-import ee.schimke.composeai.xr.SizeDp
 import ee.schimke.composeai.xr.Size3dDp
+import ee.schimke.composeai.xr.SizeDp
 import ee.schimke.composeai.xr.SpatialPanel
 import ee.schimke.composeai.xr.SpatialPose
 import ee.schimke.composeai.xr.SpatialScene
@@ -30,8 +30,8 @@ import ee.schimke.composeai.xr.Vec3
  * `SubspaceLayoutPoseTest` for a worked example).
  *
  * This reads each named panel's `poseInRoot` and `size` from the public spatial-semantics tree and
- * maps them to the [SpatialScene] wire shape. It also recovers each panel's live content [View] (see
- * [recordAllWithViews]) so the texture pass ([SubspaceSceneWriter.captureViewTextures]) can
+ * maps them to the [SpatialScene] wire shape. It also recovers each panel's live content [View]
+ * (see [recordAllWithViews]) so the texture pass ([SubspaceSceneWriter.captureViewTextures]) can
  * rasterise the real panel content into the `<tag>.png` the scene references.
  *
  * The caller owns the composition: it must enable the `android.software.xr.api.spatial` system
@@ -52,11 +52,10 @@ public object SubspaceSceneRecorder {
     panelTags: List<String>,
     previewId: String? = null,
   ): SpatialScene {
-    val panels =
-      panelTags.map { tag ->
-        val node = rule.onSubspaceNodeWithTag(tag).fetchSemanticsNode("no subspace node '$tag'")
-        panelFrom(node, id = tag, parentId = null)
-      }
+    val panels = panelTags.map { tag ->
+      val node = rule.onSubspaceNodeWithTag(tag).fetchSemanticsNode("no subspace node '$tag'")
+      panelFrom(node, id = tag, parentId = null)
+    }
     return SpatialScene(previewId = previewId, camera = defaultCamera(panels), panels = panels)
   }
 
@@ -124,16 +123,16 @@ public object SubspaceSceneRecorder {
   }
 
   /**
-   * Records the unified **3D-over-2D** [SpatialSemanticsTree]: the subspace layout (a `subspaceRoot`
-   * with one `panel` child per tagged `SpatialPanel`, each carrying the recovered pose/size) with
-   * every panel's 2D content tree attached as [SpatialSemanticsNode.panelContent].
+   * Records the unified **3D-over-2D** [SpatialSemanticsTree]: the subspace layout (a
+   * `subspaceRoot` with one `panel` child per tagged `SpatialPanel`, each carrying the recovered
+   * pose/size) with every panel's 2D content tree attached as [SpatialSemanticsNode.panelContent].
    *
    * The 2D tree is recovered from each panel's live content [View]: a `SpatialPanel` composes its
    * content into a view whose Compose root implements [RootForTest], so its
    * `semanticsOwner.unmergedRootSemanticsNode` is the ordinary 2D semantics root (proven by
    * `SubspacePanelSemanticsSpikeTest`). That [SemanticsNode] is handed to [projectSemantics] — the
-   * same projection `compose/semantics` and the wireframe use, injected rather than imported so this
-   * renderer module stays free of the daemon-side connector that owns it (the daemon passes
+   * same projection `compose/semantics` and the wireframe use, injected rather than imported so
+   * this renderer module stays free of the daemon-side connector that owns it (the daemon passes
    * `ComposeSemanticsDataProducer.buildPayload(it).root`). A panel whose view or semantics can't be
    * recovered simply gets a null [SpatialSemanticsNode.panelContent] — its geometry still lands, so
    * one unreadable panel degrades to a face without an overlay rather than failing the tree.
@@ -166,7 +165,8 @@ public object SubspaceSceneRecorder {
    * The degenerate **non-XR** case: an ordinary preview is a single `panel` at identity pose whose
    * [SpatialSemanticsNode.panelContent] is the whole 2D tree. Pure (no subspace / Robolectric), so
    * the daemon's normal 2D render path can wrap its `compose/semantics` payload into the same tree
-   * shape the XR path produces — making the per-panel wireframe the leaf renderer for every preview.
+   * shape the XR path produces — making the per-panel wireframe the leaf renderer for every
+   * preview.
    */
   public fun singlePanelTree(
     content: ComposeSemanticsNode,
@@ -181,7 +181,9 @@ public object SubspaceSceneRecorder {
       panelId = panelId,
     )
 
-  /** Wraps [panelNodes] under a `subspaceRoot` at identity pose (poses on children are absolute). */
+  /**
+   * Wraps [panelNodes] under a `subspaceRoot` at identity pose (poses on children are absolute).
+   */
   private fun subspaceRootOf(panelNodes: List<SpatialSemanticsNode>): SpatialSemanticsNode =
     SpatialSemanticsTrees.subspaceRoot(panelNodes)
 
@@ -192,7 +194,9 @@ public object SubspaceSceneRecorder {
     if (this is RootForTest) return this
     if (this is ViewGroup) {
       for (i in 0 until childCount) {
-        getChildAt(i).findRootForTest()?.let { return it }
+        getChildAt(i).findRootForTest()?.let {
+          return it
+        }
       }
     }
     return null
@@ -201,12 +205,12 @@ public object SubspaceSceneRecorder {
   /**
    * Recovers the content [View] hosted by a panel node. A `SpatialPanel`'s
    * [SubspaceSemanticsInfo.getSemanticsEntity] is the public `androidx.xr.scenecore.PanelEntity`,
-   * whose `rtEntity` is the runtime panel — under the fake XR runtime that's a
-   * `FakePanelEntity`, which holds the `android.view.View` the panel composed. Both the
-   * `getRtEntity$scenecore` bridge and `getView` are reached reflectively so this module compiles
-   * without the scenecore-testing fakes on its main classpath (they're a render-time dependency,
-   * mirroring how the node enumeration reaches `compose-testing` internals); the recorder tests are
-   * the canary if either shifts.
+   * whose `rtEntity` is the runtime panel — under the fake XR runtime that's a `FakePanelEntity`,
+   * which holds the `android.view.View` the panel composed. Both the `getRtEntity$scenecore` bridge
+   * and `getView` are reached reflectively so this module compiles without the scenecore-testing
+   * fakes on its main classpath (they're a render-time dependency, mirroring how the node
+   * enumeration reaches `compose-testing` internals); the recorder tests are the canary if either
+   * shifts.
    */
   private fun contentView(node: SubspaceSemanticsInfo): View? {
     val entity: Any = node.semanticsEntity ?: return null
@@ -222,7 +226,8 @@ public object SubspaceSceneRecorder {
     rule: AndroidComposeTestRule<*, ComponentActivity>
   ): List<SubspaceSemanticsInfo> {
     // alpha15 made SubspaceTestContext's constructor `internal` (it's still JVM-public); build it
-    // reflectively, matching how the enumeration below reaches `getAllSemanticsNodes$compose_testing`.
+    // reflectively, matching how the enumeration below reaches
+    // `getAllSemanticsNodes$compose_testing`.
     val context =
       Class.forName("androidx.xr.compose.testing.SubspaceTestContext")
         .getDeclaredConstructor(AndroidComposeTestRule::class.java)
@@ -235,7 +240,7 @@ public object SubspaceSceneRecorder {
           Boolean::class.javaPrimitiveType,
         )
       method.isAccessible = true
-      (method.invoke(context, /* useUnmergedTree = */ true) as Iterable<SubspaceSemanticsInfo>)
+      (method.invoke(context, /* useUnmergedTree= */ true) as Iterable<SubspaceSemanticsInfo>)
         .toList()
     } catch (e: ReflectiveOperationException) {
       throw IllegalStateException(
@@ -290,11 +295,26 @@ public object SubspaceSceneRecorder {
    */
   internal fun defaultCamera(panels: List<SpatialPanel>): OrbitCamera {
     if (panels.isEmpty()) {
-      return OrbitCamera(target = Vec3(0.0, 0.0, 0.0), distance = 1200.0, yawDeg = 0.0, pitchDeg = -6.0)
+      return OrbitCamera(
+        target = Vec3(0.0, 0.0, 0.0),
+        distance = 1200.0,
+        yawDeg = 0.0,
+        pitchDeg = -6.0,
+      )
     }
     // Combined axis-aligned bounds of every panel (centre ± half-size on each axis).
-    val xs = panels.flatMap { listOf(it.poseInRoot.translation.x - it.sizeDp.width / 2.0, it.poseInRoot.translation.x + it.sizeDp.width / 2.0) }
-    val ys = panels.flatMap { listOf(it.poseInRoot.translation.y - it.sizeDp.height / 2.0, it.poseInRoot.translation.y + it.sizeDp.height / 2.0) }
+    val xs = panels.flatMap {
+      listOf(
+        it.poseInRoot.translation.x - it.sizeDp.width / 2.0,
+        it.poseInRoot.translation.x + it.sizeDp.width / 2.0,
+      )
+    }
+    val ys = panels.flatMap {
+      listOf(
+        it.poseInRoot.translation.y - it.sizeDp.height / 2.0,
+        it.poseInRoot.translation.y + it.sizeDp.height / 2.0,
+      )
+    }
     val boundsW = xs.max() - xs.min()
     val boundsH = ys.max() - ys.min()
     val centreX = (xs.min() + xs.max()) / 2.0

@@ -19,12 +19,11 @@ import org.jetbrains.kotlin.buildtools.api.arguments.CompilerPluginOption
  * Three things this adapter owns that the underlying [BtaCompileSession] doesn't:
  *
  * 1. **Eligibility gate.** A non-null [ineligibilityReason] means the consumer's module isn't a
- *    stage-2 candidate (KSP/KAPT detected, AGP variant without resource-jar plumbing yet, etc.;
- *    the gradle plugin's `detectStageTwoIneligibility` is the source of truth for the
- *    predicate). Every compile call short-circuits to
- *    [BtaCompileService.Outcome.Fallback] with that reason verbatim. The gradle plugin decides the
- *    predicate at daemon-bootstrap time; the daemon never re-evaluates (Tier-1 dirty recycles the
- *    whole daemon, and with it this service).
+ *    stage-2 candidate (KSP/KAPT detected, AGP variant without resource-jar plumbing yet, etc.; the
+ *    gradle plugin's `detectStageTwoIneligibility` is the source of truth for the predicate). Every
+ *    compile call short-circuits to [BtaCompileService.Outcome.Fallback] with that reason verbatim.
+ *    The gradle plugin decides the predicate at daemon-bootstrap time; the daemon never
+ *    re-evaluates (Tier-1 dirty recycles the whole daemon, and with it this service).
  *
  * 2. **`SourceChangeSet` → BTA `SourcesChanges` translation.** Editor-supplied known dirty sets
  *    become `SourcesChanges.Known`; null becomes `SourcesChanges.ToBeCalculated` (BTA inspects file
@@ -206,11 +205,10 @@ class DefaultBtaCompileService(
      * `sourceInformation=true` option.
      *
      * The option is load-bearing, not cosmetic. KGP enables `sourceInformation` by default and the
-     * markers it emits (a ~236-byte delta per compiled file) are read by Compose
-     * Inspector / Live Literals / recomposition tooling. Without it, stage-2-emitted classes drift
-     * from the Gradle-emitted classes the daemon's hot-swap diffs against. Returns an empty list when
-     * no plugin
-     * JARs were resolved (plain Kotlin/JVM module with no Compose plugin on the classpath).
+     * markers it emits (a ~236-byte delta per compiled file) are read by Compose Inspector / Live
+     * Literals / recomposition tooling. Without it, stage-2-emitted classes drift from the
+     * Gradle-emitted classes the daemon's hot-swap diffs against. Returns an empty list when no
+     * plugin JARs were resolved (plain Kotlin/JVM module with no Compose plugin on the classpath).
      */
     internal fun composeCompilerPlugins(pluginJars: List<Path>): List<CompilerPlugin> =
       if (pluginJars.isEmpty()) emptyList()
