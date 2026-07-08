@@ -17,4 +17,15 @@
   <string name="label_focused">Enfocado</string>
   <string name="label_disabled">Desactivado</string>
   <string name="label_page">Página %1$d</string>
+  <string name="activity_heart_rate">Frecuencia cardíaca</string>
+  <string name="activity_sleep">Sueño</string>
+  <string name="activity_steps">Pasos</string>
+  <string name="activity_calories">Calorías</string>
+  <string name="activity_cycle">Ciclismo</string>
+  <string name="activity_swim">Natación</string>
+  <string name="activity_hike">Senderismo</string>
+  <string name="activity_strength">Fuerza</string>
+  <string name="activity_stretch">Estiramiento</string>
+  <string name="activity_yoga">Yoga</string>
+  <string name="activity_row">Remo</string>
 </resources>

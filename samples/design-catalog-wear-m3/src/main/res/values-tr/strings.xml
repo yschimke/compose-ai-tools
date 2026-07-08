@@ -17,4 +17,15 @@
   <string name="label_focused">Odaklı</string>
   <string name="label_disabled">Devre dışı</string>
   <string name="label_page">Sayfa %1$d</string>
+  <string name="activity_heart_rate">Kalp atış hızı</string>
+  <string name="activity_sleep">Uyku</string>
+  <string name="activity_steps">Adımlar</string>
+  <string name="activity_calories">Kalori</string>
+  <string name="activity_cycle">Bisiklet</string>
+  <string name="activity_swim">Yüzme</string>
+  <string name="activity_hike">Doğa yürüyüşü</string>
+  <string name="activity_strength">Güç</string>
+  <string name="activity_stretch">Esneme</string>
+  <string name="activity_yoga">Yoga</string>
+  <string name="activity_row">Kürek</string>
 </resources>

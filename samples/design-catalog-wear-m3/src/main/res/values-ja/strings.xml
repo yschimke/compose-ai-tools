@@ -17,4 +17,15 @@
   <string name="label_focused">フォーカス</string>
   <string name="label_disabled">無効</string>
   <string name="label_page">%1$dページ</string>
+  <string name="activity_heart_rate">心拍数</string>
+  <string name="activity_sleep">睡眠</string>
+  <string name="activity_steps">歩数</string>
+  <string name="activity_calories">カロリー</string>
+  <string name="activity_cycle">サイクリング</string>
+  <string name="activity_swim">水泳</string>
+  <string name="activity_hike">ハイキング</string>
+  <string name="activity_strength">筋力トレーニング</string>
+  <string name="activity_stretch">ストレッチ</string>
+  <string name="activity_yoga">ヨガ</string>
+  <string name="activity_row">ローイング</string>
 </resources>

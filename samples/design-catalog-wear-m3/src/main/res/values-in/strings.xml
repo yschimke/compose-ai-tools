@@ -17,4 +17,15 @@
   <string name="label_focused">Fokus</string>
   <string name="label_disabled">Nonaktif</string>
   <string name="label_page">Halaman %1$d</string>
+  <string name="activity_heart_rate">Detak jantung</string>
+  <string name="activity_sleep">Tidur</string>
+  <string name="activity_steps">Langkah</string>
+  <string name="activity_calories">Kalori</string>
+  <string name="activity_cycle">Bersepeda</string>
+  <string name="activity_swim">Berenang</string>
+  <string name="activity_hike">Mendaki</string>
+  <string name="activity_strength">Kekuatan</string>
+  <string name="activity_stretch">Peregangan</string>
+  <string name="activity_yoga">Yoga</string>
+  <string name="activity_row">Mendayung</string>
 </resources>

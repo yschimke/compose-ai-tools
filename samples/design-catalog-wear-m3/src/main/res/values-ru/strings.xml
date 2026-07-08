@@ -17,4 +17,15 @@
   <string name="label_focused">В фокусе</string>
   <string name="label_disabled">Отключено</string>
   <string name="label_page">Страница %1$d</string>
+  <string name="activity_heart_rate">Пульс</string>
+  <string name="activity_sleep">Сон</string>
+  <string name="activity_steps">Шаги</string>
+  <string name="activity_calories">Калории</string>
+  <string name="activity_cycle">Велосипед</string>
+  <string name="activity_swim">Плавание</string>
+  <string name="activity_hike">Поход</string>
+  <string name="activity_strength">Силовая</string>
+  <string name="activity_stretch">Растяжка</string>
+  <string name="activity_yoga">Йога</string>
+  <string name="activity_row">Гребля</string>
 </resources>

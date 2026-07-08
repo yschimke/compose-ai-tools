@@ -17,4 +17,15 @@
   <string name="label_focused">Focused</string>
   <string name="label_disabled">Disabled</string>
   <string name="label_page">Page %1$d</string>
+  <string name="activity_heart_rate">Heart rate</string>
+  <string name="activity_sleep">Sleep</string>
+  <string name="activity_steps">Steps</string>
+  <string name="activity_calories">Calories</string>
+  <string name="activity_cycle">Cycle</string>
+  <string name="activity_swim">Swim</string>
+  <string name="activity_hike">Hike</string>
+  <string name="activity_strength">Strength</string>
+  <string name="activity_stretch">Stretch</string>
+  <string name="activity_yoga">Yoga</string>
+  <string name="activity_row">Row</string>
 </resources>

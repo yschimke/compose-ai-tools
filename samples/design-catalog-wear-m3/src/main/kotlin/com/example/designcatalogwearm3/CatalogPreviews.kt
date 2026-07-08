@@ -78,18 +78,18 @@ fun ChildButtonSticker() =
 // the space above the edge button.
 private val edgeButtonHistory =
   listOf(
-    "Morning run" to "5.2 km · 28 min",
-    "Heart rate" to "72 bpm",
-    "Sleep" to "7h 14m",
-    "Steps" to "6,482",
-    "Calories" to "412 kcal",
-    "Cycle" to "18 km · 41 min",
-    "Swim" to "1.2 km · 32 min",
-    "Hike" to "9.4 km · 1h 52m",
-    "Strength" to "45 min",
-    "Stretch" to "12 min",
-    "Yoga" to "30 min",
-    "Row" to "2.0 km · 9 min",
+    R.string.title_morning_run to "5.2 km · 28 min",
+    R.string.activity_heart_rate to "72 bpm",
+    R.string.activity_sleep to "7h 14m",
+    R.string.activity_steps to "6,482",
+    R.string.activity_calories to "412 kcal",
+    R.string.activity_cycle to "18 km · 41 min",
+    R.string.activity_swim to "1.2 km · 32 min",
+    R.string.activity_hike to "9.4 km · 1h 52m",
+    R.string.activity_strength to "45 min",
+    R.string.activity_stretch to "12 min",
+    R.string.activity_yoga to "30 min",
+    R.string.activity_row to "2.0 km · 9 min",
   )
 
 // EdgeButton hugs the bottom edge of the round screen via the
@@ -133,10 +133,10 @@ fun EdgeButtonSticker() =
             Text(previewOverrideString("header", stringResource(R.string.header_workout)))
           }
         }
-        items(edgeButtonHistory) { (title, subtitle) ->
+        items(edgeButtonHistory) { (titleRes, subtitle) ->
           TitleCard(
             onClick = {},
-            title = { Text(title) },
+            title = { Text(stringResource(titleRes)) },
             subtitle = { Text(subtitle) },
             modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
             transformation = SurfaceTransformation(spec),
@@ -154,12 +154,12 @@ fun EdgeButtonSticker() =
 
 private val scalingListItems =
   listOf(
-    "Morning run" to "5.2 km · 28 min",
-    "Heart rate" to "72 bpm",
-    "Sleep" to "7h 14m",
-    "Steps" to "6,482",
-    "Calories" to "412 kcal",
-    "Cycle" to "18 km · 41 min",
+    R.string.title_morning_run to "5.2 km · 28 min",
+    R.string.activity_heart_rate to "72 bpm",
+    R.string.activity_sleep to "7h 14m",
+    R.string.activity_steps to "6,482",
+    R.string.activity_calories to "412 kcal",
+    R.string.activity_cycle to "18 km · 41 min",
   )
 
 @CatalogWearBreakpoints
@@ -182,10 +182,10 @@ fun ScalingListSticker() =
             Text(previewOverrideString("header", stringResource(R.string.header_activity)))
           }
         }
-        items(scalingListItems) { (title, subtitle) ->
+        items(scalingListItems) { (titleRes, subtitle) ->
           TitleCard(
             onClick = {},
-            title = { Text(title) },
+            title = { Text(stringResource(titleRes)) },
             subtitle = { Text(subtitle) },
             modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
             transformation = SurfaceTransformation(spec),
@@ -264,10 +264,10 @@ private fun FixedTimeText() = TimeText { timeTextCurvedText("10:10") }
 
 private val templateListItems =
   listOf(
-    "Morning run" to "5.2 km · 28 min",
-    "Heart rate" to "72 bpm",
-    "Sleep" to "7h 14m",
-    "Steps" to "6,482",
+    R.string.title_morning_run to "5.2 km · 28 min",
+    R.string.activity_heart_rate to "72 bpm",
+    R.string.activity_sleep to "7h 14m",
+    R.string.activity_steps to "6,482",
   )
 
 // Base template: the canonical Wear list screen — TimeText status strip at the
@@ -293,10 +293,10 @@ fun TimeTextScaffoldTemplate() =
               Text(previewOverrideString("header", stringResource(R.string.header_activity)))
             }
           }
-          items(templateListItems) { (title, subtitle) ->
+          items(templateListItems) { (titleRes, subtitle) ->
             TitleCard(
               onClick = {},
-              title = { Text(title) },
+              title = { Text(stringResource(titleRes)) },
               subtitle = { Text(subtitle) },
               modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
               transformation = SurfaceTransformation(spec),
@@ -364,10 +364,10 @@ fun EdgeButtonScaffoldTemplate() =
               Text(previewOverrideString("header", stringResource(R.string.header_workout)))
             }
           }
-          items(edgeButtonHistory) { (title, subtitle) ->
+          items(edgeButtonHistory) { (titleRes, subtitle) ->
             TitleCard(
               onClick = {},
-              title = { Text(title) },
+              title = { Text(stringResource(titleRes)) },
               subtitle = { Text(subtitle) },
               modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
               transformation = SurfaceTransformation(spec),

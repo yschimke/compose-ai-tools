@@ -17,4 +17,15 @@
   <string name="label_focused">聚焦</string>
   <string name="label_disabled">已停用</string>
   <string name="label_page">第 %1$d 页</string>
+  <string name="activity_heart_rate">心率</string>
+  <string name="activity_sleep">睡眠</string>
+  <string name="activity_steps">步数</string>
+  <string name="activity_calories">卡路里</string>
+  <string name="activity_cycle">骑行</string>
+  <string name="activity_swim">游泳</string>
+  <string name="activity_hike">徒步</string>
+  <string name="activity_strength">力量训练</string>
+  <string name="activity_stretch">拉伸</string>
+  <string name="activity_yoga">瑜伽</string>
+  <string name="activity_row">划船</string>
 </resources>

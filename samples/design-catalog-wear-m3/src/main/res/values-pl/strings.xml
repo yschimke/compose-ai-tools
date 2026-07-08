@@ -17,4 +17,15 @@
   <string name="label_focused">Aktywny</string>
   <string name="label_disabled">Wyłączony</string>
   <string name="label_page">Strona %1$d</string>
+  <string name="activity_heart_rate">Tętno</string>
+  <string name="activity_sleep">Sen</string>
+  <string name="activity_steps">Kroki</string>
+  <string name="activity_calories">Kalorie</string>
+  <string name="activity_cycle">Jazda na rowerze</string>
+  <string name="activity_swim">Pływanie</string>
+  <string name="activity_hike">Wędrówka</string>
+  <string name="activity_strength">Siła</string>
+  <string name="activity_stretch">Rozciąganie</string>
+  <string name="activity_yoga">Joga</string>
+  <string name="activity_row">Wioślarstwo</string>
 </resources>

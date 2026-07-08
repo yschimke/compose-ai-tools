@@ -17,4 +17,15 @@
   <string name="label_focused">Gefocust</string>
   <string name="label_disabled">Uitgeschakeld</string>
   <string name="label_page">Pagina %1$d</string>
+  <string name="activity_heart_rate">Hartslag</string>
+  <string name="activity_sleep">Slaap</string>
+  <string name="activity_steps">Stappen</string>
+  <string name="activity_calories">Calorieën</string>
+  <string name="activity_cycle">Fietsen</string>
+  <string name="activity_swim">Zwemmen</string>
+  <string name="activity_hike">Wandeltocht</string>
+  <string name="activity_strength">Kracht</string>
+  <string name="activity_stretch">Rekken</string>
+  <string name="activity_yoga">Yoga</string>
+  <string name="activity_row">Roeien</string>
 </resources>

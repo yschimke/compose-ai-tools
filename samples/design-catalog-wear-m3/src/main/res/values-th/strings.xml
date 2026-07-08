@@ -17,4 +17,15 @@
   <string name="label_focused">โฟกัส</string>
   <string name="label_disabled">ปิดใช้งาน</string>
   <string name="label_page">หน้า %1$d</string>
+  <string name="activity_heart_rate">อัตราการเต้นหัวใจ</string>
+  <string name="activity_sleep">การนอน</string>
+  <string name="activity_steps">ก้าว</string>
+  <string name="activity_calories">แคลอรี</string>
+  <string name="activity_cycle">ปั่นจักรยาน</string>
+  <string name="activity_swim">ว่ายน้ำ</string>
+  <string name="activity_hike">เดินป่า</string>
+  <string name="activity_strength">เวทเทรนนิง</string>
+  <string name="activity_stretch">ยืดเหยียด</string>
+  <string name="activity_yoga">โยคะ</string>
+  <string name="activity_row">พายเรือ</string>
 </resources>

@@ -17,4 +17,15 @@
   <string name="label_focused">फ़ोकस</string>
   <string name="label_disabled">अक्षम</string>
   <string name="label_page">पेज %1$d</string>
+  <string name="activity_heart_rate">हृदय गति</string>
+  <string name="activity_sleep">नींद</string>
+  <string name="activity_steps">कदम</string>
+  <string name="activity_calories">कैलोरी</string>
+  <string name="activity_cycle">साइक्लिंग</string>
+  <string name="activity_swim">तैराकी</string>
+  <string name="activity_hike">हाइकिंग</string>
+  <string name="activity_strength">स्ट्रेंथ</string>
+  <string name="activity_stretch">स्ट्रेच</string>
+  <string name="activity_yoga">योग</string>
+  <string name="activity_row">रोइंग</string>
 </resources>

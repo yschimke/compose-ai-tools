@@ -17,4 +17,15 @@
   <string name="label_focused">포커스</string>
   <string name="label_disabled">사용 안 함</string>
   <string name="label_page">%1$d페이지</string>
+  <string name="activity_heart_rate">심박수</string>
+  <string name="activity_sleep">수면</string>
+  <string name="activity_steps">걸음 수</string>
+  <string name="activity_calories">칼로리</string>
+  <string name="activity_cycle">사이클링</string>
+  <string name="activity_swim">수영</string>
+  <string name="activity_hike">하이킹</string>
+  <string name="activity_strength">근력 운동</string>
+  <string name="activity_stretch">스트레칭</string>
+  <string name="activity_yoga">요가</string>
+  <string name="activity_row">로잉</string>
 </resources>

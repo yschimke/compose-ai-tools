@@ -17,4 +17,15 @@
   <string name="label_focused">A fuoco</string>
   <string name="label_disabled">Disattivato</string>
   <string name="label_page">Pagina %1$d</string>
+  <string name="activity_heart_rate">Frequenza cardiaca</string>
+  <string name="activity_sleep">Sonno</string>
+  <string name="activity_steps">Passi</string>
+  <string name="activity_calories">Calorie</string>
+  <string name="activity_cycle">Ciclismo</string>
+  <string name="activity_swim">Nuoto</string>
+  <string name="activity_hike">Escursione</string>
+  <string name="activity_strength">Forza</string>
+  <string name="activity_stretch">Stretching</string>
+  <string name="activity_yoga">Yoga</string>
+  <string name="activity_row">Vogata</string>
 </resources>
