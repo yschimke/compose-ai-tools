@@ -161,6 +161,18 @@ open class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(tes
         // connector not on classpath — skip ambient shadow
       }
     }
+    // Wear one-handed-gesture SDK-manager shadow — only when the wear-compose gesture API is on the
+    // classpath. Makes the framework's registration + indicator pipeline observable under the render
+    // (arms via `GestureStateController.detectionArmed`), so a raw `Modifier.oneHandedGesture` app is
+    // surfaced in `compose/gestures` and its hint can be shown. Same NoClassDefFoundError guard as
+    // ambient for artifacts predating the gesture connector.
+    if (isWearGestureAvailable(javaClass.classLoader)) {
+      try {
+        shadows += ShadowSdkGestureInputManager::class.java
+      } catch (_: NoClassDefFoundError) {
+        // connector not on classpath — skip gesture shadow
+      }
+    }
     // Runtime-permissions tracker shadow. Always registered — `android.content.ContextWrapper`
     // is core Android, present on every consumer classpath, so the symbolic links the shadow
     // declares always resolve. The shadow forwards `checkPermission(...)` to the real

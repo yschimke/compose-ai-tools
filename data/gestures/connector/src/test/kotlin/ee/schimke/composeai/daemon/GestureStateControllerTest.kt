@@ -125,17 +125,59 @@ class GestureStateControllerTest {
   }
 
   @Test
+  fun `recordDetected surfaces framework gestures in snapshot`() {
+    GestureStateController.recordDetected(GestureStateController.SDK_ACTION_PRIMARY) {}
+    GestureStateController.recordDetected(GestureStateController.SDK_ACTION_DISMISS) {}
+    assertEquals(listOf("primary", "dismiss"), GestureStateController.snapshot().detected)
+
+    GestureStateController.clearDetected(GestureStateController.SDK_ACTION_DISMISS)
+    assertEquals(listOf("primary"), GestureStateController.snapshot().detected)
+  }
+
+  @Test
+  fun `invoke fires a framework-detected handler of the matching kind`() {
+    var fired = 0
+    GestureStateController.recordDetected(GestureStateController.SDK_ACTION_PRIMARY) { fired++ }
+    val count = GestureStateController.invoke(GestureKindOverride.PRIMARY)
+    assertEquals(1, count)
+    assertEquals(1, fired)
+    assertEquals("primary", GestureStateController.snapshot().lastInvoked)
+  }
+
+  @Test
+  fun `scroll and page invokes fire the primary framework subscription`() {
+    var fired = 0
+    GestureStateController.recordDetected(GestureStateController.SDK_ACTION_PRIMARY) { fired++ }
+    GestureStateController.invoke(GestureKindOverride.SCROLL)
+    GestureStateController.invoke(GestureKindOverride.PAGE)
+    assertEquals(2, fired)
+  }
+
+  @Test
+  fun `armDetection toggles the shadow gate`() {
+    assertFalse(GestureStateController.detectionArmed())
+    GestureStateController.armDetection(true)
+    assertTrue(GestureStateController.detectionArmed())
+    GestureStateController.armDetection(false)
+    assertFalse(GestureStateController.detectionArmed())
+  }
+
+  @Test
   fun `resetForNewSession clears everything`() {
     GestureStateController.register(GestureKindOverride.PRIMARY, "Play", hintAvailable = true, enabled = true) {}
+    GestureStateController.recordDetected(GestureStateController.SDK_ACTION_PRIMARY) {}
     GestureStateController.invoke(GestureKindOverride.PRIMARY)
     GestureStateController.set(GestureOverride(showHints = true))
+    GestureStateController.armDetection(true)
 
     GestureStateController.resetForNewSession()
 
     val snap = GestureStateController.snapshot()
     assertTrue(snap.registered.isEmpty())
+    assertTrue(snap.detected.isEmpty())
     assertNull(snap.lastInvoked)
     assertFalse(snap.hintsShown)
     assertTrue(snap.enabled)
+    assertFalse(GestureStateController.detectionArmed())
   }
 }

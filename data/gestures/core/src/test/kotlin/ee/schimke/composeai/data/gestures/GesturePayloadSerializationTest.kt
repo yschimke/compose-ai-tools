@@ -25,6 +25,7 @@ class GesturePayloadSerializationTest {
             RegisteredGesture(type = "primary", label = "Play", hintAvailable = true),
             RegisteredGesture(type = "dismiss", label = "Back", hintAvailable = false),
           ),
+        detected = listOf("primary", "dismiss"),
       )
     val encoded = json.encodeToString(GesturePayload.serializer(), payload)
     val decoded = json.decodeFromString(GesturePayload.serializer(), encoded)
@@ -38,6 +39,7 @@ class GesturePayloadSerializationTest {
         enabled = true,
         hintsShown = false,
         registered = listOf(RegisteredGesture("scroll", "Scroll down", true)),
+        detected = listOf("primary"),
       )
     val encoded = json.encodeToString(GesturePayload.serializer(), payload)
     assertTrue("enabled field present: $encoded", encoded.contains("\"enabled\":true"))
@@ -45,6 +47,7 @@ class GesturePayloadSerializationTest {
     assertTrue("type field present: $encoded", encoded.contains("\"type\":\"scroll\""))
     assertTrue("label field present: $encoded", encoded.contains("\"label\":\"Scroll down\""))
     assertTrue("hintAvailable present: $encoded", encoded.contains("\"hintAvailable\":true"))
+    assertTrue("detected field present: $encoded", encoded.contains("\"detected\":[\"primary\"]"))
   }
 
   @Test

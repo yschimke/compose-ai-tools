@@ -64,6 +64,13 @@ dependencies {
   compileOnly(libs.wear.compose.material3)
   testImplementation(libs.wear.compose.material3)
 
+  // Robolectric — `ShadowSdkGestureInputManager` uses `@Implements` / `@Implementation` to shadow
+  // wear-compose-material3's internal `SdkGestureInputManagerImpl`. `compileOnly` because the
+  // shadow
+  // only runs inside a Robolectric sandbox; the daemon's runtime classpath already includes it.
+  compileOnly(libs.robolectric)
+  testImplementation(libs.robolectric)
+
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.serialization.json)
 }

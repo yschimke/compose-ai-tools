@@ -37,8 +37,20 @@ data class GesturePayload(
    * if none this session.
    */
   val lastInvoked: String? = null,
-  /** Gesture handlers the preview registered during its most recent render. */
+  /**
+   * Gesture handlers the preview registered through the opt-in `reportedOneHandedGesture` seam —
+   * carries the author-supplied labels.
+   */
   val registered: List<RegisteredGesture> = emptyList(),
+  /**
+   * Gesture actions detected through the **real** framework registry when the preview uses the raw
+   * `Modifier.oneHandedGesture` directly (no reporting seam). Populated by the connector's
+   * Robolectric shadow of the internal SDK gesture manager, so gesture usage is observable even
+   * without app changes. Lower-case wire spelling per action (`"primary"` / `"dismiss"`), one entry
+   * per active framework subscription. The framework registry exposes no author label, so these
+   * carry the action name only — use [registered] for labelled handlers.
+   */
+  val detected: List<String> = emptyList(),
 )
 
 /** One gesture handler the preview registered, as reported to the `compose/gestures` product. */

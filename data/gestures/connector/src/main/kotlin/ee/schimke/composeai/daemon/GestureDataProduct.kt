@@ -51,7 +51,15 @@ class GestureOverrideExtension(private val override: GestureOverride?) :
   @Composable
   override fun AroundComposable(content: @Composable () -> Unit) {
     GestureStateController.set(override)
-    DisposableEffect(override) { onDispose { GestureStateController.set(null) } }
+    // Arm the SDK-manager shadow so the framework registers/announces raw `oneHandedGesture` usage
+    // for this render (an unmodified app becomes observable + invokable + hint-showable).
+    GestureStateController.armDetection(true)
+    DisposableEffect(override) {
+      onDispose {
+        GestureStateController.set(null)
+        GestureStateController.armDetection(false)
+      }
+    }
 
     CompositionLocalProvider(
       LocalGestureRegistry provides GestureStateController,

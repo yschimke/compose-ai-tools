@@ -7,6 +7,7 @@ import ee.schimke.composeai.daemon.protocol.GestureKindOverride
 import ee.schimke.composeai.daemon.protocol.GestureOverride
 import ee.schimke.composeai.data.gestures.GesturePayload
 import ee.schimke.composeai.data.gestures.RegisteredGesture
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
@@ -14,10 +15,12 @@ import java.util.concurrent.CopyOnWriteArrayList
  *
  * The Wear gesture framework (`Modifier.oneHandedGesture` in `wear-compose 1.7.0-alpha`) registers
  * handlers with an **internal**, on-device-only `GestureManager`; off a Pixel Watch it silently
- * no-ops and nothing is observable. This controller is the connector's parallel, observable registry
- * — a preview opts in by wiring [reportedOneHandedGesture] (which applies the real modifier *and*
- * reports here) so the `compose/gestures` data product can list the handlers and invoke them without
- * the hardware.
+ * no-ops and nothing is observable. This controller makes gestures observable + drivable two ways:
+ * - **Opt-in, labelled** — a preview wires [reportedOneHandedGesture], which applies the real
+ *   modifier *and* reports each handler here (with the author's label).
+ * - **Zero-change, framework-level** — [ShadowSdkGestureInputManager] shadows the framework's
+ *   internal SDK bridge, so an unmodified app's raw `Modifier.oneHandedGesture` is detected
+ *   ([detected]), its hint can be shown, and its handler invoked — no reporting seam required.
  *
  * The flow mirrors [AmbientStateController]:
  * 1. [reportedOneHandedGesture]'s `DisposableEffect` calls [register] during composition and
@@ -51,6 +54,22 @@ object GestureStateController {
   )
 
   private val entries: MutableList<Entry> = CopyOnWriteArrayList()
+
+  /**
+   * Gestures detected through the **real** framework registry (raw `Modifier.oneHandedGesture`, no
+   * reporting seam), keyed by the SDK gesture-action int (1 = primary, 2 = dismiss). The value fires
+   * the framework's captured `onGesture` callback. Populated by [ShadowSdkGestureInputManager] when
+   * [detectionArmed] — this is what makes an unmodified app's gesture usage observable + invokable.
+   */
+  private val detected = ConcurrentHashMap<Int, () -> Unit>()
+
+  /**
+   * Whether the connector's SDK-manager shadow should report gestures as available. Armed by
+   * [GestureOverrideExtension] while a gesture override is applied, so the framework's registration +
+   * indicator pipeline runs under the render (off-device the real SDK is absent → the pipeline is
+   * inert). Kept `false` otherwise so non-gesture renders are untouched.
+   */
+  @Volatile private var detectionArmed: Boolean = false
 
   /** Fallback enabled state for previews that set a gesture override but register no handlers. */
   @Volatile private var overrideEnabled: Boolean = true
@@ -88,6 +107,28 @@ object GestureStateController {
     synchronized(lock) { entries.removeAll { it.type == type && it.label == label } }
   }
 
+  /** Arm/disarm the framework-registry shadow. See [detectionArmed]. */
+  fun armDetection(armed: Boolean) {
+    detectionArmed = armed
+  }
+
+  /** Read by [ShadowSdkGestureInputManager.isAvailable]. */
+  fun detectionArmed(): Boolean = detectionArmed
+
+  /**
+   * Record a framework-detected gesture subscription for [sdkAction] (1 = primary, 2 = dismiss),
+   * capturing the framework's `onGesture` callback so [invoke] can fire the real handler. Called by
+   * [ShadowSdkGestureInputManager.subscribeToSdkGestureAction].
+   */
+  fun recordDetected(sdkAction: Int, invoke: () -> Unit) {
+    detected[sdkAction] = invoke
+  }
+
+  /** Drop a framework-detected subscription (framework `unsubscribeFromSdkGestureAction`). */
+  fun clearDetected(sdkAction: Int) {
+    detected.remove(sdkAction)
+  }
+
   /**
    * Apply an override. `null` restores defaults (enabled, hints off) — called on the extension's
    * dispose so a render without a gesture override doesn't inherit the previous render's hint state.
@@ -117,12 +158,19 @@ object GestureStateController {
    */
   fun invoke(kind: GestureKindOverride, label: String? = null): Int {
     val matches: List<Entry>
+    // A framework-detected handler of the same action (raw `oneHandedGesture`, no reporting seam)
+    // is fired too — scoped only when no [label] filter is given, since the framework registry
+    // carries no label to match on.
+    val detectedInvoke = if (label == null) detected[kind.toSdkAction()] else null
     synchronized(lock) {
       matches = entries.filter { it.type == kind && (label == null || it.label == label) }
-      if (matches.isNotEmpty()) lastInvoked = label ?: matches.first().label
+      if (matches.isNotEmpty() || detectedInvoke != null) {
+        lastInvoked = label ?: matches.firstOrNull()?.label ?: kind.wireName()
+      }
     }
     matches.forEach { it.invoke() }
-    return matches.size
+    detectedInvoke?.invoke()
+    return matches.size + if (detectedInvoke != null) 1 else 0
   }
 
   /** Immutable view of the current registry state, captured by the data-product registry. */
@@ -140,6 +188,7 @@ object GestureStateController {
               hintAvailable = it.hintAvailable,
             )
           },
+        detected = detected.keys.sorted().map { sdkActionWireName(it) },
       )
     }
 
@@ -147,6 +196,8 @@ object GestureStateController {
   fun resetForNewSession() {
     synchronized(lock) {
       entries.clear()
+      detected.clear()
+      detectionArmed = false
       overrideEnabled = true
       lastInvoked = null
       _hintsShown.value = false
@@ -160,4 +211,22 @@ object GestureStateController {
       GestureKindOverride.SCROLL -> "scroll"
       GestureKindOverride.PAGE -> "page"
     }
+
+  /** Framework SDK gesture-action int for a [GestureKindOverride] (scroll/page ride primary). */
+  private fun GestureKindOverride.toSdkAction(): Int =
+    when (this) {
+      GestureKindOverride.DISMISS -> SDK_ACTION_DISMISS
+      else -> SDK_ACTION_PRIMARY
+    }
+
+  /** Lower-case wire spelling for an SDK gesture-action int. */
+  private fun sdkActionWireName(sdkAction: Int): String =
+    if (sdkAction == SDK_ACTION_DISMISS) "dismiss" else "primary"
+
+  /**
+   * SDK gesture-action ints, mirroring the library's internal `toSdkGestureAction` (primary → 1,
+   * dismiss → 2). Kept in sync via [ShadowSdkGestureInputManager]'s round-trip test.
+   */
+  const val SDK_ACTION_PRIMARY: Int = 1
+  const val SDK_ACTION_DISMISS: Int = 2
 }
