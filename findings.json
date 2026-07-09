@@ -2377,6 +2377,16 @@
       "variant": "wearos_small_round"
     },
     {
+      "annotatedBasename": "",
+      "cleanBasename": "ButtonHintScreenPreview_Devices_Large_Round.png",
+      "findings": [],
+      "functionName": "ButtonHintScreenPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.GesturesKt.ButtonHintScreenPreview_Devices - Large Round",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
+      "variant": "wearos_large_round"
+    },
+    {
       "annotatedBasename": "ButtonPreview_Devices_Large_Round.a11y.png",
       "cleanBasename": "ButtonPreview_Devices_Large_Round.png",
       "findings": [],
@@ -2397,7 +2407,7 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "DisabledGestureScreenPreview_Devices_Large_Round.a11y.png",
+      "annotatedBasename": "",
       "cleanBasename": "DisabledGestureScreenPreview_Devices_Large_Round.png",
       "findings": [],
       "functionName": "DisabledGestureScreenPreview",
@@ -2407,12 +2417,22 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "DismissActionScreenPreview_Devices_Large_Round.a11y.png",
+      "annotatedBasename": "",
       "cleanBasename": "DismissActionScreenPreview_Devices_Large_Round.png",
       "findings": [],
       "functionName": "DismissActionScreenPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.GesturesKt.DismissActionScreenPreview_Devices - Large Round",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "FloatingHintScreenPreview_Devices_Large_Round.png",
+      "findings": [],
+      "functionName": "FloatingHintScreenPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.GesturesKt.FloatingHintScreenPreview_Devices - Large Round",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
       "variant": "wearos_large_round"
     },
@@ -2442,7 +2462,7 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "PageGestureScreenPreview_Devices_Large_Round.a11y.png",
+      "annotatedBasename": "",
       "cleanBasename": "PageGestureScreenPreview_Devices_Large_Round.png",
       "findings": [],
       "functionName": "PageGestureScreenPreview",
@@ -2462,7 +2482,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "PrimaryActionScreenPreview_Devices_Large_Round.a11y.png",
+      "annotatedBasename": "",
       "cleanBasename": "PrimaryActionScreenPreview_Devices_Large_Round.png",
       "findings": [],
       "functionName": "PrimaryActionScreenPreview",
@@ -2472,7 +2492,7 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "PrimaryActionStickerPreview.a11y.png",
+      "annotatedBasename": "",
       "cleanBasename": "PrimaryActionStickerPreview.png",
       "findings": [],
       "functionName": "PrimaryActionStickerPreview",
@@ -2482,7 +2502,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "ScrollGestureScreenPreview_Devices_Large_Round.a11y.png",
+      "annotatedBasename": "",
       "cleanBasename": "ScrollGestureScreenPreview_Devices_Large_Round.png",
       "findings": [],
       "functionName": "ScrollGestureScreenPreview",
