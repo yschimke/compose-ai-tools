@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.16.29](https://github.com/yschimke/compose-ai-tools/compare/v0.16.28...v0.16.29) (2026-07-09)
+
+
+### Features
+
+* **design-artifacts:** add PNG-vs-SVG compare page with live SSIM score ([#2312](https://github.com/yschimke/compose-ai-tools/issues/2312)) ([7468587](https://github.com/yschimke/compose-ai-tools/commit/74685878389c958a8fb0bf4ff058a319a95eb92f))
+
+
+### Bug Fixes
+
+* **serve:** serve baked snapshot on load, drop knob type prefix ([#2310](https://github.com/yschimke/compose-ai-tools/issues/2310)) ([70f4274](https://github.com/yschimke/compose-ai-tools/commit/70f427465ad10ca9b9e2116c491886ab98067045))
+
 ## [0.16.28](https://github.com/yschimke/compose-ai-tools/compare/v0.16.27...v0.16.28) (2026-07-08)
 
 
