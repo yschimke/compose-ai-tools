@@ -45,6 +45,11 @@ dependencies {
   implementation(libs.wear.compose.ui.tooling)
   // Wear navigation — `SwipeDismissableNavHost` drives the gesture-gallery flow in `Gestures.kt`.
   implementation(libs.wear.compose.navigation)
+  // `androidx.compose.animation.graphics` — renders wear-compose-material3's shipped gesture
+  // indicator AVDs (`wear_one_handed_gesture_*_indicator_animation`) via the official
+  // `AnimatedImageVector.animatedVectorResource` API. wear-compose-material3 depends on it at
+  // `runtime` scope only, so declare it here to compile against `AnimatedImageVector`.
+  implementation("androidx.compose.animation:animation-graphics")
   implementation(libs.compose.ui.tooling.preview)
   debugImplementation("androidx.compose.ui:ui-tooling")
 

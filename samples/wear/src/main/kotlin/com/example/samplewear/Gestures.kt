@@ -1,5 +1,10 @@
 package com.example.samplewear
 
+import androidx.compose.animation.graphics.ExperimentalAnimationGraphicsApi
+import androidx.compose.animation.graphics.res.animatedVectorResource
+import androidx.compose.animation.graphics.res.rememberAnimatedVectorPainter
+import androidx.compose.animation.graphics.vector.AnimatedImageVector
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,6 +22,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -31,6 +37,7 @@ import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.Card
 import androidx.wear.compose.material3.FilledTonalButton
 import androidx.wear.compose.material3.ListHeader
+import androidx.wear.compose.material3.LocalContentColor
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
@@ -152,12 +159,46 @@ private fun GestureHomeScreen(onOpen: (String) -> Unit) {
 }
 
 /**
- * A titled full-screen gesture demo: a [ListHeader] title, an instruction line, and the interactive
- * affordance centred below — the layout the catalog's full-screen Wear stickers use so the screen
- * reads clearly instead of a bare control lost on the watch face.
+ * Renders wear-compose-material3's shipped gesture-indicator AVD
+ * (`wear_one_handed_gesture_{primary,dismiss}_indicator_animation`) as a static, tinted icon via the
+ * official `androidx.compose.animation.graphics` API — the same drawable + API
+ * `OneHandedGestureIndicator` draws internally, shown here at its resting frame so the gesture
+ * illustration is visible in a still capture (the interactive indicator only flashes it on-device).
+ */
+@OptIn(ExperimentalAnimationGraphicsApi::class)
+@Composable
+private fun GestureHintIcon(type: GestureType, modifier: Modifier = Modifier) {
+  val resId =
+    when (type) {
+      GestureType.DISMISS ->
+        androidx.wear.compose.material3.R.drawable
+          .wear_one_handed_gesture_dismiss_indicator_animation
+      else ->
+        androidx.wear.compose.material3.R.drawable
+          .wear_one_handed_gesture_primary_indicator_animation
+    }
+  val avd = AnimatedImageVector.animatedVectorResource(resId)
+  Image(
+    painter = rememberAnimatedVectorPainter(avd, atEnd = false),
+    contentDescription = null,
+    colorFilter = ColorFilter.tint(LocalContentColor.current),
+    modifier = modifier.size(40.dp),
+  )
+}
+
+/**
+ * A titled full-screen gesture demo: a [ListHeader] title, the shipped [GestureHintIcon] gesture
+ * illustration, an instruction line, and the interactive affordance centred below — the layout the
+ * catalog's full-screen Wear stickers use so the screen reads clearly instead of a bare control lost
+ * on the watch face.
  */
 @Composable
-private fun GestureDemoScreen(title: String, instruction: String, control: @Composable () -> Unit) {
+private fun GestureDemoScreen(
+  title: String,
+  instruction: String,
+  gestureType: GestureType? = null,
+  control: @Composable () -> Unit,
+) {
   ScreenScaffold {
     Column(
       modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
@@ -165,6 +206,7 @@ private fun GestureDemoScreen(title: String, instruction: String, control: @Comp
       verticalArrangement = Arrangement.Center,
     ) {
       ListHeader { Text(title) }
+      gestureType?.let { GestureHintIcon(it, modifier = Modifier.padding(bottom = 4.dp)) }
       Text(instruction, textAlign = TextAlign.Center)
       Box(modifier = Modifier.padding(top = 12.dp)) { control() }
     }
@@ -201,7 +243,11 @@ private fun PlayGestureButton(forceHint: Boolean) {
 /** Primary action (double pinch) on a play/pause button. */
 @Composable
 fun PrimaryActionScreen(forceHint: Boolean = false) {
-  GestureDemoScreen(title = "Primary", instruction = "Double-pinch to play") {
+  GestureDemoScreen(
+    title = "Primary",
+    instruction = "Double-pinch to play",
+    gestureType = GestureType.PRIMARY,
+  ) {
     PlayGestureButton(forceHint)
   }
 }
@@ -210,7 +256,11 @@ fun PrimaryActionScreen(forceHint: Boolean = false) {
 @Composable
 fun DismissActionScreen(onDismiss: () -> Unit = {}, forceHint: Boolean = false) {
   val interactionSource = remember { MutableInteractionSource() }
-  GestureDemoScreen(title = "Dismiss", instruction = "Wrist-turn to go back") {
+  GestureDemoScreen(
+    title = "Dismiss",
+    instruction = "Wrist-turn to go back",
+    gestureType = GestureType.DISMISS,
+  ) {
     GestureHint(
       type = GestureType.DISMISS,
       interactionSource = interactionSource,
