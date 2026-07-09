@@ -161,6 +161,18 @@ open class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(tes
         // connector not on classpath — skip ambient shadow
       }
     }
+    // Wear one-handed-gesture SDK-manager shadow — only when the wear-compose gesture API is on the
+    // classpath. Makes the framework's registration + indicator pipeline observable under the render
+    // (arms via `GestureStateController.detectionArmed`), so a raw `Modifier.oneHandedGesture` app is
+    // surfaced in `compose/gestures` and its hint can be shown. Same NoClassDefFoundError guard as
+    // ambient for artifacts predating the gesture connector.
+    if (isWearGestureAvailable(javaClass.classLoader)) {
+      try {
+        shadows += ShadowSdkGestureInputManager::class.java
+      } catch (_: NoClassDefFoundError) {
+        // connector not on classpath — skip gesture shadow
+      }
+    }
     // Runtime-permissions tracker shadow. Always registered — `android.content.ContextWrapper`
     // is core Android, present on every consumer classpath, so the symbolic links the shadow
     // declares always resolve. The shadow forwards `checkPermission(...)` to the real
@@ -182,6 +194,29 @@ internal fun isWearAmbientAvailable(loader: ClassLoader?): Boolean {
   val effective = loader ?: ClassLoader.getSystemClassLoader() ?: return false
   return try {
     Class.forName("androidx.wear.ambient.AmbientLifecycleObserver", false, effective)
+    true
+  } catch (_: ClassNotFoundException) {
+    false
+  } catch (_: NoClassDefFoundError) {
+    false
+  }
+}
+
+/**
+ * Returns `true` when the Wear one-handed-gesture API
+ * (`androidx.wear.compose.material3.onehandedgesture.OneHandedGestureModifierKt`, added in
+ * `wear-compose 1.7.0-alpha`) is on the supplied classloader. Gates `:data-gestures-connector`
+ * registration so a plain-Android consumer — or a Wear consumer still on `wear-compose 1.6.x` —
+ * doesn't drive `GestureOverrideExtension`'s composition into unresolved gesture types.
+ */
+internal fun isWearGestureAvailable(loader: ClassLoader?): Boolean {
+  val effective = loader ?: ClassLoader.getSystemClassLoader() ?: return false
+  return try {
+    Class.forName(
+      "androidx.wear.compose.material3.onehandedgesture.OneHandedGestureModifierKt",
+      false,
+      effective,
+    )
     true
   } catch (_: ClassNotFoundException) {
     false

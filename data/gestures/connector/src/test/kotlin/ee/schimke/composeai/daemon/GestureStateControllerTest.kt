@@ -1,0 +1,183 @@
+package ee.schimke.composeai.daemon
+
+import ee.schimke.composeai.daemon.protocol.GestureKindOverride
+import ee.schimke.composeai.daemon.protocol.GestureOverride
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+
+/**
+ * Unit coverage for the process-static [GestureStateController] — register / invoke / snapshot /
+ * override-application semantics that back the `compose/gestures` data product. Resets around each
+ * test since the controller is a singleton.
+ */
+class GestureStateControllerTest {
+
+  @Before fun reset() = GestureStateController.resetForNewSession()
+
+  @After fun tearDown() = GestureStateController.resetForNewSession()
+
+  @Test
+  fun `register surfaces handlers in snapshot`() {
+    GestureStateController.register(GestureKindOverride.PRIMARY, "Play", hintAvailable = true, enabled = true) {}
+    GestureStateController.register(GestureKindOverride.DISMISS, "Back", hintAvailable = false, enabled = true) {}
+
+    val snap = GestureStateController.snapshot()
+    assertEquals(2, snap.registered.size)
+    assertEquals("primary", snap.registered[0].type)
+    assertEquals("Play", snap.registered[0].label)
+    assertTrue(snap.registered[0].hintAvailable)
+    assertEquals("dismiss", snap.registered[1].type)
+    assertFalse(snap.registered[1].hintAvailable)
+  }
+
+  @Test
+  fun `duplicate registration replaces prior entry`() {
+    GestureStateController.register(GestureKindOverride.PRIMARY, "Play", hintAvailable = false, enabled = true) {}
+    GestureStateController.register(GestureKindOverride.PRIMARY, "Play", hintAvailable = true, enabled = true) {}
+    val snap = GestureStateController.snapshot()
+    assertEquals(1, snap.registered.size)
+    assertTrue(snap.registered.single().hintAvailable)
+  }
+
+  @Test
+  fun `unregister drops the handler`() {
+    GestureStateController.register(GestureKindOverride.SCROLL, "Scroll", hintAvailable = true, enabled = true) {}
+    GestureStateController.unregister(GestureKindOverride.SCROLL, "Scroll")
+    assertTrue(GestureStateController.snapshot().registered.isEmpty())
+  }
+
+  @Test
+  fun `invoke runs matching handler and records lastInvoked`() {
+    var primaryFired = 0
+    var dismissFired = 0
+    GestureStateController.register(GestureKindOverride.PRIMARY, "Play", hintAvailable = true, enabled = true) {
+      primaryFired++
+    }
+    GestureStateController.register(GestureKindOverride.DISMISS, "Back", hintAvailable = true, enabled = true) {
+      dismissFired++
+    }
+
+    val fired = GestureStateController.invoke(GestureKindOverride.PRIMARY)
+    assertEquals(1, fired)
+    assertEquals(1, primaryFired)
+    assertEquals(0, dismissFired)
+    assertEquals("Play", GestureStateController.snapshot().lastInvoked)
+  }
+
+  @Test
+  fun `invoke with label scopes to a single handler`() {
+    var aFired = 0
+    var bFired = 0
+    GestureStateController.register(GestureKindOverride.PRIMARY, "A", hintAvailable = true, enabled = true) { aFired++ }
+    GestureStateController.register(GestureKindOverride.PRIMARY, "B", hintAvailable = true, enabled = true) { bFired++ }
+
+    GestureStateController.invoke(GestureKindOverride.PRIMARY, label = "B")
+    assertEquals(0, aFired)
+    assertEquals(1, bFired)
+    assertEquals("B", GestureStateController.snapshot().lastInvoked)
+  }
+
+  @Test
+  fun `invoke with no matching handler fires nothing`() {
+    val fired = GestureStateController.invoke(GestureKindOverride.PAGE)
+    assertEquals(0, fired)
+    assertNull(GestureStateController.snapshot().lastInvoked)
+  }
+
+  @Test
+  fun `set applies enabled and showHints, null restores defaults`() {
+    GestureStateController.set(GestureOverride(enabled = false, showHints = true))
+    assertFalse(GestureStateController.enabled())
+    assertTrue(GestureStateController.hintsShownState.value)
+    assertTrue(GestureStateController.snapshot().hintsShown)
+
+    GestureStateController.set(null)
+    assertTrue(GestureStateController.enabled())
+    assertFalse(GestureStateController.hintsShownState.value)
+    assertFalse(GestureStateController.snapshot().hintsShown)
+  }
+
+  @Test
+  fun `enabled reflects a handler registered in a disabled subtree`() {
+    // A screen that opts out via `LocalOneHandedGestureEnabled = false` registers with enabled=false
+    // even without a gesture override — the payload must report that, not the override default.
+    GestureStateController.register(
+      GestureKindOverride.PRIMARY,
+      "Play (disabled)",
+      hintAvailable = true,
+      enabled = false,
+    ) {}
+    assertFalse(GestureStateController.enabled())
+    assertFalse(GestureStateController.snapshot().enabled)
+  }
+
+  @Test
+  fun `enabled falls back to override default when no handler registered`() {
+    GestureStateController.set(GestureOverride(enabled = false))
+    assertFalse(GestureStateController.enabled())
+    GestureStateController.set(GestureOverride(enabled = true))
+    assertTrue(GestureStateController.enabled())
+  }
+
+  @Test
+  fun `recordDetected surfaces framework gestures in snapshot`() {
+    GestureStateController.recordDetected(GestureStateController.SDK_ACTION_PRIMARY) {}
+    GestureStateController.recordDetected(GestureStateController.SDK_ACTION_DISMISS) {}
+    assertEquals(listOf("primary", "dismiss"), GestureStateController.snapshot().detected)
+
+    GestureStateController.clearDetected(GestureStateController.SDK_ACTION_DISMISS)
+    assertEquals(listOf("primary"), GestureStateController.snapshot().detected)
+  }
+
+  @Test
+  fun `invoke fires a framework-detected handler of the matching kind`() {
+    var fired = 0
+    GestureStateController.recordDetected(GestureStateController.SDK_ACTION_PRIMARY) { fired++ }
+    val count = GestureStateController.invoke(GestureKindOverride.PRIMARY)
+    assertEquals(1, count)
+    assertEquals(1, fired)
+    assertEquals("primary", GestureStateController.snapshot().lastInvoked)
+  }
+
+  @Test
+  fun `scroll and page invokes fire the primary framework subscription`() {
+    var fired = 0
+    GestureStateController.recordDetected(GestureStateController.SDK_ACTION_PRIMARY) { fired++ }
+    GestureStateController.invoke(GestureKindOverride.SCROLL)
+    GestureStateController.invoke(GestureKindOverride.PAGE)
+    assertEquals(2, fired)
+  }
+
+  @Test
+  fun `armDetection toggles the shadow gate`() {
+    assertFalse(GestureStateController.detectionArmed())
+    GestureStateController.armDetection(true)
+    assertTrue(GestureStateController.detectionArmed())
+    GestureStateController.armDetection(false)
+    assertFalse(GestureStateController.detectionArmed())
+  }
+
+  @Test
+  fun `resetForNewSession clears everything`() {
+    GestureStateController.register(GestureKindOverride.PRIMARY, "Play", hintAvailable = true, enabled = true) {}
+    GestureStateController.recordDetected(GestureStateController.SDK_ACTION_PRIMARY) {}
+    GestureStateController.invoke(GestureKindOverride.PRIMARY)
+    GestureStateController.set(GestureOverride(showHints = true))
+    GestureStateController.armDetection(true)
+
+    GestureStateController.resetForNewSession()
+
+    val snap = GestureStateController.snapshot()
+    assertTrue(snap.registered.isEmpty())
+    assertTrue(snap.detected.isEmpty())
+    assertNull(snap.lastInvoked)
+    assertFalse(snap.hintsShown)
+    assertTrue(snap.enabled)
+    assertFalse(GestureStateController.detectionArmed())
+  }
+}

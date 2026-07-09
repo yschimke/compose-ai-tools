@@ -350,6 +350,7 @@ open class RobolectricHost(
       "material3Theme",
       "wallpaper",
       "ambient",
+      "gestures",
       "focus",
       "keyboard",
       "touchOverlay",
@@ -1284,6 +1285,7 @@ open class RobolectricHost(
             material3Theme = base.overrides?.material3Theme,
             wallpaper = base.overrides?.wallpaper,
             ambient = base.overrides?.ambient,
+            gestures = base.overrides?.gestures,
           ),
         overrides = overrides,
       )
@@ -1548,11 +1550,26 @@ open class RobolectricHost(
         } else {
           emptyList()
         }
+      // [GesturePreviewOverrideExtension] plans a [GestureOverrideExtension] whose composition
+      // reaches `androidx.wear.compose.material3.onehandedgesture` (gesture API added in
+      // wear-compose 1.7.0-alpha). Gate registration on that package being loadable so plain-Android
+      // — or pre-1.7 Wear — consumers never resolve the gesture types. Mirrors the ambient gate.
+      val gestureOverrides =
+        if (isWearGestureAvailable(javaClass.classLoader)) {
+          try {
+            listOf(GesturePreviewOverrideExtension())
+          } catch (_: NoClassDefFoundError) {
+            emptyList()
+          }
+        } else {
+          emptyList()
+        }
       RenderEngine(
         previewOverrideExtensions =
           PreviewOverrideExtensions(
             ambientOverrides +
               remoteComposeOverrides +
+              gestureOverrides +
               listOf(
                 WallpaperPreviewOverrideExtension(),
                 Material3ThemePreviewOverrideExtension(),

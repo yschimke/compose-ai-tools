@@ -2,6 +2,8 @@ package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.protocol.FocusDirection
 import ee.schimke.composeai.daemon.protocol.FocusOverride
+import ee.schimke.composeai.daemon.protocol.GestureKindOverride
+import ee.schimke.composeai.daemon.protocol.GestureOverride
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PermissionGrantStateOverride
 import ee.schimke.composeai.daemon.protocol.PermissionsOverride
@@ -140,6 +142,31 @@ class PreviewOverrideMergeTest {
 
     assertEquals(override, merged.permissions)
     assertEquals(override, merged.toExtensionOverrides()?.permissions)
+  }
+
+  @Test
+  fun `gestures override merges into the bag and flows through toExtensionOverrides`() {
+    val base =
+      PreviewOverrideBaseSpec(
+        widthPx = 320,
+        heightPx = 480,
+        density = 2.0f,
+        device = null,
+        localeTag = null,
+        fontScale = null,
+        uiMode = null,
+        orientation = null,
+        inspectionMode = null,
+      )
+
+    val override = GestureOverride(showHints = true, invoke = GestureKindOverride.PRIMARY)
+    val merged = mergePreviewOverrides(base, PreviewOverrides(gestures = override))
+
+    assertEquals(override, merged.gestures)
+    // The projection must carry `gestures` so `GesturePreviewOverrideExtension.plan` sees it —
+    // without this the Wear override path is inert (hints never force, handlers never invoke).
+    assertEquals(override, merged.toExtensionOverrides()?.gestures)
+    assertNull(mergePreviewOverrides(base, PreviewOverrides()).toExtensionOverrides())
   }
 
   @Test

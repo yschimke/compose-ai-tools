@@ -31,6 +31,9 @@ val appVersionCode =
 
 android {
   namespace = "ee.schimke.composeai.clients.wear"
+  // wear-compose 1.7.0-alpha requires `compileSdk = 37`; override the conventions `compileSdk =
+  // 36`.
+  compileSdk = 37
 
   defaultConfig {
     applicationId = "ee.schimke.composeai.clients.wear"

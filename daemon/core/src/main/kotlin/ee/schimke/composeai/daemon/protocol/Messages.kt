@@ -565,6 +565,15 @@ data class PreviewOverrides(
    */
   val ambient: AmbientOverride? = null,
   /**
+   * Optional Wear OS one-handed-gesture override. Drives the connector-side
+   * `GestureOverrideExtension` (see `:data-gestures-connector`) so a preview wiring
+   * `Modifier.oneHandedGesture` can force-show its gesture hints (immediate mode) or invoke a
+   * registered handler (interactive mode) under a single-frame daemon render — the gesture
+   * framework only dispatches on-device, so this field is what makes it observable off a Pixel
+   * Watch. Wear-only — the desktop backend ignores this field.
+   */
+  val gestures: GestureOverride? = null,
+  /**
    * Optional focus / keyboard-traversal override. Drives the connector-side
    * `FocusOverrideExtension` (see `:data-focus-connector`) so a single-frame render under the
    * daemon can land focus on a specific tab index or apply a directional move (Tab / Shift-Tab /
@@ -926,6 +935,47 @@ enum class AmbientStateOverride {
   @SerialName("interactive") INTERACTIVE,
   @SerialName("ambient") AMBIENT,
   @SerialName("inactive") INACTIVE,
+}
+
+/**
+ * Optional Wear OS one-handed-gesture override. Drives the connector-side
+ * `GestureOverrideExtension` (see `:data-gestures-connector`) so a preview wiring
+ * `Modifier.oneHandedGesture` / `reportedOneHandedGesture` becomes observable and drivable without
+ * a Pixel Watch.
+ *
+ * Two activation modes, both single-frame:
+ * - **Immediate** — set [showHints] `true` so the connector force-shows the gesture hints
+ *   (`OneHandedGestureIndicator`) for the render, producing a screenshot of the hint affordance.
+ * - **Interactive** — set [invoke] (optionally scoped by [invokeLabel]) so the connector runs the
+ *   registered handler's `onGesture` before the frame is captured, exercising the action the way a
+ *   double-pinch / wrist-turn would on-device. Recording sessions do the same via an
+ *   `input.gesture` script event.
+ *
+ * [enabled] mirrors `LocalOneHandedGestureEnabled`; `false` disables gesture recognition for the
+ * previewed tree (the "disabled gesture" screen). Null falls back to `true`.
+ */
+@Serializable
+data class GestureOverride(
+  /** Mirrors `LocalOneHandedGestureEnabled`. Null falls back to `true` (recognition enabled). */
+  val enabled: Boolean? = null,
+  /** Force-show the gesture hints for this render (immediate mode). Null falls back to `false`. */
+  val showHints: Boolean? = null,
+  /**
+   * Gesture handler kind to invoke before capture (interactive mode). Null invokes nothing. When
+   * more than one handler of [invoke]'s kind is registered, [invokeLabel] disambiguates.
+   */
+  val invoke: GestureKindOverride? = null,
+  /** Optional handler label to scope [invoke] to a single registered gesture. */
+  val invokeLabel: String? = null,
+)
+
+/** Wire spelling for [GestureOverride.invoke] and the connector's registered-gesture kinds. */
+@Serializable
+enum class GestureKindOverride {
+  @SerialName("primary") PRIMARY,
+  @SerialName("dismiss") DISMISS,
+  @SerialName("scroll") SCROLL,
+  @SerialName("page") PAGE,
 }
 
 @Serializable

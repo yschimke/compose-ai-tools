@@ -1076,6 +1076,11 @@ class JsonRpcServer(
           material3Theme = overrides.material3Theme,
           wallpaper = overrides.wallpaper,
           permissions = overrides.permissions,
+          // `gestures` rides the bag so `renderNow.overrides.gestures` reaches the Wear
+          // `GesturePreviewOverrideExtension` planner — force-showing hints (`showHints`) or
+          // invoking a handler (`invoke`) on the immediate render path, and letting the
+          // `compose/gestures` data product capture the applied state instead of stale defaults.
+          gestures = overrides.gestures,
           // `lottie` rides the same bag so `renderNow.overrides.lottie.progress` reaches the
           // desktop `RenderEngine`, which provides it as `LocalLottieProgress` — the interactive
           // Lottie timeline scrub path. No new wire token needed.
@@ -1091,6 +1096,7 @@ class JsonRpcServer(
         extensionBag.material3Theme != null ||
           extensionBag.wallpaper != null ||
           extensionBag.permissions != null ||
+          extensionBag.gestures != null ||
           extensionBag.lottie != null ||
           !extensionBag.namedOverrides.isNullOrEmpty()
       ) {

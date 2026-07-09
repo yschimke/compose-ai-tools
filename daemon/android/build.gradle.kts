@@ -80,6 +80,11 @@ dependencies {
   // `AmbientStateController`, the `AroundComposable` extension that primes it, and the
   // `AmbientInputDispatchObserver` that wakes on activating gestures during recording.
   implementation(project(":data-ambient-connector"))
+  // Wear OS one-handed-gesture connector — `GestureStateController`, the `AroundComposable`
+  // extension planned from `renderNow.overrides.gestures`, and the `compose/gestures` registry.
+  // Gated at registration on the wear-compose gesture API (`isWearGestureAvailable`), same shape as
+  // the ambient connector above.
+  implementation(project(":data-gestures-connector"))
   // Display-filter connector — DisplayFilterDataProductRegistry + DisplayFilterDataProducer.
   // DaemonMain reads `composeai.displayfilter.filters` via `DisplayFilterConfig` to decide
   // whether to register the extension; the host's render pipeline reads the same prop and

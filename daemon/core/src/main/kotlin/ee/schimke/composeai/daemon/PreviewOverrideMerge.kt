@@ -3,6 +3,7 @@ package ee.schimke.composeai.daemon
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.daemon.protocol.AmbientOverride
 import ee.schimke.composeai.daemon.protocol.FocusOverride
+import ee.schimke.composeai.daemon.protocol.GestureOverride
 import ee.schimke.composeai.daemon.protocol.LauncherWidgetOverride
 import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
 import ee.schimke.composeai.daemon.protocol.Orientation
@@ -33,6 +34,7 @@ data class PreviewOverrideBaseSpec(
   val material3Theme: Material3ThemeOverrides? = null,
   val wallpaper: WallpaperOverride? = null,
   val ambient: AmbientOverride? = null,
+  val gestures: GestureOverride? = null,
   val focus: FocusOverride? = null,
   val touchOverlay: Boolean? = null,
   val talkBack: Boolean? = null,
@@ -55,6 +57,7 @@ data class MergedPreviewOverrides(
   val material3Theme: Material3ThemeOverrides?,
   val wallpaper: WallpaperOverride?,
   val ambient: AmbientOverride?,
+  val gestures: GestureOverride?,
   val focus: FocusOverride?,
   val touchOverlay: Boolean?,
   val talkBack: Boolean?,
@@ -82,6 +85,7 @@ data class MergedPreviewOverrides(
       material3Theme == null &&
         wallpaper == null &&
         ambient == null &&
+        gestures == null &&
         focus == null &&
         touchOverlay != true &&
         talkBack != true &&
@@ -97,6 +101,7 @@ data class MergedPreviewOverrides(
       material3Theme = material3Theme,
       wallpaper = wallpaper,
       ambient = ambient,
+      gestures = gestures,
       focus = focus,
       localeTag = if (isPseudolocale) localeTag else null,
       touchOverlay = touchOverlay,
@@ -147,6 +152,7 @@ fun mergePreviewOverrides(
       material3Theme = base.material3Theme,
       wallpaper = base.wallpaper,
       ambient = base.ambient,
+      gestures = base.gestures,
       focus = base.focus,
       touchOverlay = base.touchOverlay,
       talkBack = base.talkBack,
@@ -178,6 +184,7 @@ fun mergePreviewOverrides(
     material3Theme = overrides.material3Theme ?: base.material3Theme,
     wallpaper = overrides.wallpaper ?: base.wallpaper,
     ambient = overrides.ambient ?: base.ambient,
+    gestures = overrides.gestures ?: base.gestures,
     focus = overrides.focus ?: base.focus,
     touchOverlay = overrides.touchOverlay ?: base.touchOverlay,
     talkBack = overrides.talkBack ?: base.talkBack,

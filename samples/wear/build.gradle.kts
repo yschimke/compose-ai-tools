@@ -20,6 +20,9 @@ composePreview {
 
 android {
   namespace = "com.example.samplewear"
+  // wear-compose 1.7.0-alpha (gesture API) requires `compileSdk = 37`; override the conventions
+  // plugin's `compileSdk = 36` default. Robolectric still renders at SDK 35 (see `composePreview`).
+  compileSdk = 37
 
   defaultConfig {
     applicationId = "com.example.samplewear"
@@ -40,8 +43,23 @@ dependencies {
   implementation(libs.wear.compose.material3)
   implementation(libs.wear.compose.foundation)
   implementation(libs.wear.compose.ui.tooling)
+  // Wear navigation — `SwipeDismissableNavHost` drives the gesture-gallery flow in `Gestures.kt`.
+  implementation(libs.wear.compose.navigation)
+  // `androidx.compose.animation.graphics` — renders wear-compose-material3's shipped gesture
+  // indicator AVDs (`wear_one_handed_gesture_*_indicator_animation`) via the official
+  // `AnimatedImageVector.animatedVectorResource` API. wear-compose-material3 depends on it at
+  // `runtime` scope only, so declare it here to compile against `AnimatedImageVector`.
+  implementation("androidx.compose.animation:animation-graphics")
   implementation(libs.compose.ui.tooling.preview)
   debugImplementation("androidx.compose.ui:ui-tooling")
+
+  // `:data-gestures-connector` — the Wear OS one-handed-gesture data extension. `Gestures.kt`
+  // wires its screens with the connector's `reportedOneHandedGesture` / `GestureHint` seam so the
+  // handlers show up in `compose/gestures` and are drivable via `renderNow.overrides.gestures`.
+  // Static `@Preview` rendering doesn't run the daemon extension chain, so previews pass
+  // `forceHint = true` (or `rememberForcedGestureHintSource`) to render the hint affordance; the
+  // daemon path force-shows it from `overrides.gestures.showHints`.
+  implementation(project(":data-gestures-connector"))
 
   // `:data-ambient-connector` — the Wear OS ambient-mode data extension. The
   // connector's `AmbientOverrideExtension` (an `AroundComposableExtension` planned
