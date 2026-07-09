@@ -46,8 +46,8 @@
     "fonts-browser.light.png": {
       "fixture": "fonts-browser",
       "theme": "light",
-      "sha256": "a00949ecc512638bcee860b6eda6825f0dd07eeb22b8218f5627f0abfecd0d4d",
-      "size": 120723
+      "sha256": "b0d33c57ede11a2a191a7670a540c5ea964f5ba5fd006bfc0779110eb30591ae",
+      "size": 121985
     },
     "grid-default.dark.png": {
       "fixture": "grid-default",
