@@ -146,6 +146,10 @@ test("the scorer inlines hybrid raster crops as data URIs so their layers score"
   assert.match(html, /readAsDataURL/);
   assert.match(html, /new Blob\(\[svgText\], \{ type: "image\/svg\+xml" \}\)/);
   assert.match(html, /xlink:href\|href/); // matches both href spellings
+  // Crops must resolve from the SVG's resolved response URL, not location.href: under
+  // htmlpreview the page origin differs from the <base> that relative assets resolve from.
+  assert.match(html, /inlineRasters\(svgText, resp\.url\)/);
+  assert.doesNotMatch(html, /new URL\(tr\.dataset\.svg, location\.href\)/);
 });
 
 test("no figma-svgs at all → every row inert, still a complete inventory", () => {

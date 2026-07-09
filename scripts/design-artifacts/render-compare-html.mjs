@@ -245,13 +245,19 @@ const SCORER = String.raw`
     try {
       // PNG as an <img>; the SVG as text (to read its translate and inline any raster
       // crops). Both are same-origin and cache-shared.
-      const [png, svgText] = await Promise.all([
+      const [png, resp] = await Promise.all([
         loadImage(tr.dataset.png),
-        fetch(tr.dataset.svg).then((r) => r.text()),
+        fetch(tr.dataset.svg),
       ]);
+      const svgText = await resp.text();
       // Inline hybrid raster crops so their opaque layers draw; a vector-only SVG is
-      // returned unchanged and takes the plain <img> path.
-      const inlined = await inlineRasters(svgText, new URL(tr.dataset.svg, location.href).href);
+      // returned unchanged and takes the plain <img> path. Resolve the crop hrefs against
+      // the SVG's *resolved* URL (resp.url), NOT location.href: under htmlpreview the page
+      // origin is htmlpreview.github.io while relative assets resolve from the injected
+      // <base> (raw.githubusercontent). location.href would point the crop fetches at the
+      // wrong host, so nothing inlines and hybrids fall back to half-empty scoring. resp.url
+      // is the branch asset's real location (it followed the same base/redirects the fetch did).
+      const inlined = await inlineRasters(svgText, resp.url);
       const svg = inlined === svgText ? await loadImage(tr.dataset.svg) : await loadSvgString(inlined);
       // The render PNG defines the aligned coordinate space (padding-free, content at
       // (0,0)); size the shared canvas from it, capped to MAX_SIDE for offset-robustness.
