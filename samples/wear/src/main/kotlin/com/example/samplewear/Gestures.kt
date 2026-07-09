@@ -1,11 +1,6 @@
 package com.example.samplewear
 
-import androidx.compose.animation.graphics.ExperimentalAnimationGraphicsApi
-import androidx.compose.animation.graphics.res.animatedVectorResource
-import androidx.compose.animation.graphics.res.rememberAnimatedVectorPainter
-import androidx.compose.animation.graphics.vector.AnimatedImageVector
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -30,7 +25,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -61,10 +55,15 @@ import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
 import androidx.wear.compose.ui.tooling.preview.WearPreviewLargeRound
+import ee.schimke.composeai.daemon.GESTURE_HINT_PULSE_CYCLE_MS
 import ee.schimke.composeai.daemon.GestureHint
+import ee.schimke.composeai.daemon.GestureHintCapture
+import ee.schimke.composeai.daemon.GestureHintShowcase
+import ee.schimke.composeai.daemon.GestureIndicatorIcon
 import ee.schimke.composeai.daemon.GestureType
 import ee.schimke.composeai.daemon.rememberForcedGestureHintSource
 import ee.schimke.composeai.daemon.reportedOneHandedGesture
+import ee.schimke.composeai.preview.AnimatedPreview
 import kotlinx.coroutines.launch
 
 /**
@@ -189,13 +188,12 @@ private fun GestureHomeScreen(onOpen: (String) -> Unit) {
 }
 
 /**
- * Renders wear-compose-material3's shipped gesture-indicator AVD
- * (`wear_one_handed_gesture_{primary,dismiss}_indicator_animation`) as a static, tinted icon via the
- * official `androidx.compose.animation.graphics` API — the same drawable + API
- * `OneHandedGestureIndicator` draws internally, shown here at its resting frame so the gesture
- * illustration is visible in a still capture (the interactive indicator only flashes it on-device).
+ * The shipped gesture-indicator illustration, drawn as a static tinted icon. Delegates to the
+ * connector's [GestureIndicatorIcon] (the reusable renderer of
+ * `wear_one_handed_gesture_{primary,dismiss}_indicator_animation` via the official
+ * `androidx.compose.animation.graphics` API) so the sample and the capture API share one drawing
+ * path.
  */
-@OptIn(ExperimentalAnimationGraphicsApi::class)
 @Composable
 private fun GestureHintIcon(
   type: GestureType,
@@ -203,22 +201,7 @@ private fun GestureHintIcon(
   size: Dp = 40.dp,
   tint: Color = LocalContentColor.current,
 ) {
-  val resId =
-    when (type) {
-      GestureType.DISMISS ->
-        androidx.wear.compose.material3.R.drawable
-          .wear_one_handed_gesture_dismiss_indicator_animation
-      else ->
-        androidx.wear.compose.material3.R.drawable
-          .wear_one_handed_gesture_primary_indicator_animation
-    }
-  val avd = AnimatedImageVector.animatedVectorResource(resId)
-  Image(
-    painter = rememberAnimatedVectorPainter(avd, atEnd = false),
-    contentDescription = null,
-    colorFilter = ColorFilter.tint(tint),
-    modifier = modifier.size(size),
-  )
+  GestureIndicatorIcon(type = type, modifier = modifier, size = size, tint = tint)
 }
 
 /**
@@ -567,6 +550,67 @@ fun GestureGalleryPreview() {
 @Composable
 fun PrimaryActionScreenPreview() {
   MaterialTheme { PrimaryActionScreen(forceHint = true) }
+}
+
+// ---------------------------------------------------------------------------
+// The three gesture-hint capture modes, one line each via `GestureHintShowcase`.
+// The same play target is captured three ways by flipping `GestureHintCapture`:
+//   NORMAL   — resting composable, no hint.
+//   SHOWN    — hint frozen fully visible (a still).
+//   ANIMATED — hint's grow→shrink pulse, encoded as a GIF by `@AnimatedPreview`.
+// ---------------------------------------------------------------------------
+
+/**
+ * The play button + [GestureHintShowcase] used as the capture target for the three hint-mode
+ * previews, centred on a full watch face so the same composable is captured three ways by only
+ * flipping [capture].
+ */
+@Composable
+private fun HintShowcaseScreen(capture: GestureHintCapture) {
+  val interactionSource = remember { MutableInteractionSource() }
+  MaterialTheme {
+    ScreenScaffold {
+      Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        GestureHintShowcase(
+          type = GestureType.PRIMARY,
+          capture = capture,
+          iconTint = MaterialTheme.colorScheme.onPrimary,
+        ) {
+          Button(
+            onClick = {},
+            interactionSource = interactionSource,
+            modifier =
+              Modifier.reportedOneHandedGesture(
+                type = GestureType.PRIMARY,
+                label = "Play",
+                interactionSource = interactionSource,
+              ) {},
+          ) {
+            Text("Play")
+          }
+        }
+      }
+    }
+  }
+}
+
+@WearPreviewLargeRound
+@Composable
+fun HintCaptureNormalPreview() {
+  HintShowcaseScreen(GestureHintCapture.HIDDEN)
+}
+
+@WearPreviewLargeRound
+@Composable
+fun HintCaptureShownPreview() {
+  HintShowcaseScreen(GestureHintCapture.SHOWN)
+}
+
+@WearPreviewLargeRound
+@AnimatedPreview(durationMs = GESTURE_HINT_PULSE_CYCLE_MS, frameIntervalMs = 60, showCurves = false)
+@Composable
+fun HintCaptureAnimatedPreview() {
+  HintShowcaseScreen(GestureHintCapture.ANIMATED)
 }
 
 @WearPreviewLargeRound
