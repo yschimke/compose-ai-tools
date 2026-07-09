@@ -25,6 +25,24 @@ for (const fixture of listFixtures()) {
             wireDiagnostics(page, `${fixture}/${theme}`);
             const data = loadFixture(fixture);
 
+            // Deterministic web fonts. The font-browser fixture injects a
+            // `<link href="fonts.googleapis.com/css2?family=…">` per browse
+            // row so each family paints in its real webface. Whether those
+            // sheets (and the `fonts.gstatic.com` woff2 they pull) land
+            // before the screenshot is a network+timing race the in-page
+            // `document.fonts.ready` settle can't close — the request may
+            // still be in flight when it resolves. So the browse list
+            // rendered in the real face on a fast/online run and the
+            // fallback face on a slow/offline one, churning the
+            // fonts-browser baseline every push (and *which* theme variant
+            // lost the race flipped run-to-run). Stub the external font
+            // hosts with an empty sheet so browse rows always paint in the
+            // deterministic fallback, independent of network — same tactic
+            // the pages spec uses to stub the daemon's `/render/` images.
+            await page.route(/fonts\.(googleapis|gstatic)\.com\//, (route) =>
+                route.fulfill({ contentType: "text/css", body: "" }),
+            );
+
             await gotoFixture(page, fixture, theme);
             await replayActions(page, data.actions);
 
