@@ -350,6 +350,7 @@ open class RobolectricHost(
       "material3Theme",
       "wallpaper",
       "ambient",
+      "gestures",
       "focus",
       "keyboard",
       "touchOverlay",
@@ -1284,6 +1285,7 @@ open class RobolectricHost(
             material3Theme = base.overrides?.material3Theme,
             wallpaper = base.overrides?.wallpaper,
             ambient = base.overrides?.ambient,
+            gestures = base.overrides?.gestures,
           ),
         overrides = overrides,
       )

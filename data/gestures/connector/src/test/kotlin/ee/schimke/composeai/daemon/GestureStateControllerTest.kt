@@ -23,8 +23,8 @@ class GestureStateControllerTest {
 
   @Test
   fun `register surfaces handlers in snapshot`() {
-    GestureStateController.register(GestureKindOverride.PRIMARY, "Play", hintAvailable = true) {}
-    GestureStateController.register(GestureKindOverride.DISMISS, "Back", hintAvailable = false) {}
+    GestureStateController.register(GestureKindOverride.PRIMARY, "Play", hintAvailable = true, enabled = true) {}
+    GestureStateController.register(GestureKindOverride.DISMISS, "Back", hintAvailable = false, enabled = true) {}
 
     val snap = GestureStateController.snapshot()
     assertEquals(2, snap.registered.size)
@@ -37,8 +37,8 @@ class GestureStateControllerTest {
 
   @Test
   fun `duplicate registration replaces prior entry`() {
-    GestureStateController.register(GestureKindOverride.PRIMARY, "Play", hintAvailable = false) {}
-    GestureStateController.register(GestureKindOverride.PRIMARY, "Play", hintAvailable = true) {}
+    GestureStateController.register(GestureKindOverride.PRIMARY, "Play", hintAvailable = false, enabled = true) {}
+    GestureStateController.register(GestureKindOverride.PRIMARY, "Play", hintAvailable = true, enabled = true) {}
     val snap = GestureStateController.snapshot()
     assertEquals(1, snap.registered.size)
     assertTrue(snap.registered.single().hintAvailable)
@@ -46,7 +46,7 @@ class GestureStateControllerTest {
 
   @Test
   fun `unregister drops the handler`() {
-    GestureStateController.register(GestureKindOverride.SCROLL, "Scroll", hintAvailable = true) {}
+    GestureStateController.register(GestureKindOverride.SCROLL, "Scroll", hintAvailable = true, enabled = true) {}
     GestureStateController.unregister(GestureKindOverride.SCROLL, "Scroll")
     assertTrue(GestureStateController.snapshot().registered.isEmpty())
   }
@@ -55,10 +55,10 @@ class GestureStateControllerTest {
   fun `invoke runs matching handler and records lastInvoked`() {
     var primaryFired = 0
     var dismissFired = 0
-    GestureStateController.register(GestureKindOverride.PRIMARY, "Play", hintAvailable = true) {
+    GestureStateController.register(GestureKindOverride.PRIMARY, "Play", hintAvailable = true, enabled = true) {
       primaryFired++
     }
-    GestureStateController.register(GestureKindOverride.DISMISS, "Back", hintAvailable = true) {
+    GestureStateController.register(GestureKindOverride.DISMISS, "Back", hintAvailable = true, enabled = true) {
       dismissFired++
     }
 
@@ -73,8 +73,8 @@ class GestureStateControllerTest {
   fun `invoke with label scopes to a single handler`() {
     var aFired = 0
     var bFired = 0
-    GestureStateController.register(GestureKindOverride.PRIMARY, "A", hintAvailable = true) { aFired++ }
-    GestureStateController.register(GestureKindOverride.PRIMARY, "B", hintAvailable = true) { bFired++ }
+    GestureStateController.register(GestureKindOverride.PRIMARY, "A", hintAvailable = true, enabled = true) { aFired++ }
+    GestureStateController.register(GestureKindOverride.PRIMARY, "B", hintAvailable = true, enabled = true) { bFired++ }
 
     GestureStateController.invoke(GestureKindOverride.PRIMARY, label = "B")
     assertEquals(0, aFired)
@@ -103,8 +103,30 @@ class GestureStateControllerTest {
   }
 
   @Test
+  fun `enabled reflects a handler registered in a disabled subtree`() {
+    // A screen that opts out via `LocalOneHandedGestureEnabled = false` registers with enabled=false
+    // even without a gesture override — the payload must report that, not the override default.
+    GestureStateController.register(
+      GestureKindOverride.PRIMARY,
+      "Play (disabled)",
+      hintAvailable = true,
+      enabled = false,
+    ) {}
+    assertFalse(GestureStateController.enabled())
+    assertFalse(GestureStateController.snapshot().enabled)
+  }
+
+  @Test
+  fun `enabled falls back to override default when no handler registered`() {
+    GestureStateController.set(GestureOverride(enabled = false))
+    assertFalse(GestureStateController.enabled())
+    GestureStateController.set(GestureOverride(enabled = true))
+    assertTrue(GestureStateController.enabled())
+  }
+
+  @Test
   fun `resetForNewSession clears everything`() {
-    GestureStateController.register(GestureKindOverride.PRIMARY, "Play", hintAvailable = true) {}
+    GestureStateController.register(GestureKindOverride.PRIMARY, "Play", hintAvailable = true, enabled = true) {}
     GestureStateController.invoke(GestureKindOverride.PRIMARY)
     GestureStateController.set(GestureOverride(showHints = true))
 

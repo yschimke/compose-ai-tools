@@ -18,6 +18,7 @@ import androidx.wear.compose.material3.LocalContentColor
 import androidx.wear.compose.material3.onehandedgesture.GestureAction
 import androidx.wear.compose.material3.onehandedgesture.GestureIndicatorSize
 import androidx.wear.compose.material3.onehandedgesture.GesturePriority
+import androidx.wear.compose.material3.onehandedgesture.LocalOneHandedGestureEnabled
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureIndicator
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureInteraction
 import androidx.wear.compose.material3.onehandedgesture.oneHandedGesture
@@ -89,8 +90,14 @@ fun Modifier.reportedOneHandedGesture(
   val controller = LocalGestureRegistry.current
   val scope = rememberCoroutineScope()
   val latestOnGesture by rememberUpdatedState(onGesture)
-  DisposableEffect(controller, type, label, hintAvailable) {
-    controller.register(type.wire, label, hintAvailable) { scope.launch { latestOnGesture() } }
+  // Effective recognition state for this subtree — reported so a `LocalOneHandedGestureEnabled =
+  // false` opt-out (the disabled-gesture screen) surfaces as `enabled = false`, not the override
+  // default. The real `oneHandedGesture` below reads the same local for its own gating.
+  val recognitionEnabled = LocalOneHandedGestureEnabled.current
+  DisposableEffect(controller, type, label, hintAvailable, recognitionEnabled) {
+    controller.register(type.wire, label, hintAvailable, recognitionEnabled) {
+      scope.launch { latestOnGesture() }
+    }
     onDispose { controller.unregister(type.wire, label) }
   }
   return this.oneHandedGesture(

@@ -90,8 +90,8 @@ class GestureDataProductTest {
 
   @Test
   fun `onRender with gestures override snapshots the controller registry`() {
-    GestureStateController.register(GestureKindOverride.PRIMARY, "Play", hintAvailable = true) {}
-    GestureStateController.register(GestureKindOverride.DISMISS, "Back", hintAvailable = false) {}
+    GestureStateController.register(GestureKindOverride.PRIMARY, "Play", hintAvailable = true, enabled = true) {}
+    GestureStateController.register(GestureKindOverride.DISMISS, "Back", hintAvailable = false, enabled = true) {}
     GestureStateController.set(GestureOverride(showHints = true))
 
     val registry = GestureDataProductRegistry()
@@ -117,7 +117,7 @@ class GestureDataProductTest {
   @Test
   fun `onRender without gestures override clears the payload`() {
     val registry = GestureDataProductRegistry()
-    GestureStateController.register(GestureKindOverride.PRIMARY, "Play", hintAvailable = true) {}
+    GestureStateController.register(GestureKindOverride.PRIMARY, "Play", hintAvailable = true, enabled = true) {}
     registry.onRender(
       "preview-1",
       RenderResult(id = 1L, classLoaderHashCode = 0, classLoaderName = "test"),

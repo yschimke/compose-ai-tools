@@ -45,12 +45,15 @@ object GestureStateController {
     val type: GestureKindOverride,
     val label: String,
     val hintAvailable: Boolean,
+    /** Effective `LocalOneHandedGestureEnabled` observed where the handler was registered. */
+    val enabled: Boolean,
     val invoke: () -> Unit,
   )
 
   private val entries: MutableList<Entry> = CopyOnWriteArrayList()
 
-  @Volatile private var enabled: Boolean = true
+  /** Fallback enabled state for previews that set a gesture override but register no handlers. */
+  @Volatile private var overrideEnabled: Boolean = true
 
   @Volatile private var lastInvoked: String? = null
 
@@ -63,16 +66,21 @@ object GestureStateController {
   val hintsShownState: State<Boolean>
     get() = _hintsShown
 
-  /** Register a handler. Keyed by (type,label); a duplicate replaces the prior entry. */
+  /**
+   * Register a handler. Keyed by (type,label); a duplicate replaces the prior entry. [enabled] is
+   * the effective `LocalOneHandedGestureEnabled` at the registration site — captured so the payload
+   * reflects a preview that disables gestures inside the tree, not just via the override.
+   */
   fun register(
     type: GestureKindOverride,
     label: String,
     hintAvailable: Boolean,
+    enabled: Boolean,
     invoke: () -> Unit,
   ) {
     synchronized(lock) {
       entries.removeAll { it.type == type && it.label == label }
-      entries.add(Entry(type, label, hintAvailable, invoke))
+      entries.add(Entry(type, label, hintAvailable, enabled, invoke))
     }
   }
 
@@ -87,13 +95,20 @@ object GestureStateController {
    */
   fun set(override: GestureOverride?) {
     synchronized(lock) {
-      enabled = override?.enabled ?: true
+      overrideEnabled = override?.enabled ?: true
       _hintsShown.value = override?.showHints ?: false
     }
   }
 
-  /** Mirrors `LocalOneHandedGestureEnabled` the extension should provide. */
-  fun enabled(): Boolean = enabled
+  /**
+   * Effective gesture-recognition enabled state: the AND of every registered handler's observed
+   * `LocalOneHandedGestureEnabled` (so an in-tree opt-out reports `false`), falling back to the
+   * override default when no handler registered.
+   */
+  fun enabled(): Boolean =
+    synchronized(lock) {
+      if (entries.isEmpty()) overrideEnabled else entries.all { it.enabled }
+    }
 
   /**
    * Invoke registered handlers of [kind], optionally scoped to a single [label]. Runs each match's
@@ -114,7 +129,7 @@ object GestureStateController {
   fun snapshot(): GesturePayload =
     synchronized(lock) {
       GesturePayload(
-        enabled = enabled,
+        enabled = if (entries.isEmpty()) overrideEnabled else entries.all { it.enabled },
         hintsShown = _hintsShown.value,
         lastInvoked = lastInvoked,
         registered =
@@ -132,7 +147,7 @@ object GestureStateController {
   fun resetForNewSession() {
     synchronized(lock) {
       entries.clear()
-      enabled = true
+      overrideEnabled = true
       lastInvoked = null
       _hintsShown.value = false
     }
