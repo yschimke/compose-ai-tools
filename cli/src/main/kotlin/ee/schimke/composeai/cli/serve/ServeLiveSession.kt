@@ -30,7 +30,7 @@ private constructor(
   fun onClientMessage(text: String) {
     when (val message = ServeStreamProtocol.parseClient(text)) {
       is ServeStreamProtocol.ClientMessage.SetOverrides ->
-        when (val parsed = ServeOverrides.parse(message.overrides)) {
+        when (val parsed = ServeOverrides.parse(message.overrides, knobKindsFor(previewId))) {
           is OverrideParse.Invalid -> send(ServeStreamProtocol.errorMessage(parsed.message))
           is OverrideParse.Ok -> {
             // stream/start fixes overrides for the held session, so an override change restarts it.
@@ -88,7 +88,7 @@ private constructor(
   private fun switchTo(message: ServeStreamProtocol.ClientMessage.Switch) {
     val nextOverrides = message.overrides ?: overrides
     val parsed =
-      when (val p = ServeOverrides.parse(nextOverrides)) {
+      when (val p = ServeOverrides.parse(nextOverrides, knobKindsFor(message.previewId))) {
         is OverrideParse.Invalid -> {
           send(ServeStreamProtocol.errorMessage(p.message))
           return
@@ -105,6 +105,12 @@ private constructor(
     previewId = message.previewId
     overrides = nextOverrides
   }
+
+  /**
+   * Declared knob kinds for [id], so a bare `knob.<key>=<value>` message is typed from the preview.
+   */
+  private fun knobKindsFor(id: String): Map<String, String> =
+    ServeOverrides.declaredKnobKinds(renderHost.previews.firstOrNull { it.id == id })
 
   private fun onFrame(frame: StreamFrameParams) {
     // `unchanged` heartbeats carry no payload — nothing to paint.
@@ -140,8 +146,11 @@ private constructor(
       maxFps: Int? = null,
       send: (String) -> Unit,
     ): ServeLiveSession? {
+      val knobKinds =
+        ServeOverrides.declaredKnobKinds(renderHost.previews.firstOrNull { it.id == previewId })
       val initial =
-        (ServeOverrides.parse(overrides) as? OverrideParse.Ok)?.overrides ?: PreviewOverrides()
+        (ServeOverrides.parse(overrides, knobKinds) as? OverrideParse.Ok)?.overrides
+          ?: PreviewOverrides()
       val session = ServeLiveSession(renderHost, previewId, overrides, codec, maxFps, send)
       session.handle =
         renderHost.subscribeStream(previewId, initial, codec, maxFps, session::onFrame)

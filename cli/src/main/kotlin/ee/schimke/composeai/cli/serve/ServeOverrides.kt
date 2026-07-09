@@ -62,22 +62,63 @@ object ServeOverrides {
     )
 
   /**
-   * Prefix for author-declared named-override knobs: `knob.<wireKey>=<kind>:<value>`, e.g.
-   * `knob.label=string:Tap me` or `knob.count=int:3`. `wireKey` is the declaration key (indexed
-   * knobs use `key[index]`); `kind` is one of string/int/float/bool/color, matching
-   * [PreviewOverrideValue]. The daemon's named-override planner seeds the preview's declared knobs
-   * from these, so editing one re-renders the composable (only on a daemon-backed session — a
-   * static bundle / the Wasm tier ignore them). Dynamic keys, so not listed in [SUPPORTED_KEYS].
+   * Prefix for author-declared named-override knobs: `knob.<wireKey>=<value>`, e.g. `knob.label=Tap
+   * me` or `knob.count=3`. `wireKey` is the declaration key (indexed knobs use `key[index]`). The
+   * value's **type is inferred from the preview's declaration** (the `knobKinds` map passed to
+   * [parse]) — a viewer never has to spell it. An explicit `<kind>:<value>` prefix
+   * (`knob.count=int:3`, `kind` one of string/int/float/bool/color) is still honoured for older
+   * shared links and keys the server has no declaration for; absent a declaration and a recognised
+   * prefix, a bare value parses as a string. The daemon's named-override planner seeds the
+   * preview's declared knobs from these, so editing one re-renders the composable (only on a
+   * daemon-backed session — a static bundle / the Wasm tier ignore them). Dynamic keys, so not
+   * listed in [SUPPORTED_KEYS].
    */
   const val KNOB_PREFIX = "knob."
+
+  /**
+   * The `<kind>` tags an explicit `knob.<key>=<kind>:<value>` may carry (legacy /
+   * declaration-less).
+   */
+  private val KNOWN_KINDS: Set<String> = setOf("string", "int", "float", "bool", "color")
+
+  /**
+   * Map a `compose/overrides` declaration `type` to the [PreviewOverrideValue] wire kind. Shared
+   * with the viewer's control rendering so the inferred type always matches the widget shown.
+   */
+  fun knobKind(type: String): String =
+    when (type.lowercase()) {
+      "int" -> "int"
+      "float",
+      "dp" -> "float"
+      "bool",
+      "boolean" -> "bool"
+      "color" -> "color"
+      else -> "string"
+    }
+
+  /**
+   * The `wireKey → kind` map [parse] uses to type a bare `knob.<key>=<value>`, built from a
+   * preview's declared knobs (keyed by
+   * [ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration.seedKey]). Empty when the
+   * preview is unknown or declares no knobs — a bare value then falls back to string.
+   */
+  fun declaredKnobKinds(preview: ServePreview?): Map<String, String> =
+    preview?.overrides?.associate { it.seedKey to knobKind(it.type) } ?: emptyMap()
 
   /**
    * Parse [params] (one value per key — the ktor layer collapses multi-values to the first) into a
    * [PreviewOverrides]. Returns [OverrideParse.Invalid] with a human reason on malformed values
    * (bad number, unknown enum) rather than rendering with a silent default. Absent / blank keys
    * leave the corresponding field null (the preview's discovery-time value).
+   *
+   * [knobKinds] maps a knob's `wireKey` to its declared kind so a bare `knob.<key>=<value>` is
+   * typed without the caller spelling it (see [declaredKnobKinds]); an explicit `<kind>:<value>`
+   * prefix still wins, and an undeclared key with a bare value falls back to a string.
    */
-  fun parse(params: Map<String, String>): OverrideParse {
+  fun parse(
+    params: Map<String, String>,
+    knobKinds: Map<String, String> = emptyMap(),
+  ): OverrideParse {
     fun blank(key: String): Boolean = params[key]?.isBlank() ?: true
 
     val uiMode =
@@ -197,19 +238,21 @@ object ServeOverrides {
         else -> null
       }
 
-    // Named-override knobs (`knob.<key>=<kind>:<value>`). A malformed typed value is a hard
-    // Invalid (mirrors the numeric fields) rather than a silently-dropped edit.
+    // Named-override knobs (`knob.<key>=<value>`, type inferred from the declaration; a legacy
+    // `<kind>:<value>` prefix still wins). A malformed typed value is a hard Invalid (mirrors the
+    // numeric fields) rather than a silently-dropped edit.
     val namedOverrides = mutableMapOf<String, PreviewOverrideValue>()
     for ((rawKey, raw) in params) {
       if (!rawKey.startsWith(KNOB_PREFIX)) continue
       val wireKey = rawKey.removePrefix(KNOB_PREFIX)
       if (wireKey.isBlank() || raw.isBlank()) continue
+      // Split an explicit `<kind>:<value>` only when the prefix is a recognised kind; otherwise the
+      // whole string is the value and its type comes from the preview's declaration (default
+      // string). This keeps old typed links working while letting a viewer send bare values.
       val sep = raw.indexOf(':')
-      if (sep <= 0) {
-        return OverrideParse.Invalid("knob '$wireKey' must be '<kind>:<value>', got '$raw'")
-      }
-      val kind = raw.substring(0, sep)
-      val value = raw.substring(sep + 1)
+      val explicitKind = if (sep > 0) raw.substring(0, sep).takeIf { it in KNOWN_KINDS } else null
+      val kind = explicitKind ?: knobKinds[wireKey] ?: "string"
+      val value = if (explicitKind != null) raw.substring(sep + 1) else raw
       namedOverrides[wireKey] =
         when (kind) {
           "string" -> PreviewOverrideValue.StringValue(value)
