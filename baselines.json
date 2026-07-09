@@ -2252,7 +2252,7 @@
     "functionName": "ButtonFocused",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "ButtonFocused.png",
-    "sha256": "ac1bebbb6d657f92b97f84731858ae7e29829fa2f51f8bbf39db53016089ac47",
+    "sha256": "9d26599c0412775809180274ab1e8897bb1ccdf1edd4014f040a06e968a97e45",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonPressed": {
@@ -2590,6 +2590,94 @@
     "renderBasename": "AmbientStatusInteractivePreview_Ambient_body_interactive.png",
     "sha256": "ed6647819acf1e7f0327b2d971dbf9cebc4a9cbc6539497033c082d329762509",
     "sourceFile": "src/main/kotlin/com/example/samplewear/AmbientPreviews.kt"
+  },
+  "samples:wear/com.example.samplewear.GesturesKt.ButtonHintScreenPreview_Devices - Large Round": {
+    "captureLabel": "",
+    "functionName": "ButtonHintScreenPreview",
+    "module": "samples:wear",
+    "renderBasename": "ButtonHintScreenPreview_Devices_Large_Round.png",
+    "sha256": "9ce75f3840883e2bf193dbf8d899e57d38c8fe021299480dd21a4273a22726e6",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt"
+  },
+  "samples:wear/com.example.samplewear.GesturesKt.DisabledGestureScreenPreview_Devices - Large Round": {
+    "captureLabel": "",
+    "functionName": "DisabledGestureScreenPreview",
+    "module": "samples:wear",
+    "renderBasename": "DisabledGestureScreenPreview_Devices_Large_Round.png",
+    "sha256": "d448025a6b26e7b82474518ebdb10e2dd3eecee55eb9a4dec135d0c02ef9cd10",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt"
+  },
+  "samples:wear/com.example.samplewear.GesturesKt.DismissActionScreenPreview_Devices - Large Round": {
+    "captureLabel": "",
+    "functionName": "DismissActionScreenPreview",
+    "module": "samples:wear",
+    "renderBasename": "DismissActionScreenPreview_Devices_Large_Round.png",
+    "sha256": "ae474e5346dea0bfb7ac0a980128296c43e2b2ef40117aad664bf2ffba72bde9",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt"
+  },
+  "samples:wear/com.example.samplewear.GesturesKt.FloatingHintScreenPreview_Devices - Large Round": {
+    "captureLabel": "",
+    "functionName": "FloatingHintScreenPreview",
+    "module": "samples:wear",
+    "renderBasename": "FloatingHintScreenPreview_Devices_Large_Round.png",
+    "sha256": "37a94a48b00677cb3299d58f6a9136cefce2da79a85fe090ccd2523881767f6e",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt"
+  },
+  "samples:wear/com.example.samplewear.GesturesKt.GestureGalleryPreview_Devices - Large Round": {
+    "captureLabel": "",
+    "functionName": "GestureGalleryPreview",
+    "module": "samples:wear",
+    "renderBasename": "GestureGalleryPreview_Devices_Large_Round.png",
+    "sha256": "5b3f8bcee45ec2f72b76d53fd0c37eb31be1ef8f404d15e3b2c58f6c9c80eb4f",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt"
+  },
+  "samples:wear/com.example.samplewear.GesturesKt.PageGestureScreenPreview_Devices - Large Round": {
+    "captureLabel": "",
+    "functionName": "PageGestureScreenPreview",
+    "module": "samples:wear",
+    "renderBasename": "PageGestureScreenPreview_Devices_Large_Round.png",
+    "sha256": "ea74b14b75944e0bf33fa1cf0c98955c30bcd1f9579187f404e87479383f9dd5",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt"
+  },
+  "samples:wear/com.example.samplewear.GesturesKt.PageIndicatorStickerPreview": {
+    "captureLabel": "",
+    "functionName": "PageIndicatorStickerPreview",
+    "module": "samples:wear",
+    "renderBasename": "PageIndicatorStickerPreview.png",
+    "sha256": "0eb7f4f1cd2b08044c358aad706c2d13f824f3c69b8d9d486f861243dfb2fdbe",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt"
+  },
+  "samples:wear/com.example.samplewear.GesturesKt.PrimaryActionScreenPreview_Devices - Large Round": {
+    "captureLabel": "",
+    "functionName": "PrimaryActionScreenPreview",
+    "module": "samples:wear",
+    "renderBasename": "PrimaryActionScreenPreview_Devices_Large_Round.png",
+    "sha256": "1b4f91b919bc80f4b13326115515066396045eb1d0efb3b630e066f39e78bc48",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt"
+  },
+  "samples:wear/com.example.samplewear.GesturesKt.PrimaryActionStickerPreview": {
+    "captureLabel": "",
+    "functionName": "PrimaryActionStickerPreview",
+    "module": "samples:wear",
+    "renderBasename": "PrimaryActionStickerPreview.png",
+    "sha256": "464669b3b04ef1f99fc94a955c7019135a2d097fccb89d17f0c38119e2188dd6",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt"
+  },
+  "samples:wear/com.example.samplewear.GesturesKt.ScrollGestureScreenPreview_Devices - Large Round": {
+    "captureLabel": "",
+    "functionName": "ScrollGestureScreenPreview",
+    "module": "samples:wear",
+    "renderBasename": "ScrollGestureScreenPreview_Devices_Large_Round.png",
+    "sha256": "fd762e40979fd0f720f275b5c06cf8b0b5ed5f8f688680d53db658b8ee60977e",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt"
+  },
+  "samples:wear/com.example.samplewear.GesturesKt.ScrollIndicatorStickerPreview": {
+    "captureLabel": "",
+    "functionName": "ScrollIndicatorStickerPreview",
+    "module": "samples:wear",
+    "renderBasename": "ScrollIndicatorStickerPreview.png",
+    "sha256": "3830396c8babfaa84dde85aec23fe42d4c752c8c9da38ba80732e3c02a1dfc9d",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Large": {
     "captureLabel": "",

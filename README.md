@@ -410,6 +410,17 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 |---------|-------|
 | `AmbientStatusAmbientPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/AmbientStatusAmbientPreview_Ambient_body_ambient.png" width="150" /> |
 | `AmbientStatusInteractivePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/AmbientStatusInteractivePreview_Ambient_body_interactive.png" width="150" /> |
+| `ButtonHintScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ButtonHintScreenPreview_Devices_Large_Round.png" width="150" /> |
+| `DisabledGestureScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/DisabledGestureScreenPreview_Devices_Large_Round.png" width="150" /> |
+| `DismissActionScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/DismissActionScreenPreview_Devices_Large_Round.png" width="150" /> |
+| `FloatingHintScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/FloatingHintScreenPreview_Devices_Large_Round.png" width="150" /> |
+| `GestureGalleryPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/GestureGalleryPreview_Devices_Large_Round.png" width="150" /> |
+| `PageGestureScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PageGestureScreenPreview_Devices_Large_Round.png" width="150" /> |
+| `PageIndicatorStickerPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PageIndicatorStickerPreview.png" width="150" /> |
+| `PrimaryActionScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PrimaryActionScreenPreview_Devices_Large_Round.png" width="150" /> |
+| `PrimaryActionStickerPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PrimaryActionStickerPreview.png" width="150" /> |
+| `ScrollGestureScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ScrollGestureScreenPreview_Devices_Large_Round.png" width="150" /> |
+| `ScrollIndicatorStickerPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ScrollIndicatorStickerPreview.png" width="150" /> |
 | `ActivityListFontScalesPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListFontScalesPreview_Fonts_Large.png" width="150" /> |
 | `ActivityListFontScalesPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListFontScalesPreview_Fonts_Larger.png" width="150" /> |
 | `ActivityListFontScalesPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListFontScalesPreview_Fonts_Largest.png" width="150" /> |
