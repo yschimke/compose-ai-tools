@@ -364,6 +364,18 @@ fun main(args: Array<String>) {
             dataProductRegistry = AmbientDataProductRegistry(),
           )
         }
+        // Wear OS one-handed-gesture data product. The registry serves the `compose/gestures`
+        // payload (registered handlers + applied enabled / hint / invoke state); the planner that
+        // force-shows hints and invokes handlers is wired into `RobolectricHost`'s
+        // `previewOverrideExtensions` list (gated on the wear-compose gesture API, same shape as
+        // ambient). The registry itself touches no wear types, so it registers unconditionally.
+        tryAdd("data/gestures") {
+          Extension(
+            id = "data/gestures",
+            displayName = "Wear OS gesture override",
+            dataProductRegistry = GestureDataProductRegistry(),
+          )
+        }
         tryAdd("data/permissions") {
           // Runtime-permissions override + query tracker. Registry serves the
           // `compose/permissions` payload (effective grant map + permissions the screen has

@@ -381,6 +381,14 @@ include(":data-ambient-connector")
 
 project(":data-ambient-connector").projectDir = file("data/ambient/connector")
 
+include(":data-gestures-core")
+
+project(":data-gestures-core").projectDir = file("data/gestures/core")
+
+include(":data-gestures-connector")
+
+project(":data-gestures-connector").projectDir = file("data/gestures/connector")
+
 include(":data-shared-element-core")
 
 project(":data-shared-element-core").projectDir = file("data/shared-element/core")
