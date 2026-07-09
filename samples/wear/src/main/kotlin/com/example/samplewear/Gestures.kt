@@ -5,7 +5,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -16,6 +18,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
@@ -25,12 +28,14 @@ import androidx.wear.compose.foundation.pager.HorizontalPager
 import androidx.wear.compose.foundation.pager.rememberPagerState
 import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.material3.Button
+import androidx.wear.compose.material3.Card
 import androidx.wear.compose.material3.FilledTonalButton
 import androidx.wear.compose.material3.ListHeader
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
 import androidx.wear.compose.material3.TimeText
+import androidx.wear.compose.material3.TitleCard
 import androidx.wear.compose.material3.onehandedgesture.LocalOneHandedGestureEnabled
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureDefaults
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureHorizontalPageIndicator
@@ -39,7 +44,6 @@ import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
 import androidx.wear.compose.ui.tooling.preview.WearPreviewLargeRound
-import androidx.wear.compose.ui.tooling.preview.WearPreviewSmallRound
 import ee.schimke.composeai.daemon.GestureHint
 import ee.schimke.composeai.daemon.GestureType
 import ee.schimke.composeai.daemon.rememberForcedGestureHintSource
@@ -103,43 +107,102 @@ private fun GestureHomeScreen(onOpen: (String) -> Unit) {
       modifier = Modifier.fillMaxSize(),
     ) {
       item { ListHeader { Text("Gestures") } }
-      item { FilledTonalButton(onClick = { onOpen(GestureRoutes.PRIMARY) }) { Text("Primary action") } }
-      item { FilledTonalButton(onClick = { onOpen(GestureRoutes.DISMISS) }) { Text("Dismiss action") } }
-      item { FilledTonalButton(onClick = { onOpen(GestureRoutes.SCROLL) }) { Text("Scroll gesture") } }
-      item { FilledTonalButton(onClick = { onOpen(GestureRoutes.PAGE) }) { Text("Page gesture") } }
-      item { FilledTonalButton(onClick = { onOpen(GestureRoutes.DISABLED) }) { Text("Disabled") } }
+      item {
+        FilledTonalButton(
+          onClick = { onOpen(GestureRoutes.PRIMARY) },
+          modifier = Modifier.fillMaxWidth(),
+        ) {
+          Text("Primary action")
+        }
+      }
+      item {
+        FilledTonalButton(
+          onClick = { onOpen(GestureRoutes.DISMISS) },
+          modifier = Modifier.fillMaxWidth(),
+        ) {
+          Text("Dismiss action")
+        }
+      }
+      item {
+        FilledTonalButton(
+          onClick = { onOpen(GestureRoutes.SCROLL) },
+          modifier = Modifier.fillMaxWidth(),
+        ) {
+          Text("Scroll gesture")
+        }
+      }
+      item {
+        FilledTonalButton(
+          onClick = { onOpen(GestureRoutes.PAGE) },
+          modifier = Modifier.fillMaxWidth(),
+        ) {
+          Text("Page gesture")
+        }
+      }
+      item {
+        FilledTonalButton(
+          onClick = { onOpen(GestureRoutes.DISABLED) },
+          modifier = Modifier.fillMaxWidth(),
+        ) {
+          Text("Disabled")
+        }
+      }
     }
   }
 }
 
-/** Primary action (double pinch) on a play/pause button, with a button-hint affordance. */
+/**
+ * A titled full-screen gesture demo: a [ListHeader] title, an instruction line, and the interactive
+ * affordance centred below — the layout the catalog's full-screen Wear stickers use so the screen
+ * reads clearly instead of a bare control lost on the watch face.
+ */
 @Composable
-fun PrimaryActionScreen(forceHint: Boolean = false) {
+private fun GestureDemoScreen(title: String, instruction: String, control: @Composable () -> Unit) {
+  ScreenScaffold {
+    Column(
+      modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+      horizontalAlignment = Alignment.CenterHorizontally,
+      verticalArrangement = Arrangement.Center,
+    ) {
+      ListHeader { Text(title) }
+      Text(instruction, textAlign = TextAlign.Center)
+      Box(modifier = Modifier.padding(top = 12.dp)) { control() }
+    }
+  }
+}
+
+/** The double-pinch primary action on a play/pause [Button], wrapped in its [GestureHint]. */
+@Composable
+private fun PlayGestureButton(forceHint: Boolean) {
   var playing by remember { mutableStateOf(false) }
   val interactionSource = remember { MutableInteractionSource() }
-  ScreenScaffold {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-      GestureHint(
-        type = GestureType.PRIMARY,
-        interactionSource = interactionSource,
-        forceShow = forceHint,
-      ) {
-        Button(
-          onClick = { playing = !playing },
+  GestureHint(
+    type = GestureType.PRIMARY,
+    interactionSource = interactionSource,
+    forceShow = forceHint,
+  ) {
+    Button(
+      onClick = { playing = !playing },
+      interactionSource = interactionSource,
+      modifier =
+        Modifier.reportedOneHandedGesture(
+          type = GestureType.PRIMARY,
+          label = if (playing) "Pause" else "Play",
           interactionSource = interactionSource,
-          modifier =
-            Modifier.reportedOneHandedGesture(
-              type = GestureType.PRIMARY,
-              label = if (playing) "Pause" else "Play",
-              interactionSource = interactionSource,
-            ) {
-              playing = !playing
-            },
         ) {
-          Text(if (playing) "Pause" else "Play")
-        }
-      }
+          playing = !playing
+        },
+    ) {
+      Text(if (playing) "Pause" else "Play")
     }
+  }
+}
+
+/** Primary action (double pinch) on a play/pause button. */
+@Composable
+fun PrimaryActionScreen(forceHint: Boolean = false) {
+  GestureDemoScreen(title = "Primary", instruction = "Double-pinch to play") {
+    PlayGestureButton(forceHint)
   }
 }
 
@@ -147,28 +210,25 @@ fun PrimaryActionScreen(forceHint: Boolean = false) {
 @Composable
 fun DismissActionScreen(onDismiss: () -> Unit = {}, forceHint: Boolean = false) {
   val interactionSource = remember { MutableInteractionSource() }
-  ScreenScaffold {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-      GestureHint(
-        type = GestureType.DISMISS,
+  GestureDemoScreen(title = "Dismiss", instruction = "Wrist-turn to go back") {
+    GestureHint(
+      type = GestureType.DISMISS,
+      interactionSource = interactionSource,
+      forceShow = forceHint,
+    ) {
+      FilledTonalButton(
+        onClick = onDismiss,
         interactionSource = interactionSource,
-        forceShow = forceHint,
+        modifier =
+          Modifier.reportedOneHandedGesture(
+            type = GestureType.DISMISS,
+            label = "Dismiss",
+            interactionSource = interactionSource,
+          ) {
+            onDismiss()
+          },
       ) {
-        Column(
-          horizontalAlignment = Alignment.CenterHorizontally,
-          verticalArrangement = Arrangement.Center,
-          modifier =
-            Modifier.padding(24.dp)
-              .reportedOneHandedGesture(
-                type = GestureType.DISMISS,
-                label = "Dismiss",
-                interactionSource = interactionSource,
-              ) {
-                onDismiss()
-              },
-        ) {
-          Text("Wrist turn to dismiss", textAlign = TextAlign.Center)
-        }
+        Text("Back")
       }
     }
   }
@@ -178,7 +238,6 @@ fun DismissActionScreen(onDismiss: () -> Unit = {}, forceHint: Boolean = false) 
 @Composable
 fun ScrollGestureScreen(forceHint: Boolean = false) {
   val listState = rememberTransformingLazyColumnState()
-  val scope = rememberCoroutineScope()
   val interactionSource = remember { MutableInteractionSource() }
   val hintSource =
     if (forceHint) rememberForcedGestureHintSource(GestureType.SCROLL) else interactionSource
@@ -198,7 +257,14 @@ fun ScrollGestureScreen(forceHint: Boolean = false) {
             },
       ) {
         item { ListHeader { Text("Scroll") } }
-        items(12) { index -> FilledTonalButton(onClick = {}) { Text("Item ${index + 1}") } }
+        items(12) { index ->
+          TitleCard(
+            onClick = {},
+            title = { Text("Item ${index + 1}") },
+            subtitle = { Text("Double-pinch to scroll") },
+            modifier = Modifier.fillMaxWidth(),
+          )
+        }
       }
       OneHandedGestureScrollIndicator(
         interactionSource = hintSource,
@@ -230,8 +296,16 @@ fun PageGestureScreen(forceHint: Boolean = false) {
               OneHandedGestureDefaults.scrollToNextPage(pagerState)
             },
       ) { page ->
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-          Text("Page ${page + 1}")
+        Box(
+          modifier = Modifier.fillMaxSize().padding(16.dp),
+          contentAlignment = Alignment.Center,
+        ) {
+          Card(onClick = {}, modifier = Modifier.fillMaxWidth()) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+              Text("Page ${page + 1}")
+              Text("Double-pinch for next")
+            }
+          }
         }
       }
       OneHandedGestureHorizontalPageIndicator(
@@ -247,26 +321,64 @@ fun PageGestureScreen(forceHint: Boolean = false) {
 @Composable
 fun DisabledGestureScreen() {
   val interactionSource = remember { MutableInteractionSource() }
-  ScreenScaffold {
-    CompositionLocalProvider(LocalOneHandedGestureEnabled provides false) {
-      Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Button(
-          onClick = {},
-          modifier =
-            Modifier.reportedOneHandedGesture(
-              type = GestureType.PRIMARY,
-              label = "Play (disabled)",
-              interactionSource = interactionSource,
-            ) {},
-        ) {
-          Text("Gestures off")
-        }
+  CompositionLocalProvider(LocalOneHandedGestureEnabled provides false) {
+    GestureDemoScreen(title = "Disabled", instruction = "Gestures off on this screen") {
+      Button(
+        onClick = {},
+        modifier =
+          Modifier.reportedOneHandedGesture(
+            type = GestureType.PRIMARY,
+            label = "Play (disabled)",
+            interactionSource = interactionSource,
+          ) {},
+      ) {
+        Text("Tap only")
       }
     }
   }
 }
 
-@WearPreviewSmallRound
+// ---------------------------------------------------------------------------
+// Previews. Close-up "stickers" (transparent background, cropped tight to the
+// control — the catalog's `WearSticker` treatment) show each affordance clearly;
+// the full-round previews show the same control in its on-watch screen.
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun GestureSticker(content: @Composable () -> Unit) {
+  MaterialTheme { Box(Modifier.padding(8.dp)) { content() } }
+}
+
+@Preview(showBackground = false)
+@Composable
+fun PrimaryActionStickerPreview() {
+  GestureSticker { PlayGestureButton(forceHint = true) }
+}
+
+@Preview(showBackground = false)
+@Composable
+fun ScrollIndicatorStickerPreview() {
+  GestureSticker {
+    val listState = rememberTransformingLazyColumnState()
+    OneHandedGestureScrollIndicator(
+      interactionSource = rememberForcedGestureHintSource(GestureType.SCROLL),
+      state = listState,
+      modifier = Modifier.size(48.dp),
+    )
+  }
+}
+
+@Preview(showBackground = false)
+@Composable
+fun PageIndicatorStickerPreview() {
+  GestureSticker {
+    OneHandedGestureHorizontalPageIndicator(
+      interactionSource = rememberForcedGestureHintSource(GestureType.PAGE),
+      pagerState = rememberPagerState(initialPage = 1, pageCount = { 4 }),
+    )
+  }
+}
+
 @WearPreviewLargeRound
 @Composable
 fun GestureGalleryPreview() {
@@ -275,30 +387,30 @@ fun GestureGalleryPreview() {
 
 @WearPreviewLargeRound
 @Composable
-fun PrimaryActionHintPreview() {
+fun PrimaryActionScreenPreview() {
   MaterialTheme { PrimaryActionScreen(forceHint = true) }
 }
 
 @WearPreviewLargeRound
 @Composable
-fun DismissActionHintPreview() {
+fun DismissActionScreenPreview() {
   MaterialTheme { DismissActionScreen(forceHint = true) }
 }
 
 @WearPreviewLargeRound
 @Composable
-fun ScrollGestureHintPreview() {
+fun ScrollGestureScreenPreview() {
   MaterialTheme { ScrollGestureScreen(forceHint = true) }
 }
 
 @WearPreviewLargeRound
 @Composable
-fun PageGestureHintPreview() {
+fun PageGestureScreenPreview() {
   MaterialTheme { PageGestureScreen(forceHint = true) }
 }
 
 @WearPreviewLargeRound
 @Composable
-fun DisabledGesturePreview() {
+fun DisabledGestureScreenPreview() {
   MaterialTheme { DisabledGestureScreen() }
 }
