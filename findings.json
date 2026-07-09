@@ -1491,6 +1491,16 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "FilledButtonFocused_Dark.a11y.png",
+      "cleanBasename": "FilledButtonFocused_Dark.png",
+      "findings": [],
+      "functionName": "FilledButtonFocused",
+      "module": "design-catalog-m3-android",
+      "previewId": "com.example.designcatalogm3android.FocusRingKt.FilledButtonFocused_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3android/FocusRing.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "AppScaffoldTemplate_Dark.a11y.png",
       "cleanBasename": "AppScaffoldTemplate_Dark.png",
       "findings": [],
@@ -1607,6 +1617,16 @@
       "functionName": "FilledButtonFocused",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonFocused_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "FilledButtonIconLabel_Dark.a11y.png",
+      "cleanBasename": "FilledButtonIconLabel_Dark.png",
+      "findings": [],
+      "functionName": "FilledButtonIconLabel",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonIconLabel_Dark",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -1737,6 +1757,26 @@
       "functionName": "SliderMid",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.SliderMid_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "SlottedCardSlotsSticker_Dark.a11y.png",
+      "cleanBasename": "SlottedCardSlotsSticker_Dark.png",
+      "findings": [],
+      "functionName": "SlottedCardSlotsSticker",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.SlottedCardSlotsSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "SlottedCardSticker_Dark.a11y.png",
+      "cleanBasename": "SlottedCardSticker_Dark.png",
+      "findings": [],
+      "functionName": "SlottedCardSticker",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.SlottedCardSticker_Dark",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -2355,6 +2395,111 @@
       "previewId": "com.example.samplewear.PreviewsKt.CircularProgressIndicatorPreview_Devices - Large Round",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt",
       "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "DisabledGestureScreenPreview_Devices_Large_Round.a11y.png",
+      "cleanBasename": "DisabledGestureScreenPreview_Devices_Large_Round.png",
+      "findings": [],
+      "functionName": "DisabledGestureScreenPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.GesturesKt.DisabledGestureScreenPreview_Devices - Large Round",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "DismissActionScreenPreview_Devices_Large_Round.a11y.png",
+      "cleanBasename": "DismissActionScreenPreview_Devices_Large_Round.png",
+      "findings": [],
+      "functionName": "DismissActionScreenPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.GesturesKt.DismissActionScreenPreview_Devices - Large Round",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "GestureGalleryPreview_Devices_Large_Round.a11y.png",
+      "cleanBasename": "GestureGalleryPreview_Devices_Large_Round.png",
+      "findings": [
+        {
+          "boundsInScreen": "74,169,380,247",
+          "level": "ERROR",
+          "message": "This item's height is 39dp. Consider making the height of this touch target 48dp or larger.",
+          "type": "TouchTargetSizeCheck",
+          "viewDescription": "android.view.View"
+        },
+        {
+          "boundsInScreen": "74,253,380,331",
+          "level": "ERROR",
+          "message": "This item's height is 39dp. Consider making the height of this touch target 48dp or larger.",
+          "type": "TouchTargetSizeCheck",
+          "viewDescription": "android.view.View"
+        }
+      ],
+      "functionName": "GestureGalleryPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.GesturesKt.GestureGalleryPreview_Devices - Large Round",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "PageGestureScreenPreview_Devices_Large_Round.a11y.png",
+      "cleanBasename": "PageGestureScreenPreview_Devices_Large_Round.png",
+      "findings": [],
+      "functionName": "PageGestureScreenPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.GesturesKt.PageGestureScreenPreview_Devices - Large Round",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PageIndicatorStickerPreview.png",
+      "findings": [],
+      "functionName": "PageIndicatorStickerPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.GesturesKt.PageIndicatorStickerPreview",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "PrimaryActionScreenPreview_Devices_Large_Round.a11y.png",
+      "cleanBasename": "PrimaryActionScreenPreview_Devices_Large_Round.png",
+      "findings": [],
+      "functionName": "PrimaryActionScreenPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.GesturesKt.PrimaryActionScreenPreview_Devices - Large Round",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "PrimaryActionStickerPreview.a11y.png",
+      "cleanBasename": "PrimaryActionStickerPreview.png",
+      "findings": [],
+      "functionName": "PrimaryActionStickerPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.GesturesKt.PrimaryActionStickerPreview",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "ScrollGestureScreenPreview_Devices_Large_Round.a11y.png",
+      "cleanBasename": "ScrollGestureScreenPreview_Devices_Large_Round.png",
+      "findings": [],
+      "functionName": "ScrollGestureScreenPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.GesturesKt.ScrollGestureScreenPreview_Devices - Large Round",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "ScrollIndicatorStickerPreview.png",
+      "findings": [],
+      "functionName": "ScrollIndicatorStickerPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.GesturesKt.ScrollIndicatorStickerPreview",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
+      "variant": ""
     },
     {
       "annotatedBasename": "FocusableMenu_Glimmer_Input.a11y.png",

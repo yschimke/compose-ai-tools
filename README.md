@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/pr`. 210 preview(s) across 18 module(s) · 16 error(s) · 4 warning(s) · 26 info._
+_Auto-generated from `compose-preview/a11y/pr`. 223 preview(s) across 19 module(s) · 18 error(s) · 4 warning(s) · 26 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -836,6 +836,12 @@ _No findings._
 
 _No findings._
 
+### `FilledButtonIconLabel`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-m3/FilledButtonIconLabel_Dark.a11y.png" width="400" />
+
+_No findings._
+
 ### `FilledButtonPressed`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-m3/FilledButtonPressed_Dark.a11y.png" width="400" />
@@ -914,6 +920,18 @@ _No findings._
 
 _No findings._
 
+### `SlottedCardSlotsSticker`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-m3/SlottedCardSlotsSticker_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `SlottedCardSticker`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-m3/SlottedCardSticker_Dark.a11y.png" width="400" />
+
+_No findings._
+
 ### `SwitchOff`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-m3/SwitchOff_Dark.a11y.png" width="400" />
@@ -953,6 +971,14 @@ _No findings._
 ### `TextSerifSpecimen`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-m3/TextSerifSpecimen_Dark.a11y.png" width="400" />
+
+_No findings._
+
+## design-catalog-m3-android
+
+### `FilledButtonFocused`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-m3-android/FilledButtonFocused_Dark.a11y.png" width="400" />
 
 _No findings._
 
@@ -1295,6 +1321,63 @@ _No findings._
 ### `CircularProgressIndicatorPreview` · `wearos_large_round`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/CircularProgressIndicatorPreview_Devices_Large_Round.png" width="400" />
+
+_No findings._
+
+### `DisabledGestureScreenPreview` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/DisabledGestureScreenPreview_Devices_Large_Round.a11y.png" width="400" />
+
+_No findings._
+
+### `DismissActionScreenPreview` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/DismissActionScreenPreview_Devices_Large_Round.a11y.png" width="400" />
+
+_No findings._
+
+### `GestureGalleryPreview` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/GestureGalleryPreview_Devices_Large_Round.a11y.png" width="400" />
+
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | ERROR | TouchTargetSizeCheck | android.view.View | This item's height is 39dp. Consider making the height of this touch target 48dp or larger. |
+| 2 | ERROR | TouchTargetSizeCheck | android.view.View | This item's height is 39dp. Consider making the height of this touch target 48dp or larger. |
+
+### `PageGestureScreenPreview` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/PageGestureScreenPreview_Devices_Large_Round.a11y.png" width="400" />
+
+_No findings._
+
+### `PageIndicatorStickerPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/PageIndicatorStickerPreview.png" width="400" />
+
+_No findings._
+
+### `PrimaryActionScreenPreview` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/PrimaryActionScreenPreview_Devices_Large_Round.a11y.png" width="400" />
+
+_No findings._
+
+### `PrimaryActionStickerPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/PrimaryActionStickerPreview.a11y.png" width="400" />
+
+_No findings._
+
+### `ScrollGestureScreenPreview` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/ScrollGestureScreenPreview_Devices_Large_Round.a11y.png" width="400" />
+
+_No findings._
+
+### `ScrollIndicatorStickerPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/ScrollIndicatorStickerPreview.png" width="400" />
 
 _No findings._
 
