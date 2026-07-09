@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.16.28](https://github.com/yschimke/compose-ai-tools/compare/v0.16.27...v0.16.28) (2026-07-08)
+
+
+### Features
+
+* **figma-svg:** subset embedded fonts to the glyphs the SVG draws ([#2300](https://github.com/yschimke/compose-ai-tools/issues/2300)) ([c92a3c1](https://github.com/yschimke/compose-ai-tools/commit/c92a3c191f335161fadd35d09278f04f266b4dc6))
+* **samples:** back m3 + wear-m3 catalog labels with translatable string resources ([#2308](https://github.com/yschimke/compose-ai-tools/issues/2308)) ([51b3c11](https://github.com/yschimke/compose-ai-tools/commit/51b3c11f6e8a23cffedf5ed8204011397bf27c8b))
+* **wear:** add image tile previews (inline + drawable resource) ([#2301](https://github.com/yschimke/compose-ai-tools/issues/2301)) ([fbe8402](https://github.com/yschimke/compose-ai-tools/commit/fbe84027e7c7474a69eef05a88395d9e2cf04cdc))
+
+
+### Bug Fixes
+
+* **codegen:** emit ktfmt-stable Kotlin from the SpatialScene generator ([#2307](https://github.com/yschimke/compose-ai-tools/issues/2307)) ([eb0c5ab](https://github.com/yschimke/compose-ai-tools/commit/eb0c5ab092191407a5513fe83a0b0872c54b3746))
+* **serve:** share previewOverride runtime across the live-daemon classloader split ([#2297](https://github.com/yschimke/compose-ai-tools/issues/2297)) ([33acdb2](https://github.com/yschimke/compose-ai-tools/commit/33acdb2079e5f06f4963041520bb4b05d1c11e1b))
+* **tiles:** render tile images registered via ProtoLayoutScope ([#2305](https://github.com/yschimke/compose-ai-tools/issues/2305)) ([a1244b0](https://github.com/yschimke/compose-ai-tools/commit/a1244b050805b030819ff0d8788dcc1251b25f85))
+* **vscode:** compose per-preview render overrides into one bag ([#2298](https://github.com/yschimke/compose-ai-tools/issues/2298)) ([3f55ba5](https://github.com/yschimke/compose-ai-tools/commit/3f55ba5a7c2e866a964cf2a1917464cc6091e8c2))
+
 ## [0.16.27](https://github.com/yschimke/compose-ai-tools/compare/v0.16.26...v0.16.27) (2026-07-08)
 
 
