@@ -163,10 +163,10 @@ a:hover { text-decoration: underline; }
                 <div class="cp-knobs">
         <div class="cp-knobs-head">Declared overrides — edit a value to re-render.</div>
         <label>label
-  <input type="text" class="cp-knob" data-knob-key="label" data-knob-kind="string" value="Filled">
+  <input type="text" class="cp-knob" data-knob-key="label" data-knob-kind="string" data-knob-initial="Filled" value="Filled">
 </label>
 <label>iconColor
-  <input type="text" class="cp-knob" data-knob-key="iconColor" data-knob-kind="color" value="#FF6750A4">
+  <input type="text" class="cp-knob" data-knob-key="iconColor" data-knob-kind="color" data-knob-initial="#FF6750A4" value="#FF6750A4">
 </label>
       </div>
                 <div class="cp-links">
@@ -249,21 +249,21 @@ a:hover { text-decoration: underline; }
     return o;
   }
   // The live-stream override map: the display fields PLUS the author-declared knob values as
-  // `knob.<key>` entries (the daemon's setOverrides parses the same map /render does, and
-  // ServeOverrides reads knob.* keys). Kept separate from overrides() so query() and the Wasm
-  // patch — which append/ignore knobs their own way — are unaffected; without this a knob edit
-  // during an active Live (stream) would send only the display fields and the daemon would reset
-  // the knob to its default.
+  // `knob.<key>=<value>` entries (the daemon's setOverrides parses the same map /render does,
+  // typing each from the preview's declaration). Kept separate from overrides() so query() and
+  // the Wasm patch — which append/ignore knobs their own way — are unaffected; without this a
+  // knob edit during an active Live (stream) would send only the display fields and the daemon
+  // would reset the others to their defaults. Unlike query(), every knob is sent (not just
+  // changed ones) for exactly that reason, so defaults are not filtered here.
   function liveOverrides() {
     var o = overrides();
     document.querySelectorAll(".cp-knob").forEach(function (el) {
       if (el.disabled) return;
       var key = el.getAttribute("data-knob-key");
-      var kind = el.getAttribute("data-knob-kind") || "string";
       if (!key) return;
       var val = (el.type === "checkbox") ? (el.checked ? "true" : "false") : el.value;
       if (val === "") return;
-      o["knob." + key] = kind + ":" + val;
+      o["knob." + key] = val;
     });
     return o;
   }
@@ -275,15 +275,18 @@ a:hover { text-decoration: underline; }
     if (token) parts.push("token=" + encodeURIComponent(token));
     if (session) parts.push("session=" + encodeURIComponent(session));
     Object.keys(o).forEach(function (k) { parts.push(k + "=" + encodeURIComponent(o[k])); });
-    // Author-declared knobs (enabled only on a daemon session): knob.<key>=<kind>:<value>.
+    // Author-declared knobs: knob.<key>=<value>. The server infers the type from the preview's
+    // declaration, so no <kind>: prefix. A knob still at its declared default is omitted — that
+    // keeps the URL on the instant baked snapshot (any knob.* param routes a published catalog
+    // to the daemon for a fresh re-render); only an actually-changed knob is sent.
     document.querySelectorAll(".cp-knob").forEach(function (el) {
       if (el.disabled) return;
       var key = el.getAttribute("data-knob-key");
-      var kind = el.getAttribute("data-knob-kind") || "string";
       if (!key) return;
       var val = (el.type === "checkbox") ? (el.checked ? "true" : "false") : el.value;
       if (val === "") return;
-      parts.push("knob." + encodeURIComponent(key) + "=" + encodeURIComponent(kind + ":" + val));
+      if (val === (el.getAttribute("data-knob-initial") || "")) return;
+      parts.push("knob." + encodeURIComponent(key) + "=" + encodeURIComponent(val));
     });
     return parts.join("&");
   }

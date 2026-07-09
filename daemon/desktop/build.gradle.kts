@@ -216,6 +216,10 @@ dependencies {
   // `LocalPreviewBackgroundCleared` — the `SurfaceCardSquare` fixture reads it to prove the
   // `clearBackground` override reaches a composable that drops its own opaque fill.
   "testFixturesImplementation"(project(":slot-preview-runtime"))
+  // `previewOverride*` — the `OverridableSquare` fixture declares a `fill` colour knob so
+  // `OverrideIntegrationTest` can prove a `namedOverrides` seed reaches the composition and
+  // changes the rendered pixels (the end-to-end named-override render path).
+  "testFixturesImplementation"(project(":data-preview-overrides-runtime"))
 }
 
 // Convenience task — equivalent to `java -cp $(runtimeClasspath) ee.schimke.composeai.daemon

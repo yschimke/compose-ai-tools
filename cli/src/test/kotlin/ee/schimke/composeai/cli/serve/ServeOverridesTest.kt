@@ -197,19 +197,86 @@ class ServeOverridesTest {
   }
 
   @Test
-  fun `malformed knob values are rejected with a reason`() {
+  fun `bare knob value without a kind prefix parses as a string`() {
+    // A colon-less value (the viewer's default wire form) is a string when nothing types it.
+    val o = ok(mapOf("knob.label" to "Tap me"))
+    assertEquals(PreviewOverrideValue.StringValue("Tap me"), o.namedOverrides!!["label"])
+    // A value whose prefix is not a recognised kind is taken whole, not split on the colon.
+    val o2 = ok(mapOf("knob.label" to "mystery:y"))
+    assertEquals(PreviewOverrideValue.StringValue("mystery:y"), o2.namedOverrides!!["label"])
+  }
+
+  @Test
+  fun `bare knob value is typed from the declared kinds`() {
+    val kinds = mapOf("count" to "int", "weight" to "float", "enabled" to "bool", "tint" to "color")
+    val o =
+      (ServeOverrides.parse(
+          mapOf(
+            "knob.count" to "3",
+            "knob.weight" to "1.5",
+            "knob.enabled" to "true",
+            "knob.tint" to "#FF0000",
+          ),
+          kinds,
+        ) as OverrideParse.Ok)
+        .overrides
+    val named = o.namedOverrides!!
+    assertEquals(PreviewOverrideValue.IntValue(3), named["count"])
+    assertEquals(PreviewOverrideValue.FloatValue(1.5f), named["weight"])
+    assertEquals(PreviewOverrideValue.BooleanValue(true), named["enabled"])
+    assertEquals(PreviewOverrideValue.ColorValue("#FF0000"), named["tint"])
+  }
+
+  @Test
+  fun `an explicit kind prefix still wins for an undeclared knob`() {
+    // Legacy `<kind>:<value>` links keep working when nothing declares the knob's type.
+    val o = ok(mapOf("knob.count" to "int:7"))
+    assertEquals(PreviewOverrideValue.IntValue(7), o.namedOverrides!!["count"])
+  }
+
+  @Test
+  fun `a declared string knob keeps a value that looks like a typed prefix`() {
+    // A string knob edited to `int:3` / `color:#fff` must survive verbatim: the prefix does not
+    // match the declared kind, so it is not stripped or retyped.
+    val kinds = mapOf("label" to "string")
+    val o =
+      (ServeOverrides.parse(
+          mapOf("knob.label" to "int:3", "knob.label2" to "color:#fff"),
+          kinds + ("label2" to "string"),
+        ) as OverrideParse.Ok)
+        .overrides
+    val named = o.namedOverrides!!
+    assertEquals(PreviewOverrideValue.StringValue("int:3"), named["label"])
+    assertEquals(PreviewOverrideValue.StringValue("color:#fff"), named["label2"])
+  }
+
+  @Test
+  fun `a matching kind prefix on a declared knob is still honoured`() {
+    // An old `knob.label=string:Hi` link (prefix matches the declared kind) keeps meaning "Hi".
+    val o =
+      (ServeOverrides.parse(mapOf("knob.count" to "int:7"), mapOf("count" to "int"))
+          as OverrideParse.Ok)
+        .overrides
+    assertEquals(PreviewOverrideValue.IntValue(7), o.namedOverrides!!["count"])
+  }
+
+  @Test
+  fun `malformed typed knob values are rejected with a reason`() {
     for (bad in
       listOf(
-        mapOf("knob.label" to "Tap me"), // missing kind:value separator
-        mapOf("knob.label" to ":Tap me"), // empty kind
-        mapOf("knob.count" to "int:three"), // not an integer
-        mapOf("knob.weight" to "float:heavy"), // not a number
-        mapOf("knob.x" to "mystery:y"), // unknown kind
+        mapOf("knob.count" to "int:three"), // explicit int, not an integer
+        mapOf("knob.weight" to "float:heavy"), // explicit float, not a number
       )) {
       val parsed = ServeOverrides.parse(bad)
       assertTrue(parsed is OverrideParse.Invalid, "expected Invalid for $bad, got $parsed")
       assertTrue(parsed.message.isNotBlank())
     }
+  }
+
+  @Test
+  fun `a bare value declared as a number must still be numeric`() {
+    val parsed = ServeOverrides.parse(mapOf("knob.count" to "three"), mapOf("count" to "int"))
+    assertTrue(parsed is OverrideParse.Invalid, "expected Invalid, got $parsed")
   }
 
   @Test

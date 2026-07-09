@@ -55,6 +55,21 @@ fun BlueSquare() {
 }
 
 /**
+ * Declares an opt-in `previewOverride*` colour knob (`fill`) driving a solid fill, plus a string
+ * `label` knob. [OverrideIntegrationTest.namedOverrideChangesRenderedFill] renders this with no
+ * seed (fill = default red) and with a `namedOverrides` seed (fill = blue) to prove a named
+ * override reaches the composition and changes the rendered pixels — the render side of what the
+ * `/render?knob.<key>=…` serve URL feeds. Mirrors `:daemon:android`'s fixture of the same name.
+ */
+@Composable
+fun OverridableSquare() {
+  val fill =
+    ee.schimke.composeai.overrides.previewOverrideColor("fill", default = Color(0xFFEF5350))
+  ee.schimke.composeai.overrides.previewOverrideString("label", default = "hi")
+  Box(modifier = Modifier.fillMaxSize().background(fill))
+}
+
+/**
  * Identical fill to [RedSquare] but declared `private`, so it compiles to a JVM-private static
  * method on `RedFixturePreviewsKt`. Kotlin `private fun` previews are a real, supported shape
  * (`samples/android/.../Previews.kt`'s `RedBoxPreview` ships one on purpose). [RenderEngine]

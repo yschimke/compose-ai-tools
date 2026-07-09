@@ -838,21 +838,21 @@ object ServeWeb {
         return o;
       }
       // The live-stream override map: the display fields PLUS the author-declared knob values as
-      // `knob.<key>` entries (the daemon's setOverrides parses the same map /render does, and
-      // ServeOverrides reads knob.* keys). Kept separate from overrides() so query() and the Wasm
-      // patch — which append/ignore knobs their own way — are unaffected; without this a knob edit
-      // during an active Live (stream) would send only the display fields and the daemon would reset
-      // the knob to its default.
+      // `knob.<key>=<value>` entries (the daemon's setOverrides parses the same map /render does,
+      // typing each from the preview's declaration). Kept separate from overrides() so query() and
+      // the Wasm patch — which append/ignore knobs their own way — are unaffected; without this a
+      // knob edit during an active Live (stream) would send only the display fields and the daemon
+      // would reset the others to their defaults. Unlike query(), every knob is sent (not just
+      // changed ones) for exactly that reason, so defaults are not filtered here.
       function liveOverrides() {
         var o = overrides();
         document.querySelectorAll(".cp-knob").forEach(function (el) {
           if (el.disabled) return;
           var key = el.getAttribute("data-knob-key");
-          var kind = el.getAttribute("data-knob-kind") || "string";
           if (!key) return;
           var val = (el.type === "checkbox") ? (el.checked ? "true" : "false") : el.value;
           if (val === "") return;
-          o["knob." + key] = kind + ":" + val;
+          o["knob." + key] = val;
         });
         return o;
       }
@@ -864,15 +864,18 @@ object ServeWeb {
         if (token) parts.push("token=" + encodeURIComponent(token));
         if (session) parts.push("session=" + encodeURIComponent(session));
         Object.keys(o).forEach(function (k) { parts.push(k + "=" + encodeURIComponent(o[k])); });
-        // Author-declared knobs (enabled only on a daemon session): knob.<key>=<kind>:<value>.
+        // Author-declared knobs: knob.<key>=<value>. The server infers the type from the preview's
+        // declaration, so no <kind>: prefix. A knob still at its declared default is omitted — that
+        // keeps the URL on the instant baked snapshot (any knob.* param routes a published catalog
+        // to the daemon for a fresh re-render); only an actually-changed knob is sent.
         document.querySelectorAll(".cp-knob").forEach(function (el) {
           if (el.disabled) return;
           var key = el.getAttribute("data-knob-key");
-          var kind = el.getAttribute("data-knob-kind") || "string";
           if (!key) return;
           var val = (el.type === "checkbox") ? (el.checked ? "true" : "false") : el.value;
           if (val === "") return;
-          parts.push("knob." + encodeURIComponent(key) + "=" + encodeURIComponent(kind + ":" + val));
+          if (val === (el.getAttribute("data-knob-initial") || "")) return;
+          parts.push("knob." + encodeURIComponent(key) + "=" + encodeURIComponent(val));
         });
         return parts.join("&");
       }
@@ -1360,8 +1363,17 @@ object ServeWeb {
         val wireKey = WebEscaping.htmlEscape(if (d.index == null) d.key else "${d.key}[${d.index}]")
         val kind = knobKind(d.type)
         val value = WebEscaping.htmlEscape(overrideValueText(d.current ?: d.default))
-        val attrs = "class=\"cp-knob\" data-knob-key=\"$wireKey\" data-knob-kind=\"$kind\""
-        if (kind == "bool") {
+        // `data-knob-initial` is the value the control opens on (the author default / seeded
+        // current). The viewer omits a knob still equal to it, so the first render carries no
+        // `knob.*` and the published catalog serves the instant baked PNG rather than waking the
+        // daemon for a fresh (slower, subtly different) re-render.
+        val bool = kind == "bool"
+        val initial =
+          if (bool) (if (value == "true" || value == "1") "true" else "false") else value
+        val attrs =
+          "class=\"cp-knob\" data-knob-key=\"$wireKey\" data-knob-kind=\"$kind\" " +
+            "data-knob-initial=\"$initial\""
+        if (bool) {
           val checked = if (value == "true" || value == "1") " checked" else ""
           "<label class=\"cp-live-row\"><input type=\"checkbox\" $attrs$checked$dis> $label</label>"
         } else {
@@ -1389,16 +1401,7 @@ object ServeWeb {
   /**
    * Map a declaration's `type` string to the [PreviewOverrideValue] wire kind the daemon expects.
    */
-  private fun knobKind(type: String): String =
-    when (type.lowercase()) {
-      "int" -> "int"
-      "float",
-      "dp" -> "float"
-      "bool",
-      "boolean" -> "bool"
-      "color" -> "color"
-      else -> "string"
-    }
+  private fun knobKind(type: String): String = ServeOverrides.knobKind(type)
 
   /** Human text for a [ee.schimke.composeai.daemon.protocol.PreviewOverrideValue] in the viewer. */
   private fun overrideValueText(

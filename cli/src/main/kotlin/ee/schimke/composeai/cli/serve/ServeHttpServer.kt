@@ -546,7 +546,11 @@ class ServeHttpServer(
             }
           }
           .toMap()
-      when (val parsed = ServeOverrides.parse(overrideParams)) {
+      // Type a bare `knob.<key>=<value>` from the preview's declared knobs (an explicit
+      // `<kind>:<value>` still wins) so the viewer never has to spell the type in the URL.
+      val knobKinds =
+        ServeOverrides.declaredKnobKinds(renderHost.previews.firstOrNull { it.id == previewId })
+      when (val parsed = ServeOverrides.parse(overrideParams, knobKinds)) {
         is OverrideParse.Invalid ->
           call.respondText(parsed.message, status = HttpStatusCode.BadRequest)
         is OverrideParse.Ok -> {

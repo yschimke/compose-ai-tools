@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.WallpaperOverride
 import java.io.ByteArrayInputStream
@@ -413,6 +414,78 @@ class OverrideIntegrationTest {
     }
   }
 
+  /**
+   * End-to-end proof that a **named override** (`knob.<key>`) reaches the composition and changes
+   * the rendered pixels — the render side of the `/render?knob.<key>=…` serve URL. Renders
+   * [OverridableSquare] with no seed (its `fill` knob returns the author-default red) and with a
+   * `namedOverrides` seed of blue (the same map the serve layer builds from a knob URL), then
+   * asserts the fill actually repainted. Requires the `PreviewOverridesPreviewOverrideExtension`
+   * planner registered on the engine — without it the seed never reaches `previewOverrideColor`.
+   */
+  @Test
+  fun namedOverrideChangesRenderedFill() {
+    val outputDir = tempFolder.newFolder("renders-named-override")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "overridable",
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "OverridableSquare",
+              widthPx = 32,
+              heightPx = 32,
+              density = 1.0f,
+              outputBaseName = "overridable",
+            )
+          )
+      )
+    val host =
+      PreviewManifestRouter(
+        manifest = manifest,
+        engine =
+          RenderEngine(
+            previewOverrideExtensions =
+              PreviewOverrideExtensions(listOf(PreviewOverridesPreviewOverrideExtension()))
+          ),
+      )
+    host.start()
+    try {
+      // No seed: the `fill` knob returns its author default (red).
+      val default = renderAndDecode(host, "previewId=overridable", "named-default")
+      val defaultRedPct = pixelMatchPct(default, expectedRgb = 0xEF5350, perChannelTolerance = 8)
+      assertTrue(
+        "unseeded fill should be the author-default red; got ${"%.2f".format(defaultRedPct * 100)}%",
+        defaultRedPct >= 0.95,
+      )
+
+      // Seed `fill = #FF42A5F5` (blue) via the namedOverrides bag — the same map a
+      // `/render?knob.fill=…` URL builds. It must reach `previewOverrideColor` and repaint the
+      // fill.
+      val seeded =
+        renderAndDecode(
+          host,
+          "previewId=overridable;overrides=${encodeNamedBag("fill", "#FF42A5F5")}",
+          "named-seeded",
+        )
+      val seededBluePct = pixelMatchPct(seeded, expectedRgb = 0x42A5F5, perChannelTolerance = 8)
+      assertTrue(
+        "seeded fill should repaint blue; got ${"%.2f".format(seededBluePct * 100)}%",
+        seededBluePct >= 0.95,
+      )
+      // The crux of the "does knob.label=Ground actually change anything?" question: the seed must
+      // change pixels vs the author default, not silently fall back to it.
+      assertNotEquals(
+        "a named override must change the render vs the author default",
+        default.getRGB(default.width / 2, default.height / 2),
+        seeded.getRGB(seeded.width / 2, seeded.height / 2),
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
   private fun renderAndDecode(
     host: PreviewManifestRouter,
     payload: String,
@@ -435,6 +508,17 @@ class OverrideIntegrationTest {
   private fun encodeWallpaperBag(seedColor: String): String {
     val json = Json { encodeDefaults = false }
     val bag = PreviewOverrides(wallpaper = WallpaperOverride(seedColor = seedColor))
+    return Base64.getUrlEncoder()
+      .withoutPadding()
+      .encodeToString(
+        json.encodeToString(PreviewOverrides.serializer(), bag).toByteArray(Charsets.UTF_8)
+      )
+  }
+
+  /** A base64 `overrides=` bag carrying a single named colour knob (`key = argb`). */
+  private fun encodeNamedBag(key: String, argb: String): String {
+    val json = Json { encodeDefaults = false }
+    val bag = PreviewOverrides(namedOverrides = mapOf(key to PreviewOverrideValue.ColorValue(argb)))
     return Base64.getUrlEncoder()
       .withoutPadding()
       .encodeToString(

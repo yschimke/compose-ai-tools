@@ -36,7 +36,7 @@ class ServeStreamSession(
       is ServeStreamProtocol.ClientMessage.SetOverrides ->
         // Validate before committing: a bad override message is reported but must not poison the
         // session — the previous (valid) overrides stay in effect for subsequent frames.
-        when (val parsed = ServeOverrides.parse(message.overrides)) {
+        when (val parsed = ServeOverrides.parse(message.overrides, knobKindsFor(previewId))) {
           is OverrideParse.Invalid -> send(ServeStreamProtocol.errorMessage(parsed.message))
           is OverrideParse.Ok -> {
             overrides = message.overrides
@@ -68,7 +68,7 @@ class ServeStreamSession(
     // lane.
     val nextOverrides = message.overrides ?: overrides
     val parsed =
-      when (val p = ServeOverrides.parse(nextOverrides)) {
+      when (val p = ServeOverrides.parse(nextOverrides, knobKindsFor(message.previewId))) {
         is OverrideParse.Invalid -> {
           send(ServeStreamProtocol.errorMessage(p.message))
           return
@@ -80,8 +80,14 @@ class ServeStreamSession(
     sendFrame(parsed)
   }
 
+  /**
+   * Declared knob kinds for [id], so a bare `knob.<key>=<value>` frame is typed from the preview.
+   */
+  private fun knobKindsFor(id: String): Map<String, String> =
+    ServeOverrides.declaredKnobKinds(renderHost.previews.firstOrNull { it.id == id })
+
   private fun renderCurrent() {
-    when (val parsed = ServeOverrides.parse(overrides)) {
+    when (val parsed = ServeOverrides.parse(overrides, knobKindsFor(previewId))) {
       is OverrideParse.Invalid -> send(ServeStreamProtocol.errorMessage(parsed.message))
       is OverrideParse.Ok -> sendFrame(parsed.overrides)
     }

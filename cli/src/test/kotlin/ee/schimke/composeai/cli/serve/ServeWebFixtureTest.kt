@@ -649,7 +649,10 @@ class ServeWebFixtureTest {
     // The knobs are ENABLED — a live control, not the disabled/informational form. The `label` knob
     // is a text input; assert it renders enabled (no trailing ` disabled`).
     assertTrue(
-      catalogKnobs.contains("data-knob-key=\"label\" data-knob-kind=\"string\" value=\"Filled\">"),
+      catalogKnobs.contains(
+        "data-knob-key=\"label\" data-knob-kind=\"string\" data-knob-initial=\"Filled\" " +
+          "value=\"Filled\">"
+      ),
       "declared knobs are enabled on an override-renderable session",
     )
     assertTrue(
@@ -679,7 +682,8 @@ class ServeWebFixtureTest {
     val staticKnobs = ServeWeb.viewerPage(knobPreview, token)
     assertTrue(
       staticKnobs.contains(
-        "data-knob-key=\"label\" data-knob-kind=\"string\" value=\"Filled\" disabled"
+        "data-knob-key=\"label\" data-knob-kind=\"string\" data-knob-initial=\"Filled\" " +
+          "value=\"Filled\" disabled"
       ),
       "a plain static bundle leaves declared knobs disabled",
     )
