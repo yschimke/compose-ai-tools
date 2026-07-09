@@ -228,9 +228,35 @@ class ServeOverridesTest {
   }
 
   @Test
-  fun `an explicit kind prefix still wins over the declared kind`() {
-    // Legacy `<kind>:<value>` links keep working even when a declaration would type it otherwise.
+  fun `an explicit kind prefix still wins for an undeclared knob`() {
+    // Legacy `<kind>:<value>` links keep working when nothing declares the knob's type.
     val o = ok(mapOf("knob.count" to "int:7"))
+    assertEquals(PreviewOverrideValue.IntValue(7), o.namedOverrides!!["count"])
+  }
+
+  @Test
+  fun `a declared string knob keeps a value that looks like a typed prefix`() {
+    // A string knob edited to `int:3` / `color:#fff` must survive verbatim: the prefix does not
+    // match the declared kind, so it is not stripped or retyped.
+    val kinds = mapOf("label" to "string")
+    val o =
+      (ServeOverrides.parse(
+          mapOf("knob.label" to "int:3", "knob.label2" to "color:#fff"),
+          kinds + ("label2" to "string"),
+        ) as OverrideParse.Ok)
+        .overrides
+    val named = o.namedOverrides!!
+    assertEquals(PreviewOverrideValue.StringValue("int:3"), named["label"])
+    assertEquals(PreviewOverrideValue.StringValue("color:#fff"), named["label2"])
+  }
+
+  @Test
+  fun `a matching kind prefix on a declared knob is still honoured`() {
+    // An old `knob.label=string:Hi` link (prefix matches the declared kind) keeps meaning "Hi".
+    val o =
+      (ServeOverrides.parse(mapOf("knob.count" to "int:7"), mapOf("count" to "int"))
+          as OverrideParse.Ok)
+        .overrides
     assertEquals(PreviewOverrideValue.IntValue(7), o.namedOverrides!!["count"])
   }
 

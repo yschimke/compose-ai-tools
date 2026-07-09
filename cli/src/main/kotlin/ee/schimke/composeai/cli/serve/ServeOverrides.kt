@@ -246,12 +246,16 @@ object ServeOverrides {
       if (!rawKey.startsWith(KNOB_PREFIX)) continue
       val wireKey = rawKey.removePrefix(KNOB_PREFIX)
       if (wireKey.isBlank() || raw.isBlank()) continue
-      // Split an explicit `<kind>:<value>` only when the prefix is a recognised kind; otherwise the
-      // whole string is the value and its type comes from the preview's declaration (default
-      // string). This keeps old typed links working while letting a viewer send bare values.
+      // Type the value. A bare value takes its type from the preview's declaration (default
+      // string). A legacy `<kind>:<value>` prefix is honoured ONLY when the knob is undeclared or
+      // the prefix matches its declared kind — otherwise a declared *string* knob could never hold
+      // a value that happens to start with `int:` / `color:` / … (the type-free viewer submits such
+      // text verbatim), which would silently mistype the seed or strip a legitimate prefix.
+      val declaredKind = knobKinds[wireKey]
       val sep = raw.indexOf(':')
-      val explicitKind = if (sep > 0) raw.substring(0, sep).takeIf { it in KNOWN_KINDS } else null
-      val kind = explicitKind ?: knobKinds[wireKey] ?: "string"
+      val prefix = if (sep > 0) raw.substring(0, sep).takeIf { it in KNOWN_KINDS } else null
+      val explicitKind = prefix?.takeIf { declaredKind == null || it == declaredKind }
+      val kind = explicitKind ?: declaredKind ?: "string"
       val value = if (explicitKind != null) raw.substring(sep + 1) else raw
       namedOverrides[wireKey] =
         when (kind) {
