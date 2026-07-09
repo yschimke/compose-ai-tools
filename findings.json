@@ -2377,6 +2377,16 @@
       "variant": "wearos_small_round"
     },
     {
+      "annotatedBasename": "",
+      "cleanBasename": "ButtonHintScreenPreview_Devices_Large_Round.png",
+      "findings": [],
+      "functionName": "ButtonHintScreenPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.GesturesKt.ButtonHintScreenPreview_Devices - Large Round",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
+      "variant": "wearos_large_round"
+    },
+    {
       "annotatedBasename": "ButtonPreview_Devices_Large_Round.a11y.png",
       "cleanBasename": "ButtonPreview_Devices_Large_Round.png",
       "findings": [],
@@ -2395,6 +2405,121 @@
       "previewId": "com.example.samplewear.PreviewsKt.CircularProgressIndicatorPreview_Devices - Large Round",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt",
       "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "DisabledGestureScreenPreview_Devices_Large_Round.png",
+      "findings": [],
+      "functionName": "DisabledGestureScreenPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.GesturesKt.DisabledGestureScreenPreview_Devices - Large Round",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "DismissActionScreenPreview_Devices_Large_Round.png",
+      "findings": [],
+      "functionName": "DismissActionScreenPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.GesturesKt.DismissActionScreenPreview_Devices - Large Round",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "FloatingHintScreenPreview_Devices_Large_Round.png",
+      "findings": [],
+      "functionName": "FloatingHintScreenPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.GesturesKt.FloatingHintScreenPreview_Devices - Large Round",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "GestureGalleryPreview_Devices_Large_Round.a11y.png",
+      "cleanBasename": "GestureGalleryPreview_Devices_Large_Round.png",
+      "findings": [
+        {
+          "boundsInScreen": "74,169,380,247",
+          "level": "ERROR",
+          "message": "This item's height is 39dp. Consider making the height of this touch target 48dp or larger.",
+          "type": "TouchTargetSizeCheck",
+          "viewDescription": "android.view.View"
+        },
+        {
+          "boundsInScreen": "74,253,380,331",
+          "level": "ERROR",
+          "message": "This item's height is 39dp. Consider making the height of this touch target 48dp or larger.",
+          "type": "TouchTargetSizeCheck",
+          "viewDescription": "android.view.View"
+        }
+      ],
+      "functionName": "GestureGalleryPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.GesturesKt.GestureGalleryPreview_Devices - Large Round",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PageGestureScreenPreview_Devices_Large_Round.png",
+      "findings": [],
+      "functionName": "PageGestureScreenPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.GesturesKt.PageGestureScreenPreview_Devices - Large Round",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PageIndicatorStickerPreview.png",
+      "findings": [],
+      "functionName": "PageIndicatorStickerPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.GesturesKt.PageIndicatorStickerPreview",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PrimaryActionScreenPreview_Devices_Large_Round.png",
+      "findings": [],
+      "functionName": "PrimaryActionScreenPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.GesturesKt.PrimaryActionScreenPreview_Devices - Large Round",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PrimaryActionStickerPreview.png",
+      "findings": [],
+      "functionName": "PrimaryActionStickerPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.GesturesKt.PrimaryActionStickerPreview",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "ScrollGestureScreenPreview_Devices_Large_Round.png",
+      "findings": [],
+      "functionName": "ScrollGestureScreenPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.GesturesKt.ScrollGestureScreenPreview_Devices - Large Round",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "ScrollIndicatorStickerPreview.png",
+      "findings": [],
+      "functionName": "ScrollIndicatorStickerPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.GesturesKt.ScrollIndicatorStickerPreview",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
+      "variant": ""
     },
     {
       "annotatedBasename": "FocusableMenu_Glimmer_Input.a11y.png",

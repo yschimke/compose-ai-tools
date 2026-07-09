@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 214 preview(s) across 19 module(s) · 16 error(s) · 4 warning(s) · 26 info._
+_Auto-generated from `compose-preview/a11y/main`. 225 preview(s) across 19 module(s) · 18 error(s) · 4 warning(s) · 26 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -1312,6 +1312,12 @@ _No findings._
 |--:|---|---|---|---|
 | 1 | ERROR | SpeakableTextPresentCheck | android.widget.Button | This item may not have a label readable by screen readers. |
 
+### `ButtonHintScreenPreview` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/ButtonHintScreenPreview_Devices_Large_Round.png" width="400" />
+
+_No findings._
+
 ### `ButtonPreview` · `wearos_large_round`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/ButtonPreview_Devices_Large_Round.a11y.png" width="400" />
@@ -1321,6 +1327,69 @@ _No findings._
 ### `CircularProgressIndicatorPreview` · `wearos_large_round`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/CircularProgressIndicatorPreview_Devices_Large_Round.png" width="400" />
+
+_No findings._
+
+### `DisabledGestureScreenPreview` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/DisabledGestureScreenPreview_Devices_Large_Round.png" width="400" />
+
+_No findings._
+
+### `DismissActionScreenPreview` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/DismissActionScreenPreview_Devices_Large_Round.png" width="400" />
+
+_No findings._
+
+### `FloatingHintScreenPreview` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/FloatingHintScreenPreview_Devices_Large_Round.png" width="400" />
+
+_No findings._
+
+### `GestureGalleryPreview` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/GestureGalleryPreview_Devices_Large_Round.a11y.png" width="400" />
+
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | ERROR | TouchTargetSizeCheck | android.view.View | This item's height is 39dp. Consider making the height of this touch target 48dp or larger. |
+| 2 | ERROR | TouchTargetSizeCheck | android.view.View | This item's height is 39dp. Consider making the height of this touch target 48dp or larger. |
+
+### `PageGestureScreenPreview` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/PageGestureScreenPreview_Devices_Large_Round.png" width="400" />
+
+_No findings._
+
+### `PageIndicatorStickerPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/PageIndicatorStickerPreview.png" width="400" />
+
+_No findings._
+
+### `PrimaryActionScreenPreview` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/PrimaryActionScreenPreview_Devices_Large_Round.png" width="400" />
+
+_No findings._
+
+### `PrimaryActionStickerPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/PrimaryActionStickerPreview.png" width="400" />
+
+_No findings._
+
+### `ScrollGestureScreenPreview` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/ScrollGestureScreenPreview_Devices_Large_Round.png" width="400" />
+
+_No findings._
+
+### `ScrollIndicatorStickerPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/ScrollIndicatorStickerPreview.png" width="400" />
 
 _No findings._
 
