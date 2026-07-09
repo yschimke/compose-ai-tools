@@ -50,6 +50,7 @@ export function renderReadmeMd(catalog, opts = {}) {
   const title = meta.title ?? system;
   const branch = `design-artifacts/${system}`;
   const indexUrl = `https://htmlpreview.github.io/?https://github.com/${repo}/blob/${branch}/index.html`;
+  const compareUrl = `https://htmlpreview.github.io/?https://github.com/${repo}/blob/${branch}/compare.html`;
   const previewBase = opts.previewBase ?? DEFAULT_PREVIEW_BASE;
   const liveUrl = liveSessionUrl(previewBase, system);
 
@@ -106,6 +107,10 @@ dark scheme.
   const files = [
     [`\`index.html\``, `Self-contained gallery — [open via htmlpreview](${indexUrl})`],
     [
+      `\`compare.html\``,
+      `PNG↔SVG comparison with a live structural-similarity score — [open via htmlpreview](${compareUrl})`,
+    ],
+    [
       `\`catalog.json\``,
       `Machine-readable catalog (\`${schema}\`): components, variants, design tokens, greenlines, and per-variant \`livePreview\` deep links`,
     ],
@@ -128,6 +133,16 @@ Figma / Stitch / Claude Design.
 
 A self-contained gallery — one card per component with its rendered PNG,
 dimensions, accessibility greenlines, and a link to an editable SVG wireframe.
+
+## 🔬 Compare PNG vs SVG
+
+**[▶ Open the PNG↔SVG comparison (htmlpreview)](${compareUrl})**
+
+Every component on one row: its rendered **PNG** beside its editable **figma-svg**
+re-rasterized by the browser, plus a live **structural-similarity (SSIM)** match
+score — so you can eyeball vector fidelity across the whole system at once and
+spot which stickers drift. The score is pre-blurred and downscaled, so a
+half-pixel rasterizer offset doesn't read as a mismatch.
 
 ## 🎛 Customise live
 

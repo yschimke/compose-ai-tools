@@ -259,6 +259,8 @@ export function renderIndexHtml(catalog, opts = {}) {
   header.top h1 { margin:0 0 6px; font-size:22px; }
   header.top .subtitle { color:var(--muted); font-size:13px; }
   header.top code { background:var(--panel); padding:1px 6px; border-radius:5px; }
+  header.top .pagelink { color:var(--accent); text-decoration:none; font-size:13px; }
+  header.top .pagelink:hover { text-decoration:underline; }
   .layout { display:grid; grid-template-columns:240px 1fr; align-items:start; }
   nav.index { position:sticky; top:0; align-self:start; max-height:100vh; overflow:auto; padding:20px 12px; border-right:1px solid var(--line); }
   nav.index .nav-head { display:flex; justify-content:space-between; font-weight:600; text-decoration:none; color:var(--fg); padding:6px 8px; border-radius:6px; }
@@ -330,6 +332,7 @@ export function renderIndexHtml(catalog, opts = {}) {
 <header class="top">
   <h1>${esc(title)}</h1>
   <div class="subtitle">${subtitleParts.join(" · ")}</div>
+  <div class="subtitle"><a class="pagelink" href="compare.html">PNG vs SVG compare ↗</a></div>
 </header>
 <div class="layout">
   <nav class="index">${nav}</nav>

@@ -45,6 +45,7 @@ import { buildCatalog, writeCatalog } from "@design-parity/catalog-export";
 
 import { foldVariants } from "./catalog-variants.mjs";
 import { renderIndexHtml } from "./render-index-html.mjs";
+import { renderCompareHtml } from "./render-compare-html.mjs";
 import { renderReadmeMd } from "./render-readme-md.mjs";
 import {
   figmaRastersForId,
@@ -641,6 +642,10 @@ const figmaSvgByFn = figmaSvgByFunction(bundle);
 const figmaDir = join(outPath, "figma");
 await mkdir(figmaDir, { recursive: true });
 const figmaSvgSlugs = new Set();
+// Slugs whose figma-svg is a *hybrid* (carries `<image href>` raster crop layers).
+// The compare page flags these: an <img>-loaded SVG renders in secure-static mode,
+// so those raster layers don't draw there (or in its SSIM score).
+const figmaSvgHybridSlugs = new Set();
 let figmaSvgCount = 0;
 let figmaRasterCount = 0;
 for (const component of catalog.components) {
@@ -654,6 +659,7 @@ for (const component of catalog.components) {
   // figma/<slug>.svg (per-slug avoids <node>.png name collisions across components).
   const rasters = figmaRastersForId(bundle, carried.id);
   if (rasters.size) {
+    figmaSvgHybridSlugs.add(componentSlug);
     const rasterDir = `${componentSlug}.figma-raster`;
     svg = rewriteRasterHrefs(svg, componentSlug);
     await mkdir(join(figmaDir, rasterDir), { recursive: true });
@@ -681,6 +687,17 @@ const indexManifest = JSON.parse(await readFile(join(outPath, "catalog.json"), "
 const indexPath = join(outPath, "index.html");
 await writeFile(indexPath, renderIndexHtml(indexManifest, { wireframeSlugs, figmaSvgSlugs }), "utf8");
 
+// PNG-vs-SVG comparison page next to index.html: every component on one row, its
+// rendered PNG beside its browser-rasterized figma-svg, and a live structural
+// (SSIM) match score. The score runs in the page because it measures the
+// *browser's* SVG rasterization against the PNG — see render-compare-html.mjs.
+const comparePath = join(outPath, "compare.html");
+await writeFile(
+  comparePath,
+  renderCompareHtml(indexManifest, { figmaSvgSlugs, hybridSlugs: figmaSvgHybridSlugs }),
+  "utf8",
+);
+
 // Branch landing page: htmlpreview link to index.html + a summary table. Written
 // into out/ so the publish step's force-push republishes it every run — the
 // README rides along with each regeneration instead of being clobbered.
@@ -703,4 +720,5 @@ console.log(
     `(${figmaRasterCount} raster crop(s)) → ${result.manifestPath}`,
 );
 console.log(`[${spec.system}] index → ${indexPath}`);
+console.log(`[${spec.system}] compare → ${comparePath}`);
 console.log(`[${spec.system}] readme → ${readmePath}`);
