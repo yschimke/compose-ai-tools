@@ -4,15 +4,21 @@ import androidx.compose.animation.graphics.ExperimentalAnimationGraphicsApi
 import androidx.compose.animation.graphics.res.animatedVectorResource
 import androidx.compose.animation.graphics.res.rememberAnimatedVectorPainter
 import androidx.compose.animation.graphics.vector.AnimatedImageVector
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -22,9 +28,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
@@ -79,6 +89,8 @@ object GestureRoutes {
   const val SCROLL = "scroll"
   const val PAGE = "page"
   const val DISABLED = "disabled"
+  const val HINT_BUTTON = "hint-button"
+  const val HINT_FLOATING = "hint-floating"
 }
 
 @Composable
@@ -99,6 +111,8 @@ fun GestureGalleryApp(
         composable(GestureRoutes.SCROLL) { ScrollGestureScreen() }
         composable(GestureRoutes.PAGE) { PageGestureScreen() }
         composable(GestureRoutes.DISABLED) { DisabledGestureScreen() }
+        composable(GestureRoutes.HINT_BUTTON) { ButtonHintScreen() }
+        composable(GestureRoutes.HINT_FLOATING) { FloatingHintScreen() }
       }
     }
   }
@@ -148,6 +162,22 @@ private fun GestureHomeScreen(onOpen: (String) -> Unit) {
       }
       item {
         FilledTonalButton(
+          onClick = { onOpen(GestureRoutes.HINT_BUTTON) },
+          modifier = Modifier.fillMaxWidth(),
+        ) {
+          Text("Button hint")
+        }
+      }
+      item {
+        FilledTonalButton(
+          onClick = { onOpen(GestureRoutes.HINT_FLOATING) },
+          modifier = Modifier.fillMaxWidth(),
+        ) {
+          Text("Floating hint")
+        }
+      }
+      item {
+        FilledTonalButton(
           onClick = { onOpen(GestureRoutes.DISABLED) },
           modifier = Modifier.fillMaxWidth(),
         ) {
@@ -167,7 +197,12 @@ private fun GestureHomeScreen(onOpen: (String) -> Unit) {
  */
 @OptIn(ExperimentalAnimationGraphicsApi::class)
 @Composable
-private fun GestureHintIcon(type: GestureType, modifier: Modifier = Modifier) {
+private fun GestureHintIcon(
+  type: GestureType,
+  modifier: Modifier = Modifier,
+  size: Dp = 40.dp,
+  tint: Color = LocalContentColor.current,
+) {
   val resId =
     when (type) {
       GestureType.DISMISS ->
@@ -181,8 +216,8 @@ private fun GestureHintIcon(type: GestureType, modifier: Modifier = Modifier) {
   Image(
     painter = rememberAnimatedVectorPainter(avd, atEnd = false),
     contentDescription = null,
-    colorFilter = ColorFilter.tint(LocalContentColor.current),
-    modifier = modifier.size(40.dp),
+    colorFilter = ColorFilter.tint(tint),
+    modifier = modifier.size(size),
   )
 }
 
@@ -388,6 +423,99 @@ fun DisabledGestureScreen() {
   }
 }
 
+/**
+ * The design guide's **button hint**: the gesture-indicator icon drawn *within* the target element,
+ * tinted to match the button's content colour (`onPrimary`). This is the affordance
+ * `OneHandedGestureIndicator` flashes over the button on-device; here it's composited statically so
+ * the "icon on the button" treatment is visible in a still frame.
+ */
+@Composable
+fun ButtonHintScreen(showHint: Boolean = true) {
+  val interactionSource = remember { MutableInteractionSource() }
+  GestureDemoScreen(title = "Button hint", instruction = "Icon drawn on the button") {
+    Box(contentAlignment = Alignment.Center) {
+      Button(
+        onClick = {},
+        interactionSource = interactionSource,
+        modifier =
+          Modifier.reportedOneHandedGesture(
+            type = GestureType.PRIMARY,
+            label = "Play",
+            interactionSource = interactionSource,
+          ) {},
+      ) {
+        Text("Play")
+      }
+      if (showHint) {
+        GestureHintIcon(
+          type = GestureType.PRIMARY,
+          size = 28.dp,
+          tint = MaterialTheme.colorScheme.onPrimary,
+        )
+      }
+    }
+  }
+}
+
+/**
+ * The design guide's **floating hint**: a `Tertiary` bubble overlay carrying the gesture-indicator
+ * icon (`onTertiary`) with a pointer aimed at the target element. Shown above the play button.
+ */
+@Composable
+fun FloatingHintScreen(showHint: Boolean = true) {
+  val interactionSource = remember { MutableInteractionSource() }
+  GestureDemoScreen(title = "Floating hint", instruction = "Bubble points to the button") {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+      if (showHint) {
+        FloatingHintBubble()
+        Spacer(Modifier.size(8.dp))
+      }
+      Button(
+        onClick = {},
+        interactionSource = interactionSource,
+        modifier =
+          Modifier.reportedOneHandedGesture(
+            type = GestureType.PRIMARY,
+            label = "Play",
+            interactionSource = interactionSource,
+          ) {},
+      ) {
+        Text("Play")
+      }
+    }
+  }
+}
+
+/** The tertiary hint bubble + downward pointer used by [FloatingHintScreen]. */
+@Composable
+private fun FloatingHintBubble() {
+  val container = MaterialTheme.colorScheme.tertiary
+  val onContainer = MaterialTheme.colorScheme.onTertiary
+  Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    Row(
+      modifier =
+        Modifier.clip(RoundedCornerShape(percent = 50))
+          .background(container)
+          .padding(horizontal = 12.dp, vertical = 6.dp),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      GestureHintIcon(type = GestureType.PRIMARY, size = 24.dp, tint = onContainer)
+      Spacer(Modifier.width(6.dp))
+      Text("Double-pinch", color = onContainer)
+    }
+    Canvas(modifier = Modifier.size(width = 16.dp, height = 8.dp)) {
+      val pointer =
+        Path().apply {
+          moveTo(0f, 0f)
+          lineTo(size.width, 0f)
+          lineTo(size.width / 2f, size.height)
+          close()
+        }
+      drawPath(pointer, color = container)
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Previews. Close-up "stickers" (transparent background, cropped tight to the
 // control — the catalog's `WearSticker` treatment) show each affordance clearly;
@@ -463,4 +591,16 @@ fun PageGestureScreenPreview() {
 @Composable
 fun DisabledGestureScreenPreview() {
   MaterialTheme { DisabledGestureScreen() }
+}
+
+@WearPreviewLargeRound
+@Composable
+fun ButtonHintScreenPreview() {
+  MaterialTheme { ButtonHintScreen(showHint = true) }
+}
+
+@WearPreviewLargeRound
+@Composable
+fun FloatingHintScreenPreview() {
+  MaterialTheme { FloatingHintScreen(showHint = true) }
 }
