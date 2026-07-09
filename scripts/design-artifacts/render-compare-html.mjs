@@ -91,9 +91,20 @@ const SCORER = String.raw`
     });
   }
 
-  // Draw an image "contain"-fitted and centered into a tw×th canvas over white,
-  // and return its grayscale (luma over white) plane as a Float32Array.
-  function rasterGray(img, tw, th) {
+  // The figma-svg's root translate. The export (FigmaSvgModel) pads the canvas by
+  // DEFAULT_PADDING and draws the tree under translate(tx, ty) with tx = padding - minX,
+  // in the same px scale as the render PNG (dp->px already applied). The render PNG is
+  // padding-free with content at (0,0), so aligning means cropping that translate back
+  // out — matching the daemon's FigmaSvgFidelity.alignToRender. Integer-only, first match,
+  // exactly as the Kotlin harness parses it; defaults to (0,0) for an un-translated SVG.
+  function translateOf(svgText) {
+    const m = /translate\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)/.exec(svgText);
+    return m ? { tx: parseInt(m[1], 10), ty: parseInt(m[2], 10) } : { tx: 0, ty: 0 };
+  }
+
+  // Draw into a tw×th canvas over white via the caller's draw(ctx) and return the
+  // grayscale (luma over white) plane as a Float32Array.
+  function grayFromDraw(draw, tw, th) {
     const c = document.createElement("canvas");
     c.width = tw; c.height = th;
     const ctx = c.getContext("2d", { willReadFrequently: true });
@@ -101,10 +112,7 @@ const SCORER = String.raw`
     ctx.imageSmoothingQuality = "high";
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, tw, th);
-    const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
-    const scale = Math.min(tw / iw, th / ih);
-    const dw = iw * scale, dh = ih * scale;
-    ctx.drawImage(img, (tw - dw) / 2, (th - dh) / 2, dw, dh);
+    draw(ctx);
     const { data } = ctx.getImageData(0, 0, tw, th);
     const g = new Float32Array(tw * th);
     for (let i = 0; i < tw * th; i++) {
@@ -188,17 +196,37 @@ const SCORER = String.raw`
   async function scoreRow(tr) {
     const cell = tr.querySelector(".score");
     try {
-      const [png, svg] = await Promise.all([
+      // The SVG is loaded twice: as an <img> to rasterize, and as text to read its
+      // root translate. Both are same-origin and cache-shared.
+      const [png, svg, svgText] = await Promise.all([
         loadImage(tr.dataset.png),
         loadImage(tr.dataset.svg),
+        fetch(tr.dataset.svg).then((r) => r.text()),
       ]);
-      // Common raster size from the PNG's aspect, capped to MAX_SIDE.
-      const iw = png.naturalWidth || png.width, ih = png.naturalHeight || png.height;
-      const scale = Math.min(1, MAX_SIDE / Math.max(iw, ih));
-      const tw = Math.max(1, Math.round(iw * scale));
-      const th = Math.max(1, Math.round(ih * scale));
-      const ga = blur(rasterGray(png, tw, th), tw, th);
-      const gb = blur(rasterGray(svg, tw, th), tw, th);
+      // The render PNG defines the aligned coordinate space (padding-free, content at
+      // (0,0)); size the shared canvas from it, capped to MAX_SIDE for offset-robustness.
+      const rw = png.naturalWidth || png.width, rh = png.naturalHeight || png.height;
+      const scale = Math.min(1, MAX_SIDE / Math.max(rw, rh));
+      const tw = Math.max(1, Math.round(rw * scale));
+      const th = Math.max(1, Math.round(rh * scale));
+      // PNG: drawn 1:1 into the canvas (only the shared downscale applied).
+      const ga = blur(grayFromDraw((ctx) => ctx.drawImage(png, 0, 0, rw * scale, rh * scale), tw, th), tw, th);
+      // SVG: drawn at its native px size but offset by (-tx, -ty) so its content origin
+      // lands at (0,0) and the export's transparent padding is cropped — the same align
+      // the daemon's FigmaSvgFidelity does before scoring. No independent scaling: SVG px
+      // and PNG px are the same space, so a genuine size drift shows up as a real mismatch
+      // rather than being hidden by a fit-to-box rescale.
+      const { tx, ty } = translateOf(svgText);
+      const sw = svg.naturalWidth || svg.width, sh = svg.naturalHeight || svg.height;
+      const gb = blur(
+        grayFromDraw(
+          (ctx) => ctx.drawImage(svg, -tx * scale, -ty * scale, sw * scale, sh * scale),
+          tw,
+          th,
+        ),
+        tw,
+        th,
+      );
       const pct = Math.max(0, Math.min(100, ssim(ga, gb, tw, th) * 100));
       const shown = pct.toFixed(1);
       cell.textContent = shown + "%";
@@ -217,12 +245,10 @@ const SCORER = String.raw`
   async function run() {
     const rows = Array.from(document.querySelectorAll("tr[data-png][data-svg]"));
     const scores = [];
-    let tainted = 0;
     // Sequential: keeps memory flat and the summary counter ticking predictably.
     for (const tr of rows) {
       const s = await scoreRow(tr);
       if (s != null) scores.push(s);
-      else if (/SecurityError|tainted|insecure/i.test(tr.querySelector(".score").title)) tainted++;
       const done = document.getElementById("done");
       if (done) done.textContent = String(scores.length);
     }
@@ -232,9 +258,10 @@ const SCORER = String.raw`
         ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) + "%"
         : "—";
     }
-    // Opened over file:// the canvas taints (opaque origin) and every read throws —
-    // point the reader at the http path (htmlpreview / a local server) where it works.
-    if (rows.length && tainted === rows.length) {
+    // Opened over file:// the canvas taints (opaque origin) and fetch() is blocked, so
+    // every row fails — point the reader at the http path (htmlpreview / a local server)
+    // where the scorer works.
+    if (rows.length && scores.length === 0) {
       const b = document.getElementById("taintwarn");
       if (b) b.style.display = "block";
     }
@@ -401,7 +428,9 @@ export function renderCompareHtml(catalog, opts = {}) {
   <p class="note">Each row pairs the rendered <strong>PNG</strong> (raster source of truth) with the editable
   <strong>figma-svg</strong> re-rasterized <em>by your browser</em>. The match column is a windowed
   <strong>SSIM</strong> (structural similarity) computed live in the page — pre-blurred and downscaled so a
-  half-pixel offset between the two rasterizers barely moves the score, unlike a per-pixel diff. Hybrid
+  half-pixel offset between the two rasterizers barely moves the score, unlike a per-pixel diff. The SVG is
+  aligned to the PNG first (its export padding + root <code>translate</code> are cropped back out, matching the
+  daemon's fidelity harness), so the score reflects real vector drift, not a constant inset. Hybrid
   stickers (flagged) load their raster layers only in a full SVG renderer, so their score reflects the vector
   layers alone.</p>
   <p class="taintwarn" id="taintwarn">⚠ The match scores need to read pixels from a canvas, which the

@@ -58,6 +58,17 @@ test("the in-page SSIM scorer is embedded", () => {
   assert.match(html, /querySelectorAll\("tr\[data-png\]\[data-svg\]"\)/);
 });
 
+test("the scorer aligns the SVG's export padding out before scoring (translate crop)", () => {
+  // The export pads the canvas + wraps the tree in translate(tx,ty); the scorer must crop
+  // that back to the PNG's padding-free space (mirroring FigmaSvgFidelity.alignToRender),
+  // else every faithful vector scores low from a constant inset. Pin the mechanism.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /function translateOf/);
+  assert.match(html, /translate\\\(/); // reads the SVG's root translate
+  assert.match(html, /-tx \* scale, -ty \* scale/); // draws the SVG offset to crop the padding
+  assert.match(html, /fetch\(tr\.dataset\.svg\)/); // fetches the SVG source to read the translate
+});
+
 test("a component with no figma-svg gets an inert row (no data-svg, '—' score)", () => {
   const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
   // card-elevated has a PNG but no svg → not scored, no data-svg attribute for it.
