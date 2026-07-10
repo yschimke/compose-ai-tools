@@ -58,6 +58,14 @@ class ServeCatalogLiveHost(
   override val label: String = baked.label
 
   /**
+   * The app-declared `@ThemeCatalog` themes come from the daemon lane (read from the live bundle's
+   * `previews.json`) — the baked browse surface carries none. Forwarded so the viewer's App theme
+   * selector renders and, since [canRenderOverrides] is true, actually re-renders under a chosen
+   * theme via the carried daemon.
+   */
+  override val declaredThemes: List<ServeTheme> = live.declaredThemes
+
+  /**
    * Snapshots stay static (baked PNGs) so browsing is instant and the viewer shows the published
    * pixels + trust badge — the live daemon is opt-in via [hasLiveStream], not the snapshot lane.
    */

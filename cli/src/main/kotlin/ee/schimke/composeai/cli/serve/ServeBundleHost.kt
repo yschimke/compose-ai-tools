@@ -67,6 +67,27 @@ class ServeBundleHost(
       .toList()
 
   /**
+   * The app-declared `@ThemeCatalog` themes, read from the bundle's `previews.json` when it carries
+   * one (the synthetic `THEME_CATALOG` entries discovery emits). A plain static bundle can't apply
+   * a `themeProvider` (no daemon to load the provider), so the viewer shows the App theme selector
+   * as a disabled, informational list — mirroring how declared knobs render on a static bundle.
+   * Empty when the bundle carries no `previews.json` (a bare `previews/`-only WebEmbed) or declares
+   * none.
+   */
+  override val declaredThemes: List<ServeTheme> = run {
+    val previewsJson = File(bundleDir, PREVIEWS_JSON).toOkioPath()
+    if (!fileSystem.exists(previewsJson)) return@run emptyList()
+    try {
+      val text = fileSystem.read(previewsJson) { readUtf8() }
+      val manifest =
+        OVERRIDES_JSON.decodeFromString(ee.schimke.composeai.cli.PreviewManifest.serializer(), text)
+      declaredThemesFromPreviews(manifest.previews)
+    } catch (e: Exception) {
+      emptyList()
+    }
+  }
+
+  /**
    * Read the editable knobs carried for [id] in the bundle's `previews/<id>.overrides.json` sidecar
    * (the `compose/overrides` payload the producer packed). Absent / unreadable → no knobs. The host
    * can't re-render (it replays baked PNGs), so [canApplyOverrides] stays false and the viewer
@@ -138,6 +159,7 @@ class ServeBundleHost(
     /** A preview id folds the component slug and variant as `<slug>__<variant>`. */
     private const val SLUG_SEPARATOR = "__"
     private const val OVERRIDES_SUFFIX = ".overrides.json"
+    private const val PREVIEWS_JSON = "previews.json"
     private val OVERRIDES_JSON = Json { ignoreUnknownKeys = true }
 
     /** True when [dir] looks like a servable bundle (a `previews/` tree with at least one PNG). */

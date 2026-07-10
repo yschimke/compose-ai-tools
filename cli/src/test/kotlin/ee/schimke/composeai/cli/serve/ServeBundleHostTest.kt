@@ -29,6 +29,49 @@ class ServeBundleHostTest {
   }
 
   @Test
+  fun `declared themes are read from the bundle's previews_json when present`() {
+    val dir = bundle("com.example.Card" to byteArrayOf(1))
+    // A previews.json carrying two synthetic THEME_CATALOG entries (the shape discovery emits) plus
+    // an ordinary preview that must NOT be mistaken for a theme.
+    File(dir, "previews.json")
+      .writeText(
+        """
+        {
+          "module": ":samples:cmp",
+          "variant": "debug",
+          "previews": [
+            { "id": "com.example.Card", "functionName": "Card", "className": "com.example.CardKt" },
+            { "id": "themecatalog__Brand_Light", "functionName": "Brand Light theme",
+              "className": "com.example.BrandLightTheme",
+              "params": { "name": "Brand Light", "group": "Brand", "kind": "THEME_CATALOG",
+                          "wrapperClassName": "com.example.BrandLightTheme" } },
+            { "id": "themecatalog__Brand_Dark", "functionName": "Brand Dark theme",
+              "className": "com.example.BrandDarkTheme",
+              "params": { "name": "Brand Dark", "group": "Brand", "kind": "THEME_CATALOG",
+                          "wrapperClassName": "com.example.BrandDarkTheme" } }
+          ]
+        }
+        """
+          .trimIndent()
+      )
+    val host = ServeBundleHost(dir, label = "compose-m3")
+    assertEquals(
+      listOf(
+        "Brand Light" to "com.example.BrandLightTheme",
+        "Brand Dark" to "com.example.BrandDarkTheme",
+      ),
+      host.declaredThemes.map { it.name to it.providerFqn },
+    )
+    assertEquals(listOf("Brand", "Brand"), host.declaredThemes.map { it.group })
+  }
+
+  @Test
+  fun `no declared themes without a previews_json (a bare WebEmbed)`() {
+    val host = ServeBundleHost(bundle("com.example.Red" to byteArrayOf(1)), label = "b")
+    assertTrue(host.declaredThemes.isEmpty())
+  }
+
+  @Test
   fun `previews are discovered from the bundle's png files, sorted`() {
     val host =
       ServeBundleHost(

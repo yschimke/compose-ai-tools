@@ -188,7 +188,29 @@ internal object ServeBundleDaemon {
       workspaceName = destDir.name.ifBlank { system },
       previews = previews,
       label = system,
+      // The catalog's app-declared @ThemeCatalog themes, read from the same carried previews.json —
+      // so a published catalog's live lane offers the App theme selector (its daemon applies the
+      // themeProvider override on demand). Empty when the app declares none.
+      declaredThemes = readDeclaredThemes(previewsJson, fileSystem),
     )
+  }
+
+  /**
+   * Read the catalog's declared `@ThemeCatalog` themes from the carried `previews.json` (the
+   * synthetic `THEME_CATALOG` entries discovery emits). Module-global, so the whole catalog shares
+   * one theme set. Absent / unreadable previews.json → no themes.
+   */
+  private fun readDeclaredThemes(previewsJson: File, fileSystem: FileSystem): List<ServeTheme> {
+    val text =
+      try {
+        fileSystem.read(previewsJson.path.toPath()) { readUtf8() }
+      } catch (_: Exception) {
+        return emptyList()
+      }
+    val manifest =
+      runCatching { previewsManifestJson.decodeFromString(PreviewManifest.serializer(), text) }
+        .getOrNull() ?: return emptyList()
+    return declaredThemesFromPreviews(manifest.previews)
   }
 
   /**

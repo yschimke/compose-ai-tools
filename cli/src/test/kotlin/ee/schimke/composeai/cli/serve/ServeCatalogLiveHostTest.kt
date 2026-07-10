@@ -32,6 +32,7 @@ class ServeCatalogLiveHostTest {
     private val streaming: Boolean = false,
     /** When true, `renderSvg` reports `NotFound` (a baked catalog missing this slug's vector). */
     private val svgNotFound: Boolean = false,
+    override val declaredThemes: List<ServeTheme> = emptyList(),
   ) : ServeHost {
     override val label: String = tag
     override val canApplyOverrides: Boolean = streaming
@@ -116,6 +117,24 @@ class ServeCatalogLiveHostTest {
   /** A knob-bearing override — the sole case the baked PNG can't satisfy. */
   private fun knobOverride() =
     PreviewOverrides(namedOverrides = mapOf("label" to PreviewOverrideValue.StringValue("Tap me")))
+
+  @Test
+  fun `declared themes come from the daemon lane, not the baked browse surface`() {
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        streaming = true,
+        declaredThemes = listOf(ServeTheme("Brand Dark", "com.example.BrandDarkTheme", "Brand")),
+      )
+    val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
+    // Forwarded from the daemon lane (which read them from the live bundle's previews.json); the
+    // baked browse surface carries none. canRenderOverrides is true, so the selector is live.
+    assertEquals(listOf("Brand Dark"), composite.declaredThemes.map { it.name })
+    assertEquals("com.example.BrandDarkTheme", composite.declaredThemes.single().providerFqn)
+    assertTrue(composite.canRenderOverrides)
+  }
 
   @Test
   fun `presents as a static-snapshot host that still offers Live`() {
