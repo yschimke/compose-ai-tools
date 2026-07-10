@@ -474,13 +474,18 @@ private fun previewIndexBackedSpecResolver(previewIndex: PreviewIndex): ((String
 internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
   val defaults =
     RenderSpec(previewId = info.id, className = info.className, functionName = info.methodName)
-  // A null params block is treated exactly like an empty one — every field falls back per-default,
-  // so (like the bake's [PreviewManifestEntry.resolved]) a no-size preview wraps whether it carried
-  // an empty params block or none at all.
-  val params = info.params
-  val density = params?.density ?: defaults.density
-  val explicitWidthPx = params?.widthDp?.let { (it * density).toInt() }
-  val explicitHeightPx = params?.heightDp?.let { (it * density).toInt() }
+  // A *missing* params block means "params unknown", NOT "params empty" — the incremental
+  // source-change path (IncrementalDiscovery.toDto → PreviewIndex.applyDiff) replaces an edited
+  // preview's index entry with a DTO that carries no params until the next full rediscovery. So a
+  // null block must fall back to the fixed-frame defaults (no wrap): treating it as an explicit
+  // empty block would make an edited preview that actually declares widthDp / device / showSystemUi
+  // briefly render wrap-cropped at the 400×800 sandbox after every save, then snap back once params
+  // return. Only a *present* params block drives the wrap decision below — a catalog sticker always
+  // carries one (it declares showBackground), so the PNG↔Live parity fix is unaffected.
+  val params = info.params ?: return defaults
+  val density = params.density ?: defaults.density
+  val explicitWidthPx = params.widthDp?.let { (it * density).toInt() }
+  val explicitHeightPx = params.heightDp?.let { (it * density).toInt() }
   // AS-parity wrap-content, mirroring the offline-bake / harness resolver
   // ([PreviewManifestEntry.resolved]). A preview that declares no explicit size on an axis and is
   // not pinned to a device frame renders wrap-content on that axis: the held-session/stream render
@@ -491,7 +496,7 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
   // device-pinned preview keeps its fixed frame (device sizing is applied downstream). Note the
   // interactive `PreviewParamsDto` carries no `showSystemUi`, so `pinned` is device-only here — a
   // catalog sticker declares neither, so it wraps.
-  val pinned = (params?.device ?: defaults.device) != null
+  val pinned = (params.device ?: defaults.device) != null
   val wrapWidth = explicitWidthPx == null && !pinned
   val wrapHeight = explicitHeightPx == null && !pinned
   val widthPx =
@@ -502,7 +507,7 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
     explicitHeightPx
       ?: if (wrapHeight) (PreviewManifestEntry.WRAP_SANDBOX_HEIGHT_DP * density).toInt()
       else defaults.heightPx
-  val uiMode = if (uiModeIsNight(params?.uiMode)) RenderSpec.SpecUiMode.DARK else defaults.uiMode
+  val uiMode = if (uiModeIsNight(params.uiMode)) RenderSpec.SpecUiMode.DARK else defaults.uiMode
   return RenderSpec(
     previewId = info.id,
     className = info.className,
@@ -512,17 +517,17 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
     wrapWidth = wrapWidth,
     wrapHeight = wrapHeight,
     density = density,
-    showBackground = params?.showBackground ?: defaults.showBackground,
-    backgroundColor = params?.backgroundColor ?: defaults.backgroundColor,
-    device = params?.device ?: defaults.device,
+    showBackground = params.showBackground ?: defaults.showBackground,
+    backgroundColor = params.backgroundColor ?: defaults.backgroundColor,
+    device = params.device ?: defaults.device,
     outputBaseName = defaults.outputBaseName,
-    localeTag = params?.locale ?: defaults.localeTag,
-    fontScale = params?.fontScale ?: defaults.fontScale,
+    localeTag = params.locale ?: defaults.localeTag,
+    fontScale = params.fontScale ?: defaults.fontScale,
     uiMode = uiMode,
     orientation = defaults.orientation,
-    wrapperClassName = params?.wrapperClassName ?: defaults.wrapperClassName,
-    kind = params?.kind ?: defaults.kind,
-    assetPath = params?.assetPath ?: defaults.assetPath,
+    wrapperClassName = params.wrapperClassName ?: defaults.wrapperClassName,
+    kind = params.kind ?: defaults.kind,
+    assetPath = params.assetPath ?: defaults.assetPath,
   )
 }
 
