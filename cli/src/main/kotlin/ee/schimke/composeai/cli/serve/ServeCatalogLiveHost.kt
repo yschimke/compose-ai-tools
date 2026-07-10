@@ -143,13 +143,15 @@ class ServeCatalogLiveHost(
    * defaults instance so a newly added override field is covered without touching this predicate.
    */
   private fun overridesAffectRender(previewId: String, o: PreviewOverrides): Boolean {
+    // The theme is the LAST `light`/`dark` id segment (past the component slug) — matching
+    // `ServeUrls.wasmAppSrc` / `ServeWeb.cardTheme`. Scanning for `dark` first would misread a
+    // non-theme segment named `dark` in an otherwise-light variant, wrongly treating `uiMode=dark`
+    // as a no-op and dropping the override.
     val bakedTheme =
-      previewId.split("__").let { segments ->
-        when {
-          "dark" in segments -> UiMode.DARK
-          "light" in segments -> UiMode.LIGHT
-          else -> null
-        }
+      when (previewId.split("__").drop(1).lastOrNull { it == "light" || it == "dark" }) {
+        "dark" -> UiMode.DARK
+        "light" -> UiMode.LIGHT
+        else -> null
       }
     // A uiMode matching the baked variant is a no-op; drop it, then any remaining set field
     // (including a *differing* uiMode) means a re-render is required.

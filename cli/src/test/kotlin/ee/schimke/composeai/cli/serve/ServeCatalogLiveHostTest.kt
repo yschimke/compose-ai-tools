@@ -270,6 +270,27 @@ class ServeCatalogLiveHostTest {
   }
 
   @Test
+  fun `baked theme is the last theme segment, not a stray earlier one`() {
+    // A `dark` STATE segment sits before the real `light` theme segment. Detection must take the
+    // last theme segment (matching wasmAppSrc / cardTheme), so this variant reads as LIGHT: a
+    // uiMode=light is the no-op (baked) and uiMode=dark is the real re-render (daemon). A naive
+    // "dark in segments" check would flip both.
+    val trickyId = "toggle__dark__default__light"
+    val daemon = "ToggleLight"
+    val baked = RecordingHost(previews = listOf(ServePreview(trickyId, trickyId)), tag = "baked")
+    val live =
+      RecordingHost(previews = listOf(ServePreview(daemon, daemon)), tag = "live", streaming = true)
+    val composite = ServeCatalogLiveHost(mapOf(trickyId to daemon), live, baked)
+
+    composite.render(trickyId, PreviewOverrides(uiMode = UiMode.LIGHT))
+    assertEquals(trickyId, baked.lastRenderId) // light == variant theme → baked
+    assertNull(live.lastRenderId)
+
+    composite.render(trickyId, PreviewOverrides(uiMode = UiMode.DARK))
+    assertEquals(daemon, live.lastRenderId) // dark != variant theme → daemon
+  }
+
+  @Test
   fun `an unmapped id serves baked, even with overrides`() {
     val (composite, live, baked) = host()
     val out = composite.render(androidOnlyId, PreviewOverrides(density = 2.0f)) as RenderOutcome.Ok
