@@ -404,8 +404,9 @@ object ServeWeb {
    * Backend-provenance badge: a small corner label naming the tier that produced the pixels now on
    * the stage, so a viewer can tell an in-browser CMP render from a baked snapshot. Reads the
    * viewer's `data-mode` (kept in sync by the transport toggles) — `CMP-WASM` for the Wasm app
-   * (always that), else the server-supplied `data-live-backend` / `data-snapshot-backend` label, so
-   * the daemon's actual platform (desktop/JVM or Android) and the snapshot renderer stay accurate.
+   * (always that), `SVG` for the vector snapshot lane, else the server-supplied `data-live-backend`
+   * / `data-snapshot-backend` label, so the daemon's actual platform (desktop/JVM or Android) and
+   * the snapshot renderer stay accurate.
    */
   private fun backendBadgeScript(): String =
     """
@@ -416,6 +417,7 @@ object ServeWeb {
       function label(mode) {
         if (mode === "wasm") return "CMP-WASM";
         if (mode === "live") return root.getAttribute("data-live-backend") || "Live";
+        if (mode === "svg") return "SVG";
         return root.getAttribute("data-snapshot-backend") || "Snapshot";
       }
       function refresh() { badge.textContent = label(root.getAttribute("data-mode")); }
@@ -728,6 +730,14 @@ object ServeWeb {
         "<label class=\"cp-live-row\"><input id=\"cp-wasm-bg\" type=\"checkbox\"> " +
           "Component only (no background)</label>"
       else ""
+    // SVG mode reuses the snapshot lane (the same `<img>`) but points it at the vector
+    // `/render/<id>.svg` instead of the raster `.png`. Offered only when the session can export SVG
+    // ([hasSvgExport]) — the same gate as the SVG direct-link row.
+    val svgModeRadio =
+      if (hasSvgExport)
+        "<label class=\"cp-live-row\"><input type=\"radio\" name=\"cp-mode\" value=\"svg\" " +
+          "id=\"cp-mode-svg\"> SVG</label>"
+      else ""
     val deviceOptions =
       COMMON_DEVICES.joinToString("\n") { (value, name) ->
         val v = WebEscaping.htmlEscape(value)
@@ -794,6 +804,7 @@ object ServeWeb {
           $snapshotNote
           <div class="cp-modes" role="radiogroup" aria-label="Render mode">
             <label class="cp-live-row"><input type="radio" name="cp-mode" value="png" id="cp-mode-png" checked> PNG</label>
+            $svgModeRadio
             <label class="cp-live-row"><input type="radio" name="cp-mode" value="live" id="cp-live"$liveDis> Live Compose</label>
             $wasmModeRadio
           </div>
@@ -890,6 +901,10 @@ object ServeWeb {
       var fsVal = document.getElementById("cp-fontScale-val");
       var fontScaleTouched = false;
       var ws = null;
+      // The snapshot lane serves either the raster PNG or the vector SVG through the same <img>.
+      // The render-mode radio flips this (".png" default, ".svg" in SVG mode); refreshSnapshot and
+      // the copyable links read it so a re-render / copied URL matches the on-screen format.
+      var snapshotExt = ".png";
 
       function overrides() {
         var o = {};
@@ -953,7 +968,8 @@ object ServeWeb {
       function refreshSnapshot() {
         status.textContent = "rendering…";
         var qs = query();
-        var url = base + "/render/" + encodeURIComponent(previewId) + ".png" + (qs ? "?" + qs : "");
+        var url =
+          base + "/render/" + encodeURIComponent(previewId) + snapshotExt + (qs ? "?" + qs : "");
         var next = new Image();
         next.onload = function () { img.src = url; status.textContent = ""; };
         next.onerror = function () { status.textContent = "render failed"; };
@@ -1317,13 +1333,21 @@ object ServeWeb {
         }
       }
 
-      // Render-mode radio group (PNG / Live Compose / Wasm). Selecting one tears down the other
-      // transport and enters the chosen one; PNG is the baked snapshot. closeStream / closeWasm are
-      // idempotent, so a mode switch can safely tear down both regardless of the prior state.
+      // Render-mode radio group (PNG / SVG / Live Compose / Wasm). Selecting one tears down the
+      // other transport and enters the chosen one. PNG and SVG both drive the baked snapshot lane —
+      // same <img>, different render extension (snapshotExt). closeStream / closeWasm are
+      // idempotent, so a mode switch can safely tear down both regardless of the prior state; live
+      // and wasm reset snapshotExt so a later fallback refresh serves the raster PNG, not a stale
+      // ".svg".
       function enterMode(m) {
-        if (m === "live") { closeWasm(); openStream(); }
-        else if (m === "wasm") { closeStream(); openWasm(); }
-        else { closeStream(); closeWasm(); refreshSnapshot(); }
+        if (m === "live") { snapshotExt = ".png"; closeWasm(); openStream(); }
+        else if (m === "wasm") { snapshotExt = ".png"; closeStream(); openWasm(); }
+        else if (m === "svg") {
+          // SVG reuses the snapshot lane; closeStream/closeWasm reset data-mode to "snapshot", so
+          // stamp "svg" afterwards for the backend badge, then swap the vector into the <img>.
+          closeStream(); closeWasm(); snapshotExt = ".svg";
+          root.setAttribute("data-mode", "svg"); refreshSnapshot();
+        } else { snapshotExt = ".png"; closeStream(); closeWasm(); refreshSnapshot(); }
         syncOverlayToggles();
       }
       // The live-only overlay toggles (talkBack / touchOverlay) are meaningful only while the daemon
@@ -1338,7 +1362,9 @@ object ServeWeb {
       // reflects it, then run the transition.
       function setMode(m) {
         var r = document.getElementById(
-          m === "live" ? "cp-live" : m === "wasm" ? "cp-wasm-toggle" : "cp-mode-png");
+          m === "live" ? "cp-live" :
+          m === "wasm" ? "cp-wasm-toggle" :
+          m === "svg" ? "cp-mode-svg" : "cp-mode-png");
         if (r) r.checked = true;
         enterMode(m);
       }
