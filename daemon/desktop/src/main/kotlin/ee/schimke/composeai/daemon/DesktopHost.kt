@@ -595,7 +595,15 @@ open class DesktopHost(
       // Background → Clear toggle sends `PreviewOverrides(clearBackground = true)`. Null preserves
       // the discovery-time value.
       clearBackground = overrides?.clearBackground ?: base.clearBackground,
-      overrides = merged.toExtensionOverrides(),
+      // Carry a `themeProvider` selection through the held/live path: toExtensionOverrides() drops
+      // it
+      // (it's renderer-read, not extension-consumed), but the renderer reads spec.overrides
+      // directly,
+      // so without this a live App-theme change would keep the default wrapper.
+      overrides =
+        merged
+          .toExtensionOverrides()
+          .withThemeProvider(overrides?.themeProvider ?: base.overrides?.themeProvider),
       outputBaseName = "recording-$recordingId",
     )
   }

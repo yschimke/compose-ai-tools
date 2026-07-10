@@ -1321,7 +1321,13 @@ open class RobolectricHost(
       // path keeps the opaque background when the viewer sends `PreviewOverrides(clearBackground =
       // true)`. Null preserves the discovery-time value.
       clearBackground = overrides?.clearBackground ?: base.clearBackground,
-      overrides = merged.toExtensionOverrides(),
+      // Carry a `themeProvider` selection through the held/live path: toExtensionOverrides() drops it
+      // (renderer-read, not extension-consumed), but the renderer reads spec.overrides directly, so
+      // without this a live App-theme change would keep the default wrapper.
+      overrides =
+        merged.toExtensionOverrides().withThemeProvider(
+          overrides?.themeProvider ?: base.overrides?.themeProvider
+        ),
       // Recording sessions consume this on disk (`recordings/<recordingId>/...`); interactive
       // sessions pass `"interactive-$previewId"` and never read the field. The `recording-`
       // prefix is preserved for byte-compat with existing recording-test expectations.

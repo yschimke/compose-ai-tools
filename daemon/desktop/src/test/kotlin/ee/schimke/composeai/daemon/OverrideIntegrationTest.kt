@@ -551,6 +551,60 @@ class OverrideIntegrationTest {
     }
   }
 
+  /**
+   * A stale / misspelled `themeProvider` must fall back to the preview's declared
+   * `@PreviewWrapper`, not strip it (which would drop a required wrapper and misrender — the case a
+   * shared URL with a removed provider hits). The manifest pins `wrapperClassName =
+   * BluePrimaryThemeProvider` (blue), and the request supplies a bogus `themeProvider` FQN; the
+   * render must still be blue (declared wrapper applied), not the un-wrapped M3 default.
+   */
+  @Test
+  fun badThemeProviderFallsBackToDeclaredWrapper() {
+    val outputDir = tempFolder.newFolder("renders-theme-fallback")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "wrapped-ambient",
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "WallpaperAwareSquare",
+              widthPx = 48,
+              heightPx = 48,
+              density = 1.0f,
+              outputBaseName = "wrapped-ambient",
+              // The preview's own declared @PreviewWrapper (blue), threaded into the render spec
+              // via
+              // the resolver — so a bad themeProvider must fall back to THIS, not strip it.
+              params =
+                PreviewParamsEntry(
+                  wrapperClassName = "ee.schimke.composeai.daemon.BluePrimaryThemeProvider"
+                ),
+            )
+          )
+      )
+    val host = PreviewManifestRouter(manifest = manifest)
+    host.start()
+    try {
+      val bogus =
+        renderAndDecode(
+          host,
+          "previewId=wrapped-ambient;overrides=" +
+            encodeThemeProviderBag("ee.schimke.composeai.daemon.NoSuchThemeProvider"),
+          "bad-theme",
+        )
+      // Declared wrapper (blue) still applied — the bogus override didn't strip it.
+      val bluePct = pixelMatchPct(bogus, expectedRgb = 0x1565C0, perChannelTolerance = 8)
+      assertTrue(
+        "a bad themeProvider must fall back to the declared @PreviewWrapper (blue); got ${"%.2f".format(bluePct * 100)}%",
+        bluePct >= 0.95,
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
   private fun renderAndDecode(
     host: PreviewManifestRouter,
     payload: String,

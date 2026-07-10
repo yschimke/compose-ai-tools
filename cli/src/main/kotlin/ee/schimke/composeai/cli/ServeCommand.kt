@@ -391,6 +391,10 @@ class ServeCommand(args: List<String>) : Command(args) {
         workspaceName = module.projectDir.name,
         previews = previews,
         label = module.gradlePath,
+        // Carry the declared themes on the session state too — the registry suspends idle daemons
+        // and reopens from this state, so without it the App theme selector would vanish after the
+        // first idle suspend/resume.
+        declaredThemes = declaredThemes,
       )
     registry.register(module.gradlePath, defaultState, host = renderHost)
     // Shared mode: register any pre-rendered portable bundles under `--bundles <dir>` as read-only
@@ -1010,6 +1014,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         workspaceName = built.moduleDir.name,
         previews = built.previews,
         label = "$system@${source.ref}",
+        declaredThemes = built.declaredThemes,
         // Same catalog-id bridge + baked fallback as the bundle path (a source build's daemon uses
         // the same function-based ids), so a live source-rebuilt catalog also answers the published
         // URLs and falls back to baked PNGs for ids it can't render.
