@@ -234,10 +234,13 @@ internal object ServeBundleDaemon {
       runCatching { previewsManifestJson.decodeFromString(PreviewManifest.serializer(), text) }
         .getOrNull() ?: return emptyList()
     return manifest.previews.map {
+      val (focus, gestures) = detectedFeaturesOf(it)
       ServePreview(
         id = it.id,
         label = it.functionName.ifBlank { it.id },
         overrides = readOverrideSidecar(previewsDir, it.id, fileSystem),
+        supportsFocus = focus,
+        supportsGestures = gestures,
       )
     }
   }

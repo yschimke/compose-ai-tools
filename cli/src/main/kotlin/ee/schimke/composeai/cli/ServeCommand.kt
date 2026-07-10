@@ -24,6 +24,7 @@ import ee.schimke.composeai.cli.serve.ServeStartupBundles
 import ee.schimke.composeai.cli.serve.ServeUrls
 import ee.schimke.composeai.cli.serve.TrustStore
 import ee.schimke.composeai.cli.serve.declaredThemesFromPreviews
+import ee.schimke.composeai.cli.serve.detectedFeaturesOf
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.render.session.RenderSessionException
 import java.io.File
@@ -305,7 +306,15 @@ class ServeCommand(args: List<String>) : Command(args) {
     val previews =
       manifest.previews
         .filter { matches(it.id) }
-        .map { ServePreview(id = it.id, label = it.functionName.ifBlank { it.id }) }
+        .map {
+          val (focus, gestures) = detectedFeaturesOf(it)
+          ServePreview(
+            id = it.id,
+            label = it.functionName.ifBlank { it.id },
+            supportsFocus = focus,
+            supportsGestures = gestures,
+          )
+        }
     // The module's declared @ThemeCatalog themes — the Theme selector renders them so a preview can
     // be re-rendered under Brand Dark etc. Module-global, so unaffected by the --id/--filter above.
     val declaredThemes = declaredThemesFromPreviews(manifest.previews)

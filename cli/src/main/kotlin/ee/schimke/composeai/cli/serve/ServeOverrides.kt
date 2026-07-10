@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.daemon.protocol.FocusOverride
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.UiMode
@@ -63,6 +64,10 @@ object ServeOverrides {
       // FQN of an app-declared @ThemeCatalog `PreviewWrapperProvider` to render this preview under
       // (the discrete-theme axis). Daemon-only — a baked bundle has no provider to load.
       "themeProvider",
+      // Detected-feature: keyboard focus. `focus=<tabIndex>` lands focus on the n-th focusable and
+      // draws the focus overlay (`FocusOverride(tabIndex, overlay=true)`). Offered only for a
+      // `@FocusedPreview`-detected preview; daemon-only (the desktop daemon honours it).
+      "focus",
       // "crisp outline" toggle. Friendly `background=clear` (aliases below) or the raw
       // `clearBackground=true`; both map to `PreviewOverrides.clearBackground`.
       "background",
@@ -240,6 +245,21 @@ object ServeOverrides {
           }
         }
 
+    // Detected-feature: keyboard focus. `focus=<tabIndex>` lands focus on the n-th focusable in tab
+    // order and draws the post-capture focus overlay (stroke + label). A non-negative integer; a
+    // malformed value is a hard Invalid. Absent → no focus override (discovery-time behaviour).
+    val focus: FocusOverride? =
+      params["focus"]
+        ?.takeIf { it.isNotBlank() }
+        ?.let {
+          val tabIndex =
+            it.toIntOrNull()?.takeIf { n -> n >= 0 }
+              ?: return OverrideParse.Invalid(
+                "focus must be a non-negative integer tab index, got '$it'"
+              )
+          FocusOverride(tabIndex = tabIndex, overlay = true)
+        }
+
     // Cleared background ("crisp outline"). Two spellings: the friendly `background=clear`
     // (aliases `transparent` / `none` / `off`; `default` / `show` mean "keep the preview's
     // background") and the raw boolean `clearBackground=true`. A present `background` key wins over
@@ -330,6 +350,7 @@ object ServeOverrides {
         talkBack = talkBack,
         touchOverlay = touchOverlay,
         themeProvider = params["themeProvider"]?.takeIf { it.isNotBlank() },
+        focus = focus,
         clearBackground = clearBackground,
         namedOverrides = namedOverrides.ifEmpty { null },
       )
@@ -358,6 +379,7 @@ object ServeOverrides {
       append("talk=").append(o.talkBack).append('|')
       append("touch=").append(o.touchOverlay).append('|')
       append("theme=").append(o.themeProvider).append('|')
+      append("focus=").append(o.focus).append('|')
       append("clearbg=").append(o.clearBackground).append('|')
       // Named overrides participate so a knob edit isn't coalesced onto the prior render. Sorted by
       // key for order-independence; the value data classes have stable toString.

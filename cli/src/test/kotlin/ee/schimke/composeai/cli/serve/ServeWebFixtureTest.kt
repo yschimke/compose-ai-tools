@@ -250,6 +250,16 @@ class ServeWebFixtureTest {
             ServeTheme("High Contrast", "com.example.HighContrastThemeCatalog"),
           ),
       )
+    // A daemon-backed viewer for a preview detected to support keyboard focus (`@FocusedPreview`):
+    // the "Detected features" group with the "Keyboard focus" control appears, gated to daemon
+    // sessions. Captured so the visual-diff bot covers the detected-feature control.
+    val viewerFocus =
+      ServeWeb.viewerPage(
+        ServePreview("com.example.FocusRingPreview", "Focus ring", supportsFocus = true),
+        token,
+        sessionId = "compose-m3",
+        canApplyOverrides = true,
+      )
     // A catalog whose previews carry per-theme variants, so the landing shows the sticky light/dark
     // toggle and tags each card with its baked theme for client-side filtering.
     val landingThemed =
@@ -272,6 +282,7 @@ class ServeWebFixtureTest {
       File(pagesDir, "serve-viewer-wasm-live.html").writeText(wasmViewerLive)
       File(pagesDir, "serve-viewer-catalog-knobs.html").writeText(viewerCatalogKnobs)
       File(pagesDir, "serve-viewer-themes.html").writeText(viewerThemes)
+      File(pagesDir, "serve-viewer-focus.html").writeText(viewerFocus)
       File(pagesDir, "serve-landing-path.html").writeText(landingPath)
       File(pagesDir, "serve-viewer-path.html").writeText(viewerPath)
       File(pagesDir, "serve-landing-themed.html").writeText(landingThemed)
@@ -287,6 +298,17 @@ class ServeWebFixtureTest {
     assertGolden(File(pagesDir, "serve-viewer-wasm-live.html"), wasmViewerLive)
     assertGolden(File(pagesDir, "serve-viewer-catalog-knobs.html"), viewerCatalogKnobs)
     assertGolden(File(pagesDir, "serve-viewer-themes.html"), viewerThemes)
+    assertGolden(File(pagesDir, "serve-viewer-focus.html"), viewerFocus)
+    // The detected-feature control shows for a focus-supporting preview…
+    assertTrue(
+      viewerFocus.contains("id=\"cp-focus\"") && viewerFocus.contains("Keyboard focus"),
+      "a @FocusedPreview preview shows the Keyboard focus control",
+    )
+    // …and NOT for an ordinary preview (no dead control).
+    assertFalse(
+      viewerThemes.contains("id=\"cp-focus\""),
+      "a preview without @FocusedPreview shows no Keyboard focus control",
+    )
     assertGolden(File(pagesDir, "serve-landing-path.html"), landingPath)
     assertGolden(File(pagesDir, "serve-viewer-path.html"), viewerPath)
     assertGolden(File(pagesDir, "serve-landing-themed.html"), landingThemed)

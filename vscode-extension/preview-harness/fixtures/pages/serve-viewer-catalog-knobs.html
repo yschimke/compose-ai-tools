@@ -185,6 +185,7 @@ a:hover { text-decoration: underline; }
   <label class="cp-live-row"><input class="cp-overlay" id="cp-talkBack" type="checkbox" disabled> Accessibility (TalkBack)</label>
   <label class="cp-live-row"><input class="cp-overlay" id="cp-touchOverlay" type="checkbox" disabled> Show touches</label>
 </div>
+          
                 <div class="cp-knobs">
         <div class="cp-knobs-head">Declared overrides — edit a value to re-render.</div>
         <label>label
@@ -311,6 +312,10 @@ a:hover { text-decoration: underline; }
     // control is live; "(default)" (empty) leaves the daemon on the preview's own wrapper.
     var tp = document.getElementById("cp-themeProvider");
     if (tp && !tp.disabled && tp.value) o["themeProvider"] = tp.value;
+    // Detected-feature: keyboard focus. Checked ⇒ focus the first focusable + draw the overlay
+    // (focus=0). Daemon-only, so skipped when disabled.
+    var fc = document.getElementById("cp-focus");
+    if (fc && !fc.disabled && fc.checked) o["focus"] = "0";
     return o;
   }
   function query() {
@@ -341,6 +346,10 @@ a:hover { text-decoration: underline; }
     if (tp && !tp.disabled && tp.value) {
       parts.push("themeProvider=" + encodeURIComponent(tp.value));
     }
+    // Detected-feature: keyboard focus (focus=0). Routes to the daemon like a knob; omitted when
+    // unchecked so the URL stays on the baked snapshot.
+    var fc = document.getElementById("cp-focus");
+    if (fc && !fc.disabled && fc.checked) parts.push("focus=0");
     return parts.join("&");
   }
   function refreshSnapshot() {
@@ -829,6 +838,11 @@ a:hover { text-decoration: underline; }
   // load), so it shares onKnobChanged rather than onControlsChanged.
   var themeSel = document.getElementById("cp-themeProvider");
   if (themeSel) themeSel.addEventListener("change", onKnobChanged);
+  // Detected-feature toggles (Keyboard focus) re-render on the daemon like a knob — same routing,
+  // never the wasm auto-enable path.
+  document.querySelectorAll(".cp-feature").forEach(function (el) {
+    el.addEventListener("change", onKnobChanged);
+  });
   refreshSnapshot();
 })();</script>
       <script>(function () {

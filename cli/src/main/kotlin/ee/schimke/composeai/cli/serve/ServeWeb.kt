@@ -842,6 +842,26 @@ object ServeWeb {
         """
           .trimIndent()
       else ""
+    // Detected-feature controls — shown ONLY for previews that actually support the feature (so
+    // it's
+    // never a dead control everywhere). Today: "Keyboard focus" for a `@FocusedPreview` preview,
+    // which re-renders with focus landed on the first focusable + the focus overlay drawn
+    // (`focus=0`). Daemon-only (routed like a knob via onKnobChanged), so disabled unless the host
+    // can render an override. `cp-feature` marks it for the JS collector. Gestures are detected too
+    // ([ServePreview.supportsGestures]) but their override is Android-only, so no control is
+    // offered
+    // on the desktop `serve` path yet.
+    val featureDaemonDis = if (canApplyOverrides || canRenderOverrides) "" else " disabled"
+    val featureControlsHtml =
+      if (preview.supportsFocus)
+        """
+        <div class="cp-overlays">
+          <div class="cp-overlays-head">Detected features</div>
+          <label class="cp-live-row"><input class="cp-feature" id="cp-focus" type="checkbox"$featureDaemonDis> Keyboard focus</label>
+        </div>
+        """
+          .trimIndent()
+      else ""
     val body =
       """
       <p class="cp-head"><a href="$basePath/$q">← previews</a>${trustBadge(trust)}</p>
@@ -891,6 +911,7 @@ object ServeWeb {
             </select>
           </label>
           $overlaysHtml
+          $featureControlsHtml
           ${overrideKnobsHtml(preview, canApplyOverrides || canRenderOverrides)}
           ${downloadLinksHtml(hasSvgExport)}
           <div class="cp-status" id="cp-status"></div>
@@ -993,6 +1014,10 @@ object ServeWeb {
         // control is live; "(default)" (empty) leaves the daemon on the preview's own wrapper.
         var tp = document.getElementById("cp-themeProvider");
         if (tp && !tp.disabled && tp.value) o["themeProvider"] = tp.value;
+        // Detected-feature: keyboard focus. Checked ⇒ focus the first focusable + draw the overlay
+        // (focus=0). Daemon-only, so skipped when disabled.
+        var fc = document.getElementById("cp-focus");
+        if (fc && !fc.disabled && fc.checked) o["focus"] = "0";
         return o;
       }
       function query() {
@@ -1023,6 +1048,10 @@ object ServeWeb {
         if (tp && !tp.disabled && tp.value) {
           parts.push("themeProvider=" + encodeURIComponent(tp.value));
         }
+        // Detected-feature: keyboard focus (focus=0). Routes to the daemon like a knob; omitted when
+        // unchecked so the URL stays on the baked snapshot.
+        var fc = document.getElementById("cp-focus");
+        if (fc && !fc.disabled && fc.checked) parts.push("focus=0");
         return parts.join("&");
       }
       function refreshSnapshot() {
@@ -1511,6 +1540,11 @@ object ServeWeb {
       // load), so it shares onKnobChanged rather than onControlsChanged.
       var themeSel = document.getElementById("cp-themeProvider");
       if (themeSel) themeSel.addEventListener("change", onKnobChanged);
+      // Detected-feature toggles (Keyboard focus) re-render on the daemon like a knob — same routing,
+      // never the wasm auto-enable path.
+      document.querySelectorAll(".cp-feature").forEach(function (el) {
+        el.addEventListener("change", onKnobChanged);
+      });
       refreshSnapshot();
     })();
     """

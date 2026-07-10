@@ -177,6 +177,30 @@ class ServeCatalogLiveHostTest {
   }
 
   @Test
+  fun `grafts the daemon's detected-feature flags onto the mapped baked preview`() {
+    // The baked catalog images carry no detected-feature flags; the daemon twin (from
+    // previews.json)
+    // does. Without grafting, a mapped @FocusedPreview catalog component would never show the
+    // Keyboard focus control even though the daemon could render focus=0.
+    val baked =
+      RecordingHost(
+        previews =
+          listOf(ServePreview(catalogId, catalogId), ServePreview(androidOnlyId, androidOnlyId)),
+        tag = "baked",
+      )
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId, supportsFocus = true)),
+        tag = "live",
+        streaming = true,
+      )
+    val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
+    assertTrue(composite.previews.first { it.id == catalogId }.supportsFocus)
+    // An unmapped variant has no daemon twin, so it stays feature-flagless.
+    assertEquals(false, composite.previews.first { it.id == androidOnlyId }.supportsFocus)
+  }
+
+  @Test
   fun `a knob-bearing render on a mapped id routes to the daemon`() {
     val (composite, live, baked) = host()
     val out = composite.render(catalogId, knobOverride()) as RenderOutcome.Ok

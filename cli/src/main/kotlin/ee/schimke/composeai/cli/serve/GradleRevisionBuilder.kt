@@ -49,7 +49,13 @@ class GradleRevisionBuilder(
     val manifest = PreviewResultBuilder.readManifest(PreviewModule(module.gradlePath, moduleDir))
     val previews =
       manifest?.previews?.map {
-        ServePreview(id = it.id, label = it.functionName.ifBlank { it.id })
+        val (focus, gestures) = detectedFeaturesOf(it)
+        ServePreview(
+          id = it.id,
+          label = it.functionName.ifBlank { it.id },
+          supportsFocus = focus,
+          supportsGestures = gestures,
+        )
       } ?: emptyList()
     if (previews.isEmpty()) {
       onLog("serve: no previews discovered for ${module.gradlePath}")
