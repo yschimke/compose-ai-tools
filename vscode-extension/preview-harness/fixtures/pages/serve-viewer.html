@@ -68,6 +68,10 @@ a:hover { text-decoration: underline; }
 .cp-stage iframe { position: absolute; border: 0; background: transparent; opacity: 0;
   transition: opacity 0.15s ease; pointer-events: none; }
 .cp-stage iframe.cp-wasm-live { opacity: 1; pointer-events: auto; }
+/* Live daemon frames paint into the SAME absolute overlay box the Wasm iframe uses, pinned to
+   the snapshot img's slot — so the stage is one fixed box every transport fills and toggling a
+   mode never resizes or shifts it (the img keeps its layout slot underneath via visibility). */
+.cp-stage canvas.cp-canvas-live { position: absolute; max-width: none; }
 .cp-live-row { flex-direction: row !important; align-items: center; gap: 6px !important; }
 .cp-modes { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px 14px;
   font-size: 0.8rem; }
@@ -445,19 +449,21 @@ a:hover { text-decoration: underline; }
   canvas.addEventListener("keyup", function (ev) { keyInput("keyUp", ev); });
   function openStream() {
     root.setAttribute("data-mode", "live");
-    // Seed the canvas with the current snapshot at its natural size *before* the img→canvas
-    // swap. Otherwise the canvas shows at its default 300x150 box until the first frame lands
-    // (drawFrame sets its real size), so the stage collapses then snaps back — the same jump
-    // the Wasm tier avoids by holding the snapshot's layout slot. The live frames are the same
-    // preview at the same dimensions, so this box is also the final one — no shift either way —
-    // and drawing the snapshot in means no blank flash while "connecting…". The first frame
-    // overwrites it.
+    // Seed the canvas buffer with the current snapshot *before* the swap, so there's no blank
+    // flash while "connecting…" (the first frame overwrites it).
     if (img.naturalWidth && img.naturalHeight) {
       canvas.width = img.naturalWidth;
       canvas.height = img.naturalHeight;
       try { canvas.getContext("2d").drawImage(img, 0, 0); } catch (e) {}
     }
-    img.hidden = true;
+    // Mount the canvas as an absolute overlay on the snapshot's slot — the same fixed box the
+    // Wasm tier locks to. The img stays in flow (visibility:hidden keeps its slot), so the stage
+    // geometry is defined once by the snapshot and a live frame whose pixel dims differ from the
+    // baked PNG scales into this box instead of resizing the stage (drawFrame only touches the
+    // buffer now, never the layout). Input mapping reads the buffer size, so it's unaffected.
+    canvas.classList.add("cp-canvas-live");
+    positionOverlay(canvas);
+    img.style.visibility = "hidden";
     canvas.hidden = false;
     status.textContent = "connecting…";
     var proto = location.protocol === "https:" ? "wss:" : "ws:";
@@ -479,6 +485,11 @@ a:hover { text-decoration: underline; }
     root.setAttribute("data-mode", "snapshot");
     if (ws) { ws.close(); ws = null; }
     canvas.hidden = true;
+    // Tear down the overlay: drop the absolute positioning and restore the snapshot img's slot.
+    canvas.classList.remove("cp-canvas-live");
+    canvas.style.removeProperty("left"); canvas.style.removeProperty("top");
+    canvas.style.removeProperty("width"); canvas.style.removeProperty("height");
+    img.style.removeProperty("visibility");
     img.hidden = false;
   }
   // --- Wasm tier (the in-browser CMP app, mounted in a sandboxed iframe). Only wired when the
@@ -545,25 +556,27 @@ a:hover { text-decoration: underline; }
     var patch = wasmOverridePatch();
     return patch ? base + "#" + patch : base;
   }
-  // Pixel parity: overlay the iframe exactly on the snapshot's rendered box. The app renders
-  // the same sticker geometry the snapshot baked and contain-fits it to this frame, so once its
-  // first frame lands the two are the same pixels — the switch shouldn't move anything.
-  function positionWasmFrame() {
+  // Pixel parity: lay an absolute overlay ([el] — the Wasm iframe or the live canvas) exactly
+  // over the snapshot's rendered box, so switching to it shouldn't move anything. Both the Wasm
+  // app (contain-fitting the same sticker geometry the snapshot baked) and the daemon (the same
+  // preview re-rendered) fill this box, so the three transports share one geometry.
+  function positionOverlay(el) {
     var sr = stage.getBoundingClientRect();
     var r = img.getBoundingClientRect();
     if (r.width > 0 && r.height > 0) {
       // Offsets are relative to the stage's padding box — subtract its border (clientLeft/Top).
-      wasmFrame.style.left = (r.left - sr.left - stage.clientLeft) + "px";
-      wasmFrame.style.top = (r.top - sr.top - stage.clientTop) + "px";
-      wasmFrame.style.width = r.width + "px";
-      wasmFrame.style.height = r.height + "px";
+      el.style.left = (r.left - sr.left - stage.clientLeft) + "px";
+      el.style.top = (r.top - sr.top - stage.clientTop) + "px";
+      el.style.width = r.width + "px";
+      el.style.height = r.height + "px";
     } else {
       // No snapshot box to mirror (e.g. its render 404'd): fill the stage's content box.
-      wasmFrame.style.left = "12px"; wasmFrame.style.top = "12px";
-      wasmFrame.style.width = "calc(100% - 24px)";
-      wasmFrame.style.height = (stage.clientHeight - 24) + "px";
+      el.style.left = "12px"; el.style.top = "12px";
+      el.style.width = "calc(100% - 24px)";
+      el.style.height = (stage.clientHeight - 24) + "px";
     }
   }
+  function positionWasmFrame() { positionOverlay(wasmFrame); }
   // Swap the stage from the snapshot to the (already-painted) Wasm frame. The snapshot keeps
   // its layout slot (visibility, not display) so the stage geometry — and the overlay tracking
   // it — never shifts.
@@ -657,6 +670,11 @@ a:hover { text-decoration: underline; }
     function (r) {
       r.addEventListener("change", function () { if (r.checked) enterMode(r.value); });
     });
+  // Keep the live canvas overlay tracking the snapshot's slot when the page reflows (the Wasm
+  // overlay has its own resize hook below; this covers a live session with no Wasm app).
+  window.addEventListener("resize", function () {
+    if (live && live.checked && !canvas.hidden) positionOverlay(canvas);
+  });
   if (wasmToggle) {
     // The app posts "cp-wasm-ready" once its first frame is on the canvas — the swap signal.
     // Match on source (the known frame's contentWindow), not e.origin — robust regardless of
