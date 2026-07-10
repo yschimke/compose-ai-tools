@@ -3,7 +3,6 @@ package ee.schimke.composeai.cli.serve
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamFrameParams
-import ee.schimke.composeai.daemon.protocol.UiMode
 
 /**
  * A [ServeHost] that fronts a trusted design-system catalog with its baked-PNG render **and** an
@@ -142,41 +141,12 @@ class ServeCatalogLiveHost(
   }
 
   /**
-   * The daemon preview id to route a [render] / [renderSvg] to, or null to stay baked. Non-null
-   * only when [previewId] is a mapped (daemon-renderable) id AND the request carries an override
-   * the baked PNG can't satisfy ([overridesAffectRender]).
+   * The daemon preview id to route a [render] / [renderSvg] to, or null to stay baked. Delegates to
+   * [CatalogLiveRouting] — the same predicate [ServePerPreviewLiveHost] uses — so the "baked vs
+   * re-render" decision is identical across the two trusted-catalog live hosts.
    */
-  private fun daemonIdForOverrideRender(previewId: String, overrides: PreviewOverrides): String? {
-    // No daemon twin (an Android-only variant) ⇒ always baked; it has no live lane.
-    val daemonId = alias[previewId] ?: return null
-    return if (overridesAffectRender(previewId, overrides)) daemonId else null
-  }
-
-  /**
-   * Whether [overrides] would change pixels vs the preview's baked sticker, so the render must go
-   * to the daemon rather than replay the baked PNG. The baked variant already encodes its **theme**
-   * (the `…__light` / `…__dark` id segment) and every other axis at its discovery-time default, so
-   * a bare `uiMode` that matches the variant is a no-op and stays baked (keeping browsing instant);
-   * anything else — a font scale, device, locale, orientation, a named knob, a feature override
-   * (gestures / focus / keyboard / …) — needs a re-render. Uses data-class equality against a
-   * defaults instance so a newly added override field is covered without touching this predicate.
-   */
-  private fun overridesAffectRender(previewId: String, o: PreviewOverrides): Boolean {
-    // The theme is the LAST `light`/`dark` id segment (past the component slug) — matching
-    // `ServeUrls.wasmAppSrc` / `ServeWeb.cardTheme`. Scanning for `dark` first would misread a
-    // non-theme segment named `dark` in an otherwise-light variant, wrongly treating `uiMode=dark`
-    // as a no-op and dropping the override.
-    val bakedTheme =
-      when (previewId.split("__").drop(1).lastOrNull { it == "light" || it == "dark" }) {
-        "dark" -> UiMode.DARK
-        "light" -> UiMode.LIGHT
-        else -> null
-      }
-    // A uiMode matching the baked variant is a no-op; drop it, then any remaining set field
-    // (including a *differing* uiMode) means a re-render is required.
-    val uiModeIsNoOp = o.uiMode == null || o.uiMode == bakedTheme
-    return if (uiModeIsNoOp) o.copy(uiMode = null) != PreviewOverrides() else true
-  }
+  private fun daemonIdForOverrideRender(previewId: String, overrides: PreviewOverrides): String? =
+    CatalogLiveRouting.daemonIdForOverrideRender(previewId, overrides, alias)
 
   /** Live streaming is available only for aliased ids; others have no stream (snapshot only). */
   override fun subscribeStream(

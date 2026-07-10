@@ -185,19 +185,30 @@ jobs:
             --source-module ":$SOURCE_MODULE"
 
       # Split the rendered sheet into one addressable, self-contained bundle per preview under
-      # `bundle/previews/<id>.png`. `--view-only` drops the re-render classpath (classes/app.jar +
-      # libs/) and keeps the baked image + every captured sidecar, so each sticker stays ~tens of KB
-      # — a consumer (a designer, design-parity) can fetch a single preview without pulling the whole
-      # catalog sheet. The sheet was packed `--with-semantics` above, so each per-preview bundle
-      # carries its own semantics / layout / figma-svg with no re-render and no daemon. Runs for
-      # every system (the live sheet itself is only published for the CMP tier).
+      # `bundle/previews/<id>.png`.
+      #
+      # The CMP tier (a `wasmModule` ⇒ a carried desktop `liveBundle`) splits **FULL**: each
+      # per-preview bundle carries its re-render classpath so `serve` can re-render that preview from
+      # its OWN bundle (ServePerPreviewLiveHost) — a `?knob.<key>=…` edit re-renders per preview
+      # instead of routing through one monolithic catalog daemon. Because the classpath is
+      # maven-coordinate (re-resolved at serve time) and fonts resolve from the shared `bundle/res`
+      # pool, a FULL split bundle stays small — only `classes/app.jar` repeats per preview.
+      #
+      # The Android tiers (wear-m3 / remote-m3) have no runnable desktop daemon, so they stay
+      # `--view-only`: the re-render classpath is dropped, keeping the baked image + every captured
+      # sidecar (semantics / layout / figma-svg, from the `--with-semantics` pack) at ~tens of KB —
+      # the right unit for an addressable, baked-only sticker.
       - name: Split into per-preview bundles
         env:
           SYSTEM: ${{ matrix.system }}
           EXTRA_RENDERS: ${{ matrix.androidExtraModule }}
+          # FULL for the CMP (live-bundle) tier, --view-only for the baked-only Android tiers.
+          SPLIT_MODE: ${{ matrix.wasmModule != '' && 'full' || 'view-only' }}
         run: |
           set -euo pipefail
-          compose-preview bundle split "$GITHUB_WORKSPACE/$SYSTEM-bundle.png" --view-only \
+          view_only_flag=""
+          [ "$SPLIT_MODE" = "view-only" ] && view_only_flag="--view-only"
+          compose-preview bundle split "$GITHUB_WORKSPACE/$SYSTEM-bundle.png" $view_only_flag \
             -o "$GITHUB_WORKSPACE/out/bundle/previews"
           # For compose-m3 the catalog also folds an Android-only supplement (the material3 inset
           # focus ring CMP can't draw), whose renders/semantics override same-named CMP functions in
@@ -207,6 +218,10 @@ jobs:
           # for an overridden function both the CMP and the (catalog-matching) Android sticker are
           # published. Collapsing to a single per-function bundle (dropping the superseded CMP one)
           # would need the export's function-name mapping and is a follow-up.
+          #
+          # Always --view-only: the supplement is Android-rendered, so there's no desktop daemon to
+          # re-render it (ServeBundleDaemon.materialize is desktop-only) — a FULL split would just
+          # carry an unusable Android classpath.
           if [ -n "${EXTRA_RENDERS:-}" ] && [ -f "$GITHUB_WORKSPACE/$SYSTEM-extra-bundle.png" ]; then
             compose-preview bundle split "$GITHUB_WORKSPACE/$SYSTEM-extra-bundle.png" --view-only \
               -o "$GITHUB_WORKSPACE/out/bundle/previews"
