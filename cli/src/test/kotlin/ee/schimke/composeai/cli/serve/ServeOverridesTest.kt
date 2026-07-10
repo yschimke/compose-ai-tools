@@ -68,6 +68,45 @@ class ServeOverridesTest {
   }
 
   @Test
+  fun `empty params leave the gesture override null`() {
+    assertNull(ok(emptyMap()).gestures)
+  }
+
+  @Test
+  fun `gestures true shows the hint affordance`() {
+    val o = ok(mapOf("gestures" to "true"))
+    assertEquals(true, o.gestures?.showHints)
+    assertEquals(true, ok(mapOf("gestures" to "1")).gestures?.showHints)
+  }
+
+  @Test
+  fun `gestures false clears the hint affordance`() {
+    val o = ok(mapOf("gestures" to "false"))
+    assertEquals(false, o.gestures?.showHints)
+    assertEquals(false, ok(mapOf("gestures" to "0")).gestures?.showHints)
+  }
+
+  @Test
+  fun `a malformed gestures value is rejected`() {
+    for (bad in listOf("gestures" to "yes", "gestures" to "maybe", "gestures" to "2")) {
+      val parsed = ServeOverrides.parse(mapOf(bad))
+      assertTrue(parsed is OverrideParse.Invalid, "expected Invalid for $bad, got $parsed")
+    }
+  }
+
+  @Test
+  fun `cache key differs when a gesture override is applied`() {
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("gestures" to "true"))),
+      ServeOverrides.cacheKey("preview.A", ok(emptyMap())),
+    )
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("gestures" to "true"))),
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("gestures" to "false"))),
+    )
+  }
+
+  @Test
   fun `maps each field`() {
     val o =
       ok(

@@ -695,6 +695,13 @@ object ServeWeb {
      * module that declares none).
      */
     declaredThemes: List<ServeTheme> = emptyList(),
+    /**
+     * Whether this session's daemon can apply the one-handed **gesture** override (Android backend
+     * only). Gates the "Show gesture hints" control, which is otherwise offered for a
+     * `@GestureHintPreview`-detected preview — a desktop-backed session ignores the override, so
+     * the control is omitted there rather than shown dead. Defaults false.
+     */
+    gesturesRenderable: Boolean = false,
   ): String {
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
@@ -844,24 +851,38 @@ object ServeWeb {
       else ""
     // Detected-feature controls — shown ONLY for previews that actually support the feature (so
     // it's
-    // never a dead control everywhere). Today: "Keyboard focus" for a `@FocusedPreview` preview,
-    // which re-renders with focus landed on the first focusable + the focus overlay drawn
-    // (`focus=0`). Daemon-only (routed like a knob via onKnobChanged), so disabled unless the host
-    // can render an override. `cp-feature` marks it for the JS collector. Gestures are detected too
-    // ([ServePreview.supportsGestures]) but their override is Android-only, so no control is
-    // offered
-    // on the desktop `serve` path yet.
+    // never a dead control everywhere), and routed like a knob via onKnobChanged (`cp-feature`),
+    // disabled unless the host can render an override:
+    //  - "Keyboard focus" for a `@FocusedPreview` preview (`focus=0` — focus the first focusable +
+    //    draw the focus overlay). Honoured on both daemon backends.
+    //  - "Show gesture hints" for a `@GestureHintPreview` preview (`gestures=true`), but ONLY on an
+    //    Android-backed session ([gesturesRenderable]) — the desktop daemon ignores the override,
+    // so
+    //    the row is omitted there rather than shown dead.
     val featureDaemonDis = if (canApplyOverrides || canRenderOverrides) "" else " disabled"
-    val featureControlsHtml =
+    val showGestureRow = preview.supportsGestures && gesturesRenderable
+    val featureRows = buildString {
       if (preview.supportsFocus)
+        append(
+          "<label class=\"cp-live-row\"><input class=\"cp-feature\" id=\"cp-focus\" " +
+            "type=\"checkbox\"$featureDaemonDis> Keyboard focus</label>\n"
+        )
+      if (showGestureRow)
+        append(
+          "<label class=\"cp-live-row\"><input class=\"cp-feature\" id=\"cp-gestures\" " +
+            "type=\"checkbox\"$featureDaemonDis> Show gesture hints</label>\n"
+        )
+    }
+    val featureControlsHtml =
+      if (featureRows.isEmpty()) ""
+      else
         """
         <div class="cp-overlays">
           <div class="cp-overlays-head">Detected features</div>
-          <label class="cp-live-row"><input class="cp-feature" id="cp-focus" type="checkbox"$featureDaemonDis> Keyboard focus</label>
+          $featureRows
         </div>
         """
           .trimIndent()
-      else ""
     val body =
       """
       <p class="cp-head"><a href="$basePath/$q">← previews</a>${trustBadge(trust)}</p>
@@ -1018,6 +1039,10 @@ object ServeWeb {
         // (focus=0). Daemon-only, so skipped when disabled.
         var fc = document.getElementById("cp-focus");
         if (fc && !fc.disabled && fc.checked) o["focus"] = "0";
+        // Detected-feature: one-handed gesture hints. Checked ⇒ draw the gesture-hint overlay
+        // (gestures=true). Android-daemon-only, so skipped when disabled.
+        var gc = document.getElementById("cp-gestures");
+        if (gc && !gc.disabled && gc.checked) o["gestures"] = "true";
         return o;
       }
       function query() {
@@ -1052,6 +1077,10 @@ object ServeWeb {
         // unchecked so the URL stays on the baked snapshot.
         var fc = document.getElementById("cp-focus");
         if (fc && !fc.disabled && fc.checked) parts.push("focus=0");
+        // Detected-feature: one-handed gesture hints (gestures=true). Routes to the daemon like a
+        // knob; omitted when unchecked so the URL stays on the baked snapshot.
+        var gc = document.getElementById("cp-gestures");
+        if (gc && !gc.disabled && gc.checked) parts.push("gestures=true");
         return parts.join("&");
       }
       function refreshSnapshot() {

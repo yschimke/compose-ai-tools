@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.daemon.protocol.FocusOverride
+import ee.schimke.composeai.daemon.protocol.GestureOverride
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.UiMode
@@ -68,6 +69,11 @@ object ServeOverrides {
       // draws the focus overlay (`FocusOverride(tabIndex, overlay=true)`). Offered only for a
       // `@FocusedPreview`-detected preview; daemon-only (the desktop daemon honours it).
       "focus",
+      // Detected-feature: one-handed (wear) gesture hints. `gestures=true` force-shows the gesture
+      // hint affordance (`GestureOverride(showHints=true)`). Offered only for a
+      // `@GestureHintPreview`-detected preview on an Android-backed session (the desktop daemon
+      // ignores it).
+      "gestures",
       // "crisp outline" toggle. Friendly `background=clear` (aliases below) or the raw
       // `clearBackground=true`; both map to `PreviewOverrides.clearBackground`.
       "background",
@@ -260,6 +266,21 @@ object ServeOverrides {
           FocusOverride(tabIndex = tabIndex, overlay = true)
         }
 
+    // Detected-feature: one-handed gesture hints. `gestures=true` (or `1`) force-shows the gesture
+    // hint affordance; `false`/`0` clears it. A malformed value is a hard Invalid.
+    val gestures: GestureOverride? =
+      params["gestures"]
+        ?.takeIf { it.isNotBlank() }
+        ?.let {
+          when (it.lowercase()) {
+            "true",
+            "1" -> GestureOverride(showHints = true)
+            "false",
+            "0" -> GestureOverride(showHints = false)
+            else -> return OverrideParse.Invalid("gestures must be a boolean, got '$it'")
+          }
+        }
+
     // Cleared background ("crisp outline"). Two spellings: the friendly `background=clear`
     // (aliases `transparent` / `none` / `off`; `default` / `show` mean "keep the preview's
     // background") and the raw boolean `clearBackground=true`. A present `background` key wins over
@@ -351,6 +372,7 @@ object ServeOverrides {
         touchOverlay = touchOverlay,
         themeProvider = params["themeProvider"]?.takeIf { it.isNotBlank() },
         focus = focus,
+        gestures = gestures,
         clearBackground = clearBackground,
         namedOverrides = namedOverrides.ifEmpty { null },
       )
@@ -380,6 +402,7 @@ object ServeOverrides {
       append("touch=").append(o.touchOverlay).append('|')
       append("theme=").append(o.themeProvider).append('|')
       append("focus=").append(o.focus).append('|')
+      append("gestures=").append(o.gestures).append('|')
       append("clearbg=").append(o.clearBackground).append('|')
       // Named overrides participate so a knob edit isn't coalesced onto the prior render. Sorted by
       // key for order-independence; the value data classes have stable toString.

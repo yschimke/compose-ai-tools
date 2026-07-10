@@ -13,6 +13,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 
@@ -50,6 +51,18 @@ class ServeRenderHostTest {
       h.render(previewId, PreviewOverrides(uiMode = UiMode.LIGHT))
       h.render(previewId, PreviewOverrides(uiMode = UiMode.DARK))
       assertEquals(2, session.renderCount.get())
+    }
+  }
+
+  @Test
+  fun `gesturesRenderable follows the daemon's advertised gesture capability`() {
+    // An Android-style backend advertises "gestures" ⇒ the viewer offers the hint control.
+    host(FakeRenderSession(newRenderRoot(), supportedOverrides = listOf("gestures"))).use { h ->
+      assertTrue(h.gesturesRenderable, "gestures in supportedOverrides ⇒ renderable")
+    }
+    // A desktop-style backend advertises none ⇒ the control is gated off (would be a dead toggle).
+    host(FakeRenderSession(newRenderRoot())).use { h ->
+      assertFalse(h.gesturesRenderable, "no gesture capability ⇒ not renderable")
     }
   }
 

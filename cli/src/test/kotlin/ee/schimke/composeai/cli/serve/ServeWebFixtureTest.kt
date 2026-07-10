@@ -260,6 +260,30 @@ class ServeWebFixtureTest {
         sessionId = "compose-m3",
         canApplyOverrides = true,
       )
+    // A daemon-backed viewer for a preview detected to support one-handed gesture hints
+    // (`@GestureHintPreview`) on an Android-backed session (`gesturesRenderable = true`): the
+    // "Detected features" group shows the "Show gesture hints" control. Captured so the visual-diff
+    // bot covers the Android-gated detected-feature control.
+    val viewerGestures =
+      ServeWeb.viewerPage(
+        ServePreview("com.example.OneHandedPreview", "One-handed", supportsGestures = true),
+        token,
+        sessionId = "wear-m3",
+        canApplyOverrides = true,
+        gesturesRenderable = true,
+      )
+    // The SAME gesture-supporting preview on a desktop-backed session (`gesturesRenderable =
+    // false`,
+    // the default): the desktop daemon ignores the override, so the row is omitted rather than
+    // shown
+    // dead — no "Detected features" group at all.
+    val viewerGesturesDesktop =
+      ServeWeb.viewerPage(
+        ServePreview("com.example.OneHandedPreview", "One-handed", supportsGestures = true),
+        token,
+        sessionId = "compose-m3",
+        canApplyOverrides = true,
+      )
     // A catalog whose previews carry per-theme variants, so the landing shows the sticky light/dark
     // toggle and tags each card with its baked theme for client-side filtering.
     val landingThemed =
@@ -283,6 +307,7 @@ class ServeWebFixtureTest {
       File(pagesDir, "serve-viewer-catalog-knobs.html").writeText(viewerCatalogKnobs)
       File(pagesDir, "serve-viewer-themes.html").writeText(viewerThemes)
       File(pagesDir, "serve-viewer-focus.html").writeText(viewerFocus)
+      File(pagesDir, "serve-viewer-gestures.html").writeText(viewerGestures)
       File(pagesDir, "serve-landing-path.html").writeText(landingPath)
       File(pagesDir, "serve-viewer-path.html").writeText(viewerPath)
       File(pagesDir, "serve-landing-themed.html").writeText(landingThemed)
@@ -308,6 +333,19 @@ class ServeWebFixtureTest {
     assertFalse(
       viewerThemes.contains("id=\"cp-focus\""),
       "a preview without @FocusedPreview shows no Keyboard focus control",
+    )
+    assertGolden(File(pagesDir, "serve-viewer-gestures.html"), viewerGestures)
+    // The gesture control shows for a gesture-supporting preview on an Android-backed session…
+    assertTrue(
+      viewerGestures.contains("id=\"cp-gestures\"") &&
+        viewerGestures.contains("Show gesture hints"),
+      "a @GestureHintPreview preview shows the Show gesture hints control on an Android session",
+    )
+    // …but NOT on a desktop-backed session (gesturesRenderable = false) — the row is omitted, not
+    // shown dead, since the desktop daemon ignores the override.
+    assertFalse(
+      viewerGesturesDesktop.contains("id=\"cp-gestures\""),
+      "a gesture-supporting preview shows no gesture control on a desktop session",
     )
     assertGolden(File(pagesDir, "serve-landing-path.html"), landingPath)
     assertGolden(File(pagesDir, "serve-viewer-path.html"), viewerPath)

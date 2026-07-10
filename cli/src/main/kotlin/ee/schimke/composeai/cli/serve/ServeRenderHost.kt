@@ -194,6 +194,12 @@ internal constructor(
   // download link alongside the PNG.
   override val hasSvgExport: Boolean = true
 
+  // The one-handed gesture override is honoured only by the Android (Robolectric) backend — the
+  // desktop backend ignores `overrides.gestures`. Read the daemon's advertised capabilities so the
+  // viewer offers the "Show gesture hints" control only when it would actually re-render.
+  override val gesturesRenderable: Boolean =
+    "gestures" in session.initializeResult.capabilities.supportedOverrides
+
   private val previewIds: Set<String> = previews.map { it.id }.toHashSet()
 
   // Decodes streamFrame notification params for the live-stream lane (startStream).
