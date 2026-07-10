@@ -88,6 +88,7 @@ public object PreviewDiscoveryCli {
     var projectDirectory: File? = null
     var failOnEmpty = false
     var catalogRenderSupported = true
+    var isWear = false
     var outPath: File? = null
 
     var i = 0
@@ -106,6 +107,10 @@ public object PreviewDiscoveryCli {
           catalogRenderSupported =
             requireValue(args, i).toBooleanStrictOrNull()
               ?: throw ArgError("--catalog-render-supported must be 'true' or 'false'")
+        "--wear" ->
+          isWear =
+            requireValue(args, i).toBooleanStrictOrNull()
+              ?: throw ArgError("--wear must be 'true' or 'false'")
         "--fail-on-empty" -> {
           failOnEmpty = true
           i++
@@ -137,6 +142,7 @@ public object PreviewDiscoveryCli {
           projectDirectory = projectDir,
           failOnEmpty = failOnEmpty,
           catalogRenderSupported = catalogRenderSupported,
+          isWear = isWear,
         ),
       outFile = out,
     )
@@ -175,6 +181,12 @@ public object PreviewDiscoveryCli {
                           (Android). Pass false for desktop/JVM backends that skip catalog
                           rendering, so the emitted CATALOG captures are marked optional and
                           downstream consumers don't treat the skipped sheet as missing (#2135).
+        --wear <true|false>
+                          Whether this is a Wear OS module. Default false. Pass true for a Wear
+                          target (the Gradle backend derives this from the merged manifest's
+                          android.hardware.type.watch uses-feature) so device-less, wrap-content
+                          component previews render at the wear default (227dp @ 2.0x) instead of
+                          the phone default. Device-pinned and fixed-size previews are untouched.
         --help, -h        Print this message.
 
       Exit codes: 0 = success, 1 = discovery failure, 2 = argument parsing failure.

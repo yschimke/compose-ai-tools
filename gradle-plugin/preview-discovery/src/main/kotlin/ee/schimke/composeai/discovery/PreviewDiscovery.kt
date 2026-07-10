@@ -103,6 +103,16 @@ object PreviewDiscovery {
      * everywhere.
      */
     val catalogRenderSupported: Boolean = true,
+    /**
+     * Whether this is a Wear OS module (its merged manifest declares `<uses-feature
+     * android:name="android.hardware.type.watch" …>`). When `true`, device-less wrap-content
+     * `@Preview`s — which otherwise inherit Studio's phone default device
+     * ([DeviceDimensions.DEFAULT], 400×800dp @ 2.625x) — are retargeted to the Wear default
+     * ([DeviceDimensions.DEFAULT_WEAR], 227dp @ 2.0x) so a frame-less Wear sticker renders at wear
+     * density and width instead of a phone canvas. A preview that pins its own `device` /
+     * `widthDp`/`heightDp` is left untouched. Defaults to `false` (phone/desktop modules).
+     */
+    val isWear: Boolean = false,
   )
 
   /** Outcome of a [discover] call. */
@@ -434,7 +444,7 @@ object PreviewDiscovery {
     // Lottie asset previews are appended after normalization with their render outputs already
     // shell-safe, so they bypass the package-prefix stripping (they have no class/package).
     val normalized =
-      normalizeRenderOutputs(deduped) +
+      retargetWearStickers(input.isWear, normalizeRenderOutputs(deduped)) +
         discoverLottieAssets(input) +
         discoverSvgAssets(input) +
         buildCatalogPreviews(
@@ -2017,9 +2027,9 @@ object PreviewDiscovery {
 
   /**
    * Reads a `@GestureHintPreview` off [annotations] into a [GestureHintCapture], or `null` when the
-   * annotation is absent. Like [extractAmbientSpec] this is a single-shot per function — the consumer
-   * pairs a bare `@Preview` (hint off) with a `@GestureHintPreview` `@Preview` (hint on) over the
-   * same screen.
+   * annotation is absent. Like [extractAmbientSpec] this is a single-shot per function — the
+   * consumer pairs a bare `@Preview` (hint off) with a `@GestureHintPreview` `@Preview` (hint on)
+   * over the same screen.
    */
   private fun extractGestureHintSpec(annotations: List<AnnotationInfo>): GestureHintCapture? {
     val ann = annotations.firstOrNull { it.name == GESTURE_HINT_PREVIEW_FQN } ?: return null
@@ -2441,6 +2451,45 @@ object PreviewDiscovery {
   // id). The render-stem derivation handles name-dots separately; see
   // `sanitiseSegments`.
   private fun sanitizeForPath(s: String): String = s.replace(Regex("""[/\\:*?"<>|]"""), "_")
+
+  /**
+   * Retarget a Wear module's device-less, wrap-content component previews from Studio's phone
+   * default device to the Wear default. A frame-less `@Preview(showBackground = false)` declares no
+   * `device`, so [extractPreviewParams] leaves it wrap-content at
+   * [DeviceDimensions.DEFAULT_DENSITY] (2.625x — Studio's xxhdpi phone default), which renders a
+   * Wear sticker on a ~400dp phone canvas (the fill-width components size like a phone, and the
+   * export's dp→px scale is off by 2.625/2.0). On a Wear module ([Input.isWear]) such previews are
+   * pinned to the Wear width + density ([DeviceDimensions.DEFAULT_WEAR], 227dp @ 2.0x). Previews
+   * that pin their own `device` / `widthDp` / `heightDp` (e.g. the `id:wearos_*_round` breakpoints,
+   * or fixed-size specimens) are left untouched, and the preview id — which never encodes a device
+   * for a device-less preview — is unchanged, so `catalog.spec.json` references and delivery
+   * filenames stay stable. A no-op off Wear.
+   */
+  internal fun retargetWearStickers(
+    isWear: Boolean,
+    previews: List<PreviewInfo>,
+  ): List<PreviewInfo> {
+    if (!isWear) return previews
+    val wear = DeviceDimensions.DEFAULT_WEAR
+    return previews.map { info ->
+      val p = info.params
+      if (
+        p.kind == PreviewKind.COMPOSE && p.device == null && p.widthDp == null && p.heightDp == null
+      ) {
+        // Pin the wear canvas (square 227dp) + density so fill-width components (Card) size to the
+        // wear screen and dp→px matches the render. A fixed square surface — rather than
+        // wrap-height — keeps the render and the exported figma-svg in one shared geometry, which
+        // is what makes the layered export align to the render (the alternative, wrap-height,
+        // drifts
+        // the vertical crop between the two and scores markedly worse).
+        info.copy(
+          params = p.copy(widthDp = wear.widthDp, heightDp = wear.heightDp, density = wear.density)
+        )
+      } else {
+        info
+      }
+    }
+  }
 
   private fun extractPreviewParams(
     ann: AnnotationInfo,
