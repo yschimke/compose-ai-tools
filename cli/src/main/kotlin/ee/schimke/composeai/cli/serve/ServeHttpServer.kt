@@ -515,6 +515,9 @@ class ServeHttpServer(
           basePath = basePath,
           isPublic = isPublic,
           declaredThemes = renderHost.declaredThemes,
+          // Android-daemon-only: gates the "Show gesture hints" row so a `@GestureHintPreview`
+          // doesn't show a toggle that would do nothing on a desktop-backed session.
+          gesturesRenderable = renderHost.gesturesRenderable,
         ),
         ContentType.Text.Html,
       )

@@ -64,6 +64,17 @@ interface ServeHost : AutoCloseable {
   fun canRenderOverridesFor(previewId: String): Boolean = canRenderOverrides
 
   /**
+   * Whether this session's daemon can actually apply the **one-handed gesture** override
+   * (`overrides.gestures`) — i.e. the daemon advertises `"gestures"` in its capabilities. Only the
+   * Android (Robolectric) backend does; the desktop backend behind a CMP `serve` / the published
+   * catalogs silently ignores it. The viewer gates the "Show gesture hints" control on this so a
+   * `@GestureHintPreview` component doesn't show a toggle that would do nothing on a desktop-backed
+   * session. Defaults false (a static bundle has no daemon; a desktop daemon doesn't support it).
+   */
+  val gesturesRenderable: Boolean
+    get() = false
+
+  /**
    * Whether [renderSvg] can actually produce a `compose/figma-svg` export for this session's
    * previews — a daemon-backed host always can, a static bundle only when it carried baked
    * `figma/<slug>.svg` vectors (a design catalog). Drives whether the viewer offers a copyable SVG

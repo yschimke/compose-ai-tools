@@ -87,6 +87,9 @@ class ServeCatalogLiveHost(
    */
   override fun canRenderOverridesFor(previewId: String): Boolean = previewId in alias
 
+  /** The gesture override is honoured by the daemon lane, if that daemon is Android-backed. */
+  override val gesturesRenderable: Boolean = live.gesturesRenderable
+
   /**
    * SVG is exportable when either lane can produce it — the baked catalog carries
    * `figma/<slug>.svg` vectors, and the daemon exports a `compose/figma-svg` for a knob-bearing

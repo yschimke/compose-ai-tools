@@ -33,6 +33,7 @@ class ServeCatalogLiveHostTest {
     /** When true, `renderSvg` reports `NotFound` (a baked catalog missing this slug's vector). */
     private val svgNotFound: Boolean = false,
     override val declaredThemes: List<ServeTheme> = emptyList(),
+    override val gesturesRenderable: Boolean = false,
   ) : ServeHost {
     override val label: String = tag
     override val canApplyOverrides: Boolean = streaming
@@ -128,6 +129,33 @@ class ServeCatalogLiveHostTest {
     assertEquals(false, composite.canRenderOverridesFor(androidOnlyId))
     // The host-wide flag stays true (the session offers on-demand re-render for the mapped ids).
     assertTrue(composite.canRenderOverrides)
+  }
+
+  @Test
+  fun `gesturesRenderable is forwarded from the daemon lane`() {
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    // An Android-backed daemon lane ⇒ the composite advertises the gesture control as renderable…
+    val androidLive =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        streaming = true,
+        gesturesRenderable = true,
+      )
+    assertTrue(
+      ServeCatalogLiveHost(mapOf(catalogId to daemonId), androidLive, baked).gesturesRenderable
+    )
+    // …a desktop-backed daemon lane ⇒ the composite gates the control off.
+    val desktopLive =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        streaming = true,
+      )
+    assertEquals(
+      false,
+      ServeCatalogLiveHost(mapOf(catalogId to daemonId), desktopLive, baked).gesturesRenderable,
+    )
   }
 
   @Test

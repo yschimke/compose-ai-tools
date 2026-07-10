@@ -295,6 +295,10 @@ a:hover { text-decoration: underline; }
     // (focus=0). Daemon-only, so skipped when disabled.
     var fc = document.getElementById("cp-focus");
     if (fc && !fc.disabled && fc.checked) o["focus"] = "0";
+    // Detected-feature: one-handed gesture hints. Checked ⇒ draw the gesture-hint overlay
+    // (gestures=true). Android-daemon-only, so skipped when disabled.
+    var gc = document.getElementById("cp-gestures");
+    if (gc && !gc.disabled && gc.checked) o["gestures"] = "true";
     return o;
   }
   function query() {
@@ -329,6 +333,10 @@ a:hover { text-decoration: underline; }
     // unchecked so the URL stays on the baked snapshot.
     var fc = document.getElementById("cp-focus");
     if (fc && !fc.disabled && fc.checked) parts.push("focus=0");
+    // Detected-feature: one-handed gesture hints (gestures=true). Routes to the daemon like a
+    // knob; omitted when unchecked so the URL stays on the baked snapshot.
+    var gc = document.getElementById("cp-gestures");
+    if (gc && !gc.disabled && gc.checked) parts.push("gestures=true");
     return parts.join("&");
   }
   function refreshSnapshot() {

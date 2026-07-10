@@ -77,6 +77,12 @@ internal class FakeRenderSession(
    * plus the sibling crop on disk, to exercise serve-side raster inlining.
    */
   private val hybridSvg: Boolean = false,
+  /**
+   * The overrides the modelled daemon advertises in its capabilities — drives
+   * [ServeRenderHost.gesturesRenderable] (`"gestures" in supportedOverrides`). Empty by default (a
+   * desktop-style backend that honours no feature overrides).
+   */
+  private val supportedOverrides: List<String> = emptyList(),
 ) : RenderSession {
   val renderCount = AtomicInteger(0)
   private val coalesceRemaining = AtomicInteger(coalescedOverrideRejections)
@@ -148,6 +154,7 @@ internal class FakeRenderSession(
           incrementalDiscovery = false,
           sandboxRecycle = false,
           leakDetection = emptyList(),
+          supportedOverrides = supportedOverrides,
         ),
       classpathFingerprint = "",
       manifest = Manifest(path = "", previewCount = 0),
