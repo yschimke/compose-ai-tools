@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 225 preview(s) across 19 module(s) · 18 error(s) · 4 warning(s) · 26 info._
+_Auto-generated from `compose-preview/a11y/main`. 227 preview(s) across 19 module(s) · 18 error(s) · 4 warning(s) · 26 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -1356,6 +1356,18 @@ _No findings._
 |--:|---|---|---|---|
 | 1 | ERROR | TouchTargetSizeCheck | android.view.View | This item's height is 39dp. Consider making the height of this touch target 48dp or larger. |
 | 2 | ERROR | TouchTargetSizeCheck | android.view.View | This item's height is 39dp. Consider making the height of this touch target 48dp or larger. |
+
+### `MediaGestureScreenHintPreview` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/MediaGestureScreenHintPreview_Media_hints_on.png" width="400" />
+
+_No findings._
+
+### `MediaGestureScreenPreview` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/MediaGestureScreenPreview_Media_hints_off.png" width="400" />
+
+_No findings._
 
 ### `PageGestureScreenPreview` · `wearos_large_round`
 

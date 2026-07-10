@@ -2463,6 +2463,26 @@
     },
     {
       "annotatedBasename": "",
+      "cleanBasename": "MediaGestureScreenHintPreview_Media_hints_on.png",
+      "findings": [],
+      "functionName": "MediaGestureScreenHintPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.GestureHintPreviewsKt.MediaGestureScreenHintPreview_Media \u2014 hints on",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/GestureHintPreviews.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "MediaGestureScreenPreview_Media_hints_off.png",
+      "findings": [],
+      "functionName": "MediaGestureScreenPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.GestureHintPreviewsKt.MediaGestureScreenPreview_Media \u2014 hints off",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/GestureHintPreviews.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "",
       "cleanBasename": "PageGestureScreenPreview_Devices_Large_Round.png",
       "findings": [],
       "functionName": "PageGestureScreenPreview",
