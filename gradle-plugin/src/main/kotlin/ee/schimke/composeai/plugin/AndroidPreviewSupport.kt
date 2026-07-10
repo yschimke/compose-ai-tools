@@ -630,6 +630,10 @@ internal object AndroidPreviewSupport {
         // `composePreviewRender` — overlapping task outputs disable Gradle's build cache for both.
         lottieRenderSubdir.set(LOTTIE_RENDER_SUBDIR)
         svgRenderSubdir.set(SVG_RENDER_SUBDIR)
+        // The variant's merged manifest lets discovery detect a Wear OS module (the
+        // `android.hardware.type.watch` uses-feature) and retarget its frame-less, device-less
+        // component previews to wear density/width instead of the phone default (issue #1985).
+        mergedManifest.set(variant.artifacts.get(SingleArtifact.MERGED_MANIFEST))
         if (screenshotTestEnabled) {
           dependsOn(project.tasks.matching { it.name in screenshotCompileTaskNames })
           screenshotTestRuntimeConfig?.let { stConfig ->

@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Preview-only module: no launcher activity (see :samples:design-catalog-m3). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Marks this as a Wear OS module. The compose-preview plugin reads this uses-feature from the
+         merged manifest to render frame-less component previews at wear density (2.0x) / width
+         (227dp) instead of the phone default (see PreviewDiscovery.retargetWearStickers). -->
+    <uses-feature android:name="android.hardware.type.watch" android:required="true" />
     <application android:label="Design Catalog Wear M3" />
 </manifest>

@@ -13,6 +13,7 @@ import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputFile
@@ -129,6 +130,19 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
    */
   @get:Input abstract val catalogRenderSupported: Property<Boolean>
 
+  /**
+   * The variant's merged `AndroidManifest.xml` (AGP `SingleArtifact.MERGED_MANIFEST`), used only to
+   * detect whether this is a Wear OS module — a `<uses-feature android:name=
+   * "android.hardware.type.watch" …>` declaration. When present, [PreviewDiscovery.Input.isWear] is
+   * set so frame-less, device-less component previews render at wear density/width instead of the
+   * phone default. Optional: absent on the desktop backend and on Android modules with no manifest
+   * artifact, both of which are treated as non-Wear.
+   */
+  @get:InputFile
+  @get:Optional
+  @get:PathSensitive(PathSensitivity.NONE)
+  abstract val mergedManifest: RegularFileProperty
+
   private val json = Json {
     prettyPrint = true
     encodeDefaults = true
@@ -143,6 +157,14 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     // sources is harmless. See issue #1924.
     val scopedClassDirs = projectClassDirs.getOrElse(emptyList()).map { it.asFile }
     val scopedClassJars = projectClassJars.getOrElse(emptyList()).map { it.asFile }
+    // A Wear OS module declares `<uses-feature android:name="android.hardware.type.watch">` in its
+    // merged manifest. Plain-substring match on the raw XML — enough to distinguish a Wear module
+    // from a phone one without pulling in an XML parser; absent manifest → not Wear.
+    val isWear =
+      mergedManifest.orNull
+        ?.asFile
+        ?.takeIf { it.exists() }
+        ?.let { it.readText().contains("android.hardware.type.watch") } ?: false
     val input =
       PreviewDiscovery.Input(
         classDirs = classDirs.files.toList() + scopedClassDirs,
@@ -157,6 +179,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         svgRenderSubdir = svgRenderSubdir.getOrElse("renders"),
         projectClassJars = scopedClassJars,
         catalogRenderSupported = catalogRenderSupported.getOrElse(true),
+        isWear = isWear,
       )
     when (val outcome = PreviewDiscovery.discover(input)) {
       is PreviewDiscovery.Outcome.Success -> {
