@@ -562,9 +562,22 @@ open class DesktopHost(
         }
     val effectiveWidthPx = if (shouldSwap) merged.heightPx else merged.widthPx
     val effectiveHeightPx = if (shouldSwap) merged.widthPx else merged.heightPx
+    // A held-session override that pins an axis (explicit px, or a device that pins both) must
+    // clear
+    // that axis's wrap flag — otherwise a no-size preview forced to a device / explicit canvas
+    // would
+    // still wrap-content inside the override box, unlike the renderNow router path which omits the
+    // wrap token when a size/device is supplied. `mergePreviewOverrides` already replaced the px
+    // with
+    // the override value; here we drop the now-stale wrap intent for the pinned axis.
+    val deviceSupplied = overrides?.device?.takeIf { it.isNotBlank() } != null
+    val wrapWidth = base.wrapWidth && overrides?.widthPx == null && !deviceSupplied
+    val wrapHeight = base.wrapHeight && overrides?.heightPx == null && !deviceSupplied
     return base.copy(
       widthPx = effectiveWidthPx,
       heightPx = effectiveHeightPx,
+      wrapWidth = if (shouldSwap) wrapHeight else wrapWidth,
+      wrapHeight = if (shouldSwap) wrapWidth else wrapHeight,
       density = merged.density,
       device = merged.device,
       localeTag = merged.localeTag,

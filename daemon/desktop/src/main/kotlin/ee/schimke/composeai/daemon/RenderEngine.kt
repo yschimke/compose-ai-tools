@@ -263,6 +263,10 @@ class RenderEngine(
     // composition rather than going through the scene density.
     val density = Density(spec.density, spec.fontScale ?: 1.0f)
 
+    // Wrap-content measured size (width, height), written by the wrap `Modifier.layout` pass during
+    // render and read by renderOnce to crop the PNG to the composable's intrinsic size. 0 = unset.
+    val measuredContent = IntArray(2)
+
     // Resolve the effective Lottie timeline position and hold it in snapshot state so a held
     // session can live-scrub it. An explicit `overrides.lottie.progress` (a panel scrub) wins and
     // is remembered per preview; a render with no override (a save / warmup re-render through the
@@ -353,6 +357,12 @@ class RenderEngine(
                           maxHeight = constraints.maxHeight,
                         )
                       val placeable = measurable.measure(wrapped)
+                      // Record the intrinsic size so renderOnce can crop the PNG to it on wrapped
+                      // axes — otherwise a no-size preview's frame is the whole sandbox with
+                      // content
+                      // in the corner, not the natural-size capture (matches DesktopRendererMain).
+                      measuredContent[0] = placeable.width
+                      measuredContent[1] = placeable.height
                       layout(placeable.width, placeable.height) { placeable.place(0, 0) }
                     }
                     .background(bgColor)
@@ -447,6 +457,7 @@ class RenderEngine(
       slotTableCapture = slotTableCapture,
       themeFallbackCapture = themeFallbackCapture,
       lottieProgressState = lottieProgressState,
+      measuredContent = measuredContent,
     )
   }
 
@@ -489,7 +500,15 @@ class RenderEngine(
     // Render two frames so any LaunchedEffect / animations have a tick to settle. Same reasoning
     // as `:renderer-desktop`'s renderPreview.
     trace.section("compose:frame") { renderFrame(state, useWallClockFrameTime) }
-    val image = trace.section("compose:captureFrame") { renderFrame(state, useWallClockFrameTime) }
+    val rawImage =
+      trace.section("compose:captureFrame") { renderFrame(state, useWallClockFrameTime) }
+    // AS-parity wrap crop: a no-size preview measured smaller than the sandbox, so crop the frame
+    // to
+    // the composable's intrinsic size on wrapped axes (content is placed at 0,0). Everything
+    // downstream — the written PNG, renderFinished's pngPath, the figma-svg's frame crop — then
+    // sees
+    // the natural-size capture instead of the sandbox with the content in the corner.
+    val image = cropToMeasured(rawImage, state)
     val previewContext = state.previewContext()
 
     val pngData =
@@ -684,6 +703,31 @@ class RenderEngine(
     }
 
   /**
+   * Crop a wrap-content render to the composable's intrinsic size on wrapped axes (content is
+   * placed at the top-left), so a no-size preview's frame is its natural size rather than the
+   * sandbox with the content in the corner. Returns [raw] unchanged when the preview isn't wrapped,
+   * the measured size wasn't recorded, or it already fills the axis (`fillMax*` composables).
+   */
+  private fun cropToMeasured(
+    raw: org.jetbrains.skia.Image,
+    state: SceneState,
+  ): org.jetbrains.skia.Image {
+    if (!state.spec.wrapWidth && !state.spec.wrapHeight) return raw
+    val mw = state.measuredContent[0]
+    val mh = state.measuredContent[1]
+    val cropW = if (state.spec.wrapWidth && mw in 1 until raw.width) mw else raw.width
+    val cropH = if (state.spec.wrapHeight && mh in 1 until raw.height) mh else raw.height
+    if (cropW >= raw.width && cropH >= raw.height) return raw
+    val surface = org.jetbrains.skia.Surface.makeRasterN32Premul(cropW, cropH)
+    return try {
+      surface.canvas.drawImage(raw, 0f, 0f)
+      surface.makeImageSnapshot()
+    } finally {
+      surface.close()
+    }
+  }
+
+  /**
    * v2 phase 3 — close the held scene (frees the Skia [org.jetbrains.skia.Surface]) and restore the
    * context classloader to what it was before [setUp]. Idempotent: a second call after the scene
    * has been closed is a no-op (Skia tolerates double-close on its own; we still restore the
@@ -725,6 +769,12 @@ class RenderEngine(
      * never carried a progress.
      */
     internal val lottieProgressState: MutableState<Float?> = mutableStateOf(null),
+    /**
+     * Wrap-content measured size `[width, height]` in px, written by the wrap `Modifier.layout`
+     * pass during render (0 = unset). renderOnce crops the encoded PNG to this on wrapped axes so a
+     * no-size preview's frame is the composable's natural size, not the sandbox.
+     */
+    internal val measuredContent: IntArray = IntArray(2),
   ) {
     @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
     internal fun previewContext(): PreviewContext {

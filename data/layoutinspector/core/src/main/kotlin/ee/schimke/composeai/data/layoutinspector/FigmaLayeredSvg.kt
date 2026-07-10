@@ -1,5 +1,7 @@
 package ee.schimke.composeai.data.layoutinspector
 
+import kotlin.math.roundToInt
+
 /**
  * Bakes a [FigmaSvgModel] into a **layered, editable SVG** designed to round-trip cleanly through
  * Figma's SVG import (and Sketch / Penpot / Illustrator).
@@ -54,9 +56,14 @@ object FigmaLayeredSvg {
   ): String {
     val sb = StringBuilder()
     val rootFamily = if (fontFaces.isNotEmpty()) options.defaultFontFamily else "sans-serif"
+    // `text-rendering="geometricPrecision"` turns off the browser's glyph grid-fitting/hinting so
+    // every `<text>` rasterises at its exact subpixel metrics — matching how the Skiko render (and
+    // Figma itself) place glyphs, instead of the default `auto` hinting that snaps edges to pixel
+    // boundaries and leaves a constant ~2-3% edge diff against the render on text-heavy previews.
     sb.append(
       """<svg xmlns="http://www.w3.org/2000/svg" width="${model.width}" height="${model.height}" """ +
-        """viewBox="0 0 ${model.width} ${model.height}" font-family="${escapeAttr(rootFamily)}">"""
+        """viewBox="0 0 ${model.width} ${model.height}" text-rendering="geometricPrecision" """ +
+        """font-family="${escapeAttr(rootFamily)}">"""
     )
     sb.append('\n')
     if (fontFaces.isNotEmpty()) sb.append(fontFaceDefs(fontFaces))
@@ -112,7 +119,28 @@ object FigmaLayeredSvg {
     """<image href="${escapeAttr(raster.href)}" x="${layer.left}" y="${layer.top}" """ +
       """width="${layer.width}" height="${layer.height}"/>"""
 
-  private fun shape(layer: FigmaSvgLayer): String {
+  private fun shape(layer0: FigmaSvgLayer): String {
+    // Compose's `Modifier.border` draws the stroke *inside* the layout bounds; SVG centers a stroke
+    // on the path, so a bare rect at the bounds paints half the stroke outside the edge (the
+    // "double
+    // outline" an OutlinedButton/OutlinedCard shows against its render). Inset the drawn box by
+    // half
+    // the stroke width so the centered stroke's outer edge lands on the bound, matching the render.
+    // Only when stroked — a fill-only shape keeps its exact bounds; corner radii shrink by the same
+    // inset so a pill stays a pill.
+    val layer =
+      if (layer0.stroke != null) {
+        val d = (layer0.strokeWidthPx / 2.0).roundToInt()
+        layer0.copy(
+          left = layer0.left + d,
+          top = layer0.top + d,
+          right = layer0.right - d,
+          bottom = layer0.bottom - d,
+          cornerRadiiPx = layer0.cornerRadiiPx?.map { (it - d).coerceAtLeast(0.0) },
+        )
+      } else {
+        layer0
+      }
     val fillAttr =
       layer.fill?.let { """fill="${it.hex}"${opacity("fill", it)}""" } ?: """fill="none""""
     val strokeAttr =

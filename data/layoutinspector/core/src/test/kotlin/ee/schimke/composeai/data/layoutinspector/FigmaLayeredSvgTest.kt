@@ -66,6 +66,15 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun rootSvgRequestsGeometricPrecisionSoTextMatchesTheRender() {
+    // The default `text-rendering:auto` grid-fits glyphs to pixel boundaries in the browser, which
+    // leaves a constant edge diff against the Skiko render on text-heavy previews. Pin the
+    // `geometricPrecision` request on the root so every `<text>` rasterises at its exact metrics.
+    val svg = render(layoutNode("Screen", 0, 0, 400, 800))
+    assertTrue(svg, svg.contains("""text-rendering="geometricPrecision""""))
+  }
+
+  @Test
   fun nestingIsPreservedAsNestedGroups() {
     val svg =
       render(

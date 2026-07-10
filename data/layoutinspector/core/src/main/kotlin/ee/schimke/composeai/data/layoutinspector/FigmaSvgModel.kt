@@ -237,6 +237,11 @@ data class FigmaSvgModel(
      *   sizes into the px coordinate space the bounds live in.
      * @param padding transparent margin around the extent.
      * @param rasterComponents opaque component name-fragments; empty (default) = vector-only.
+     * @param captureCanvasDraws when true (hybrid mode — a frame PNG is available to crop), a node
+     *   that paints via an imperative `drawBehind` / `drawWithContent` Canvas modifier (which the
+     *   token-driven vector export can't see — e.g. a `LinearProgressIndicator`/`Slider` track
+     *   drawn into a bare `Spacer`) is emitted as an `<image>` crop of that drawn region instead of
+     *   vanishing. Off in vector-only mode (no frame to crop from).
      */
     fun from(
       layout: LayoutInspectorPayload,
@@ -246,11 +251,13 @@ data class FigmaSvgModel(
       padding: Int = DEFAULT_PADDING,
       rasterComponents: Set<String> = emptySet(),
       rasterHref: (nodeId: String) -> String = ::defaultRasterHref,
+      captureCanvasDraws: Boolean = false,
     ): FigmaSvgModel {
       val textByNodeId =
         semantics?.let { assignTextToLayers(layout.root, it, density) } ?: emptyMap()
       val names = colorNames.mapKeys { it.key.uppercase() }
-      val ctx = BuildContext(textByNodeId, names, density, rasterComponents, rasterHref)
+      val ctx =
+        BuildContext(textByNodeId, names, density, rasterComponents, rasterHref, captureCanvasDraws)
       val rootLayer = layout.root.toLayer(ctx)
       // No drawing layer (a tree of pure grouping nodes) → a minimal padding-square canvas,
       // matching
@@ -274,22 +281,41 @@ data class FigmaSvgModel(
       val density: Float,
       val rasterComponents: Set<String>,
       val rasterHref: (String) -> String,
+      val captureCanvasDraws: Boolean = false,
       val rasterTargets: MutableList<FigmaSvgRasterTarget> = mutableListOf(),
     )
 
     private fun LayoutInspectorNode.toLayer(ctx: BuildContext): FigmaSvgLayer {
-      // Opaque components can't be vectorised — emit an <image> and drop the subtree.
-      if (isOpaque(ctx.rasterComponents)) {
+      // Two paths produce an <image> crop instead of a vector layer:
+      //  - an opaque component matched by name (Image/Icon/TextField/…), or
+      //  - a node that paints via an imperative Canvas draw (drawBehind/drawWithContent) the
+      //    token export can't represent (the progress track, the slider groove) — captured only
+      //    in hybrid mode, where a frame PNG exists to crop the drawn pixels from.
+      val opaqueByName = isOpaque(ctx.rasterComponents)
+      // Only a *leaf* draw node (a bare `Spacer` painting a progress track / slider groove) is safe
+      // to rasterise wholesale. A container that merely draws a background/overlay
+      // (`Box(Modifier.drawBehind {…}) { Text(…) }`) must keep its editable text + child layers, so
+      // it stays on the vector path — replacing a whole subtree with a bitmap would break the
+      // layered-SVG contract (and could drop descendants outside the tight draw region).
+      val canvasDraw =
+        ctx.captureCanvasDraws &&
+          hasCustomDraw() &&
+          children.isEmpty() &&
+          ctx.textByNodeId[nodeId] == null
+      if (opaqueByName || canvasDraw) {
         val href = ctx.rasterHref(nodeId)
+        // A named-opaque node fills its whole box; a Canvas-draw node's pixels are the drawn
+        // region the modifier reports (the padded Spacer box is larger than the bar it paints).
+        val region = if (canvasDraw && !opaqueByName) drawnRegion() else bounds
         ctx.rasterTargets.add(
-          FigmaSvgRasterTarget(nodeId, href, bounds.left, bounds.top, bounds.right, bounds.bottom)
+          FigmaSvgRasterTarget(nodeId, href, region.left, region.top, region.right, region.bottom)
         )
         return FigmaSvgLayer(
           name = layerName(),
-          left = bounds.left,
-          top = bounds.top,
-          right = bounds.right,
-          bottom = bounds.bottom,
+          left = region.left,
+          top = region.top,
+          right = region.right,
+          bottom = region.bottom,
           raster = FigmaSvgRaster(href),
         )
       }
@@ -333,6 +359,33 @@ data class FigmaSvgModel(
       rasterComponents.any {
         component.contains(it, ignoreCase = true)
       }
+
+    /** The Compose modifiers that paint via an imperative Canvas the token export can't read. */
+    private val DRAW_MODIFIERS = setOf("drawBehind", "drawWithContent", "drawWithCache")
+
+    /**
+     * True when the node paints through a custom Canvas draw (a `Canvas`, or a component drawing
+     * its chrome via `Modifier.drawBehind {…}` like the progress/slider indicators).
+     */
+    private fun LayoutInspectorNode.hasCustomDraw(): Boolean = modifiers.any {
+      it.name in DRAW_MODIFIERS
+    }
+
+    /**
+     * The region the Canvas draw actually paints — the union of the draw modifiers' bounds, which
+     * is tighter than the (padded) node box (`Spacer(padding).drawBehind`). Falls back to the node
+     * bounds when a draw modifier carries none.
+     */
+    private fun LayoutInspectorNode.drawnRegion(): LayoutInspectorBounds {
+      val drawn = modifiers.filter { it.name in DRAW_MODIFIERS }.mapNotNull { it.bounds }
+      if (drawn.isEmpty()) return bounds
+      return LayoutInspectorBounds(
+        left = drawn.minOf { it.left },
+        top = drawn.minOf { it.top },
+        right = drawn.maxOf { it.right },
+        bottom = drawn.maxOf { it.bottom },
+      )
+    }
 
     private fun LayoutInspectorNode.layerName(): String = component.ifBlank { "Layer" }
 
