@@ -2644,7 +2644,7 @@
     "functionName": "GestureGalleryPreview",
     "module": "samples:wear",
     "renderBasename": "GestureGalleryPreview_Devices_Large_Round.png",
-    "sha256": "fa8dfbfcb3328a4a7658ea684edd662079521d963797b11a0b36741c77510578",
+    "sha256": "aff9472b7f03af13b33502b09a922a788e62f7e70c0a0cf4695d3cb752a0a512",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt"
   },
   "samples:wear/com.example.samplewear.GesturesKt.PageGestureScreenPreview_Devices - Large Round": {
