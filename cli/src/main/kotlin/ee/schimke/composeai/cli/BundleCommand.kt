@@ -93,6 +93,7 @@ class BundleCommand(args: List<String>) : Command(args) {
 
       Usage:
         compose-preview bundle pack [--module <name>] [--id <preview>...] [-o <file.png>] [--no-render] [--with-semantics]
+        compose-preview bundle pack --per-preview [--module <name>] [--id <preview>...] [-o <dir>]
         compose-preview bundle inspect <bundle.png | URL>
         compose-preview bundle extract <bundle.png | URL> [-o <dir>]
         compose-preview bundle embed   <bundle.png | URL> [-o <dir|file.png>] [--title T] [--external-images] [--in-bundle]
@@ -112,6 +113,12 @@ class BundleCommand(args: List<String>) : Command(args) {
 
       Pack flags:
         --id <preview-id>   Preview to include. Repeatable. First is the cover. Default: all.
+        --per-preview       Emit one valid single-preview bundle per preview (<out-dir>/<id>.png)
+                            instead of a single sheet — the addressable-preview unit, each openable /
+                            re-renderable on its own. Renders once, then packs each (minimized to its
+                            own closure). With --per-preview, -o is an output DIRECTORY (default:
+                            <module>/build/compose-previews/bundles). --id filters which previews to
+                            emit. (--with-semantics is not yet carried per bundle here.)
         -o, --output <file> Output file path. Default: <module>/build/compose-previews/bundle.png.
         --no-render         Skip composePreviewRender — pack with a stub gray cover.
         --embed-deps        Carry reachable third-party jars inside the bundle (libs/) instead of
@@ -171,6 +178,7 @@ private class PackSubcommand(private val args: List<String>) {
   private val embedDeps: Boolean = "--embed-deps" in args
   private val includeDataExtensions: Boolean = "--include-data-extensions" in args
   private val withSemantics: Boolean = "--with-semantics" in args
+  private val perPreview: Boolean = "--per-preview" in args
   private val verbose: Boolean = "--verbose" in args || "-v" in args
   private val ids: List<String> =
     args
@@ -180,6 +188,10 @@ private class PackSubcommand(private val args: List<String>) {
       .filter { it.isNotEmpty() }
 
   fun run() {
+    if (perPreview) {
+      runPerPreview()
+      return
+    }
     val cmdArgs = buildList {
       module?.let {
         add("--module")
@@ -291,6 +303,183 @@ private class PackSubcommand(private val args: List<String>) {
         }
       }
       .run()
+  }
+
+  /**
+   * `--per-preview`: emit one **valid, self-contained** single-preview bundle per discovered
+   * preview (`<out-dir>/<id>.png`) instead of a single sheet carrying them all. Each output is a
+   * real polyglot a reader can open / re-render on its own — the addressable-preview unit.
+   *
+   * Renders **once** (the expensive step) and then packs each preview through the same
+   * `composePreviewBundle` path a single `--id` pack uses, so every emitted bundle is minimized to
+   * just that preview's closure. Because the render daemon no longer rides a preview's classpath, a
+   * catalog sticker's bundle is ~tens of KB rather than the ~MB it was when `:daemon:core` was
+   * inlined.
+   *
+   * Trade-off (documented, not hidden): packing is N Gradle bundle invocations over one shared
+   * connection — the render is shared, but each pack re-runs the closure scan. A task-level "scan
+   * once, emit N" mode is the efficiency follow-up. `--with-semantics` is not yet carried per
+   * bundle here (it would start the daemon once per preview); it's skipped with a warning.
+   */
+  private fun runPerPreview() {
+    val cmdArgs = buildList {
+      module?.let {
+        add("--module")
+        add(it)
+      }
+      if (verbose) add("--verbose")
+    }
+    object : Command(cmdArgs) {
+        override fun run() {
+          if (withSemantics) {
+            System.err.println(
+              "bundle pack: --with-semantics is not yet carried in --per-preview mode; " +
+                "writing baked single-preview bundles without semantics sidecars."
+            )
+          }
+          withGradle { gradle ->
+            val modules = resolveModules(gradle)
+            if (modules.size != 1) {
+              System.err.println(
+                "bundle pack --per-preview expects exactly one module; found ${modules.size}. " +
+                  "Use --module to disambiguate."
+              )
+              exitProcess(1)
+            }
+            val target = modules.single()
+            val outDir =
+              output?.let { File(it).absoluteFile }
+                ?: target.projectDir.resolve("build/compose-previews/bundles")
+            outDir.mkdirs()
+
+            val sharedArgs = buildList {
+              if (embedDeps) add("-PbundleEmbedDeps=true")
+              if (includeDataExtensions) add("-PbundleIncludeDataExtensions=true")
+            }
+
+            // Render every preview once; the per-preview packs below reuse these render outputs, so
+            // the expensive render happens a single time rather than once per bundle.
+            if (!noRender) {
+              val rendered =
+                runGradle(
+                  gradle,
+                  ":${target.gradlePath}:composePreviewRender",
+                  arguments = gradleArgsWithForce(sharedArgs),
+                )
+              if (!rendered) {
+                System.err.println(
+                  "Gradle render task failed." +
+                    if (!verbose) " Re-run with --verbose to surface the underlying Gradle error."
+                    else ""
+                )
+                exitProcess(1)
+              }
+            }
+
+            // Enumerate discovered previews from the freshly written manifest.
+            val manifest = readManifest(target)
+            if (manifest == null || manifest.previews.isEmpty()) {
+              System.err.println(
+                "bundle pack --per-preview: no previews found for ${target.gradlePath} " +
+                  "(did discovery/render run?)."
+              )
+              exitProcess(1)
+            }
+            val allIds = manifest.previews.map { it.id }
+            // Fail on any unknown --id rather than silently dropping it (parity with the
+            // single-pack
+            // path's resolveSelection) — a renamed/mistyped id must not quietly omit a bundle.
+            if (ids.isNotEmpty()) {
+              val known = allIds.toSet()
+              val unknown = ids.filterNot { it in known }
+              if (unknown.isNotEmpty()) {
+                System.err.println(
+                  "bundle pack --per-preview: unknown preview id(s): ${unknown.joinToString(", ")}. " +
+                    "Available: ${allIds.joinToString(", ")}"
+                )
+                exitProcess(1)
+              }
+            }
+            val previewIdsToPack = if (ids.isEmpty()) allIds else allIds.filter { it in ids }
+            if (previewIdsToPack.isEmpty()) {
+              System.err.println("bundle pack --per-preview: --id selection matched no previews.")
+              exitProcess(1)
+            }
+
+            // Map each id to a UNIQUE output file up front: distinct ids can sanitize to the same
+            // stem (e.g. `A B` and `A_B` both → `A_B`), which would silently overwrite. On a
+            // collision, append `-2`, `-3`, … so every preview gets its own bundle file.
+            val usedStems = HashSet<String>()
+            val idToFile = LinkedHashMap<String, File>()
+            for (id in previewIdsToPack) {
+              val base = sanitizeBundleFileName(id)
+              var stem = base
+              var n = 1
+              while (!usedStems.add(stem)) {
+                n++
+                stem = "$base-$n"
+              }
+              idToFile[id] = outDir.resolve("$stem.png")
+            }
+
+            // Pack each preview into its own single-preview bundle, reusing the already-rendered
+            // PNGs (bundle task only — no re-render).
+            val written = mutableListOf<Pair<String, File>>()
+            for ((id, outFile) in idToFile) {
+              val perArgs =
+                sharedArgs +
+                  listOf(
+                    "-PbundlePreviewIds=${encodePreviewId(id)}",
+                    "-PbundleOutput=${outFile.absolutePath}",
+                  )
+              val ok =
+                runGradle(
+                  gradle,
+                  ":${target.gradlePath}:composePreviewBundle",
+                  arguments = gradleArgsWithForce(perArgs),
+                )
+              if (!ok || !outFile.isFile) {
+                System.err.println(
+                  "bundle pack --per-preview: failed to pack '$id'." +
+                    if (!verbose) " Re-run with --verbose to surface the underlying Gradle error."
+                    else ""
+                )
+                exitProcess(1)
+              }
+              written += id to outFile
+            }
+
+            printPerPreviewSummary(outDir, written)
+          }
+        }
+      }
+      .run()
+  }
+
+  /** Map a preview id to a filesystem-safe bundle filename stem (keep `A-Za-z0-9._-`, else `_`). */
+  private fun sanitizeBundleFileName(id: String): String = buildString {
+    for (c in id) append(if (c.isLetterOrDigit() || c == '.' || c == '_' || c == '-') c else '_')
+  }
+
+  private fun printPerPreviewSummary(outDir: File, written: List<Pair<String, File>>) {
+    val sizes = written.map { it.second.length() }
+    val total = sizes.sum()
+    val avg = if (written.isNotEmpty()) total / written.size else 0L
+    println(
+      "bundle pack --per-preview — wrote ${written.size} bundle(s) to ${outDir.path}\n" +
+        "  total:   $total bytes\n" +
+        "  size:    min ${sizes.minOrNull() ?: 0} / avg $avg / max ${sizes.maxOrNull() ?: 0} bytes"
+    )
+    val over =
+      written.filter { it.second.length() > 100 * 1024 }.sortedByDescending { it.second.length() }
+    if (over.isNotEmpty()) {
+      val worst = over.first()
+      System.err.println(
+        "bundle pack --per-preview: ${over.size} bundle(s) exceed 100 KB " +
+          "(largest: ${worst.first} = ${worst.second.length()} bytes) — a single preview should " +
+          "normally be well under that; check for --embed-deps or a large inlined project jar."
+      )
+    }
   }
 
   /**
