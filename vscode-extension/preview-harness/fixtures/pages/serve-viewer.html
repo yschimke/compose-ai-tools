@@ -388,6 +388,13 @@ a:hover { text-decoration: underline; }
       canvas.width = im.naturalWidth;
       canvas.height = im.naturalHeight;
       canvas.getContext("2d").drawImage(im, 0, 0);
+      // A <canvas> stretches its buffer to fill its CSS box, so a daemon frame whose aspect
+      // differs from the pinned snapshot box would squish. Cache the buffer dims and re-fit the
+      // element (contain, centred) so the frame letterboxes within the snapshot footprint
+      // instead of distorting to fill it.
+      liveW = im.naturalWidth;
+      liveH = im.naturalHeight;
+      fitLiveCanvas();
     };
     im.src = "data:image/" + (codec || "png") + ";base64," + b64;
   }
@@ -543,6 +550,10 @@ a:hover { text-decoration: underline; }
     canvas.classList.remove("cp-canvas-live");
     canvas.style.removeProperty("left"); canvas.style.removeProperty("top");
     canvas.style.removeProperty("width"); canvas.style.removeProperty("height");
+    // Forget the last frame's dims so a reconnect seeds from the snapshot (fill) until its own
+    // first frame re-fits, rather than briefly letterboxing to a stale aspect.
+    liveW = 0;
+    liveH = 0;
     img.style.removeProperty("visibility");
     img.hidden = false;
   }
@@ -631,6 +642,42 @@ a:hover { text-decoration: underline; }
     }
   }
   function positionWasmFrame() { positionOverlay(wasmFrame); }
+  // The live canvas can't just fill the snapshot box like the Wasm frame does: a <canvas>
+  // stretches its buffer to its CSS box, so pinning a differently-shaped daemon frame to the
+  // snapshot's rect squished the render. Fit the frame (contain) inside that rect, centred — it
+  // letterboxes within the snapshot footprint (so the stage still never resizes, the property
+  // the pinned box was introduced for) instead of distorting. liveW/liveH cache the current
+  // buffer so a window resize re-fits; unset (before the first frame, when the buffer is seeded
+  // from the same-aspect snapshot) it fills the box exactly, matching positionOverlay.
+  var liveW = 0;
+  var liveH = 0;
+  function fitLiveCanvas() {
+    var sr = stage.getBoundingClientRect();
+    var r = img.getBoundingClientRect();
+    var boxLeft, boxTop, boxW, boxH;
+    if (r.width > 0 && r.height > 0) {
+      boxLeft = r.left - sr.left - stage.clientLeft;
+      boxTop = r.top - sr.top - stage.clientTop;
+      boxW = r.width;
+      boxH = r.height;
+    } else {
+      boxLeft = 12;
+      boxTop = 12;
+      boxW = stage.clientWidth - 24;
+      boxH = stage.clientHeight - 24;
+    }
+    var w = boxW;
+    var h = boxH;
+    if (liveW > 0 && liveH > 0) {
+      var scale = Math.min(boxW / liveW, boxH / liveH);
+      w = liveW * scale;
+      h = liveH * scale;
+    }
+    canvas.style.left = (boxLeft + (boxW - w) / 2) + "px";
+    canvas.style.top = (boxTop + (boxH - h) / 2) + "px";
+    canvas.style.width = w + "px";
+    canvas.style.height = h + "px";
+  }
   // Swap the stage from the snapshot to the (already-painted) Wasm frame. The snapshot keeps
   // its layout slot (visibility, not display) so the stage geometry — and the overlay tracking
   // it — never shifts.
@@ -746,7 +793,7 @@ a:hover { text-decoration: underline; }
   // Keep the live canvas overlay tracking the snapshot's slot when the page reflows (the Wasm
   // overlay has its own resize hook below; this covers a live session with no Wasm app).
   window.addEventListener("resize", function () {
-    if (live && live.checked && !canvas.hidden) positionOverlay(canvas);
+    if (live && live.checked && !canvas.hidden) fitLiveCanvas();
   });
   if (wasmToggle) {
     // The app posts "cp-wasm-ready" once its first frame is on the canvas — the swap signal.

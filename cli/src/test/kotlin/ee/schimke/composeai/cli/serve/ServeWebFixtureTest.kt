@@ -560,6 +560,42 @@ class ServeWebFixtureTest {
   }
 
   @Test
+  fun `live canvas fits the daemon frame aspect-preserved inside the snapshot box`() {
+    // The live lane is pinned to the baked snapshot's box (so a differently-sized frame doesn't
+    // resize the stage), but a <canvas> stretches its buffer to its CSS box — filling that box
+    // squished a frame whose aspect differed from the snapshot. The viewer fits the frame (contain)
+    // and centres it, letterboxing within the snapshot footprint instead.
+    val liveView =
+      ServeWeb.viewerPage(
+        previews.first { it.id.endsWith("CardPreview") },
+        token,
+        canApplyOverrides = true,
+      )
+    assertTrue(
+      liveView.contains("function fitLiveCanvas()"),
+      "the live canvas has a dedicated aspect-preserving fit function",
+    )
+    // Contain-fit math: scale by the smaller of the two box/buffer ratios, then centre.
+    assertTrue(
+      liveView.contains("Math.min(boxW / liveW, boxH / liveH)"),
+      "the frame is scaled to contain (the smaller box/buffer ratio), not stretched to fill",
+    )
+    assertTrue(
+      liveView.contains("(boxW - w) / 2") && liveView.contains("(boxH - h) / 2"),
+      "the fitted frame is centred within the snapshot box",
+    )
+    // drawFrame caches the buffer dims and re-fits on each frame; a resize re-fits too.
+    assertTrue(
+      liveView.contains("liveW = im.naturalWidth;") && liveView.contains("fitLiveCanvas();"),
+      "each frame caches its dims and re-fits",
+    )
+    assertTrue(
+      liveView.contains("if (live && live.checked && !canvas.hidden) fitLiveCanvas();"),
+      "a window resize re-fits the live canvas (not a plain box fill)",
+    )
+  }
+
+  @Test
   fun `viewer offers the SVG render mode only when the session can export SVG`() {
     val card = previews.first { it.id.endsWith("CardPreview") }
     // A session that can export SVG (a catalog / daemon) adds an SVG radio to the render-mode
