@@ -116,6 +116,37 @@ class PreviewDataTest {
   }
 
   @Test
+  fun `gestureHint capture round-trips and defaults to null`() {
+    // The renderer's `RenderPreviewCapture.gestureHint` mirror reads this shape out of
+    // `previews.json`; a rename here would silently drop the `@GestureHintPreview` override.
+    assertThat(Capture(renderOutput = "x.png").gestureHint).isNull()
+    val manifest =
+      PreviewManifest(
+        module = "app",
+        variant = "debug",
+        previews =
+          listOf(
+            PreviewInfo(
+              id = "com.example.GestureHintPreviewsKt.MediaGestureScreenHintPreview",
+              functionName = "MediaGestureScreenHintPreview",
+              className = "com.example.GestureHintPreviewsKt",
+              captures =
+                listOf(
+                  Capture(
+                    renderOutput = "renders/x.png",
+                    gestureHint = GestureHintCapture(showHints = true),
+                  )
+                ),
+            )
+          ),
+      )
+    val deserialized = json.decodeFromString<PreviewManifest>(json.encodeToString(manifest))
+    assertThat(deserialized).isEqualTo(manifest)
+    assertThat(deserialized.previews.single().captures.single().gestureHint)
+      .isEqualTo(GestureHintCapture(showHints = true))
+  }
+
+  @Test
   fun `default params have sensible values`() {
     val params = PreviewParams()
     assertThat(params.widthDp).isNull()

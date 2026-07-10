@@ -12,6 +12,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.wear.compose.material3.LocalContentColor
@@ -115,9 +116,13 @@ fun Modifier.reportedOneHandedGesture(
  *
  * The hint shows when the gesture emits an `Indicate` interaction on [interactionSource] (on-device
  * cadence) — or, in a preview, when [forceShow] is set or the daemon applied
- * `overrides.gestures.showHints = true`. In those force paths the indicator is fed a replay-backed
- * interaction source pre-seeded with an `Indicate`, so the hint renders deterministically in a
- * single captured frame regardless of subscription ordering.
+ * `overrides.gestures.showHints = true` (the seam `@GestureHintPreview` drives). On the force paths
+ * the indicator is fed a replay-backed source pre-seeded with an `Indicate` **and** the shipped
+ * indicator drawable is composited over the content via [GestureIndicatorIcon]: the interactive
+ * `OneHandedGestureIndicator`'s show/hide coroutine settles to hidden during a Robolectric render's
+ * pre-roll, so drawing the drawable directly is what makes the hint deterministically visible in a
+ * single captured frame. On-device (no override, [forceShow] `false`) the overlay is absent and the
+ * real indicator behaves exactly as before.
  */
 @Composable
 fun GestureHint(
@@ -137,8 +142,16 @@ fun GestureHint(
     modifier = modifier,
     gestureIndicatorSize = gestureIndicatorSize,
     gestureIndicatorTint = gestureIndicatorTint,
-    content = content,
-  )
+  ) {
+    content()
+    if (forced) {
+      GestureIndicatorIcon(
+        type = type,
+        modifier = Modifier.align(Alignment.Center),
+        tint = gestureIndicatorTint,
+      )
+    }
+  }
 }
 
 /**
