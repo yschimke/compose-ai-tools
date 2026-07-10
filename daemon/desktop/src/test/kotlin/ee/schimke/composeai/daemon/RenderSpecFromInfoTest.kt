@@ -12,10 +12,12 @@ import org.junit.Test
  * standing up a [PreviewIndex] or threading an inputs lambda through.
  *
  * Coverage matrix (one assertion clump per row):
- * - No size + no device (or an empty / absent params block) ⇒ wrap-content on both axes at the
- *   400×800 dp sandbox bound, mirroring the bake ([PreviewManifestEntry.resolved]) so a catalog
- *   sticker's live stream matches its wrap-cropped baked snapshot instead of shifting.
- * - Empty params block ⇒ identical to passing no block at all (both wrap).
+ * - A present, no-size, no-device params block ⇒ wrap-content on both axes at the 400×800 dp
+ *   sandbox bound, mirroring the bake ([PreviewManifestEntry.resolved]) so a catalog sticker's live
+ *   stream matches its wrap-cropped baked snapshot instead of shifting.
+ * - A *null* (absent) params block ⇒ "params unknown" ⇒ the fixed 320² frame, wrap OFF — so an
+ *   incrementally-rediscovered preview (whose DTO carries no params) doesn't briefly wrap-crop.
+ * - Null ≠ empty: only the present-but-empty block wraps.
  * - An explicit `device` ⇒ pinned: neither axis wraps, px dims fall back to defaults.
  * - `widthDp` / `heightDp` / `density` set ⇒ pixel dimensions multiply through and wrap is off.
  * - `density` defaulted ⇒ default 2.0x is used for the dp→px conversion of `widthDp`.
@@ -30,12 +32,13 @@ class RenderSpecFromInfoTest {
 
   @Test
   fun `no-size no-device preview wraps to content in the sandbox bound`() {
-    // A preview that declares neither an explicit size nor a device (a catalog sticker) renders
+    // A preview whose (present) params block declares neither an explicit size nor a device (a
+    // catalog sticker — it always carries params because it declares showBackground) renders
     // wrap-content, mirroring the offline bake (PreviewManifestEntry.resolved): both axes wrap and
     // the px dims are the 400x800 dp sandbox bound (× default 2x density), so the held-session /
     // stream render crops to the composable's intrinsic size instead of leaving it small in the
     // top-left of the old fixed 320² frame.
-    val spec = renderSpecFromInfo(info(params = null))
+    val spec = renderSpecFromInfo(info(params = PreviewParamsDto()))
     assertEquals(true, spec.wrapWidth)
     assertEquals(true, spec.wrapHeight)
     assertEquals(PreviewManifestEntry.WRAP_SANDBOX_WIDTH_DP * 2, spec.widthPx)
@@ -51,19 +54,30 @@ class RenderSpecFromInfoTest {
   }
 
   @Test
-  fun `empty params block is identical to null params`() {
+  fun `a null params block falls back to the fixed frame and never wraps`() {
+    // A *missing* params block means "params unknown", not "params empty": the incremental
+    // source-change path (IncrementalDiscovery.toDto → PreviewIndex.applyDiff) swaps an edited
+    // preview's index entry for a DTO carrying no params until the next full rediscovery. Treating
+    // that as an empty block would make an edited preview that actually declares a size / device
+    // briefly wrap-crop at the sandbox bound after every save. So a null block must stay on the
+    // fixed 320² frame with wrap OFF — the regression guard for that window.
+    val spec = renderSpecFromInfo(info(params = null))
+    assertEquals(false, spec.wrapWidth)
+    assertEquals(false, spec.wrapHeight)
+    assertEquals(320, spec.widthPx)
+    assertEquals(320, spec.heightPx)
+    assertNull(spec.device)
+  }
+
+  @Test
+  fun `a null params block differs from an empty one — only the empty block wraps`() {
     val nullSpec = renderSpecFromInfo(info(params = null))
     val emptySpec = renderSpecFromInfo(info(params = PreviewParamsDto()))
-    // Same shape; we don't compare data classes directly because outputBaseName is computed on
-    // both sides identically. A null block is treated exactly like an empty one — both wrap.
-    assertEquals(nullSpec.widthPx, emptySpec.widthPx)
-    assertEquals(nullSpec.heightPx, emptySpec.heightPx)
-    assertEquals(nullSpec.wrapWidth, emptySpec.wrapWidth)
-    assertEquals(nullSpec.wrapHeight, emptySpec.wrapHeight)
-    assertEquals(nullSpec.density, emptySpec.density, 0.0f)
-    assertEquals(nullSpec.uiMode, emptySpec.uiMode)
-    assertEquals(nullSpec.localeTag, emptySpec.localeTag)
-    assertEquals(nullSpec.fontScale, emptySpec.fontScale)
+    // Present-but-empty ⇒ wrap-content (a no-size sticker); absent ⇒ unknown params ⇒ fixed frame.
+    assertEquals(false, nullSpec.wrapWidth)
+    assertEquals(true, emptySpec.wrapWidth)
+    assertEquals(320, nullSpec.widthPx)
+    assertEquals(PreviewManifestEntry.WRAP_SANDBOX_WIDTH_DP * 2, emptySpec.widthPx)
   }
 
   @Test
