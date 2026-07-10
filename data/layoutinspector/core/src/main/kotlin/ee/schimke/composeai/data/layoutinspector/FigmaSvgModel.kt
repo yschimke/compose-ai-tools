@@ -366,7 +366,11 @@ data class FigmaSvgModel(
           FigmaSvgBackgroundRaster(href, region.left, region.top, region.right, region.bottom)
         } else null
       val fill = tokens?.backgroundColor?.let { argbToColor(it, ctx.colorNames) }
-      val stroke = tokens?.borderColor?.let { argbToColor(it, ctx.colorNames) }
+      // A fully-transparent border (a `Switch` on-track carries `borderColor` at alpha 0) is no
+      // border — dropping it keeps the stroke off *and* avoids the stroke-inset shrinking the fill
+      // for an outline that never paints.
+      val stroke =
+        tokens?.borderColor?.let { argbToColor(it, ctx.colorNames) }?.takeIf { it.opacity > 0.0 }
       val circle = tokens?.shape == "circle"
       // A `CutCornerShape` reports its corner sizes on `cornerRadius`/`cornerRadiusPx` like a
       // rounded
@@ -391,10 +395,16 @@ data class FigmaSvgModel(
         bottom = bounds.bottom,
         fill = fill,
         stroke = stroke,
-        // A Material outline is a 1dp hairline; the inspector doesn't carry its width, so scale a
-        // single dp into the render's px space. `coerceAtLeast(1.0)` keeps a visible hairline at
+        // Stroke width: use the captured `Modifier.border` width (dp × density) when present, so a
+        // 2dp outline (an off-state `Switch` track) isn't drawn as a 1dp hairline. Fall back to a
+        // single dp scaled into the render's px space — the width of a Material hairline outline —
+        // when the border width wasn't captured. `coerceAtLeast(1.0)` keeps a visible hairline at
         // density < 1.
-        strokeWidthPx = if (stroke != null) ctx.density.toDouble().coerceAtLeast(1.0) else 1.0,
+        strokeWidthPx =
+          if (stroke != null) {
+            val dp = tokens?.borderWidth?.removeSuffix("dp")?.toDoubleOrNull()
+            (dp?.let { it * ctx.density } ?: ctx.density.toDouble()).coerceAtLeast(1.0)
+          } else 1.0,
         cornerRadiiPx = corners,
         circle = circle,
         cut = cut,

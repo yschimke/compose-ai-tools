@@ -186,6 +186,69 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun aFullyTransparentBorderEmitsNoStroke() {
+    // A `Switch` on-track carries `borderColor` at alpha 0 — an invisible outline. It must not emit
+    // a stroke (nor inset the fill for a stroke that never paints).
+    val svg =
+      render(
+        layoutNode(
+          "OnTrack",
+          0,
+          0,
+          100,
+          50,
+          tokens =
+            ComposeSemanticsTokens(
+              backgroundColor = "#FF6750A4",
+              borderColor = "#00000000",
+              borderWidth = "2.0dp",
+            ),
+        ),
+        density = 2f,
+      )
+    assertTrue("no stroke for a transparent border", !svg.contains("stroke="))
+    // The fill keeps its full bounds (no stroke-inset): a 100-wide rect at x=0.
+    assertTrue(svg.contains("""width="100""""))
+  }
+
+  @Test
+  fun borderWidthTokenSetsTheStrokeWidthScaledByDensity() {
+    // An off-state `Switch` track is a 2dp outline, not a 1dp hairline. The captured `borderWidth`
+    // sets the stroke width (dp × density) instead of the hardcoded 1dp fallback.
+    val svg =
+      render(
+        layoutNode(
+          "Track",
+          0,
+          0,
+          100,
+          50,
+          tokens = ComposeSemanticsTokens(borderColor = "#FF79747E", borderWidth = "2.0dp"),
+        ),
+        density = 2f,
+      )
+    assertTrue("stroke width is 2dp × density 2 = 4", svg.contains("""stroke-width="4""""))
+  }
+
+  @Test
+  fun aBorderWithoutACapturedWidthFallsBackToADensityHairline() {
+    val svg =
+      render(
+        layoutNode(
+          "Hairline",
+          0,
+          0,
+          100,
+          50,
+          tokens = ComposeSemanticsTokens(borderColor = "#FF79747E"),
+        ),
+        density = 2f,
+      )
+    // No borderWidth → 1dp hairline scaled by density (2).
+    assertTrue("hairline falls back to 1dp × density", svg.contains("""stroke-width="2""""))
+  }
+
+  @Test
   fun shadowElevationBecomesADropShadowFilterScaledByDensity() {
     // A `Surface`/`Card`/`FAB` reports `elevation` (dp); the export emits a `feDropShadow` def and
     // filters the elevated group so it casts its Material drop shadow. Elevation → px scales by
