@@ -2,6 +2,7 @@ package ee.schimke.composeai.daemon.protocol
 
 import ee.schimke.composeai.daemon.history.HistoryDataDelta
 import ee.schimke.composeai.data.layoutinspector.SemanticsDelta
+import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
 import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
 import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
@@ -692,42 +693,6 @@ data class PreviewOverrides(
    */
   val namedOverrides: Map<String, PreviewOverrideValue>? = null,
 )
-
-/**
- * Preview-neutral typed value for an author-declared [PreviewOverrides.namedOverrides] knob.
- *
- * Deliberately **not** [RemoteNamedValue]: that sum is Remote-Compose-flavoured (a `dp` variant
- * wrapped with `.rdp`, mapped onto the `RcPlatformProfiles` creation DSL). These values seed plain
- * Compose `previewOverride*` lookups, so the variant set is the small JVM/Compose-native one
- * (string / int / float / bool / color). A `Dp` knob is carried as [FloatValue] — the runtime
- * helper wraps the float in `.dp` at the API edge.
- *
- * `@JsonClassDiscriminator("kind")` so payloads read `{ "kind": "string", "value": "Tap me" }`
- * rather than carrying the polymorphic class name.
- */
-@OptIn(ExperimentalSerializationApi::class)
-@Serializable
-@kotlinx.serialization.json.JsonClassDiscriminator("kind")
-sealed class PreviewOverrideValue {
-  @Serializable
-  @SerialName("string")
-  data class StringValue(val value: String) : PreviewOverrideValue()
-
-  @Serializable @SerialName("int") data class IntValue(val value: Int) : PreviewOverrideValue()
-
-  @Serializable
-  @SerialName("float")
-  data class FloatValue(val value: Float) : PreviewOverrideValue()
-
-  @Serializable
-  @SerialName("bool")
-  data class BooleanValue(val value: Boolean) : PreviewOverrideValue()
-
-  /** Color as `#AARRGGBB`. The runtime helper parses it back to a Compose `Color`. */
-  @Serializable
-  @SerialName("color")
-  data class ColorValue(val argb: String) : PreviewOverrideValue()
-}
 
 /**
  * Optional Lottie timeline override. Drives the interactive "scrub the animation" path for

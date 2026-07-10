@@ -34,6 +34,14 @@ dependencies {
   // renderer-agnostic daemon classpath, same as `:data-layoutinspector-core`.
   api(project(":data-theme-core"))
 
+  // `PreviewOverrideValue` (the plain-Compose named-override value type) lives in the published
+  // `:data-preview-overrides-core` so the runtime/producer/MCP clients depend on the override schema
+  // without dragging the daemon onto a preview's classpath. The protocol's
+  // `PreviewOverrides.namedOverrides` field references it, so it's part of this module's compile ABI
+  // → `api`, not `implementation`. Pure-JVM (kotlinx-serialization only), safe on the daemon
+  // classpath; the module has no dependency back on `:daemon:core`, so no cycle.
+  api(project(":data-preview-overrides-core"))
+
   // Okio-based file IO (`SystemFileSystem`) for data-product reads, history sidecars, bundle IR
   // replay, and forensics dumps. `implementation` — Okio stays an internal detail; daemon/core's
   // public surface keeps its java.io.File signatures.

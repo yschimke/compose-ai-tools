@@ -1,8 +1,8 @@
 package ee.schimke.composeai.daemon
 
-import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.WallpaperOverride
+import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.Base64
