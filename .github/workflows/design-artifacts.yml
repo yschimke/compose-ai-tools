@@ -184,6 +184,21 @@ jobs:
             --source-ref "$SOURCE_REF" \
             --source-module ":$SOURCE_MODULE"
 
+      # Split the rendered sheet into one addressable, self-contained bundle per preview under
+      # `bundle/previews/<id>.png`. `--view-only` drops the re-render classpath (classes/app.jar +
+      # libs/) and keeps the baked image + every captured sidecar, so each sticker stays ~tens of KB
+      # — a consumer (a designer, design-parity) can fetch a single preview without pulling the whole
+      # catalog sheet. The sheet was packed `--with-semantics` above, so each per-preview bundle
+      # carries its own semantics / layout / figma-svg with no re-render and no daemon. Runs for
+      # every system (the live sheet itself is only published for the CMP tier).
+      - name: Split into per-preview bundles
+        env:
+          SYSTEM: ${{ matrix.system }}
+        run: |
+          set -euo pipefail
+          compose-preview bundle split "$GITHUB_WORKSPACE/$SYSTEM-bundle.png" --view-only \
+            -o "$GITHUB_WORKSPACE/out/bundle/previews"
+
       - name: Publish to design-artifacts/${{ matrix.system }}
         env:
           SYSTEM: ${{ matrix.system }}
