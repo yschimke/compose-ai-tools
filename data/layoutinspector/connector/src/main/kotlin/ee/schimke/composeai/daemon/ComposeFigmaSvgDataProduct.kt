@@ -81,6 +81,9 @@ object ComposeFigmaSvgDataProducer {
         density = density,
         rasterComponents =
           if (frame != null) FigmaSvgModel.DEFAULT_RASTER_COMPONENTS else emptySet(),
+        // Hybrid mode also crops Canvas-drawn chrome (progress track, slider groove) the token
+        // export can't see — only when a frame PNG exists to crop those pixels from.
+        captureCanvasDraws = frame != null,
       )
     val fonts = fontResolver?.let { resolveFonts(model, it, fileSystem) }
     val svg =
