@@ -194,10 +194,23 @@ jobs:
       - name: Split into per-preview bundles
         env:
           SYSTEM: ${{ matrix.system }}
+          EXTRA_RENDERS: ${{ matrix.androidExtraModule }}
         run: |
           set -euo pipefail
           compose-preview bundle split "$GITHUB_WORKSPACE/$SYSTEM-bundle.png" --view-only \
             -o "$GITHUB_WORKSPACE/out/bundle/previews"
+          # For compose-m3 the catalog also folds an Android-only supplement (the material3 inset
+          # focus ring CMP can't draw), whose renders/semantics override same-named CMP functions in
+          # the published catalog. Split it into the same dir so those override renders are published
+          # as addressable bundles too (they otherwise wouldn't appear at all). The supplement's
+          # previews carry a distinct FQN, so they land beside — not on top of — the CMP bundles;
+          # for an overridden function both the CMP and the (catalog-matching) Android sticker are
+          # published. Collapsing to a single per-function bundle (dropping the superseded CMP one)
+          # would need the export's function-name mapping and is a follow-up.
+          if [ -n "${EXTRA_RENDERS:-}" ] && [ -f "$GITHUB_WORKSPACE/$SYSTEM-extra-bundle.png" ]; then
+            compose-preview bundle split "$GITHUB_WORKSPACE/$SYSTEM-extra-bundle.png" --view-only \
+              -o "$GITHUB_WORKSPACE/out/bundle/previews"
+          fi
 
       - name: Publish to design-artifacts/${{ matrix.system }}
         env:
