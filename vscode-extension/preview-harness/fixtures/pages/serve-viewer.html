@@ -175,12 +175,17 @@ a:hover { text-decoration: underline; }
       <script>(function () {
   var el = document.getElementById("cp-uiMode");
   if (!el) return;
-  // Inherit the catalog's sticky theme on the first render — matters for theme-less previews the
-  // catalog shows under either filter, which would otherwise open at (default). This runs before
-  // viewerScript()'s initial render, so the snapshot / Wasm path picks it up.
+  // Inherit the catalog's sticky theme on the first render — but ONLY for a theme-less preview
+  // (id carries no __light/__dark segment), which would otherwise open at (default). A themed
+  // variant's theme is explicit in its deep link, so it opens on its baked (instant) pixels and
+  // is not overridden by a remembered theme — seeding it would force a daemon re-render on a
+  // fresh deep link, defeating baked-until-changed. Runs before viewerScript()'s initial render.
+  var root = document.querySelector(".cp-viewer");
+  var pid = (root && root.getAttribute("data-preview-id")) || "";
+  var themed = pid.split("__").some(function (s) { return s === "light" || s === "dark"; });
   try {
     var stored = localStorage.getItem("cp-theme");
-    if (!el.value && (stored === "light" || stored === "dark")) el.value = stored;
+    if (!themed && !el.value && (stored === "light" || stored === "dark")) el.value = stored;
   } catch (e) {}
   // Round-trip: a Theme change writes the shared key so the catalog remembers it.
   el.addEventListener("change", function () {
