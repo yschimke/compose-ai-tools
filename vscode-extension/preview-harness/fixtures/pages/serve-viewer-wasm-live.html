@@ -487,6 +487,14 @@ a:hover { text-decoration: underline; }
     var qs = query();
     ws = new WebSocket(proto + "//" + location.host + base + "/ws/" +
       encodeURIComponent(previewId) + "?" + (qs ? qs + "&codec=webp" : "codec=webp"));
+    ws.onopen = function () {
+      // The connect URL seeds only query()'s fields — the display axes plus changed knobs — so
+      // the live-only overlays (talkBack / touchOverlay) and anything toggled during the
+      // connecting window aren't in it. Replay the full live override map once the socket is
+      // ready so the daemon reflects the exact current control state, including an overlay
+      // checked before onopen whose change event the readyState guard dropped.
+      ws.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
+    };
     ws.onmessage = function (ev) {
       var m;
       try { m = JSON.parse(ev.data); } catch (e) { return; }

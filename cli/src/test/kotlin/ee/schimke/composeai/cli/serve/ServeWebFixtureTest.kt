@@ -663,6 +663,13 @@ class ServeWebFixtureTest {
         liveCatalogWasm.contains("id=\"cp-touchOverlay\" type=\"checkbox\" disabled"),
       "live stream offers the overlay toggles, disabled until Live Compose is active",
     )
+    // The stream replays the full liveOverrides() on open so an overlay checked while the socket
+    // was
+    // still connecting (its change event dropped by the readyState guard) still reaches the daemon.
+    assertTrue(
+      liveCatalogWasm.contains("ws.onopen = function () {"),
+      "the live stream seeds the daemon with the current overrides once the socket opens",
+    )
 
     // Trusted catalog served LIVE whose preview declares author knobs (ServeCatalogLiveHost with
     // canRenderOverrides): snapshots stay baked, but the carried daemon re-renders a knob edit on
