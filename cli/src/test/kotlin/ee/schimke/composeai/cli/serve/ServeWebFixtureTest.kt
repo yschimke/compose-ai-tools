@@ -472,6 +472,38 @@ class ServeWebFixtureTest {
   }
 
   @Test
+  fun `viewer offers the SVG render mode only when the session can export SVG`() {
+    val card = previews.first { it.id.endsWith("CardPreview") }
+    // A session that can export SVG (a catalog / daemon) adds an SVG radio to the render-mode
+    // group,
+    // gated on the same hasSvgExport flag as the SVG direct-link row.
+    val svgView = ServeWeb.viewerPage(card, token, hasSvgExport = true)
+    assertTrue(
+      svgView.contains("name=\"cp-mode\" value=\"svg\"") && svgView.contains("id=\"cp-mode-svg\""),
+      "an SVG-exporting session offers the SVG render-mode radio",
+    )
+    // The SVG lane reuses the snapshot <img> but swaps the render extension; the viewer JS carries
+    // the snapshotExt seam and stamps the backend badge with SVG.
+    assertTrue(
+      svgView.contains("var snapshotExt = \".png\";") &&
+        svgView.contains("snapshotExt = \".svg\";"),
+      "the snapshot lane flips its render extension between PNG and SVG",
+    )
+    assertTrue(
+      svgView.contains("if (mode === \"svg\") return \"SVG\";"),
+      "the backend badge names the SVG lane",
+    )
+
+    // No SVG export → no SVG radio, and the snapshot lane never leaves the raster PNG.
+    val plain = ServeWeb.viewerPage(card, token)
+    assertFalse(
+      plain.contains("name=\"cp-mode\" value=\"svg\""),
+      "a session without SVG export shows no SVG radio",
+    )
+    assertFalse(plain.contains("id=\"cp-mode-svg\""), "no SVG radio id without SVG export")
+  }
+
+  @Test
   fun `landing lists served catalogs as session nav links, marking the current one`() {
     // Default session (sessionId null): every catalog is a link to its canonical /<system>/ path.
     val front =
