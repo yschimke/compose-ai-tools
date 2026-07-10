@@ -239,6 +239,123 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun aMeasuredSizeLargerThanBoundsGrowsTheFillClampedToTheParent() {
+    // A Wear `Button`/`Card` places its background across content + its own horizontal padding, so
+    // the fill node's `bounds` (the inner content rect) is narrower than its measured `size`. The
+    // export grows the fill to the measured size — clamped to the parent's placed bounds — centered
+    // on the bounds. Pill bounds 78×80 @ (44,28), size 134×104, parent box 134×104 @ (16,16) →
+    // fill at 134×104 @ (16,16), not a narrow 78×80 at the inner placement.
+    val pill =
+      LayoutInspectorNode(
+        nodeId = "pill",
+        component = "RowMeasurePolicy",
+        bounds = bounds(44, 28, 122, 108),
+        size = LayoutInspectorSize(134, 104),
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF332E3C", cornerRadius = "26.0dp"),
+      )
+    val box =
+      LayoutInspectorNode(
+        nodeId = "box",
+        component = "BoxMeasurePolicy",
+        bounds = bounds(16, 16, 150, 120),
+        size = LayoutInspectorSize(134, 104),
+        children = listOf(pill),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(box)))
+    assertTrue(svg, svg.contains("""x="16"""") && svg.contains("""width="134""""))
+    assertTrue("grown to the measured height too", svg.contains("""height="104""""))
+  }
+
+  @Test
+  fun aPollutedMeasuredSizeIsClampedToTheParentBounds() {
+    // A loosely-constrained node can report a `size` far larger than its real drawn extent (the
+    // whole sandbox). Clamp to the parent's placed bounds so the fill never paints beyond it.
+    val fill =
+      LayoutInspectorNode(
+        nodeId = "fill",
+        component = "RowMeasurePolicy",
+        bounds = bounds(44, 28, 122, 108),
+        size = LayoutInspectorSize(454, 454),
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF332E3C"),
+      )
+    val box =
+      LayoutInspectorNode(
+        nodeId = "box",
+        component = "BoxMeasurePolicy",
+        bounds = bounds(16, 16, 150, 120),
+        size = LayoutInspectorSize(134, 104),
+        children = listOf(fill),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(box)))
+    assertTrue(svg, svg.contains("""width="134"""") && !svg.contains("""width="454""""))
+  }
+
+  @Test
+  fun anOffCenterGrownFillIsClampedInsideTheParentNotCenteredOutOfIt() {
+    // The grown width is clamped to the parent, but the shape is centered on its own bounds — so a
+    // fill whose bounds sit off-center in its parent must still not slide past the parent edge.
+    // Parent x 0..100; child bounds x 0..40 (hard against the left), measured size 100 wide → grown
+    // to width 100, which centered on the child (centre x=20) would be x=-30..70. It must instead
+    // be
+    // clamped to x=0..100, flush inside the parent.
+    val fill =
+      LayoutInspectorNode(
+        nodeId = "fill",
+        component = "RowMeasurePolicy",
+        bounds = bounds(0, 40, 40, 120),
+        size = LayoutInspectorSize(100, 80),
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF332E3C"),
+      )
+    val box =
+      LayoutInspectorNode(
+        nodeId = "box",
+        component = "BoxMeasurePolicy",
+        bounds = bounds(0, 40, 100, 120),
+        size = LayoutInspectorSize(100, 80),
+        children = listOf(fill),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(box)))
+    // Grown to the parent width, pinned to the parent's left edge — never x="-30".
+    assertTrue(svg, svg.contains("""x="0"""") && svg.contains("""width="100""""))
+    assertFalse("must not be shifted left of the parent", svg.contains("""x="-"""))
+  }
+
+  @Test
+  fun aTouchTargetInflatedFillDoesNotGrowToItsMeasuredSize() {
+    // Every M3 `Button`/`IconButton` fills via a `BackgroundElement` on a node that also carries
+    // `Modifier.minimumInteractiveComponentSize()`. That modifier inflates the measured `size` up
+    // to
+    // the 48dp touch target while the background still paints at the smaller visual `bounds`, so
+    // the
+    // measured-`size` growth must be SUPPRESSED here — otherwise a 40dp pill balloons into its
+    // invisible touch margin. Fill bounds 170×80 @ (0,8), size 170×96 (the touch target), parent
+    // 170×96 @ (0,0): the fill must stay 80 tall at y=8, NOT grow to 96 at y=0. (The complement of
+    // `aMeasuredSizeLargerThanBoundsGrowsTheFillClampedToTheParent`, whose node carries no such
+    // modifier.)
+    val fill =
+      LayoutInspectorNode(
+        nodeId = "fill",
+        component = "BoxMeasurePolicy",
+        bounds = bounds(0, 8, 170, 88),
+        size = LayoutInspectorSize(170, 96),
+        modifiers = listOf(LayoutInspectorModifier(name = "minimumInteractiveComponentSize")),
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4"),
+      )
+    val root =
+      LayoutInspectorNode(
+        nodeId = "root",
+        component = "RootMeasurePolicy",
+        bounds = bounds(0, 0, 170, 96),
+        size = LayoutInspectorSize(170, 96),
+        children = listOf(fill),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(root)))
+    assertTrue("fill stays at its visual bounds height", svg.contains("""height="80""""))
+    assertTrue("fill stays at its visual y", svg.contains("""y="8""""))
+    assertFalse("fill must not grow to the touch-target height", svg.contains("""height="96""""))
+  }
+
+  @Test
   fun aFullyTransparentBorderEmitsNoStroke() {
     // A `Switch` on-track carries `borderColor` at alpha 0 — an invisible outline. It must not emit
     // a stroke (nor inset the fill for a stroke that never paints).

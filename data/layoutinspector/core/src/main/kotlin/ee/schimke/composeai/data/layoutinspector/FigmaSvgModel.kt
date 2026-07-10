@@ -321,7 +321,10 @@ data class FigmaSvgModel(
       val rasterTargets: MutableList<FigmaSvgRasterTarget> = mutableListOf(),
     )
 
-    private fun LayoutInspectorNode.toLayer(ctx: BuildContext): FigmaSvgLayer {
+    private fun LayoutInspectorNode.toLayer(
+      ctx: BuildContext,
+      parentBounds: LayoutInspectorBounds? = null,
+    ): FigmaSvgLayer {
       // An opaque component matched by name (Image/Icon/TextField/…) can't be vectorised at all —
       // emit an <image> for the whole node and drop the subtree.
       val opaqueByName = isOpaque(ctx.rasterComponents)
@@ -388,14 +391,29 @@ data class FigmaSvgModel(
       // Shadow elevation (dp) → px for the render's drop shadow.
       val elevationPx =
         tokens?.elevation?.removeSuffix("dp")?.toDoubleOrNull()?.let { it * ctx.density } ?: 0.0
-      // A `Modifier.defaultMinSize`-constrained node — an M3 `Badge` whose single-digit content is
-      // *placed* in a narrow box but *measures* (and draws its background at) the larger min box —
-      // grows its drawn shape to `max(bounds, minSize)`, centered on the bounds, so the fill
-      // matches
-      // the render instead of a squashed shape at the narrow placement. Driven by the captured min
-      // constraints (dp × density), not the measured `size`, which is polluted by sandbox
-      // constraints for many nodes; a button/chip whose min ≤ its bounds simply doesn't grow. Only
-      // when the node draws a shape and carries no text of its own (nothing else is positioned
+      // A node whose background is *measured* larger than its *placed* content rect grows its drawn
+      // shape to the measured extent, centered on the bounds, so the fill matches the render
+      // instead
+      // of a squashed shape at the narrow placement. Two signals, taking the larger:
+      //  - the captured `Modifier.defaultMinSize` min constraints (dp × density) — an M3 `Badge`
+      //    whose single-digit content is placed in a narrow box but draws its background at the min
+      //    box;
+      //  - the node's measured `size`, **clamped to the parent's placed bounds**. A Wear `Button`/
+      //    `Card` places its background across content + its own horizontal padding, so `bounds`
+      //    (the inner content rect) is narrower than the drawn button; `size` carries the full
+      //    extent. Raw `size` is unreliable — a `fillMaxSize`/loosely-constrained node reports the
+      //    whole sandbox — so it is clamped to the parent's real placed rect, which a child can
+      //    never paint beyond.
+      // The measured-`size` signal is SUPPRESSED for a node carrying
+      // `Modifier.minimumInteractiveComponentSize()` (every M3 `Button`/`IconButton`/…): that
+      // modifier inflates the measured `size` up to the 48dp touch target while the
+      // `BackgroundElement` still paints at the smaller visual `bounds`, so growing the fill to
+      // `size` would balloon a 40dp pill into its invisible 48dp touch margin. Those nodes'
+      // `bounds`
+      // is the true paint rect (this is what makes the growth a no-op on the desktop compose-m3
+      // catalog, whose buttons all carry the modifier); the `size` under-report the growth corrects
+      // is a Wear/Android `boundsIn` artifact on nodes that don't inflate their touch target.
+      // Only when the node draws a shape and carries no text of its own (nothing else is positioned
       // against the box).
       val boundsW = bounds.right - bounds.left
       val boundsH = bounds.bottom - bounds.top
@@ -403,14 +421,49 @@ data class FigmaSvgModel(
         tokens?.minWidth?.removeSuffix("dp")?.toDoubleOrNull()?.let { it * ctx.density }
       val minHeightPx =
         tokens?.minHeight?.removeSuffix("dp")?.toDoubleOrNull()?.let { it * ctx.density }
-      val drawW = maxOf(boundsW, minWidthPx?.roundToInt() ?: 0)
-      val drawH = maxOf(boundsH, minHeightPx?.roundToInt() ?: 0)
+      val touchInflated = hasMinimumInteractiveSize()
+      val measuredW =
+        if (touchInflated) boundsW
+        else parentBounds?.let { minOf(size.width, it.right - it.left) } ?: boundsW
+      val measuredH =
+        if (touchInflated) boundsH
+        else parentBounds?.let { minOf(size.height, it.bottom - it.top) } ?: boundsH
+      val drawW = maxOf(boundsW, minWidthPx?.roundToInt() ?: 0, measuredW)
+      val drawH = maxOf(boundsH, minHeightPx?.roundToInt() ?: 0, measuredH)
       val expand =
         (fill != null || stroke != null) &&
           ctx.textByNodeId[nodeId] == null &&
           (drawW > boundsW || drawH > boundsH)
-      val drawLeft = if (expand) (bounds.left + bounds.right - drawW) / 2 else bounds.left
-      val drawTop = if (expand) (bounds.top + bounds.bottom - drawH) / 2 else bounds.top
+      // Center the grown shape on the placed bounds, then pull the whole rectangle back inside the
+      // parent's placed bounds. Clamping only the grown *width/height* (above) isn't enough to keep
+      // the promise that a child never paints beyond its parent: a fill whose bounds sit off-center
+      // in its parent gets centered on its own bounds and would slide past the parent edge (parent
+      // 0..100, child 0..40, grown width 100 → centered at -30..70). Clamp the top-left into
+      // `[parent.left, parent.right - drawW]` so the rectangle stays within the parent whenever it
+      // fits (and pins to the parent origin in the degenerate case where the grown shape is wider
+      // than the parent). No parent (a root node) leaves the centered placement untouched.
+      val drawLeft =
+        if (!expand) bounds.left
+        else {
+          val centered = (bounds.left + bounds.right - drawW) / 2
+          if (parentBounds != null)
+            centered.coerceIn(
+              parentBounds.left,
+              maxOf(parentBounds.left, parentBounds.right - drawW),
+            )
+          else centered
+        }
+      val drawTop =
+        if (!expand) bounds.top
+        else {
+          val centered = (bounds.top + bounds.bottom - drawH) / 2
+          if (parentBounds != null)
+            centered.coerceIn(
+              parentBounds.top,
+              maxOf(parentBounds.top, parentBounds.bottom - drawH),
+            )
+          else centered
+        }
       val drawRight = if (expand) drawLeft + drawW else bounds.right
       val drawBottom = if (expand) drawTop + drawH else bounds.bottom
       return FigmaSvgLayer(
@@ -437,7 +490,7 @@ data class FigmaSvgModel(
         text = ctx.textByNodeId[nodeId],
         background = background,
         elevationPx = elevationPx,
-        children = children.map { it.toLayer(ctx) },
+        children = children.map { it.toLayer(ctx, bounds) },
       )
     }
 
@@ -446,6 +499,17 @@ data class FigmaSvgModel(
       rasterComponents.any {
         component.contains(it, ignoreCase = true)
       }
+
+    /**
+     * `Modifier.minimumInteractiveComponentSize()` — the M3 touch-target expander. A node carrying
+     * it has a measured `size` inflated up to 48dp while its background still paints at the smaller
+     * visual `bounds`, so the fill-growth heuristic must not treat `size` as the paint extent.
+     */
+    private const val MIN_INTERACTIVE_MODIFIER = "minimumInteractiveComponentSize"
+
+    private fun LayoutInspectorNode.hasMinimumInteractiveSize(): Boolean = modifiers.any {
+      it.name.equals(MIN_INTERACTIVE_MODIFIER, ignoreCase = true)
+    }
 
     /** The Compose modifiers that paint via an imperative Canvas the token export can't read. */
     private val DRAW_MODIFIERS = setOf("drawBehind", "drawWithContent", "drawWithCache")

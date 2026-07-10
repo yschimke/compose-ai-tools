@@ -184,4 +184,58 @@ class DesktopLayoutInspectorTest {
       anyBackground == null,
     )
   }
+
+  @Test
+  fun a_touch_target_inflated_fill_draws_at_its_visual_bounds_not_its_measured_size() {
+    // A real M3 `Button` fills via a `BackgroundElement` on a node that also carries
+    // `Modifier.minimumInteractiveComponentSize()`: the modifier inflates the measured `size` up to
+    // the 48dp touch target (96px @ density 2) while the background still paints at the 40dp visual
+    // pill (80px). The figma-svg fill-growth heuristic grows a fill from its
+    // (Android-under-reported)
+    // `bounds` toward its measured `size`; it MUST NOT do so here, or the coloured pill balloons
+    // into
+    // its invisible touch margin. This pins the desktop compose-m3 catalog against that regression.
+    val root =
+      writeAndRead(density = 2f) {
+        androidx.compose.material3.Button(onClick = {}) { Text("Filled") }
+      }
+
+    val fill = root.firstWhere { n ->
+      n.tokens?.backgroundColor != null &&
+        n.modifiers.any { it.name.equals("minimumInteractiveComponentSize", ignoreCase = true) }
+    }
+    assertNotNull("the touch-target-inflated M3 button fill node must be present", fill)
+    // The measured size is inflated past the visual bounds — the exact condition the heuristic keys
+    // off — so this is a genuine test of the suppression, not a case where size already equals
+    // bounds.
+    assertTrue(
+      "precondition: the fill node's measured size must exceed its visual bounds",
+      fill!!.size.height > (fill.bounds.bottom - fill.bounds.top),
+    )
+
+    val model =
+      ee.schimke.composeai.data.layoutinspector.FigmaSvgModel.from(
+        layout = LayoutInspectorPayload(root),
+        density = 2f,
+      )
+    val fillLayer = model.root.firstLayerWhere { it.fill != null }
+    assertNotNull("the fill must survive to a figma-svg layer", fillLayer)
+    assertEquals(
+      "touch-inflated fill height must stay at the visual bounds, not grow to the measured size",
+      fill.bounds.bottom - fill.bounds.top,
+      fillLayer!!.bottom - fillLayer.top,
+    )
+    assertEquals(
+      "touch-inflated fill top must stay at the visual bounds",
+      fill.bounds.top,
+      fillLayer.top,
+    )
+  }
+
+  private fun ee.schimke.composeai.data.layoutinspector.FigmaSvgLayer.firstLayerWhere(
+    predicate: (ee.schimke.composeai.data.layoutinspector.FigmaSvgLayer) -> Boolean
+  ): ee.schimke.composeai.data.layoutinspector.FigmaSvgLayer? {
+    if (predicate(this)) return this
+    return children.firstNotNullOfOrNull { it.firstLayerWhere(predicate) }
+  }
 }
