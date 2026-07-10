@@ -80,6 +80,14 @@ class ServeCatalogLiveHost(
   override val canRenderOverrides: Boolean = true
 
   /**
+   * Only a preview with a daemon twin ([alias]) can actually re-render an override; an unaliased
+   * (Android-only) variant always replays the baked PNG, which ignores overrides. So the viewer
+   * must treat those as non-renderable — otherwise the App theme selector (advertised host-wide via
+   * [declaredThemes]) would render enabled on a variant where picking a theme changes nothing.
+   */
+  override fun canRenderOverridesFor(previewId: String): Boolean = previewId in alias
+
+  /**
    * SVG is exportable when either lane can produce it — the baked catalog carries
    * `figma/<slug>.svg` vectors, and the daemon exports a `compose/figma-svg` for a knob-bearing
    * render.

@@ -119,6 +119,18 @@ class ServeCatalogLiveHostTest {
     PreviewOverrides(namedOverrides = mapOf("label" to PreviewOverrideValue.StringValue("Tap me")))
 
   @Test
+  fun `canRenderOverridesFor is true only for aliased previews`() {
+    val (composite, _, _) = host()
+    // A daemon-twinned catalog preview can re-render an override…
+    assertTrue(composite.canRenderOverridesFor(catalogId))
+    // …but an unaliased (Android-only) variant can't — it always replays baked, so its override
+    // controls (App theme, knobs) must render disabled rather than enabled-but-dead.
+    assertEquals(false, composite.canRenderOverridesFor(androidOnlyId))
+    // The host-wide flag stays true (the session offers on-demand re-render for the mapped ids).
+    assertTrue(composite.canRenderOverrides)
+  }
+
+  @Test
   fun `declared themes come from the daemon lane, not the baked browse surface`() {
     val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
     val live =

@@ -503,7 +503,10 @@ class ServeHttpServer(
           token,
           webSessionId,
           canApplyOverrides = renderHost.canApplyOverrides,
-          canRenderOverrides = renderHost.canRenderOverrides,
+          // Per-preview: a catalog-live host can only re-render an override on a daemon-twinned
+          // preview, so an unaliased (Android-only) variant reports false and its override controls
+          // (knobs, App theme) render disabled/informational rather than enabled-but-dead.
+          canRenderOverrides = renderHost.canRenderOverridesFor(preview.id),
           hasSvgExport = renderHost.hasSvgExport,
           hasLiveStream = renderHost.hasLiveStream,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },

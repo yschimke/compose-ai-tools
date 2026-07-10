@@ -53,6 +53,17 @@ interface ServeHost : AutoCloseable {
     get() = canApplyOverrides
 
   /**
+   * Per-preview refinement of [canRenderOverrides]: whether *this* preview can be re-rendered with
+   * an override. Defaults to the host-wide [canRenderOverrides] (true for every preview on a plain
+   * daemon host, false on a static bundle). A trusted-catalog live session ([ServeCatalogLiveHost])
+   * overrides it: only previews with a daemon twin can re-render, so an unaliased (e.g.
+   * Android-only) variant returns false — the viewer then shows its override controls (knobs, App
+   * theme) as disabled/informational rather than enabled-but-dead (an override on such a preview
+   * falls back to the baked PNG, which ignores it).
+   */
+  fun canRenderOverridesFor(previewId: String): Boolean = canRenderOverrides
+
+  /**
    * Whether [renderSvg] can actually produce a `compose/figma-svg` export for this session's
    * previews — a daemon-backed host always can, a static bundle only when it carried baked
    * `figma/<slug>.svg` vectors (a design catalog). Drives whether the viewer offers a copyable SVG
