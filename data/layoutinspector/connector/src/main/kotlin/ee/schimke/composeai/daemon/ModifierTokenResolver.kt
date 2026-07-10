@@ -81,6 +81,16 @@ internal object ModifierTokenResolver {
       if (backgroundColor == null && (name == "background" || simpleName == "BackgroundElement")) {
         backgroundColor = backgroundColorHex(mod, elements, inspectable?.valueOverride)
       }
+      // `Modifier.paint(painter)` with a solid `ColorPainter` — Wear M3's `Button`/`Card`/
+      // `FilledTonalButton`/`SwitchButton` fill their container this way (through the wear
+      // `surface()` helper's `PainterElement`), NOT via `Modifier.background`, so a plain
+      // background
+      // match misses every wear container fill and the token-driven figma-svg export drops it. Read
+      // the `ColorPainter`'s colour as the fill; bitmap/vector painters (an `Image`/`Icon`'s art)
+      // stay unresolved so they keep to the raster path (issue #1985).
+      if (backgroundColor == null && (name == "paint" || simpleName == "PainterElement")) {
+        backgroundColor = painterColorHex(elements["painter"], mod)
+      }
       // `Modifier.defaultMinSize(minWidth, minHeight)` — an M3 `Badge` measures its background at
       // this min box even when its narrow content is placed smaller, so the figma-svg export grows
       // the drawn shape to it. Read the `Dp` min constraints (already dp, unlike px
@@ -230,6 +240,34 @@ internal object ModifierTokenResolver {
         val packed = field.getLong(mod).toULong()
         // sRGB packs the colour space id (non-zero) into the low 32 bits as 0; anything else is a
         // wide-gamut/unspecified packing we can't read as a plain ARGB hex.
+        if (packed and 0xFFFFFFFFuL != 0uL) return null
+        val argb = (packed shr 32).toInt()
+        if (argb == 0) null else "#${String.format(Locale.US, "%08X", argb)}"
+      }
+      .getOrNull()
+  }
+
+  /**
+   * Resolves a painter-based container fill (`Modifier.paint(painter)`) as ARGB hex. Only a solid
+   * [androidx.compose.ui.graphics.painter.ColorPainter] yields a colour — the fill Wear M3 surfaces
+   * apply for their container — while bitmap / vector / gradient painters (an `Image`/`Icon`'s art)
+   * return null so they stay on the raster path rather than collapsing to a bogus flat rectangle.
+   * Reads the inspector `painter` element (the live painter object) when present, else reflects the
+   * element's backing `painter` field; the `ColorPainter`'s `color` is a [Color] value class stored
+   * as its packed `ULong`, decoded exactly like [backgroundColorHex].
+   */
+  private fun painterColorHex(painterElement: Any?, mod: Any): String? {
+    val painter =
+      painterElement
+        ?: runCatching {
+            mod.javaClass.getDeclaredField("painter").apply { isAccessible = true }.get(mod)
+          }
+          .getOrNull()
+        ?: return null
+    if (painter.javaClass.simpleName != "ColorPainter") return null
+    return runCatching {
+        val field = painter.javaClass.getDeclaredField("color").apply { isAccessible = true }
+        val packed = field.getLong(painter).toULong()
         if (packed and 0xFFFFFFFFuL != 0uL) return null
         val argb = (packed shr 32).toInt()
         if (argb == 0) null else "#${String.format(Locale.US, "%08X", argb)}"
