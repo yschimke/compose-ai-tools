@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.16.33](https://github.com/yschimke/compose-ai-tools/compare/v0.16.32...v0.16.33) (2026-07-10)
+
+
+### Features
+
+* **bundle:** pack each preview as its own valid bundle (--per-preview) ([#2340](https://github.com/yschimke/compose-ai-tools/issues/2340)) ([991b012](https://github.com/yschimke/compose-ai-tools/commit/991b0122780dc4c7cbfe79242385c6aacf75219f))
+* **bundle:** publish per-preview bundles from the catalog sheet (bundle split) ([#2342](https://github.com/yschimke/compose-ai-tools/issues/2342)) ([2c22954](https://github.com/yschimke/compose-ai-tools/commit/2c2295416d1898a1c6d55963924b291819d5fb0e))
+* **serve:** add an SVG render mode to the viewer's mode toggle ([#2338](https://github.com/yschimke/compose-ai-tools/issues/2338)) ([0cb853a](https://github.com/yschimke/compose-ai-tools/commit/0cb853adcd45d9da303b81571f08ab5d05a7b12d))
+* **serve:** carry declared @ThemeCatalog themes into bundle & catalog hosts ([#2343](https://github.com/yschimke/compose-ai-tools/issues/2343)) ([9d96fce](https://github.com/yschimke/compose-ai-tools/commit/9d96fcefeeda7dca986efd032cb3463b92ad528f))
+* **serve:** detected-feature controls in the viewer (keyboard focus) ([#2344](https://github.com/yschimke/compose-ai-tools/issues/2344)) ([ac27de6](https://github.com/yschimke/compose-ai-tools/commit/ac27de6082bb549a8dec17d5256490714776d826))
+* **serve:** render previews under app-declared @ThemeCatalog themes ([#2341](https://github.com/yschimke/compose-ai-tools/issues/2341)) ([6fc4c6a](https://github.com/yschimke/compose-ai-tools/commit/6fc4c6aa68a41c27d8edd3434934bef2e98e25d0))
+
+
+### Bug Fixes
+
+* **figma-svg:** capture border width; drop fully-transparent borders ([#2335](https://github.com/yschimke/compose-ai-tools/issues/2335)) ([f724137](https://github.com/yschimke/compose-ai-tools/commit/f72413710518476977f2c132621d601269fd7c68))
+* **figma-svg:** draw a min-size-expanded circular badge at its measured size ([#2339](https://github.com/yschimke/compose-ai-tools/issues/2339)) ([f4f1483](https://github.com/yschimke/compose-ai-tools/commit/f4f14839902d3218c738f444851bde9d326d9291))
+
 ## [0.16.32](https://github.com/yschimke/compose-ai-tools/compare/v0.16.31...v0.16.32) (2026-07-10)
 
 
