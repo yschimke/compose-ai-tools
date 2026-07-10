@@ -20,7 +20,11 @@ on:
         # carrying the entrypoint-defaulted flags (`--catalogs-unlisted`, 0.16.9) AND
         # the catalog knob-override render path (#2287) — else a published catalog's
         # `knob.*` render params are silently dropped.
-        default: "0.16.33" # x-release-please-version
+        # NOTE: bump this by hand on release. It is intentionally NOT a
+        # release-please extra-file: GITHUB_TOKEN cannot write files under
+        # .github/workflows/, so listing this file there makes release-please
+        # fail every release with "Error adding to tree". Do not re-add it.
+        default: "0.16.33"
   # Called from release-please.yml when a CLI release is cut. A bot-created
   # release won't fire the `release` trigger below (the GITHUB_TOKEN-doesn't-
   # trigger-workflows limitation the rest of the release chain already works
