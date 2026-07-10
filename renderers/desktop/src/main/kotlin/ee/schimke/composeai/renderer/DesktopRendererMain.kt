@@ -679,6 +679,21 @@ private fun loadProviderValues(providerFqn: String, limit: Int): List<Any?> {
   return sequence.take(limit).toList()
 }
 
+/**
+ * Maps a `@Preview(uiMode = …)` int to the [androidx.compose.ui.SystemTheme] to provide as
+ * `LocalSystemTheme`, which Compose Desktop's `isSystemInDarkTheme()` reads. Only the
+ * `UI_MODE_NIGHT_*` bits (`0x30` mask) matter: `0x20` (`UI_MODE_NIGHT_YES`) → dark, `0x10`
+ * (`UI_MODE_NIGHT_NO`) → light, `UI_MODE_NIGHT_UNDEFINED` → `Unknown` (leaves the JVM's own probe).
+ */
+@OptIn(androidx.compose.ui.InternalComposeUiApi::class)
+internal fun systemThemeFromUiMode(uiMode: Int): androidx.compose.ui.SystemTheme =
+  when (uiMode and 0x30) {
+    0x20 -> androidx.compose.ui.SystemTheme.Dark
+    0x10 -> androidx.compose.ui.SystemTheme.Light
+    else -> androidx.compose.ui.SystemTheme.Unknown
+  }
+
+@OptIn(androidx.compose.ui.InternalComposeUiApi::class)
 private fun renderPreview(
   className: String,
   functionName: String,
@@ -729,12 +744,19 @@ private fun renderPreview(
   // so the Resources-subclass trick the Android connector uses doesn't apply here. See the
   // platform-support note in `site/reference/pseudolocale.md`.
   val pseudolocale = ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(localeTag)
+  // `@Preview(uiMode = 32)` (`UI_MODE_NIGHT_YES`) must flip the composition to dark, not just tint
+  // the system-bar chrome below. Compose Desktop's `isSystemInDarkTheme()` reads
+  // `LocalSystemTheme.current` (foundation-desktop's `DarkTheme.skiko.kt`), so provide it from the
+  // night bit — otherwise a dark `@Preview` renders its content in light colours (the cover PNG
+  // disagreed with the daemon's figma-svg/semantics, which already do this in RenderEngine).
+  val systemTheme = systemThemeFromUiMode(uiMode)
   scene.setContent {
     val baseProviders: @Composable (@Composable () -> Unit) -> Unit = { inner ->
       if (pseudolocale?.isRtl == true) {
         CompositionLocalProvider(
           LocalInspectionMode provides true,
           LocalDensity provides sceneDensity,
+          androidx.compose.ui.LocalSystemTheme provides systemTheme,
           androidx.compose.ui.platform.LocalLayoutDirection provides
             androidx.compose.ui.unit.LayoutDirection.Rtl,
         ) {
@@ -744,6 +766,7 @@ private fun renderPreview(
         CompositionLocalProvider(
           LocalInspectionMode provides true,
           LocalDensity provides sceneDensity,
+          androidx.compose.ui.LocalSystemTheme provides systemTheme,
         ) {
           inner()
         }
