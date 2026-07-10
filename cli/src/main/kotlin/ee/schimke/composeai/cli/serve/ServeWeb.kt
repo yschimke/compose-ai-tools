@@ -639,6 +639,13 @@ object ServeWeb {
     trust: String? = null,
     wasmSrc: String? = null,
     /**
+     * Whether the Wasm iframe may run with `allow-same-origin` (real origin) rather than the
+     * opaque-origin `allow-scripts`-only sandbox. True ONLY for a **trusted** catalog's app —
+     * unverified catalog-provided Wasm stays opaque so it can't reach the parent viewer's tokened
+     * URLs / DOM. Defaults to false (fail-closed). See the `wasmFrame` sandbox note.
+     */
+    wasmSameOrigin: Boolean = false,
+    /**
      * URL prefix for this session's links (`/<system>` when served under a path, empty otherwise).
      * The "← previews" link is prefixed with it; the viewer's own `/render` + `/ws` requests derive
      * their prefix from `location.pathname` at runtime, so they work under either mount. Empty ⇒
@@ -676,18 +683,21 @@ object ServeWeb {
     // this session.
     val wasmAttr =
       if (wasmSrc != null) " data-wasm-src=\"${WebEscaping.htmlEscape(wasmSrc)}\"" else ""
-    // `allow-same-origin` alongside `allow-scripts`: the Wasm app is our own compiled catalog,
-    // served same-origin from this box's `/wasm/<system>/`, so it isn't hostile content the opaque
-    // origin needs to wall off. Granting the real origin stops the storage/history APIs the
-    // Kotlin/Wasm + Compose runtime touches (`window.caches` via `supportsCacheApi`,
-    // history.pushState, …) from throwing `SecurityError` in an opaque origin — which otherwise
-    // spammed the console on every Wasm render — and lets Compose's resource loader use the Cache
-    // API. `data-wasm-src` is still same-origin-checked before it reaches the frame (see
-    // wasmBaseSrc), so a mis-set src can't smuggle a foreign document in.
+    // `allow-same-origin` (alongside `allow-scripts`) is granted ONLY for a [wasmSameOrigin]
+    // (trusted-catalog) app. That app is our own compiled catalog, served same-origin from this
+    // box's `/wasm/<system>/`, so it isn't hostile content the opaque origin needs to wall off, and
+    // the real origin stops the storage/history APIs the Kotlin/Wasm + Compose runtime touches
+    // (`window.caches` via `supportsCacheApi`, history.pushState, …) from throwing `SecurityError`
+    // in an opaque origin (console spam on every Wasm render), and lets Compose's resource loader
+    // use the Cache API. An UNTRUSTED catalog's Wasm app stays opaque (`allow-scripts` only): the
+    // `/wasm/` route serves an unverified catalog's app too, and same-origin there would let it
+    // read
+    // the parent viewer's tokened URLs / DOM or remove its own sandbox. `data-wasm-src` is
+    // additionally same-origin-checked before it reaches the frame (see wasmBaseSrc).
+    val wasmSandbox = if (wasmSameOrigin) "allow-scripts allow-same-origin" else "allow-scripts"
     val wasmFrame =
       if (wasmSrc != null)
-        "<iframe id=\"cp-wasm\" hidden sandbox=\"allow-scripts allow-same-origin\" " +
-          "title=\"$label (Wasm)\"></iframe>"
+        "<iframe id=\"cp-wasm\" hidden sandbox=\"$wasmSandbox\" title=\"$label (Wasm)\"></iframe>"
       else ""
     val wasmToggle =
       if (wasmSrc != null)

@@ -492,6 +492,11 @@ class ServeHttpServer(
       val wasmSrc =
         if (wasmCatalogs.containsKey(sessionId)) ServeUrls.wasmAppSrc(sessionId, preview.id)
         else null
+      // Grant the Wasm iframe its real origin only for a TRUSTED catalog's app — an unverified
+      // catalog's `/wasm/` app stays opaque-origin sandboxed so it can't reach the parent viewer.
+      // Fail-closed: any session without a verifiable trusted verdict gets opaque (false).
+      val wasmSameOrigin =
+        catalogBundleHost(renderHost)?.let { it.trust is BundleVerifier.Verdict.Trusted } ?: false
       call.respondText(
         ServeWeb.viewerPage(
           preview,
@@ -503,6 +508,7 @@ class ServeHttpServer(
           hasLiveStream = renderHost.hasLiveStream,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           wasmSrc = wasmSrc,
+          wasmSameOrigin = wasmSameOrigin,
           basePath = basePath,
           isPublic = isPublic,
         ),

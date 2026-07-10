@@ -165,6 +165,7 @@ class ServeWebFixtureTest {
         sessionId = "compose-m3",
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         wasmSrc = "/wasm/compose-m3/?id=card-filled",
+        wasmSameOrigin = true,
       )
     // A trusted catalog served LIVE (ServeCatalogLiveHost): static baked snapshots
     // (canApplyOverrides=false) yet the "Live (stream)" toggle is enabled (hasLiveStream=true), and
@@ -180,6 +181,7 @@ class ServeWebFixtureTest {
         hasLiveStream = true,
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         wasmSrc = "/wasm/compose-m3/?id=card-filled",
+        wasmSameOrigin = true,
       )
     // A trusted catalog served LIVE (ServeCatalogLiveHost) whose preview declares author knobs:
     // snapshots stay baked (canApplyOverrides=false) but the carried daemon CAN re-render an
@@ -198,6 +200,7 @@ class ServeWebFixtureTest {
         hasLiveStream = true,
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         wasmSrc = "/wasm/compose-m3/?id=button-filled",
+        wasmSameOrigin = true,
       )
     // A catalog served under its canonical path (/meshcore-mobile/) rather than ?session=: same
     // pages, but links stay on the path (basePath) and drop the &session= param. Captures the
@@ -404,13 +407,29 @@ class ServeWebFixtureTest {
     assertTrue(withWasm.contains("Run in browser (Wasm)"), "expected the Wasm toggle")
     assertTrue(withWasm.contains("id=\"cp-wasm\""), "expected the Wasm iframe")
     assertTrue(withWasm.contains("data-wasm-src=\"/wasm/compose-m3/?id=card-filled\""))
-    // Sandboxed, but with allow-same-origin: the app is our own same-origin compiled catalog, so
-    // granting the real origin stops its storage/history APIs (window.caches via supportsCacheApi,
-    // history.pushState) from throwing SecurityError in an opaque origin. Still no allow-forms /
-    // allow-popups / allow-top-navigation, so it can't navigate the top frame or submit forms.
+    // Default (no wasmSameOrigin ⇒ untrusted / unknown): the iframe stays opaque-origin, so an
+    // unverified catalog's `/wasm/` app can't reach the parent viewer's tokened URLs / DOM.
+    // Match the exact attribute, not a bare "allow-same-origin" substring — the viewer-script
+    // comments mention the phrase, so a substring check would be polluted.
     assertTrue(
-      withWasm.contains("sandbox=\"allow-scripts allow-same-origin\""),
-      "iframe is sandboxed (scripts + same-origin for the trusted same-origin app)",
+      withWasm.contains("sandbox=\"allow-scripts\"") &&
+        !withWasm.contains("sandbox=\"allow-scripts allow-same-origin\""),
+      "untrusted Wasm stays opaque-origin (allow-scripts only)",
+    )
+    // A TRUSTED catalog's app (wasmSameOrigin=true) gets its real origin, so its storage/history
+    // APIs (window.caches via supportsCacheApi, history.pushState) stop throwing SecurityError in
+    // an
+    // opaque origin. Still no allow-forms / allow-popups / allow-top-navigation.
+    val trustedWasm =
+      ServeWeb.viewerPage(
+        card,
+        token,
+        wasmSrc = "/wasm/compose-m3/?id=card-filled",
+        wasmSameOrigin = true,
+      )
+    assertTrue(
+      trustedWasm.contains("sandbox=\"allow-scripts allow-same-origin\""),
+      "trusted Wasm gets same-origin",
     )
     // Flash-free switch: the snapshot stays on-stage until the app's first-frame signal, and the
     // iframe is overlaid on the snapshot's exact box (pixel parity with the baked PNG).
