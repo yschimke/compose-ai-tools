@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.16.35](https://github.com/yschimke/compose-ai-tools/compare/v0.16.34...v0.16.35) (2026-07-10)
+
+
+### Features
+
+* **design-artifacts:** pin published previews to released preview-runtimes ([#2384](https://github.com/yschimke/compose-ai-tools/issues/2384)) ([da1b58a](https://github.com/yschimke/compose-ai-tools/commit/da1b58a15e53252cd9092a2a5cfd252fe1fbf2ce))
+* **serve:** per-preview live-bundle host + FULL split publish (foundation) ([#2376](https://github.com/yschimke/compose-ai-tools/issues/2376)) ([534854a](https://github.com/yschimke/compose-ai-tools/commit/534854a52403f909d0500b8127628dc46f09ebe9))
+
+
+### Bug Fixes
+
+* **figma-svg:** grow container fills to their measured size, except touch-target-inflated nodes ([#2375](https://github.com/yschimke/compose-ai-tools/issues/2375)) ([cc77d2f](https://github.com/yschimke/compose-ai-tools/commit/cc77d2f8c61d4f7e4794204486c6bdac5b1a67ce))
+* **figma-svg:** raster a container fill whose painter isn't a plain ColorPainter ([#2385](https://github.com/yschimke/compose-ai-tools/issues/2385)) ([ff17ac5](https://github.com/yschimke/compose-ai-tools/commit/ff17ac5ac5d79278304ed1017bc7f4ece5f050e8))
+* **serve:** expose per-preview bakedHost + split the externalised bundle FULL ([#2378](https://github.com/yschimke/compose-ai-tools/issues/2378)) ([072455f](https://github.com/yschimke/compose-ai-tools/commit/072455fef7bb7d6b8756650e5f5c467314845421))
+
 ## [0.16.34](https://github.com/yschimke/compose-ai-tools/compare/v0.16.33...v0.16.34) (2026-07-10)
 
 
