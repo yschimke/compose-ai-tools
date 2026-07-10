@@ -53,6 +53,8 @@ internal object ModifierTokenResolver {
     var shape: String? = null
     var padding: ComposeSemanticsInsets? = null
     var elevation: String? = null
+    var minWidth: String? = null
+    var minHeight: String? = null
     // `CircleShape` / `CornerSize(50%)` resolve to dp against the node's shorter measured side.
     val minSidePx = minOf(sizeWidthPx, sizeHeightPx)
     for (info in modifierInfo) {
@@ -78,6 +80,15 @@ internal object ModifierTokenResolver {
 
       if (backgroundColor == null && (name == "background" || simpleName == "BackgroundElement")) {
         backgroundColor = backgroundColorHex(mod, elements, inspectable?.valueOverride)
+      }
+      // `Modifier.defaultMinSize(minWidth, minHeight)` — an M3 `Badge` measures its background at
+      // this min box even when its narrow content is placed smaller, so the figma-svg export grows
+      // the drawn shape to it. Read the `Dp` min constraints (already dp, unlike px
+      // `shadowElevation`
+      // — `Dp.Unspecified` / non-positive values are dropped).
+      if (name == "defaultMinSize" || simpleName.contains("UnspecifiedConstraints")) {
+        if (minWidth == null) minWidth = dpConstraint(elements["minWidth"], mod, "minWidth")
+        if (minHeight == null) minHeight = dpConstraint(elements["minHeight"], mod, "minHeight")
       }
       // `Modifier.border` carries the outline colour `Surface`/`Card`/dividers apply — a role
       // colour
@@ -113,7 +124,9 @@ internal object ModifierTokenResolver {
         shape == null &&
         gap == null &&
         padding == null &&
-        elevation == null
+        elevation == null &&
+        minWidth == null &&
+        minHeight == null
     )
       null
     else
@@ -121,6 +134,8 @@ internal object ModifierTokenResolver {
         backgroundColor = backgroundColor,
         borderColor = borderColor,
         borderWidth = borderWidth,
+        minWidth = minWidth,
+        minHeight = minHeight,
         cornerRadius = cornerRadius,
         cornerRadiusPx = cornerRadiusPx,
         shape = shape,
@@ -243,6 +258,23 @@ internal object ModifierTokenResolver {
           .getOrNull()
         ?: return null
     if (dp <= 0f) return null
+    return "${roundedDp(dp)}dp"
+  }
+
+  /**
+   * A `defaultMinSize` min constraint (a `Dp`, already in dp) as a `"…dp"` string, or null when it
+   * is `Dp.Unspecified` (`Float.NaN`) or ≤ 0. Reads the inspector element first, else the
+   * modifier's backing field ([field], `minWidth` / `minHeight`).
+   */
+  private fun dpConstraint(element: Any?, mod: Any, field: String): String? {
+    val dp =
+      floatValue(element)
+        ?: runCatching {
+            mod.javaClass.getDeclaredField(field).apply { isAccessible = true }.getFloat(mod)
+          }
+          .getOrNull()
+        ?: return null
+    if (dp.isNaN() || dp <= 0f) return null
     return "${roundedDp(dp)}dp"
   }
 

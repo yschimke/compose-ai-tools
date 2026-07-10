@@ -186,6 +186,59 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun aDefaultMinSizeGrowsTheDrawnShapeCenteredOnTheBounds() {
+    // An M3 Badge with a single digit is *placed* in a narrow box (bounds 20×42) but its captured
+    // `defaultMinSize` (42dp × 42dp here at density 1) is the box it draws its background circle
+    // in,
+    // centered. The export grows the fill to `max(bounds, minSize)` centered on the bounds — a
+    // 42×42
+    // circle at [42,42,84,84] — not a squashed 20×42 capsule at the placement bounds.
+    val badge =
+      layoutNode(
+        "Badge",
+        53,
+        42,
+        73,
+        84,
+        tokens =
+          ComposeSemanticsTokens(
+            backgroundColor = "#FFB3261E",
+            shape = "circle",
+            minWidth = "42.0dp",
+            minHeight = "42.0dp",
+          ),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(badge)))
+    // 42-wide circle centered on the bounds' centre (x=63) → x=42, width 42, max-radius (r=21).
+    assertTrue(svg, svg.contains("""x="42"""") && svg.contains("""width="42""""))
+    assertTrue("drawn as a full circle (r = size/2)", svg.contains("""rx="21""""))
+  }
+
+  @Test
+  fun aMinSizeWithinTheBoundsDoesNotGrowTheShape() {
+    // A button / chip also carries a `defaultMinSize`, but its content already exceeds it, so the
+    // min ≤ its placement bounds and the fill stays exactly at the bounds — no ballooning.
+    val chip =
+      layoutNode(
+        "Chip",
+        42,
+        63,
+        231,
+        147,
+        tokens =
+          ComposeSemanticsTokens(
+            backgroundColor = "#FFE8DEF8",
+            shape = "circle",
+            minHeight = "32.0dp",
+          ),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(chip)))
+    // bounds 189×84; minHeight 32 < 84 → no growth. Stays 189-wide at x=42, 84 tall.
+    assertTrue(svg, svg.contains("""x="42"""") && svg.contains("""width="189""""))
+    assertTrue("keeps its bounds height", svg.contains("""height="84""""))
+  }
+
+  @Test
   fun aFullyTransparentBorderEmitsNoStroke() {
     // A `Switch` on-track carries `borderColor` at alpha 0 — an invisible outline. It must not emit
     // a stroke (nor inset the fill for a stroke that never paints).

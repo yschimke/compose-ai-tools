@@ -1,6 +1,7 @@
 package ee.schimke.composeai.data.layoutinspector
 
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * Backend-agnostic model for the **layered Figma SVG** export — the design-fidelity counterpart to
@@ -387,12 +388,37 @@ data class FigmaSvgModel(
       // Shadow elevation (dp) → px for the render's drop shadow.
       val elevationPx =
         tokens?.elevation?.removeSuffix("dp")?.toDoubleOrNull()?.let { it * ctx.density } ?: 0.0
+      // A `Modifier.defaultMinSize`-constrained node — an M3 `Badge` whose single-digit content is
+      // *placed* in a narrow box but *measures* (and draws its background at) the larger min box —
+      // grows its drawn shape to `max(bounds, minSize)`, centered on the bounds, so the fill
+      // matches
+      // the render instead of a squashed shape at the narrow placement. Driven by the captured min
+      // constraints (dp × density), not the measured `size`, which is polluted by sandbox
+      // constraints for many nodes; a button/chip whose min ≤ its bounds simply doesn't grow. Only
+      // when the node draws a shape and carries no text of its own (nothing else is positioned
+      // against the box).
+      val boundsW = bounds.right - bounds.left
+      val boundsH = bounds.bottom - bounds.top
+      val minWidthPx =
+        tokens?.minWidth?.removeSuffix("dp")?.toDoubleOrNull()?.let { it * ctx.density }
+      val minHeightPx =
+        tokens?.minHeight?.removeSuffix("dp")?.toDoubleOrNull()?.let { it * ctx.density }
+      val drawW = maxOf(boundsW, minWidthPx?.roundToInt() ?: 0)
+      val drawH = maxOf(boundsH, minHeightPx?.roundToInt() ?: 0)
+      val expand =
+        (fill != null || stroke != null) &&
+          ctx.textByNodeId[nodeId] == null &&
+          (drawW > boundsW || drawH > boundsH)
+      val drawLeft = if (expand) (bounds.left + bounds.right - drawW) / 2 else bounds.left
+      val drawTop = if (expand) (bounds.top + bounds.bottom - drawH) / 2 else bounds.top
+      val drawRight = if (expand) drawLeft + drawW else bounds.right
+      val drawBottom = if (expand) drawTop + drawH else bounds.bottom
       return FigmaSvgLayer(
         name = layerName(),
-        left = bounds.left,
-        top = bounds.top,
-        right = bounds.right,
-        bottom = bounds.bottom,
+        left = drawLeft,
+        top = drawTop,
+        right = drawRight,
+        bottom = drawBottom,
         fill = fill,
         stroke = stroke,
         // Stroke width: use the captured `Modifier.border` width (dp × density) when present, so a

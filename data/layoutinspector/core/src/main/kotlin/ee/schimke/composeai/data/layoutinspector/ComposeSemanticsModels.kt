@@ -254,6 +254,15 @@ data class ComposeSemanticsTokens(
    */
   val borderColor: String? = null,
   /**
+   * Minimum width / height in dp from a `Modifier.defaultMinSize(minWidth, minHeight)`, when set,
+   * e.g. `"16.0dp"`. An M3 `Badge` (and other min-sized chrome) can measure — and draw its
+   * background at — a larger box than its narrow content is *placed* in; the figma-svg export grows
+   * the drawn shape to `max(bounds, minSize)` so it isn't squashed to the placement bounds. Null
+   * when the node declares no `defaultMinSize`.
+   */
+  val minWidth: String? = null,
+  val minHeight: String? = null,
+  /**
    * Resolved `Modifier.border` stroke width in dp (e.g. `"2.0dp"`), when a border is present and
    * the width could be read. Null falls the figma-svg export back to a 1dp hairline — so an
    * off-state `Switch` track (2dp) or any thicker outline renders at its real width instead of a
