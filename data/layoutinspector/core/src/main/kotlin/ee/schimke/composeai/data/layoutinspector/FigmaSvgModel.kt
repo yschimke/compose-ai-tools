@@ -91,6 +91,26 @@ data class FigmaSvgFontFace(
 /** Background-free raster standing in for an opaque, un-vectorisable subtree. */
 data class FigmaSvgRaster(val href: String)
 
+/**
+ * A raster drawn beneath a layer's content ([FigmaSvgLayer.background]) — the pixels of a
+ * `Modifier.drawBehind {…}` cropped to the drawn region, which may be tighter than the layer's own
+ * box (a padded `Spacer` paints only the bar). Carries its own bounds so the `<image>` lands on the
+ * drawn region rather than the layer box.
+ */
+data class FigmaSvgBackgroundRaster(
+  val href: String,
+  val left: Int,
+  val top: Int,
+  val right: Int,
+  val bottom: Int,
+) {
+  val width: Int
+    get() = (right - left).coerceAtLeast(0)
+
+  val height: Int
+    get() = (bottom - top).coerceAtLeast(0)
+}
+
 /** An opaque node to rasterise: its nodeId, `<image>` href, and bounds to capture. */
 data class FigmaSvgRasterTarget(
   val nodeId: String,
@@ -140,6 +160,14 @@ data class FigmaSvgLayer(
   val text: FigmaSvgText? = null,
   /** Set when this layer is an opaque component rendered as an `<image>`. */
   val raster: FigmaSvgRaster? = null,
+  /**
+   * A raster `<image>` drawn *beneath* this layer's own shape/text/children — the pixels of an
+   * imperative `Modifier.drawBehind {…}` (a progress track, a slider groove, a custom-drawn
+   * background) the token export can't vectorise. Kept separate from [raster] (a whole-node opaque
+   * leaf) so a drawn *container* — `Box(Modifier.drawBehind {…}) { Text(…) }` — carries its custom
+   * background as its own layer while its text/children stay editable vector layers on top.
+   */
+  val background: FigmaSvgBackgroundRaster? = null,
   val children: List<FigmaSvgLayer> = emptyList(),
 ) {
   val width: Int
@@ -150,7 +178,7 @@ data class FigmaSvgLayer(
 
   /** True when the layer draws pixels itself (vs. a pure grouping container). */
   val paints: Boolean
-    get() = fill != null || stroke != null || text != null || raster != null
+    get() = fill != null || stroke != null || text != null || raster != null || background != null
 }
 
 /**
@@ -286,39 +314,50 @@ data class FigmaSvgModel(
     )
 
     private fun LayoutInspectorNode.toLayer(ctx: BuildContext): FigmaSvgLayer {
-      // Two paths produce an <image> crop instead of a vector layer:
-      //  - an opaque component matched by name (Image/Icon/TextField/…), or
-      //  - a node that paints via an imperative Canvas draw (drawBehind/drawWithContent) the
-      //    token export can't represent (the progress track, the slider groove) — captured only
-      //    in hybrid mode, where a frame PNG exists to crop the drawn pixels from.
+      // An opaque component matched by name (Image/Icon/TextField/…) can't be vectorised at all —
+      // emit an <image> for the whole node and drop the subtree.
       val opaqueByName = isOpaque(ctx.rasterComponents)
-      // Only a *leaf* draw node (a bare `Spacer` painting a progress track / slider groove) is safe
-      // to rasterise wholesale. A container that merely draws a background/overlay
-      // (`Box(Modifier.drawBehind {…}) { Text(…) }`) must keep its editable text + child layers, so
-      // it stays on the vector path — replacing a whole subtree with a bitmap would break the
-      // layered-SVG contract (and could drop descendants outside the tight draw region).
-      val canvasDraw =
-        ctx.captureCanvasDraws &&
-          hasCustomDraw() &&
-          children.isEmpty() &&
-          ctx.textByNodeId[nodeId] == null
-      if (opaqueByName || canvasDraw) {
+      if (opaqueByName) {
         val href = ctx.rasterHref(nodeId)
-        // A named-opaque node fills its whole box; a Canvas-draw node's pixels are the drawn
-        // region the modifier reports (the padded Spacer box is larger than the bar it paints).
-        val region = if (canvasDraw && !opaqueByName) drawnRegion() else bounds
         ctx.rasterTargets.add(
-          FigmaSvgRasterTarget(nodeId, href, region.left, region.top, region.right, region.bottom)
+          FigmaSvgRasterTarget(nodeId, href, bounds.left, bounds.top, bounds.right, bounds.bottom)
         )
         return FigmaSvgLayer(
           name = layerName(),
-          left = region.left,
-          top = region.top,
-          right = region.right,
-          bottom = region.bottom,
+          left = bounds.left,
+          top = bounds.top,
+          right = bounds.right,
+          bottom = bounds.bottom,
           raster = FigmaSvgRaster(href),
         )
       }
+      // A *leaf* node that paints via an imperative Canvas draw (`drawBehind`/`drawWithContent`) —
+      // the progress track, the slider groove — carries pixels the token export can't represent. In
+      // hybrid mode (a frame PNG exists to crop from) attach that drawn region as a `background`
+      // <image> beneath the node's own vector shape/text, so a bare `Spacer` becomes a group
+      // holding
+      // just that background. Restricted to leaf draw nodes (no children, no text): the background
+      // is
+      // cropped from the *composited* frame, so on a container (`Box(Modifier.drawBehind {…}) {
+      // Text(…) }`) the crop would bake in the descendants' pixels — and re-drawing the editable
+      // children over it double-renders them. Cropping a container's background-only pass needs an
+      // isolated render, which the frame crop can't provide, so a drawn container stays fully
+      // vector
+      // (its children/text are preserved as editable layers) rather than double-render.
+      val background =
+        if (
+          ctx.captureCanvasDraws &&
+            hasCustomDraw() &&
+            children.isEmpty() &&
+            ctx.textByNodeId[nodeId] == null
+        ) {
+          val href = ctx.rasterHref(nodeId)
+          val region = drawnRegion()
+          ctx.rasterTargets.add(
+            FigmaSvgRasterTarget(nodeId, href, region.left, region.top, region.right, region.bottom)
+          )
+          FigmaSvgBackgroundRaster(href, region.left, region.top, region.right, region.bottom)
+        } else null
       val fill = tokens?.backgroundColor?.let { argbToColor(it, ctx.colorNames) }
       val stroke = tokens?.borderColor?.let { argbToColor(it, ctx.colorNames) }
       val circle = tokens?.shape == "circle"
@@ -350,6 +389,7 @@ data class FigmaSvgModel(
         circle = circle,
         cut = cut,
         text = ctx.textByNodeId[nodeId],
+        background = background,
         children = children.map { it.toLayer(ctx) },
       )
     }

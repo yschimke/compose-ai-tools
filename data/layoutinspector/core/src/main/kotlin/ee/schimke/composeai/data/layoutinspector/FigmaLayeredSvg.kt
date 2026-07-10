@@ -105,6 +105,12 @@ object FigmaLayeredSvg {
       sb.append('\n')
     }
 
+    // A captured Canvas-draw background (`Modifier.drawBehind {…}`) paints first, beneath the
+    // layer's own shape/text and its children — matching draw order, so the editable vector layers
+    // sit on top of the rasterised background.
+    layer.background?.let { bg ->
+      sb.append(indent).append("  ").append(backgroundImage(bg)).append('\n')
+    }
     if (layer.fill != null || layer.stroke != null) {
       sb.append(indent).append("  ").append(shape(layer)).append('\n')
     }
@@ -118,6 +124,10 @@ object FigmaLayeredSvg {
   private fun image(layer: FigmaSvgLayer, raster: FigmaSvgRaster): String =
     """<image href="${escapeAttr(raster.href)}" x="${layer.left}" y="${layer.top}" """ +
       """width="${layer.width}" height="${layer.height}"/>"""
+
+  private fun backgroundImage(bg: FigmaSvgBackgroundRaster): String =
+    """<image href="${escapeAttr(bg.href)}" x="${bg.left}" y="${bg.top}" """ +
+      """width="${bg.width}" height="${bg.height}"/>"""
 
   private fun shape(layer0: FigmaSvgLayer): String {
     // Compose's `Modifier.border` draws the stroke *inside* the layout bounds; SVG centers a stroke
