@@ -70,6 +70,17 @@ tasks.register<Sync>("wasmCatalogDist") {
   from(layout.buildDirectory.dir("compose/skiko-runtime-processed-wasmjs")) {
     include("skiko.mjs", "skiko.wasm")
   }
+  // The Compose Resources the catalog reads at runtime (`stringResource(...)` labels live in
+  // `:samples:design-catalog-m3-shared`). `wasmJsProcessResources` aggregates this module's and its
+  // dependencies' resources into `processedResources/wasmJs/main/composeResources/…`, laid out
+  // exactly as the runtime's `./composeResources/<pkg>/values/…cvr` fetch expects. Without this the
+  // hand-assembled dist ships no resources, so the first `stringResource` throws
+  // `MissingResourceException` and the whole catalog composition renders blank (the stock
+  // `wasmJsBrowserDistribution` we skip to stay webpack-free is what would normally carry these).
+  dependsOn("wasmJsProcessResources")
+  from(layout.buildDirectory.dir("processedResources/wasmJs/main")) {
+    include("composeResources/**")
+  }
   from(layout.projectDirectory.dir("src/wasmJsMain/resources")) {
     include("index.html", "js-joda.esm.js", "fonts/**")
   }
