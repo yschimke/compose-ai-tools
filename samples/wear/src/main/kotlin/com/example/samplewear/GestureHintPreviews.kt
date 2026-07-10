@@ -22,8 +22,10 @@ import ee.schimke.composeai.daemon.reportedOneHandedGesture
 import ee.schimke.composeai.preview.GestureHintPreview
 
 /**
- * A normal Wear media screen — the double-pinch primary action toggles play/pause, and the
- * `GestureHint` wraps the button so the real `OneHandedGestureIndicator` can flash on-device.
+ * A normal Wear media screen — the double-pinch primary action toggles play/pause. The `GestureHint`
+ * wraps the button's **content** (the label), so the real `OneHandedGestureIndicator` swaps the label
+ * for the gesture animation on-device while the button itself stays put — the design guide's
+ * on-button hint.
  *
  * Crucially this is **ordinary app code**: there is no preview-only flag, no capture mode, nothing
  * that "sets up" a hint. `GestureHint` reads the connector's force-show state, so whether the hint
@@ -37,19 +39,21 @@ fun MediaGestureScreen() {
   val interactionSource = remember { MutableInteractionSource() }
   ScreenScaffold {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-      GestureHint(type = GestureType.PRIMARY, interactionSource = interactionSource) {
-        Button(
-          onClick = { playing = !playing },
-          interactionSource = interactionSource,
-          modifier =
-            Modifier.reportedOneHandedGesture(
-              type = GestureType.PRIMARY,
-              label = if (playing) "Pause" else "Play",
-              interactionSource = interactionSource,
-            ) {
-              playing = !playing
-            },
-        ) {
+      Button(
+        onClick = { playing = !playing },
+        interactionSource = interactionSource,
+        modifier =
+          Modifier.reportedOneHandedGesture(
+            type = GestureType.PRIMARY,
+            label = if (playing) "Pause" else "Play",
+            interactionSource = interactionSource,
+          ) {
+            playing = !playing
+          },
+      ) {
+        // Wraps the button's content: on the force path the label is swapped for the gesture icon
+        // while the button pill stays visible.
+        GestureHint(type = GestureType.PRIMARY, interactionSource = interactionSource) {
           Text(if (playing) "Pause" else "Play")
         }
       }
