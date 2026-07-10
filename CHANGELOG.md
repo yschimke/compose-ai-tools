@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.16.34](https://github.com/yschimke/compose-ai-tools/compare/v0.16.33...v0.16.34) (2026-07-10)
+
+
+### Features
+
+* **serve:** Android-gated gesture-hints control in the viewer ([#2368](https://github.com/yschimke/compose-ai-tools/issues/2368)) ([b81322e](https://github.com/yschimke/compose-ai-tools/commit/b81322e195204ab3d0c334593381e631c0260ec6))
+
+
+### Bug Fixes
+
+* **daemon:** don't wrap a preview whose params are unknown (null block) ([#2370](https://github.com/yschimke/compose-ai-tools/issues/2370)) ([355350f](https://github.com/yschimke/compose-ai-tools/commit/355350fc09d877585755a1367f75be0ce9de3bc5))
+* **daemon:** preserve prior @Preview params across incremental diffs ([#2371](https://github.com/yschimke/compose-ai-tools/issues/2371)) ([3cf3b2b](https://github.com/yschimke/compose-ai-tools/commit/3cf3b2b20eb9ca2ae280ba944157811e4a68b5bb))
+* **daemon:** wrap-content parity for the interactive/stream render lane ([#2369](https://github.com/yschimke/compose-ai-tools/issues/2369)) ([52c12b6](https://github.com/yschimke/compose-ai-tools/commit/52c12b64d9b7a8140ade660880711d37cfb0ec0d))
+* **figma-svg:** honor Modifier.paint alpha and colorFilter in fill tokens ([#2348](https://github.com/yschimke/compose-ai-tools/issues/2348)) ([ec14712](https://github.com/yschimke/compose-ai-tools/commit/ec147124b1662ecdafb04ff95817e4f0e658374d))
+* **figma-svg:** resolve wear M3 painter-based container fills ([#2345](https://github.com/yschimke/compose-ai-tools/issues/2345)) ([6438f80](https://github.com/yschimke/compose-ai-tools/commit/6438f80a626444d6be8fcb6bbc87f16c681f19b9))
+* **serve:** letterbox the live canvas instead of stretching it to the snapshot box ([#2372](https://github.com/yschimke/compose-ai-tools/issues/2372)) ([bb25a30](https://github.com/yschimke/compose-ai-tools/commit/bb25a307ae3cddf81ad60c113b061fd0dd76b4e8))
+* **wear:** freeze GestureGalleryPreview clock with FixedPreviewTimeSource ([#2347](https://github.com/yschimke/compose-ai-tools/issues/2347)) ([73e8ece](https://github.com/yschimke/compose-ai-tools/commit/73e8ece07818a96a2f647f93ca11f6fbeed16c13))
+* **wear:** render device-less wear previews at wear density, not the phone default ([#2373](https://github.com/yschimke/compose-ai-tools/issues/2373)) ([129085b](https://github.com/yschimke/compose-ai-tools/commit/129085bf0b573ae3a69aa99d3c08317eafd1fe4c))
+
 ## [0.16.33](https://github.com/yschimke/compose-ai-tools/compare/v0.16.32...v0.16.33) (2026-07-10)
 
 
