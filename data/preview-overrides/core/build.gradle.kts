@@ -19,11 +19,11 @@ plugins {
 }
 
 dependencies {
-  // `daemon:core` carries `PreviewOverrideValue` (the typed value variant the declaration and the
-  // `renderNow.overrides.namedOverrides` seed share). Re-exported via `api` so consumers refer to
-  // it
-  // without a second `project` dependency.
-  api(project(":daemon:core"))
+  // `PreviewOverrideValue` (the typed value variant the declaration and the
+  // `renderNow.overrides.namedOverrides` seed share) lives here now, alongside
+  // [PreviewOverrideDeclaration] — so this module needs no `:daemon:core` dependency and the daemon
+  // no longer rides a preview's classpath just for the override value type. The daemon protocol
+  // depends up into this module for the shared type instead.
   api(libs.kotlinx.serialization.json)
   testImplementation(libs.junit)
 }

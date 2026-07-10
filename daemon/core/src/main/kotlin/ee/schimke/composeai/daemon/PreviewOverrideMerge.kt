@@ -8,11 +8,11 @@ import ee.schimke.composeai.daemon.protocol.LauncherWidgetOverride
 import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PermissionsOverride
-import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
 import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.daemon.protocol.WallpaperOverride
+import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 
 /**
  * Backend-neutral subset of a render spec that [PreviewOverrides] can mutate.

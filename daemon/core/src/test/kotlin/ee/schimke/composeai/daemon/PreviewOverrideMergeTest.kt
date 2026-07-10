@@ -7,12 +7,12 @@ import ee.schimke.composeai.daemon.protocol.GestureOverride
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PermissionGrantStateOverride
 import ee.schimke.composeai.daemon.protocol.PermissionsOverride
-import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
 import ee.schimke.composeai.daemon.protocol.RemoteComposeProfile
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import ee.schimke.composeai.daemon.protocol.UiMode
+import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull

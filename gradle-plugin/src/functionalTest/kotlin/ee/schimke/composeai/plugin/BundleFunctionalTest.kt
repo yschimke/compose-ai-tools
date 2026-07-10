@@ -1,6 +1,7 @@
 package ee.schimke.composeai.plugin
 
 import com.google.common.truth.Truth.assertThat
+import com.google.common.truth.Truth.assertWithMessage
 import ee.schimke.composeai.discovery.*
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -24,6 +25,8 @@ import org.junit.rules.TemporaryFolder
  * 4. Selection works — packing one preview filters the manifest to that preview only.
  * 5. **Minimization is effective** — bundling one preview from a multi-preview module drops the
  *    other preview's class file from `classes/app.jar`.
+ * 6. **Size budget** — a single-preview bundle stays under 500 KB, so per-preview bundles never
+ *    grow into the module's full dependency graph (the "gigabytes per preview" regression).
  */
 class BundleFunctionalTest {
 
@@ -180,6 +183,48 @@ class BundleFunctionalTest {
     //    (Project deps would land under `libs/`, but the synthetic test project has none.)
     val libsEntries = entries.filter { it.startsWith("libs/") }
     assertThat(libsEntries).isEmpty()
+  }
+
+  /**
+   * Size budget for a **single-preview** bundle. Per-preview addressing only pays off if fetching
+   * one preview doesn't drag the module's whole world along — so a lone-preview `.png` must stay
+   * small.
+   *
+   * 500 KB is the ceiling. A coordinate-mode single preview (third-party deps referenced by Maven
+   * coordinate, not embedded) is well under it — tens of KB: a minimized `classes/app.jar`, one
+   * rendered PNG, and the JSON sidecars. The guard bites the moment a change starts shipping the
+   * dependency graph *inside* every bundle: flipping `embedDeps` on so `libs/` carries the Compose
+   * jars, or inlining a project dependency whole without minimizing it (a `:daemon:core`-shaped jar
+   * is ~1.7 MB on its own, of which a preview typically reaches a few dozen classes). Either turns
+   * a ~50 KB bundle into a multi-megabyte one, and at N previews that is the difference between
+   * shipping kilobytes and shipping gigabytes.
+   *
+   * NB: this fixture has no project dependencies, so it exercises the coordinate path. The inlined-
+   * project-jar vector (the one that actually inflates the design-catalog bundles) needs a fixture
+   * with a project dep carrying bulk unreachable bytecode; that is a follow-up, tracked alongside
+   * per-class minimization of inlined project jars.
+   */
+  @Test
+  fun `single-preview bundle stays under the 500 KB budget`() {
+    val projectDir = createTestProject()
+    val redId = "test.RedKt.RedBoxPreview"
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewBundle", "-PbundlePreviewIds=$redId", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+    assertThat(result.task(":composePreviewBundle")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val bundle = File(projectDir, "build/compose-previews/bundle.png")
+    assertThat(bundle.exists()).isTrue()
+
+    val budgetBytes = 500L * 1024
+    val message =
+      "single-preview bundle ${bundle.name} is ${bundle.length() / 1024} KB, over the 500 KB " +
+        "budget — a per-preview bundle must not carry the module's full dependency graph"
+    assertWithMessage(message).that(bundle.length()).isAtMost(budgetBytes)
   }
 
   @Test

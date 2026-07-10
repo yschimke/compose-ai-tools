@@ -8,9 +8,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.overrides.PreviewOverrideType
+import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 
 /**
  * Composition local exposing the live named-override surface to a preview. Wired to
