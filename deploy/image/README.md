@@ -33,7 +33,7 @@ workflow builds and pushes to GHCR. Trigger it either way:
 
 - **On a CLI release** (`v*` tag) — automatic; bundles that version + tags `latest`.
 - **Manually** — Actions → *Publish preview-host image* → run with a `cli_version`
-  (e.g. `0.16.5`).
+  (e.g. `0.16.33`).
 
 First publish makes the GHCR package; set it **public** (Packages → settings) if
 you want hosts to pull without auth.
@@ -52,7 +52,7 @@ DOMAIN=preview.example.com ./setup.sh
 `docker compose pull && up -d` — **no build**. It prints your
 `https://preview.example.com/?token=<TOKEN>` link once Caddy has a cert.
 
-Pin a version with `IMAGE_TAG=0.16.5` in `.env` (a bare tag; defaults to the
+Pin a version with `IMAGE_TAG=0.16.33` in `.env` (a bare tag; defaults to the
 `latest` tag when unset).
 
 ## Auto-updates (Watchtower)
@@ -79,7 +79,7 @@ It needs the Docker socket (root-equivalent on the host — fine for your own bo
 
 Requirements / options:
 - **Leave `IMAGE_TAG` unset (it defaults to the `latest` tag)** — Watchtower only
-  tracks a moving tag. A pinned `IMAGE_TAG=0.16.2` won't auto-update (by design).
+  tracks a moving tag. A pinned `IMAGE_TAG=0.16.32` won't auto-update (by design).
   The value is a bare tag like `latest`, not `:latest` — the compose image string
   already supplies the colon (`…host:${IMAGE_TAG:-latest}`).
 - **Brief downtime on update:** recreating `preview` restarts it (a ~1 min window

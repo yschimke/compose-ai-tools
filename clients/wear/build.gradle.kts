@@ -19,7 +19,7 @@ composePreview {
 }
 
 // Version source of truth; `versionCode` packs MAJOR.MINOR.PATCH into a monotonic int.
-val appVersionName = "0.2.0" // x-release-please-version
+val appVersionName = "0.2.1" // x-release-please-version
 val appVersionCode =
   appVersionName
     .split(".", "-")

@@ -8,7 +8,13 @@
 # Maven Central. No build-logic, no gradle-plugin, no ~50 data modules to compile
 # — just a download + one warm render. Built once in CI and pushed to GHCR, so
 # hosts pull it and never build at all.
-ARG CP_VERSION=0.16.9
+# Bumped automatically by release-please on each CLI release (see release-please-config.json
+# extra-files) so a fallback / local `docker build` never ships a stale CLI. An inline
+# `# x-release-please-version` can't go on the ARG line (Docker folds it into the value), so use
+# the block-marker form.
+# x-release-please-start-version
+ARG CP_VERSION=0.16.33
+# x-release-please-end
 
 # ---------------------------------------------------------------------------
 # Stage 0: base — JDK + Skiko's native deps (same rationale as the cloudrun image:

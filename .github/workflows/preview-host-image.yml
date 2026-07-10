@@ -15,10 +15,12 @@ on:
       cli_version:
         description: Released compose-preview version to bundle (leading v optional)
         required: true
-        # Keep >= the release that introduced the flags the entrypoint defaults
-        # (--catalogs-unlisted landed in 0.16.9); an older bundled CLI would
-        # silently ignore them and drop the baked meshcore/HA catalog paths.
-        default: "0.16.9"
+        # Keep this CURRENT: a manual run that accepts the UI default publishes
+        # `:latest`, so a stale default ships a stale server. Must be >= the release
+        # carrying the entrypoint-defaulted flags (`--catalogs-unlisted`, 0.16.9) AND
+        # the catalog knob-override render path (#2287) — else a published catalog's
+        # `knob.*` render params are silently dropped.
+        default: "0.16.33" # x-release-please-version
   # Called from release-please.yml when a CLI release is cut. A bot-created
   # release won't fire the `release` trigger below (the GITHUB_TOKEN-doesn't-
   # trigger-workflows limitation the rest of the release chain already works
