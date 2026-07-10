@@ -70,12 +70,14 @@ data class PreviewInfoDto(
    * for every absent sub-field (per-field, not per-block).
    *
    * The incremental source-change scan ([IncrementalDiscovery.toDto]) rebuilds a preview's DTO from
-   * the class file alone and cannot recover this block, so it emits `params == null` — which reads
-   * as `changed` against a prior that carried params. To avoid dropping a preview's known size on
-   * every edit (which flips the desktop interactive render between wrap-content and the fixed 320²
-   * frame), [applyDiff] carries the prior `params` forward when an incoming `changed` DTO omits
-   * them. A genuine `@Preview(widthDp = …)` edit is therefore reflected only on the next FULL
-   * rediscovery (which re-parses `previews.json`), not on the incremental class-file rescan.
+   * the class file alone and cannot recover this block, so it emits `params == null`. Two places
+   * cooperate so this doesn't drop a preview's known size on every edit (which would flip the
+   * desktop interactive render between wrap-content and the fixed 320² frame): [diff] normalizes a
+   * null-params rescan to the prior's params before deciding `changed`, so a params-only rescan
+   * isn't reported at all; and when a *real* field change happens to also carry null params,
+   * [applyDiff] carries the prior `params` forward. A genuine `@Preview(widthDp = …)` edit is
+   * therefore reflected only on the next FULL rediscovery (which re-parses `previews.json`), not on
+   * the incremental class-file rescan.
    */
   val params: PreviewParamsDto? = null,
   /**
@@ -339,7 +341,19 @@ internal constructor(
     return lock.read {
       val newById = newScanForFile.associateBy { it.id }
       val added = newScanForFile.filter { it.id !in byId }
-      val changed = newScanForFile.filter { fresh -> byId[fresh.id]?.let { it != fresh } == true }
+      val changed = newScanForFile.filter { fresh ->
+        val prior = byId[fresh.id] ?: return@filter false
+        // The incremental source-change scan ([IncrementalDiscovery.toDto]) can't recover the
+        // `params` block, so it always returns `params == null`. On its own that must NOT read as
+        // a change — otherwise every save of any preview in the file re-reports it as `changed`
+        // forever (params never come back on the class-file rescan), so the daemon emits
+        // `discoveryUpdated` + the client re-reconciles on every keystroke-save. Normalize a
+        // null-params rescan to the prior's params before comparing — matching what [applyDiff]
+        // stores — so an otherwise-identical rescan is empty and only a *real* field change
+        // (displayName / group / a genuinely different params block) is reported.
+        val normalized = if (fresh.params == null) fresh.copy(params = prior.params) else fresh
+        normalized != prior
+      }
       // Removed scopes to ids whose previous DTO claimed `sourceFile` matches the saved path.
       // Without this scoping, a scan returning 0 previews for one file would mis-remove every
       // preview in the index (including those owned by sibling files).

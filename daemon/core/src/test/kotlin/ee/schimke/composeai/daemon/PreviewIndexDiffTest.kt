@@ -78,12 +78,13 @@ class PreviewIndexDiffTest {
   }
 
   @Test
-  fun `applyDiff preserves prior params when the incremental DTO omits them`() {
+  fun `a params-less rescan of an otherwise-identical preview is not a change`() {
     // The incremental source-change scan (IncrementalDiscovery.toDto) rebuilds a DTO from the class
-    // file alone, so it always arrives with params == null — which reads as a `changed` entry
-    // against a prior that carried a params block. applyDiff must carry the prior params forward,
-    // or the desktop interactive/stream render would lose the preview's known size after every save
-    // (flipping wrap-content ↔ the fixed 320² frame — the PNG↔Live "size shift").
+    // file alone, so it always arrives with params == null. That must NOT read as a change on its
+    // own — otherwise every save re-reports the preview as `changed` forever (params never come
+    // back
+    // on the class-file rescan), so the daemon emits `discoveryUpdated` + the client re-reconciles
+    // on every keystroke-save. diff() normalizes the null params to the prior's before comparing.
     val prior =
       PreviewInfoDto(
         id = "Sized",
@@ -92,31 +93,24 @@ class PreviewIndexDiffTest {
         sourceFile = "Sized.kt",
         params = PreviewParamsDto(widthDp = 200, device = "id:pixel_5"),
       )
-    val fresh =
-      PreviewInfoDto(
-        id = "Sized",
-        className = "com.example.SizedKt",
-        methodName = "Sized",
-        sourceFile = "Sized.kt",
-        params = null,
-      )
+    val fresh = prior.copy(params = null)
     val index = PreviewIndex.fromMap(path = null, byId = mapOf("Sized" to prior))
     val diff = index.diff(setOf(fresh), Path.of("Sized.kt"))
-    // The params-less rescan reads as a change (params differ from the prior)…
-    assertEquals(listOf("Sized"), diff.changed.map { it.id })
-
+    assertTrue(diff.added.isEmpty())
+    assertTrue(diff.removed.isEmpty())
+    assertTrue("a params-only null rescan must not be reported as changed", diff.changed.isEmpty())
+    assertTrue(discoveryDiffEmpty(diff))
+    // And the entry keeps its previously-discovered params (never nulled).
     index.applyDiff(diff)
-    // …but the committed entry keeps the previously-discovered params, not the null rescan.
-    val merged = index.byId("Sized")
-    assertEquals(200, merged?.params?.widthDp)
-    assertEquals("id:pixel_5", merged?.params?.device)
+    assertEquals(200, index.byId("Sized")?.params?.widthDp)
+    assertEquals("id:pixel_5", index.byId("Sized")?.params?.device)
   }
 
   @Test
-  fun `applyDiff keeps a present empty params block over a null rescan`() {
-    // The other direction: a no-size sticker carries a present-but-empty params block (it wraps).
-    // A params-less rescan must not drop it to null — that would flip the live render from
-    // wrap-content back to the fixed frame.
+  fun `a present empty params block is not dropped by a null rescan`() {
+    // A no-size sticker carries a present-but-empty params block (it wraps). A params-less rescan
+    // is
+    // not a change, and the block survives — so renderSpecFromInfo keeps wrapping it.
     val prior =
       PreviewInfoDto(
         id = "Sticker",
@@ -127,9 +121,32 @@ class PreviewIndexDiffTest {
       )
     val fresh = prior.copy(params = null)
     val index = PreviewIndex.fromMap(path = null, byId = mapOf("Sticker" to prior))
-    index.applyDiff(index.diff(setOf(fresh), Path.of("Sticker.kt")))
-    // The present (empty) block survives — so renderSpecFromInfo still wraps it.
+    val diff = index.diff(setOf(fresh), Path.of("Sticker.kt"))
+    assertTrue(diff.changed.isEmpty())
+    index.applyDiff(diff)
     assertEquals(PreviewParamsDto(), index.byId("Sticker")?.params)
+  }
+
+  @Test
+  fun `a real field change with null params is still reported and preserves params`() {
+    // A genuine change (displayName) alongside the incremental scan's null params IS a change — and
+    // applyDiff still carries the prior params forward, so the real edit lands without losing size.
+    val prior =
+      PreviewInfoDto(
+        id = "Sized",
+        className = "com.example.SizedKt",
+        methodName = "Sized",
+        sourceFile = "Sized.kt",
+        displayName = "X",
+        params = PreviewParamsDto(widthDp = 200),
+      )
+    val fresh = prior.copy(displayName = "Y", params = null)
+    val index = PreviewIndex.fromMap(path = null, byId = mapOf("Sized" to prior))
+    val diff = index.diff(setOf(fresh), Path.of("Sized.kt"))
+    assertEquals(listOf("Sized"), diff.changed.map { it.id })
+    index.applyDiff(diff)
+    assertEquals("Y", index.byId("Sized")?.displayName)
+    assertEquals(200, index.byId("Sized")?.params?.widthDp)
   }
 
   @Test
