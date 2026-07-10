@@ -365,6 +365,70 @@ class FigmaLayeredSvgTest {
     assertTrue(svg.contains("""fill="#202020""""))
   }
 
+  @Test
+  fun capturedLetterSpacingIsEmittedSoGlyphAdvancesMatchTheRender() {
+    // A tracked run (Material label/body text carries 0.1–0.5sp) must emit SVG `letter-spacing`,
+    // else
+    // the browser lays it out with the font's natural advances and the line drifts across its
+    // width.
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 8, 8, 192, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "8,8,192,40",
+              text = "Hello",
+              // 0.5sp at density 2 → 1.0px.
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp", letterSpacing = "0.5sp"),
+            )
+          ),
+      )
+    val svg = render(layout, semantics = semantics, density = 2f)
+    assertTrue("expected letter-spacing in $svg", svg.contains("""letter-spacing="1""""))
+  }
+
+  @Test
+  fun zeroLetterSpacingEmitsNoAttribute() {
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 8, 8, 192, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "8,8,192,40",
+              text = "Hello",
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp", letterSpacing = "0.0sp"),
+            )
+          ),
+      )
+    assertFalse(render(layout, semantics = semantics, density = 2f).contains("letter-spacing"))
+  }
+
+  @Test
+  fun embedFamilyNormalisesFileDerivedFacesToGoogleFamilies() {
+    // A FontListFontFamily reports its resolved face by file stem ("Roboto-Medium",
+    // "NotoSerif-Regular", "DroidSansMono"); the embed resolver keys on the spaced Google family
+    // with
+    // weight/italic supplied separately, so the style suffix drops and CamelCase words space out.
+    assertEquals("Roboto", FigmaLayeredSvg.embedFamily("Roboto-Medium", "Roboto"))
+    assertEquals("Roboto", FigmaLayeredSvg.embedFamily("Roboto-Regular", "Roboto"))
+    assertEquals("Noto Serif", FigmaLayeredSvg.embedFamily("NotoSerif-Regular", "Roboto"))
+    assertEquals("Droid Sans Mono", FigmaLayeredSvg.embedFamily("DroidSansMono", "Roboto"))
+    // Generics keep their existing mappings.
+    assertEquals("Roboto", FigmaLayeredSvg.embedFamily("sans-serif", "Roboto"))
+    assertEquals("Noto Serif", FigmaLayeredSvg.embedFamily("serif", "Roboto"))
+    assertNull(FigmaLayeredSvg.embedFamily("cursive", "Roboto"))
+  }
+
   private fun textBaselineY(svg: String): Double =
     Regex("""<text [^>]*\by="([0-9.]+)"""").find(svg)!!.groupValues[1].toDouble()
 

@@ -25,6 +25,7 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.SystemTheme
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.text.intl.LocaleList
@@ -333,7 +334,32 @@ class RenderEngine(
                   spec.showBackground -> Color.White
                   else -> Color.Transparent
                 }
-              Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
+              // AS-parity wrap: on a wrapped axis, measure the composable with a relaxed (min = 0)
+              // constraint against the sandbox max and size the box to the child's intrinsic size,
+              // so the captured tree (and the figma-svg / wireframe / semantics derived from it)
+              // reflects the preview's natural size instead of a fixed frame that clips or reflows
+              // wide content. `.background` paints on that intrinsic box so the sticker's backdrop
+              // is
+              // content-sized, not sandbox-sized. Fixed axes keep the sandbox constraint so
+              // `fillMax*` / LazyColumn still have a finite viewport (mirrors DesktopRendererMain).
+              val boxModifier =
+                if (spec.wrapWidth || spec.wrapHeight) {
+                  Modifier.layout { measurable, constraints ->
+                      val wrapped =
+                        androidx.compose.ui.unit.Constraints(
+                          minWidth = if (spec.wrapWidth) 0 else constraints.minWidth,
+                          maxWidth = constraints.maxWidth,
+                          minHeight = if (spec.wrapHeight) 0 else constraints.minHeight,
+                          maxHeight = constraints.maxHeight,
+                        )
+                      val placeable = measurable.measure(wrapped)
+                      layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+                    }
+                    .background(bgColor)
+                } else {
+                  Modifier.fillMaxSize().background(bgColor)
+                }
+              Box(modifier = boxModifier) {
                 ComposeDataExtensionPipeline.Apply(
                   extensions = previewOverrideExtensions.plan(spec.overrides),
                   previewId = spec.previewId,
@@ -1029,6 +1055,18 @@ data class RenderSpec(
   val assetPath: String? = null,
   val widthPx: Int = 320,
   val heightPx: Int = 320,
+  /**
+   * AS-parity wrap-content flags. When set, `widthPx`/`heightPx` are a *sandbox* bound (not a fixed
+   * frame): the composition root is measured with a relaxed (min = 0) constraint on the wrapped
+   * axis and sized to the composable's intrinsic size, and the background paints on that intrinsic
+   * box — so the captured layout/semantics tree (and the `compose/figma-svg` + wireframe derived
+   * from it) reflect the preview's *natural* size, matching the standalone renderer's wrap crop
+   * rather than a fixed 320² box that clipped/reflowed wide content. Off ⇒ the composition fills
+   * the frame (prior behaviour). Set by [PreviewManifestRouter] for previews that declare no
+   * explicit size/device.
+   */
+  val wrapWidth: Boolean = false,
+  val wrapHeight: Boolean = false,
   val density: Float = 2.0f,
   val showBackground: Boolean = true,
   val backgroundColor: Long = 0L,
@@ -1158,6 +1196,8 @@ data class RenderSpec(
         functionName = functionName,
         widthPx = map["widthPx"]?.toIntOrNull() ?: defaults.widthPx,
         heightPx = map["heightPx"]?.toIntOrNull() ?: defaults.heightPx,
+        wrapWidth = map["wrapWidth"]?.toBoolean() ?: defaults.wrapWidth,
+        wrapHeight = map["wrapHeight"]?.toBoolean() ?: defaults.wrapHeight,
         density = map["density"]?.toFloatOrNull() ?: defaults.density,
         showBackground = map["showBackground"]?.toBoolean() ?: defaults.showBackground,
         backgroundColor = map["backgroundColor"]?.toLongOrNull() ?: defaults.backgroundColor,

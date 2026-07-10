@@ -203,6 +203,12 @@ object FigmaLayeredSvg {
     val style = if (t.italic) """ font-style="italic"""" else ""
     val fill =
       t.color?.let { """ fill="${it.hex}"${opacity("fill", it)}""" } ?: """ fill="#000000""""
+    // Emit the captured tracking as SVG `letter-spacing` so the run's glyph advances match the
+    // render; without it a browser uses the font's natural advances and a tracked line drifts.
+    val letterSpacing =
+      t.letterSpacingPx
+        ?.takeIf { kotlin.math.abs(it) >= 0.01 }
+        ?.let { """ letter-spacing="${fmt(it)}"""" } ?: ""
     val lines = t.lines
     if (lines != null && lines.size > 1) {
       // Wrapped text: one positioned <tspan> per line at the exact place the render wrapped it,
@@ -213,9 +219,9 @@ object FigmaLayeredSvg {
         lines.joinToString("") {
           """<tspan x="${layer.left + it.left}" y="${layer.top + it.baseline}">${escape(it.content)}</tspan>"""
         }
-      return """<text font-size="${fmt(size)}"$family$weight$style$fill>$tspans</text>"""
+      return """<text font-size="${fmt(size)}"$family$weight$style$letterSpacing$fill>$tspans</text>"""
     }
-    return """<text x="${layer.left}" y="${fmt(baseline)}" font-size="${fmt(size)}"$family$weight$style$fill>""" +
+    return """<text x="${layer.left}" y="${fmt(baseline)}" font-size="${fmt(size)}"$family$weight$style$letterSpacing$fill>""" +
       "${escape(t.content)}</text>"
   }
 
@@ -314,7 +320,56 @@ object FigmaLayeredSvg {
       return it
     }
     if (generic in CSS_GENERICS) return null
-    return svgFontFamily(captured)
+    return embeddableFamily(captured)
+  }
+
+  /**
+   * Style tokens carried separately by the face's `weight`/`italic`, so dropped from a file-derived
+   * family name when deriving its embeddable *family*.
+   */
+  private val STYLE_TOKENS =
+    setOf(
+      "thin",
+      "extralight",
+      "ultralight",
+      "light",
+      "regular",
+      "normal",
+      "book",
+      "roman",
+      "medium",
+      "semibold",
+      "demibold",
+      "bold",
+      "extrabold",
+      "ultrabold",
+      "black",
+      "heavy",
+      "italic",
+      "oblique",
+    )
+
+  /**
+   * Normalise a concrete, file-derived face identity — `NotoSerif-Regular`, `DroidSansMono`,
+   * `Roboto-Medium` — to a Google-Fonts *family* name (`Noto Serif`, `Droid Sans Mono`, `Roboto`)
+   * the embedding resolver can actually fetch. A `FontListFontFamily` reports its resolved face by
+   * file stem, which carries a `-Style` suffix and runs the family words together in CamelCase; the
+   * resolver keys on the spaced family with weight/italic supplied separately, so split on
+   * hyphen/underscore/space *and* CamelCase boundaries and drop a trailing style token. Pure string
+   * work: a name Google has no family for just fails the fetch and the text keeps its vector-only
+   * fallback (no worse than before), while the common bundled faces (Roboto/Noto/Droid/…) resolve.
+   */
+  private fun embeddableFamily(identity: String): String {
+    val leaf = svgFontFamily(identity)
+    val words =
+      leaf
+        .replace(Regex("([a-z0-9])([A-Z])"), "$1 $2")
+        .split('-', '_', ' ')
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+    val kept =
+      if (words.size > 1 && words.last().lowercase() in STYLE_TOKENS) words.dropLast(1) else words
+    return kept.joinToString(" ").ifBlank { leaf }
   }
 
   /** `<defs><style>` with one `@font-face` per embedded face, its bytes as a base64 data URI. */
