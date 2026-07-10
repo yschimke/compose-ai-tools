@@ -16,9 +16,9 @@ import kotlinx.serialization.json.JsonClassDiscriminator
  *
  * Deliberately **not** the Remote-Compose `RemoteNamedValue` sum (a `dp` variant wrapped with
  * `.rdp`, mapped onto the `RcPlatformProfiles` creation DSL). These values seed plain Compose
- * `previewOverride*` lookups, so the variant set is the small JVM/Compose-native one (string / int /
- * float / bool / color). A `Dp` knob is carried as [FloatValue] — the runtime helper wraps the float
- * in `.dp` at the API edge.
+ * `previewOverride*` lookups, so the variant set is the small JVM/Compose-native one (string / int
+ * / float / bool / color). A `Dp` knob is carried as [FloatValue] — the runtime helper wraps the
+ * float in `.dp` at the API edge.
  *
  * `@JsonClassDiscriminator("kind")` so payloads read `{ "kind": "string", "value": "Tap me" }`
  * rather than carrying the polymorphic class name.
