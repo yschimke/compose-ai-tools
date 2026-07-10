@@ -549,11 +549,19 @@ data class FigmaSvgModel(
      * private `Painter`, a `BitmapPainter`, a gradient — stringifies to a class name and leaves the
      * fill unresolved. Recognising the one painter we CAN vectorise (and rastering everything else)
      * keeps this free of per-component knowledge: a painter present but of any other form ⇒ raster.
+     *
+     * The one caveat is a `ColorPainter` carrying a `colorFilter`: the string still starts with
+     * `ColorPainter(`, but the resolver deliberately leaves the fill unresolved because a
+     * re-tinting filter can't collapse to a flat token — so that (visible) fill must raster too,
+     * not be treated as vectorisable. A `ColorPainter` with no filter that still didn't resolve is
+     * a fully transparent fill (no visible pixels) and is left alone.
      */
     private fun LayoutInspectorNode.hasUnvectorizablePaintFill(): Boolean {
       val paint = modifiers.firstOrNull { it.name in PAINT_FILL_MODIFIERS } ?: return false
       val painter = paint.properties["painter"] ?: return true
-      return !painter.startsWith("ColorPainter(")
+      if (!painter.startsWith("ColorPainter(")) return true
+      val filter = paint.properties["colorFilter"]
+      return filter != null && filter != "null"
     }
 
     /** The region a paint-fill painter actually covers — its modifier bounds, else the node box. */

@@ -359,6 +359,71 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun aColorPainterFillWithAColorFilterRastersBecauseTheTintCannotVectorise() {
+    // `Modifier.paint(ColorPainter(...), colorFilter = tint(...))` stringifies its painter as
+    // `ColorPainter(...)`, but the resolver leaves `backgroundColor` null because the re-tint can't
+    // collapse to a flat token. That (visible) fill must still fall to the frame raster — the
+    // `ColorPainter(` prefix alone must NOT mark it vectorisable when a filter is present.
+    val node =
+      LayoutInspectorNode(
+        nodeId = "tinted",
+        component = "BoxMeasurePolicy",
+        bounds = bounds(0, 0, 100, 100),
+        size = LayoutInspectorSize(100, 100),
+        modifiers =
+          listOf(
+            LayoutInspectorModifier(
+              name = "paint",
+              properties =
+                mapOf(
+                  "painter" to "ColorPainter(color=Color(1.0, 0.0, 0.0, 1.0, sRGB IEC61966-2.1))",
+                  "colorFilter" to "ColorFilter(...)",
+                ),
+              bounds = bounds(0, 0, 100, 100),
+            )
+          ),
+      )
+    val svg =
+      FigmaLayeredSvg.render(
+        FigmaSvgModel.from(LayoutInspectorPayload(node), captureCanvasDraws = true)
+      )
+    assertTrue(
+      "a colour-filtered ColorPainter fill must raster from the frame",
+      svg.contains("<image "),
+    )
+  }
+
+  @Test
+  fun aTransparentColorPainterFillWithoutAFilterDoesNotRaster() {
+    // A `ColorPainter` that resolved to nothing because it's fully transparent (no filter) has no
+    // visible pixels to recover — it must NOT raster, or an invisible fill would bake an opaque
+    // crop.
+    val node =
+      LayoutInspectorNode(
+        nodeId = "clear",
+        component = "BoxMeasurePolicy",
+        bounds = bounds(0, 0, 100, 100),
+        size = LayoutInspectorSize(100, 100),
+        modifiers =
+          listOf(
+            LayoutInspectorModifier(
+              name = "paint",
+              properties =
+                mapOf(
+                  "painter" to "ColorPainter(color=Color(0.0, 0.0, 0.0, 0.0, sRGB IEC61966-2.1))"
+                ),
+              bounds = bounds(0, 0, 100, 100),
+            )
+          ),
+      )
+    val svg =
+      FigmaLayeredSvg.render(
+        FigmaSvgModel.from(LayoutInspectorPayload(node), captureCanvasDraws = true)
+      )
+    assertFalse("a transparent unfiltered ColorPainter must not raster", svg.contains("<image "))
+  }
+
+  @Test
   fun aPlainColorPainterFillStaysVectorAndDoesNotRaster() {
     // The one painter we CAN vectorise — a solid `ColorPainter` — must still resolve to a flat fill
     // rect even in hybrid mode; it must NOT fall to the frame-raster path.
