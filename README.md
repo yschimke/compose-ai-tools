@@ -158,6 +158,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-viewer-focus/dark](renders/serve-viewer-focus.dark.png) |
 | `light` | ![serve-viewer-focus/light](renders/serve-viewer-focus.light.png) |
 
+## serve-viewer-gestures
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-gestures/dark](renders/serve-viewer-gestures.dark.png) |
+| `light` | ![serve-viewer-gestures/light](renders/serve-viewer-gestures.light.png) |
+
 ## serve-viewer-path
 
 | Theme | Capture |

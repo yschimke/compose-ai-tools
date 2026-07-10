@@ -253,6 +253,18 @@
       "sha256": "8436e9cf66bbc453bc83e9d4711052e039c70977f66ab7a8a049a8eda2620dd3",
       "size": 48645
     },
+    "serve-viewer-gestures.dark.png": {
+      "fixture": "serve-viewer-gestures",
+      "theme": "dark",
+      "sha256": "2cd84273b490d94bd1263b3283cbe1f6ab4fc2a2c5db34d1959e6a624f5d33d6",
+      "size": 49406
+    },
+    "serve-viewer-gestures.light.png": {
+      "fixture": "serve-viewer-gestures",
+      "theme": "light",
+      "sha256": "219056c8b4572bf2f2a3ac3414994afe1a05a84ba489673c2d7f455c7cc7fdc0",
+      "size": 49100
+    },
     "serve-viewer-path.dark.png": {
       "fixture": "serve-viewer-path",
       "theme": "dark",
