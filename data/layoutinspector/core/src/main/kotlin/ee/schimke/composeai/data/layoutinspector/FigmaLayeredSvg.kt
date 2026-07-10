@@ -67,6 +67,10 @@ object FigmaLayeredSvg {
     )
     sb.append('\n')
     if (fontFaces.isNotEmpty()) sb.append(fontFaceDefs(fontFaces))
+    // Emit one reusable `feDropShadow` filter per distinct elevation so an elevated surface casts
+    // its Material drop shadow instead of reading as a flat fill.
+    val elevations = collectElevations(model.root)
+    if (elevations.isNotEmpty()) sb.append(shadowFilterDefs(elevations))
     // Everything is drawn in root-pixel space; a single group translate drops the tree into the
     // padded canvas, keeping child coordinates absolute (matching Figma's absolute layout on
     // import).
@@ -98,7 +102,13 @@ object FigmaLayeredSvg {
     val dataToken =
       if (options.annotateTokens && tokenName != null) """ data-token="${escapeAttr(tokenName)}""""
       else ""
-    sb.append("""$indent<g id="${escapeAttr(layer.name)}"$dataToken>""")
+    // An elevated surface casts its Material drop shadow via a `feDropShadow` filter on its group,
+    // so the shadow falls behind the whole silhouette (fill + children) exactly as the render draws
+    // it. Keyed by rounded px so layers at the same elevation share one filter def.
+    val filterAttr =
+      if (layer.elevationPx >= 1.0) """ filter="url(#${shadowFilterId(layer.elevationPx)})""""
+      else ""
+    sb.append("""$indent<g id="${escapeAttr(layer.name)}"$dataToken$filterAttr>""")
     sb.append('\n')
     if (options.annotateTokens && tokenName != null) {
       sb.append("""$indent  <title>${escape(layer.name)} · ${escape(tokenName)}</title>""")
@@ -119,6 +129,42 @@ object FigmaLayeredSvg {
     }
     for (child in layer.children) renderLayer(child, sb, options, familyOverrides, depth + 1)
     sb.append("$indent</g>\n")
+  }
+
+  /** Distinct rounded-px elevations in the tree, so one `feDropShadow` def is shared per level. */
+  private fun collectElevations(
+    layer: FigmaSvgLayer,
+    acc: MutableSet<Int> = mutableSetOf(),
+  ): Set<Int> {
+    if (layer.elevationPx >= 1.0) acc.add(layer.elevationPx.roundToInt())
+    for (child in layer.children) collectElevations(child, acc)
+    return acc
+  }
+
+  private fun shadowFilterId(elevationPx: Double): String = "shadow-${elevationPx.roundToInt()}"
+
+  /**
+   * A `feDropShadow` per elevation level, approximating Material's key shadow: the blur and
+   * vertical offset scale with elevation, at a soft opacity. The filter region is expanded so a
+   * large blur isn't clipped at the layer's bounds.
+   */
+  private fun shadowFilterDefs(elevations: Set<Int>): String {
+    val sb = StringBuilder("<defs>\n")
+    for (e in elevations.sorted()) {
+      val dy = fmt(e * 0.5)
+      val blur = fmt(e * 0.6)
+      sb.append(
+        """  <filter id="${shadowFilterId(e.toDouble())}" x="-50%" y="-50%" width="200%" height="200%">"""
+      )
+      sb.append('\n')
+      sb.append(
+        """    <feDropShadow dx="0" dy="$dy" stdDeviation="$blur" flood-color="#000000" flood-opacity="0.26"/>"""
+      )
+      sb.append('\n')
+      sb.append("  </filter>\n")
+    }
+    sb.append("</defs>\n")
+    return sb.toString()
   }
 
   private fun image(layer: FigmaSvgLayer, raster: FigmaSvgRaster): String =

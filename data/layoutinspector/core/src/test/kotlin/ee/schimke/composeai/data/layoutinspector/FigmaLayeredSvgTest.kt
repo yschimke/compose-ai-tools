@@ -186,6 +186,48 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun shadowElevationBecomesADropShadowFilterScaledByDensity() {
+    // A `Surface`/`Card`/`FAB` reports `elevation` (dp); the export emits a `feDropShadow` def and
+    // filters the elevated group so it casts its Material drop shadow. Elevation → px scales by
+    // density: 6dp at density 2 → a 12px filter id.
+    val svg =
+      render(
+        layoutNode(
+          "Fab",
+          0,
+          0,
+          100,
+          100,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4", elevation = "6.0dp"),
+        ),
+        density = 2f,
+      )
+    assertTrue("a drop-shadow filter is defined", svg.contains("<feDropShadow"))
+    assertTrue("the filter id scales with density (6dp × 2)", svg.contains("""id="shadow-12""""))
+    assertTrue(
+      "the elevated group references the filter",
+      svg.contains("""filter="url(#shadow-12)""""),
+    )
+  }
+
+  @Test
+  fun noElevationEmitsNoShadowFilter() {
+    val svg =
+      render(
+        layoutNode(
+          "Flat",
+          0,
+          0,
+          100,
+          100,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4"),
+        )
+      )
+    assertTrue("no shadow filter without elevation", !svg.contains("feDropShadow"))
+    assertTrue(!svg.contains("filter=\"url(#shadow"))
+  }
+
+  @Test
   fun rawPixelCornerRadiusRendersRoundedRectWithoutDensityScaling() {
     // `RoundedCornerShape(20f)` rides on `cornerRadiusPx` (not the dp `cornerRadius`) and is
     // already

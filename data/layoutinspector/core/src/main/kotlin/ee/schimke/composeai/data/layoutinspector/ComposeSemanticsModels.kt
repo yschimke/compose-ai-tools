@@ -290,6 +290,13 @@ data class ComposeSemanticsTokens(
   val gap: String? = null,
   /** Resolved padding from `Modifier.padding`, in dp per edge. */
   val padding: ComposeSemanticsInsets? = null,
+  /**
+   * Resolved shadow elevation in dp from a `Modifier.graphicsLayer { shadowElevation = … }` (what
+   * `Surface`/`Card`/`FloatingActionButton` use to cast a Material drop shadow), e.g. `"6.0dp"`.
+   * Null when the node casts no shadow. The figma-svg export turns this into an SVG `feDropShadow`
+   * so an elevated surface carries its shadow instead of reading as a flat fill against the render.
+   */
+  val elevation: String? = null,
 )
 
 /** Per-edge insets in dp (`"16.0dp"`), as resolved from `Modifier.padding` (issue #1897). */

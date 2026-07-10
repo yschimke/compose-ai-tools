@@ -51,6 +51,7 @@ internal object ModifierTokenResolver {
     var cornerRadiusPx: String? = null
     var shape: String? = null
     var padding: ComposeSemanticsInsets? = null
+    var elevation: String? = null
     // `CircleShape` / `CornerSize(50%)` resolve to dp against the node's shorter measured side.
     val minSidePx = minOf(sizeWidthPx, sizeHeightPx)
     for (info in modifierInfo) {
@@ -59,6 +60,20 @@ internal object ModifierTokenResolver {
       val name = inspectable?.nameFallback
       val elements = inspectable?.inspectableElements?.associate { it.name to it.value }.orEmpty()
       val simpleName = mod.javaClass.simpleName
+
+      // `Surface`/`Card`/`FAB` cast their Material drop shadow via
+      // `graphicsLayer { shadowElevation = … }`. Capture the largest shadow elevation on the node
+      // so
+      // the figma-svg export can emit a matching `feDropShadow` (a node may carry two
+      // graphicsLayers
+      // — a clip and the shadow). Skipped when zero (a clip-only graphicsLayer).
+      if (name == "graphicsLayer" || simpleName.contains("GraphicsLayer")) {
+        shadowElevationDp(mod, elements, density)?.let { dp ->
+          if (elevation == null || dp > (elevation!!.removeSuffix("dp").toDoubleOrNull() ?: 0.0)) {
+            elevation = "${dp}dp"
+          }
+        }
+      }
 
       if (backgroundColor == null && (name == "background" || simpleName == "BackgroundElement")) {
         backgroundColor = backgroundColorHex(mod, elements, inspectable?.valueOverride)
@@ -95,7 +110,8 @@ internal object ModifierTokenResolver {
         cornerRadiusPx == null &&
         shape == null &&
         gap == null &&
-        padding == null
+        padding == null &&
+        elevation == null
     )
       null
     else
@@ -107,8 +123,44 @@ internal object ModifierTokenResolver {
         shape = shape,
         gap = gap,
         padding = padding,
+        elevation = elevation,
       )
   }
+
+  /**
+   * The shadow elevation of a `graphicsLayer` modifier in dp, or null when it casts no shadow.
+   * `GraphicsLayerScope.shadowElevation` is a raw **pixel** value (a `Modifier.shadow(elevation:
+   * Dp)` converts dp→px before setting it), and the inspector reports it in px too — so both the
+   * inspector `shadowElevation` element and the reflected field are divided by [density] to recover
+   * dp. Zero (a clip-only graphicsLayer) returns null.
+   */
+  private fun shadowElevationDp(mod: Any, elements: Map<String, Any?>, density: Float): Double? {
+    if (density <= 0f) return null
+    val px =
+      floatValue(elements["shadowElevation"])
+        ?: runCatching {
+            mod.javaClass
+              .getDeclaredField("shadowElevation")
+              .apply { isAccessible = true }
+              .getFloat(mod)
+          }
+          .getOrNull()
+        ?: return null
+    if (px <= 0f) return null
+    return roundedDp(px / density).toDouble()
+  }
+
+  /** Reads a bare Float/Double, or a value class's `value` float (e.g. a `Dp`), as a Float. */
+  private fun floatValue(raw: Any?): Float? =
+    when (raw) {
+      is Float -> raw
+      is Double -> raw.toFloat()
+      else ->
+        runCatching {
+            raw?.javaClass?.getDeclaredField("value")?.apply { isAccessible = true }?.getFloat(raw)
+          }
+          .getOrNull()
+    }
 
   /**
    * Resolves the inter-child spacing of a `Row`/`Column` from its [measurePolicy] (issue #1908).

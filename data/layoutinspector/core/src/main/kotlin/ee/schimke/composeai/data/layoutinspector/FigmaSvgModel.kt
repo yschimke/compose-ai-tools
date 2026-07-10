@@ -168,6 +168,13 @@ data class FigmaSvgLayer(
    * background as its own layer while its text/children stay editable vector layers on top.
    */
   val background: FigmaSvgBackgroundRaster? = null,
+  /**
+   * Shadow elevation in px (dp × density) for a Material-elevated surface (`Surface`/`Card`/`FAB`,
+   * captured from `graphicsLayer { shadowElevation }`). `0.0` casts no shadow. The renderer turns a
+   * positive value into an SVG `feDropShadow` on this layer's group so the elevated surface carries
+   * its drop shadow instead of reading as a flat fill against the render.
+   */
+  val elevationPx: Double = 0.0,
   val children: List<FigmaSvgLayer> = emptyList(),
 ) {
   val width: Int
@@ -373,6 +380,9 @@ data class FigmaSvgModel(
             // A `RoundedCornerShape(<px>f)` has no dp radius; its raw-pixel corners ride on
             // `cornerRadiusPx` and map straight to layer space with no density conversion.
             ?: tokens?.cornerRadiusPx?.let { parseRawCornersPx(it) }
+      // Shadow elevation (dp) → px for the render's drop shadow.
+      val elevationPx =
+        tokens?.elevation?.removeSuffix("dp")?.toDoubleOrNull()?.let { it * ctx.density } ?: 0.0
       return FigmaSvgLayer(
         name = layerName(),
         left = bounds.left,
@@ -390,6 +400,7 @@ data class FigmaSvgModel(
         cut = cut,
         text = ctx.textByNodeId[nodeId],
         background = background,
+        elevationPx = elevationPx,
         children = children.map { it.toLayer(ctx) },
       )
     }
