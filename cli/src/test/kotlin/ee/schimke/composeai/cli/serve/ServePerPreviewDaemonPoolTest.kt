@@ -92,6 +92,42 @@ class ServePerPreviewDaemonPoolTest {
   }
 
   @Test
+  fun `eviction retains a streaming daemon and closes an idle one instead`() {
+    // A is the eldest but is backing a live stream; B is idle. Opening C over the cap must NOT
+    // close A out from under its client — it evicts the idle B (older-but-streaming A is retained
+    // even though it's the LRU entry, since the pool is only touched once at subscribe).
+    val hosts = mutableMapOf<String, FakeHost>()
+    var nextStreams = 1 // A streams; B and C don't
+    val pool =
+      ServePerPreviewDaemonPool(maxOpen = 2) { id ->
+        FakeHost(streams = nextStreams).also {
+          hosts[id] = it
+          nextStreams = 0
+        }
+      }
+    pool.get("A") // streaming
+    pool.get("B") // idle
+    pool.get("C") // over cap → evict an idle LRU host, not the streaming A
+    assertEquals(false, hosts.getValue("A").closed, "the streaming daemon is retained past the cap")
+    assertTrue(hosts.getValue("B").closed, "the idle LRU daemon was evicted instead")
+    assertEquals(false, hosts.getValue("C").closed)
+  }
+
+  @Test
+  fun `eviction holds over the cap when every daemon is streaming`() {
+    // All held daemons back a live stream, so none is evictable; the pool holds over the cap rather
+    // than close a connected client's daemon. The soft cap is bounded by the live-seat cap
+    // upstream.
+    val hosts = mutableListOf<FakeHost>()
+    val pool =
+      ServePerPreviewDaemonPool(maxOpen = 1) { _ -> FakeHost(streams = 1).also { hosts.add(it) } }
+    pool.get("A")
+    pool.get("B")
+    assertEquals(2, pool.openCount(), "no streaming daemon is evicted even over the cap")
+    assertTrue(hosts.none { it.closed })
+  }
+
+  @Test
   fun `activeStreamCount sums the pooled daemons and close tears them all down`() {
     val hosts = mutableListOf<FakeHost>()
     val pool =

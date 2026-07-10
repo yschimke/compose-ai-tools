@@ -236,6 +236,54 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `daemon ids that sanitize to the same stem skip the per-preview lane`() {
+    // `bundle split` disambiguates colliding sanitised ids with -2/-3 suffixes the server can't
+    // reconstruct, so two daemon ids that sanitise to one stem ("Foo Bar" and "Foo_Bar" → Foo_Bar)
+    // must NOT fetch the bare <stem>.png (that's only one of them) — both resolve null and fall
+    // back to the monolithic daemon, which renders every preview correctly.
+    val json =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "liveBundle":{"path":"bundle/","file":"compose-m3-bundle.png"},
+       "components":[{"componentId":"Foo","images":[
+         {"path":"images/foo/a.png","theme":"dark","previewId":"Foo Bar"},
+         {"path":"images/foo/b.png","theme":"dark","previewId":"Foo_Bar"}]}]}
+      """
+        .trimIndent()
+    val fetch: (String) -> ByteArray? = { url ->
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> json.toByteArray()
+        url.endsWith("bundle/compose-m3-bundle.png") -> byteArrayOf(1, 2, 3)
+        url.contains("bundle/previews/") -> byteArrayOf(4, 5, 6) // present, but must NOT be used
+        url.endsWith(".png") -> png()
+        else -> null
+      }
+    }
+    val trust =
+      TrustStore(
+        branches = listOf(TrustedBranch("yschimke/compose-ai-tools", "design-artifacts/*"))
+      )
+    var fetchPerPreview: ((String) -> File?)? = null
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = trust,
+        fetch = fetch,
+        buildTrustedBundle = { _, _, _, _, _, fetcher ->
+          fetchPerPreview = fetcher
+          true
+        },
+      )
+    store.load("compose-m3")
+
+    val fetcher = fetchPerPreview!!
+    // Both colliding ids skip the per-preview lane (null) despite the branch serving a Foo_Bar.png.
+    assertNull(fetcher("Foo Bar"))
+    assertNull(fetcher("Foo_Bar"))
+  }
+
+  @Test
   fun `a trusted liveBundle's externalized fonts are fetched into a cache and materialized`() {
     // The bundle's manifest declares an externalized font (lifted out of classes/app.jar by
     // `bundle externalize`); the store must fetch it from bundle/res/<sha>, verify the hash, cache

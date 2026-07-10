@@ -258,8 +258,18 @@ class ServeCatalogStore(
             // own FULL split bundle beside the monolithic one on the trusted branch. Fetched on
             // demand + pooled by the builder; shares the monolithic bundle's rehydrated font pool
             // ([res.dir]) since both were split from the same externalised bundle.
+            //
+            // Collision safety: `bundle split` writes colliding sanitised ids as `<base>.png`,
+            // `<base>-2.png`, … so a daemon id whose sanitised stem is NOT unique among the alias
+            // values would fetch a sibling's bundle under the bare `<stem>.png`. We can't recover
+            // which suffix maps to which id without the publisher's ordering, so we only serve the
+            // per-preview lane for ids with an unambiguous stem; a colliding id resolves null and
+            // falls back to the monolithic daemon (which serves every preview correctly).
+            val safeStems = uniquePerPreviewStems(alias.values)
             val fetchPerPreview: (String) -> File? = { daemonId ->
-              fetchPerPreviewBundle(daemonId, liveBundle, base, dir, safe)
+              safeStems[daemonId]?.let { stem ->
+                fetchPerPreviewBundle(stem, liveBundle, base, dir, safe)
+              }
             }
             if (
               buildTrustedBundle(safe, bundleFile, res.dir, alias, bakedFallback, fetchPerPreview)
@@ -367,32 +377,46 @@ class ServeCatalogStore(
   }
 
   /**
-   * Fetch one preview's own **per-preview FULL bundle**
-   * (`<liveBundle.path>/previews/<daemon-id>.png` on the trusted branch) into
-   * `<dir>/$LIVE_BUNDLE_DIR/$PER_PREVIEW_DIR/<daemon-id>.png` — the unit the per-preview live lane
-   * materialises + pools. `design-artifacts.yml` splits the externalised monolithic bundle into
-   * these (one re-renderable sticker per preview) beside it. Fail-closed like [fetchLiveBundle]: an
-   * invalid/escaping [daemonId] or a fetch miss returns null and the caller simply falls back to
-   * the monolithic daemon for that id (so a branch that ships no per-preview bundles still serves
-   * live from the monolith). Cached on disk: a second request for the same id re-uses the
-   * already-fetched file rather than re-downloading.
+   * The subset of [daemonIds] whose sanitised per-preview stem is **unambiguous** — mapped to that
+   * stem. `bundle split` disambiguates colliding stems with `-2`/`-3`/… suffixes it derives from
+   * the sheet's preview order, which the server can't reconstruct; so an id sharing a stem with
+   * another is dropped here and the caller serves it from the monolithic daemon instead of fetching
+   * a sibling's bundle under the bare `<stem>.png`. A blank stem (an id with no usable characters)
+   * is dropped too.
+   */
+  private fun uniquePerPreviewStems(daemonIds: Collection<String>): Map<String, String> {
+    val counts = HashMap<String, Int>()
+    val stems = LinkedHashMap<String, String>()
+    for (id in daemonIds) {
+      val stem = sanitizePerPreviewName(id)
+      if (stem.isEmpty()) continue
+      stems[id] = stem
+      counts[stem] = (counts[stem] ?: 0) + 1
+    }
+    return stems.filterValues { counts[it] == 1 }
+  }
+
+  /**
+   * Fetch one preview's own **per-preview FULL bundle** (`<liveBundle.path>/previews/<stem>.png` on
+   * the trusted branch) into `<dir>/$LIVE_BUNDLE_DIR/$PER_PREVIEW_DIR/<stem>.png` — the unit the
+   * per-preview live lane materialises + pools. `design-artifacts.yml` splits the externalised
+   * monolithic bundle into these (one re-renderable sticker per preview) beside it. Fail-closed
+   * like [fetchLiveBundle]: an escaping [stem] or a fetch miss returns null and the caller simply
+   * falls back to the monolithic daemon for that id (so a branch that ships no per-preview bundles
+   * still serves live from the monolith). Cached on disk: a second request for the same stem
+   * re-uses the already-fetched file rather than re-downloading.
    *
-   * [daemonId] is a bundle preview descriptor id (the [alias][previewAliasFor] values), sanitised
-   * to the same route-safe stem `bundle split` wrote the file under (keep `A-Za-z0-9._-`, else
-   * `_`), so the URL stem matches the published filename.
+   * [stem] is the route-safe filename `bundle split` wrote the bundle under (a sanitised bundle
+   * preview descriptor id), pre-resolved by [uniquePerPreviewStems] so it's unambiguous — the URL
+   * stem matches the published filename exactly.
    */
   private fun fetchPerPreviewBundle(
-    daemonId: String,
+    stem: String,
     liveBundle: LiveBundle,
     base: String,
     dir: File,
     system: String,
   ): File? {
-    val stem = sanitizePerPreviewName(daemonId)
-    if (stem.isEmpty()) {
-      System.err.println("serve: $system per-preview id '$daemonId' is unusable — skipping")
-      return null
-    }
     val previewsDir = File(File(dir, LIVE_BUNDLE_DIR), PER_PREVIEW_DIR)
     val previewsRoot = previewsDir.canonicalFile.toPath()
     val target = File(previewsDir, "$stem.png")
