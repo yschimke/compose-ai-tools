@@ -56,4 +56,33 @@ class FigmaSvgModelCanvasDrawTest {
     assertTrue("no raster targets in vector-only mode", m.rasterTargets.isEmpty())
     assertNull("the node stays a vector layer, not an <image>", m.root.raster)
   }
+
+  @Test
+  fun aDrawnContainerKeepsItsChildrenAsVectorLayers() {
+    // A `Box(Modifier.drawBehind {…}) { child }` draws a background but is NOT a leaf — rasterising
+    // it wholesale would collapse the child's editable layer into a bitmap. It must stay vector.
+    val container =
+      LayoutInspectorNode(
+        nodeId = "box-1",
+        component = "Box",
+        bounds = bounds(0, 0, 100, 40),
+        size = LayoutInspectorSize(100, 40),
+        modifiers =
+          listOf(LayoutInspectorModifier(name = "drawBehind", bounds = bounds(0, 0, 100, 40))),
+        children =
+          listOf(
+            LayoutInspectorNode(
+              nodeId = "label-1",
+              component = "Text",
+              bounds = bounds(8, 8, 92, 32),
+              size = LayoutInspectorSize(84, 24),
+            )
+          ),
+      )
+    val m = model(container, captureCanvasDraws = true)
+    assertTrue("a drawn container is not rasterised", m.rasterTargets.isEmpty())
+    assertNull("the container stays a vector layer", m.root.raster)
+    assertEquals("its child is preserved as a vector layer", 1, m.root.children.size)
+    assertNull(m.root.children.single().raster)
+  }
 }

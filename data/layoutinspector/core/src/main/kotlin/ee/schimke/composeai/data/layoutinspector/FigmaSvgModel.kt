@@ -292,7 +292,16 @@ data class FigmaSvgModel(
       //    token export can't represent (the progress track, the slider groove) — captured only
       //    in hybrid mode, where a frame PNG exists to crop the drawn pixels from.
       val opaqueByName = isOpaque(ctx.rasterComponents)
-      val canvasDraw = ctx.captureCanvasDraws && hasCustomDraw()
+      // Only a *leaf* draw node (a bare `Spacer` painting a progress track / slider groove) is safe
+      // to rasterise wholesale. A container that merely draws a background/overlay
+      // (`Box(Modifier.drawBehind {…}) { Text(…) }`) must keep its editable text + child layers, so
+      // it stays on the vector path — replacing a whole subtree with a bitmap would break the
+      // layered-SVG contract (and could drop descendants outside the tight draw region).
+      val canvasDraw =
+        ctx.captureCanvasDraws &&
+          hasCustomDraw() &&
+          children.isEmpty() &&
+          ctx.textByNodeId[nodeId] == null
       if (opaqueByName || canvasDraw) {
         val href = ctx.rasterHref(nodeId)
         // A named-opaque node fills its whole box; a Canvas-draw node's pixels are the drawn
