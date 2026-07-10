@@ -178,6 +178,9 @@ object PreviewDiscovery {
   // @AnimatedPreview, same FQN-match policy. See `FocusedPreview.kt`.
   private const val FOCUSED_PREVIEW_FQN = "ee.schimke.composeai.preview.FocusedPreview"
   private const val AMBIENT_PREVIEW_FQN = "ee.schimke.composeai.preview.AmbientPreview"
+  // Wear one-handed-gesture hint capture — sibling annotation to @AmbientPreview, same FQN-match
+  // policy. See `GestureHintPreview.kt`.
+  private const val GESTURE_HINT_PREVIEW_FQN = "ee.schimke.composeai.preview.GestureHintPreview"
   private const val LAUNCHER_WIDGET_PREVIEW_FQN =
     "ee.schimke.composeai.preview.LauncherWidgetPreview"
   // The stable FQN is shared by both Android's ui-tooling-preview and CMP's
@@ -1237,6 +1240,7 @@ object PreviewDiscovery {
     val focusSpecs = extractFocusSpecs(annotations)
     val focusGifSpec = extractFocusGifSpec(annotations)
     val ambientSpec = extractAmbientSpec(annotations)
+    val gestureHintSpec = extractGestureHintSpec(annotations)
     val launcherWidgetSpec = extractLauncherWidgetSpec(annotations)
     val launcherWidgetResizeSpec = extractLauncherWidgetResizeSpec(annotations)
     // @RoboComposePreviewOptions, similarly, applies to the function as a
@@ -1315,6 +1319,7 @@ object PreviewDiscovery {
             focusSpecs,
             focusGifSpec,
             ambientSpec,
+            gestureHintSpec,
             launcherWidgetSpec,
             launcherWidgetResizeSpec,
             timings,
@@ -1339,6 +1344,7 @@ object PreviewDiscovery {
           focusSpecs,
           focusGifSpec,
           ambientSpec,
+          gestureHintSpec,
           launcherWidgetSpec,
           launcherWidgetResizeSpec,
           timings,
@@ -1498,6 +1504,7 @@ object PreviewDiscovery {
     focuses: List<FocusCapture>,
     focusGif: FocusGifCapture?,
     ambient: AmbientCapture?,
+    gestureHint: GestureHintCapture?,
     launcherWidget: LauncherWidgetCapture?,
     launcherWidgetResize: LauncherWidgetResizeSpec?,
     timings: List<Long>,
@@ -1553,6 +1560,9 @@ object PreviewDiscovery {
     // previews render outside the Compose composition where the local lives, so the override is a
     // no-op there.
     val effectiveAmbient = if (nonComposable) null else ambient
+    // `@GestureHintPreview` force-shows the Wear one-handed-gesture indicator, which lives in the
+    // Compose composition — same reasoning as ambient: a no-op for non-composable previews.
+    val effectiveGestureHint = if (nonComposable) null else gestureHint
     // `@LauncherWidgetPreview` wraps the composition in a sized Box — same reasoning as ambient:
     // non-composable previews have no Compose layout pass to wrap. The override is also dropped
     // for tile / notification renders.
@@ -1598,6 +1608,7 @@ object PreviewDiscovery {
               launcherMode = effectiveLauncherWidgetResize.launcherMode,
             ),
           ambient = effectiveAmbient,
+          gestureHint = effectiveGestureHint,
           renderOutput = "renders/${previewId}_RESIZE_${w}x${h}.png",
           cost = STATIC_COST,
         )
@@ -1610,6 +1621,7 @@ object PreviewDiscovery {
             Capture(
               focusGif = effectiveFocusGif,
               ambient = effectiveAmbient,
+              gestureHint = effectiveGestureHint,
               launcherWidget = effectiveLauncherWidget,
               renderOutput = "renders/${previewId}${suffix}.gif",
               cost = FOCUS_GIF_COST,
@@ -1645,6 +1657,7 @@ object PreviewDiscovery {
           Capture(
             focusGif = effectiveFocusGif,
             ambient = effectiveAmbient,
+            gestureHint = effectiveGestureHint,
             launcherWidget = effectiveLauncherWidget,
             renderOutput = "renders/${previewId}${suffix}.gif",
             cost = FOCUS_GIF_COST,
@@ -1744,6 +1757,7 @@ object PreviewDiscovery {
                 scroll = scroll,
                 focus = focus,
                 ambient = effectiveAmbient,
+                gestureHint = effectiveGestureHint,
                 launcherWidget = effectiveLauncherWidget,
                 renderOutput =
                   "renders/${previewId}${scrollSuffix}${timeSuffix}${focusSuffix}.${ext}",
@@ -1999,6 +2013,18 @@ object PreviewDiscovery {
       burnInProtectionRequired = burnIn,
       deviceHasLowBitAmbient = lowBit,
     )
+  }
+
+  /**
+   * Reads a `@GestureHintPreview` off [annotations] into a [GestureHintCapture], or `null` when the
+   * annotation is absent. Like [extractAmbientSpec] this is a single-shot per function — the consumer
+   * pairs a bare `@Preview` (hint off) with a `@GestureHintPreview` `@Preview` (hint on) over the
+   * same screen.
+   */
+  private fun extractGestureHintSpec(annotations: List<AnnotationInfo>): GestureHintCapture? {
+    val ann = annotations.firstOrNull { it.name == GESTURE_HINT_PREVIEW_FQN } ?: return null
+    val showHints = (ann.parameterValues.getValue("showHints") as? Boolean) ?: true
+    return GestureHintCapture(showHints = showHints)
   }
 
   /**
@@ -2308,6 +2334,7 @@ object PreviewDiscovery {
     focuses: List<FocusCapture>,
     focusGif: FocusGifCapture?,
     ambient: AmbientCapture?,
+    gestureHint: GestureHintCapture?,
     launcherWidget: LauncherWidgetCapture?,
     launcherWidgetResize: LauncherWidgetResizeSpec?,
     timings: List<Long>,
@@ -2328,6 +2355,7 @@ object PreviewDiscovery {
         focuses,
         focusGif,
         ambient,
+        gestureHint,
         launcherWidget,
         launcherWidgetResize,
         timings,

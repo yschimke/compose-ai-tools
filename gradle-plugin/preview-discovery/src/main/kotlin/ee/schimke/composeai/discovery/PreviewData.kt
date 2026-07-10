@@ -280,6 +280,19 @@ enum class AmbientCaptureState {
 }
 
 /**
+ * Per-preview Wear OS one-handed-gesture **hint** override discovered from a `@GestureHintPreview`
+ * annotation. Non-null when present; the renderer wraps the composition with
+ * `:data-gestures-connector`'s `GestureOverrideExtension` so `GestureHint` force-shows the indicator
+ * — the same seam daemon-driven `renderNow.overrides.gestures.showHints` drives through the
+ * connector's planner.
+ */
+@Serializable
+data class GestureHintCapture(
+  /** Force-show the one-handed-gesture hints for the render. Mirrors `GestureOverride.showHints`. */
+  val showHints: Boolean = true
+)
+
+/**
  * Per-preview launcher-widget container-size override discovered from a `@LauncherWidgetPreview`
  * annotation. Stamped onto every capture of the annotated function — renderer wraps the composition
  * with `:data-launcher-widget-connector`'s `LauncherWidgetExtension`, which mirrors `MyWidget`
@@ -455,6 +468,13 @@ data class Capture(
    * `AmbientOverrideExtension` when present.
    */
   val ambient: AmbientCapture? = null,
+  /**
+   * `null` → no Wear OS one-handed-gesture hint override. Set when the preview carries a
+   * `@GestureHintPreview` annotation. Renderer wraps the composition with
+   * `:data-gestures-connector`'s `GestureOverrideExtension` when present so `GestureHint`
+   * force-shows the indicator.
+   */
+  val gestureHint: GestureHintCapture? = null,
   /**
    * `null` → no launcher-widget container-size override. Set when the preview carries a
    * `@LauncherWidgetPreview` annotation. Renderer wraps the composition with
