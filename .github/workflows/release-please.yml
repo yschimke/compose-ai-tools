@@ -70,8 +70,19 @@ jobs:
       # (release.yml, preview-host-image.yml) check out `ref: <tag>`, so create
       # the tag now, at the release PR's merge commit. Idempotent: skips if the
       # ref already exists (e.g. a re-run, or a future non-draft release-please).
+      #
+      # `!cancelled()` (not the default success-only gate) is deliberate and hard-won:
+      # the release-please-action step cuts the draft (sets `release_created=true`)
+      # and THEN builds the next candidate PR in the same step — and that second
+      # half can crash (`Error adding to tree`) *after* the release is already cut.
+      # With a plain `if: …release_created == 'true'`, that crash skips this step,
+      # so the tag is never written; the manifest then names a version with no tag,
+      # which wedges every later release-please run into re-listing all history and
+      # failing again. Running whenever a release was actually cut — even if the rp
+      # step later failed — guarantees the tag exists and breaks that trap. This is
+      # exactly what stranded 0.16.34 (draft, untagged) until it was fixed by hand.
       - name: Ensure the release tag exists for the draft
-        if: steps.rp.outputs.release_created == 'true'
+        if: ${{ !cancelled() && steps.rp.outputs.release_created == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.rp.outputs.tag_name }}
@@ -88,9 +99,15 @@ jobs:
 
   # Build and publish the artifacts whenever release-please actually cuts a
   # release. Skipped on "just updating the release PR" runs.
+  #
+  # `!cancelled() && …release_created == 'true'` rather than a plain output check:
+  # the release-please job can report `release_created=true` (draft cut) and STILL
+  # end in failure if the rp step crashes while building the next candidate PR (see
+  # the tag-ensure step). We want the artifact build to proceed whenever a release
+  # was genuinely cut, so a post-cut crash doesn't strand the release unpublished.
   release:
     needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
+    if: ${{ !cancelled() && needs.release-please.outputs.release_created == 'true' }}
     uses: ./.github/workflows/release.yml
     with:
       tag: ${{ needs.release-please.outputs.tag_name }}
@@ -112,9 +129,16 @@ jobs:
   #      anyway with a warning rather than wedge the release on CDN lag).
   # Only then `gh release edit --draft=false --latest`, so `/releases/latest` and
   # `latest/download/…` flip atomically to a fully-populated release.
+  # The `!cancelled()` override tolerates a post-cut crash in the `release-please`
+  # JOB — but it must NOT tolerate a failed `release`. `release.yml` decouples the
+  # GitHub asset upload from the Maven Central publish, so `release` can fail with
+  # the required assets already attached (Maven publish failed). Finalizing then
+  # would un-draft a release whose Gradle plugin/runtime never actually published.
+  # So require `needs.release.result == 'success'` explicitly: skip release-please's
+  # failure, but never release's.
   finalize-release:
     needs: [release-please, release]
-    if: needs.release-please.outputs.release_created == 'true'
+    if: ${{ !cancelled() && needs.release-please.outputs.release_created == 'true' && needs.release.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write   # un-draft + mark latest
@@ -171,9 +195,12 @@ jobs:
   # `releases/download/<tag>/…` URL, which 404s while the release is still a
   # draft — so it must run only after finalize un-drafts it (which also makes its
   # tarball-resolvable poll resolve immediately instead of riding out the upload).
+  # Same scoping as finalize: tolerate release-please's post-cut crash, but require
+  # `release` AND `finalize-release` to have actually succeeded — this job pulls the
+  # CLI tarball from the now-PUBLISHED release, which only exists if finalize ran.
   preview-host-image:
     needs: [release-please, release, finalize-release]
-    if: needs.release-please.outputs.release_created == 'true'
+    if: ${{ !cancelled() && needs.release-please.outputs.release_created == 'true' && needs.release.result == 'success' && needs.finalize-release.result == 'success' }}
     uses: ./.github/workflows/preview-host-image.yml
     with:
       cli_version: ${{ needs.release-please.outputs.tag_name }}
@@ -187,7 +214,7 @@ jobs:
   # than relying on the `clients-v*` tag push.
   release-clients:
     needs: release-please
-    if: needs.release-please.outputs.clients_release_created == 'true'
+    if: ${{ !cancelled() && needs.release-please.outputs.clients_release_created == 'true' }}
     uses: ./.github/workflows/clients-release.yml
     with:
       tag: ${{ needs.release-please.outputs.clients_tag_name }}
@@ -215,7 +242,10 @@ jobs:
   # release was publishing, it opens the correct next PR instead of the phantom.
   reconcile-release-pr:
     needs: [release-please, finalize-release]
-    if: needs.release-please.outputs.release_created == 'true'
+    # Tolerate release-please's post-cut crash, but only reconcile once the release
+    # actually finalized (tag + published) — otherwise the re-run hits the same
+    # unanchored-manifest wedge it's meant to clear.
+    if: ${{ !cancelled() && needs.release-please.outputs.release_created == 'true' && needs.finalize-release.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write        # update the release branch
