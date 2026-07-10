@@ -78,6 +78,78 @@ class PreviewIndexDiffTest {
   }
 
   @Test
+  fun `a params-less rescan of an otherwise-identical preview is not a change`() {
+    // The incremental source-change scan (IncrementalDiscovery.toDto) rebuilds a DTO from the class
+    // file alone, so it always arrives with params == null. That must NOT read as a change on its
+    // own — otherwise every save re-reports the preview as `changed` forever (params never come
+    // back
+    // on the class-file rescan), so the daemon emits `discoveryUpdated` + the client re-reconciles
+    // on every keystroke-save. diff() normalizes the null params to the prior's before comparing.
+    val prior =
+      PreviewInfoDto(
+        id = "Sized",
+        className = "com.example.SizedKt",
+        methodName = "Sized",
+        sourceFile = "Sized.kt",
+        params = PreviewParamsDto(widthDp = 200, device = "id:pixel_5"),
+      )
+    val fresh = prior.copy(params = null)
+    val index = PreviewIndex.fromMap(path = null, byId = mapOf("Sized" to prior))
+    val diff = index.diff(setOf(fresh), Path.of("Sized.kt"))
+    assertTrue(diff.added.isEmpty())
+    assertTrue(diff.removed.isEmpty())
+    assertTrue("a params-only null rescan must not be reported as changed", diff.changed.isEmpty())
+    assertTrue(discoveryDiffEmpty(diff))
+    // And the entry keeps its previously-discovered params (never nulled).
+    index.applyDiff(diff)
+    assertEquals(200, index.byId("Sized")?.params?.widthDp)
+    assertEquals("id:pixel_5", index.byId("Sized")?.params?.device)
+  }
+
+  @Test
+  fun `a present empty params block is not dropped by a null rescan`() {
+    // A no-size sticker carries a present-but-empty params block (it wraps). A params-less rescan
+    // is
+    // not a change, and the block survives — so renderSpecFromInfo keeps wrapping it.
+    val prior =
+      PreviewInfoDto(
+        id = "Sticker",
+        className = "com.example.StickerKt",
+        methodName = "Sticker",
+        sourceFile = "Sticker.kt",
+        params = PreviewParamsDto(),
+      )
+    val fresh = prior.copy(params = null)
+    val index = PreviewIndex.fromMap(path = null, byId = mapOf("Sticker" to prior))
+    val diff = index.diff(setOf(fresh), Path.of("Sticker.kt"))
+    assertTrue(diff.changed.isEmpty())
+    index.applyDiff(diff)
+    assertEquals(PreviewParamsDto(), index.byId("Sticker")?.params)
+  }
+
+  @Test
+  fun `a real field change with null params is still reported and preserves params`() {
+    // A genuine change (displayName) alongside the incremental scan's null params IS a change — and
+    // applyDiff still carries the prior params forward, so the real edit lands without losing size.
+    val prior =
+      PreviewInfoDto(
+        id = "Sized",
+        className = "com.example.SizedKt",
+        methodName = "Sized",
+        sourceFile = "Sized.kt",
+        displayName = "X",
+        params = PreviewParamsDto(widthDp = 200),
+      )
+    val fresh = prior.copy(displayName = "Y", params = null)
+    val index = PreviewIndex.fromMap(path = null, byId = mapOf("Sized" to prior))
+    val diff = index.diff(setOf(fresh), Path.of("Sized.kt"))
+    assertEquals(listOf("Sized"), diff.changed.map { it.id })
+    index.applyDiff(diff)
+    assertEquals("Y", index.byId("Sized")?.displayName)
+    assertEquals(200, index.byId("Sized")?.params?.widthDp)
+  }
+
+  @Test
   fun `no-op — scan matches index exactly, diff is empty`() {
     val foo = preview("Foo", sourceFile = "Foo.kt", displayName = "Foo!")
     val index = PreviewIndex.fromMap(path = null, byId = mapOf("Foo" to foo))
