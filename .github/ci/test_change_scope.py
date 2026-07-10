@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Unit tests for integration-scope.py's classifier.
+"""Unit tests for change-scope.py's classifier.
 
-Pure stdlib (unittest). Run: python3 .github/ci/test_integration_scope.py -v
+Pure stdlib (unittest). Run: python3 .github/ci/test_change_scope.py -v
 
 The `decide` cases use real changed-file sets from recent PRs so the config
 and the classifier are pinned to actual project history: docs / samples /
@@ -17,15 +17,15 @@ from pathlib import Path
 _HERE = Path(__file__).resolve().parent
 _REPO_ROOT = _HERE.parents[1]
 
-# Load integration-scope.py as a module (hyphenated filename → importlib).
+# Load change-scope.py as a module (hyphenated filename → importlib).
 _spec = importlib.util.spec_from_file_location(
-    "integration_scope", _HERE / "integration-scope.py"
+    "change_scope", _HERE / "change-scope.py"
 )
 mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(mod)
 
-# Real ignore list from the committed config.
-_CONFIG = json.loads((_REPO_ROOT / ".github" / "integration-scope.json").read_text())
+# Real ignore list from the committed shared config.
+_CONFIG = json.loads((_HERE / "change-scope-safe-paths.json").read_text())
 IGNORE = [mod.glob_to_regex(p) for p in _CONFIG["ignorePaths"]]
 
 
@@ -92,6 +92,15 @@ class DecideRun(unittest.TestCase):
     def test_cli(self):
         # The CLI materialises the init script every integration job uses.
         self.assertEqual(decide(["cli/src/main/kotlin/InitScript.kt"]), "true")
+
+    def test_common_io(self):
+        # Direct dep of :daemon:harness — must run the daemon harness.
+        self.assertEqual(decide(["common-io/src/main/kotlin/Io.kt"]), "true")
+
+    def test_daemon_harness_baselines(self):
+        # The harness's committed pixel baselines live under daemon/** (not the
+        # top-level renders/**), so a baseline change must re-run the harness.
+        self.assertEqual(decide(["daemon/harness/baselines/desktop/scene.png"]), "true")
 
     def test_build_wiring(self):
         self.assertEqual(decide(["settings.gradle.kts"]), "true")

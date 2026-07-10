@@ -1,0 +1,20 @@
+{
+  "//": "Shared change-scope safe-path list, read by .github/ci/change-scope.py for the heavy PR-gated workflows that have no natural `paths:` trigger filter — currently the Integration external-repo matrix (integration.yml) and the Daemon Harness renderer legs (daemon-harness.yml). A PR whose EVERY changed file matches one of these globs cannot affect what those builds produce: the integration matrix only consumes the artifacts published to mavenLocal (gradle-plugin, renderer-*, daemon-*, data-*, preview-annotations) plus the CLI init script, and :daemon:harness:test only depends on :daemon:core/desktop/android + :common-io + the renderers. None of the paths below feed either. ANY changed file NOT matched here -> the workflow runs in full (fail-open: change-scope.py defaults to run on an empty diff, a git failure, or an unreadable config). Note this differs from preview-scope.json: these workflows never build THIS repo's own samples/** (the integration matrix checks out EXTERNAL repos; the harness uses its own fixtures), so samples/** is safe to ignore here, whereas preview-scope.json scopes it. This list is deliberately conservative — it omits paths like gradle-plugin/** and cli/** that a specific workflow might also be able to ignore, so it stays correct for every consumer.",
+  "ignorePaths": [
+    "docs/**",
+    "site/**",
+    "**/*.md",
+    "samples/**",
+    "renders/**",
+    "vscode-extension/**",
+    "deploy/**",
+    "clients/**",
+    "scripts/**",
+    ".githooks/**",
+    ".idea/**",
+    ".vscode/**",
+    "LICENSE",
+    ".gitignore",
+    ".gitattributes"
+  ]
+}
