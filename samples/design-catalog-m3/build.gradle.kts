@@ -51,3 +51,51 @@ dependencies {
   // `api(compose.components.resources)`, but declared directly since this module uses it head-on.
   implementation(libs.jetbrains.compose.components.resources)
 }
+
+// --- Published-preview runtime pinning
+// -------------------------------------------------------------
+// ⚠️ RELEASES ARE EFFECTIVELY REQUIRED FOR PUBLISHED PREVIEWS ⚠️
+//
+// The preview runtimes this catalog uses (`:data-preview-overrides-runtime` for `previewOverride*`,
+// and `:slot-preview-runtime` transitively via the shared module) are `project(...)` deps, which
+// `bundle pack` can only INLINE (a project jar has no re-resolvable coordinate) — ~80 KB of runtime
+// jars carried in the published bundle, and, with per-preview bundles, in EVERY one.
+//
+// When design-artifacts builds the PUBLISHED bundle it sets the gate
+// `ORG_GRADLE_PROJECT_composeaiUseReleasedRuntimes=true`. That swaps those project deps for their
+// RELEASED Maven coordinates at [composeaiReleasedRuntimeVersion] (a release-please-managed
+// property
+// in `gradle.properties`), so `bundle pack` records small `ClasspathEntry.Maven` references
+// (re-resolved from Maven Central at serve time) instead of inlining the jars.
+//
+// The consequence is deliberate: a NEW preview-runtime API/annotation added on `main` can't be used
+// by a published preview until it's RELEASED — the released coordinate won't carry it (so the
+// compile fails HERE, which is the guard), AND the live preview server that re-renders the bundle
+// runs the RELEASED CLI/daemon, so it couldn't act on an unreleased annotation anyway. Ship the
+// runtime change in a release first, then use it in the catalog.
+//
+// The pinned version is owned by release-please (it bumps `composeaiReleasedRuntimeVersion` on each
+// release), so published previews target the current release's runtimes. Local / normal-CI builds
+// leave the GATE unset, so they keep the `project(...)` deps and compile + test against HEAD.
+if (providers.gradleProperty("composeaiUseReleasedRuntimes").orNull.toBoolean()) {
+  val version =
+    providers.gradleProperty("composeaiReleasedRuntimeVersion").orNull
+      ?: error(
+        "composeaiUseReleasedRuntimes is set but composeaiReleasedRuntimeVersion is missing from " +
+          "gradle.properties"
+      )
+  logger.lifecycle(
+    ":samples:design-catalog-m3: pinning preview-runtime deps to released $version for the " +
+      "published bundle (new runtime APIs must be released before a published preview can use them)."
+  )
+  configurations.all {
+    resolutionStrategy.dependencySubstitution {
+      substitute(project(":data-preview-overrides-runtime"))
+        .using(module("ee.schimke.composeai:data-preview-overrides-runtime:$version"))
+        .because("published previews reference released preview-runtimes (see build note)")
+      substitute(project(":slot-preview-runtime"))
+        .using(module("ee.schimke.composeai:slot-preview-runtime:$version"))
+        .because("published previews reference released preview-runtimes (see build note)")
+    }
+  }
+}

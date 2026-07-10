@@ -34,6 +34,10 @@
         {
           "type": "generic",
           "path": ".github/workflows/preview-host-image.yml"
+        },
+        {
+          "type": "generic",
+          "path": "gradle.properties"
         }
       ]
     }

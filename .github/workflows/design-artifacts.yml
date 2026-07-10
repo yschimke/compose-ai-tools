@@ -29,6 +29,13 @@ jobs:
     # Don't run on forks — the publish step pushes branches into this repo.
     if: ${{ github.repository == 'yschimke/compose-ai-tools' }}
     runs-on: ubuntu-latest
+    env:
+      # Published previews are always built against RELEASED preview-runtimes: substitute the
+      # catalog's `:data-preview-overrides-runtime` / `:slot-preview-runtime` project deps for their
+      # released Maven coordinates (at `composeaiReleasedRuntimeVersion` in gradle.properties) so
+      # `bundle pack` records small coordinates instead of inlining the jars. Only
+      # :samples:design-catalog-m3 acts on it; the CLI build + other rows/modules ignore it.
+      ORG_GRADLE_PROJECT_composeaiUseReleasedRuntimes: 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -90,6 +97,39 @@ jobs:
         working-directory: scripts/design-artifacts
         run: npm ci
 
+      # Published previews pin their preview-runtimes to a RELEASED version
+      # (`composeaiReleasedRuntimeVersion`, bumped by release-please on each release). Sonatype →
+      # Maven Central propagation lags a release, so a regen kicked right after a release (or by the
+      # release chain) could reference a version that isn't resolvable yet. Wait for it to appear on
+      # Central before rendering — that's what lets "release, then regenerate the artifacts once the
+      # release makes Central" work reliably. Only the CMP tier substitutes released runtimes, so
+      # only it needs the gate; a bounded poll fails loudly rather than rendering an unpinned
+      # (inlined) bundle.
+      - name: Wait for released preview-runtimes on Maven Central
+        if: ${{ matrix.wasmModule != '' }}
+        run: |
+          set -euo pipefail
+          version="$(grep -oP '(?<=^composeaiReleasedRuntimeVersion=).*' gradle.properties || true)"
+          if [ -z "$version" ]; then
+            echo "no composeaiReleasedRuntimeVersion in gradle.properties" >&2
+            exit 1
+          fi
+          base="https://repo1.maven.org/maven2/ee/schimke/composeai"
+          echo "waiting for preview-runtimes $version on Maven Central…"
+          for i in $(seq 1 60); do
+            ok=1
+            for a in data-preview-overrides-runtime slot-preview-runtime; do
+              code="$(curl -s -o /dev/null -w '%{http_code}' \
+                "$base/$a/$version/$a-$version.pom" || true)"
+              [ "$code" = "200" ] || { ok=0; echo "  $a:$version -> HTTP ${code:-000}"; }
+            done
+            if [ "$ok" = 1 ]; then echo "all preview-runtimes $version on Central (attempt $i)"; exit 0; fi
+            echo "attempt $i/60 — not fully propagated; retrying in 60s"
+            sleep 60
+          done
+          echo "preview-runtimes $version never fully appeared on Maven Central after ~60m" >&2
+          exit 1
+
       - name: Render catalog bundle
         env:
           MODULE: ${{ matrix.module }}
@@ -113,6 +153,11 @@ jobs:
           # Run under a virtual framebuffer so the Skiko desktop daemon has a
           # display (matches ci.yml's desktop-render jobs); harmless for the
           # Robolectric rows, which don't touch it.
+          #
+          # The job pins the catalog's preview-runtime deps to their RELEASED coordinates via the
+          # `composeaiUseReleasedRuntimes` gate (job env) + `composeaiReleasedRuntimeVersion`
+          # (gradle.properties, release-please-managed); the "Wait for released preview-runtimes"
+          # step above guarantees that version is resolvable on Central before we render.
           xvfb-run -a -s "-screen 0 2000x1400x24" \
             compose-preview bundle pack --module "$MODULE" --with-semantics \
               -o "$GITHUB_WORKSPACE/$SYSTEM-bundle.png"
