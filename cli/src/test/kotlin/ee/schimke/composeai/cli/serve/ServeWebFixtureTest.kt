@@ -584,6 +584,10 @@ class ServeWebFixtureTest {
       staticView.contains("id=\"cp-uiMode\" disabled"),
       "theme disabled without a Wasm app",
     )
+    assertFalse(
+      staticView.contains("id=\"cp-talkBack\""),
+      "no live stream ⇒ the live-only overlay toggles are omitted entirely, not left dead",
+    )
 
     // Static + Wasm: theme, font scale, and locale go LIVE (the in-browser app honours them) — only
     // the server-render-only controls (device/orientation/live stream) stay disabled.
@@ -650,6 +654,14 @@ class ServeWebFixtureTest {
     assertTrue(
       liveCatalogWasm.contains("id=\"cp-device\" disabled"),
       "server-render-only controls stay disabled on a live catalog's static snapshot",
+    )
+    // A live-stream session offers the overlay toggles (talkBack / touch), rendered disabled until
+    // the Live Compose mode is actually entered (the mode-transition JS flips them on).
+    assertTrue(
+      liveCatalogWasm.contains("cp-overlays") &&
+        liveCatalogWasm.contains("id=\"cp-talkBack\" type=\"checkbox\" disabled") &&
+        liveCatalogWasm.contains("id=\"cp-touchOverlay\" type=\"checkbox\" disabled"),
+      "live stream offers the overlay toggles, disabled until Live Compose is active",
     )
 
     // Trusted catalog served LIVE whose preview declares author knobs (ServeCatalogLiveHost with

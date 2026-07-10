@@ -33,6 +33,8 @@ class ServeOverridesTest {
     assertNull(o.density)
     assertNull(o.inspectionMode)
     assertNull(o.slotMode)
+    assertNull(o.talkBack)
+    assertNull(o.touchOverlay)
     assertNull(o.clearBackground)
   }
 
@@ -51,6 +53,8 @@ class ServeOverridesTest {
           "orientation" to "landscape",
           "inspectionMode" to "true",
           "slotMode" to "true",
+          "talkBack" to "true",
+          "touchOverlay" to "1",
         )
       )
     assertEquals(UiMode.DARK, o.uiMode)
@@ -63,6 +67,8 @@ class ServeOverridesTest {
     assertEquals(Orientation.LANDSCAPE, o.orientation)
     assertEquals(true, o.inspectionMode)
     assertEquals(true, o.slotMode)
+    assertEquals(true, o.talkBack)
+    assertEquals(true, o.touchOverlay)
   }
 
   @Test
@@ -86,6 +92,8 @@ class ServeOverridesTest {
         mapOf("widthPx" to "-5"),
         mapOf("inspectionMode" to "maybe"),
         mapOf("slotMode" to "maybe"),
+        mapOf("talkBack" to "maybe"),
+        mapOf("touchOverlay" to "maybe"),
         mapOf("background" to "polkadot"),
         mapOf("clearBackground" to "maybe"),
       )) {
@@ -145,6 +153,16 @@ class ServeOverridesTest {
     // slotMode participates, so a slot-map render isn't coalesced onto the normal render's cache.
     assertNotEquals(
       ServeOverrides.cacheKey("preview.A", ok(mapOf("slotMode" to "true"))),
+      ServeOverrides.cacheKey("preview.A", ok(emptyMap())),
+    )
+    // The live overlay flags participate too, so a crafted /render?talkBack / ?touchOverlay can't
+    // collide with the baked render's cache entry.
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("talkBack" to "true"))),
+      ServeOverrides.cacheKey("preview.A", ok(emptyMap())),
+    )
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("touchOverlay" to "true"))),
       ServeOverrides.cacheKey("preview.A", ok(emptyMap())),
     )
   }
