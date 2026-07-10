@@ -67,6 +67,16 @@ dependencies {
   // architectural rule as focus: **no hardcoded ambient / `LocalAmbientModeManager` logic in
   // this module — extend the connector instead.**
   implementation(project(":data-ambient-connector"))
+  // Wear OS one-handed-gesture connector. Owns `GestureStateController` and
+  // `GestureOverrideExtension` (the `AroundComposable` that primes the controller with `showHints`
+  // and installs `LocalGestureRegistry` / `LocalOneHandedGestureEnabled`). The renderer wraps
+  // content with the extension whenever `RenderPreviewCapture.gestureHint` is set —
+  // `@GestureHintPreview`
+  // discovery stamps it onto every capture of an annotated function, and daemon-driven
+  // `renderNow.overrides.gestures` plans the same extension through `RobolectricHost`. Same
+  // architectural rule as ambient / focus: **no hardcoded gesture / `GestureHint` logic in this
+  // module — extend the connector instead.**
+  implementation(project(":data-gestures-connector"))
   // Launcher-widget container-size connector. Owns `LauncherWidgetExtension` (the
   // `AroundComposable` that wraps the preview in `Box(Modifier.size(...))` at the resolved cell
   // footprint) and the `LauncherWidgetPreviewOverrideExtension` planner. The renderer reads

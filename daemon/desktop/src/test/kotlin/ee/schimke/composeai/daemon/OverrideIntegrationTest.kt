@@ -1,8 +1,8 @@
 package ee.schimke.composeai.daemon
 
-import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.WallpaperOverride
+import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.Base64
@@ -486,6 +486,125 @@ class OverrideIntegrationTest {
     }
   }
 
+  /**
+   * End-to-end proof that a `themeProvider` override wraps an arbitrary preview in an app-declared
+   * `@ThemeCatalog` theme (the render side of the serve viewer's declared-theme selector). Renders
+   * [WallpaperAwareSquare] — which paints the *ambient* `MaterialTheme.colorScheme.primary` with no
+   * inner theme of its own — with no override (the M3 default primary) and with `themeProvider =
+   * <BluePrimaryThemeProvider FQN>`, then asserts the fill actually repainted to that theme's blue
+   * primary. The wrapper resolves off the render classloader through the same
+   * `loadPreviewWrapperClass` → `Wrap` path `@PreviewWrapper` uses, so no manifest wrapper is
+   * needed.
+   */
+  @Test
+  fun themeProviderOverrideWrapsPreviewInDeclaredTheme() {
+    val outputDir = tempFolder.newFolder("renders-theme-provider")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "ambient-primary",
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "WallpaperAwareSquare",
+              widthPx = 200,
+              heightPx = 120,
+              density = 1.0f,
+              outputBaseName = "ambient-primary",
+            )
+          )
+      )
+    val host = PreviewManifestRouter(manifest = manifest)
+    host.start()
+    try {
+      val default = renderAndDecode(host, "previewId=ambient-primary", "theme-default")
+      val themed =
+        renderAndDecode(
+          host,
+          "previewId=ambient-primary;overrides=" +
+            encodeThemeProviderBag("ee.schimke.composeai.daemon.BluePrimaryThemeProvider"),
+          "theme-blue",
+        )
+
+      // The declared theme's primary (0xFF1565C0) should dominate the themed render...
+      val themedBluePct = pixelMatchPct(themed, expectedRgb = 0x1565C0, perChannelTolerance = 8)
+      assertTrue(
+        "themeProvider render should paint the declared theme's blue primary; got ${"%.2f".format(themedBluePct * 100)}%",
+        themedBluePct >= 0.95,
+      )
+      // ...and the render must differ from the un-themed M3 default, not silently fall back to it.
+      assertNotEquals(
+        "a themeProvider override must change the render vs the default theme",
+        default.getRGB(default.width / 2, default.height / 2),
+        themed.getRGB(themed.width / 2, themed.height / 2),
+      )
+
+      // Emit before/after PNGs for the PR's visual evidence (mirrors
+      // RenderEngineClearBackgroundTest's `build/clearbg-evidence/`): the default M3 primary vs the
+      // declared theme's blue primary, proving `themeProvider` re-renders under the chosen theme.
+      val evidenceDir = File("build/theme-evidence").apply { mkdirs() }
+      ImageIO.write(default, "png", File(evidenceDir, "ambient-primary-default.png"))
+      ImageIO.write(themed, "png", File(evidenceDir, "ambient-primary-themed.png"))
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  /**
+   * A stale / misspelled `themeProvider` must fall back to the preview's declared
+   * `@PreviewWrapper`, not strip it (which would drop a required wrapper and misrender — the case a
+   * shared URL with a removed provider hits). The manifest pins `wrapperClassName =
+   * BluePrimaryThemeProvider` (blue), and the request supplies a bogus `themeProvider` FQN; the
+   * render must still be blue (declared wrapper applied), not the un-wrapped M3 default.
+   */
+  @Test
+  fun badThemeProviderFallsBackToDeclaredWrapper() {
+    val outputDir = tempFolder.newFolder("renders-theme-fallback")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "wrapped-ambient",
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "WallpaperAwareSquare",
+              widthPx = 48,
+              heightPx = 48,
+              density = 1.0f,
+              outputBaseName = "wrapped-ambient",
+              // The preview's own declared @PreviewWrapper (blue), threaded into the render spec
+              // via
+              // the resolver — so a bad themeProvider must fall back to THIS, not strip it.
+              params =
+                PreviewParamsEntry(
+                  wrapperClassName = "ee.schimke.composeai.daemon.BluePrimaryThemeProvider"
+                ),
+            )
+          )
+      )
+    val host = PreviewManifestRouter(manifest = manifest)
+    host.start()
+    try {
+      val bogus =
+        renderAndDecode(
+          host,
+          "previewId=wrapped-ambient;overrides=" +
+            encodeThemeProviderBag("ee.schimke.composeai.daemon.NoSuchThemeProvider"),
+          "bad-theme",
+        )
+      // Declared wrapper (blue) still applied — the bogus override didn't strip it.
+      val bluePct = pixelMatchPct(bogus, expectedRgb = 0x1565C0, perChannelTolerance = 8)
+      assertTrue(
+        "a bad themeProvider must fall back to the declared @PreviewWrapper (blue); got ${"%.2f".format(bluePct * 100)}%",
+        bluePct >= 0.95,
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
   private fun renderAndDecode(
     host: PreviewManifestRouter,
     payload: String,
@@ -508,6 +627,17 @@ class OverrideIntegrationTest {
   private fun encodeWallpaperBag(seedColor: String): String {
     val json = Json { encodeDefaults = false }
     val bag = PreviewOverrides(wallpaper = WallpaperOverride(seedColor = seedColor))
+    return Base64.getUrlEncoder()
+      .withoutPadding()
+      .encodeToString(
+        json.encodeToString(PreviewOverrides.serializer(), bag).toByteArray(Charsets.UTF_8)
+      )
+  }
+
+  /** A base64 `overrides=` bag carrying a single `themeProvider` FQN. */
+  private fun encodeThemeProviderBag(fqn: String): String {
+    val json = Json { encodeDefaults = false }
+    val bag = PreviewOverrides(themeProvider = fqn)
     return Base64.getUrlEncoder()
       .withoutPadding()
       .encodeToString(

@@ -55,10 +55,12 @@
       Font prefetch, started at document load so it runs IN PARALLEL with the multi-second Wasm
       boot: fetch fonts.json and every file it lists, stashing the in-flight promises where the
       app's fetch bridge picks them up (Main.kt consults __cpPrefetchText/__cpPrefetchBuf before
-      issuing its own fetch). This must live in the iframe, not the embedding viewer page — the
-      sandbox gives this document an opaque origin with its own HTTP-cache partition, so nothing
-      the parent page fetches is reusable here. A rejected prefetch deletes its entry so the app
-      retries fresh; any error just means the app fetches cold, exactly as before.
+      issuing its own fetch). This lives in the iframe, not the embedding viewer page: it must be
+      in flight before the app boots, and the app is the one that consumes the promises. (The
+      embedding viewer mounts this frame with sandbox="allow-scripts allow-same-origin", so it now
+      shares the parent's origin + HTTP-cache partition — but the app-side prefetch is still the
+      right home.) A rejected prefetch deletes its entry so the app retries fresh; any error just
+      means the app fetches cold, exactly as before.
     -->
     <script>
       window.__cpPrefetchText = {};

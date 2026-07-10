@@ -254,6 +254,22 @@ data class ComposeSemanticsTokens(
    */
   val borderColor: String? = null,
   /**
+   * Minimum width / height in dp from a `Modifier.defaultMinSize(minWidth, minHeight)`, when set,
+   * e.g. `"16.0dp"`. An M3 `Badge` (and other min-sized chrome) can measure — and draw its
+   * background at — a larger box than its narrow content is *placed* in; the figma-svg export grows
+   * the drawn shape to `max(bounds, minSize)` so it isn't squashed to the placement bounds. Null
+   * when the node declares no `defaultMinSize`.
+   */
+  val minWidth: String? = null,
+  val minHeight: String? = null,
+  /**
+   * Resolved `Modifier.border` stroke width in dp (e.g. `"2.0dp"`), when a border is present and
+   * the width could be read. Null falls the figma-svg export back to a 1dp hairline — so an
+   * off-state `Switch` track (2dp) or any thicker outline renders at its real width instead of a
+   * hairline.
+   */
+  val borderWidth: String? = null,
+  /**
    * Resolved corner radius in dp from the node's `background` / `clip` / `border` / `graphicsLayer`
    * shape. A uniform shape emits a single value (`"12.0dp"`); a non-uniform shape emits the four
    * corners comma-separated (`"12.0dp,12.0dp,0.0dp,0.0dp"`, top-start → bottom-start). dp-based
@@ -290,6 +306,13 @@ data class ComposeSemanticsTokens(
   val gap: String? = null,
   /** Resolved padding from `Modifier.padding`, in dp per edge. */
   val padding: ComposeSemanticsInsets? = null,
+  /**
+   * Resolved shadow elevation in dp from a `Modifier.graphicsLayer { shadowElevation = … }` (what
+   * `Surface`/`Card`/`FloatingActionButton` use to cast a Material drop shadow), e.g. `"6.0dp"`.
+   * Null when the node casts no shadow. The figma-svg export turns this into an SVG `feDropShadow`
+   * so an elevated surface carries its shadow instead of reading as a flat fill against the render.
+   */
+  val elevation: String? = null,
 )
 
 /** Per-edge insets in dp (`"16.0dp"`), as resolved from `Modifier.padding` (issue #1897). */

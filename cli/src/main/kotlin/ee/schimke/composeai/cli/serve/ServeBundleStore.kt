@@ -158,7 +158,12 @@ class ServeBundleStore(
         val underPreviews = name.startsWith("$PREVIEWS_SUBDIR/") && ".." !in segments
         val isPng = underPreviews && name.endsWith(PNG_SUFFIX)
         val isOverrides = underPreviews && name.endsWith(OVERRIDES_SUFFIX)
-        if (!entry.isDirectory && (isPng || isOverrides)) {
+        // Also keep the root `previews.json` manifest so a served bundle can surface the app's
+        // declared @ThemeCatalog themes (the synthetic THEME_CATALOG entries live only here, not in
+        // the per-preview sidecars). A top-level file (no path segments), so it's exempt from the
+        // `previews/` prefix check but still zip-slip guarded below.
+        val isPreviewsJson = name == PREVIEWS_JSON
+        if (!entry.isDirectory && (isPng || isOverrides || isPreviewsJson)) {
           val target = File(dir, name)
           // Zip-slip guard: the resolved path must stay under the bundle dir.
           if (target.canonicalFile.toPath().startsWith(rootPath)) {
@@ -198,6 +203,7 @@ class ServeBundleStore(
     private const val PREVIEWS_SUBDIR = "previews"
     private const val PNG_SUFFIX = ".png"
     private const val OVERRIDES_SUFFIX = ".overrides.json"
+    private const val PREVIEWS_JSON = "previews.json"
     private const val DEFAULT_MAX_BYTES = 100L * 1024 * 1024 // 100 MB
 
     /** A session name safe to use as a path segment + URL value; null if it can't be made safe. */

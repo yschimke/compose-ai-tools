@@ -17,6 +17,16 @@ interface ServeHost : AutoCloseable {
   /** The whole servable preview set for this session. */
   val previews: List<ServePreview>
 
+  /**
+   * The app's declared `@ThemeCatalog` themes — module-global, so the viewer's Theme selector can
+   * offer "render this preview under Brand Dark". Non-empty only for a daemon-backed host
+   * ([ServeRenderHost]) whose module declares them; a static bundle carries no theme-apply lane
+   * (`themeProvider` needs the daemon to load the provider off the app classpath), so it stays
+   * empty and the selector shows only the built-in light/dark axis.
+   */
+  val declaredThemes: List<ServeTheme>
+    get() = emptyList()
+
   /** Human label for the tenant (module Gradle path, `module@rev`, or a bundle name). */
   val label: String
 
@@ -41,6 +51,17 @@ interface ServeHost : AutoCloseable {
    */
   val canRenderOverrides: Boolean
     get() = canApplyOverrides
+
+  /**
+   * Per-preview refinement of [canRenderOverrides]: whether *this* preview can be re-rendered with
+   * an override. Defaults to the host-wide [canRenderOverrides] (true for every preview on a plain
+   * daemon host, false on a static bundle). A trusted-catalog live session ([ServeCatalogLiveHost])
+   * overrides it: only previews with a daemon twin can re-render, so an unaliased (e.g.
+   * Android-only) variant returns false — the viewer then shows its override controls (knobs, App
+   * theme) as disabled/informational rather than enabled-but-dead (an override on such a preview
+   * falls back to the baked PNG, which ignores it).
+   */
+  fun canRenderOverridesFor(previewId: String): Boolean = canRenderOverrides
 
   /**
    * Whether [renderSvg] can actually produce a `compose/figma-svg` export for this session's

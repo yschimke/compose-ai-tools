@@ -1,9 +1,10 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.daemon.protocol.FocusOverride
 import ee.schimke.composeai.daemon.protocol.Orientation
-import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.UiMode
+import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import java.security.MessageDigest
 
 /**
@@ -55,6 +56,18 @@ object ServeOverrides {
       "orientation",
       "inspectionMode",
       "slotMode",
+      // Live-only overlay toggles (held-session / recording features). The daemon composites these
+      // onto the streamed frames; a baked snapshot never carries them, so the viewer offers them
+      // only while a Live Compose session is active. Booleans, like inspectionMode/slotMode.
+      "talkBack",
+      "touchOverlay",
+      // FQN of an app-declared @ThemeCatalog `PreviewWrapperProvider` to render this preview under
+      // (the discrete-theme axis). Daemon-only — a baked bundle has no provider to load.
+      "themeProvider",
+      // Detected-feature: keyboard focus. `focus=<tabIndex>` lands focus on the n-th focusable and
+      // draws the focus overlay (`FocusOverride(tabIndex, overlay=true)`). Offered only for a
+      // `@FocusedPreview`-detected preview; daemon-only (the desktop daemon honours it).
+      "focus",
       // "crisp outline" toggle. Friendly `background=clear` (aliases below) or the raw
       // `clearBackground=true`; both map to `PreviewOverrides.clearBackground`.
       "background",
@@ -204,6 +217,49 @@ object ServeOverrides {
           }
         }
 
+    // Live-only overlay flags (daemon composites onto the held session's frames). Parsed like the
+    // other booleans; a malformed value is a hard Invalid rather than a silently-dropped toggle.
+    val talkBack =
+      params["talkBack"]
+        ?.takeIf { it.isNotBlank() }
+        ?.let {
+          when (it.lowercase()) {
+            "true",
+            "1" -> true
+            "false",
+            "0" -> false
+            else -> return OverrideParse.Invalid("talkBack must be a boolean, got '$it'")
+          }
+        }
+
+    val touchOverlay =
+      params["touchOverlay"]
+        ?.takeIf { it.isNotBlank() }
+        ?.let {
+          when (it.lowercase()) {
+            "true",
+            "1" -> true
+            "false",
+            "0" -> false
+            else -> return OverrideParse.Invalid("touchOverlay must be a boolean, got '$it'")
+          }
+        }
+
+    // Detected-feature: keyboard focus. `focus=<tabIndex>` lands focus on the n-th focusable in tab
+    // order and draws the post-capture focus overlay (stroke + label). A non-negative integer; a
+    // malformed value is a hard Invalid. Absent → no focus override (discovery-time behaviour).
+    val focus: FocusOverride? =
+      params["focus"]
+        ?.takeIf { it.isNotBlank() }
+        ?.let {
+          val tabIndex =
+            it.toIntOrNull()?.takeIf { n -> n >= 0 }
+              ?: return OverrideParse.Invalid(
+                "focus must be a non-negative integer tab index, got '$it'"
+              )
+          FocusOverride(tabIndex = tabIndex, overlay = true)
+        }
+
     // Cleared background ("crisp outline"). Two spellings: the friendly `background=clear`
     // (aliases `transparent` / `none` / `off`; `default` / `show` mean "keep the preview's
     // background") and the raw boolean `clearBackground=true`. A present `background` key wins over
@@ -291,6 +347,10 @@ object ServeOverrides {
         device = params["device"]?.takeIf { it.isNotBlank() },
         inspectionMode = inspectionMode,
         slotMode = slotMode,
+        talkBack = talkBack,
+        touchOverlay = touchOverlay,
+        themeProvider = params["themeProvider"]?.takeIf { it.isNotBlank() },
+        focus = focus,
         clearBackground = clearBackground,
         namedOverrides = namedOverrides.ifEmpty { null },
       )
@@ -316,6 +376,10 @@ object ServeOverrides {
       append("dev=").append(o.device).append('|')
       append("insp=").append(o.inspectionMode).append('|')
       append("slot=").append(o.slotMode).append('|')
+      append("talk=").append(o.talkBack).append('|')
+      append("touch=").append(o.touchOverlay).append('|')
+      append("theme=").append(o.themeProvider).append('|')
+      append("focus=").append(o.focus).append('|')
       append("clearbg=").append(o.clearBackground).append('|')
       // Named overrides participate so a knob edit isn't coalesced onto the prior render. Sorted by
       // key for order-independence; the value data classes have stable toString.

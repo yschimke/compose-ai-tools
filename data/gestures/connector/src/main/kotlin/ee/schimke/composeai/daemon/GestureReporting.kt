@@ -3,6 +3,7 @@ package ee.schimke.composeai.daemon
 import androidx.compose.foundation.interaction.Interaction
 import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -12,8 +13,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.wear.compose.material3.LocalContentColor
 import androidx.wear.compose.material3.onehandedgesture.GestureAction
 import androidx.wear.compose.material3.onehandedgesture.GestureIndicatorSize
@@ -113,11 +116,17 @@ fun Modifier.reportedOneHandedGesture(
 /**
  * Wraps [content] with the real Wear [OneHandedGestureIndicator] hint affordance.
  *
- * The hint shows when the gesture emits an `Indicate` interaction on [interactionSource] (on-device
- * cadence) — or, in a preview, when [forceShow] is set or the daemon applied
- * `overrides.gestures.showHints = true`. In those force paths the indicator is fed a replay-backed
- * interaction source pre-seeded with an `Indicate`, so the hint renders deterministically in a
- * single captured frame regardless of subscription ordering.
+ * On-device the hint shows when the gesture emits an `Indicate` interaction on [interactionSource]:
+ * the real [OneHandedGestureIndicator] **fades [content] out and swaps in** the gesture animation in
+ * its place (it is not an overlay — the content underneath is hidden), then fades the content back.
+ *
+ * In a preview [forceShow] is set, or the daemon applied `overrides.gestures.showHints = true` (the
+ * seam `@GestureHintPreview` drives). On that force path the real indicator's show/hide coroutine
+ * settles back to hidden during a Robolectric render's pre-roll, so a still capture never catches it
+ * — instead we render the indicator's **peak frame directly**: [content] faded out and the shipped
+ * indicator drawable ([GestureIndicatorIcon]) centred in its place, matching what the device shows
+ * mid-gesture. On-device (no override, [forceShow] `false`) this path is not taken and the real
+ * indicator behaves exactly as before.
  */
 @Composable
 fun GestureHint(
@@ -131,14 +140,24 @@ fun GestureHint(
 ) {
   val hintsRequested by LocalGestureRegistry.current.hintsShownState
   val forced = forceShow || hintsRequested
-  val forcedSource = rememberForcedGestureHintSource(type)
-  OneHandedGestureIndicator(
-    interactionSource = if (forced) forcedSource else interactionSource,
-    modifier = modifier,
-    gestureIndicatorSize = gestureIndicatorSize,
-    gestureIndicatorTint = gestureIndicatorTint,
-    content = content,
-  )
+  if (forced) {
+    // Peak-frame replica of the real indicator's swap: content hidden (alpha 0, still measured so
+    // the layout keeps its size), gesture icon centred where the content was.
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+      Box(modifier = Modifier.graphicsLayer { alpha = 0f }, content = content)
+      // `GestureIndicatorSize.size` is library-internal, so use the icon's own default (≈ the
+      // Medium indicator). Callers that need a specific size tint/scale via the icon directly.
+      GestureIndicatorIcon(type = type, tint = gestureIndicatorTint)
+    }
+  } else {
+    OneHandedGestureIndicator(
+      interactionSource = interactionSource,
+      modifier = modifier,
+      gestureIndicatorSize = gestureIndicatorSize,
+      gestureIndicatorTint = gestureIndicatorTint,
+      content = content,
+    )
+  }
 }
 
 /**

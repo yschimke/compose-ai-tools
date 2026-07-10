@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli.serve
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamFrameParams
+import ee.schimke.composeai.daemon.protocol.UiMode
 
 /**
  * A [ServeHost] that fronts a trusted design-system catalog with its baked-PNG render **and** an
@@ -57,6 +58,14 @@ class ServeCatalogLiveHost(
   override val label: String = baked.label
 
   /**
+   * The app-declared `@ThemeCatalog` themes come from the daemon lane (read from the live bundle's
+   * `previews.json`) — the baked browse surface carries none. Forwarded so the viewer's App theme
+   * selector renders and, since [canRenderOverrides] is true, actually re-renders under a chosen
+   * theme via the carried daemon.
+   */
+  override val declaredThemes: List<ServeTheme> = live.declaredThemes
+
+  /**
    * Snapshots stay static (baked PNGs) so browsing is instant and the viewer shows the published
    * pixels + trust badge — the live daemon is opt-in via [hasLiveStream], not the snapshot lane.
    */
@@ -69,6 +78,14 @@ class ServeCatalogLiveHost(
    * the daemon) while enabling the viewer's knob controls as live rather than baked-and-disabled.
    */
   override val canRenderOverrides: Boolean = true
+
+  /**
+   * Only a preview with a daemon twin ([alias]) can actually re-render an override; an unaliased
+   * (Android-only) variant always replays the baked PNG, which ignores overrides. So the viewer
+   * must treat those as non-renderable — otherwise the App theme selector (advertised host-wide via
+   * [declaredThemes]) would render enabled on a variant where picking a theme changes nothing.
+   */
+  override fun canRenderOverridesFor(previewId: String): Boolean = previewId in alias
 
   /**
    * SVG is exportable when either lane can produce it — the baked catalog carries
@@ -88,14 +105,14 @@ class ServeCatalogLiveHost(
   internal val bakedHost: ServeHost = baked
 
   /**
-   * Ordinary browsing serves the baked catalog PNG — instant, and never wakes the daemon (a viewer
-   * that replays a sticky theme override into the snapshot URL must still land on baked pixels).
-   * The one exception is an **author-declared knob** edit ([PreviewOverrides.namedOverrides]):
-   * those knobs (`label`, a color, …) can only be honoured by re-running the composable, which the
-   * baked PNG can't do, so a knob-bearing render on a mapped id is routed to the [live] daemon
-   * (which also applies any display axes carried alongside). Display-axis-only overrides stay baked
-   * — the published variant already encodes its theme, and keeping them baked preserves instant
-   * browsing.
+   * Ordinary browsing serves the baked catalog PNG — instant, and never wakes the daemon: an
+   * override-free render (or one carrying only a `uiMode` that matches the variant's baked theme,
+   * as the viewer replays from its sticky theme) lands on baked pixels. Any override that would
+   * change those pixels — a named knob, a font scale, device, locale, orientation, a feature
+   * override, … — is routed to the [live] daemon to re-render, since the baked PNG can't represent
+   * it ([overridesAffectRender]). So a `/render?fontScale=…` or `?knob.label=…` URL returns fresh
+   * pixels, while the default browse stays baked-instant. Only the mapped (daemon-twinned) ids can
+   * re-render; an unmapped Android-only variant always replays baked.
    */
   override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
     val daemonId = daemonIdForOverrideRender(previewId, overrides)
@@ -123,11 +140,40 @@ class ServeCatalogLiveHost(
 
   /**
    * The daemon preview id to route a [render] / [renderSvg] to, or null to stay baked. Non-null
-   * only when [previewId] is a mapped (daemon-renderable) id AND the request carries an
-   * author-declared knob override — the sole case the baked PNG can't satisfy.
+   * only when [previewId] is a mapped (daemon-renderable) id AND the request carries an override
+   * the baked PNG can't satisfy ([overridesAffectRender]).
    */
-  private fun daemonIdForOverrideRender(previewId: String, overrides: PreviewOverrides): String? =
-    if (overrides.namedOverrides.isNullOrEmpty()) null else alias[previewId]
+  private fun daemonIdForOverrideRender(previewId: String, overrides: PreviewOverrides): String? {
+    // No daemon twin (an Android-only variant) ⇒ always baked; it has no live lane.
+    val daemonId = alias[previewId] ?: return null
+    return if (overridesAffectRender(previewId, overrides)) daemonId else null
+  }
+
+  /**
+   * Whether [overrides] would change pixels vs the preview's baked sticker, so the render must go
+   * to the daemon rather than replay the baked PNG. The baked variant already encodes its **theme**
+   * (the `…__light` / `…__dark` id segment) and every other axis at its discovery-time default, so
+   * a bare `uiMode` that matches the variant is a no-op and stays baked (keeping browsing instant);
+   * anything else — a font scale, device, locale, orientation, a named knob, a feature override
+   * (gestures / focus / keyboard / …) — needs a re-render. Uses data-class equality against a
+   * defaults instance so a newly added override field is covered without touching this predicate.
+   */
+  private fun overridesAffectRender(previewId: String, o: PreviewOverrides): Boolean {
+    // The theme is the LAST `light`/`dark` id segment (past the component slug) — matching
+    // `ServeUrls.wasmAppSrc` / `ServeWeb.cardTheme`. Scanning for `dark` first would misread a
+    // non-theme segment named `dark` in an otherwise-light variant, wrongly treating `uiMode=dark`
+    // as a no-op and dropping the override.
+    val bakedTheme =
+      when (previewId.split("__").drop(1).lastOrNull { it == "light" || it == "dark" }) {
+        "dark" -> UiMode.DARK
+        "light" -> UiMode.LIGHT
+        else -> null
+      }
+    // A uiMode matching the baked variant is a no-op; drop it, then any remaining set field
+    // (including a *differing* uiMode) means a re-render is required.
+    val uiModeIsNoOp = o.uiMode == null || o.uiMode == bakedTheme
+    return if (uiModeIsNoOp) o.copy(uiMode = null) != PreviewOverrides() else true
+  }
 
   /** Live streaming is available only for aliased ids; others have no stream (snapshot only). */
   override fun subscribeStream(
@@ -144,21 +190,29 @@ class ServeCatalogLiveHost(
   override fun activeStreamCount(): Int = live.activeStreamCount()
 
   /**
-   * Graft the daemon previews' author-declared knobs onto the baked browse surface. The daemon
-   * knows its previews by descriptor id (`FilledButton_Dark`) and carries their
-   * [ServePreview.overrides] (from the bundle sidecars); the baked catalog keys by catalog id
-   * (`button-filled__ideal__default__dark`) and carries none. For each mapped baked preview, copy
-   * its daemon twin's declarations across so `/api/previews` + the viewer advertise the editable
-   * knobs. Unmapped previews (Android-only variants with no daemon lane) are returned unchanged.
+   * Graft the daemon previews' per-preview metadata onto the baked browse surface. The daemon knows
+   * its previews by descriptor id (`FilledButton_Dark`) and carries their author-declared knobs
+   * ([ServePreview.overrides], from the bundle sidecars) plus the detected-feature flags
+   * ([ServePreview.supportsFocus] / [supportsGestures], from `@FocusedPreview` /
+   * `@GestureHintPreview` discovery); the baked catalog keys by catalog id
+   * (`button-filled__ideal__default__dark`) and carries neither. For each mapped baked preview,
+   * copy its daemon twin's knobs + feature flags across so `/api/previews` + the viewer advertise
+   * the editable knobs AND the detected-feature controls (a mapped `@FocusedPreview` component's
+   * Keyboard focus toggle re-renders on the daemon). Unmapped previews (Android-only variants with
+   * no daemon lane) are returned unchanged.
    */
   private fun mergeDeclaredKnobs(
     bakedPreviews: List<ServePreview>,
     livePreviews: List<ServePreview>,
   ): List<ServePreview> {
-    val knobsByDaemonId = livePreviews.associate { it.id to it.overrides }
+    val twinByDaemonId = livePreviews.associateBy { it.id }
     return bakedPreviews.map { p ->
-      val knobs = alias[p.id]?.let { knobsByDaemonId[it] }
-      if (knobs.isNullOrEmpty()) p else p.copy(overrides = knobs)
+      val twin = alias[p.id]?.let { twinByDaemonId[it] } ?: return@map p
+      p.copy(
+        overrides = twin.overrides,
+        supportsFocus = twin.supportsFocus,
+        supportsGestures = twin.supportsGestures,
+      )
     }
   }
 

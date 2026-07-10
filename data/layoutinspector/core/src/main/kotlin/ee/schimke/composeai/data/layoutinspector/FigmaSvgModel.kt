@@ -1,6 +1,7 @@
 package ee.schimke.composeai.data.layoutinspector
 
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * Backend-agnostic model for the **layered Figma SVG** export — the design-fidelity counterpart to
@@ -55,6 +56,14 @@ data class FigmaSvgText(
    */
   val lineHeightPx: Double? = null,
   /**
+   * Resolved letter spacing in px (sp × density, or em × font size), when the capture resolved one.
+   * Emitted as SVG `letter-spacing` so the `<text>`'s glyph advances match the render — without it
+   * a browser lays the run out with the font's natural advances, so a non-zero tracked run
+   * (Material label/body text carries `0.1–0.5sp`) drifts progressively across the line and never
+   * registers.
+   */
+  val letterSpacingPx: Double? = null,
+  /**
    * Per-line runs for wrapped text, in px relative to the layer's top-left, in draw order. When
    * present (2+ lines) the renderer emits one positioned `<tspan>` per line instead of a single
    * baseline — so text wraps exactly where the render wrapped it. Null for single-line text.
@@ -82,6 +91,26 @@ data class FigmaSvgFontFace(
 
 /** Background-free raster standing in for an opaque, un-vectorisable subtree. */
 data class FigmaSvgRaster(val href: String)
+
+/**
+ * A raster drawn beneath a layer's content ([FigmaSvgLayer.background]) — the pixels of a
+ * `Modifier.drawBehind {…}` cropped to the drawn region, which may be tighter than the layer's own
+ * box (a padded `Spacer` paints only the bar). Carries its own bounds so the `<image>` lands on the
+ * drawn region rather than the layer box.
+ */
+data class FigmaSvgBackgroundRaster(
+  val href: String,
+  val left: Int,
+  val top: Int,
+  val right: Int,
+  val bottom: Int,
+) {
+  val width: Int
+    get() = (right - left).coerceAtLeast(0)
+
+  val height: Int
+    get() = (bottom - top).coerceAtLeast(0)
+}
 
 /** An opaque node to rasterise: its nodeId, `<image>` href, and bounds to capture. */
 data class FigmaSvgRasterTarget(
@@ -132,6 +161,21 @@ data class FigmaSvgLayer(
   val text: FigmaSvgText? = null,
   /** Set when this layer is an opaque component rendered as an `<image>`. */
   val raster: FigmaSvgRaster? = null,
+  /**
+   * A raster `<image>` drawn *beneath* this layer's own shape/text/children — the pixels of an
+   * imperative `Modifier.drawBehind {…}` (a progress track, a slider groove, a custom-drawn
+   * background) the token export can't vectorise. Kept separate from [raster] (a whole-node opaque
+   * leaf) so a drawn *container* — `Box(Modifier.drawBehind {…}) { Text(…) }` — carries its custom
+   * background as its own layer while its text/children stay editable vector layers on top.
+   */
+  val background: FigmaSvgBackgroundRaster? = null,
+  /**
+   * Shadow elevation in px (dp × density) for a Material-elevated surface (`Surface`/`Card`/`FAB`,
+   * captured from `graphicsLayer { shadowElevation }`). `0.0` casts no shadow. The renderer turns a
+   * positive value into an SVG `feDropShadow` on this layer's group so the elevated surface carries
+   * its drop shadow instead of reading as a flat fill against the render.
+   */
+  val elevationPx: Double = 0.0,
   val children: List<FigmaSvgLayer> = emptyList(),
 ) {
   val width: Int
@@ -142,7 +186,7 @@ data class FigmaSvgLayer(
 
   /** True when the layer draws pixels itself (vs. a pure grouping container). */
   val paints: Boolean
-    get() = fill != null || stroke != null || text != null || raster != null
+    get() = fill != null || stroke != null || text != null || raster != null || background != null
 }
 
 /**
@@ -229,6 +273,11 @@ data class FigmaSvgModel(
      *   sizes into the px coordinate space the bounds live in.
      * @param padding transparent margin around the extent.
      * @param rasterComponents opaque component name-fragments; empty (default) = vector-only.
+     * @param captureCanvasDraws when true (hybrid mode — a frame PNG is available to crop), a node
+     *   that paints via an imperative `drawBehind` / `drawWithContent` Canvas modifier (which the
+     *   token-driven vector export can't see — e.g. a `LinearProgressIndicator`/`Slider` track
+     *   drawn into a bare `Spacer`) is emitted as an `<image>` crop of that drawn region instead of
+     *   vanishing. Off in vector-only mode (no frame to crop from).
      */
     fun from(
       layout: LayoutInspectorPayload,
@@ -238,11 +287,13 @@ data class FigmaSvgModel(
       padding: Int = DEFAULT_PADDING,
       rasterComponents: Set<String> = emptySet(),
       rasterHref: (nodeId: String) -> String = ::defaultRasterHref,
+      captureCanvasDraws: Boolean = false,
     ): FigmaSvgModel {
       val textByNodeId =
         semantics?.let { assignTextToLayers(layout.root, it, density) } ?: emptyMap()
       val names = colorNames.mapKeys { it.key.uppercase() }
-      val ctx = BuildContext(textByNodeId, names, density, rasterComponents, rasterHref)
+      val ctx =
+        BuildContext(textByNodeId, names, density, rasterComponents, rasterHref, captureCanvasDraws)
       val rootLayer = layout.root.toLayer(ctx)
       // No drawing layer (a tree of pure grouping nodes) → a minimal padding-square canvas,
       // matching
@@ -266,12 +317,15 @@ data class FigmaSvgModel(
       val density: Float,
       val rasterComponents: Set<String>,
       val rasterHref: (String) -> String,
+      val captureCanvasDraws: Boolean = false,
       val rasterTargets: MutableList<FigmaSvgRasterTarget> = mutableListOf(),
     )
 
     private fun LayoutInspectorNode.toLayer(ctx: BuildContext): FigmaSvgLayer {
-      // Opaque components can't be vectorised — emit an <image> and drop the subtree.
-      if (isOpaque(ctx.rasterComponents)) {
+      // An opaque component matched by name (Image/Icon/TextField/…) can't be vectorised at all —
+      // emit an <image> for the whole node and drop the subtree.
+      val opaqueByName = isOpaque(ctx.rasterComponents)
+      if (opaqueByName) {
         val href = ctx.rasterHref(nodeId)
         ctx.rasterTargets.add(
           FigmaSvgRasterTarget(nodeId, href, bounds.left, bounds.top, bounds.right, bounds.bottom)
@@ -285,8 +339,39 @@ data class FigmaSvgModel(
           raster = FigmaSvgRaster(href),
         )
       }
+      // A *leaf* node that paints via an imperative Canvas draw (`drawBehind`/`drawWithContent`) —
+      // the progress track, the slider groove — carries pixels the token export can't represent. In
+      // hybrid mode (a frame PNG exists to crop from) attach that drawn region as a `background`
+      // <image> beneath the node's own vector shape/text, so a bare `Spacer` becomes a group
+      // holding
+      // just that background. Restricted to leaf draw nodes (no children, no text): the background
+      // is
+      // cropped from the *composited* frame, so on a container (`Box(Modifier.drawBehind {…}) {
+      // Text(…) }`) the crop would bake in the descendants' pixels — and re-drawing the editable
+      // children over it double-renders them. Cropping a container's background-only pass needs an
+      // isolated render, which the frame crop can't provide, so a drawn container stays fully
+      // vector
+      // (its children/text are preserved as editable layers) rather than double-render.
+      val background =
+        if (
+          ctx.captureCanvasDraws &&
+            hasCustomDraw() &&
+            children.isEmpty() &&
+            ctx.textByNodeId[nodeId] == null
+        ) {
+          val href = ctx.rasterHref(nodeId)
+          val region = drawnRegion()
+          ctx.rasterTargets.add(
+            FigmaSvgRasterTarget(nodeId, href, region.left, region.top, region.right, region.bottom)
+          )
+          FigmaSvgBackgroundRaster(href, region.left, region.top, region.right, region.bottom)
+        } else null
       val fill = tokens?.backgroundColor?.let { argbToColor(it, ctx.colorNames) }
-      val stroke = tokens?.borderColor?.let { argbToColor(it, ctx.colorNames) }
+      // A fully-transparent border (a `Switch` on-track carries `borderColor` at alpha 0) is no
+      // border — dropping it keeps the stroke off *and* avoids the stroke-inset shrinking the fill
+      // for an outline that never paints.
+      val stroke =
+        tokens?.borderColor?.let { argbToColor(it, ctx.colorNames) }?.takeIf { it.opacity > 0.0 }
       val circle = tokens?.shape == "circle"
       // A `CutCornerShape` reports its corner sizes on `cornerRadius`/`cornerRadiusPx` like a
       // rounded
@@ -300,22 +385,58 @@ data class FigmaSvgModel(
             // A `RoundedCornerShape(<px>f)` has no dp radius; its raw-pixel corners ride on
             // `cornerRadiusPx` and map straight to layer space with no density conversion.
             ?: tokens?.cornerRadiusPx?.let { parseRawCornersPx(it) }
+      // Shadow elevation (dp) → px for the render's drop shadow.
+      val elevationPx =
+        tokens?.elevation?.removeSuffix("dp")?.toDoubleOrNull()?.let { it * ctx.density } ?: 0.0
+      // A `Modifier.defaultMinSize`-constrained node — an M3 `Badge` whose single-digit content is
+      // *placed* in a narrow box but *measures* (and draws its background at) the larger min box —
+      // grows its drawn shape to `max(bounds, minSize)`, centered on the bounds, so the fill
+      // matches
+      // the render instead of a squashed shape at the narrow placement. Driven by the captured min
+      // constraints (dp × density), not the measured `size`, which is polluted by sandbox
+      // constraints for many nodes; a button/chip whose min ≤ its bounds simply doesn't grow. Only
+      // when the node draws a shape and carries no text of its own (nothing else is positioned
+      // against the box).
+      val boundsW = bounds.right - bounds.left
+      val boundsH = bounds.bottom - bounds.top
+      val minWidthPx =
+        tokens?.minWidth?.removeSuffix("dp")?.toDoubleOrNull()?.let { it * ctx.density }
+      val minHeightPx =
+        tokens?.minHeight?.removeSuffix("dp")?.toDoubleOrNull()?.let { it * ctx.density }
+      val drawW = maxOf(boundsW, minWidthPx?.roundToInt() ?: 0)
+      val drawH = maxOf(boundsH, minHeightPx?.roundToInt() ?: 0)
+      val expand =
+        (fill != null || stroke != null) &&
+          ctx.textByNodeId[nodeId] == null &&
+          (drawW > boundsW || drawH > boundsH)
+      val drawLeft = if (expand) (bounds.left + bounds.right - drawW) / 2 else bounds.left
+      val drawTop = if (expand) (bounds.top + bounds.bottom - drawH) / 2 else bounds.top
+      val drawRight = if (expand) drawLeft + drawW else bounds.right
+      val drawBottom = if (expand) drawTop + drawH else bounds.bottom
       return FigmaSvgLayer(
         name = layerName(),
-        left = bounds.left,
-        top = bounds.top,
-        right = bounds.right,
-        bottom = bounds.bottom,
+        left = drawLeft,
+        top = drawTop,
+        right = drawRight,
+        bottom = drawBottom,
         fill = fill,
         stroke = stroke,
-        // A Material outline is a 1dp hairline; the inspector doesn't carry its width, so scale a
-        // single dp into the render's px space. `coerceAtLeast(1.0)` keeps a visible hairline at
+        // Stroke width: use the captured `Modifier.border` width (dp × density) when present, so a
+        // 2dp outline (an off-state `Switch` track) isn't drawn as a 1dp hairline. Fall back to a
+        // single dp scaled into the render's px space — the width of a Material hairline outline —
+        // when the border width wasn't captured. `coerceAtLeast(1.0)` keeps a visible hairline at
         // density < 1.
-        strokeWidthPx = if (stroke != null) ctx.density.toDouble().coerceAtLeast(1.0) else 1.0,
+        strokeWidthPx =
+          if (stroke != null) {
+            val dp = tokens?.borderWidth?.removeSuffix("dp")?.toDoubleOrNull()
+            (dp?.let { it * ctx.density } ?: ctx.density.toDouble()).coerceAtLeast(1.0)
+          } else 1.0,
         cornerRadiiPx = corners,
         circle = circle,
         cut = cut,
         text = ctx.textByNodeId[nodeId],
+        background = background,
+        elevationPx = elevationPx,
         children = children.map { it.toLayer(ctx) },
       )
     }
@@ -325,6 +446,33 @@ data class FigmaSvgModel(
       rasterComponents.any {
         component.contains(it, ignoreCase = true)
       }
+
+    /** The Compose modifiers that paint via an imperative Canvas the token export can't read. */
+    private val DRAW_MODIFIERS = setOf("drawBehind", "drawWithContent", "drawWithCache")
+
+    /**
+     * True when the node paints through a custom Canvas draw (a `Canvas`, or a component drawing
+     * its chrome via `Modifier.drawBehind {…}` like the progress/slider indicators).
+     */
+    private fun LayoutInspectorNode.hasCustomDraw(): Boolean = modifiers.any {
+      it.name in DRAW_MODIFIERS
+    }
+
+    /**
+     * The region the Canvas draw actually paints — the union of the draw modifiers' bounds, which
+     * is tighter than the (padded) node box (`Spacer(padding).drawBehind`). Falls back to the node
+     * bounds when a draw modifier carries none.
+     */
+    private fun LayoutInspectorNode.drawnRegion(): LayoutInspectorBounds {
+      val drawn = modifiers.filter { it.name in DRAW_MODIFIERS }.mapNotNull { it.bounds }
+      if (drawn.isEmpty()) return bounds
+      return LayoutInspectorBounds(
+        left = drawn.minOf { it.left },
+        top = drawn.minOf { it.top },
+        right = drawn.maxOf { it.right },
+        bottom = drawn.maxOf { it.bottom },
+      )
+    }
 
     private fun LayoutInspectorNode.layerName(): String = component.ifBlank { "Layer" }
 
@@ -400,6 +548,11 @@ data class FigmaSvgModel(
         color = node.textColor?.foreground?.let { argbToColor(it, emptyMap()) },
         lineHeightPx =
           node.typography?.lineHeight?.let {
+            lineHeightToPx(it, node.typography.fontSize, density)
+          },
+        // Letter spacing uses the same sp×density / em×fontSize resolution as line height.
+        letterSpacingPx =
+          node.typography?.letterSpacing?.let {
             lineHeightToPx(it, node.typography.fontSize, density)
           },
         // Carry per-line runs only for genuinely wrapped text (2+ lines). The captured offsets are

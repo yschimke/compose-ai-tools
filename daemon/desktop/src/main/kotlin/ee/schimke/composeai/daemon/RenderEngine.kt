@@ -25,6 +25,7 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.SystemTheme
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.text.intl.LocaleList
@@ -262,6 +263,10 @@ class RenderEngine(
     // composition rather than going through the scene density.
     val density = Density(spec.density, spec.fontScale ?: 1.0f)
 
+    // Wrap-content measured size (width, height), written by the wrap `Modifier.layout` pass during
+    // render and read by renderOnce to crop the PNG to the composable's intrinsic size. 0 = unset.
+    val measuredContent = IntArray(2)
+
     // Resolve the effective Lottie timeline position and hold it in snapshot state so a held
     // session can live-scrub it. An explicit `overrides.lottie.progress` (a panel scrub) wins and
     // is remembered per preview; a render with no override (a save / warmup re-render through the
@@ -333,7 +338,38 @@ class RenderEngine(
                   spec.showBackground -> Color.White
                   else -> Color.Transparent
                 }
-              Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
+              // AS-parity wrap: on a wrapped axis, measure the composable with a relaxed (min = 0)
+              // constraint against the sandbox max and size the box to the child's intrinsic size,
+              // so the captured tree (and the figma-svg / wireframe / semantics derived from it)
+              // reflects the preview's natural size instead of a fixed frame that clips or reflows
+              // wide content. `.background` paints on that intrinsic box so the sticker's backdrop
+              // is
+              // content-sized, not sandbox-sized. Fixed axes keep the sandbox constraint so
+              // `fillMax*` / LazyColumn still have a finite viewport (mirrors DesktopRendererMain).
+              val boxModifier =
+                if (spec.wrapWidth || spec.wrapHeight) {
+                  Modifier.layout { measurable, constraints ->
+                      val wrapped =
+                        androidx.compose.ui.unit.Constraints(
+                          minWidth = if (spec.wrapWidth) 0 else constraints.minWidth,
+                          maxWidth = constraints.maxWidth,
+                          minHeight = if (spec.wrapHeight) 0 else constraints.minHeight,
+                          maxHeight = constraints.maxHeight,
+                        )
+                      val placeable = measurable.measure(wrapped)
+                      // Record the intrinsic size so renderOnce can crop the PNG to it on wrapped
+                      // axes — otherwise a no-size preview's frame is the whole sandbox with
+                      // content
+                      // in the corner, not the natural-size capture (matches DesktopRendererMain).
+                      measuredContent[0] = placeable.width
+                      measuredContent[1] = placeable.height
+                      layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+                    }
+                    .background(bgColor)
+                } else {
+                  Modifier.fillMaxSize().background(bgColor)
+                }
+              Box(modifier = boxModifier) {
                 ComposeDataExtensionPipeline.Apply(
                   extensions = previewOverrideExtensions.plan(spec.overrides),
                   previewId = spec.previewId,
@@ -363,7 +399,16 @@ class RenderEngine(
                       }
                     }
                   } else {
-                    InvokeWithOptionalWrapper(composableMethod!!, spec.wrapperClassName)
+                    InvokeWithOptionalWrapper(
+                      composableMethod!!,
+                      spec.wrapperClassName,
+                      // A `themeProvider` override (an app-declared @ThemeCatalog
+                      // `PreviewWrapperProvider` FQN) replaces the preview's own `@PreviewWrapper`
+                      // —
+                      // "render this preview under theme X" — but only when it resolves; a
+                      // stale/misspelled FQN falls back to the declared wrapper.
+                      themeProviderFqn = spec.overrides?.themeProvider,
+                    )
                   }
                 }
               }
@@ -421,6 +466,7 @@ class RenderEngine(
       slotTableCapture = slotTableCapture,
       themeFallbackCapture = themeFallbackCapture,
       lottieProgressState = lottieProgressState,
+      measuredContent = measuredContent,
     )
   }
 
@@ -463,7 +509,15 @@ class RenderEngine(
     // Render two frames so any LaunchedEffect / animations have a tick to settle. Same reasoning
     // as `:renderer-desktop`'s renderPreview.
     trace.section("compose:frame") { renderFrame(state, useWallClockFrameTime) }
-    val image = trace.section("compose:captureFrame") { renderFrame(state, useWallClockFrameTime) }
+    val rawImage =
+      trace.section("compose:captureFrame") { renderFrame(state, useWallClockFrameTime) }
+    // AS-parity wrap crop: a no-size preview measured smaller than the sandbox, so crop the frame
+    // to
+    // the composable's intrinsic size on wrapped axes (content is placed at 0,0). Everything
+    // downstream — the written PNG, renderFinished's pngPath, the figma-svg's frame crop — then
+    // sees
+    // the natural-size capture instead of the sandbox with the content in the corner.
+    val image = cropToMeasured(rawImage, state)
     val previewContext = state.previewContext()
 
     val pngData =
@@ -658,6 +712,31 @@ class RenderEngine(
     }
 
   /**
+   * Crop a wrap-content render to the composable's intrinsic size on wrapped axes (content is
+   * placed at the top-left), so a no-size preview's frame is its natural size rather than the
+   * sandbox with the content in the corner. Returns [raw] unchanged when the preview isn't wrapped,
+   * the measured size wasn't recorded, or it already fills the axis (`fillMax*` composables).
+   */
+  private fun cropToMeasured(
+    raw: org.jetbrains.skia.Image,
+    state: SceneState,
+  ): org.jetbrains.skia.Image {
+    if (!state.spec.wrapWidth && !state.spec.wrapHeight) return raw
+    val mw = state.measuredContent[0]
+    val mh = state.measuredContent[1]
+    val cropW = if (state.spec.wrapWidth && mw in 1 until raw.width) mw else raw.width
+    val cropH = if (state.spec.wrapHeight && mh in 1 until raw.height) mh else raw.height
+    if (cropW >= raw.width && cropH >= raw.height) return raw
+    val surface = org.jetbrains.skia.Surface.makeRasterN32Premul(cropW, cropH)
+    return try {
+      surface.canvas.drawImage(raw, 0f, 0f)
+      surface.makeImageSnapshot()
+    } finally {
+      surface.close()
+    }
+  }
+
+  /**
    * v2 phase 3 — close the held scene (frees the Skia [org.jetbrains.skia.Surface]) and restore the
    * context classloader to what it was before [setUp]. Idempotent: a second call after the scene
    * has been closed is a no-op (Skia tolerates double-close on its own; we still restore the
@@ -699,6 +778,12 @@ class RenderEngine(
      * never carried a progress.
      */
     internal val lottieProgressState: MutableState<Float?> = mutableStateOf(null),
+    /**
+     * Wrap-content measured size `[width, height]` in px, written by the wrap `Modifier.layout`
+     * pass during render (0 = unset). renderOnce crops the encoded PNG to this on wrapped axes so a
+     * no-size preview's frame is the composable's natural size, not the sandbox.
+     */
+    internal val measuredContent: IntArray = IntArray(2),
   ) {
     @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
     internal fun previewContext(): PreviewContext {
@@ -1029,6 +1114,18 @@ data class RenderSpec(
   val assetPath: String? = null,
   val widthPx: Int = 320,
   val heightPx: Int = 320,
+  /**
+   * AS-parity wrap-content flags. When set, `widthPx`/`heightPx` are a *sandbox* bound (not a fixed
+   * frame): the composition root is measured with a relaxed (min = 0) constraint on the wrapped
+   * axis and sized to the composable's intrinsic size, and the background paints on that intrinsic
+   * box — so the captured layout/semantics tree (and the `compose/figma-svg` + wireframe derived
+   * from it) reflect the preview's *natural* size, matching the standalone renderer's wrap crop
+   * rather than a fixed 320² box that clipped/reflowed wide content. Off ⇒ the composition fills
+   * the frame (prior behaviour). Set by [PreviewManifestRouter] for previews that declare no
+   * explicit size/device.
+   */
+  val wrapWidth: Boolean = false,
+  val wrapHeight: Boolean = false,
   val density: Float = 2.0f,
   val showBackground: Boolean = true,
   val backgroundColor: Long = 0L,
@@ -1158,6 +1255,8 @@ data class RenderSpec(
         functionName = functionName,
         widthPx = map["widthPx"]?.toIntOrNull() ?: defaults.widthPx,
         heightPx = map["heightPx"]?.toIntOrNull() ?: defaults.heightPx,
+        wrapWidth = map["wrapWidth"]?.toBoolean() ?: defaults.wrapWidth,
+        wrapHeight = map["wrapHeight"]?.toBoolean() ?: defaults.wrapHeight,
         density = map["density"]?.toFloatOrNull() ?: defaults.density,
         showBackground = map["showBackground"]?.toBoolean() ?: defaults.showBackground,
         backgroundColor = map["backgroundColor"]?.toLongOrNull() ?: defaults.backgroundColor,
@@ -1235,10 +1334,16 @@ private fun InvokeComposable(composableMethod: ComposableMethod) {
 private fun InvokeWithOptionalWrapper(
   composableMethod: ComposableMethod,
   wrapperFqnFromSpec: String?,
+  themeProviderFqn: String? = null,
 ) {
   val wrapper =
-    remember(composableMethod, wrapperFqnFromSpec) {
-      resolveWrapperOrNull(composableMethod, wrapperFqnFromSpec)
+    remember(composableMethod, wrapperFqnFromSpec, themeProviderFqn) {
+      // A `themeProvider` override wraps the preview in an app-declared theme provider IN PLACE OF
+      // its own `@PreviewWrapper` — but only when it actually loads. On a stale/misspelled FQN,
+      // `loadWrapperByFqnOrNull` logs and returns null; we then fall back to the preview's declared
+      // wrapper rather than stripping it. A blank/absent themeProvider skips straight to it.
+      themeProviderFqn?.takeIf { it.isNotBlank() }?.let { loadWrapperByFqnOrNull(it) }
+        ?: resolveWrapperOrNull(composableMethod, wrapperFqnFromSpec)
     }
   if (wrapper == null) {
     InvokeComposable(composableMethod)

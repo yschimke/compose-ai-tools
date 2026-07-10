@@ -11,7 +11,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.paint
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.unit.Density
@@ -112,5 +116,34 @@ class DesktopLayoutInspectorTest {
     assertEquals("12.0dp", tokens.cornerRadius)
     assertEquals("16.0dp", tokens.padding?.start)
     assertEquals("16.0dp", tokens.padding?.bottom)
+  }
+
+  @Test
+  fun resolves_a_solid_painter_fill_as_the_background_token() {
+    // Wear M3's `Button`/`Card`/`FilledTonalButton` fill their container via `Modifier.paint` with
+    // a `ColorPainter(containerColor)` (through the wear `surface()` helper), NOT via
+    // `Modifier.background` — so the resolver must read a solid `ColorPainter` painter fill as the
+    // background, otherwise every wear container fill drops out of the figma-svg export (#1985).
+    val root = writeAndRead {
+      Box(Modifier.testTag("surface").size(120.dp, 52.dp).paint(ColorPainter(Color(0xFFE9DDFF)))) {
+        Text("Filled")
+      }
+    }
+
+    val filled = root.firstWhere { it.tokens?.backgroundColor == "#FFE9DDFF" }
+    assertNotNull("a `Modifier.paint(ColorPainter)` fill must resolve as the background", filled)
+  }
+
+  @Test
+  fun leaves_a_bitmap_painter_fill_unresolved_for_the_raster_path() {
+    // A non-solid painter (an `Image`/`Icon`'s bitmap or vector art) has no single fill colour, so
+    // the painter branch must NOT invent a flat background for it — those nodes stay on the raster
+    // path. Only a `ColorPainter` yields a token.
+    val root = writeAndRead {
+      Box(Modifier.testTag("art").size(40.dp, 40.dp).paint(BitmapPainter(ImageBitmap(4, 4))))
+    }
+
+    val anyBackground = root.firstWhere { it.tokens?.backgroundColor != null }
+    assertTrue("a bitmap painter must not resolve to a background token", anyBackground == null)
   }
 }

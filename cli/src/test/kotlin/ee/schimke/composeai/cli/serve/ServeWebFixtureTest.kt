@@ -1,8 +1,8 @@
 package ee.schimke.composeai.cli.serve
 
-import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.overrides.PreviewOverrideType
+import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import java.awt.Color
 import java.awt.Font
 import java.awt.GradientPaint
@@ -165,6 +165,7 @@ class ServeWebFixtureTest {
         sessionId = "compose-m3",
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         wasmSrc = "/wasm/compose-m3/?id=card-filled",
+        wasmSameOrigin = true,
       )
     // A trusted catalog served LIVE (ServeCatalogLiveHost): static baked snapshots
     // (canApplyOverrides=false) yet the "Live (stream)" toggle is enabled (hasLiveStream=true), and
@@ -180,6 +181,7 @@ class ServeWebFixtureTest {
         hasLiveStream = true,
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         wasmSrc = "/wasm/compose-m3/?id=card-filled",
+        wasmSameOrigin = true,
       )
     // A trusted catalog served LIVE (ServeCatalogLiveHost) whose preview declares author knobs:
     // snapshots stay baked (canApplyOverrides=false) but the carried daemon CAN re-render an
@@ -198,6 +200,16 @@ class ServeWebFixtureTest {
         hasLiveStream = true,
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         wasmSrc = "/wasm/compose-m3/?id=button-filled",
+        wasmSameOrigin = true,
+        // A trusted-catalog live session now also carries the app's declared @ThemeCatalog themes
+        // (read from the live bundle's previews.json), so the App theme selector renders enabled
+        // and
+        // re-renders via the carried daemon — the surface this PR wires up end-to-end.
+        declaredThemes =
+          listOf(
+            ServeTheme("Brand Light", "com.example.BrandLightThemeCatalog", group = "Brand"),
+            ServeTheme("Brand Dark", "com.example.BrandDarkThemeCatalog", group = "Brand"),
+          ),
       )
     // A catalog served under its canonical path (/meshcore-mobile/) rather than ?session=: same
     // pages, but links stay on the path (basePath) and drop the &session= param. Captures the
@@ -221,6 +233,33 @@ class ServeWebFixtureTest {
         trust = "branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile",
         basePath = "/meshcore-mobile",
       )
+    // A daemon-backed viewer whose module declares `@ThemeCatalog` themes: the viewer adds an "App
+    // theme" selector (grouped by `@ThemeCatalog(group=…)`) so a preview can be re-rendered under a
+    // chosen theme via the `themeProvider` override. Captured so the visual-diff bot covers the
+    // selector.
+    val viewerThemes =
+      ServeWeb.viewerPage(
+        previews.first { it.id.endsWith("ProfileScreenPreview") },
+        token,
+        sessionId = "compose-m3",
+        canApplyOverrides = true,
+        declaredThemes =
+          listOf(
+            ServeTheme("Brand Light", "com.example.BrandLightThemeCatalog", group = "Brand"),
+            ServeTheme("Brand Dark", "com.example.BrandDarkThemeCatalog", group = "Brand"),
+            ServeTheme("High Contrast", "com.example.HighContrastThemeCatalog"),
+          ),
+      )
+    // A daemon-backed viewer for a preview detected to support keyboard focus (`@FocusedPreview`):
+    // the "Detected features" group with the "Keyboard focus" control appears, gated to daemon
+    // sessions. Captured so the visual-diff bot covers the detected-feature control.
+    val viewerFocus =
+      ServeWeb.viewerPage(
+        ServePreview("com.example.FocusRingPreview", "Focus ring", supportsFocus = true),
+        token,
+        sessionId = "compose-m3",
+        canApplyOverrides = true,
+      )
     // A catalog whose previews carry per-theme variants, so the landing shows the sticky light/dark
     // toggle and tags each card with its baked theme for client-side filtering.
     val landingThemed =
@@ -242,6 +281,8 @@ class ServeWebFixtureTest {
       File(pagesDir, "serve-viewer-wasm.html").writeText(wasmViewer)
       File(pagesDir, "serve-viewer-wasm-live.html").writeText(wasmViewerLive)
       File(pagesDir, "serve-viewer-catalog-knobs.html").writeText(viewerCatalogKnobs)
+      File(pagesDir, "serve-viewer-themes.html").writeText(viewerThemes)
+      File(pagesDir, "serve-viewer-focus.html").writeText(viewerFocus)
       File(pagesDir, "serve-landing-path.html").writeText(landingPath)
       File(pagesDir, "serve-viewer-path.html").writeText(viewerPath)
       File(pagesDir, "serve-landing-themed.html").writeText(landingThemed)
@@ -256,6 +297,18 @@ class ServeWebFixtureTest {
     assertGolden(File(pagesDir, "serve-viewer-wasm.html"), wasmViewer)
     assertGolden(File(pagesDir, "serve-viewer-wasm-live.html"), wasmViewerLive)
     assertGolden(File(pagesDir, "serve-viewer-catalog-knobs.html"), viewerCatalogKnobs)
+    assertGolden(File(pagesDir, "serve-viewer-themes.html"), viewerThemes)
+    assertGolden(File(pagesDir, "serve-viewer-focus.html"), viewerFocus)
+    // The detected-feature control shows for a focus-supporting preview…
+    assertTrue(
+      viewerFocus.contains("id=\"cp-focus\"") && viewerFocus.contains("Keyboard focus"),
+      "a @FocusedPreview preview shows the Keyboard focus control",
+    )
+    // …and NOT for an ordinary preview (no dead control).
+    assertFalse(
+      viewerThemes.contains("id=\"cp-focus\""),
+      "a preview without @FocusedPreview shows no Keyboard focus control",
+    )
     assertGolden(File(pagesDir, "serve-landing-path.html"), landingPath)
     assertGolden(File(pagesDir, "serve-viewer-path.html"), viewerPath)
     assertGolden(File(pagesDir, "serve-landing-themed.html"), landingThemed)
@@ -401,10 +454,40 @@ class ServeWebFixtureTest {
   fun `viewer mounts the Wasm tier only when a wasm app backs the session`() {
     val card = previews.first { it.id.endsWith("CardPreview") }
     val withWasm = ServeWeb.viewerPage(card, token, wasmSrc = "/wasm/compose-m3/?id=card-filled")
-    assertTrue(withWasm.contains("Run in browser (Wasm)"), "expected the Wasm toggle")
+    // The render mode is a radio group: PNG (default) / Live Compose / Wasm — the last only when a
+    // wasm app backs the session.
+    assertTrue(
+      withWasm.contains("name=\"cp-mode\" value=\"png\"") &&
+        withWasm.contains("name=\"cp-mode\" value=\"live\"") &&
+        withWasm.contains("name=\"cp-mode\" value=\"wasm\""),
+      "expected the PNG / Live Compose / Wasm radio group",
+    )
     assertTrue(withWasm.contains("id=\"cp-wasm\""), "expected the Wasm iframe")
     assertTrue(withWasm.contains("data-wasm-src=\"/wasm/compose-m3/?id=card-filled\""))
-    assertTrue(withWasm.contains("sandbox=\"allow-scripts\""), "iframe must be sandboxed")
+    // Default (no wasmSameOrigin ⇒ untrusted / unknown): the iframe stays opaque-origin, so an
+    // unverified catalog's `/wasm/` app can't reach the parent viewer's tokened URLs / DOM.
+    // Match the exact attribute, not a bare "allow-same-origin" substring — the viewer-script
+    // comments mention the phrase, so a substring check would be polluted.
+    assertTrue(
+      withWasm.contains("sandbox=\"allow-scripts\"") &&
+        !withWasm.contains("sandbox=\"allow-scripts allow-same-origin\""),
+      "untrusted Wasm stays opaque-origin (allow-scripts only)",
+    )
+    // A TRUSTED catalog's app (wasmSameOrigin=true) gets its real origin, so its storage/history
+    // APIs (window.caches via supportsCacheApi, history.pushState) stop throwing SecurityError in
+    // an
+    // opaque origin. Still no allow-forms / allow-popups / allow-top-navigation.
+    val trustedWasm =
+      ServeWeb.viewerPage(
+        card,
+        token,
+        wasmSrc = "/wasm/compose-m3/?id=card-filled",
+        wasmSameOrigin = true,
+      )
+    assertTrue(
+      trustedWasm.contains("sandbox=\"allow-scripts allow-same-origin\""),
+      "trusted Wasm gets same-origin",
+    )
     // Flash-free switch: the snapshot stays on-stage until the app's first-frame signal, and the
     // iframe is overlaid on the snapshot's exact box (pixel parity with the baked PNG).
     assertTrue(
@@ -416,12 +499,12 @@ class ServeWebFixtureTest {
       "iframe is positioned over the snapshot's rendered box",
     )
     assertTrue(withWasm.contains("loading Wasm…"), "load state keeps the snapshot with a status")
-    // Guard against re-adding a page-side font preload: the sandboxed iframe's opaque origin gets
-    // its own HTTP-cache partition, so nothing this page fetches is reusable inside it. The real
-    // prefetch lives in the app's index.html (parallel with the Wasm boot).
+    // Guard against re-adding a page-side font preload: the real prefetch lives in the app's own
+    // index.html (in flight before the iframe navigates, and the app consumes the promises), so a
+    // page-side preload is redundant.
     assertFalse(
       withWasm.contains("preloadWasmFonts"),
-      "no page-side font preload (cache-partitioned away from the sandboxed iframe)",
+      "no page-side font preload (the app's index.html owns the prefetch)",
     )
     // The in-browser tier can drop the sticker background (component only on the checkerboard).
     assertTrue(
@@ -430,11 +513,44 @@ class ServeWebFixtureTest {
     )
     assertTrue(withWasm.contains("\"background=off\""), "background knob forwarded to the app")
 
-    // No wasmSrc → snapshot viewer is unchanged: no toggle, no iframe element.
+    // No wasmSrc → snapshot viewer has no Wasm mode: PNG + Live radios only, no Wasm radio/iframe.
     val plain = ServeWeb.viewerPage(card, token)
-    assertTrue(!plain.contains("Run in browser (Wasm)"))
+    assertTrue(!plain.contains("name=\"cp-mode\" value=\"wasm\""))
     assertTrue(!plain.contains("id=\"cp-wasm\""))
     assertTrue(!plain.contains("id=\"cp-wasm-bg\""))
+    assertTrue(plain.contains("name=\"cp-mode\" value=\"png\""), "PNG radio always present")
+  }
+
+  @Test
+  fun `viewer offers the SVG render mode only when the session can export SVG`() {
+    val card = previews.first { it.id.endsWith("CardPreview") }
+    // A session that can export SVG (a catalog / daemon) adds an SVG radio to the render-mode
+    // group,
+    // gated on the same hasSvgExport flag as the SVG direct-link row.
+    val svgView = ServeWeb.viewerPage(card, token, hasSvgExport = true)
+    assertTrue(
+      svgView.contains("name=\"cp-mode\" value=\"svg\"") && svgView.contains("id=\"cp-mode-svg\""),
+      "an SVG-exporting session offers the SVG render-mode radio",
+    )
+    // The SVG lane reuses the snapshot <img> but swaps the render extension; the viewer JS carries
+    // the snapshotExt seam and stamps the backend badge with SVG.
+    assertTrue(
+      svgView.contains("var snapshotExt = \".png\";") &&
+        svgView.contains("snapshotExt = \".svg\";"),
+      "the snapshot lane flips its render extension between PNG and SVG",
+    )
+    assertTrue(
+      svgView.contains("if (mode === \"svg\") return \"SVG\";"),
+      "the backend badge names the SVG lane",
+    )
+
+    // No SVG export → no SVG radio, and the snapshot lane never leaves the raster PNG.
+    val plain = ServeWeb.viewerPage(card, token)
+    assertFalse(
+      plain.contains("name=\"cp-mode\" value=\"svg\""),
+      "a session without SVG export shows no SVG radio",
+    )
+    assertFalse(plain.contains("id=\"cp-mode-svg\""), "no SVG radio id without SVG export")
   }
 
   @Test
@@ -545,13 +661,18 @@ class ServeWebFixtureTest {
     assertTrue(staticView.contains("value=\"1.0\" disabled"), "font scale disabled")
     assertTrue(staticView.contains("id=\"cp-device\" disabled"), "device disabled")
     assertTrue(staticView.contains("id=\"cp-orientation\" disabled"), "orientation disabled")
-    assertTrue(
-      staticView.contains("id=\"cp-live\" type=\"checkbox\" disabled"),
-      "live stream disabled",
-    )
+    assertTrue(staticView.contains("id=\"cp-live\" disabled"), "Live Compose radio disabled")
     assertTrue(
       staticView.contains("id=\"cp-uiMode\" disabled"),
       "theme disabled without a Wasm app",
+    )
+    assertFalse(
+      staticView.contains("id=\"cp-talkBack\""),
+      "no live stream ⇒ the live-only overlay toggles are omitted entirely, not left dead",
+    )
+    assertFalse(
+      staticView.contains("id=\"cp-themeProvider\""),
+      "no declared themes ⇒ the App theme selector is omitted entirely",
     )
 
     // Static + Wasm: theme, font scale, and locale go LIVE (the in-browser app honours them) — only
@@ -605,8 +726,8 @@ class ServeWebFixtureTest {
         wasmSrc = "/wasm/compose-m3/?id=card-filled",
       )
     assertTrue(
-      liveCatalogWasm.contains("id=\"cp-live\" type=\"checkbox\"> Live"),
-      "live catalog leaves the Live toggle enabled",
+      liveCatalogWasm.contains("id=\"cp-live\"> Live Compose"),
+      "live catalog leaves the Live Compose radio enabled (not disabled)",
     )
     assertTrue(
       liveCatalogWasm.contains("data-static-snapshot=\"true\""),
@@ -619,6 +740,21 @@ class ServeWebFixtureTest {
     assertTrue(
       liveCatalogWasm.contains("id=\"cp-device\" disabled"),
       "server-render-only controls stay disabled on a live catalog's static snapshot",
+    )
+    // A live-stream session offers the overlay toggles (talkBack / touch), rendered disabled until
+    // the Live Compose mode is actually entered (the mode-transition JS flips them on).
+    assertTrue(
+      liveCatalogWasm.contains("cp-overlays") &&
+        liveCatalogWasm.contains("id=\"cp-talkBack\" type=\"checkbox\" disabled") &&
+        liveCatalogWasm.contains("id=\"cp-touchOverlay\" type=\"checkbox\" disabled"),
+      "live stream offers the overlay toggles, disabled until Live Compose is active",
+    )
+    // The stream replays the full liveOverrides() on open so an overlay checked while the socket
+    // was
+    // still connecting (its change event dropped by the readyState guard) still reaches the daemon.
+    assertTrue(
+      liveCatalogWasm.contains("ws.onopen = function () {"),
+      "the live stream seeds the daemon with the current overrides once the socket opens",
     )
 
     // Trusted catalog served LIVE whose preview declares author knobs (ServeCatalogLiveHost with
@@ -722,6 +858,61 @@ class ServeWebFixtureTest {
     assertTrue(!liveView.contains("value=\"1.0\" disabled"), "font scale enabled on a live session")
     assertTrue(!liveView.contains("id=\"cp-device\" disabled"), "device enabled on a live session")
     assertTrue(liveView.contains("data-static-snapshot=\"false\""), "live session is not static")
+  }
+
+  @Test
+  fun `declared themes render an App theme selector routed through the daemon`() {
+    val themes =
+      listOf(
+        ServeTheme("Brand Light", "com.example.BrandLightThemeCatalog", group = "Brand"),
+        ServeTheme("Brand Dark", "com.example.BrandDarkThemeCatalog", group = "Brand"),
+        ServeTheme("High Contrast", "com.example.HighContrastThemeCatalog"),
+      )
+    val view =
+      ServeWeb.viewerPage(
+        previews.first(),
+        token,
+        canApplyOverrides = true,
+        declaredThemes = themes,
+      )
+    // The selector exists and carries each provider FQN as an option value with the human name.
+    assertTrue(
+      view.contains("id=\"cp-themeProvider\""),
+      "declared themes render an App theme select",
+    )
+    assertTrue(
+      view.contains("<option value=\"com.example.BrandLightThemeCatalog\">Brand Light</option>"),
+      "each declared theme is an option keyed by its provider FQN",
+    )
+    // `@ThemeCatalog(group=…)` buckets themes into <optgroup>s; an ungrouped theme stays flat.
+    assertTrue(view.contains("<optgroup label=\"Brand\">"), "grouped themes get an <optgroup>")
+    assertTrue(
+      view.contains(
+        "<option value=\"com.example.HighContrastThemeCatalog\">High Contrast</option>"
+      ),
+      "an ungrouped theme is a flat option",
+    )
+    // Enabled on a daemon host and routed like a knob (the daemon path, never the wasm
+    // auto-enable).
+    assertFalse(
+      view.contains("id=\"cp-themeProvider\" class=\"cp-knob-theme\" disabled"),
+      "the theme selector is enabled on a daemon-backed host",
+    )
+    assertTrue(
+      view.contains("themeSel.addEventListener(\"change\", onKnobChanged)"),
+      "the theme selector routes its change through the daemon (knob) path",
+    )
+    assertTrue(
+      view.contains("parts.push(\"themeProvider=\""),
+      "a chosen theme is appended to the /render URL as themeProvider",
+    )
+
+    // A static bundle can't load a provider, so the selector renders disabled (informational).
+    val staticThemed = ServeWeb.viewerPage(previews.first(), token, declaredThemes = themes)
+    assertTrue(
+      staticThemed.contains("id=\"cp-themeProvider\" class=\"cp-knob-theme\" disabled"),
+      "the theme selector is disabled on a static bundle (no daemon to apply it)",
+    )
   }
 
   @Test

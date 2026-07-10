@@ -1,0 +1,850 @@
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Profile screen — compose-preview</title>
+        <style>:root { color-scheme: light dark; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 24px; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  color: #1b1b1f; background: #fafafb; }
+a { color: #5b5bd6; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.cp-head { margin: 0 0 4px; font-size: 1.2rem; font-weight: 600; }
+.cp-sub { margin: 0 0 20px; font-size: 0.82rem; color: #6b6b70; }
+.cp-about { margin: 0 0 24px; padding: 14px 16px; border: 1px solid #e3e3e8; border-radius: 10px;
+  background: #fff; max-width: 720px; }
+.cp-about-title { margin: 0 0 6px; font-size: 0.95rem; font-weight: 600; }
+.cp-about-body { margin: 0 0 8px; font-size: 0.84rem; line-height: 1.45; color: #45454c; }
+.cp-about-body code { font-size: 0.8rem; padding: 0 3px; border-radius: 4px; background: #f0f0f3; }
+.cp-about-links { margin: 0; font-size: 0.8rem; color: #6b6b70; }
+.cp-systems { margin: 0 0 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  font-size: 0.85rem; }
+.cp-systems-label { font-weight: 600; color: #6b6b70; }
+.cp-systems a, .cp-systems-cur { padding: 3px 10px; border-radius: 999px; border: 1px solid #d7d7de; }
+.cp-systems a { background: #fff; }
+.cp-systems-cur { background: #ececff; border-color: #c4c4f5; color: #3a3a8a; font-weight: 600; }
+.cp-toolbar { margin: 0 0 16px; }
+.cp-searchbar { margin: 0 0 16px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cp-search { flex: 1 1 260px; max-width: 420px; padding: 7px 12px; font: inherit; font-size: 0.85rem;
+  border: 1px solid #d7d7de; border-radius: 999px; background: #fff; color: inherit; }
+.cp-search:focus { outline: 2px solid #c4c4f5; outline-offset: 1px; }
+.cp-count { font-size: 0.78rem; color: #6b6b70; }
+.cp-empty { margin: 12px 0 0; font-size: 0.85rem; color: #6b6b70; }
+.cp-empty[hidden] { display: none; }
+.cp-theme { display: inline-flex; border: 1px solid #d7d7de; border-radius: 999px; overflow: hidden; }
+.cp-theme-btn { border: 0; background: #fff; color: #6b6b70; font: inherit; font-size: 0.78rem;
+  padding: 3px 14px; cursor: pointer; }
+.cp-theme-btn[aria-pressed="true"] { background: #ececff; color: #3a3a8a; font-weight: 600; }
+.cp-badge { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px;
+  font-size: 0.7rem; font-weight: 600; vertical-align: middle; white-space: nowrap; }
+.cp-badge--trusted { background: #e7f4ea; color: #1e7a34; border: 1px solid #b6e0c2; }
+.cp-badge--unverified { background: #fdf0e3; color: #8a5300; border: 1px solid #f0d3a8; }
+.cp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+.cp-syslist { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.cp-syslist .cp-imgwrap { min-height: 180px; }
+.cp-sys-title { font-size: 0.98rem; font-weight: 600; }
+.cp-sys-desc { margin-top: 4px; font-size: 0.76rem; color: #6b6b70; line-height: 1.4; }
+.cp-sys-foot { margin-top: 8px; font-size: 0.74rem; color: #6b6b70; }
+.cp-sys-noimg { font-size: 0.78rem; color: #a0a0a8; }
+.cp-card { border: 1px solid #e3e3e8; border-radius: 10px; overflow: hidden; background: #fff;
+  display: block; color: inherit; }
+.cp-card[hidden] { display: none; }
+.cp-imgwrap { display: flex; align-items: center; justify-content: center; min-height: 140px;
+  background: repeating-conic-gradient(#f4f4f6 0% 25%, #fff 0% 50%) 50% / 16px 16px; padding: 8px; }
+.cp-imgwrap img { max-width: 100%; height: auto; display: block; }
+.cp-meta { padding: 8px 10px; font-size: 0.82rem; }
+.cp-label { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-id { color: #6b6b70; font-size: 0.7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-viewer { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+.cp-stage { position: relative; flex: 1 1 360px; min-width: 280px; border: 1px solid #e3e3e8;
+  border-radius: 10px;
+  background: repeating-conic-gradient(#f4f4f6 0% 25%, #fff 0% 50%) 50% / 16px 16px; padding: 12px;
+  display: flex; align-items: center; justify-content: center; min-height: 320px; }
+.cp-stage img, .cp-stage canvas { max-width: 100%; height: auto; }
+.cp-backend { position: absolute; top: 8px; right: 8px; font-size: 0.62rem; font-weight: 600;
+  letter-spacing: 0.02em; padding: 2px 8px; border-radius: 999px; background: rgba(20,20,22,0.72);
+  color: #fff; pointer-events: none; }
+.cp-stage iframe { position: absolute; border: 0; background: transparent; opacity: 0;
+  transition: opacity 0.15s ease; pointer-events: none; }
+.cp-stage iframe.cp-wasm-live { opacity: 1; pointer-events: auto; }
+/* Live daemon frames paint into the SAME absolute overlay box the Wasm iframe uses, pinned to
+   the snapshot img's slot — so the stage is one fixed box every transport fills and toggling a
+   mode never resizes or shifts it (the img keeps its layout slot underneath via visibility). */
+.cp-stage canvas.cp-canvas-live { position: absolute; max-width: none; }
+.cp-live-row { flex-direction: row !important; align-items: center; gap: 6px !important; }
+.cp-modes { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px 14px;
+  font-size: 0.8rem; }
+.cp-controls { flex: 0 0 240px; display: flex; flex-direction: column; gap: 14px; }
+.cp-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; }
+.cp-controls input, .cp-controls select { padding: 5px 6px; font-size: 0.85rem; }
+.cp-status { font-size: 0.75rem; color: #6b6b70; min-height: 1em; }
+.cp-note { font-size: 0.75rem; color: #6b6b70; line-height: 1.4; padding: 8px 10px;
+  border-radius: 8px; background: #f4f4f6; }
+.cp-controls label:has(:disabled) { opacity: 0.55; }
+.cp-knobs { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.cp-knobs-head { font-size: 0.72rem; color: #6b6b70; }
+.cp-overlays { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.cp-overlays-head { font-size: 0.72rem; color: #6b6b70; }
+.cp-knobs input:disabled { opacity: 0.7; }
+.cp-links { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.cp-link-row { display: flex; align-items: center; gap: 6px; }
+.cp-link-kind { font-size: 0.72rem; font-weight: 600; color: #6b6b70; width: 30px; flex: none; }
+.cp-url { flex: 1; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem; padding: 4px 6px; border: 1px solid #d7d7de; border-radius: 6px;
+  background: #fff; color: #1b1b1f; }
+.cp-copy, .cp-dl { font-size: 0.72rem; padding: 4px 8px; border-radius: 6px; border: 1px solid #d7d7de;
+  background: #fff; color: #5b5bd6; cursor: pointer; text-decoration: none; flex: none; }
+.cp-copy:hover, .cp-dl:hover { background: #f0f0f3; }
+@media (prefers-color-scheme: dark) {
+  body { color: #e6e6e9; background: #161618; }
+  .cp-sub, .cp-id, .cp-status, .cp-about-links, .cp-sys-desc, .cp-sys-foot { color: #a0a0a8; }
+  .cp-card, .cp-stage, .cp-knobs, .cp-links, .cp-about { border-color: #34343a; }
+  .cp-url { background: #1d1d20; color: #e6e6e9; border-color: #34343a; }
+  .cp-copy, .cp-dl { background: #1d1d20; border-color: #34343a; }
+  .cp-copy:hover, .cp-dl:hover { background: #26262b; }
+  .cp-card, .cp-about { background: #1d1d20; }
+  .cp-about-body { color: #c9c9d0; }
+  .cp-about-body code { background: #2a2a30; }
+  .cp-systems-label { color: #a0a0a8; }
+  .cp-systems a, .cp-systems-cur { border-color: #34343a; }
+  .cp-systems a { background: #1d1d20; }
+  .cp-systems-cur { background: #26264a; border-color: #45458a; color: #c9c9ff; }
+  .cp-search { border-color: #34343a; background: #1d1d20; }
+  .cp-count, .cp-empty { color: #a0a0a8; }
+  .cp-theme { border-color: #34343a; }
+  .cp-theme-btn { background: #1d1d20; color: #a0a0a8; }
+  .cp-theme-btn[aria-pressed="true"] { background: #26264a; color: #c9c9ff; }
+  .cp-note { background: #26262b; color: #a0a0a8; }
+  .cp-imgwrap, .cp-stage { background: repeating-conic-gradient(#26262b 0% 25%, #1d1d20 0% 50%) 50% / 16px 16px; }
+  .cp-badge--trusted { background: #14361f; color: #6cd98a; border-color: #2c6b40; }
+  .cp-badge--unverified { background: #3a2a12; color: #e6b067; border-color: #6b4f24; }
+}</style>
+      </head>
+      <body>
+              <p class="cp-head"><a href="/?token=demo-token-fixture&session=compose-m3">← previews</a></p>
+      <p class="cp-sub" title="com.example.ProfileScreenPreview">Profile screen</p>
+      <div class="cp-viewer" data-preview-id="com.example.ProfileScreenPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="false" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live">
+        <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="Profile screen"><canvas id="cp-canvas" hidden></canvas></div>
+        <div class="cp-controls">
+          
+          <div class="cp-modes" role="radiogroup" aria-label="Render mode">
+            <label class="cp-live-row"><input type="radio" name="cp-mode" value="png" id="cp-mode-png" checked> PNG</label>
+            
+            <label class="cp-live-row"><input type="radio" name="cp-mode" value="live" id="cp-live"> Live Compose</label>
+            
+          </div>
+          
+          <label>Theme
+            <select id="cp-uiMode">
+              <option value="">(default)</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </label>
+                  <label>App theme
+          <select id="cp-themeProvider" class="cp-knob-theme">
+            <option value="">(default)</option>
+            <option value="com.example.HighContrastThemeCatalog">High Contrast</option>
+<optgroup label="Brand"><option value="com.example.BrandLightThemeCatalog">Brand Light</option>
+<option value="com.example.BrandDarkThemeCatalog">Brand Dark</option></optgroup>
+
+          </select>
+        </label>
+          <label>Device
+            <select id="cp-device">
+              <option value="">(default)</option>
+              <option value="id:pixel_5">Pixel 5</option>
+<option value="id:pixel_7">Pixel 7</option>
+<option value="id:pixel_tablet">Pixel Tablet</option>
+<option value="id:pixel_fold">Pixel Fold</option>
+<option value="id:wearos_small_round">Wear OS (small round)</option>
+<option value="id:tv_1080p">TV 1080p</option>
+            </select>
+          </label>
+          <label>Locale (BCP-47)
+            <input id="cp-localeTag" type="text" placeholder="e.g. ar, ja-JP" autocomplete="off">
+          </label>
+          <label>Font scale: <span id="cp-fontScale-val">default</span>
+            <input id="cp-fontScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0">
+          </label>
+          <label>Orientation
+            <select id="cp-orientation">
+              <option value="">(default)</option>
+              <option value="portrait">Portrait</option>
+              <option value="landscape">Landscape</option>
+            </select>
+          </label>
+          <label>Background
+            <select id="cp-background">
+              <option value="">(default)</option>
+              <option value="clear">Clear (crisp outline)</option>
+            </select>
+          </label>
+          <div class="cp-overlays">
+  <div class="cp-overlays-head">Overlays (Live Compose)</div>
+  <label class="cp-live-row"><input class="cp-overlay" id="cp-talkBack" type="checkbox" disabled> Accessibility (TalkBack)</label>
+  <label class="cp-live-row"><input class="cp-overlay" id="cp-touchOverlay" type="checkbox" disabled> Show touches</label>
+</div>
+          
+          
+                <div class="cp-links">
+        <div class="cp-knobs-head">Direct links — the current view as a URL (overrides applied)</div>
+        <div class="cp-link-row">
+  <span class="cp-link-kind">PNG</span>
+  <input id="cp-url-png" class="cp-url" type="text" readonly aria-label="PNG URL">
+  <button type="button" class="cp-copy" data-copy-target="cp-url-png">Copy</button>
+  <a id="cp-dl-png" class="cp-dl" download>Download</a>
+</div>
+      </div>
+          <div class="cp-status" id="cp-status"></div>
+        </div>
+      </div>
+      <script>(function () {
+  var el = document.getElementById("cp-uiMode");
+  if (!el) return;
+  // Inherit the catalog's sticky theme on the first render — but ONLY for a theme-less preview
+  // (id carries no __light/__dark segment), which would otherwise open at (default). A themed
+  // variant's theme is explicit in its deep link, so it opens on its baked (instant) pixels and
+  // is not overridden by a remembered theme — seeding it would force a daemon re-render on a
+  // fresh deep link, defeating baked-until-changed. Runs before viewerScript()'s initial render.
+  var root = document.querySelector(".cp-viewer");
+  var pid = (root && root.getAttribute("data-preview-id")) || "";
+  var themed = pid.split("__").some(function (s) { return s === "light" || s === "dark"; });
+  try {
+    var stored = localStorage.getItem("cp-theme");
+    if (!themed && !el.value && (stored === "light" || stored === "dark")) el.value = stored;
+  } catch (e) {}
+  // Round-trip: a Theme change writes the shared key so the catalog remembers it.
+  el.addEventListener("change", function () {
+    if (el.value === "light" || el.value === "dark") {
+      try { localStorage.setItem("cp-theme", el.value); } catch (e) {}
+    }
+  });
+})();</script>
+      <script>(function () {
+  "use strict";
+  var root = document.querySelector(".cp-viewer");
+  var img = document.getElementById("cp-img");
+  var canvas = document.getElementById("cp-canvas");
+  var status = document.getElementById("cp-status");
+  var live = document.getElementById("cp-live");
+  // Whether the snapshot lane is static (baked PNGs, no /render re-render) — the explicit signal
+  // for the wasm auto-enable below. NOT `live.disabled`: a trusted-catalog live session serves
+  // static snapshots yet leaves the Live toggle enabled, so `live.disabled` no longer implies
+  // "static".
+  var staticSnapshot = root.getAttribute("data-static-snapshot") === "true";
+  // Whether an override-bearing /render returns fresh pixels even on a static snapshot lane (a
+  // trusted-catalog live session: its carried daemon re-renders author-declared knob edits on
+  // demand). When true, a knob edit re-points the snapshot /render URL rather than sitting dead.
+  var canRenderOverrides = root.getAttribute("data-can-render-overrides") === "true";
+  var previewId = root.getAttribute("data-preview-id");
+  // The session path prefix ("/<system>") when this viewer is served under a path — it sits at
+  // "<base>/p/<id>", so stripping the trailing "/p/<id>" recovers the base ("" for the root
+  // mount / legacy ?session= form). /render + /ws requests are prefixed with it so they hit the
+  // same session without needing ?session= threaded through.
+  var base = location.pathname.replace(/\/p\/[^/]*\/?$/, "");
+  var token = new URLSearchParams(location.search).get("token") || "";
+  // Carry the tenant through follow-up requests so a non-default ?session= stays on its module.
+  var session = new URLSearchParams(location.search).get("session") || "";
+  // The selects + text input are opt-in (empty value = "use the preview's default"). The font
+  // scale slider has no empty state, so it's gated separately: we only send fontScale once the
+  // user moves it (fontScaleTouched), otherwise the slider's standing 1.0 would override a
+  // preview's declared default font scale and the first render wouldn't match the thumbnail.
+  var fields = ["uiMode", "device", "localeTag", "orientation", "background"];
+  var fs = document.getElementById("cp-fontScale");
+  var fsVal = document.getElementById("cp-fontScale-val");
+  var fontScaleTouched = false;
+  var ws = null;
+  // The snapshot lane serves either the raster PNG or the vector SVG through the same <img>.
+  // The render-mode radio flips this (".png" default, ".svg" in SVG mode); refreshSnapshot and
+  // the copyable links read it so a re-render / copied URL matches the on-screen format.
+  var snapshotExt = ".png";
+
+  function overrides() {
+    var o = {};
+    fields.forEach(function (f) {
+      var el = document.getElementById("cp-" + f);
+      if (el && el.value) o[f] = el.value;
+    });
+    if (fontScaleTouched && fs) o.fontScale = fs.value;
+    return o;
+  }
+  // The live-stream override map: the display fields PLUS the author-declared knob values as
+  // `knob.<key>=<value>` entries (the daemon's setOverrides parses the same map /render does,
+  // typing each from the preview's declaration). Kept separate from overrides() so query() and
+  // the Wasm patch — which append/ignore knobs their own way — are unaffected; without this a
+  // knob edit during an active Live (stream) would send only the display fields and the daemon
+  // would reset the others to their defaults. Unlike query(), every knob is sent (not just
+  // changed ones) for exactly that reason, so defaults are not filtered here.
+  function liveOverrides() {
+    var o = overrides();
+    document.querySelectorAll(".cp-knob").forEach(function (el) {
+      if (el.disabled) return;
+      var key = el.getAttribute("data-knob-key");
+      if (!key) return;
+      var val = (el.type === "checkbox") ? (el.checked ? "true" : "false") : el.value;
+      if (val === "") return;
+      o["knob." + key] = val;
+    });
+    // Live-only overlay toggles (talkBack / touchOverlay). Their id is "cp-<key>", so the daemon
+    // key is the id minus the prefix. Sent as an explicit true/false so unchecking clears the
+    // overlay on the next setOverrides (which replaces the whole map). Disabled ⇒ not live ⇒
+    // skipped, so they never leak onto a snapshot.
+    document.querySelectorAll(".cp-overlay").forEach(function (el) {
+      if (el.disabled) return;
+      o[el.id.replace(/^cp-/, "")] = el.checked ? "true" : "false";
+    });
+    // App-declared theme (themeProvider = provider FQN). Only when a theme is picked and the
+    // control is live; "(default)" (empty) leaves the daemon on the preview's own wrapper.
+    var tp = document.getElementById("cp-themeProvider");
+    if (tp && !tp.disabled && tp.value) o["themeProvider"] = tp.value;
+    // Detected-feature: keyboard focus. Checked ⇒ focus the first focusable + draw the overlay
+    // (focus=0). Daemon-only, so skipped when disabled.
+    var fc = document.getElementById("cp-focus");
+    if (fc && !fc.disabled && fc.checked) o["focus"] = "0";
+    return o;
+  }
+  function query() {
+    var o = overrides();
+    // Public routes are open, so a page that arrived without a token stays token-free — only
+    // carry token= when this page's own URL had one (a token-gated box).
+    var parts = [];
+    if (token) parts.push("token=" + encodeURIComponent(token));
+    if (session) parts.push("session=" + encodeURIComponent(session));
+    Object.keys(o).forEach(function (k) { parts.push(k + "=" + encodeURIComponent(o[k])); });
+    // Author-declared knobs: knob.<key>=<value>. The server infers the type from the preview's
+    // declaration, so no <kind>: prefix. A knob still at its declared default is omitted — that
+    // keeps the URL on the instant baked snapshot (any knob.* param routes a published catalog
+    // to the daemon for a fresh re-render); only an actually-changed knob is sent.
+    document.querySelectorAll(".cp-knob").forEach(function (el) {
+      if (el.disabled) return;
+      var key = el.getAttribute("data-knob-key");
+      if (!key) return;
+      var val = (el.type === "checkbox") ? (el.checked ? "true" : "false") : el.value;
+      if (val === "") return;
+      if (val === (el.getAttribute("data-knob-initial") || "")) return;
+      parts.push("knob." + encodeURIComponent(key) + "=" + encodeURIComponent(val));
+    });
+    // App-declared theme (themeProvider = provider FQN). Routes to the daemon like a knob; a
+    // published catalog re-renders on demand. Omitted at "(default)" so the URL stays on the
+    // instant baked snapshot until a theme is actually chosen.
+    var tp = document.getElementById("cp-themeProvider");
+    if (tp && !tp.disabled && tp.value) {
+      parts.push("themeProvider=" + encodeURIComponent(tp.value));
+    }
+    // Detected-feature: keyboard focus (focus=0). Routes to the daemon like a knob; omitted when
+    // unchecked so the URL stays on the baked snapshot.
+    var fc = document.getElementById("cp-focus");
+    if (fc && !fc.disabled && fc.checked) parts.push("focus=0");
+    return parts.join("&");
+  }
+  function refreshSnapshot() {
+    status.textContent = "rendering…";
+    var qs = query();
+    var url =
+      base + "/render/" + encodeURIComponent(previewId) + snapshotExt + (qs ? "?" + qs : "");
+    var next = new Image();
+    next.onload = function () { img.src = url; status.textContent = ""; };
+    next.onerror = function () { status.textContent = "render failed"; };
+    next.src = url;
+    refreshLinks();
+  }
+  // The copyable direct-link panel: rebuild the absolute /render URLs (PNG + optional SVG) from
+  // the current controls so a copied/downloaded link reproduces exactly what's on screen. Built
+  // on location.origin so the link is absolute (curl-able / shareable), and kept in sync on
+  // every control or knob change — even the ones that don't re-render the snapshot themselves.
+  function renderUrl(ext) {
+    var qs = query();
+    return location.origin + base + "/render/" + encodeURIComponent(previewId) + ext +
+      (qs ? "?" + qs : "");
+  }
+  function refreshLinks() {
+    [["png", ".png"], ["svg", ".svg"]].forEach(function (pair) {
+      var field = document.getElementById("cp-url-" + pair[0]);
+      if (!field) return;
+      var url = renderUrl(pair[1]);
+      field.value = url;
+      var dl = document.getElementById("cp-dl-" + pair[0]);
+      if (dl) dl.href = url;
+    });
+  }
+  document.querySelectorAll(".cp-copy").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var field = document.getElementById(btn.getAttribute("data-copy-target"));
+      if (!field) return;
+      var done = function () {
+        var was = btn.textContent;
+        btn.textContent = "Copied";
+        setTimeout(function () { btn.textContent = was; }, 1200);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(field.value).then(done, function () { field.select(); });
+      } else {
+        field.select();
+        try { document.execCommand("copy"); done(); } catch (e) {}
+      }
+    });
+  });
+  function drawFrame(b64, codec) {
+    var im = new Image();
+    im.onload = function () {
+      canvas.width = im.naturalWidth;
+      canvas.height = im.naturalHeight;
+      canvas.getContext("2d").drawImage(im, 0, 0);
+    };
+    im.src = "data:image/" + (codec || "png") + ";base64," + b64;
+  }
+  // --- Live input forwarding (no-op on the snapshot lane). Coordinates are image-natural
+  // pixels; pointer events are grouped by pointerId so Compose's gesture pipeline tracks drags
+  // and multi-touch. Keys map to Android KEYCODE_* decimal strings (the daemon's wire format).
+  function liveActive() { return ws && ws.readyState === 1 && canvas.width; }
+  function sendInput(msg) {
+    if (liveActive()) ws.send(JSON.stringify(Object.assign({ type: "input" }, msg)));
+  }
+  function pixel(ev) {
+    var rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    return {
+      x: Math.round((ev.clientX - rect.left) / rect.width * canvas.width),
+      y: Math.round((ev.clientY - rect.top) / rect.height * canvas.height),
+    };
+  }
+  // Per-pointer state. The pointerDown is *deferred* until the first move so a tap with no drag
+  // becomes a single `click` (matching the daemon's CLICK fast-path, which renders between press
+  // and release — a batched down+up can race Modifier.clickable). pointermove is coalesced to one
+  // send per pointerId per animation frame, so a fast drag doesn't flood the lane and concurrent
+  // fingers don't overwrite each other (multi-touch).
+  var pointers = {};           // pointerId -> { x, y, moved }
+  var pendingMoves = {};       // pointerId -> pointerMove message
+  var moveScheduled = false;
+  function flushMoves() {
+    moveScheduled = false;
+    var snapshot = pendingMoves;
+    pendingMoves = {};
+    Object.keys(snapshot).forEach(function (id) { sendInput(snapshot[id]); });
+  }
+  canvas.addEventListener("pointerdown", function (ev) {
+    if (!liveActive()) return;
+    var p = pixel(ev); if (!p) return;
+    canvas.focus();
+    try { canvas.setPointerCapture(ev.pointerId); } catch (e) {}
+    pointers[ev.pointerId] = { x: p.x, y: p.y, moved: false };
+  });
+  canvas.addEventListener("pointermove", function (ev) {
+    if (!liveActive() || ev.buttons === 0) return; // only while pressed (a drag)
+    var st = pointers[ev.pointerId]; if (!st) return;
+    var p = pixel(ev); if (!p) return;
+    if (!st.moved) {
+      // First movement → this is a drag: emit the deferred press at the original point.
+      st.moved = true;
+      sendInput({ kind: "pointerDown", pixelX: st.x, pixelY: st.y, pointerId: ev.pointerId });
+    }
+    pendingMoves[ev.pointerId] =
+      { kind: "pointerMove", pixelX: p.x, pixelY: p.y, pointerId: ev.pointerId };
+    if (!moveScheduled) { moveScheduled = true; requestAnimationFrame(flushMoves); }
+  });
+  function endPointer(ev) {
+    var st = pointers[ev.pointerId]; if (!st) return;
+    delete pointers[ev.pointerId];
+    var p = pixel(ev) || { x: st.x, y: st.y };
+    if (st.moved) {
+      flushMoves();
+      sendInput({ kind: "pointerUp", pixelX: p.x, pixelY: p.y, pointerId: ev.pointerId });
+    } else {
+      // No drag → a tap. Send a single CLICK (the daemon renders between press and release).
+      sendInput({ kind: "click", pixelX: st.x, pixelY: st.y, pointerId: ev.pointerId });
+    }
+  }
+  canvas.addEventListener("pointerup", endPointer);
+  canvas.addEventListener("pointercancel", endPointer);
+  canvas.addEventListener("wheel", function (ev) {
+    if (!liveActive()) return;
+    var p = pixel(ev); if (!p) return;
+    ev.preventDefault();
+    // Both daemon dispatchers drop non-key input without a position, so include the pixel.
+    sendInput({ kind: "rotaryScroll", pixelX: p.x, pixelY: p.y, scrollDeltaY: ev.deltaY });
+  }, { passive: false });
+  // Keyboard: focus the canvas (tabindex) to type. Maps the common keys to Android keycodes;
+  // unmapped keys are dropped (the daemon ignores codes outside its translation table anyway).
+  canvas.tabIndex = 0;
+  function androidKeycode(k) {
+    if (k.length === 1) {
+      var c = k.toLowerCase();
+      if (c >= "a" && c <= "z") return String(29 + (c.charCodeAt(0) - 97)); // KEYCODE_A = 29
+      if (c >= "0" && c <= "9") return String(7 + (c.charCodeAt(0) - 48)); // KEYCODE_0 = 7
+      if (k === " ") return "62"; // SPACE
+    }
+    switch (k) {
+      case "Enter": return "66";
+      case "Backspace": return "67";
+      case "Tab": return "61";
+      case "Escape": return "111";
+      case "Delete": return "112";
+      case "ArrowUp": return "19";
+      case "ArrowDown": return "20";
+      case "ArrowLeft": return "21";
+      case "ArrowRight": return "22";
+      default: return null;
+    }
+  }
+  function keyInput(kind, ev) {
+    if (!liveActive()) return;
+    var code = androidKeycode(ev.key);
+    if (code === null) return;
+    ev.preventDefault();
+    sendInput({ kind: kind, keyCode: code });
+  }
+  canvas.addEventListener("keydown", function (ev) { keyInput("keyDown", ev); });
+  canvas.addEventListener("keyup", function (ev) { keyInput("keyUp", ev); });
+  function openStream() {
+    root.setAttribute("data-mode", "live");
+    // Seed the canvas buffer with the current snapshot *before* the swap, so there's no blank
+    // flash while "connecting…" (the first frame overwrites it).
+    if (img.naturalWidth && img.naturalHeight) {
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      try { canvas.getContext("2d").drawImage(img, 0, 0); } catch (e) {}
+    }
+    // Mount the canvas as an absolute overlay on the snapshot's slot — the same fixed box the
+    // Wasm tier locks to. The img stays in flow (visibility:hidden keeps its slot), so the stage
+    // geometry is defined once by the snapshot and a live frame whose pixel dims differ from the
+    // baked PNG scales into this box instead of resizing the stage (drawFrame only touches the
+    // buffer now, never the layout). Input mapping reads the buffer size, so it's unaffected.
+    canvas.classList.add("cp-canvas-live");
+    positionOverlay(canvas);
+    img.style.visibility = "hidden";
+    canvas.hidden = false;
+    status.textContent = "connecting…";
+    var proto = location.protocol === "https:" ? "wss:" : "ws:";
+    // Request WebP frames (smaller; the browser decodes them via the data URL, and the daemon
+    // downgrades to PNG when it can't encode WebP — each frame carries its actual codec).
+    var qs = query();
+    ws = new WebSocket(proto + "//" + location.host + base + "/ws/" +
+      encodeURIComponent(previewId) + "?" + (qs ? qs + "&codec=webp" : "codec=webp"));
+    ws.onopen = function () {
+      // The connect URL seeds only query()'s fields — the display axes plus changed knobs — so
+      // the live-only overlays (talkBack / touchOverlay) and anything toggled during the
+      // connecting window aren't in it. Replay the full live override map once the socket is
+      // ready so the daemon reflects the exact current control state, including an overlay
+      // checked before onopen whose change event the readyState guard dropped.
+      ws.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
+    };
+    ws.onmessage = function (ev) {
+      var m;
+      try { m = JSON.parse(ev.data); } catch (e) { return; }
+      if (m.type === "frame") { drawFrame(m.dataBase64, m.codec); status.textContent = ""; }
+      else if (m.type === "error") { status.textContent = m.message || "error"; }
+    };
+    ws.onerror = function () { status.textContent = "stream error"; };
+    ws.onclose = function () { ws = null; };
+  }
+  function closeStream() {
+    root.setAttribute("data-mode", "snapshot");
+    if (ws) { ws.close(); ws = null; }
+    canvas.hidden = true;
+    // Tear down the overlay: drop the absolute positioning and restore the snapshot img's slot.
+    canvas.classList.remove("cp-canvas-live");
+    canvas.style.removeProperty("left"); canvas.style.removeProperty("top");
+    canvas.style.removeProperty("width"); canvas.style.removeProperty("height");
+    img.style.removeProperty("visibility");
+    img.hidden = false;
+  }
+  // --- Wasm tier (the in-browser CMP app, mounted in a sandboxed iframe). Only wired when the
+  // session carries a Wasm app (data-wasm-src present). Theme/font-scale/locale re-point the
+  // iframe's ?uiMode/?fontScale/?localeTag (device/orientation are server-render-only).
+  var stage = document.querySelector(".cp-stage");
+  var wasmFrame = document.getElementById("cp-wasm");
+  var wasmToggle = document.getElementById("cp-wasm-toggle");
+  var wasmBg = document.getElementById("cp-wasm-bg");
+  var wasmSrc = root.getAttribute("data-wasm-src") || "";
+  // Set once the app has painted its first frame (its "cp-wasm-ready" message). Until then a
+  // control change re-points ?query (initial load); after, it posts an override patch so the
+  // app recomposes in place instead of reloading the whole ~20 MB Wasm bundle.
+  var wasmReady = false;
+  function wasmBaseSrc() {
+    if (!wasmSrc) return "";
+    // The src comes from a server-set data- attribute, but resolve it against our own origin and
+    // refuse anything not same-origin http(s) anyway — so a `javascript:`/`data:` URL can never
+    // reach the iframe even if the attribute were ever mis-set (defuses DOM-text-as-HTML). The
+    // query is left as the server baked it (the variant's default theme) — session overrides
+    // never go in it, so it stays the app's clean base to revert to when a control is cleared.
+    var u;
+    try { u = new URL(wasmSrc, location.origin); } catch (e) { return ""; }
+    if (u.origin !== location.origin) return "";
+    return u.href;
+  }
+  // NOTE: the font prefetch lives in the app's own index.html (it starts the manifest+font
+  // fetches at document load, in parallel with the Wasm boot), not on this page. That's where
+  // it belongs regardless of the sandbox: it must be in flight before the iframe navigates, and
+  // the app is the one that consumes the promises. (Historically the iframe was opaque-origin
+  // with its own cache partition, so a page-side preload was also unreusable and fetched every
+  // font twice; with allow-same-origin the partition is shared, but the app-side prefetch is
+  // still the right home, so keep page-side preloads out — see the ServeWebFixtureTest guard.)
+  // The override patch (theme / font scale / locale) the running app merges over its baked base —
+  // a bare `a=b&c=d` query. An absent key falls back to the app's baked default (e.g. cleared
+  // Theme → the variant's uiMode). Device / orientation are server-render-only, so not forwarded.
+  // The stage checkerboard's tile origin in the iframe's own CSS-px coordinates. The app can't
+  // render a transparent surface, so it paints this same pattern itself; handing it the phase
+  // makes the in-canvas cells continue the page's cells exactly (the stylesheet positions the
+  // 16px tile at 50% of the stage's padding box; the iframe sits at style.left/top within it).
+  function wasmBgPhase() {
+    var left = parseFloat(wasmFrame.style.left) || 0;
+    var top = parseFloat(wasmFrame.style.top) || 0;
+    var x = (stage.clientWidth - 16) / 2 - left;
+    var y = (stage.clientHeight - 16) / 2 - top;
+    return x.toFixed(2) + "," + y.toFixed(2);
+  }
+  function wasmOverridePatch() {
+    var parts = [];
+    var el = document.getElementById("cp-uiMode");
+    if (el && el.value) parts.push("uiMode=" + encodeURIComponent(el.value));
+    var loc = document.getElementById("cp-localeTag");
+    if (loc && loc.value) parts.push("localeTag=" + encodeURIComponent(loc.value));
+    if (fontScaleTouched && fs) parts.push("fontScale=" + encodeURIComponent(fs.value));
+    if (wasmBg && wasmBg.checked) parts.push("background=off");
+    parts.push("bgPhase=" + encodeURIComponent(wasmBgPhase()));
+    return parts.join("&");
+  }
+  // Initial iframe URL: the baked base plus the current overrides in the `#…` fragment, so the
+  // app's first paint honours them yet keeps the query as its true base (a later clear reverts).
+  function wasmInitialSrc() {
+    var base = wasmBaseSrc();
+    if (!base) return "";
+    var patch = wasmOverridePatch();
+    return patch ? base + "#" + patch : base;
+  }
+  // Pixel parity: lay an absolute overlay ([el] — the Wasm iframe or the live canvas) exactly
+  // over the snapshot's rendered box, so switching to it shouldn't move anything. Both the Wasm
+  // app (contain-fitting the same sticker geometry the snapshot baked) and the daemon (the same
+  // preview re-rendered) fill this box, so the three transports share one geometry.
+  function positionOverlay(el) {
+    var sr = stage.getBoundingClientRect();
+    var r = img.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) {
+      // Offsets are relative to the stage's padding box — subtract its border (clientLeft/Top).
+      el.style.left = (r.left - sr.left - stage.clientLeft) + "px";
+      el.style.top = (r.top - sr.top - stage.clientTop) + "px";
+      el.style.width = r.width + "px";
+      el.style.height = r.height + "px";
+    } else {
+      // No snapshot box to mirror (e.g. its render 404'd): fill the stage's content box.
+      el.style.left = "12px"; el.style.top = "12px";
+      el.style.width = "calc(100% - 24px)";
+      el.style.height = (stage.clientHeight - 24) + "px";
+    }
+  }
+  function positionWasmFrame() { positionOverlay(wasmFrame); }
+  // Swap the stage from the snapshot to the (already-painted) Wasm frame. The snapshot keeps
+  // its layout slot (visibility, not display) so the stage geometry — and the overlay tracking
+  // it — never shifts.
+  function revealWasm() {
+    if (!wasmActive() || wasmReady) return;
+    wasmReady = true;
+    positionWasmFrame();
+    wasmFrame.classList.add("cp-wasm-live");
+    img.style.visibility = "hidden";
+    status.textContent = "";
+    // Re-sync any control changed during load (the fragment only captured open-time state).
+    var patch = wasmOverridePatch();
+    if (patch && wasmFrame.contentWindow) wasmFrame.contentWindow.postMessage(patch, "*");
+  }
+  function openWasm() {
+    // No-op without a Wasm app (wasmFrame absent): enterMode() calls this unconditionally, but a
+    // non-Wasm daemon/static session has no iframe to drive. Guard so touching it can't throw.
+    if (!wasmFrame) return;
+    // Wasm and the daemon stream are mutually exclusive; the mode switch (enterMode) tears the
+    // stream down before opening Wasm, so there's nothing extra to close here.
+    root.setAttribute("data-mode", "wasm");
+    canvas.hidden = true;
+    // Keep the snapshot visible while the app loads; the iframe mounts over it at opacity 0
+    // and only fades in on the app's first-frame signal — no blank/white flash.
+    positionWasmFrame();
+    wasmFrame.hidden = false;
+    wasmReady = false;
+    wasmFrame.src = wasmInitialSrc();
+    status.textContent = "loading Wasm…";
+  }
+  function closeWasm() {
+    // No Wasm iframe (non-Wasm session) ⇒ nothing to tear down; enterMode() still calls this
+    // unconditionally when switching to Live/PNG, so guard against the null frame.
+    if (!wasmFrame) return;
+    root.setAttribute("data-mode", "snapshot");
+    wasmReady = false;
+    wasmFrame.classList.remove("cp-wasm-live");
+    wasmFrame.hidden = true; wasmFrame.removeAttribute("src");
+    img.style.removeProperty("visibility");
+    img.hidden = false;
+    status.textContent = "";
+  }
+  function wasmActive() { return wasmToggle && wasmToggle.checked; }
+
+  function onControlsChanged() {
+    // Keep the copyable direct links current no matter which transport handles the change.
+    refreshLinks();
+    if (wasmActive()) {
+      // Recompose in place once the app is up; before it's ready, re-point the initial src (the
+      // fragment carries the overrides) — the load handler re-syncs the final state either way.
+      if (wasmReady && wasmFrame.contentWindow) {
+        wasmFrame.contentWindow.postMessage(wasmOverridePatch(), "*");
+      } else {
+        wasmFrame.src = wasmInitialSrc();
+      }
+      return;
+    }
+    if (live.checked && ws && ws.readyState === 1) {
+      ws.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
+    } else if (staticSnapshot && wasmToggle) {
+      // Static snapshot backed by a Wasm app: the baked PNG can't honour theme/font-scale/locale
+      // (only the in-browser tier can), and /render can't re-render a published catalog. So a
+      // wasm-honoured control change auto-enables the Wasm tier and applies there, instead of
+      // firing a dead refreshSnapshot the user sees as "the control does nothing". (staticSnapshot
+      // marks a non-renderable snapshot lane — true even for a live catalog whose Live toggle is
+      // enabled; device/orientation stay disabled, so only the wasm-honoured controls reach here.)
+      setMode("wasm");
+    } else if (!live.checked) {
+      refreshSnapshot();
+    }
+  }
+
+  // Render-mode radio group (PNG / SVG / Live Compose / Wasm). Selecting one tears down the
+  // other transport and enters the chosen one. PNG and SVG both drive the baked snapshot lane —
+  // same <img>, different render extension (snapshotExt). closeStream / closeWasm are
+  // idempotent, so a mode switch can safely tear down both regardless of the prior state; live
+  // and wasm reset snapshotExt so a later fallback refresh serves the raster PNG, not a stale
+  // ".svg".
+  function enterMode(m) {
+    if (m === "live") { snapshotExt = ".png"; closeWasm(); openStream(); }
+    else if (m === "wasm") { snapshotExt = ".png"; closeStream(); openWasm(); }
+    else if (m === "svg") {
+      // SVG reuses the snapshot lane; closeStream/closeWasm reset data-mode to "snapshot", so
+      // stamp "svg" afterwards for the backend badge, then swap the vector into the <img>.
+      closeStream(); closeWasm(); snapshotExt = ".svg";
+      root.setAttribute("data-mode", "svg"); refreshSnapshot();
+    } else { snapshotExt = ".png"; closeStream(); closeWasm(); refreshSnapshot(); }
+    syncOverlayToggles();
+  }
+  // The live-only overlay toggles (talkBack / touchOverlay) are meaningful only while the daemon
+  // holds the composition, so they're enabled iff Live Compose is the active mode and greyed out
+  // (like the static-snapshot controls) otherwise. Called on every mode transition.
+  var overlayToggles = document.querySelectorAll(".cp-overlay");
+  function syncOverlayToggles() {
+    var on = !!(live && live.checked);
+    Array.prototype.forEach.call(overlayToggles, function (el) { el.disabled = !on; });
+  }
+  // Programmatic switch (e.g. a wasm-only control auto-enabling Wasm): tick the radio so the UI
+  // reflects it, then run the transition.
+  function setMode(m) {
+    var r = document.getElementById(
+      m === "live" ? "cp-live" :
+      m === "wasm" ? "cp-wasm-toggle" :
+      m === "svg" ? "cp-mode-svg" : "cp-mode-png");
+    if (r) r.checked = true;
+    enterMode(m);
+  }
+  Array.prototype.forEach.call(
+    document.querySelectorAll("input[name=\"cp-mode\"]"),
+    function (r) {
+      r.addEventListener("change", function () { if (r.checked) enterMode(r.value); });
+    });
+  // Keep the live canvas overlay tracking the snapshot's slot when the page reflows (the Wasm
+  // overlay has its own resize hook below; this covers a live session with no Wasm app).
+  window.addEventListener("resize", function () {
+    if (live && live.checked && !canvas.hidden) positionOverlay(canvas);
+  });
+  if (wasmToggle) {
+    // The app posts "cp-wasm-ready" once its first frame is on the canvas — the swap signal.
+    // Match on source (the known frame's contentWindow), not e.origin — robust regardless of
+    // the frame's origin, and the payload is a fixed string so there's no data surface.
+    window.addEventListener("message", function (e) {
+      if (e.source !== wasmFrame.contentWindow || e.data !== "cp-wasm-ready") return;
+      revealWasm();
+    });
+    // Fallback for an app build that predates the ready signal: reveal a beat after the
+    // document's load event rather than holding the snapshot forever.
+    wasmFrame.addEventListener("load", function () {
+      setTimeout(function () { revealWasm(); }, 8000);
+    });
+    // The overlay tracks the snapshot's box, which moves when the page reflows — and the
+    // checkerboard phase moves with it, so re-hand it to the app.
+    window.addEventListener("resize", function () {
+      if (!wasmActive()) return;
+      positionWasmFrame();
+      if (wasmReady && wasmFrame.contentWindow) {
+        wasmFrame.contentWindow.postMessage(wasmOverridePatch(), "*");
+      }
+    });
+    if (wasmBg) {
+      wasmBg.addEventListener("change", function () {
+        // Background is an in-browser knob: auto-enable the Wasm tier if it isn't on yet.
+        if (!wasmActive()) { setMode("wasm"); return; }
+        onControlsChanged();
+      });
+    }
+  }
+  if (fs) {
+    fs.addEventListener("input", function () {
+      fsVal.textContent = fs.value;
+      fontScaleTouched = true;
+      onControlsChanged();
+    });
+  }
+  fields.forEach(function (f) {
+    var el = document.getElementById("cp-" + f);
+    if (el) el.addEventListener("change", onControlsChanged);
+  });
+  // Overlay toggles are live-only: they push a fresh setOverrides through the open stream and do
+  // nothing otherwise. They get their own handler rather than onControlsChanged so a toggle mid
+  // connect (ws not yet readyState 1) can't fall through to the snapshot / wasm-auto-enable
+  // branches — an overlay never applies to a baked PNG or the in-browser tier.
+  function onOverlayChanged() {
+    if (live.checked && ws && ws.readyState === 1) {
+      ws.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
+    }
+  }
+  Array.prototype.forEach.call(overlayToggles, function (el) {
+    el.addEventListener("change", onOverlayChanged);
+  });
+  // Author-declared knobs re-render on edit (text/number debounce via "input", toggles "change").
+  // They route differently from the display axes: a named knob (label, a color, …) is honoured
+  // ONLY by the server daemon — the in-browser Wasm tier's `catalogOverride*` returns the author
+  // default — so a knob edit must hit /render (onKnobChanged), never the wasm auto-enable path.
+  function onKnobChanged() {
+    refreshLinks();
+    if (live.checked && ws && ws.readyState === 1) {
+      ws.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
+    } else if (canRenderOverrides) {
+      refreshSnapshot();
+    }
+  }
+  document.querySelectorAll(".cp-knob").forEach(function (el) {
+    el.addEventListener(el.type === "checkbox" ? "change" : "input", onKnobChanged);
+  });
+  // The app-theme selector routes through the daemon like a knob (never the wasm auto-enable
+  // path — an app-declared theme provider is a server-side wrapper the in-browser tier can't
+  // load), so it shares onKnobChanged rather than onControlsChanged.
+  var themeSel = document.getElementById("cp-themeProvider");
+  if (themeSel) themeSel.addEventListener("change", onKnobChanged);
+  // Detected-feature toggles (Keyboard focus) re-render on the daemon like a knob — same routing,
+  // never the wasm auto-enable path.
+  document.querySelectorAll(".cp-feature").forEach(function (el) {
+    el.addEventListener("change", onKnobChanged);
+  });
+  refreshSnapshot();
+})();</script>
+      <script>(function () {
+  var root = document.querySelector(".cp-viewer");
+  var badge = document.getElementById("cp-backend");
+  if (!root || !badge) return;
+  function label(mode) {
+    if (mode === "wasm") return "CMP-WASM";
+    if (mode === "live") return root.getAttribute("data-live-backend") || "Live";
+    if (mode === "svg") return "SVG";
+    return root.getAttribute("data-snapshot-backend") || "Snapshot";
+  }
+  function refresh() { badge.textContent = label(root.getAttribute("data-mode")); }
+  new MutationObserver(refresh).observe(root, { attributes: true, attributeFilter: ["data-mode"] });
+  refresh();
+})();</script>
+      </body>
+    </html>

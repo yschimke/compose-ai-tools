@@ -1,8 +1,8 @@
 package ee.schimke.composeai.cli.serve
 
-import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.overrides.PreviewOverrideType
+import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import ee.schimke.composeai.data.overrides.PreviewOverridesPayload
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream

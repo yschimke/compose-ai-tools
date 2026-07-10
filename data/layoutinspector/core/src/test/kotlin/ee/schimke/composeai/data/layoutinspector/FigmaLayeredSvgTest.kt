@@ -66,6 +66,15 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun rootSvgRequestsGeometricPrecisionSoTextMatchesTheRender() {
+    // The default `text-rendering:auto` grid-fits glyphs to pixel boundaries in the browser, which
+    // leaves a constant edge diff against the Skiko render on text-heavy previews. Pin the
+    // `geometricPrecision` request on the root so every `<text>` rasterises at its exact metrics.
+    val svg = render(layoutNode("Screen", 0, 0, 400, 800))
+    assertTrue(svg, svg.contains("""text-rendering="geometricPrecision""""))
+  }
+
+  @Test
   fun nestingIsPreservedAsNestedGroups() {
     val svg =
       render(
@@ -174,6 +183,164 @@ class FigmaLayeredSvgTest {
         density = 2f,
       )
     assertTrue(svg.contains("""rx="16""""))
+  }
+
+  @Test
+  fun aDefaultMinSizeGrowsTheDrawnShapeCenteredOnTheBounds() {
+    // An M3 Badge with a single digit is *placed* in a narrow box (bounds 20×42) but its captured
+    // `defaultMinSize` (42dp × 42dp here at density 1) is the box it draws its background circle
+    // in,
+    // centered. The export grows the fill to `max(bounds, minSize)` centered on the bounds — a
+    // 42×42
+    // circle at [42,42,84,84] — not a squashed 20×42 capsule at the placement bounds.
+    val badge =
+      layoutNode(
+        "Badge",
+        53,
+        42,
+        73,
+        84,
+        tokens =
+          ComposeSemanticsTokens(
+            backgroundColor = "#FFB3261E",
+            shape = "circle",
+            minWidth = "42.0dp",
+            minHeight = "42.0dp",
+          ),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(badge)))
+    // 42-wide circle centered on the bounds' centre (x=63) → x=42, width 42, max-radius (r=21).
+    assertTrue(svg, svg.contains("""x="42"""") && svg.contains("""width="42""""))
+    assertTrue("drawn as a full circle (r = size/2)", svg.contains("""rx="21""""))
+  }
+
+  @Test
+  fun aMinSizeWithinTheBoundsDoesNotGrowTheShape() {
+    // A button / chip also carries a `defaultMinSize`, but its content already exceeds it, so the
+    // min ≤ its placement bounds and the fill stays exactly at the bounds — no ballooning.
+    val chip =
+      layoutNode(
+        "Chip",
+        42,
+        63,
+        231,
+        147,
+        tokens =
+          ComposeSemanticsTokens(
+            backgroundColor = "#FFE8DEF8",
+            shape = "circle",
+            minHeight = "32.0dp",
+          ),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(chip)))
+    // bounds 189×84; minHeight 32 < 84 → no growth. Stays 189-wide at x=42, 84 tall.
+    assertTrue(svg, svg.contains("""x="42"""") && svg.contains("""width="189""""))
+    assertTrue("keeps its bounds height", svg.contains("""height="84""""))
+  }
+
+  @Test
+  fun aFullyTransparentBorderEmitsNoStroke() {
+    // A `Switch` on-track carries `borderColor` at alpha 0 — an invisible outline. It must not emit
+    // a stroke (nor inset the fill for a stroke that never paints).
+    val svg =
+      render(
+        layoutNode(
+          "OnTrack",
+          0,
+          0,
+          100,
+          50,
+          tokens =
+            ComposeSemanticsTokens(
+              backgroundColor = "#FF6750A4",
+              borderColor = "#00000000",
+              borderWidth = "2.0dp",
+            ),
+        ),
+        density = 2f,
+      )
+    assertTrue("no stroke for a transparent border", !svg.contains("stroke="))
+    // The fill keeps its full bounds (no stroke-inset): a 100-wide rect at x=0.
+    assertTrue(svg.contains("""width="100""""))
+  }
+
+  @Test
+  fun borderWidthTokenSetsTheStrokeWidthScaledByDensity() {
+    // An off-state `Switch` track is a 2dp outline, not a 1dp hairline. The captured `borderWidth`
+    // sets the stroke width (dp × density) instead of the hardcoded 1dp fallback.
+    val svg =
+      render(
+        layoutNode(
+          "Track",
+          0,
+          0,
+          100,
+          50,
+          tokens = ComposeSemanticsTokens(borderColor = "#FF79747E", borderWidth = "2.0dp"),
+        ),
+        density = 2f,
+      )
+    assertTrue("stroke width is 2dp × density 2 = 4", svg.contains("""stroke-width="4""""))
+  }
+
+  @Test
+  fun aBorderWithoutACapturedWidthFallsBackToADensityHairline() {
+    val svg =
+      render(
+        layoutNode(
+          "Hairline",
+          0,
+          0,
+          100,
+          50,
+          tokens = ComposeSemanticsTokens(borderColor = "#FF79747E"),
+        ),
+        density = 2f,
+      )
+    // No borderWidth → 1dp hairline scaled by density (2).
+    assertTrue("hairline falls back to 1dp × density", svg.contains("""stroke-width="2""""))
+  }
+
+  @Test
+  fun shadowElevationBecomesADropShadowFilterScaledByDensity() {
+    // A `Surface`/`Card`/`FAB` reports `elevation` (dp); the export emits a `feDropShadow` def and
+    // filters the elevated group so it casts its Material drop shadow. Elevation → px scales by
+    // density: 6dp at density 2 → a 12px filter id.
+    val svg =
+      render(
+        layoutNode(
+          "Fab",
+          0,
+          0,
+          100,
+          100,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4", elevation = "6.0dp"),
+        ),
+        density = 2f,
+      )
+    assertTrue("a drop-shadow filter is defined", svg.contains("<feDropShadow"))
+    assertTrue("the filter id scales with density (6dp × 2)", svg.contains("""id="shadow-12""""))
+    assertTrue(
+      "the elevated group references the filter",
+      svg.contains("""filter="url(#shadow-12)""""),
+    )
+  }
+
+  @Test
+  fun noElevationEmitsNoShadowFilter() {
+    val svg =
+      render(
+        layoutNode(
+          "Flat",
+          0,
+          0,
+          100,
+          100,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4"),
+        )
+      )
+    assertTrue("no shadow filter without elevation", !svg.contains("feDropShadow"))
+    assertTrue(!svg.contains("filter=\"url(#shadow"))
   }
 
   @Test
@@ -363,6 +530,70 @@ class FigmaLayeredSvgTest {
     assertTrue(svg.contains("""font-size="16""""))
     assertTrue(svg.contains("""font-weight="500""""))
     assertTrue(svg.contains("""fill="#202020""""))
+  }
+
+  @Test
+  fun capturedLetterSpacingIsEmittedSoGlyphAdvancesMatchTheRender() {
+    // A tracked run (Material label/body text carries 0.1–0.5sp) must emit SVG `letter-spacing`,
+    // else
+    // the browser lays it out with the font's natural advances and the line drifts across its
+    // width.
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 8, 8, 192, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "8,8,192,40",
+              text = "Hello",
+              // 0.5sp at density 2 → 1.0px.
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp", letterSpacing = "0.5sp"),
+            )
+          ),
+      )
+    val svg = render(layout, semantics = semantics, density = 2f)
+    assertTrue("expected letter-spacing in $svg", svg.contains("""letter-spacing="1""""))
+  }
+
+  @Test
+  fun zeroLetterSpacingEmitsNoAttribute() {
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 8, 8, 192, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "8,8,192,40",
+              text = "Hello",
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp", letterSpacing = "0.0sp"),
+            )
+          ),
+      )
+    assertFalse(render(layout, semantics = semantics, density = 2f).contains("letter-spacing"))
+  }
+
+  @Test
+  fun embedFamilyNormalisesFileDerivedFacesToGoogleFamilies() {
+    // A FontListFontFamily reports its resolved face by file stem ("Roboto-Medium",
+    // "NotoSerif-Regular", "DroidSansMono"); the embed resolver keys on the spaced Google family
+    // with
+    // weight/italic supplied separately, so the style suffix drops and CamelCase words space out.
+    assertEquals("Roboto", FigmaLayeredSvg.embedFamily("Roboto-Medium", "Roboto"))
+    assertEquals("Roboto", FigmaLayeredSvg.embedFamily("Roboto-Regular", "Roboto"))
+    assertEquals("Noto Serif", FigmaLayeredSvg.embedFamily("NotoSerif-Regular", "Roboto"))
+    assertEquals("Droid Sans Mono", FigmaLayeredSvg.embedFamily("DroidSansMono", "Roboto"))
+    // Generics keep their existing mappings.
+    assertEquals("Roboto", FigmaLayeredSvg.embedFamily("sans-serif", "Roboto"))
+    assertEquals("Noto Serif", FigmaLayeredSvg.embedFamily("serif", "Roboto"))
+    assertNull(FigmaLayeredSvg.embedFamily("cursive", "Roboto"))
   }
 
   private fun textBaselineY(svg: String): Double =

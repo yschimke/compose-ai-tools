@@ -3,8 +3,8 @@ package ee.schimke.composeai.overrides
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
-import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
+import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.serialization.json.Json
 

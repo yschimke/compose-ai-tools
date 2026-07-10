@@ -77,7 +77,13 @@ object ServeWeb {
     .cp-stage iframe { position: absolute; border: 0; background: transparent; opacity: 0;
       transition: opacity 0.15s ease; pointer-events: none; }
     .cp-stage iframe.cp-wasm-live { opacity: 1; pointer-events: auto; }
+    /* Live daemon frames paint into the SAME absolute overlay box the Wasm iframe uses, pinned to
+       the snapshot img's slot — so the stage is one fixed box every transport fills and toggling a
+       mode never resizes or shifts it (the img keeps its layout slot underneath via visibility). */
+    .cp-stage canvas.cp-canvas-live { position: absolute; max-width: none; }
     .cp-live-row { flex-direction: row !important; align-items: center; gap: 6px !important; }
+    .cp-modes { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px 14px;
+      font-size: 0.8rem; }
     .cp-controls { flex: 0 0 240px; display: flex; flex-direction: column; gap: 14px; }
     .cp-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; }
     .cp-controls input, .cp-controls select { padding: 5px 6px; font-size: 0.85rem; }
@@ -87,6 +93,8 @@ object ServeWeb {
     .cp-controls label:has(:disabled) { opacity: 0.55; }
     .cp-knobs { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
     .cp-knobs-head { font-size: 0.72rem; color: #6b6b70; }
+    .cp-overlays { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .cp-overlays-head { font-size: 0.72rem; color: #6b6b70; }
     .cp-knobs input:disabled { opacity: 0.7; }
     .cp-links { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
     .cp-link-row { display: flex; align-items: center; gap: 6px; }
@@ -370,12 +378,17 @@ object ServeWeb {
     (function () {
       var el = document.getElementById("cp-uiMode");
       if (!el) return;
-      // Inherit the catalog's sticky theme on the first render — matters for theme-less previews the
-      // catalog shows under either filter, which would otherwise open at (default). This runs before
-      // viewerScript()'s initial render, so the snapshot / Wasm path picks it up.
+      // Inherit the catalog's sticky theme on the first render — but ONLY for a theme-less preview
+      // (id carries no __light/__dark segment), which would otherwise open at (default). A themed
+      // variant's theme is explicit in its deep link, so it opens on its baked (instant) pixels and
+      // is not overridden by a remembered theme — seeding it would force a daemon re-render on a
+      // fresh deep link, defeating baked-until-changed. Runs before viewerScript()'s initial render.
+      var root = document.querySelector(".cp-viewer");
+      var pid = (root && root.getAttribute("data-preview-id")) || "";
+      var themed = pid.split("__").some(function (s) { return s === "light" || s === "dark"; });
       try {
         var stored = localStorage.getItem("cp-theme");
-        if (!el.value && (stored === "light" || stored === "dark")) el.value = stored;
+        if (!themed && !el.value && (stored === "light" || stored === "dark")) el.value = stored;
       } catch (e) {}
       // Round-trip: a Theme change writes the shared key so the catalog remembers it.
       el.addEventListener("change", function () {
@@ -391,8 +404,9 @@ object ServeWeb {
    * Backend-provenance badge: a small corner label naming the tier that produced the pixels now on
    * the stage, so a viewer can tell an in-browser CMP render from a baked snapshot. Reads the
    * viewer's `data-mode` (kept in sync by the transport toggles) — `CMP-WASM` for the Wasm app
-   * (always that), else the server-supplied `data-live-backend` / `data-snapshot-backend` label, so
-   * the daemon's actual platform (desktop/JVM or Android) and the snapshot renderer stay accurate.
+   * (always that), `SVG` for the vector snapshot lane, else the server-supplied `data-live-backend`
+   * / `data-snapshot-backend` label, so the daemon's actual platform (desktop/JVM or Android) and
+   * the snapshot renderer stay accurate.
    */
   private fun backendBadgeScript(): String =
     """
@@ -403,6 +417,7 @@ object ServeWeb {
       function label(mode) {
         if (mode === "wasm") return "CMP-WASM";
         if (mode === "live") return root.getAttribute("data-live-backend") || "Live";
+        if (mode === "svg") return "SVG";
         return root.getAttribute("data-snapshot-backend") || "Snapshot";
       }
       function refresh() { badge.textContent = label(root.getAttribute("data-mode")); }
@@ -639,6 +654,13 @@ object ServeWeb {
     trust: String? = null,
     wasmSrc: String? = null,
     /**
+     * Whether the Wasm iframe may run with `allow-same-origin` (real origin) rather than the
+     * opaque-origin `allow-scripts`-only sandbox. True ONLY for a **trusted** catalog's app —
+     * unverified catalog-provided Wasm stays opaque so it can't reach the parent viewer's tokened
+     * URLs / DOM. Defaults to false (fail-closed). See the `wasmFrame` sandbox note.
+     */
+    wasmSameOrigin: Boolean = false,
+    /**
      * URL prefix for this session's links (`/<system>` when served under a path, empty otherwise).
      * The "← previews" link is prefixed with it; the viewer's own `/render` + `/ws` requests derive
      * their prefix from `location.pathname` at runtime, so they work under either mount. Empty ⇒
@@ -665,6 +687,14 @@ object ServeWeb {
      * generic `Live`.
      */
     liveBackend: String? = null,
+    /**
+     * The app's declared `@ThemeCatalog` themes (module-global). When non-empty, the viewer adds an
+     * "App theme" selector whose options re-render the preview under the chosen provider (the
+     * `themeProvider` override) — daemon-only, so it's enabled exactly when a knob edit would be
+     * (`canApplyOverrides || canRenderOverrides`). Empty ⇒ no selector (a static bundle, or a
+     * module that declares none).
+     */
+    declaredThemes: List<ServeTheme> = emptyList(),
   ): String {
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
@@ -676,16 +706,45 @@ object ServeWeb {
     // this session.
     val wasmAttr =
       if (wasmSrc != null) " data-wasm-src=\"${WebEscaping.htmlEscape(wasmSrc)}\"" else ""
+    // `allow-same-origin` (alongside `allow-scripts`) is granted ONLY for a [wasmSameOrigin]
+    // (trusted-catalog) app. That app is our own compiled catalog, served same-origin from this
+    // box's `/wasm/<system>/`, so it isn't hostile content the opaque origin needs to wall off, and
+    // the real origin stops the storage/history APIs the Kotlin/Wasm + Compose runtime touches
+    // (`window.caches` via `supportsCacheApi`, history.pushState, …) from throwing `SecurityError`
+    // in an opaque origin (console spam on every Wasm render), and lets Compose's resource loader
+    // use the Cache API. An UNTRUSTED catalog's Wasm app stays opaque (`allow-scripts` only): the
+    // `/wasm/` route serves an unverified catalog's app too, and same-origin there would let it
+    // read
+    // the parent viewer's tokened URLs / DOM or remove its own sandbox. `data-wasm-src` is
+    // additionally same-origin-checked before it reaches the frame (see wasmBaseSrc).
+    val wasmSandbox = if (wasmSameOrigin) "allow-scripts allow-same-origin" else "allow-scripts"
     val wasmFrame =
       if (wasmSrc != null)
-        "<iframe id=\"cp-wasm\" hidden sandbox=\"allow-scripts\" title=\"$label (Wasm)\"></iframe>"
+        "<iframe id=\"cp-wasm\" hidden sandbox=\"$wasmSandbox\" title=\"$label (Wasm)\"></iframe>"
       else ""
-    val wasmToggle =
+    // The render mode is a radio group — PNG (baked snapshot, default), Live Compose (daemon
+    // stream), Wasm (in-browser CMP app). The Wasm option + its background checkbox appear only
+    // when
+    // a Wasm app backs the session; the Live radio is present but disabled when no stream is
+    // offered.
+    // Ids `cp-live` / `cp-wasm-toggle` are kept on the radios so the transition JS resolves them.
+    val wasmModeRadio =
       if (wasmSrc != null)
-        "<label class=\"cp-live-row\"><input id=\"cp-wasm-toggle\" type=\"checkbox\"> " +
-          "Run in browser (Wasm)</label>\n" +
-          "          <label class=\"cp-live-row\"><input id=\"cp-wasm-bg\" type=\"checkbox\"> " +
+        "<label class=\"cp-live-row\"><input type=\"radio\" name=\"cp-mode\" value=\"wasm\" " +
+          "id=\"cp-wasm-toggle\"> Wasm</label>"
+      else ""
+    val wasmBgRow =
+      if (wasmSrc != null)
+        "<label class=\"cp-live-row\"><input id=\"cp-wasm-bg\" type=\"checkbox\"> " +
           "Component only (no background)</label>"
+      else ""
+    // SVG mode reuses the snapshot lane (the same `<img>`) but points it at the vector
+    // `/render/<id>.svg` instead of the raster `.png`. Offered only when the session can export SVG
+    // ([hasSvgExport]) — the same gate as the SVG direct-link row.
+    val svgModeRadio =
+      if (hasSvgExport)
+        "<label class=\"cp-live-row\"><input type=\"radio\" name=\"cp-mode\" value=\"svg\" " +
+          "id=\"cp-mode-svg\"> SVG</label>"
       else ""
     val deviceOptions =
       COMMON_DEVICES.joinToString("\n") { (value, name) ->
@@ -715,7 +774,7 @@ object ServeWeb {
       when {
         !staticSnapshot -> ""
         wasmSrc != null ->
-          "<div class=\"cp-note\">Pre-rendered snapshot — tick “Run in browser (Wasm)” to interact: " +
+          "<div class=\"cp-note\">Pre-rendered snapshot — pick “Wasm” to interact: " +
             "Theme, Font scale, Locale &amp; background apply in the browser. Device/Orientation " +
             "need the live server. <a href=\"$LOCAL_SERVER_DOCS\">Enable a local preview server.</a>" +
             "</div>"
@@ -726,6 +785,83 @@ object ServeWeb {
       }
     val backendLabel = WebEscaping.htmlEscape(snapshotBackend ?: "Snapshot")
     val liveLabel = WebEscaping.htmlEscape(liveBackend ?: "Live")
+    // The app-declared `@ThemeCatalog` theme selector — the discrete-theme axis. Rendered only when
+    // the module declares themes; selecting one re-renders the preview under that provider (the
+    // `themeProvider` override). Daemon-only, so it's disabled unless the host can render an
+    // override (`canApplyOverrides || canRenderOverrides`) — a knob-style control, not a
+    // client-side
+    // one. Options carry the provider FQN as their value; `@ThemeCatalog(group=…)` buckets them
+    // into
+    // <optgroup>s. Marked `.cp-knob-theme` so the JS routes its change through the daemon path.
+    val themeSelectorHtml =
+      if (declaredThemes.isEmpty()) ""
+      else {
+        val themeDis = if (canApplyOverrides || canRenderOverrides) "" else " disabled"
+        val grouped = declaredThemes.groupBy { it.group }
+        val optionsOf: (List<ServeTheme>) -> String = { list ->
+          list.joinToString("\n") { t ->
+            "<option value=\"${WebEscaping.htmlEscape(t.providerFqn)}\">" +
+              "${WebEscaping.htmlEscape(t.name)}</option>"
+          }
+        }
+        val body = buildString {
+          // Ungrouped themes first (flat), then one <optgroup> per declared group.
+          grouped[null]?.let { append(optionsOf(it)).append('\n') }
+          grouped
+            .filterKeys { it != null }
+            .forEach { (group, list) ->
+              append("<optgroup label=\"${WebEscaping.htmlEscape(group!!)}\">")
+                .append(optionsOf(list))
+                .append("</optgroup>\n")
+            }
+        }
+        """
+        <label>App theme
+          <select id="cp-themeProvider" class="cp-knob-theme"$themeDis>
+            <option value="">(default)</option>
+            $body
+          </select>
+        </label>
+        """
+          .trimIndent()
+      }
+    // Live-only overlay toggles (accessibility / touch visualization). The daemon composites these
+    // onto the held session's frames, so they mean nothing on a baked PNG — offered only when a
+    // Live
+    // Compose stream is available, and disabled until that mode is active (the mode-transition JS
+    // flips them). Omitted entirely when no stream backs the session, rather than left permanently
+    // dead. `cp-overlay` marks them for the JS collector + enable/disable sync.
+    val overlaysHtml =
+      if (hasLiveStream)
+        """
+        <div class="cp-overlays">
+          <div class="cp-overlays-head">Overlays (Live Compose)</div>
+          <label class="cp-live-row"><input class="cp-overlay" id="cp-talkBack" type="checkbox" disabled> Accessibility (TalkBack)</label>
+          <label class="cp-live-row"><input class="cp-overlay" id="cp-touchOverlay" type="checkbox" disabled> Show touches</label>
+        </div>
+        """
+          .trimIndent()
+      else ""
+    // Detected-feature controls — shown ONLY for previews that actually support the feature (so
+    // it's
+    // never a dead control everywhere). Today: "Keyboard focus" for a `@FocusedPreview` preview,
+    // which re-renders with focus landed on the first focusable + the focus overlay drawn
+    // (`focus=0`). Daemon-only (routed like a knob via onKnobChanged), so disabled unless the host
+    // can render an override. `cp-feature` marks it for the JS collector. Gestures are detected too
+    // ([ServePreview.supportsGestures]) but their override is Android-only, so no control is
+    // offered
+    // on the desktop `serve` path yet.
+    val featureDaemonDis = if (canApplyOverrides || canRenderOverrides) "" else " disabled"
+    val featureControlsHtml =
+      if (preview.supportsFocus)
+        """
+        <div class="cp-overlays">
+          <div class="cp-overlays-head">Detected features</div>
+          <label class="cp-live-row"><input class="cp-feature" id="cp-focus" type="checkbox"$featureDaemonDis> Keyboard focus</label>
+        </div>
+        """
+          .trimIndent()
+      else ""
     val body =
       """
       <p class="cp-head"><a href="$basePath/$q">← previews</a>${trustBadge(trust)}</p>
@@ -734,8 +870,13 @@ object ServeWeb {
         <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$wasmFrame</div>
         <div class="cp-controls">
           $snapshotNote
-          <label class="cp-live-row"><input id="cp-live" type="checkbox"$liveDis> Live (stream)</label>
-          $wasmToggle
+          <div class="cp-modes" role="radiogroup" aria-label="Render mode">
+            <label class="cp-live-row"><input type="radio" name="cp-mode" value="png" id="cp-mode-png" checked> PNG</label>
+            $svgModeRadio
+            <label class="cp-live-row"><input type="radio" name="cp-mode" value="live" id="cp-live"$liveDis> Live Compose</label>
+            $wasmModeRadio
+          </div>
+          $wasmBgRow
           <label>Theme
             <select id="cp-uiMode"$wasmDis>
               <option value="">(default)</option>
@@ -743,6 +884,7 @@ object ServeWeb {
               <option value="dark">Dark</option>
             </select>
           </label>
+          $themeSelectorHtml
           <label>Device
             <select id="cp-device"$serverDis>
               <option value="">(default)</option>
@@ -768,6 +910,8 @@ object ServeWeb {
               <option value="clear">Clear (crisp outline)</option>
             </select>
           </label>
+          $overlaysHtml
+          $featureControlsHtml
           ${overrideKnobsHtml(preview, canApplyOverrides || canRenderOverrides)}
           ${downloadLinksHtml(hasSvgExport)}
           <div class="cp-status" id="cp-status"></div>
@@ -827,6 +971,10 @@ object ServeWeb {
       var fsVal = document.getElementById("cp-fontScale-val");
       var fontScaleTouched = false;
       var ws = null;
+      // The snapshot lane serves either the raster PNG or the vector SVG through the same <img>.
+      // The render-mode radio flips this (".png" default, ".svg" in SVG mode); refreshSnapshot and
+      // the copyable links read it so a re-render / copied URL matches the on-screen format.
+      var snapshotExt = ".png";
 
       function overrides() {
         var o = {};
@@ -854,6 +1002,22 @@ object ServeWeb {
           if (val === "") return;
           o["knob." + key] = val;
         });
+        // Live-only overlay toggles (talkBack / touchOverlay). Their id is "cp-<key>", so the daemon
+        // key is the id minus the prefix. Sent as an explicit true/false so unchecking clears the
+        // overlay on the next setOverrides (which replaces the whole map). Disabled ⇒ not live ⇒
+        // skipped, so they never leak onto a snapshot.
+        document.querySelectorAll(".cp-overlay").forEach(function (el) {
+          if (el.disabled) return;
+          o[el.id.replace(/^cp-/, "")] = el.checked ? "true" : "false";
+        });
+        // App-declared theme (themeProvider = provider FQN). Only when a theme is picked and the
+        // control is live; "(default)" (empty) leaves the daemon on the preview's own wrapper.
+        var tp = document.getElementById("cp-themeProvider");
+        if (tp && !tp.disabled && tp.value) o["themeProvider"] = tp.value;
+        // Detected-feature: keyboard focus. Checked ⇒ focus the first focusable + draw the overlay
+        // (focus=0). Daemon-only, so skipped when disabled.
+        var fc = document.getElementById("cp-focus");
+        if (fc && !fc.disabled && fc.checked) o["focus"] = "0";
         return o;
       }
       function query() {
@@ -877,12 +1041,24 @@ object ServeWeb {
           if (val === (el.getAttribute("data-knob-initial") || "")) return;
           parts.push("knob." + encodeURIComponent(key) + "=" + encodeURIComponent(val));
         });
+        // App-declared theme (themeProvider = provider FQN). Routes to the daemon like a knob; a
+        // published catalog re-renders on demand. Omitted at "(default)" so the URL stays on the
+        // instant baked snapshot until a theme is actually chosen.
+        var tp = document.getElementById("cp-themeProvider");
+        if (tp && !tp.disabled && tp.value) {
+          parts.push("themeProvider=" + encodeURIComponent(tp.value));
+        }
+        // Detected-feature: keyboard focus (focus=0). Routes to the daemon like a knob; omitted when
+        // unchecked so the URL stays on the baked snapshot.
+        var fc = document.getElementById("cp-focus");
+        if (fc && !fc.disabled && fc.checked) parts.push("focus=0");
         return parts.join("&");
       }
       function refreshSnapshot() {
         status.textContent = "rendering…";
         var qs = query();
-        var url = base + "/render/" + encodeURIComponent(previewId) + ".png" + (qs ? "?" + qs : "");
+        var url =
+          base + "/render/" + encodeURIComponent(previewId) + snapshotExt + (qs ? "?" + qs : "");
         var next = new Image();
         next.onload = function () { img.src = url; status.textContent = ""; };
         next.onerror = function () { status.textContent = "render failed"; };
@@ -1038,19 +1214,21 @@ object ServeWeb {
       canvas.addEventListener("keyup", function (ev) { keyInput("keyUp", ev); });
       function openStream() {
         root.setAttribute("data-mode", "live");
-        // Seed the canvas with the current snapshot at its natural size *before* the img→canvas
-        // swap. Otherwise the canvas shows at its default 300x150 box until the first frame lands
-        // (drawFrame sets its real size), so the stage collapses then snaps back — the same jump
-        // the Wasm tier avoids by holding the snapshot's layout slot. The live frames are the same
-        // preview at the same dimensions, so this box is also the final one — no shift either way —
-        // and drawing the snapshot in means no blank flash while "connecting…". The first frame
-        // overwrites it.
+        // Seed the canvas buffer with the current snapshot *before* the swap, so there's no blank
+        // flash while "connecting…" (the first frame overwrites it).
         if (img.naturalWidth && img.naturalHeight) {
           canvas.width = img.naturalWidth;
           canvas.height = img.naturalHeight;
           try { canvas.getContext("2d").drawImage(img, 0, 0); } catch (e) {}
         }
-        img.hidden = true;
+        // Mount the canvas as an absolute overlay on the snapshot's slot — the same fixed box the
+        // Wasm tier locks to. The img stays in flow (visibility:hidden keeps its slot), so the stage
+        // geometry is defined once by the snapshot and a live frame whose pixel dims differ from the
+        // baked PNG scales into this box instead of resizing the stage (drawFrame only touches the
+        // buffer now, never the layout). Input mapping reads the buffer size, so it's unaffected.
+        canvas.classList.add("cp-canvas-live");
+        positionOverlay(canvas);
+        img.style.visibility = "hidden";
         canvas.hidden = false;
         status.textContent = "connecting…";
         var proto = location.protocol === "https:" ? "wss:" : "ws:";
@@ -1059,6 +1237,14 @@ object ServeWeb {
         var qs = query();
         ws = new WebSocket(proto + "//" + location.host + base + "/ws/" +
           encodeURIComponent(previewId) + "?" + (qs ? qs + "&codec=webp" : "codec=webp"));
+        ws.onopen = function () {
+          // The connect URL seeds only query()'s fields — the display axes plus changed knobs — so
+          // the live-only overlays (talkBack / touchOverlay) and anything toggled during the
+          // connecting window aren't in it. Replay the full live override map once the socket is
+          // ready so the daemon reflects the exact current control state, including an overlay
+          // checked before onopen whose change event the readyState guard dropped.
+          ws.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
+        };
         ws.onmessage = function (ev) {
           var m;
           try { m = JSON.parse(ev.data); } catch (e) { return; }
@@ -1072,6 +1258,11 @@ object ServeWeb {
         root.setAttribute("data-mode", "snapshot");
         if (ws) { ws.close(); ws = null; }
         canvas.hidden = true;
+        // Tear down the overlay: drop the absolute positioning and restore the snapshot img's slot.
+        canvas.classList.remove("cp-canvas-live");
+        canvas.style.removeProperty("left"); canvas.style.removeProperty("top");
+        canvas.style.removeProperty("width"); canvas.style.removeProperty("height");
+        img.style.removeProperty("visibility");
         img.hidden = false;
       }
       // --- Wasm tier (the in-browser CMP app, mounted in a sandboxed iframe). Only wired when the
@@ -1098,11 +1289,13 @@ object ServeWeb {
         if (u.origin !== location.origin) return "";
         return u.href;
       }
-      // NOTE: don't "preload" the app's fonts from this page — the sandboxed iframe has an opaque
-      // origin, and Chrome partitions the HTTP cache by frame origin, so nothing fetched here is
-      // reusable inside it (measured: every font was fetched twice). The prefetch that actually
-      // works lives in the app's own index.html, which starts the manifest+font fetches at
-      // document load, in parallel with the Wasm boot.
+      // NOTE: the font prefetch lives in the app's own index.html (it starts the manifest+font
+      // fetches at document load, in parallel with the Wasm boot), not on this page. That's where
+      // it belongs regardless of the sandbox: it must be in flight before the iframe navigates, and
+      // the app is the one that consumes the promises. (Historically the iframe was opaque-origin
+      // with its own cache partition, so a page-side preload was also unreusable and fetched every
+      // font twice; with allow-same-origin the partition is shared, but the app-side prefetch is
+      // still the right home, so keep page-side preloads out — see the ServeWebFixtureTest guard.)
       // The override patch (theme / font scale / locale) the running app merges over its baked base —
       // a bare `a=b&c=d` query. An absent key falls back to the app's baked default (e.g. cleared
       // Theme → the variant's uiMode). Device / orientation are server-render-only, so not forwarded.
@@ -1136,25 +1329,27 @@ object ServeWeb {
         var patch = wasmOverridePatch();
         return patch ? base + "#" + patch : base;
       }
-      // Pixel parity: overlay the iframe exactly on the snapshot's rendered box. The app renders
-      // the same sticker geometry the snapshot baked and contain-fits it to this frame, so once its
-      // first frame lands the two are the same pixels — the switch shouldn't move anything.
-      function positionWasmFrame() {
+      // Pixel parity: lay an absolute overlay ([el] — the Wasm iframe or the live canvas) exactly
+      // over the snapshot's rendered box, so switching to it shouldn't move anything. Both the Wasm
+      // app (contain-fitting the same sticker geometry the snapshot baked) and the daemon (the same
+      // preview re-rendered) fill this box, so the three transports share one geometry.
+      function positionOverlay(el) {
         var sr = stage.getBoundingClientRect();
         var r = img.getBoundingClientRect();
         if (r.width > 0 && r.height > 0) {
           // Offsets are relative to the stage's padding box — subtract its border (clientLeft/Top).
-          wasmFrame.style.left = (r.left - sr.left - stage.clientLeft) + "px";
-          wasmFrame.style.top = (r.top - sr.top - stage.clientTop) + "px";
-          wasmFrame.style.width = r.width + "px";
-          wasmFrame.style.height = r.height + "px";
+          el.style.left = (r.left - sr.left - stage.clientLeft) + "px";
+          el.style.top = (r.top - sr.top - stage.clientTop) + "px";
+          el.style.width = r.width + "px";
+          el.style.height = r.height + "px";
         } else {
           // No snapshot box to mirror (e.g. its render 404'd): fill the stage's content box.
-          wasmFrame.style.left = "12px"; wasmFrame.style.top = "12px";
-          wasmFrame.style.width = "calc(100% - 24px)";
-          wasmFrame.style.height = (stage.clientHeight - 24) + "px";
+          el.style.left = "12px"; el.style.top = "12px";
+          el.style.width = "calc(100% - 24px)";
+          el.style.height = (stage.clientHeight - 24) + "px";
         }
       }
+      function positionWasmFrame() { positionOverlay(wasmFrame); }
       // Swap the stage from the snapshot to the (already-painted) Wasm frame. The snapshot keeps
       // its layout slot (visibility, not display) so the stage geometry — and the overlay tracking
       // it — never shifts.
@@ -1170,8 +1365,11 @@ object ServeWeb {
         if (patch && wasmFrame.contentWindow) wasmFrame.contentWindow.postMessage(patch, "*");
       }
       function openWasm() {
-        // Wasm and the daemon stream are mutually exclusive — only one transport drives the stage.
-        if (live.checked) { live.checked = false; closeStream(); }
+        // No-op without a Wasm app (wasmFrame absent): enterMode() calls this unconditionally, but a
+        // non-Wasm daemon/static session has no iframe to drive. Guard so touching it can't throw.
+        if (!wasmFrame) return;
+        // Wasm and the daemon stream are mutually exclusive; the mode switch (enterMode) tears the
+        // stream down before opening Wasm, so there's nothing extra to close here.
         root.setAttribute("data-mode", "wasm");
         canvas.hidden = true;
         // Keep the snapshot visible while the app loads; the iframe mounts over it at opacity 0
@@ -1183,6 +1381,9 @@ object ServeWeb {
         status.textContent = "loading Wasm…";
       }
       function closeWasm() {
+        // No Wasm iframe (non-Wasm session) ⇒ nothing to tear down; enterMode() still calls this
+        // unconditionally when switching to Live/PNG, so guard against the null frame.
+        if (!wasmFrame) return;
         root.setAttribute("data-mode", "snapshot");
         wasmReady = false;
         wasmFrame.classList.remove("cp-wasm-live");
@@ -1215,26 +1416,61 @@ object ServeWeb {
           // firing a dead refreshSnapshot the user sees as "the control does nothing". (staticSnapshot
           // marks a non-renderable snapshot lane — true even for a live catalog whose Live toggle is
           // enabled; device/orientation stay disabled, so only the wasm-honoured controls reach here.)
-          wasmToggle.checked = true;
-          openWasm();
+          setMode("wasm");
         } else if (!live.checked) {
           refreshSnapshot();
         }
       }
 
-      live.addEventListener("change", function () {
-        if (live.checked) {
-          if (wasmToggle && wasmToggle.checked) { wasmToggle.checked = false; closeWasm(); }
-          openStream();
-        } else { closeStream(); refreshSnapshot(); }
+      // Render-mode radio group (PNG / SVG / Live Compose / Wasm). Selecting one tears down the
+      // other transport and enters the chosen one. PNG and SVG both drive the baked snapshot lane —
+      // same <img>, different render extension (snapshotExt). closeStream / closeWasm are
+      // idempotent, so a mode switch can safely tear down both regardless of the prior state; live
+      // and wasm reset snapshotExt so a later fallback refresh serves the raster PNG, not a stale
+      // ".svg".
+      function enterMode(m) {
+        if (m === "live") { snapshotExt = ".png"; closeWasm(); openStream(); }
+        else if (m === "wasm") { snapshotExt = ".png"; closeStream(); openWasm(); }
+        else if (m === "svg") {
+          // SVG reuses the snapshot lane; closeStream/closeWasm reset data-mode to "snapshot", so
+          // stamp "svg" afterwards for the backend badge, then swap the vector into the <img>.
+          closeStream(); closeWasm(); snapshotExt = ".svg";
+          root.setAttribute("data-mode", "svg"); refreshSnapshot();
+        } else { snapshotExt = ".png"; closeStream(); closeWasm(); refreshSnapshot(); }
+        syncOverlayToggles();
+      }
+      // The live-only overlay toggles (talkBack / touchOverlay) are meaningful only while the daemon
+      // holds the composition, so they're enabled iff Live Compose is the active mode and greyed out
+      // (like the static-snapshot controls) otherwise. Called on every mode transition.
+      var overlayToggles = document.querySelectorAll(".cp-overlay");
+      function syncOverlayToggles() {
+        var on = !!(live && live.checked);
+        Array.prototype.forEach.call(overlayToggles, function (el) { el.disabled = !on; });
+      }
+      // Programmatic switch (e.g. a wasm-only control auto-enabling Wasm): tick the radio so the UI
+      // reflects it, then run the transition.
+      function setMode(m) {
+        var r = document.getElementById(
+          m === "live" ? "cp-live" :
+          m === "wasm" ? "cp-wasm-toggle" :
+          m === "svg" ? "cp-mode-svg" : "cp-mode-png");
+        if (r) r.checked = true;
+        enterMode(m);
+      }
+      Array.prototype.forEach.call(
+        document.querySelectorAll("input[name=\"cp-mode\"]"),
+        function (r) {
+          r.addEventListener("change", function () { if (r.checked) enterMode(r.value); });
+        });
+      // Keep the live canvas overlay tracking the snapshot's slot when the page reflows (the Wasm
+      // overlay has its own resize hook below; this covers a live session with no Wasm app).
+      window.addEventListener("resize", function () {
+        if (live && live.checked && !canvas.hidden) positionOverlay(canvas);
       });
       if (wasmToggle) {
-        wasmToggle.addEventListener("change", function () {
-          if (wasmToggle.checked) openWasm();
-          else { closeWasm(); refreshSnapshot(); }
-        });
         // The app posts "cp-wasm-ready" once its first frame is on the canvas — the swap signal.
-        // The sandboxed frame has an opaque origin, so match on source, not e.origin.
+        // Match on source (the known frame's contentWindow), not e.origin — robust regardless of
+        // the frame's origin, and the payload is a fixed string so there's no data surface.
         window.addEventListener("message", function (e) {
           if (e.source !== wasmFrame.contentWindow || e.data !== "cp-wasm-ready") return;
           revealWasm();
@@ -1256,7 +1492,7 @@ object ServeWeb {
         if (wasmBg) {
           wasmBg.addEventListener("change", function () {
             // Background is an in-browser knob: auto-enable the Wasm tier if it isn't on yet.
-            if (!wasmActive()) { wasmToggle.checked = true; openWasm(); return; }
+            if (!wasmActive()) { setMode("wasm"); return; }
             onControlsChanged();
           });
         }
@@ -1272,6 +1508,18 @@ object ServeWeb {
         var el = document.getElementById("cp-" + f);
         if (el) el.addEventListener("change", onControlsChanged);
       });
+      // Overlay toggles are live-only: they push a fresh setOverrides through the open stream and do
+      // nothing otherwise. They get their own handler rather than onControlsChanged so a toggle mid
+      // connect (ws not yet readyState 1) can't fall through to the snapshot / wasm-auto-enable
+      // branches — an overlay never applies to a baked PNG or the in-browser tier.
+      function onOverlayChanged() {
+        if (live.checked && ws && ws.readyState === 1) {
+          ws.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
+        }
+      }
+      Array.prototype.forEach.call(overlayToggles, function (el) {
+        el.addEventListener("change", onOverlayChanged);
+      });
       // Author-declared knobs re-render on edit (text/number debounce via "input", toggles "change").
       // They route differently from the display axes: a named knob (label, a color, …) is honoured
       // ONLY by the server daemon — the in-browser Wasm tier's `catalogOverride*` returns the author
@@ -1286,6 +1534,16 @@ object ServeWeb {
       }
       document.querySelectorAll(".cp-knob").forEach(function (el) {
         el.addEventListener(el.type === "checkbox" ? "change" : "input", onKnobChanged);
+      });
+      // The app-theme selector routes through the daemon like a knob (never the wasm auto-enable
+      // path — an app-declared theme provider is a server-side wrapper the in-browser tier can't
+      // load), so it shares onKnobChanged rather than onControlsChanged.
+      var themeSel = document.getElementById("cp-themeProvider");
+      if (themeSel) themeSel.addEventListener("change", onKnobChanged);
+      // Detected-feature toggles (Keyboard focus) re-render on the daemon like a knob — same routing,
+      // never the wasm auto-enable path.
+      document.querySelectorAll(".cp-feature").forEach(function (el) {
+        el.addEventListener("change", onKnobChanged);
       });
       refreshSnapshot();
     })();
@@ -1403,17 +1661,16 @@ object ServeWeb {
    */
   private fun knobKind(type: String): String = ServeOverrides.knobKind(type)
 
-  /** Human text for a [ee.schimke.composeai.daemon.protocol.PreviewOverrideValue] in the viewer. */
+  /** Human text for a [ee.schimke.composeai.data.overrides.PreviewOverrideValue] in the viewer. */
   private fun overrideValueText(
-    v: ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
+    v: ee.schimke.composeai.data.overrides.PreviewOverrideValue
   ): String =
     when (v) {
-      is ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.StringValue -> v.value
-      is ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.IntValue -> v.value.toString()
-      is ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.FloatValue -> v.value.toString()
-      is ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.BooleanValue ->
-        v.value.toString()
-      is ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.ColorValue -> v.argb
+      is ee.schimke.composeai.data.overrides.PreviewOverrideValue.StringValue -> v.value
+      is ee.schimke.composeai.data.overrides.PreviewOverrideValue.IntValue -> v.value.toString()
+      is ee.schimke.composeai.data.overrides.PreviewOverrideValue.FloatValue -> v.value.toString()
+      is ee.schimke.composeai.data.overrides.PreviewOverrideValue.BooleanValue -> v.value.toString()
+      is ee.schimke.composeai.data.overrides.PreviewOverrideValue.ColorValue -> v.argb
     }
 
   /**

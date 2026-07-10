@@ -1,12 +1,13 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
-import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamFrameParams
+import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.overrides.PreviewOverrideType
+import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -14,12 +15,13 @@ import kotlin.test.assertTrue
 
 /**
  * The catalog-id bridge: [ServeCatalogLiveHost] fronts the baked catalog with an opt-in daemon
- * stream. Every **snapshot** is the baked PNG (browsing stays instant and never wakes the daemon,
- * even when the viewer replays a sticky theme override); the daemon is reached only via the **live
- * stream**, mapping the catalog id to its daemon-preview id. An unmapped id (an Android-only
- * variant) has no stream. The composite reports itself as a static-snapshot host
- * ([canApplyOverrides] false) that still offers Live ([hasLiveStream] true), and exposes its baked
- * host so the trust badge + card title survive.
+ * stream. An override-free snapshot (or one replaying only the variant's own sticky theme) is the
+ * baked PNG — browsing stays instant and never wakes the daemon. A snapshot carrying a
+ * pixel-changing override (a knob, font scale, device, a differing theme, …) re-renders on the
+ * daemon, mapping the catalog id to its daemon-preview id; an unmapped id (an Android-only variant)
+ * has no daemon twin and always replays baked. The composite reports itself as a static-snapshot
+ * host ([canApplyOverrides] false) that still offers Live ([hasLiveStream] true), and exposes its
+ * baked host so the trust badge + card title survive.
  */
 class ServeCatalogLiveHostTest {
 
@@ -30,6 +32,7 @@ class ServeCatalogLiveHostTest {
     private val streaming: Boolean = false,
     /** When true, `renderSvg` reports `NotFound` (a baked catalog missing this slug's vector). */
     private val svgNotFound: Boolean = false,
+    override val declaredThemes: List<ServeTheme> = emptyList(),
   ) : ServeHost {
     override val label: String = tag
     override val canApplyOverrides: Boolean = streaming
@@ -116,6 +119,36 @@ class ServeCatalogLiveHostTest {
     PreviewOverrides(namedOverrides = mapOf("label" to PreviewOverrideValue.StringValue("Tap me")))
 
   @Test
+  fun `canRenderOverridesFor is true only for aliased previews`() {
+    val (composite, _, _) = host()
+    // A daemon-twinned catalog preview can re-render an override…
+    assertTrue(composite.canRenderOverridesFor(catalogId))
+    // …but an unaliased (Android-only) variant can't — it always replays baked, so its override
+    // controls (App theme, knobs) must render disabled rather than enabled-but-dead.
+    assertEquals(false, composite.canRenderOverridesFor(androidOnlyId))
+    // The host-wide flag stays true (the session offers on-demand re-render for the mapped ids).
+    assertTrue(composite.canRenderOverrides)
+  }
+
+  @Test
+  fun `declared themes come from the daemon lane, not the baked browse surface`() {
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        streaming = true,
+        declaredThemes = listOf(ServeTheme("Brand Dark", "com.example.BrandDarkTheme", "Brand")),
+      )
+    val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
+    // Forwarded from the daemon lane (which read them from the live bundle's previews.json); the
+    // baked browse surface carries none. canRenderOverrides is true, so the selector is live.
+    assertEquals(listOf("Brand Dark"), composite.declaredThemes.map { it.name })
+    assertEquals("com.example.BrandDarkTheme", composite.declaredThemes.single().providerFqn)
+    assertTrue(composite.canRenderOverrides)
+  }
+
+  @Test
   fun `presents as a static-snapshot host that still offers Live`() {
     val (composite, _, baked) = host()
     // Same ids + order as the baked browse surface (deep links + grid resolve unchanged).
@@ -141,6 +174,30 @@ class ServeCatalogLiveHostTest {
     // An unmapped (Android-only) preview has no daemon twin, so it stays knob-free.
     val unmapped = composite.previews.first { it.id == androidOnlyId }
     assertTrue(unmapped.overrides.isEmpty())
+  }
+
+  @Test
+  fun `grafts the daemon's detected-feature flags onto the mapped baked preview`() {
+    // The baked catalog images carry no detected-feature flags; the daemon twin (from
+    // previews.json)
+    // does. Without grafting, a mapped @FocusedPreview catalog component would never show the
+    // Keyboard focus control even though the daemon could render focus=0.
+    val baked =
+      RecordingHost(
+        previews =
+          listOf(ServePreview(catalogId, catalogId), ServePreview(androidOnlyId, androidOnlyId)),
+        tag = "baked",
+      )
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId, supportsFocus = true)),
+        tag = "live",
+        streaming = true,
+      )
+    val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
+    assertTrue(composite.previews.first { it.id == catalogId }.supportsFocus)
+    // An unmapped variant has no daemon twin, so it stays feature-flagless.
+    assertEquals(false, composite.previews.first { it.id == androidOnlyId }.supportsFocus)
   }
 
   @Test
@@ -231,15 +288,61 @@ class ServeCatalogLiveHostTest {
   }
 
   @Test
-  fun `snapshots stay baked even with overrides on a mapped id`() {
-    // The viewer replays a sticky theme override into the snapshot URL; the composite must still
-    // serve the baked PNG (never cold-start the daemon on the snapshot lane) — the daemon is the
-    // live-stream lane only.
+  fun `a variant-matching uiMode (sticky-theme replay) stays baked`() {
+    // The viewer replays its sticky theme into the snapshot URL. catalogId is the `…__dark`
+    // variant, so a uiMode=dark override is a no-op the baked PNG already encodes — it must NOT
+    // cold-start the daemon.
     val (composite, live, baked) = host()
-    val out = composite.render(catalogId, PreviewOverrides(density = 2.0f)) as RenderOutcome.Ok
+    val out =
+      composite.render(catalogId, PreviewOverrides(uiMode = UiMode.DARK)) as RenderOutcome.Ok
     assertEquals("baked:$catalogId", out.png.decodeToString())
     assertEquals(catalogId, baked.lastRenderId)
     assertNull(live.lastRenderId)
+  }
+
+  @Test
+  fun `a display-axis override on a mapped id routes to the daemon`() {
+    // A font scale (like device / locale / orientation) can't be replayed from the baked sticker,
+    // so it must re-render on the daemon — the correctness fix for standalone
+    // `/render?fontScale=…`.
+    val (composite, live, baked) = host()
+    val out = composite.render(catalogId, PreviewOverrides(fontScale = 1.5f)) as RenderOutcome.Ok
+    assertEquals("live:$daemonId", out.png.decodeToString())
+    assertEquals(daemonId, live.lastRenderId)
+    assertEquals(1.5f, live.lastRenderOverrides?.fontScale)
+    assertNull(baked.lastRenderId)
+  }
+
+  @Test
+  fun `a uiMode differing from the baked variant routes to the daemon`() {
+    // catalogId is the `…__dark` variant; asking for light is a real re-render, not a no-op.
+    val (composite, live, baked) = host()
+    val out =
+      composite.render(catalogId, PreviewOverrides(uiMode = UiMode.LIGHT)) as RenderOutcome.Ok
+    assertEquals("live:$daemonId", out.png.decodeToString())
+    assertEquals(daemonId, live.lastRenderId)
+    assertNull(baked.lastRenderId)
+  }
+
+  @Test
+  fun `baked theme is the last theme segment, not a stray earlier one`() {
+    // A `dark` STATE segment sits before the real `light` theme segment. Detection must take the
+    // last theme segment (matching wasmAppSrc / cardTheme), so this variant reads as LIGHT: a
+    // uiMode=light is the no-op (baked) and uiMode=dark is the real re-render (daemon). A naive
+    // "dark in segments" check would flip both.
+    val trickyId = "toggle__dark__default__light"
+    val daemon = "ToggleLight"
+    val baked = RecordingHost(previews = listOf(ServePreview(trickyId, trickyId)), tag = "baked")
+    val live =
+      RecordingHost(previews = listOf(ServePreview(daemon, daemon)), tag = "live", streaming = true)
+    val composite = ServeCatalogLiveHost(mapOf(trickyId to daemon), live, baked)
+
+    composite.render(trickyId, PreviewOverrides(uiMode = UiMode.LIGHT))
+    assertEquals(trickyId, baked.lastRenderId) // light == variant theme → baked
+    assertNull(live.lastRenderId)
+
+    composite.render(trickyId, PreviewOverrides(uiMode = UiMode.DARK))
+    assertEquals(daemon, live.lastRenderId) // dark != variant theme → daemon
   }
 
   @Test

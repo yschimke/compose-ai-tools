@@ -492,19 +492,29 @@ class ServeHttpServer(
       val wasmSrc =
         if (wasmCatalogs.containsKey(sessionId)) ServeUrls.wasmAppSrc(sessionId, preview.id)
         else null
+      // Grant the Wasm iframe its real origin only for a TRUSTED catalog's app — an unverified
+      // catalog's `/wasm/` app stays opaque-origin sandboxed so it can't reach the parent viewer.
+      // Fail-closed: any session without a verifiable trusted verdict gets opaque (false).
+      val wasmSameOrigin =
+        catalogBundleHost(renderHost)?.let { it.trust is BundleVerifier.Verdict.Trusted } ?: false
       call.respondText(
         ServeWeb.viewerPage(
           preview,
           token,
           webSessionId,
           canApplyOverrides = renderHost.canApplyOverrides,
-          canRenderOverrides = renderHost.canRenderOverrides,
+          // Per-preview: a catalog-live host can only re-render an override on a daemon-twinned
+          // preview, so an unaliased (Android-only) variant reports false and its override controls
+          // (knobs, App theme) render disabled/informational rather than enabled-but-dead.
+          canRenderOverrides = renderHost.canRenderOverridesFor(preview.id),
           hasSvgExport = renderHost.hasSvgExport,
           hasLiveStream = renderHost.hasLiveStream,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           wasmSrc = wasmSrc,
+          wasmSameOrigin = wasmSameOrigin,
           basePath = basePath,
           isPublic = isPublic,
+          declaredThemes = renderHost.declaredThemes,
         ),
         ContentType.Text.Html,
       )

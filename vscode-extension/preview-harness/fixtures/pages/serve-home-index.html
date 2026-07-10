@@ -68,7 +68,13 @@ a:hover { text-decoration: underline; }
 .cp-stage iframe { position: absolute; border: 0; background: transparent; opacity: 0;
   transition: opacity 0.15s ease; pointer-events: none; }
 .cp-stage iframe.cp-wasm-live { opacity: 1; pointer-events: auto; }
+/* Live daemon frames paint into the SAME absolute overlay box the Wasm iframe uses, pinned to
+   the snapshot img's slot — so the stage is one fixed box every transport fills and toggling a
+   mode never resizes or shifts it (the img keeps its layout slot underneath via visibility). */
+.cp-stage canvas.cp-canvas-live { position: absolute; max-width: none; }
 .cp-live-row { flex-direction: row !important; align-items: center; gap: 6px !important; }
+.cp-modes { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px 14px;
+  font-size: 0.8rem; }
 .cp-controls { flex: 0 0 240px; display: flex; flex-direction: column; gap: 14px; }
 .cp-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; }
 .cp-controls input, .cp-controls select { padding: 5px 6px; font-size: 0.85rem; }
@@ -78,6 +84,8 @@ a:hover { text-decoration: underline; }
 .cp-controls label:has(:disabled) { opacity: 0.55; }
 .cp-knobs { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
 .cp-knobs-head { font-size: 0.72rem; color: #6b6b70; }
+.cp-overlays { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.cp-overlays-head { font-size: 0.72rem; color: #6b6b70; }
 .cp-knobs input:disabled { opacity: 0.7; }
 .cp-links { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
 .cp-link-row { display: flex; align-items: center; gap: 6px; }

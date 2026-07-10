@@ -49,13 +49,25 @@ class GradleRevisionBuilder(
     val manifest = PreviewResultBuilder.readManifest(PreviewModule(module.gradlePath, moduleDir))
     val previews =
       manifest?.previews?.map {
-        ServePreview(id = it.id, label = it.functionName.ifBlank { it.id })
+        val (focus, gestures) = detectedFeaturesOf(it)
+        ServePreview(
+          id = it.id,
+          label = it.functionName.ifBlank { it.id },
+          supportsFocus = focus,
+          supportsGestures = gestures,
+        )
       } ?: emptyList()
     if (previews.isEmpty()) {
       onLog("serve: no previews discovered for ${module.gradlePath}")
       return null
     }
-    return BuiltRevision(moduleDir = moduleDir, descriptor = descriptor, previews = previews)
+    val declaredThemes = manifest?.previews?.let { declaredThemesFromPreviews(it) } ?: emptyList()
+    return BuiltRevision(
+      moduleDir = moduleDir,
+      descriptor = descriptor,
+      previews = previews,
+      declaredThemes = declaredThemes,
+    )
   }
 
   private fun runGradle(worktreeDir: File, gradlew: File, args: List<String>): Boolean {

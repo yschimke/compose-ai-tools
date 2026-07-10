@@ -64,6 +64,18 @@ dependencies {
   compileOnly(libs.wear.compose.material3)
   testImplementation(libs.wear.compose.material3)
 
+  // `androidx.compose.animation.graphics` — `GestureHint`'s force-show path draws
+  // wear-compose-material3's shipped gesture-indicator AVD via the official
+  // `AnimatedImageVector.animatedVectorResource` API (the real `OneHandedGestureIndicator` settles
+  // to hidden during a Robolectric pre-roll, so a forced preview draws the drawable directly).
+  // `compileOnly` because wear-compose-material3 already pulls it transitively onto every
+  // consumer's
+  // runtime classpath; the Compose BOM pins the unversioned coordinate.
+  compileOnly(platform(libs.compose.bom.stable))
+  compileOnly("androidx.compose.animation:animation-graphics")
+  testImplementation(platform(libs.compose.bom.stable))
+  testImplementation("androidx.compose.animation:animation-graphics")
+
   // Robolectric — `ShadowSdkGestureInputManager` uses `@Implements` / `@Implementation` to shadow
   // wear-compose-material3's internal `SdkGestureInputManagerImpl`. `compileOnly` because the
   // shadow

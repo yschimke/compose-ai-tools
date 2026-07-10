@@ -35,11 +35,13 @@ import ee.schimke.composeai.daemon.DisplayFilterDataProducer
 import ee.schimke.composeai.daemon.FocusController
 import ee.schimke.composeai.daemon.FocusOverlay
 import ee.schimke.composeai.daemon.FocusOverrideExtension
+import ee.schimke.composeai.daemon.GestureOverrideExtension
 import ee.schimke.composeai.daemon.KeyboardController
 import ee.schimke.composeai.daemon.KeyboardOverrideExtension
 import ee.schimke.composeai.daemon.LauncherWidgetExtension
 import ee.schimke.composeai.daemon.protocol.AmbientOverride
 import ee.schimke.composeai.daemon.protocol.AmbientStateOverride
+import ee.schimke.composeai.daemon.protocol.GestureOverride
 import ee.schimke.composeai.daemon.protocol.FocusDirection as ProtocolFocusDirection
 import ee.schimke.composeai.daemon.protocol.FocusOverride
 import ee.schimke.composeai.daemon.protocol.LauncherResizeOrder
@@ -871,6 +873,16 @@ abstract class RobolectricRenderTestBase(
             preview.captures
               .firstNotNullOfOrNull { it.ambient }
               ?.let { AmbientOverrideExtension(it.toAmbientOverride()) }
+          // `@GestureHintPreview` discovery stamps the same `GestureHintCapture` onto every
+          // capture of an annotated function. Wrap the composition with `GestureOverrideExtension`
+          // from `:data-gestures-connector` so `GestureHint` force-shows the one-handed-gesture
+          // indicator. Daemon-driven `renderNow.overrides.gestures.showHints` lands at the same
+          // extension via the `GesturePreviewOverrideExtension` planner registered in
+          // `RobolectricHost`.
+          val gestureHintExtension =
+            preview.captures
+              .firstNotNullOfOrNull { it.gestureHint }
+              ?.let { GestureOverrideExtension(it.toGestureOverride()) }
           // `@LauncherWidgetPreview` discovery stamps the same `LauncherWidgetCapture` onto
           // every capture of an annotated function. Wrap the composition with
           // `LauncherWidgetExtension` from `:data-launcher-widget-connector` so the rendered
@@ -953,11 +965,21 @@ abstract class RobolectricRenderTestBase(
                   curveOrPlain()
                 }
               }
-              val ambientOrPlain: @Composable () -> Unit = {
-                if (ambientExtension != null) {
-                  ambientExtension.AroundComposable { focusOrPlain() }
+              // `@GestureHintPreview` — installs `LocalGestureRegistry` /
+              // `LocalOneHandedGestureEnabled` and force-shows the hint, same
+              // `DataExtensionPhase.OuterEnvironment` seam as ambient.
+              val gestureHintOrPlain: @Composable () -> Unit = {
+                if (gestureHintExtension != null) {
+                  gestureHintExtension.AroundComposable { focusOrPlain() }
                 } else {
                   focusOrPlain()
+                }
+              }
+              val ambientOrPlain: @Composable () -> Unit = {
+                if (ambientExtension != null) {
+                  ambientExtension.AroundComposable { gestureHintOrPlain() }
+                } else {
+                  gestureHintOrPlain()
                 }
               }
               // Launcher-widget sizing wraps OUTSIDE ambient/focus/curve so the
@@ -2309,6 +2331,14 @@ private fun AmbientCapture.toAmbientOverride(): AmbientOverride =
     burnInProtectionRequired = burnInProtectionRequired,
     deviceHasLowBitAmbient = deviceHasLowBitAmbient,
   )
+
+/**
+ * Maps the renderer-side [GestureHintCapture] (read from `previews.json`) onto the connector's
+ * `protocol.GestureOverride` wire shape — only the `showHints` immediate-mode flag; `@GestureHintPreview`
+ * carries no invoke / enabled dimensions (those are daemon-interactive concerns).
+ */
+private fun GestureHintCapture.toGestureOverride(): GestureOverride =
+  GestureOverride(showHints = showHints)
 
 /**
  * Maps the renderer-side [LauncherWidgetCapture] (read from `previews.json`) onto the connector's

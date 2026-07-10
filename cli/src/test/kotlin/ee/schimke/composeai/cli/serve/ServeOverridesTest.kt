@@ -1,8 +1,8 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.daemon.protocol.Orientation
-import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.daemon.protocol.UiMode
+import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -33,7 +33,38 @@ class ServeOverridesTest {
     assertNull(o.density)
     assertNull(o.inspectionMode)
     assertNull(o.slotMode)
+    assertNull(o.talkBack)
+    assertNull(o.touchOverlay)
+    assertNull(o.themeProvider)
+    assertNull(o.focus)
     assertNull(o.clearBackground)
+  }
+
+  @Test
+  fun `focus tab index maps to a focus override with the overlay drawn`() {
+    val o = ok(mapOf("focus" to "2"))
+    assertEquals(2, o.focus?.tabIndex)
+    assertEquals(true, o.focus?.overlay)
+  }
+
+  @Test
+  fun `a malformed focus index is rejected`() {
+    for (bad in listOf("focus" to "yes", "focus" to "-1", "focus" to "1.5")) {
+      val parsed = ServeOverrides.parse(mapOf(bad))
+      assertTrue(parsed is OverrideParse.Invalid, "expected Invalid for $bad, got $parsed")
+    }
+  }
+
+  @Test
+  fun `cache key differs when a focus override is applied`() {
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("focus" to "0"))),
+      ServeOverrides.cacheKey("preview.A", ok(emptyMap())),
+    )
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("focus" to "0"))),
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("focus" to "1"))),
+    )
   }
 
   @Test
@@ -51,6 +82,9 @@ class ServeOverridesTest {
           "orientation" to "landscape",
           "inspectionMode" to "true",
           "slotMode" to "true",
+          "talkBack" to "true",
+          "touchOverlay" to "1",
+          "themeProvider" to "com.example.BrandDarkThemeCatalog",
         )
       )
     assertEquals(UiMode.DARK, o.uiMode)
@@ -63,6 +97,9 @@ class ServeOverridesTest {
     assertEquals(Orientation.LANDSCAPE, o.orientation)
     assertEquals(true, o.inspectionMode)
     assertEquals(true, o.slotMode)
+    assertEquals(true, o.talkBack)
+    assertEquals(true, o.touchOverlay)
+    assertEquals("com.example.BrandDarkThemeCatalog", o.themeProvider)
   }
 
   @Test
@@ -86,6 +123,8 @@ class ServeOverridesTest {
         mapOf("widthPx" to "-5"),
         mapOf("inspectionMode" to "maybe"),
         mapOf("slotMode" to "maybe"),
+        mapOf("talkBack" to "maybe"),
+        mapOf("touchOverlay" to "maybe"),
         mapOf("background" to "polkadot"),
         mapOf("clearBackground" to "maybe"),
       )) {
@@ -146,6 +185,26 @@ class ServeOverridesTest {
     assertNotEquals(
       ServeOverrides.cacheKey("preview.A", ok(mapOf("slotMode" to "true"))),
       ServeOverrides.cacheKey("preview.A", ok(emptyMap())),
+    )
+    // The live overlay flags participate too, so a crafted /render?talkBack / ?touchOverlay can't
+    // collide with the baked render's cache entry.
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("talkBack" to "true"))),
+      ServeOverrides.cacheKey("preview.A", ok(emptyMap())),
+    )
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("touchOverlay" to "true"))),
+      ServeOverrides.cacheKey("preview.A", ok(emptyMap())),
+    )
+    // A themeProvider selection participates, so rendering a preview under two different declared
+    // themes (or a theme vs the default) doesn't coalesce onto one cache entry.
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("themeProvider" to "com.example.BrandDark"))),
+      ServeOverrides.cacheKey("preview.A", ok(emptyMap())),
+    )
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("themeProvider" to "com.example.BrandDark"))),
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("themeProvider" to "com.example.BrandLight"))),
     )
   }
 

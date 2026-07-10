@@ -209,6 +209,10 @@ open class DesktopHost(
     add("slotMode")
     add("clearBackground")
     add("material3Theme")
+    // `overrides.themeProvider` wraps the preview in an app-declared @ThemeCatalog
+    // `PreviewWrapperProvider` (resolved off the app classpath in `InvokeWithOptionalWrapper`),
+    // replacing the preview's own `@PreviewWrapper` — the discrete-theme axis.
+    add("themeProvider")
     add("wallpaper")
     // Issue #1205 — `renderNow.overrides.focus` is honoured by the planner registered in
     // `data/focus` (`FocusPreviewOverrideExtension`), which installs the around-composable that
@@ -562,9 +566,22 @@ open class DesktopHost(
         }
     val effectiveWidthPx = if (shouldSwap) merged.heightPx else merged.widthPx
     val effectiveHeightPx = if (shouldSwap) merged.widthPx else merged.heightPx
+    // A held-session override that pins an axis (explicit px, or a device that pins both) must
+    // clear
+    // that axis's wrap flag — otherwise a no-size preview forced to a device / explicit canvas
+    // would
+    // still wrap-content inside the override box, unlike the renderNow router path which omits the
+    // wrap token when a size/device is supplied. `mergePreviewOverrides` already replaced the px
+    // with
+    // the override value; here we drop the now-stale wrap intent for the pinned axis.
+    val deviceSupplied = overrides?.device?.takeIf { it.isNotBlank() } != null
+    val wrapWidth = base.wrapWidth && overrides?.widthPx == null && !deviceSupplied
+    val wrapHeight = base.wrapHeight && overrides?.heightPx == null && !deviceSupplied
     return base.copy(
       widthPx = effectiveWidthPx,
       heightPx = effectiveHeightPx,
+      wrapWidth = if (shouldSwap) wrapHeight else wrapWidth,
+      wrapHeight = if (shouldSwap) wrapWidth else wrapHeight,
       density = merged.density,
       device = merged.device,
       localeTag = merged.localeTag,
@@ -578,7 +595,15 @@ open class DesktopHost(
       // Background → Clear toggle sends `PreviewOverrides(clearBackground = true)`. Null preserves
       // the discovery-time value.
       clearBackground = overrides?.clearBackground ?: base.clearBackground,
-      overrides = merged.toExtensionOverrides(),
+      // Carry a `themeProvider` selection through the held/live path: toExtensionOverrides() drops
+      // it
+      // (it's renderer-read, not extension-consumed), but the renderer reads spec.overrides
+      // directly,
+      // so without this a live App-theme change would keep the default wrapper.
+      overrides =
+        merged
+          .toExtensionOverrides()
+          .withThemeProvider(overrides?.themeProvider ?: base.overrides?.themeProvider),
       outputBaseName = "recording-$recordingId",
     )
   }

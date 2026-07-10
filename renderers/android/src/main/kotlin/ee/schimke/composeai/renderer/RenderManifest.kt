@@ -134,6 +134,9 @@ data class AmbientCapture(
   val deviceHasLowBitAmbient: Boolean = false,
 )
 
+/** Renderer-side mirror of the plugin's `GestureHintCapture`. */
+@Serializable data class GestureHintCapture(val showHints: Boolean = true)
+
 /** Renderer-side mirror of the plugin's `LauncherWidgetCaptureResizeOrder`. */
 @Serializable
 enum class LauncherWidgetCaptureResizeOrder {
@@ -231,6 +234,7 @@ data class RenderPreviewCapture(
   val focus: FocusCapture? = null,
   val focusGif: FocusGifCapture? = null,
   val ambient: AmbientCapture? = null,
+  val gestureHint: GestureHintCapture? = null,
   val launcherWidget: LauncherWidgetCapture? = null,
   val renderOutput: String = "",
   /**

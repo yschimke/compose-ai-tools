@@ -115,6 +115,17 @@ class PreviewManifestRouter(
             // per-preview manifest default.
             append("widthPx=").append(inbound["widthPx"] ?: effectiveBaseWidthPx).append(';')
             append("heightPx=").append(inbound["heightPx"] ?: effectiveBaseHeightPx).append(';')
+            // AS-parity wrap-content: a no-size preview crops to its intrinsic size (the widthPx/
+            // heightPx above are then a sandbox bound, not a fixed frame). An inbound explicit
+            // `widthPx`/`heightPx` (or a device-derived size) pins that axis, so wrap is emitted
+            // only
+            // when neither an inbound override nor a device forced a size on it.
+            if (inbound["widthPx"] == null && deviceSpec == null && resolved.wrapWidth) {
+              append("wrapWidth=true;")
+            }
+            if (inbound["heightPx"] == null && deviceSpec == null && resolved.wrapHeight) {
+              append("wrapHeight=true;")
+            }
             append("density=").append(inbound["density"] ?: baseDensity).append(';')
             append("showBackground=").append(resolved.showBackground).append(';')
             if (resolved.backgroundColor != 0L) {
@@ -214,6 +225,8 @@ class PreviewManifestRouter(
           functionName = entry.functionName,
           widthPx = resolved.widthPx,
           heightPx = resolved.heightPx,
+          wrapWidth = resolved.wrapWidth,
+          wrapHeight = resolved.wrapHeight,
           density = resolved.density,
           outputBaseName = resolved.outputBaseName,
           showBackground = resolved.showBackground,
@@ -289,12 +302,23 @@ data class PreviewManifestEntry(
   fun resolved(): ResolvedRenderParams {
     val p = params
     val density = density ?: p?.density ?: 2.0f
-    val widthPx = widthPx ?: p?.widthDp?.let { (it * density).toInt() } ?: 320
-    val heightPx = heightPx ?: p?.heightDp?.let { (it * density).toInt() } ?: 320
-    val showBackground = showBackground ?: p?.showBackground ?: true
-    val backgroundColor = backgroundColor ?: p?.backgroundColor ?: 0L
     val device = device ?: p?.device
     val showSystemUi = showSystemUi ?: p?.showSystemUi ?: false
+    // A preview that declares an explicit size, a device frame, or system UI keeps its fixed frame.
+    // One that declares NONE renders wrap-content (AS-parity): the render crops to the composable's
+    // intrinsic size so the captured layout/semantics tree — and the figma-svg / wireframe derived
+    // from it — reflect the preview's natural size, instead of the historical fixed 320² frame that
+    // clipped wide content and reflowed text (diverging from the standalone renderer's wrap crop).
+    // The sandbox bound (400×800 dp) matches the standalone renderer's DesktopRendererMain default.
+    val explicitWidthPx = widthPx ?: p?.widthDp?.let { (it * density).toInt() }
+    val explicitHeightPx = heightPx ?: p?.heightDp?.let { (it * density).toInt() }
+    val pinned = device != null || showSystemUi
+    val wrapWidth = explicitWidthPx == null && !pinned
+    val wrapHeight = explicitHeightPx == null && !pinned
+    val widthPx = explicitWidthPx ?: (WRAP_SANDBOX_WIDTH_DP * density).toInt()
+    val heightPx = explicitHeightPx ?: (WRAP_SANDBOX_HEIGHT_DP * density).toInt()
+    val showBackground = showBackground ?: p?.showBackground ?: true
+    val backgroundColor = backgroundColor ?: p?.backgroundColor ?: 0L
     val uiMode = uiMode ?: p?.uiMode ?: 0
     val wrapperClassName = p?.wrapperClassName
     return ResolvedRenderParams(
@@ -310,7 +334,19 @@ data class PreviewManifestEntry(
       wrapperClassName = wrapperClassName,
       kind = p?.kind,
       assetPath = p?.assetPath,
+      wrapWidth = wrapWidth,
+      wrapHeight = wrapHeight,
     )
+  }
+
+  companion object {
+    /**
+     * Sandbox bound (dp) for a no-size preview's wrap-content render — matches the standalone
+     * renderer's `BundleRenderer` default (400×800 dp). The render crops to the composable's
+     * intrinsic size within this bound; `fillMax*` / LazyColumn measure against it.
+     */
+    const val WRAP_SANDBOX_WIDTH_DP: Int = 400
+    const val WRAP_SANDBOX_HEIGHT_DP: Int = 800
   }
 }
 
@@ -371,4 +407,12 @@ data class ResolvedRenderParams(
   val wrapperClassName: String? = null,
   val kind: String? = null,
   val assetPath: String? = null,
+  /**
+   * AS-parity wrap-content flags (see [RenderSpec.wrapWidth]). Set when the preview declares no
+   * explicit size/device/system-ui, so [widthPx]/[heightPx] are a sandbox bound and the render
+   * crops to the composable's intrinsic size — matching the standalone renderer and keeping the
+   * captured tree (figma-svg / wireframe / semantics) at the preview's natural size.
+   */
+  val wrapWidth: Boolean = false,
+  val wrapHeight: Boolean = false,
 )

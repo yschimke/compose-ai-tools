@@ -1,5 +1,7 @@
 package ee.schimke.composeai.data.layoutinspector
 
+import kotlin.math.roundToInt
+
 /**
  * Bakes a [FigmaSvgModel] into a **layered, editable SVG** designed to round-trip cleanly through
  * Figma's SVG import (and Sketch / Penpot / Illustrator).
@@ -54,12 +56,21 @@ object FigmaLayeredSvg {
   ): String {
     val sb = StringBuilder()
     val rootFamily = if (fontFaces.isNotEmpty()) options.defaultFontFamily else "sans-serif"
+    // `text-rendering="geometricPrecision"` turns off the browser's glyph grid-fitting/hinting so
+    // every `<text>` rasterises at its exact subpixel metrics — matching how the Skiko render (and
+    // Figma itself) place glyphs, instead of the default `auto` hinting that snaps edges to pixel
+    // boundaries and leaves a constant ~2-3% edge diff against the render on text-heavy previews.
     sb.append(
       """<svg xmlns="http://www.w3.org/2000/svg" width="${model.width}" height="${model.height}" """ +
-        """viewBox="0 0 ${model.width} ${model.height}" font-family="${escapeAttr(rootFamily)}">"""
+        """viewBox="0 0 ${model.width} ${model.height}" text-rendering="geometricPrecision" """ +
+        """font-family="${escapeAttr(rootFamily)}">"""
     )
     sb.append('\n')
     if (fontFaces.isNotEmpty()) sb.append(fontFaceDefs(fontFaces))
+    // Emit one reusable `feDropShadow` filter per distinct elevation so an elevated surface casts
+    // its Material drop shadow instead of reading as a flat fill.
+    val elevations = collectElevations(model.root)
+    if (elevations.isNotEmpty()) sb.append(shadowFilterDefs(elevations))
     // Everything is drawn in root-pixel space; a single group translate drops the tree into the
     // padded canvas, keeping child coordinates absolute (matching Figma's absolute layout on
     // import).
@@ -91,13 +102,25 @@ object FigmaLayeredSvg {
     val dataToken =
       if (options.annotateTokens && tokenName != null) """ data-token="${escapeAttr(tokenName)}""""
       else ""
-    sb.append("""$indent<g id="${escapeAttr(layer.name)}"$dataToken>""")
+    // An elevated surface casts its Material drop shadow via a `feDropShadow` filter on its group,
+    // so the shadow falls behind the whole silhouette (fill + children) exactly as the render draws
+    // it. Keyed by rounded px so layers at the same elevation share one filter def.
+    val filterAttr =
+      if (layer.elevationPx >= 1.0) """ filter="url(#${shadowFilterId(layer.elevationPx)})""""
+      else ""
+    sb.append("""$indent<g id="${escapeAttr(layer.name)}"$dataToken$filterAttr>""")
     sb.append('\n')
     if (options.annotateTokens && tokenName != null) {
       sb.append("""$indent  <title>${escape(layer.name)} · ${escape(tokenName)}</title>""")
       sb.append('\n')
     }
 
+    // A captured Canvas-draw background (`Modifier.drawBehind {…}`) paints first, beneath the
+    // layer's own shape/text and its children — matching draw order, so the editable vector layers
+    // sit on top of the rasterised background.
+    layer.background?.let { bg ->
+      sb.append(indent).append("  ").append(backgroundImage(bg)).append('\n')
+    }
     if (layer.fill != null || layer.stroke != null) {
       sb.append(indent).append("  ").append(shape(layer)).append('\n')
     }
@@ -108,11 +131,72 @@ object FigmaLayeredSvg {
     sb.append("$indent</g>\n")
   }
 
+  /** Distinct rounded-px elevations in the tree, so one `feDropShadow` def is shared per level. */
+  private fun collectElevations(
+    layer: FigmaSvgLayer,
+    acc: MutableSet<Int> = mutableSetOf(),
+  ): Set<Int> {
+    if (layer.elevationPx >= 1.0) acc.add(layer.elevationPx.roundToInt())
+    for (child in layer.children) collectElevations(child, acc)
+    return acc
+  }
+
+  private fun shadowFilterId(elevationPx: Double): String = "shadow-${elevationPx.roundToInt()}"
+
+  /**
+   * A `feDropShadow` per elevation level, approximating Material's key shadow: the blur and
+   * vertical offset scale with elevation, at a soft opacity. The filter region is expanded so a
+   * large blur isn't clipped at the layer's bounds.
+   */
+  private fun shadowFilterDefs(elevations: Set<Int>): String {
+    val sb = StringBuilder("<defs>\n")
+    for (e in elevations.sorted()) {
+      val dy = fmt(e * 0.5)
+      val blur = fmt(e * 0.6)
+      sb.append(
+        """  <filter id="${shadowFilterId(e.toDouble())}" x="-50%" y="-50%" width="200%" height="200%">"""
+      )
+      sb.append('\n')
+      sb.append(
+        """    <feDropShadow dx="0" dy="$dy" stdDeviation="$blur" flood-color="#000000" flood-opacity="0.26"/>"""
+      )
+      sb.append('\n')
+      sb.append("  </filter>\n")
+    }
+    sb.append("</defs>\n")
+    return sb.toString()
+  }
+
   private fun image(layer: FigmaSvgLayer, raster: FigmaSvgRaster): String =
     """<image href="${escapeAttr(raster.href)}" x="${layer.left}" y="${layer.top}" """ +
       """width="${layer.width}" height="${layer.height}"/>"""
 
-  private fun shape(layer: FigmaSvgLayer): String {
+  private fun backgroundImage(bg: FigmaSvgBackgroundRaster): String =
+    """<image href="${escapeAttr(bg.href)}" x="${bg.left}" y="${bg.top}" """ +
+      """width="${bg.width}" height="${bg.height}"/>"""
+
+  private fun shape(layer0: FigmaSvgLayer): String {
+    // Compose's `Modifier.border` draws the stroke *inside* the layout bounds; SVG centers a stroke
+    // on the path, so a bare rect at the bounds paints half the stroke outside the edge (the
+    // "double
+    // outline" an OutlinedButton/OutlinedCard shows against its render). Inset the drawn box by
+    // half
+    // the stroke width so the centered stroke's outer edge lands on the bound, matching the render.
+    // Only when stroked — a fill-only shape keeps its exact bounds; corner radii shrink by the same
+    // inset so a pill stays a pill.
+    val layer =
+      if (layer0.stroke != null) {
+        val d = (layer0.strokeWidthPx / 2.0).roundToInt()
+        layer0.copy(
+          left = layer0.left + d,
+          top = layer0.top + d,
+          right = layer0.right - d,
+          bottom = layer0.bottom - d,
+          cornerRadiiPx = layer0.cornerRadiiPx?.map { (it - d).coerceAtLeast(0.0) },
+        )
+      } else {
+        layer0
+      }
     val fillAttr =
       layer.fill?.let { """fill="${it.hex}"${opacity("fill", it)}""" } ?: """fill="none""""
     val strokeAttr =
@@ -203,6 +287,12 @@ object FigmaLayeredSvg {
     val style = if (t.italic) """ font-style="italic"""" else ""
     val fill =
       t.color?.let { """ fill="${it.hex}"${opacity("fill", it)}""" } ?: """ fill="#000000""""
+    // Emit the captured tracking as SVG `letter-spacing` so the run's glyph advances match the
+    // render; without it a browser uses the font's natural advances and a tracked line drifts.
+    val letterSpacing =
+      t.letterSpacingPx
+        ?.takeIf { kotlin.math.abs(it) >= 0.01 }
+        ?.let { """ letter-spacing="${fmt(it)}"""" } ?: ""
     val lines = t.lines
     if (lines != null && lines.size > 1) {
       // Wrapped text: one positioned <tspan> per line at the exact place the render wrapped it,
@@ -213,9 +303,9 @@ object FigmaLayeredSvg {
         lines.joinToString("") {
           """<tspan x="${layer.left + it.left}" y="${layer.top + it.baseline}">${escape(it.content)}</tspan>"""
         }
-      return """<text font-size="${fmt(size)}"$family$weight$style$fill>$tspans</text>"""
+      return """<text font-size="${fmt(size)}"$family$weight$style$letterSpacing$fill>$tspans</text>"""
     }
-    return """<text x="${layer.left}" y="${fmt(baseline)}" font-size="${fmt(size)}"$family$weight$style$fill>""" +
+    return """<text x="${layer.left}" y="${fmt(baseline)}" font-size="${fmt(size)}"$family$weight$style$letterSpacing$fill>""" +
       "${escape(t.content)}</text>"
   }
 
@@ -314,7 +404,56 @@ object FigmaLayeredSvg {
       return it
     }
     if (generic in CSS_GENERICS) return null
-    return svgFontFamily(captured)
+    return embeddableFamily(captured)
+  }
+
+  /**
+   * Style tokens carried separately by the face's `weight`/`italic`, so dropped from a file-derived
+   * family name when deriving its embeddable *family*.
+   */
+  private val STYLE_TOKENS =
+    setOf(
+      "thin",
+      "extralight",
+      "ultralight",
+      "light",
+      "regular",
+      "normal",
+      "book",
+      "roman",
+      "medium",
+      "semibold",
+      "demibold",
+      "bold",
+      "extrabold",
+      "ultrabold",
+      "black",
+      "heavy",
+      "italic",
+      "oblique",
+    )
+
+  /**
+   * Normalise a concrete, file-derived face identity — `NotoSerif-Regular`, `DroidSansMono`,
+   * `Roboto-Medium` — to a Google-Fonts *family* name (`Noto Serif`, `Droid Sans Mono`, `Roboto`)
+   * the embedding resolver can actually fetch. A `FontListFontFamily` reports its resolved face by
+   * file stem, which carries a `-Style` suffix and runs the family words together in CamelCase; the
+   * resolver keys on the spaced family with weight/italic supplied separately, so split on
+   * hyphen/underscore/space *and* CamelCase boundaries and drop a trailing style token. Pure string
+   * work: a name Google has no family for just fails the fetch and the text keeps its vector-only
+   * fallback (no worse than before), while the common bundled faces (Roboto/Noto/Droid/…) resolve.
+   */
+  private fun embeddableFamily(identity: String): String {
+    val leaf = svgFontFamily(identity)
+    val words =
+      leaf
+        .replace(Regex("([a-z0-9])([A-Z])"), "$1 $2")
+        .split('-', '_', ' ')
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+    val kept =
+      if (words.size > 1 && words.last().lowercase() in STYLE_TOKENS) words.dropLast(1) else words
+    return kept.joinToString(" ").ifBlank { leaf }
   }
 
   /** `<defs><style>` with one `@font-face` per embedded face, its bytes as a base64 data URI. */

@@ -8,11 +8,11 @@ import ee.schimke.composeai.daemon.protocol.LauncherWidgetOverride
 import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PermissionsOverride
-import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
 import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.daemon.protocol.WallpaperOverride
+import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 
 /**
  * Backend-neutral subset of a render spec that [PreviewOverrides] can mutate.
@@ -113,6 +113,19 @@ data class MergedPreviewOverrides(
     )
   }
 }
+
+/**
+ * Fold a `themeProvider` FQN back onto an (optionally null) held-session overrides bag. The held /
+ * recording spec's `overrides` is [MergedPreviewOverrides.toExtensionOverrides] — the
+ * extension-only projection, which intentionally omits `themeProvider` (a renderer-read field, not
+ * an extension-consumed one). But the renderer reads `spec.overrides.themeProvider` directly, so a
+ * live `stream/start` / `setOverrides` carrying a theme selection would otherwise drop it and keep
+ * the default wrapper. Both hosts' `applyOverrides` call this to carry the selection through,
+ * mirroring how `clearBackground` is carried onto the held spec. A blank / null FQN is a no-op.
+ */
+fun PreviewOverrides?.withThemeProvider(themeProvider: String?): PreviewOverrides? =
+  if (themeProvider.isNullOrBlank()) this
+  else (this ?: PreviewOverrides()).copy(themeProvider = themeProvider)
 
 /**
  * Hard-coded duplicate of `Pseudolocale.fromTag(...) != null`. Inlined here so `:daemon:core` (the

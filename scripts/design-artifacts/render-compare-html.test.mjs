@@ -58,6 +58,15 @@ test("the in-page SSIM scorer is embedded", () => {
   assert.match(html, /querySelectorAll\("tr\[data-png\]\[data-svg\]"\)/);
 });
 
+test("images load with crossOrigin so the canvas isn't tainted on htmlpreview", () => {
+  // htmlpreview serves the page from htmlpreview.github.io but the PNGs from raw.githubusercontent
+  // (cross-origin); without a CORS request the canvas taints and no row scores. Pin the fix.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /img\.crossOrigin = "anonymous"/);
+  // …but not for the same-origin blob: / data: URLs the hybrid inline path builds.
+  assert.match(html, /\/\^\(data\|blob\):\/i\.test\(src\)/);
+});
+
 test("the scorer aligns the SVG's export padding out before scoring (translate crop)", () => {
   // The export pads the canvas + wraps the tree in translate(tx,ty); the scorer must crop
   // that back to the PNG's padding-free space (mirroring FigmaSvgFidelity.alignToRender),
