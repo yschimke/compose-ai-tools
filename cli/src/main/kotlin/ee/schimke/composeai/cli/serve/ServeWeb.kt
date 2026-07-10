@@ -1487,8 +1487,7 @@ object ServeWeb {
       is ee.schimke.composeai.data.overrides.PreviewOverrideValue.StringValue -> v.value
       is ee.schimke.composeai.data.overrides.PreviewOverrideValue.IntValue -> v.value.toString()
       is ee.schimke.composeai.data.overrides.PreviewOverrideValue.FloatValue -> v.value.toString()
-      is ee.schimke.composeai.data.overrides.PreviewOverrideValue.BooleanValue ->
-        v.value.toString()
+      is ee.schimke.composeai.data.overrides.PreviewOverrideValue.BooleanValue -> v.value.toString()
       is ee.schimke.composeai.data.overrides.PreviewOverrideValue.ColorValue -> v.argb
     }
 

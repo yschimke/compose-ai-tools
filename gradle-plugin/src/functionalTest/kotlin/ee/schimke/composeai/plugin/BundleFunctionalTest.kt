@@ -186,16 +186,17 @@ class BundleFunctionalTest {
   }
 
   /**
-   * Size budget for a **single-preview** bundle. Per-preview addressing only pays off if fetching one
-   * preview doesn't drag the module's whole world along — so a lone-preview `.png` must stay small.
+   * Size budget for a **single-preview** bundle. Per-preview addressing only pays off if fetching
+   * one preview doesn't drag the module's whole world along — so a lone-preview `.png` must stay
+   * small.
    *
    * 500 KB is the ceiling. A coordinate-mode single preview (third-party deps referenced by Maven
    * coordinate, not embedded) is well under it — tens of KB: a minimized `classes/app.jar`, one
    * rendered PNG, and the JSON sidecars. The guard bites the moment a change starts shipping the
    * dependency graph *inside* every bundle: flipping `embedDeps` on so `libs/` carries the Compose
    * jars, or inlining a project dependency whole without minimizing it (a `:daemon:core`-shaped jar
-   * is ~1.7 MB on its own, of which a preview typically reaches a few dozen classes). Either turns a
-   * ~50 KB bundle into a multi-megabyte one, and at N previews that is the difference between
+   * is ~1.7 MB on its own, of which a preview typically reaches a few dozen classes). Either turns
+   * a ~50 KB bundle into a multi-megabyte one, and at N previews that is the difference between
    * shipping kilobytes and shipping gigabytes.
    *
    * NB: this fixture has no project dependencies, so it exercises the coordinate path. The inlined-
