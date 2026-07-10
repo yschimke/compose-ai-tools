@@ -60,6 +60,7 @@ class BundleCommand(args: List<String>) : Command(args) {
       if (subIndex >= 0) args.toMutableList().apply { removeAt(subIndex) } else emptyList()
     when (sub) {
       "pack" -> PackSubcommand(subArgs).run()
+      "split" -> SplitSubcommand(subArgs).run()
       "inspect" -> InspectSubcommand(subArgs).run()
       "extract" -> ExtractSubcommand(subArgs).run()
       "embed" -> EmbedSubcommand(subArgs).run()
@@ -94,6 +95,7 @@ class BundleCommand(args: List<String>) : Command(args) {
       Usage:
         compose-preview bundle pack [--module <name>] [--id <preview>...] [-o <file.png>] [--no-render] [--with-semantics]
         compose-preview bundle pack --per-preview [--module <name>] [--id <preview>...] [-o <dir>]
+        compose-preview bundle split   <sheet.png | URL> -o <dir> [--view-only]
         compose-preview bundle inspect <bundle.png | URL>
         compose-preview bundle extract <bundle.png | URL> [-o <dir>]
         compose-preview bundle embed   <bundle.png | URL> [-o <dir|file.png>] [--title T] [--external-images] [--in-bundle]
@@ -141,6 +143,17 @@ class BundleCommand(args: List<String>) : Command(args) {
                             previews/<id>.figma.svg, shipped per sticker beside the raster PNG.
                             Produced by a short-lived daemon render (no separate --with-extension
                             pass needed). Off by default; ignored with --no-render.
+
+      Split flags (sheet → one bundle per preview):
+        -o, --output <dir>  Directory to write <id>.png bundles into. Default: <sheet>-split/.
+        --view-only         Drop the re-render classpath (classes/app.jar + libs/) from each output,
+                            keeping the baked image + every sidecar (semantics / layout / figma.svg /
+                            overrides / catalog / fonts). Produces small (~tens of KB) addressable
+                            stickers a viewer / detached reader opens, at the cost of live re-render.
+                            Without it, each bundle carries the shared classpath and can re-render
+                            (larger — the shared jars repeat per preview). A sheet packed
+                            --with-semantics yields per-preview bundles that carry their semantics,
+                            with no daemon or re-render.
 
       Inspect / extract / render flags:
         -o, --output <dir>  Directory to extract / render into. Default: alongside the bundle.
