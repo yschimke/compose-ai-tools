@@ -7,12 +7,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Covers the hybrid **Canvas-draw background** path: a node that paints via an imperative
+ * Covers the hybrid **Canvas-draw background** path: a *leaf* node that paints via an imperative
  * `drawBehind` / `drawWithContent` modifier (the `LinearProgressIndicator` track, the `Slider`
- * groove, a custom-drawn background — chrome the token-driven vector export can't see) carries the
- * drawn region as a `background` `<image>` cropped to that region, drawn *beneath* the node's own
- * shape/text and its children. Only in hybrid mode (`captureCanvasDraws`, where a frame PNG exists
- * to crop those pixels from), and the node's editable text/child layers are preserved on top.
+ * groove) carries the drawn region as a `background` `<image>` cropped to that region, drawn
+ * *beneath* the node's own shape/text. Only in hybrid mode (`captureCanvasDraws`, where a frame PNG
+ * exists to crop those pixels from). A drawn *container* (with children/text) stays fully vector:
+ * its background would be cropped from the composited frame — baking in the descendants' pixels —
+ * so re-drawing the editable children over it would double-render them.
  */
 class FigmaSvgModelCanvasDrawTest {
 
@@ -38,7 +39,7 @@ class FigmaSvgModelCanvasDrawTest {
     )
 
   @Test
-  fun canvasDrawNodeCarriesABackgroundCroppedToTheDrawnRegion() {
+  fun leafCanvasDrawNodeCarriesABackgroundCroppedToTheDrawnRegion() {
     val m = model(canvasNode(), captureCanvasDraws = true)
     assertEquals("one raster target for the drawn bar", 1, m.rasterTargets.size)
     val target = m.rasterTargets.single()
@@ -58,6 +59,16 @@ class FigmaSvgModelCanvasDrawTest {
   }
 
   @Test
+  fun aBackgroundOnlyLeafStillCountsAsPaintingSoItContributesExtent() {
+    // A draw-only Spacer paints nothing but its background raster; `paints` must see the background
+    // or the layer contributes no extent and the export falls back to the 32×32 padding canvas.
+    val m = model(canvasNode(), captureCanvasDraws = true)
+    assertTrue("a background-only layer paints", m.root.paints)
+    // The export sizes to the node (a superset of the drawn region) + padding, not the 32×32 stub.
+    assertTrue("extent reflects the drawn node, not the padding stub", m.width > 40)
+  }
+
+  @Test
   fun vectorOnlyModeLeavesTheCanvasNodeWithoutABackground() {
     val m = model(canvasNode(), captureCanvasDraws = false)
     assertTrue("no raster targets in vector-only mode", m.rasterTargets.isEmpty())
@@ -66,10 +77,12 @@ class FigmaSvgModelCanvasDrawTest {
   }
 
   @Test
-  fun aDrawnContainerKeepsItsChildrenAsVectorLayersOverTheBackground() {
-    // A `Box(Modifier.drawBehind {…}) { child }` draws a background AND has a child: the background
-    // rides on the container's `background` <image> while the child stays an editable vector layer
-    // on top — the whole subtree is not collapsed into a bitmap.
+  fun aDrawnContainerStaysVectorSoItsChildrenAreNotDoubleRendered() {
+    // A `Box(Modifier.drawBehind {…}) { child }` draws a background AND has a child. Its background
+    // would be cropped from the composited frame (already containing the child's pixels), so
+    // capturing it and re-drawing the editable child on top would double-render the child. The
+    // container therefore stays fully vector — no background — and keeps its child as a vector
+    // layer.
     val container =
       LayoutInspectorNode(
         nodeId = "box-1",
@@ -89,10 +102,10 @@ class FigmaSvgModelCanvasDrawTest {
           ),
       )
     val m = model(container, captureCanvasDraws = true)
+    assertTrue("a drawn container is not rasterised", m.rasterTargets.isEmpty())
+    assertNull("no background on a drawn container", m.root.background)
     assertNull("the container is not an opaque-leaf <image>", m.root.raster)
-    assertNotNull("the drawn background rides on the container", m.root.background)
     assertEquals("its child is preserved as a vector layer", 1, m.root.children.size)
     assertNull(m.root.children.single().raster)
-    assertNull(m.root.children.single().background)
   }
 }

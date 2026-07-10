@@ -178,7 +178,7 @@ data class FigmaSvgLayer(
 
   /** True when the layer draws pixels itself (vs. a pure grouping container). */
   val paints: Boolean
-    get() = fill != null || stroke != null || text != null || raster != null
+    get() = fill != null || stroke != null || text != null || raster != null || background != null
 }
 
 /**
@@ -331,16 +331,26 @@ data class FigmaSvgModel(
           raster = FigmaSvgRaster(href),
         )
       }
-      // A node that paints via an imperative Canvas draw (`drawBehind`/`drawWithContent`) — the
-      // progress track, the slider groove, a custom-drawn background — carries pixels the token
-      // export can't represent. In hybrid mode (a frame PNG exists to crop from) attach that drawn
-      // region as a `background` <image> *beneath* the node's own vector shape/text/children,
-      // instead of replacing the subtree with a bitmap. So a drawn container
-      // (`Box(Modifier.drawBehind {…}) { Text(…) }`) keeps its editable text/child layers on top of
-      // its captured background; a bare `Spacer` (no shape/text/children) becomes a group holding
-      // just that background.
+      // A *leaf* node that paints via an imperative Canvas draw (`drawBehind`/`drawWithContent`) —
+      // the progress track, the slider groove — carries pixels the token export can't represent. In
+      // hybrid mode (a frame PNG exists to crop from) attach that drawn region as a `background`
+      // <image> beneath the node's own vector shape/text, so a bare `Spacer` becomes a group
+      // holding
+      // just that background. Restricted to leaf draw nodes (no children, no text): the background
+      // is
+      // cropped from the *composited* frame, so on a container (`Box(Modifier.drawBehind {…}) {
+      // Text(…) }`) the crop would bake in the descendants' pixels — and re-drawing the editable
+      // children over it double-renders them. Cropping a container's background-only pass needs an
+      // isolated render, which the frame crop can't provide, so a drawn container stays fully
+      // vector
+      // (its children/text are preserved as editable layers) rather than double-render.
       val background =
-        if (ctx.captureCanvasDraws && hasCustomDraw()) {
+        if (
+          ctx.captureCanvasDraws &&
+            hasCustomDraw() &&
+            children.isEmpty() &&
+            ctx.textByNodeId[nodeId] == null
+        ) {
           val href = ctx.rasterHref(nodeId)
           val region = drawnRegion()
           ctx.rasterTargets.add(
