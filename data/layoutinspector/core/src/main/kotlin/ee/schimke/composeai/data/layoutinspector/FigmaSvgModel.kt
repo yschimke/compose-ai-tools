@@ -434,8 +434,36 @@ data class FigmaSvgModel(
         (fill != null || stroke != null) &&
           ctx.textByNodeId[nodeId] == null &&
           (drawW > boundsW || drawH > boundsH)
-      val drawLeft = if (expand) (bounds.left + bounds.right - drawW) / 2 else bounds.left
-      val drawTop = if (expand) (bounds.top + bounds.bottom - drawH) / 2 else bounds.top
+      // Center the grown shape on the placed bounds, then pull the whole rectangle back inside the
+      // parent's placed bounds. Clamping only the grown *width/height* (above) isn't enough to keep
+      // the promise that a child never paints beyond its parent: a fill whose bounds sit off-center
+      // in its parent gets centered on its own bounds and would slide past the parent edge (parent
+      // 0..100, child 0..40, grown width 100 → centered at -30..70). Clamp the top-left into
+      // `[parent.left, parent.right - drawW]` so the rectangle stays within the parent whenever it
+      // fits (and pins to the parent origin in the degenerate case where the grown shape is wider
+      // than the parent). No parent (a root node) leaves the centered placement untouched.
+      val drawLeft =
+        if (!expand) bounds.left
+        else {
+          val centered = (bounds.left + bounds.right - drawW) / 2
+          if (parentBounds != null)
+            centered.coerceIn(
+              parentBounds.left,
+              maxOf(parentBounds.left, parentBounds.right - drawW),
+            )
+          else centered
+        }
+      val drawTop =
+        if (!expand) bounds.top
+        else {
+          val centered = (bounds.top + bounds.bottom - drawH) / 2
+          if (parentBounds != null)
+            centered.coerceIn(
+              parentBounds.top,
+              maxOf(parentBounds.top, parentBounds.bottom - drawH),
+            )
+          else centered
+        }
       val drawRight = if (expand) drawLeft + drawW else bounds.right
       val drawBottom = if (expand) drawTop + drawH else bounds.bottom
       return FigmaSvgLayer(

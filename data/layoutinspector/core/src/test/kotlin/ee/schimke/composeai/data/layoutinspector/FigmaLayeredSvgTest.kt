@@ -291,6 +291,36 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun anOffCenterGrownFillIsClampedInsideTheParentNotCenteredOutOfIt() {
+    // The grown width is clamped to the parent, but the shape is centered on its own bounds — so a
+    // fill whose bounds sit off-center in its parent must still not slide past the parent edge.
+    // Parent x 0..100; child bounds x 0..40 (hard against the left), measured size 100 wide → grown
+    // to width 100, which centered on the child (centre x=20) would be x=-30..70. It must instead
+    // be
+    // clamped to x=0..100, flush inside the parent.
+    val fill =
+      LayoutInspectorNode(
+        nodeId = "fill",
+        component = "RowMeasurePolicy",
+        bounds = bounds(0, 40, 40, 120),
+        size = LayoutInspectorSize(100, 80),
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF332E3C"),
+      )
+    val box =
+      LayoutInspectorNode(
+        nodeId = "box",
+        component = "BoxMeasurePolicy",
+        bounds = bounds(0, 40, 100, 120),
+        size = LayoutInspectorSize(100, 80),
+        children = listOf(fill),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(box)))
+    // Grown to the parent width, pinned to the parent's left edge — never x="-30".
+    assertTrue(svg, svg.contains("""x="0"""") && svg.contains("""width="100""""))
+    assertFalse("must not be shifted left of the parent", svg.contains("""x="-"""))
+  }
+
+  @Test
   fun aTouchTargetInflatedFillDoesNotGrowToItsMeasuredSize() {
     // Every M3 `Button`/`IconButton` fills via a `BackgroundElement` on a node that also carries
     // `Modifier.minimumInteractiveComponentSize()`. That modifier inflates the measured `size` up
