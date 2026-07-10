@@ -15,12 +15,16 @@ on:
       cli_version:
         description: Released compose-preview version to bundle (leading v optional)
         required: true
-        # Keep this CURRENT: a manual run that accepts the UI default publishes
-        # `:latest`, so a stale default ships a stale server. Must be >= the release
-        # carrying the entrypoint-defaulted flags (`--catalogs-unlisted`, 0.16.9) AND
-        # the catalog knob-override render path (#2287) — else a published catalog's
-        # `knob.*` render params are silently dropped.
-        default: "0.16.33" # x-release-please-version
+        # No default, ON PURPOSE: a manual dispatch must name the version to
+        # publish. A hardcoded default would rot — release-please can't bump it
+        # because GITHUB_TOKEN may not write files under .github/workflows/,
+        # which is exactly why this file is intentionally NOT a release-please
+        # extra-file (listing it there made release-please fail every release
+        # with "Error adding to tree"; do not re-add it). A run that accepted a
+        # stale default would overwrite the GHCR `:latest` tag with an OLDER
+        # server. Whatever you pass must be >= the release carrying the
+        # entrypoint-defaulted flags (`--catalogs-unlisted`, 0.16.9) AND the
+        # catalog knob-override render path (#2287).
   # Called from release-please.yml when a CLI release is cut. A bot-created
   # release won't fire the `release` trigger below (the GITHUB_TOKEN-doesn't-
   # trigger-workflows limitation the rest of the release chain already works
