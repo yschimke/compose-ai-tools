@@ -399,7 +399,16 @@ class RenderEngine(
                       }
                     }
                   } else {
-                    InvokeWithOptionalWrapper(composableMethod!!, spec.wrapperClassName)
+                    InvokeWithOptionalWrapper(
+                      composableMethod!!,
+                      // A `themeProvider` override (an app-declared @ThemeCatalog
+                      // `PreviewWrapperProvider` FQN) replaces the preview's own `@PreviewWrapper`
+                      // —
+                      // "render this preview under theme X". Blank / unresolvable falls back to the
+                      // declared wrapper.
+                      spec.overrides?.themeProvider?.takeIf { it.isNotBlank() }
+                        ?: spec.wrapperClassName,
+                    )
                   }
                 }
               }

@@ -549,6 +549,25 @@ fun WallpaperAwareSquare() {
 }
 
 /**
+ * A `PreviewWrapperProvider`-shaped stand-in for an app's `@ThemeCatalog` theme — its `Wrap`
+ * installs a `MaterialTheme` with a distinctive blue `primary`. Used by
+ * [OverrideIntegrationTest.themeProviderOverrideWrapsPreviewInDeclaredTheme] to prove that a
+ * `renderNow.overrides.themeProvider = <this FQN>` renders an arbitrary preview (e.g.
+ * [WallpaperAwareSquare], which paints the ambient `colorScheme.primary`) under this theme instead
+ * of the M3 default. The renderer resolves it by FQN and invokes `Wrap` reflectively
+ * (`getDeclaredComposableMethod("Wrap", …)`, the same path `@PreviewWrapper` uses), so a no-arg
+ * class exposing a `@Composable Wrap(content)` is all it needs — it does not have to implement the
+ * `PreviewWrapperProvider` interface (which is Compose 1.11+ and absent from this CMP classpath),
+ * and `@ThemeCatalog` only adds *discovery*, not the apply path exercised here.
+ */
+@Suppress("unused") // instantiated reflectively by the daemon's InvokeWithOptionalWrapper
+class BluePrimaryThemeProvider {
+  @Composable
+  fun Wrap(content: @Composable () -> Unit) =
+    MaterialTheme(colorScheme = lightColorScheme(primary = Color(0xFF1565C0))) { content() }
+}
+
+/**
  * Issue #1203 — fixture for the desktop keyboard-dispatch integration tests.
  *
  * Paints red on first composition; flips green when the `Key.A` key down event reaches the

@@ -142,6 +142,7 @@ a:hover { text-decoration: underline; }
               <option value="dark">Dark</option>
             </select>
           </label>
+          
           <label>Device
             <select id="cp-device" disabled>
               <option value="">(default)</option>
@@ -281,6 +282,10 @@ a:hover { text-decoration: underline; }
       if (el.disabled) return;
       o[el.id.replace(/^cp-/, "")] = el.checked ? "true" : "false";
     });
+    // App-declared theme (themeProvider = provider FQN). Only when a theme is picked and the
+    // control is live; "(default)" (empty) leaves the daemon on the preview's own wrapper.
+    var tp = document.getElementById("cp-themeProvider");
+    if (tp && !tp.disabled && tp.value) o["themeProvider"] = tp.value;
     return o;
   }
   function query() {
@@ -304,6 +309,13 @@ a:hover { text-decoration: underline; }
       if (val === (el.getAttribute("data-knob-initial") || "")) return;
       parts.push("knob." + encodeURIComponent(key) + "=" + encodeURIComponent(val));
     });
+    // App-declared theme (themeProvider = provider FQN). Routes to the daemon like a knob; a
+    // published catalog re-renders on demand. Omitted at "(default)" so the URL stays on the
+    // instant baked snapshot until a theme is actually chosen.
+    var tp = document.getElementById("cp-themeProvider");
+    if (tp && !tp.disabled && tp.value) {
+      parts.push("themeProvider=" + encodeURIComponent(tp.value));
+    }
     return parts.join("&");
   }
   function refreshSnapshot() {
@@ -787,6 +799,11 @@ a:hover { text-decoration: underline; }
   document.querySelectorAll(".cp-knob").forEach(function (el) {
     el.addEventListener(el.type === "checkbox" ? "change" : "input", onKnobChanged);
   });
+  // The app-theme selector routes through the daemon like a knob (never the wasm auto-enable
+  // path — an app-declared theme provider is a server-side wrapper the in-browser tier can't
+  // load), so it shares onKnobChanged rather than onControlsChanged.
+  var themeSel = document.getElementById("cp-themeProvider");
+  if (themeSel) themeSel.addEventListener("change", onKnobChanged);
   refreshSnapshot();
 })();</script>
       <script>(function () {

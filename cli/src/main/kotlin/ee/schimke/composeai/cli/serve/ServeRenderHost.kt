@@ -60,6 +60,37 @@ data class ServePreview(
   val overrides: List<ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration> = emptyList(),
 )
 
+/**
+ * One app-declared `@ThemeCatalog` theme this session can render an arbitrary preview under — the
+ * discrete-theme counterpart of the built-in light/dark axis. Discovered as a module-global set (a
+ * theme applies to every preview, not one), so it hangs off [ServeHost.declaredThemes] rather than
+ * [ServePreview]. [providerFqn] is the `PreviewWrapperProvider` FQN sent verbatim as the
+ * `themeProvider` override; [name] is the human label; [group] buckets related themes (a brand).
+ */
+data class ServeTheme(val name: String, val providerFqn: String, val group: String? = null)
+
+/**
+ * Extract the module's declared `@ThemeCatalog` themes from a discovery manifest's preview list.
+ * Discovery materializes each annotated `PreviewWrapperProvider` as a synthetic `THEME_CATALOG`
+ * preview carrying the provider FQN on `params.wrapperClassName` plus its `name` / `group`; this
+ * lifts those into [ServeTheme]s (the module-global theme options) without disturbing the ordinary
+ * preview cards. Entries missing a provider FQN are skipped (nothing to apply). Deduped by FQN.
+ */
+fun declaredThemesFromPreviews(
+  previews: List<ee.schimke.composeai.cli.PreviewInfo>
+): List<ServeTheme> =
+  previews
+    .filter { it.params.kind == "THEME_CATALOG" }
+    .mapNotNull { p ->
+      val fqn = p.params.wrapperClassName?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+      ServeTheme(
+        name = p.params.name?.takeIf { it.isNotBlank() } ?: p.functionName.ifBlank { p.id },
+        providerFqn = fqn,
+        group = p.params.group?.takeIf { it.isNotBlank() },
+      )
+    }
+    .distinctBy { it.providerFqn }
+
 /** Result of a snapshot render request. */
 sealed interface RenderOutcome {
   data class Ok(val png: ByteArray) : RenderOutcome
@@ -121,6 +152,8 @@ internal constructor(
   override val previews: List<ServePreview>,
   /** Human label for this tenant (e.g. the module's Gradle path); shown in the served pages. */
   override val label: String = "",
+  /** App-declared `@ThemeCatalog` themes discovered for this module (module-global). */
+  override val declaredThemes: List<ServeTheme> = emptyList(),
   private val fileSystem: FileSystem = SystemFileSystem,
   private val onLog: (String) -> Unit = {},
   private val renderTimeoutSeconds: Long = RENDER_TIMEOUT_SECONDS,
@@ -603,6 +636,7 @@ internal constructor(
       workspaceName: String,
       previews: List<ServePreview>,
       label: String = "",
+      declaredThemes: List<ServeTheme> = emptyList(),
       onLog: (String) -> Unit = {},
       factory: RenderSessionFactory = SubprocessRenderSessions,
     ): ServeRenderHost {
@@ -615,7 +649,13 @@ internal constructor(
             logSink = onLog,
           )
         )
-      return ServeRenderHost(session = session, previews = previews, label = label, onLog = onLog)
+      return ServeRenderHost(
+        session = session,
+        previews = previews,
+        label = label,
+        declaredThemes = declaredThemes,
+        onLog = onLog,
+      )
     }
   }
 }

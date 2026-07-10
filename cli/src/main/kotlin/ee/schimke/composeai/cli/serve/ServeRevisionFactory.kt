@@ -12,6 +12,8 @@ data class BuiltRevision(
   /** `build/compose-previews/daemon-launch.json` for the built module. */
   val descriptor: File,
   val previews: List<ServePreview>,
+  /** App-declared `@ThemeCatalog` themes discovered for the module (module-global). */
+  val declaredThemes: List<ServeTheme> = emptyList(),
 )
 
 /**
@@ -68,6 +70,7 @@ class ServeRevisionFactory(
       workspaceName = built.moduleDir.name,
       previews = built.previews,
       label = "${module.gradlePath}@$rev",
+      declaredThemes = built.declaredThemes,
     )
   }
 }

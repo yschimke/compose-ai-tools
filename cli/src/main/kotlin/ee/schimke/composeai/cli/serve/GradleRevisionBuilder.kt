@@ -55,7 +55,13 @@ class GradleRevisionBuilder(
       onLog("serve: no previews discovered for ${module.gradlePath}")
       return null
     }
-    return BuiltRevision(moduleDir = moduleDir, descriptor = descriptor, previews = previews)
+    val declaredThemes = manifest?.previews?.let { declaredThemesFromPreviews(it) } ?: emptyList()
+    return BuiltRevision(
+      moduleDir = moduleDir,
+      descriptor = descriptor,
+      previews = previews,
+      declaredThemes = declaredThemes,
+    )
   }
 
   private fun runGradle(worktreeDir: File, gradlew: File, args: List<String>): Boolean {

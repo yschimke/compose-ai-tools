@@ -687,6 +687,14 @@ object ServeWeb {
      * generic `Live`.
      */
     liveBackend: String? = null,
+    /**
+     * The app's declared `@ThemeCatalog` themes (module-global). When non-empty, the viewer adds an
+     * "App theme" selector whose options re-render the preview under the chosen provider (the
+     * `themeProvider` override) — daemon-only, so it's enabled exactly when a knob edit would be
+     * (`canApplyOverrides || canRenderOverrides`). Empty ⇒ no selector (a static bundle, or a
+     * module that declares none).
+     */
+    declaredThemes: List<ServeTheme> = emptyList(),
   ): String {
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
@@ -777,6 +785,46 @@ object ServeWeb {
       }
     val backendLabel = WebEscaping.htmlEscape(snapshotBackend ?: "Snapshot")
     val liveLabel = WebEscaping.htmlEscape(liveBackend ?: "Live")
+    // The app-declared `@ThemeCatalog` theme selector — the discrete-theme axis. Rendered only when
+    // the module declares themes; selecting one re-renders the preview under that provider (the
+    // `themeProvider` override). Daemon-only, so it's disabled unless the host can render an
+    // override (`canApplyOverrides || canRenderOverrides`) — a knob-style control, not a
+    // client-side
+    // one. Options carry the provider FQN as their value; `@ThemeCatalog(group=…)` buckets them
+    // into
+    // <optgroup>s. Marked `.cp-knob-theme` so the JS routes its change through the daemon path.
+    val themeSelectorHtml =
+      if (declaredThemes.isEmpty()) ""
+      else {
+        val themeDis = if (canApplyOverrides || canRenderOverrides) "" else " disabled"
+        val grouped = declaredThemes.groupBy { it.group }
+        val optionsOf: (List<ServeTheme>) -> String = { list ->
+          list.joinToString("\n") { t ->
+            "<option value=\"${WebEscaping.htmlEscape(t.providerFqn)}\">" +
+              "${WebEscaping.htmlEscape(t.name)}</option>"
+          }
+        }
+        val body = buildString {
+          // Ungrouped themes first (flat), then one <optgroup> per declared group.
+          grouped[null]?.let { append(optionsOf(it)).append('\n') }
+          grouped
+            .filterKeys { it != null }
+            .forEach { (group, list) ->
+              append("<optgroup label=\"${WebEscaping.htmlEscape(group!!)}\">")
+                .append(optionsOf(list))
+                .append("</optgroup>\n")
+            }
+        }
+        """
+        <label>App theme
+          <select id="cp-themeProvider" class="cp-knob-theme"$themeDis>
+            <option value="">(default)</option>
+            $body
+          </select>
+        </label>
+        """
+          .trimIndent()
+      }
     // Live-only overlay toggles (accessibility / touch visualization). The daemon composites these
     // onto the held session's frames, so they mean nothing on a baked PNG — offered only when a
     // Live
@@ -816,6 +864,7 @@ object ServeWeb {
               <option value="dark">Dark</option>
             </select>
           </label>
+          $themeSelectorHtml
           <label>Device
             <select id="cp-device"$serverDis>
               <option value="">(default)</option>
@@ -940,6 +989,10 @@ object ServeWeb {
           if (el.disabled) return;
           o[el.id.replace(/^cp-/, "")] = el.checked ? "true" : "false";
         });
+        // App-declared theme (themeProvider = provider FQN). Only when a theme is picked and the
+        // control is live; "(default)" (empty) leaves the daemon on the preview's own wrapper.
+        var tp = document.getElementById("cp-themeProvider");
+        if (tp && !tp.disabled && tp.value) o["themeProvider"] = tp.value;
         return o;
       }
       function query() {
@@ -963,6 +1016,13 @@ object ServeWeb {
           if (val === (el.getAttribute("data-knob-initial") || "")) return;
           parts.push("knob." + encodeURIComponent(key) + "=" + encodeURIComponent(val));
         });
+        // App-declared theme (themeProvider = provider FQN). Routes to the daemon like a knob; a
+        // published catalog re-renders on demand. Omitted at "(default)" so the URL stays on the
+        // instant baked snapshot until a theme is actually chosen.
+        var tp = document.getElementById("cp-themeProvider");
+        if (tp && !tp.disabled && tp.value) {
+          parts.push("themeProvider=" + encodeURIComponent(tp.value));
+        }
         return parts.join("&");
       }
       function refreshSnapshot() {
@@ -1446,6 +1506,11 @@ object ServeWeb {
       document.querySelectorAll(".cp-knob").forEach(function (el) {
         el.addEventListener(el.type === "checkbox" ? "change" : "input", onKnobChanged);
       });
+      // The app-theme selector routes through the daemon like a knob (never the wasm auto-enable
+      // path — an app-declared theme provider is a server-side wrapper the in-browser tier can't
+      // load), so it shares onKnobChanged rather than onControlsChanged.
+      var themeSel = document.getElementById("cp-themeProvider");
+      if (themeSel) themeSel.addEventListener("change", onKnobChanged);
       refreshSnapshot();
     })();
     """

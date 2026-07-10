@@ -35,6 +35,7 @@ class ServeOverridesTest {
     assertNull(o.slotMode)
     assertNull(o.talkBack)
     assertNull(o.touchOverlay)
+    assertNull(o.themeProvider)
     assertNull(o.clearBackground)
   }
 
@@ -55,6 +56,7 @@ class ServeOverridesTest {
           "slotMode" to "true",
           "talkBack" to "true",
           "touchOverlay" to "1",
+          "themeProvider" to "com.example.BrandDarkThemeCatalog",
         )
       )
     assertEquals(UiMode.DARK, o.uiMode)
@@ -69,6 +71,7 @@ class ServeOverridesTest {
     assertEquals(true, o.slotMode)
     assertEquals(true, o.talkBack)
     assertEquals(true, o.touchOverlay)
+    assertEquals("com.example.BrandDarkThemeCatalog", o.themeProvider)
   }
 
   @Test
@@ -164,6 +167,16 @@ class ServeOverridesTest {
     assertNotEquals(
       ServeOverrides.cacheKey("preview.A", ok(mapOf("touchOverlay" to "true"))),
       ServeOverrides.cacheKey("preview.A", ok(emptyMap())),
+    )
+    // A themeProvider selection participates, so rendering a preview under two different declared
+    // themes (or a theme vs the default) doesn't coalesce onto one cache entry.
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("themeProvider" to "com.example.BrandDark"))),
+      ServeOverrides.cacheKey("preview.A", ok(emptyMap())),
+    )
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("themeProvider" to "com.example.BrandDark"))),
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("themeProvider" to "com.example.BrandLight"))),
     )
   }
 

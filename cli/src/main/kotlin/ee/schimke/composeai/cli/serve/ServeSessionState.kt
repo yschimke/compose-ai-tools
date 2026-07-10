@@ -21,6 +21,10 @@ data class ServeSessionState(
   /** Human label for the tenant (e.g. the module's Gradle path, or `module@rev`). */
   val label: String,
   /**
+   * App-declared `@ThemeCatalog` themes (module-global) surfaced in the viewer's Theme selector.
+   */
+  val declaredThemes: List<ServeTheme> = emptyList(),
+  /**
    * Optional **catalog-id → daemon-preview-id** alias map, set only for a trusted-catalog live
    * session ([ServeCatalogStore] / [ServeBundleDaemon]). The daemon knows previews by their
    * function-based descriptor id (`FilledButton_Dark`), but the published catalog links and image

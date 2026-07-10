@@ -23,6 +23,7 @@ import ee.schimke.composeai.cli.serve.ServeSessionState
 import ee.schimke.composeai.cli.serve.ServeStartupBundles
 import ee.schimke.composeai.cli.serve.ServeUrls
 import ee.schimke.composeai.cli.serve.TrustStore
+import ee.schimke.composeai.cli.serve.declaredThemesFromPreviews
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.render.session.RenderSessionException
 import java.io.File
@@ -305,6 +306,9 @@ class ServeCommand(args: List<String>) : Command(args) {
       manifest.previews
         .filter { matches(it.id) }
         .map { ServePreview(id = it.id, label = it.functionName.ifBlank { it.id }) }
+    // The module's declared @ThemeCatalog themes — the Theme selector renders them so a preview can
+    // be re-rendered under Brand Dark etc. Module-global, so unaffected by the --id/--filter above.
+    val declaredThemes = declaredThemesFromPreviews(manifest.previews)
     if (previews.isEmpty()) {
       System.err.println("serve: no previews matched (--id/--filter excluded them all).")
       exitProcess(3)
@@ -329,6 +333,7 @@ class ServeCommand(args: List<String>) : Command(args) {
           workspaceName = module.projectDir.name,
           previews = previews,
           label = module.gradlePath,
+          declaredThemes = declaredThemes,
           onLog = { System.err.println("[daemon serve] $it") },
         )
       } catch (e: RenderSessionException) {
@@ -506,6 +511,7 @@ class ServeCommand(args: List<String>) : Command(args) {
             workspaceName = state.workspaceName,
             previews = state.previews,
             label = state.label,
+            declaredThemes = state.declaredThemes,
             onLog = { System.err.println("[daemon serve] $it") },
           )
         val fallback = state.bakedFallback

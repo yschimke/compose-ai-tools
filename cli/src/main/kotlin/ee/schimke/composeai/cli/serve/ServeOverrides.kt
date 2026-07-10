@@ -60,6 +60,9 @@ object ServeOverrides {
       // only while a Live Compose session is active. Booleans, like inspectionMode/slotMode.
       "talkBack",
       "touchOverlay",
+      // FQN of an app-declared @ThemeCatalog `PreviewWrapperProvider` to render this preview under
+      // (the discrete-theme axis). Daemon-only — a baked bundle has no provider to load.
+      "themeProvider",
       // "crisp outline" toggle. Friendly `background=clear` (aliases below) or the raw
       // `clearBackground=true`; both map to `PreviewOverrides.clearBackground`.
       "background",
@@ -326,6 +329,7 @@ object ServeOverrides {
         slotMode = slotMode,
         talkBack = talkBack,
         touchOverlay = touchOverlay,
+        themeProvider = params["themeProvider"]?.takeIf { it.isNotBlank() },
         clearBackground = clearBackground,
         namedOverrides = namedOverrides.ifEmpty { null },
       )
@@ -353,6 +357,7 @@ object ServeOverrides {
       append("slot=").append(o.slotMode).append('|')
       append("talk=").append(o.talkBack).append('|')
       append("touch=").append(o.touchOverlay).append('|')
+      append("theme=").append(o.themeProvider).append('|')
       append("clearbg=").append(o.clearBackground).append('|')
       // Named overrides participate so a knob edit isn't coalesced onto the prior render. Sorted by
       // key for order-independence; the value data classes have stable toString.

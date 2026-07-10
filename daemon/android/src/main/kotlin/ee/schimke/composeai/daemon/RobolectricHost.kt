@@ -348,6 +348,10 @@ open class RobolectricHost(
       "captureAdvanceMs",
       "inspectionMode",
       "material3Theme",
+      // `overrides.themeProvider` wraps the preview in an app-declared @ThemeCatalog
+      // `PreviewWrapperProvider` (resolved off the app classpath in `InvokeWithOptionalWrapper`),
+      // replacing the preview's own `@PreviewWrapper` — the discrete-theme axis.
+      "themeProvider",
       "wallpaper",
       "ambient",
       "gestures",

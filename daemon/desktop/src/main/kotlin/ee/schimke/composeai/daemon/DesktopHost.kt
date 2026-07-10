@@ -209,6 +209,10 @@ open class DesktopHost(
     add("slotMode")
     add("clearBackground")
     add("material3Theme")
+    // `overrides.themeProvider` wraps the preview in an app-declared @ThemeCatalog
+    // `PreviewWrapperProvider` (resolved off the app classpath in `InvokeWithOptionalWrapper`),
+    // replacing the preview's own `@PreviewWrapper` — the discrete-theme axis.
+    add("themeProvider")
     add("wallpaper")
     // Issue #1205 — `renderNow.overrides.focus` is honoured by the planner registered in
     // `data/focus` (`FocusPreviewOverrideExtension`), which installs the around-composable that
