@@ -342,6 +342,34 @@ data class FigmaSvgModel(
           raster = FigmaSvgRaster(href),
         )
       }
+      // A container filled by a `Modifier.paint(painter)` whose painter is NOT a plain
+      // `ColorPainter`
+      // — a component's private `Painter` (Wear `SwitchButton`'s animated colour painter, a
+      // lazy-list `BackgroundPainter`), a `BitmapPainter`, a gradient — leaves `backgroundColor`
+      // unresolved, so the fill would silently vanish from a vector-only export (the pill/card just
+      // disappears). We can't teach the token resolver every component's private painter type, so
+      // fall back to the frame: in hybrid mode capture the painted region as an `<image>` (exactly
+      // as an opaque `Image`/`Icon` is handled) and drop the subtree. The ONLY painter we can turn
+      // into a flat vector fill is a `ColorPainter`, so "the painter isn't `ColorPainter(...)`" is
+      // the general signal to raster — no per-class knowledge, keyed only off the captured painter
+      // string + the modifier's own drawn bounds.
+      if (
+        ctx.captureCanvasDraws && tokens?.backgroundColor == null && hasUnvectorizablePaintFill()
+      ) {
+        val region = paintFillRegion()
+        val href = ctx.rasterHref(nodeId)
+        ctx.rasterTargets.add(
+          FigmaSvgRasterTarget(nodeId, href, region.left, region.top, region.right, region.bottom)
+        )
+        return FigmaSvgLayer(
+          name = layerName(),
+          left = region.left,
+          top = region.top,
+          right = region.right,
+          bottom = region.bottom,
+          raster = FigmaSvgRaster(href),
+        )
+      }
       // A *leaf* node that paints via an imperative Canvas draw (`drawBehind`/`drawWithContent`) —
       // the progress track, the slider groove — carries pixels the token export can't represent. In
       // hybrid mode (a frame PNG exists to crop from) attach that drawn region as a `background`
@@ -510,6 +538,36 @@ data class FigmaSvgModel(
     private fun LayoutInspectorNode.hasMinimumInteractiveSize(): Boolean = modifiers.any {
       it.name.equals(MIN_INTERACTIVE_MODIFIER, ignoreCase = true)
     }
+
+    /** The `Modifier.paint`/`PainterElement` names that project a painter as a container fill. */
+    private val PAINT_FILL_MODIFIERS = setOf("paint", "PainterElement")
+
+    /**
+     * True when this node is filled by a `Modifier.paint` painter we can't turn into a flat colour.
+     * The token resolver only reads a plain [androidx.compose.ui.graphics.painter.ColorPainter]
+     * (whose captured string is `ColorPainter(color=Color(…))`); any other painter — a component's
+     * private `Painter`, a `BitmapPainter`, a gradient — stringifies to a class name and leaves the
+     * fill unresolved. Recognising the one painter we CAN vectorise (and rastering everything else)
+     * keeps this free of per-component knowledge: a painter present but of any other form ⇒ raster.
+     *
+     * The one caveat is a `ColorPainter` carrying a `colorFilter`: the string still starts with
+     * `ColorPainter(`, but the resolver deliberately leaves the fill unresolved because a
+     * re-tinting filter can't collapse to a flat token — so that (visible) fill must raster too,
+     * not be treated as vectorisable. A `ColorPainter` with no filter that still didn't resolve is
+     * a fully transparent fill (no visible pixels) and is left alone.
+     */
+    private fun LayoutInspectorNode.hasUnvectorizablePaintFill(): Boolean {
+      val paint = modifiers.firstOrNull { it.name in PAINT_FILL_MODIFIERS } ?: return false
+      val painter = paint.properties["painter"] ?: return true
+      if (!painter.startsWith("ColorPainter(")) return true
+      val filter = paint.properties["colorFilter"]
+      return filter != null && filter != "null"
+    }
+
+    /** The region a paint-fill painter actually covers — its modifier bounds, else the node box. */
+    private fun LayoutInspectorNode.paintFillRegion(): LayoutInspectorBounds =
+      modifiers.firstOrNull { it.name in PAINT_FILL_MODIFIERS && it.bounds != null }?.bounds
+        ?: bounds
 
     /** The Compose modifiers that paint via an imperative Canvas the token export can't read. */
     private val DRAW_MODIFIERS = setOf("drawBehind", "drawWithContent", "drawWithCache")
