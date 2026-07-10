@@ -58,6 +58,14 @@ class ServeCatalogLiveHost(
   override val label: String = baked.label
 
   /**
+   * The app-declared `@ThemeCatalog` themes come from the daemon lane (read from the live bundle's
+   * `previews.json`) — the baked browse surface carries none. Forwarded so the viewer's App theme
+   * selector renders and, since [canRenderOverrides] is true, actually re-renders under a chosen
+   * theme via the carried daemon.
+   */
+  override val declaredThemes: List<ServeTheme> = live.declaredThemes
+
+  /**
    * Snapshots stay static (baked PNGs) so browsing is instant and the viewer shows the published
    * pixels + trust badge — the live daemon is opt-in via [hasLiveStream], not the snapshot lane.
    */
@@ -70,6 +78,14 @@ class ServeCatalogLiveHost(
    * the daemon) while enabling the viewer's knob controls as live rather than baked-and-disabled.
    */
   override val canRenderOverrides: Boolean = true
+
+  /**
+   * Only a preview with a daemon twin ([alias]) can actually re-render an override; an unaliased
+   * (Android-only) variant always replays the baked PNG, which ignores overrides. So the viewer
+   * must treat those as non-renderable — otherwise the App theme selector (advertised host-wide via
+   * [declaredThemes]) would render enabled on a variant where picking a theme changes nothing.
+   */
+  override fun canRenderOverridesFor(previewId: String): Boolean = previewId in alias
 
   /**
    * SVG is exportable when either lane can produce it — the baked catalog carries

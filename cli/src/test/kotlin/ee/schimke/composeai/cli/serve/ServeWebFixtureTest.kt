@@ -201,6 +201,15 @@ class ServeWebFixtureTest {
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         wasmSrc = "/wasm/compose-m3/?id=button-filled",
         wasmSameOrigin = true,
+        // A trusted-catalog live session now also carries the app's declared @ThemeCatalog themes
+        // (read from the live bundle's previews.json), so the App theme selector renders enabled
+        // and
+        // re-renders via the carried daemon — the surface this PR wires up end-to-end.
+        declaredThemes =
+          listOf(
+            ServeTheme("Brand Light", "com.example.BrandLightThemeCatalog", group = "Brand"),
+            ServeTheme("Brand Dark", "com.example.BrandDarkThemeCatalog", group = "Brand"),
+          ),
       )
     // A catalog served under its canonical path (/meshcore-mobile/) rather than ?session=: same
     // pages, but links stay on the path (basePath) and drop the &session= param. Captures the

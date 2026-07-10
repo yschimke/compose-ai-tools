@@ -78,6 +78,35 @@ class ServeBundleStoreTest {
   }
 
   @Test
+  fun `the root previews_json is extracted so an uploaded bundle surfaces its declared themes`() {
+    val previewsJson =
+      """
+      {"module":":samples:cmp","variant":"debug","previews":[
+        {"id":"com.example.Card","functionName":"Card","className":"com.example.CardKt"},
+        {"id":"themecatalog__Brand_Dark","functionName":"Brand Dark theme",
+         "className":"com.example.BrandDarkTheme",
+         "params":{"name":"Brand Dark","group":"Brand","kind":"THEME_CATALOG",
+                   "wrapperClassName":"com.example.BrandDarkTheme"}}]}
+      """
+        .trimIndent()
+    val zip =
+      zipOf(
+        "previews/com.example.Card.png" to byteArrayOf(1, 2, 3),
+        "previews.json" to previewsJson.toByteArray(),
+      )
+    assertEquals(
+      ServeBundleStore.Result.Ok("demo", 1),
+      store().add("demo", zip, isSecurityChecked = true),
+    )
+    // The uploaded bundle's App theme selector is fed from the root previews.json — which must be
+    // extracted alongside the PNGs (it isn't a `previews/…` entry).
+    assertEquals(
+      listOf("Brand Dark" to "com.example.BrandDarkTheme"),
+      registered.getValue("demo").declaredThemes.map { it.name to it.providerFqn },
+    )
+  }
+
+  @Test
   fun `a bundle without previews is rejected`() {
     val result = store().add("demo", zipOf("notes.txt" to byteArrayOf(1)), isSecurityChecked = true)
     assertTrue(result is ServeBundleStore.Result.Failed)
