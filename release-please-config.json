@@ -30,6 +30,10 @@
         {
           "type": "generic",
           "path": "deploy/image/Dockerfile"
+        },
+        {
+          "type": "generic",
+          "path": "gradle.properties"
         }
       ]
     }
