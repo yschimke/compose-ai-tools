@@ -158,6 +158,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-viewer-path/dark](renders/serve-viewer-path.dark.png) |
 | `light` | ![serve-viewer-path/light](renders/serve-viewer-path.light.png) |
 
+## serve-viewer-themes
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-themes/dark](renders/serve-viewer-themes.dark.png) |
+| `light` | ![serve-viewer-themes/light](renders/serve-viewer-themes.light.png) |
+
 ## serve-viewer-wasm
 
 | Theme | Capture |

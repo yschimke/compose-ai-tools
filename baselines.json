@@ -253,6 +253,18 @@
       "sha256": "63ca8b74da67bb30c62d7801e6eb247b90fbe9663116f684d4d2d943e6476fbc",
       "size": 54777
     },
+    "serve-viewer-themes.dark.png": {
+      "fixture": "serve-viewer-themes",
+      "theme": "dark",
+      "sha256": "ac3fdf4a48b3d4703090f89e8725907c8469e2cc2f6bb5477dd7ec2e06e221cf",
+      "size": 48516
+    },
+    "serve-viewer-themes.light.png": {
+      "fixture": "serve-viewer-themes",
+      "theme": "light",
+      "sha256": "5a4dced0b10465e82e640d06a9c9c7d8bc77ea33955c2ed038f2cfda77629eed",
+      "size": 48154
+    },
     "serve-viewer-wasm-live.dark.png": {
       "fixture": "serve-viewer-wasm-live",
       "theme": "dark",
