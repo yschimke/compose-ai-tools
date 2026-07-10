@@ -22,6 +22,17 @@ name: Integration
 #
 # Each external-repo job runs independently (`fail-fast: false`) so one broken
 # consumer does not mask regressions in the others.
+#
+# Change-scoped on PRs (.github/integration-scope.json): the `changes` job
+# classifies the diff first. A PR that touches only paths which provably cannot
+# alter what the plugin discovers/renders in the external consumers — docs,
+# this repo's own `samples/**` (the matrix builds EXTERNAL repos, never these),
+# the VS Code extension, `deploy/`, `clients/`, the design-artifacts `scripts/`
+# — skips the whole `build-plugin` + external matrix, and `integration-scope-
+# gate` re-emits the required `wear-os-samples` legs green so branch protection
+# still clears. Anything touching the plugin / CLI / renderers / daemon / data
+# modules / build wiring runs the full matrix. Fail-open: pushes to main, the
+# nightly cron, manual dispatch, and any diff error all run everything.
 
 on:
   push:
@@ -53,8 +64,52 @@ env:
   PLUGIN_VERSION: 0.1.0-SNAPSHOT
 
 jobs:
-  build-plugin:
+  # Fast PR-diff classifier that decides whether the slow external-repo matrix
+  # below needs to run at all. Outputs `run` = true|false; every other job keys
+  # off it. On non-PR events (push / cron / dispatch) and on any classification
+  # error it resolves to `true`, so scoping can only ever trim the PR critical
+  # path — never skip work that could hide a regression.
+  changes:
+    name: Determine integration scope
     if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.scope.outputs.run }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Classify changed paths
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -uo pipefail
+          # Non-PR events always run the full matrix — scoping only trims PRs.
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::event=$EVENT_NAME — running the full integration matrix."
+            exit 0
+          fi
+          # Fetch the PR base so the classifier can diff against it (checkout is
+          # shallow). The script is fail-open, so a failed fetch still runs.
+          git fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
+          run="$(python3 .github/ci/integration-scope.py)"
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          if [ "$run" = "true" ]; then
+            echo "::notice::Integration matrix will run — a changed path can affect the external builds."
+          else
+            echo "::notice::Integration matrix scope-skipped — all changes are docs/samples/tooling (.github/integration-scope.json)."
+          fi
+
+  build-plugin:
+    # Skipped on out-of-scope PRs: nothing downstream needs the published
+    # bundle (the matrix is skipped too, and integration-scope-gate reports the
+    # required legs), so the expensive publish/installDist/bundle is pure waste.
+    needs: changes
+    if: ${{ needs.changes.outputs.run == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     name: Build plugin + CLI
     runs-on: ubuntu-latest
     steps:
@@ -172,10 +227,44 @@ jobs:
           echo "'${LEG}' is reported green here to satisfy branch"
           echo "protection without an admin bypass."
 
-  integration:
-    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+  # Mirror of release-please-gate, for out-of-scope PRs. When `changes` decides
+  # the diff can't affect the external builds, the `integration` matrix below is
+  # skipped — but a skipped matrix job posts NO per-leg check run, so the two
+  # REQUIRED `wear-os-samples` legs would sit on "Expected — Waiting for status"
+  # forever (the same asymmetry release-please-gate documents). This gate
+  # re-emits those exact contexts green. Its `if:` is the inverse of the matrix
+  # guard (PR + non-release + run == 'false'), so on any given event exactly one
+  # of {matrix, release-please-gate, this gate} posts each required context,
+  # never two. Keep the two names in lockstep with the `pr_blocking: true` wear
+  # matrix cells (same contract as release-please-gate).
+  integration-scope-gate:
+    needs: changes
+    if: >-
+      ${{ github.event_name == 'pull_request'
+      && needs.changes.outputs.run == 'false'
+      && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     name: ${{ matrix.name }}
-    needs: build-plugin
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        name:
+          - "wear-os-samples (ComposeStarter)"
+          - "wear-os-samples (WearTilesKotlin)"
+    steps:
+      - name: Report green (out-of-scope PR — integration not applicable)
+        env:
+          LEG: ${{ matrix.name }}
+        run: |
+          echo "This PR changed only paths that cannot affect what the plugin"
+          echo "discovers or renders in the external consumer repos (see"
+          echo ".github/integration-scope.json), so the integration matrix is"
+          echo "scope-skipped. Required leg '${LEG}' is reported green here to"
+          echo "satisfy branch protection without an admin bypass."
+
+  integration:
+    if: ${{ needs.changes.outputs.run == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    name: ${{ matrix.name }}
+    needs: [changes, build-plugin]
     runs-on: ubuntu-latest
     # `continue-on-error: true` on a matrix entry makes that entry's failures
     # surface as warnings rather than blocking required-status checks on PRs.
@@ -1186,7 +1275,10 @@ jobs:
           retention-days: 7
 
   agp8-min:
-    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    # Consumes build-plugin's bundle, so it rides the same change-scope gate:
+    # skipped on out-of-scope PRs (not a required check, so a plain skip is
+    # fine — nothing needs to re-emit it).
+    if: ${{ needs.changes.outputs.run == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     # Floor-coverage job for AGP 8.x consumers. Uses the in-repo fixture under
     # `.github/ci/fixtures/agp8-min/` (Gradle 8.13 + AGP 8.13.0 + Kotlin 2.0.21
     # + compileSdk 36) so we exercise the bottom of our publicly-supported
@@ -1196,7 +1288,7 @@ jobs:
     # already shaped exactly the way we want it. The plugin still rides in
     # via the same init script, so the auto-apply path is exercised here too.
     name: agp8-min (Gradle 8.13)
-    needs: build-plugin
+    needs: [changes, build-plugin]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout this repo (for the fixture)
