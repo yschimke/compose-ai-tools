@@ -252,9 +252,19 @@ internal class SplitSubcommand(private val args: List<String>) {
       exitProcess(1)
     }
 
+    // Distinct ids can sanitize to the same stem (e.g. `A B` and `A_B`, or `/` vs `_`); on a
+    // collision append -2/-3/… so every preview keeps its own file instead of silently overwriting.
+    val usedStems = HashSet<String>()
     val written = ArrayList<File>(split.size)
     for (preview in split) {
-      val outFile = File(outDir, sanitizeSplitFileName(preview.id) + ".png")
+      val base = sanitizeSplitFileName(preview.id)
+      var stem = base
+      var n = 1
+      while (!usedStems.add(stem)) {
+        n++
+        stem = "$base-$n"
+      }
+      val outFile = File(outDir, "$stem.png")
       outFile.writeBytes(preview.polyglot())
       written += outFile
     }
