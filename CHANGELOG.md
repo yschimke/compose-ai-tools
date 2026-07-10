@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.16.32](https://github.com/yschimke/compose-ai-tools/compare/v0.16.31...v0.16.32) (2026-07-10)
+
+
+### Features
+
+* **figma-svg:** close PNG↔SVG parity gap on the compare page ([#2327](https://github.com/yschimke/compose-ai-tools/issues/2327)) ([9a95c5c](https://github.com/yschimke/compose-ai-tools/commit/9a95c5c4123f8d0afcd83adb1207ab05ee67771f))
+* **figma-svg:** emit a drop shadow for elevated surfaces ([#2333](https://github.com/yschimke/compose-ai-tools/issues/2333)) ([f1863a8](https://github.com/yschimke/compose-ai-tools/commit/f1863a89211432c0ef8066a6f56ad11357786e42))
+* **gestures:** full-screen two-gesture hint demo ([#2323](https://github.com/yschimke/compose-ai-tools/issues/2323)) ([dc19643](https://github.com/yschimke/compose-ai-tools/commit/dc1964382ff5e518822107e97e6e23dd7a2591a2))
+* **serve:** live-only overlay toggles (TalkBack / touch) in the viewer ([#2332](https://github.com/yschimke/compose-ai-tools/issues/2332)) ([0d96762](https://github.com/yschimke/compose-ai-tools/commit/0d96762616e6c3c2c63ff15050bae112a607870e))
+* **serve:** render-mode radio group (PNG / Live Compose / Wasm) ([#2328](https://github.com/yschimke/compose-ai-tools/issues/2328)) ([7b9ad15](https://github.com/yschimke/compose-ai-tools/commit/7b9ad15c25b3dfc97081b4dc37dcebf97883f082))
+
+
+### Bug Fixes
+
+* **design-artifacts:** load compare-page images cross-origin so scores work on htmlpreview ([#2324](https://github.com/yschimke/compose-ai-tools/issues/2324)) ([2be3e1c](https://github.com/yschimke/compose-ai-tools/commit/2be3e1cff0593017d39cb3481dbc0df8e8012784))
+* **renderer:** apply @Preview(uiMode) dark to the composition, not just chrome ([#2330](https://github.com/yschimke/compose-ai-tools/issues/2330)) ([a21d469](https://github.com/yschimke/compose-ai-tools/commit/a21d469b0be2d6495cb84af381ae6bad4f5e2b1b))
+* **samples:** ship Compose resources in the Wasm catalog dist ([#2326](https://github.com/yschimke/compose-ai-tools/issues/2326)) ([a278af8](https://github.com/yschimke/compose-ai-tools/commit/a278af8e5bb30e6af7c3e2397bf6a47313c76363))
+* **serve:** honor display-axis overrides on the published catalog ([#2325](https://github.com/yschimke/compose-ai-tools/issues/2325)) ([8550400](https://github.com/yschimke/compose-ai-tools/commit/85504004dd699be4aef45b9733f2f426aab33785))
+* **serve:** pin the live canvas to the snapshot box so modes don't resize ([#2331](https://github.com/yschimke/compose-ai-tools/issues/2331)) ([9af1309](https://github.com/yschimke/compose-ai-tools/commit/9af13095cf368d8dc2c6b6eb05e226a1ca1e8edd))
+* **serve:** seed the daemon with current overrides when the live socket opens ([#2334](https://github.com/yschimke/compose-ai-tools/issues/2334)) ([86ebdca](https://github.com/yschimke/compose-ai-tools/commit/86ebdcaf7f180c4ba0c909e9681aa8b7c193ca3c))
+
 ## [0.16.31](https://github.com/yschimke/compose-ai-tools/compare/v0.16.30...v0.16.31) (2026-07-10)
 
 
