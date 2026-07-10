@@ -151,6 +151,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-viewer-catalog-knobs/dark](renders/serve-viewer-catalog-knobs.dark.png) |
 | `light` | ![serve-viewer-catalog-knobs/light](renders/serve-viewer-catalog-knobs.light.png) |
 
+## serve-viewer-focus
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-focus/dark](renders/serve-viewer-focus.dark.png) |
+| `light` | ![serve-viewer-focus/light](renders/serve-viewer-focus.light.png) |
+
 ## serve-viewer-path
 
 | Theme | Capture |

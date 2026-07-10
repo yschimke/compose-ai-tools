@@ -232,14 +232,26 @@
     "serve-viewer-catalog-knobs.dark.png": {
       "fixture": "serve-viewer-catalog-knobs",
       "theme": "dark",
-      "sha256": "22c8677a65caeaf37e79b3a23eb9e1a937e6d5277cfd39873f7f7a88825ac8f2",
-      "size": 81526
+      "sha256": "6ae5b4c37f022f2adbb10bc6d003c0b8ee50837559f87434f14b12d45034663e",
+      "size": 84434
     },
     "serve-viewer-catalog-knobs.light.png": {
       "fixture": "serve-viewer-catalog-knobs",
       "theme": "light",
-      "sha256": "ec26fdc8da6b63b478fbc1b877a0768f7aaddf6c8d1cd4df770df8bac529d7b9",
-      "size": 81941
+      "sha256": "51d66807de6d9b9faf18d21c8fbb8681d51f5431d92fa68a8210b3b229b6801c",
+      "size": 84600
+    },
+    "serve-viewer-focus.dark.png": {
+      "fixture": "serve-viewer-focus",
+      "theme": "dark",
+      "sha256": "baa3fdbe1b59710e9bfef4143841eec7e22b23460e1cc694b2f2717cdc14621c",
+      "size": 48907
+    },
+    "serve-viewer-focus.light.png": {
+      "fixture": "serve-viewer-focus",
+      "theme": "light",
+      "sha256": "8436e9cf66bbc453bc83e9d4711052e039c70977f66ab7a8a049a8eda2620dd3",
+      "size": 48645
     },
     "serve-viewer-path.dark.png": {
       "fixture": "serve-viewer-path",
