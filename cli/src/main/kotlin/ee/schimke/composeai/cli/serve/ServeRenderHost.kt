@@ -58,7 +58,34 @@ data class ServePreview(
    * Empty when the preview declared none (or the host doesn't carry them).
    */
   val overrides: List<ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration> = emptyList(),
+  /**
+   * Whether this preview supports **keyboard focus** — it carries `@FocusedPreview` (discovery
+   * emits a `focus` capture). Lets the viewer offer a "Keyboard focus" control *only* for previews
+   * that actually have something focusable, rather than as a dead control everywhere. Applied live
+   * via the `focus` override (daemon-only); the desktop daemon honours it.
+   */
+  val supportsFocus: Boolean = false,
+  /**
+   * Whether this preview supports **one-handed (wear) gestures** — it carries `@GestureHintPreview`
+   * (discovery emits a `gestureHint` capture). Surfaced for detection, but the gesture *override*
+   * is Android-only (the desktop daemon behind `serve` ignores `overrides.gestures`), so the viewer
+   * gates the control to Android-backed sessions.
+   */
+  val supportsGestures: Boolean = false,
 )
+
+/**
+ * Detected per-preview feature support, folded across a discovery
+ * [ee.schimke.composeai.cli.PreviewInfo]'s captures: keyboard focus (`@FocusedPreview` → a
+ * `focus`/`focusGif` capture) and one-handed gestures (`@GestureHintPreview` → a `gestureHint`
+ * capture). Returns the two booleans the viewer gates its feature controls on. A preview with
+ * neither annotation yields `(false, false)`.
+ */
+fun detectedFeaturesOf(preview: ee.schimke.composeai.cli.PreviewInfo): Pair<Boolean, Boolean> {
+  val focus = preview.captures.any { it.focus != null || it.focusGif != null }
+  val gestures = preview.captures.any { it.gestureHint != null }
+  return focus to gestures
+}
 
 /**
  * One app-declared `@ThemeCatalog` theme this session can render an arbitrary preview under — the

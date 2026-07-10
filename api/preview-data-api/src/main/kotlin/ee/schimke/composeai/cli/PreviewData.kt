@@ -77,6 +77,18 @@ data class Capture(
    * absent when the binary / display / software GL isn't available). Defaults to `false`.
    */
   val optional: Boolean = false,
+  /**
+   * Presence markers for the two per-capture **detected-feature** annotations discovery emits: a
+   * `@FocusedPreview` capture carries a `focus` (or `focusGif`) block, and a `@GestureHintPreview`
+   * one carries `gestureHint`. Modelled here only as opaque [JsonElement]s — the serve layer needs
+   * to know *whether* a preview supports keyboard focus / one-handed gestures (to gate the viewer's
+   * feature controls), not the block's contents, and modelling the full nested shape would drag the
+   * gradle-plugin's discovery types into `:preview-data-api`. Absent (null) when the preview
+   * carries neither annotation.
+   */
+  val focus: JsonElement? = null,
+  val focusGif: JsonElement? = null,
+  val gestureHint: JsonElement? = null,
 )
 
 @Serializable

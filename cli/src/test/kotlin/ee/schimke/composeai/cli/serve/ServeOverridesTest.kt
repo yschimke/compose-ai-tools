@@ -36,7 +36,35 @@ class ServeOverridesTest {
     assertNull(o.talkBack)
     assertNull(o.touchOverlay)
     assertNull(o.themeProvider)
+    assertNull(o.focus)
     assertNull(o.clearBackground)
+  }
+
+  @Test
+  fun `focus tab index maps to a focus override with the overlay drawn`() {
+    val o = ok(mapOf("focus" to "2"))
+    assertEquals(2, o.focus?.tabIndex)
+    assertEquals(true, o.focus?.overlay)
+  }
+
+  @Test
+  fun `a malformed focus index is rejected`() {
+    for (bad in listOf("focus" to "yes", "focus" to "-1", "focus" to "1.5")) {
+      val parsed = ServeOverrides.parse(mapOf(bad))
+      assertTrue(parsed is OverrideParse.Invalid, "expected Invalid for $bad, got $parsed")
+    }
+  }
+
+  @Test
+  fun `cache key differs when a focus override is applied`() {
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("focus" to "0"))),
+      ServeOverrides.cacheKey("preview.A", ok(emptyMap())),
+    )
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("focus" to "0"))),
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("focus" to "1"))),
+    )
   }
 
   @Test

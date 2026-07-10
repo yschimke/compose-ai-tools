@@ -3,7 +3,7 @@
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Profile screen — compose-preview</title>
+        <title>Focus ring — compose-preview</title>
         <style>:root { color-scheme: light dark; }
 * { box-sizing: border-box; }
 body { margin: 0; padding: 24px; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
@@ -122,21 +122,21 @@ a:hover { text-decoration: underline; }
 }</style>
       </head>
       <body>
-              <p class="cp-head"><a href="/?token=demo-token-fixture">← previews</a> <span class="cp-badge cp-badge--unverified" title="producer trust: unverified">⚠ unverified</span></p>
-      <p class="cp-sub" title="com.example.ProfileScreenPreview">Profile screen</p>
-      <div class="cp-viewer" data-preview-id="com.example.ProfileScreenPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="true" data-can-render-overrides="false" data-snapshot-backend="Snapshot" data-live-backend="Live">
-        <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="Profile screen"><canvas id="cp-canvas" hidden></canvas></div>
+              <p class="cp-head"><a href="/?token=demo-token-fixture&session=compose-m3">← previews</a></p>
+      <p class="cp-sub" title="com.example.FocusRingPreview">Focus ring</p>
+      <div class="cp-viewer" data-preview-id="com.example.FocusRingPreview" data-mode="snapshot" data-modes="snapshot" data-static-snapshot="false" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live">
+        <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="Focus ring"><canvas id="cp-canvas" hidden></canvas></div>
         <div class="cp-controls">
-          <div class="cp-note">Pre-rendered snapshot — overrides (device, locale, font scale, orientation) need the live server, not a published catalog. <a href="https://github.com/yschimke/compose-ai-tools/blob/main/docs/public-preview-server.md#running-one">Enable a local preview server.</a></div>
+          
           <div class="cp-modes" role="radiogroup" aria-label="Render mode">
             <label class="cp-live-row"><input type="radio" name="cp-mode" value="png" id="cp-mode-png" checked> PNG</label>
             
-            <label class="cp-live-row"><input type="radio" name="cp-mode" value="live" id="cp-live" disabled> Live Compose</label>
+            <label class="cp-live-row"><input type="radio" name="cp-mode" value="live" id="cp-live"> Live Compose</label>
             
           </div>
           
           <label>Theme
-            <select id="cp-uiMode" disabled>
+            <select id="cp-uiMode">
               <option value="">(default)</option>
               <option value="light">Light</option>
               <option value="dark">Dark</option>
@@ -144,7 +144,7 @@ a:hover { text-decoration: underline; }
           </label>
           
           <label>Device
-            <select id="cp-device" disabled>
+            <select id="cp-device">
               <option value="">(default)</option>
               <option value="id:pixel_5">Pixel 5</option>
 <option value="id:pixel_7">Pixel 7</option>
@@ -155,26 +155,33 @@ a:hover { text-decoration: underline; }
             </select>
           </label>
           <label>Locale (BCP-47)
-            <input id="cp-localeTag" type="text" placeholder="e.g. ar, ja-JP" autocomplete="off" disabled>
+            <input id="cp-localeTag" type="text" placeholder="e.g. ar, ja-JP" autocomplete="off">
           </label>
           <label>Font scale: <span id="cp-fontScale-val">default</span>
-            <input id="cp-fontScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0" disabled>
+            <input id="cp-fontScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0">
           </label>
           <label>Orientation
-            <select id="cp-orientation" disabled>
+            <select id="cp-orientation">
               <option value="">(default)</option>
               <option value="portrait">Portrait</option>
               <option value="landscape">Landscape</option>
             </select>
           </label>
           <label>Background
-            <select id="cp-background" disabled>
+            <select id="cp-background">
               <option value="">(default)</option>
               <option value="clear">Clear (crisp outline)</option>
             </select>
           </label>
-          
-          
+          <div class="cp-overlays">
+  <div class="cp-overlays-head">Overlays (Live Compose)</div>
+  <label class="cp-live-row"><input class="cp-overlay" id="cp-talkBack" type="checkbox" disabled> Accessibility (TalkBack)</label>
+  <label class="cp-live-row"><input class="cp-overlay" id="cp-touchOverlay" type="checkbox" disabled> Show touches</label>
+</div>
+          <div class="cp-overlays">
+  <div class="cp-overlays-head">Detected features</div>
+  <label class="cp-live-row"><input class="cp-feature" id="cp-focus" type="checkbox"> Keyboard focus</label>
+</div>
           
                 <div class="cp-links">
         <div class="cp-knobs-head">Direct links — the current view as a URL (overrides applied)</div>
