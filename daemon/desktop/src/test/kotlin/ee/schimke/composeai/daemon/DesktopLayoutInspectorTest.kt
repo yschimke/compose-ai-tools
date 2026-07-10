@@ -13,6 +13,7 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.paint
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.painter.ColorPainter
@@ -145,5 +146,42 @@ class DesktopLayoutInspectorTest {
 
     val anyBackground = root.firstWhere { it.tokens?.backgroundColor != null }
     assertTrue("a bitmap painter must not resolve to a background token", anyBackground == null)
+  }
+
+  @Test
+  fun folds_paint_alpha_into_the_resolved_background_token() {
+    // `Modifier.paint(painter, alpha = …)` scales the painter's opacity at draw time, so a
+    // half-alpha fill must export as a half-alpha colour rather than an opaque rectangle.
+    val root = writeAndRead {
+      Box(
+        Modifier.testTag("faded")
+          .size(40.dp, 40.dp)
+          .paint(ColorPainter(Color(0xFFFF0000)), alpha = 0.5f)
+      )
+    }
+
+    // 0xFF * 0.5 = 127.5 → 0x80 alpha over the opaque red.
+    val faded = root.firstWhere { it.tokens?.backgroundColor == "#80FF0000" }
+    assertNotNull("Modifier.paint alpha must fold into the resolved background alpha", faded)
+  }
+
+  @Test
+  fun skips_a_color_filtered_paint_fill() {
+    // A `colorFilter` re-tints the painter at draw time; a flat `#AARRGGBB` token can't reproduce
+    // that, so a filtered paint stays unresolved rather than exporting the wrong, unfiltered
+    // colour.
+    val root = writeAndRead {
+      Box(
+        Modifier.testTag("tinted")
+          .size(40.dp, 40.dp)
+          .paint(ColorPainter(Color(0xFFFF0000)), colorFilter = ColorFilter.tint(Color(0xFF00FF00)))
+      )
+    }
+
+    val anyBackground = root.firstWhere { it.tokens?.backgroundColor != null }
+    assertTrue(
+      "a colour-filtered paint must not resolve to a flat background",
+      anyBackground == null,
+    )
   }
 }

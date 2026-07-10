@@ -89,7 +89,7 @@ internal object ModifierTokenResolver {
       // the `ColorPainter`'s colour as the fill; bitmap/vector painters (an `Image`/`Icon`'s art)
       // stay unresolved so they keep to the raster path (issue #1985).
       if (backgroundColor == null && (name == "paint" || simpleName == "PainterElement")) {
-        backgroundColor = painterColorHex(elements["painter"], mod)
+        backgroundColor = painterColorHex(elements, mod)
       }
       // `Modifier.defaultMinSize(minWidth, minHeight)` — an M3 `Badge` measures its background at
       // this min box even when its narrow content is placed smaller, so the figma-svg export grows
@@ -248,31 +248,65 @@ internal object ModifierTokenResolver {
   }
 
   /**
-   * Resolves a painter-based container fill (`Modifier.paint(painter)`) as ARGB hex. Only a solid
-   * [androidx.compose.ui.graphics.painter.ColorPainter] yields a colour — the fill Wear M3 surfaces
-   * apply for their container — while bitmap / vector / gradient painters (an `Image`/`Icon`'s art)
-   * return null so they stay on the raster path rather than collapsing to a bogus flat rectangle.
-   * Reads the inspector `painter` element (the live painter object) when present, else reflects the
-   * element's backing `painter` field; the `ColorPainter`'s `color` is a [Color] value class stored
-   * as its packed `ULong`, decoded exactly like [backgroundColorHex].
+   * Resolves a painter-based container fill (`Modifier.paint(painter, alpha, colorFilter)`) as ARGB
+   * hex. Only a solid [androidx.compose.ui.graphics.painter.ColorPainter] yields a colour — the
+   * fill Wear M3 surfaces apply for their container — while bitmap / vector / gradient painters (an
+   * `Image`/`Icon`'s art) return null so they stay on the raster path rather than collapsing to a
+   * bogus flat rectangle.
+   *
+   * `Modifier.paint` also carries an `alpha` multiplier and an optional `colorFilter` that Compose
+   * applies at draw time ([androidx.compose.ui.draw.PainterElement]; the wear `surface()` element
+   * carries neither). A `colorFilter` re-tints the fill in ways a flat `#AARRGGBB` can't represent,
+   * so a filtered paint is skipped entirely; the `alpha` is folded into the emitted colour's alpha
+   * channel so a semi-transparent paint doesn't export as an opaque rectangle. Both are read from
+   * the inspector [elements] when present, else reflected off the element's backing fields, and
+   * both default to their no-op values (alpha 1, no filter) when the element doesn't expose them.
    */
-  private fun painterColorHex(painterElement: Any?, mod: Any): String? {
+  private fun painterColorHex(elements: Map<String, Any?>, mod: Any): String? {
+    // A colorFilter re-tints the painter at draw time — a flat fill token can't reproduce it.
+    val colorFilter =
+      elements["colorFilter"]
+        ?: runCatching {
+            mod.javaClass.getDeclaredField("colorFilter").apply { isAccessible = true }.get(mod)
+          }
+          .getOrNull()
+    if (colorFilter != null) return null
     val painter =
-      painterElement
+      elements["painter"]
         ?: runCatching {
             mod.javaClass.getDeclaredField("painter").apply { isAccessible = true }.get(mod)
           }
           .getOrNull()
         ?: return null
     if (painter.javaClass.simpleName != "ColorPainter") return null
-    return runCatching {
-        val field = painter.javaClass.getDeclaredField("color").apply { isAccessible = true }
-        val packed = field.getLong(painter).toULong()
-        if (packed and 0xFFFFFFFFuL != 0uL) return null
-        val argb = (packed shr 32).toInt()
-        if (argb == 0) null else "#${String.format(Locale.US, "%08X", argb)}"
+    val baseArgb =
+      runCatching {
+          val field = painter.javaClass.getDeclaredField("color").apply { isAccessible = true }
+          val packed = field.getLong(painter).toULong()
+          if (packed and 0xFFFFFFFFuL != 0uL) return null
+          (packed shr 32).toInt()
+        }
+        .getOrNull() ?: return null
+    if (baseArgb == 0) return null
+    // Fold `Modifier.paint`'s alpha multiplier into the colour's alpha channel (default 1 =
+    // opaque).
+    val alpha =
+      (floatValue(elements["alpha"])
+          ?: runCatching {
+              mod.javaClass.getDeclaredField("alpha").apply { isAccessible = true }.getFloat(mod)
+            }
+            .getOrNull()
+          ?: 1f)
+        .coerceIn(0f, 1f)
+    val argb =
+      if (alpha >= 1f) baseArgb
+      else {
+        val a = ((baseArgb ushr 24) and 0xFF) * alpha
+        val newA = a.roundToInt().coerceIn(0, 255)
+        if (newA == 0) return null
+        (baseArgb and 0x00FFFFFF) or (newA shl 24)
       }
-      .getOrNull()
+    return "#${String.format(Locale.US, "%08X", argb)}"
   }
 
   /**
