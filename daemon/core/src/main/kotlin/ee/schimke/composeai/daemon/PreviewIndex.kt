@@ -67,9 +67,15 @@ data class PreviewInfoDto(
   /**
    * Display-property block sourced from the gradle plugin's `PreviewParams`. Optional — fixtures
    * predating issue #420 omit it; the v2 interactive resolver falls back to its built-in defaults
-   * for every absent sub-field (per-field, not per-block). The block is also tracked by [diff], so
-   * a `widthDp =` edit on an existing `@Preview` shows up as a `changed` entry on the next
-   * incremental rescan.
+   * for every absent sub-field (per-field, not per-block).
+   *
+   * The incremental source-change scan ([IncrementalDiscovery.toDto]) rebuilds a preview's DTO from
+   * the class file alone and cannot recover this block, so it emits `params == null` — which reads
+   * as `changed` against a prior that carried params. To avoid dropping a preview's known size on
+   * every edit (which flips the desktop interactive render between wrap-content and the fixed 320²
+   * frame), [applyDiff] carries the prior `params` forward when an incoming `changed` DTO omits
+   * them. A genuine `@Preview(widthDp = …)` edit is therefore reflected only on the next FULL
+   * rediscovery (which re-parses `previews.json`), not on the incremental class-file rescan.
    */
   val params: PreviewParamsDto? = null,
   /**
@@ -359,7 +365,24 @@ internal constructor(
     lock.write {
       for (id in diff.removed) byId.remove(id)
       for (dto in diff.added) byId[dto.id] = dto
-      for (dto in diff.changed) byId[dto.id] = dto
+      // The incremental source-change scan (IncrementalDiscovery.toDto) rebuilds a preview's DTO
+      // from the class file alone, which can't recover the display `params` block (@Preview
+      // widthDp / heightDp / device / showSystemUi / …) — so a `changed` DTO always arrives with
+      // `params == null`. Blindly replacing the entry would strip the preview's known size until
+      // the
+      // next FULL rediscovery, which flips the desktop interactive/stream render between the
+      // wrap-content sandbox and the fixed 320² frame on every save (the PNG↔Live "size shift"
+      // after
+      // an edit, from both #2369/#2370's null-params handling). Carry the prior entry's params
+      // forward when the incoming DTO omits them, so an edited preview keeps its real size and the
+      // wrap decision stays correct in both directions. A genuine `@Preview(widthDp = …)` edit is
+      // (still) only reflected on the next full rediscovery — the class-file rescan can't see it
+      // either way — but keeping the last-known size is strictly better than nulling it.
+      for (dto in diff.changed) {
+        val prior = byId[dto.id]
+        byId[dto.id] =
+          if (dto.params == null && prior?.params != null) dto.copy(params = prior.params) else dto
+      }
     }
   }
 

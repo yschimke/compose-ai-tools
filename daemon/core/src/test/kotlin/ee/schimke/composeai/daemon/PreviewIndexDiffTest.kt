@@ -78,6 +78,61 @@ class PreviewIndexDiffTest {
   }
 
   @Test
+  fun `applyDiff preserves prior params when the incremental DTO omits them`() {
+    // The incremental source-change scan (IncrementalDiscovery.toDto) rebuilds a DTO from the class
+    // file alone, so it always arrives with params == null — which reads as a `changed` entry
+    // against a prior that carried a params block. applyDiff must carry the prior params forward,
+    // or the desktop interactive/stream render would lose the preview's known size after every save
+    // (flipping wrap-content ↔ the fixed 320² frame — the PNG↔Live "size shift").
+    val prior =
+      PreviewInfoDto(
+        id = "Sized",
+        className = "com.example.SizedKt",
+        methodName = "Sized",
+        sourceFile = "Sized.kt",
+        params = PreviewParamsDto(widthDp = 200, device = "id:pixel_5"),
+      )
+    val fresh =
+      PreviewInfoDto(
+        id = "Sized",
+        className = "com.example.SizedKt",
+        methodName = "Sized",
+        sourceFile = "Sized.kt",
+        params = null,
+      )
+    val index = PreviewIndex.fromMap(path = null, byId = mapOf("Sized" to prior))
+    val diff = index.diff(setOf(fresh), Path.of("Sized.kt"))
+    // The params-less rescan reads as a change (params differ from the prior)…
+    assertEquals(listOf("Sized"), diff.changed.map { it.id })
+
+    index.applyDiff(diff)
+    // …but the committed entry keeps the previously-discovered params, not the null rescan.
+    val merged = index.byId("Sized")
+    assertEquals(200, merged?.params?.widthDp)
+    assertEquals("id:pixel_5", merged?.params?.device)
+  }
+
+  @Test
+  fun `applyDiff keeps a present empty params block over a null rescan`() {
+    // The other direction: a no-size sticker carries a present-but-empty params block (it wraps).
+    // A params-less rescan must not drop it to null — that would flip the live render from
+    // wrap-content back to the fixed frame.
+    val prior =
+      PreviewInfoDto(
+        id = "Sticker",
+        className = "com.example.StickerKt",
+        methodName = "Sticker",
+        sourceFile = "Sticker.kt",
+        params = PreviewParamsDto(),
+      )
+    val fresh = prior.copy(params = null)
+    val index = PreviewIndex.fromMap(path = null, byId = mapOf("Sticker" to prior))
+    index.applyDiff(index.diff(setOf(fresh), Path.of("Sticker.kt")))
+    // The present (empty) block survives — so renderSpecFromInfo still wraps it.
+    assertEquals(PreviewParamsDto(), index.byId("Sticker")?.params)
+  }
+
+  @Test
   fun `no-op — scan matches index exactly, diff is empty`() {
     val foo = preview("Foo", sourceFile = "Foo.kt", displayName = "Foo!")
     val index = PreviewIndex.fromMap(path = null, byId = mapOf("Foo" to foo))
