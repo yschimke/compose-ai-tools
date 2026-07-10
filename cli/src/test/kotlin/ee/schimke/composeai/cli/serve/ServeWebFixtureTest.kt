@@ -404,7 +404,14 @@ class ServeWebFixtureTest {
     assertTrue(withWasm.contains("Run in browser (Wasm)"), "expected the Wasm toggle")
     assertTrue(withWasm.contains("id=\"cp-wasm\""), "expected the Wasm iframe")
     assertTrue(withWasm.contains("data-wasm-src=\"/wasm/compose-m3/?id=card-filled\""))
-    assertTrue(withWasm.contains("sandbox=\"allow-scripts\""), "iframe must be sandboxed")
+    // Sandboxed, but with allow-same-origin: the app is our own same-origin compiled catalog, so
+    // granting the real origin stops its storage/history APIs (window.caches via supportsCacheApi,
+    // history.pushState) from throwing SecurityError in an opaque origin. Still no allow-forms /
+    // allow-popups / allow-top-navigation, so it can't navigate the top frame or submit forms.
+    assertTrue(
+      withWasm.contains("sandbox=\"allow-scripts allow-same-origin\""),
+      "iframe is sandboxed (scripts + same-origin for the trusted same-origin app)",
+    )
     // Flash-free switch: the snapshot stays on-stage until the app's first-frame signal, and the
     // iframe is overlaid on the snapshot's exact box (pixel parity with the baked PNG).
     assertTrue(
@@ -416,12 +423,12 @@ class ServeWebFixtureTest {
       "iframe is positioned over the snapshot's rendered box",
     )
     assertTrue(withWasm.contains("loading Wasm…"), "load state keeps the snapshot with a status")
-    // Guard against re-adding a page-side font preload: the sandboxed iframe's opaque origin gets
-    // its own HTTP-cache partition, so nothing this page fetches is reusable inside it. The real
-    // prefetch lives in the app's index.html (parallel with the Wasm boot).
+    // Guard against re-adding a page-side font preload: the real prefetch lives in the app's own
+    // index.html (in flight before the iframe navigates, and the app consumes the promises), so a
+    // page-side preload is redundant.
     assertFalse(
       withWasm.contains("preloadWasmFonts"),
-      "no page-side font preload (cache-partitioned away from the sandboxed iframe)",
+      "no page-side font preload (the app's index.html owns the prefetch)",
     )
     // The in-browser tier can drop the sticker background (component only on the checkerboard).
     assertTrue(

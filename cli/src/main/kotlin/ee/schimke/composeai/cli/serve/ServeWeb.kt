@@ -676,9 +676,18 @@ object ServeWeb {
     // this session.
     val wasmAttr =
       if (wasmSrc != null) " data-wasm-src=\"${WebEscaping.htmlEscape(wasmSrc)}\"" else ""
+    // `allow-same-origin` alongside `allow-scripts`: the Wasm app is our own compiled catalog,
+    // served same-origin from this box's `/wasm/<system>/`, so it isn't hostile content the opaque
+    // origin needs to wall off. Granting the real origin stops the storage/history APIs the
+    // Kotlin/Wasm + Compose runtime touches (`window.caches` via `supportsCacheApi`,
+    // history.pushState, …) from throwing `SecurityError` in an opaque origin — which otherwise
+    // spammed the console on every Wasm render — and lets Compose's resource loader use the Cache
+    // API. `data-wasm-src` is still same-origin-checked before it reaches the frame (see
+    // wasmBaseSrc), so a mis-set src can't smuggle a foreign document in.
     val wasmFrame =
       if (wasmSrc != null)
-        "<iframe id=\"cp-wasm\" hidden sandbox=\"allow-scripts\" title=\"$label (Wasm)\"></iframe>"
+        "<iframe id=\"cp-wasm\" hidden sandbox=\"allow-scripts allow-same-origin\" " +
+          "title=\"$label (Wasm)\"></iframe>"
       else ""
     val wasmToggle =
       if (wasmSrc != null)
@@ -1098,11 +1107,13 @@ object ServeWeb {
         if (u.origin !== location.origin) return "";
         return u.href;
       }
-      // NOTE: don't "preload" the app's fonts from this page — the sandboxed iframe has an opaque
-      // origin, and Chrome partitions the HTTP cache by frame origin, so nothing fetched here is
-      // reusable inside it (measured: every font was fetched twice). The prefetch that actually
-      // works lives in the app's own index.html, which starts the manifest+font fetches at
-      // document load, in parallel with the Wasm boot.
+      // NOTE: the font prefetch lives in the app's own index.html (it starts the manifest+font
+      // fetches at document load, in parallel with the Wasm boot), not on this page. That's where
+      // it belongs regardless of the sandbox: it must be in flight before the iframe navigates, and
+      // the app is the one that consumes the promises. (Historically the iframe was opaque-origin
+      // with its own cache partition, so a page-side preload was also unreusable and fetched every
+      // font twice; with allow-same-origin the partition is shared, but the app-side prefetch is
+      // still the right home, so keep page-side preloads out — see the ServeWebFixtureTest guard.)
       // The override patch (theme / font scale / locale) the running app merges over its baked base —
       // a bare `a=b&c=d` query. An absent key falls back to the app's baked default (e.g. cleared
       // Theme → the variant's uiMode). Device / orientation are server-render-only, so not forwarded.
@@ -1234,7 +1245,8 @@ object ServeWeb {
           else { closeWasm(); refreshSnapshot(); }
         });
         // The app posts "cp-wasm-ready" once its first frame is on the canvas — the swap signal.
-        // The sandboxed frame has an opaque origin, so match on source, not e.origin.
+        // Match on source (the known frame's contentWindow), not e.origin — robust regardless of
+        // the frame's origin, and the payload is a fixed string so there's no data surface.
         window.addEventListener("message", function (e) {
           if (e.source !== wasmFrame.contentWindow || e.data !== "cp-wasm-ready") return;
           revealWasm();

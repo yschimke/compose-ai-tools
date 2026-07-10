@@ -117,7 +117,7 @@ a:hover { text-decoration: underline; }
               <p class="cp-head"><a href="/?token=demo-token-fixture&session=compose-m3">← previews</a> <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ branch:yschimke/compose-ai-tools@design-artifacts/compose-m3</span></p>
       <p class="cp-sub" title="com.example.CardPreview">Card</p>
       <div class="cp-viewer" data-preview-id="com.example.CardPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="true" data-can-render-overrides="false" data-snapshot-backend="Snapshot" data-live-backend="Live" data-wasm-src="/wasm/compose-m3/?id=card-filled">
-        <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="Card"><canvas id="cp-canvas" hidden></canvas><iframe id="cp-wasm" hidden sandbox="allow-scripts" title="Card (Wasm)"></iframe></div>
+        <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="Card"><canvas id="cp-canvas" hidden></canvas><iframe id="cp-wasm" hidden sandbox="allow-scripts allow-same-origin" title="Card (Wasm)"></iframe></div>
         <div class="cp-controls">
           <div class="cp-note">Pre-rendered snapshot — tick “Run in browser (Wasm)” to interact: Theme, Font scale, Locale &amp; background apply in the browser. Device/Orientation need the live server. <a href="https://github.com/yschimke/compose-ai-tools/blob/main/docs/public-preview-server.md#running-one">Enable a local preview server.</a></div>
           <label class="cp-live-row"><input id="cp-live" type="checkbox"> Live (stream)</label>
@@ -495,11 +495,13 @@ a:hover { text-decoration: underline; }
     if (u.origin !== location.origin) return "";
     return u.href;
   }
-  // NOTE: don't "preload" the app's fonts from this page — the sandboxed iframe has an opaque
-  // origin, and Chrome partitions the HTTP cache by frame origin, so nothing fetched here is
-  // reusable inside it (measured: every font was fetched twice). The prefetch that actually
-  // works lives in the app's own index.html, which starts the manifest+font fetches at
-  // document load, in parallel with the Wasm boot.
+  // NOTE: the font prefetch lives in the app's own index.html (it starts the manifest+font
+  // fetches at document load, in parallel with the Wasm boot), not on this page. That's where
+  // it belongs regardless of the sandbox: it must be in flight before the iframe navigates, and
+  // the app is the one that consumes the promises. (Historically the iframe was opaque-origin
+  // with its own cache partition, so a page-side preload was also unreusable and fetched every
+  // font twice; with allow-same-origin the partition is shared, but the app-side prefetch is
+  // still the right home, so keep page-side preloads out — see the ServeWebFixtureTest guard.)
   // The override patch (theme / font scale / locale) the running app merges over its baked base —
   // a bare `a=b&c=d` query. An absent key falls back to the app's baked default (e.g. cleared
   // Theme → the variant's uiMode). Device / orientation are server-render-only, so not forwarded.
@@ -631,7 +633,8 @@ a:hover { text-decoration: underline; }
       else { closeWasm(); refreshSnapshot(); }
     });
     // The app posts "cp-wasm-ready" once its first frame is on the canvas — the swap signal.
-    // The sandboxed frame has an opaque origin, so match on source, not e.origin.
+    // Match on source (the known frame's contentWindow), not e.origin — robust regardless of
+    // the frame's origin, and the payload is a fixed string so there's no data surface.
     window.addEventListener("message", function (e) {
       if (e.source !== wasmFrame.contentWindow || e.data !== "cp-wasm-ready") return;
       revealWasm();
