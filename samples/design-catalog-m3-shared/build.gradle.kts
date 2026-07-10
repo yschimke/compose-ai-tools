@@ -93,3 +93,31 @@ compose.resources {
   publicResClass = true
   packageOfResClass = "com.example.designcatalogm3.shared.generated.resources"
 }
+
+// Published-preview runtime pinning — the SHARED half of the note in
+// `:samples:design-catalog-m3`'s build. Most `catalogOverride*` / `PreviewSlot` usage lives in THIS
+// module's commonMain/desktopMain, so the released-runtime guard + coordinate substitution must
+// apply here too. Without it, this module compiles its runtime usage against the HEAD
+// `project(...)`
+// deps while the consumer links the released jars — an unreleased runtime API would then slip
+// through the guard and only surface later as a linkage / render error, not a compile failure. Same
+// gate + release-please-managed version as the consumer (kept in lockstep by hand — a shared
+// convention over both modules is the DRY follow-up).
+if (providers.gradleProperty("composeaiUseReleasedRuntimes").orNull.toBoolean()) {
+  val version =
+    providers.gradleProperty("composeaiReleasedRuntimeVersion").orNull
+      ?: error(
+        "composeaiUseReleasedRuntimes is set but composeaiReleasedRuntimeVersion is missing from " +
+          "gradle.properties"
+      )
+  configurations.all {
+    resolutionStrategy.dependencySubstitution {
+      substitute(project(":data-preview-overrides-runtime"))
+        .using(module("ee.schimke.composeai:data-preview-overrides-runtime:$version"))
+        .because("published previews reference released preview-runtimes (see :design-catalog-m3)")
+      substitute(project(":slot-preview-runtime"))
+        .using(module("ee.schimke.composeai:slot-preview-runtime:$version"))
+        .because("published previews reference released preview-runtimes (see :design-catalog-m3)")
+    }
+  }
+}
