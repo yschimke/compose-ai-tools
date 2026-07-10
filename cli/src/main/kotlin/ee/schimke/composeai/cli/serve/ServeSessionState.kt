@@ -42,4 +42,18 @@ data class ServeSessionState(
    * resume (the baked dir persists), so suspend/resume is preserved. Null for plain sessions.
    */
   val bakedFallback: (() -> ServeHost)? = null,
+  /**
+   * Optional **per-preview live lane** resolver, set only for a trusted-catalog live-bundle session
+   * whose branch ships per-preview FULL bundles ([ServeCatalogStore]). Given a daemon-preview id it
+   * returns a daemon-backed host that re-renders **only that one preview** from its own bundle,
+   * pooled with idle LRU eviction, or null when none is available. [openHost][ServeCommand] hands
+   * it to the [ServeCatalogLiveHost] as the default render lane (tried before the monolithic
+   * daemon), so the small per-preview bundles are exercised routinely; a null result falls back to
+   * the monolithic daemon, so the session never regresses. The pool is owned by the command (closed
+   * at server shutdown) and outlives suspend/resume, so this stays valid across re-opens. Null for
+   * plain sessions and for a branch that ships only the monolithic bundle.
+   */
+  val perPreviewResolve: ((daemonId: String) -> ServeHost?)? = null,
+  /** Live upstream stream count across the pooled per-preview daemons (see [perPreviewResolve]). */
+  val perPreviewStreamCount: () -> Int = { 0 },
 )

@@ -7,8 +7,10 @@ import java.io.File
 import java.nio.file.Files
 import javax.imageio.ImageIO
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -154,7 +156,7 @@ class ServeCatalogStoreTest {
         register = { n, h -> registered[n] = h },
         trust = trust,
         fetch = fetch,
-        buildTrustedBundle = { _, _, _, alias, _ ->
+        buildTrustedBundle = { _, _, _, alias, _, _ ->
           captured = alias
           true // pretend the live host took over, so no static host is registered
         },
@@ -166,6 +168,71 @@ class ServeCatalogStoreTest {
     assertEquals(mapOf("button-filled__ideal__default__dark" to "FilledButton_Dark"), captured)
     // The live builder claimed the session, so nothing was registered as a plain static host.
     assertTrue(registered["compose-m3"] == null)
+  }
+
+  @Test
+  fun `the per-preview fetcher fetches a daemon-id's own split bundle beside the liveBundle`() {
+    // The builder is handed a per-preview fetcher: given a daemon-preview id it fetches that
+    // preview's OWN FULL split bundle from <liveBundle.path>/previews/<daemon-id>.png on the same
+    // branch (the default render lane). A hit returns a local file; a miss (no per-preview bundle)
+    // returns null so the caller falls back to the monolithic daemon.
+    val json =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "liveBundle":{"path":"bundle/","file":"compose-m3-bundle.png"},
+       "components":[{"componentId":"Button/Filled","images":[
+         {"path":"images/button-filled/ideal__default__dark.png","theme":"dark","previewId":"FilledButton_Dark"}]}]}
+      """
+        .trimIndent()
+    val perPreviewBytes = byteArrayOf(9, 8, 7)
+    val requested = mutableListOf<String>()
+    val fetch: (String) -> ByteArray? = { url ->
+      requested += url
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> json.toByteArray()
+        url.endsWith("bundle/compose-m3-bundle.png") -> byteArrayOf(1, 2, 3)
+        url.endsWith("bundle/previews/FilledButton_Dark.png") -> perPreviewBytes
+        // Any OTHER per-preview bundle 404s (the branch ships none for it).
+        url.contains("bundle/previews/") -> null
+        url.endsWith(".png") -> png()
+        else -> null
+      }
+    }
+    val trust =
+      TrustStore(
+        branches = listOf(TrustedBranch("yschimke/compose-ai-tools", "design-artifacts/*"))
+      )
+    var fetchPerPreview: ((String) -> File?)? = null
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = trust,
+        fetch = fetch,
+        buildTrustedBundle = { _, _, _, _, _, fetcher ->
+          fetchPerPreview = fetcher
+          true
+        },
+      )
+    store.load("compose-m3")
+
+    val fetcher = fetchPerPreview
+    assertTrue(fetcher != null, "the builder was handed a per-preview fetcher")
+    // A mapped daemon id resolves its own split bundle from previews/<daemon-id>.png…
+    val hit = fetcher!!("FilledButton_Dark")
+    assertTrue(hit != null && hit.isFile)
+    assertContentEquals(perPreviewBytes, hit.readBytes())
+    assertTrue(requested.any { it.endsWith("bundle/previews/FilledButton_Dark.png") })
+    // …a second request for the same id re-uses the cached file rather than re-downloading…
+    val fetchCountBefore = requested.count { it.endsWith("bundle/previews/FilledButton_Dark.png") }
+    fetcher("FilledButton_Dark")
+    assertEquals(
+      fetchCountBefore,
+      requested.count { it.endsWith("bundle/previews/FilledButton_Dark.png") },
+      "the cached per-preview bundle is re-used",
+    )
+    // …and an id the branch ships no per-preview bundle for yields null (falls back to monolith).
+    assertNull(fetcher("MissingButton_Light"))
   }
 
   @Test
@@ -219,7 +286,7 @@ class ServeCatalogStoreTest {
         register = { n, h -> registered[n] = h },
         trust = trust,
         fetch = fetch,
-        buildTrustedBundle = { _, _, externalResourcesDir, _, _ ->
+        buildTrustedBundle = { _, _, externalResourcesDir, _, _, _ ->
           capturedDir = externalResourcesDir
           true
         },
@@ -281,7 +348,7 @@ class ServeCatalogStoreTest {
         register = { n, h -> registered[n] = h },
         trust = trust,
         fetch = fetch,
-        buildTrustedBundle = { _, _, _, _, _ ->
+        buildTrustedBundle = { _, _, _, _, _, _ ->
           builderCalled = true
           true
         },
@@ -350,7 +417,7 @@ class ServeCatalogStoreTest {
         register = { n, h -> registered[n] = h },
         trust = trust,
         fetch = fetch,
-        buildTrustedBundle = { _, _, externalResourcesDir, _, _ ->
+        buildTrustedBundle = { _, _, externalResourcesDir, _, _, _ ->
           capturedDir = externalResourcesDir
           true
         },

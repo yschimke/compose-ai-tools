@@ -14,6 +14,7 @@ import ee.schimke.composeai.cli.serve.ServeHost
 import ee.schimke.composeai.cli.serve.ServeHttpServer
 import ee.schimke.composeai.cli.serve.ServeMdnsAdvertiser
 import ee.schimke.composeai.cli.serve.ServeModuleRef
+import ee.schimke.composeai.cli.serve.ServePerPreviewDaemonPool
 import ee.schimke.composeai.cli.serve.ServePreview
 import ee.schimke.composeai.cli.serve.ServeRenderHost
 import ee.schimke.composeai.cli.serve.ServeRevisionFactory
@@ -208,6 +209,14 @@ class ServeCommand(args: List<String>) : Command(args) {
    * as sessions but never land here, so they stay off the nav.
    */
   private val registeredCatalogs = mutableListOf<String>()
+
+  /**
+   * Per-catalog per-preview daemon pools built by [buildTrustedCatalogBundle]. Each backs a live
+   * catalog's default (per-preview) render lane and outlives suspend/resume, so it's owned here and
+   * torn down at server shutdown (added to the [bringUpServer] closeables) rather than by the
+   * session host's [close][ServeHost.close].
+   */
+  private val catalogPerPreviewPools = mutableListOf<AutoCloseable>()
   /**
    * In-browser CMP tier (`--wasm-dir <system>=<dir>[,<system>=<dir>…]`): map a design system to the
    * assembled Wasm catalog app (`./gradlew :samples:cmp-wasm-catalog:wasmCatalogDist` →
@@ -441,7 +450,8 @@ class ServeCommand(args: List<String>) : Command(args) {
       bannerPreviewCount = previews.size,
       mdnsModuleLabel = module.gradlePath,
       mdnsPreviewIds = previews.map { it.id },
-      closeables = listOf(worktrees, catalogWorktrees.takeIf { it !== worktrees }),
+      closeables =
+        listOf(worktrees, catalogWorktrees.takeIf { it !== worktrees }) + catalogPerPreviewPools,
     )
   }
 
@@ -503,7 +513,7 @@ class ServeCommand(args: List<String>) : Command(args) {
       // No module previews to advertise; discovery is a module-session nicety, so skip it here.
       mdnsModuleLabel = null,
       mdnsPreviewIds = null,
-      closeables = emptyList(),
+      closeables = catalogPerPreviewPools.toList(),
     )
   }
 
@@ -528,7 +538,14 @@ class ServeCommand(args: List<String>) : Command(args) {
             onLog = { System.err.println("[daemon serve] $it") },
           )
         val fallback = state.bakedFallback
-        if (fallback != null) ServeCatalogLiveHost(state.previewAliases, daemon, fallback())
+        if (fallback != null)
+          ServeCatalogLiveHost(
+            alias = state.previewAliases,
+            live = daemon,
+            baked = fallback(),
+            perPreviewResolve = state.perPreviewResolve,
+            perPreviewStreamCount = state.perPreviewStreamCount,
+          )
         else daemon
       }
       .getOrNull()
@@ -871,13 +888,20 @@ class ServeCommand(args: List<String>) : Command(args) {
             "serve: catalog $system carries an in-browser Wasm app (/wasm/$system/)"
           )
         },
-        buildTrustedBundle = { system, bundleFile, externalResourcesDir, alias, bakedFallback ->
+        buildTrustedBundle = {
+          system,
+          bundleFile,
+          externalResourcesDir,
+          alias,
+          bakedFallback,
+          fetchPerPreviewBundle ->
           buildTrustedCatalogBundle(
             system,
             bundleFile,
             externalResourcesDir,
             alias,
             bakedFallback,
+            fetchPerPreviewBundle,
             registry,
             openHost,
           )
@@ -929,6 +953,7 @@ class ServeCommand(args: List<String>) : Command(args) {
     externalResourcesDir: File?,
     alias: Map<String, String>,
     bakedFallback: () -> ServeHost,
+    fetchPerPreviewBundle: (daemonId: String) -> File?,
     registry: ServeSessionRegistry,
     openHost: (ServeSessionState) -> ServeHost?,
   ): Boolean {
@@ -937,13 +962,38 @@ class ServeCommand(args: List<String>) : Command(args) {
       java.nio.file.Files.createTempDirectory("serve-catalog-bundle-$system").toFile().also {
         it.deleteOnExit()
       }
-    // Carry the catalog-id→daemon-id alias + the baked-PNG fallback on the state so openHost fronts
-    // the daemon with the baked catalog: the published /p/<id> deep links + /render/<id>.png
-    // thumbnails keep resolving (Android-only variants fall back to baked), while the mapped ids
-    // get
-    // a live lane. See ServeCatalogLiveHost. The rehydrated external-resource pool (fonts lifted
-    // out
-    // of classes/app.jar) joins the daemon classpath so text rasterises with the same faces.
+    // The per-preview live lane (default render path, monolithic fallback): a bounded, idle-LRU
+    // pool
+    // of daemons, one per edited preview, each materialised from that preview's OWN FULL split
+    // bundle fetched from the trusted branch. Shares the monolithic bundle's rehydrated font pool
+    // ([externalResourcesDir]) — both were split from the same externalised bundle — so a
+    // per-preview daemon rasterises text with the same faces without re-fetching. A per-preview
+    // state carries no alias/bakedFallback, so openHost returns the bare single-preview daemon (not
+    // another composite). When the fetch/materialise fails the pool yields null and
+    // ServeCatalogLiveHost falls back to the monolithic daemon, so the lane never regresses.
+    val perPreviewPool = ServePerPreviewDaemonPool { daemonId ->
+      val ppFile = fetchPerPreviewBundle(daemonId) ?: return@ServePerPreviewDaemonPool null
+      val ppDest =
+        java.nio.file.Files.createTempDirectory("serve-catalog-preview-$system").toFile().also {
+          it.deleteOnExit()
+        }
+      val ppState =
+        ServeBundleDaemon.materialize(
+          ppFile,
+          ppDest,
+          system,
+          extraClasspathDirs = listOfNotNull(externalResourcesDir),
+        ) ?: return@ServePerPreviewDaemonPool null
+      openHost(ppState)
+    }
+    catalogPerPreviewPools += perPreviewPool
+    // Carry the catalog-id→daemon-id alias + the baked-PNG fallback + the per-preview lane on the
+    // state so openHost fronts the daemon with the baked catalog: the published /p/<id> deep links
+    // +
+    // /render/<id>.png thumbnails keep resolving (Android-only variants fall back to baked), while
+    // the mapped ids get a live lane. See ServeCatalogLiveHost. The rehydrated external-resource
+    // pool (fonts lifted out of classes/app.jar) joins the daemon classpath so text rasterises with
+    // the same faces.
     val state =
       ServeBundleDaemon.materialize(
           bundleFile,
@@ -951,7 +1001,12 @@ class ServeCommand(args: List<String>) : Command(args) {
           system,
           extraClasspathDirs = listOfNotNull(externalResourcesDir),
         )
-        ?.copy(previewAliases = alias, bakedFallback = bakedFallback) ?: return false
+        ?.copy(
+          previewAliases = alias,
+          bakedFallback = bakedFallback,
+          perPreviewResolve = perPreviewPool::get,
+          perPreviewStreamCount = perPreviewPool::activeStreamCount,
+        ) ?: return false
     val host = openHost(state) ?: return false
     registry.register(system, state, host = host)
     System.err.println("serve: catalog $system → LIVE from bundle (no build) (?session=$system)")

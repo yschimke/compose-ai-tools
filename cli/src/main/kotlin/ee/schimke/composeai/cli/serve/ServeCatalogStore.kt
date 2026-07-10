@@ -60,6 +60,16 @@ class ServeCatalogStore(
    * rehydrated font/resource pool the daemon adds to its classpath (see
    * [rehydrateExternalResources]) — null when the bundle carried its resources inline (a
    * self-contained pack).
+   *
+   * `fetchPerPreviewBundle` lifts the **per-preview live lane** (the default render path, with the
+   * monolithic bundle as fallback): given a daemon-preview id it fetches that preview's own FULL
+   * split bundle (`<liveBundle.path>/previews/<daemon-id>.png` on the same trusted branch,
+   * fail-closed) into a local file, or null when the branch ships none / the fetch fails. The
+   * per-preview FULL bundles were split from the *externalised* monolithic bundle, so they share
+   * its font pool — the caller re-uses the monolithic bundle's already-rehydrated
+   * `externalResourcesDir` rather than re-fetching. The builder pools + materialises these on
+   * demand and prefers them over the monolithic daemon; a null resolve falls back to it, so the
+   * lane is exercised routinely without ever regressing.
    */
   private val buildTrustedBundle:
     (
@@ -68,8 +78,9 @@ class ServeCatalogStore(
       externalResourcesDir: File?,
       alias: Map<String, String>,
       bakedFallback: () -> ServeHost,
+      fetchPerPreviewBundle: (daemonId: String) -> File?,
     ) -> Boolean =
-    { _, _, _, _, _ ->
+    { _, _, _, _, _, _ ->
       false
     },
   /**
@@ -242,10 +253,20 @@ class ServeCatalogStore(
         // broken
         // live tier.
         when (val res = rehydrateExternalResources(bundleFile, base, liveBundle.path, dir, safe)) {
-          is ResRehydrate.Ready ->
-            if (buildTrustedBundle(safe, bundleFile, res.dir, alias, bakedFallback)) {
+          is ResRehydrate.Ready -> {
+            // The per-preview live lane (default render path): each daemon-preview id maps to its
+            // own FULL split bundle beside the monolithic one on the trusted branch. Fetched on
+            // demand + pooled by the builder; shares the monolithic bundle's rehydrated font pool
+            // ([res.dir]) since both were split from the same externalised bundle.
+            val fetchPerPreview: (String) -> File? = { daemonId ->
+              fetchPerPreviewBundle(daemonId, liveBundle, base, dir, safe)
+            }
+            if (
+              buildTrustedBundle(safe, bundleFile, res.dir, alias, bakedFallback, fetchPerPreview)
+            ) {
               return Result.Ok(safe, count, "${BundleVerifier.summary(verdict)} (live bundle)")
             }
+          }
           ResRehydrate.Unavailable -> {} // fall through to source/static
         }
       }
@@ -343,6 +364,61 @@ class ServeCatalogStore(
     target.parentFile?.mkdirs()
     target.writeBytes(bytes)
     return target
+  }
+
+  /**
+   * Fetch one preview's own **per-preview FULL bundle**
+   * (`<liveBundle.path>/previews/<daemon-id>.png` on the trusted branch) into
+   * `<dir>/$LIVE_BUNDLE_DIR/$PER_PREVIEW_DIR/<daemon-id>.png` — the unit the per-preview live lane
+   * materialises + pools. `design-artifacts.yml` splits the externalised monolithic bundle into
+   * these (one re-renderable sticker per preview) beside it. Fail-closed like [fetchLiveBundle]: an
+   * invalid/escaping [daemonId] or a fetch miss returns null and the caller simply falls back to
+   * the monolithic daemon for that id (so a branch that ships no per-preview bundles still serves
+   * live from the monolith). Cached on disk: a second request for the same id re-uses the
+   * already-fetched file rather than re-downloading.
+   *
+   * [daemonId] is a bundle preview descriptor id (the [alias][previewAliasFor] values), sanitised
+   * to the same route-safe stem `bundle split` wrote the file under (keep `A-Za-z0-9._-`, else
+   * `_`), so the URL stem matches the published filename.
+   */
+  private fun fetchPerPreviewBundle(
+    daemonId: String,
+    liveBundle: LiveBundle,
+    base: String,
+    dir: File,
+    system: String,
+  ): File? {
+    val stem = sanitizePerPreviewName(daemonId)
+    if (stem.isEmpty()) {
+      System.err.println("serve: $system per-preview id '$daemonId' is unusable — skipping")
+      return null
+    }
+    val previewsDir = File(File(dir, LIVE_BUNDLE_DIR), PER_PREVIEW_DIR)
+    val previewsRoot = previewsDir.canonicalFile.toPath()
+    val target = File(previewsDir, "$stem.png")
+    if (!target.canonicalFile.toPath().startsWith(previewsRoot)) {
+      System.err.println("serve: $system per-preview '$stem' escapes — skipping")
+      return null
+    }
+    // Cached on disk from a prior request for the same id (the pool reopens lazily on eviction).
+    if (target.isFile && target.length() > 0) return target
+    val prefix = liveBundle.path.trim('/')
+    val rel = "$PER_PREVIEW_DIR/$stem.png"
+    val url = if (prefix.isEmpty()) "$base$rel" else "$base$prefix/$rel"
+    val bytes = runCatching { fetch(url) }.getOrNull()
+    if (bytes == null) {
+      // Expected when the branch ships no per-preview bundle for this id (older catalog, view-only
+      // tier); the caller falls back to the monolithic daemon. Quiet — not an error.
+      return null
+    }
+    target.parentFile?.mkdirs()
+    target.writeBytes(bytes)
+    return target
+  }
+
+  /** Filesystem/route-safe stem for a per-preview id (mirrors `bundle split`'s sanitiser). */
+  private fun sanitizePerPreviewName(id: String): String = buildString {
+    for (c in id) append(if (c.isLetterOrDigit() || c == '.' || c == '_' || c == '-') c else '_')
   }
 
   /**
@@ -554,6 +630,14 @@ class ServeCatalogStore(
     private const val MAX_WASM_FILES = 64
     /** Local subdir a catalog's `liveBundle` file is fetched into (`<dir>/bundle/<file>`). */
     const val LIVE_BUNDLE_DIR = "bundle"
+
+    /**
+     * Branch- and local-relative subdir (under `liveBundle.path` / [LIVE_BUNDLE_DIR]) holding the
+     * per-preview FULL split bundles `design-artifacts.yml` writes (`previews/<daemon-id>.png`),
+     * one re-renderable sticker per preview. Fetched by [fetchPerPreviewBundle] for the per-preview
+     * live lane.
+     */
+    const val PER_PREVIEW_DIR = "previews"
 
     /**
      * Branch-relative subdir (under the `liveBundle.path`) holding the bundle's externalized

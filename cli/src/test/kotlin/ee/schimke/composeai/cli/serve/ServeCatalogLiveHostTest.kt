@@ -405,4 +405,122 @@ class ServeCatalogLiveHostTest {
     assertTrue(live.closed)
     assertTrue(baked.closed)
   }
+
+  // --- Per-preview lane (default, with monolithic fallback) -----------------------------------
+
+  @Test
+  fun `an override render prefers the per-preview daemon over the monolithic one`() {
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val monolithic =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId, overrides = listOf(labelKnob))),
+        tag = "mono",
+        streaming = true,
+      )
+    val perPreview = RecordingHost(previews = emptyList(), tag = "per")
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = monolithic,
+        baked = baked,
+        perPreviewResolve = { id -> if (id == daemonId) perPreview else null },
+      )
+
+    // A knob edit resolves the per-preview daemon FIRST — the monolithic one is never touched, so
+    // the small per-preview bundle is the routinely-exercised default lane.
+    val out = composite.render(catalogId, knobOverride()) as RenderOutcome.Ok
+    assertEquals("per:$daemonId", out.png.decodeToString())
+    assertEquals(daemonId, perPreview.lastRenderId)
+    assertNull(monolithic.lastRenderId)
+    assertNull(baked.lastRenderId)
+  }
+
+  @Test
+  fun `an override render falls back to the monolithic daemon when no per-preview daemon resolves`() {
+    val (_, monolithic, baked) = host()
+    // The per-preview resolver always fails (no per-preview bundle / materialise failed). The
+    // composite must fall back to the monolithic liveBundle daemon, never baked, so a knob edit
+    // still re-renders — worst case is exactly the pre-per-preview behaviour.
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = monolithic,
+        baked = baked,
+        perPreviewResolve = { null },
+      )
+
+    val out = composite.render(catalogId, knobOverride()) as RenderOutcome.Ok
+    assertEquals("live:$daemonId", out.png.decodeToString())
+    assertEquals(daemonId, monolithic.lastRenderId)
+    assertNull(baked.lastRenderId)
+  }
+
+  @Test
+  fun `a plain snapshot never resolves a per-preview daemon`() {
+    var resolved = false
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val monolithic =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "mono",
+        streaming = true,
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = monolithic,
+        baked = baked,
+        perPreviewResolve = {
+          resolved = true
+          null
+        },
+      )
+    // Ordinary browsing stays baked and must not even ask the pool to spin up a per-preview daemon.
+    val out = composite.render(catalogId, PreviewOverrides()) as RenderOutcome.Ok
+    assertEquals("baked:$catalogId", out.png.decodeToString())
+    assertEquals(false, resolved)
+    assertNull(monolithic.lastRenderId)
+  }
+
+  @Test
+  fun `a live stream prefers the per-preview daemon over the monolithic one`() {
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val monolithic =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "mono",
+        streaming = true,
+      )
+    val perPreview = RecordingHost(previews = emptyList(), tag = "per", streaming = true)
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = monolithic,
+        baked = baked,
+        perPreviewResolve = { perPreview },
+      )
+    val handle = composite.subscribeStream(catalogId, PreviewOverrides(), null, null) {}
+    assertTrue(handle != null)
+    assertEquals(daemonId, perPreview.lastStreamId)
+    assertNull(monolithic.lastStreamId)
+  }
+
+  @Test
+  fun `activeStreamCount sums the monolithic and per-preview lanes`() {
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val monolithic =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "mono",
+        streaming = true,
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = monolithic, // reports 1 active stream
+        baked = baked,
+        perPreviewStreamCount = { 3 },
+      )
+    assertEquals(4, composite.activeStreamCount())
+  }
 }
