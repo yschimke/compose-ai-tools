@@ -129,9 +129,16 @@ jobs:
   #      anyway with a warning rather than wedge the release on CDN lag).
   # Only then `gh release edit --draft=false --latest`, so `/releases/latest` and
   # `latest/download/…` flip atomically to a fully-populated release.
+  # The `!cancelled()` override tolerates a post-cut crash in the `release-please`
+  # JOB — but it must NOT tolerate a failed `release`. `release.yml` decouples the
+  # GitHub asset upload from the Maven Central publish, so `release` can fail with
+  # the required assets already attached (Maven publish failed). Finalizing then
+  # would un-draft a release whose Gradle plugin/runtime never actually published.
+  # So require `needs.release.result == 'success'` explicitly: skip release-please's
+  # failure, but never release's.
   finalize-release:
     needs: [release-please, release]
-    if: ${{ !cancelled() && needs.release-please.outputs.release_created == 'true' }}
+    if: ${{ !cancelled() && needs.release-please.outputs.release_created == 'true' && needs.release.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write   # un-draft + mark latest
@@ -188,9 +195,12 @@ jobs:
   # `releases/download/<tag>/…` URL, which 404s while the release is still a
   # draft — so it must run only after finalize un-drafts it (which also makes its
   # tarball-resolvable poll resolve immediately instead of riding out the upload).
+  # Same scoping as finalize: tolerate release-please's post-cut crash, but require
+  # `release` AND `finalize-release` to have actually succeeded — this job pulls the
+  # CLI tarball from the now-PUBLISHED release, which only exists if finalize ran.
   preview-host-image:
     needs: [release-please, release, finalize-release]
-    if: ${{ !cancelled() && needs.release-please.outputs.release_created == 'true' }}
+    if: ${{ !cancelled() && needs.release-please.outputs.release_created == 'true' && needs.release.result == 'success' && needs.finalize-release.result == 'success' }}
     uses: ./.github/workflows/preview-host-image.yml
     with:
       cli_version: ${{ needs.release-please.outputs.tag_name }}
@@ -232,7 +242,10 @@ jobs:
   # release was publishing, it opens the correct next PR instead of the phantom.
   reconcile-release-pr:
     needs: [release-please, finalize-release]
-    if: ${{ !cancelled() && needs.release-please.outputs.release_created == 'true' }}
+    # Tolerate release-please's post-cut crash, but only reconcile once the release
+    # actually finalized (tag + published) — otherwise the re-run hits the same
+    # unanchored-manifest wedge it's meant to clear.
+    if: ${{ !cancelled() && needs.release-please.outputs.release_created == 'true' && needs.finalize-release.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write        # update the release branch
