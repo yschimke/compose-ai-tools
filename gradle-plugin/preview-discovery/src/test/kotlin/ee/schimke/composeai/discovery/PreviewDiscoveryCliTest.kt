@@ -99,6 +99,26 @@ class PreviewDiscoveryCliTest {
   }
 
   @Test
+  fun `--wear defaults to false (non-Wear backend)`() {
+    assertThat(PreviewDiscoveryCli.parse(baseArgs).input.isWear).isFalse()
+  }
+
+  @Test
+  fun `--wear true opts a non-Gradle Wear target into wear-density retargeting`() {
+    assertThat(PreviewDiscoveryCli.parse(baseArgs + arrayOf("--wear", "true")).input.isWear)
+      .isTrue()
+  }
+
+  @Test
+  fun `--wear rejects a non-boolean value`() {
+    val error =
+      assertThrows(PreviewDiscoveryCli.ArgError::class.java) {
+        PreviewDiscoveryCli.parse(baseArgs + arrayOf("--wear", "watch"))
+      }
+    assertThat(error.message).contains("must be 'true' or 'false'")
+  }
+
+  @Test
   fun `missing --module errors with a clear message`() {
     val error =
       assertThrows(PreviewDiscoveryCli.ArgError::class.java) {
