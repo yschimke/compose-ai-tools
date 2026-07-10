@@ -174,21 +174,29 @@ class ServeCatalogLiveHost(
   override fun activeStreamCount(): Int = live.activeStreamCount()
 
   /**
-   * Graft the daemon previews' author-declared knobs onto the baked browse surface. The daemon
-   * knows its previews by descriptor id (`FilledButton_Dark`) and carries their
-   * [ServePreview.overrides] (from the bundle sidecars); the baked catalog keys by catalog id
-   * (`button-filled__ideal__default__dark`) and carries none. For each mapped baked preview, copy
-   * its daemon twin's declarations across so `/api/previews` + the viewer advertise the editable
-   * knobs. Unmapped previews (Android-only variants with no daemon lane) are returned unchanged.
+   * Graft the daemon previews' per-preview metadata onto the baked browse surface. The daemon knows
+   * its previews by descriptor id (`FilledButton_Dark`) and carries their author-declared knobs
+   * ([ServePreview.overrides], from the bundle sidecars) plus the detected-feature flags
+   * ([ServePreview.supportsFocus] / [supportsGestures], from `@FocusedPreview` /
+   * `@GestureHintPreview` discovery); the baked catalog keys by catalog id
+   * (`button-filled__ideal__default__dark`) and carries neither. For each mapped baked preview,
+   * copy its daemon twin's knobs + feature flags across so `/api/previews` + the viewer advertise
+   * the editable knobs AND the detected-feature controls (a mapped `@FocusedPreview` component's
+   * Keyboard focus toggle re-renders on the daemon). Unmapped previews (Android-only variants with
+   * no daemon lane) are returned unchanged.
    */
   private fun mergeDeclaredKnobs(
     bakedPreviews: List<ServePreview>,
     livePreviews: List<ServePreview>,
   ): List<ServePreview> {
-    val knobsByDaemonId = livePreviews.associate { it.id to it.overrides }
+    val twinByDaemonId = livePreviews.associateBy { it.id }
     return bakedPreviews.map { p ->
-      val knobs = alias[p.id]?.let { knobsByDaemonId[it] }
-      if (knobs.isNullOrEmpty()) p else p.copy(overrides = knobs)
+      val twin = alias[p.id]?.let { twinByDaemonId[it] } ?: return@map p
+      p.copy(
+        overrides = twin.overrides,
+        supportsFocus = twin.supportsFocus,
+        supportsGestures = twin.supportsGestures,
+      )
     }
   }
 
