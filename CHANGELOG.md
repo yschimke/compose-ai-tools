@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.16.31](https://github.com/yschimke/compose-ai-tools/compare/v0.16.30...v0.16.31) (2026-07-10)
+
+
+### Features
+
+* **gestures:** @GestureHintPreview — force-show the Wear gesture hint from outside the screen ([#2318](https://github.com/yschimke/compose-ai-tools/issues/2318)) ([622a11d](https://github.com/yschimke/compose-ai-tools/commit/622a11dc40d17ccc164c50dcb430762acc55eb35))
+
+
+### Bug Fixes
+
+* **figma-svg:** capture previews at natural size, embed real faces + tracking ([#2321](https://github.com/yschimke/compose-ai-tools/issues/2321)) ([5322578](https://github.com/yschimke/compose-ai-tools/commit/5322578c3e161720a51de6bd4d0c20279426d623))
+
 ## [0.16.30](https://github.com/yschimke/compose-ai-tools/compare/v0.16.29...v0.16.30) (2026-07-10)
 
 
