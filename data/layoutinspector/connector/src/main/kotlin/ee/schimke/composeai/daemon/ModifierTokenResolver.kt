@@ -47,6 +47,7 @@ internal object ModifierTokenResolver {
   ): ComposeSemanticsTokens? {
     var backgroundColor: String? = null
     var borderColor: String? = null
+    var borderWidth: String? = null
     var cornerRadius: String? = null
     var cornerRadiusPx: String? = null
     var shape: String? = null
@@ -83,6 +84,7 @@ internal object ModifierTokenResolver {
       // (`outline` / `outlineVariant`) a plain `Modifier.background` never sees (issue #1908).
       if (borderColor == null && (name == "border" || simpleName.startsWith("BorderModifier"))) {
         borderColor = borderColorHex(mod, elements)
+        borderWidth = borderWidthDp(mod, elements)
       }
       if (padding == null && (name == "padding" || simpleName.startsWith("PaddingElement"))) {
         padding = paddingInsets(mod, elements, inspectable?.valueOverride)
@@ -118,6 +120,7 @@ internal object ModifierTokenResolver {
       ComposeSemanticsTokens(
         backgroundColor = backgroundColor,
         borderColor = borderColor,
+        borderWidth = borderWidth,
         cornerRadius = cornerRadius,
         cornerRadiusPx = cornerRadiusPx,
         shape = shape,
@@ -225,6 +228,24 @@ internal object ModifierTokenResolver {
    * first, falling back to reflecting the backing `brush` field's `SolidColor.value`. A gradient
    * brush (no single colour) is skipped (issue #1908).
    */
+  /**
+   * Resolves a `border` modifier's stroke width in dp. `Modifier.border(width: Dp, …)` stores its
+   * `Dp` (already in dp, unlike the px `shadowElevation`) on a `width` field / inspector element.
+   * Returns null when it can't be read (falls back to the export's 1dp hairline default) or when
+   * the width is ≤ 0.
+   */
+  private fun borderWidthDp(mod: Any, elements: Map<String, Any?>): String? {
+    val dp =
+      floatValue(elements["width"])
+        ?: runCatching {
+            mod.javaClass.getDeclaredField("width").apply { isAccessible = true }.getFloat(mod)
+          }
+          .getOrNull()
+        ?: return null
+    if (dp <= 0f) return null
+    return "${roundedDp(dp)}dp"
+  }
+
   private fun borderColorHex(mod: Any, elements: Map<String, Any?>): String? {
     (elements["color"] as? Color)?.let {
       return if (it == Color.Unspecified) null else colorToWireString(it)

@@ -254,6 +254,13 @@ data class ComposeSemanticsTokens(
    */
   val borderColor: String? = null,
   /**
+   * Resolved `Modifier.border` stroke width in dp (e.g. `"2.0dp"`), when a border is present and
+   * the width could be read. Null falls the figma-svg export back to a 1dp hairline — so an
+   * off-state `Switch` track (2dp) or any thicker outline renders at its real width instead of a
+   * hairline.
+   */
+  val borderWidth: String? = null,
+  /**
    * Resolved corner radius in dp from the node's `background` / `clip` / `border` / `graphicsLayer`
    * shape. A uniform shape emits a single value (`"12.0dp"`); a non-uniform shape emits the four
    * corners comma-separated (`"12.0dp,12.0dp,0.0dp,0.0dp"`, top-start → bottom-start). dp-based
