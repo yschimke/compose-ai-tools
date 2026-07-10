@@ -95,10 +95,13 @@ object GestureRoutes {
 
 @Composable
 fun GestureGalleryApp(
-  navController: NavHostController = rememberSwipeDismissableNavController()
+  navController: NavHostController = rememberSwipeDismissableNavController(),
+  // Real production app — let TimeText use the system clock. Previews that want a
+  // deterministic time supply a `FixedPreviewTimeSource` (see [GestureGalleryPreview]).
+  timeText: @Composable () -> Unit = { TimeText() },
 ) {
   MaterialTheme {
-    AppScaffold(timeText = { TimeText() }) {
+    AppScaffold(timeText = timeText) {
       SwipeDismissableNavHost(
         navController = navController,
         startDestination = GestureRoutes.HOME,
@@ -560,7 +563,7 @@ fun PageIndicatorStickerPreview() {
 @WearPreviewLargeRound
 @Composable
 fun GestureGalleryPreview() {
-  GestureGalleryApp()
+  GestureGalleryApp(timeText = { TimeText(timeSource = FixedPreviewTimeSource) })
 }
 
 @WearPreviewLargeRound
