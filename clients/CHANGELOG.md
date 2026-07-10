@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/yschimke/compose-ai-tools/compare/clients-v0.2.0...clients-v0.2.1) (2026-07-10)
+
+
+### Features
+
+* **samples:** Wear one-handed gesture gallery + compose/gestures data product ([#2313](https://github.com/yschimke/compose-ai-tools/issues/2313)) ([8463762](https://github.com/yschimke/compose-ai-tools/commit/8463762f85988a07340eff176639cbdbcb8c7f15))
+
 ## [0.2.0](https://github.com/yschimke/compose-ai-tools/compare/clients-v0.1.0...clients-v0.2.0) (2026-06-22)
 
 
