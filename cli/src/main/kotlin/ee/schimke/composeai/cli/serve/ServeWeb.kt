@@ -93,6 +93,8 @@ object ServeWeb {
     .cp-controls label:has(:disabled) { opacity: 0.55; }
     .cp-knobs { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
     .cp-knobs-head { font-size: 0.72rem; color: #6b6b70; }
+    .cp-overlays { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .cp-overlays-head { font-size: 0.72rem; color: #6b6b70; }
     .cp-knobs input:disabled { opacity: 0.7; }
     .cp-links { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
     .cp-link-row { display: flex; align-items: center; gap: 6px; }
@@ -765,6 +767,23 @@ object ServeWeb {
       }
     val backendLabel = WebEscaping.htmlEscape(snapshotBackend ?: "Snapshot")
     val liveLabel = WebEscaping.htmlEscape(liveBackend ?: "Live")
+    // Live-only overlay toggles (accessibility / touch visualization). The daemon composites these
+    // onto the held session's frames, so they mean nothing on a baked PNG — offered only when a
+    // Live
+    // Compose stream is available, and disabled until that mode is active (the mode-transition JS
+    // flips them). Omitted entirely when no stream backs the session, rather than left permanently
+    // dead. `cp-overlay` marks them for the JS collector + enable/disable sync.
+    val overlaysHtml =
+      if (hasLiveStream)
+        """
+        <div class="cp-overlays">
+          <div class="cp-overlays-head">Overlays (Live Compose)</div>
+          <label class="cp-live-row"><input class="cp-overlay" id="cp-talkBack" type="checkbox" disabled> Accessibility (TalkBack)</label>
+          <label class="cp-live-row"><input class="cp-overlay" id="cp-touchOverlay" type="checkbox" disabled> Show touches</label>
+        </div>
+        """
+          .trimIndent()
+      else ""
     val body =
       """
       <p class="cp-head"><a href="$basePath/$q">← previews</a>${trustBadge(trust)}</p>
@@ -811,6 +830,7 @@ object ServeWeb {
               <option value="clear">Clear (crisp outline)</option>
             </select>
           </label>
+          $overlaysHtml
           ${overrideKnobsHtml(preview, canApplyOverrides || canRenderOverrides)}
           ${downloadLinksHtml(hasSvgExport)}
           <div class="cp-status" id="cp-status"></div>
@@ -896,6 +916,14 @@ object ServeWeb {
           var val = (el.type === "checkbox") ? (el.checked ? "true" : "false") : el.value;
           if (val === "") return;
           o["knob." + key] = val;
+        });
+        // Live-only overlay toggles (talkBack / touchOverlay). Their id is "cp-<key>", so the daemon
+        // key is the id minus the prefix. Sent as an explicit true/false so unchecking clears the
+        // overlay on the next setOverrides (which replaces the whole map). Disabled ⇒ not live ⇒
+        // skipped, so they never leak onto a snapshot.
+        document.querySelectorAll(".cp-overlay").forEach(function (el) {
+          if (el.disabled) return;
+          o[el.id.replace(/^cp-/, "")] = el.checked ? "true" : "false";
         });
         return o;
       }
@@ -1288,6 +1316,15 @@ object ServeWeb {
         if (m === "live") { closeWasm(); openStream(); }
         else if (m === "wasm") { closeStream(); openWasm(); }
         else { closeStream(); closeWasm(); refreshSnapshot(); }
+        syncOverlayToggles();
+      }
+      // The live-only overlay toggles (talkBack / touchOverlay) are meaningful only while the daemon
+      // holds the composition, so they're enabled iff Live Compose is the active mode and greyed out
+      // (like the static-snapshot controls) otherwise. Called on every mode transition.
+      var overlayToggles = document.querySelectorAll(".cp-overlay");
+      function syncOverlayToggles() {
+        var on = !!(live && live.checked);
+        Array.prototype.forEach.call(overlayToggles, function (el) { el.disabled = !on; });
       }
       // Programmatic switch (e.g. a wasm-only control auto-enabling Wasm): tick the radio so the UI
       // reflects it, then run the transition.
@@ -1347,6 +1384,18 @@ object ServeWeb {
       fields.forEach(function (f) {
         var el = document.getElementById("cp-" + f);
         if (el) el.addEventListener("change", onControlsChanged);
+      });
+      // Overlay toggles are live-only: they push a fresh setOverrides through the open stream and do
+      // nothing otherwise. They get their own handler rather than onControlsChanged so a toggle mid
+      // connect (ws not yet readyState 1) can't fall through to the snapshot / wasm-auto-enable
+      // branches — an overlay never applies to a baked PNG or the in-browser tier.
+      function onOverlayChanged() {
+        if (live.checked && ws && ws.readyState === 1) {
+          ws.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
+        }
+      }
+      Array.prototype.forEach.call(overlayToggles, function (el) {
+        el.addEventListener("change", onOverlayChanged);
       });
       // Author-declared knobs re-render on edit (text/number debounce via "input", toggles "change").
       // They route differently from the display axes: a named knob (label, a color, …) is honoured
