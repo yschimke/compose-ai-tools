@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.16.30](https://github.com/yschimke/compose-ai-tools/compare/v0.16.29...v0.16.30) (2026-07-10)
+
+
+### Features
+
+* **design-artifacts:** sort compare page worst-first + inline hybrid rasters ([#2316](https://github.com/yschimke/compose-ai-tools/issues/2316)) ([4e27208](https://github.com/yschimke/compose-ai-tools/commit/4e2720826c740cf39a5c9d07f34abc59e0d20dd8))
+* **samples:** Wear one-handed gesture gallery + compose/gestures data product ([#2313](https://github.com/yschimke/compose-ai-tools/issues/2313)) ([8463762](https://github.com/yschimke/compose-ai-tools/commit/8463762f85988a07340eff176639cbdbcb8c7f15))
+
+
+### Bug Fixes
+
+* **design-artifacts:** align figma-svg padding out before SSIM scoring ([#2315](https://github.com/yschimke/compose-ai-tools/issues/2315)) ([c18494f](https://github.com/yschimke/compose-ai-tools/commit/c18494f7f2d268959b70729520f17d96568b2370))
+* **serve:** grant the Wasm iframe same-origin to stop SecurityErrors ([#2319](https://github.com/yschimke/compose-ai-tools/issues/2319)) ([a752400](https://github.com/yschimke/compose-ai-tools/commit/a75240049a1cf4735db2b5e37d9095fd9ac1d196))
+
 ## [0.16.29](https://github.com/yschimke/compose-ai-tools/compare/v0.16.28...v0.16.29) (2026-07-09)
 
 
