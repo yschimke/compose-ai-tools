@@ -26,6 +26,14 @@
         {
           "type": "generic",
           "path": ".github/actions/preview-comment/action.yml"
+        },
+        {
+          "type": "generic",
+          "path": "deploy/image/Dockerfile"
+        },
+        {
+          "type": "generic",
+          "path": ".github/workflows/preview-host-image.yml"
         }
       ]
     },
