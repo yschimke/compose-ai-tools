@@ -111,9 +111,45 @@ test("the summary counts comparable components (both PNG and figma-svg)", () => 
   assert.match(html, /id="done">0<\/b> \/ 1/);
 });
 
-test("components are grouped, preserving first-seen group order", () => {
+test("each row carries its group as a sublabel, in one flat sortable table", () => {
   const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set() });
-  assert.ok(html.indexOf("Buttons") < html.indexOf("Cards"), "Buttons group precedes Cards");
+  // Single sortable body, rows tagged .crow so the scorer can reorder them.
+  assert.match(html, /<tbody id="rows">/);
+  assert.match(html, /<tr class="crow"/);
+  // Group is a per-row sublabel (not a group header row), in catalog order.
+  assert.match(html, /<span class="grp">Buttons<\/span>/);
+  assert.match(html, /<span class="grp">Cards<\/span>/);
+  assert.ok(html.indexOf("Buttons") < html.indexOf("Cards"), "initial paint keeps catalog order");
+});
+
+test("the scorer reorders rows worst-match-first once scored", () => {
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /function sortKey/);
+  // Unscored/n-a rows sink to the bottom (no scoreValue → Infinity).
+  assert.match(html, /Number\.isFinite\(v\) \? v : Infinity/);
+  // Sorted ascending by match % and re-appended into the flat body.
+  assert.match(html, /sort\(\(a, b\) => sortKey\(a\) - sortKey\(b\)\)/);
+  assert.match(html, /getElementById\("rows"\)/);
+  // The Match header signals the ascending (worst-first) order.
+  assert.match(html, /Match ↑/);
+});
+
+test("the scorer inlines hybrid raster crops as data URIs so their layers score", () => {
+  // A hybrid figma-svg's <image href="…figma-raster/…png"> layers don't draw in a
+  // secure-static <img> load; the scorer must inline them so hybrid stickers score
+  // their full chrome, not a half-empty vector. Pin the mechanism.
+  const html = renderCompareHtml(catalog, {
+    figmaSvgSlugs: new Set(["button-filled"]),
+    hybridSlugs: new Set(["button-filled"]),
+  });
+  assert.match(html, /function inlineRasters/);
+  assert.match(html, /readAsDataURL/);
+  assert.match(html, /new Blob\(\[svgText\], \{ type: "image\/svg\+xml" \}\)/);
+  assert.match(html, /xlink:href\|href/); // matches both href spellings
+  // Crops must resolve from the SVG's resolved response URL, not location.href: under
+  // htmlpreview the page origin differs from the <base> that relative assets resolve from.
+  assert.match(html, /inlineRasters\(svgText, resp\.url\)/);
+  assert.doesNotMatch(html, /new URL\(tr\.dataset\.svg, location\.href\)/);
 });
 
 test("no figma-svgs at all → every row inert, still a complete inventory", () => {

@@ -3,7 +3,8 @@
  * component on one row, its rendered **PNG** (the raster source of truth) in one
  * column, its editable **figma-svg** (re-rasterized *by the browser*) in a second,
  * and a **structural-similarity score** in a third — so a designer can eyeball
- * every component's PNG↔SVG fidelity at once and spot which vectors drift.
+ * every component's PNG↔SVG fidelity at once and spot which vectors drift. Rows
+ * sort **worst-match-first** once scored, so the biggest divergences surface first.
  *
  * Why the score is computed live in the page rather than baked at build time: the
  * whole point is to measure the *browser's* SVG rasterization against the PNG, so
@@ -21,11 +22,13 @@
  * page works straight from the branch checkout — no external assets, one inline
  * `<script>` for the in-browser scorer.
  *
- * Known limitation: a *hybrid* figma-svg (opaque Image/Icon layers backed by
- * `<image href="…figma-raster/…png">` crops) is loaded via `<img>`, which browsers
- * render in "secure static mode" — external references inside it are not fetched.
- * Those raster layers therefore don't appear in the SVG column or the score; the
- * common vector-only sticker is unaffected. Such rows are flagged `hybrid`.
+ * Hybrid stickers: a *hybrid* figma-svg (opaque Image/Icon/TextField/Slider layers
+ * backed by `<image href="…figma-raster/…png">` crops) would render half-empty if
+ * loaded straight via `<img>`, because browsers draw SVG-in-`<img>` in "secure
+ * static mode" and never fetch those external references — which used to sink hybrid
+ * scores far below their true fidelity. The scorer therefore **inlines** each raster
+ * crop as a `data:` URI before rasterizing, so the opaque layers draw and the score
+ * reflects the whole sticker. Such rows are still flagged `hybrid` for provenance.
  */
 
 import { slug } from "./render-wireframe-svg.mjs";
@@ -69,7 +72,8 @@ function comparePng(component) {
 /**
  * The client-side scorer, inlined as a string so the page is self-contained. It
  * walks every `<tr data-png data-svg>`, rasterizes both images to a shared canvas
- * over white, and writes a windowed-SSIM percentage into the row's score cell.
+ * over white, writes a windowed-SSIM percentage into the row's score cell, then
+ * re-orders the rows worst-match-first.
  */
 const SCORER = String.raw`
 (() => {
@@ -89,6 +93,49 @@ const SCORER = String.raw`
       img.onerror = () => rej(new Error("load failed: " + src));
       img.src = src;
     });
+  }
+
+  // Inline a hybrid figma-svg's relative <image href="…figma-raster/…png"> crops as
+  // data: URIs. A secure-static <img>-loaded SVG never fetches external refs, so
+  // without this the opaque layers (TextField/Slider chrome, icons) drop out and the
+  // sticker scores far below its true fidelity. Same-origin fetch each crop, base64
+  // it in, and return the rewritten text; a vector-only SVG (no external image refs)
+  // comes back unchanged so its cheap <img> path is untouched. A crop that fails to
+  // fetch is left as-is — that one layer just won't draw.
+  async function inlineRasters(svgText, baseUrl) {
+    const re = /(<image\b[^>]*?\b(?:xlink:href|href)\s*=\s*")([^"]+)(")/gi;
+    const hrefs = [];
+    let m;
+    while ((m = re.exec(svgText))) if (!/^data:/i.test(m[2])) hrefs.push(m[2]);
+    if (!hrefs.length) return svgText;
+    const dataFor = new Map();
+    await Promise.all([...new Set(hrefs)].map(async (h) => {
+      try {
+        const blob = await fetch(new URL(h, baseUrl).href).then((r) => r.blob());
+        const data = await new Promise((res, rej) => {
+          const fr = new FileReader();
+          fr.onload = () => res(fr.result);
+          fr.onerror = () => rej(new Error("raster read failed"));
+          fr.readAsDataURL(blob);
+        });
+        dataFor.set(h, data);
+      } catch (_) { /* leave this layer un-inlined */ }
+    }));
+    return svgText.replace(re, (full, pre, href, post) =>
+      dataFor.has(href) ? pre + dataFor.get(href) + post : full);
+  }
+
+  // Load an SVG given as a string (rasters already inlined) via a Blob URL, so it
+  // carries no external refs and the canvas it's drawn into stays untainted.
+  async function loadSvgString(svgText) {
+    const url = URL.createObjectURL(new Blob([svgText], { type: "image/svg+xml" }));
+    try {
+      return await loadImage(url);
+    } finally {
+      // Revoke on a macrotask so the synchronous drawImage that follows the await
+      // still has the decoded bitmap.
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
   }
 
   // The figma-svg's root translate. The export (FigmaSvgModel) pads the canvas by
@@ -196,13 +243,22 @@ const SCORER = String.raw`
   async function scoreRow(tr) {
     const cell = tr.querySelector(".score");
     try {
-      // The SVG is loaded twice: as an <img> to rasterize, and as text to read its
-      // root translate. Both are same-origin and cache-shared.
-      const [png, svg, svgText] = await Promise.all([
+      // PNG as an <img>; the SVG as text (to read its translate and inline any raster
+      // crops). Both are same-origin and cache-shared.
+      const [png, resp] = await Promise.all([
         loadImage(tr.dataset.png),
-        loadImage(tr.dataset.svg),
-        fetch(tr.dataset.svg).then((r) => r.text()),
+        fetch(tr.dataset.svg),
       ]);
+      const svgText = await resp.text();
+      // Inline hybrid raster crops so their opaque layers draw; a vector-only SVG is
+      // returned unchanged and takes the plain <img> path. Resolve the crop hrefs against
+      // the SVG's *resolved* URL (resp.url), NOT location.href: under htmlpreview the page
+      // origin is htmlpreview.github.io while relative assets resolve from the injected
+      // <base> (raw.githubusercontent). location.href would point the crop fetches at the
+      // wrong host, so nothing inlines and hybrids fall back to half-empty scoring. resp.url
+      // is the branch asset's real location (it followed the same base/redirects the fetch did).
+      const inlined = await inlineRasters(svgText, resp.url);
+      const svg = inlined === svgText ? await loadImage(tr.dataset.svg) : await loadSvgString(inlined);
       // The render PNG defines the aligned coordinate space (padding-free, content at
       // (0,0)); size the shared canvas from it, capped to MAX_SIDE for offset-robustness.
       const rw = png.naturalWidth || png.width, rh = png.naturalHeight || png.height;
@@ -242,6 +298,13 @@ const SCORER = String.raw`
     }
   }
 
+  // Sort key: the match %, so ascending order puts the largest diff (lowest match)
+  // first. Unscored / n/a rows have no scoreValue and sink to the bottom.
+  function sortKey(tr) {
+    const v = parseFloat(tr.dataset.scoreValue);
+    return Number.isFinite(v) ? v : Infinity;
+  }
+
   async function run() {
     const rows = Array.from(document.querySelectorAll("tr[data-png][data-svg]"));
     const scores = [];
@@ -257,6 +320,15 @@ const SCORER = String.raw`
       avgEl.textContent = scores.length
         ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) + "%"
         : "—";
+    }
+    // Re-order worst-match-first (largest diff at the top) so the biggest divergences
+    // are the first thing you see; unscored rows sink to the bottom. Stable re-append
+    // keeps the whole inventory in one table.
+    const body = document.getElementById("rows");
+    if (body) {
+      for (const tr of Array.from(body.querySelectorAll("tr.crow")).sort((a, b) => sortKey(a) - sortKey(b))) {
+        body.appendChild(tr);
+      }
     }
     // Opened over file:// the canvas taints (opaque origin) and fetch() is blocked, so
     // every row fails — point the reader at the http path (htmlpreview / a local server)
@@ -278,10 +350,12 @@ const SCORER = String.raw`
 /**
  * One `<tr>` per component. `data-png` / `data-svg` drive the scorer; the score
  * cell is filled in client-side. Components missing a PNG or a figma-svg still get
- * a row (so the table is a complete inventory) but with an inert "—" score.
+ * a row (so the table is a complete inventory) but with an inert "—" score that
+ * sorts to the bottom.
  */
 function componentRow(component, figmaSvgSlugs, hybridSlugs) {
   const id = component.componentId ?? "(unnamed)";
+  const group = component.group ?? "Components";
   const s = slug(id);
   const png = comparePng(component);
   const hasSvg = figmaSvgSlugs && figmaSvgSlugs.has(s);
@@ -293,7 +367,7 @@ function componentRow(component, figmaSvgSlugs, hybridSlugs) {
     : `<div class="shot shot--missing">no PNG</div>`;
   const svgCell = svgPath
     ? `<div class="shot"><img loading="lazy" src="${esc(svgPath)}" alt="${esc(id)} SVG" />${
-        hybrid ? `<span class="badge" title="hybrid sticker: raster layers are not drawn in secure-static SVG mode">hybrid</span>` : ""
+        hybrid ? `<span class="badge" title="hybrid sticker: opaque layers are raster crops, inlined for scoring">hybrid</span>` : ""
       }</div>`
     : `<div class="shot shot--missing">no figma-svg</div>`;
 
@@ -305,8 +379,8 @@ function componentRow(component, figmaSvgSlugs, hybridSlugs) {
   const rowAttrs =
     png && svgPath ? ` data-png="${esc(png.path)}" data-svg="${esc(svgPath)}"` : "";
 
-  return `<tr${rowAttrs}>
-  <th scope="row" class="rowhead"><span class="cid">${esc(id)}</span></th>
+  return `<tr class="crow"${rowAttrs}>
+  <th scope="row" class="rowhead"><span class="cid">${esc(id)}</span><span class="grp">${esc(group)}</span></th>
   <td class="col-png">${pngCell}</td>
   <td class="col-svg">${svgCell}</td>
   ${scoreCell}
@@ -325,34 +399,13 @@ export function renderCompareHtml(catalog, opts = {}) {
   const figmaSvgSlugs = opts.figmaSvgSlugs;
   const hybridSlugs = opts.hybridSlugs;
 
-  // Group preserving first-seen group order (same as the index).
-  const groupOrder = [];
-  const byGroup = new Map();
-  for (const c of components) {
-    const g = c.group ?? "Components";
-    if (!byGroup.has(g)) {
-      byGroup.set(g, []);
-      groupOrder.push(g);
-    }
-    byGroup.get(g).push(c);
-  }
-
   const comparable = components.filter(
     (c) => comparePng(c) && figmaSvgSlugs && figmaSvgSlugs.has(slug(c.componentId)),
   ).length;
 
-  const body = groupOrder
-    .map((g) => {
-      const rows = byGroup
-        .get(g)
-        .map((c) => componentRow(c, figmaSvgSlugs, hybridSlugs))
-        .join("\n");
-      return `<tbody class="group">
-  <tr class="grouphead"><th colspan="4">${esc(g)} <span>${byGroup.get(g).length}</span></th></tr>
-  ${rows}
-</tbody>`;
-    })
-    .join("\n");
+  // One flat, client-sortable table — initial paint is catalog order; the scorer
+  // re-orders worst-match-first once every row has a score.
+  const body = components.map((c) => componentRow(c, figmaSvgSlugs, hybridSlugs)).join("\n");
 
   const meta = catalog.meta ?? catalog;
   const title = meta.title ?? meta.system ?? "Design catalog";
@@ -378,7 +431,7 @@ export function renderCompareHtml(catalog, opts = {}) {
   header.top h1 { margin:0 0 6px; font-size:22px; }
   header.top .subtitle { color:var(--muted); font-size:13px; }
   header.top code { background:var(--panel); padding:1px 6px; border-radius:5px; }
-  header.top .note { margin-top:10px; color:var(--muted); font-size:12px; max-width:70ch; }
+  header.top .note { margin-top:10px; color:var(--muted); font-size:12px; max-width:72ch; }
   header.top .taintwarn { display:none; margin-top:10px; padding:8px 12px; border-radius:8px; font-size:12px;
     max-width:80ch; color:var(--warn); border:1px solid var(--warn); background:rgba(224,192,96,0.08); }
   header.top .taintwarn code { background:var(--panel); }
@@ -390,11 +443,10 @@ export function renderCompareHtml(catalog, opts = {}) {
   thead th { position:sticky; top:0; background:var(--bg); text-align:left; font-size:12px; color:var(--muted);
     padding:10px 12px; border-bottom:1px solid var(--line); z-index:1; }
   thead th.col-score { text-align:right; }
-  tr.grouphead th { text-align:left; font-size:14px; padding:18px 12px 8px; border-bottom:1px solid var(--line); }
-  tr.grouphead th span { color:var(--muted); font-weight:400; }
-  tbody.group tr:not(.grouphead) { border-bottom:1px solid var(--line); }
+  tbody#rows tr.crow { border-bottom:1px solid var(--line); }
   th.rowhead { text-align:left; font-weight:600; padding:12px; vertical-align:middle; width:22%; }
-  th.rowhead .cid { word-break:break-word; }
+  th.rowhead .cid { display:block; word-break:break-word; }
+  th.rowhead .grp { display:block; margin-top:3px; font-weight:400; font-size:11px; color:var(--muted); }
   td { padding:10px 12px; vertical-align:middle; }
   /* Checkerboard so transparent stickers read clearly in both columns. */
   .shot { position:relative; display:inline-grid; place-items:center; min-width:120px; min-height:80px; padding:10px; border-radius:10px;
@@ -430,9 +482,9 @@ export function renderCompareHtml(catalog, opts = {}) {
   <strong>SSIM</strong> (structural similarity) computed live in the page — pre-blurred and downscaled so a
   half-pixel offset between the two rasterizers barely moves the score, unlike a per-pixel diff. The SVG is
   aligned to the PNG first (its export padding + root <code>translate</code> are cropped back out, matching the
-  daemon's fidelity harness), so the score reflects real vector drift, not a constant inset. Hybrid
-  stickers (flagged) load their raster layers only in a full SVG renderer, so their score reflects the vector
-  layers alone.</p>
+  daemon's fidelity harness), so the score reflects real vector drift, not a constant inset. Hybrid stickers'
+  raster crop layers are inlined so their score reflects the full sticker. <strong>Rows sort largest-diff-first
+  once scored</strong>, so the worst offenders come to the top.</p>
   <p class="taintwarn" id="taintwarn">⚠ The match scores need to read pixels from a canvas, which the
   browser blocks over <code>file://</code> (opaque origin). Open this page over <strong>http</strong> —
   via the README's htmlpreview link, or a local server (<code>python3 -m http.server</code> in the branch)
@@ -445,10 +497,10 @@ export function renderCompareHtml(catalog, opts = {}) {
         <th scope="col">Component</th>
         <th scope="col">PNG</th>
         <th scope="col">SVG (browser-rendered)</th>
-        <th scope="col" class="col-score">Match</th>
+        <th scope="col" class="col-score">Match ↑</th>
       </tr>
     </thead>
-    ${body}
+    <tbody id="rows">${body}</tbody>
   </table>
 </main>
 <script>${SCORER}</script>
