@@ -209,6 +209,10 @@ open class DesktopHost(
     add("slotMode")
     add("clearBackground")
     add("material3Theme")
+    // `overrides.themeProvider` wraps the preview in an app-declared @ThemeCatalog
+    // `PreviewWrapperProvider` (resolved off the app classpath in `InvokeWithOptionalWrapper`),
+    // replacing the preview's own `@PreviewWrapper` — the discrete-theme axis.
+    add("themeProvider")
     add("wallpaper")
     // Issue #1205 — `renderNow.overrides.focus` is honoured by the planner registered in
     // `data/focus` (`FocusPreviewOverrideExtension`), which installs the around-composable that
@@ -591,7 +595,15 @@ open class DesktopHost(
       // Background → Clear toggle sends `PreviewOverrides(clearBackground = true)`. Null preserves
       // the discovery-time value.
       clearBackground = overrides?.clearBackground ?: base.clearBackground,
-      overrides = merged.toExtensionOverrides(),
+      // Carry a `themeProvider` selection through the held/live path: toExtensionOverrides() drops
+      // it
+      // (it's renderer-read, not extension-consumed), but the renderer reads spec.overrides
+      // directly,
+      // so without this a live App-theme change would keep the default wrapper.
+      overrides =
+        merged
+          .toExtensionOverrides()
+          .withThemeProvider(overrides?.themeProvider ?: base.overrides?.themeProvider),
       outputBaseName = "recording-$recordingId",
     )
   }

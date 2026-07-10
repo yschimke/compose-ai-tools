@@ -511,6 +511,7 @@ class ServeHttpServer(
           wasmSameOrigin = wasmSameOrigin,
           basePath = basePath,
           isPublic = isPublic,
+          declaredThemes = renderHost.declaredThemes,
         ),
         ContentType.Text.Html,
       )

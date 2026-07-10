@@ -399,7 +399,16 @@ class RenderEngine(
                       }
                     }
                   } else {
-                    InvokeWithOptionalWrapper(composableMethod!!, spec.wrapperClassName)
+                    InvokeWithOptionalWrapper(
+                      composableMethod!!,
+                      spec.wrapperClassName,
+                      // A `themeProvider` override (an app-declared @ThemeCatalog
+                      // `PreviewWrapperProvider` FQN) replaces the preview's own `@PreviewWrapper`
+                      // —
+                      // "render this preview under theme X" — but only when it resolves; a
+                      // stale/misspelled FQN falls back to the declared wrapper.
+                      themeProviderFqn = spec.overrides?.themeProvider,
+                    )
                   }
                 }
               }
@@ -1325,10 +1334,16 @@ private fun InvokeComposable(composableMethod: ComposableMethod) {
 private fun InvokeWithOptionalWrapper(
   composableMethod: ComposableMethod,
   wrapperFqnFromSpec: String?,
+  themeProviderFqn: String? = null,
 ) {
   val wrapper =
-    remember(composableMethod, wrapperFqnFromSpec) {
-      resolveWrapperOrNull(composableMethod, wrapperFqnFromSpec)
+    remember(composableMethod, wrapperFqnFromSpec, themeProviderFqn) {
+      // A `themeProvider` override wraps the preview in an app-declared theme provider IN PLACE OF
+      // its own `@PreviewWrapper` — but only when it actually loads. On a stale/misspelled FQN,
+      // `loadWrapperByFqnOrNull` logs and returns null; we then fall back to the preview's declared
+      // wrapper rather than stripping it. A blank/absent themeProvider skips straight to it.
+      themeProviderFqn?.takeIf { it.isNotBlank() }?.let { loadWrapperByFqnOrNull(it) }
+        ?: resolveWrapperOrNull(composableMethod, wrapperFqnFromSpec)
     }
   if (wrapper == null) {
     InvokeComposable(composableMethod)

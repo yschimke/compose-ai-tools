@@ -290,4 +290,25 @@ class PreviewOverrideMergeTest {
     assertEquals(PreviewOverrideValue.IntValue(3), merged.namedOverrides?.get("rowCount"))
     assertEquals(merged.namedOverrides, merged.toExtensionOverrides()?.namedOverrides)
   }
+
+  @Test
+  fun `withThemeProvider folds the FQN onto a null or existing held-session bag`() {
+    // toExtensionOverrides() drops themeProvider, so the held/live path folds it back on. A null
+    // bag
+    // (no other extension override) still gains one carrying only the theme.
+    val fromNull = (null as PreviewOverrides?).withThemeProvider("com.example.BrandDark")
+    assertNotNull(fromNull)
+    assertEquals("com.example.BrandDark", fromNull!!.themeProvider)
+
+    // An existing bag keeps its other fields and gains the theme.
+    val existing = PreviewOverrides(talkBack = true)
+    val folded = existing.withThemeProvider("com.example.BrandLight")
+    assertEquals("com.example.BrandLight", folded?.themeProvider)
+    assertEquals(true, folded?.talkBack)
+
+    // Blank / null FQN is a no-op — a themeless held bag stays exactly as-is (including null).
+    assertNull((null as PreviewOverrides?).withThemeProvider(null))
+    assertNull((null as PreviewOverrides?).withThemeProvider(""))
+    assertEquals(existing, existing.withThemeProvider(null))
+  }
 }

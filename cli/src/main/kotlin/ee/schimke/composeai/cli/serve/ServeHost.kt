@@ -17,6 +17,16 @@ interface ServeHost : AutoCloseable {
   /** The whole servable preview set for this session. */
   val previews: List<ServePreview>
 
+  /**
+   * The app's declared `@ThemeCatalog` themes — module-global, so the viewer's Theme selector can
+   * offer "render this preview under Brand Dark". Non-empty only for a daemon-backed host
+   * ([ServeRenderHost]) whose module declares them; a static bundle carries no theme-apply lane
+   * (`themeProvider` needs the daemon to load the provider off the app classpath), so it stays
+   * empty and the selector shows only the built-in light/dark axis.
+   */
+  val declaredThemes: List<ServeTheme>
+    get() = emptyList()
+
   /** Human label for the tenant (module Gradle path, `module@rev`, or a bundle name). */
   val label: String
 

@@ -224,6 +224,23 @@ class ServeWebFixtureTest {
         trust = "branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile",
         basePath = "/meshcore-mobile",
       )
+    // A daemon-backed viewer whose module declares `@ThemeCatalog` themes: the viewer adds an "App
+    // theme" selector (grouped by `@ThemeCatalog(group=…)`) so a preview can be re-rendered under a
+    // chosen theme via the `themeProvider` override. Captured so the visual-diff bot covers the
+    // selector.
+    val viewerThemes =
+      ServeWeb.viewerPage(
+        previews.first { it.id.endsWith("ProfileScreenPreview") },
+        token,
+        sessionId = "compose-m3",
+        canApplyOverrides = true,
+        declaredThemes =
+          listOf(
+            ServeTheme("Brand Light", "com.example.BrandLightThemeCatalog", group = "Brand"),
+            ServeTheme("Brand Dark", "com.example.BrandDarkThemeCatalog", group = "Brand"),
+            ServeTheme("High Contrast", "com.example.HighContrastThemeCatalog"),
+          ),
+      )
     // A catalog whose previews carry per-theme variants, so the landing shows the sticky light/dark
     // toggle and tags each card with its baked theme for client-side filtering.
     val landingThemed =
@@ -245,6 +262,7 @@ class ServeWebFixtureTest {
       File(pagesDir, "serve-viewer-wasm.html").writeText(wasmViewer)
       File(pagesDir, "serve-viewer-wasm-live.html").writeText(wasmViewerLive)
       File(pagesDir, "serve-viewer-catalog-knobs.html").writeText(viewerCatalogKnobs)
+      File(pagesDir, "serve-viewer-themes.html").writeText(viewerThemes)
       File(pagesDir, "serve-landing-path.html").writeText(landingPath)
       File(pagesDir, "serve-viewer-path.html").writeText(viewerPath)
       File(pagesDir, "serve-landing-themed.html").writeText(landingThemed)
@@ -259,6 +277,7 @@ class ServeWebFixtureTest {
     assertGolden(File(pagesDir, "serve-viewer-wasm.html"), wasmViewer)
     assertGolden(File(pagesDir, "serve-viewer-wasm-live.html"), wasmViewerLive)
     assertGolden(File(pagesDir, "serve-viewer-catalog-knobs.html"), viewerCatalogKnobs)
+    assertGolden(File(pagesDir, "serve-viewer-themes.html"), viewerThemes)
     assertGolden(File(pagesDir, "serve-landing-path.html"), landingPath)
     assertGolden(File(pagesDir, "serve-viewer-path.html"), viewerPath)
     assertGolden(File(pagesDir, "serve-landing-themed.html"), landingThemed)
@@ -620,6 +639,10 @@ class ServeWebFixtureTest {
       staticView.contains("id=\"cp-talkBack\""),
       "no live stream ⇒ the live-only overlay toggles are omitted entirely, not left dead",
     )
+    assertFalse(
+      staticView.contains("id=\"cp-themeProvider\""),
+      "no declared themes ⇒ the App theme selector is omitted entirely",
+    )
 
     // Static + Wasm: theme, font scale, and locale go LIVE (the in-browser app honours them) — only
     // the server-render-only controls (device/orientation/live stream) stay disabled.
@@ -804,6 +827,61 @@ class ServeWebFixtureTest {
     assertTrue(!liveView.contains("value=\"1.0\" disabled"), "font scale enabled on a live session")
     assertTrue(!liveView.contains("id=\"cp-device\" disabled"), "device enabled on a live session")
     assertTrue(liveView.contains("data-static-snapshot=\"false\""), "live session is not static")
+  }
+
+  @Test
+  fun `declared themes render an App theme selector routed through the daemon`() {
+    val themes =
+      listOf(
+        ServeTheme("Brand Light", "com.example.BrandLightThemeCatalog", group = "Brand"),
+        ServeTheme("Brand Dark", "com.example.BrandDarkThemeCatalog", group = "Brand"),
+        ServeTheme("High Contrast", "com.example.HighContrastThemeCatalog"),
+      )
+    val view =
+      ServeWeb.viewerPage(
+        previews.first(),
+        token,
+        canApplyOverrides = true,
+        declaredThemes = themes,
+      )
+    // The selector exists and carries each provider FQN as an option value with the human name.
+    assertTrue(
+      view.contains("id=\"cp-themeProvider\""),
+      "declared themes render an App theme select",
+    )
+    assertTrue(
+      view.contains("<option value=\"com.example.BrandLightThemeCatalog\">Brand Light</option>"),
+      "each declared theme is an option keyed by its provider FQN",
+    )
+    // `@ThemeCatalog(group=…)` buckets themes into <optgroup>s; an ungrouped theme stays flat.
+    assertTrue(view.contains("<optgroup label=\"Brand\">"), "grouped themes get an <optgroup>")
+    assertTrue(
+      view.contains(
+        "<option value=\"com.example.HighContrastThemeCatalog\">High Contrast</option>"
+      ),
+      "an ungrouped theme is a flat option",
+    )
+    // Enabled on a daemon host and routed like a knob (the daemon path, never the wasm
+    // auto-enable).
+    assertFalse(
+      view.contains("id=\"cp-themeProvider\" class=\"cp-knob-theme\" disabled"),
+      "the theme selector is enabled on a daemon-backed host",
+    )
+    assertTrue(
+      view.contains("themeSel.addEventListener(\"change\", onKnobChanged)"),
+      "the theme selector routes its change through the daemon (knob) path",
+    )
+    assertTrue(
+      view.contains("parts.push(\"themeProvider=\""),
+      "a chosen theme is appended to the /render URL as themeProvider",
+    )
+
+    // A static bundle can't load a provider, so the selector renders disabled (informational).
+    val staticThemed = ServeWeb.viewerPage(previews.first(), token, declaredThemes = themes)
+    assertTrue(
+      staticThemed.contains("id=\"cp-themeProvider\" class=\"cp-knob-theme\" disabled"),
+      "the theme selector is disabled on a static bundle (no daemon to apply it)",
+    )
   }
 
   @Test

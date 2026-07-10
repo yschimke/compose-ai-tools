@@ -3,7 +3,7 @@
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Card — compose-preview</title>
+        <title>Profile screen — compose-preview</title>
         <style>:root { color-scheme: light dark; }
 * { box-sizing: border-box; }
 body { margin: 0; padding: 24px; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
@@ -122,19 +122,19 @@ a:hover { text-decoration: underline; }
 }</style>
       </head>
       <body>
-              <p class="cp-head"><a href="/?token=demo-token-fixture&session=compose-m3">← previews</a> <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ branch:yschimke/compose-ai-tools@design-artifacts/compose-m3</span></p>
-      <p class="cp-sub" title="com.example.CardPreview">Card</p>
-      <div class="cp-viewer" data-preview-id="com.example.CardPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="true" data-can-render-overrides="false" data-snapshot-backend="Snapshot" data-live-backend="Live" data-wasm-src="/wasm/compose-m3/?id=card-filled">
-        <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="Card"><canvas id="cp-canvas" hidden></canvas><iframe id="cp-wasm" hidden sandbox="allow-scripts allow-same-origin" title="Card (Wasm)"></iframe></div>
+              <p class="cp-head"><a href="/?token=demo-token-fixture&session=compose-m3">← previews</a></p>
+      <p class="cp-sub" title="com.example.ProfileScreenPreview">Profile screen</p>
+      <div class="cp-viewer" data-preview-id="com.example.ProfileScreenPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="false" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live">
+        <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="Profile screen"><canvas id="cp-canvas" hidden></canvas></div>
         <div class="cp-controls">
-          <div class="cp-note">Pre-rendered snapshot — pick “Wasm” to interact: Theme, Font scale, Locale &amp; background apply in the browser. Device/Orientation need the live server. <a href="https://github.com/yschimke/compose-ai-tools/blob/main/docs/public-preview-server.md#running-one">Enable a local preview server.</a></div>
+          
           <div class="cp-modes" role="radiogroup" aria-label="Render mode">
             <label class="cp-live-row"><input type="radio" name="cp-mode" value="png" id="cp-mode-png" checked> PNG</label>
             
             <label class="cp-live-row"><input type="radio" name="cp-mode" value="live" id="cp-live"> Live Compose</label>
-            <label class="cp-live-row"><input type="radio" name="cp-mode" value="wasm" id="cp-wasm-toggle"> Wasm</label>
+            
           </div>
-          <label class="cp-live-row"><input id="cp-wasm-bg" type="checkbox"> Component only (no background)</label>
+          
           <label>Theme
             <select id="cp-uiMode">
               <option value="">(default)</option>
@@ -142,9 +142,17 @@ a:hover { text-decoration: underline; }
               <option value="dark">Dark</option>
             </select>
           </label>
-          
+                  <label>App theme
+          <select id="cp-themeProvider" class="cp-knob-theme">
+            <option value="">(default)</option>
+            <option value="com.example.HighContrastThemeCatalog">High Contrast</option>
+<optgroup label="Brand"><option value="com.example.BrandLightThemeCatalog">Brand Light</option>
+<option value="com.example.BrandDarkThemeCatalog">Brand Dark</option></optgroup>
+
+          </select>
+        </label>
           <label>Device
-            <select id="cp-device" disabled>
+            <select id="cp-device">
               <option value="">(default)</option>
               <option value="id:pixel_5">Pixel 5</option>
 <option value="id:pixel_7">Pixel 7</option>
@@ -161,14 +169,14 @@ a:hover { text-decoration: underline; }
             <input id="cp-fontScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0">
           </label>
           <label>Orientation
-            <select id="cp-orientation" disabled>
+            <select id="cp-orientation">
               <option value="">(default)</option>
               <option value="portrait">Portrait</option>
               <option value="landscape">Landscape</option>
             </select>
           </label>
           <label>Background
-            <select id="cp-background" disabled>
+            <select id="cp-background">
               <option value="">(default)</option>
               <option value="clear">Clear (crisp outline)</option>
             </select>
