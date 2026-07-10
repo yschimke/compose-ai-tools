@@ -611,6 +611,28 @@ fun SurfaceCardSquare() {
   }
 }
 
+/**
+ * A wrap-content sticker fixture mirroring the design-catalog `CatalogSticker` — a small component
+ * in 16.dp padding with **no `fillMaxSize`**, so its intrinsic size is far smaller than the render
+ * sandbox. Used by [RenderEngineWrapContentTest] to prove the AS-parity wrap crop the interactive /
+ * stream lane was missing: rendered wrap-OFF the component sits small in the **top-left** of the
+ * fixed frame (the old live-stream framing — content in the corner), while rendered wrap-ON the
+ * frame crops to the component's intrinsic size (matching the wrap-cropped baked snapshot). That
+ * crop is exactly what stops a catalog sticker from shifting size + position when the viewer
+ * toggles PNG ↔ Live Compose.
+ */
+@Composable
+fun WrapContentStickerPreview() {
+  Box(modifier = Modifier.padding(16.dp)) {
+    Box(
+      modifier = Modifier.size(56.dp).background(Color(0xFFB71C1C), RoundedCornerShape(28.dp)),
+      contentAlignment = androidx.compose.ui.Alignment.Center,
+    ) {
+      Text(text = "8", color = Color.White)
+    }
+  }
+}
+
 @Composable
 fun KeyPressColorSquare() {
   var pressed by remember { mutableStateOf(false) }

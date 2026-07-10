@@ -474,29 +474,55 @@ private fun previewIndexBackedSpecResolver(previewIndex: PreviewIndex): ((String
 internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
   val defaults =
     RenderSpec(previewId = info.id, className = info.className, functionName = info.methodName)
-  val params = info.params ?: return defaults
-  val density = params.density ?: defaults.density
-  val widthPx = params.widthDp?.let { (it * density).toInt() } ?: defaults.widthPx
-  val heightPx = params.heightDp?.let { (it * density).toInt() } ?: defaults.heightPx
-  val uiMode = if (uiModeIsNight(params.uiMode)) RenderSpec.SpecUiMode.DARK else defaults.uiMode
+  // A null params block is treated exactly like an empty one — every field falls back per-default,
+  // so (like the bake's [PreviewManifestEntry.resolved]) a no-size preview wraps whether it carried
+  // an empty params block or none at all.
+  val params = info.params
+  val density = params?.density ?: defaults.density
+  val explicitWidthPx = params?.widthDp?.let { (it * density).toInt() }
+  val explicitHeightPx = params?.heightDp?.let { (it * density).toInt() }
+  // AS-parity wrap-content, mirroring the offline-bake / harness resolver
+  // ([PreviewManifestEntry.resolved]). A preview that declares no explicit size on an axis and is
+  // not pinned to a device frame renders wrap-content on that axis: the held-session/stream render
+  // crops to the composable's intrinsic size (via [RenderEngine.cropToMeasured]) instead of leaving
+  // it small in the top-left of the fixed 320² sandbox. Without this the interactive/stream lane
+  // and the wrap-cropped baked snapshot disagree, so a trusted-catalog sticker visibly shifts
+  // size + position when the viewer toggles PNG↔Live Compose (the two share one on-screen box). A
+  // device-pinned preview keeps its fixed frame (device sizing is applied downstream). Note the
+  // interactive `PreviewParamsDto` carries no `showSystemUi`, so `pinned` is device-only here — a
+  // catalog sticker declares neither, so it wraps.
+  val pinned = (params?.device ?: defaults.device) != null
+  val wrapWidth = explicitWidthPx == null && !pinned
+  val wrapHeight = explicitHeightPx == null && !pinned
+  val widthPx =
+    explicitWidthPx
+      ?: if (wrapWidth) (PreviewManifestEntry.WRAP_SANDBOX_WIDTH_DP * density).toInt()
+      else defaults.widthPx
+  val heightPx =
+    explicitHeightPx
+      ?: if (wrapHeight) (PreviewManifestEntry.WRAP_SANDBOX_HEIGHT_DP * density).toInt()
+      else defaults.heightPx
+  val uiMode = if (uiModeIsNight(params?.uiMode)) RenderSpec.SpecUiMode.DARK else defaults.uiMode
   return RenderSpec(
     previewId = info.id,
     className = info.className,
     functionName = info.methodName,
     widthPx = widthPx,
     heightPx = heightPx,
+    wrapWidth = wrapWidth,
+    wrapHeight = wrapHeight,
     density = density,
-    showBackground = params.showBackground ?: defaults.showBackground,
-    backgroundColor = params.backgroundColor ?: defaults.backgroundColor,
-    device = params.device ?: defaults.device,
+    showBackground = params?.showBackground ?: defaults.showBackground,
+    backgroundColor = params?.backgroundColor ?: defaults.backgroundColor,
+    device = params?.device ?: defaults.device,
     outputBaseName = defaults.outputBaseName,
-    localeTag = params.locale ?: defaults.localeTag,
-    fontScale = params.fontScale ?: defaults.fontScale,
+    localeTag = params?.locale ?: defaults.localeTag,
+    fontScale = params?.fontScale ?: defaults.fontScale,
     uiMode = uiMode,
     orientation = defaults.orientation,
-    wrapperClassName = params.wrapperClassName ?: defaults.wrapperClassName,
-    kind = params.kind ?: defaults.kind,
-    assetPath = params.assetPath ?: defaults.assetPath,
+    wrapperClassName = params?.wrapperClassName ?: defaults.wrapperClassName,
+    kind = params?.kind ?: defaults.kind,
+    assetPath = params?.assetPath ?: defaults.assetPath,
   )
 }
 
