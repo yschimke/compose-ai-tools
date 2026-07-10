@@ -385,20 +385,47 @@ private class PackSubcommand(private val args: List<String>) {
               )
               exitProcess(1)
             }
-            val previewIdsToPack =
-              manifest.previews
-                .map { it.id }
-                .let { all -> if (ids.isEmpty()) all else all.filter { it in ids } }
+            val allIds = manifest.previews.map { it.id }
+            // Fail on any unknown --id rather than silently dropping it (parity with the
+            // single-pack
+            // path's resolveSelection) — a renamed/mistyped id must not quietly omit a bundle.
+            if (ids.isNotEmpty()) {
+              val known = allIds.toSet()
+              val unknown = ids.filterNot { it in known }
+              if (unknown.isNotEmpty()) {
+                System.err.println(
+                  "bundle pack --per-preview: unknown preview id(s): ${unknown.joinToString(", ")}. " +
+                    "Available: ${allIds.joinToString(", ")}"
+                )
+                exitProcess(1)
+              }
+            }
+            val previewIdsToPack = if (ids.isEmpty()) allIds else allIds.filter { it in ids }
             if (previewIdsToPack.isEmpty()) {
               System.err.println("bundle pack --per-preview: --id selection matched no previews.")
               exitProcess(1)
             }
 
+            // Map each id to a UNIQUE output file up front: distinct ids can sanitize to the same
+            // stem (e.g. `A B` and `A_B` both → `A_B`), which would silently overwrite. On a
+            // collision, append `-2`, `-3`, … so every preview gets its own bundle file.
+            val usedStems = HashSet<String>()
+            val idToFile = LinkedHashMap<String, File>()
+            for (id in previewIdsToPack) {
+              val base = sanitizeBundleFileName(id)
+              var stem = base
+              var n = 1
+              while (!usedStems.add(stem)) {
+                n++
+                stem = "$base-$n"
+              }
+              idToFile[id] = outDir.resolve("$stem.png")
+            }
+
             // Pack each preview into its own single-preview bundle, reusing the already-rendered
             // PNGs (bundle task only — no re-render).
             val written = mutableListOf<Pair<String, File>>()
-            for (id in previewIdsToPack) {
-              val outFile = outDir.resolve(sanitizeBundleFileName(id) + ".png")
+            for ((id, outFile) in idToFile) {
               val perArgs =
                 sharedArgs +
                   listOf(
