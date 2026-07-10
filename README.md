@@ -410,6 +410,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 |---------|-------|
 | `AmbientStatusAmbientPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/AmbientStatusAmbientPreview_Ambient_body_ambient.png" width="150" /> |
 | `AmbientStatusInteractivePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/AmbientStatusInteractivePreview_Ambient_body_interactive.png" width="150" /> |
+| `MediaGestureScreenHintPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/MediaGestureScreenHintPreview_Media_hints_on.png" width="150" /> |
+| `MediaGestureScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/MediaGestureScreenPreview_Media_hints_off.png" width="150" /> |
 | `ButtonHintScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ButtonHintScreenPreview_Devices_Large_Round.png" width="150" /> |
 | `DisabledGestureScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/DisabledGestureScreenPreview_Devices_Large_Round.png" width="150" /> |
 | `DismissActionScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/DismissActionScreenPreview_Devices_Large_Round.png" width="150" /> |
