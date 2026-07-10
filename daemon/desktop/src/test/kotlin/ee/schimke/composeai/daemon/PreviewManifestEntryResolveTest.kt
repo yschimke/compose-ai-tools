@@ -37,6 +37,46 @@ class PreviewManifestEntryResolveTest {
   }
 
   @Test
+  fun `no explicit size — wraps content at the sandbox bound (AS-parity natural size)`() {
+    // A preview that declares no widthDp/heightDp/device renders wrap-content: the resolved size is
+    // the 400x800dp sandbox bound and the wrap flags are set, so the capture (figma-svg / wireframe
+    // /
+    // semantics) crops to the composable's intrinsic size instead of a fixed 320 frame that clipped
+    // wide content and reflowed text.
+    val raw =
+      """{"id":"sticker","className":"X","functionName":"R","sourceFile":"P.kt",""" +
+        """"params":{"density":2.625,"showBackground":true},""" +
+        """"captures":[{"renderOutput":"renders/sticker.png","cost":1.0}]}"""
+    val entry = json.decodeFromString(PreviewManifestEntry.serializer(), raw)
+    val resolved = entry.resolved()
+    assertEquals(true, resolved.wrapWidth)
+    assertEquals(true, resolved.wrapHeight)
+    assertEquals((400 * 2.625f).toInt(), resolved.widthPx) // sandbox bound, not 320
+    assertEquals((800 * 2.625f).toInt(), resolved.heightPx)
+  }
+
+  @Test
+  fun `explicit size or device pins the frame — no wrap`() {
+    val sized =
+      json.decodeFromString(
+        PreviewManifestEntry.serializer(),
+        """{"id":"s","className":"X","functionName":"R","widthPx":300,"heightPx":120}""",
+      )
+    assertEquals(false, sized.resolved().wrapWidth)
+    assertEquals(false, sized.resolved().wrapHeight)
+    assertEquals(300, sized.resolved().widthPx)
+
+    val device =
+      json.decodeFromString(
+        PreviewManifestEntry.serializer(),
+        """{"id":"d","className":"X","functionName":"R",""" +
+          """"params":{"device":"id:wearos_small_round","widthDp":192,"heightDp":192,"density":2.0}}""",
+      )
+    assertEquals(false, device.resolved().wrapWidth)
+    assertEquals(false, device.resolved().wrapHeight)
+  }
+
+  @Test
   fun `nested schema — plugin shape — reads params block`() {
     // Mirrors what `DiscoverPreviewsTask` writes for a Wear preview annotated with
     // `@Preview(device = "id:wearos_small_round")` — production manifest the daemon was silently
@@ -76,8 +116,13 @@ class PreviewManifestEntryResolveTest {
     val raw = """{"id":"bare","className":"X","functionName":"R"}"""
     val entry = json.decodeFromString(PreviewManifestEntry.serializer(), raw)
     val resolved = entry.resolved()
-    assertEquals(320, resolved.widthPx)
-    assertEquals(320, resolved.heightPx)
+    // A bare (no-size) entry now renders wrap-content at the sandbox bound (400×800 dp × the 2.0
+    // default density) rather than a fixed 320² frame, so the capture reflects the composable's
+    // natural size. The other defaults are unchanged.
+    assertEquals(true, resolved.wrapWidth)
+    assertEquals(true, resolved.wrapHeight)
+    assertEquals(800, resolved.widthPx) // 400dp × 2.0
+    assertEquals(1600, resolved.heightPx) // 800dp × 2.0
     assertEquals(2.0f, resolved.density, 0.0001f)
     assertEquals(true, resolved.showBackground)
     assertNull(resolved.device)

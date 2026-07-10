@@ -55,6 +55,14 @@ data class FigmaSvgText(
    */
   val lineHeightPx: Double? = null,
   /**
+   * Resolved letter spacing in px (sp × density, or em × font size), when the capture resolved one.
+   * Emitted as SVG `letter-spacing` so the `<text>`'s glyph advances match the render — without it
+   * a browser lays the run out with the font's natural advances, so a non-zero tracked run
+   * (Material label/body text carries `0.1–0.5sp`) drifts progressively across the line and never
+   * registers.
+   */
+  val letterSpacingPx: Double? = null,
+  /**
    * Per-line runs for wrapped text, in px relative to the layer's top-left, in draw order. When
    * present (2+ lines) the renderer emits one positioned `<tspan>` per line instead of a single
    * baseline — so text wraps exactly where the render wrapped it. Null for single-line text.
@@ -400,6 +408,11 @@ data class FigmaSvgModel(
         color = node.textColor?.foreground?.let { argbToColor(it, emptyMap()) },
         lineHeightPx =
           node.typography?.lineHeight?.let {
+            lineHeightToPx(it, node.typography.fontSize, density)
+          },
+        // Letter spacing uses the same sp×density / em×fontSize resolution as line height.
+        letterSpacingPx =
+          node.typography?.letterSpacing?.let {
             lineHeightToPx(it, node.typography.fontSize, density)
           },
         // Carry per-line runs only for genuinely wrapped text (2+ lines). The captured offsets are
