@@ -232,6 +232,33 @@ class DesktopLayoutInspectorTest {
     )
   }
 
+  @Test
+  fun a_standard_background_fill_stays_vector_and_never_hits_the_paint_raster_fallback() {
+    // The paint-raster fallback (an unvectorizable `Modifier.paint` painter → frame `<image>`) must
+    // fire ONLY for wear's `Modifier.paint(painter)` surfaces. A desktop compose-m3 component fills
+    // via `Modifier.background` / `BackgroundElement`, which resolves to a flat colour, so even in
+    // hybrid mode (`captureCanvasDraws = true`) it must stay a vector fill and produce NO raster
+    // target — this pins the compose-m3 catalog against the fallback ever cropping a button/card.
+    val root =
+      writeAndRead(density = 2f) {
+        androidx.compose.material3.Button(onClick = {}) { Text("Filled") }
+      }
+    val model =
+      ee.schimke.composeai.data.layoutinspector.FigmaSvgModel.from(
+        layout = LayoutInspectorPayload(root),
+        density = 2f,
+        captureCanvasDraws = true,
+      )
+    assertTrue(
+      "a standard background-filled button must not raster (rasterTargets must be empty)",
+      model.rasterTargets.isEmpty(),
+    )
+    assertNotNull(
+      "the button fill must survive as a vector layer",
+      model.root.firstLayerWhere { it.fill != null },
+    )
+  }
+
   private fun ee.schimke.composeai.data.layoutinspector.FigmaSvgLayer.firstLayerWhere(
     predicate: (ee.schimke.composeai.data.layoutinspector.FigmaSvgLayer) -> Boolean
   ): ee.schimke.composeai.data.layoutinspector.FigmaSvgLayer? {

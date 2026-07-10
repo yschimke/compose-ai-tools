@@ -321,6 +321,89 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun aPaintFillWhosePainterIsNotAColorPainterRastersFromTheFrameInHybridMode() {
+    // Wear `SwitchButton`/list `Card` fill their container via `Modifier.paint(painter)` where the
+    // painter is a component-private `Painter` (an animated colour painter, a `BackgroundPainter`),
+    // NOT a plain `ColorPainter` — so the token resolver can't read a flat colour and the fill
+    // would
+    // vanish from a vector-only export. In hybrid mode (a frame exists to crop) the node's painted
+    // region must instead be captured as an `<image>`, exactly like an opaque `Image`/`Icon`.
+    val node =
+      LayoutInspectorNode(
+        nodeId = "pill",
+        component = "RowMeasurePolicy",
+        bounds = bounds(44, 32, 175, 104),
+        size = LayoutInspectorSize(187, 104),
+        modifiers =
+          listOf(
+            LayoutInspectorModifier(
+              name = "paint",
+              properties = mapOf("painter" to "SwitchButtonKt\$SwitchButton\$colorPainter\$1@1"),
+              bounds = bounds(16, 16, 203, 120),
+            )
+          ),
+        children =
+          listOf(layoutNode("Label", 44, 50, 99, 86, tokens = null)), // a child that must be dropped
+      )
+    val svg =
+      FigmaLayeredSvg.render(
+        FigmaSvgModel.from(LayoutInspectorPayload(node), captureCanvasDraws = true)
+      )
+    assertTrue("unresolved paint fill must raster as an <image>", svg.contains("<image "))
+    // Cropped to the paint modifier's drawn region (the full pill), not the inner content bounds.
+    assertTrue(
+      "image spans the painted region",
+      svg.contains("""width="187"""") && svg.contains("""height="104""""),
+    )
+    assertFalse("the subtree is dropped, so no child group survives", svg.contains(">Label<"))
+  }
+
+  @Test
+  fun aPlainColorPainterFillStaysVectorAndDoesNotRaster() {
+    // The one painter we CAN vectorise — a solid `ColorPainter` — must still resolve to a flat fill
+    // rect even in hybrid mode; it must NOT fall to the frame-raster path.
+    val node =
+      layoutNode(
+        "Surface",
+        16,
+        16,
+        150,
+        120,
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF332E3C"),
+      )
+    val svg =
+      FigmaLayeredSvg.render(
+        FigmaSvgModel.from(LayoutInspectorPayload(node), captureCanvasDraws = true)
+      )
+    assertTrue("a solid fill stays a vector rect", svg.contains("""fill="#332E3C""""))
+    assertFalse("a resolvable fill must not raster", svg.contains("<image "))
+  }
+
+  @Test
+  fun anUnvectorizablePaintFillStaysVectorOnlyOutsideHybridMode() {
+    // Without a frame to crop from (vector-only export) there's nothing to raster, so an unresolved
+    // paint fill can't be recovered — the node stays a (fill-less) group rather than emitting a
+    // dangling `<image>` ref. The raster fallback is strictly a hybrid-mode affordance.
+    val node =
+      LayoutInspectorNode(
+        nodeId = "pill",
+        component = "RowMeasurePolicy",
+        bounds = bounds(44, 32, 175, 104),
+        size = LayoutInspectorSize(187, 104),
+        modifiers =
+          listOf(
+            LayoutInspectorModifier(
+              name = "paint",
+              properties = mapOf("painter" to "some.pkg.BackgroundPainter@2"),
+              bounds = bounds(16, 16, 203, 120),
+            )
+          ),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(node)))
+    assertFalse("vector-only export must not emit an <image>", svg.contains("<image "))
+  }
+
+  @Test
   fun aTouchTargetInflatedFillDoesNotGrowToItsMeasuredSize() {
     // Every M3 `Button`/`IconButton` fills via a `BackgroundElement` on a node that also carries
     // `Modifier.minimumInteractiveComponentSize()`. That modifier inflates the measured `size` up
