@@ -71,14 +71,24 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
+          # Only heal genuine release-please PRs. The branch name is NOT enough:
+          # it's contributor-controlled, so a human or fork PR from a branch named
+          # `release-please--…` could otherwise get merged + pushed by this job's
+          # contents-write token, or fail the `git fetch origin "$branch"` below
+          # (fork heads aren't on origin). Mirror the CI guard in ci.yml: require
+          # BOTH the `release-please--` prefix AND author `github-actions[bot]`
+          # (unspoofable), and reject cross-repository (fork) heads.
+          #
           # release-please reports mergeable as MERGEABLE / CONFLICTING / UNKNOWN.
           # UNKNOWN means GitHub is still computing it — skip this run rather than
           # guess; the next scheduled run re-checks.
           mapfile -t branches < <(
             gh pr list --state open --limit 50 \
-              --json number,headRefName,mergeable \
+              --json number,headRefName,mergeable,author,isCrossRepository \
               --jq '.[]
                     | select(.headRefName | startswith("release-please--"))
+                    | select(.author.login == "github-actions[bot]")
+                    | select(.isCrossRepository == false)
                     | select(.mergeable == "CONFLICTING")
                     | "\(.number)\t\(.headRefName)"'
           )
