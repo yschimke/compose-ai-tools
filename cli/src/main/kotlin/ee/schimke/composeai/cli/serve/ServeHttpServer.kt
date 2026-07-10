@@ -380,6 +380,7 @@ class ServeHttpServer(
     when (host) {
       is ServeBundleHost -> host
       is ServeCatalogLiveHost -> host.bakedHost as? ServeBundleHost
+      is ServePerPreviewLiveHost -> host.bakedHost as? ServeBundleHost
       else -> null
     }
 
