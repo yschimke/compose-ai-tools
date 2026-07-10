@@ -89,6 +89,14 @@ const SCORER = String.raw`
     return new Promise((res, rej) => {
       const img = new Image();
       img.decoding = "async";
+      // Request the pixels with CORS so drawing them to a canvas doesn't taint it. On htmlpreview the
+      // page origin is htmlpreview.github.io while the images load cross-origin from
+      // raw.githubusercontent.com (which allows cross-origin reads); without this the canvas taints
+      // and every getImageData throws, so no row scores. Set for relative / http(s) srcs (a relative
+      // images/... path resolves cross-origin against the injected base on htmlpreview) but NOT for
+      // the same-origin-clean blob: URLs the hybrid path builds, nor data: URLs (some engines refuse
+      // to load those under a crossOrigin request).
+      if (!/^(data|blob):/i.test(src)) img.crossOrigin = "anonymous";
       img.onload = () => res(img);
       img.onerror = () => rej(new Error("load failed: " + src));
       img.src = src;
@@ -485,10 +493,11 @@ export function renderCompareHtml(catalog, opts = {}) {
   daemon's fidelity harness), so the score reflects real vector drift, not a constant inset. Hybrid stickers'
   raster crop layers are inlined so their score reflects the full sticker. <strong>Rows sort largest-diff-first
   once scored</strong>, so the worst offenders come to the top.</p>
-  <p class="taintwarn" id="taintwarn">⚠ The match scores need to read pixels from a canvas, which the
-  browser blocks over <code>file://</code> (opaque origin). Open this page over <strong>http</strong> —
-  via the README's htmlpreview link, or a local server (<code>python3 -m http.server</code> in the branch)
-  — and the scores compute.</p>
+  <p class="taintwarn" id="taintwarn">⚠ The match scores read pixels back from a canvas, which the browser
+  blocks when the images can't be read cross-origin — over <code>file://</code> (opaque origin), or from a
+  host that doesn't send CORS headers for the PNGs. Open this page over <strong>http</strong> from a
+  CORS-enabled host: the README's htmlpreview link (images come from <code>raw.githubusercontent.com</code>,
+  which allows it) or a local server (<code>python3 -m http.server</code> in the branch).</p>
 </header>
 <main>
   <table>
