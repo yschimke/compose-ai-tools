@@ -1,0 +1,80 @@
+name: Create Release Tag
+
+# Manual escape hatch for creating a release tag at a specific commit.
+#
+# WHY THIS EXISTS
+# ---------------
+# release-please cuts a draft Release and then, in the SAME action step, writes
+# its git tag (the "Ensure the release tag exists" step in release-please.yml).
+# If that step is skipped — e.g. the rp step crashes with `Error adding to tree`
+# right after cutting the draft — the version lands in the manifest with NO tag,
+# and every later release-please run can't anchor to it, re-lists all history,
+# and fails again. That is exactly what stranded 0.16.34 (draft, untagged).
+#
+# Dispatching this workflow writes the missing tag ref, which re-anchors
+# release-please so the next version can be cut normally.
+#
+# IMPORTANT: the ref is created via the API with GITHUB_TOKEN, which does NOT
+# trigger tag-push workflows (the "GITHUB_TOKEN doesn't trigger workflows"
+# limitation). So this ONLY writes the tag — it does not build or publish
+# artifacts and does not publish to Maven Central. Use it to re-anchor
+# release-please (and to "burn" a stranded version as a bare tag). To actually
+# ship a version, run release.yml (workflow_dispatch, tag input) or publish the
+# draft — deliberately, as a separate step.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to create, e.g. v0.16.35 (or clients-v0.3.0)'
+        required: true
+        type: string
+      sha:
+        description: 'Commit SHA or ref to tag (e.g. the release PR merge commit)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: create-release-tag-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  create-tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the tag ref
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      # Referenced only via these env vars in the script below — never
+      # interpolated into the run block — so a crafted input can't inject shell.
+      TAG: ${{ inputs.tag }}
+      SHA: ${{ inputs.sha }}
+    steps:
+      - name: Create the tag ref if it doesn't already exist
+        run: |
+          set -euo pipefail
+
+          # Validate the WHOLE string, not just a prefix: a glob like `v[0-9]*`
+          # would let `v0foo` or `v0.16.34/foo` through and create a bogus
+          # release-looking ref while reporting success.
+          if [[ ! "${TAG}" =~ ^(v|clients-v)[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::refusing to create '${TAG}' — expected v<major>.<minor>.<patch> or clients-v<major>.<minor>.<patch> (digits and dots only)."
+            exit 1
+          fi
+
+          # Resolve to a full commit SHA (also validates the commit exists).
+          full_sha="$(gh api "repos/${GH_REPO}/commits/${SHA}" --jq '.sha')"
+
+          if gh api "repos/${GH_REPO}/git/ref/tags/${TAG}" >/dev/null 2>&1; then
+            echo "tag ${TAG} already exists — leaving it untouched."
+            exit 0
+          fi
+
+          gh api --method POST "repos/${GH_REPO}/git/refs" \
+            -f ref="refs/tags/${TAG}" -f sha="${full_sha}"
+          echo "created tag ${TAG} at ${full_sha}."
+          echo "note: this did NOT trigger release.yml (token-created ref) — build/publish separately if you want artifacts."
