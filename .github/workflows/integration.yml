@@ -23,7 +23,7 @@ name: Integration
 # Each external-repo job runs independently (`fail-fast: false`) so one broken
 # consumer does not mask regressions in the others.
 #
-# Change-scoped on PRs (.github/integration-scope.json): the `changes` job
+# Change-scoped on PRs (.github/ci/change-scope-safe-paths.json): the `changes` job
 # classifies the diff first. A PR that touches only paths which provably cannot
 # alter what the plugin discovers/renders in the external consumers — docs,
 # this repo's own `samples/**` (the matrix builds EXTERNAL repos, never these),
@@ -96,12 +96,12 @@ jobs:
           # Fetch the PR base so the classifier can diff against it (checkout is
           # shallow). The script is fail-open, so a failed fetch still runs.
           git fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
-          run="$(python3 .github/ci/integration-scope.py)"
+          run="$(python3 .github/ci/change-scope.py)"
           echo "run=$run" >> "$GITHUB_OUTPUT"
           if [ "$run" = "true" ]; then
             echo "::notice::Integration matrix will run — a changed path can affect the external builds."
           else
-            echo "::notice::Integration matrix scope-skipped — all changes are docs/samples/tooling (.github/integration-scope.json)."
+            echo "::notice::Integration matrix scope-skipped — all changes are docs/samples/tooling (.github/ci/change-scope-safe-paths.json)."
           fi
 
   build-plugin:
@@ -257,7 +257,7 @@ jobs:
         run: |
           echo "This PR changed only paths that cannot affect what the plugin"
           echo "discovers or renders in the external consumer repos (see"
-          echo ".github/integration-scope.json), so the integration matrix is"
+          echo ".github/ci/change-scope-safe-paths.json), so the integration matrix is"
           echo "scope-skipped. Required leg '${LEG}' is reported green here to"
           echo "satisfy branch protection without an admin bypass."
 

@@ -1,33 +1,39 @@
 #!/usr/bin/env python3
-"""Decide whether a PR needs the Integration workflow's external-repo matrix.
+"""Decide whether a PR needs a heavy, unscoped CI workflow to run in full.
+
+Shared by the workflows that gate expensive jobs on PRs but have no natural
+`paths:` trigger filter (a required check hidden behind `paths:` would hang on
+"Expected — Waiting for status"): the Integration external-repo matrix
+(integration.yml) and the Daemon Harness renderer legs (daemon-harness.yml).
 
 Reads the PR's changed files and a committed ignore list
-(`.github/integration-scope.json`) and prints a single token:
+(`.github/ci/change-scope-safe-paths.json` by default) and prints a single
+token:
 
-    true     run the full external-repo matrix (default / any doubt)
+    true     run the workflow in full (default / any doubt)
     false    every changed file is ignore-listed and provably cannot change
-             what the plugin discovers/renders in an external consumer repo —
-             the slow matrix is skipped and a gate re-emits the required legs
+             what that workflow produces — the caller skips its heavy jobs
 
 The contract is *fail-open*: an empty diff, a git failure, a missing/unreadable
 config, or any unexpected error all resolve to `true`, so scoping can only ever
-skip work that cannot affect the external builds. The one case that skips is
-"every changed file matches an ignore glob".
+skip work that cannot affect the build. The one case that skips is "every
+changed file matches an ignore glob".
 
-Why an ignore list (not an allow list): the external consumer builds only pull
-the artifacts `build-plugin` publishes to mavenLocal (gradle-plugin,
-renderer-*, daemon-*, data-*, preview-annotations) plus the CLI-materialised
-init script. They never build THIS repo's own `samples/**`, the VS Code
-extension, docs, the deploy image, or the design-artifacts scripts — so those
-are safe to ignore. Anything not on the list (the plugin, CLI, renderers,
-daemon, data modules, build wiring, or a path we haven't classified) defaults
-to a full run.
+Why an ignore list (not an allow list): the safe-path list names only paths
+that provably feed neither consumer — docs, this repo's own `samples/**` (the
+integration matrix checks out EXTERNAL repos; the harness uses its own
+fixtures), the VS Code extension, the deploy image, the design-artifacts
+scripts. Anything not on the list (the plugin, CLI, renderers, daemon, data
+modules, build wiring, or a path we haven't classified) defaults to a full run.
+Kept conservative on purpose: it omits paths a specific workflow could also
+ignore, so one shared list stays correct for every caller.
 
 Env:
     BASE_SHA / HEAD_SHA  PR diff endpoints (base must already be fetched)
-    SCOPE_CONFIG         override config path (default .github/integration-scope.json)
+    SCOPE_CONFIG         override config path
+                         (default .github/ci/change-scope-safe-paths.json)
 
-Pure stdlib; unit-tested by test_integration_scope.py. The glob semantics match
+Pure stdlib; unit-tested by test_change_scope.py. The glob semantics match
 .github/actions/apply/compute-scope.py.
 """
 
@@ -47,7 +53,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _log(msg: str) -> None:
-    print(f"integration-scope: {msg}", file=sys.stderr)
+    print(f"change-scope: {msg}", file=sys.stderr)
 
 
 def glob_to_regex(pattern: str) -> re.Pattern:
@@ -124,11 +130,11 @@ def decide(files: list[str], ignore_regexes: list[re.Pattern]) -> str:
     unmatched = [f for f in files if not any(rx.match(f) for rx in ignore_regexes)]
     if unmatched:
         _log(
-            f"{len(unmatched)} of {len(files)} changed file(s) can affect the "
-            f"external builds (e.g. {unmatched[0]}) — running the matrix"
+            f"{len(unmatched)} of {len(files)} changed file(s) are not on the "
+            f"safe-path list (e.g. {unmatched[0]}) — running the workflow in full"
         )
         return RUN
-    _log(f"all {len(files)} changed file(s) ignore-listed — skipping the matrix")
+    _log(f"all {len(files)} changed file(s) are safe-path — skipping the workflow")
     return SKIP
 
 
@@ -137,7 +143,7 @@ def main() -> int:
     try:
         config_path = Path(
             os.environ.get("SCOPE_CONFIG")
-            or (REPO_ROOT / ".github" / "integration-scope.json")
+            or (REPO_ROOT / ".github" / "ci" / "change-scope-safe-paths.json")
         )
         base_sha = os.environ.get("BASE_SHA", "")
         head_sha = os.environ.get("HEAD_SHA", "")
