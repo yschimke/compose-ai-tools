@@ -76,6 +76,14 @@ class ServePerPreviewLiveHost(
   private val streamCount: () -> Int = { 0 },
 ) : ServeHost {
 
+  /**
+   * The underlying baked catalog host, so the HTTP layer's `catalogBundleHost()` can recover its
+   * title / subtitle / trust verdict (which only a [ServeBundleHost] carries) even though the
+   * session is fronted by this composite — otherwise `/api/previews`, the viewer badge, and the
+   * home card would lose the trust badge + card title. Mirrors [ServeCatalogLiveHost.bakedHost].
+   */
+  internal val bakedHost: ServeHost = baked
+
   override val label: String = baked.label
 
   /**

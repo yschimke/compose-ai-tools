@@ -207,8 +207,19 @@ jobs:
         run: |
           set -euo pipefail
           view_only_flag=""
-          [ "$SPLIT_MODE" = "view-only" ] && view_only_flag="--view-only"
-          compose-preview bundle split "$GITHUB_WORKSPACE/$SYSTEM-bundle.png" $view_only_flag \
+          split_source="$GITHUB_WORKSPACE/$SYSTEM-bundle.png"
+          if [ "$SPLIT_MODE" = "view-only" ]; then
+            view_only_flag="--view-only"
+          else
+            # FULL: split the EXTERNALISED live bundle the generate step already produced under
+            # out/bundle/ (fonts lifted to bundle/res/<sha>), not the raw sheet. Splitting the raw
+            # sheet would copy its un-externalised classes/app.jar — fonts inlined — into every
+            # per-preview bundle, so the delivery branch would balloon by the preview count. Reading
+            # the externalised copy means each FULL per-preview bundle inherits the slimmed app.jar +
+            # the shared-pool font references, so `serve` rehydrates fonts from bundle/res once.
+            split_source="$GITHUB_WORKSPACE/out/bundle/$SYSTEM-bundle.png"
+          fi
+          compose-preview bundle split "$split_source" $view_only_flag \
             -o "$GITHUB_WORKSPACE/out/bundle/previews"
           # For compose-m3 the catalog also folds an Android-only supplement (the material3 inset
           # focus ring CMP can't draw), whose renders/semantics override same-named CMP functions in
