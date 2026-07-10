@@ -36,23 +36,6 @@
           "path": ".github/workflows/preview-host-image.yml"
         }
       ]
-    },
-    "clients": {
-      "package-name": "compose-ai-tools-clients",
-      "component": "clients",
-      "include-component-in-tag": true,
-      "bump-minor-pre-major": true,
-      "bump-patch-for-minor-pre-major": true,
-      "extra-files": [
-        {
-          "type": "generic",
-          "path": "mobile/build.gradle.kts"
-        },
-        {
-          "type": "generic",
-          "path": "wear/build.gradle.kts"
-        }
-      ]
     }
   }
 }
