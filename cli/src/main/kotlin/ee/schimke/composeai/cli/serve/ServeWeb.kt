@@ -78,6 +78,8 @@ object ServeWeb {
       transition: opacity 0.15s ease; pointer-events: none; }
     .cp-stage iframe.cp-wasm-live { opacity: 1; pointer-events: auto; }
     .cp-live-row { flex-direction: row !important; align-items: center; gap: 6px !important; }
+    .cp-modes { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px 14px;
+      font-size: 0.8rem; }
     .cp-controls { flex: 0 0 240px; display: flex; flex-direction: column; gap: 14px; }
     .cp-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; }
     .cp-controls input, .cp-controls select { padding: 5px 6px; font-size: 0.85rem; }
@@ -704,11 +706,20 @@ object ServeWeb {
       if (wasmSrc != null)
         "<iframe id=\"cp-wasm\" hidden sandbox=\"$wasmSandbox\" title=\"$label (Wasm)\"></iframe>"
       else ""
-    val wasmToggle =
+    // The render mode is a radio group — PNG (baked snapshot, default), Live Compose (daemon
+    // stream), Wasm (in-browser CMP app). The Wasm option + its background checkbox appear only
+    // when
+    // a Wasm app backs the session; the Live radio is present but disabled when no stream is
+    // offered.
+    // Ids `cp-live` / `cp-wasm-toggle` are kept on the radios so the transition JS resolves them.
+    val wasmModeRadio =
       if (wasmSrc != null)
-        "<label class=\"cp-live-row\"><input id=\"cp-wasm-toggle\" type=\"checkbox\"> " +
-          "Run in browser (Wasm)</label>\n" +
-          "          <label class=\"cp-live-row\"><input id=\"cp-wasm-bg\" type=\"checkbox\"> " +
+        "<label class=\"cp-live-row\"><input type=\"radio\" name=\"cp-mode\" value=\"wasm\" " +
+          "id=\"cp-wasm-toggle\"> Wasm</label>"
+      else ""
+    val wasmBgRow =
+      if (wasmSrc != null)
+        "<label class=\"cp-live-row\"><input id=\"cp-wasm-bg\" type=\"checkbox\"> " +
           "Component only (no background)</label>"
       else ""
     val deviceOptions =
@@ -739,7 +750,7 @@ object ServeWeb {
       when {
         !staticSnapshot -> ""
         wasmSrc != null ->
-          "<div class=\"cp-note\">Pre-rendered snapshot — tick “Run in browser (Wasm)” to interact: " +
+          "<div class=\"cp-note\">Pre-rendered snapshot — pick “Wasm” to interact: " +
             "Theme, Font scale, Locale &amp; background apply in the browser. Device/Orientation " +
             "need the live server. <a href=\"$LOCAL_SERVER_DOCS\">Enable a local preview server.</a>" +
             "</div>"
@@ -758,8 +769,12 @@ object ServeWeb {
         <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$wasmFrame</div>
         <div class="cp-controls">
           $snapshotNote
-          <label class="cp-live-row"><input id="cp-live" type="checkbox"$liveDis> Live (stream)</label>
-          $wasmToggle
+          <div class="cp-modes" role="radiogroup" aria-label="Render mode">
+            <label class="cp-live-row"><input type="radio" name="cp-mode" value="png" id="cp-mode-png" checked> PNG</label>
+            <label class="cp-live-row"><input type="radio" name="cp-mode" value="live" id="cp-live"$liveDis> Live Compose</label>
+            $wasmModeRadio
+          </div>
+          $wasmBgRow
           <label>Theme
             <select id="cp-uiMode"$wasmDis>
               <option value="">(default)</option>
@@ -1196,8 +1211,11 @@ object ServeWeb {
         if (patch && wasmFrame.contentWindow) wasmFrame.contentWindow.postMessage(patch, "*");
       }
       function openWasm() {
-        // Wasm and the daemon stream are mutually exclusive — only one transport drives the stage.
-        if (live.checked) { live.checked = false; closeStream(); }
+        // No-op without a Wasm app (wasmFrame absent): enterMode() calls this unconditionally, but a
+        // non-Wasm daemon/static session has no iframe to drive. Guard so touching it can't throw.
+        if (!wasmFrame) return;
+        // Wasm and the daemon stream are mutually exclusive; the mode switch (enterMode) tears the
+        // stream down before opening Wasm, so there's nothing extra to close here.
         root.setAttribute("data-mode", "wasm");
         canvas.hidden = true;
         // Keep the snapshot visible while the app loads; the iframe mounts over it at opacity 0
@@ -1209,6 +1227,9 @@ object ServeWeb {
         status.textContent = "loading Wasm…";
       }
       function closeWasm() {
+        // No Wasm iframe (non-Wasm session) ⇒ nothing to tear down; enterMode() still calls this
+        // unconditionally when switching to Live/PNG, so guard against the null frame.
+        if (!wasmFrame) return;
         root.setAttribute("data-mode", "snapshot");
         wasmReady = false;
         wasmFrame.classList.remove("cp-wasm-live");
@@ -1241,24 +1262,34 @@ object ServeWeb {
           // firing a dead refreshSnapshot the user sees as "the control does nothing". (staticSnapshot
           // marks a non-renderable snapshot lane — true even for a live catalog whose Live toggle is
           // enabled; device/orientation stay disabled, so only the wasm-honoured controls reach here.)
-          wasmToggle.checked = true;
-          openWasm();
+          setMode("wasm");
         } else if (!live.checked) {
           refreshSnapshot();
         }
       }
 
-      live.addEventListener("change", function () {
-        if (live.checked) {
-          if (wasmToggle && wasmToggle.checked) { wasmToggle.checked = false; closeWasm(); }
-          openStream();
-        } else { closeStream(); refreshSnapshot(); }
-      });
-      if (wasmToggle) {
-        wasmToggle.addEventListener("change", function () {
-          if (wasmToggle.checked) openWasm();
-          else { closeWasm(); refreshSnapshot(); }
+      // Render-mode radio group (PNG / Live Compose / Wasm). Selecting one tears down the other
+      // transport and enters the chosen one; PNG is the baked snapshot. closeStream / closeWasm are
+      // idempotent, so a mode switch can safely tear down both regardless of the prior state.
+      function enterMode(m) {
+        if (m === "live") { closeWasm(); openStream(); }
+        else if (m === "wasm") { closeStream(); openWasm(); }
+        else { closeStream(); closeWasm(); refreshSnapshot(); }
+      }
+      // Programmatic switch (e.g. a wasm-only control auto-enabling Wasm): tick the radio so the UI
+      // reflects it, then run the transition.
+      function setMode(m) {
+        var r = document.getElementById(
+          m === "live" ? "cp-live" : m === "wasm" ? "cp-wasm-toggle" : "cp-mode-png");
+        if (r) r.checked = true;
+        enterMode(m);
+      }
+      Array.prototype.forEach.call(
+        document.querySelectorAll("input[name=\"cp-mode\"]"),
+        function (r) {
+          r.addEventListener("change", function () { if (r.checked) enterMode(r.value); });
         });
+      if (wasmToggle) {
         // The app posts "cp-wasm-ready" once its first frame is on the canvas — the swap signal.
         // Match on source (the known frame's contentWindow), not e.origin — robust regardless of
         // the frame's origin, and the payload is a fixed string so there's no data surface.
@@ -1283,7 +1314,7 @@ object ServeWeb {
         if (wasmBg) {
           wasmBg.addEventListener("change", function () {
             // Background is an in-browser knob: auto-enable the Wasm tier if it isn't on yet.
-            if (!wasmActive()) { wasmToggle.checked = true; openWasm(); return; }
+            if (!wasmActive()) { setMode("wasm"); return; }
             onControlsChanged();
           });
         }

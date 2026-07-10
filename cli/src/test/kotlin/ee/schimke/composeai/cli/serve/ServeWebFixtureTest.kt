@@ -404,7 +404,14 @@ class ServeWebFixtureTest {
   fun `viewer mounts the Wasm tier only when a wasm app backs the session`() {
     val card = previews.first { it.id.endsWith("CardPreview") }
     val withWasm = ServeWeb.viewerPage(card, token, wasmSrc = "/wasm/compose-m3/?id=card-filled")
-    assertTrue(withWasm.contains("Run in browser (Wasm)"), "expected the Wasm toggle")
+    // The render mode is a radio group: PNG (default) / Live Compose / Wasm — the last only when a
+    // wasm app backs the session.
+    assertTrue(
+      withWasm.contains("name=\"cp-mode\" value=\"png\"") &&
+        withWasm.contains("name=\"cp-mode\" value=\"live\"") &&
+        withWasm.contains("name=\"cp-mode\" value=\"wasm\""),
+      "expected the PNG / Live Compose / Wasm radio group",
+    )
     assertTrue(withWasm.contains("id=\"cp-wasm\""), "expected the Wasm iframe")
     assertTrue(withWasm.contains("data-wasm-src=\"/wasm/compose-m3/?id=card-filled\""))
     // Default (no wasmSameOrigin ⇒ untrusted / unknown): the iframe stays opaque-origin, so an
@@ -456,11 +463,12 @@ class ServeWebFixtureTest {
     )
     assertTrue(withWasm.contains("\"background=off\""), "background knob forwarded to the app")
 
-    // No wasmSrc → snapshot viewer is unchanged: no toggle, no iframe element.
+    // No wasmSrc → snapshot viewer has no Wasm mode: PNG + Live radios only, no Wasm radio/iframe.
     val plain = ServeWeb.viewerPage(card, token)
-    assertTrue(!plain.contains("Run in browser (Wasm)"))
+    assertTrue(!plain.contains("name=\"cp-mode\" value=\"wasm\""))
     assertTrue(!plain.contains("id=\"cp-wasm\""))
     assertTrue(!plain.contains("id=\"cp-wasm-bg\""))
+    assertTrue(plain.contains("name=\"cp-mode\" value=\"png\""), "PNG radio always present")
   }
 
   @Test
@@ -571,10 +579,7 @@ class ServeWebFixtureTest {
     assertTrue(staticView.contains("value=\"1.0\" disabled"), "font scale disabled")
     assertTrue(staticView.contains("id=\"cp-device\" disabled"), "device disabled")
     assertTrue(staticView.contains("id=\"cp-orientation\" disabled"), "orientation disabled")
-    assertTrue(
-      staticView.contains("id=\"cp-live\" type=\"checkbox\" disabled"),
-      "live stream disabled",
-    )
+    assertTrue(staticView.contains("id=\"cp-live\" disabled"), "Live Compose radio disabled")
     assertTrue(
       staticView.contains("id=\"cp-uiMode\" disabled"),
       "theme disabled without a Wasm app",
@@ -631,8 +636,8 @@ class ServeWebFixtureTest {
         wasmSrc = "/wasm/compose-m3/?id=card-filled",
       )
     assertTrue(
-      liveCatalogWasm.contains("id=\"cp-live\" type=\"checkbox\"> Live"),
-      "live catalog leaves the Live toggle enabled",
+      liveCatalogWasm.contains("id=\"cp-live\"> Live Compose"),
+      "live catalog leaves the Live Compose radio enabled (not disabled)",
     )
     assertTrue(
       liveCatalogWasm.contains("data-static-snapshot=\"true\""),
