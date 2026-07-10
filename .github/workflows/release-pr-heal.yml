@@ -5,31 +5,34 @@ name: Release PR Heal
 #
 # WHY THIS EXISTS
 # ---------------
-# We run two release-please components (`.` and `clients`) that SHARE one
-# manifest file, `.release-please-manifest.json`:
+# The root and clients release trains each have their OWN manifest file
+# (`.release-please-manifest.json` / `clients-release-please-manifest.json`), so
+# they no longer collide by construction — this job is the belt-and-suspenders
+# fallback for the ways a release PR can still wedge.
 #
-#     { ".": "0.16.34", "clients": "0.2.1" }
+# A release PR can go CONFLICTING when it carries a full-file manifest snapshot
+# that goes stale on main (release-please normally rebases the open PR on every
+# push to main, but that in-place rebase can itself fail — e.g. `Error adding to
+# tree` when the open PR's branch predates an `extra-files` entry newly added to
+# the config, so the file on the branch lacks the version marker the updater
+# expects). When the rebase fails, the stale manifest sticks and the PR sits
+# CONFLICTING until someone fixes it by hand. This job is that hand: it merges
+# main into the release branch and resolves the manifest by taking each
+# package's NEWEST version — exactly the correct release-please resolution.
 #
-# The two version lines are adjacent, and each component's release PR carries a
-# full-file snapshot of the manifest. So whenever one component releases while
-# the other's release PR is open, that open PR's manifest snapshot goes stale on
-# the other line and git can't 3-way-merge the adjacent change -> the PR turns
-# CONFLICTING. release-please normally rebases the open PR on every push to main
-# and this stays invisible — but that in-place rebase can itself fail (e.g.
-# `Error adding to tree` when the open PR's branch predates an `extra-files`
-# entry newly added to release-please-config.json, so the file on the branch
-# lacks the version marker the updater expects). When the rebase fails, the
-# stale manifest sticks and the PR sits CONFLICTING until someone fixes it by
-# hand. This job is that hand: it merges main into the release branch and
-# resolves the manifest by taking each package's NEWEST version (union of both
-# lines) — exactly the correct release-please resolution.
+# (Before the split there was a THIRD way to wedge: root and clients shared one
+# manifest, and the two adjacent version lines conflicted whenever one line
+# released while the other's PR was open. Separate manifest files removed that
+# class entirely; this job still covers the stale-snapshot / failed-rebase case
+# above for either train.)
 #
 # SAFETY RAILS
 # ------------
 #   * Only touches branches named `release-please--…` (release-please's own).
-#   * Only auto-resolves when `.release-please-manifest.json` is the *sole*
-#     conflicted file. Any other conflict (CHANGELOG, an extra-file) is left
-#     untouched and surfaced as a job failure for a human to look at.
+#   * Only auto-resolves when a single release-please manifest file (root or
+#     clients) is the *sole* conflicted file. Any other conflict (CHANGELOG, an
+#     extra-file, more than one file) is left untouched and surfaced as a job
+#     failure for a human to look at.
 #   * Manifest resolution is a strict per-key semver max — never invents or
 #     downgrades a version; if either side isn't plain `X.Y.Z`, it bails.
 #   * Commits as github-actions[bot], which by house rule only ever lands on
@@ -115,22 +118,30 @@ jobs:
             fi
 
             conflicted="$(git diff --name-only --diff-filter=U)"
-            if [ "${conflicted}" != ".release-please-manifest.json" ]; then
-              echo "::warning::PR #${num} has conflicts beyond the manifest — leaving for a human:"
-              echo "${conflicted}"
-              git merge --abort
-              failures=$((failures + 1))
-              echo "::endgroup::"
-              continue
-            fi
+            # Auto-resolve only a LONE release-please manifest conflict. We run two
+            # release trains (root + clients), each with its own manifest file, so the
+            # conflicted file may be either one — but never both at once (disjoint
+            # files). A multi-file value won't match either exact pattern and falls to
+            # the human path, as does any non-manifest conflict (CHANGELOG, extra-file).
+            case "${conflicted}" in
+              .release-please-manifest.json | clients-release-please-manifest.json) ;;
+              *)
+                echo "::warning::PR #${num} conflict isn't a lone release manifest — leaving for a human:"
+                echo "${conflicted}"
+                git merge --abort
+                failures=$((failures + 1))
+                echo "::endgroup::"
+                continue
+                ;;
+            esac
 
             # Resolve the manifest by taking each package's newest version.
             #   stage :2 = ours   (the release branch)
             #   stage :3 = theirs (main)
-            git show ":2:.release-please-manifest.json" > /tmp/ours.json
-            git show ":3:.release-please-manifest.json" > /tmp/theirs.json
+            git show ":2:${conflicted}" > /tmp/ours.json
+            git show ":3:${conflicted}" > /tmp/theirs.json
 
-            python3 - /tmp/ours.json /tmp/theirs.json > .release-please-manifest.json <<'PY'
+            python3 - /tmp/ours.json /tmp/theirs.json > "${conflicted}" <<'PY'
           import json, sys
 
           def parse(v):
@@ -153,7 +164,7 @@ jobs:
           sys.stdout.write(json.dumps(merged, indent=2) + "\n")
           PY
 
-            git add .release-please-manifest.json
+            git add "${conflicted}"
             git commit --no-edit -m "chore: resolve release manifest conflict (keep newest version per package)"
             git push origin "HEAD:${branch}"
             echo "PR #${num}: manifest conflict auto-resolved and pushed."

@@ -29,11 +29,16 @@ jobs:
     outputs:
       release_created: ${{ steps.rp.outputs.release_created }}
       tag_name: ${{ steps.rp.outputs.tag_name }}
-      # The `clients` component (mobile + wear apps) is a separate manifest package, so its
-      # outputs are path-prefixed (`clients--…`). It releases on its own `clients-v*` tag,
-      # independent of the root `v*` line above.
-      clients_release_created: ${{ steps.rp.outputs['clients--release_created'] }}
-      clients_tag_name: ${{ steps.rp.outputs['clients--tag_name'] }}
+      # The `clients` component (mobile + wear apps) is a SEPARATE release train with
+      # its own config + manifest file (clients-release-please-*.json), driven by the
+      # `rp_clients` step below. Keeping it in its own manifest is deliberate: the root
+      # and clients versions used to share one `.release-please-manifest.json`, so an
+      # open release PR on one line went CONFLICTING every time the other line released
+      # (adjacent JSON lines release-please can't 3-way-merge). Separate files never
+      # collide. Its outputs stay path-prefixed (`clients--…`) and it releases on its
+      # own `clients-v*` tag, independent of the root `v*` line above.
+      clients_release_created: ${{ steps.rp_clients.outputs['clients--release_created'] }}
+      clients_tag_name: ${{ steps.rp_clients.outputs['clients--tag_name'] }}
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: rp
@@ -48,6 +53,17 @@ jobs:
           # point at a version whose tarball hasn't uploaded yet (the "release not
           # found" install race). Chaining within one run also sidesteps the
           # GITHUB_TOKEN-doesn't-trigger-workflows limitation.
+
+      # The clients (mobile + wear) release train — its own config + manifest so its
+      # version never shares a file with the root line (see the `outputs` note above).
+      # Non-draft, so GitHub writes the `clients-v*` tag itself on publish; no
+      # tag-ensure step needed. Runs as a second step in the same job: the two trains
+      # touch disjoint components/branches, so they don't interfere.
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: rp_clients
+        with:
+          config-file: clients-release-please-config.json
+          manifest-file: clients-release-please-manifest.json
 
       # A *draft* GitHub Release does NOT create its git tag — GitHub only writes
       # the tag ref when the release is published. But the downstream build jobs
