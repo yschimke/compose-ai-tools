@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli.serve
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamFrameParams
+import ee.schimke.composeai.daemon.protocol.UiMode
 
 /**
  * A [ServeHost] that fronts a trusted design-system catalog with its baked-PNG render **and** an
@@ -88,14 +89,14 @@ class ServeCatalogLiveHost(
   internal val bakedHost: ServeHost = baked
 
   /**
-   * Ordinary browsing serves the baked catalog PNG — instant, and never wakes the daemon (a viewer
-   * that replays a sticky theme override into the snapshot URL must still land on baked pixels).
-   * The one exception is an **author-declared knob** edit ([PreviewOverrides.namedOverrides]):
-   * those knobs (`label`, a color, …) can only be honoured by re-running the composable, which the
-   * baked PNG can't do, so a knob-bearing render on a mapped id is routed to the [live] daemon
-   * (which also applies any display axes carried alongside). Display-axis-only overrides stay baked
-   * — the published variant already encodes its theme, and keeping them baked preserves instant
-   * browsing.
+   * Ordinary browsing serves the baked catalog PNG — instant, and never wakes the daemon: an
+   * override-free render (or one carrying only a `uiMode` that matches the variant's baked theme,
+   * as the viewer replays from its sticky theme) lands on baked pixels. Any override that would
+   * change those pixels — a named knob, a font scale, device, locale, orientation, a feature
+   * override, … — is routed to the [live] daemon to re-render, since the baked PNG can't represent
+   * it ([overridesAffectRender]). So a `/render?fontScale=…` or `?knob.label=…` URL returns fresh
+   * pixels, while the default browse stays baked-instant. Only the mapped (daemon-twinned) ids can
+   * re-render; an unmapped Android-only variant always replays baked.
    */
   override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
     val daemonId = daemonIdForOverrideRender(previewId, overrides)
@@ -123,11 +124,38 @@ class ServeCatalogLiveHost(
 
   /**
    * The daemon preview id to route a [render] / [renderSvg] to, or null to stay baked. Non-null
-   * only when [previewId] is a mapped (daemon-renderable) id AND the request carries an
-   * author-declared knob override — the sole case the baked PNG can't satisfy.
+   * only when [previewId] is a mapped (daemon-renderable) id AND the request carries an override
+   * the baked PNG can't satisfy ([overridesAffectRender]).
    */
-  private fun daemonIdForOverrideRender(previewId: String, overrides: PreviewOverrides): String? =
-    if (overrides.namedOverrides.isNullOrEmpty()) null else alias[previewId]
+  private fun daemonIdForOverrideRender(previewId: String, overrides: PreviewOverrides): String? {
+    // No daemon twin (an Android-only variant) ⇒ always baked; it has no live lane.
+    val daemonId = alias[previewId] ?: return null
+    return if (overridesAffectRender(previewId, overrides)) daemonId else null
+  }
+
+  /**
+   * Whether [overrides] would change pixels vs the preview's baked sticker, so the render must go
+   * to the daemon rather than replay the baked PNG. The baked variant already encodes its **theme**
+   * (the `…__light` / `…__dark` id segment) and every other axis at its discovery-time default, so
+   * a bare `uiMode` that matches the variant is a no-op and stays baked (keeping browsing instant);
+   * anything else — a font scale, device, locale, orientation, a named knob, a feature override
+   * (gestures / focus / keyboard / …) — needs a re-render. Uses data-class equality against a
+   * defaults instance so a newly added override field is covered without touching this predicate.
+   */
+  private fun overridesAffectRender(previewId: String, o: PreviewOverrides): Boolean {
+    val bakedTheme =
+      previewId.split("__").let { segments ->
+        when {
+          "dark" in segments -> UiMode.DARK
+          "light" in segments -> UiMode.LIGHT
+          else -> null
+        }
+      }
+    // A uiMode matching the baked variant is a no-op; drop it, then any remaining set field
+    // (including a *differing* uiMode) means a re-render is required.
+    val uiModeIsNoOp = o.uiMode == null || o.uiMode == bakedTheme
+    return if (uiModeIsNoOp) o.copy(uiMode = null) != PreviewOverrides() else true
+  }
 
   /** Live streaming is available only for aliased ids; others have no stream (snapshot only). */
   override fun subscribeStream(
