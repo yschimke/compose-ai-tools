@@ -1,5 +1,7 @@
 package ee.schimke.composeai.renderer
 
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -47,8 +49,10 @@ import ee.schimke.composeai.data.layoutinspector.LayoutInspectorNode
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorPayload
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorSize
 import ee.schimke.composeai.data.render.PreviewContext
+import java.awt.image.BufferedImage
 import java.io.File
 import java.nio.file.Files
+import javax.imageio.ImageIO
 import kotlin.math.ceil
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -395,6 +399,12 @@ class WearScrollSvgGrowthTest {
           rule.setContent { InspectableContent(slotTables) { content() } }
           rule.mainClock.advanceTimeBy(500)
           rule.waitForIdle()
+          // Capture over transparency: the crop the EdgeButton raster reads from must be the crescent
+          // pixels alone (alpha 0 everywhere else), or an opaque window backdrop would paint a block
+          // around the control that the capsule clip then reveals as a stray crescent.
+          rule.runOnUiThread {
+            rule.activity.window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+          }
           val frameFile = File(rootDir, "part-$previewId.png")
           rule.onRoot().captureRoboImage(file = frameFile)
           val semanticsRoot = rule.onRoot(useUnmergedTree = true).fetchSemanticsNode()
@@ -457,18 +467,44 @@ class WearScrollSvgGrowthTest {
         }
       }
 
-    // Stack top-to-bottom: header, rows, edge button. Each part is dropped in at a cumulative y by
-    // offsetting its whole captured subtree — the parts never overlap and never scale.
+    // Stack top-to-bottom: header, rows, edge button. Each vector part is dropped in at a cumulative
+    // y by offsetting its whole captured subtree — the parts never overlap and never scale.
     val gap = 6
-    val topPad = 24
+    // Enough top inset that the left-aligned header clears the capsule's rounded top corner.
+    val topPad = 44
     var y = topPad
     val layoutChildren = mutableListOf<LayoutInspectorNode>()
     val semChildren = mutableListOf<ComposeSemanticsNode>()
-    for (part in listOf(header) + cards + edge) {
+    for (part in listOf(header) + cards) {
       part.layout.forEach { layoutChildren.add(it.offsetY(y)) }
       part.semantics.forEach { semChildren.add(it.offsetY(y)) }
       y += part.height + gap
     }
+
+    // The EdgeButton's "Start workout" crescent is a Canvas-drawn (`drawWithContent`) container the
+    // *vector* export can't read — a drawn container is neither a leaf draw node nor a
+    // `Modifier.paint` fill, so it falls out of both hybrid-raster paths and would render as bare
+    // text on a stray box. So raster the whole control from its isolated frame instead: drop it in as
+    // one opaque `Image` node whose pixels get cropped from a composited frame. Editable text is
+    // traded for a faithful crescent — the right call for a bespoke Canvas control.
+    val edgeY = y
+    val edgeBox = edge.layout.boundingBox()
+    val edgeStacked =
+      LayoutInspectorBounds(
+        left = edgeBox.left,
+        top = edgeBox.top + edgeY,
+        right = edgeBox.right,
+        bottom = edgeBox.bottom + edgeY,
+      )
+    layoutChildren.add(
+      LayoutInspectorNode(
+        nodeId = "edge-raster",
+        component = "Image", // an opaque raster component → emitted as an <image>, cropped from frame
+        bounds = edgeStacked,
+        size = LayoutInspectorSize(edgeBox.right - edgeBox.left, edgeBox.bottom - edgeBox.top),
+      )
+    )
+    y += edge.height + gap
     val totalHeight = y - gap + topPad
 
     // One synthetic frame root spanning the full stacked size — its bounds drive the export's canvas
@@ -492,19 +528,39 @@ class WearScrollSvgGrowthTest {
         )
       )
 
+    // Composite the frame the hybrid export crops rasters from: a transparent canvas the size of the
+    // stacked frame with just the EdgeButton's isolated pixels pasted at its stacked position. The
+    // vector cards need no pixels here — only the one `Image` node reads from this frame.
+    val edgeFrame = ImageIO.read(File(rootDir, "part-edge.png"))
+    val cropW = (edgeBox.right - edgeBox.left).coerceAtMost(edgeFrame.width - edgeBox.left)
+    val cropH = (edgeBox.bottom - edgeBox.top).coerceAtMost(edgeFrame.height - edgeBox.top)
+    val edgeCrop = edgeFrame.getSubimage(edgeBox.left, edgeBox.top, cropW, cropH)
+    val composited = BufferedImage(deviceDp, totalHeight, BufferedImage.TYPE_INT_ARGB)
+    composited.createGraphics().apply {
+      drawImage(edgeCrop, edgeStacked.left, edgeStacked.top, null)
+      dispose()
+    }
+    val framePng = File(rootDir, "wear-parts-frame.png")
+    ImageIO.write(composited, "png", framePng)
+
     ComposeFigmaSvgDataProducer.writeSvg(
       rootDir = rootDir,
       previewId = "wear-parts",
       layout = combinedLayout,
       semantics = combinedSemantics,
       density = 1f,
+      frameImage = framePng,
       roundClip = true,
     )
     val svg = File(rootDir, "wear-parts/compose-figma.svg").readText()
-    File("build/wear-scroll-svg").mkdirs()
+    File("build/wear-scroll-svg/figma-raster").mkdirs()
     File("build/wear-scroll-svg/wear-parts.svg").writeText(svg)
+    File(rootDir, "wear-parts/figma-raster").listFiles()?.forEach { src ->
+      src.copyTo(File("build/wear-scroll-svg/figma-raster/${src.name}"), overwrite = true)
+    }
 
-    // Tall → capsule clip, every row present, plus the pinned header and the full-size EdgeButton.
+    // Tall → capsule clip, every row present as editable vector, the pinned header, and the EdgeButton
+    // as a faithful raster whose PNG the export actually wrote.
     assertTrue(
       "the stacked frame must use the capsule clip:\n$svg",
       svg.contains("""<clipPath id="deviceRound"><rect"""),
@@ -515,8 +571,29 @@ class WearScrollSvgGrowthTest {
       itemLayerCount(svg),
     )
     assertTrue("the stacked frame keeps its header", svg.contains(">Activity</text>"))
-    assertTrue("the stacked frame keeps the EdgeButton", svg.contains(">Start workout</text>"))
+    assertTrue("the EdgeButton is composited as a raster <image>", svg.contains("<image "))
+    assertTrue(
+      "the EdgeButton raster PNG must be written next to the SVG",
+      File(rootDir, "wear-parts/figma-raster/edge_raster.png").exists(),
+    )
   }
+}
+
+/** Union of every node's bounds in this subtree list, in the parts' local px space. */
+private fun List<LayoutInspectorNode>.boundingBox(): LayoutInspectorBounds {
+  var l = Int.MAX_VALUE
+  var t = Int.MAX_VALUE
+  var r = Int.MIN_VALUE
+  var b = Int.MIN_VALUE
+  fun visit(n: LayoutInspectorNode) {
+    l = minOf(l, n.bounds.left)
+    t = minOf(t, n.bounds.top)
+    r = maxOf(r, n.bounds.right)
+    b = maxOf(b, n.bounds.bottom)
+    n.children.forEach(::visit)
+  }
+  forEach(::visit)
+  return LayoutInspectorBounds(l, t, r, b)
 }
 
 /** Deepest bottom edge in this subtree, in root px — a part's natural content height. */
