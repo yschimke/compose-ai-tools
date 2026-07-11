@@ -310,6 +310,19 @@ class RenderEngine(
     // fields get plumbed through.
     val isRound = isRoundDevice(spec.device)
 
+    // A round Wear frame requested TALLER than it is wide is the grown `figma-svg-long` scroll
+    // render re-entering `render()` (a normal round watch face is square). Flatten
+    // `TransformingLazyColumn` edge scaling (`LocalReduceMotion = true`) so its items stack at their
+    // natural size — the flat, editable list the capsule-clipped SVG lays out — instead of curving /
+    // shrinking toward the tall frame's top and bottom. Same knob the raster LONG path uses;
+    // resolved reflectively via the request classloader (the user's `wear-compose` lives on the
+    // child loader, not the daemon's own), and a no-op when the consumer isn't a Wear app.
+    val flattenWearScroll = isRound && spec.heightPx > spec.widthPx
+    val wearReduceMotionLocal =
+      if (flattenWearScroll)
+        ee.schimke.composeai.renderer.WearReduceMotionLocal.get(classLoader)
+      else null
+
     // Per-preview Robolectric configuration — qualifiers re-applied so a previous render's size /
     // density doesn't bleed into this one. Same entrypoints `RobolectricRenderTest` uses; both
     // mutate `RuntimeEnvironment` global state, which is OK here because the sandbox is single-
@@ -376,13 +389,21 @@ class RenderEngine(
                 // renderer already pays in its always-on a11y pass.
                 val inspectionMode =
                   if (effectiveRunAccessibility) false else spec.inspectionMode ?: true
-                CompositionLocalProvider(
-                  LocalInspectionMode provides inspectionMode,
-                  // Cleared background ("crisp outline"): a composable drawing its own opaque fill
-                  // drops it to match the transparent decor-view background. Defaults false.
-                  ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
-                    spec.clearBackground,
-                ) {
+                val provided =
+                  buildList {
+                      add(LocalInspectionMode provides inspectionMode)
+                      // Cleared background ("crisp outline"): a composable drawing its own opaque
+                      // fill drops it to match the transparent decor-view background. Defaults false.
+                      add(
+                        ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
+                          spec.clearBackground
+                      )
+                      // Flatten Wear `TransformingLazyColumn` scaling for the grown scroll-SVG
+                      // render (see `flattenWearScroll` above); no-op provider when not a Wear app.
+                      if (wearReduceMotionLocal != null) add(wearReduceMotionLocal provides true)
+                    }
+                    .toTypedArray()
+                CompositionLocalProvider(*provided) {
                   CaptureMaterialTheme { _, typography, shapes, payload ->
                     themeFallbackCapture.capture(typography, shapes)
                     themeFallbackCapture.capture(payload)
@@ -1181,16 +1202,30 @@ class RenderEngine(
               runCatching { it.asMethod().isAccessible = true }
             }
           val bgArgb = resolveBackgroundColor(spec).toArgb()
+          // This probe only runs for `figma-svg-long`, so a round device here is always the Wear
+          // scroll scenario: measure with `LocalReduceMotion = true` so the content height reflects
+          // the FLATTENED (unscaled) list the final render produces — measuring the scaled layout
+          // would size the frame to the wrong extent. No-op provider when not a Wear app.
+          val wearReduceMotionLocal =
+            if (isRound) ee.schimke.composeai.renderer.WearReduceMotionLocal.get(classLoader)
+            else null
           rule.setContent {
-            CompositionLocalProvider(
-              // Match the final render's inspection mode so a preview that branches on
-              // `LocalInspectionMode.current` composes the same content the export will (measuring a
-              // different branch would size the frame to the wrong extent). The final SVG render
-              // re-enters `render` in the non-a11y path, i.e. `spec.inspectionMode ?: true`.
-              LocalInspectionMode provides (spec.inspectionMode ?: true),
-              ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
-                spec.clearBackground,
-            ) {
+            val provided =
+              buildList {
+                  // Match the final render's inspection mode so a preview that branches on
+                  // `LocalInspectionMode.current` composes the same content the export will
+                  // (measuring a different branch would size the frame to the wrong extent). The
+                  // final SVG render re-enters `render` in the non-a11y path, i.e.
+                  // `spec.inspectionMode ?: true`.
+                  add(LocalInspectionMode provides (spec.inspectionMode ?: true))
+                  add(
+                    ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
+                      spec.clearBackground
+                  )
+                  if (wearReduceMotionLocal != null) add(wearReduceMotionLocal provides true)
+                }
+                .toTypedArray()
+            CompositionLocalProvider(*provided) {
               Box(modifier = Modifier.fillMaxSize().background(Color(bgArgb))) {
                 // Mirror the normal render's invocation so a `@PreviewWrapper` / theme-provider that
                 // supplies the scrollable content is applied during measurement too, not just at the

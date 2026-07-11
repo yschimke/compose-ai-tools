@@ -1,6 +1,7 @@
 # Representing scrolling screens in the layered SVG export
 
-Status: **mobile validated (experiment landed); Wear designed, not yet implemented.**
+Status: **mobile validated (experiment landed); Wear capsule clip + reduce-motion landed, daemon
+render wiring is the remaining step.**
 
 ## Problem
 
@@ -104,9 +105,9 @@ scroll semantics already expose, read after each measured render.
   fast-follow — the viewer's SVG links are built by a client-side state machine that needs the
   Electron preview-harness for visual evidence); and the **Wear** geometry below.
 
-## Wear: split the scaffold, stack the items unscaled (proposed)
+## Wear: grow tall, flatten the items, clip to a capsule
 
-"Just make it taller" does **not** work for Wear, for three reasons:
+"Just make it taller" doesn't work for Wear **unchanged**, for three reasons:
 
 1. **Round device crop.** A round Wear preview is masked to the inscribed circle (`roundClip`).
    A tall frame has no meaningful circle — the mask would clip the list to a lens.
@@ -117,30 +118,60 @@ scroll semantics already expose, read after each measured render.
    bottom of the round face (`SurfaceTransformation`). Captured in place they'd be at varying,
    wrong-for-a-flat-list scales.
 
-### Tactical approach
+### The realisation: the same mobile "grow tall" pass, plus two knobs
 
-Treat the Wear scroll SVG as a **capsule**, mirroring the existing raster `applyWearPillClip` shape
-(top half-circle + rectangle + bottom half-circle):
+Each of the three problems is answered by one small change layered onto the *mobile* grow-tall pass
+— so the Wear path reuses the entire `figma-svg-long` growth loop rather than a bespoke
+scroll-and-split scheme:
 
-- **Top chrome group** — the top half of the round face captured with the list scrolled to the
-  **start** (so `TimeText` and the first `ListHeader` are shown), clipped to the top arc.
-- **Bottom chrome group** — the bottom half captured with the list scrolled to the **end** (so the
-  revealed `EdgeButton` is shown), clipped to the bottom arc.
-- **Middle list group** — the `TransformingLazyColumn` items captured **unscaled** (with
-  `LocalReduceMotion(true)` to flatten the edge transforms, the same knob the PNG LONG path uses) and
-  **stacked vertically at natural size** between the two chrome halves, in a full-width rectangle.
-  Because items are captured without the edge scaling, they can be laid out sequentially exactly like
-  the mobile list.
+1. **Capsule clip instead of the circle.** The grown frame is masked to a vertical **stadium**
+   (top half-circle of radius `width/2`, straight sides, bottom half-circle) — the vector analogue
+   of the raster `applyWearPillClip`, emitted as a single `<rect rx=width/2>`. Implemented as
+   [`FigmaSvgCapsuleClip`](../../data/layoutinspector/core/src/main/kotlin/ee/schimke/composeai/data/layoutinspector/FigmaSvgModel.kt);
+   a `roundClip` request on a frame that's taller than it is wide (the grown scroll frame)
+   auto-selects it, so the always-on `ComposeFigmaSvgExtension` keeps passing `roundClip = isRound`
+   and the tall render gets the stadium with no extra plumbing.
+2. **`ScreenScaffold` pins the chrome for us.** Because `TimeText` pins to the top of the frame and
+   the `EdgeButton` is revealed at the frame bottom once the list is fully composed, growing the
+   frame tall naturally lands `TimeText` inside the top arc and the `EdgeButton` inside the bottom
+   arc — the "top chrome / list / bottom chrome" split falls out of the scaffold's own pinning,
+   no separate start/end capture needed.
+3. **`LocalReduceMotion(true)` flattens the list.** Providing Wear's `LocalReduceMotion` during the
+   grown render (the same knob the PNG LONG path uses to kill slice-seam ghosting) removes the
+   `SurfaceTransformation` edge scaling, so every `TransformingLazyColumn` item composes at natural
+   size and stacks sequentially exactly like the mobile list. The local is resolved reflectively via
+   the request classloader ([`WearReduceMotionLocal`](../../renderers/android/src/main/kotlin/ee/schimke/composeai/renderer/WearReduceMotionLocal.kt)),
+   so neither `data-layoutinspector-core` nor `daemon:android` needs a compile dep on
+   `androidx.wear.compose`, and it's a no-op for non-Wear scrollables.
 
-Split at the vertical middle of the round face. The result is a layered SVG whose top and bottom keep
-the round-watch framing while the middle is a clean, unscaled, editable list — a designer can read
-and edit the whole screen without the fisheye.
+The result is a layered SVG whose top and bottom keep the round-watch framing (clock arc,
+`EdgeButton`) while the middle is a clean, unscaled, editable list — a designer reads and edits the
+whole screen without the fisheye. This is a simpler realisation than the originally-proposed
+top/bottom scaffold split, and it reuses the mobile grow-and-size-to-content loop verbatim.
 
-Wear is Android-only (`androidx.wear.compose.*`), so this is implemented in the Android backend
-(`ComposeFigmaSvgExtension` / `RobolectricRenderTest`) where the scroll driver, `reduceMotion`, and
-`isRound` already live. The item-tree stacking is the new work: capture each item's layout/semantics
-subtree at its unscaled size (e.g. from an expanded, chrome-less render of the list content) and
-translate them into a single stacked column between the two captured chrome arcs.
+| Old circle clip on the round face (list lens-clipped) | Capsule clip on the grown, flattened frame |
+| --- | --- |
+| ![circle before](../renders/scrolling-svg/wear-circle-before.png) | ![capsule](../renders/scrolling-svg/wear-capsule.png) |
+
+*(Both rendered through the real `FigmaSvgModel` + `FigmaLayeredSvg` and rasterised; the capsule
+frame carries the full stacked list — cards, `TimeText` arc, and the revealed `EdgeButton` pill —
+inside the stadium mask.)*
+
+### What's landed vs. what remains
+
+- **Landed (backend-agnostic, unit-tested in `data-layoutinspector-core`):** the `FigmaSvgCapsuleClip`
+  shape + its `<rect rx>` renderer, and the tall-frame auto-selection so a `roundClip` on a grown
+  frame becomes a capsule.
+- **Landed (Android render path):** the classloader-aware `WearReduceMotionLocal` seam, and its
+  provision during the daemon's grown Wear render + its scroll-measure probes
+  ([`RenderEngine`](../../daemon/android/src/main/kotlin/ee/schimke/composeai/daemon/RenderEngine.kt),
+  gated on a round device requested taller than wide — i.e. the `figma-svg-long` re-entry).
+- **Remaining:** an end-to-end daemon test rendering a real Wear `TransformingLazyColumn` fixture
+  through `figma-svg-long` (needs `androidx.wear.compose` on `daemon:android`'s test runtime, which
+  the module doesn't yet carry — the mobile `figma-svg-long` test uses the plain-Compose
+  `LazyColumnListPreview` fixture); registering a Wear scroll `@Preview` with the preview-harness so
+  the CI visual-diff bot diffs it on every change; and the same **override-aware** re-render gap the
+  mobile path still has.
 
 ## Non-goals
 
