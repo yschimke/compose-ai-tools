@@ -128,6 +128,32 @@ fun PreviewOverrides?.withThemeProvider(themeProvider: String?): PreviewOverride
   else (this ?: PreviewOverrides()).copy(themeProvider = themeProvider)
 
 /**
+ * Carry the wrapped-axis size bounds (the Max / Min / Within controls) onto a held-session
+ * overrides bag. Like `themeProvider`, these are **renderer-read** fields — the desktop
+ * `RenderEngine` reads `spec.overrides.{min,max}{Width,Height}Px` directly — so
+ * `toExtensionOverrides()` (the extension-only projection) drops them. Without this a live
+ * `stream/start` / `setOverrides` carrying a size-mode change would fall back to the unbounded
+ * wrap. Mirrors [withThemeProvider] and the `clearBackground` carry in each host's
+ * `applyOverrides`. A [source] with no bounds set is a no-op.
+ */
+fun PreviewOverrides?.withSizeBounds(source: PreviewOverrides?): PreviewOverrides? {
+  if (
+    source?.minWidthPx == null &&
+      source?.minHeightPx == null &&
+      source?.maxWidthPx == null &&
+      source?.maxHeightPx == null
+  ) {
+    return this
+  }
+  return (this ?: PreviewOverrides()).copy(
+    minWidthPx = source.minWidthPx,
+    minHeightPx = source.minHeightPx,
+    maxWidthPx = source.maxWidthPx,
+    maxHeightPx = source.maxHeightPx,
+  )
+}
+
+/**
  * Hard-coded duplicate of `Pseudolocale.fromTag(...) != null`. Inlined here so `:daemon:core` (the
  * protocol module) doesn't take a dependency on `:data-pseudolocale-core` just to gate the bag
  * projection in [MergedPreviewOverrides.toExtensionOverrides]. If new pseudolocale tags ever land,
@@ -165,6 +191,10 @@ fun PreviewOverrides?.layeredOver(base: PreviewOverrides?): PreviewOverrides? {
   return PreviewOverrides(
     widthPx = over.widthPx ?: base.widthPx,
     heightPx = over.heightPx ?: base.heightPx,
+    minWidthPx = over.minWidthPx ?: base.minWidthPx,
+    minHeightPx = over.minHeightPx ?: base.minHeightPx,
+    maxWidthPx = over.maxWidthPx ?: base.maxWidthPx,
+    maxHeightPx = over.maxHeightPx ?: base.maxHeightPx,
     density = over.density ?: base.density,
     localeTag = over.localeTag ?: base.localeTag,
     fontScale = over.fontScale ?: base.fontScale,

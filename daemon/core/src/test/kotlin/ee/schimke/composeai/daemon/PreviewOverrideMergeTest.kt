@@ -320,6 +320,30 @@ class PreviewOverrideMergeTest {
     assertEquals(existing, existing.withThemeProvider(null))
   }
 
+  @Test
+  fun `withSizeBounds carries the wrapped-axis bounds onto a null or existing held-session bag`() {
+    // toExtensionOverrides() drops the renderer-read size bounds, so the held/live path folds them
+    // back on. A null bag gains one carrying only the bounds.
+    val source = PreviewOverrides(minWidthPx = 120, maxWidthPx = 400, maxHeightPx = 800)
+    val fromNull = (null as PreviewOverrides?).withSizeBounds(source)
+    assertNotNull(fromNull)
+    assertEquals(120, fromNull!!.minWidthPx)
+    assertEquals(400, fromNull.maxWidthPx)
+    assertEquals(800, fromNull.maxHeightPx)
+    assertNull(fromNull.minHeightPx)
+
+    // An existing bag keeps its other fields and gains the bounds.
+    val existing = PreviewOverrides(themeProvider = "com.example.Brand")
+    val folded = existing.withSizeBounds(source)
+    assertEquals("com.example.Brand", folded?.themeProvider)
+    assertEquals(400, folded?.maxWidthPx)
+
+    // A source with no bounds set is a no-op — the held bag stays exactly as-is (including null).
+    assertNull((null as PreviewOverrides?).withSizeBounds(PreviewOverrides()))
+    assertNull((null as PreviewOverrides?).withSizeBounds(null))
+    assertEquals(existing, existing.withSizeBounds(PreviewOverrides(fontScale = 2f)))
+  }
+
   /**
    * Exhaustiveness guard for [layeredOver]: an empty overlay over a fully-populated base must
    * round-trip to the base unchanged. Every [PreviewOverrides] field is non-null here, so a field
@@ -373,6 +397,10 @@ class PreviewOverrideMergeTest {
     PreviewOverrides(
       widthPx = 111,
       heightPx = 222,
+      minWidthPx = 33,
+      minHeightPx = 44,
+      maxWidthPx = 555,
+      maxHeightPx = 666,
       density = 3.0f,
       localeTag = "fr-FR",
       fontScale = 1.4f,
