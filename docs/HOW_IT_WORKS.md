@@ -88,6 +88,17 @@ composePreview {
 }
 ```
 
+When `enabled = false`, the plugin skips registering the preview tasks
+(`composePreviewDiscover` / render / daemon-start) but still writes the
+`build/compose-previews/applied.json` marker (carrying `enabled: false`). The
+VS Code extension reads that marker: the module stays **visible** in discovery
+and the doctor report, but the extension never **schedules** a preview task for
+it — so opening or saving a file in a disabled module no longer produces a
+"task not found" failure. (This is the "keep but flag" choice from #2016:
+`ModuleInfo.enabled` gates scheduling in `GradleService`, leaving visibility
+intact. A missing `enabled` — legacy markers, scan-detected modules — is
+treated as enabled.)
+
 ## Project structure
 
 | Module | Purpose |
