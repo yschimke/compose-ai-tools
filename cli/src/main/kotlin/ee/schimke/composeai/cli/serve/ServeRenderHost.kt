@@ -386,6 +386,10 @@ internal constructor(
   override fun renderSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome {
     check(!closed.get()) { "ServeRenderHost is closed" }
     if (previewId !in previewIds) return SvgOutcome.NotFound
+    // A daemon without the figma-svg producer ([hasSvgExport] false) can't export it — fetchData
+    // would fail `-32020 kind not advertised`. Short-circuit to NotFound (a clean 404) instead, so
+    // a direct/stale `/render/<id>.svg` matches the "no SVG lane" this host already advertises.
+    if (!hasSvgExport) return SvgOutcome.NotFound
 
     val key = ServeOverrides.cacheKey(previewId, overrides)
     svgCache.get(key)?.let {
@@ -454,6 +458,9 @@ internal constructor(
   override fun renderScrollSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome {
     check(!closed.get()) { "ServeRenderHost is closed" }
     if (previewId !in previewIds) return SvgOutcome.NotFound
+    // No figma-svg producer ⇒ no export; NotFound (404) rather than a `-32020` fetch 500. See
+    // [renderSvg].
+    if (!hasSvgExport) return SvgOutcome.NotFound
 
     val key = previewId
     scrollSvgCache.get(key)?.let {
