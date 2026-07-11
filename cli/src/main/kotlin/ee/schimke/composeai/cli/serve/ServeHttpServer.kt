@@ -519,6 +519,8 @@ class ServeHttpServer(
           // Android-daemon-only: gates the "Show gesture hints" row so a `@GestureHintPreview`
           // doesn't show a toggle that would do nothing on a desktop-backed session.
           gesturesRenderable = renderHost.gesturesRenderable,
+          // The session's full preview list feeds the left-hand component nav drawer.
+          siblings = renderHost.previews,
         ),
         ContentType.Text.Html,
       )
