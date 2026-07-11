@@ -158,6 +158,72 @@ class FigmaSvgZeroBoundsTest {
   }
 
   /**
+   * A *placed* node that genuinely measures to zero area — an intentionally collapsed
+   * `Modifier.size(0.dp).background(...)` — reports its real non-zero origin, not `(0,0,0,0)`, so
+   * recovery must leave it untouched instead of ballooning it to a parent-sized rect (a rect that
+   * was not in the captured preview). Guards the narrowing requested in review.
+   */
+  @Test
+  fun `a placed zero-area node is not ballooned to the parent`() {
+    val collapsed =
+      node(
+        component = "BoxMeasurePolicy",
+        bounds = LayoutInspectorBounds(120, 80, 120, 80),
+        size = LayoutInspectorSize(0, 0),
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF006A60"),
+      )
+    val root =
+      node(
+        component = "ColumnMeasurePolicy",
+        bounds = LayoutInspectorBounds(0, 0, 320, 300),
+        size = LayoutInspectorSize(320, 300),
+        children = listOf(collapsed),
+      )
+
+    val model = FigmaSvgModel.from(layout = LayoutInspectorPayload(root))
+    val fill = allLayers(model.root).firstOrNull { it.fill != null }
+    if (fill != null) {
+      assertEquals("left preserved", 120, fill.left)
+      assertEquals("top preserved", 80, fill.top)
+      assertEquals("must stay zero-width", 120, fill.right)
+      assertEquals("must stay zero-height", 80, fill.bottom)
+    }
+    assertTrue("no raster targets expected", model.rasterTargets.isEmpty())
+  }
+
+  /**
+   * A truly 0×0 node sitting at the origin does hit the `(0,0,0,0)` signature, but with no measured
+   * size there is nothing to reconstruct — it must stay zero-area, never a parent-sized rect.
+   */
+  @Test
+  fun `a genuinely 0x0 node at the origin stays zero-area`() {
+    val collapsed =
+      node(
+        component = "BoxMeasurePolicy",
+        bounds = LayoutInspectorBounds(0, 0, 0, 0),
+        size = LayoutInspectorSize(0, 0),
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF006A60"),
+      )
+    val root =
+      node(
+        component = "ColumnMeasurePolicy",
+        bounds = LayoutInspectorBounds(0, 0, 320, 300),
+        size = LayoutInspectorSize(320, 300),
+        children = listOf(collapsed),
+      )
+
+    val model = FigmaSvgModel.from(layout = LayoutInspectorPayload(root))
+    val fill = allLayers(model.root).firstOrNull { it.fill != null }
+    if (fill != null) {
+      assertTrue(
+        "a genuinely 0x0 node must not gain area (was " +
+          "${fill.right - fill.left}x${fill.bottom - fill.top})",
+        fill.right - fill.left == 0 && fill.bottom - fill.top == 0,
+      )
+    }
+  }
+
+  /**
    * A normally-placed node keeps its real bounds — recovery must be a no-op off the failure path.
    */
   @Test
