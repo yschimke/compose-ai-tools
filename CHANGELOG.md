@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.16.39](https://github.com/yschimke/compose-ai-tools/compare/v0.16.38...v0.16.39) (2026-07-11)
+
+
+### Features
+
+* **serve:** GC long-idle suspended forked sessions and prune their worktrees ([#2422](https://github.com/yschimke/compose-ai-tools/issues/2422)) ([979afbe](https://github.com/yschimke/compose-ai-tools/commit/979afbe9924437021c238cc4db79b7f3d3a3bd4a))
+
+
+### Bug Fixes
+
+* **figma-svg:** recover zero-area bounds so detached nodes don't collapse the SVG ([#2421](https://github.com/yschimke/compose-ai-tools/issues/2421)) ([9ecf454](https://github.com/yschimke/compose-ai-tools/commit/9ecf454eefc629bfa5e2ee68c54f5bf321402e43))
+
 ## [0.16.38](https://github.com/yschimke/compose-ai-tools/compare/v0.16.37...v0.16.38) (2026-07-11)
 
 
