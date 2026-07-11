@@ -1,8 +1,9 @@
 # Representing scrolling screens in the layered SVG export
 
 Status: **mobile validated (experiment landed); Wear capsule clip + reduce-motion landed and covered
-end-to-end on real captured geometry (`WearScrollSvgCaptureTest`); daemon growth-loop orchestration
-against a Wear target is the remaining step.**
+end-to-end on real captured geometry — a round-watch device preview is grown by measurement into a
+tall capsule (`WearScrollSvgGrowthTest`); driving the same loop from the daemon harness against a
+Wear target is the remaining step.**
 
 ## Problem
 
@@ -167,24 +168,30 @@ inside the stadium mask.)*
   provision during the daemon's grown Wear render + its scroll-measure probes
   ([`RenderEngine`](../../daemon/android/src/main/kotlin/ee/schimke/composeai/daemon/RenderEngine.kt),
   gated on a round device requested taller than wide — i.e. the `figma-svg-long` re-entry).
-- **Landed (real-geometry end-to-end coverage):**
-  [`WearScrollSvgCaptureTest`](../../renderers/android/src/test/kotlin/ee/schimke/composeai/renderer/WearScrollSvgCaptureTest.kt)
-  renders a live Wear `TransformingLazyColumn` at a tall device size with `LocalReduceMotion(true)`,
-  runs the real capture (`LayoutInspectorDataProducer` + `ComposeSemanticsDataProducer`) and export
-  (`ComposeFigmaSvgDataProducer.writeSvg(roundClip = true)`) the daemon runs post-render, and asserts
-  the emitted SVG masks the tall frame to the **capsule** (not the circle) and carries **every** list
-  item as a layer. It lives in `:renderer-android` — **not** `:daemon:android` — precisely so the
-  Wear dependency comes from the module being rendered (that module already carries
-  `wear-compose-foundation` on its test classpath), never the daemon; the daemon stays wear-free and
-  reaches `LocalReduceMotion` reflectively, exactly as it does against a user's app in production.
-  The export over that real captured tree:
+- **Landed (real-geometry end-to-end coverage — the whole extraction, magic and all):**
+  [`WearScrollSvgGrowthTest`](../../renderers/android/src/test/kotlin/ee/schimke/composeai/renderer/WearScrollSvgGrowthTest.kt)
+  starts from a normal round-watch **device preview** (a square `wearos_large_round`, 227×227dp) whose
+  `TransformingLazyColumn` renders with the real Wear item scaling (`SurfaceTransformation` /
+  `transformedHeight`) — rows curve and shrink toward the round face's edges — and *grows it by
+  measurement* (the daemon's `runScrollSvgScenario` loop, sharing the same
+  [`ScrollContentMeasure`](../../renderers/android/src/main/kotlin/ee/schimke/composeai/renderer/ScrollContentMeasure.kt))
+  until every row composes. The **height is derived, never hardcoded**. It asserts the two ends: the
+  square device preview masks to the inscribed **circle** and shows only a virtualised subset of rows;
+  the extracted tall frame masks to the **capsule** and carries **every** row, flattened by
+  `LocalReduceMotion(true)`. It lives in `:renderer-android` — **not** `:daemon:android` — so the Wear
+  dependency (`wear-compose-foundation` + `-material3`) comes from the module being rendered, on its
+  **test** classpath only; the daemon stays wear-free and reaches `LocalReduceMotion` reflectively,
+  exactly as it does against a user's app in production. `RenderEngine`'s growth loop now calls the
+  same shared `ScrollContentMeasure` rather than a private copy.
 
-  ![real capsule capture](../renders/scrolling-svg/wear-capsule-real.png)
+  | Device preview (round, scaled) | Automagically extracted tall screenshot (flat, every row) |
+  | --- | --- |
+  | ![round device preview](../renders/scrolling-svg/wear-device-scaled.png) | ![extracted tall](../renders/scrolling-svg/wear-tall-extracted.png) |
 
-- **Remaining:** driving the **daemon's own `figma-svg-long` growth loop** end-to-end against a Wear
-  target (the export + reduce-motion are now covered on real geometry above; what's still uncovered is
-  the daemon-side orchestration — the grow-and-measure loop — which would want a Wear target module
-  supplying `wear-compose` on a spawned classpath rather than the daemon); registering a Wear scroll
+- **Remaining:** driving the **daemon's own** `figma-svg-long` growth loop end-to-end against a Wear
+  target in a `:daemon:harness` real-mode run (the loop + measure + export are now covered on real
+  geometry above in `:renderer-android`; the daemon-side wiring would want a Wear target module
+  supplying `wear-compose` on the spawned classpath rather than the daemon); registering a Wear scroll
   `@Preview` with the preview-harness so the CI visual-diff bot diffs it on every change; and the same
   **override-aware** re-render gap the mobile path still has.
 
