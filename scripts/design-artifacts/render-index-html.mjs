@@ -276,7 +276,7 @@ export function renderIndexHtml(catalog, opts = {}) {
   .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
   /* Checkerboard so transparent component stickers read clearly; full-screen
      stickers carry their own black round and just sit on top of it. */
-  .shot { margin:0; display:grid; place-items:center; min-height:180px; padding:12px;
+  .shot { margin:0; display:grid; place-items:center; min-height:120px; padding:12px;
     background-color:#161617;
     background-image:
       linear-gradient(45deg,#202022 25%,transparent 25%),
