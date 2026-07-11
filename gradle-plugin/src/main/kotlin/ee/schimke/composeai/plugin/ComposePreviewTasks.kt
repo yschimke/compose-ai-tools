@@ -245,6 +245,10 @@ internal object ComposePreviewTasks {
         dataProductsDir.set(previewOutputDir.map { it.dir("data") })
         renderBackend.set("desktop")
         tier.set(tierProperty(project))
+        // `composePreview.filter` convention for the `--preview` name filter (issue #2066); the
+        // repeatable `--preview` CLI option overrides it. Comma-separated so a single `-P` can name
+        // several previews.
+        previewFilters.convention(previewFilterProperty(project))
         displayFilterFilters.set(AndroidPreviewSupport.resolveDisplayFilterFilters(project))
         deviceFrameDevice.set(AndroidPreviewSupport.resolveDeviceFrameDevice(project))
         renderClasspath.from(sourceClassDirs)
@@ -1162,6 +1166,20 @@ internal object ComposePreviewTasks {
       .gradleProperty("composePreview.tier")
       .map { v -> if (v.equals("fast", ignoreCase = true)) "fast" else "full" }
       .orElse("full")
+
+  /**
+   * `Provider<List<String>>` for the `composePreview.filter` Gradle property — the `--preview` name
+   * filter's project-property form (issue #2066). Comma-separated so a single
+   * `-PcomposePreview.filter=*FooPreview,BarPreview` can name several previews; blank segments are
+   * dropped. Empty/absent → an empty list, i.e. "render every preview". Lazy through
+   * `project.providers` so reading it doesn't invalidate the configuration cache when the property
+   * flips between runs. The repeatable `--preview` task option overrides this convention.
+   */
+  internal fun previewFilterProperty(project: Project): Provider<List<String>> =
+    project.providers
+      .gradleProperty("composePreview.filter")
+      .map { v -> v.split(",").map(String::trim).filter(String::isNotEmpty) }
+      .orElse(emptyList())
 
   /**
    * `Provider<String>` for the `composePreview.missingRenders` Gradle property. Controls how

@@ -90,6 +90,14 @@ plugins {
 ./gradlew :app:composePreviewRenderAll   # render every @Preview to PNG
 ```
 
+Iterating on one screen? Narrow the render to a single preview (or a glob) so an
+unrelated broken preview can't poison the run:
+
+```sh
+./gradlew :app:composePreviewRender --preview '*ExportHelpDialogPreview'
+# or, as a Gradle property: -PcomposePreview.filter='*ExportHelpDialogPreview'
+```
+
 Requirements and CI recipes live on the [Install page](./install/).
 
 ---
