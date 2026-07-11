@@ -82,6 +82,11 @@ a:hover { text-decoration: underline; }
 .cp-note { font-size: 0.75rem; color: #6b6b70; line-height: 1.4; padding: 8px 10px;
   border-radius: 8px; background: #f4f4f6; }
 .cp-controls label:has(:disabled) { opacity: 0.55; }
+.cp-size { display: flex; flex-direction: column; gap: 8px; }
+/* :not([hidden]) so the mode toggle's `hidden` attribute still wins over this display rule. */
+.cp-size-row:not([hidden]) { display: flex; gap: 8px; }
+.cp-size-row label { flex: 1; }
+.cp-size-row input { width: 100%; box-sizing: border-box; }
 .cp-knobs { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
 .cp-knobs-head { font-size: 0.72rem; color: #6b6b70; }
 .cp-overlays { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }

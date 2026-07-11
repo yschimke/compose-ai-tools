@@ -1091,6 +1091,15 @@ class JsonRpcServer(
           // so a preview's `previewOverride*("title", …)` returns the requested value, not its
           // default.
           namedOverrides = overrides.namedOverrides,
+          // Min/max content-size bounds ride the bag so
+          // `renderNow.overrides.{min,max}{Width,Height}Px`
+          // reach the desktop `RenderEngine`, which clamps the wrap-layout measure to them (the
+          // Fixed / Max / Min / Within size modes). Fixed size stays on the `widthPx`/`heightPx`
+          // tokens above; these are the wrapped-axis bounds only, so no new fixed-frame token.
+          minWidthPx = overrides.minWidthPx,
+          minHeightPx = overrides.minHeightPx,
+          maxWidthPx = overrides.maxWidthPx,
+          maxHeightPx = overrides.maxHeightPx,
         )
       if (
         extensionBag.material3Theme != null ||
@@ -1098,7 +1107,11 @@ class JsonRpcServer(
           extensionBag.permissions != null ||
           extensionBag.gestures != null ||
           extensionBag.lottie != null ||
-          !extensionBag.namedOverrides.isNullOrEmpty()
+          !extensionBag.namedOverrides.isNullOrEmpty() ||
+          extensionBag.minWidthPx != null ||
+          extensionBag.minHeightPx != null ||
+          extensionBag.maxWidthPx != null ||
+          extensionBag.maxHeightPx != null
       ) {
         if (isNotEmpty()) append(';')
         append("overrides=")

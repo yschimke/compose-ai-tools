@@ -54,6 +54,12 @@ object ServeOverrides {
       "density",
       "widthPx",
       "heightPx",
+      // Wrapped-axis content-size bounds (the Max / Min / Within size modes). Fixed size uses
+      // widthPx/heightPx above; these constrain a wrapping preview's intrinsic measure instead.
+      "minWidthPx",
+      "minHeightPx",
+      "maxWidthPx",
+      "maxHeightPx",
       "orientation",
       "inspectionMode",
       "slotMode",
@@ -196,6 +202,52 @@ object ServeOverrides {
           ?: return OverrideParse.Invalid(
             "heightPx must be a positive integer, got '${params["heightPx"]}'"
           )
+
+    // Wrapped-axis content-size bounds (Max / Min / Within). Same positive-integer grammar as the
+    // fixed widthPx/heightPx; a malformed value is a hard Invalid rather than a silently-dropped
+    // bound. A `min > max` on the same axis is rejected below — it can't be satisfied.
+    val minWidthPx =
+      if (blank("minWidthPx")) null
+      else
+        params.getValue("minWidthPx").toIntOrNull()?.takeIf { it > 0 }
+          ?: return OverrideParse.Invalid(
+            "minWidthPx must be a positive integer, got '${params["minWidthPx"]}'"
+          )
+
+    val minHeightPx =
+      if (blank("minHeightPx")) null
+      else
+        params.getValue("minHeightPx").toIntOrNull()?.takeIf { it > 0 }
+          ?: return OverrideParse.Invalid(
+            "minHeightPx must be a positive integer, got '${params["minHeightPx"]}'"
+          )
+
+    val maxWidthPx =
+      if (blank("maxWidthPx")) null
+      else
+        params.getValue("maxWidthPx").toIntOrNull()?.takeIf { it > 0 }
+          ?: return OverrideParse.Invalid(
+            "maxWidthPx must be a positive integer, got '${params["maxWidthPx"]}'"
+          )
+
+    val maxHeightPx =
+      if (blank("maxHeightPx")) null
+      else
+        params.getValue("maxHeightPx").toIntOrNull()?.takeIf { it > 0 }
+          ?: return OverrideParse.Invalid(
+            "maxHeightPx must be a positive integer, got '${params["maxHeightPx"]}'"
+          )
+
+    if (minWidthPx != null && maxWidthPx != null && minWidthPx > maxWidthPx) {
+      return OverrideParse.Invalid(
+        "minWidthPx ($minWidthPx) must not exceed maxWidthPx ($maxWidthPx)"
+      )
+    }
+    if (minHeightPx != null && maxHeightPx != null && minHeightPx > maxHeightPx) {
+      return OverrideParse.Invalid(
+        "minHeightPx ($minHeightPx) must not exceed maxHeightPx ($maxHeightPx)"
+      )
+    }
 
     val inspectionMode =
       params["inspectionMode"]
@@ -360,6 +412,10 @@ object ServeOverrides {
       PreviewOverrides(
         widthPx = widthPx,
         heightPx = heightPx,
+        minWidthPx = minWidthPx,
+        minHeightPx = minHeightPx,
+        maxWidthPx = maxWidthPx,
+        maxHeightPx = maxHeightPx,
         density = density,
         localeTag = params["localeTag"]?.takeIf { it.isNotBlank() },
         fontScale = fontScale,
@@ -390,6 +446,10 @@ object ServeOverrides {
       append(previewId).append(' ')
       append("w=").append(o.widthPx).append('|')
       append("h=").append(o.heightPx).append('|')
+      append("minw=").append(o.minWidthPx).append('|')
+      append("minh=").append(o.minHeightPx).append('|')
+      append("maxw=").append(o.maxWidthPx).append('|')
+      append("maxh=").append(o.maxHeightPx).append('|')
       append("d=").append(o.density).append('|')
       append("loc=").append(o.localeTag).append('|')
       append("fs=").append(o.fontScale).append('|')

@@ -85,6 +85,101 @@ class RenderEngineWrapContentTest {
     return img.width to img.height
   }
 
+  /**
+   * Render the sticker fixture on a wrapped axis with the given size-bound overrides (the Fixed /
+   * Max / Min / Within controls). The sandbox bound stays generous (800×1600 like wrap-on) so the
+   * bound — not the frame — decides the measured intrinsic size the crop keeps.
+   */
+  private fun renderBounded(
+    engine: RenderEngine,
+    overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides,
+    baseName: String,
+  ): File {
+    val spec =
+      RenderSpec(
+        previewId = "sticker",
+        className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+        functionName = "WrapContentStickerPreview",
+        widthPx = 800,
+        heightPx = 1600,
+        wrapWidth = true,
+        wrapHeight = true,
+        density = 2.0f,
+        showBackground = true,
+        outputBaseName = baseName,
+        overrides = overrides,
+      )
+    val result = engine.render(spec, requestId = 1L, classLoader = javaClass.classLoader)
+    assertNotNull("pngPath must be populated", result.pngPath)
+    val png = File(result.pngPath!!)
+    assertTrue("rendered PNG must exist: ${png.absolutePath}", png.exists())
+    return png
+  }
+
+  /** Persist a size-mode render to `build/size-evidence/` for the PR's visual evidence. */
+  private fun keepEvidence(png: File, name: String) {
+    val evidenceDir = File("build/size-evidence").apply { mkdirs() }
+    png.copyTo(File(evidenceDir, "$name.png"), overwrite = true)
+  }
+
+  @Test
+  fun maxBoundCapsTheWrapCropBelowTheComponentsIntrinsicSize() {
+    val engine = RenderEngine(outputDir = tempFolder.newFolder("renders"))
+    // The sticker's intrinsic size is 176 px (56 dp badge + 16 dp padding each side, × density 2).
+    // A max bound of 100 px lowers the wrap ceiling below that, so the crop lands at the bound.
+    val png =
+      renderBounded(
+        engine,
+        ee.schimke.composeai.daemon.protocol.PreviewOverrides(maxWidthPx = 100, maxHeightPx = 100),
+        "sticker-max-100",
+      )
+    keepEvidence(png, "size-max-100")
+    val (w, h) = dims(png)
+    assertEquals("max width bound caps the crop", 100, w)
+    assertEquals("max height bound caps the crop", 100, h)
+  }
+
+  @Test
+  fun minBoundForcesTheWrapCropAboveTheComponentsIntrinsicSize() {
+    val engine = RenderEngine(outputDir = tempFolder.newFolder("renders"))
+    // A min bound of 400 px (> the 176 px intrinsic) forces the wrapped box to that floor, and the
+    // scene is enlarged to fit so the component isn't clipped before the crop.
+    val png =
+      renderBounded(
+        engine,
+        ee.schimke.composeai.daemon.protocol.PreviewOverrides(minWidthPx = 400, minHeightPx = 400),
+        "sticker-min-400",
+      )
+    keepEvidence(png, "size-min-400")
+    val (w, h) = dims(png)
+    assertEquals("min width bound raises the crop floor", 400, w)
+    assertEquals("min height bound raises the crop floor", 400, h)
+  }
+
+  @Test
+  fun withinBoundKeepsTheCropInsideTheMinMaxRange() {
+    val engine = RenderEngine(outputDir = tempFolder.newFolder("renders"))
+    // The 176 px intrinsic already sits inside [120, 400], so a "within" range leaves it unchanged
+    // —
+    // the bounds only bite when the component would fall outside them.
+    val png =
+      renderBounded(
+        engine,
+        ee.schimke.composeai.daemon.protocol.PreviewOverrides(
+          minWidthPx = 120,
+          minHeightPx = 120,
+          maxWidthPx = 400,
+          maxHeightPx = 400,
+        ),
+        "sticker-within-120-400",
+      )
+    keepEvidence(png, "size-within-120-400")
+    val (w, h) = dims(png)
+    assertTrue("width stays within the range (got $w)", w in 120..400)
+    assertTrue("height stays within the range (got $h)", h in 120..400)
+    assertEquals("unconstrained intrinsic is preserved inside the range", 176, w)
+  }
+
   @Test
   fun wrapContentCropsTheStreamFrameToMatchTheBakedSnapshot() {
     val engine = RenderEngine(outputDir = tempFolder.newFolder("renders"))

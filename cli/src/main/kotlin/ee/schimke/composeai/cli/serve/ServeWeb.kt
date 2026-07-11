@@ -91,6 +91,11 @@ object ServeWeb {
     .cp-note { font-size: 0.75rem; color: #6b6b70; line-height: 1.4; padding: 8px 10px;
       border-radius: 8px; background: #f4f4f6; }
     .cp-controls label:has(:disabled) { opacity: 0.55; }
+    .cp-size { display: flex; flex-direction: column; gap: 8px; }
+    /* :not([hidden]) so the mode toggle's `hidden` attribute still wins over this display rule. */
+    .cp-size-row:not([hidden]) { display: flex; gap: 8px; }
+    .cp-size-row label { flex: 1; }
+    .cp-size-row input { width: 100%; box-sizing: border-box; }
     .cp-knobs { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
     .cp-knobs-head { font-size: 0.72rem; color: #6b6b70; }
     .cp-overlays { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
@@ -995,6 +1000,29 @@ object ServeWeb {
               <option value="clear">Clear (crisp outline)</option>
             </select>
           </label>
+          <div class="cp-size">
+            <label>Size
+              <select id="cp-sizeMode"$serverDis>
+                <option value="">(default)</option>
+                <option value="fixed">Fixed size</option>
+                <option value="max">Max</option>
+                <option value="min">Min</option>
+                <option value="within">Within (min–max)</option>
+              </select>
+            </label>
+            <div class="cp-size-row" id="cp-size-fixed" hidden>
+              <label>Width (px)<input id="cp-fixedW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
+              <label>Height (px)<input id="cp-fixedH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
+            </div>
+            <div class="cp-size-row" id="cp-size-min" hidden>
+              <label>Min width (px)<input id="cp-minW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
+              <label>Min height (px)<input id="cp-minH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
+            </div>
+            <div class="cp-size-row" id="cp-size-max" hidden>
+              <label>Max width (px)<input id="cp-maxW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
+              <label>Max height (px)<input id="cp-maxH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
+            </div>
+          </div>
           $overlaysHtml
           $featureControlsHtml
           ${overrideKnobsHtml(preview, canApplyOverrides || canRenderOverrides)}
@@ -1062,6 +1090,33 @@ object ServeWeb {
       // the copyable links read it so a re-render / copied URL matches the on-screen format.
       var snapshotExt = ".png";
 
+      // Size overrides (the Fixed / Max / Min / Within modes). Which query params carry the numbers
+      // is chosen by the mode: Fixed pins the frame via widthPx/heightPx; Max / Min / Within are
+      // wrapped-axis bounds (maxWidthPx / minWidthPx …). Blank inputs are omitted, so one axis can be
+      // bounded without the other. Server-side only (a daemon re-measures) — the inputs are
+      // disabled on a static snapshot like Device/Orientation, so it never emits them.
+      function sizeVal(id) {
+        var el = document.getElementById(id);
+        return el && el.value ? el.value : null;
+      }
+      function sizeOverrides() {
+        var mode = document.getElementById("cp-sizeMode");
+        var o = {};
+        if (!mode || !mode.value) return o;
+        if (mode.value === "fixed") {
+          if (sizeVal("cp-fixedW")) o.widthPx = sizeVal("cp-fixedW");
+          if (sizeVal("cp-fixedH")) o.heightPx = sizeVal("cp-fixedH");
+        }
+        if (mode.value === "min" || mode.value === "within") {
+          if (sizeVal("cp-minW")) o.minWidthPx = sizeVal("cp-minW");
+          if (sizeVal("cp-minH")) o.minHeightPx = sizeVal("cp-minH");
+        }
+        if (mode.value === "max" || mode.value === "within") {
+          if (sizeVal("cp-maxW")) o.maxWidthPx = sizeVal("cp-maxW");
+          if (sizeVal("cp-maxH")) o.maxHeightPx = sizeVal("cp-maxH");
+        }
+        return o;
+      }
       function overrides() {
         var o = {};
         fields.forEach(function (f) {
@@ -1069,6 +1124,8 @@ object ServeWeb {
           if (el && el.value) o[f] = el.value;
         });
         if (fontScaleTouched && fs) o.fontScale = fs.value;
+        var size = sizeOverrides();
+        Object.keys(size).forEach(function (k) { o[k] = size[k]; });
         return o;
       }
       // The live-stream override map: the display fields PLUS the author-declared knob values as
@@ -1649,6 +1706,26 @@ object ServeWeb {
         var el = document.getElementById("cp-" + f);
         if (el) el.addEventListener("change", onControlsChanged);
       });
+      // Size mode: show only the input rows the chosen mode uses (Within shows both min + max), then
+      // re-render. The number inputs re-render on "input" (live typing) like the locale field.
+      var sizeMode = document.getElementById("cp-sizeMode");
+      if (sizeMode) {
+        var syncSizeRows = function () {
+          var m = sizeMode.value;
+          var show = { fixed: m === "fixed", min: m === "min" || m === "within",
+            max: m === "max" || m === "within" };
+          ["fixed", "min", "max"].forEach(function (g) {
+            var row = document.getElementById("cp-size-" + g);
+            if (row) row.hidden = !show[g];
+          });
+        };
+        syncSizeRows();
+        sizeMode.addEventListener("change", function () { syncSizeRows(); onControlsChanged(); });
+        ["cp-fixedW", "cp-fixedH", "cp-minW", "cp-minH", "cp-maxW", "cp-maxH"].forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) el.addEventListener("input", onControlsChanged);
+        });
+      }
       // Overlay toggles are live-only: they push a fresh setOverrides through the open stream and do
       // nothing otherwise. They get their own handler rather than onControlsChanged so a toggle mid
       // connect (ws not yet readyState 1) can't fall through to the snapshot / wasm-auto-enable
