@@ -188,4 +188,78 @@ class GitWorktreesTest {
     assertEquals(1, git.count(listOf("worktree", "remove")))
     assertEquals(1, git.count(listOf("worktree", "prune")))
   }
+
+  @Test
+  fun `remove prunes a single prepared worktree and close does not remove it again`() {
+    val git = FakeGit(ancestorRefs = setOf("refs/heads/main"))
+    GitWorktrees(
+        repoRoot = tempDir("repo"),
+        cacheRoot = tempDir("wt-cache"),
+        allowedRefs = listOf("main"),
+        git = git,
+      )
+      .use { wt ->
+        val dir = assertNotNull(wt.prepare("HEAD"))
+        wt.remove(dir)
+        assertEquals(1, git.count(listOf("worktree", "remove")), "remove pruned the worktree")
+      }
+    // close() must not remove the already-reclaimed worktree a second time (it was dropped from
+    // `prepared`); only the terminal `git worktree prune` runs.
+    assertEquals(1, git.count(listOf("worktree", "remove")), "no double remove on close")
+    assertEquals(1, git.count(listOf("worktree", "prune")))
+  }
+
+  @Test
+  fun `a worktree shared by two revisions is pruned only after both reclaim`() {
+    // Both revisions resolve to the same commit (FakeGit's single resolveSha), so prepare() hands
+    // back the same <cacheRoot>/<sha> dir. GC of the first alias must NOT delete the worktree the
+    // second alias is still using (issue #2022 review) — only the last reclaim prunes it.
+    val git = FakeGit(ancestorRefs = setOf("refs/heads/main"))
+    GitWorktrees(
+        repoRoot = tempDir("repo"),
+        cacheRoot = tempDir("wt-cache"),
+        allowedRefs = listOf("main"),
+        git = git,
+      )
+      .use { wt ->
+        val a = assertNotNull(wt.prepare("HEAD"))
+        val b = assertNotNull(wt.prepare("main"))
+        assertEquals(a, b, "both revisions share one worktree")
+        assertEquals(1, git.count(listOf("worktree", "add")), "shared worktree added once")
+
+        wt.remove(a)
+        assertEquals(
+          0,
+          git.count(listOf("worktree", "remove")),
+          "the first reclaim only drops a reference — the worktree is still in use",
+        )
+        wt.remove(b)
+        assertEquals(
+          1,
+          git.count(listOf("worktree", "remove")),
+          "the last reclaim prunes the now-unused worktree",
+        )
+      }
+    // close() must not remove the already-pruned worktree again.
+    assertEquals(1, git.count(listOf("worktree", "remove")))
+  }
+
+  @Test
+  fun `remove is a no-op for a worktree this instance did not prepare`() {
+    val git = FakeGit(ancestorRefs = setOf("refs/heads/main"))
+    GitWorktrees(
+        repoRoot = tempDir("repo"),
+        cacheRoot = tempDir("wt-cache"),
+        allowedRefs = listOf("main"),
+        git = git,
+      )
+      .use { wt ->
+        wt.remove(File("/some/unrelated/worktree"))
+        assertEquals(
+          0,
+          git.count(listOf("worktree", "remove")),
+          "an unprepared path is never git-removed",
+        )
+      }
+  }
 }

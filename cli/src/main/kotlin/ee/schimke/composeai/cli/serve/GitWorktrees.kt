@@ -48,11 +48,18 @@ class GitWorktrees(
 ) : AutoCloseable {
 
   private val lock = ReentrantLock()
-  private val prepared = HashSet<File>()
+
+  // Reference count per worktree directory, NOT a plain set: two different revisions (e.g. a branch
+  // name and its SHA, or a revision session and a same-ref catalog session) resolve to the SAME
+  // `<cacheRoot>/<sha>` directory, so a shared worktree must survive until *every* holder has
+  // reclaimed it (issue #2022 review). Each [prepare] increments; each [remove] decrements and only
+  // `git worktree remove`s at zero.
+  private val prepared = HashMap<File, Int>()
 
   /**
    * Resolve [rev] to a commit and ensure a worktree for it exists; returns the worktree directory,
    * or `null` when the revision can't be resolved, isn't allowed by policy, or can't be created.
+   * Registers a reference on the worktree — balance it with a [remove] (or a terminal [close]).
    */
   fun prepare(rev: String): File? = lock.withLock {
     val sha = resolve(rev) ?: return null
@@ -61,9 +68,10 @@ class GitWorktrees(
       return null
     }
     val dir = File(cacheRoot, sha)
-    // A `.git` file/dir in the worktree means it's already a valid checkout — reuse it.
+    // A `.git` file/dir in the worktree means it's already a valid checkout — reuse it (another
+    // revision that resolved to the same commit, or a survivor from an earlier run).
     if (File(dir, ".git").exists()) {
-      prepared.add(dir)
+      prepared.merge(dir, 1, Int::plus)
       return dir
     }
     cacheRoot.mkdirs()
@@ -73,7 +81,7 @@ class GitWorktrees(
       onLog("serve: 'git worktree add' failed for $sha")
       return null
     }
-    prepared.add(dir)
+    prepared.merge(dir, 1, Int::plus)
     dir
   }
 
@@ -106,9 +114,30 @@ class GitWorktrees(
     return if (res.ok && sha.isNotEmpty()) sha else null
   }
 
+  /**
+   * Release one reference on a worktree this instance prepared — the second-level GC of a long-idle
+   * revision session (issue #2022). The worktree is only `git worktree remove`d once its **last**
+   * reference is released, so GC of one revision alias can't delete a `<cacheRoot>/<sha>` directory
+   * another still-live session (a same-commit alias, or a same-ref catalog session) is resuming or
+   * rendering from. A no-op for a [dir] this instance didn't prepare, so a stray reclaim can't `git
+   * worktree remove` an unrelated path. Best-effort; a later `git worktree prune` (on [close]) mops
+   * up any residue. A subsequent [prepare] of the same revision re-adds the worktree from the
+   * shared object store.
+   */
+  fun remove(dir: File) = lock.withLock {
+    val refs = prepared[dir] ?: return@withLock
+    if (refs > 1) {
+      prepared[dir] = refs - 1
+      return@withLock
+    }
+    prepared.remove(dir)
+    onLog("serve: reclaiming worktree ${dir.name}")
+    runCatching { git.run(repoRoot, listOf("worktree", "remove", "--force", dir.absolutePath)) }
+  }
+
   /** Remove the worktrees this instance created and prune stale registrations. Best-effort. */
   override fun close() {
-    val dirs = lock.withLock { prepared.toList().also { prepared.clear() } }
+    val dirs = lock.withLock { prepared.keys.toList().also { prepared.clear() } }
     dirs.forEach { dir ->
       runCatching { git.run(repoRoot, listOf("worktree", "remove", "--force", dir.absolutePath)) }
     }

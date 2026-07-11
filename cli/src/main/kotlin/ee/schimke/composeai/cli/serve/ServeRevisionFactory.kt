@@ -71,6 +71,10 @@ class ServeRevisionFactory(
       previews = built.previews,
       label = "${module.gradlePath}@$rev",
       declaredThemes = built.declaredThemes,
+      // Prune this revision's worktree when the registry reclaims a long-idle suspended forked
+      // session (issue #2022). A later `?session=<rev>` for the same revision re-prepares the
+      // worktree from the shared object store, so reclaiming is safe.
+      reclaim = { worktrees.remove(worktree) },
     )
   }
 }

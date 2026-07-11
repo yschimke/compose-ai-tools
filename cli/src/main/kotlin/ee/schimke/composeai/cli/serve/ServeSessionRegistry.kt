@@ -36,6 +36,15 @@ class ServeSessionRegistry(
   private val factory: ServeSessionFactory = ServeSessionFactory { null },
   private val idleTimeoutMillis: Long = DEFAULT_IDLE_TIMEOUT_MILLIS,
   reaperIntervalMillis: Long = idleTimeoutMillis,
+  /**
+   * Second-level idle window (issue #2022): a *forked* session that has stayed suspended this long
+   * is removed entirely and its git worktree pruned (via [ServeSessionState.reclaim]), so a
+   * long-lived project-mode server doesn't accumulate suspended-session state + worktrees for every
+   * revision it has ever served. Must exceed [idleTimeoutMillis] (a session suspends first, then
+   * GCs). Non-positive disables the GC (tests drive [reclaimIdleForked] directly with a fake
+   * clock).
+   */
+  private val suspendedGcTimeoutMillis: Long = DEFAULT_SUSPENDED_GC_TIMEOUT_MILLIS,
   private val clock: () -> Long = System::currentTimeMillis,
 ) : AutoCloseable {
 
@@ -46,6 +55,14 @@ class ServeSessionRegistry(
     @Volatile var host: ServeHost?,
     /** Pinned sessions (e.g. static bundle hosts — no daemon to reclaim) are never suspended. */
     val pinned: Boolean,
+    /**
+     * True only for sessions built on demand by [factory] (project mode `?session=<rev>`), each
+     * with a git worktree on disk. These are the only entries the second-level GC
+     * ([reclaimIdleForked]) *removes* — [register]ed sessions (the pinned checkout, bundle/catalog
+     * hosts) are kept permanently resumable, matching the register-vs-fork distinction in the issue
+     * (#2022).
+     */
+    val forked: Boolean,
     @Volatile var lastAccess: Long,
     /** Open long-lived holders (e.g. WebSocket connections) keeping this session resident. */
     @Volatile var leases: Int = 0,
@@ -79,7 +96,12 @@ class ServeSessionRegistry(
         }
         .also {
           it.scheduleWithFixedDelay(
-            { runCatching { suspendIdle() } },
+            {
+              // Suspend first, then GC: a session must be suspended (host released) before it's
+              // eligible for the longer-window forked-session reclaim below.
+              runCatching { suspendIdle() }
+              runCatching { reclaimIdleForked() }
+            },
             reaperIntervalMillis,
             reaperIntervalMillis,
             TimeUnit.MILLISECONDS,
@@ -102,7 +124,9 @@ class ServeSessionRegistry(
   ) {
     lock.withLock {
       check(!closed) { "ServeSessionRegistry is closed" }
-      sessions[sessionId] = Entry(state, host, pinned, lastAccess = clock())
+      // Registered sessions (the current-checkout default, bundle/catalog hosts) are never GC'd:
+      // forked = false keeps them permanently resumable regardless of pinning.
+      sessions[sessionId] = Entry(state, host, pinned, forked = false, lastAccess = clock())
     }
   }
 
@@ -181,6 +205,34 @@ class ServeSessionRegistry(
     suspended
   }
 
+  /**
+   * Second-level reclaim (issue #2022): fully **remove** *forked* sessions — ones built on demand
+   * by [factory] (project mode `?session=<rev>`), each with a git worktree on disk — that have
+   * stayed suspended (no live host, no lease) past [suspendedGcTimeoutMillis], running each one's
+   * [ServeSessionState.reclaim] to prune its worktree. Pinned/registered sessions are never
+   * removed, so the current checkout and bundle/catalog hosts stay permanently resumable. A later
+   * `?session=<rev>` for a reclaimed revision simply rebuilds it. Returns the number reclaimed.
+   *
+   * Idle is measured from [Entry.lastAccess] (the last acquire/lease), the same basis as
+   * [suspendIdle], so the window means "untouched for this long" — which is what a long-lived
+   * project server wants: a revision nobody has opened in the GC window is gone, worktree and all.
+   */
+  fun reclaimIdleForked(): Int = lock.withLock {
+    if (closed || suspendedGcTimeoutMillis <= 0) return 0
+    val now = clock()
+    val stale = sessions.filterValues { entry ->
+      entry.forked &&
+        entry.host == null &&
+        entry.leases == 0 &&
+        now - entry.lastAccess >= suspendedGcTimeoutMillis
+    }
+    for ((id, entry) in stale) {
+      sessions.remove(id)
+      runCatching { entry.state?.reclaim?.invoke() }
+    }
+    stale.size
+  }
+
   /** Total known sessions (resident + suspended). */
   fun activeCount(): Int = lock.withLock { sessions.size }
 
@@ -213,7 +265,8 @@ class ServeSessionRegistry(
     // is
     // slow, but a shared dev/CI server has few tenants and correctness beats build concurrency.
     val state = factory.create(sessionId) ?: return null
-    return Entry(state, host = null, pinned = false, lastAccess = clock()).also {
+    // forked = true: built on demand (a git worktree on disk), so it's GC-eligible once long idle.
+    return Entry(state, host = null, pinned = false, forked = true, lastAccess = clock()).also {
       sessions[sessionId] = it
     }
   }
@@ -232,5 +285,12 @@ class ServeSessionRegistry(
   private companion object {
     /** Default idle window before a resident session's daemon is suspended. */
     const val DEFAULT_IDLE_TIMEOUT_MILLIS = 10 * 60 * 1000L
+
+    /**
+     * Default second-level window before a *forked* suspended session is removed and its worktree
+     * pruned (issue #2022) — an hour, comfortably past the 10-minute suspend window so a session
+     * always suspends first. Pinned/registered sessions are exempt regardless.
+     */
+    const val DEFAULT_SUSPENDED_GC_TIMEOUT_MILLIS = 60 * 60 * 1000L
   }
 }
