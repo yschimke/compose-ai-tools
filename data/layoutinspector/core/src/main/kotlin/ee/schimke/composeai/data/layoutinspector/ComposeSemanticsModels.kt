@@ -93,15 +93,25 @@ object ComposeFigmaSvgProduct {
    * `compose/figma-svg-long` — the **full-page** variant of [KIND] for a *scrolling* preview. A
    * `LazyColumn`/`LazyRow` is virtualised, so the normal viewport-sized [KIND] export captures only
    * the on-screen rows. The long export renders the preview at an expanded viewport (grown until
-   * the scroll container reports nothing left to scroll, so every item composes) and sizes the
-   * frame to the content, so the layered SVG carries the whole scrollable screen — a pinned top
-   * bar, every row, and a pinned bottom bar — as one editable tree. Distinct file + kind so it
-   * never overwrites the viewport-sized [FILE_SVG]. `requiresRerender = true`: a `data/fetch`
-   * re-renders in [RENDER_MODE_LONG]. See [docs/design/SCROLLING_SVG.md].
+   * the measured content geometry stops increasing, so every item composes) sized to the content,
+   * so the layered SVG carries the whole scrollable screen — a pinned top bar, every row, and a
+   * pinned bottom bar — as one editable tree. Distinct file + kind so it never overwrites the
+   * viewport-sized [FILE_SVG]. `requiresRerender = true`: a `data/fetch` re-renders in
+   * [RENDER_MODE_LONG]. See [docs/design/SCROLLING_SVG.md].
    */
   const val KIND_LONG: String = "compose/figma-svg-long"
   const val FILE_SVG_LONG: String = "compose-figma-long.svg"
   const val RENDER_MODE_LONG: String = "figma-svg-long"
+
+  /**
+   * Subdirectory (under the preview's output dir) the long export lives in — the SVG plus its own
+   * `figma-raster/` crops. Isolated from the viewport export because a **hybrid** export references
+   * per-node `figma-raster/<node>.png` crops and Compose reassigns node ids per render, so writing
+   * the tall render's crops next to the viewport render's would collide (a `figma-raster/5.png`
+   * from one render overwriting the other's). Its own subdir keeps each export's crops
+   * self-consistent.
+   */
+  const val LONG_SUBDIR: String = "figma-long"
 
   /**
    * Directory (relative to the preview's output dir) holding the per-node `<node>.png` crops a

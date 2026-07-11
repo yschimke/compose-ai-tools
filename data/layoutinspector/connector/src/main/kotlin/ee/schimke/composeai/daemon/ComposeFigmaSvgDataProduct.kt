@@ -370,7 +370,10 @@ class ComposeFigmaSvgLongDataProductRegistry(
   ) {
   override fun fileFor(previewId: String, kind: String): File? =
     if (kind == ComposeFigmaSvgProduct.KIND_LONG)
-      rootDir.resolve(previewId).resolve(ComposeFigmaSvgProduct.FILE_SVG_LONG)
+      rootDir
+        .resolve(previewId)
+        .resolve(ComposeFigmaSvgProduct.LONG_SUBDIR)
+        .resolve(ComposeFigmaSvgProduct.FILE_SVG_LONG)
     else null
 
   override fun missingOutcome(previewId: String, kind: String): DataProductRegistry.Outcome =

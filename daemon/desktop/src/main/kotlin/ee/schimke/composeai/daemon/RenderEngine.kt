@@ -1051,20 +1051,38 @@ class RenderEngine(
       tearDown(finalState)
     }
 
-    val producedSvg = dataDir.resolve(tmpBase).resolve(ComposeFigmaSvgDataProducer.FILE_SVG)
+    val tmpDir = dataDir.resolve(tmpBase)
+    val producedSvg = tmpDir.resolve(ComposeFigmaSvgDataProducer.FILE_SVG)
     if (!producedSvg.exists()) {
       error(
         "RenderEngine: render mode '${spec.renderMode}' produced no layered SVG for previewId " +
           "'$previewId' (no layout tree captured?)"
       )
     }
-    val destSvg = dataDir.resolve(previewId).resolve(ComposeFigmaSvgProduct.FILE_SVG_LONG)
-    destSvg.parentFile?.mkdirs()
+    // The long export lives in its own subdir (SVG + its own figma-raster/ crops). A hybrid export
+    // references per-node `figma-raster/<node>.png` crops, and Compose reassigns node ids per
+    // render, so writing the tall render's crops next to the viewport export's would collide; the
+    // dedicated subdir keeps each export's crops self-consistent, and the served SVG inlines them
+    // relative to its own dir.
+    val longDir =
+      dataDir.resolve(previewId).resolve(ComposeFigmaSvgProduct.LONG_SUBDIR).also { it.mkdirs() }
+    val destSvg = longDir.resolve(ComposeFigmaSvgProduct.FILE_SVG_LONG)
     val svgBytes = fileSystem.read(producedSvg.path.toPath()) { readByteArray() }
     fileSystem.write(destSvg.path.toPath()) { write(svgBytes) }
+    // Carry the hybrid raster crops the SVG's `<image>` layers reference (Image/Icon/Canvas/… on a
+    // scrolling screen) so those layers resolve instead of dangling.
+    val tmpRasterDir = tmpDir.resolve(ComposeFigmaSvgDataProducer.RASTER_DIR)
+    if (tmpRasterDir.isDirectory) {
+      val destRasterDir =
+        longDir.resolve(ComposeFigmaSvgDataProducer.RASTER_DIR).also { it.mkdirs() }
+      tmpRasterDir.listFiles()?.forEach { crop ->
+        val bytes = fileSystem.read(crop.path.toPath()) { readByteArray() }
+        fileSystem.write(destRasterDir.resolve(crop.name).path.toPath()) { write(bytes) }
+      }
+    }
     // Best-effort cleanup of the throwaway render dir + its PNG so the tall probe artefacts don't
     // linger next to the real products.
-    runCatching { dataDir.resolve(tmpBase).deleteRecursively() }
+    runCatching { tmpDir.deleteRecursively() }
     runCatching { File(outputDir, "$tmpBase.png").delete() }
 
     val tookMs = (System.nanoTime() - startNs) / 1_000_000L
