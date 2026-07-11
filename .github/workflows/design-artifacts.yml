@@ -15,6 +15,13 @@ on:
     # Mondays 06:00 UTC.
     - cron: '0 6 * * 1'
   workflow_dispatch:
+  # Also invoked automatically at the tail of a published release (release-please.yml
+  # → this workflow) so the design-artifacts/<system> delivery branches regenerate with
+  # the just-released preview-runtime coordinates without a manual dispatch. Chained via
+  # workflow_call rather than a dispatch because the release run is authenticated with the
+  # default GITHUB_TOKEN, whose events don't start new workflow runs (the same reason
+  # release-please.yml calls release.yml / preview-host-image.yml this way).
+  workflow_call:
 
 permissions:
   contents: write

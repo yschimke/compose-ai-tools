@@ -222,6 +222,27 @@ jobs:
     permissions:
       contents: write
 
+  # Regenerate the design-artifacts/<system> delivery branches for the just-released
+  # runtime. The published sticker bundles pin the RELEASED preview-runtime coordinates
+  # (`composeaiReleasedRuntimeVersion` in gradle.properties, which the merged release PR
+  # just bumped to this version), so they go stale the instant a release cuts — this
+  # rebuilds them from the new version instead of waiting for the Monday cron or a manual
+  # dispatch. Same workflow_call chaining as `release` / `preview-host-image`: a
+  # GITHUB_TOKEN dispatch wouldn't start design-artifacts' run.
+  #
+  # Gated exactly like `reconcile-release-pr`: only after `finalize-release` succeeded, so
+  # the release is published AND its runtime cleared finalize's Maven Central wait — then
+  # design-artifacts' own "Wait for released preview-runtimes on Maven Central" step
+  # resolves immediately instead of polling. Root train only: the design catalogs track
+  # the root CLI/runtime version, not the `clients` train.
+  regenerate-design-artifacts:
+    needs: [release-please, finalize-release]
+    if: ${{ !cancelled() && needs.release-please.outputs.release_created == 'true' && needs.finalize-release.result == 'success' }}
+    uses: ./.github/workflows/design-artifacts.yml
+    secrets: inherit
+    permissions:
+      contents: write   # force-push the design-artifacts/<system> delivery branches
+
   # Reconcile the "next release" PR after a release fully publishes.
   #
   # The `release-please` job above opens the next release PR in the SAME run that
