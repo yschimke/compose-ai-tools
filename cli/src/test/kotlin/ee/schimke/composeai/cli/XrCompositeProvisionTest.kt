@@ -119,7 +119,7 @@ class XrCompositeProvisionTest {
   }
 
   @Test
-  fun `ensureCached is idempotent — second call does not re-download`() {
+  fun `ensureCached is idempotent - second call does not re-download`() {
     if (XrCompositeProvision.currentPlatformToken() == null) return
     var fetches = 0
     val fetcher = XrCompositeProvision.Fetcher { _, dst ->

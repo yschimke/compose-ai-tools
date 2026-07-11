@@ -129,7 +129,7 @@ class PixelSystemFontAliasesTest {
   }
 
   @Test
-  fun `seedSystemFontMap is idempotent — preseeded slugs aren't overwritten`() {
+  fun `seedSystemFontMap is idempotent - preseeded slugs aren't overwritten`() {
     val sentinelOld = SentinelTypeface.NORMAL
     val sentinelNew = SentinelTypeface.BOLD
     val map = mutableMapOf<String, Typeface>("roboto-flex" to sentinelOld)

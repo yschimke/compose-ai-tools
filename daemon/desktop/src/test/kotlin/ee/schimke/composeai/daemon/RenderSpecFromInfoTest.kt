@@ -70,7 +70,7 @@ class RenderSpecFromInfoTest {
   }
 
   @Test
-  fun `a null params block differs from an empty one — only the empty block wraps`() {
+  fun `a null params block differs from an empty one - only the empty block wraps`() {
     val nullSpec = renderSpecFromInfo(info(params = null))
     val emptySpec = renderSpecFromInfo(info(params = PreviewParamsDto()))
     // Present-but-empty ⇒ wrap-content (a no-size sticker); absent ⇒ unknown params ⇒ fixed frame.

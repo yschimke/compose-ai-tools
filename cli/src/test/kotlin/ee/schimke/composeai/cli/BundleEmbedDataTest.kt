@@ -188,7 +188,7 @@ class BundleEmbedDataTest {
   }
 
   @Test
-  fun `embedWebIntoZip is idempotent — re-embedding replaces stale web entries`() {
+  fun `embedWebIntoZip is idempotent - re-embedding replaces stale web entries`() {
     val withOldWeb =
       ByteArrayOutputStream()
         .also { baos ->
