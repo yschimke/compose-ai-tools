@@ -232,14 +232,14 @@
     "serve-viewer-catalog-knobs.dark.png": {
       "fixture": "serve-viewer-catalog-knobs",
       "theme": "dark",
-      "sha256": "24239218c4e09010ba21585b921675432121050e9cb479c5a15e231d58b29728",
-      "size": 86813
+      "sha256": "ae38113395aac652cb3af8e2d3a3e7de77b4e4077ed236c0f7ddb13c4c5f3cbf",
+      "size": 88805
     },
     "serve-viewer-catalog-knobs.light.png": {
       "fixture": "serve-viewer-catalog-knobs",
       "theme": "light",
-      "sha256": "e3b7847a8ca6700f90e97cd02febc0a44e8ab1ea688b4bb0fc1f3c06e0ab9006",
-      "size": 86993
+      "sha256": "70a3ae791bb1d1e856ac98137bcaafa2c1e4ce83abec4af80ba5515a92ddc754",
+      "size": 89106
     },
     "serve-viewer-focus.dark.png": {
       "fixture": "serve-viewer-focus",
@@ -292,26 +292,26 @@
     "serve-viewer-wasm-live.dark.png": {
       "fixture": "serve-viewer-wasm-live",
       "theme": "dark",
-      "sha256": "133e5dea1a51f822c4ee933843532874dc5d89db745550e02d8e5944c4644e1e",
-      "size": 69454
+      "sha256": "0ba3407778c372f43a4b8e4fc11fd16487e56d7fddcee0cc42cc4a77f0731454",
+      "size": 71454
     },
     "serve-viewer-wasm-live.light.png": {
       "fixture": "serve-viewer-wasm-live",
       "theme": "light",
-      "sha256": "c2c3ad2fb4d8a0d6390852b15e374b67ad31a9eb7c22aa36c123562b2dfa2d7d",
-      "size": 70019
+      "sha256": "970f4594320de7f454cbad93f0ccc96450fa087e8c879e447cbf81547f3f908d",
+      "size": 72140
     },
     "serve-viewer-wasm.dark.png": {
       "fixture": "serve-viewer-wasm",
       "theme": "dark",
-      "sha256": "02c5248b73de6b14f71a5e144f81941e448b3e68734388275a3c6cf9243fd40f",
-      "size": 62564
+      "sha256": "03c00333355d74de72d3d3880a3f061d74cc438c4992a2052c413d21c51b55ed",
+      "size": 64522
     },
     "serve-viewer-wasm.light.png": {
       "fixture": "serve-viewer-wasm",
       "theme": "light",
-      "sha256": "141b23a9a1bc59d39aa99c33448cbd68d2c62c4d9c6f9a5799b7eab779fb2caf",
-      "size": 63222
+      "sha256": "b00a2273080557232138aada2c6ce619b163109a67ff789f37ce5e90ba4f47d8",
+      "size": 65295
     },
     "serve-viewer.dark.png": {
       "fixture": "serve-viewer",
