@@ -1296,6 +1296,17 @@ data class RenderSpec(
           json.decodeFromString(PreviewOverrides.serializer(), bytes.toString(Charsets.UTF_8))
         }
         .getOrNull()
+
+    /**
+     * Decode the base64-encoded `PreviewOverrides` bag carried in the `overrides=<b64>` payload
+     * token — the extension bag `JsonRpcServer.encodeRenderPayload` emits (`namedOverrides`,
+     * `themeProvider`, `wallpaper`, `permissions`, `gestures`, `lottie`). Exposed so the
+     * previewId-based render path ([DesktopHost.specFromPreviewIdPayload]) can carry the bag
+     * through too, not just the className-based [parseFromPayload]; without it a `?knob.<key>=…`
+     * edit on the bundle-backed live daemon (`serve` / preview.coo.ee) is silently dropped.
+     */
+    internal fun decodeOverridesToken(token: String): PreviewOverrides? =
+      token.decodePreviewOverrides()
   }
 }
 
