@@ -257,3 +257,24 @@ the design-artifacts gallery can confirm which build is live without a token:
 { "schema": "compose-preview-serve/version/v1", "version": "0.16.5",
   "serveSchema": "compose-preview-serve/v1", "public": true }
 ```
+
+### Storybook-compatible surface
+
+The serve host also speaks the two tiny contracts the downstream Storybook ecosystem is built on, so
+PNG-diff visual tools (BackstopJS, storycap/reg-suit, jest-image-snapshot, the `@storybook/test-runner`
+in remote-URL mode) can crawl a compose-preview `serve` with **no compose-specific code**:
+
+- `GET /index.json` — the [Storybook stories index](https://storybook.js.org/docs/api/main-config/main-config-indexers):
+  `{ "v": 5, "entries": { "<storyId>": { "id", "title", "name", "importPath", "type": "story", "tags" } } }`.
+  Each `@Preview` is one `'story'` entry; the `storyId` is minted CSF-style (`sanitize(title)--sanitize(name)`)
+  and `importPath` carries the native preview id (`virtual:compose-preview/<fqn>`).
+- `GET /iframe.html?id=<storyId>` — renders that one story in isolation as a chrome-free HTML page
+  embedding the freshly-rendered PNG (a `data:` URI on a white ground), which is exactly what a
+  screenshot tool captures. Accepts the same override query params as `/render` (e.g. `&uiMode=dark`),
+  and also accepts a raw native preview id as `id=` for hand-authored deep links.
+
+Both come in the `?session=` and path (`/{system}/index.json`, `/{system}/iframe.html`) forms like the
+rest, and follow the same token gate: open in `--public` mode, otherwise `?token=` is required (pass it
+through your visual tool's URL, or run the server `--public` on a trusted network). DOM-capture tools
+(Percy, Chromatic, Applitools) that re-render captured DOM in cloud browsers are **not** a fit — a
+compose preview is a raster image, not a DOM tree; target the pixel-diff tools instead.

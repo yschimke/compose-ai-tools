@@ -53,6 +53,8 @@ import kotlinx.serialization.json.Json
  * Endpoints (all token-gated except `/healthz`, `/version`, and the `/wasm/` static assets):
  * - `GET /` landing page, `GET /p/{id}` viewer page,
  * - `GET /render/{id}.png` PNG bytes, `GET /api/previews` JSON, `GET /healthz` liveness,
+ * - `GET /index.json` Storybook stories index, `GET /iframe.html?id=` isolated story render
+ *   ([StorybookCompat]) — the drop-in surface downstream Storybook visual tools consume,
  * - `GET /version` host identity (CLI version, serve schema, public flag),
  * - `GET /bundle.zip` portable bundle, `WS /ws/{id}` streamed-frame lane.
  *
@@ -269,6 +271,18 @@ class ServeHttpServer(
         get("/api/previews") { handleApiPreviews(sessionInPath = false) }
         get("/{system}/api/previews") { handleApiPreviews(sessionInPath = true) }
 
+        // Storybook-compatibility surface (see [StorybookCompat]). `/index.json` is the stories
+        // index every downstream visual tool (Chromatic, Percy, storycap/reg-suit, BackstopJS, the
+        // test-runner) crawls to enumerate stories; `iframe.html?id=<storyId>` renders one story in
+        // isolation for a screenshot tool. Both come in the query-`?session=` and
+        // path-`/{system}/…`
+        // forms like the rest; the constant first segment outscores `/{system}`.
+        get("/index.json") { handleStorybookIndex(sessionInPath = false) }
+        get("/{system}/index.json") { handleStorybookIndex(sessionInPath = true) }
+
+        get("/iframe.html") { handleStorybookIframe(sessionInPath = false) }
+        get("/{system}/iframe.html") { handleStorybookIframe(sessionInPath = true) }
+
         get("/bundle.zip") { handleBundleZip(sessionInPath = false) }
         get("/{system}/bundle.zip") { handleBundleZip(sessionInPath = true) }
 
@@ -445,6 +459,99 @@ class ServeHttpServer(
         JSON.encodeToString(PreviewsResponse.serializer(), dto),
         ContentType.Application.Json,
       )
+    }
+  }
+
+  /**
+   * `GET /index.json` (query) and `GET /{system}/index.json` (path): the session's previews as a
+   * Storybook stories index ([StorybookCompat.Index]). This is the manifest a downstream visual
+   * tool crawls to enumerate stories and their stable ids.
+   */
+  private suspend fun RoutingContext.handleStorybookIndex(sessionInPath: Boolean) {
+    if (rejectBadToken()) return
+    withLeasedSession(selectedSessionId(sessionInPath)) { renderHost ->
+      call.respondText(
+        JSON.encodeToString(
+          StorybookCompat.Index.serializer(),
+          StorybookCompat.index(renderHost.previews),
+        ),
+        ContentType.Application.Json,
+      )
+    }
+  }
+
+  /**
+   * `GET /iframe.html?id=<storyId>` (query) and `GET /{system}/iframe.html?id=<storyId>` (path):
+   * render one story in isolation. Answers with a chrome-free HTML page embedding the freshly-
+   * rendered PNG as a `data:` URI ([StorybookCompat.iframePage]) — what a screenshot tool captures.
+   * Honours the same override query params as `/render` (e.g. `&uiMode=dark`), and load-sheds
+   * through the shared render semaphore exactly like [handleRender].
+   */
+  private suspend fun RoutingContext.handleStorybookIframe(sessionInPath: Boolean) {
+    if (rejectBadToken()) return
+    withLeasedSession(selectedSessionId(sessionInPath)) { renderHost ->
+      val storyId = call.request.queryParameters["id"]
+      if (storyId.isNullOrBlank()) {
+        call.respondText("missing story id", status = HttpStatusCode.BadRequest)
+        return@withLeasedSession
+      }
+      val previewId = StorybookCompat.resolvePreviewId(storyId, renderHost.previews)
+      if (previewId == null) {
+        call.respondText("no such story", status = HttpStatusCode.NotFound)
+        return@withLeasedSession
+      }
+      val overrideParams =
+        call.request.queryParameters
+          .entries()
+          .mapNotNull { (key, values) ->
+            val value = values.firstOrNull() ?: return@mapNotNull null
+            if (
+              key in ServeOverrides.SUPPORTED_KEYS || key.startsWith(ServeOverrides.KNOB_PREFIX)
+            ) {
+              key to value
+            } else {
+              null
+            }
+          }
+          .toMap()
+      val knobKinds =
+        ServeOverrides.declaredKnobKinds(renderHost.previews.firstOrNull { it.id == previewId })
+      when (val parsed = ServeOverrides.parse(overrideParams, knobKinds)) {
+        is OverrideParse.Invalid ->
+          call.respondText(parsed.message, status = HttpStatusCode.BadRequest)
+        is OverrideParse.Ok -> {
+          val outcome =
+            withContext(Dispatchers.IO) {
+              if (!renderSemaphore.tryAcquire(RENDER_QUEUE_WAIT_SECONDS, TimeUnit.SECONDS)) {
+                null
+              } else {
+                try {
+                  renderHost.render(previewId, parsed.overrides)
+                } finally {
+                  renderSemaphore.release()
+                }
+              }
+            }
+          when (outcome) {
+            null -> {
+              call.response.headers.append(HttpHeaders.RetryAfter, "2")
+              call.respondText(
+                "render queue saturated; retry shortly",
+                status = HttpStatusCode.ServiceUnavailable,
+              )
+            }
+            is RenderOutcome.Ok ->
+              call.respondText(
+                StorybookCompat.iframePage(storyId, outcome.png),
+                ContentType.Text.Html,
+              )
+            RenderOutcome.NotFound ->
+              call.respondText("no such story", status = HttpStatusCode.NotFound)
+            is RenderOutcome.Failed ->
+              call.respondText(outcome.reason, status = HttpStatusCode.InternalServerError)
+          }
+        }
+      }
     }
   }
 

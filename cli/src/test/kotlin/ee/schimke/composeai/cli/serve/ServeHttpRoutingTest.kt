@@ -197,4 +197,45 @@ class ServeHttpRoutingTest {
     assertEquals(404, get("/no-such-system/").first)
     assertEquals(404, get("/no-such-system/p/$previewId").first)
   }
+
+  @Test
+  fun `index_json serves a storybook stories index`() {
+    val (code, body) = get("/compose-m3/index.json")
+    assertEquals(200, code)
+    assertTrue(body.contains("\"v\":${StorybookCompat.INDEX_VERSION}"), "index version: $body")
+    assertTrue(body.contains("\"entries\":"), "entries map: $body")
+    assertTrue(body.contains("\"type\":\"story\""), "story-typed entry: $body")
+    // The synthetic importPath encodes the native preview id, so a reader can recover it.
+    assertTrue(
+      body.contains("virtual:compose-preview/$previewId"),
+      "entry importPath carries the native id: $body",
+    )
+    // The legacy query-session lane serves the same index.
+    val (queryCode, queryBody) = get("/index.json?session=compose-m3")
+    assertEquals(200, queryCode)
+    assertTrue(queryBody.contains("\"entries\":"), "query-lane index: $queryBody")
+  }
+
+  @Test
+  fun `iframe_html renders one story in isolation as an html page embedding the png`() {
+    // The native preview id is accepted verbatim by iframe.html (the deep-link escape hatch), so
+    // this doesn't depend on how the story id is minted from the label.
+    val req =
+      Request.Builder()
+        .url("http://127.0.0.1:${server.port}/compose-m3/iframe.html?id=$previewId")
+        .build()
+    client.newCall(req).execute().use { r ->
+      assertEquals(200, r.code)
+      assertEquals("text/html", r.body?.contentType()?.let { "${it.type}/${it.subtype}" })
+      val body = r.body?.string() ?: ""
+      assertTrue(body.startsWith("<!doctype html>"), "is an html document: $body")
+      assertTrue(body.contains("src=\"data:image/png;base64,"), "embeds the render png: $body")
+    }
+  }
+
+  @Test
+  fun `iframe_html 400s a missing id and 404s an unknown one`() {
+    assertEquals(400, get("/compose-m3/iframe.html").first)
+    assertEquals(404, get("/compose-m3/iframe.html?id=no.such.Story").first)
+  }
 }
