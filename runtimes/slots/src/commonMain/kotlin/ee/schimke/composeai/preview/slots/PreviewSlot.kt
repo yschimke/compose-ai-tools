@@ -2,7 +2,11 @@ package ee.schimke.composeai.preview.slots
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.runtime.Composable
@@ -25,8 +29,40 @@ import androidx.compose.ui.unit.sp
  */
 const val SLOT_TAG_PREFIX: String = "dp-slot:"
 
-/** The `testTag` a `PreviewSlot(name)` applies: `dp-slot:<name>`. */
-fun slotTag(name: String): String = "$SLOT_TAG_PREFIX$name"
+/**
+ * The layout container a slot sits in, recorded onto the tag so a builder knows how a filled child
+ * is arranged. The scope-receiver [PreviewSlot] overloads set this automatically from the Compose
+ * scope at the call site (`RowScope` → [Row], …); the receiver-less overload takes it explicitly.
+ *
+ * [wire] is the on-tag token, mirrored by the reader's `SlotScope.fromWire`; a drift test asserts
+ * the two agree. Kept as a runtime-local enum (not the reader's `SlotScope`) so this module's
+ * classpath stays free of the serialization dependency.
+ */
+enum class PreviewSlotScope(internal val wire: String?) {
+  Unknown(null),
+  Row("row"),
+  Column("column"),
+  Box("box"),
+  Lazy("lazy"),
+}
+
+/** The `testTag` a bare `PreviewSlot(name)` applies: `dp-slot:<name>`. */
+fun slotTag(name: String): String = slotTag(name, PreviewSlotScope.Unknown, scrolling = false)
+
+/**
+ * The `testTag` a slot applies: `dp-slot:<name>` plus optional `;scope=<wire>` / `;scroll=1`
+ * attributes for a non-[PreviewSlotScope.Unknown] scope or a scrolling container. The reader
+ * (`PreviewSlots.extractSlots`) parses this exact shape.
+ */
+fun slotTag(name: String, scope: PreviewSlotScope, scrolling: Boolean): String = buildString {
+  append(SLOT_TAG_PREFIX)
+  append(name)
+  scope.wire?.let {
+    append(";scope=")
+    append(it)
+  }
+  if (scrolling) append(";scroll=1")
+}
 
 /**
  * Whether the composition is rendering in **slot mode** — the "author a screen" pass. When `true`,
@@ -46,9 +82,14 @@ val LocalSlotMode: ProvidableCompositionLocal<Boolean> = compositionLocalOf { fa
  * **A no-op in a normal render**: it draws [content] inside a [Box] carrying `testTag =
  * "[SLOT_TAG_PREFIX]<name>"`. `testTag` is a semantics property (no visual/layout effect of its
  * own), so the region is captured into the `compose/semantics` tree with its `boundsInRoot` — which
- * the `/render/<id>.slots` route distils into `{ name, bounds }`. Under [LocalSlotMode] it renders
- * a translucent [SlotPlaceholder] labelled [name] instead of [content], so a designer sees exactly
- * where the slot is and drops a composable into that precise box.
+ * the `/render/<id>.slots` route distils into `{ name, bounds, scope, scrolling }`. Under
+ * [LocalSlotMode] it renders a translucent [SlotPlaceholder] labelled [name] instead of [content],
+ * so a designer sees exactly where the slot is and drops a composable into that precise box.
+ *
+ * A slot placed directly inside a `Row` / `Column` / `Box` / lazy-item body resolves to the
+ * matching scope-receiver overload, which records its [PreviewSlotScope] automatically — prefer
+ * that. This bare overload records [PreviewSlotScope.Unknown]; use the [scope]-taking overload for
+ * a slot in a lambda with **no layout scope** (a `Scaffold` `topBar` / `floatingActionButton`).
  *
  * Give the slot a size (via [modifier], or by placing it in a sized parent — a fixed icon box, a
  * `Row` weight): that box is both what the placeholder fills and the constraint a child rendered to
@@ -57,8 +98,76 @@ val LocalSlotMode: ProvidableCompositionLocal<Boolean> = compositionLocalOf { fa
  * @param name the slot's author-declared name (the `dp-slot:` suffix); should be non-blank.
  */
 @Composable
-fun PreviewSlot(name: String, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-  Box(modifier.testTag(slotTag(name))) {
+fun PreviewSlot(name: String, modifier: Modifier = Modifier, content: @Composable () -> Unit) =
+  SlotBox(name, PreviewSlotScope.Unknown, scrolling = false, modifier = modifier, content = content)
+
+/**
+ * [PreviewSlot] for a slot in a lambda with **no layout scope** — a `Scaffold` `topBar` /
+ * `floatingActionButton` — where the container can't be inferred from a scope receiver. Declares
+ * the [scope] (and [scrolling]) explicitly. A slot inside a `Row` / `Column` / `Box` / lazy body
+ * should use the scope-receiver overload instead, which infers [scope].
+ *
+ * @param scope the container the slot sits in.
+ * @param scrolling whether that container scrolls; a [PreviewSlotScope.Lazy] slot is always
+ *   scrolling.
+ */
+@Composable
+fun PreviewSlot(
+  name: String,
+  scope: PreviewSlotScope,
+  modifier: Modifier = Modifier,
+  scrolling: Boolean = false,
+  content: @Composable () -> Unit,
+) = SlotBox(name, scope, scrolling, modifier, content)
+
+/** `RowScope` slot — records [PreviewSlotScope.Row]; children are placed horizontally. */
+@Composable
+fun RowScope.PreviewSlot(
+  name: String,
+  modifier: Modifier = Modifier,
+  scrolling: Boolean = false,
+  content: @Composable () -> Unit,
+) = SlotBox(name, PreviewSlotScope.Row, scrolling, modifier, content)
+
+/** `ColumnScope` slot — records [PreviewSlotScope.Column]; children stack vertically. */
+@Composable
+fun ColumnScope.PreviewSlot(
+  name: String,
+  modifier: Modifier = Modifier,
+  scrolling: Boolean = false,
+  content: @Composable () -> Unit,
+) = SlotBox(name, PreviewSlotScope.Column, scrolling, modifier, content)
+
+/** `BoxScope` slot — records [PreviewSlotScope.Box]; a single child fills / aligns in the box. */
+@Composable
+fun BoxScope.PreviewSlot(
+  name: String,
+  modifier: Modifier = Modifier,
+  scrolling: Boolean = false,
+  content: @Composable () -> Unit,
+) = SlotBox(name, PreviewSlotScope.Box, scrolling, modifier, content)
+
+/**
+ * `LazyItemScope` slot — records [PreviewSlotScope.Lazy], always scrolling: the slot is one item of
+ * a lazy list/grid, so a filled child sits in a scrolling container.
+ */
+@Composable
+fun LazyItemScope.PreviewSlot(
+  name: String,
+  modifier: Modifier = Modifier,
+  content: @Composable () -> Unit,
+) = SlotBox(name, PreviewSlotScope.Lazy, scrolling = true, modifier = modifier, content = content)
+
+/** Shared body of every [PreviewSlot] overload: the tagged [Box] + slot-mode placeholder swap. */
+@Composable
+private fun SlotBox(
+  name: String,
+  scope: PreviewSlotScope,
+  scrolling: Boolean,
+  modifier: Modifier,
+  content: @Composable () -> Unit,
+) {
+  Box(modifier.testTag(slotTag(name, scope, scrolling || scope == PreviewSlotScope.Lazy))) {
     if (LocalSlotMode.current) SlotPlaceholder(name) else content()
   }
 }
