@@ -746,8 +746,9 @@ object ServeWeb {
     /**
      * The session's other previews, used to populate the left-hand **component nav** drawer (each
      * links to its own viewer page). Typically the whole `renderHost.previews` list including
-     * [preview] itself — the current one is marked `aria-current` and never filtered out. Empty ⇒
-     * no nav drawer or its toggle (a single-preview session has nothing to navigate between).
+     * [preview] itself — the current one is marked `aria-current` and never filtered out. When the
+     * list holds no preview *other than* [preview] (empty, or a single-preview module's one entry)
+     * the drawer and its toggle are omitted — there is nothing to navigate between.
      */
     siblings: List<ServePreview> = emptyList(),
   ): String {
@@ -1693,9 +1694,12 @@ object ServeWeb {
   /**
    * The left-hand component-nav drawer: a filterable list of the session's [siblings], each linking
    * to its own viewer page (same `$basePath/p/<id>$q` shape the landing cards use). The current
-   * [preview] is marked `aria-current="page"`. Returns "" when there are no siblings, so the caller
-   * omits both the drawer and its toggle. The drawer starts closed (the `cp-nav-open` class is
-   * absent from `.cp-viewer` until the toggle adds it).
+   * [preview] is marked `aria-current="page"`. Returns "" when there is nothing to navigate *to* —
+   * an empty [siblings], or a list whose only entry is [preview] itself — so a single-preview
+   * session omits both the drawer and its toggle rather than showing a one-item self-link. (Callers
+   * can pass the whole `renderHost.previews` list, current preview included, without special-casing
+   * the single-preview module.) The drawer starts closed (the `cp-nav-open` class is absent from
+   * `.cp-viewer` until the toggle adds it).
    */
   private fun navDrawerHtml(
     preview: ServePreview,
@@ -1703,7 +1707,8 @@ object ServeWeb {
     basePath: String,
     q: String,
   ): String {
-    if (siblings.isEmpty()) return ""
+    // Nothing to navigate to when the list is empty or holds only the current preview.
+    if (siblings.none { it.id != preview.id }) return ""
     val items =
       siblings.joinToString("\n") { p ->
         val segItem = WebEscaping.urlEncodeSegment(p.id)

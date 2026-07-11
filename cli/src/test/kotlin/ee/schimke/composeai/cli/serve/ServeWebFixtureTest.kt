@@ -329,24 +329,37 @@ class ServeWebFixtureTest {
         viewer.contains("id=\"cp-controls-toggle\" aria-expanded=\"true\""),
       "the overrides drawer defaults open",
     )
-    // …and the component nav drawer defaults CLOSED (present, but its toggle collapsed and no
-    // `cp-nav-open`), while still linking each sibling to its own viewer page.
+    // …and the component nav drawer defaults CLOSED (present, but its toggle collapsed and the
+    // viewer element itself carries no `cp-nav-open` class), while still linking each sibling to
+    // its
+    // own viewer page. The absence check is scoped to the viewer element's class attribute — the
+    // bare token `cp-nav-open` also appears in the stylesheet (`:not(.cp-nav-open)`) and drawer
+    // script, so a whole-document `contains` would always match.
     assertTrue(
       viewer.contains("id=\"cp-nav\"") &&
         viewer.contains("id=\"cp-nav-toggle\" aria-expanded=\"false\"") &&
-        !viewer.contains("cp-nav-open"),
+        viewer.contains("class=\"cp-viewer cp-controls-open\"") &&
+        !viewer.contains("class=\"cp-viewer cp-controls-open cp-nav-open\""),
       "the component nav drawer defaults closed",
     )
     assertTrue(
       viewer.contains("class=\"cp-nav-item\" href=\"/p/com.example.ButtonPreview?token="),
       "the nav drawer links each sibling to its viewer page",
     )
-    // A single-preview session (no siblings) shows neither the nav drawer nor its toggle.
-    val soloViewer = ServeWeb.viewerPage(previews.first(), token)
-    assertFalse(
-      soloViewer.contains("id=\"cp-nav\"") || soloViewer.contains("id=\"cp-nav-toggle\""),
-      "a session with no siblings shows no component nav drawer",
-    )
+    // A single-preview session shows neither the nav drawer nor its toggle — both when no siblings
+    // are passed AND when the caller passes the whole preview list whose only entry is the current
+    // preview (the `renderHost.previews` shape a one-preview module produces): there is nothing to
+    // navigate *to*, so `navDrawerHtml` suppresses the drawer rather than emitting a self-link.
+    for (solo in
+      listOf(
+        ServeWeb.viewerPage(previews.first(), token),
+        ServeWeb.viewerPage(previews.first(), token, siblings = listOf(previews.first())),
+      )) {
+      assertFalse(
+        solo.contains("id=\"cp-nav\"") || solo.contains("id=\"cp-nav-toggle\""),
+        "a single-preview session shows no component nav drawer",
+      )
+    }
     assertGolden(File(pagesDir, "serve-viewer-wasm.html"), wasmViewer)
     assertGolden(File(pagesDir, "serve-viewer-wasm-live.html"), wasmViewerLive)
     assertGolden(File(pagesDir, "serve-viewer-catalog-knobs.html"), viewerCatalogKnobs)
