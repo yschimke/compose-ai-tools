@@ -387,8 +387,12 @@ class WearScrollSvgGrowthTest {
    * hits: no `TransformingLazyColumn` virtualisation, no fisheye `SurfaceTransformation` scaling, and
    * no screen-height-relative `ScreenScaffold` padding — each row is measured at its natural size.
    */
-  private fun capturePart(previewId: String, content: @Composable () -> Unit): Part {
-    RuntimeEnvironment.setQualifiers("w${deviceDp}dp-h420dp-round-mdpi")
+  private fun capturePart(
+    previewId: String,
+    frameHeightDp: Int = 420,
+    content: @Composable () -> Unit,
+  ): Part {
+    RuntimeEnvironment.setQualifiers("w${deviceDp}dp-h${frameHeightDp}dp-round-mdpi")
     @Suppress("DEPRECATION") val rule = createAndroidComposeRule<ComponentActivity>()
     var out = Part(emptyList(), emptyList(), 0)
     val statement =
@@ -453,6 +457,14 @@ class WearScrollSvgGrowthTest {
   fun `stacks each list item captured in isolation into one tall capsule SVG`() {
     // Capture every screen part on its own: the pinned TimeText, the "Activity" header, each activity
     // row, and the EdgeButton — none of them fighting the round-face scaffold layout.
+    //
+    // TimeText is captured on a SQUARE round face (h == w) so its curved baseline circle is centred at
+    // (w/2, w/2) with radius ~w/2 — exactly the arc of the capsule's top (a stadium with rx = w/2 is a
+    // semicircle of that radius). Pinned at the very top (dy = 0) the curve lands on the capsule rim.
+    val timeText =
+      capturePart("time", frameHeightDp = deviceDp) {
+        MaterialTheme { TimeText(timeSource = FixedTime) }
+      }
     val header = capturePart("header") { MaterialTheme { ListHeader { Text("Activity") } } }
     val cards =
       activities.mapIndexed { i, (title, subtitle) ->
@@ -467,14 +479,22 @@ class WearScrollSvgGrowthTest {
         }
       }
 
-    // Stack top-to-bottom: header, rows, edge button. Each vector part is dropped in at a cumulative
-    // y by offsetting its whole captured subtree — the parts never overlap and never scale.
+    // Stack top-to-bottom: TimeText pinned on the rim, then header, rows, edge button. Each vector
+    // part is dropped in at a cumulative y by offsetting its whole captured subtree — the parts never
+    // overlap and never scale.
     val gap = 6
     // Enough top inset that the left-aligned header clears the capsule's rounded top corner.
     val topPad = 44
-    var y = topPad
     val layoutChildren = mutableListOf<LayoutInspectorNode>()
     val semChildren = mutableListOf<ComposeSemanticsNode>()
+
+    // TimeText pinned at dy = 0 so its captured curve (centred at w/2, w/2) rides the capsule's top
+    // rim. Its curved `<textPath>` carries no straight bounds to clip the header, so the header still
+    // starts at `topPad` — TimeText tucks into the arc above it.
+    timeText.layout.forEach { layoutChildren.add(it.offsetY(0)) }
+    timeText.semantics.forEach { semChildren.add(it.offsetY(0)) }
+
+    var y = topPad
     for (part in listOf(header) + cards) {
       part.layout.forEach { layoutChildren.add(it.offsetY(y)) }
       part.semantics.forEach { semChildren.add(it.offsetY(y)) }
@@ -570,6 +590,7 @@ class WearScrollSvgGrowthTest {
       itemCount,
       itemLayerCount(svg),
     )
+    assertTrue("the stacked frame pins TimeText on the rim", svg.contains("10:10"))
     assertTrue("the stacked frame keeps its header", svg.contains(">Activity</text>"))
     assertTrue("the EdgeButton is composited as a raster <image>", svg.contains("<image "))
     assertTrue(
