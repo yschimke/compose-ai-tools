@@ -10,6 +10,7 @@ import javax.imageio.ImageIO
 import kotlin.math.abs
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -480,6 +481,81 @@ class OverrideIntegrationTest {
         "a named override must change the render vs the author default",
         default.getRGB(default.width / 2, default.height / 2),
         seeded.getRGB(seeded.width / 2, seeded.height / 2),
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  /**
+   * **Regression guard for the `serve` / preview.coo.ee named-override drop.**
+   * [namedOverrideChangesRenderedFill] above wires the planner with the *ungated*
+   * `PreviewOverrideExtensions(listOf(...))` (its `isActive` defaults to `{ true }`), so it never
+   * exercised the `extensions/enable` gate the real bundle-backed live daemon runs under — and a
+   * `?knob.label=…` edit silently no-op'd on the deployed preview server while every unit test
+   * stayed green.
+   *
+   * This renders the same seeded `fill` knob through the **production seam**: a real
+   * [ExtensionRegistry] whose `compose/overrides` extension is registered but **never enabled**
+   * (exactly what `serve` does — only the MCP supervisor enables an allowlist), threading its
+   * [ExtensionRegistry.activeOverrideExtensions] into the engine. The named-override host is marked
+   * [AlwaysOnPreviewOverrideExtension], so the seed must still apply despite the extension being
+   * inactive. Before the fix the gate skipped the planner and the fill fell back to author-default
+   * red; the assertion below would fail — which is the deployed bug, now caught in CI.
+   */
+  @Test
+  fun namedOverrideAppliesThroughGatedRegistryWithoutEnable() {
+    val outputDir = tempFolder.newFolder("renders-named-override-gated")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "overridable",
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "OverridableSquare",
+              widthPx = 32,
+              heightPx = 32,
+              density = 1.0f,
+              outputBaseName = "overridable",
+            )
+          )
+      )
+    // A real registry with the named-override extension registered but NOT enabled — the exact
+    // shape `serve` builds (it never calls extensions/enable). activeOverrideExtensions() returns
+    // the gated `isActive` predicate the deployed daemon uses.
+    val registry =
+      ExtensionRegistry(
+        listOf(
+          Extension(
+            id = "compose/overrides",
+            previewOverrideExtensions = listOf(PreviewOverridesPreviewOverrideExtension()),
+          )
+        )
+      )
+    assertFalse(
+      "the override extension must be inactive — the whole point of this regression",
+      registry.isActive("compose/overrides"),
+    )
+    val host =
+      PreviewManifestRouter(
+        manifest = manifest,
+        engine = RenderEngine(previewOverrideExtensions = registry.activeOverrideExtensions()),
+      )
+    host.start()
+    try {
+      val seeded =
+        renderAndDecode(
+          host,
+          "previewId=overridable;overrides=${encodeNamedBag("fill", "#FF42A5F5")}",
+          "named-seeded-gated",
+        )
+      val seededBluePct = pixelMatchPct(seeded, expectedRgb = 0x42A5F5, perChannelTolerance = 8)
+      assertTrue(
+        "a named override must apply on the un-enabled (serve) path too; got " +
+          "${"%.2f".format(seededBluePct * 100)}% blue — the label/knob drop is back",
+        seededBluePct >= 0.95,
       )
     } finally {
       host.shutdown()
