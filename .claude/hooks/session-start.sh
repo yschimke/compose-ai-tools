@@ -31,6 +31,20 @@ if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   exit 0
 fi
 
+# Seed the Gradle wrapper distribution(s) from the allowlisted repo.gradle.org
+# github-downloads-proxy BEFORE any `./gradlew` runs. The wrapper's
+# distributionUrl (services.gradle.org) 307-redirects to a github.com release
+# asset, which the "custom" cloud egress policy blocks (403) — so the warm below
+# would otherwise die with `Server returned HTTP response code: 403` before the
+# build starts. The proxy serves the identical, checksum-verified bytes and is an
+# allowlisted Gradle host. Covers single- and multi-repo checkouts (every wrapper
+# across the side-by-side clones). Best-effort: a failure leaves the download to
+# Gradle and never aborts the session.
+if [ -x scripts/seed-gradle-dist.sh ]; then
+  scripts/seed-gradle-dist.sh >&2 || \
+    echo "[session-start] seed-gradle-dist.sh failed; Gradle will fetch the distribution itself" >&2
+fi
+
 # Ensure a JDK 17 toolchain exists before warming Gradle. The build pins
 # `toolchainVersion=17` (gradle/gradle-daemon-jvm.properties), but cloud
 # containers commonly ship only JDK 21, and on the allowlist network policy
