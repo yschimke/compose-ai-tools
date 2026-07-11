@@ -131,6 +131,9 @@ tasks.register("functionalTestWithAndroid") {
 //         api :renderer-xr-client (daemon-core fronts the native XR render server)
 //         api :data-layoutinspector-core (semantics models + differ for `history/diff mode=semantics`, #1785)
 //         api :data-theme-core (theme-token models + differ for `history/diff mode=data`, #1873)
+//         api :data-preview-overrides-core (named-knob override models daemon-core applies)
+//     implementation :data-preview-overrides-runtime (applies preview overrides at render time)
+//       api :data-preview-overrides-core
 //     implementation :data-deviceframe-connector (device-art bezel compositing — post-capture)
 //       api :data-deviceframe-core
 //     implementation :lottie-preview-runtime (Compottie-backed kind=LOTTIE render path)
@@ -151,6 +154,8 @@ val bundleRenderFunctionalTestPublishTargets =
     ":renderer-xr-client",
     ":data-layoutinspector-core",
     ":data-theme-core",
+    ":data-preview-overrides-core",
+    ":data-preview-overrides-runtime",
     ":lottie-preview-runtime",
     ":svg-preview-runtime",
     ":common-io",
