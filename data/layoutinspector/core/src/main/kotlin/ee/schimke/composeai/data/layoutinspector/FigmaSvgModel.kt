@@ -399,6 +399,19 @@ data class FigmaSvgModel(
       ctx: BuildContext,
       parentBounds: LayoutInspectorBounds? = null,
     ): FigmaSvgLayer {
+      // Recover a usable rect for a node whose captured `bounds` collapsed to a zero-area box. The
+      // Android/Wear layout inspector reports (0,0,0,0) for a node whose `LayoutCoordinates` were
+      // detached / not-yet-placed at capture — a subcomposed `OutlinedTextField` / `Button` child
+      // can hit this — and `boundsIn` mints those zeros faithfully. Propagating them verbatim emits
+      // a degenerate `<image>` / `<rect>` (width 0, height 0) that vanishes, and — worse —
+      // collapses
+      // the whole subtree, because every descendant is placed against this box (its bounds become
+      // the child `parentBounds`). The node's measured `size` survives that detachment (it comes
+      // off
+      // the layout node, not its coordinates), so anchor a `size`-sized rect at the parent's placed
+      // origin, clamped to the parent, and use it everywhere below. Best-effort geometry for a
+      // pathological capture; a normally-placed node keeps its real `bounds` untouched.
+      val bounds = recoverBounds(parentBounds)
       // An opaque component matched by name (Image/Icon/TextField/…) can't be vectorised at all —
       // emit an <image> for the whole node and drop the subtree.
       val opaqueByName = isOpaque(ctx.rasterComponents)
@@ -594,6 +607,44 @@ data class FigmaSvgModel(
         elevationPx = elevationPx,
         curvedTexts = curvedTexts,
         children = children.map { it.toLayer(ctx, bounds) },
+      )
+    }
+
+    /**
+     * The node's captured [LayoutInspectorNode.bounds], or — only for the exact all-zero
+     * `(0,0,0,0)` signature the layout inspector mints for a **detached / unplaced** node — a
+     * best-effort rect reconstructed from the measured [LayoutInspectorNode.size], anchored at the
+     * parent's placed origin and clamped to the parent. This guards the export against a
+     * subcomposed child whose `LayoutCoordinates` were null at capture: propagating its zeros emits
+     * degenerate geometry and, because descendants place against this box, drops the whole subtree.
+     *
+     * Two deliberate narrowings keep the recovery off genuinely tiny content:
+     * - It fires **only** on `(0,0,0,0)`. A node that is *placed* but measures to zero area (an
+     *   intentionally collapsed `Modifier.size(0.dp)` child, or an animated collapse) still reports
+     *   its real non-zero origin, so it never matches and keeps its captured bounds.
+     * - It reconstructs a dimension **only when the measured `size` for that dimension is
+     *   positive** (clamped to the parent). A dimension with no measured size stays zero rather
+     *   than ballooning to the parent's extent, so a truly 0×0 node isn't materialised into a
+     *   parent-sized rect/image. When neither dimension can be recovered, the raw `bounds` are
+     *   kept.
+     */
+    private fun LayoutInspectorNode.recoverBounds(
+      parentBounds: LayoutInspectorBounds?
+    ): LayoutInspectorBounds {
+      if (bounds.left != 0 || bounds.top != 0 || bounds.right != 0 || bounds.bottom != 0)
+        return bounds
+      val parent = parentBounds ?: return bounds
+      val parentW = parent.right - parent.left
+      val parentH = parent.bottom - parent.top
+      if (parentW <= 0 || parentH <= 0) return bounds
+      val rectW = size.width.coerceIn(0, parentW)
+      val rectH = size.height.coerceIn(0, parentH)
+      if (rectW <= 0 && rectH <= 0) return bounds
+      return LayoutInspectorBounds(
+        left = parent.left,
+        top = parent.top,
+        right = parent.left + rectW,
+        bottom = parent.top + rectH,
       )
     }
 
