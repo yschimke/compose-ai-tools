@@ -1282,6 +1282,23 @@ describe("GradleService", () => {
         );
 
         it(
+            "exportPreviewBundle schedules no task and throws a clear error for a disabled module",
+            withTempDir(async (dir, api) => {
+                const service = new GradleService(dir, api);
+                await assert.rejects(
+                    () =>
+                        service.exportPreviewBundle(
+                            disabled,
+                            "com.example.FooKt.BarPreview",
+                            path.join(dir, "out.bundle.png"),
+                        ),
+                    /composePreview\.enabled = false/,
+                );
+                assert.strictEqual(api.runCalls.length, 0);
+            }),
+        );
+
+        it(
             "treats enabled === undefined (legacy marker) as enabled and still schedules",
             withTempDir(async (dir, api) => {
                 fs.mkdirSync(path.join(dir, "mod"));

@@ -639,6 +639,19 @@ export class GradleService {
         outputPath: string,
         opts?: TaskOptions,
     ): Promise<void> {
+        // A disabled module has no `composePreviewRender` / `composePreviewBundle`
+        // tasks registered (issue #2016). This path is reachable from the panel's
+        // export action on a stale-but-fresh cached card after `enabled` flips to
+        // false. Unlike the silent background gates, this is a user-explicit
+        // action whose caller surfaces thrown errors — so throw a clear message
+        // rather than letting Gradle fail with a cryptic "task not found".
+        if (!isModulePreviewSchedulable(module)) {
+            this.logDisabledSkip(module, "exportPreviewBundle");
+            throw new Error(
+                `previews are disabled for ${module.modulePath} ` +
+                    `(composePreview.enabled = false), so there is nothing to export`,
+            );
+        }
         const extraArgs = [
             `-PbundlePreviewIds=${encodeBundlePreviewId(previewId)}`,
             `-PbundleOutput=${outputPath}`,
