@@ -56,4 +56,13 @@ data class ServeSessionState(
   val perPreviewResolve: ((daemonId: String) -> ServeHost?)? = null,
   /** Live upstream stream count across the pooled per-preview daemons (see [perPreviewResolve]). */
   val perPreviewStreamCount: () -> Int = { 0 },
+  /**
+   * Optional reclaim hook invoked when the registry **removes** this session entirely — the
+   * second-level GC of a long-idle *suspended* forked session (issue #2022), NOT ordinary
+   * suspend/resume. Set by the project-mode factory ([ServeRevisionFactory]) to prune the
+   * revision's git worktree from disk once the session is reclaimed; null for sessions with nothing
+   * on-disk to reclaim (the pinned checkout, bundle/catalog hosts). Best-effort and expected to be
+   * idempotent — the registry runs it under `runCatching`.
+   */
+  val reclaim: (() -> Unit)? = null,
 )

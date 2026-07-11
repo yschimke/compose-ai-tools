@@ -106,6 +106,20 @@ class GitWorktrees(
     return if (res.ok && sha.isNotEmpty()) sha else null
   }
 
+  /**
+   * Remove a single worktree this instance created — the second-level GC of a long-idle revision
+   * session (issue #2022) — and drop it from [prepared] so [close] won't try again. A no-op for a
+   * [dir] this instance didn't prepare, so a stray reclaim can't `git worktree remove` an unrelated
+   * path. Best-effort; a later `git worktree prune` (on [close]) mops up any residue. A subsequent
+   * [prepare] of the same revision re-adds the worktree from the shared object store.
+   */
+  fun remove(dir: File) = lock.withLock {
+    if (prepared.remove(dir)) {
+      onLog("serve: reclaiming worktree ${dir.name}")
+      runCatching { git.run(repoRoot, listOf("worktree", "remove", "--force", dir.absolutePath)) }
+    }
+  }
+
   /** Remove the worktrees this instance created and prune stale registrations. Best-effort. */
   override fun close() {
     val dirs = lock.withLock { prepared.toList().also { prepared.clear() } }

@@ -198,6 +198,103 @@ class ServeSessionRegistryTest {
   }
 
   @Test
+  fun `a long-idle suspended forked session is reclaimed and its worktree pruned`() {
+    val clock = AtomicLong(0)
+    val reclaimed = mutableListOf<String>()
+    val factory = ServeSessionFactory { id -> stateFor(id).copy(reclaim = { reclaimed += id }) }
+    ServeSessionRegistry(
+        open = Opener(),
+        factory = factory,
+        idleTimeoutMillis = 100,
+        reaperIntervalMillis = 0,
+        suspendedGcTimeoutMillis = 1_000,
+        clock = clock::get,
+      )
+      .use { reg ->
+        assertNotNull(reg.acquire("rev1")) // fork + open at t=0
+        clock.set(200)
+        assertEquals(1, reg.suspendIdle(), "idle past the suspend window → daemon released")
+        assertEquals(0, reg.reclaimIdleForked(), "still inside the GC window → not reclaimed")
+        assertEquals(1, reg.activeCount(), "state retained while inside the GC window")
+
+        clock.set(1_500)
+        assertEquals(1, reg.reclaimIdleForked(), "past the GC window → reclaimed")
+        assertEquals(0, reg.activeCount(), "the forked session is removed entirely")
+        assertEquals(listOf("rev1"), reclaimed, "its worktree reclaim hook ran exactly once")
+      }
+  }
+
+  @Test
+  fun `a resident forked session is never reclaimed`() {
+    val clock = AtomicLong(0)
+    val reclaimed = mutableListOf<String>()
+    val factory = ServeSessionFactory { id -> stateFor(id).copy(reclaim = { reclaimed += id }) }
+    ServeSessionRegistry(
+        open = Opener(),
+        factory = factory,
+        idleTimeoutMillis = 100,
+        reaperIntervalMillis = 0,
+        suspendedGcTimeoutMillis = 1_000,
+        clock = clock::get,
+      )
+      .use { reg ->
+        assertNotNull(reg.acquire("rev1"))
+        clock.set(10_000) // long idle, but never suspended (host still resident)
+        assertEquals(0, reg.reclaimIdleForked(), "a live host is suspended before it can be GC'd")
+        assertEquals(1, reg.activeCount())
+        assertTrue(reclaimed.isEmpty())
+      }
+  }
+
+  @Test
+  fun `a registered session is never reclaimed even when long-idle and suspended`() {
+    val clock = AtomicLong(0)
+    ServeSessionRegistry(
+        open = Opener(),
+        factory = CountingFactory(),
+        idleTimeoutMillis = 100,
+        reaperIntervalMillis = 0,
+        suspendedGcTimeoutMillis = 1_000,
+        clock = clock::get,
+      )
+      .use { reg ->
+        val eager =
+          ServeRenderHost(
+            FakeRenderSession(newRenderRoot()),
+            listOf(ServePreview(previewId, "Red")),
+          )
+        reg.register("primary", stateFor("primary"), host = eager)
+        clock.set(200)
+        assertEquals(1, reg.suspendIdle(), "a registered session still suspends its daemon")
+        clock.set(10_000)
+        assertEquals(0, reg.reclaimIdleForked(), "but a registered session is never removed")
+        assertEquals(1, reg.activeCount(), "so it stays permanently resumable")
+      }
+  }
+
+  @Test
+  fun `the GC is disabled when the timeout is non-positive`() {
+    val clock = AtomicLong(0)
+    val factory = ServeSessionFactory { id -> stateFor(id).copy(reclaim = {}) }
+    ServeSessionRegistry(
+        open = Opener(),
+        factory = factory,
+        idleTimeoutMillis = 100,
+        reaperIntervalMillis = 0,
+        suspendedGcTimeoutMillis = 0,
+        clock = clock::get,
+      )
+      .use { reg ->
+        assertNotNull(reg.acquire("rev1"))
+        clock.set(200)
+        reg.suspendIdle()
+        clock.set(1_000_000)
+        assertEquals(0, reg.reclaimIdleForked(), "GC off → nothing reclaimed however idle")
+        assertEquals(1, reg.activeCount())
+      }
+  }
+
+  @Test
   fun `close releases every resident host and rejects further acquire`() {
     val reg =
       ServeSessionRegistry(open = Opener(), factory = CountingFactory(), reaperIntervalMillis = 0)
