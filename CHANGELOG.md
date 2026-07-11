@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.16.36](https://github.com/yschimke/compose-ai-tools/compare/v0.16.35...v0.16.36) (2026-07-11)
+
+
+### Features
+
+* **serve:** consume per-preview bundles as the default live lane ([#2389](https://github.com/yschimke/compose-ai-tools/issues/2389)) ([4aa479f](https://github.com/yschimke/compose-ai-tools/commit/4aa479fe8f8f2a3c979710736226115d77e56735))
+
+
+### Bug Fixes
+
+* **figma-svg:** mask a round Wear device screen to its inscribed circle ([#2391](https://github.com/yschimke/compose-ai-tools/issues/2391)) ([892d09f](https://github.com/yschimke/compose-ai-tools/commit/892d09fff973c389d77eed9fed445d8cec1a7793))
+* **serve:** apply named-knob overrides on the un-enabled preview-server daemon ([#2392](https://github.com/yschimke/compose-ai-tools/issues/2392)) ([fc13bb4](https://github.com/yschimke/compose-ai-tools/commit/fc13bb4f626054d6836591abf8cb3764fadf070f))
+
 ## [0.16.35](https://github.com/yschimke/compose-ai-tools/compare/v0.16.34...v0.16.35) (2026-07-10)
 
 
