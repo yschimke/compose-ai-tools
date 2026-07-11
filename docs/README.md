@@ -64,6 +64,7 @@ specs the code actually depends on:
 
 - [design/SPATIAL_SCENE_CONTRACT.md](design/SPATIAL_SCENE_CONTRACT.md) — the XR scene wire format (schema-generated Kotlin/TS/C++ mirrors).
 - [design/DESIGN_CATALOGS.md](design/DESIGN_CATALOGS.md) — the code-led sticker-sheet catalog system.
+- [design/UI_BUILDER.md](design/UI_BUILDER.md) — **proposal**: assembling screens from catalog components (scaffold-first slots, a persisted composition document, Figma round-trip). Product analysis + phased plan; no code yet.
 
 Component-level contracts (the XR semantics tree, `FigmaLayeredSvg`, the font
 preview wrapper, `@XrSubspacePreview`) now live as **KDoc on the owning class**,
