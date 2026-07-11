@@ -77,6 +77,35 @@ class ServeRenderHostTest {
   }
 
   @Test
+  fun `renderScrollSvg returns the full-page figma-svg-long export`() {
+    val session = FakeRenderSession(newRenderRoot())
+    host(session).use { h ->
+      val out = h.renderScrollSvg(previewId, PreviewOverrides())
+      assertTrue(out is SvgOutcome.Ok)
+      assertEquals("svg-long:$previewId", (out as SvgOutcome.Ok).svg.decodeToString())
+    }
+  }
+
+  @Test
+  fun `renderScrollSvg serves identical requests from cache`() {
+    val session = FakeRenderSession(newRenderRoot())
+    host(session).use { h ->
+      val a = h.renderScrollSvg(previewId, PreviewOverrides())
+      val b = h.renderScrollSvg(previewId, PreviewOverrides())
+      assertTrue(a is SvgOutcome.Ok && b is SvgOutcome.Ok)
+      assertContentEquals(a.svg, b.svg)
+    }
+  }
+
+  @Test
+  fun `renderScrollSvg 404s an unknown preview`() {
+    val session = FakeRenderSession(newRenderRoot())
+    host(session).use { h ->
+      assertTrue(h.renderScrollSvg("no.such.Preview", PreviewOverrides()) is SvgOutcome.NotFound)
+    }
+  }
+
+  @Test
   fun `renderSvg serves identical requests from cache`() {
     val session = FakeRenderSession(newRenderRoot())
     host(session).use { h ->

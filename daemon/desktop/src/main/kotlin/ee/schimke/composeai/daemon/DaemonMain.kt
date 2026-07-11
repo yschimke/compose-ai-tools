@@ -819,6 +819,13 @@ internal fun buildDesktopExtensions(
         dataProductRegistry = ComposeFigmaSvgDataProductRegistry(rootDir = dataRoot),
       )
     }
+    tryAdd("compose/figma-svg-long") {
+      Extension(
+        id = "compose/figma-svg-long",
+        displayName = "Figma layered SVG (full page)",
+        dataProductRegistry = ComposeFigmaSvgLongDataProductRegistry(rootDir = dataRoot),
+      )
+    }
     tryAdd("compose/spatial-semantics") {
       Extension(
         id = "compose/spatial-semantics",
