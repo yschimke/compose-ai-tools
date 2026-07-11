@@ -102,6 +102,10 @@ object FigmaLayeredSvg {
     options: Options,
     familyOverrides: Map<String, String>,
     depth: Int,
+    // Monotonic counter for curved-text `<path>` ids, threaded through the whole walk so every arc
+    // gets a document-unique id even when two `CurvedLayout`s share a component name — otherwise
+    // duplicate ids make a later `<textPath href>` resolve to the first path (Codex #2395).
+    curveSeq: IntArray = intArrayOf(0),
   ) {
     val indent = "  ".repeat(depth)
     // An opaque layer is a leaf `<image>` — the background-free raster stands in for a subtree the
@@ -141,10 +145,17 @@ object FigmaLayeredSvg {
     if (layer.text != null) {
       sb.append(indent).append("  ").append(text(layer, options, familyOverrides)).append('\n')
     }
-    layer.curvedTexts.forEachIndexed { i, ct ->
-      sb.append(indent).append("  ").append(curvedText(ct, "${layer.name}-ct$i")).append('\n')
+    layer.curvedTexts.forEach { ct ->
+      sb.append(indent).append("  ").append(curvedText(ct, "c${curveSeq[0]++}")).append('\n')
     }
-    for (child in layer.children) renderLayer(child, sb, options, familyOverrides, depth + 1)
+    for (child in layer.children) renderLayer(
+      child,
+      sb,
+      options,
+      familyOverrides,
+      depth + 1,
+      curveSeq,
+    )
     sb.append("$indent</g>\n")
   }
 
