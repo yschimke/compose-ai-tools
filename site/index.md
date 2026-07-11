@@ -90,6 +90,18 @@ plugins {
 ./gradlew :app:composePreviewRenderAll   # render every @Preview to PNG
 ```
 
+Iterating on one screen? On Compose Desktop / Multiplatform-JVM modules you can
+narrow the render to a single preview (or a glob) so an unrelated broken preview
+can't poison the run:
+
+```sh
+./gradlew :desktopApp:composePreviewRender --preview '*ExportHelpDialogPreview'
+# or, as a Gradle property: -PcomposePreview.filter='*ExportHelpDialogPreview'
+```
+
+(Android modules render previews through a Robolectric test task; the `--preview`
+filter there is tracked as a follow-up.)
+
 Requirements and CI recipes live on the [Install page](./install/).
 
 ---

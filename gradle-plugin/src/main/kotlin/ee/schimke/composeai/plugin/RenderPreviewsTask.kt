@@ -4,9 +4,11 @@ import ee.schimke.composeai.discovery.*
 import javax.inject.Inject
 import kotlinx.serialization.json.Json
 import org.gradle.api.DefaultTask
+import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Classpath
@@ -16,6 +18,7 @@ import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
+import org.gradle.api.tasks.options.Option
 import org.gradle.process.ExecOperations
 
 @CacheableTask
@@ -36,6 +39,36 @@ abstract class RenderPreviewsTask : DefaultTask() {
    * can reuse it.
    */
   @get:Input abstract val includeKinds: org.gradle.api.provider.SetProperty<String>
+
+  /**
+   * Preview-name filter (issue #2066). When non-empty, only previews whose simple or
+   * package-qualified name matches an entry are rendered; everything else — including any unrelated
+   * broken preview — is left untouched on disk and never scheduled. Empty (the default) renders
+   * every discovered preview, the historical behaviour.
+   *
+   * Populated from the repeatable `--preview` task option (see [setPreviewFilterOption]) or, as a
+   * convention, from the `composePreview.filter` Gradle property wired at registration. Matching
+   * (glob `*`/`?` or substring, against simple + FQN) lives in [PreviewNameFilter]. `@Input` so a
+   * filter change re-runs the render.
+   */
+  @get:Input abstract val previewFilters: ListProperty<String>
+
+  /**
+   * Backs the repeatable `--preview` CLI option. `List<String>` makes it repeatable (`--preview A
+   * --preview B`); each value is a name or glob. Setting the option overrides the
+   * `composePreview.filter` convention rather than merging with it, so the command line always
+   * wins.
+   */
+  @Option(
+    option = "preview",
+    description =
+      "Render only previews whose simple or fully-qualified name matches this pattern " +
+        "(repeatable; supports '*'/'?' globs or a plain substring). No match fails the task. " +
+        "Overrides -PcomposePreview.filter.",
+  )
+  fun setPreviewFilterOption(values: List<String>) {
+    previewFilters.set(values)
+  }
 
   /**
    * Render-tier filter. When `"fast"` the desktop path skips any preview whose representative
@@ -83,15 +116,25 @@ abstract class RenderPreviewsTask : DefaultTask() {
     // the managed-`SetProperty` implicit empty convention — keeps "render every kind" the default
     // and self-documents it.
     includeKinds.convention(emptySet())
-    // Caching is intentionally gated on `tier=full`: a `tier=fast` run
-    // only writes a subset of captures (fast ones), so a build-cache
-    // restore from a fast snapshot would *wipe* the previous full run's
-    // heavy outputs from `outputDir` — exactly the stale images the
-    // interactive UI relies on. Up-to-date checks still apply, so a
-    // re-run with no input changes is a no-op and the renders directory
-    // stays as-is regardless of tier.
-    outputs.cacheIf("composePreviewRender caches tier=full runs only") {
-      tier.get().equals("full", ignoreCase = true)
+    // Empty default = "render every preview". The plugin registration overrides this convention
+    // with the `composePreview.filter` Gradle property; a `--preview` option overrides both.
+    previewFilters.convention(emptyList())
+    // Caching is intentionally gated on `tier=full` AND an empty `--preview` filter — a run is only
+    // cacheable when its `outputDir` is the module's *complete* render set. A `tier=fast` run
+    // writes
+    // only the fast captures, so a build-cache restore from a fast snapshot would *wipe* the
+    // previous full run's heavy outputs — exactly the stale images the interactive UI relies on. A
+    // filtered `tier=full` run is likewise partial: it renders only the named previews and
+    // deliberately leaves every other (possibly stale) PNG in place, so caching that mixed
+    // directory
+    // could store an unrelated stale `Bar.png` and later restore it on a clean checkout for the
+    // same
+    // filtered inputs (issue #2066 review). Up-to-date checks still apply, so a re-run with no
+    // input
+    // changes is a no-op and the renders directory stays as-is regardless of tier or filter.
+    outputs.cacheIf("composePreviewRender caches full, unfiltered runs only") {
+      tier.get().equals("full", ignoreCase = true) &&
+        previewFilters.getOrElse(emptyList()).none { it.isNotBlank() }
     }
   }
 
@@ -99,6 +142,15 @@ abstract class RenderPreviewsTask : DefaultTask() {
   fun render() {
     val json = Json { ignoreUnknownKeys = true }
     val rawManifest = json.decodeFromString<PreviewManifest>(previewsJson.get().asFile.readText())
+
+    // Name filter (issue #2066) — when `--preview` / `-PcomposePreview.filter` is set, narrow to
+    // the
+    // named previews FIRST, before tier/kind/catalog filtering. A non-empty filter that matches
+    // nothing fails fast (listing available names) rather than silently rendering zero previews.
+    // Filtered-out previews keep their PNGs on disk (protected by the raw-manifest fan-out guard
+    // below), so an unrelated broken preview is never scheduled and can't poison a filtered run.
+    val nameFiltered =
+      selectNamedPreviews(rawManifest.previews, previewFilters.getOrElse(emptyList()))
 
     // Tier filter — drop previews whose representative capture is heavy
     // when running in `fast` mode. The desktop path renders just the
@@ -110,9 +162,9 @@ abstract class RenderPreviewsTask : DefaultTask() {
     // with its badge.
     val isFastTier = tier.get().equals("fast", ignoreCase = true)
     val tierFiltered =
-      if (!isFastTier) rawManifest.previews
+      if (!isFastTier) nameFiltered
       else
-        rawManifest.previews.filter {
+        nameFiltered.filter {
           val firstCost = it.captures.firstOrNull()?.cost ?: STATIC_COST
           !isHeavyCost(firstCost)
         }
@@ -148,8 +200,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
     renderWithCompose(manifest, rawManifest, outDir)
 
     val tierTag =
-      if (isFastTier)
-        " (fast tier; ${rawManifest.previews.size - manifest.previews.size} heavy skipped)"
+      if (isFastTier) " (fast tier; ${nameFiltered.size - manifest.previews.size} heavy skipped)"
       else ""
     logger.lifecycle("Rendered ${manifest.previews.size} preview(s)$tierTag")
   }
@@ -378,6 +429,52 @@ abstract class RenderPreviewsTask : DefaultTask() {
         )
     }
   }
+}
+
+/** How many available preview names to list in a no-match `--preview` error before truncating. */
+private const val MAX_SUGGESTED_PREVIEW_NAMES = 20
+
+/**
+ * Narrows [previews] to those matching [filters] (issue #2066). An empty/blank filter returns the
+ * list unchanged ("render every preview"). A non-empty filter that matches nothing throws a
+ * [GradleException] listing the available preview names — a filtered run that would render zero
+ * previews is a user error (typo / wrong module), not a silent no-op. Matching semantics live in
+ * [PreviewNameFilter]; this function owns only the select-or-fail policy so it's unit-testable
+ * without a Gradle task instance.
+ */
+internal fun selectNamedPreviews(
+  previews: List<PreviewInfo>,
+  filters: List<String>,
+): List<PreviewInfo> {
+  val cleaned = filters.map(String::trim).filter(String::isNotEmpty)
+  if (cleaned.isEmpty()) return previews
+
+  val matched = previews.filter {
+    PreviewNameFilter.matches(cleaned, it.functionName, it.className)
+  }
+  if (matched.isNotEmpty()) return matched
+
+  val available =
+    previews.map { PreviewNameFilter.fqName(it.className, it.functionName) }.distinct().sorted()
+  throw GradleException(
+    buildString {
+      append("composePreviewRender --preview matched no previews for ")
+      append(cleaned.joinToString(", ") { "'$it'" })
+      append(".")
+      if (available.isEmpty()) {
+        append(" This module has no discovered previews — run composePreviewDiscover to confirm.")
+      } else {
+        append(" Available previews:")
+        available.take(MAX_SUGGESTED_PREVIEW_NAMES).forEach { append("\n  ").append(it) }
+        val more = available.size - MAX_SUGGESTED_PREVIEW_NAMES
+        if (more > 0) {
+          append("\n  … and ")
+          append(more)
+          append(" more (run composePreviewDiscover for the full list).")
+        }
+      }
+    }
+  )
 }
 
 /**
