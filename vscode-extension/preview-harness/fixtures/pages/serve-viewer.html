@@ -331,6 +331,23 @@ a:hover { text-decoration: underline; }
   var token = new URLSearchParams(location.search).get("token") || "";
   // Carry the tenant through follow-up requests so a non-default ?session= stays on its module.
   var session = new URLSearchParams(location.search).get("session") || "";
+  // Hydrate the declared knob controls from the page URL's `knob.<key>` params, so a deep link
+  // (or a copied "Direct links — overrides applied" URL) opens with those values already set.
+  // The initial render then carries them through whichever transport is live — including the
+  // Wasm iframe, whose fragment/patch is built purely from control state — instead of showing
+  // the author default until the control is manually edited. Only the author-declared knobs this
+  // feature drives are hydrated (display axes are unchanged, pre-existing behaviour).
+  (function () {
+    var q = new URLSearchParams(location.search);
+    document.querySelectorAll(".cp-knob").forEach(function (el) {
+      var key = el.getAttribute("data-knob-key");
+      if (!key) return;
+      var v = q.get("knob." + key);
+      if (v === null) return;
+      if (el.type === "checkbox") el.checked = (v === "true" || v === "1");
+      else el.value = v;
+    });
+  })();
   // The selects + text input are opt-in (empty value = "use the preview's default"). The font
   // scale slider has no empty state, so it's gated separately: we only send fontScale once the
   // user moves it (fontScaleTouched), otherwise the slider's standing 1.0 would override a

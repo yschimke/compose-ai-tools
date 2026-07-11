@@ -989,6 +989,15 @@ class ServeWebFixtureTest {
         wasmKnobs.contains("parts.push(\"knob.\" + encodeURIComponent(key)"),
       "the wasm override patch includes the author-declared knob values",
     )
+    // Deep-link parity: the knob controls hydrate from the page URL's `knob.<key>` params on load,
+    // so opening `/p/…?knob.label=Hello` (or a copied direct link) renders the override immediately
+    // in every transport — including the Wasm iframe, whose patch is built purely from control
+    // state
+    // — rather than the author default until the user edits the control.
+    assertTrue(
+      wasmKnobs.contains("q.get(\"knob.\" + key)"),
+      "the viewer hydrates declared knob controls from the URL's knob.<key> params",
+    )
 
     // Copyable direct links: every viewer offers a PNG URL row (copy + download); a session that
     // can
