@@ -1,6 +1,9 @@
 package ee.schimke.composeai.data.layoutinspector
 
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 /**
  * Bakes a [FigmaSvgModel] into a **layered, editable SVG** designed to round-trip cleanly through
@@ -99,6 +102,10 @@ object FigmaLayeredSvg {
     options: Options,
     familyOverrides: Map<String, String>,
     depth: Int,
+    // Monotonic counter for curved-text `<path>` ids, threaded through the whole walk so every arc
+    // gets a document-unique id even when two `CurvedLayout`s share a component name — otherwise
+    // duplicate ids make a later `<textPath href>` resolve to the first path (Codex #2395).
+    curveSeq: IntArray = intArrayOf(0),
   ) {
     val indent = "  ".repeat(depth)
     // An opaque layer is a leaf `<image>` — the background-free raster stands in for a subtree the
@@ -138,8 +145,53 @@ object FigmaLayeredSvg {
     if (layer.text != null) {
       sb.append(indent).append("  ").append(text(layer, options, familyOverrides)).append('\n')
     }
-    for (child in layer.children) renderLayer(child, sb, options, familyOverrides, depth + 1)
+    layer.curvedTexts.forEach { ct ->
+      sb.append(indent).append("  ").append(curvedText(ct, "c${curveSeq[0]++}")).append('\n')
+    }
+    for (child in layer.children) renderLayer(
+      child,
+      sb,
+      options,
+      familyOverrides,
+      depth + 1,
+      curveSeq,
+    )
     sb.append("$indent</g>\n")
+  }
+
+  /**
+   * A Wear curved-text run (a `TimeText` clock) as an SVG `<textPath>` on its baseline arc. The
+   * baseline circle is centred at ([LayoutInspectorCurvedText.centerXPx], `centerYPx`) with radius
+   * `radiusPx`; the run spans `sweepRadians` from `startAngleRadians` (screen convention: clockwise
+   * from +x, so `1.5π` = top). The text is centred on the arc so it reads across the top exactly as
+   * the render draws it, and stays editable rather than dropping out or baking to a raster.
+   */
+  private fun curvedText(ct: LayoutInspectorCurvedText, id: String): String {
+    val dir = if (ct.clockwise) 1.0 else -1.0
+    val a0 = ct.startAngleRadians
+    val a1 = ct.startAngleRadians + dir * ct.sweepRadians
+    val sx = ct.centerXPx + ct.radiusPx * cos(a0)
+    val sy = ct.centerYPx + ct.radiusPx * sin(a0)
+    val ex = ct.centerXPx + ct.radiusPx * cos(a1)
+    val ey = ct.centerYPx + ct.radiusPx * sin(a1)
+    // SVG arc sweep-flag: 1 draws in the increasing-angle (visually clockwise, y-down) direction.
+    val sweepFlag = if (ct.clockwise) 1 else 0
+    val largeArc = if (ct.sweepRadians > PI) 1 else 0
+    val pathId = "curve-${escapeAttr(id)}"
+    val r = fmt(ct.radiusPx)
+    val d = "M ${fmt(sx)} ${fmt(sy)} A $r $r 0 $largeArc $sweepFlag ${fmt(ex)} ${fmt(ey)}"
+    val fill = ct.colorArgb?.let { curvedColorHex(it) } ?: "#000000"
+    val weight = ct.fontWeight?.let { " font-weight=\"$it\"" } ?: ""
+    return "<path id=\"$pathId\" d=\"$d\" fill=\"none\"/>" +
+      "<text font-size=\"${fmt(ct.fontSizePx)}\"$weight fill=\"$fill\" dominant-baseline=\"alphabetic\">" +
+      "<textPath href=\"#$pathId\" startOffset=\"50%\" text-anchor=\"middle\">" +
+      "${escape(ct.text)}</textPath></text>"
+  }
+
+  /** `#AARRGGBB` (or `#RRGGBB`) → `#RRGGBB` for an SVG `fill`. */
+  private fun curvedColorHex(argb: String): String {
+    val hex = argb.removePrefix("#")
+    return if (hex.length == 8) "#${hex.substring(2)}" else "#$hex"
   }
 
   /** Distinct rounded-px elevations in the tree, so one `feDropShadow` def is shared per level. */
