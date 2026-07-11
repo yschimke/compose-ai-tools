@@ -592,16 +592,35 @@ fun interface DescriptorProvider {
      * A future enhancement may invoke Gradle's Tooling API itself; for v0 we keep the seam clean
      * and let the user (or VS Code) drive the bootstrap.
      */
-    fun readingFromDisk(fileSystem: FileSystem = SystemFileSystem): DescriptorProvider =
-      DescriptorProvider { project, modulePath ->
-        val moduleDir = gradlePathToFile(project.path, modulePath)
-        val descriptorFile = File(moduleDir, "build/compose-previews/daemon-launch.json")
-        check(descriptorFile.isFile) {
-          "Missing daemon launch descriptor for $modulePath under ${project.path.absolutePath}. " +
-            "Run `./gradlew $modulePath:composePreviewDaemonStart` first."
-        }
+    fun readingFromDisk(fileSystem: FileSystem = SystemFileSystem): DescriptorProvider {
+      // Per-project-root index of modulePath -> descriptor file, built lazily on the first miss of
+      // the layout fast-path below and cached so the scan runs at most once per project root.
+      val scannedIndexByRoot = ConcurrentHashMap<String, Map<String, File>>()
+      return DescriptorProvider { project, modulePath ->
+        // Fast path: the Gradle path mirrors the directory layout (`:a:b` → <root>/a/b).
+        val guessed =
+          File(gradlePathToFile(project.path, modulePath), "build/compose-previews/daemon-launch.json")
+        val descriptorFile =
+          if (guessed.isFile) {
+            guessed
+          } else {
+            // Fallback: a project can remap projectDir in settings.gradle.kts (e.g. `:featureTasks`
+            // → shared/features/tasks), so the Gradle path is not the on-disk layout. Locate the
+            // descriptor by the modulePath recorded inside each daemon-launch.json.
+            val index =
+              scannedIndexByRoot.getOrPut(project.path.absolutePath) {
+                indexDescriptorsByModulePath(project.path, fileSystem)
+              }
+            index[modulePath]
+              ?: error(
+                "Missing daemon launch descriptor for $modulePath under " +
+                  "${project.path.absolutePath}. " +
+                  "Run `./gradlew $modulePath:composePreviewDaemonStart` first.",
+              )
+          }
         DaemonLaunchDescriptor.parse(fileSystem.read(descriptorFile.path.toPath()) { readUtf8() })
       }
+    }
 
     private fun gradlePathToFile(projectRoot: File, modulePath: String): File {
       // ":" → root, ":a:b" → projectRoot/a/b
@@ -609,6 +628,40 @@ fun interface DescriptorProvider {
       if (trimmed.isEmpty()) return projectRoot
       val rel = trimmed.replace(':', File.separatorChar)
       return File(projectRoot, rel)
+    }
+
+    /**
+     * Scans [projectRoot] for `build/compose-previews/daemon-launch.json` descriptors and indexes
+     * each by the `modulePath` it records. Handles projects that remap `projectDir` in
+     * settings.gradle.kts, where the Gradle module path is not the directory layout. Prunes VCS,
+     * Gradle/IDE metadata, `node_modules`, `src`, and non-`compose-previews` `build/` subtrees so
+     * the walk stays cheap.
+     */
+    private fun indexDescriptorsByModulePath(
+      projectRoot: File,
+      fileSystem: FileSystem,
+    ): Map<String, File> {
+      val index = HashMap<String, File>()
+      projectRoot
+        .walkTopDown()
+        .onEnter { dir ->
+          when {
+            dir.name in setOf(".git", ".gradle", ".idea", "node_modules", "src") -> false
+            dir.parentFile?.name == "build" && dir.name != "compose-previews" -> false
+            else -> true
+          }
+        }
+        .filter {
+          it.isFile && it.name == "daemon-launch.json" && it.parentFile?.name == "compose-previews"
+        }
+        .forEach { file ->
+          val recorded =
+            runCatching {
+              DaemonLaunchDescriptor.parse(fileSystem.read(file.path.toPath()) { readUtf8() }).modulePath
+            }.getOrNull()
+          if (recorded != null) index.putIfAbsent(recorded, file)
+        }
+      return index
     }
   }
 }
