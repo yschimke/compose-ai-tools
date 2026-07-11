@@ -115,6 +115,13 @@ class ServeSessionRegistry(
    * Seed a session from already-known [state] (e.g. the CLI's current checkout), optionally with an
    * already-open [host]. Replaces any prior entry. The session participates in suspend/resume like
    * a forked one — its daemon is released when idle and reopened from [state] on demand.
+   *
+   * **Re-registration closes the replaced host.** A catalog refresh ([ServeCatalogRefresher])
+   * re-runs the catalog load and re-registers the same pinned id with a fresh host; the prior
+   * entry's host (and its live daemon subprocess) is dropped from [sessions] and would otherwise
+   * never be closed (`close()` only walks the live map), leaking the daemon. So close it here —
+   * outside the lock, since a host `close()` can block on daemon shutdown. A no-op on first
+   * registration (no prior entry) and when the same host instance is re-registered.
    */
   fun register(
     sessionId: String,
@@ -122,12 +129,15 @@ class ServeSessionRegistry(
     host: ServeHost? = null,
     pinned: Boolean = false,
   ) {
-    lock.withLock {
+    val replaced = lock.withLock {
       check(!closed) { "ServeSessionRegistry is closed" }
+      val prior = sessions[sessionId]
       // Registered sessions (the current-checkout default, bundle/catalog hosts) are never GC'd:
       // forked = false keeps them permanently resumable regardless of pinning.
       sessions[sessionId] = Entry(state, host, pinned, forked = false, lastAccess = clock())
+      prior?.host?.takeIf { it !== host }
     }
+    replaced?.let { runCatching { it.close() } }
   }
 
   /**

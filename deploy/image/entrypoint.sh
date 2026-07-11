@@ -100,5 +100,12 @@ if [[ -n "${SERVE_IDLE_EXIT:-}" && "${SERVE_IDLE_EXIT}" != "0" ]]; then
   args+=("--exit-when-idle=${SERVE_IDLE_EXIT}")
 fi
 
+# Keep the published catalogs fresh against their `design-artifacts/<system>` branches WITHOUT a
+# restart: re-check each branch's head every SERVE_CATALOG_REFRESH seconds and re-fetch on change
+# (via `git ls-remote`, no API rate limit). Defaults to the CLI's 600s; set 0 to disable (serve the
+# boot snapshot until the container recycles). This is what lets a `design-artifacts.yml` regen
+# reach preview.coo.ee on its own — Watchtower only rolls the *image*, never the branch content.
+[[ -n "${SERVE_CATALOG_REFRESH:-}" ]] && args+=(--catalog-refresh-interval "${SERVE_CATALOG_REFRESH}")
+
 echo "entrypoint: compose-preview serve on 0.0.0.0:${PORT}" >&2
 exec compose-preview "${args[@]}"

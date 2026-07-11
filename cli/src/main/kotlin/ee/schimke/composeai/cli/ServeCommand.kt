@@ -9,6 +9,7 @@ import ee.schimke.composeai.cli.serve.ServeBundleDaemon
 import ee.schimke.composeai.cli.serve.ServeBundleHost
 import ee.schimke.composeai.cli.serve.ServeBundleStore
 import ee.schimke.composeai.cli.serve.ServeCatalogLiveHost
+import ee.schimke.composeai.cli.serve.ServeCatalogRefresher
 import ee.schimke.composeai.cli.serve.ServeCatalogStore
 import ee.schimke.composeai.cli.serve.ServeHost
 import ee.schimke.composeai.cli.serve.ServeHttpServer
@@ -123,6 +124,15 @@ class ServeCommand(args: List<String>) : Command(args) {
   private val idleExitSeconds: Long =
     args.flagValue("--exit-when-idle")?.toLongOrNull()?.takeIf { it > 0 }
       ?: DEFAULT_IDLE_EXIT_SECONDS
+
+  /**
+   * Seconds between re-checks of each `--catalogs` branch's head commit; when it has moved, the
+   * catalog is re-fetched in place (no restart) — see [ServeCatalogRefresher]. Default
+   * [DEFAULT_CATALOG_REFRESH_SECONDS]; `0` (or negative) disables polling (boot-snapshot only, the
+   * pre-refresh behaviour). Wired from `SERVE_CATALOG_REFRESH` by the image entrypoint.
+   */
+  private val catalogRefreshSeconds: Long =
+    args.flagValue("--catalog-refresh-interval")?.toLongOrNull() ?: DEFAULT_CATALOG_REFRESH_SECONDS
 
   /**
    * Shared mode: a directory of pre-rendered portable bundles (or a single bundle) to host
@@ -428,9 +438,17 @@ class ServeCommand(args: List<String>) : Command(args) {
     // Serve our published design systems from their trusted `design-artifacts/<system>` branches.
     // A catalog that carries a `web/wasm/` app yields a system→dir entry so the in-browser tier
     // rides the same trusted branch (no local --wasm-dir build needed).
-    val catalogWasm =
-      if (catalogRefs.isNotEmpty()) registerCatalogs(registry, catalogWorktrees, openHost)
-      else emptyMap()
+    val catalogReg =
+      if (catalogRefs.isNotEmpty()) registerCatalogs(registry, catalogWorktrees, openHost) else null
+    val catalogWasm = catalogReg?.wasm ?: emptyMap()
+    // Keep the catalogs fresh against their (routinely-changing) branches without a restart.
+    val catalogRefresher =
+      catalogReg
+        ?.let { buildCatalogRefresher(it.store) }
+        ?.also {
+          it.seedInitialHeads()
+          it.start()
+        }
     // Runtime ingestion (--accept-bundles): clients POST a bundle (or a ?url= to one) and it's
     // registered as a pinned session. Unpacked under a temp dir for this server's lifetime.
     val bundleStore = if (acceptBundles) openUploadStore(registry) else null
@@ -451,7 +469,8 @@ class ServeCommand(args: List<String>) : Command(args) {
       mdnsModuleLabel = module.gradlePath,
       mdnsPreviewIds = previews.map { it.id },
       closeables =
-        listOf(worktrees, catalogWorktrees.takeIf { it !== worktrees }) + catalogPerPreviewPools,
+        listOf(worktrees, catalogWorktrees.takeIf { it !== worktrees }, catalogRefresher) +
+          catalogPerPreviewPools,
     )
   }
 
@@ -476,9 +495,19 @@ class ServeCommand(args: List<String>) : Command(args) {
     }
     val registeredStartup = registerStartupBundles(registry)
     // No worktrees in module-less mode — catalogs live-render only from their carried `liveBundle`.
-    val catalogWasm =
+    val catalogReg =
       if (catalogRefs.isNotEmpty()) registerCatalogs(registry, worktrees = null, ::openHost)
-      else emptyMap()
+      else null
+    val catalogWasm = catalogReg?.wasm ?: emptyMap()
+    // Keep the catalogs fresh against their (routinely-changing) branches without a restart — the
+    // public preview server (preview.coo.ee) runs this module-less path.
+    val catalogRefresher =
+      catalogReg
+        ?.let { buildCatalogRefresher(it.store) }
+        ?.also {
+          it.seedInitialHeads()
+          it.start()
+        }
     val bundleStore = if (acceptBundles) openUploadStore(registry) else null
 
     val localWasm = filterLocalWasm()
@@ -513,7 +542,7 @@ class ServeCommand(args: List<String>) : Command(args) {
       // No module previews to advertise; discovery is a module-session nicety, so skip it here.
       mdnsModuleLabel = null,
       mdnsPreviewIds = null,
-      closeables = catalogPerPreviewPools.toList(),
+      closeables = catalogPerPreviewPools.toList() + listOfNotNull(catalogRefresher),
     )
   }
 
@@ -867,11 +896,14 @@ class ServeCommand(args: List<String>) : Command(args) {
    * branch is in the trust store; otherwise served as `unverified` (the images execute no code).
    * Best-effort per system — one catalog failing to fetch doesn't sink the others or the server.
    */
+  /** [registerCatalogs] result: the wasm-app dirs plus the [store] a refresher re-loads from. */
+  private class CatalogRegistration(val wasm: Map<String, File>, val store: ServeCatalogStore)
+
   private fun registerCatalogs(
     registry: ServeSessionRegistry,
     worktrees: GitWorktrees?,
     openHost: (ServeSessionState) -> ServeHost?,
-  ): Map<String, File> {
+  ): CatalogRegistration {
     val dir =
       java.nio.file.Files.createTempDirectory("serve-catalogs").toFile().also { it.deleteOnExit() }
     val wasm = linkedMapOf<String, File>()
@@ -933,7 +965,33 @@ class ServeCommand(args: List<String>) : Command(args) {
           System.err.println("serve: catalog ${r.system} not served: ${r.reason}")
       }
     }
-    return wasm
+    return CatalogRegistration(wasm = wasm, store = store)
+  }
+
+  /**
+   * Build the background poller that keeps a running server fresh against its catalog branches (see
+   * [ServeCatalogRefresher]). Null when polling is disabled ([catalogRefreshSeconds] ≤ 0) or there
+   * are no catalogs. The caller seeds heads + starts it, and adds it to the server's closeables so
+   * the daemon thread stops on shutdown. A successful re-load re-registers the catalog host in
+   * place (the registry closes the replaced daemon) and rewrites the on-disk `web/wasm/` dir the
+   * `/wasm/<system>/` route serves.
+   */
+  private fun buildCatalogRefresher(store: ServeCatalogStore): ServeCatalogRefresher? {
+    if (catalogRefreshSeconds <= 0 || catalogRefs.isEmpty()) return null
+    val entries = catalogRefs.map {
+      ServeCatalogRefresher.Entry(
+        system = it.system,
+        repo = it.repo,
+        branch = "$catalogBranchPrefix${it.system}",
+      )
+    }
+    return ServeCatalogRefresher(
+      entries = entries,
+      reload = { system, repo ->
+        store.load(system, sourceRepo = repo) is ServeCatalogStore.Result.Ok
+      },
+      intervalMillis = catalogRefreshSeconds * 1000,
+    )
   }
 
   /**
@@ -1315,6 +1373,12 @@ class ServeCommand(args: List<String>) : Command(args) {
                           yschimke/compose-ai-tools); per-entry @<owner>/<repo> overrides it.
         --catalog-branch-prefix <prefix>
                           Branch prefix for --catalogs (default design-artifacts/).
+        --catalog-refresh-interval <seconds>
+                          Keep a running server fresh: re-check each --catalogs branch's head every
+                          <seconds> and re-fetch (catalog.json + renders + web/wasm/ + liveBundle) in
+                          place when it moved — so a regenerated branch is picked up with no restart
+                          (default ${DEFAULT_CATALOG_REFRESH_SECONDS}s; 0 disables, serving the boot snapshot only). Uses
+                          `git ls-remote` (no API rate limit), and skips a branch it can't resolve.
         --wasm-dir <system>=<dir>[,<system>=<dir>…]
                           In-browser CMP tier: map a design system to its assembled Kotlin/Wasm
                           catalog app (./gradlew :samples:cmp-wasm-catalog:wasmCatalogDist →
@@ -1331,5 +1395,12 @@ class ServeCommand(args: List<String>) : Command(args) {
   private companion object {
     const val DEFAULT_PORT = 8723
     const val DEFAULT_IDLE_EXIT_SECONDS = 60L
+
+    /**
+     * Default catalog re-check cadence (10 min). Fresh enough that a regenerated design-artifacts
+     * branch reaches a running server within minutes, and — via `git ls-remote` (no API rate limit)
+     * — cheap enough to poll every watched catalog at this cadence indefinitely.
+     */
+    const val DEFAULT_CATALOG_REFRESH_SECONDS = 600L
   }
 }

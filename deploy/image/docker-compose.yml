@@ -56,6 +56,10 @@ services:
       SERVE_CATALOG_SOURCE_REPO: "${SERVE_CATALOG_SOURCE_REPO:-}"
       SERVE_CATALOG_SOURCE_REF: "${SERVE_CATALOG_SOURCE_REF:-}"
       SERVE_LIVE_SEATS: "${SERVE_LIVE_SEATS:-}"
+      # Re-check each catalog's design-artifacts branch every N seconds and re-fetch on change, so a
+      # regenerated branch reaches this running server without a restart (Watchtower only rolls the
+      # image). Empty ⇒ the CLI default (600s); set 0 to disable and serve the boot snapshot only.
+      SERVE_CATALOG_REFRESH: "${SERVE_CATALOG_REFRESH:-}"
       PORT: "8080"
     # To pin your OWN producers, mount a trust store over the baked one and keep
     # SERVE_TRUST_STORE pointing at it:
