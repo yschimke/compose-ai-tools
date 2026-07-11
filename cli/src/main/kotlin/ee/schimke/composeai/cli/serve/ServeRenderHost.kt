@@ -190,9 +190,25 @@ internal constructor(
   // A daemon backs this host, so an override edit actually re-renders (unlike a static bundle).
   override val canApplyOverrides: Boolean = true
 
-  // The daemon can export a `compose/figma-svg` for any preview, so the viewer can offer an SVG
-  // download link alongside the PNG.
-  override val hasSvgExport: Boolean = true
+  // The daemon registers its `compose/figma-svg` (+ `-long`) data products **inactive**, so
+  // `renderSvg`'s `session.fetchData(compose/figma-svg…)` would fail `-32020 kind not advertised`
+  // — an override-bearing `.svg` request (any `?knob…`/`fontScale`/… on the SVG lane) 500s while
+  // the baked vector still serves. Enable them once on open so the export is advertised; gate
+  // `hasSvgExport` on whether the daemon actually has them (a backend without figma-svg reports
+  // them in `unknown`), so a non-figma backend cleanly offers no SVG rather than dead-ending in a
+  // 500. Best-effort: an enable RPC failure disables the export, it doesn't break the host.
+  override val hasSvgExport: Boolean =
+    runCatching {
+        val result =
+          session.enableExtensions(
+            listOf(ComposeFigmaSvgProduct.KIND, ComposeFigmaSvgProduct.KIND_LONG)
+          )
+        ComposeFigmaSvgProduct.KIND !in result.unknown
+      }
+      .getOrElse { e ->
+        onLog("figma-svg export unavailable: enable failed: ${e.message}")
+        false
+      }
 
   // The one-handed gesture override is honoured only by the Android (Robolectric) backend — the
   // desktop backend ignores `overrides.gestures`. Read the daemon's advertised capabilities so the
