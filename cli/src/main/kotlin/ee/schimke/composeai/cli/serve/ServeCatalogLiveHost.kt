@@ -32,6 +32,19 @@ import ee.schimke.composeai.daemon.protocol.StreamFrameParams
  *
  * The net effect: the published catalog behaves exactly as before (static, trusted, instant), plus
  * the CMP components the desktop daemon can run gain an interactive live stream on demand.
+ *
+ * ## Per-preview live lane (default, with monolithic fallback)
+ *
+ * When [perPreviewResolve] is supplied, an override-bearing render/stream first tries to resolve a
+ * daemon that re-renders **only that one preview** from its own per-preview bundle
+ * (`bundle/previews/<daemon-id>.png`, materialised + pooled by the caller). This is the default
+ * render path — small, addressable, per-preview daemons the pool reaps when idle — so the
+ * per-preview bundles the delivery branch ships are exercised routinely. It falls back to the
+ * monolithic [live] `liveBundle` daemon when a per-preview daemon can't be resolved (fetch /
+ * materialise failed, or the preview ships no per-preview bundle), and both fall back to [baked]
+ * when the id has no daemon twin at all. So the worst case is exactly the pre-per-preview
+ * behaviour; the composite never regresses. With [perPreviewResolve] absent it is the plain
+ * monolithic-only host described above.
  */
 class ServeCatalogLiveHost(
   /**
@@ -42,6 +55,17 @@ class ServeCatalogLiveHost(
   private val live: ServeHost,
   /** The static baked-PNG host, keyed by catalog ids (the browse + snapshot surface). */
   private val baked: ServeHost,
+  /**
+   * Resolve a daemon-backed host that re-renders the given **daemon-preview id** from its own
+   * per-preview bundle, or null when none is available. Tried FIRST for an alias-mapped id carrying
+   * a pixel-changing override; a null result falls back to the monolithic [live] daemon. The
+   * returned host is owned + pooled by the caller (this host never closes it), so repeated calls
+   * for the same id should return the pooled instance. `null` (the default) disables the
+   * per-preview lane, leaving the plain monolithic-only host.
+   */
+  private val perPreviewResolve: ((daemonId: String) -> ServeHost?)? = null,
+  /** Live upstream stream count across the pooled per-preview daemons (supplied by the pool). */
+  private val perPreviewStreamCount: () -> Int = { 0 },
 ) : ServeHost {
 
   /**
@@ -118,9 +142,17 @@ class ServeCatalogLiveHost(
    */
   override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
     val daemonId = daemonIdForOverrideRender(previewId, overrides)
-    return if (daemonId != null) live.render(daemonId, overrides)
+    return if (daemonId != null) liveHostFor(daemonId).render(daemonId, overrides)
     else baked.render(previewId, overrides)
   }
+
+  /**
+   * The daemon-backed host to route a mapped [daemonId] to: the per-preview daemon if
+   * [perPreviewResolve] resolves one (the default lane, exercised routinely), else the monolithic
+   * [live] daemon. Both re-render the same daemon id — the per-preview bundle simply carries only
+   * that one preview's closure — so callers pass the daemon id either way.
+   */
+  private fun liveHostFor(daemonId: String): ServeHost = perPreviewResolve?.invoke(daemonId) ?: live
 
   /**
    * SVG export mirrors [render]'s knob routing, plus a fallback: the SVG row is advertised whenever
@@ -132,12 +164,12 @@ class ServeCatalogLiveHost(
    */
   override fun renderSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome {
     daemonIdForOverrideRender(previewId, overrides)?.let {
-      return live.renderSvg(it, overrides)
+      return liveHostFor(it).renderSvg(it, overrides)
     }
     val bakedOutcome = baked.renderSvg(previewId, overrides)
     if (bakedOutcome !is SvgOutcome.NotFound) return bakedOutcome
     val daemonId = alias[previewId] ?: return bakedOutcome
-    return live.renderSvg(daemonId, overrides)
+    return liveHostFor(daemonId).renderSvg(daemonId, overrides)
   }
 
   /**
@@ -157,10 +189,10 @@ class ServeCatalogLiveHost(
     onFrame: (StreamFrameParams) -> Unit,
   ): StreamHandle? {
     val daemonId = alias[previewId] ?: return null
-    return live.subscribeStream(daemonId, overrides, codec, maxFps, onFrame)
+    return liveHostFor(daemonId).subscribeStream(daemonId, overrides, codec, maxFps, onFrame)
   }
 
-  override fun activeStreamCount(): Int = live.activeStreamCount()
+  override fun activeStreamCount(): Int = live.activeStreamCount() + perPreviewStreamCount()
 
   /**
    * Graft the daemon previews' per-preview metadata onto the baked browse surface. The daemon knows
