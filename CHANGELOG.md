@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.16.38](https://github.com/yschimke/compose-ai-tools/compare/v0.16.37...v0.16.38) (2026-07-11)
+
+
+### Features
+
+* **gradle:** add --preview name filter to composePreviewRender ([#2410](https://github.com/yschimke/compose-ai-tools/issues/2410)) ([a0a3333](https://github.com/yschimke/compose-ai-tools/commit/a0a3333ffb7c12b581555e67faa74b0154ec1b8d))
+* **serve:** add size overrides (Fixed/Max/Min/Within) to the preview page ([#2416](https://github.com/yschimke/compose-ai-tools/issues/2416)) ([ee8f3be](https://github.com/yschimke/compose-ai-tools/commit/ee8f3bede4d240633c471fc3b78ab044661f60e0))
+* **serve:** apply author-declared knob overrides in the Wasm tier ([#2414](https://github.com/yschimke/compose-ai-tools/issues/2414)) ([6c680d6](https://github.com/yschimke/compose-ai-tools/commit/6c680d65aac09f5ddf7618342c43f5aca25070ea))
+* **serve:** expose a Storybook-compatible index.json + iframe.html surface ([#2413](https://github.com/yschimke/compose-ai-tools/issues/2413)) ([f8c3359](https://github.com/yschimke/compose-ai-tools/commit/f8c33596a46e5116186b5cfaa867f63ca3a0efc4))
+* **slots:** record slot scope (Row/Column/Box/Lazy) and scrolling ([#2411](https://github.com/yschimke/compose-ai-tools/issues/2411)) ([d0cbc7d](https://github.com/yschimke/compose-ai-tools/commit/d0cbc7d3f97d040547e8fc8ecdb29997c19491c0))
+* **wear:** capsule clip + reduce-motion for the Wear scroll-SVG export ([#2412](https://github.com/yschimke/compose-ai-tools/issues/2412)) ([576ae69](https://github.com/yschimke/compose-ai-tools/commit/576ae696453c0a55d59d65fb00d8a45304a91072))
+
+
+### Bug Fixes
+
+* **figma-svg:** mirror the final render setup in the Android scroll-SVG probe ([#2406](https://github.com/yschimke/compose-ai-tools/issues/2406)) ([a614a29](https://github.com/yschimke/compose-ai-tools/commit/a614a2901c528bd3aae0dbff77a5c031f07dc3af))
+* **mcp:** rescan descriptor index on a miss instead of caching the negative ([#2407](https://github.com/yschimke/compose-ai-tools/issues/2407)) ([ff94051](https://github.com/yschimke/compose-ai-tools/commit/ff94051a8fcb2f1fa897180d5612c5de6fe0c7dc))
+* **serve:** enable figma-svg data products so override SVG renders ([#2418](https://github.com/yschimke/compose-ai-tools/issues/2418)) ([bbf2410](https://github.com/yschimke/compose-ai-tools/commit/bbf24104a5b297e361dae7e0d9d256430190457d))
+* **serve:** short-circuit SVG render when figma-svg is unavailable ([#2419](https://github.com/yschimke/compose-ai-tools/issues/2419)) ([3ac7843](https://github.com/yschimke/compose-ai-tools/commit/3ac7843e30a0dc0490c264f49d988ea5ca7c7391))
+* **vscode:** gate exportPreviewBundle on composePreview.enabled too ([#2417](https://github.com/yschimke/compose-ai-tools/issues/2417)) ([a21fcb3](https://github.com/yschimke/compose-ai-tools/commit/a21fcb3382101469af070a7e7fc729ab898e0269))
+* **vscode:** honor composePreview.enabled=false in task scheduling ([#2415](https://github.com/yschimke/compose-ai-tools/issues/2415)) ([1754b80](https://github.com/yschimke/compose-ai-tools/commit/1754b80ff29ee09204a6212f42722052dbbea314))
+
 ## [0.16.37](https://github.com/yschimke/compose-ai-tools/compare/v0.16.36...v0.16.37) (2026-07-11)
 
 
