@@ -214,6 +214,23 @@ data class FigmaSvgLayer(
  */
 data class FigmaSvgRoundClip(val cx: Int, val cy: Int, val r: Int)
 
+/**
+ * A capsule (vertical stadium) device-screen clip in root-pixel space. The Wear scroll-SVG export
+ * grows the round watch face into a **tall** frame so the whole `TransformingLazyColumn` composes
+ * in one pass; masking that tall frame to the inscribed circle ([FigmaSvgRoundClip]) would clip the
+ * list to a lens. Instead the frame is masked to a stadium — a top half-circle of radius `width/2`,
+ * straight vertical sides, and a bottom half-circle — the vector analogue of the raster
+ * `applyWearPillClip`. Rendered as a single `<rect rx=width/2>`; degenerates to the round clip's
+ * circle when `height == width`.
+ */
+data class FigmaSvgCapsuleClip(val x: Int, val y: Int, val width: Int, val height: Int) {
+  /**
+   * Corner radius of the stadium — half the (narrower) width, so the caps are true half-circles.
+   */
+  val rx: Int
+    get() = width / 2
+}
+
 data class FigmaSvgModel(
   val root: FigmaSvgLayer,
   val minX: Int,
@@ -225,6 +242,11 @@ data class FigmaSvgModel(
   val rasterTargets: List<FigmaSvgRasterTarget> = emptyList(),
   /** Set for a round Wear device screen — the whole tree is masked to this circle on render. */
   val roundClip: FigmaSvgRoundClip? = null,
+  /**
+   * Set for a **tall** Wear scroll-SVG frame — the whole tree is masked to this vertical stadium on
+   * render (see [FigmaSvgCapsuleClip]). Mutually exclusive with [roundClip].
+   */
+  val capsuleClip: FigmaSvgCapsuleClip? = null,
 ) {
   val tx: Int
     get() = padding - minX
@@ -310,6 +332,7 @@ data class FigmaSvgModel(
       rasterHref: (nodeId: String) -> String = ::defaultRasterHref,
       captureCanvasDraws: Boolean = false,
       roundClip: Boolean = false,
+      capsuleClip: Boolean = false,
     ): FigmaSvgModel {
       val textByNodeId =
         semantics?.let { assignTextToLayers(layout.root, it, density) } ?: emptyMap()
@@ -323,17 +346,30 @@ data class FigmaSvgModel(
       // canvas
       // is the watch face, not the taller off-screen content bbox.
       val frame = layout.root.bounds
+      val w = frame.right - frame.left
+      val h = frame.bottom - frame.top
+      // A tall Wear scroll frame is masked to a vertical stadium (capsule), not the inscribed
+      // circle — the circle would clip the grown list to a lens. Two ways in: an explicit
+      // `capsuleClip`, or a `roundClip` on a frame that's taller than it is wide. A normal round
+      // watch face is square (h == w) → circle; the Wear scroll-SVG export grows it much taller
+      // (h > w) → capsule. So the always-on Android export can keep passing `roundClip = isRound`
+      // and the grown render auto-selects the stadium with no extra plumbing. Capsule wins when
+      // both apply (they are mutually exclusive on the emitted model).
+      val wantsCapsule = capsuleClip || (roundClip && h > w)
+      val capsule =
+        if (wantsCapsule) FigmaSvgCapsuleClip(x = frame.left, y = frame.top, width = w, height = h)
+        else null
       val clip =
-        if (roundClip) {
-          val w = frame.right - frame.left
-          val h = frame.bottom - frame.top
+        if (capsule == null && roundClip) {
           FigmaSvgRoundClip(cx = frame.left + w / 2, cy = frame.top + h / 2, r = minOf(w, h) / 2)
         } else null
-      // No drawing layer (a tree of pure grouping nodes) → a minimal padding-square canvas,
-      // matching
-      // the wireframe's empty-tree convention.
+      // A device-screen clip (round or capsule) masks anything outside the frame, so clamp the
+      // canvas extent to the frame — otherwise the square/tall full-frame background paints the
+      // corners the render leaves transparent. No drawing layer (a tree of pure grouping nodes) → a
+      // minimal padding-square canvas, matching the wireframe's empty-tree convention.
       val extent =
-        if (clip != null) Extent(frame.left, frame.top, frame.right, frame.bottom)
+        if (clip != null || capsule != null)
+          Extent(frame.left, frame.top, frame.right, frame.bottom)
         else rootLayer.extent() ?: Extent(0, 0, 0, 0)
       return FigmaSvgModel(
         root = rootLayer,
@@ -344,6 +380,7 @@ data class FigmaSvgModel(
         padding = padding,
         rasterTargets = ctx.rasterTargets,
         roundClip = clip,
+        capsuleClip = capsule,
       )
     }
 

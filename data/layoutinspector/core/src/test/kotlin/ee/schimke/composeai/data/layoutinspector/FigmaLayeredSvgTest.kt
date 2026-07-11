@@ -367,6 +367,103 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun aCapsuleClipMasksATallWearFrameToAVerticalStadium() {
+    // A Wear scroll-SVG export grows the round face into a TALL frame so the whole
+    // TransformingLazyColumn composes in one pass. Masking that to the inscribed circle would clip
+    // the list to a lens, so a capsule (vertical stadium) clip is used instead: a top half-circle
+    // of radius width/2, straight sides, a bottom half-circle — emitted as <rect rx=width/2>.
+    val root =
+      LayoutInspectorNode(
+        nodeId = "screen",
+        component = "RootMeasurePolicy",
+        // 384 wide, 900 tall — the grown scroll frame.
+        bounds = bounds(0, 0, 384, 900),
+        size = LayoutInspectorSize(384, 900),
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF000000"),
+        children =
+          listOf(
+            layoutNode(
+              "Card",
+              20,
+              400,
+              364,
+              560,
+              tokens = ComposeSemanticsTokens(backgroundColor = "#FF2E2E38"),
+            )
+          ),
+      )
+    val model = FigmaSvgModel.from(LayoutInspectorPayload(root), capsuleClip = true)
+    // Capsule spanning the full tall frame, rx = width/2 so the caps are true half-circles.
+    assertNotNull(model.capsuleClip)
+    assertEquals(0, model.capsuleClip!!.x)
+    assertEquals(0, model.capsuleClip.y)
+    assertEquals(384, model.capsuleClip.width)
+    assertEquals(900, model.capsuleClip.height)
+    assertEquals(192, model.capsuleClip.rx)
+    // The plain round clip must NOT also be set — they are mutually exclusive.
+    assertNull("capsule and round clip are mutually exclusive", model.roundClip)
+    // Extent is the tall frame (+ padding on both sides).
+    assertEquals(384 + FigmaSvgModel.DEFAULT_PADDING * 2, model.width)
+    assertEquals(900 + FigmaSvgModel.DEFAULT_PADDING * 2, model.height)
+    val svg = FigmaLayeredSvg.render(model)
+    assertTrue(
+      "emits a rounded-rect clipPath",
+      svg.contains("""<clipPath id="deviceRound"><rect""") && svg.contains("""rx="192""""),
+    )
+    assertTrue(
+      "the tree group references the clip",
+      svg.contains("""clip-path="url(#deviceRound)""""),
+    )
+    assertFalse(
+      "no circle clip for a capsule frame",
+      svg.contains("""<clipPath id="deviceRound"><circle"""),
+    )
+  }
+
+  @Test
+  fun aRoundClipOnATallFrameAutoSelectsTheCapsule() {
+    // The Wear scroll-SVG export grows the square watch face into a TALL frame and re-renders
+    // through the always-on figma-svg extension, which passes `roundClip = isRound`. A round frame
+    // that's taller than it is wide is the grown scroll frame, so `roundClip` alone must resolve to
+    // a capsule (not a lens-clipping circle) — no separate flag needs threading through the daemon.
+    val root =
+      layoutNode(
+        "screen",
+        0,
+        0,
+        384,
+        1200,
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF000000"),
+      )
+    val model = FigmaSvgModel.from(LayoutInspectorPayload(root), roundClip = true)
+    assertNotNull("tall round frame → capsule", model.capsuleClip)
+    assertNull("no circle on a tall round frame", model.roundClip)
+    assertEquals(192, model.capsuleClip!!.rx)
+    val svg = FigmaLayeredSvg.render(model)
+    assertTrue("emits a rounded-rect clip", svg.contains("""<clipPath id="deviceRound"><rect"""))
+    assertFalse("no circle clip", svg.contains("""<clipPath id="deviceRound"><circle"""))
+  }
+
+  @Test
+  fun capsuleClipTakesPrecedenceOverRoundClipWhenBothRequested() {
+    // A caller that flags a frame both round and tall-scroll gets the capsule — the tall-mode shape
+    // wins so the grown list is never clipped to a lens.
+    val root =
+      layoutNode(
+        "screen",
+        0,
+        0,
+        384,
+        900,
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF000000"),
+      )
+    val model =
+      FigmaSvgModel.from(LayoutInspectorPayload(root), roundClip = true, capsuleClip = true)
+    assertNotNull("capsule wins", model.capsuleClip)
+    assertNull("round clip suppressed", model.roundClip)
+  }
+
+  @Test
   fun curvedTextIsEmittedAsATextPathOnItsBaselineArc() {
     // A Wear `TimeText` clock is laid out along an arc — captured as a curved-text run and rendered
     // as an SVG `<textPath>` on the baseline circle so it stays editable (not dropped, not a

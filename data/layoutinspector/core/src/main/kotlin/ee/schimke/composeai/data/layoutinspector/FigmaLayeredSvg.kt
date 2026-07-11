@@ -76,8 +76,18 @@ object FigmaLayeredSvg {
     if (elevations.isNotEmpty()) sb.append(shadowFilterDefs(elevations))
     // A round Wear device screen masks the whole tree to the inscribed circle (Roborazzi's device
     // crop), so the square full-frame background doesn't paint the corners the render leaves clear.
+    // A *tall* Wear scroll frame masks to a vertical stadium (capsule) instead — the circle would
+    // clip the grown list to a lens. The two are mutually exclusive.
     val clip = model.roundClip
-    if (clip != null) {
+    val capsule = model.capsuleClip
+    if (capsule != null) {
+      sb.append(
+        """<clipPath id="deviceRound"><rect x="${capsule.x}" y="${capsule.y}" """ +
+          """width="${capsule.width}" height="${capsule.height}" """ +
+          """rx="${capsule.rx}" ry="${capsule.rx}"/></clipPath>"""
+      )
+      sb.append('\n')
+    } else if (clip != null) {
       sb.append(
         """<clipPath id="deviceRound"><circle cx="${clip.cx}" cy="${clip.cy}" """ +
           """r="${clip.r}"/></clipPath>"""
@@ -87,7 +97,7 @@ object FigmaLayeredSvg {
     // Everything is drawn in root-pixel space; a single group translate drops the tree into the
     // padded canvas, keeping child coordinates absolute (matching Figma's absolute layout on
     // import).
-    val clipAttr = if (clip != null) """ clip-path="url(#deviceRound)"""" else ""
+    val clipAttr = if (clip != null || capsule != null) """ clip-path="url(#deviceRound)"""" else ""
     sb.append("""<g transform="translate(${model.tx}, ${model.ty})"$clipAttr>""")
     sb.append('\n')
     renderLayer(model.root, sb, options, familyOverrides, depth = 1)
