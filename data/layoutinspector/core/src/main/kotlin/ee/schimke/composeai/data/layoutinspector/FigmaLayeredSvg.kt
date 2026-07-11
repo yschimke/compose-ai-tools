@@ -71,10 +71,21 @@ object FigmaLayeredSvg {
     // its Material drop shadow instead of reading as a flat fill.
     val elevations = collectElevations(model.root)
     if (elevations.isNotEmpty()) sb.append(shadowFilterDefs(elevations))
+    // A round Wear device screen masks the whole tree to the inscribed circle (Roborazzi's device
+    // crop), so the square full-frame background doesn't paint the corners the render leaves clear.
+    val clip = model.roundClip
+    if (clip != null) {
+      sb.append(
+        """<clipPath id="deviceRound"><circle cx="${clip.cx}" cy="${clip.cy}" """ +
+          """r="${clip.r}"/></clipPath>"""
+      )
+      sb.append('\n')
+    }
     // Everything is drawn in root-pixel space; a single group translate drops the tree into the
     // padded canvas, keeping child coordinates absolute (matching Figma's absolute layout on
     // import).
-    sb.append("""<g transform="translate(${model.tx}, ${model.ty})">""")
+    val clipAttr = if (clip != null) """ clip-path="url(#deviceRound)"""" else ""
+    sb.append("""<g transform="translate(${model.tx}, ${model.ty})"$clipAttr>""")
     sb.append('\n')
     renderLayer(model.root, sb, options, familyOverrides, depth = 1)
     sb.append("</g>\n")

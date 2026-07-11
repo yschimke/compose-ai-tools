@@ -2,6 +2,7 @@ package ee.schimke.composeai.data.layoutinspector
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -318,6 +319,71 @@ class FigmaLayeredSvgTest {
     // Grown to the parent width, pinned to the parent's left edge — never x="-30".
     assertTrue(svg, svg.contains("""x="0"""") && svg.contains("""width="100""""))
     assertFalse("must not be shifted left of the parent", svg.contains("""x="-"""))
+  }
+
+  @Test
+  fun aRoundClipMasksTheTreeToTheFramesInscribedCircleAndCapsTheExtent() {
+    // A round Wear device screen is rendered through Roborazzi's device crop — the frame is masked
+    // to
+    // its inscribed circle. The export must mask to the same circle (or its square full-frame
+    // background paints the corners the render leaves clear) AND cap the canvas to the frame, not
+    // the
+    // taller off-screen content that a scrolling list pushes below the visible screen.
+    val root =
+      LayoutInspectorNode(
+        nodeId = "screen",
+        component = "RootMeasurePolicy",
+        bounds = bounds(0, 0, 384, 384),
+        size = LayoutInspectorSize(384, 384),
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF000000"),
+        children =
+          listOf(
+            // A list item scrolled off the bottom of the 384 frame — must not inflate the canvas.
+            layoutNode(
+              "OffScreenCard",
+              20,
+              360,
+              364,
+              520,
+              tokens = ComposeSemanticsTokens(backgroundColor = "#FF2E2E38"),
+            )
+          ),
+      )
+    val model = FigmaSvgModel.from(LayoutInspectorPayload(root), roundClip = true)
+    // Circle centred on the frame with the inscribed radius, in root-pixel space.
+    assertNotNull(model.roundClip)
+    assertEquals(192, model.roundClip!!.cx)
+    assertEquals(192, model.roundClip.cy)
+    assertEquals(192, model.roundClip.r)
+    // Extent is the 384 frame (+ padding on both sides), NOT the 520-tall off-screen content.
+    assertEquals(384 + FigmaSvgModel.DEFAULT_PADDING * 2, model.width)
+    assertEquals(384 + FigmaSvgModel.DEFAULT_PADDING * 2, model.height)
+    val svg = FigmaLayeredSvg.render(model)
+    assertTrue("emits a clipPath circle", svg.contains("""<clipPath id="deviceRound"><circle"""))
+    assertTrue(
+      "the tree group references the clip",
+      svg.contains("""clip-path="url(#deviceRound)""""),
+    )
+  }
+
+  @Test
+  fun withoutRoundClipTheExportStaysSquareAndUncapped() {
+    // The default (non-round) export must be unchanged: no clip, and the canvas still grows to the
+    // full content extent so a normal sticker isn't wrongly clipped or cropped.
+    val root =
+      layoutNode(
+        "screen",
+        0,
+        0,
+        384,
+        384,
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF000000"),
+      )
+    val model = FigmaSvgModel.from(LayoutInspectorPayload(root))
+    assertNull("no round clip by default", model.roundClip)
+    val svg = FigmaLayeredSvg.render(model)
+    assertFalse("no clipPath emitted", svg.contains("clipPath"))
+    assertFalse("no clip-path attr on the tree", svg.contains("clip-path"))
   }
 
   @Test

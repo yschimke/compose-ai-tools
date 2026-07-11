@@ -69,6 +69,7 @@ object ComposeFigmaSvgDataProducer {
     density: Float = 1f,
     frameImage: File? = null,
     fontResolver: FigmaFontResolver? = null,
+    roundClip: Boolean = false,
     fileSystem: FileSystem = SystemFileSystem,
   ) {
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
@@ -84,6 +85,10 @@ object ComposeFigmaSvgDataProducer {
         // Hybrid mode also crops Canvas-drawn chrome (progress track, slider groove) the token
         // export can't see — only when a frame PNG exists to crop those pixels from.
         captureCanvasDraws = frame != null,
+        // A round Wear device screen was masked to its inscribed circle by Roborazzi's device crop;
+        // mask the export to the same circle so its square full-frame background doesn't paint the
+        // corners the render leaves clear.
+        roundClip = roundClip,
       )
     val fonts = fontResolver?.let { resolveFonts(model, it, fileSystem) }
     val svg =
