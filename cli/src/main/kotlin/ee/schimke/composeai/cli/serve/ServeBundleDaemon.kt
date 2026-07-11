@@ -153,6 +153,17 @@ internal object ServeBundleDaemon {
           mapOf(
             "composeai.daemon.userClassDirs" to userClassPath,
             "composeai.daemon.previewsJsonPath" to previewsJson.absolutePath,
+            // Point the daemon's render output at `<destDir>/renders`. This is what makes
+            // `DaemonMain.dataRoot` non-null (`<destDir>/data`), which is the gate that *registers*
+            // the file-based data products — including `compose/figma-svg` (+ `-long`). Without it
+            // `dataRoot` is null, the figma-svg producer still writes its SVG (it has an
+            // independent
+            // fallback dir) but the product is never advertised, so an override-bearing `.svg`
+            // render fails `-32020 kind not advertised` and the SVG lane 404s (ServeRenderHost's
+            // `enableExtensions` gets it back in `unknown`). `RenderEngine.dataDir` resolves to the
+            // SAME `<destDir>/data` (`outputDir.parent/data`), so the registry reads exactly where
+            // the render wrote. Keep the key literal to avoid a `:daemon:desktop` compile dep.
+            "composeai.render.outputDir" to File(destDir, "renders").absolutePath,
           ),
         workingDirectory = destDir.absolutePath,
         manifestPath = previewsJson.absolutePath,

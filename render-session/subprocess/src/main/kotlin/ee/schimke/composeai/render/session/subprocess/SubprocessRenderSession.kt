@@ -119,6 +119,12 @@ object SubprocessRenderSessions : RenderSessionFactory {
           mapOf(
             "composeai.daemon.userClassDirs" to classesDir.absolutePath,
             "composeai.daemon.previewsJsonPath" to previewsJson.absolutePath,
+            // Set the render-output dir so DaemonMain.dataRoot is non-null and the file-based data
+            // products (compose/figma-svg + -long, semantics, wireframe, …) register — otherwise a
+            // data/fetch(compose/figma-svg) on a bundle daemon fails "-32020 kind not advertised".
+            // `<root>/data` (where the registry + the RenderEngine producer both resolve) then sits
+            // inside this session's tree. Mirrors ServeBundleDaemon.materialize.
+            "composeai.render.outputDir" to File(canonicalRoot, "renders").absolutePath,
           ),
         workingDirectory = canonicalRoot.absolutePath,
         manifestPath = previewsJson.absolutePath,
