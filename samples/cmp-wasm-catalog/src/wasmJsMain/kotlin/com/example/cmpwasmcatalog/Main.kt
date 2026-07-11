@@ -7,6 +7,7 @@
 
 package com.example.cmpwasmcatalog
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -19,6 +20,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.platform.Font
 import androidx.compose.ui.window.ComposeViewport
+import com.example.designcatalogm3.shared.LocalWasmCatalogKnobs
 import com.example.designcatalogm3.shared.catalogComponentIds
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -31,12 +33,13 @@ import kotlinx.coroutines.withTimeoutOrNull
 /**
  * Browser entrypoint for the in-browser CMP catalog (Workstream C / model 1).
  *
- * Reads `?id=<component>&uiMode=<light|dark>&fontScale=<f>&localeTag=<bcp47>` from the page URL and
- * mounts the matching catalog component into the `#composeApp` container. This is what the `serve`
- * viewer embeds in a sandboxed `<iframe>` at the `data-mode="live"` seam — the Wasm runs in the
- * browser sandbox, so it's safe to execute even for an unverified session (no code runs on our
- * server). The viewer's theme / font-scale / locale controls re-point these params, so they drive
- * the in-browser render live (device/orientation are server-render-only and stay disabled there).
+ * Reads `?id=<component>&uiMode=<light|dark>&fontScale=<f>&localeTag=<bcp47>` (plus any
+ * author-declared `knob.<key>=<value>` edits) from the page URL and mounts the matching catalog
+ * component into the `#composeApp` container. This is what the `serve` viewer embeds in a sandboxed
+ * `<iframe>` at the `data-mode="live"` seam — the Wasm runs in the browser sandbox, so it's safe to
+ * execute even for an unverified session (no code runs on our server). The viewer's theme /
+ * font-scale / locale controls re-point these params, so they drive the in-browser render live
+ * (device/orientation are server-render-only and stay disabled there).
  *
  * Those controls update the render **in place** rather than reloading the iframe: the page's
  * initial query is the [baseParams] floor and [applyOverrides] (called by the embedding viewer via
@@ -81,19 +84,42 @@ fun main() {
     // this frame's CSS-px coordinates, so that checkerboard continues the page's cells exactly.
     val showBackground = params["background"] !in setOf("off", "false", "none", "transparent")
     val checkerPhase = parsePhase(params["bgPhase"])
-    CatalogApp(
-      id,
-      dark,
-      fontScale,
-      rtl,
-      showBackground,
-      checkerPhase,
-      loaded.family,
-      loaded.generics,
-      ::postFirstFrame,
-    )
+    // Author-declared editable knobs ride as `knob.<key>=<value>` params (the viewer pushes the
+    // changed ones); strip the prefix and provide them to the shared catalog's `catalogOverride*`
+    // lookups. Absent ⇒ empty map ⇒ every knob renders its author default (baked-parity).
+    val knobs = knobOverrides(params)
+    CompositionLocalProvider(LocalWasmCatalogKnobs provides knobs) {
+      CatalogApp(
+        id,
+        dark,
+        fontScale,
+        rtl,
+        showBackground,
+        checkerPhase,
+        loaded.family,
+        loaded.generics,
+        ::postFirstFrame,
+      )
+    }
   }
 }
+
+/**
+ * Project the `knob.<key>=<value>` params out of the merged render params, stripped to the bare
+ * `<key>` (matching the shared runtime's `seedKey` — the base key or `key[index]`). The value stays
+ * a raw string; each typed `catalogOverride*` parses it to its own type.
+ */
+internal fun knobOverrides(params: Map<String, String>): Map<String, String> {
+  val out = mutableMapOf<String, String>()
+  for ((k, v) in params) {
+    if (k.startsWith(KNOB_PREFIX) && k.length > KNOB_PREFIX.length) {
+      out[k.substring(KNOB_PREFIX.length)] = v
+    }
+  }
+  return out
+}
+
+private const val KNOB_PREFIX = "knob."
 
 private const val FONT_LOAD_TIMEOUT_MS = 8_000L
 

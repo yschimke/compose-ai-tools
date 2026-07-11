@@ -327,6 +327,23 @@ a:hover { text-decoration: underline; }
   var token = new URLSearchParams(location.search).get("token") || "";
   // Carry the tenant through follow-up requests so a non-default ?session= stays on its module.
   var session = new URLSearchParams(location.search).get("session") || "";
+  // Hydrate the declared knob controls from the page URL's `knob.<key>` params, so a deep link
+  // (or a copied "Direct links — overrides applied" URL) opens with those values already set.
+  // The initial render then carries them through whichever transport is live — including the
+  // Wasm iframe, whose fragment/patch is built purely from control state — instead of showing
+  // the author default until the control is manually edited. Only the author-declared knobs this
+  // feature drives are hydrated (display axes are unchanged, pre-existing behaviour).
+  (function () {
+    var q = new URLSearchParams(location.search);
+    document.querySelectorAll(".cp-knob").forEach(function (el) {
+      var key = el.getAttribute("data-knob-key");
+      if (!key) return;
+      var v = q.get("knob." + key);
+      if (v === null) return;
+      if (el.type === "checkbox") el.checked = (v === "true" || v === "1");
+      else el.value = v;
+    });
+  })();
   // The selects + text input are opt-in (empty value = "use the preview's default"). The font
   // scale slider has no empty state, so it's gated separately: we only send fontScale once the
   // user moves it (fontScaleTouched), otherwise the slider's standing 1.0 would override a
@@ -703,6 +720,18 @@ a:hover { text-decoration: underline; }
     if (fontScaleTouched && fs) parts.push("fontScale=" + encodeURIComponent(fs.value));
     if (wasmBg && wasmBg.checked) parts.push("background=off");
     parts.push("bgPhase=" + encodeURIComponent(wasmBgPhase()));
+    // Author-declared knobs also apply in the browser: the wasm catalog seeds its
+    // `catalogOverride*` from these `knob.<key>` params. Mirror query() — omit a knob still at
+    // its `data-knob-initial` so an unedited knob reverts to the author default in the app.
+    document.querySelectorAll(".cp-knob").forEach(function (el) {
+      if (el.disabled) return;
+      var key = el.getAttribute("data-knob-key");
+      if (!key) return;
+      var val = (el.type === "checkbox") ? (el.checked ? "true" : "false") : el.value;
+      if (val === "") return;
+      if (val === (el.getAttribute("data-knob-initial") || "")) return;
+      parts.push("knob." + encodeURIComponent(key) + "=" + encodeURIComponent(val));
+    });
     return parts.join("&");
   }
   // Initial iframe URL: the baked base plus the current overrides in the `#…` fragment, so the
@@ -940,10 +969,40 @@ a:hover { text-decoration: underline; }
   Array.prototype.forEach.call(overlayToggles, function (el) {
     el.addEventListener("change", onOverlayChanged);
   });
-  // Author-declared knobs re-render on edit (text/number debounce via "input", toggles "change").
-  // They route differently from the display axes: a named knob (label, a color, …) is honoured
-  // ONLY by the server daemon — the in-browser Wasm tier's `catalogOverride*` returns the author
-  // default — so a knob edit must hit /render (onKnobChanged), never the wasm auto-enable path.
+  // Author-declared **named knobs** (label, count, colour, …) re-render on edit (text/number
+  // debounce via "input", toggles "change"). Unlike the app-theme selector and detected-feature
+  // toggles below, these ARE honoured by the in-browser Wasm tier (its `catalogOverride*` seeds
+  // from the `knob.<key>` patch), so a knob edit drives whichever transport is live: the Wasm
+  // iframe when it's active (or auto-enable it on a static published catalog), the daemon stream
+  // when Live is up, or a `/render` snapshot when the session can re-render.
+  function onKnobEdited() {
+    refreshLinks();
+    if (wasmActive()) {
+      if (wasmReady && wasmFrame.contentWindow) {
+        wasmFrame.contentWindow.postMessage(wasmOverridePatch(), "*");
+      } else {
+        wasmFrame.src = wasmInitialSrc();
+      }
+      return;
+    }
+    if (live.checked && ws && ws.readyState === 1) {
+      ws.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
+    } else if (canRenderOverrides) {
+      refreshSnapshot();
+    } else if (staticSnapshot && wasmToggle) {
+      // A published catalog can't re-render on the server, but its in-browser app can apply the
+      // knob — auto-enable the Wasm tier and let its load carry the edit (wasmInitialSrc bakes
+      // the patch into the fragment), mirroring the display-axis auto-enable in onControlsChanged.
+      setMode("wasm");
+    }
+  }
+  document.querySelectorAll(".cp-knob").forEach(function (el) {
+    el.addEventListener(el.type === "checkbox" ? "change" : "input", onKnobEdited);
+  });
+  // The app-theme selector and detected-feature toggles route ONLY through the server daemon —
+  // an app-declared theme provider is a server-side wrapper, and focus/gesture overlays are
+  // daemon-rendered, neither of which the in-browser tier can produce — so they use a
+  // daemon-only handler and never the wasm path.
   function onKnobChanged() {
     refreshLinks();
     if (live.checked && ws && ws.readyState === 1) {
@@ -952,12 +1011,6 @@ a:hover { text-decoration: underline; }
       refreshSnapshot();
     }
   }
-  document.querySelectorAll(".cp-knob").forEach(function (el) {
-    el.addEventListener(el.type === "checkbox" ? "change" : "input", onKnobChanged);
-  });
-  // The app-theme selector routes through the daemon like a knob (never the wasm auto-enable
-  // path — an app-declared theme provider is a server-side wrapper the in-browser tier can't
-  // load), so it shares onKnobChanged rather than onControlsChanged.
   var themeSel = document.getElementById("cp-themeProvider");
   if (themeSel) themeSel.addEventListener("change", onKnobChanged);
   // Detected-feature toggles (Keyboard focus) re-render on the daemon like a knob — same routing,

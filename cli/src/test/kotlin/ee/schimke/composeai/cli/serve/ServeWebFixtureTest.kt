@@ -910,11 +910,13 @@ class ServeWebFixtureTest {
       catalogKnobs.contains("edit a value to re-render"),
       "the knob note invites editing rather than saying values are baked in",
     )
-    // A knob edit routes to the server /render (the only tier that honours a named override — the
-    // Wasm tier's catalogOverride* returns the author default), never the wasm auto-enable path.
+    // A knob edit has a dedicated handler (onKnobEdited) that drives whichever transport is live —
+    // here the carried daemon via /render (canRenderOverrides). The Wasm tier also honours named
+    // knobs now, so the handler picks the iframe when Wasm is active (see the wasm-only case
+    // below).
     assertTrue(
-      catalogKnobs.contains("function onKnobChanged()"),
-      "knob edits have a dedicated handler that hits /render",
+      catalogKnobs.contains("function onKnobEdited()"),
+      "knob edits have a dedicated, transport-aware handler",
     )
     // During an active Live (stream), the override map sent over the WebSocket must carry the knob
     // values too (as knob.<key> entries), not just the display fields — otherwise the daemon resets
@@ -941,6 +943,60 @@ class ServeWebFixtureTest {
     assertTrue(
       staticKnobs.contains("static bundle, values are baked in"),
       "a plain static bundle keeps the baked-in note",
+    )
+
+    // A published static catalog whose ONLY interactive lane is the in-browser Wasm app (no daemon
+    // re-render: canApplyOverrides/canRenderOverrides both false, wasmSrc present). The wasm tier
+    // now
+    // seeds its `catalogOverride*` from the `knob.<key>` patch, so the declared knob controls
+    // render
+    // ENABLED and a knob edit drives the Wasm iframe — this is the preview.coo.ee case where
+    // `?knob.label=…` did nothing in Wasm mode before.
+    val wasmKnobs =
+      ServeWeb.viewerPage(
+        knobPreview,
+        token,
+        sessionId = "compose-m3",
+        canApplyOverrides = false,
+        canRenderOverrides = false,
+        wasmSrc = "/wasm/compose-m3/?id=button-filled",
+        wasmSameOrigin = true,
+      )
+    assertTrue(
+      wasmKnobs.contains(
+        "data-knob-key=\"label\" data-knob-kind=\"string\" data-knob-initial=\"Filled\" " +
+          "value=\"Filled\">"
+      ),
+      "a wasm-backed published catalog enables the declared knob controls (no trailing disabled)",
+    )
+    assertTrue(
+      wasmKnobs.contains("apply it in the browser (Wasm)"),
+      "the knob note invites in-browser editing when only the Wasm lane is available",
+    )
+    // The `.cp-knob` edit handler drives whichever transport is live — for a wasm-only session it
+    // posts the override patch (with the knob) to the iframe, or auto-enables Wasm from the
+    // snapshot.
+    assertTrue(
+      wasmKnobs.contains("function onKnobEdited()") &&
+        wasmKnobs.contains("wasmFrame.contentWindow.postMessage(wasmOverridePatch()"),
+      "a knob edit routes to the Wasm iframe when that tier is active",
+    )
+    // wasmOverridePatch() carries the changed knob into the iframe fragment / postMessage,
+    // alongside
+    // the display axes — without this the app never sees the edit.
+    assertTrue(
+      wasmKnobs.contains("function wasmOverridePatch()") &&
+        wasmKnobs.contains("parts.push(\"knob.\" + encodeURIComponent(key)"),
+      "the wasm override patch includes the author-declared knob values",
+    )
+    // Deep-link parity: the knob controls hydrate from the page URL's `knob.<key>` params on load,
+    // so opening `/p/…?knob.label=Hello` (or a copied direct link) renders the override immediately
+    // in every transport — including the Wasm iframe, whose patch is built purely from control
+    // state
+    // — rather than the author default until the user edits the control.
+    assertTrue(
+      wasmKnobs.contains("q.get(\"knob.\" + key)"),
+      "the viewer hydrates declared knob controls from the URL's knob.<key> params",
     )
 
     // Copyable direct links: every viewer offers a PNG URL row (copy + download); a session that
