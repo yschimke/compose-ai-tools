@@ -1,0 +1,102 @@
+package ee.schimke.composeai.cli.serve
+
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
+import javax.imageio.ImageIO
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+/** Unit coverage for the pure Storybook-compat id / index / iframe logic ([StorybookCompat]). */
+class StorybookCompatTest {
+
+  private fun preview(id: String, label: String) = ServePreview(id = id, label = label)
+
+  private fun pngBytes(w: Int, h: Int): ByteArray =
+    ByteArrayOutputStream()
+      .also { ImageIO.write(BufferedImage(w, h, BufferedImage.TYPE_INT_RGB), "png", it) }
+      .toByteArray()
+
+  @Test
+  fun `sanitize follows the CSF kebab convention`() {
+    assertEquals("red-box", StorybookCompat.sanitize("Red Box"))
+    assertEquals("previews", StorybookCompat.sanitize("  Previews  "))
+    assertEquals("a-b-c", StorybookCompat.sanitize("a.b/c"))
+    assertEquals("", StorybookCompat.sanitize("---"))
+  }
+
+  @Test
+  fun `toId joins title and name with a double dash`() {
+    assertEquals("previews--red-box", StorybookCompat.toId("Previews", "Red Box"))
+    // A blank side is dropped rather than leaving a dangling separator.
+    assertEquals("greeting", StorybookCompat.toId("", "Greeting"))
+    assertEquals("previews", StorybookCompat.toId("Previews", "!!!"))
+  }
+
+  @Test
+  fun `story ids derive class-grouped titles from an FQN`() {
+    val stories =
+      StorybookCompat.stories(
+        listOf(
+          preview("com.example.PreviewsKt.RedBoxPreview_Red Box", "Red Box"),
+          preview("com.example.MainKt.GreetingPreview", "Greeting"),
+        )
+      )
+    assertEquals(listOf("previews--red-box", "main--greeting"), stories.map { it.storyId })
+    assertEquals("Previews", stories[0].title)
+    assertEquals("Red Box", stories[0].name)
+    // Round-trips back to the native preview id.
+    assertEquals("com.example.PreviewsKt.RedBoxPreview_Red Box", stories[0].previewId)
+  }
+
+  @Test
+  fun `catalog axis ids group by the component slug`() {
+    val stories =
+      StorybookCompat.stories(
+        listOf(preview("button__dark", "Button"), preview("button__light", "Button"))
+      )
+    assertEquals("button", stories[0].title)
+    // Two previews minting the same slug get a deterministic collision suffix, staying 1:1.
+    assertNotEquals(stories[0].storyId, stories[1].storyId)
+    assertEquals("button--button", stories[0].storyId)
+    assertEquals("button--button-2", stories[1].storyId)
+  }
+
+  @Test
+  fun `index carries the version and one entry per preview`() {
+    val index =
+      StorybookCompat.index(listOf(preview("com.example.MainKt.GreetingPreview", "Greeting")))
+    assertEquals(StorybookCompat.INDEX_VERSION, index.v)
+    val entry = index.entries.getValue("main--greeting")
+    assertEquals("main--greeting", entry.id)
+    assertEquals("story", entry.type)
+    assertEquals("virtual:compose-preview/com.example.MainKt.GreetingPreview", entry.importPath)
+    assertTrue(entry.tags.contains("compose-preview"))
+  }
+
+  @Test
+  fun `resolvePreviewId accepts both the minted story id and a raw native id`() {
+    val previews = listOf(preview("com.example.MainKt.GreetingPreview", "Greeting"))
+    assertEquals(
+      "com.example.MainKt.GreetingPreview",
+      StorybookCompat.resolvePreviewId("main--greeting", previews),
+    )
+    // Native id escape hatch.
+    assertEquals(
+      "com.example.MainKt.GreetingPreview",
+      StorybookCompat.resolvePreviewId("com.example.MainKt.GreetingPreview", previews),
+    )
+    assertNull(StorybookCompat.resolvePreviewId("no--such", previews))
+  }
+
+  @Test
+  fun `iframe page embeds the png as a data uri sized to its pixels`() {
+    val page = StorybookCompat.iframePage("main--greeting", pngBytes(24, 8))
+    assertTrue(page.startsWith("<!doctype html>"), "is an html document")
+    assertTrue(page.contains("src=\"data:image/png;base64,"), "inlines the png: $page")
+    assertTrue(page.contains("width=\"24\" height=\"8\""), "sizes to the png dimensions: $page")
+    assertTrue(page.contains("main--greeting"), "labels with the story id")
+  }
+}
