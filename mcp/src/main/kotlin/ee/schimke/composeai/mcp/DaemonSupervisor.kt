@@ -593,30 +593,42 @@ fun interface DescriptorProvider {
      * and let the user (or VS Code) drive the bootstrap.
      */
     fun readingFromDisk(fileSystem: FileSystem = SystemFileSystem): DescriptorProvider {
-      // Per-project-root index of modulePath -> descriptor file, built lazily on the first miss of
-      // the layout fast-path below and cached so the scan runs at most once per project root.
+      // Per-project-root index of modulePath -> descriptor file, populated on the first miss of the
+      // layout fast-path below. Only *positive* results are cached: a lookup for a module absent
+      // from the cached index rescans (a descriptor may have been written since — exactly what the
+      // "run composePreviewDaemonStart first" error tells the user to do), so a long-lived server
+      // picks up a newly-generated descriptor without a restart. The fast path spares normal
+      // layouts the scan entirely, so the rescan-on-miss cost only lands on the error path.
       val scannedIndexByRoot = ConcurrentHashMap<String, Map<String, File>>()
       return DescriptorProvider { project, modulePath ->
         // Fast path: the Gradle path mirrors the directory layout (`:a:b` → <root>/a/b).
         val guessed =
-          File(gradlePathToFile(project.path, modulePath), "build/compose-previews/daemon-launch.json")
+          File(
+            gradlePathToFile(project.path, modulePath),
+            "build/compose-previews/daemon-launch.json",
+          )
         val descriptorFile =
           if (guessed.isFile) {
             guessed
           } else {
             // Fallback: a project can remap projectDir in settings.gradle.kts (e.g. `:featureTasks`
             // → shared/features/tasks), so the Gradle path is not the on-disk layout. Locate the
-            // descriptor by the modulePath recorded inside each daemon-launch.json.
-            val index =
-              scannedIndexByRoot.getOrPut(project.path.absolutePath) {
-                indexDescriptorsByModulePath(project.path, fileSystem)
+            // descriptor by the modulePath recorded inside each daemon-launch.json. Reuse the
+            // cached
+            // index only if it already resolves this module; otherwise rebuild it (a descriptor may
+            // have appeared) and cache the fresh scan before giving up.
+            val root = project.path.absolutePath
+            scannedIndexByRoot[root]?.get(modulePath)
+              ?: run {
+                val rescanned = indexDescriptorsByModulePath(project.path, fileSystem)
+                scannedIndexByRoot[root] = rescanned
+                rescanned[modulePath]
+                  ?: error(
+                    "Missing daemon launch descriptor for $modulePath under " +
+                      "${project.path.absolutePath}. " +
+                      "Run `./gradlew $modulePath:composePreviewDaemonStart` first."
+                  )
               }
-            index[modulePath]
-              ?: error(
-                "Missing daemon launch descriptor for $modulePath under " +
-                  "${project.path.absolutePath}. " +
-                  "Run `./gradlew $modulePath:composePreviewDaemonStart` first.",
-              )
           }
         DaemonLaunchDescriptor.parse(fileSystem.read(descriptorFile.path.toPath()) { readUtf8() })
       }
@@ -657,8 +669,10 @@ fun interface DescriptorProvider {
         .forEach { file ->
           val recorded =
             runCatching {
-              DaemonLaunchDescriptor.parse(fileSystem.read(file.path.toPath()) { readUtf8() }).modulePath
-            }.getOrNull()
+                DaemonLaunchDescriptor.parse(fileSystem.read(file.path.toPath()) { readUtf8() })
+                  .modulePath
+              }
+              .getOrNull()
           if (recorded != null) index.putIfAbsent(recorded, file)
         }
       return index
