@@ -52,7 +52,11 @@ object LayoutInspectorProduct {
   // v3 (#1908 follow-up): `tokens` may carry `cornerRadiusPx` (raw-pixel
   // `RoundedCornerShape(<px>f)`
   // corners the dp-only `cornerRadius` dropped). Additive — older entries parse with it null.
-  const val SCHEMA_VERSION: Int = 3
+  // v4: each node may carry `curvedTexts` — Wear `CurvedLayout`/`TimeText` runs laid out along an
+  // arc (string + baseline circle + font), captured from the `CurvedTextChild` runtime state a
+  // LayoutNode walk can't see, so the figma-svg export reproduces the clock as an SVG `<textPath>`
+  // instead of dropping it. Additive — older entries parse with an empty list.
+  const val SCHEMA_VERSION: Int = 4
   const val FILE: String = "layout-inspector.json"
 }
 
@@ -84,6 +88,30 @@ object ComposeFigmaSvgProduct {
   const val SCHEMA_VERSION: Int = 1
   const val FILE_SVG: String = "compose-figma.svg"
   const val MEDIA_TYPE_SVG: String = "image/svg+xml"
+
+  /**
+   * `compose/figma-svg-long` — the **full-page** variant of [KIND] for a *scrolling* preview. A
+   * `LazyColumn`/`LazyRow` is virtualised, so the normal viewport-sized [KIND] export captures only
+   * the on-screen rows. The long export renders the preview at an expanded viewport (grown until
+   * the measured content geometry stops increasing, so every item composes) sized to the content,
+   * so the layered SVG carries the whole scrollable screen — a pinned top bar, every row, and a
+   * pinned bottom bar — as one editable tree. Distinct file + kind so it never overwrites the
+   * viewport-sized [FILE_SVG]. `requiresRerender = true`: a `data/fetch` re-renders in
+   * [RENDER_MODE_LONG]. See [docs/design/SCROLLING_SVG.md].
+   */
+  const val KIND_LONG: String = "compose/figma-svg-long"
+  const val FILE_SVG_LONG: String = "compose-figma-long.svg"
+  const val RENDER_MODE_LONG: String = "figma-svg-long"
+
+  /**
+   * Subdirectory (under the preview's output dir) the long export lives in — the SVG plus its own
+   * `figma-raster/` crops. Isolated from the viewport export because a **hybrid** export references
+   * per-node `figma-raster/<node>.png` crops and Compose reassigns node ids per render, so writing
+   * the tall render's crops next to the viewport render's would collide (a `figma-raster/5.png`
+   * from one render overwriting the other's). Its own subdir keeps each export's crops
+   * self-consistent.
+   */
+  const val LONG_SUBDIR: String = "figma-long"
 
   /**
    * Directory (relative to the preview's output dir) holding the per-node `<node>.png` crops a
@@ -347,7 +375,34 @@ data class LayoutInspectorNode(
    * consumer. Null for the common case of a node that declares none of them (pure layout nodes).
    */
   val tokens: ComposeSemanticsTokens? = null,
+  /**
+   * Curved text drawn by a Wear `CurvedLayout` / `TimeText` — laid out along an arc, so it can't be
+   * a normal straight `<text>`. Captured from the `CurvedTextChild`/`CurvedLayoutInfo` runtime
+   * state (which a plain layout-node walk can't see) and rendered as an SVG `<textPath>` on the
+   * baseline arc. Empty for the common case.
+   */
+  val curvedTexts: List<LayoutInspectorCurvedText> = emptyList(),
   val children: List<LayoutInspectorNode> = emptyList(),
+)
+
+/**
+ * One run of Wear curved text along a circular baseline, in root-pixel space. The baseline circle
+ * is centred at ([centerXPx], [centerYPx]) with radius [radiusPx]; the run spans [sweepRadians]
+ * from [startAngleRadians] (screen convention: angle measured clockwise from +x, so `1.5π` = top).
+ * Text reads [clockwise] along the arc at [fontSizePx].
+ */
+@Serializable
+data class LayoutInspectorCurvedText(
+  val text: String,
+  val centerXPx: Double,
+  val centerYPx: Double,
+  val radiusPx: Double,
+  val startAngleRadians: Double,
+  val sweepRadians: Double,
+  val clockwise: Boolean,
+  val fontSizePx: Double,
+  val fontWeight: Int? = null,
+  val colorArgb: String? = null,
 )
 
 @Serializable

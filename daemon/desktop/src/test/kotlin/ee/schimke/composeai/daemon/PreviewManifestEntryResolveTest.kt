@@ -22,7 +22,7 @@ class PreviewManifestEntryResolveTest {
   private val json = Json { ignoreUnknownKeys = true }
 
   @Test
-  fun `flat schema — harness shape — reads top-level fields`() {
+  fun `flat schema - harness shape - reads top-level fields`() {
     val raw =
       """{"id":"red-square","className":"X","functionName":"R","widthPx":64,""" +
         """"heightPx":64,"density":1.0,"showBackground":true,"device":"id:wearos_small_round"}"""
@@ -37,7 +37,7 @@ class PreviewManifestEntryResolveTest {
   }
 
   @Test
-  fun `no explicit size — wraps content at the sandbox bound (AS-parity natural size)`() {
+  fun `no explicit size - wraps content at the sandbox bound (AS-parity natural size)`() {
     // A preview that declares no widthDp/heightDp/device renders wrap-content: the resolved size is
     // the 400x800dp sandbox bound and the wrap flags are set, so the capture (figma-svg / wireframe
     // /
@@ -56,7 +56,7 @@ class PreviewManifestEntryResolveTest {
   }
 
   @Test
-  fun `explicit size or device pins the frame — no wrap`() {
+  fun `explicit size or device pins the frame - no wrap`() {
     val sized =
       json.decodeFromString(
         PreviewManifestEntry.serializer(),
@@ -77,7 +77,7 @@ class PreviewManifestEntryResolveTest {
   }
 
   @Test
-  fun `nested schema — plugin shape — reads params block`() {
+  fun `nested schema - plugin shape - reads params block`() {
     // Mirrors what `DiscoverPreviewsTask` writes for a Wear preview annotated with
     // `@Preview(device = "id:wearos_small_round")` — production manifest the daemon was silently
     // dropping pre-fix. `widthDp` × `density` is the per-render sandbox size; the resolver does
@@ -112,7 +112,7 @@ class PreviewManifestEntryResolveTest {
   }
 
   @Test
-  fun `bare entry falls back to defaults — never crashes the routing path`() {
+  fun `bare entry falls back to defaults - never crashes the routing path`() {
     val raw = """{"id":"bare","className":"X","functionName":"R"}"""
     val entry = json.decodeFromString(PreviewManifestEntry.serializer(), raw)
     val resolved = entry.resolved()

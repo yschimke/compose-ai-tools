@@ -54,7 +54,13 @@ import ee.schimke.composeai.renderer.uiautomator.UiAutomatorHierarchyExtension
 import java.io.File
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
+import ee.schimke.composeai.io.SystemFileSystem
 import okio.ByteString.Companion.decodeBase64
+import okio.Path.Companion.toPath
 
 /**
  * Robolectric/Compose render body for the preview daemon — the per-preview inner loop that turns a
@@ -194,6 +200,13 @@ class RenderEngine(
     // gradle plugin's `dataProducts[].scroll` field.
     if (spec.renderMode == SCROLL_LONG_RENDER_MODE || spec.renderMode == SCROLL_GIF_RENDER_MODE) {
       return runScrollScenario(spec = spec, requestId = requestId, classLoader = classLoader)
+    }
+    // Full-page figma-svg for a scrolling preview (`compose/figma-svg-long`). Renders at an expanded
+    // viewport so a virtualised LazyColumn composes every item, then emits the layered SVG over the
+    // whole content instead of just the on-screen rows. SVG-only — the PNG scroll story stays LONG /
+    // GIF above. Mirrors `:daemon:desktop`. See docs/design/SCROLLING_SVG.md.
+    if (spec.renderMode == FIGMA_SVG_LONG_RENDER_MODE) {
+      return runScrollSvgScenario(spec = spec, requestId = requestId, classLoader = classLoader)
     }
     val effectiveRunAccessibility = runAccessibility ?: (spec.renderMode == A11Y_RENDER_MODE)
     // Roborazzi defaults to "compare" mode — `captureRoboImage` reads the existing baseline at
@@ -982,6 +995,249 @@ class RenderEngine(
   }
 
   /**
+   * `figma-svg-long` dispatch (Android) — the **full-page** layered SVG of a scrolling preview
+   * (`compose/figma-svg-long`), mirroring `:daemon:desktop`'s `runScrollSvgScenario`. A virtualised
+   * `LazyColumn` composes only its on-screen rows, so this grows the viewport until the measured
+   * content geometry stops increasing (every item composed), then re-renders once at the settled
+   * height so the ordinary figma-svg post-capture extension emits the whole screen — pinned top bar,
+   * every row, pinned bottom bar — as one editable tree. SVG-only; the PNG scroll story stays LONG /
+   * GIF. See docs/design/SCROLLING_SVG.md.
+   *
+   * Android has no `setUp/renderOnce/tearDown` split (one monolithic `render()` under a single
+   * `createAndroidComposeRule`, which forbids a second `setContent`), so the growth loop builds a
+   * **fresh rule per probe** ([measureScrollAtHeight]) and the final export re-enters [render] with a
+   * null render mode + an **isolated** output base — so the tall render's `compose/semantics` /
+   * wireframe / PNG never overwrite the preview's normal-size products. Only the layered SVG (plus
+   * its hybrid `figma-raster/` crops) is copied out to `<dataDir>/<previewId>/figma-long/`, the path
+   * [ComposeFigmaSvgLongDataProductRegistry] reads back. A non-scrolling preview yields its viewport
+   * SVG (nothing to grow). Sizing is by measured **geometry** (deepest composed descendant of the
+   * scroll node), not the coarse LazyList scroll-range estimate.
+   */
+  private fun runScrollSvgScenario(
+    spec: RenderSpec,
+    requestId: Long,
+    classLoader: ClassLoader,
+  ): RenderResult {
+    val previewId =
+      spec.previewId
+        ?: error(
+          "RenderEngine: render mode '${spec.renderMode}' requires a previewId on the RenderSpec"
+        )
+    val scenarioDataDir =
+      dataDir
+        ?: error(
+          "RenderEngine: render mode '${spec.renderMode}' needs a non-null dataDir to write " +
+            "<dataDir>/<previewId>/figma-long/compose-figma-long.svg"
+        )
+    val startNs = System.nanoTime()
+
+    val baseHeight = spec.heightPx
+    val maxHeight = baseHeight + SCROLL_SVG_MAX_EXTRA_PX
+    var probeHeight = baseHeight.coerceAtMost(maxHeight)
+    var sizedHeight = baseHeight
+    var prevContentBottom = -1
+    var iterations = 0
+    while (iterations < SCROLL_SVG_MAX_GROW_ITERATIONS) {
+      iterations++
+      val measure = measureScrollAtHeight(spec, probeHeight, classLoader)
+      // Not a scrolling preview: nothing to grow, the viewport SVG is the full page.
+      if (measure == null) {
+        sizedHeight = baseHeight
+        break
+      }
+      // The chrome pinned below the list (e.g. a Scaffold bottom bar) — the gap between the scroll
+      // container's bottom and the frame bottom. Sizing the frame to `content + this` tucks that bar
+      // directly under the last row.
+      val bottomChrome = (probeHeight - measure.scrollNodeBottom).coerceAtLeast(0)
+      sizedHeight =
+        (measure.contentBottom + bottomChrome + SCROLL_SVG_CONTENT_MARGIN_PX).coerceIn(
+          baseHeight,
+          maxHeight,
+        )
+      // Fully composed once growing the viewport reveals no further content.
+      if (measure.contentBottom <= prevContentBottom) break
+      prevContentBottom = measure.contentBottom
+      if (probeHeight >= maxHeight) break
+      // Grow with a whole base viewport of headroom so the next batch of items composes.
+      probeHeight = (measure.contentBottom + bottomChrome + baseHeight).coerceAtMost(maxHeight)
+    }
+
+    // Final render at the settled height into an isolated base, re-entering render() so the whole
+    // post-capture pipeline (incl. ComposeFigmaSvgExtension) runs. `previewId = null` makes the
+    // export key the figma-svg dir off the (isolated) outputBaseName.
+    val tmpBase = "$previewId$SCROLL_SVG_TMP_SUFFIX"
+    render(
+      spec =
+        spec.copy(
+          renderMode = null,
+          heightPx = sizedHeight,
+          previewId = null,
+          outputBaseName = tmpBase,
+        ),
+      requestId = requestId,
+      classLoader = classLoader,
+    )
+
+    val tmpDir = scenarioDataDir.resolve(tmpBase)
+    val producedSvg = tmpDir.resolve(ComposeFigmaSvgProduct.FILE_SVG)
+    if (!producedSvg.exists()) {
+      error(
+        "RenderEngine: render mode '${spec.renderMode}' produced no layered SVG for previewId " +
+          "'$previewId' (no layout tree captured?)"
+      )
+    }
+    // The long export lives in its own subdir (SVG + its own figma-raster/ crops). A hybrid export
+    // references per-node `figma-raster/<node>.png` crops, and Compose reassigns node ids per
+    // render, so writing the tall render's crops next to the viewport export's would collide; the
+    // dedicated subdir keeps each export's crops self-consistent, and the served SVG inlines them
+    // relative to its own dir.
+    val longDir =
+      scenarioDataDir.resolve(previewId).resolve(ComposeFigmaSvgProduct.LONG_SUBDIR).also {
+        it.mkdirs()
+      }
+    val destSvg = longDir.resolve(ComposeFigmaSvgProduct.FILE_SVG_LONG)
+    val svgBytes = SystemFileSystem.read(producedSvg.path.toPath()) { readByteArray() }
+    SystemFileSystem.write(destSvg.path.toPath()) { write(svgBytes) }
+    // Carry the hybrid raster crops the SVG's `<image>` layers reference (Image/Icon/Canvas/… on a
+    // scrolling screen) so those layers resolve instead of dangling.
+    val tmpRasterDir = tmpDir.resolve(ComposeFigmaSvgProduct.RASTER_DIR)
+    if (tmpRasterDir.isDirectory) {
+      val destRasterDir =
+        longDir.resolve(ComposeFigmaSvgProduct.RASTER_DIR).also { it.mkdirs() }
+      tmpRasterDir.listFiles()?.forEach { crop ->
+        val bytes = SystemFileSystem.read(crop.path.toPath()) { readByteArray() }
+        SystemFileSystem.write(destRasterDir.resolve(crop.name).path.toPath()) { write(bytes) }
+      }
+    }
+    // Best-effort cleanup of the throwaway render dir + its PNG.
+    runCatching { tmpDir.deleteRecursively() }
+    runCatching { File(outputDir, "$tmpBase.png").delete() }
+
+    val tookMs = (System.nanoTime() - startNs) / 1_000_000L
+    return RenderResult(
+      id = requestId,
+      classLoaderHashCode = System.identityHashCode(classLoader),
+      classLoaderName = classLoader.javaClass.name,
+      pngPath = destSvg.absolutePath,
+      metrics = mapOf("tookMs" to tookMs),
+    )
+  }
+
+  /** Geometry of the main vertical scroll container in a rendered scene (root-pixel space). */
+  private data class ScrollMeasure(
+    /** The scroll container's own bottom edge — where any pinned bottom chrome begins. */
+    val scrollNodeBottom: Int,
+    /** The deepest composed descendant's bottom — how far the list content actually reaches. */
+    val contentBottom: Int,
+  )
+
+  /**
+   * Composes [spec] at [probeHeightPx] in a fresh `createAndroidComposeRule` and measures the
+   * vertical scroll geometry, or null when nothing is vertically scrollable. A lightweight probe
+   * (no capture, no post-capture extensions) used by [runScrollSvgScenario]'s growth loop; a fresh
+   * rule per call because the Compose test rule forbids a second `setContent` on one activity.
+   */
+  @OptIn(ExperimentalRoborazziApi::class)
+  private fun measureScrollAtHeight(
+    spec: RenderSpec,
+    probeHeightPx: Int,
+    classLoader: ClassLoader,
+  ): ScrollMeasure? {
+    val isRound = isRoundDevice(spec.device)
+    applyPreviewQualifiers(
+      widthDp = pxToDp(spec.widthPx, spec.density),
+      heightDp = pxToDp(probeHeightPx, spec.density),
+      density = spec.density,
+      isRound = isRound,
+      localeTag = spec.localeTag,
+      uiMode = spec.uiMode,
+      orientation = spec.orientation,
+    )
+    org.robolectric.RuntimeEnvironment.setFontScale(spec.fontScale ?: 1.0f)
+
+    val appContext: android.app.Application =
+      androidx.test.core.app.ApplicationProvider.getApplicationContext()
+    org.robolectric.Shadows.shadowOf(appContext.packageManager)
+      .addActivityIfNotPresent(
+        android.content.ComponentName(appContext.packageName, ComponentActivity::class.java.name)
+      )
+
+    @Suppress("DEPRECATION") val rule = createAndroidComposeRule<ComponentActivity>()
+    val description =
+      org.junit.runner.Description.createTestDescription(
+        RenderEngine::class.java,
+        "figmasvglong_probe_${spec.outputBaseName}",
+      )
+    var measure: ScrollMeasure? = null
+    val statement =
+      object : org.junit.runners.model.Statement() {
+        override fun evaluate() {
+          rule.mainClock.autoAdvance = false
+          val clazz = Class.forName(spec.className, true, classLoader)
+          val composableMethod = clazz.getDeclaredComposableMethod(spec.functionName)
+          val bgArgb = resolveBackgroundColor(spec).toArgb()
+          rule.setContent {
+            CompositionLocalProvider(
+              LocalInspectionMode provides false,
+              ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
+                spec.clearBackground,
+            ) {
+              Box(modifier = Modifier.fillMaxSize().background(Color(bgArgb))) {
+                InvokeComposable(composableMethod)
+              }
+            }
+          }
+          rule.mainClock.advanceTimeBy(spec.captureAdvanceMs ?: CAPTURE_ADVANCE_MS)
+          val root =
+            runCatching { rule.onRoot(useUnmergedTree = true).fetchSemanticsNode() }.getOrNull()
+          if (root != null) measure = measureVerticalScroll(root)
+        }
+      }
+    rule.apply(statement, description).evaluate()
+    return measure
+  }
+
+  /**
+   * The tallest vertically-scrollable node under [root] and how far its composed content reaches
+   * (root-pixel space), or null when nothing is vertically scrollable. Mirrors `:daemon:desktop`'s
+   * `measureVerticalScroll`: pick the scroll node by largest height, then take the deepest composed
+   * descendant's bottom as the content extent.
+   */
+  private fun measureVerticalScroll(root: SemanticsNode): ScrollMeasure? {
+    // Pick the tallest node carrying a VerticalScrollAxisRange — the screen's main scroll container
+    // (a nested inner scroller would be shorter).
+    var scroll: SemanticsNode? = null
+    var tallest = -1f
+    fun findScroll(node: SemanticsNode) {
+      if (node.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange) != null) {
+        val h = node.boundsInRoot.height
+        if (h > tallest) {
+          tallest = h
+          scroll = node
+        }
+      }
+      node.children.forEach(::findScroll)
+    }
+    findScroll(root)
+    val scrollNode = scroll ?: return null
+    // Deepest composed *descendant* bottom = the real content extent (grows as more items compose).
+    // Seed with the scroll node's TOP, not its bottom: the scroll container itself fills its viewport
+    // (a `fillMaxSize` LazyColumn), so seeding with its bottom would track the viewport and the
+    // growth loop would never converge.
+    var maxBottom = scrollNode.boundsInRoot.top
+    fun deepest(node: SemanticsNode) {
+      val b = node.boundsInRoot.bottom
+      if (b.isFinite() && b > maxBottom) maxBottom = b
+      node.children.forEach(::deepest)
+    }
+    scrollNode.children.forEach(::deepest)
+    return ScrollMeasure(
+      scrollNodeBottom = scrollNode.boundsInRoot.bottom.toInt(),
+      contentBottom = maxBottom.toInt(),
+    )
+  }
+
+  /**
    * Lazily reads the daemon's `previews.json` via [PreviewIndex.loadFromFile] using the
    * `composeai.daemon.previewsJsonPath` system property the gradle plugin populates. Falls back to
    * [PreviewIndex.empty] when the property is unset (harness / fake-mode tests) — callers that need
@@ -1128,6 +1384,28 @@ class RenderEngine(
     const val SCROLL_LONG_RENDER_MODE: String = "scroll-long"
 
     const val SCROLL_GIF_RENDER_MODE: String = "scroll-gif"
+
+    /**
+     * Render mode requesting the **full-page** figma-svg export of a scrolling preview
+     * (`compose/figma-svg-long`). `ComposeFigmaSvgLongDataProductRegistry` advertises the kind as
+     * `requiresRerender = true`, so a missing artefact returns
+     * `Outcome.RequiresRerender("figma-svg-long")` and the dispatcher submits a render with this
+     * mode; [render] routes it into [runScrollSvgScenario]. Value matches `:daemon:desktop`'s
+     * constant so a single payload drives either backend.
+     */
+    const val FIGMA_SVG_LONG_RENDER_MODE: String = "figma-svg-long"
+
+    /** Max px the `figma-svg-long` growth loop will add on top of the base viewport. */
+    private const val SCROLL_SVG_MAX_EXTRA_PX: Int = 40_000
+
+    /** Max grow iterations before giving up (content whose height keeps shifting as it reflows). */
+    private const val SCROLL_SVG_MAX_GROW_ITERATIONS: Int = 10
+
+    /** A few px of slack added to the sized height so the last row's own bottom edge isn't clipped. */
+    private const val SCROLL_SVG_CONTENT_MARGIN_PX: Int = 40
+
+    /** Output-base suffix isolating the tall render so it can't clobber the preview's products. */
+    private const val SCROLL_SVG_TMP_SUFFIX: String = "__figma_svg_long"
 
     /**
      * `RenderSpec.kind` value flagging a tile preview (non-composable function returning

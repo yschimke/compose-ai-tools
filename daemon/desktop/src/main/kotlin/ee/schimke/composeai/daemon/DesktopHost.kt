@@ -752,6 +752,22 @@ open class DesktopHost(
       inspectionMode = map["inspectionMode"]?.toBooleanStrictOrNull() ?: base.inspectionMode,
       slotMode = map["slotMode"]?.toBooleanStrictOrNull() ?: base.slotMode,
       clearBackground = map["clearBackground"]?.toBoolean() ?: base.clearBackground,
+      // The extension-driven override bag (`namedOverrides` / `themeProvider` / `wallpaper` /
+      // `permissions` / `gestures` / `lottie`) rides the `overrides=<base64>` token that
+      // `JsonRpcServer.encodeRenderPayload` emits. The className-based `parseFromPayload` decodes
+      // it;
+      // this previewId-based path — the one the bundle-backed live daemon (`serve` /
+      // preview.coo.ee)
+      // takes for a renderNow — must too, or a `?knob.<key>=…` edit is silently dropped while the
+      // display axes above (fontScale / uiMode / density / …) still apply. The decoded per-call bag
+      // is a sparse overlay — it carries only the knob the caller edited — so layer it *over*
+      // `base.overrides` (per-key for `namedOverrides`) rather than replacing wholesale, or a
+      // one-knob edit would drop any theme / wallpaper / other seeds the resolved base spec already
+      // declares. Today's serve resolver leaves `base.overrides` null, but interactive / recording
+      // resolvers don't, and this keeps the seam correct for them.
+      overrides =
+        map["overrides"]?.let { RenderSpec.decodeOverridesToken(it) }?.layeredOver(base.overrides)
+          ?: base.overrides,
     )
   }
 

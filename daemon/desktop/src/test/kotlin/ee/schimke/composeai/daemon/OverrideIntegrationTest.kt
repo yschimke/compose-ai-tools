@@ -563,6 +563,62 @@ class OverrideIntegrationTest {
   }
 
   /**
+   * **Regression guard for the `serve` / preview.coo.ee named-override drop.** The bundle-backed
+   * live daemon renders via a `previewId=<id>` payload (`JsonRpcServer.encodeRenderPayload`), which
+   * [DesktopHost.dispatchRender] routes through [DesktopHost.specFromPreviewIdPayload] — NOT the
+   * `className=`-based [RenderSpec.parseFromPayload] that every other test here exercises via
+   * [PreviewManifestRouter] (the router rewrites `previewId` → `className=…`). That previewId path
+   * rebuilt the spec with `base.copy(...)` and **dropped the `overrides=<b64>` extension bag**, so
+   * a `?knob.<key>=…` edit silently no-op'd on the deployed server while display axes (fontScale /
+   * uiMode / …) still applied — the exact deployed bug. Drive [DesktopHost] directly with a bare
+   * previewId payload carrying a seeded `fill` knob and assert the fill actually repaints; before
+   * the fix the bag never reached the render and it stayed author-default red.
+   */
+  @Test
+  fun namedOverrideAppliesOnPreviewIdPayloadPath() {
+    val outputDir = tempFolder.newFolder("renders-previewid-override")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val baseSpec =
+      RenderSpec(
+        previewId = "overridable",
+        className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+        functionName = "OverridableSquare",
+        widthPx = 32,
+        heightPx = 32,
+        density = 1.0f,
+      )
+    // A real DesktopHost (not the PreviewManifestRouter subclass), so a `previewId=…` payload with
+    // NO `className=` takes the specFromPreviewIdPayload branch — the serve/bundle-daemon path.
+    val host =
+      DesktopHost(
+        engine =
+          RenderEngine(
+            previewOverrideExtensions =
+              PreviewOverrideExtensions(listOf(PreviewOverridesPreviewOverrideExtension()))
+          ),
+        previewSpecResolver = { id -> baseSpec.takeIf { id == "overridable" } },
+      )
+    host.start()
+    try {
+      val request =
+        RenderRequest.Render(
+          payload = "previewId=overridable;overrides=${encodeNamedBag("fill", "#FF42A5F5")}"
+        )
+      val result = host.submit(request, timeoutMs = 30_000)
+      assertNotNull("pngPath must be populated", result.pngPath)
+      val png = ByteArrayInputStream(File(result.pngPath!!).readBytes()).use { ImageIO.read(it) }
+      val bluePct = pixelMatchPct(png, expectedRgb = 0x42A5F5, perChannelTolerance = 8)
+      assertTrue(
+        "a named override on the previewId payload path must repaint blue; got " +
+          "${"%.2f".format(bluePct * 100)}% — the serve knob-drop is back",
+        bluePct >= 0.95,
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  /**
    * End-to-end proof that a `themeProvider` override wraps an arbitrary preview in an app-declared
    * `@ThemeCatalog` theme (the render side of the serve viewer's declared-theme selector). Renders
    * [WallpaperAwareSquare] — which paints the *ambient* `MaterialTheme.colorScheme.primary` with no

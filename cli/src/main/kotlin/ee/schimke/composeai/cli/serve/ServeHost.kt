@@ -106,6 +106,17 @@ interface ServeHost : AutoCloseable {
   fun renderSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome = SvgOutcome.NotFound
 
   /**
+   * Render [previewId]'s **full-page** figma-svg export (`compose/figma-svg-long`) at [overrides] —
+   * the whole scrollable screen as one editable SVG (a virtualised `LazyColumn` rendered at an
+   * expanded viewport so every row composes), or [SvgOutcome.NotFound] when this host can't produce
+   * it. Defaults to `NotFound`: only the daemon-backed [ServeRenderHost] overrides it (the tall
+   * re-render needs a daemon; a static bundle has none). A non-scrolling preview yields its
+   * ordinary viewport SVG. See [docs/design/SCROLLING_SVG.md].
+   */
+  fun renderScrollSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome =
+    SvgOutcome.NotFound
+
+  /**
    * Render [previewId] at [overrides] and return its declared preview slots as JSON, or
    * [SlotsOutcome.NotFound] when this host can't extract them. Defaults to `NotFound`: only the
    * daemon-backed [ServeRenderHost] overrides this — a static [ServeBundleHost] has no daemon to

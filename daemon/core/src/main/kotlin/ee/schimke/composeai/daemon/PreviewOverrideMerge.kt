@@ -140,6 +140,64 @@ private fun isPseudolocaleTag(tag: String?): Boolean {
 }
 
 /**
+ * Layer a sparse per-call [PreviewOverrides] bag ([this], the winner) over a discovery-time base
+ * bag ([base]), field by field: the per-call value wins where set, [base] fills every unset field,
+ * and `namedOverrides` merges **per-key** (not whole-map replace) — the same rule
+ * [mergePreviewOverrides] applies, so editing one knob never drops the other seeds the base already
+ * declared. A null receiver or [base] degenerates to the other side.
+ *
+ * Used by the previewId render path
+ * ([ee.schimke.composeai.daemon.DesktopHost.specFromPreviewIdPayload]): the resolved base spec can
+ * carry a theme / wallpaper / named seeds in `RenderSpec.overrides` (interactive / recording
+ * resolvers construct such specs, and a future manifest could seed them), while a `?knob.<key>=…`
+ * edit arrives as a sparse bag carrying only the changed knob. Replacing wholesale would drop the
+ * base's other overrides; this layers them. Today's production serve resolver
+ * (`renderSpecFromInfo`) leaves `.overrides` null, so this is a no-op there — but the merge keeps
+ * the seam correct if that changes.
+ *
+ * The field list must stay exhaustive over [PreviewOverrides]; a forgotten field silently drops its
+ * base value. `PreviewOverrideMergeTest.layeredOver…` guards this by asserting an empty overlay
+ * over a fully-populated base round-trips to the base unchanged.
+ */
+fun PreviewOverrides?.layeredOver(base: PreviewOverrides?): PreviewOverrides? {
+  val over = this ?: return base
+  if (base == null) return over
+  return PreviewOverrides(
+    widthPx = over.widthPx ?: base.widthPx,
+    heightPx = over.heightPx ?: base.heightPx,
+    density = over.density ?: base.density,
+    localeTag = over.localeTag ?: base.localeTag,
+    fontScale = over.fontScale ?: base.fontScale,
+    uiMode = over.uiMode ?: base.uiMode,
+    orientation = over.orientation ?: base.orientation,
+    device = over.device ?: base.device,
+    captureAdvanceMs = over.captureAdvanceMs ?: base.captureAdvanceMs,
+    inspectionMode = over.inspectionMode ?: base.inspectionMode,
+    slotMode = over.slotMode ?: base.slotMode,
+    clearBackground = over.clearBackground ?: base.clearBackground,
+    material3Theme = over.material3Theme ?: base.material3Theme,
+    themeProvider = over.themeProvider ?: base.themeProvider,
+    wallpaper = over.wallpaper ?: base.wallpaper,
+    ambient = over.ambient ?: base.ambient,
+    gestures = over.gestures ?: base.gestures,
+    focus = over.focus ?: base.focus,
+    touchOverlay = over.touchOverlay ?: base.touchOverlay,
+    talkBack = over.talkBack ?: base.talkBack,
+    keyboard = over.keyboard ?: base.keyboard,
+    permissions = over.permissions ?: base.permissions,
+    remoteCompose = over.remoteCompose ?: base.remoteCompose,
+    launcherWidget = over.launcherWidget ?: base.launcherWidget,
+    lottie = over.lottie ?: base.lottie,
+    // Per-key merge (not whole-map replace): a follow-up edit of one knob keeps the base's other
+    // seeds. Overlay entries win over base entries with the same key. Mirrors
+    // mergePreviewOverrides.
+    namedOverrides =
+      if (base.namedOverrides == null && over.namedOverrides == null) null
+      else (base.namedOverrides ?: emptyMap()) + (over.namedOverrides ?: emptyMap()),
+  )
+}
+
+/**
  * Merge per-call [PreviewOverrides] over a discovery-time spec.
  *
  * Explicit `widthPx` / `heightPx` / `density` overrides win over `device`-resolved values. Device

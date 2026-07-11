@@ -96,6 +96,37 @@ a:hover { text-decoration: underline; }
 .cp-copy, .cp-dl { font-size: 0.72rem; padding: 4px 8px; border-radius: 6px; border: 1px solid #d7d7de;
   background: #fff; color: #5b5bd6; cursor: pointer; text-decoration: none; flex: none; }
 .cp-copy:hover, .cp-dl:hover { background: #f0f0f3; }
+/* Drawer toggles + the two collapsible drawers (left component nav, right overrides). The open
+   state is a class on .cp-viewer — cp-controls-open (default on) and cp-nav-open (default off) —
+   so a drawer hides purely in CSS and the toggle JS just flips the class + aria-expanded. */
+.cp-viewer-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+.cp-drawer-toggle { display: inline-flex; align-items: center; gap: 6px; font: inherit;
+  font-size: 0.78rem; padding: 5px 12px; border-radius: 999px; border: 1px solid #d7d7de;
+  background: #fff; color: #45454c; cursor: pointer; }
+.cp-drawer-toggle:hover { background: #f0f0f3; }
+.cp-drawer-toggle[aria-expanded="true"] { background: #ececff; border-color: #c4c4f5;
+  color: #3a3a8a; font-weight: 600; }
+.cp-nav { flex: 0 0 220px; align-self: stretch; max-height: 72vh; overflow: auto;
+  border: 1px solid #e3e3e8; border-radius: 10px; background: #fff; padding: 12px;
+  display: flex; flex-direction: column; gap: 10px; }
+.cp-nav-head { display: flex; align-items: center; justify-content: space-between;
+  font-size: 0.8rem; font-weight: 600; color: #45454c; }
+.cp-nav-close { border: 0; background: none; font: inherit; font-size: 1.1rem; line-height: 1;
+  color: #6b6b70; cursor: pointer; padding: 0 2px; }
+.cp-nav-search { padding: 6px 10px; font: inherit; font-size: 0.8rem; border: 1px solid #d7d7de;
+  border-radius: 8px; background: #fff; color: inherit; }
+.cp-nav-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.cp-nav-item { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 6px;
+  font-size: 0.8rem; color: inherit; }
+.cp-nav-thumb { flex: none; width: 28px; height: 28px; object-fit: contain; border-radius: 4px;
+  background: repeating-conic-gradient(#f4f4f6 0% 25%, #fff 0% 50%) 50% / 8px 8px; }
+.cp-nav-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-nav-item:hover { background: #f0f0f3; text-decoration: none; }
+.cp-nav-item[aria-current="page"] { background: #ececff; color: #3a3a8a; font-weight: 600; }
+.cp-nav-empty { font-size: 0.78rem; color: #6b6b70; }
+.cp-nav-empty[hidden] { display: none; }
+.cp-viewer:not(.cp-nav-open) .cp-nav { display: none; }
+.cp-viewer:not(.cp-controls-open) .cp-controls { display: none; }
 @media (prefers-color-scheme: dark) {
   body { color: #e6e6e9; background: #161618; }
   .cp-sub, .cp-id, .cp-status, .cp-about-links, .cp-sys-desc, .cp-sys-foot { color: #a0a0a8; }
@@ -119,14 +150,29 @@ a:hover { text-decoration: underline; }
   .cp-imgwrap, .cp-stage { background: repeating-conic-gradient(#26262b 0% 25%, #1d1d20 0% 50%) 50% / 16px 16px; }
   .cp-badge--trusted { background: #14361f; color: #6cd98a; border-color: #2c6b40; }
   .cp-badge--unverified { background: #3a2a12; color: #e6b067; border-color: #6b4f24; }
+  .cp-drawer-toggle { background: #1d1d20; border-color: #34343a; color: #c9c9d0; }
+  .cp-drawer-toggle:hover { background: #26262b; }
+  .cp-drawer-toggle[aria-expanded="true"] { background: #26264a; border-color: #45458a; color: #c9c9ff; }
+  .cp-nav { background: #1d1d20; border-color: #34343a; }
+  .cp-nav-head { color: #c9c9d0; }
+  .cp-nav-search { background: #1d1d20; border-color: #34343a; }
+  .cp-nav-item:hover { background: #26262b; }
+  .cp-nav-item[aria-current="page"] { background: #26264a; color: #c9c9ff; }
+  .cp-nav-thumb { background: repeating-conic-gradient(#26262b 0% 25%, #1d1d20 0% 50%) 50% / 8px 8px; }
+  .cp-nav-empty { color: #a0a0a8; }
 }</style>
       </head>
       <body>
               <p class="cp-head"><a href="/?token=demo-token-fixture&session=compose-m3">← previews</a></p>
       <p class="cp-sub" title="com.example.FocusRingPreview">Focus ring</p>
-      <div class="cp-viewer" data-preview-id="com.example.FocusRingPreview" data-mode="snapshot" data-modes="snapshot" data-static-snapshot="false" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live">
+      <div class="cp-viewer-bar">
+        
+        <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
+      </div>
+      <div class="cp-viewer cp-controls-open" data-preview-id="com.example.FocusRingPreview" data-mode="snapshot" data-modes="snapshot" data-static-snapshot="false" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live">
+        
         <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="Focus ring"><canvas id="cp-canvas" hidden></canvas></div>
-        <div class="cp-controls">
+        <div class="cp-controls" id="cp-controls">
           
           <div class="cp-modes" role="radiogroup" aria-label="Render mode">
             <label class="cp-live-row"><input type="radio" name="cp-mode" value="png" id="cp-mode-png" checked> PNG</label>
@@ -196,6 +242,44 @@ a:hover { text-decoration: underline; }
           <div class="cp-status" id="cp-status"></div>
         </div>
       </div>
+      <script>(function () {
+  var viewer = document.querySelector(".cp-viewer");
+  if (!viewer) return;
+  function bindToggle(btnId, cls) {
+    var btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      var open = viewer.classList.toggle(cls);
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+  }
+  bindToggle("cp-controls-toggle", "cp-controls-open");
+  bindToggle("cp-nav-toggle", "cp-nav-open");
+  var close = document.getElementById("cp-nav-close");
+  if (close)
+    close.addEventListener("click", function () {
+      viewer.classList.remove("cp-nav-open");
+      var t = document.getElementById("cp-nav-toggle");
+      if (t) t.setAttribute("aria-expanded", "false");
+    });
+  var search = document.getElementById("cp-nav-search");
+  if (search)
+    search.addEventListener("input", function () {
+      var query = search.value.trim().toLowerCase();
+      var items = document.querySelectorAll("#cp-nav-list .cp-nav-item");
+      var shown = 0;
+      for (var i = 0; i < items.length; i++) {
+        var el = items[i];
+        var hay = (el.getAttribute("data-search") || "").toLowerCase();
+        // The current preview (aria-current) always stays; others hide on a filter miss.
+        var keep = query === "" || el.hasAttribute("aria-current") || hay.indexOf(query) !== -1;
+        el.parentNode.hidden = !keep;
+        if (keep) shown++;
+      }
+      var empty = document.getElementById("cp-nav-empty");
+      if (empty) empty.hidden = shown > 0;
+    });
+})();</script>
       <script>(function () {
   var el = document.getElementById("cp-uiMode");
   if (!el) return;

@@ -212,6 +212,9 @@ internal constructor(
   // The figma-svg counterpart of [cache], keyed the same way (previewId × overrides).
   private val svgCache = LruByteCache(MAX_CACHE_ENTRIES)
 
+  // The full-page (scrolling) figma-svg counterpart of [svgCache], keyed the same way.
+  private val scrollSvgCache = LruByteCache(MAX_CACHE_ENTRIES)
+
   // The preview-slots counterpart of [cache], keyed the same way (previewId × overrides).
   private val slotsCache = LruByteCache(MAX_CACHE_ENTRIES)
 
@@ -409,6 +412,63 @@ internal constructor(
       // passes through untouched); Figma's importer can't resolve external hrefs.
       val bytes = inlineRasters(svgPath, raw)
       svgCache.put(key, bytes)
+      SvgOutcome.Ok(bytes)
+    }
+  }
+
+  /**
+   * Render [previewId]'s **full-page** figma-svg (`compose/figma-svg-long`) at [overrides], serving
+   * a cached result when one exists. Thread-safe.
+   *
+   * Unlike [renderSvg] this fetches the `requiresRerender = true` long kind directly:
+   * `session.fetchData` drives the daemon's `figma-svg-long` re-render (an expanded-viewport render
+   * that composes the whole list) and returns the written SVG path — so there's no separate PNG
+   * render to force first. Still serialised through [renderLock] with the fetch reading the file
+   * the re-render just wrote.
+   *
+   * The full-page export currently renders at the preview's **default** overrides — the
+   * `data/fetch` re-render path is keyed by `(previewId, kind)` and doesn't carry the live `uiMode`
+   * / `device` / locale / theme / knob overrides (the same limitation the scroll PNG data products
+   * have). So [overrides] are deliberately **not** part of the cache key: keying by them would
+   * cache the one override-independent file under many keys (a stale-looking hit under a different
+   * override). Threading overrides through the long re-render is a follow-up (see
+   * docs/design/SCROLLING_SVG.md); until then the cache stays correct by keying on the preview id
+   * alone.
+   */
+  override fun renderScrollSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome {
+    check(!closed.get()) { "ServeRenderHost is closed" }
+    if (previewId !in previewIds) return SvgOutcome.NotFound
+
+    val key = previewId
+    scrollSvgCache.get(key)?.let {
+      return SvgOutcome.Ok(it)
+    }
+
+    return renderLock.withLock {
+      scrollSvgCache.get(key)?.let {
+        return@withLock SvgOutcome.Ok(it)
+      }
+
+      val svgPath =
+        try {
+          session.fetchData(previewId, ComposeFigmaSvgProduct.KIND_LONG).path?.toPath()
+        } catch (e: Exception) {
+          val reason = "figma-svg-long fetch failed: ${e.message}"
+          onLog(reason)
+          return@withLock SvgOutcome.Failed(reason)
+        }
+      val raw =
+        svgPath
+          ?.takeIf { fileSystem.exists(it) }
+          ?.let { p -> fileSystem.read(p) { readByteArray() } }
+      if (raw == null || svgPath == null) {
+        val reason = "render produced no full-page SVG"
+        onLog(reason)
+        return@withLock SvgOutcome.Failed(reason)
+      }
+
+      val bytes = inlineRasters(svgPath, raw)
+      scrollSvgCache.put(key, bytes)
       SvgOutcome.Ok(bytes)
     }
   }

@@ -105,6 +105,37 @@ object ServeWeb {
     .cp-copy, .cp-dl { font-size: 0.72rem; padding: 4px 8px; border-radius: 6px; border: 1px solid #d7d7de;
       background: #fff; color: #5b5bd6; cursor: pointer; text-decoration: none; flex: none; }
     .cp-copy:hover, .cp-dl:hover { background: #f0f0f3; }
+    /* Drawer toggles + the two collapsible drawers (left component nav, right overrides). The open
+       state is a class on .cp-viewer — cp-controls-open (default on) and cp-nav-open (default off) —
+       so a drawer hides purely in CSS and the toggle JS just flips the class + aria-expanded. */
+    .cp-viewer-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+    .cp-drawer-toggle { display: inline-flex; align-items: center; gap: 6px; font: inherit;
+      font-size: 0.78rem; padding: 5px 12px; border-radius: 999px; border: 1px solid #d7d7de;
+      background: #fff; color: #45454c; cursor: pointer; }
+    .cp-drawer-toggle:hover { background: #f0f0f3; }
+    .cp-drawer-toggle[aria-expanded="true"] { background: #ececff; border-color: #c4c4f5;
+      color: #3a3a8a; font-weight: 600; }
+    .cp-nav { flex: 0 0 220px; align-self: stretch; max-height: 72vh; overflow: auto;
+      border: 1px solid #e3e3e8; border-radius: 10px; background: #fff; padding: 12px;
+      display: flex; flex-direction: column; gap: 10px; }
+    .cp-nav-head { display: flex; align-items: center; justify-content: space-between;
+      font-size: 0.8rem; font-weight: 600; color: #45454c; }
+    .cp-nav-close { border: 0; background: none; font: inherit; font-size: 1.1rem; line-height: 1;
+      color: #6b6b70; cursor: pointer; padding: 0 2px; }
+    .cp-nav-search { padding: 6px 10px; font: inherit; font-size: 0.8rem; border: 1px solid #d7d7de;
+      border-radius: 8px; background: #fff; color: inherit; }
+    .cp-nav-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+    .cp-nav-item { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 6px;
+      font-size: 0.8rem; color: inherit; }
+    .cp-nav-thumb { flex: none; width: 28px; height: 28px; object-fit: contain; border-radius: 4px;
+      background: repeating-conic-gradient(#f4f4f6 0% 25%, #fff 0% 50%) 50% / 8px 8px; }
+    .cp-nav-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cp-nav-item:hover { background: #f0f0f3; text-decoration: none; }
+    .cp-nav-item[aria-current="page"] { background: #ececff; color: #3a3a8a; font-weight: 600; }
+    .cp-nav-empty { font-size: 0.78rem; color: #6b6b70; }
+    .cp-nav-empty[hidden] { display: none; }
+    .cp-viewer:not(.cp-nav-open) .cp-nav { display: none; }
+    .cp-viewer:not(.cp-controls-open) .cp-controls { display: none; }
     @media (prefers-color-scheme: dark) {
       body { color: #e6e6e9; background: #161618; }
       .cp-sub, .cp-id, .cp-status, .cp-about-links, .cp-sys-desc, .cp-sys-foot { color: #a0a0a8; }
@@ -128,6 +159,16 @@ object ServeWeb {
       .cp-imgwrap, .cp-stage { background: repeating-conic-gradient(#26262b 0% 25%, #1d1d20 0% 50%) 50% / 16px 16px; }
       .cp-badge--trusted { background: #14361f; color: #6cd98a; border-color: #2c6b40; }
       .cp-badge--unverified { background: #3a2a12; color: #e6b067; border-color: #6b4f24; }
+      .cp-drawer-toggle { background: #1d1d20; border-color: #34343a; color: #c9c9d0; }
+      .cp-drawer-toggle:hover { background: #26262b; }
+      .cp-drawer-toggle[aria-expanded="true"] { background: #26264a; border-color: #45458a; color: #c9c9ff; }
+      .cp-nav { background: #1d1d20; border-color: #34343a; }
+      .cp-nav-head { color: #c9c9d0; }
+      .cp-nav-search { background: #1d1d20; border-color: #34343a; }
+      .cp-nav-item:hover { background: #26262b; }
+      .cp-nav-item[aria-current="page"] { background: #26264a; color: #c9c9ff; }
+      .cp-nav-thumb { background: repeating-conic-gradient(#26262b 0% 25%, #1d1d20 0% 50%) 50% / 8px 8px; }
+      .cp-nav-empty { color: #a0a0a8; }
     }
     """
       .trimIndent()
@@ -702,6 +743,14 @@ object ServeWeb {
      * the control is omitted there rather than shown dead. Defaults false.
      */
     gesturesRenderable: Boolean = false,
+    /**
+     * The session's other previews, used to populate the left-hand **component nav** drawer (each
+     * links to its own viewer page). Typically the whole `renderHost.previews` list including
+     * [preview] itself — the current one is marked `aria-current` and never filtered out. When the
+     * list holds no preview *other than* [preview] (empty, or a single-preview module's one entry)
+     * the drawer and its toggle are omitted — there is nothing to navigate between.
+     */
+    siblings: List<ServePreview> = emptyList(),
   ): String {
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
@@ -883,13 +932,28 @@ object ServeWeb {
         </div>
         """
           .trimIndent()
+    // Left-hand component nav drawer (default closed) and its toggle — only when the session
+    // carries
+    // sibling previews to move between. The right-hand overrides drawer (.cp-controls) is always
+    // present and defaults open (the `cp-controls-open` class on .cp-viewer).
+    val navDrawer = navDrawerHtml(preview, siblings, basePath, q)
+    val navToggle =
+      if (navDrawer.isEmpty()) ""
+      else
+        "<button type=\"button\" class=\"cp-drawer-toggle\" id=\"cp-nav-toggle\" " +
+          "aria-expanded=\"false\" aria-controls=\"cp-nav\">☰ Components</button>"
     val body =
       """
       <p class="cp-head"><a href="$basePath/$q">← previews</a>${trustBadge(trust)}</p>
       <p class="cp-sub" title="$idText">$label</p>
-      <div class="cp-viewer" data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel"$wasmAttr>
+      <div class="cp-viewer-bar">
+        $navToggle
+        <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
+      </div>
+      <div class="cp-viewer cp-controls-open" data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel"$wasmAttr>
+        $navDrawer
         <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$wasmFrame</div>
-        <div class="cp-controls">
+        <div class="cp-controls" id="cp-controls">
           $snapshotNote
           <div class="cp-modes" role="radiogroup" aria-label="Render mode">
             <label class="cp-live-row"><input type="radio" name="cp-mode" value="png" id="cp-mode-png" checked> PNG</label>
@@ -938,6 +1002,7 @@ object ServeWeb {
           <div class="cp-status" id="cp-status"></div>
         </div>
       </div>
+      <script>${drawerScript()}</script>
       <script>${viewerThemeStickyScript()}</script>
       <script>${viewerScript()}</script>
       <script>${backendBadgeScript()}</script>
@@ -1622,6 +1687,104 @@ object ServeWeb {
         el.addEventListener("change", onKnobChanged);
       });
       refreshSnapshot();
+    })();
+    """
+      .trimIndent()
+
+  /**
+   * The left-hand component-nav drawer: a filterable list of the session's [siblings], each linking
+   * to its own viewer page (same `$basePath/p/<id>$q` shape the landing cards use). The current
+   * [preview] is marked `aria-current="page"`. Returns "" when there is nothing to navigate *to* —
+   * an empty [siblings], or a list whose only entry is [preview] itself — so a single-preview
+   * session omits both the drawer and its toggle rather than showing a one-item self-link. (Callers
+   * can pass the whole `renderHost.previews` list, current preview included, without special-casing
+   * the single-preview module.) The drawer starts closed (the `cp-nav-open` class is absent from
+   * `.cp-viewer` until the toggle adds it).
+   */
+  private fun navDrawerHtml(
+    preview: ServePreview,
+    siblings: List<ServePreview>,
+    basePath: String,
+    q: String,
+  ): String {
+    // Nothing to navigate to when the list is empty or holds only the current preview.
+    if (siblings.none { it.id != preview.id }) return ""
+    val items =
+      siblings.joinToString("\n") { p ->
+        val segItem = WebEscaping.urlEncodeSegment(p.id)
+        val labelItem = WebEscaping.htmlEscape(p.label)
+        val idItem = WebEscaping.htmlEscape(p.id)
+        // data-search folds label + id so the drawer filter matches either. aria-current pins the
+        // one we're viewing (styled as active, and it stays visible even under a filter miss so the
+        // list never looks empty-of-self).
+        val current = if (p.id == preview.id) " aria-current=\"page\"" else ""
+        // A small thumbnail render to the left of the name — the same baked PNG the landing cards
+        // use, so the nav reads like a mini gallery. `alt=""` since the name label beside it
+        // already
+        // names the component (decorative image).
+        "<li><a class=\"cp-nav-item\" href=\"$basePath/p/$segItem$q\"$current " +
+          "title=\"$idItem\" data-search=\"$labelItem $idItem\">" +
+          "<img class=\"cp-nav-thumb\" loading=\"lazy\" alt=\"\" src=\"$basePath/render/$segItem.png$q\">" +
+          "<span class=\"cp-nav-name\">$labelItem</span></a></li>"
+      }
+    return """
+      <aside class="cp-nav" id="cp-nav" aria-label="Components">
+        <div class="cp-nav-head"><span>Components</span><button type="button" class="cp-nav-close" id="cp-nav-close" aria-label="Close component navigation">×</button></div>
+        <input type="search" class="cp-nav-search" id="cp-nav-search" placeholder="Filter components" autocomplete="off" aria-label="Filter components">
+        <ul class="cp-nav-list" id="cp-nav-list">
+        $items
+        </ul>
+        <p class="cp-nav-empty" id="cp-nav-empty" hidden>No components match.</p>
+      </aside>
+      """
+      .trimIndent()
+  }
+
+  /**
+   * Toggle wiring for the two viewer drawers. Each toggle flips an open-state class on `.cp-viewer`
+   * (`cp-controls-open` for the right overrides drawer, `cp-nav-open` for the left component nav)
+   * and mirrors it into `aria-expanded`; the drawers themselves show/hide purely via CSS on those
+   * classes. The nav's own `×` closes it, and its search box filters the component list in place.
+   */
+  private fun drawerScript(): String =
+    """
+    (function () {
+      var viewer = document.querySelector(".cp-viewer");
+      if (!viewer) return;
+      function bindToggle(btnId, cls) {
+        var btn = document.getElementById(btnId);
+        if (!btn) return;
+        btn.addEventListener("click", function () {
+          var open = viewer.classList.toggle(cls);
+          btn.setAttribute("aria-expanded", open ? "true" : "false");
+        });
+      }
+      bindToggle("cp-controls-toggle", "cp-controls-open");
+      bindToggle("cp-nav-toggle", "cp-nav-open");
+      var close = document.getElementById("cp-nav-close");
+      if (close)
+        close.addEventListener("click", function () {
+          viewer.classList.remove("cp-nav-open");
+          var t = document.getElementById("cp-nav-toggle");
+          if (t) t.setAttribute("aria-expanded", "false");
+        });
+      var search = document.getElementById("cp-nav-search");
+      if (search)
+        search.addEventListener("input", function () {
+          var query = search.value.trim().toLowerCase();
+          var items = document.querySelectorAll("#cp-nav-list .cp-nav-item");
+          var shown = 0;
+          for (var i = 0; i < items.length; i++) {
+            var el = items[i];
+            var hay = (el.getAttribute("data-search") || "").toLowerCase();
+            // The current preview (aria-current) always stays; others hide on a filter miss.
+            var keep = query === "" || el.hasAttribute("aria-current") || hay.indexOf(query) !== -1;
+            el.parentNode.hidden = !keep;
+            if (keep) shown++;
+          }
+          var empty = document.getElementById("cp-nav-empty");
+          if (empty) empty.hidden = shown > 0;
+        });
     })();
     """
       .trimIndent()

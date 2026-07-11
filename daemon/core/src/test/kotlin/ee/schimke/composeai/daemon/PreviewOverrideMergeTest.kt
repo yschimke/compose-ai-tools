@@ -1,9 +1,16 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.protocol.AmbientOverride
+import ee.schimke.composeai.daemon.protocol.AmbientStateOverride
 import ee.schimke.composeai.daemon.protocol.FocusDirection
 import ee.schimke.composeai.daemon.protocol.FocusOverride
 import ee.schimke.composeai.daemon.protocol.GestureKindOverride
 import ee.schimke.composeai.daemon.protocol.GestureOverride
+import ee.schimke.composeai.daemon.protocol.KeyboardOverride
+import ee.schimke.composeai.daemon.protocol.LauncherWidgetOverride
+import ee.schimke.composeai.daemon.protocol.LauncherWidgetSize
+import ee.schimke.composeai.daemon.protocol.LottieOverride
+import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PermissionGrantStateOverride
 import ee.schimke.composeai.daemon.protocol.PermissionsOverride
@@ -12,6 +19,7 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
 import ee.schimke.composeai.daemon.protocol.RemoteComposeProfile
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import ee.schimke.composeai.daemon.protocol.UiMode
+import ee.schimke.composeai.daemon.protocol.WallpaperOverride
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -311,4 +319,86 @@ class PreviewOverrideMergeTest {
     assertNull((null as PreviewOverrides?).withThemeProvider(""))
     assertEquals(existing, existing.withThemeProvider(null))
   }
+
+  /**
+   * Exhaustiveness guard for [layeredOver]: an empty overlay over a fully-populated base must
+   * round-trip to the base unchanged. Every [PreviewOverrides] field is non-null here, so a field
+   * the merge forgot to carry would come back null and fail the whole-object [assertEquals] — the
+   * canary that keeps the hand-written field list in sync as the protocol grows.
+   */
+  @Test
+  fun `layeredOver with an empty overlay preserves every base field`() {
+    val base = fullyPopulatedOverrides()
+    assertEquals(base, PreviewOverrides().layeredOver(base))
+  }
+
+  @Test
+  fun `layeredOver lets the overlay win per-field and merges namedOverrides per-key`() {
+    val base =
+      PreviewOverrides(
+        fontScale = 1.0f,
+        themeProvider = "com.example.Base",
+        namedOverrides =
+          mapOf(
+            "rowCount" to PreviewOverrideValue.IntValue(3),
+            "label" to PreviewOverrideValue.StringValue("base"),
+          ),
+      )
+    // A `?knob.label=…` edit arrives as a sparse overlay: only `label` (and, say, fontScale) set.
+    // The base's themeProvider and the untouched `rowCount` seed must survive.
+    val overlay =
+      PreviewOverrides(
+        fontScale = 2.0f,
+        namedOverrides = mapOf("label" to PreviewOverrideValue.StringValue("edited")),
+      )
+    val merged = overlay.layeredOver(base)!!
+    assertEquals(2.0f, merged.fontScale!!, 0.0f) // overlay wins where set
+    assertEquals("com.example.Base", merged.themeProvider) // base fills the gap
+    assertEquals(PreviewOverrideValue.StringValue("edited"), merged.namedOverrides?.get("label"))
+    assertEquals(PreviewOverrideValue.IntValue(3), merged.namedOverrides?.get("rowCount"))
+  }
+
+  @Test
+  fun `layeredOver degenerates to the other side when one bag is null`() {
+    val bag = PreviewOverrides(fontScale = 1.5f)
+    assertEquals(bag, bag.layeredOver(null))
+    assertEquals(bag, (null as PreviewOverrides?).layeredOver(bag))
+    assertNull((null as PreviewOverrides?).layeredOver(null))
+  }
+
+  /**
+   * Every [PreviewOverrides] field set to a distinct non-null value — the exhaustiveness fixture.
+   */
+  private fun fullyPopulatedOverrides() =
+    PreviewOverrides(
+      widthPx = 111,
+      heightPx = 222,
+      density = 3.0f,
+      localeTag = "fr-FR",
+      fontScale = 1.4f,
+      uiMode = UiMode.DARK,
+      orientation = Orientation.LANDSCAPE,
+      device = "id:pixel_7",
+      captureAdvanceMs = 64L,
+      inspectionMode = true,
+      slotMode = true,
+      clearBackground = true,
+      material3Theme = Material3ThemeOverrides(colorScheme = mapOf("primary" to "#FFFF0000")),
+      themeProvider = "com.example.BrandDark",
+      wallpaper = WallpaperOverride(seedColor = "#3366FF"),
+      ambient = AmbientOverride(state = AmbientStateOverride.AMBIENT),
+      gestures = GestureOverride(enabled = true),
+      focus = FocusOverride(tabIndex = 2),
+      touchOverlay = true,
+      talkBack = true,
+      keyboard = KeyboardOverride(visible = true),
+      permissions =
+        PermissionsOverride(
+          grants = mapOf("android.permission.CAMERA" to PermissionGrantStateOverride.GRANTED)
+        ),
+      remoteCompose = RemoteComposeOverride(profile = RemoteComposeProfile.ANDROIDX),
+      launcherWidget = LauncherWidgetOverride(cells = LauncherWidgetSize(width = 4, height = 2)),
+      lottie = LottieOverride(progress = 0.5f),
+      namedOverrides = mapOf("label" to PreviewOverrideValue.StringValue("base")),
+    )
 }

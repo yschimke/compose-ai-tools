@@ -176,6 +176,11 @@ data class FigmaSvgLayer(
    * its drop shadow instead of reading as a flat fill against the render.
    */
   val elevationPx: Double = 0.0,
+  /**
+   * Wear curved text (a `CurvedLayout`/`TimeText` clock) carried on this layer — drawn as an SVG
+   * `<textPath>` along its baseline arc. Empty for the common straight-text/no-text case.
+   */
+  val curvedTexts: List<LayoutInspectorCurvedText> = emptyList(),
   val children: List<FigmaSvgLayer> = emptyList(),
 ) {
   val width: Int
@@ -186,7 +191,13 @@ data class FigmaSvgLayer(
 
   /** True when the layer draws pixels itself (vs. a pure grouping container). */
   val paints: Boolean
-    get() = fill != null || stroke != null || text != null || raster != null || background != null
+    get() =
+      fill != null ||
+        stroke != null ||
+        text != null ||
+        raster != null ||
+        background != null ||
+        curvedTexts.isNotEmpty()
 }
 
 /**
@@ -544,6 +555,7 @@ data class FigmaSvgModel(
         text = ctx.textByNodeId[nodeId],
         background = background,
         elevationPx = elevationPx,
+        curvedTexts = curvedTexts,
         children = children.map { it.toLayer(ctx, bounds) },
       )
     }

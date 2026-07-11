@@ -31,6 +31,7 @@ import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.daemon.protocol.RecordingProbeNode
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
+import ee.schimke.composeai.data.layoutinspector.LayoutInspectorCurvedText
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorProduct
 import ee.schimke.composeai.data.layoutinspector.SemanticsRefs
 import ee.schimke.composeai.data.render.PreviewContext
@@ -784,6 +785,13 @@ internal object ComposeLayoutInspector {
   ): LayoutInspectorNode {
     val rootCoords = rootCoordinates ?: coordinates
     val source = sources.sourceFor(raw)
+    // A Wear `CurvedLayout`/`TimeText` draws text along an arc via a `CurvedTextChild` that no
+    // LayoutNode represents; pull those runs (string + baseline arc + font) so the export can
+    // reproduce them as an SVG `<textPath>` instead of dropping the clock.
+    val curvedTexts =
+      if ((source?.component ?: componentFallback).contains("Curved"))
+        CurvedTextExtractor.extract(this)
+      else emptyList()
     val children = children.map { it.toWireNode(rootCoords, sources, density) }
     val modifiers = modifierInfo
     return LayoutInspectorNode(
@@ -810,6 +818,7 @@ internal object ComposeLayoutInspector {
           sizeHeightPx = height,
           density = density,
         ),
+      curvedTexts = curvedTexts,
       children = children,
     )
   }
@@ -859,6 +868,119 @@ internal object ComposeLayoutInspector {
       is Boolean -> toString()
       else -> toString()
     }
+
+  /**
+   * Extracts Wear curved text (a `CurvedLayout`/`TimeText` clock) from a layout node. Curved text
+   * is drawn by a `CurvedTextChild` living in the `CurvedLayout`'s internal child tree — invisible
+   * to a plain `LayoutNode` walk — so this reflects the tree out of the node's measure policy /
+   * draw modifiers and reads each text run's string, baseline arc (`CurvedLayoutInfo`) and font, in
+   * root-pixel space, so the export can reproduce it as an SVG `<textPath>`. All reflective and
+   * best-effort: any failure yields an empty list and the node simply carries no curved text.
+   */
+  private object CurvedTextExtractor {
+    private const val CURVED_CHILD = "androidx.wear.compose.foundation.CurvedChild"
+
+    fun extract(node: LayoutNodeFacade): List<LayoutInspectorCurvedText> {
+      val candidates = ArrayList<Any?>()
+      candidates.add(node.measurePolicy)
+      node.modifierInfo.forEach { candidates.add(it.modifier) }
+      val roots = LinkedHashSet<Any>()
+      candidates.filterNotNull().forEach { scan(it, 0, roots, HashSet()) }
+      val runs = ArrayList<LayoutInspectorCurvedText>()
+      roots.forEach { collect(it, runs) }
+      return runs
+    }
+
+    private fun isCurvedChild(o: Any): Boolean {
+      var c: Class<*>? = o.javaClass
+      while (c != null) {
+        if (c.name == CURVED_CHILD) return true
+        c = c.superclass
+      }
+      return false
+    }
+
+    /**
+     * Depth-limited field scan for the root `CurvedChild` held by a measure policy / draw lambda.
+     */
+    private fun scan(o: Any, depth: Int, out: MutableSet<Any>, seen: MutableSet<Any>) {
+      if (depth > 4 || o is String || o is Number || o is Boolean || !seen.add(o)) return
+      if (isCurvedChild(o)) {
+        out.add(o)
+        return
+      }
+      if (!o.javaClass.name.startsWith("androidx")) return
+      o.javaClass.declaredFields.forEach { f ->
+        runCatching {
+            f.isAccessible = true
+            f.get(o)
+          }
+          .getOrNull()
+          ?.let { v -> scan(v, depth + 1, out, seen) }
+      }
+    }
+
+    /**
+     * Walk the curved-child tree (container children + single-child wrappers), emitting text runs.
+     */
+    private fun collect(child: Any, out: MutableList<LayoutInspectorCurvedText>) {
+      if (child.javaClass.simpleName == "CurvedTextChild") toRun(child)?.let(out::add)
+      (call(child, "getChildrenInLayoutOrder\$compose_foundation") as? List<*>)?.forEach {
+        it?.let { c -> collect(c, out) }
+      }
+      call(child, "getWrapped")?.let { collect(it, out) }
+    }
+
+    private fun toRun(child: Any): LayoutInspectorCurvedText? {
+      val text = call(child, "getText") as? String ?: return null
+      val info = call(child, "getLayoutInfo\$compose_foundation") ?: return null
+      val start = floatCall(info, "getStartAngleRadians") ?: return null
+      val sweep = floatCall(info, "getSweepRadians") ?: return null
+      val radius = floatCall(info, "getMeasureRadius") ?: return null
+      val center = call(info, "getCenterOffset-F1C5BW0") as? Long ?: return null
+      val cx = Float.fromBits((center shr 32).toInt()).toDouble()
+      val cy = Float.fromBits((center and 0xFFFFFFFFL).toInt()).toDouble()
+      val delegate =
+        runCatching {
+            child.javaClass.getDeclaredField("delegate").apply { isAccessible = true }.get(child)
+          }
+          .getOrNull()
+      val fontSize = delegate?.let { floatField(it, "fontSizePx") } ?: 0.0
+      val clockwise = (call(child, "getClockwise") as? Boolean) ?: true
+      val paint = delegate?.let { runCatching { field(it, "paint") }.getOrNull() }
+      val color = paint?.let { (call(it, "getColor") as? Int)?.let { c -> "#%08X".format(c) } }
+      // The resolved weight rides on the paint's Typeface (Android API 28+); TimeText's clock is a
+      // medium weight, so without it the `<text>` renders too thin against the render.
+      val weight =
+        paint
+          ?.let { runCatching { call(it, "getTypeface") }.getOrNull() }
+          ?.let { tf -> call(tf, "getWeight") as? Int }
+          ?.takeIf { it in 1..1000 }
+      return LayoutInspectorCurvedText(
+        text = text,
+        centerXPx = cx,
+        centerYPx = cy,
+        radiusPx = radius.toDouble(),
+        startAngleRadians = start.toDouble(),
+        sweepRadians = sweep.toDouble(),
+        clockwise = clockwise,
+        fontSizePx = fontSize,
+        fontWeight = weight,
+        colorArgb = color,
+      )
+    }
+
+    private fun call(o: Any, method: String): Any? =
+      runCatching { o.javaClass.getMethod(method).invoke(o) }.getOrNull()
+
+    private fun floatCall(o: Any, method: String): Float? = call(o, method) as? Float
+
+    private fun field(o: Any, name: String): Any? =
+      o.javaClass.getDeclaredField(name).apply { isAccessible = true }.get(o)
+
+    private fun floatField(o: Any, name: String): Double? =
+      runCatching { (field(o, name) as? Float)?.toDouble() }.getOrNull()
+  }
 
   private data class LayoutSource(
     val component: String,

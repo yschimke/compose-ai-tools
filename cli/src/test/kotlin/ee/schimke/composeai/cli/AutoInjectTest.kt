@@ -105,7 +105,7 @@ class AutoInjectTest {
   }
 
   @Test
-  fun `materializeInitScript is idempotent — same version leaves the file untouched`() {
+  fun `materializeInitScript is idempotent - same version leaves the file untouched`() {
     val dir = tempDir()
     val first = materializeInitScript(dir, "1.0.0")
     // Bump mtime forward so a rewrite would be observable.

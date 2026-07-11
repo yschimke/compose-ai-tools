@@ -7,8 +7,11 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -629,6 +632,65 @@ fun WrapContentStickerPreview() {
       contentAlignment = androidx.compose.ui.Alignment.Center,
     ) {
       Text(text = "8", color = Color.White)
+    }
+  }
+}
+
+/**
+ * Realistic mobile scrolling-screen fixture for the figma-svg scroll experiment: a Material 3
+ * [Scaffold] with a pinned [TopAppBar] ("status bar") and a bottom [NavigationBar] ("bottom
+ * buttons") framing a `LazyColumn` of 30 numbered rows — far more than fit in a phone-height
+ * viewport.
+ *
+ * `LazyColumn` is virtualised, so at a normal viewport height only the on-screen rows (plus
+ * LazyList's small prefetch) are composed and land in the captured layout/semantics tree; the rest
+ * have no `LayoutNode` and are absent from the `compose/figma-svg` export. Rendered at an
+ * *expanded* (tall) viewport every row lays out, so the export carries all 30 — bookended by the
+ * pinned top app bar and the bottom navigation bar, which is exactly the "full page" representation
+ * the mobile SVG scroll mode produces. [RenderEngineFigmaSvgScrollTest] renders it both ways and
+ * counts the `Row N` text layers to prove the "expand the device vertically" approach.
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+fun LazyColumnListPreview() {
+  MaterialTheme(colorScheme = lightColorScheme()) {
+    androidx.compose.material3.Scaffold(
+      topBar = { androidx.compose.material3.TopAppBar(title = { Text("Activity") }) },
+      bottomBar = {
+        // Hand-rolled bottom navigation bar ("bottom buttons") — three labelled icon slots. Built
+        // from primitives so the fixture doesn't depend on an M3 `NavigationBar` artifact that may
+        // be absent from this module's classpath.
+        Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
+          androidx.compose.foundation.layout.Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceEvenly,
+          ) {
+            listOf("Home", "Search", "Profile").forEach { label ->
+              Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                Box(
+                  modifier =
+                    Modifier.size(24.dp)
+                      .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(6.dp))
+                )
+                Text(text = label, style = MaterialTheme.typography.labelSmall)
+              }
+            }
+          }
+        }
+      },
+    ) { contentPadding ->
+      LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = contentPadding) {
+        items((1..30).toList()) { index ->
+          Column(
+            modifier =
+              Modifier.fillMaxWidth()
+                .background(if (index % 2 == 0) Color(0xFFEEEEEE) else Color.White)
+                .padding(12.dp)
+          ) {
+            Text(text = "Row $index", style = MaterialTheme.typography.titleMedium)
+          }
+        }
+      }
     }
   }
 }

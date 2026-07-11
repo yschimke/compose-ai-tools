@@ -367,6 +367,88 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun curvedTextIsEmittedAsATextPathOnItsBaselineArc() {
+    // A Wear `TimeText` clock is laid out along an arc — captured as a curved-text run and rendered
+    // as an SVG `<textPath>` on the baseline circle so it stays editable (not dropped, not a
+    // raster).
+    // Top-centred arc: centre (192,192), radius 160, spanning ~28° around 270° (screen up).
+    val node =
+      LayoutInspectorNode(
+        nodeId = "clock",
+        component = "CurvedLayoutKt",
+        bounds = bounds(0, 0, 384, 384),
+        size = LayoutInspectorSize(384, 384),
+        curvedTexts =
+          listOf(
+            LayoutInspectorCurvedText(
+              text = "10:10",
+              centerXPx = 192.0,
+              centerYPx = 192.0,
+              radiusPx = 160.0,
+              startAngleRadians = 4.4652,
+              sweepRadians = 0.4944,
+              clockwise = true,
+              fontSizePx = 30.0,
+              fontWeight = 600,
+              colorArgb = "#FFC6C6C7",
+            )
+          ),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(node)))
+    assertTrue("emits a baseline arc path", svg.contains("""<path id="curve-c0" d="M """))
+    assertTrue(
+      "draws an SVG arc (A) command",
+      Regex("""d="M [\d.]+ [\d.]+ A 160""").containsMatchIn(svg),
+    )
+    assertTrue(
+      "the text rides the path via <textPath>",
+      svg.contains("""<textPath href="#curve-c0""""),
+    )
+    assertTrue("carries the clock string", svg.contains(">10:10</textPath>"))
+    assertTrue("emits the captured weight", svg.contains("""font-weight="600""""))
+    assertTrue("drops the ARGB alpha for the SVG fill", svg.contains("""fill="#C6C6C7""""))
+  }
+
+  @Test
+  fun twoCurvedLayoutsWithTheSameNameGetDistinctPathIds() {
+    // Duplicate SVG ids make a `<textPath href>` resolve to the first matching path, so two
+    // same-named `CurvedLayout`s (a top TimeText + a bottom curved label) must not collide. A
+    // document-wide sequence keeps every arc id unique.
+    fun clock(text: String) =
+      LayoutInspectorNode(
+        nodeId = "n-$text",
+        component = "CurvedLayoutKt",
+        bounds = bounds(0, 0, 384, 384),
+        size = LayoutInspectorSize(384, 384),
+        curvedTexts =
+          listOf(
+            LayoutInspectorCurvedText(
+              text = text,
+              centerXPx = 192.0,
+              centerYPx = 192.0,
+              radiusPx = 160.0,
+              startAngleRadians = 4.4652,
+              sweepRadians = 0.4944,
+              clockwise = true,
+              fontSizePx = 30.0,
+            )
+          ),
+      )
+    val root =
+      LayoutInspectorNode(
+        nodeId = "root",
+        component = "Root",
+        bounds = bounds(0, 0, 384, 384),
+        size = LayoutInspectorSize(384, 384),
+        children = listOf(clock("10:10"), clock("Steps")),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(root)))
+    val ids = Regex("""<path id="(curve-c\d+)"""").findAll(svg).map { it.groupValues[1] }.toList()
+    assertEquals("one path id per curved run", 2, ids.size)
+    assertEquals("the two path ids are distinct", ids.size, ids.toSet().size)
+  }
+
+  @Test
   fun withoutRoundClipTheExportStaysSquareAndUncapped() {
     // The default (non-round) export must be unchanged: no clip, and the canvas still grows to the
     // full content extent so a normal sticker isn't wrongly clipped or cropped.

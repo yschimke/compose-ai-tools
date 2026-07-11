@@ -28,10 +28,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.unit.Density
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
 import ee.schimke.composeai.data.render.PreviewBackends
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.PreviewDeviceSpec
@@ -140,6 +144,15 @@ class RenderEngine(
     // file and emits `Ok(path)`. Mirrors `:daemon:android`'s `RenderEngine.runScrollScenario`.
     if (spec.renderMode == SCROLL_LONG_RENDER_MODE || spec.renderMode == SCROLL_GIF_RENDER_MODE) {
       return runScrollScenario(spec = spec, requestId = requestId, classLoader = classLoader)
+    }
+    // Full-page figma-svg for a scrolling preview (`compose/figma-svg-long`). Renders at an
+    // expanded
+    // viewport so a virtualised LazyColumn composes every item, then emits the layered SVG over the
+    // whole content instead of just the on-screen rows. SVG-only — the PNG scroll story stays LONG
+    // /
+    // GIF above. See docs/design/SCROLLING_SVG.md.
+    if (spec.renderMode == FIGMA_SVG_LONG_RENDER_MODE) {
+      return runScrollSvgScenario(spec = spec, requestId = requestId, classLoader = classLoader)
     }
     // kind=LOTTIE animated capture — sweep the asset's intrinsic timeline into a looping GIF
     // instead of capturing one still frame. Routed here (before the reflection-based setUp) because
@@ -939,6 +952,201 @@ class RenderEngine(
   }
 
   /**
+   * `figma-svg-long` dispatch — the **full-page** layered SVG of a scrolling preview
+   * (`compose/figma-svg-long`). A `LazyColumn`/`LazyRow` is virtualised, so the normal viewport
+   * render composes only the on-screen rows and the figma-svg carries just those. This renders the
+   * preview at a viewport grown until the scroll container reports nothing left to scroll (so every
+   * item composes) and sized to the content, then reuses the ordinary figma-svg export over that
+   * taller tree — producing one editable SVG of the whole screen (pinned top bar, all rows, pinned
+   * bottom bar). SVG-only; the PNG scroll story stays LONG / GIF. See docs/design/SCROLLING_SVG.md.
+   *
+   * Sizing is **grow-by-remaining**: `VerticalScrollAxisRange.maxValue − value` is exactly the
+   * content below the fold, which is exactly the extra content-area height needed to show it — and
+   * because the top/bottom chrome are fixed height, adding it to the frame height adds it to the
+   * content area, so a pinned bottom bar tucks directly under the last row. Bounded by an iteration
+   * cap and a max extra-height so an infinite list can't grow the frame without limit.
+   *
+   * The final render writes into an **isolated** output base
+   * (`<previewId>` + [SCROLL_SVG_TMP_SUFFIX]) so the tall render's `compose/semantics` / wireframe
+   * / PNG never overwrite the preview's normal-size products; only the layered SVG is copied out to
+   * the long product path (`<dataDir>/<previewId>/compose-figma-long.svg`) that
+   * [ComposeFigmaSvgLongDataProductRegistry] reads back. A non-scrolling preview simply yields its
+   * viewport SVG (nothing to grow).
+   */
+  private fun runScrollSvgScenario(
+    spec: RenderSpec,
+    requestId: Long,
+    classLoader: ClassLoader,
+  ): RenderResult {
+    val previewId =
+      spec.previewId
+        ?: error(
+          "RenderEngine: render mode '${spec.renderMode}' requires a previewId on the RenderSpec"
+        )
+    val startNs = System.nanoTime()
+
+    val baseHeight = spec.heightPx
+    val maxHeight = baseHeight + SCROLL_SVG_MAX_EXTRA_PX
+    var probeHeight = baseHeight.coerceAtMost(maxHeight)
+    var sizedHeight = baseHeight
+    var prevContentBottom = -1
+    var iterations = 0
+    while (iterations < SCROLL_SVG_MAX_GROW_ITERATIONS) {
+      iterations++
+      val probe = spec.copy(renderMode = null, heightPx = probeHeight, wrapHeight = false)
+      val state = setUp(probe, classLoader, inspectionMode = spec.inspectionMode ?: true)
+      val measure =
+        try {
+          // Two frames so a first-composition LazyList lays out before we measure, mirroring the
+          // two
+          // settle frames the one-shot path renders.
+          renderFrame(state, false)
+          renderFrame(state, false)
+          measureVerticalScroll(state.scene)
+        } finally {
+          tearDown(state)
+        }
+      // Not a scrolling preview: nothing to grow, the viewport SVG is the full page.
+      if (measure == null) {
+        sizedHeight = baseHeight
+        break
+      }
+      // The chrome pinned below the list (e.g. a Scaffold bottom bar) — the gap between the scroll
+      // container's bottom and the frame bottom. Sizing the frame to `content + this` tucks that
+      // bar
+      // directly under the last row.
+      val bottomChrome = (probeHeight - measure.scrollNodeBottom).coerceAtLeast(0)
+      sizedHeight =
+        (measure.contentBottom + bottomChrome + SCROLL_SVG_CONTENT_MARGIN_PX).coerceIn(
+          baseHeight,
+          maxHeight,
+        )
+      // Fully composed once growing the viewport reveals no further content. (LazyList's semantic
+      // scroll range is a coarse estimate, so we grow by measured *geometry* — the deepest composed
+      // descendant of the scroll node — not by the reported remaining.)
+      if (measure.contentBottom <= prevContentBottom) break
+      prevContentBottom = measure.contentBottom
+      if (probeHeight >= maxHeight) break
+      // Grow with a whole base viewport of headroom so the next batch of items composes.
+      probeHeight = (measure.contentBottom + bottomChrome + baseHeight).coerceAtMost(maxHeight)
+    }
+    val height = sizedHeight
+
+    // Final render at the settled height into an isolated base so it can't clobber the preview's
+    // normal-size products. `previewId = null` makes renderOnce key the figma-svg dir off the
+    // (isolated) outputBaseName.
+    val tmpBase = "$previewId$SCROLL_SVG_TMP_SUFFIX"
+    val finalSpec =
+      spec.copy(
+        renderMode = null,
+        heightPx = height,
+        wrapHeight = false,
+        previewId = null,
+        outputBaseName = tmpBase,
+      )
+    val finalState = setUp(finalSpec, classLoader, inspectionMode = spec.inspectionMode ?: true)
+    try {
+      renderOnce(finalState, requestId)
+    } finally {
+      tearDown(finalState)
+    }
+
+    val tmpDir = dataDir.resolve(tmpBase)
+    val producedSvg = tmpDir.resolve(ComposeFigmaSvgDataProducer.FILE_SVG)
+    if (!producedSvg.exists()) {
+      error(
+        "RenderEngine: render mode '${spec.renderMode}' produced no layered SVG for previewId " +
+          "'$previewId' (no layout tree captured?)"
+      )
+    }
+    // The long export lives in its own subdir (SVG + its own figma-raster/ crops). A hybrid export
+    // references per-node `figma-raster/<node>.png` crops, and Compose reassigns node ids per
+    // render, so writing the tall render's crops next to the viewport export's would collide; the
+    // dedicated subdir keeps each export's crops self-consistent, and the served SVG inlines them
+    // relative to its own dir.
+    val longDir =
+      dataDir.resolve(previewId).resolve(ComposeFigmaSvgProduct.LONG_SUBDIR).also { it.mkdirs() }
+    val destSvg = longDir.resolve(ComposeFigmaSvgProduct.FILE_SVG_LONG)
+    val svgBytes = fileSystem.read(producedSvg.path.toPath()) { readByteArray() }
+    fileSystem.write(destSvg.path.toPath()) { write(svgBytes) }
+    // Carry the hybrid raster crops the SVG's `<image>` layers reference (Image/Icon/Canvas/… on a
+    // scrolling screen) so those layers resolve instead of dangling.
+    val tmpRasterDir = tmpDir.resolve(ComposeFigmaSvgDataProducer.RASTER_DIR)
+    if (tmpRasterDir.isDirectory) {
+      val destRasterDir =
+        longDir.resolve(ComposeFigmaSvgDataProducer.RASTER_DIR).also { it.mkdirs() }
+      tmpRasterDir.listFiles()?.forEach { crop ->
+        val bytes = fileSystem.read(crop.path.toPath()) { readByteArray() }
+        fileSystem.write(destRasterDir.resolve(crop.name).path.toPath()) { write(bytes) }
+      }
+    }
+    // Best-effort cleanup of the throwaway render dir + its PNG so the tall probe artefacts don't
+    // linger next to the real products.
+    runCatching { tmpDir.deleteRecursively() }
+    runCatching { File(outputDir, "$tmpBase.png").delete() }
+
+    val tookMs = (System.nanoTime() - startNs) / 1_000_000L
+    return RenderResult(
+      id = requestId,
+      classLoaderHashCode = System.identityHashCode(classLoader),
+      classLoaderName = classLoader.javaClass.name,
+      pngPath = destSvg.absolutePath,
+      metrics = mapOf("tookMs" to tookMs),
+    )
+  }
+
+  /** Geometry of the main vertical scroll container in a rendered scene (root-pixel space). */
+  private data class ScrollMeasure(
+    /** The scroll container's own bottom edge — where any pinned bottom chrome begins. */
+    val scrollNodeBottom: Int,
+    /** The deepest composed descendant's bottom — how far the list content actually reaches. */
+    val contentBottom: Int,
+  )
+
+  /**
+   * Measures the tallest vertically-scrollable node in [scene] and how far its composed content
+   * reaches, or null when nothing is vertically scrollable. Used by [runScrollSvgScenario] to size
+   * the full-page render by *geometry* rather than the LazyList scroll-range estimate (which is
+   * coarse — its `maxValue` isn't a reliable pixel extent). Bounds are root-pixel space, same as
+   * the figma-svg export reads.
+   */
+  @OptIn(
+    androidx.compose.ui.InternalComposeUiApi::class,
+    androidx.compose.ui.ExperimentalComposeUiApi::class,
+  )
+  private fun measureVerticalScroll(scene: ImageComposeScene): ScrollMeasure? {
+    val root = scene.semanticsOwners.firstOrNull()?.unmergedRootSemanticsNode ?: return null
+    // Pick the tallest node carrying a VerticalScrollAxisRange — the screen's main scroll container
+    // (a nested inner scroller would be shorter).
+    var scroll: SemanticsNode? = null
+    var tallest = -1f
+    fun findScroll(node: SemanticsNode) {
+      if (node.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange) != null) {
+        val h = node.boundsInRoot.height
+        if (h > tallest) {
+          tallest = h
+          scroll = node
+        }
+      }
+      node.children.forEach(::findScroll)
+    }
+    findScroll(root)
+    val scrollNode = scroll ?: return null
+    // Deepest composed descendant bottom = the real content extent (grows as more items compose).
+    var maxBottom = scrollNode.boundsInRoot.top
+    fun deepest(node: SemanticsNode) {
+      val b = node.boundsInRoot.bottom
+      if (b.isFinite() && b > maxBottom) maxBottom = b
+      node.children.forEach(::deepest)
+    }
+    scrollNode.children.forEach(::deepest)
+    return ScrollMeasure(
+      scrollNodeBottom = scrollNode.boundsInRoot.bottom.toInt(),
+      contentBottom = maxBottom.toInt(),
+    )
+  }
+
+  /**
    * Live-daemon `kind=LOTTIE` animated capture. Sweeps the discovered Lottie asset's intrinsic
    * timeline into a looping GIF at `<outputDir>/<outputBaseName>.gif` by delegating to
    * `:renderer-desktop`'s [ee.schimke.composeai.renderer.renderLottieGif]. The default window is
@@ -1045,6 +1253,35 @@ class RenderEngine(
      * [runLottieGifScenario]. The still-frame Lottie path uses the default (null) render mode.
      */
     const val LOTTIE_GIF_RENDER_MODE: String = "lottie-gif"
+
+    /**
+     * Render mode requesting the **full-page** figma-svg export of a scrolling preview
+     * (`compose/figma-svg-long`). `ComposeFigmaSvgLongDataProductRegistry` advertises the kind as
+     * `requiresRerender = true`, so a missing artefact returns
+     * `Outcome.RequiresRerender("figma-svg-long")` and the dispatcher submits a render with this
+     * mode; [render] routes it into [runScrollSvgScenario]. Value matches `:daemon:android`'s
+     * constant so a single payload drives either backend.
+     */
+    const val FIGMA_SVG_LONG_RENDER_MODE: String = "figma-svg-long"
+
+    /** Max px the `figma-svg-long` growth loop will add on top of the base viewport. */
+    private const val SCROLL_SVG_MAX_EXTRA_PX: Int = 40_000
+
+    /**
+     * Max growth iterations before giving up. Each iteration adds a base viewport of headroom so a
+     * fresh batch of items composes, so a handful covers a long list; the cap only guards against
+     * content whose height keeps shifting as it reflows.
+     */
+    private const val SCROLL_SVG_MAX_GROW_ITERATIONS: Int = 10
+
+    /**
+     * Slack (px) added below the deepest composed descendant when sizing the frame, so the last
+     * item's own padding/descent below its (text) semantics bounds isn't clipped.
+     */
+    private const val SCROLL_SVG_CONTENT_MARGIN_PX: Int = 40
+
+    /** Output-base suffix isolating the tall render so it can't clobber the preview's products. */
+    private const val SCROLL_SVG_TMP_SUFFIX: String = "__figma_svg_long"
 
     fun supportsLocaleTagOverride(): Boolean = localProvidableLocaleListOrNull() != null
 
@@ -1296,6 +1533,17 @@ data class RenderSpec(
           json.decodeFromString(PreviewOverrides.serializer(), bytes.toString(Charsets.UTF_8))
         }
         .getOrNull()
+
+    /**
+     * Decode the base64-encoded `PreviewOverrides` bag carried in the `overrides=<b64>` payload
+     * token — the extension bag `JsonRpcServer.encodeRenderPayload` emits (`namedOverrides`,
+     * `themeProvider`, `wallpaper`, `permissions`, `gestures`, `lottie`). Exposed so the
+     * previewId-based render path ([DesktopHost.specFromPreviewIdPayload]) can carry the bag
+     * through too, not just the className-based [parseFromPayload]; without it a `?knob.<key>=…`
+     * edit on the bundle-backed live daemon (`serve` / preview.coo.ee) is silently dropped.
+     */
+    internal fun decodeOverridesToken(token: String): PreviewOverrides? =
+      token.decodePreviewOverrides()
   }
 }
 
