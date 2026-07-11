@@ -86,6 +86,20 @@ object ComposeFigmaSvgProduct {
   const val MEDIA_TYPE_SVG: String = "image/svg+xml"
 
   /**
+   * `compose/figma-svg-long` — the **full-page** variant of [KIND] for a *scrolling* preview. A
+   * `LazyColumn`/`LazyRow` is virtualised, so the normal viewport-sized [KIND] export captures only
+   * the on-screen rows. The long export renders the preview at an expanded viewport (grown until
+   * the scroll container reports nothing left to scroll, so every item composes) and sizes the
+   * frame to the content, so the layered SVG carries the whole scrollable screen — a pinned top
+   * bar, every row, and a pinned bottom bar — as one editable tree. Distinct file + kind so it
+   * never overwrites the viewport-sized [FILE_SVG]. `requiresRerender = true`: a `data/fetch`
+   * re-renders in [RENDER_MODE_LONG]. See [docs/design/SCROLLING_SVG.md].
+   */
+  const val KIND_LONG: String = "compose/figma-svg-long"
+  const val FILE_SVG_LONG: String = "compose-figma-long.svg"
+  const val RENDER_MODE_LONG: String = "figma-svg-long"
+
+  /**
    * Directory (relative to the preview's output dir) holding the per-node `<node>.png` crops a
    * **hybrid** export references via `<image href="figma-raster/<node>.png">`. Empty for a
    * vector-only export. The single source of truth for the prefix [FigmaSvgModel.defaultRasterHref]

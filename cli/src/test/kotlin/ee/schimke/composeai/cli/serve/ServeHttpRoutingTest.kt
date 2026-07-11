@@ -139,6 +139,14 @@ class ServeHttpRoutingTest {
   }
 
   @Test
+  fun `a static bundle 404s the full-page svg render lane`() {
+    // `?scroll=long` routes to the full-page (compose/figma-svg-long) lane; a bundle host has no
+    // daemon to run the expanded re-render, so it resolves to NotFound like the viewport SVG lane.
+    val (code, _) = get("/compose-m3/render/$previewId.svg?scroll=long")
+    assertEquals(404, code)
+  }
+
+  @Test
   fun `a static bundle 404s the slots render lane`() {
     // The .slots lane is routed and dispatched, but a bundle host has no daemon to capture a
     // semantics tree, so it resolves to NotFound (only a daemon-backed ServeRenderHost extracts

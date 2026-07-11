@@ -99,6 +99,51 @@ class RenderEngineFigmaSvgScrollTest {
     )
   }
 
+  @Test
+  fun figmaSvgLongRenderModeProducesFullPageSvg() {
+    // Exercise the real `figma-svg-long` render mode end to end: it grows the viewport by-remaining
+    // until every row composes, sizes to content, and writes the full-page SVG to the long product
+    // path — without touching the preview's normal-size compose-figma.svg.
+    val outputDir = tempFolder.newFolder("renders-long")
+    val dataDir = tempFolder.newFolder("data-long")
+    val engine = RenderEngine(outputDir = outputDir, dataDir = dataDir)
+    val previewId = "scaffold-list"
+    engine.render(
+      spec =
+        RenderSpec(
+          previewId = previewId,
+          renderMode = RenderEngine.FIGMA_SVG_LONG_RENDER_MODE,
+          className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+          functionName = "LazyColumnListPreview",
+          widthPx = 200,
+          heightPx = 520,
+          density = 1.0f,
+          showBackground = true,
+        ),
+      requestId = 1L,
+    )
+
+    val longSvg = File(File(dataDir, previewId), "compose-figma-long.svg")
+    assertTrue("full-page SVG must be produced: ${longSvg.absolutePath}", longSvg.exists())
+    val text = longSvg.readText()
+    runCatching {
+      val keep = File("build/figma-svg-scroll-experiment").also { it.mkdirs() }
+      longSvg.copyTo(File(keep, "figma-svg-long.svg"), overwrite = true)
+    }
+    val rows = Regex("Row (\\d+)").findAll(text).map { it.groupValues[1].toInt() }.toSortedSet()
+    assertTrue("full-page SVG must carry all 30 rows (got ${rows.size})", rows.size == 30)
+    // It should be much taller than the 520px base viewport it started from.
+    val height =
+      Regex("<svg[^>]*\\bheight=\"([0-9.]+)\"").find(text)?.groupValues?.get(1)?.toDouble() ?: 0.0
+    assertTrue("full-page SVG must be taller than the base viewport (was $height)", height > 1000.0)
+
+    // The isolated tall render must not have left its throwaway dir behind.
+    assertTrue(
+      "throwaway render dir must be cleaned up",
+      !File(dataDir, "$previewId${"__figma_svg_long"}").exists(),
+    )
+  }
+
   /**
    * The baseline y of the last `Row N` `<text>` in the SVG. Measuring the row text specifically
    * (rather than the max rect bottom) avoids picking up the Scaffold's bottom navigation bar, which

@@ -337,3 +337,50 @@ class ComposeFigmaSvgDataProductRegistry(
   /** The SVG is not JSON — an `inline = true` fetch must still return the path, not parse it. */
   override fun allowInlineUpgrade(kind: String): Boolean = false
 }
+
+/**
+ * Registry for `compose/figma-svg-long` — the full-page SVG export of a *scrolling* preview (see
+ * [ComposeFigmaSvgProduct.KIND_LONG]). Unlike the viewport [ComposeFigmaSvgDataProductRegistry]
+ * this is `requiresRerender = true`: the long SVG is produced on demand by an expanded-height
+ * re-render, so a missing artefact resolves through the daemon's `data/fetch` re-render path in the
+ * `figma-svg-long` render mode — the same contract [ScrollDataProductRegistry] uses for the PNG
+ * `render/scroll/long`. The file lands next to the viewport export under `<previewId>/`.
+ */
+class ComposeFigmaSvgLongDataProductRegistry(
+  private val rootDir: File,
+  private val fileSystem: FileSystem = SystemFileSystem,
+) :
+  FileBackedDataProductRegistry(
+    capabilities =
+      listOf(
+        DataProductCapability(
+          kind = ComposeFigmaSvgProduct.KIND_LONG,
+          schemaVersion = ComposeFigmaSvgProduct.SCHEMA_VERSION,
+          transport = DataProductTransport.PATH,
+          attachable = true,
+          fetchable = true,
+          requiresRerender = true,
+          displayName = "Figma layered SVG (full page)",
+          facets = listOf(DataProductFacet.ARTIFACT, DataProductFacet.IMAGE),
+          mediaTypes = listOf(ComposeFigmaSvgProduct.MEDIA_TYPE_SVG),
+          sampling = SamplingPolicy.End,
+        )
+      ),
+    fileSystem = fileSystem,
+  ) {
+  override fun fileFor(previewId: String, kind: String): File? =
+    if (kind == ComposeFigmaSvgProduct.KIND_LONG)
+      rootDir.resolve(previewId).resolve(ComposeFigmaSvgProduct.FILE_SVG_LONG)
+    else null
+
+  override fun missingOutcome(previewId: String, kind: String): DataProductRegistry.Outcome =
+    if (kind == ComposeFigmaSvgProduct.KIND_LONG)
+      DataProductRegistry.Outcome.RequiresRerender(ComposeFigmaSvgProduct.RENDER_MODE_LONG)
+    else DataProductRegistry.Outcome.Unknown
+
+  override fun renderModeFor(kind: String): String? =
+    if (kind == ComposeFigmaSvgProduct.KIND_LONG) ComposeFigmaSvgProduct.RENDER_MODE_LONG else null
+
+  /** The SVG is not JSON — an `inline = true` fetch must still return the path, not parse it. */
+  override fun allowInlineUpgrade(kind: String): Boolean = false
+}

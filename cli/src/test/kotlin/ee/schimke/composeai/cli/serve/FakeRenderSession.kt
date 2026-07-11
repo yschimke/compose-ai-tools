@@ -262,6 +262,17 @@ internal class FakeRenderSession(
         path = file.absolutePath,
       )
     }
+    if (kind == ComposeFigmaSvgProduct.KIND_LONG) {
+      // Model the daemon's `requiresRerender` full-page export: the fetch itself produces the file.
+      val previewDir = File(renderRoot, previewId).apply { mkdirs() }
+      val file = File(previewDir, ComposeFigmaSvgProduct.FILE_SVG_LONG)
+      file.writeText("svg-long:$previewId")
+      return DataFetchResult(
+        kind = kind,
+        schemaVersion = ComposeFigmaSvgProduct.SCHEMA_VERSION,
+        path = file.absolutePath,
+      )
+    }
     if (kind == ComposeSemanticsProduct.KIND) {
       val file = File(renderRoot, "$previewId/${ComposeSemanticsProduct.FILE}")
       return DataFetchResult(

@@ -569,7 +569,11 @@ class ServeHttpServer(
           call.respondText(parsed.message, status = HttpStatusCode.BadRequest)
         is OverrideParse.Ok -> {
           if (wantSvg) {
-            renderSvgResponse(renderHost, previewId, parsed.overrides)
+            // `?scroll=long` (or `full`/`page`) asks for the full-page export of a scrolling
+            // preview (compose/figma-svg-long) instead of the viewport-sized one.
+            val scroll =
+              call.request.queryParameters["scroll"]?.lowercase() in setOf("long", "full", "page")
+            renderSvgResponse(renderHost, previewId, parsed.overrides, scroll = scroll)
             return@withLeasedSession
           }
           if (wantSlots) {
@@ -611,11 +615,16 @@ class ServeHttpServer(
     }
   }
 
-  /** SVG lane of [handleRender]: load-shed like the PNG lane, then respond the figma-svg bytes. */
+  /**
+   * SVG lane of [handleRender]: load-shed like the PNG lane, then respond the figma-svg bytes. When
+   * [scroll] is set, serves the full-page (`compose/figma-svg-long`) export of a scrolling preview
+   * instead of the viewport-sized one.
+   */
   private suspend fun RoutingContext.renderSvgResponse(
     renderHost: ServeHost,
     previewId: String,
     overrides: PreviewOverrides,
+    scroll: Boolean = false,
   ) {
     val outcome =
       withContext(Dispatchers.IO) {
@@ -623,7 +632,8 @@ class ServeHttpServer(
           null
         } else {
           try {
-            renderHost.renderSvg(previewId, overrides)
+            if (scroll) renderHost.renderScrollSvg(previewId, overrides)
+            else renderHost.renderSvg(previewId, overrides)
           } finally {
             renderSemaphore.release()
           }
