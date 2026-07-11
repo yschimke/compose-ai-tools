@@ -119,15 +119,22 @@ abstract class RenderPreviewsTask : DefaultTask() {
     // Empty default = "render every preview". The plugin registration overrides this convention
     // with the `composePreview.filter` Gradle property; a `--preview` option overrides both.
     previewFilters.convention(emptyList())
-    // Caching is intentionally gated on `tier=full`: a `tier=fast` run
-    // only writes a subset of captures (fast ones), so a build-cache
-    // restore from a fast snapshot would *wipe* the previous full run's
-    // heavy outputs from `outputDir` — exactly the stale images the
-    // interactive UI relies on. Up-to-date checks still apply, so a
-    // re-run with no input changes is a no-op and the renders directory
-    // stays as-is regardless of tier.
-    outputs.cacheIf("composePreviewRender caches tier=full runs only") {
-      tier.get().equals("full", ignoreCase = true)
+    // Caching is intentionally gated on `tier=full` AND an empty `--preview` filter — a run is only
+    // cacheable when its `outputDir` is the module's *complete* render set. A `tier=fast` run
+    // writes
+    // only the fast captures, so a build-cache restore from a fast snapshot would *wipe* the
+    // previous full run's heavy outputs — exactly the stale images the interactive UI relies on. A
+    // filtered `tier=full` run is likewise partial: it renders only the named previews and
+    // deliberately leaves every other (possibly stale) PNG in place, so caching that mixed
+    // directory
+    // could store an unrelated stale `Bar.png` and later restore it on a clean checkout for the
+    // same
+    // filtered inputs (issue #2066 review). Up-to-date checks still apply, so a re-run with no
+    // input
+    // changes is a no-op and the renders directory stays as-is regardless of tier or filter.
+    outputs.cacheIf("composePreviewRender caches full, unfiltered runs only") {
+      tier.get().equals("full", ignoreCase = true) &&
+        previewFilters.getOrElse(emptyList()).none { it.isNotBlank() }
     }
   }
 
