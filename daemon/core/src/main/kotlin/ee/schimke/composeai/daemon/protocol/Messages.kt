@@ -535,6 +535,20 @@ data class PreviewOverrides(
    */
   val captureAdvanceMs: Long? = null,
   /**
+   * Fake **wall clock** — pins the preview's time-of-day to this instant (milliseconds since the
+   * Unix epoch) so time-dependent UI (relative timestamps like "2m ago", countdowns like "expires
+   * in…") renders deterministically instead of drifting every run (issue #1968). Both backends
+   * honour it through a composition-local provider (`:data-preview-overrides-connector`), so no
+   * renderer branch is involved.
+   *
+   * **Opt-in**, like `previewOverride*` / `PreviewSlot`: Compose has no built-in wall-clock local,
+   * so consumer UI must read time via `LocalClock` (`:data-preview-overrides-runtime`) rather than
+   * `System.currentTimeMillis()` to be affected. Null leaves `LocalClock` at real system time, so
+   * an untoggled render is byte-identical. Distinct from [captureAdvanceMs], which advances the
+   * paused *frame* clock (animations), not the wall clock. Negative values are ignored.
+   */
+  val clockEpochMillis: Long? = null,
+  /**
    * Per-render `LocalInspectionMode` value for one-shot renders. Null preserves the backend's
    * default preview behaviour (`true` for renderNow). Set `false` to render as runtime-like content
    * without allocating a held interactive session.

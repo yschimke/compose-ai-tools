@@ -218,7 +218,8 @@ private fun printFullUsage() {
       --fps <n>            record: frames per second of the virtual playback clock (default 30)
       --scale <f>          record: capture scale multiplier (default 1.0)
       --overrides <k=v,…>  record: per-render overrides, e.g. touchOverlay=true (also device,
-                           localeTag, fontScale, density, widthPx, heightPx, inspectionMode)
+                           localeTag, fontScale, density, widthPx, heightPx, inspectionMode,
+                           clockEpochMillis=<epoch-ms> to pin a fake wall clock)
       --bundle             render: after rendering, pack each module's previews into a portable
                            PNG+ZIP bundle at <module>/build/compose-previews/bundle.png. Opt-in —
                            adds a classpath closure walk + jar minimization on top of the render.

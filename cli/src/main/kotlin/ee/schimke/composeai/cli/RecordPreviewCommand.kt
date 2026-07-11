@@ -343,10 +343,14 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
           "density" -> overrides.copy(density = value.toFloatOrFail(key))
           "widthPx" -> overrides.copy(widthPx = value.toIntOrFail(key))
           "heightPx" -> overrides.copy(heightPx = value.toIntOrFail(key))
+          // Fake wall clock (#1968): pin the preview's time-of-day to a fixed epoch-millis instant
+          // so relative timestamps / countdowns are deterministic. Needs the preview to read
+          // `LocalClock` (:data-preview-overrides-runtime).
+          "clockEpochMillis" -> overrides.copy(clockEpochMillis = value.toLongOrFail(key))
           else ->
             fail(
               "unsupported --overrides key '$key'. Supported: touchOverlay, inspectionMode, " +
-                "device, localeTag, fontScale, density, widthPx, heightPx"
+                "device, localeTag, fontScale, density, widthPx, heightPx, clockEpochMillis"
             )
         }
     }
@@ -371,6 +375,9 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
 
   private fun String.toIntOrFail(key: String): Int =
     toIntOrNull() ?: fail("--overrides $key expects an integer; got '$this'")
+
+  private fun String.toLongOrFail(key: String): Long =
+    toLongOrNull() ?: fail("--overrides $key expects an integer; got '$this'")
 
   // ---------------------------------------------------------------------------
   // Output.
