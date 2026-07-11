@@ -1174,16 +1174,32 @@ class RenderEngine(
         override fun evaluate() {
           rule.mainClock.autoAdvance = false
           val clazz = Class.forName(spec.className, true, classLoader)
-          val composableMethod = clazz.getDeclaredComposableMethod(spec.functionName)
+          val composableMethod =
+            clazz.getDeclaredComposableMethod(spec.functionName).also {
+              // Kotlin `private fun` scrolling previews compile to JVM-private methods; open them
+              // so the reflective invoke doesn't throw IllegalAccessException — same as `render`.
+              runCatching { it.asMethod().isAccessible = true }
+            }
           val bgArgb = resolveBackgroundColor(spec).toArgb()
           rule.setContent {
             CompositionLocalProvider(
-              LocalInspectionMode provides false,
+              // Match the final render's inspection mode so a preview that branches on
+              // `LocalInspectionMode.current` composes the same content the export will (measuring a
+              // different branch would size the frame to the wrong extent). The final SVG render
+              // re-enters `render` in the non-a11y path, i.e. `spec.inspectionMode ?: true`.
+              LocalInspectionMode provides (spec.inspectionMode ?: true),
               ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
                 spec.clearBackground,
             ) {
               Box(modifier = Modifier.fillMaxSize().background(Color(bgArgb))) {
-                InvokeComposable(composableMethod)
+                // Mirror the normal render's invocation so a `@PreviewWrapper` / theme-provider that
+                // supplies the scrollable content is applied during measurement too, not just at the
+                // final render.
+                InvokeWithOptionalWrapper(
+                  composableMethod,
+                  wrapperFqnFromSpec = spec.wrapperClassName,
+                  themeProviderFqn = spec.overrides?.themeProvider,
+                )
               }
             }
           }
