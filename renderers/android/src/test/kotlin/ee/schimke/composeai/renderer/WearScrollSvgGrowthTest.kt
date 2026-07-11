@@ -2,6 +2,9 @@ package ee.schimke.composeai.renderer
 
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
@@ -10,16 +13,26 @@ import androidx.compose.runtime.InternalComposeApi
 import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.tooling.CompositionData
 import androidx.compose.runtime.tooling.LocalInspectionTables
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.node.RootForTest
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.unit.dp
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
+import androidx.wear.compose.material3.AppScaffold
+import androidx.wear.compose.material3.CardDefaults
+import androidx.wear.compose.material3.EdgeButton
+import androidx.wear.compose.material3.EdgeButtonSize
+import androidx.wear.compose.material3.ListHeader
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import androidx.wear.compose.material3.TimeSource
+import androidx.wear.compose.material3.TimeText
 import androidx.wear.compose.material3.TitleCard
 import androidx.wear.compose.material3.SurfaceTransformation
 import androidx.wear.compose.material3.lazy.rememberTransformationSpec
@@ -78,7 +91,27 @@ class WearScrollSvgGrowthTest {
   // The round-watch device preview we start from: `id:wearos_large_round` is 227×227dp. mdpi keeps
   // px == dp so the grown-height arithmetic reads directly.
   private val deviceDp = 227
-  private val itemCount = 12
+
+  // A realistic activity list — the same content shape as `:samples:wear`'s `LongActivityListScreen`,
+  // the canonical Wear scroll fixture. Each title carries a unique index so it counts cleanly.
+  private val activities: List<Pair<String, String>> =
+    List(15) { i ->
+      when (i % 6) {
+        0 -> "Morning run ${i + 1}" to "5.2 km · 28 min"
+        1 -> "Heart rate ${i + 1}" to "${70 + i} bpm"
+        2 -> "Sleep day ${i + 1}" to "7h ${(i * 3) % 60}m"
+        3 -> "Steps day ${i + 1}" to "${6000 + i * 120}"
+        4 -> "Calories day ${i + 1}" to "${400 + i * 5} kcal"
+        else -> "Timer ${i + 1}" to "${10 + i}:${(i * 7) % 60} remaining"
+      }
+    }
+  private val itemCount
+    get() = activities.size
+
+  /** Deterministic `10:10` clock, mirroring `:samples:wear`'s `FixedPreviewTimeSource`. */
+  private object FixedTime : TimeSource {
+    @Composable override fun currentTime(): String = "10:10"
+  }
 
   @Before
   fun setUp() {
@@ -93,11 +126,14 @@ class WearScrollSvgGrowthTest {
   }
 
   /**
-   * A round-watch list with the **real** Wear `TransformingLazyColumn` item scaling
-   * (`transformedHeight` against a `TransformationSpec`): rows shrink toward the top and bottom of
-   * the round face. Providing `LocalReduceMotion` = [reduceMotion] toggles that scaling — `false`
-   * gives the fisheye watch look, `true` flattens every row to its natural height (the state the
-   * extraction targets). The local is resolved through the same reflective seam the daemon uses.
+   * The real Wear activity screen — the same shape as `:samples:wear`'s `ActivityListLongPreview`: an
+   * `AppScaffold` pinning `TimeText` (10:10) at the top, a `ScreenScaffold` whose `EdgeButton` ("Start
+   * workout") is revealed at the bottom, and a `TransformingLazyColumn` with a `ListHeader`
+   * ("Activity") and `TitleCard` rows. The cards render with the **real** Wear item scaling
+   * (`transformedHeight` + `SurfaceTransformation`) — curving/shrinking toward the round face's edges.
+   * Providing `LocalReduceMotion` = [reduceMotion] toggles that scaling: `false` is the fisheye watch
+   * look, `true` flattens every row (the state the extraction targets). The local is resolved through
+   * the same reflective seam the daemon uses.
    */
   @Composable
   private fun WearList(reduceMotion: Boolean) {
@@ -107,20 +143,55 @@ class WearScrollSvgGrowthTest {
       MaterialTheme {
         val state = rememberTransformingLazyColumnState()
         val spec = rememberTransformationSpec()
-        TransformingLazyColumn(
-          state = state,
-          modifier = Modifier.fillMaxSize().background(Color.Black),
-        ) {
-          items(itemCount) { i ->
-            // Real Wear item scaling: `transformedHeight` + `SurfaceTransformation` shrink/curve the
-            // card toward the round face's edges. `LocalReduceMotion` (provided above) flattens both
-            // to natural size — the state the extraction targets.
-            TitleCard(
-              onClick = {},
-              title = { Text("Item $i") },
-              modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-              transformation = SurfaceTransformation(spec),
-            )
+        // Real Wear chrome — AppScaffold pins TimeText at the top — but we strip the round-face
+        // curve-in insets that balloon on a grown-tall frame: the list is top-aligned (its default
+        // arrangement centres content), the ListHeader's screen-height-fraction top padding is
+        // dropped, and a fixed device-sized top inset clears TimeText.
+        //
+        // The EdgeButton needs special handling: ScreenScaffold only reveals it at full size once
+        // the list is scrolled to its end, and scrolling a grown frame pushes the top rows off
+        // screen. Since the grown frame already shows the *whole* list, we place the EdgeButton as
+        // the final list item instead — always full-size, seated directly under the last card, its
+        // bottom carved into the capsule's arc.
+        AppScaffold(timeText = { TimeText(timeSource = FixedTime) }) {
+          TransformingLazyColumn(
+            state = state,
+            verticalArrangement = Arrangement.Top,
+            contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 34.dp, bottom = 8.dp),
+            modifier = Modifier.fillMaxSize(),
+          ) {
+            item {
+              ListHeader(modifier = Modifier.transformedHeight(this, spec)) { Text("Activity") }
+            }
+            items(activities) { (title, subtitle) ->
+              TitleCard(
+                onClick = {},
+                title = { Text(title) },
+                subtitle = { Text(subtitle) },
+                modifier =
+                  Modifier.fillMaxWidth()
+                    .minimumVerticalContentPadding(CardDefaults.minimumVerticalListContentPadding)
+                    .transformedHeight(this, spec),
+                transformation = SurfaceTransformation(spec),
+              )
+            }
+            item {
+              // The EdgeButton's fill is a custom-drawn crescent the vector export can't read, so a
+              // bare EdgeButton exports as floating text. Wrap it in a full-width Box whose
+              // `Modifier.background` the export DOES read as a rounded-rect colour token; the
+              // capsule's bottom arc carves that fill into the crescent. The real EdgeButton stays
+              // inside (so the raster device preview shows its true shape), while the tall vector
+              // export gets an editable fill + label instead of bare text.
+              Box(
+                modifier =
+                  Modifier.fillMaxWidth()
+                    .background(Color(0xFFD0BCFF), RoundedCornerShape(percent = 50))
+                    .transformedHeight(this, spec),
+                contentAlignment = Alignment.Center,
+              ) {
+                EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) { Text("Start workout") }
+              }
+            }
           }
         }
       }
@@ -207,9 +278,10 @@ class WearScrollSvgGrowthTest {
     return out
   }
 
-  // Count list items by their captured label text — robust whether the card fill lands as a vector
-  // rect or (via the hybrid path) a raster `<image>`.
-  private fun itemLayerCount(svg: String) = Regex(""">Item \d+<""").findAll(svg).count()
+  // Count list items by their captured title text — each activity title is unique, so a present
+  // `<text>…title…</text>` proves that row composed and reached the export.
+  private fun itemLayerCount(svg: String) =
+    activities.count { (title, _) -> svg.contains(">$title</text>") }
 
   @Test
   fun `grows a square round device preview into a tall capsule that carries the whole list`() {
@@ -277,6 +349,13 @@ class WearScrollSvgGrowthTest {
       "the grown frame must compose all $itemCount rows:\n$tallSvg",
       itemCount,
       itemLayerCount(tallSvg),
+    )
+    // The pinned scaffold chrome frames the extracted screen: the ListHeader and the revealed
+    // EdgeButton both land in the tall frame (the scaffold pins them for free — no bespoke capture).
+    assertTrue("the extracted screen keeps its header", tallSvg.contains(">Activity</text>"))
+    assertTrue(
+      "the extracted screen reveals the EdgeButton",
+      tallSvg.contains(">Start workout</text>"),
     )
   }
 }

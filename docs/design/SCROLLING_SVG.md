@@ -170,10 +170,12 @@ inside the stadium mask.)*
   gated on a round device requested taller than wide — i.e. the `figma-svg-long` re-entry).
 - **Landed (real-geometry end-to-end coverage — the whole extraction, magic and all):**
   [`WearScrollSvgGrowthTest`](../../renderers/android/src/test/kotlin/ee/schimke/composeai/renderer/WearScrollSvgGrowthTest.kt)
-  starts from a normal round-watch **device preview** (a square `wearos_large_round`, 227×227dp) whose
-  `TransformingLazyColumn` renders with the real Wear item scaling (`SurfaceTransformation` /
-  `transformedHeight`) — rows curve and shrink toward the round face's edges — and *grows it by
-  measurement* (the daemon's `runScrollSvgScenario` loop, sharing the same
+  starts from a normal round-watch **device preview** — the same screen shape as `:samples:wear`'s
+  `ActivityListLongPreview` (`TimeText`, an "Activity" `ListHeader`, `TitleCard` rows, and a "Start
+  workout" `EdgeButton`) on a square `wearos_large_round` (227×227dp) — whose `TransformingLazyColumn`
+  renders with the real Wear item scaling (`SurfaceTransformation` / `transformedHeight`), rows curving
+  and shrinking toward the round face's edges. It *grows it by measurement* (the daemon's
+  `runScrollSvgScenario` loop, sharing the same
   [`ScrollContentMeasure`](../../renderers/android/src/main/kotlin/ee/schimke/composeai/renderer/ScrollContentMeasure.kt))
   until every row composes. The **height is derived, never hardcoded**. It asserts the two ends: the
   square device preview masks to the inscribed **circle** and shows only a virtualised subset of rows;
@@ -183,6 +185,16 @@ inside the stadium mask.)*
   **test** classpath only; the daemon stays wear-free and reaches `LocalReduceMotion` reflectively,
   exactly as it does against a user's app in production. `RenderEngine`'s growth loop now calls the
   same shared `ScrollContentMeasure` rather than a private copy.
+
+  Two Wear-specific layout quirks the fixture works around (both artefacts of growing a round-face
+  screen tall, not of the export): the round-face **curve-in insets** (`ScreenScaffold` content
+  padding and `ListHeaderDefaults.minimumTopListContentPadding`) are a *fraction of screen height*, so
+  they balloon on a grown frame — the fixture drops them and pins device-sized insets, and top-aligns
+  the list (whose default arrangement centres content). And the **`EdgeButton`** only reveals at full
+  size once the list is scrolled to its end — impossible in a grown frame that already shows every row
+  without scrolling — so it's placed as the final list item instead, seated below the last card; its
+  custom-drawn crescent fill (which the vector export can't read) is backed by a `Modifier.background`
+  token so it exports as an editable rounded-rect fill rather than bare text.
 
   | Device preview (round, scaled) | Automagically extracted tall screenshot (flat, every row) |
   | --- | --- |
