@@ -173,11 +173,18 @@ Comparison with the emulator-driven UI-test tools this is modelled on:
 Things these tools apply on emulators that *could* map onto held preview scenes, with how they'd
 land (each is a separate follow-up, not in this PR):
 
-- **State / network / clock injection** — Maestro's `setLocation`, Espresso's `IdlingResource` and
-  test doubles. Previews already expose `PreviewOverrides` (locale, font scale, theme, ambient,
-  permissions, …); the same `DataExtension` seam could inject a fake clock or a canned network
-  response so an assertion checks a *loaded* state rather than a spinner. Fits the existing override
-  model cleanly.
+- **Fake clock** — **Shipped** as the `clockEpochMillis` override (issue #1968). Pins the preview's
+  wall clock to a fixed instant so time-dependent UI — relative timestamps ("2m ago"), countdowns
+  ("expires in…") — renders deterministically instead of drifting every run, so an assertion checks a
+  stable frame. It rides the existing `DataExtension` seam (no renderer branch): the
+  `:data-preview-overrides-connector` planner provides a fixed clock through the `LocalClock`
+  composition local (`:data-preview-overrides-runtime`), and it's **opt-in** — since Compose has no
+  built-in wall-clock local, consumer UI reads `LocalClock.current.nowEpochMillis()` instead of
+  `System.currentTimeMillis()`, the same model as `previewOverride*` / `PreviewSlot`. Drive it with
+  `compose-preview record --overrides clockEpochMillis=<epoch-ms>`. Both backends honour it.
+- **Canned state / network injection** — Maestro's `setLocation`, Espresso's `IdlingResource` and
+  test doubles. A canned "loaded vs. loading vs. error" seam so an assertion checks *content* rather
+  than a spinner would fit the same override model as the fake clock above — a natural follow-up.
 - **Retry / flake quarantine** — emulator suites re-run flaky tests. Here it's mostly moot: the
   virtual clock makes a scripted recording deterministic frame-for-frame, so a flaky assertion is a
   real bug, not a timing race. Worth a note in docs rather than a retry knob.

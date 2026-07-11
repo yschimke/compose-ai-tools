@@ -1622,6 +1622,11 @@ open class RobolectricHost(
                 // when present. The `compose/overrides` data product (registered in `DaemonMain`)
                 // surfaces the declared knobs.
                 PreviewOverridesPreviewOverrideExtension(),
+                // Fake wall clock (#1968): when `renderNow.overrides.clockEpochMillis` is set, pin
+                // `LocalClock` to that instant so time-dependent UI (relative timestamps,
+                // countdowns) renders deterministically. Plans null when unset, so a plain render
+                // stays byte-identical. Same portable planner registered on `DesktopHost`.
+                FakeClockPreviewOverrideExtension(),
                 // Runtime pseudolocale: when `localeTag` is `en-XA` / `ar-XB`, wrap LocalContext
                 // with a Resources subclass that pseudolocalises `getString*` returns. The
                 // planner returns null for any other tag, so non-pseudo locales keep going through

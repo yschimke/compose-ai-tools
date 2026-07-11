@@ -720,7 +720,15 @@ internal fun buildDesktopExtensions(
       id = "data/overrides",
       displayName = "Named preview overrides",
       dataProductRegistry = PreviewOverridesDataProductRegistry(),
-      previewOverrideExtensions = listOf(PreviewOverridesPreviewOverrideExtension()),
+      previewOverrideExtensions =
+        listOf(
+          PreviewOverridesPreviewOverrideExtension(),
+          // Fake wall clock (#1968): plans an extension only when
+          // `renderNow.overrides.clockEpochMillis` is set, pinning `LocalClock` to that instant so
+          // time-dependent UI renders deterministically. Portable — the same planner is wired into
+          // `RobolectricHost.previewOverrideExtensions` on Android.
+          FakeClockPreviewOverrideExtension(),
+        ),
     )
   }
   tryAdd("data/touch-overlay") {
