@@ -94,6 +94,26 @@ class ServeRenderHostTest {
   }
 
   @Test
+  fun `renderSvg short-circuits to NotFound when figma-svg is unavailable`() {
+    // Without the producer the SVG render methods must NOT hit fetchData (which would 500 with
+    // `-32020 kind not advertised`); they return NotFound (a 404) to match the advertised no-SVG
+    // lane. Guards the Codex P2 on the availability gate.
+    val session = FakeRenderSession(newRenderRoot(), figmaSvgAvailable = false)
+    host(session).use { h ->
+      assertEquals(
+        SvgOutcome.NotFound,
+        h.renderSvg(previewId, PreviewOverrides(uiMode = UiMode.DARK)),
+      )
+      assertEquals(SvgOutcome.NotFound, h.renderScrollSvg(previewId, PreviewOverrides()))
+      assertEquals(
+        0,
+        session.renderCount.get(),
+        "no render/fetch is attempted for an SVG-less host",
+      )
+    }
+  }
+
+  @Test
   fun `renderSvg returns the figma-svg for the given overrides`() {
     val session = FakeRenderSession(newRenderRoot())
     host(session).use { h ->
