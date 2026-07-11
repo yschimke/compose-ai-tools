@@ -1,8 +1,10 @@
 package com.example.designcatalogwearm3
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -15,10 +17,19 @@ import androidx.wear.compose.material3.MaterialTheme
  * lets a designer drop the sticker onto any canvas; the `compose/theme` tokens the renderer
  * extracts still come from the real Wear Material 3 system (read from the theme, not the pixels).
  * Full-screen components use [FullScreenWear] instead, which keeps the black round device shape.
+ *
+ * The content is **centred** in the pinned Wear canvas: a device-less Wear sticker is pinned to a
+ * fixed 227dp square (by `PreviewDiscovery.retargetWearStickers`, so fill-width components size to
+ * the watch screen and dp→px stays 2.0×), which means a wrap-content component (a button, the
+ * progress ring) would otherwise sit at the frame's top-left. Centring places it mid-canvas — the
+ * content-cropped figma-svg export and the content-bbox fidelity score are unaffected (both crop to
+ * the component), so this only moves where the component lands in the full-frame render PNG.
  */
 @Composable
 fun WearSticker(content: @Composable () -> Unit) {
-  MaterialTheme { Box(Modifier.padding(8.dp)) { content() } }
+  MaterialTheme {
+    Box(Modifier.fillMaxSize().padding(8.dp), contentAlignment = Alignment.Center) { content() }
+  }
 }
 
 /**
