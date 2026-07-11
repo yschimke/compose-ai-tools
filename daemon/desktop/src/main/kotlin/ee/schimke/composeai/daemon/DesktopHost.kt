@@ -752,6 +752,15 @@ open class DesktopHost(
       inspectionMode = map["inspectionMode"]?.toBooleanStrictOrNull() ?: base.inspectionMode,
       slotMode = map["slotMode"]?.toBooleanStrictOrNull() ?: base.slotMode,
       clearBackground = map["clearBackground"]?.toBoolean() ?: base.clearBackground,
+      // The extension-driven override bag (`namedOverrides` / `themeProvider` / `wallpaper` /
+      // `permissions` / `gestures` / `lottie`) rides the `overrides=<base64>` token that
+      // `JsonRpcServer.encodeRenderPayload` emits. The className-based `parseFromPayload` decodes
+      // it;
+      // this previewId-based path — the one the bundle-backed live daemon (`serve` /
+      // preview.coo.ee)
+      // takes for a renderNow — must too, or a `?knob.<key>=…` edit is silently dropped while the
+      // display axes above (fontScale / uiMode / density / …) still apply.
+      overrides = map["overrides"]?.let { RenderSpec.decodeOverridesToken(it) } ?: base.overrides,
     )
   }
 
