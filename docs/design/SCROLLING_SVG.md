@@ -1,9 +1,11 @@
 # Representing scrolling screens in the layered SVG export
 
-Status: **mobile validated (experiment landed); Wear capsule clip + reduce-motion landed and covered
-end-to-end on real captured geometry — a round-watch device preview is grown by measurement into a
-tall capsule (`WearScrollSvgGrowthTest`); driving the same loop from the daemon harness against a
-Wear target is the remaining step.**
+Status: **mobile validated and landed. Wear: capsule clip + reduce-motion + the grow-and-measure loop
+land and are covered on real geometry (`WearScrollSvgGrowthTest`, using the real `ActivityListLongPreview`
+code), BUT grow-tall does not fully fit Wear — a real `ScreenScaffold`'s round-face content padding is
+a fraction of screen height, so it balloons into a top gap on the grown frame. The production-useful
+Wear path is the split-scaffold extraction (render native, composite the pinned chrome around the
+list) — not yet built.**
 
 ## Problem
 
@@ -186,26 +188,33 @@ inside the stadium mask.)*
   exactly as it does against a user's app in production. `RenderEngine`'s growth loop now calls the
   same shared `ScrollContentMeasure` rather than a private copy.
 
-  Two Wear-specific layout quirks the fixture works around (both artefacts of growing a round-face
-  screen tall, not of the export): the round-face **curve-in insets** (`ScreenScaffold` content
-  padding and `ListHeaderDefaults.minimumTopListContentPadding`) are a *fraction of screen height*, so
-  they balloon on a grown frame — the fixture drops them and pins device-sized insets, and top-aligns
-  the list (whose default arrangement centres content). And the **`EdgeButton`** only reveals at full
-  size once the list is scrolled to its end — impossible in a grown frame that already shows every row
-  without scrolling — so it's placed as the final list item instead, seated below the last card; its
-  custom-drawn crescent fill (which the vector export can't read) is backed by a `Modifier.background`
-  token so it exports as an editable rounded-rect fill rather than bare text.
+  The fixture is the **real** `ActivityListLongPreview` code, unchanged — `AppScaffold` +
+  `ScreenScaffold(edgeButton = { EdgeButton(...) })` + `TransformingLazyColumn` with scaled
+  `TitleCard`s — and reduce-motion is provided externally by the harness via `LocalReduceMotion`, the
+  way the daemon does it, so the preview has no knowledge of the export. The `EdgeButton` in its
+  scaffold slot reveals correctly and lands below the last card.
 
-  | Device preview (round, scaled) | Automagically extracted tall screenshot (flat, every row) |
+  | Device preview (round, scaled) | Extracted tall (grow-tall — note the top gap) |
   | --- | --- |
   | ![round device preview](../renders/scrolling-svg/wear-device-scaled.png) | ![extracted tall](../renders/scrolling-svg/wear-tall-extracted.png) |
 
-- **Remaining:** driving the **daemon's own** `figma-svg-long` growth loop end-to-end against a Wear
-  target in a `:daemon:harness` real-mode run (the loop + measure + export are now covered on real
-  geometry above in `:renderer-android`; the daemon-side wiring would want a Wear target module
-  supplying `wear-compose` on the spawned classpath rather than the daemon); registering a Wear scroll
-  `@Preview` with the preview-harness so the CI visual-diff bot diffs it on every change; and the same
-  **override-aware** re-render gap the mobile path still has.
+  **Known limitation — grow-tall doesn't fully fit Wear.** The extracted tall frame carries a large
+  empty band under `TimeText`: `ScreenScaffold`'s content padding (and
+  `ListHeaderDefaults.minimumTopListContentPadding`) is a *fraction of screen height* — the round-face
+  curve-in — so it balloons when the frame is grown tall. This is a real property of Wear's
+  round-face layout, not of the export: mobile grow-tall works because a phone `Scaffold`'s padding is
+  fixed, but a Wear `ScreenScaffold` is laid out relative to the round face. Papering over it in the
+  preview would be faking a screen no developer writes, so the test uses the real preview and treats
+  the gap as the honest signal that **grow-tall is not the right Wear strategy**.
+
+- **Remaining (the real Wear work): the split-scaffold extraction.** The useful Wear path is the one
+  first proposed above — *don't grow the frame*. Render the real screen at its native round size
+  (padding stays native), capture the pinned chrome (`TimeText` at scroll-start, the `EdgeButton` at
+  scroll-end) and the unscaled list slices, and composite them into the capsule — the tree-level
+  analogue of what the raster LONG path already does with `ScrollSliceStitcher`. It needs no preview
+  edits (the feature does the work) and sidesteps the height-relative padding entirely. Also remaining:
+  registering a Wear scroll `@Preview` with the preview-harness for CI visual diffing, and the same
+  **override-aware** re-render gap the mobile path has.
 
 ## Non-goals
 
