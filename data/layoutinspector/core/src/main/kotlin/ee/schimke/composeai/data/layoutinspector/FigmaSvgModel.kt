@@ -195,6 +195,14 @@ data class FigmaSvgLayer(
  * padded canvas exactly as [WireframeModel] does, so a layer at absolute `(left, top)` is drawn at
  * `(left + tx, top + ty)`.
  */
+/**
+ * A circular device-screen clip in root-pixel space. A round Wear preview is rendered through
+ * Roborazzi's `applyDeviceCrop`, which masks the frame to the inscribed circle — so the exported
+ * SVG must mask to the same circle or its (square) full-frame background paints the corners the
+ * render leaves transparent, tanking render-parity on every round-device scaffold.
+ */
+data class FigmaSvgRoundClip(val cx: Int, val cy: Int, val r: Int)
+
 data class FigmaSvgModel(
   val root: FigmaSvgLayer,
   val minX: Int,
@@ -204,6 +212,8 @@ data class FigmaSvgModel(
   val padding: Int,
   /** Opaque nodes emitted as `<image>` — each needs a raster captured at its bounds. */
   val rasterTargets: List<FigmaSvgRasterTarget> = emptyList(),
+  /** Set for a round Wear device screen — the whole tree is masked to this circle on render. */
+  val roundClip: FigmaSvgRoundClip? = null,
 ) {
   val tx: Int
     get() = padding - minX
@@ -288,6 +298,7 @@ data class FigmaSvgModel(
       rasterComponents: Set<String> = emptySet(),
       rasterHref: (nodeId: String) -> String = ::defaultRasterHref,
       captureCanvasDraws: Boolean = false,
+      roundClip: Boolean = false,
     ): FigmaSvgModel {
       val textByNodeId =
         semantics?.let { assignTextToLayers(layout.root, it, density) } ?: emptyMap()
@@ -295,10 +306,24 @@ data class FigmaSvgModel(
       val ctx =
         BuildContext(textByNodeId, names, density, rasterComponents, rasterHref, captureCanvasDraws)
       val rootLayer = layout.root.toLayer(ctx)
+      // A round Wear device screen is masked to the inscribed circle of the frame (the root node's
+      // bounds) — content outside it (the corners, and any list item scrolled below the frame) is
+      // clipped away, matching Roborazzi's device crop. Clamp the extent to that frame so the
+      // canvas
+      // is the watch face, not the taller off-screen content bbox.
+      val frame = layout.root.bounds
+      val clip =
+        if (roundClip) {
+          val w = frame.right - frame.left
+          val h = frame.bottom - frame.top
+          FigmaSvgRoundClip(cx = frame.left + w / 2, cy = frame.top + h / 2, r = minOf(w, h) / 2)
+        } else null
       // No drawing layer (a tree of pure grouping nodes) → a minimal padding-square canvas,
       // matching
       // the wireframe's empty-tree convention.
-      val extent = rootLayer.extent() ?: Extent(0, 0, 0, 0)
+      val extent =
+        if (clip != null) Extent(frame.left, frame.top, frame.right, frame.bottom)
+        else rootLayer.extent() ?: Extent(0, 0, 0, 0)
       return FigmaSvgModel(
         root = rootLayer,
         minX = extent.minX,
@@ -307,6 +332,7 @@ data class FigmaSvgModel(
         height = (extent.maxY - extent.minY) + padding * 2,
         padding = padding,
         rasterTargets = ctx.rasterTargets,
+        roundClip = clip,
       )
     }
 

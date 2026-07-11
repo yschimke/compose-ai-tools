@@ -53,6 +53,10 @@ class ComposeFigmaSvgExtension : PostCaptureProcessor {
       // desktop export. On Android the render itself is Roboto, so the embedded face is the exact
       // match. Opt-in; reuses the renderer's own font cache dir / offline switch.
       fontResolver = figmaFontResolver(),
+      // A round Wear device screen is rendered through Roborazzi's `applyDeviceCrop` (the same
+      // `isRound` condition), which masks the frame to a circle — so the export must mask to that
+      // same circle, else its full-frame background paints the corners the render clips away.
+      roundClip = previewContext.device.isRound,
     )
   }
 
