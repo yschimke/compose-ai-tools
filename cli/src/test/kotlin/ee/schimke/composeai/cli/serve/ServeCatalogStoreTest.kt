@@ -90,6 +90,41 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `a failed re-load leaves the previously-served catalog intact`() {
+    // The ServeCatalogRefresher re-runs load() on a live server; a transient total image outage
+    // must NOT delete the currently-served catalog (which would 404 it until the next success).
+    val root = tempRoot()
+    var imagesAvailable = true
+    val fetch: (String) -> ByteArray? = { url ->
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalogJson.toByteArray()
+        url.endsWith(".png") -> if (imagesAvailable) png() else null
+        else -> null
+      }
+    }
+    val store =
+      ServeCatalogStore(
+        root = root,
+        register = { n, h -> registered[n] = h },
+        trust = TrustStore.EMPTY,
+        fetch = fetch,
+        registerWasm = { s, d -> registeredWasm[s] = d },
+      )
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok, "first load succeeds")
+    val png = File(root, "compose-m3/previews/button-filled__ideal__default__dark.png")
+    assertTrue(png.isFile, "the first load writes the preview PNG on disk")
+
+    // Re-load with every image (transiently) unavailable — parseable catalog.json, zero images.
+    imagesAvailable = false
+    assertTrue(
+      store.load("compose-m3") is ServeCatalogStore.Result.Failed,
+      "a catalog with no usable images fails the re-load",
+    )
+    assertTrue(png.isFile, "the previously-served catalog is left intact on a failed re-load")
+    assertFalse(File(root, "compose-m3.staging").exists(), "the staging dir is cleaned up")
+  }
+
+  @Test
   fun `a catalog's baked figma svgs are fetched and served self-contained`() {
     val svg = "<svg><image href=\"button-filled.figma-raster/n0.png\"/></svg>"
     val crop = byteArrayOf(7, 7, 7)

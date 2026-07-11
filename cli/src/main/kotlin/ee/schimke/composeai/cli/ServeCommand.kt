@@ -221,12 +221,21 @@ class ServeCommand(args: List<String>) : Command(args) {
   private val registeredCatalogs = mutableListOf<String>()
 
   /**
-   * Per-catalog per-preview daemon pools built by [buildTrustedCatalogBundle]. Each backs a live
-   * catalog's default (per-preview) render lane and outlives suspend/resume, so it's owned here and
-   * torn down at server shutdown (added to the [bringUpServer] closeables) rather than by the
-   * session host's [close][ServeHost.close].
+   * Per-catalog per-preview daemon pools built by [buildTrustedCatalogBundle], keyed by system.
+   * Each backs a live catalog's default (per-preview) render lane and outlives suspend/resume, so
+   * it's owned here — torn down at server shutdown ([catalogPerPreviewPoolsCloseable] in the
+   * [bringUpServer] closeables) rather than by the session host's [close][ServeHost.close] (the
+   * pool is referenced by the state's closure, not the host). Keyed so a [ServeCatalogRefresher]
+   * re-load closes the **previous** pool for that system instead of leaking its per-preview
+   * daemons.
    */
-  private val catalogPerPreviewPools = mutableListOf<AutoCloseable>()
+  private val catalogPerPreviewPools =
+    java.util.concurrent.ConcurrentHashMap<String, AutoCloseable>()
+
+  /** Closes every live per-preview pool at shutdown; a live view of [catalogPerPreviewPools]. */
+  private val catalogPerPreviewPoolsCloseable = AutoCloseable {
+    catalogPerPreviewPools.values.forEach { runCatching { it.close() } }
+  }
   /**
    * In-browser CMP tier (`--wasm-dir <system>=<dir>[,<system>=<dir>…]`): map a design system to the
    * assembled Wasm catalog app (`./gradlew :samples:cmp-wasm-catalog:wasmCatalogDist` →
@@ -469,8 +478,12 @@ class ServeCommand(args: List<String>) : Command(args) {
       mdnsModuleLabel = module.gradlePath,
       mdnsPreviewIds = previews.map { it.id },
       closeables =
-        listOf(worktrees, catalogWorktrees.takeIf { it !== worktrees }, catalogRefresher) +
-          catalogPerPreviewPools,
+        listOf(
+          worktrees,
+          catalogWorktrees.takeIf { it !== worktrees },
+          catalogRefresher,
+          catalogPerPreviewPoolsCloseable,
+        ),
     )
   }
 
@@ -542,7 +555,7 @@ class ServeCommand(args: List<String>) : Command(args) {
       // No module previews to advertise; discovery is a module-session nicety, so skip it here.
       mdnsModuleLabel = null,
       mdnsPreviewIds = null,
-      closeables = catalogPerPreviewPools.toList() + listOfNotNull(catalogRefresher),
+      closeables = listOfNotNull(catalogPerPreviewPoolsCloseable, catalogRefresher),
     )
   }
 
@@ -1044,7 +1057,6 @@ class ServeCommand(args: List<String>) : Command(args) {
         ) ?: return@ServePerPreviewDaemonPool null
       openHost(ppState)
     }
-    catalogPerPreviewPools += perPreviewPool
     // Carry the catalog-id→daemon-id alias + the baked-PNG fallback + the per-preview lane on the
     // state so openHost fronts the daemon with the baked catalog: the published /p/<id> deep links
     // +
@@ -1067,6 +1079,10 @@ class ServeCommand(args: List<String>) : Command(args) {
         ) ?: return false
     val host = openHost(state) ?: return false
     registry.register(system, state, host = host)
+    // Track the new pool and close the one it replaces — but only AFTER the fresh host is
+    // registered (register already closed the old host), so a re-load never closes a pool the
+    // still-live old host is mid-render on. First load for a system has no predecessor.
+    catalogPerPreviewPools.put(system, perPreviewPool)?.let { runCatching { it.close() } }
     System.err.println("serve: catalog $system → LIVE from bundle (no build) (?session=$system)")
     return true
   }
