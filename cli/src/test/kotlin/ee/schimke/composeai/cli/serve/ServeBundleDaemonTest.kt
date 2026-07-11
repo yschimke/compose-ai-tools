@@ -69,6 +69,22 @@ class ServeBundleDaemonTest {
     assertEquals(previewsJsonPath, parsed.manifestPath)
     assertEquals(state.workspaceRoot.absolutePath, parsed.workingDirectory)
 
+    // The render-output dir must be set so DaemonMain.dataRoot is non-null and the file-based data
+    // products register — notably compose/figma-svg, without which an override-bearing .svg render
+    // fails "-32020 kind not advertised". It must sit under the working dir so its sibling `data/`
+    // (where both DaemonMain's registry and RenderEngine's producer resolve) is inside this
+    // session's temp tree.
+    val outputDir = parsed.systemProperties["composeai.render.outputDir"]
+    assertTrue(
+      !outputDir.isNullOrBlank(),
+      "composeai.render.outputDir must be set so figma-svg registers",
+    )
+    assertEquals(
+      File(state.workspaceRoot, "renders").absolutePath,
+      outputDir,
+      "output dir lives under the session dir, so its sibling data/ dir does too",
+    )
+
     assertTrue(state.previews.isNotEmpty(), "materialize should discover at least one preview")
     assertEquals("compose-m3", state.label)
 
