@@ -1,8 +1,11 @@
 package ee.schimke.composeai.renderer
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.InternalComposeApi
@@ -37,6 +40,12 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import ee.schimke.composeai.daemon.ComposeFigmaSvgDataProducer
 import ee.schimke.composeai.daemon.ComposeSemanticsDataProducer
 import ee.schimke.composeai.daemon.LayoutInspectorDataProducer
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
+import ee.schimke.composeai.data.layoutinspector.LayoutInspectorBounds
+import ee.schimke.composeai.data.layoutinspector.LayoutInspectorNode
+import ee.schimke.composeai.data.layoutinspector.LayoutInspectorPayload
+import ee.schimke.composeai.data.layoutinspector.LayoutInspectorSize
 import ee.schimke.composeai.data.render.PreviewContext
 import java.io.File
 import java.nio.file.Files
@@ -354,6 +363,191 @@ class WearScrollSvgGrowthTest {
       tallSvg.contains(">Start workout</text>"),
     )
   }
+
+  // --- Split-scaffold extraction: capture each part in isolation, then stack ----------------------
+
+  /** One captured screen part: its content layers/semantics (frame stripped) and measured height. */
+  private data class Part(
+    val layout: List<LayoutInspectorNode>,
+    val semantics: List<ComposeSemanticsNode>,
+    val height: Int,
+  )
+
+  /**
+   * Renders a single composable [content] in a FRESH rule at the watch width (a tall throwaway
+   * frame so nothing clips), forces a draw so children z-sort, and captures its layout + semantics
+   * trees. Returns the content layers (the throwaway frame root is stripped — only its children
+   * survive) plus the measured content height, so the caller can stack parts by offsetting each by a
+   * cumulative y. Every part is a **real** Wear composable rendered honestly in isolation; only the
+   * vertical stacking is synthesised. Isolation dodges the round-face problems the grow-tall path
+   * hits: no `TransformingLazyColumn` virtualisation, no fisheye `SurfaceTransformation` scaling, and
+   * no screen-height-relative `ScreenScaffold` padding — each row is measured at its natural size.
+   */
+  private fun capturePart(previewId: String, content: @Composable () -> Unit): Part {
+    RuntimeEnvironment.setQualifiers("w${deviceDp}dp-h420dp-round-mdpi")
+    @Suppress("DEPRECATION") val rule = createAndroidComposeRule<ComponentActivity>()
+    var out = Part(emptyList(), emptyList(), 0)
+    val statement =
+      object : Statement() {
+        override fun evaluate() {
+          val slotTables = mutableSetOf<CompositionData>()
+          rule.mainClock.autoAdvance = false
+          rule.setContent { InspectableContent(slotTables) { content() } }
+          rule.mainClock.advanceTimeBy(500)
+          rule.waitForIdle()
+          val frameFile = File(rootDir, "part-$previewId.png")
+          rule.onRoot().captureRoboImage(file = frameFile)
+          val semanticsRoot = rule.onRoot(useUnmergedTree = true).fetchSemanticsNode()
+          val previewContext =
+            PreviewContext.Builder(
+                previewId = previewId,
+                backend = null,
+                renderMode = null,
+                outputBaseName = previewId,
+              )
+              .rootForTest(semanticsRoot.root as RootForTest)
+              .addSlotTables(slotTables.toList())
+              .parameterInformationCollected()
+              .build()
+          val layout = LayoutInspectorDataProducer.buildPayload(previewContext, density = 1f)!!
+          val semantics = ComposeSemanticsDataProducer.buildPayload(semanticsRoot, density = 1f)
+          // The rule's frame root fills the throwaway 420dp window; its children are the composed
+          // content. Strip the frame and measure the content's true bottom (its natural height).
+          val contentLayers = layout.root.children
+          val height = contentLayers.maxOfOrNull { it.maxBottom() } ?: 0
+          out = Part(contentLayers, semantics.root.children, height)
+        }
+      }
+    rule
+      .apply(statement, Description.createTestDescription(javaClass, "part-$previewId"))
+      .evaluate()
+    return out
+  }
+
+  /** A flat, unscaled activity row — the resting look of a `TitleCard`, no fisheye transform. */
+  @Composable
+  private fun CardPart(title: String, subtitle: String) {
+    MaterialTheme {
+      Box(Modifier.width(deviceDp.dp).padding(horizontal = 12.dp)) {
+        TitleCard(
+          onClick = {},
+          title = { Text(title) },
+          subtitle = { Text(subtitle) },
+          modifier = Modifier.fillMaxWidth(),
+        )
+      }
+    }
+  }
+
+  @Test
+  fun `stacks each list item captured in isolation into one tall capsule SVG`() {
+    // Capture every screen part on its own: the pinned TimeText, the "Activity" header, each activity
+    // row, and the EdgeButton — none of them fighting the round-face scaffold layout.
+    val header = capturePart("header") { MaterialTheme { ListHeader { Text("Activity") } } }
+    val cards =
+      activities.mapIndexed { i, (title, subtitle) ->
+        capturePart("card-$i") { CardPart(title, subtitle) }
+      }
+    val edge =
+      capturePart("edge") {
+        MaterialTheme {
+          Box(Modifier.width(deviceDp.dp)) {
+            EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) { Text("Start workout") }
+          }
+        }
+      }
+
+    // Stack top-to-bottom: header, rows, edge button. Each part is dropped in at a cumulative y by
+    // offsetting its whole captured subtree — the parts never overlap and never scale.
+    val gap = 6
+    val topPad = 24
+    var y = topPad
+    val layoutChildren = mutableListOf<LayoutInspectorNode>()
+    val semChildren = mutableListOf<ComposeSemanticsNode>()
+    for (part in listOf(header) + cards + edge) {
+      part.layout.forEach { layoutChildren.add(it.offsetY(y)) }
+      part.semantics.forEach { semChildren.add(it.offsetY(y)) }
+      y += part.height + gap
+    }
+    val totalHeight = y - gap + topPad
+
+    // One synthetic frame root spanning the full stacked size — its bounds drive the export's canvas
+    // and, because it is much taller than wide, the auto-selected capsule (stadium) clip.
+    val combinedLayout =
+      LayoutInspectorPayload(
+        LayoutInspectorNode(
+          nodeId = "wear-parts-root",
+          component = "WearScrollExtract",
+          bounds = LayoutInspectorBounds(0, 0, deviceDp, totalHeight),
+          size = LayoutInspectorSize(deviceDp, totalHeight),
+          children = layoutChildren,
+        )
+      )
+    val combinedSemantics =
+      ComposeSemanticsPayload(
+        ComposeSemanticsNode(
+          nodeId = "wear-parts-root",
+          boundsInRoot = "0,0,$deviceDp,$totalHeight",
+          children = semChildren,
+        )
+      )
+
+    ComposeFigmaSvgDataProducer.writeSvg(
+      rootDir = rootDir,
+      previewId = "wear-parts",
+      layout = combinedLayout,
+      semantics = combinedSemantics,
+      density = 1f,
+      roundClip = true,
+    )
+    val svg = File(rootDir, "wear-parts/compose-figma.svg").readText()
+    File("build/wear-scroll-svg").mkdirs()
+    File("build/wear-scroll-svg/wear-parts.svg").writeText(svg)
+
+    // Tall → capsule clip, every row present, plus the pinned header and the full-size EdgeButton.
+    assertTrue(
+      "the stacked frame must use the capsule clip:\n$svg",
+      svg.contains("""<clipPath id="deviceRound"><rect"""),
+    )
+    assertEquals(
+      "every isolated row must land in the stacked frame:\n$svg",
+      itemCount,
+      itemLayerCount(svg),
+    )
+    assertTrue("the stacked frame keeps its header", svg.contains(">Activity</text>"))
+    assertTrue("the stacked frame keeps the EdgeButton", svg.contains(">Start workout</text>"))
+  }
+}
+
+/** Deepest bottom edge in this subtree, in root px — a part's natural content height. */
+private fun LayoutInspectorNode.maxBottom(): Int =
+  maxOf(bounds.bottom, children.maxOfOrNull { it.maxBottom() } ?: bounds.bottom)
+
+/** Shift a whole captured layout subtree down by [dy] px (bounds, modifiers, curved text). */
+private fun LayoutInspectorNode.offsetY(dy: Int): LayoutInspectorNode =
+  copy(
+    bounds = bounds.copy(top = bounds.top + dy, bottom = bounds.bottom + dy),
+    modifiers =
+      modifiers.map { m ->
+        val b = m.bounds ?: return@map m
+        m.copy(bounds = b.copy(top = b.top + dy, bottom = b.bottom + dy))
+      },
+    curvedTexts = curvedTexts.map { it.copy(centerYPx = it.centerYPx + dy) },
+    children = children.map { it.offsetY(dy) },
+  )
+
+/** Shift a captured semantics subtree down by [dy] px, re-serialising its `l,t,r,b` bounds. */
+private fun ComposeSemanticsNode.offsetY(dy: Int): ComposeSemanticsNode {
+  val parts = boundsInRoot.split(",")
+  val shifted =
+    if (parts.size == 4) {
+      val l = parts[0].trim()
+      val t = parts[1].trim().toIntOrNull()
+      val r = parts[2].trim()
+      val b = parts[3].trim().toIntOrNull()
+      if (t != null && b != null) "$l,${t + dy},$r,${b + dy}" else boundsInRoot
+    } else boundsInRoot
+  return copy(boundsInRoot = shifted, children = children.map { it.offsetY(dy) })
 }
 
 @OptIn(InternalComposeApi::class)
