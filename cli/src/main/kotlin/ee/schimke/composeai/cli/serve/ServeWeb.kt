@@ -91,6 +91,11 @@ object ServeWeb {
     .cp-note { font-size: 0.75rem; color: #6b6b70; line-height: 1.4; padding: 8px 10px;
       border-radius: 8px; background: #f4f4f6; }
     .cp-controls label:has(:disabled) { opacity: 0.55; }
+    .cp-size { display: flex; flex-direction: column; gap: 8px; }
+    /* :not([hidden]) so the mode toggle's `hidden` attribute still wins over this display rule. */
+    .cp-size-row:not([hidden]) { display: flex; gap: 8px; }
+    .cp-size-row label { flex: 1; }
+    .cp-size-row input { width: 100%; box-sizing: border-box; }
     .cp-knobs { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
     .cp-knobs-head { font-size: 0.72rem; color: #6b6b70; }
     .cp-overlays { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
@@ -950,7 +955,7 @@ object ServeWeb {
         $navToggle
         <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
-      <div class="cp-viewer cp-controls-open" data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel"$wasmAttr>
+      <div class="cp-viewer cp-controls-open" data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr>
         $navDrawer
         <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$wasmFrame</div>
         <div class="cp-controls" id="cp-controls">
@@ -995,6 +1000,29 @@ object ServeWeb {
               <option value="clear">Clear (crisp outline)</option>
             </select>
           </label>
+          <div class="cp-size">
+            <label>Size
+              <select id="cp-sizeMode"$serverDis>
+                <option value="">(default)</option>
+                <option value="fixed">Fixed size</option>
+                <option value="max">Max</option>
+                <option value="min">Min</option>
+                <option value="within">Within (min–max)</option>
+              </select>
+            </label>
+            <div class="cp-size-row" id="cp-size-fixed" hidden>
+              <label>Width (dp)<input id="cp-fixedW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
+              <label>Height (dp)<input id="cp-fixedH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
+            </div>
+            <div class="cp-size-row" id="cp-size-min" hidden>
+              <label>Min width (dp)<input id="cp-minW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
+              <label>Min height (dp)<input id="cp-minH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
+            </div>
+            <div class="cp-size-row" id="cp-size-max" hidden>
+              <label>Max width (dp)<input id="cp-maxW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
+              <label>Max height (dp)<input id="cp-maxH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
+            </div>
+          </div>
           $overlaysHtml
           $featureControlsHtml
           ${overrideKnobsHtml(preview, canApplyOverrides || canRenderOverrides, wasmSrc != null)}
@@ -1079,6 +1107,42 @@ object ServeWeb {
       // the copyable links read it so a re-render / copied URL matches the on-screen format.
       var snapshotExt = ".png";
 
+      // Size overrides (the Fixed / Max / Min / Within modes). Which query params carry the numbers
+      // is chosen by the mode: Fixed pins the frame via widthPx/heightPx; Max / Min / Within are
+      // wrapped-axis bounds (maxWidthPx / minWidthPx …). Blank inputs are omitted, so one axis can be
+      // bounded without the other. Server-side only (a daemon re-measures) — the inputs are
+      // disabled on a static snapshot like Device/Orientation, so it never emits them.
+      //
+      // The inputs are authored in dp (the Compose unit); the wire stays in px like every other
+      // override, so a dp value is multiplied by the backend's render density before it's sent (and
+      // the copyable /render URL stays px-consistent). data-render-density carries the factor.
+      var renderDensity = parseFloat(root.getAttribute("data-render-density")) || 2;
+      // dp (string from the input) → a positive integer px value, or null when blank/non-positive.
+      function sizePx(id) {
+        var el = document.getElementById(id);
+        if (!el || !el.value) return null;
+        var dp = parseFloat(el.value);
+        if (!(dp > 0)) return null;
+        return String(Math.max(1, Math.round(dp * renderDensity)));
+      }
+      function sizeOverrides() {
+        var mode = document.getElementById("cp-sizeMode");
+        var o = {};
+        if (!mode || !mode.value) return o;
+        if (mode.value === "fixed") {
+          if (sizePx("cp-fixedW")) o.widthPx = sizePx("cp-fixedW");
+          if (sizePx("cp-fixedH")) o.heightPx = sizePx("cp-fixedH");
+        }
+        if (mode.value === "min" || mode.value === "within") {
+          if (sizePx("cp-minW")) o.minWidthPx = sizePx("cp-minW");
+          if (sizePx("cp-minH")) o.minHeightPx = sizePx("cp-minH");
+        }
+        if (mode.value === "max" || mode.value === "within") {
+          if (sizePx("cp-maxW")) o.maxWidthPx = sizePx("cp-maxW");
+          if (sizePx("cp-maxH")) o.maxHeightPx = sizePx("cp-maxH");
+        }
+        return o;
+      }
       function overrides() {
         var o = {};
         fields.forEach(function (f) {
@@ -1086,6 +1150,8 @@ object ServeWeb {
           if (el && el.value) o[f] = el.value;
         });
         if (fontScaleTouched && fs) o.fontScale = fs.value;
+        var size = sizeOverrides();
+        Object.keys(size).forEach(function (k) { o[k] = size[k]; });
         return o;
       }
       // The live-stream override map: the display fields PLUS the author-declared knob values as
@@ -1678,6 +1744,26 @@ object ServeWeb {
         var el = document.getElementById("cp-" + f);
         if (el) el.addEventListener("change", onControlsChanged);
       });
+      // Size mode: show only the input rows the chosen mode uses (Within shows both min + max), then
+      // re-render. The number inputs re-render on "input" (live typing) like the locale field.
+      var sizeMode = document.getElementById("cp-sizeMode");
+      if (sizeMode) {
+        var syncSizeRows = function () {
+          var m = sizeMode.value;
+          var show = { fixed: m === "fixed", min: m === "min" || m === "within",
+            max: m === "max" || m === "within" };
+          ["fixed", "min", "max"].forEach(function (g) {
+            var row = document.getElementById("cp-size-" + g);
+            if (row) row.hidden = !show[g];
+          });
+        };
+        syncSizeRows();
+        sizeMode.addEventListener("change", function () { syncSizeRows(); onControlsChanged(); });
+        ["cp-fixedW", "cp-fixedH", "cp-minW", "cp-minH", "cp-maxW", "cp-maxH"].forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) el.addEventListener("input", onControlsChanged);
+        });
+      }
       // Overlay toggles are live-only: they push a fresh setOverrides through the open stream and do
       // nothing otherwise. They get their own handler rather than onControlsChanged so a toggle mid
       // connect (ws not yet readyState 1) can't fall through to the snapshot / wasm-auto-enable
@@ -1989,6 +2075,16 @@ object ServeWeb {
    */
   private const val LOCAL_SERVER_DOCS =
     "https://github.com/yschimke/compose-ai-tools/blob/main/docs/public-preview-server.md#running-one"
+
+  /**
+   * Render density the `serve` backend captures at (the manifest default — `PreviewManifestEntry`
+   * resolves `density ?: 2.0f`). The size-override inputs are authored in **dp** (the Compose
+   * unit); the viewer converts dp→px against this factor before sending the px-valued `widthPx` /
+   * `min…Px` / `max…Px` query params, so the wire and copyable `/render` URLs stay in pixels like
+   * every other override. Carried to the page as `data-render-density` so the conversion isn't a
+   * hidden magic number.
+   */
+  private const val RENDER_DENSITY = 2
 
   private val COMMON_DEVICES: List<Pair<String, String>> =
     listOf(

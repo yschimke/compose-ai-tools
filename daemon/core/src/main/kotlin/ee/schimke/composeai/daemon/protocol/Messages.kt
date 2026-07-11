@@ -474,10 +474,28 @@ data class RenderNowParams(
  */
 @Serializable
 data class PreviewOverrides(
-  /** Sandbox width in pixels. Mirrors `@Preview(widthDp=…)` × density. */
+  /** Sandbox width in pixels. Mirrors `@Preview(widthDp=…)` × density. A *fixed* frame. */
   val widthPx: Int? = null,
-  /** Sandbox height in pixels. */
+  /** Sandbox height in pixels. A *fixed* frame. */
   val heightPx: Int? = null,
+  /**
+   * Minimum content width in pixels applied on a wrapped (no fixed [widthPx]) axis — the composable
+   * is measured with `minWidth = minWidthPx` so it is at least this wide, then the capture crops to
+   * the resulting intrinsic size. Combine with [maxWidthPx] for a bounded "within" range. Desktop
+   * honours it in the wrap-layout; backends that don't model a min bound ignore it.
+   */
+  val minWidthPx: Int? = null,
+  /** Minimum content height in pixels on a wrapped axis. See [minWidthPx]. */
+  val minHeightPx: Int? = null,
+  /**
+   * Maximum content width in pixels applied on a wrapped (no fixed [widthPx]) axis — the composable
+   * is measured against `maxWidth = maxWidthPx` (a smaller sandbox bound than the default), then
+   * the capture crops to the intrinsic size. Combine with [minWidthPx] for a bounded "within"
+   * range.
+   */
+  val maxWidthPx: Int? = null,
+  /** Maximum content height in pixels on a wrapped axis. See [maxWidthPx]. */
+  val maxHeightPx: Int? = null,
   /** Display density (1.0 = mdpi/160dpi, 2.0 = xhdpi/320dpi, etc.). */
   val density: Float? = null,
   /** BCP-47 locale tag (e.g. `"en-US"`, `"fr"`, `"ja-JP"`). */

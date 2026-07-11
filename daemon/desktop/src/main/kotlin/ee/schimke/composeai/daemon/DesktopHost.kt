@@ -199,6 +199,14 @@ open class DesktopHost(
   override val supportedOverrides: Set<String> = buildSet {
     add("widthPx")
     add("heightPx")
+    // Wrapped-axis content-size bounds (the viewer's Max / Min / Within size modes). The desktop
+    // `RenderEngine` clamps its wrap-content layout to these before the intrinsic-size crop, so a
+    // `renderNow.overrides.{min,max}{Width,Height}Px` IS applied, not silently ignored — advertise
+    // them so MCP / external clients don't hide or warn on the controls.
+    add("minWidthPx")
+    add("minHeightPx")
+    add("maxWidthPx")
+    add("maxHeightPx")
     add("density")
     if (RenderEngine.supportsLocaleTagOverride()) add("localeTag")
     add("fontScale")
@@ -603,7 +611,11 @@ open class DesktopHost(
       overrides =
         merged
           .toExtensionOverrides()
-          .withThemeProvider(overrides?.themeProvider ?: base.overrides?.themeProvider),
+          .withThemeProvider(overrides?.themeProvider ?: base.overrides?.themeProvider)
+          // Size bounds (Max / Min / Within) are renderer-read like themeProvider, so carry them
+          // through the held/live projection or a live size-mode change would drop to unbounded
+          // wrap.
+          .withSizeBounds(overrides ?: base.overrides),
       outputBaseName = "recording-$recordingId",
     )
   }

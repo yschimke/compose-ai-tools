@@ -293,9 +293,23 @@ class RenderEngine(
           spec.previewId?.let { LottieProgressController.remember(it, p) }
         } ?: spec.previewId?.let { LottieProgressController.progressFor(it) }
       )
+    // Content-size bounds (the Max / Min / Within size modes) apply on a wrapped axis, where
+    // widthPx/heightPx are a sandbox bound rather than a fixed frame. A min bound larger than the
+    // default sandbox needs the scene enlarged to fit, otherwise the composable is clipped to the
+    // scene before the intrinsic-size crop runs. Only widen (never shrink) the scene here — the
+    // crop still trims the PNG back to the measured intrinsic size.
+    val sizeOverrides = spec.overrides
+    val sceneWidthPx =
+      if (spec.wrapWidth)
+        maxOf(spec.widthPx, sizeOverrides?.minWidthPx ?: 0, sizeOverrides?.maxWidthPx ?: 0)
+      else spec.widthPx
+    val sceneHeightPx =
+      if (spec.wrapHeight)
+        maxOf(spec.heightPx, sizeOverrides?.minHeightPx ?: 0, sizeOverrides?.maxHeightPx ?: 0)
+      else spec.heightPx
     val scene =
       try {
-        ImageComposeScene(width = spec.widthPx, height = spec.heightPx, density = density)
+        ImageComposeScene(width = sceneWidthPx, height = sceneHeightPx, density = density)
       } catch (t: Throwable) {
         // Ensure we don't leave the context classloader installed if scene allocation fails before
         // the SceneState is even handed back to the caller (caller never gets a chance to call
@@ -362,12 +376,29 @@ class RenderEngine(
               val boxModifier =
                 if (spec.wrapWidth || spec.wrapHeight) {
                   Modifier.layout { measurable, constraints ->
+                      // Size-mode bounds (Max / Min / Within) clamp the wrapped-axis measure: a max
+                      // bound lowers the sandbox ceiling so the composable can't grow past it; a
+                      // min
+                      // bound raises the floor so it can't collapse below it. Both are clamped to
+                      // the
+                      // scene's available space so a bound larger than the (already-enlarged) scene
+                      // can't produce an impossible constraint. Absent bounds keep the AS-parity
+                      // wrap
+                      // behaviour (min = 0, max = sandbox).
+                      val maxWBound =
+                        sizeOverrides?.maxWidthPx?.coerceAtMost(constraints.maxWidth)
+                          ?: constraints.maxWidth
+                      val maxHBound =
+                        sizeOverrides?.maxHeightPx?.coerceAtMost(constraints.maxHeight)
+                          ?: constraints.maxHeight
+                      val minWBound = (sizeOverrides?.minWidthPx ?: 0).coerceIn(0, maxWBound)
+                      val minHBound = (sizeOverrides?.minHeightPx ?: 0).coerceIn(0, maxHBound)
                       val wrapped =
                         androidx.compose.ui.unit.Constraints(
-                          minWidth = if (spec.wrapWidth) 0 else constraints.minWidth,
-                          maxWidth = constraints.maxWidth,
-                          minHeight = if (spec.wrapHeight) 0 else constraints.minHeight,
-                          maxHeight = constraints.maxHeight,
+                          minWidth = if (spec.wrapWidth) minWBound else constraints.minWidth,
+                          maxWidth = if (spec.wrapWidth) maxWBound else constraints.maxWidth,
+                          minHeight = if (spec.wrapHeight) minHBound else constraints.minHeight,
+                          maxHeight = if (spec.wrapHeight) maxHBound else constraints.maxHeight,
                         )
                       val placeable = measurable.measure(wrapped)
                       // Record the intrinsic size so renderOnce can crop the PNG to it on wrapped

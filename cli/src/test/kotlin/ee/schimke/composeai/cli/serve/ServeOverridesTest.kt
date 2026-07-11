@@ -395,6 +395,79 @@ class ServeOverridesTest {
   }
 
   @Test
+  fun `size-bound params parse to the min-max fields`() {
+    val o =
+      ok(
+        mapOf(
+          "minWidthPx" to "120",
+          "minHeightPx" to "48",
+          "maxWidthPx" to "400",
+          "maxHeightPx" to "800",
+        )
+      )
+    assertEquals(120, o.minWidthPx)
+    assertEquals(48, o.minHeightPx)
+    assertEquals(400, o.maxWidthPx)
+    assertEquals(800, o.maxHeightPx)
+  }
+
+  @Test
+  fun `empty params leave the size bounds null`() {
+    val o = ok(emptyMap())
+    assertNull(o.minWidthPx)
+    assertNull(o.minHeightPx)
+    assertNull(o.maxWidthPx)
+    assertNull(o.maxHeightPx)
+  }
+
+  @Test
+  fun `a non-positive or malformed size bound is rejected`() {
+    for (bad in
+      listOf(
+        mapOf("minWidthPx" to "0"),
+        mapOf("minHeightPx" to "-3"),
+        mapOf("maxWidthPx" to "wide"),
+        mapOf("maxHeightPx" to "1.5"),
+      )) {
+      val parsed = ServeOverrides.parse(bad)
+      assertTrue(parsed is OverrideParse.Invalid, "expected Invalid for $bad, got $parsed")
+      assertTrue(parsed.message.isNotBlank())
+    }
+  }
+
+  @Test
+  fun `a min bound above the max on the same axis is rejected`() {
+    assertTrue(
+      ServeOverrides.parse(mapOf("minWidthPx" to "500", "maxWidthPx" to "200"))
+        is OverrideParse.Invalid
+    )
+    assertTrue(
+      ServeOverrides.parse(mapOf("minHeightPx" to "900", "maxHeightPx" to "300"))
+        is OverrideParse.Invalid
+    )
+    // Equal bounds are a degenerate-but-valid fixed range.
+    assertTrue(
+      ServeOverrides.parse(mapOf("minWidthPx" to "200", "maxWidthPx" to "200")) is OverrideParse.Ok
+    )
+  }
+
+  @Test
+  fun `cache key differs when a size bound changes`() {
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("maxWidthPx" to "300"))),
+      ServeOverrides.cacheKey("preview.A", ok(emptyMap())),
+    )
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("minWidthPx" to "100"))),
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("minWidthPx" to "200"))),
+    )
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("minHeightPx" to "100"))),
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("maxHeightPx" to "100"))),
+    )
+  }
+
+  @Test
   fun `preview mode parses known wire values`() {
     assertEquals(PreviewMode.SNAPSHOT, PreviewMode.parse("snapshot"))
     assertEquals(PreviewMode.LIVE, PreviewMode.parse("live"))

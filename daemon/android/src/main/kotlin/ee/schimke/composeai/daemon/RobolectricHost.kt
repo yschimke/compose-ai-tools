@@ -1325,9 +1325,12 @@ open class RobolectricHost(
       // (renderer-read, not extension-consumed), but the renderer reads spec.overrides directly, so
       // without this a live App-theme change would keep the default wrapper.
       overrides =
-        merged.toExtensionOverrides().withThemeProvider(
-          overrides?.themeProvider ?: base.overrides?.themeProvider
-        ),
+        merged
+          .toExtensionOverrides()
+          .withThemeProvider(overrides?.themeProvider ?: base.overrides?.themeProvider)
+          // Carry size bounds (Max / Min / Within) through the held/live projection for wire parity
+          // with desktop; the Android renderer ignores fields it doesn't model, like other overrides.
+          .withSizeBounds(overrides ?: base.overrides),
       // Recording sessions consume this on disk (`recordings/<recordingId>/...`); interactive
       // sessions pass `"interactive-$previewId"` and never read the field. The `recording-`
       // prefix is preserved for byte-compat with existing recording-test expectations.
