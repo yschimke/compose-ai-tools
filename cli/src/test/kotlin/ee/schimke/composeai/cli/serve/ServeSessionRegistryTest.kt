@@ -127,6 +127,49 @@ class ServeSessionRegistryTest {
       }
   }
 
+  /** Minimal [ServeHost] that only records whether it was closed. */
+  private class RecordingHost : ServeHost {
+    var closed = false
+      private set
+
+    override val previews: List<ServePreview> = emptyList()
+    override val label: String = "recording"
+
+    override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+      RenderOutcome.NotFound
+
+    override fun subscribeStream(
+      previewId: String,
+      overrides: PreviewOverrides,
+      codec: ee.schimke.composeai.daemon.protocol.StreamCodec?,
+      maxFps: Int?,
+      onFrame: (ee.schimke.composeai.daemon.protocol.StreamFrameParams) -> Unit,
+    ): StreamHandle? = null
+
+    override fun activeStreamCount(): Int = 0
+
+    override fun close() {
+      closed = true
+    }
+  }
+
+  @Test
+  fun `re-registering a session id closes the replaced host`() {
+    ServeSessionRegistry(open = Opener()).use { reg ->
+      val first = RecordingHost()
+      val second = RecordingHost()
+      reg.register("compose-m3", host = first, pinned = true)
+      // A catalog refresh re-registers the same pinned id with a fresh host.
+      reg.register("compose-m3", host = second, pinned = true)
+      assertTrue(first.closed, "the replaced host (and its daemon) is closed on re-registration")
+      assertTrue(!second.closed, "the newly registered host stays open")
+      assertSame(second, reg.acquire("compose-m3"), "the new host is served")
+      // Re-registering the SAME instance must NOT close it (idempotent seed).
+      reg.register("compose-m3", host = second, pinned = true)
+      assertTrue(!second.closed, "re-registering the same host instance does not close it")
+    }
+  }
+
   @Test
   fun `a leased session is not suspended until the lease closes`() {
     val clock = AtomicLong(0)

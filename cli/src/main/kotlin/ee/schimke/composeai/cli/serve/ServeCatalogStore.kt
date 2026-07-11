@@ -161,9 +161,17 @@ class ServeCatalogStore(
         }
         .getOrNull() ?: return Result.Failed(system, "could not parse catalog.json")
 
+    // Stage the fetch so a re-load (ServeCatalogRefresher) can't turn a healthy catalog into 404s:
+    // fetch the images into a sibling `.staging` dir and only swap it over the live `dir` once we
+    // know we have a usable catalog (count > 0). A partial/failed fetch (e.g. images temporarily
+    // unavailable) leaves the currently-served `dir` untouched. The wasm / figma / liveBundle steps
+    // below run *after* the swap and are all fail-soft (they disable their tier or fall back to the
+    // baked host), so they never leave the catalog broken — only the image fetch is a hard failure,
+    // and that's what staging protects.
     val dir = File(root, safe)
-    dir.deleteRecursively()
-    val previewsDir = File(dir, "previews")
+    val staging = File(root, "$safe.staging")
+    staging.deleteRecursively()
+    val previewsDir = File(staging, "previews")
     val previewsRoot = previewsDir.canonicalFile.toPath()
     var count = 0
     // The component slugs whose baked figma-svg to fetch (a slug is the preview id up to `__`).
@@ -187,8 +195,18 @@ class ServeCatalogStore(
       }
     }
     if (count == 0) {
-      dir.deleteRecursively()
+      staging.deleteRecursively()
       return Result.Failed(system, "catalog had no usable images")
+    }
+
+    // The staged catalog is usable — atomically replace the live dir with it. The delete + rename
+    // is near-instant (same filesystem), so the window where `dir` is absent is microseconds, not
+    // the multi-second fetch above. From here everything operates on the fresh `dir` as before.
+    dir.deleteRecursively()
+    if (!staging.renameTo(dir)) {
+      // Cross-device or a racing reader held a handle — copy then drop the staging dir.
+      staging.copyRecursively(dir, overwrite = true)
+      staging.deleteRecursively()
     }
 
     // Optional in-browser Wasm tier: when the catalog declares a `compose-wasm` webRender, fetch
