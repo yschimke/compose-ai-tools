@@ -5,32 +5,20 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.wear.compose.material3.Card
 import androidx.wear.compose.material3.SurfaceTransformation
 import androidx.wear.compose.material3.Text
-import androidx.wear.compose.material3.TitleCard
 import androidx.wear.compose.material3.lazy.transformedHeight
 import ee.schimke.composeai.preview.TlcScalingPreview
 
 /**
- * What authoring a TLC-scaling preview for a **Wear Card** looks like: **one** `@Preview` function.
- * The body is exactly the code you'd write for a real `TransformingLazyColumn` item — real
- * `transformedHeight(this, spec)` + `SurfaceTransformation(spec)`, no preview-specific modifiers.
- * [TlcScalingHost] supplies the genuine `TransformingLazyColumnItemScope` + spec; the
- * [TlcScaleLevels] `@PreviewParameter` sweeps the scroll position, so the plugin renders one frame
- * per level (full → most scaled). `@TlcScalingPreview` declares the sweep + its GIF.
+ * A **Wear Card** authored exactly as a real `TransformingLazyColumn` item — real
+ * `transformedHeight(this, spec)` + `SurfaceTransformation(spec)`, no preview-specific modifiers and
+ * no parameters. [TlcScalingHost] supplies the genuine `TransformingLazyColumnItemScope` + spec.
  */
-@Preview(
-  name = "Large Round",
-  device = "id:wearos_large_round",
-  showBackground = true,
-  backgroundColor = 0xFF000000,
-)
-@TlcScalingPreview
 @Composable
-fun CardScalingSweep(@PreviewParameter(TlcScaleLevels::class) level: Float) =
-  TlcScalingHost(level) { spec ->
+private fun HeartRateCard() =
+  TlcScalingHost { spec ->
     Card(
       onClick = {},
       modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
@@ -44,8 +32,8 @@ fun CardScalingSweep(@PreviewParameter(TlcScaleLevels::class) level: Float) =
   }
 
 /**
- * The same, for a **TitleCard** — again just the normal list-item code. Kept as a second worked
- * example so the sweep is exercised on a titled card too.
+ * The card at rest: nothing provides [LocalTlcScalingLevel], so it draws centred at full scale — a
+ * plain preview of the component, unchanged.
  */
 @Preview(
   name = "Large Round",
@@ -55,13 +43,18 @@ fun CardScalingSweep(@PreviewParameter(TlcScaleLevels::class) level: Float) =
 )
 @TlcScalingPreview
 @Composable
-fun TitleCardScalingSweep(@PreviewParameter(TlcScaleLevels::class) level: Float) =
-  TlcScalingHost(level) { spec ->
-    TitleCard(
-      onClick = {},
-      title = { Text("Activity") },
-      subtitle = { Text("72 bpm") },
-      modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-      transformation = SurfaceTransformation(spec),
-    )
-  }
+fun CardScalingRest() = HeartRateCard()
+
+/**
+ * The **same** card, wrapped in [ProvideTlcScalingLevel] so the ambient override scrolls it up into
+ * the real scaling zone — scaled + faded, with no change to [HeartRateCard]'s code. Demonstrates the
+ * composition-local override the sweep/GIF and a live viewer both drive.
+ */
+@Preview(
+  name = "Large Round",
+  device = "id:wearos_large_round",
+  showBackground = true,
+  backgroundColor = 0xFF000000,
+)
+@Composable
+fun CardScalingScaled() = ProvideTlcScalingLevel(0.7f) { HeartRateCard() }

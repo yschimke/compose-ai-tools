@@ -3,11 +3,12 @@ package com.example.designcatalogwearm3
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ProvidableCompositionLocal
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.tooling.preview.PreviewParameter
-import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumnItemScope
@@ -20,17 +21,18 @@ import kotlin.math.pow
 /**
  * A **Wear-specific preview that shows `TransformingLazyColumn` (TLC) item scaling for a single
  * component**, with the component authored in *exactly the normal TLC-item code* — no
- * preview-specific modifiers.
+ * preview-specific modifiers, and no parameters on the preview function.
  *
  * Inside a real [TransformingLazyColumn] the Wear M3 [TransformationSpec] scales + fades each row by
  * *where it sits on the round screen*: a centred row is full size, rows drift smaller and more
  * transparent toward the curved edges. An isolated component preview normally can't show that.
  *
- * The trick here is **not** to fake the transform. [TransformingLazyColumnItemScope] is `sealed`, so
- * the only way to hand a component the genuine scope + spec is to host a **real**
- * [TransformingLazyColumn]. [TlcScalingHost] hosts one, with a single item centred by padding, and
- * exposes its real `TransformingLazyColumnItemScope` + [TransformationSpec] to the caller. So the
- * body is the very code you'd write in a live list:
+ * The trick is **not** to fake the transform. Both `Modifier.transformedHeight(this, spec)` and
+ * `SurfaceTransformation(spec)` need a [TransformingLazyColumnItemScope] — the `this` — which is
+ * `sealed`, so it only exists inside a real `TransformingLazyColumn`. (A bare
+ * [rememberTransformationSpec] gives you the spec but not that scope.) So [TlcScalingHost] hosts a
+ * real single-item list, centres the item with padding, and hands its **genuine** scope + spec to
+ * [content]. The body is the very code a live list item uses:
  * ```
  * TlcScalingHost { spec ->
  *   TitleCard(
@@ -41,16 +43,28 @@ import kotlin.math.pow
  * }
  * ```
  *
- * **The override is the item's scroll position.** [TlcScalingHost]'s [level] drives the list's
- * `anchorItemScrollOffset`: `0f` centres the item → full scale (the default, so a plain use does
- * nothing), and larger values scroll it up through the real scaling zones. Sweep [level] across a
- * [TlcScaleLevels] `@PreviewParameter` and one preview renders the whole ramp (see [TlcScalingSweep]).
+ * **The override is an ambient composition local, [LocalTlcScalingLevel].** It sets the item's scroll
+ * position: `0f` (the default — nothing provides it) centres the item → full scale, so a plain
+ * preview does nothing; larger values scroll it up through the real scaling zones. Wrap a preview (or
+ * a producer / viewer control) in [ProvideTlcScalingLevel] to dial it, with no change to the
+ * component code or the preview signature.
+ */
+val LocalTlcScalingLevel: ProvidableCompositionLocal<Float> = compositionLocalOf { 0f }
+
+/** Provides [level] (0 = at rest / full scale, 1 = most scaled) to [content] for [TlcScalingHost]. */
+@Composable
+fun ProvideTlcScalingLevel(level: Float, content: @Composable () -> Unit) {
+  CompositionLocalProvider(LocalTlcScalingLevel provides level, content = content)
+}
+
+/**
+ * Hosts a real single-item [TransformingLazyColumn] and passes its genuine
+ * [TransformingLazyColumnItemScope] (the lambda receiver) + [TransformationSpec] into [content],
+ * with the item scrolled to the ambient [LocalTlcScalingLevel] (`0` = centred / full scale).
  */
 @Composable
-fun TlcScalingHost(
-  level: Float = 0f,
-  content: @Composable TransformingLazyColumnItemScope.(TransformationSpec) -> Unit,
-) {
+fun TlcScalingHost(content: @Composable TransformingLazyColumnItemScope.(TransformationSpec) -> Unit) {
+  val level = LocalTlcScalingLevel.current
   val screenHeightPx = with(LocalDensity.current) { LocalConfiguration.current.screenHeightDp.dp.roundToPx() }
   val state =
     rememberTransformingLazyColumnState(
@@ -84,13 +98,4 @@ internal fun tlcScrollOffsetPx(level: Float, screenHeightPx: Int): Int {
   val clamped = level.coerceIn(0f, 1f)
   val peak = screenHeightPx * 0.46f
   return (peak * clamped.pow(0.75f)).toInt()
-}
-
-/**
- * The scaling levels a [TlcScalingSweep] steps through as a `@PreviewParameter`, from **unscaled**
- * (`0f`, centred / full scale) to **most scaled** (`1f`, riding the top edge). Five by default; the
- * plugin renders one frame per value, so a single annotated preview yields the whole sweep.
- */
-class TlcScaleLevels : PreviewParameterProvider<Float> {
-  override val values: Sequence<Float> = sequenceOf(0f, 0.25f, 0.5f, 0.75f, 1f)
 }
