@@ -36,7 +36,7 @@ fi
 # /<system>/ (and ?session=<system>) but off the front-page nav. <system>@<owner>/<repo>
 # points at a per-repo design-artifacts branch, which must be trusted (see the store
 # below) to badge Trusted. Override with your own list, or `none` to serve none.
-: "${SERVE_CATALOGS_UNLISTED:=meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose}"
+: "${SERVE_CATALOGS_UNLISTED:=meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose,cadence@yschimke/cadence}"
 [[ "${SERVE_CATALOGS_UNLISTED}" != "none" ]] && args+=(--catalogs-unlisted "${SERVE_CATALOGS_UNLISTED}")
 # Default to the baked branch-trust store so the published design-artifacts catalogs
 # badge as Trusted(Branch) out of the box. `:=` fills it when SERVE_TRUST_STORE is
