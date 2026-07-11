@@ -52,7 +52,11 @@ object LayoutInspectorProduct {
   // v3 (#1908 follow-up): `tokens` may carry `cornerRadiusPx` (raw-pixel
   // `RoundedCornerShape(<px>f)`
   // corners the dp-only `cornerRadius` dropped). Additive — older entries parse with it null.
-  const val SCHEMA_VERSION: Int = 3
+  // v4: each node may carry `curvedTexts` — Wear `CurvedLayout`/`TimeText` runs laid out along an
+  // arc (string + baseline circle + font), captured from the `CurvedTextChild` runtime state a
+  // LayoutNode walk can't see, so the figma-svg export reproduces the clock as an SVG `<textPath>`
+  // instead of dropping it. Additive — older entries parse with an empty list.
+  const val SCHEMA_VERSION: Int = 4
   const val FILE: String = "layout-inspector.json"
 }
 
@@ -347,7 +351,34 @@ data class LayoutInspectorNode(
    * consumer. Null for the common case of a node that declares none of them (pure layout nodes).
    */
   val tokens: ComposeSemanticsTokens? = null,
+  /**
+   * Curved text drawn by a Wear `CurvedLayout` / `TimeText` — laid out along an arc, so it can't be
+   * a normal straight `<text>`. Captured from the `CurvedTextChild`/`CurvedLayoutInfo` runtime
+   * state (which a plain layout-node walk can't see) and rendered as an SVG `<textPath>` on the
+   * baseline arc. Empty for the common case.
+   */
+  val curvedTexts: List<LayoutInspectorCurvedText> = emptyList(),
   val children: List<LayoutInspectorNode> = emptyList(),
+)
+
+/**
+ * One run of Wear curved text along a circular baseline, in root-pixel space. The baseline circle
+ * is centred at ([centerXPx], [centerYPx]) with radius [radiusPx]; the run spans [sweepRadians]
+ * from [startAngleRadians] (screen convention: angle measured clockwise from +x, so `1.5π` = top).
+ * Text reads [clockwise] along the arc at [fontSizePx].
+ */
+@Serializable
+data class LayoutInspectorCurvedText(
+  val text: String,
+  val centerXPx: Double,
+  val centerYPx: Double,
+  val radiusPx: Double,
+  val startAngleRadians: Double,
+  val sweepRadians: Double,
+  val clockwise: Boolean,
+  val fontSizePx: Double,
+  val fontWeight: Int? = null,
+  val colorArgb: String? = null,
 )
 
 @Serializable
