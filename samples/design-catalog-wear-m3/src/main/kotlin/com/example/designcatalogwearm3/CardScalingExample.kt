@@ -31,30 +31,24 @@ private fun HeartRateCard() =
     }
   }
 
-/**
- * The card at rest: nothing provides [LocalTlcScalingLevel], so it draws centred at full scale — a
- * plain preview of the component, unchanged.
- */
-@Preview(
-  name = "Large Round",
-  device = "id:wearos_large_round",
-  showBackground = true,
-  backgroundColor = 0xFF000000,
-)
-@TlcScalingPreview
-@Composable
-fun CardScalingRest() = HeartRateCard()
+private const val WEAR_LARGE_ROUND = "id:wearos_large_round"
 
 /**
- * The **same** card, wrapped in [ProvideTlcScalingLevel] so the ambient override scrolls it up into
- * the real scaling zone — scaled + faded, with no change to [HeartRateCard]'s code. Demonstrates the
- * composition-local override the sweep/GIF and a live viewer both drive.
+ * The card at the three key list positions — the same [HeartRateCard] code each time, only the
+ * ambient [TlcScalePosition] differs:
+ * - [CardScalingMiddle] — centred, full scale (the default; nothing provided).
+ * - [CardScalingStarting] — scrolled into the top scaling zone, starting to shrink + fade.
+ * - [CardScalingEdge] — ridden to the top edge, high scale.
  */
-@Preview(
-  name = "Large Round",
-  device = "id:wearos_large_round",
-  showBackground = true,
-  backgroundColor = 0xFF000000,
-)
+@Preview(name = "Large Round", device = WEAR_LARGE_ROUND, showBackground = true, backgroundColor = 0xFF000000)
+@TlcScalingPreview
 @Composable
-fun CardScalingScaled() = ProvideTlcScalingLevel(0.7f) { HeartRateCard() }
+fun CardScalingMiddle() = ProvideTlcScalePosition(TlcScalePosition.Middle) { HeartRateCard() }
+
+@Preview(name = "Large Round", device = WEAR_LARGE_ROUND, showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+fun CardScalingStarting() = ProvideTlcScalePosition(TlcScalePosition.Starting) { HeartRateCard() }
+
+@Preview(name = "Large Round", device = WEAR_LARGE_ROUND, showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+fun CardScalingEdge() = ProvideTlcScalePosition(TlcScalePosition.Edge) { HeartRateCard() }
