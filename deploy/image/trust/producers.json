@@ -12,6 +12,10 @@
     {
       "repo": "yschimke/homeassistant-remotecompose",
       "branch": "design-artifacts/*"
+    },
+    {
+      "repo": "yschimke/cadence",
+      "branch": "design-artifacts/*"
     }
   ]
 }
