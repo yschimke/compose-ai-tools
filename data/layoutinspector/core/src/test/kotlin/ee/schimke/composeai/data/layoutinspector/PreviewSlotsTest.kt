@@ -70,9 +70,7 @@ class PreviewSlotsTest {
       ComposeSemanticsPayload(
         node(
           children =
-            listOf(
-              node(tag = "dp-slot:x;scope=carousel;future=1;scroll=1", bounds = "0,0,10,10")
-            )
+            listOf(node(tag = "dp-slot:x;scope=carousel;future=1;scroll=1", bounds = "0,0,10,10"))
         )
       )
     val slot = PreviewSlots.extractSlots(tree).single()

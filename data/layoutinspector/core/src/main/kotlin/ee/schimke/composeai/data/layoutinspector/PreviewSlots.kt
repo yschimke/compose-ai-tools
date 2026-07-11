@@ -78,7 +78,9 @@ enum class SlotScope {
   COLUMN,
   /** `BoxScope` — a single child fills / aligns within the box. */
   BOX,
-  /** A lazy list/grid item scope (`LazyItemScope`) — children scroll; orientation is unspecified. */
+  /**
+   * A lazy list/grid item scope (`LazyItemScope`) — children scroll; orientation is unspecified.
+   */
   LAZY;
 
   companion object {

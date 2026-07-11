@@ -80,32 +80,42 @@ val LocalSlotMode: ProvidableCompositionLocal<Boolean> = compositionLocalOf { fa
  * Marks [content] as a named slot region a structured-screen builder can fill with a child.
  *
  * **A no-op in a normal render**: it draws [content] inside a [Box] carrying `testTag =
- * "[SLOT_TAG_PREFIX]<name>"` (plus [scope]/[scrolling] attributes). `testTag` is a semantics
- * property (no visual/layout effect of its own), so the region is captured into the
- * `compose/semantics` tree with its `boundsInRoot` — which the `/render/<id>.slots` route distils
- * into `{ name, bounds, scope, scrolling }`. Under [LocalSlotMode] it renders a translucent
- * [SlotPlaceholder] labelled [name] instead of [content], so a designer sees exactly where the slot
- * is and drops a composable into that precise box.
+ * "[SLOT_TAG_PREFIX]<name>"`. `testTag` is a semantics property (no visual/layout effect of its
+ * own), so the region is captured into the `compose/semantics` tree with its `boundsInRoot` — which
+ * the `/render/<id>.slots` route distils into `{ name, bounds, scope, scrolling }`. Under
+ * [LocalSlotMode] it renders a translucent [SlotPlaceholder] labelled [name] instead of [content],
+ * so a designer sees exactly where the slot is and drops a composable into that precise box.
  *
- * This receiver-less overload is for a slot placed in a lambda with **no layout scope** (a
- * `Scaffold` `topBar` / `floatingActionButton`); pass [scope] explicitly there. A slot placed
- * directly inside a `Row` / `Column` / `Box` / lazy-item body resolves to the matching
- * scope-receiver overload, which records the [PreviewSlotScope] automatically — prefer that.
+ * A slot placed directly inside a `Row` / `Column` / `Box` / lazy-item body resolves to the
+ * matching scope-receiver overload, which records its [PreviewSlotScope] automatically — prefer
+ * that. This bare overload records [PreviewSlotScope.Unknown]; use the [scope]-taking overload for
+ * a slot in a lambda with **no layout scope** (a `Scaffold` `topBar` / `floatingActionButton`).
  *
  * Give the slot a size (via [modifier], or by placing it in a sized parent — a fixed icon box, a
  * `Row` weight): that box is both what the placeholder fills and the constraint a child rendered to
  * fill the slot is given.
  *
  * @param name the slot's author-declared name (the `dp-slot:` suffix); should be non-blank.
- * @param scope the container the slot sits in; declare it for a receiver-less slot.
- * @param scrolling whether the slot's container scrolls (so the region can hold overflowing
- *   content). A [PreviewSlotScope.Lazy] slot is always scrolling.
+ */
+@Composable
+fun PreviewSlot(name: String, modifier: Modifier = Modifier, content: @Composable () -> Unit) =
+  SlotBox(name, PreviewSlotScope.Unknown, scrolling = false, modifier = modifier, content = content)
+
+/**
+ * [PreviewSlot] for a slot in a lambda with **no layout scope** — a `Scaffold` `topBar` /
+ * `floatingActionButton` — where the container can't be inferred from a scope receiver. Declares
+ * the [scope] (and [scrolling]) explicitly. A slot inside a `Row` / `Column` / `Box` / lazy body
+ * should use the scope-receiver overload instead, which infers [scope].
+ *
+ * @param scope the container the slot sits in.
+ * @param scrolling whether that container scrolls; a [PreviewSlotScope.Lazy] slot is always
+ *   scrolling.
  */
 @Composable
 fun PreviewSlot(
   name: String,
+  scope: PreviewSlotScope,
   modifier: Modifier = Modifier,
-  scope: PreviewSlotScope = PreviewSlotScope.Unknown,
   scrolling: Boolean = false,
   content: @Composable () -> Unit,
 ) = SlotBox(name, scope, scrolling, modifier, content)
