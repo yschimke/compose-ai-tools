@@ -528,9 +528,18 @@ class RenderEngine(
             // over the captured bitmap; the `round` resource qualifier set above only affects
             // `Configuration.isScreenRound`. Both are needed for parity with the standalone
             // renderer's wear-round path.
+            //
+            // BUT the grown Wear scroll render (`flattenWearScroll`) is the isolated throwaway base
+            // whose PNG feeds ONLY the hybrid `figma-raster` crops the capsule SVG references — the
+            // capsule `<clipPath>` does the visual masking. Circle-cropping it here would zero the
+            // alpha outside the inscribed circle, so any rasterized Image/Icon/Canvas in the revealed
+            // top or bottom of the tall frame would crop to a blank/transparent `<image>` even though
+            // the capsule shows that region. Skip the device crop for the tall render so those crops
+            // carry real pixels; the SVG's capsule mask clips the frame, not the source PNG.
             val roborazziOptions =
               RoborazziOptions(
-                recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = isRound)
+                recordOptions =
+                  RoborazziOptions.RecordOptions(applyDeviceCrop = isRound && !flattenWearScroll)
               )
             System.err.println(
               "compose-ai-daemon: [render] phase=captureRoboImage.start outputBaseName=${spec.outputBaseName}"
