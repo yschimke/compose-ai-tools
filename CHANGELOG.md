@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.16.40](https://github.com/yschimke/compose-ai-tools/compare/v0.16.39...v0.16.40) (2026-07-11)
+
+
+### Features
+
+* **overrides:** fake-clock injector for deterministic time-dependent previews ([#2428](https://github.com/yschimke/compose-ai-tools/issues/2428)) ([f3a65f2](https://github.com/yschimke/compose-ai-tools/commit/f3a65f250a2535a62389f3aa474476a8434949a3))
+* **serve:** re-fetch catalog branches on change so a live server stays fresh ([#2425](https://github.com/yschimke/compose-ai-tools/issues/2425)) ([d72f4ce](https://github.com/yschimke/compose-ai-tools/commit/d72f4ce4763a7cbe3e7354544f6ef69d4f86b8c8))
+* **serve:** wrap-mode preview boxes to cut wasted space ([#2427](https://github.com/yschimke/compose-ai-tools/issues/2427)) ([a3faac3](https://github.com/yschimke/compose-ai-tools/commit/a3faac34c120cb9ce3789a1338df7762e65b3f9d))
+
+
+### Bug Fixes
+
+* **serve:** set render outputDir so the bundle daemon registers figma-svg ([#2429](https://github.com/yschimke/compose-ai-tools/issues/2429)) ([3851b93](https://github.com/yschimke/compose-ai-tools/commit/3851b9315fd9e87dd00812cdf47e27ebba23e539))
+
 ## [0.16.39](https://github.com/yschimke/compose-ai-tools/compare/v0.16.38...v0.16.39) (2026-07-11)
 
 
