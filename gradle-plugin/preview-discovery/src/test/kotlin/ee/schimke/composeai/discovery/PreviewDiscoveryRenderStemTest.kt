@@ -12,7 +12,7 @@ class PreviewDiscoveryRenderStemTest {
    * sanitisation step.
    */
   @Test
-  fun `every resolved stem is shell-safe — only letters, digits, underscores, and dots`() {
+  fun `every resolved stem is shell-safe - only letters, digits, underscores, and dots`() {
     val previews =
       listOf(
         preview("com.example.PreviewsKt.ActivityListPreview_Devices - Large Round"),
@@ -142,7 +142,7 @@ class PreviewDiscoveryRenderStemTest {
   }
 
   @Test
-  fun `single-preview module — bare function-and-variant segment, no prefixes`() {
+  fun `single-preview module - bare function-and-variant segment, no prefixes`() {
     val previews = listOf(preview("com.example.PreviewsKt.OnlyOne_Variant - With Space"))
 
     val stems = PreviewDiscovery.resolveRenderStems(previews)

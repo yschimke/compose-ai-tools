@@ -29,7 +29,7 @@ class PreviewIndexDiffTest {
     )
 
   @Test
-  fun `pure addition — empty index plus two-preview scan emits two added`() {
+  fun `pure addition - empty index plus two-preview scan emits two added`() {
     val index = PreviewIndex.empty()
     val scan =
       setOf(preview("Foo", sourceFile = "Foo.kt"), preview("Foo_dark", sourceFile = "Foo.kt"))
@@ -46,7 +46,7 @@ class PreviewIndexDiffTest {
   }
 
   @Test
-  fun `pure removal — index has two from Foo, scan returns empty, both removed`() {
+  fun `pure removal - index has two from Foo, scan returns empty, both removed`() {
     val foo1 = preview("Foo", sourceFile = "Foo.kt")
     val foo2 = preview("Foo_dark", sourceFile = "Foo.kt")
     val index = PreviewIndex.fromMap(path = null, byId = mapOf("Foo" to foo1, "Foo_dark" to foo2))
@@ -62,7 +62,7 @@ class PreviewIndexDiffTest {
   }
 
   @Test
-  fun `field change — same id with different displayName is changed not added`() {
+  fun `field change - same id with different displayName is changed not added`() {
     val before = preview("Foo_bar", sourceFile = "Foo.kt", displayName = "X")
     val after = preview("Foo_bar", sourceFile = "Foo.kt", displayName = "Y")
     val index = PreviewIndex.fromMap(path = null, byId = mapOf("Foo_bar" to before))
@@ -150,7 +150,7 @@ class PreviewIndexDiffTest {
   }
 
   @Test
-  fun `no-op — scan matches index exactly, diff is empty`() {
+  fun `no-op - scan matches index exactly, diff is empty`() {
     val foo = preview("Foo", sourceFile = "Foo.kt", displayName = "Foo!")
     val index = PreviewIndex.fromMap(path = null, byId = mapOf("Foo" to foo))
     val diff = index.diff(setOf(foo), Path.of("Foo.kt"))
@@ -162,7 +162,7 @@ class PreviewIndexDiffTest {
   }
 
   @Test
-  fun `file-scoped — Bar slice survives a Foo-targeted scan that returns nothing`() {
+  fun `file-scoped - Bar slice survives a Foo-targeted scan that returns nothing`() {
     val fooPreview = preview("Foo", sourceFile = "Foo.kt")
     val barPreview = preview("Bar", sourceFile = "Bar.kt")
     val index =
