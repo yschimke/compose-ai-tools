@@ -303,6 +303,19 @@ class ExtensionRegistry(extensions: List<Extension>) {
     return PreviewOverrideExtensions(
       extensions = all,
       isActive = { extension ->
+        // Always-on override extensions (the plain-Compose named-override host + scope stamper)
+        // must
+        // plan on EVERY render regardless of enablement — that is the whole point of the
+        // AlwaysOnPreviewOverrideExtension marker ("must be planned on every render"). The
+        // enable gate governs the *client-visible* `data/fetch` product (the editable-knob
+        // payload),
+        // NOT the host installation + seed application that make `previewOverride*` resolve a
+        // per-render override. Gating the always-on host here silently dropped every named-knob
+        // override (a `?knob.label=…` edit) for any consumer that never calls `extensions/enable`:
+        // the `serve` preview server (preview.coo.ee) is exactly that consumer — unlike the MCP
+        // supervisor, which enables an allowlist on connect. Non-always-on override extensions
+        // (wallpaper, focus, keyboard, …) stay gated on their owning extension as before.
+        if (extension is AlwaysOnPreviewOverrideExtension) return@PreviewOverrideExtensions true
         val owningId = byOverrideId[extension.id.value] ?: return@PreviewOverrideExtensions false
         isActive(owningId)
       },
