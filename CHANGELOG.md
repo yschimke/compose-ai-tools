@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.16.37](https://github.com/yschimke/compose-ai-tools/compare/v0.16.36...v0.16.37) (2026-07-11)
+
+
+### Features
+
+* **figma-svg:** export Wear curved TimeText as an SVG textPath ([#2395](https://github.com/yschimke/compose-ai-tools/issues/2395)) ([8e1c233](https://github.com/yschimke/compose-ai-tools/commit/8e1c233dfe4e32b831d92789af8908541a19bb33))
+* **figma-svg:** full-page scrolling SVG on Android + raster/cache fixes ([#2405](https://github.com/yschimke/compose-ai-tools/issues/2405)) ([022acf4](https://github.com/yschimke/compose-ai-tools/commit/022acf4b5537fbbfcc4184e4bb9fadc6df118f21))
+* **figma-svg:** full-page SVG for scrolling previews (compose/figma-svg-long) ([#2399](https://github.com/yschimke/compose-ai-tools/issues/2399)) ([edc1983](https://github.com/yschimke/compose-ai-tools/commit/edc198321ef396e28bc0c9ef404e6899b88a4a55))
+* **serve:** collapsible overrides drawer + component nav drawer in the viewer ([#2400](https://github.com/yschimke/compose-ai-tools/issues/2400)) ([58eba7c](https://github.com/yschimke/compose-ai-tools/commit/58eba7c7a7cb9fcbb652e3057a5de6755e5624f7))
+* **serve:** register cadence catalog for preview.coo.ee ([#2396](https://github.com/yschimke/compose-ai-tools/issues/2396)) ([6761a11](https://github.com/yschimke/compose-ai-tools/commit/6761a11a29f5f7962f57ca4acdbc8a92f4d4da79))
+
+
+### Bug Fixes
+
+* **build:** publish data-preview-overrides modules for bundle-render e2e ([#2402](https://github.com/yschimke/compose-ai-tools/issues/2402)) ([2cceead](https://github.com/yschimke/compose-ai-tools/commit/2cceeadb93ad1dbf509dc64ea16c73ec94ac28ab))
+* **mcp:** resolve daemon descriptors for projectDir-remapped modules; bump stale descriptor schema check ([#2397](https://github.com/yschimke/compose-ai-tools/issues/2397)) ([705f16a](https://github.com/yschimke/compose-ai-tools/commit/705f16a855d52345fded9b552ef4391075b4d461))
+* **serve:** carry named-knob overrides through the previewId render path ([#2401](https://github.com/yschimke/compose-ai-tools/issues/2401)) ([ab32ea0](https://github.com/yschimke/compose-ai-tools/commit/ab32ea0c3f8689099985cf0d946a102be1cab054))
+* **serve:** merge previewId override bags instead of replacing base ([#2403](https://github.com/yschimke/compose-ai-tools/issues/2403)) ([0549818](https://github.com/yschimke/compose-ai-tools/commit/0549818ee0b9586a0db850b941bac06b1e1ae246))
+* **wear-catalog:** centre component stickers in the pinned Wear canvas ([#2404](https://github.com/yschimke/compose-ai-tools/issues/2404)) ([01ed4bd](https://github.com/yschimke/compose-ai-tools/commit/01ed4bd026748e85cefcf7d09903aacb8e30d3fa))
+
 ## [0.16.36](https://github.com/yschimke/compose-ai-tools/compare/v0.16.35...v0.16.36) (2026-07-11)
 
 
