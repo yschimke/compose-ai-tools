@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.UiMode
+import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
 import ee.schimke.composeai.data.layoutinspector.PreviewSlotsPayload
 import ee.schimke.composeai.data.layoutinspector.SlotBounds
 import ee.schimke.composeai.render.session.RenderSession
@@ -63,6 +64,32 @@ class ServeRenderHostTest {
     // A desktop-style backend advertises none ⇒ the control is gated off (would be a dead toggle).
     host(FakeRenderSession(newRenderRoot())).use { h ->
       assertFalse(h.gesturesRenderable, "no gesture capability ⇒ not renderable")
+    }
+  }
+
+  @Test
+  fun `hasSvgExport enables the daemon's figma-svg data products on open`() {
+    // The daemon registers compose/figma-svg (+ -long) inactive; without this enable an
+    // override-bearing .svg render fails "-32020 kind not advertised". Assert the host activates
+    // them on open and advertises the SVG export.
+    val session = FakeRenderSession(newRenderRoot())
+    host(session).use { h ->
+      assertTrue(h.hasSvgExport, "a figma-svg-capable daemon advertises SVG export")
+      assertTrue(
+        session.enabledExtensionIds.containsAll(
+          listOf(ComposeFigmaSvgProduct.KIND, ComposeFigmaSvgProduct.KIND_LONG)
+        ),
+        "the host enables both figma-svg data products on open",
+      )
+    }
+  }
+
+  @Test
+  fun `hasSvgExport is false when the daemon lacks figma-svg`() {
+    // A backend without the figma-svg producer reports the ids as unknown; the host must then offer
+    // no SVG export rather than dead-ending an override .svg in a 500.
+    host(FakeRenderSession(newRenderRoot(), figmaSvgAvailable = false)).use { h ->
+      assertFalse(h.hasSvgExport, "no figma-svg producer ⇒ no advertised SVG export")
     }
   }
 

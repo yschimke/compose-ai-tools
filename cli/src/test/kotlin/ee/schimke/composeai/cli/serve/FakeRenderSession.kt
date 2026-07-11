@@ -83,8 +83,18 @@ internal class FakeRenderSession(
    * desktop-style backend that honours no feature overrides).
    */
   private val supportedOverrides: List<String> = emptyList(),
+  /**
+   * Whether the modelled daemon has the `compose/figma-svg` (+ `-long`) data products —
+   * [ServeRenderHost] enables them on open and gates [ServeRenderHost.hasSvgExport] on the result.
+   * True by default (a desktop-style backend that exports figma-svg); false models a backend
+   * without it (the ids come back in [ExtensionsEnableResult.unknown]).
+   */
+  private val figmaSvgAvailable: Boolean = true,
 ) : RenderSession {
   val renderCount = AtomicInteger(0)
+
+  /** Extension ids passed to [enableExtensions], in call order — for assertions. */
+  val enabledExtensionIds = CopyOnWriteArrayList<String>()
   private val coalesceRemaining = AtomicInteger(coalescedOverrideRejections)
   private val listeners = CopyOnWriteArrayList<NotificationListener>()
   private val counter = AtomicInteger(0)
@@ -302,7 +312,15 @@ internal class FakeRenderSession(
   override fun enableExtensions(
     ids: List<String>,
     timeout: kotlin.time.Duration,
-  ): ExtensionsEnableResult = error("unused")
+  ): ExtensionsEnableResult {
+    enabledExtensionIds.addAll(ids)
+    val figmaKinds = setOf(ComposeFigmaSvgProduct.KIND, ComposeFigmaSvgProduct.KIND_LONG)
+    val (figma, other) = ids.partition { it in figmaKinds }
+    // A backend without figma-svg reports those ids as unknown; everything else enables.
+    val unknown = if (figmaSvgAvailable) emptyList() else figma
+    val enabled = if (figmaSvgAvailable) ids else other
+    return ExtensionsEnableResult(newlyEnabled = enabled, unknown = unknown)
+  }
 
   override fun disableExtensions(
     ids: List<String>,
