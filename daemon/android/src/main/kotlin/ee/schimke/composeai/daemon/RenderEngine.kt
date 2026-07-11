@@ -1209,7 +1209,18 @@ class RenderEngine(
           if (root != null) measure = measureVerticalScroll(root)
         }
       }
-    rule.apply(statement, description).evaluate()
+    // Install the request classloader as the context loader for the probe, exactly as the normal
+    // render dispatch does: `InvokeWithOptionalWrapper` resolves `@PreviewWrapper` / theme-provider
+    // classes via the thread context loader, and those live only on the app child classloader — so
+    // without this install the probe would measure unwrapped content (or fail) while the final
+    // render uses the wrapper.
+    val previousContext = Thread.currentThread().contextClassLoader
+    Thread.currentThread().contextClassLoader = classLoader
+    try {
+      rule.apply(statement, description).evaluate()
+    } finally {
+      Thread.currentThread().contextClassLoader = previousContext
+    }
     return measure
   }
 
