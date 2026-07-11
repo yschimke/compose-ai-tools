@@ -7,6 +7,7 @@ import {
     GradleApi,
     TaskCancelledError,
     encodeBundlePreviewId,
+    isModulePreviewSchedulable,
 } from "../gradleService";
 import { JdkImageError } from "../jdkImageErrorDetector";
 
@@ -1225,6 +1226,98 @@ describe("GradleService", () => {
         );
     });
 
+    describe("composePreview.enabled = false gating (#2016)", () => {
+        const disabled = {
+            projectDir: "mod",
+            modulePath: ":mod",
+            enabled: false,
+        } as const;
+
+        it(
+            "composePreviewDiscover schedules no task and returns null for a disabled module",
+            withTempDir(async (dir, api) => {
+                const service = new GradleService(dir, api);
+                const manifest = await service.composePreviewDiscover(disabled);
+                assert.strictEqual(manifest, null);
+                assert.strictEqual(api.runCalls.length, 0);
+            }),
+        );
+
+        it(
+            "composePreviewRender schedules no task and returns null for a disabled module",
+            withTempDir(async (dir, api) => {
+                const service = new GradleService(dir, api);
+                const manifest = await service.composePreviewRender(disabled);
+                assert.strictEqual(manifest, null);
+                assert.strictEqual(api.runCalls.length, 0);
+            }),
+        );
+
+        it(
+            "compileOnly schedules no task for a disabled module",
+            withTempDir(async (dir, api) => {
+                const service = new GradleService(dir, api);
+                await service.compileOnly(disabled);
+                assert.strictEqual(api.runCalls.length, 0);
+            }),
+        );
+
+        it(
+            "coldStartBundle schedules no task and returns null for a disabled module",
+            withTempDir(async (dir, api) => {
+                const service = new GradleService(dir, api);
+                const manifest = await service.coldStartBundle(disabled);
+                assert.strictEqual(manifest, null);
+                assert.strictEqual(api.runCalls.length, 0);
+            }),
+        );
+
+        it(
+            "runDaemonBootstrap schedules no task for a disabled module",
+            withTempDir(async (dir, api) => {
+                const service = new GradleService(dir, api);
+                await service.runDaemonBootstrap(disabled);
+                assert.strictEqual(api.runCalls.length, 0);
+            }),
+        );
+
+        it(
+            "treats enabled === undefined (legacy marker) as enabled and still schedules",
+            withTempDir(async (dir, api) => {
+                fs.mkdirSync(path.join(dir, "mod"));
+                const service = new GradleService(dir, api);
+                // No `enabled` field — the shape of a legacy/scan-detected module.
+                await service.composePreviewDiscover({
+                    projectDir: "mod",
+                    modulePath: ":mod",
+                });
+                assert.strictEqual(api.runCalls.length, 1);
+                assert.strictEqual(
+                    api.runCalls[0].taskName,
+                    ":mod:composePreviewDiscover",
+                );
+            }),
+        );
+
+        it(
+            "treats enabled === true as enabled and still schedules",
+            withTempDir(async (dir, api) => {
+                fs.mkdirSync(path.join(dir, "mod"));
+                const service = new GradleService(dir, api);
+                await service.composePreviewDiscover({
+                    projectDir: "mod",
+                    modulePath: ":mod",
+                    enabled: true,
+                });
+                assert.strictEqual(api.runCalls.length, 1);
+                assert.strictEqual(
+                    api.runCalls[0].taskName,
+                    ":mod:composePreviewDiscover",
+                );
+            }),
+        );
+    });
+
     describe("coldStartBundle", () => {
         function writeManifest(dir: string, moduleDir: string): void {
             const manifestDir = path.join(
@@ -1695,5 +1788,27 @@ describe("encodeBundlePreviewId", () => {
         // came next (e.g. `\,` would lose the literal `\`).
         assert.strictEqual(encodeBundlePreviewId("a\\b"), "a\\\\b");
         assert.strictEqual(encodeBundlePreviewId("a\\,b"), "a\\\\\\,b");
+    });
+});
+
+describe("isModulePreviewSchedulable", () => {
+    const base = { projectDir: "mod", modulePath: ":mod" };
+
+    it("blocks scheduling only when enabled is explicitly false", () => {
+        assert.strictEqual(
+            isModulePreviewSchedulable({ ...base, enabled: false }),
+            false,
+        );
+    });
+
+    it("schedules when enabled is true", () => {
+        assert.strictEqual(
+            isModulePreviewSchedulable({ ...base, enabled: true }),
+            true,
+        );
+    });
+
+    it("treats a missing enabled (legacy / scan-detected) as enabled", () => {
+        assert.strictEqual(isModulePreviewSchedulable(base), true);
     });
 });

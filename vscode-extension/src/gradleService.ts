@@ -176,6 +176,28 @@ export interface ModuleInfo {
     readonly enabled?: boolean;
 }
 
+/**
+ * Whether the extension should schedule Gradle *preview* tasks for a module
+ * (issue #2016). `composePreview.enabled = false` disables preview-task
+ * *registration* on the Gradle side (`docs/HOW_IT_WORKS.md`; the Android path
+ * exits before registering variant tasks when `extension.enabled` is false),
+ * so the `composePreviewDiscover` / render / daemon-start tasks never exist —
+ * scheduling one yields a "task not found" failure on refresh / cold-start.
+ *
+ * The `enabled` intent is surfaced on `ModuleInfo.enabled` from the module's
+ * `applied.json` marker (which is written unconditionally). A missing value
+ * (`undefined`) — legacy markers written before the field existed, or
+ * scan-detected modules with no marker — is treated as **enabled**, so the
+ * historical behaviour is unchanged for everything that predates this field.
+ *
+ * Visibility is intentionally NOT gated on this: `findPreviewModules` still
+ * returns disabled modules, and doctor still reports on them (its task is
+ * registered unconditionally). Only task *scheduling* is skipped.
+ */
+export function isModulePreviewSchedulable(module: ModuleInfo): boolean {
+    return module.enabled !== false;
+}
+
 /** Synthesises a Gradle project path from a workspace-relative directory.
  *  Used as a fallback when no `applied.json` has been written yet — the
  *  marker, once present, supplies the authoritative `modulePath`. */
@@ -401,10 +423,27 @@ export class GradleService {
         this.logFilter = logFilter ?? new LogFilter();
     }
 
+    /**
+     * Logs why a preview task was not scheduled for a `composePreview.enabled =
+     * false` module (issue #2016). Kept quiet — an INFO line, not a warning:
+     * a disabled module is an intentional configuration, not a fault, and this
+     * fires on every refresh/save for files in such a module.
+     */
+    private logDisabledSkip(module: ModuleInfo, task: string): void {
+        this.logger.appendLine(
+            `[compose-preview] ${module.modulePath}: composePreview.enabled = false — ` +
+                `skipping ${task} (no preview tasks are registered for this module).`,
+        );
+    }
+
     async composePreviewDiscover(
         module: ModuleInfo,
         opts?: TaskOptions,
     ): Promise<PreviewManifest | null> {
+        if (!isModulePreviewSchedulable(module)) {
+            this.logDisabledSkip(module, "composePreviewDiscover");
+            return null;
+        }
         const key = module.modulePath;
         const inFlight = this.inFlightDiscover.get(key);
         if (inFlight) {
@@ -466,6 +505,10 @@ export class GradleService {
      * will repopulate the cache through `composePreviewDiscover`.
      */
     async compileOnly(module: ModuleInfo, opts?: TaskOptions): Promise<void> {
+        if (!isModulePreviewSchedulable(module)) {
+            this.logDisabledSkip(module, "compileOnly");
+            return;
+        }
         this.manifestCache.delete(module.modulePath);
         const worker = this.continuousWorkers.get(module.modulePath);
         if (worker && worker.running) {
@@ -548,6 +591,10 @@ export class GradleService {
         opts?: TaskOptions,
         extraArgs: readonly string[] = [],
     ): Promise<PreviewManifest | null> {
+        if (!isModulePreviewSchedulable(module)) {
+            this.logDisabledSkip(module, "composePreviewRenderAll");
+            return null;
+        }
         this.manifestCache.delete(module.modulePath);
         await this.runTask(
             `${module.modulePath}:composePreviewRenderAll`,
@@ -1286,6 +1333,14 @@ export class GradleService {
         opts?: TaskOptions,
         bundleOpts?: { includeDiscover?: boolean },
     ): Promise<PreviewManifest | null> {
+        if (!isModulePreviewSchedulable(module)) {
+            // Covers the daemon-start bootstrap path too — `runDaemonBootstrap`
+            // delegates here — so a disabled module never triggers
+            // `composePreviewDaemonStart` / `composePreviewDiscover` from a
+            // cold start or daemon warm.
+            this.logDisabledSkip(module, "coldStartBundle");
+            return null;
+        }
         const includeDiscover = bundleOpts?.includeDiscover ?? true;
         const key = module.modulePath;
         const inFlight = this.inFlightColdStart.get(key);
