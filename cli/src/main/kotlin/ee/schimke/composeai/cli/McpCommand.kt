@@ -607,7 +607,7 @@ internal class McpCommand(
 
 // Pinned to DAEMON_DESCRIPTOR_SCHEMA_VERSION in
 // gradle-plugin/.../daemon/DaemonClasspathDescriptor.kt. Keep in sync — bump together.
-internal const val EXPECTED_DESCRIPTOR_SCHEMA_VERSION: Int = 1
+internal const val EXPECTED_DESCRIPTOR_SCHEMA_VERSION: Int = 2
 
 internal data class DoctorState(
   val gradlePath: String,
