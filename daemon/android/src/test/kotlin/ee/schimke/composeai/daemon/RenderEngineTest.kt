@@ -238,6 +238,60 @@ class RenderEngineTest {
   }
 
   @Test
+  fun figmaSvgLongRenderModeProducesFullPageSvg() {
+    // Parity with the desktop backend: the `figma-svg-long` render mode grows the viewport until a
+    // virtualised LazyColumn composes every row, sizes to content, and writes the full-page SVG to
+    // <dataDir>/<previewId>/figma-long/ — without clobbering the preview's normal-size products.
+    val outputDir = tempFolder.newFolder("renders-figma-long")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost()
+    host.start()
+    try {
+      val request =
+        RenderRequest.Render(
+          payload =
+            "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+              "functionName=LazyColumnListPreview;" +
+              "previewId=scaffold-list;mode=figma-svg-long;" +
+              "widthPx=200;heightPx=520;density=1.0;" +
+              "showBackground=true;outputBaseName=scaffold-list"
+        )
+      host.submit(request, timeoutMs = 240_000)
+
+      val dataDir = outputDir.parentFile!!.resolve("data")
+      val longSvg =
+        dataDir.resolve("scaffold-list").resolve("figma-long").resolve("compose-figma-long.svg")
+      assertTrue("full-page SVG must be produced: ${longSvg.absolutePath}", longSvg.exists())
+      val text = longSvg.readText()
+      // Best-effort: persist a copy for visual evidence (never fails the test). Mirrors the desktop
+      // experiment's persist step.
+      runCatching {
+        val keep = File("build/figma-svg-scroll-experiment").also { it.mkdirs() }
+        longSvg.copyTo(File(keep, "figma-svg-long-android.svg"), overwrite = true)
+      }
+      val rows = Regex("Row (\\d+)").findAll(text).map { it.groupValues[1].toInt() }.toSortedSet()
+      assertTrue("full-page SVG must carry all 30 rows (got ${rows.size})", rows.size == 30)
+      // Taller than the 520px base viewport, but sized to the content — not an over-tall frame with
+      // a trailing background band (the growth loop must converge, not run to its iteration cap).
+      val height =
+        Regex("<svg[^>]*\\bheight=\"([0-9.]+)\"").find(text)?.groupValues?.get(1)?.toDouble() ?: 0.0
+      assertTrue(
+        "full-page SVG must be content-sized: taller than the base viewport but not a huge band " +
+          "(was $height)",
+        height in 1000.0..3000.0,
+      )
+      // The isolated tall render must not have left its throwaway dir behind.
+      assertTrue(
+        "throwaway render dir must be cleaned up",
+        !dataDir.resolve("scaffold-list__figma_svg_long").exists(),
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
   fun privateComposableRendersToValidPng() {
     // Regression: Kotlin `private fun` previews compile to JVM-private static methods. The daemon
     // resolves them via `getDeclaredComposableMethod` but the reflective `invoke` threw

@@ -7,15 +7,28 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.ui.Alignment
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -374,4 +387,55 @@ fun RedNotification(context: android.content.Context): android.app.Notification 
     .setContentTitle("Held notification")
     .setContentText("rendered inside a live session")
     .build()
+}
+
+/**
+ * Realistic mobile scrolling-screen fixture for the `figma-svg-long` Android test — a Material 3
+ * [Scaffold] with a pinned [TopAppBar] and a hand-rolled bottom navigation bar framing a
+ * `LazyColumn` of 30 numbered rows (more than fit a phone-height viewport). Mirrors the desktop
+ * `LazyColumnListPreview` so both backends' full-page exports are exercised the same way:
+ * [RenderEngineTest] renders it in `figma-svg-long` mode and asserts the exported SVG carries all 30
+ * `Row N` layers. Bottom bar hand-built from primitives to stay independent of the M3
+ * `NavigationBar` artifact.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LazyColumnListPreview() {
+  MaterialTheme(colorScheme = lightColorScheme()) {
+    Scaffold(
+      topBar = { TopAppBar(title = { Text("Activity") }) },
+      bottomBar = {
+        Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
+          Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+          ) {
+            listOf("Home", "Search", "Profile").forEach { label ->
+              Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                  modifier =
+                    Modifier.size(24.dp)
+                      .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(6.dp))
+                )
+                Text(text = label, style = MaterialTheme.typography.labelSmall)
+              }
+            }
+          }
+        }
+      },
+    ) { contentPadding ->
+      LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = contentPadding) {
+        items((1..30).toList()) { index ->
+          Column(
+            modifier =
+              Modifier.fillMaxWidth()
+                .background(if (index % 2 == 0) Color(0xFFEEEEEE) else Color.White)
+                .padding(12.dp)
+          ) {
+            Text(text = "Row $index", style = MaterialTheme.typography.titleMedium)
+          }
+        }
+      }
+    }
+  }
 }

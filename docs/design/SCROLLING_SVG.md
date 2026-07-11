@@ -73,7 +73,7 @@ second pass covers content whose height changes as it reflows at the new size). 
 This needs no scroll dispatch and no structural analysis of the Scaffold — just the one scalar the
 scroll semantics already expose, read after each measured render.
 
-### Implementation (mobile) — landed for the desktop backend, exposed in the preview server
+### Implementation (mobile) — landed for both backends, exposed in the preview server
 
 - **Data product** `compose/figma-svg-long` — a `requiresRerender = true` kind
   ([`ComposeFigmaSvgLongDataProductRegistry`](../../data/layoutinspector/connector/src/main/kotlin/ee/schimke/composeai/daemon/ComposeFigmaSvgDataProduct.kt)),
@@ -88,7 +88,11 @@ scroll semantics already expose, read after each measured render.
   renders once at the settled height into an **isolated** output base so the tall render never
   overwrites the preview's normal-size `compose/semantics` / wireframe / PNG, and copies out the
   layered SVG. Reuses `ComposeFigmaSvgDataProducer.writeSvg` unchanged; no change to `FigmaSvgModel`
-  / `FigmaLayeredSvg`.
+  / `FigmaLayeredSvg`. **Both backends** implement it: desktop grows one `ImageComposeScene` via
+  `setUp`/`renderOnce`; Android (Robolectric) builds a fresh `createAndroidComposeRule` per probe
+  height (the test rule forbids a second `setContent`) and grows the `h{n}dp` qualifier, then
+  re-enters `render()` at the settled height so the always-on `ComposeFigmaSvgExtension` emits the
+  SVG. Both measure off the unmerged semantics root.
 - **Preview server** — [`ServeRenderHost.renderScrollSvg`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeRenderHost.kt)
   fetches `compose/figma-svg-long` (inlining any hybrid rasters, cached like the viewport SVG), and
   the HTTP server serves it at **`GET /render/<id>.svg?scroll=long`** (`full` / `page` accepted too)
@@ -98,8 +102,7 @@ scroll semantics already expose, read after each measured render.
   overrides — the same limitation the scroll PNG products have, so `renderScrollSvg` caches on the
   preview id alone until it's threaded through); the interactive web-viewer "Full-page SVG" link (a
   fast-follow — the viewer's SVG links are built by a client-side state machine that needs the
-  Electron preview-harness for visual evidence); the **Android** backend (`runScrollSvgScenario`
-  mirror); and the **Wear** geometry below.
+  Electron preview-harness for visual evidence); and the **Wear** geometry below.
 
 ## Wear: split the scaffold, stack the items unscaled (proposed)
 
