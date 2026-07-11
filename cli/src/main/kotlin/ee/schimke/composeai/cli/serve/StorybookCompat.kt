@@ -120,17 +120,20 @@ object StorybookCompat {
     )
 
   /**
-   * Resolve a story id from `iframe.html?id=` to a native preview id. A raw native preview id is
-   * accepted verbatim first (deep-link escape hatch); otherwise the id is matched against the
-   * minted [stories]. Returns null when nothing matches.
+   * Resolve a story id from `iframe.html?id=` to a native preview id. The minted [stories] ids are
+   * the `/index.json` contract, so they're matched **first** — an advertised entry always
+   * round-trips even if some other preview's native id happens to equal this minted id. Only when
+   * the id matches no advertised story does the raw-native-id escape hatch apply (deep-linking a
+   * preview by its `<fqn>`), so the hatch can never shadow an indexed story. Returns null when
+   * nothing matches.
    */
   fun resolvePreviewId(storyId: String, previews: List<ServePreview>): String? {
-    previews
-      .firstOrNull { it.id == storyId }
+    stories(previews)
+      .firstOrNull { it.storyId == storyId }
       ?.let {
-        return it.id
+        return it.previewId
       }
-    return stories(previews).firstOrNull { it.storyId == storyId }?.previewId
+    return previews.firstOrNull { it.id == storyId }?.id
   }
 
   /**

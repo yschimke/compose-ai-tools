@@ -92,6 +92,32 @@ class StorybookCompatTest {
   }
 
   @Test
+  fun `an advertised story id wins over a colliding native preview id`() {
+    // Preview B's native id is literally "greeting"; preview A (labelled "Greeting" in file
+    // Main.kt)
+    // mints the story id "main--greeting". Now craft the collision: give B a native id equal to A's
+    // minted id. `/index.json` advertises "main--greeting" for A, so it must round-trip to A even
+    // though a preview whose raw id is "main--greeting" also exists.
+    val a = preview("com.example.MainKt.GreetingPreview", "Greeting")
+    val b = preview("main--greeting", "Other")
+    val previews = listOf(a, b)
+    // Sanity: A really does mint that id.
+    assertEquals(
+      "main--greeting",
+      StorybookCompat.index(previews).entries.getValue("main--greeting").id,
+    )
+    // Advertised id resolves to A (round-trips), not to the raw-id preview B.
+    assertEquals(
+      "com.example.MainKt.GreetingPreview",
+      StorybookCompat.resolvePreviewId("main--greeting", previews),
+    )
+    // B is still reachable by its own advertised story id.
+    val bStoryId =
+      StorybookCompat.stories(previews).first { it.previewId == "main--greeting" }.storyId
+    assertEquals("main--greeting", StorybookCompat.resolvePreviewId(bStoryId, previews))
+  }
+
+  @Test
   fun `iframe page embeds the png as a data uri sized to its pixels`() {
     val page = StorybookCompat.iframePage("main--greeting", pngBytes(24, 8))
     assertTrue(page.startsWith("<!doctype html>"), "is an html document")
