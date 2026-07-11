@@ -73,28 +73,36 @@ second pass covers content whose height changes as it reflows at the new size). 
 This needs no scroll dispatch and no structural analysis of the Scaffold — just the one scalar the
 scroll semantics already expose, read after each measured render.
 
-### Implementation (mobile) — landed for the desktop backend, exposed in the preview server
+### Implementation (mobile) — landed for both backends, exposed in the preview server
 
 - **Data product** `compose/figma-svg-long` — a `requiresRerender = true` kind
   ([`ComposeFigmaSvgLongDataProductRegistry`](../../data/layoutinspector/connector/src/main/kotlin/ee/schimke/composeai/daemon/ComposeFigmaSvgDataProduct.kt)),
   mirroring `render/scroll/long`. A `data/fetch` for it returns `RequiresRerender("figma-svg-long")`,
-  so the daemon queues a per-preview re-render in that mode; the file lands next to the viewport SVG
-  as `compose-figma-long.svg`.
+  so the daemon queues a per-preview re-render in that mode; the SVG (plus its own hybrid
+  `figma-raster/` crops) lands in a dedicated `<previewId>/figma-long/` subdir, isolated from the
+  viewport export whose per-node crops would otherwise collide (Compose reassigns node ids per
+  render).
 - **Producer** — `RenderEngine.render` dispatches `renderMode == "figma-svg-long"` to
   `runScrollSvgScenario`, which runs the growth loop (sizing by **measured geometry** — the deepest
   composed descendant of the scroll node — because the LazyList scroll-range estimate is unreliable),
   renders once at the settled height into an **isolated** output base so the tall render never
   overwrites the preview's normal-size `compose/semantics` / wireframe / PNG, and copies out the
   layered SVG. Reuses `ComposeFigmaSvgDataProducer.writeSvg` unchanged; no change to `FigmaSvgModel`
-  / `FigmaLayeredSvg`.
+  / `FigmaLayeredSvg`. **Both backends** implement it: desktop grows one `ImageComposeScene` via
+  `setUp`/`renderOnce`; Android (Robolectric) builds a fresh `createAndroidComposeRule` per probe
+  height (the test rule forbids a second `setContent`) and grows the `h{n}dp` qualifier, then
+  re-enters `render()` at the settled height so the always-on `ComposeFigmaSvgExtension` emits the
+  SVG. Both measure off the unmerged semantics root.
 - **Preview server** — [`ServeRenderHost.renderScrollSvg`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeRenderHost.kt)
   fetches `compose/figma-svg-long` (inlining any hybrid rasters, cached like the viewport SVG), and
   the HTTP server serves it at **`GET /render/<id>.svg?scroll=long`** (`full` / `page` accepted too)
   alongside the existing `.png` / `.svg` lanes.
-- **Remaining**: the interactive web-viewer "Full-page SVG" link (a fast-follow — the viewer's SVG
-  links are built by a client-side state machine that needs the Electron preview-harness for visual
-  evidence), the **Android** backend (`runScrollSvgScenario` mirror), and the **Wear** geometry
-  below.
+- **Remaining**: **override-aware** full-page renders (the `data/fetch` re-render is keyed by
+  `(previewId, kind)` and doesn't yet carry the live `uiMode` / `device` / locale / theme / knob
+  overrides — the same limitation the scroll PNG products have, so `renderScrollSvg` caches on the
+  preview id alone until it's threaded through); the interactive web-viewer "Full-page SVG" link (a
+  fast-follow — the viewer's SVG links are built by a client-side state machine that needs the
+  Electron preview-harness for visual evidence); and the **Wear** geometry below.
 
 ## Wear: split the scaffold, stack the items unscaled (proposed)
 

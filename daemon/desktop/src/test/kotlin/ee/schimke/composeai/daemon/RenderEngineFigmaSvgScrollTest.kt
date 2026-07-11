@@ -101,9 +101,10 @@ class RenderEngineFigmaSvgScrollTest {
 
   @Test
   fun figmaSvgLongRenderModeProducesFullPageSvg() {
-    // Exercise the real `figma-svg-long` render mode end to end: it grows the viewport by-remaining
-    // until every row composes, sizes to content, and writes the full-page SVG to the long product
-    // path — without touching the preview's normal-size compose-figma.svg.
+    // Exercise the real `figma-svg-long` render mode end to end: it grows the viewport until every
+    // row composes (by measured content geometry), sizes to content, and writes the full-page SVG
+    // to
+    // the long product path — without touching the preview's normal-size compose-figma.svg.
     val outputDir = tempFolder.newFolder("renders-long")
     val dataDir = tempFolder.newFolder("data-long")
     val engine = RenderEngine(outputDir = outputDir, dataDir = dataDir)
@@ -123,7 +124,7 @@ class RenderEngineFigmaSvgScrollTest {
       requestId = 1L,
     )
 
-    val longSvg = File(File(dataDir, previewId), "compose-figma-long.svg")
+    val longSvg = File(File(File(dataDir, previewId), "figma-long"), "compose-figma-long.svg")
     assertTrue("full-page SVG must be produced: ${longSvg.absolutePath}", longSvg.exists())
     val text = longSvg.readText()
     runCatching {
