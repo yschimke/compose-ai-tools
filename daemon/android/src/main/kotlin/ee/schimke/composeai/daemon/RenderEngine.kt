@@ -54,9 +54,6 @@ import ee.schimke.composeai.renderer.uiautomator.UiAutomatorHierarchyExtension
 import java.io.File
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
-import androidx.compose.ui.semantics.SemanticsNode
-import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.semantics.getOrNull
 import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
 import ee.schimke.composeai.io.SystemFileSystem
 import okio.ByteString.Companion.decodeBase64
@@ -1153,14 +1150,6 @@ class RenderEngine(
     )
   }
 
-  /** Geometry of the main vertical scroll container in a rendered scene (root-pixel space). */
-  private data class ScrollMeasure(
-    /** The scroll container's own bottom edge — where any pinned bottom chrome begins. */
-    val scrollNodeBottom: Int,
-    /** The deepest composed descendant's bottom — how far the list content actually reaches. */
-    val contentBottom: Int,
-  )
-
   /**
    * Composes [spec] at [probeHeightPx] in a fresh `createAndroidComposeRule` and measures the
    * vertical scroll geometry, or null when nothing is vertically scrollable. A lightweight probe
@@ -1172,7 +1161,7 @@ class RenderEngine(
     spec: RenderSpec,
     probeHeightPx: Int,
     classLoader: ClassLoader,
-  ): ScrollMeasure? {
+  ): ee.schimke.composeai.renderer.ScrollContentMeasure.Measure? {
     val isRound = isRoundDevice(spec.device)
     applyPreviewQualifiers(
       widthDp = pxToDp(spec.widthPx, spec.density),
@@ -1198,7 +1187,7 @@ class RenderEngine(
         RenderEngine::class.java,
         "figmasvglong_probe_${spec.outputBaseName}",
       )
-    var measure: ScrollMeasure? = null
+    var measure: ee.schimke.composeai.renderer.ScrollContentMeasure.Measure? = null
     val statement =
       object : org.junit.runners.model.Statement() {
         override fun evaluate() {
@@ -1250,7 +1239,8 @@ class RenderEngine(
           rule.mainClock.advanceTimeBy(spec.captureAdvanceMs ?: CAPTURE_ADVANCE_MS)
           val root =
             runCatching { rule.onRoot(useUnmergedTree = true).fetchSemanticsNode() }.getOrNull()
-          if (root != null) measure = measureVerticalScroll(root)
+          if (root != null)
+            measure = ee.schimke.composeai.renderer.ScrollContentMeasure.measureVerticalScroll(root)
         }
       }
     // Install the request classloader as the context loader for the probe, exactly as the normal
@@ -1266,46 +1256,6 @@ class RenderEngine(
       Thread.currentThread().contextClassLoader = previousContext
     }
     return measure
-  }
-
-  /**
-   * The tallest vertically-scrollable node under [root] and how far its composed content reaches
-   * (root-pixel space), or null when nothing is vertically scrollable. Mirrors `:daemon:desktop`'s
-   * `measureVerticalScroll`: pick the scroll node by largest height, then take the deepest composed
-   * descendant's bottom as the content extent.
-   */
-  private fun measureVerticalScroll(root: SemanticsNode): ScrollMeasure? {
-    // Pick the tallest node carrying a VerticalScrollAxisRange — the screen's main scroll container
-    // (a nested inner scroller would be shorter).
-    var scroll: SemanticsNode? = null
-    var tallest = -1f
-    fun findScroll(node: SemanticsNode) {
-      if (node.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange) != null) {
-        val h = node.boundsInRoot.height
-        if (h > tallest) {
-          tallest = h
-          scroll = node
-        }
-      }
-      node.children.forEach(::findScroll)
-    }
-    findScroll(root)
-    val scrollNode = scroll ?: return null
-    // Deepest composed *descendant* bottom = the real content extent (grows as more items compose).
-    // Seed with the scroll node's TOP, not its bottom: the scroll container itself fills its viewport
-    // (a `fillMaxSize` LazyColumn), so seeding with its bottom would track the viewport and the
-    // growth loop would never converge.
-    var maxBottom = scrollNode.boundsInRoot.top
-    fun deepest(node: SemanticsNode) {
-      val b = node.boundsInRoot.bottom
-      if (b.isFinite() && b > maxBottom) maxBottom = b
-      node.children.forEach(::deepest)
-    }
-    scrollNode.children.forEach(::deepest)
-    return ScrollMeasure(
-      scrollNodeBottom = scrollNode.boundsInRoot.bottom.toInt(),
-      contentBottom = maxBottom.toInt(),
-    )
   }
 
   /**

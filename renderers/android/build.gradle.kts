@@ -218,6 +218,12 @@ dependencies {
   testImplementation(libs.compose.material3)
   testImplementation(libs.compose.runtime)
   testImplementation(libs.wear.compose.foundation)
+  // Wear Material3 on the TEST classpath only — it supplies `SurfaceTransformation` /
+  // `transformedHeight` so `WearScrollSvgGrowthTest` can render a round preview with the real Wear
+  // item scaling and show reduce-motion flatten it. Test-scoped on purpose: the daemon must never
+  // link wear-compose (it renders the user's app off a child classloader); this is the module that
+  // renders Wear, so its own test classpath supplies the Wear surface.
+  testImplementation(libs.wear.compose.material3)
   testImplementation(libs.compose.ui.tooling.preview)
   testImplementation(libs.activity.compose)
   testImplementation("androidx.compose.ui:ui-test-junit4")
