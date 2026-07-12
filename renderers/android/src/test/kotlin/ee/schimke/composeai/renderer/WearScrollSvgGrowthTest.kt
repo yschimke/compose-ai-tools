@@ -525,7 +525,10 @@ class WearScrollSvgGrowthTest {
       )
     )
     y += edge.height + gap
-    val totalHeight = y - gap + topPad
+    // Hug the EdgeButton: only a small bottom pad, so the capsule's bottom curve wraps the crescent
+    // (which already tapers to the round-face bottom) instead of leaving a flat dead band under it.
+    val bottomPad = 8
+    val totalHeight = y - gap + bottomPad
 
     // One synthetic frame root spanning the full stacked size — its bounds drive the export's canvas
     // and, because it is much taller than wide, the auto-selected capsule (stadium) clip.
