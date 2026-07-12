@@ -2215,6 +2215,30 @@
     "sha256": "fc0ba94173d63faadf5a83c702072ddaee1bdf1a4c893ae3a69c40161363ed0c",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
   },
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CardScalingPreviewKt.CardScalingScrollGif_Large Round": {
+    "captureLabel": "scroll gif",
+    "functionName": "CardScalingScrollGif",
+    "module": "samples:design-catalog-wear-m3",
+    "renderBasename": "CardScalingScrollGif_Large_Round.gif",
+    "sha256": "d1150200798535b7cc0db76e44b41d39e741d7bd87556c3a43d8f8e482612d20",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CardScalingPreview.kt"
+  },
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CardScalingPreviewKt.CardScaling_Large Round": {
+    "captureLabel": "scroll top",
+    "functionName": "CardScaling",
+    "module": "samples:design-catalog-wear-m3",
+    "renderBasename": "CardScaling_Large_Round_SCROLL_top.png",
+    "sha256": "a2cbe6218d72ea86d794fe1abc7b01a4cdfabaf1bbf92a46314c8a623e6b6973",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CardScalingPreview.kt"
+  },
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CardScalingPreviewKt.CardScaling_Large Round#1": {
+    "captureLabel": "scroll end",
+    "functionName": "CardScaling",
+    "module": "samples:design-catalog-wear-m3",
+    "renderBasename": "CardScaling_Large_Round_SCROLL_end.png",
+    "sha256": "9dd6474dd98b2c6651603d5eed237dd3df3cf46e9ca3e84443476fe777d992cc",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CardScalingPreview.kt"
+  },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.BlankListLayout_Extra Large Round": {
     "captureLabel": "scroll end",
     "functionName": "BlankListLayout",

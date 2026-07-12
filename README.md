@@ -343,6 +343,9 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 
 | Preview | Image |
 |---------|-------|
+| `CardScalingScrollGif · scroll gif` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/CardScalingScrollGif_Large_Round.gif" width="150" /> |
+| `CardScaling · scroll top` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/CardScaling_Large_Round_SCROLL_top.png" width="150" /> |
+| `CardScaling · scroll end` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/CardScaling_Large_Round_SCROLL_end.png" width="150" /> |
 | `BlankListLayout · scroll end` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/BlankListLayout_Extra_Large_Round.png" width="150" /> |
 | `BlankListLayout · scroll end` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/BlankListLayout_Large_Round.png" width="150" /> |
 | `BlankListLayout · scroll end` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/BlankListLayout_Small_Round.png" width="150" /> |
