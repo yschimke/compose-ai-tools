@@ -37,7 +37,11 @@ else
   echo "==> Reusing existing .env (token preserved)"
 fi
 
-echo "==> Pulling the prebuilt image and starting the stack"
+echo "==> Pulling the prebuilt images and starting the stack"
+# Unauthenticated pull: both GHCR packages (compose-preview-host AND
+# compose-preview-caddy, which carries the baked Caddyfile) must be PUBLIC, or this
+# box needs registry creds. A private package fails here before Caddy starts — see
+# README "First publish is private".
 sudo docker compose pull
 sudo docker compose up -d
 

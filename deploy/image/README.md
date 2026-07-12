@@ -88,6 +88,14 @@ Pin a specific config with `CADDY_IMAGE_TAG=sha-<commit>` in `.env`.
 > this compose and `docker compose up -d` once — it swaps in the baked image. After
 > that, Caddyfile edits ride Watchtower with no manual `caddy reload`.
 
+> **First publish is private — make it public once.** GHCR packages default to
+> private, so after `preview-caddy-image.yml`'s first run, set the new
+> `compose-preview-caddy` package **public** (Packages → settings), exactly like
+> `compose-preview-host` above. Otherwise a fresh or migrating box's unauthenticated
+> `docker compose pull` fails on the caddy image *before Caddy can start* — no TLS,
+> no proxy. (Alternatively, give the box registry creds — see *Private GHCR
+> package* below; it now covers the caddy image too, not just the server.)
+
 > **Image:** this uses the maintained
 > [`nicholas-fedor/watchtower`](https://github.com/nicholas-fedor/watchtower) fork,
 > pinned by tag+digest. The original `containrrr/watchtower` is effectively
