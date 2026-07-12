@@ -14,7 +14,9 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const serveUrl = process.env.SERVE_URL ?? "http://127.0.0.1:8725";
+// `||` (not `??`) so an empty SERVE_URL — e.g. an env var set to "" — falls back
+// to the default instead of becoming a broken empty baseURL.
+const serveUrl = process.env.SERVE_URL || "http://127.0.0.1:8725";
 
 export default defineConfig({
   testDir: ".",

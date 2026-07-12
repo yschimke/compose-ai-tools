@@ -79,7 +79,12 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE: "1"
           GALLIUM_DRIVER: llvmpipe
         run: |
-          echo "SERVE_URL=$(bash vscode-extension/preview-harness/serve-lanes-boot.sh)" >> "$GITHUB_ENV"
+          # Capture into a var first (not inside echo) so a boot failure trips
+          # `set -e` and fails THIS step with the boot log — instead of exporting an
+          # empty SERVE_URL and surfacing later as a cryptic Playwright "Invalid URL".
+          url="$(bash vscode-extension/preview-harness/serve-lanes-boot.sh)"
+          echo "serve-lanes: SERVE_URL=$url"
+          echo "SERVE_URL=$url" >> "$GITHUB_ENV"
 
       - name: Drive every render lane (Chromium)
         working-directory: vscode-extension
