@@ -127,10 +127,17 @@ class ServePerPreviewLiveHost(
         return it.renderSvg(daemonId, overrides)
       }
     }
-    val bakedOutcome = baked.renderSvg(previewId, overrides)
-    if (bakedOutcome !is SvgOutcome.NotFound) return bakedOutcome
-    val daemonId = alias[previewId] ?: return bakedOutcome
-    return resolveLive(daemonId)?.renderSvg(daemonId, overrides) ?: bakedOutcome
+    // No override — but the baked `figma/<slug>.svg` is slug-keyed + light-preferred, so a
+    // `…__dark`
+    // id would serve the LIGHT vector even though its PNG and live render are dark. Prefer the
+    // daemon's per-variant SVG (carries the variant's uiMode/theme) for any daemon-twinned id; the
+    // baked slug SVG stays the fallback for unmapped ids and if the daemon can't export.
+    alias[previewId]?.let { daemonId ->
+      resolveLive(daemonId)?.renderSvg(daemonId, overrides)?.let { live ->
+        if (live !is SvgOutcome.NotFound) return live
+      }
+    }
+    return baked.renderSvg(previewId, overrides)
   }
 
   /** Live streaming is available only for aliased ids that resolve a per-preview daemon. */
