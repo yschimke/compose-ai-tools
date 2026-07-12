@@ -47,7 +47,8 @@ fun CatalogSticker(background: Boolean = false, content: @Composable () -> Unit)
       // they stay readable against that backing.
       //
       // A preview opts back into the opaque themed `colorScheme.surface` with `background = true` —
-      // for specimens that are illegible as a bare silhouette (the generic-family text specimens are
+      // for specimens that are illegible as a bare silhouette (the generic-family text specimens
+      // are
       // plain `onSurface` glyphs with no container of their own). The theme-aware `surface` keeps
       // them light-on-dark / dark-on-light in the matching mode.
       //
