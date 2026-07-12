@@ -47,6 +47,7 @@ import ee.schimke.composeai.data.theme.NodeThemeFacts
 import ee.schimke.composeai.data.theme.ThemeConsumerAttribution
 import ee.schimke.composeai.data.theme.ThemePayload
 import ee.schimke.composeai.renderer.AccessibilityDataProducts
+import ee.schimke.composeai.renderer.WearScrollSvgAssembler
 import ee.schimke.composeai.renderer.AccessibilityHierarchyContextKeys
 import ee.schimke.composeai.renderer.AccessibilityHierarchyExtension
 import ee.schimke.composeai.renderer.uiautomator.UiAutomatorDataProducts
@@ -1084,6 +1085,220 @@ class RenderEngine(
    * SVG (nothing to grow). Sizing is by measured **geometry** (deepest composed descendant of the
    * scroll node), not the coarse LazyList scroll-range estimate.
    */
+  /**
+   * `figma-svg-long` dispatch for a **round Wear** scrolling preview — the slice-stitch capsule. In
+   * one held `createAndroidComposeRule`, composes the preview with `LocalReduceMotion = true` (so the
+   * `TransformingLazyColumn` items stack unscaled), then hands the live rule to
+   * [WearScrollSvgAssembler], which drives the real scroll one viewport-step at a time, captures the
+   * layout + semantics trees per slice, and stitches them into one tall capsule via
+   * [ee.schimke.composeai.data.layoutinspector.WearScrollSliceStitcher] — chaining by shared-item
+   * movement, placing each row at its true content position, pinning `TimeText`, and compositing the
+   * settled `EdgeButton` crescent as one raster. The assembled trees are baked to
+   * `<dataDir>/<previewId>/figma-long/compose-figma-long.svg` (plus its `figma-raster/` crops), the
+   * same path [ComposeFigmaSvgLongDataProductRegistry] reads back and the served `?scroll=long` SVG.
+   *
+   * Returns `null` when the preview has no vertical scrollable (assembler saw nothing to stitch), so
+   * [runScrollSvgScenario] falls back to its grow-tall path (which masks the single viewport to the
+   * inscribed circle). SVG-only; the PNG scroll story stays LONG / GIF.
+   */
+  @OptIn(ExperimentalRoborazziApi::class)
+  private fun runWearScrollSliceSvg(
+    spec: RenderSpec,
+    requestId: Long,
+    classLoader: ClassLoader,
+  ): RenderResult? {
+    val previewId =
+      spec.previewId
+        ?: error(
+          "RenderEngine: render mode '${spec.renderMode}' requires a previewId on the RenderSpec"
+        )
+    val scenarioDataDir =
+      dataDir
+        ?: error(
+          "RenderEngine: render mode '${spec.renderMode}' needs a non-null dataDir to write " +
+            "<dataDir>/<previewId>/figma-long/compose-figma-long.svg"
+        )
+    val startNs = System.nanoTime()
+    val deviceDp = pxToDp(spec.widthPx, spec.density)
+
+    applyPreviewQualifiers(
+      widthDp = deviceDp,
+      heightDp = pxToDp(spec.heightPx, spec.density),
+      density = spec.density,
+      isRound = true,
+      localeTag = spec.localeTag,
+      uiMode = spec.uiMode,
+      orientation = spec.orientation,
+    )
+    org.robolectric.RuntimeEnvironment.setFontScale(spec.fontScale ?: 1.0f)
+
+    val appContext: android.app.Application =
+      androidx.test.core.app.ApplicationProvider.getApplicationContext()
+    org.robolectric.Shadows.shadowOf(appContext.packageManager)
+      .addActivityIfNotPresent(
+        android.content.ComponentName(appContext.packageName, ComponentActivity::class.java.name)
+      )
+
+    @Suppress("DEPRECATION") val rule = createAndroidComposeRule<ComponentActivity>()
+    val description =
+      org.junit.runner.Description.createTestDescription(
+        RenderEngine::class.java,
+        "wearscrollslice_${spec.outputBaseName}",
+      )
+    val slotCapture = PreviewSlotTableCapture()
+    // Scratch dir for the per-slice draws, settled frame, composited crescent, and the throwaway
+    // SVG export — copied out to the long subdir below, then deleted.
+    val workDir = File(outputDir, "$previewId$SCROLL_SVG_TMP_SUFFIX-slices")
+
+    var assembled: WearScrollSvgAssembler.Assembled? = null
+    val statement =
+      object : org.junit.runners.model.Statement() {
+        override fun evaluate() {
+          rule.mainClock.autoAdvance = false
+          val clazz = Class.forName(spec.className, true, classLoader)
+          val composableMethod =
+            clazz.getDeclaredComposableMethod(spec.functionName).also {
+              runCatching { it.asMethod().isAccessible = true }
+            }
+          val bgArgb = resolveBackgroundColor(spec).toArgb()
+          // Flatten Wear edge-scaling so the stitched items stack at natural size (same knob the
+          // raster LONG path and the grow-tall probe use); no-op provider when not a Wear app.
+          val reduceMotionLocal =
+            ee.schimke.composeai.renderer.WearReduceMotionLocal.get(classLoader)
+          rule.setContent {
+            val provided =
+              buildList {
+                  add(LocalInspectionMode provides (spec.inspectionMode ?: true))
+                  add(
+                    ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
+                      spec.clearBackground
+                  )
+                  if (reduceMotionLocal != null) add(reduceMotionLocal provides true)
+                }
+                .toTypedArray()
+            CompositionLocalProvider(*provided) {
+              InspectablePreviewContent(slotCapture) {
+                Box(modifier = Modifier.fillMaxSize().background(Color(bgArgb))) {
+                  InvokeWithOptionalWrapper(
+                    composableMethod = composableMethod,
+                    wrapperFqnFromSpec = spec.wrapperClassName,
+                    themeProviderFqn = spec.overrides?.themeProvider,
+                  )
+                }
+              }
+            }
+          }
+          rule.mainClock.advanceTimeBy(spec.captureAdvanceMs ?: CAPTURE_ADVANCE_MS)
+          rule.waitForIdle()
+
+          assembled =
+            WearScrollSvgAssembler.assemble(
+              rule = rule,
+              // The captured frames + tree bounds are in pixels, so the stitcher width and crescent
+              // crop must be the frame's *pixel* width — `deviceDp` above is for qualifiers only.
+              deviceWidthPx = spec.widthPx,
+              workDir = workDir,
+              // No device crop: the tall capsule's `<clipPath>` masks the frame, so the source
+              // frames (which the crescent raster crops from) must keep their full pixels.
+              captureFrame = { file ->
+                file.parentFile?.mkdirs()
+                rule
+                  .onRoot()
+                  .captureRoboImage(
+                    file = file,
+                    roborazziOptions =
+                      RoborazziOptions(
+                        recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = false)
+                      ),
+                  )
+              },
+              captureTree = {
+                val semRoot = rule.onRoot(useUnmergedTree = true).fetchSemanticsNode()
+                val semantics =
+                  ComposeSemanticsDataProducer.buildPayload(semRoot, density = spec.density)
+                val layout =
+                  LayoutInspectorDataProducer.buildPayload(
+                    root = semRoot,
+                    slotTables = slotCapture.snapshot(),
+                    density = spec.density,
+                  )
+                    ?: error(
+                      "RenderEngine: layout tree unreachable for scroll-slice capture of $previewId"
+                    )
+                layout.root to semantics.root
+              },
+              rootId = previewId,
+            )
+        }
+      }
+
+    val previousContext = Thread.currentThread().contextClassLoader
+    Thread.currentThread().contextClassLoader = classLoader
+    try {
+      rule.apply(statement, description).evaluate()
+    } finally {
+      Thread.currentThread().contextClassLoader = previousContext
+    }
+
+    val out =
+      assembled
+        ?: run {
+          // Not vertically scrollable — let the caller fall back to the grow-tall / circle path.
+          runCatching { workDir.deleteRecursively() }
+          return null
+        }
+
+    // Bake the stitched trees to SVG in a scratch export dir, then copy the artefact (+ its hybrid
+    // raster crops) into the long subdir the registry serves. Black device face, capsule clip.
+    val exportDir = File(workDir, "export")
+    ComposeFigmaSvgDataProducer.writeSvg(
+      rootDir = exportDir,
+      previewId = previewId,
+      layout = out.layout,
+      semantics = out.semantics,
+      density = spec.density,
+      frameImage = out.framePng,
+      roundClip = true,
+      deviceBackground = WEAR_DEVICE_FACE,
+    )
+    val producedSvg = exportDir.resolve(previewId).resolve(ComposeFigmaSvgProduct.FILE_SVG)
+    if (!producedSvg.exists()) {
+      runCatching { workDir.deleteRecursively() }
+      error(
+        "RenderEngine: render mode '${spec.renderMode}' produced no capsule SVG for previewId " +
+          "'$previewId'"
+      )
+    }
+    val longDir =
+      scenarioDataDir.resolve(previewId).resolve(ComposeFigmaSvgProduct.LONG_SUBDIR).also {
+        it.mkdirs()
+      }
+    val destSvg = longDir.resolve(ComposeFigmaSvgProduct.FILE_SVG_LONG)
+    producedSvg.copyTo(destSvg, overwrite = true)
+    val producedRasterDir = exportDir.resolve(previewId).resolve(ComposeFigmaSvgProduct.RASTER_DIR)
+    if (producedRasterDir.isDirectory) {
+      val destRasterDir =
+        longDir.resolve(ComposeFigmaSvgProduct.RASTER_DIR).also { it.mkdirs() }
+      producedRasterDir.listFiles()?.forEach { crop ->
+        crop.copyTo(destRasterDir.resolve(crop.name), overwrite = true)
+      }
+    }
+    runCatching { workDir.deleteRecursively() }
+
+    val tookMs = (System.nanoTime() - startNs) / 1_000_000L
+    System.err.println(
+      "compose-ai-daemon: [render] phase=wearScrollSlice.done previewId=$previewId " +
+        "height=${out.height} items=${out.itemCount} tookMs=$tookMs"
+    )
+    return RenderResult(
+      id = requestId,
+      classLoaderHashCode = System.identityHashCode(classLoader),
+      classLoaderName = classLoader.javaClass.name,
+      pngPath = destSvg.absolutePath,
+      metrics = mapOf("tookMs" to tookMs),
+    )
+  }
+
   private fun runScrollSvgScenario(
     spec: RenderSpec,
     requestId: Long,
@@ -1101,6 +1316,17 @@ class RenderEngine(
             "<dataDir>/<previewId>/figma-long/compose-figma-long.svg"
         )
     val startNs = System.nanoTime()
+
+    // A round Wear preview is scrolled + slice-stitched into a vertical capsule (the tree-level twin
+    // of the raster `render-scroll-long` PNG) rather than grown tall: growing a round `ScreenScaffold`
+    // balloons its screen-fraction padding, so the faithful path drives the real scroll and places
+    // each captured row at its true position. Falls back to the grow-tall path below when the round
+    // preview turns out not to be vertically scrollable (nothing to stitch).
+    if (isRoundDevice(spec.device)) {
+      runWearScrollSliceSvg(spec = spec, requestId = requestId, classLoader = classLoader)?.let {
+        return it
+      }
+    }
 
     val baseHeight = spec.heightPx
     val maxHeight = baseHeight + SCROLL_SVG_MAX_EXTRA_PX
@@ -1500,6 +1726,9 @@ class RenderEngine(
 
     /** Output-base suffix isolating the tall render so it can't clobber the preview's products. */
     private const val SCROLL_SVG_TMP_SUFFIX: String = "__figma_svg_long"
+
+    /** Black watch face painted behind the round Wear slice-stitch capsule (opt-in device bg). */
+    private const val WEAR_DEVICE_FACE: String = "#FF000000"
 
     /**
      * `RenderSpec.kind` value flagging a tile preview (non-composable function returning

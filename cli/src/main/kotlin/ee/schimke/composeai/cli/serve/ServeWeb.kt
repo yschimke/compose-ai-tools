@@ -845,6 +845,16 @@ object ServeWeb {
         "<label class=\"cp-live-row\"><input type=\"radio\" name=\"cp-mode\" value=\"svg\" " +
           "id=\"cp-mode-svg\"> SVG</label>"
       else ""
+    // "Full page (scroll)" — in SVG mode, points the vector `<img>` (and the copyable SVG link) at
+    // `/render/<id>.svg?scroll=long`, the full-page export of a scrolling preview (a Wear scrolling
+    // screen slice-stitched into a tall capsule, or a phone LazyColumn grown tall) instead of the
+    // viewport-sized SVG. Enabled by the JS only while SVG is the active mode; the raster PNG lane
+    // ignores it. Same [hasSvgExport] gate as the SVG radio.
+    val scrollLongRow =
+      if (hasSvgExport)
+        "<label class=\"cp-live-row\"><input id=\"cp-scroll-long\" type=\"checkbox\" disabled> " +
+          "Full page (scroll)</label>"
+      else ""
     val deviceOptions =
       COMMON_DEVICES.joinToString("\n") { (value, name) ->
         val v = WebEscaping.htmlEscape(value)
@@ -1005,6 +1015,7 @@ object ServeWeb {
             $wasmModeRadio
           </div>
           $wasmBgRow
+          $scrollLongRow
           <label>Theme
             <select id="cp-uiMode"$wasmDis>
               <option value="">(default)</option>
@@ -1269,9 +1280,18 @@ object ServeWeb {
         if (gc && !gc.disabled && gc.checked) parts.push("gestures=true");
         return parts.join("&");
       }
+      // "Full page (scroll)" appends `scroll=long` — but only to the SVG lane (the raster PNG has no
+      // full-page export), so the toggle scopes to `.svg` and leaves the PNG URL untouched.
+      var scrollLong = document.getElementById("cp-scroll-long");
+      function withScroll(ext, qs) {
+        if (ext === ".svg" && scrollLong && scrollLong.checked) {
+          return qs ? qs + "&scroll=long" : "scroll=long";
+        }
+        return qs;
+      }
       function refreshSnapshot() {
         status.textContent = "rendering…";
-        var qs = query();
+        var qs = withScroll(snapshotExt, query());
         var url =
           base + "/render/" + encodeURIComponent(previewId) + snapshotExt + (qs ? "?" + qs : "");
         var next = new Image();
@@ -1285,7 +1305,7 @@ object ServeWeb {
       // on location.origin so the link is absolute (curl-able / shareable), and kept in sync on
       // every control or knob change — even the ones that don't re-render the snapshot themselves.
       function renderUrl(ext) {
-        var qs = query();
+        var qs = withScroll(ext, query());
         return location.origin + base + "/render/" + encodeURIComponent(previewId) + ext +
           (qs ? "?" + qs : "");
       }
@@ -1712,6 +1732,17 @@ object ServeWeb {
           root.setAttribute("data-mode", "svg"); refreshSnapshot();
         } else { snapshotExt = ".png"; closeStream(); closeWasm(); refreshSnapshot(); }
         syncOverlayToggles();
+        syncScrollToggle();
+      }
+      // "Full page (scroll)" is only meaningful for the SVG lane; enable it iff SVG is the active
+      // mode (like the live-only overlay toggles), so it reads as inert under PNG / Live / Wasm.
+      function syncScrollToggle() {
+        if (scrollLong) scrollLong.disabled = snapshotExt !== ".svg";
+      }
+      if (scrollLong) {
+        scrollLong.addEventListener("change", function () {
+          if (snapshotExt === ".svg") refreshSnapshot(); else refreshLinks();
+        });
       }
       // The live-only overlay toggles (talkBack / touchOverlay) are meaningful only while the daemon
       // holds the composition, so they're enabled iff Live Compose is the active mode and greyed out

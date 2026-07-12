@@ -43,17 +43,9 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import ee.schimke.composeai.daemon.ComposeFigmaSvgDataProducer
 import ee.schimke.composeai.daemon.ComposeSemanticsDataProducer
 import ee.schimke.composeai.daemon.LayoutInspectorDataProducer
-import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
-import ee.schimke.composeai.data.layoutinspector.LayoutInspectorBounds
-import ee.schimke.composeai.data.layoutinspector.LayoutInspectorNode
-import ee.schimke.composeai.data.layoutinspector.WearScrollSliceStitcher
 import ee.schimke.composeai.data.render.PreviewContext
-import ee.schimke.composeai.scroll.ScrollAxis
-import ee.schimke.composeai.scroll.driveScrollByViewport
-import java.awt.image.BufferedImage
 import java.io.File
 import java.nio.file.Files
-import javax.imageio.ImageIO
 import kotlin.math.ceil
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -372,7 +364,7 @@ class WearScrollSvgGrowthTest {
   /**
    * Slice-stitches the **real** `ActivityListLongPreview` into a capsule SVG: capture the preview at
    * viewport-steps down its scroll (reduce-motion on, so items are unscaled), feed the layout +
-   * semantics trees to the production [WearScrollSliceStitcher], and export. The stitcher chains the
+   * semantics trees to the production [WearScrollSvgAssembler], and export. The stitcher chains the
    * slices by shared-item movement, places each list item at its true content position, pins TimeText
    * on the rim, and emits the Canvas-drawn EdgeButton crescent as one raster the test composites from
    * a settled final frame. The result is the tree-level twin of the raster `render-scroll-long` PNG —
@@ -383,10 +375,7 @@ class WearScrollSvgGrowthTest {
     RuntimeEnvironment.setQualifiers("w${deviceDp}dp-h${deviceDp}dp-round-mdpi")
     @Suppress("DEPRECATION") val rule = createAndroidComposeRule<ComponentActivity>()
 
-    val slices = mutableListOf<WearScrollSliceStitcher.Slice>()
-    var settledFrame: File? = null
-    var edgeButtonBounds: LayoutInspectorBounds? = null
-
+    var assembled: WearScrollSvgAssembler.Assembled? = null
     val statement =
       object : Statement() {
         override fun evaluate() {
@@ -402,85 +391,48 @@ class WearScrollSvgGrowthTest {
           rule.mainClock.advanceTimeBy(500)
           rule.waitForIdle()
 
-          fun captureTree(previewId: String): Pair<LayoutInspectorNode, ComposeSemanticsNode> {
-            val semRoot = rule.onRoot(useUnmergedTree = true).fetchSemanticsNode()
-            val sem = ComposeSemanticsDataProducer.buildPayload(semRoot, density = 1f)
-            val ctx =
-              PreviewContext.Builder(
-                  previewId = previewId,
-                  backend = null,
-                  renderMode = null,
-                  outputBaseName = previewId,
-                )
-                .rootForTest(semRoot.root as RootForTest)
-                .addSlotTables(slotTables.toList())
-                .parameterInformationCollected()
-                .build()
-            val layout = LayoutInspectorDataProducer.buildPayload(ctx, density = 1f)!!
-            return layout.root to sem.root
-          }
-
-          driveScrollByViewport(
-            rule = rule,
-            axis = ScrollAxis.VERTICAL,
-            stepPx = deviceDp * 0.8f,
-            maxScrollPx = 0,
-          ) { _ ->
-            // Force a draw so the layout inspector sees z-sorted children, then capture the trees.
-            rule.onRoot().captureRoboImage(file = File(rootDir, "ss-${slices.size}.png"))
-            val (l, s) = captureTree("ss")
-            slices.add(WearScrollSliceStitcher.Slice(l, s))
-          }
-
-          // The EdgeButton reveals with an animation that lands *after* the scroll settles (the last
-          // scroll slice catches a grey nub). Advance the clock, then capture a settled final frame +
-          // the EdgeButton's bounds — the raster path's "final frame".
-          rule.mainClock.advanceTimeBy(2000)
-          rule.waitForIdle()
-          settledFrame = File(rootDir, "ss-settled.png")
-          rule.onRoot().captureRoboImage(file = settledFrame!!)
-          val (settledLayout, _) = captureTree("ss2")
-          fun findEdge(n: LayoutInspectorNode): LayoutInspectorNode? {
-            if (n.tokens?.backgroundColor == "#FFE9DDFF" && n.bounds.bottom > n.bounds.top) return n
-            n.children.forEach { c -> findEdge(c)?.let { return it } }
-            return null
-          }
-          edgeButtonBounds = findEdge(settledLayout)?.bounds
+          // The same production orchestration the daemon's `runScrollSvgScenario` Wear path runs:
+          // drive the real scroll, capture layout + semantics per slice, chain + place + raster.
+          assembled =
+            WearScrollSvgAssembler.assemble(
+              rule = rule,
+              // mdpi ⇒ px == dp, so the 227dp round device is 227px wide.
+              deviceWidthPx = deviceDp,
+              workDir = File(rootDir, "work"),
+              captureFrame = { f -> rule.onRoot().captureRoboImage(file = f) },
+              captureTree = {
+                val semRoot = rule.onRoot(useUnmergedTree = true).fetchSemanticsNode()
+                val sem = ComposeSemanticsDataProducer.buildPayload(semRoot, density = 1f)
+                val ctx =
+                  PreviewContext.Builder(
+                      previewId = "ss",
+                      backend = null,
+                      renderMode = null,
+                      outputBaseName = "ss",
+                    )
+                    .rootForTest(semRoot.root as RootForTest)
+                    .addSlotTables(slotTables.toList())
+                    .parameterInformationCollected()
+                    .build()
+                val layout = LayoutInspectorDataProducer.buildPayload(ctx, density = 1f)!!
+                layout.root to sem.root
+              },
+              // ActivityListLongPreview always carries the "Start workout" EdgeButton; keep the
+              // legacy fixed crop-top as the fallback if its container token can't be located.
+              defaultEdgeCropTop = 140,
+            )
         }
       }
     rule.apply(statement, Description.createTestDescription(javaClass, "ss")).evaluate()
 
-    // Start the crescent crop a little above the label so its upper curve is included.
-    val cropTop = ((edgeButtonBounds?.top ?: 140) - 40).coerceIn(0, deviceDp - 1)
-    val stitched =
-      WearScrollSliceStitcher.stitch(
-        rootId = "wear-slice",
-        width = deviceDp,
-        slices = slices,
-        edgeCropTop = cropTop,
-      )
-
-    // Composite the settled crescent into the frame the hybrid export crops from (black-backed, so
-    // it lands cleanly on the black capsule face).
-    val framePng =
-      stitched.edge?.let { er ->
-        val settled = ImageIO.read(settledFrame)
-        val crop = settled.getSubimage(0, er.sourceTop, deviceDp, deviceDp - er.sourceTop)
-        val composited = BufferedImage(deviceDp, stitched.height, BufferedImage.TYPE_INT_ARGB)
-        composited.createGraphics().apply {
-          drawImage(crop, er.dest.left, er.dest.top, null)
-          dispose()
-        }
-        File(rootDir, "ss-frame.png").also { ImageIO.write(composited, "png", it) }
-      }
-
+    val out = assertNotNull("captured a scrollable capsule", assembled).let { assembled!! }
     ComposeFigmaSvgDataProducer.writeSvg(
       rootDir = rootDir,
       previewId = "wear-slice",
-      layout = stitched.layout,
-      semantics = stitched.semantics,
+      layout = out.layout,
+      semantics = out.semantics,
       density = 1f,
-      frameImage = framePng,
+      frameImage = out.framePng,
       roundClip = true,
       deviceBackground = "#FF000000",
     )
