@@ -43,11 +43,13 @@ import org.jetbrains.compose.resources.stringResource
 
 @CatalogModes @Composable fun FilledTonalButtonSticker() = Sticker("button-tonal")
 
-@CatalogModes @Composable fun OutlinedButtonSticker() = Sticker("button-outlined")
+@CatalogModes
+@Composable
+fun OutlinedButtonSticker() = Sticker("button-outlined", background = true)
 
 @CatalogModes @Composable fun ElevatedButtonSticker() = Sticker("button-elevated")
 
-@CatalogModes @Composable fun TextButtonSticker() = Sticker("button-text")
+@CatalogModes @Composable fun TextButtonSticker() = Sticker("button-text", background = true)
 
 @CatalogModes @Composable fun FilledButtonDisabled() = Sticker("button-filled-disabled")
 
@@ -63,13 +65,13 @@ import org.jetbrains.compose.resources.stringResource
 
 @CatalogModes @Composable fun FilterChipSelected() = Sticker("chip-filter-selected")
 
-@CatalogModes @Composable fun AssistChipSticker() = Sticker("chip-assist")
+@CatalogModes @Composable fun AssistChipSticker() = Sticker("chip-assist", background = true)
 
 // --- Containment — cards and the FAB. ---
 
 @CatalogModes @Composable fun ElevatedCardSticker() = Sticker("card-elevated")
 
-@CatalogModes @Composable fun OutlinedCardSticker() = Sticker("card-outlined")
+@CatalogModes @Composable fun OutlinedCardSticker() = Sticker("card-outlined", background = true)
 
 @CatalogModes @Composable fun FilledCardSticker() = Sticker("card-filled")
 
@@ -100,7 +102,9 @@ fun SlottedCardSlotsSticker() = CatalogSticker {
 
 @CatalogModes @Composable fun TextFieldSticker() = Sticker("textfield-filled")
 
-@CatalogModes @Composable fun OutlinedTextFieldSticker() = Sticker("textfield-outlined")
+@CatalogModes
+@Composable
+fun OutlinedTextFieldSticker() = Sticker("textfield-outlined", background = true)
 
 // --- Text options — maxLines + ellipsis overflow, generic-family specimens. ---
 
@@ -122,20 +126,30 @@ fun TextMaxLinesTruncated() = Sticker("text-maxlines-truncated", background = tr
 
 @CatalogModes @Composable fun FilledButtonIconLabel() = Sticker("button-filled-icon-label")
 
-@CatalogModes @Composable fun OutlinedButtonDisabled() = Sticker("button-outlined-disabled")
+@CatalogModes
+@Composable
+fun OutlinedButtonDisabled() = Sticker("button-outlined-disabled", background = true)
 
 @CatalogModes @Composable fun SwitchOff() = Sticker("switch-off")
 
-@CatalogModes @Composable fun CheckboxUnchecked() = Sticker("checkbox-unchecked")
+@CatalogModes @Composable fun CheckboxUnchecked() = Sticker("checkbox-unchecked", background = true)
 
-@CatalogModes @Composable fun FilterChipUnselected() = Sticker("chip-filter-unselected")
+@CatalogModes
+@Composable
+fun FilterChipUnselected() = Sticker("chip-filter-unselected", background = true)
 
-@CatalogModes @Composable fun SegmentedToggle() = Sticker("segmentedbutton")
+@CatalogModes @Composable fun SegmentedToggle() = Sticker("segmentedbutton", background = true)
 
 /**
  * Every sticker is the shared component (deterministic frame) inside the catalog theme wrapper.
- * [background] opts the sticker into an opaque themed surface (default transparent silhouette) —
- * used by the text specimens, which have no container of their own to read against.
+ * [background] opts the sticker into an opaque themed surface (default is a transparent silhouette)
+ * — used by the **container-less** components that draw only text or strokes with no fill of their
+ * own (the generic-family text specimens, and the outline/text/unchecked controls: outlined button
+ * / text field / card, text button, assist chip, unchecked checkbox, unselected filter chip,
+ * segmented button). Without a surface those wash out against the catalog index's dark checkerboard
+ * in light mode. Components that draw their own container/colour (filled/tonal/elevated buttons,
+ * filled cards, chips-selected, checked/on toggles, FAB, progress, badge, filled text field) stay
+ * transparent.
  */
 @Composable
 private fun Sticker(id: String, background: Boolean = false) =
