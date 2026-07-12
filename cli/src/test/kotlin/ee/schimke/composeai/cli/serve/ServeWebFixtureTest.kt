@@ -470,14 +470,15 @@ class ServeWebFixtureTest {
       "toggle persists the choice to the shared cp-theme key",
     )
     // Dark-first system (Wear): a preview with no explicit __light/__dark token still tags the
-    // viewer stage dark, so a light-on-transparent Wear render stays readable — while a non-dark-
-    // first viewer with no theme token leaves the stage on its default (light).
+    // viewer stage dark (data-bg-theme, the background axis — separate from the data-card-theme
+    // filter axis), so a light-on-transparent Wear render stays readable — while a non-dark-first
+    // viewer with no theme token leaves the stage on its default (light).
     assertTrue(
-      viewerGestures.contains("cp-controls-open\" data-card-theme=\"dark\""),
+      viewerGestures.contains("cp-controls-open\" data-bg-theme=\"dark\""),
       "a Wear (dark-first) viewer tags the stage dark even without a __dark token",
     )
     assertFalse(
-      viewerFocus.contains("cp-controls-open\" data-card-theme="),
+      viewerFocus.contains("cp-controls-open\" data-bg-theme="),
       "a non-dark-first viewer with no theme token leaves the stage default (light)",
     )
     assertFalse(

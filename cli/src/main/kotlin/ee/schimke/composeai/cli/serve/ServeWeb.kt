@@ -73,14 +73,16 @@ object ServeWeb {
        or the explicitly-selected catalog theme. Without this a transparent light sticker (dark
        strokes) shown on the dark browser backing — or dark on light — washes to near-invisible.
        Solid mode only; the Transparent toggle's checkerboard still wins via cp-bg-transparent. */
-    html:not(.cp-bg-transparent) .cp-card[data-card-theme="light"] .cp-imgwrap { background: #fff; }
-    html:not(.cp-bg-transparent) .cp-card[data-card-theme="dark"] .cp-imgwrap { background: #1d1d20; }
+    html:not(.cp-bg-transparent) .cp-card[data-bg-theme="light"] .cp-imgwrap { background: #fff; }
+    html:not(.cp-bg-transparent) .cp-card[data-bg-theme="dark"] .cp-imgwrap { background: #1d1d20; }
     /* The single-preview viewer's stage follows the preview's background theme the same way the grid
-       thumbnails do (data-card-theme on .cp-viewer): a dark variant — or any preview in a dark-first
-       system like Wear — sits on a dark stage so a light-on-transparent render stays readable.
+       thumbnails do (data-bg-theme on .cp-viewer, kept SEPARATE from the explicit-only
+       data-card-theme filter axis): a dark variant — or any preview in a dark-first system like Wear
+       — sits on a dark stage so a light-on-transparent render stays readable. The viewer JS keeps
+       data-bg-theme in step with the chosen Theme (uiMode) so it doesn't clash after a re-render.
        Solid mode only; the Transparent checkerboard still wins via cp-bg-transparent. */
-    html:not(.cp-bg-transparent) .cp-viewer[data-card-theme="dark"] .cp-stage { background: #1d1d20; }
-    html:not(.cp-bg-transparent) .cp-viewer[data-card-theme="light"] .cp-stage { background: #fff; }
+    html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="dark"] .cp-stage { background: #1d1d20; }
+    html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { background: #fff; }
     .cp-bg { display: inline-flex; border: 1px solid #d7d7de; border-radius: 999px; overflow: hidden; }
     .cp-bg-btn { border: 0; background: #fff; color: #6b6b70; font: inherit; font-size: 0.78rem;
       padding: 3px 14px; cursor: pointer; }
@@ -517,12 +519,26 @@ object ServeWeb {
         var stored = localStorage.getItem("cp-theme");
         if (!themed && !el.value && (stored === "light" || stored === "dark")) el.value = stored;
       } catch (e) {}
-      // Round-trip: a Theme change writes the shared key so the catalog remembers it.
+      // Keep the stage backing colour in step with the CHOSEN theme, so a re-render in the opposite
+      // uiMode never lands a transparent sticker on a clashing surface. The server seeds
+      // data-bg-theme from the baked variant (or the dark-first default); a light/dark Theme choice
+      // overrides it, and clearing it reverts to that default.
+      var bgDefault = (root && root.getAttribute("data-bg-theme")) || "";
+      function syncBg() {
+        if (!root) return;
+        var m = el.value === "light" || el.value === "dark" ? el.value : bgDefault;
+        if (m) root.setAttribute("data-bg-theme", m);
+        else root.removeAttribute("data-bg-theme");
+      }
+      // Round-trip: a Theme change writes the shared key so the catalog remembers it, and re-syncs
+      // the stage backing colour.
       el.addEventListener("change", function () {
         if (el.value === "light" || el.value === "dark") {
           try { localStorage.setItem("cp-theme", el.value); } catch (e) {}
         }
+        syncBg();
       });
+      syncBg();
     })();
     """
       .trimIndent()
@@ -698,9 +714,15 @@ object ServeWeb {
           val idSeg = WebEscaping.urlEncodeSegment(p.id)
           val label = WebEscaping.htmlEscape(p.label)
           val idText = WebEscaping.htmlEscape(p.id)
-          val themeAttr = bgTheme(p.id, darkFirst)?.let { " data-card-theme=\"$it\"" } ?: ""
+          // Two distinct axes: data-card-theme is the EXPLICIT light/dark token (drives the
+          // Light/Dark
+          // filter — must stay null for an unthemed card so it shows under both), while
+          // data-bg-theme
+          // is the thumbnail's background (explicit token, else the dark-first default).
+          val filterAttr = cardTheme(p.id)?.let { " data-card-theme=\"$it\"" } ?: ""
+          val bgAttr = bgTheme(p.id, darkFirst)?.let { " data-bg-theme=\"$it\"" } ?: ""
           """
-          <a class="cp-card"$themeAttr href="$basePath/p/$idSeg$q">
+          <a class="cp-card"$filterAttr$bgAttr href="$basePath/p/$idSeg$q">
             <div class="cp-imgwrap">
               <img loading="lazy" alt="$label" src="$basePath/render/$idSeg.png$q">
             </div>
@@ -1043,11 +1065,12 @@ object ServeWeb {
         "<button type=\"button\" class=\"cp-drawer-toggle\" id=\"cp-nav-toggle\" " +
           "aria-expanded=\"false\" aria-controls=\"cp-nav\">☰ Components</button>"
     // Stage background follows the preview's theme (dark variant → dark stage), with a dark-first
-    // system (Wear) defaulting to dark — see the `.cp-viewer[data-card-theme] .cp-stage` CSS.
-    val cardThemeAttr =
-      bgTheme(preview.id, isDarkFirstSystem(basePath, sessionId))?.let {
-        " data-card-theme=\"$it\""
-      } ?: ""
+    // system (Wear) defaulting to dark — see the `.cp-viewer[data-bg-theme] .cp-stage` CSS. Kept
+    // separate from the filter's data-card-theme; the viewer JS re-syncs it on a Theme (uiMode)
+    // change so a re-render in the opposite theme doesn't clash with a stale backing color.
+    val bgThemeAttr =
+      bgTheme(preview.id, isDarkFirstSystem(basePath, sessionId))?.let { " data-bg-theme=\"$it\"" }
+        ?: ""
     val body =
       """
       <p class="cp-head"><a href="$basePath/$q">← previews</a>${trustBadge(trust)}</p>
@@ -1056,7 +1079,7 @@ object ServeWeb {
         $navToggle
         <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
-      <div class="cp-viewer cp-controls-open"$cardThemeAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr>
+      <div class="cp-viewer cp-controls-open"$bgThemeAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr>
         $navDrawer
         <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$wasmFrame<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         <div class="cp-controls" id="cp-controls">

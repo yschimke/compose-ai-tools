@@ -64,14 +64,16 @@ html.cp-bg-transparent .cp-imgwrap, html.cp-bg-transparent .cp-stage {
    or the explicitly-selected catalog theme. Without this a transparent light sticker (dark
    strokes) shown on the dark browser backing — or dark on light — washes to near-invisible.
    Solid mode only; the Transparent toggle's checkerboard still wins via cp-bg-transparent. */
-html:not(.cp-bg-transparent) .cp-card[data-card-theme="light"] .cp-imgwrap { background: #fff; }
-html:not(.cp-bg-transparent) .cp-card[data-card-theme="dark"] .cp-imgwrap { background: #1d1d20; }
+html:not(.cp-bg-transparent) .cp-card[data-bg-theme="light"] .cp-imgwrap { background: #fff; }
+html:not(.cp-bg-transparent) .cp-card[data-bg-theme="dark"] .cp-imgwrap { background: #1d1d20; }
 /* The single-preview viewer's stage follows the preview's background theme the same way the grid
-   thumbnails do (data-card-theme on .cp-viewer): a dark variant — or any preview in a dark-first
-   system like Wear — sits on a dark stage so a light-on-transparent render stays readable.
+   thumbnails do (data-bg-theme on .cp-viewer, kept SEPARATE from the explicit-only
+   data-card-theme filter axis): a dark variant — or any preview in a dark-first system like Wear
+   — sits on a dark stage so a light-on-transparent render stays readable. The viewer JS keeps
+   data-bg-theme in step with the chosen Theme (uiMode) so it doesn't clash after a re-render.
    Solid mode only; the Transparent checkerboard still wins via cp-bg-transparent. */
-html:not(.cp-bg-transparent) .cp-viewer[data-card-theme="dark"] .cp-stage { background: #1d1d20; }
-html:not(.cp-bg-transparent) .cp-viewer[data-card-theme="light"] .cp-stage { background: #fff; }
+html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="dark"] .cp-stage { background: #1d1d20; }
+html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { background: #fff; }
 .cp-bg { display: inline-flex; border: 1px solid #d7d7de; border-radius: 999px; overflow: hidden; }
 .cp-bg-btn { border: 0; background: #fff; color: #6b6b70; font: inherit; font-size: 0.78rem;
   padding: 3px 14px; cursor: pointer; }
@@ -242,7 +244,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-card-theme="light"] .cp-stage { bac
   </span>
 </div>
 <div class="cp-grid" id="cp-grid">
-        <a class="cp-card" data-card-theme="light" href="/p/button-filled__ideal__default__light">
+        <a class="cp-card" data-card-theme="light" data-bg-theme="light" href="/p/button-filled__ideal__default__light">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="Button · Filled (light)" src="/render/button-filled__ideal__default__light.png">
   </div>
@@ -251,7 +253,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-card-theme="light"] .cp-stage { bac
     <div class="cp-id">button-filled__ideal__default__light</div>
   </div>
 </a>
-<a class="cp-card" data-card-theme="dark" href="/p/button-filled__ideal__default__dark">
+<a class="cp-card" data-card-theme="dark" data-bg-theme="dark" href="/p/button-filled__ideal__default__dark">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="Button · Filled (dark)" src="/render/button-filled__ideal__default__dark.png">
   </div>
@@ -260,7 +262,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-card-theme="light"] .cp-stage { bac
     <div class="cp-id">button-filled__ideal__default__dark</div>
   </div>
 </a>
-<a class="cp-card" data-card-theme="light" href="/p/switch-on__ideal__default__light">
+<a class="cp-card" data-card-theme="light" data-bg-theme="light" href="/p/switch-on__ideal__default__light">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="Switch · On (light)" src="/render/switch-on__ideal__default__light.png">
   </div>
@@ -269,7 +271,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-card-theme="light"] .cp-stage { bac
     <div class="cp-id">switch-on__ideal__default__light</div>
   </div>
 </a>
-<a class="cp-card" data-card-theme="dark" href="/p/switch-on__ideal__default__dark">
+<a class="cp-card" data-card-theme="dark" data-bg-theme="dark" href="/p/switch-on__ideal__default__dark">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="Switch · On (dark)" src="/render/switch-on__ideal__default__dark.png">
   </div>
