@@ -65,9 +65,28 @@ published** — so the chain is hands-off:
 > merge → cut a `v*` release → `preview-host-image.yml` publishes `:latest` →
 > Watchtower pulls it → server updates
 
-It polls hourly (`--interval 3600`), is scoped to the labelled `preview` service
-(`--label-enable`, so it leaves Caddy alone), and `--cleanup` prunes the old image.
-It needs the Docker socket (root-equivalent on the host — fine for your own box).
+It polls hourly (`--interval 3600`), is scoped to the labelled services
+(`--label-enable` — the `preview` server **and** `caddy`, see below), and
+`--cleanup` prunes the old image. It needs the Docker socket (root-equivalent on
+the host — fine for your own box).
+
+**The reverse-proxy config auto-deploys too.** The `caddy` service runs
+`ghcr.io/…/compose-preview-caddy:latest` — a `caddy:2` image with
+`deploy/image/Caddyfile` **baked in** — rather than `caddy:2` + a bind-mounted
+Caddyfile. Watchtower watches image digests, not files, so this is what lets a
+Caddyfile change roll out on its own:
+
+> edit `deploy/image/Caddyfile` → merge → `preview-caddy-image.yml` publishes
+> `compose-preview-caddy:latest` → Watchtower pulls it → caddy recreated with the
+> new config
+
+Certs survive a recreate (they live in the `caddy_data` volume, so no
+re-provision / rate-limit). `{$DOMAIN}` is still read from `.env` at runtime.
+Pin a specific config with `CADDY_IMAGE_TAG=sha-<commit>` in `.env`.
+
+> **Migrating an existing box** from the old `caddy:2` + `./Caddyfile` mount: pull
+> this compose and `docker compose up -d` once — it swaps in the baked image. After
+> that, Caddyfile edits ride Watchtower with no manual `caddy reload`.
 
 > **Image:** this uses the maintained
 > [`nicholas-fedor/watchtower`](https://github.com/nicholas-fedor/watchtower) fork,

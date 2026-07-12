@@ -69,15 +69,18 @@ services:
       - "8080"
     # The baked warm cache makes renders incremental; this just caps a render storm.
     mem_limit: 4g
-    # Opt this service in to Watchtower auto-updates (caddy is intentionally left out).
+    # Opt this service in to Watchtower auto-updates. Caddy is opted in too (below)
+    # via its baked-config image, so both the server and the reverse-proxy config
+    # roll automatically.
     labels:
       com.centurylinklabs.watchtower.enable: "true"
 
-  # Auto-update: poll GHCR for a new :latest digest and recreate `preview` when the
-  # release workflow publishes one. --label-enable scopes it to the labelled service
-  # above; --cleanup prunes the superseded image. Comment this service out to manage
-  # updates manually (docker compose pull && up -d). For a private GHCR package, mount
-  # a registry config: `- ~/.docker/config.json:/config.json:ro`. See README.md.
+  # Auto-update: poll GHCR for a new :latest digest and recreate `preview` (and
+  # `caddy`) when the release / preview-caddy-image workflow publishes one.
+  # --label-enable scopes it to the labelled services; --cleanup prunes the
+  # superseded image. Comment this service out to manage updates manually
+  # (docker compose pull && up -d). For a private GHCR package, mount a registry
+  # config: `- ~/.docker/config.json:/config.json:ro`. See README.md.
   watchtower:
     # Maintained fork of the (now-stale) containrrr/watchtower: the upstream image's
     # baked Docker SDK negotiates API 1.25, which modern engines reject ("client
@@ -91,7 +94,15 @@ services:
     command: --label-enable --cleanup --interval 1200
 
   caddy:
-    image: caddy:2
+    # The Caddyfile is BAKED into this image (preview-caddy-image.yml) instead of
+    # bind-mounted, so a config change auto-deploys via Watchtower like the server
+    # (Watchtower watches image digests, not files). DOMAIN is still substituted
+    # from .env at runtime. Pin a config with CADDY_IMAGE_TAG=<sha> in .env; leave
+    # it unset for the auto-updating :latest. (Migrating an existing box: the first
+    # `docker compose up -d` after adopting this compose swaps caddy:2 + the mount
+    # for this image — a one-time step; edits then ride Watchtower.)
+    image: "ghcr.io/yschimke/compose-preview-caddy:${CADDY_IMAGE_TAG:-latest}"
+    pull_policy: always
     restart: always
     depends_on:
       - preview
@@ -101,9 +112,11 @@ services:
     environment:
       DOMAIN: "${DOMAIN:?set DOMAIN in .env}"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    # Opt in to Watchtower so a new baked-Caddyfile image rolls onto this box.
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
 
 volumes:
   caddy_data:
