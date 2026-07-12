@@ -481,6 +481,14 @@ class ServeWebFixtureTest {
       viewerFocus.contains("cp-controls-open\" data-bg-theme="),
       "a non-dark-first viewer with no theme token leaves the stage default (light)",
     )
+    // The stage only follows the Theme choice when the control can actually re-render: on a static
+    // bundle the select is disabled (but may carry a seeded localStorage value), so syncBg must
+    // gate
+    // on !el.disabled or it would tint the stage under an unchanged baked PNG.
+    assertTrue(
+      viewerGestures.contains("!el.disabled &&"),
+      "syncBg only honors the Theme choice when the control is usable (not a disabled static select)",
+    )
     assertFalse(
       landing.contains("class=\"cp-theme\""),
       "a module without theme variants shows no toggle",
