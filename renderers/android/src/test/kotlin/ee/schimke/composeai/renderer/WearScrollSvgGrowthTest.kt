@@ -23,6 +23,7 @@ import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.material3.AppScaffold
+import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.CardDefaults
 import androidx.wear.compose.material3.EdgeButton
 import androidx.wear.compose.material3.EdgeButtonSize
@@ -370,11 +371,12 @@ class WearScrollSvgGrowthTest {
 
   // --- Split-scaffold extraction: capture each part in isolation, then stack ----------------------
 
-  /** One captured screen part: its content layers/semantics (frame stripped) and measured height. */
+  /** One captured screen part: its content layers/semantics (frame stripped), height, and frame PNG. */
   private data class Part(
     val layout: List<LayoutInspectorNode>,
     val semantics: List<ComposeSemanticsNode>,
     val height: Int,
+    val frame: File = File(""),
   )
 
   /**
@@ -429,7 +431,7 @@ class WearScrollSvgGrowthTest {
           // content. Strip the frame and measure the content's true bottom (its natural height).
           val contentLayers = layout.root.children
           val height = contentLayers.maxOfOrNull { it.maxBottom() } ?: 0
-          out = Part(contentLayers, semantics.root.children, height)
+          out = Part(contentLayers, semantics.root.children, height, frameFile)
         }
       }
     rule
@@ -453,14 +455,129 @@ class WearScrollSvgGrowthTest {
     }
   }
 
+  /**
+   * Stacks captured [parts] into one tall capsule SVG and returns it. [timeText], when present, is
+   * pinned at dy = 0 so its captured curve (from a square round face) rides the capsule's top rim;
+   * the remaining parts stack top-to-bottom from [topPad] by offsetting each captured subtree. [edge],
+   * when present, is a Canvas-drawn control (`EdgeButton`) the vector export can't read, so it's
+   * emitted as one opaque `Image` node cropped from a composited frame (a transparent canvas with just
+   * that part's pixels pasted at its stacked position). Container-agnostic: the parts are already flat
+   * captured layers, so the same stack serves a `TransformingLazyColumn` or a `Column` scroller. Also
+   * mirrors the SVG (+ any rasters) into `build/wear-scroll-svg/` for rendering.
+   */
+  private fun stackToCapsule(
+    previewId: String,
+    parts: List<Part>,
+    timeText: Part? = null,
+    edge: Part? = null,
+  ): String {
+    val gap = 6
+    // Enough top inset that the left-aligned header clears the capsule's rounded top corner.
+    val topPad = 44
+    val layoutChildren = mutableListOf<LayoutInspectorNode>()
+    val semChildren = mutableListOf<ComposeSemanticsNode>()
+
+    timeText?.let { tt ->
+      tt.layout.forEach { layoutChildren.add(it.offsetY(0)) }
+      tt.semantics.forEach { semChildren.add(it.offsetY(0)) }
+    }
+
+    var y = topPad
+    for (part in parts) {
+      part.layout.forEach { layoutChildren.add(it.offsetY(y)) }
+      part.semantics.forEach { semChildren.add(it.offsetY(y)) }
+      y += part.height + gap
+    }
+
+    var edgeStacked: LayoutInspectorBounds? = null
+    var edgeBox: LayoutInspectorBounds? = null
+    if (edge != null) {
+      val edgeY = y
+      edgeBox = edge.layout.boundingBox()
+      edgeStacked =
+        LayoutInspectorBounds(
+          left = edgeBox.left,
+          top = edgeBox.top + edgeY,
+          right = edgeBox.right,
+          bottom = edgeBox.bottom + edgeY,
+        )
+      layoutChildren.add(
+        LayoutInspectorNode(
+          nodeId = "edge-raster",
+          component = "Image", // opaque raster component → emitted as an <image>, cropped from frame
+          bounds = edgeStacked,
+          size = LayoutInspectorSize(edgeBox.right - edgeBox.left, edgeBox.bottom - edgeBox.top),
+        )
+      )
+      y += edge.height + gap
+    }
+    // Bottom pad depends on the last part's shape. A tapering EdgeButton crescent nestles into the
+    // capsule's bottom curve, so hug it tight (8). A rectangular last item (a card / button row) would
+    // get its bottom corners sheared by that curve, so give it the same inset as the top so it clears
+    // the arc into the straight section.
+    val bottomPad = if (edge != null) 8 else topPad
+    val totalHeight = y - gap + bottomPad
+
+    // One synthetic frame root spanning the full stacked size — its bounds drive the export's canvas
+    // and, because it is much taller than wide, the auto-selected capsule (stadium) clip.
+    val combinedLayout =
+      LayoutInspectorPayload(
+        LayoutInspectorNode(
+          nodeId = "$previewId-root",
+          component = "WearScrollExtract",
+          bounds = LayoutInspectorBounds(0, 0, deviceDp, totalHeight),
+          size = LayoutInspectorSize(deviceDp, totalHeight),
+          children = layoutChildren,
+        )
+      )
+    val combinedSemantics =
+      ComposeSemanticsPayload(
+        ComposeSemanticsNode(
+          nodeId = "$previewId-root",
+          boundsInRoot = "0,0,$deviceDp,$totalHeight",
+          children = semChildren,
+        )
+      )
+
+    // When there's a rastered control, composite the frame the hybrid export crops it from: a
+    // transparent canvas the size of the stacked frame with just that part's isolated pixels pasted at
+    // its stacked position. Vector parts need no pixels here.
+    val framePng =
+      if (edge != null && edgeBox != null && edgeStacked != null) {
+        val edgeFrame = ImageIO.read(edge.frame)
+        val cropW = (edgeBox.right - edgeBox.left).coerceAtMost(edgeFrame.width - edgeBox.left)
+        val cropH = (edgeBox.bottom - edgeBox.top).coerceAtMost(edgeFrame.height - edgeBox.top)
+        val edgeCrop = edgeFrame.getSubimage(edgeBox.left, edgeBox.top, cropW, cropH)
+        val composited = BufferedImage(deviceDp, totalHeight, BufferedImage.TYPE_INT_ARGB)
+        composited.createGraphics().apply {
+          drawImage(edgeCrop, edgeStacked.left, edgeStacked.top, null)
+          dispose()
+        }
+        File(rootDir, "$previewId-frame.png").also { ImageIO.write(composited, "png", it) }
+      } else null
+
+    ComposeFigmaSvgDataProducer.writeSvg(
+      rootDir = rootDir,
+      previewId = previewId,
+      layout = combinedLayout,
+      semantics = combinedSemantics,
+      density = 1f,
+      frameImage = framePng,
+      roundClip = true,
+    )
+    val svg = File(rootDir, "$previewId/compose-figma.svg").readText()
+    File("build/wear-scroll-svg/figma-raster").mkdirs()
+    File("build/wear-scroll-svg/$previewId.svg").writeText(svg)
+    File(rootDir, "$previewId/figma-raster").listFiles()?.forEach { src ->
+      src.copyTo(File("build/wear-scroll-svg/figma-raster/${src.name}"), overwrite = true)
+    }
+    return svg
+  }
+
   @Test
   fun `stacks each list item captured in isolation into one tall capsule SVG`() {
     // Capture every screen part on its own: the pinned TimeText, the "Activity" header, each activity
     // row, and the EdgeButton — none of them fighting the round-face scaffold layout.
-    //
-    // TimeText is captured on a SQUARE round face (h == w) so its curved baseline circle is centred at
-    // (w/2, w/2) with radius ~w/2 — exactly the arc of the capsule's top (a stadium with rx = w/2 is a
-    // semicircle of that radius). Pinned at the very top (dy = 0) the curve lands on the capsule rim.
     val timeText =
       capturePart("time", frameHeightDp = deviceDp) {
         MaterialTheme { TimeText(timeSource = FixedTime) }
@@ -479,111 +596,10 @@ class WearScrollSvgGrowthTest {
         }
       }
 
-    // Stack top-to-bottom: TimeText pinned on the rim, then header, rows, edge button. Each vector
-    // part is dropped in at a cumulative y by offsetting its whole captured subtree — the parts never
-    // overlap and never scale.
-    val gap = 6
-    // Enough top inset that the left-aligned header clears the capsule's rounded top corner.
-    val topPad = 44
-    val layoutChildren = mutableListOf<LayoutInspectorNode>()
-    val semChildren = mutableListOf<ComposeSemanticsNode>()
+    val svg = stackToCapsule("wear-parts", listOf(header) + cards, timeText = timeText, edge = edge)
 
-    // TimeText pinned at dy = 0 so its captured curve (centred at w/2, w/2) rides the capsule's top
-    // rim. Its curved `<textPath>` carries no straight bounds to clip the header, so the header still
-    // starts at `topPad` — TimeText tucks into the arc above it.
-    timeText.layout.forEach { layoutChildren.add(it.offsetY(0)) }
-    timeText.semantics.forEach { semChildren.add(it.offsetY(0)) }
-
-    var y = topPad
-    for (part in listOf(header) + cards) {
-      part.layout.forEach { layoutChildren.add(it.offsetY(y)) }
-      part.semantics.forEach { semChildren.add(it.offsetY(y)) }
-      y += part.height + gap
-    }
-
-    // The EdgeButton's "Start workout" crescent is a Canvas-drawn (`drawWithContent`) container the
-    // *vector* export can't read — a drawn container is neither a leaf draw node nor a
-    // `Modifier.paint` fill, so it falls out of both hybrid-raster paths and would render as bare
-    // text on a stray box. So raster the whole control from its isolated frame instead: drop it in as
-    // one opaque `Image` node whose pixels get cropped from a composited frame. Editable text is
-    // traded for a faithful crescent — the right call for a bespoke Canvas control.
-    val edgeY = y
-    val edgeBox = edge.layout.boundingBox()
-    val edgeStacked =
-      LayoutInspectorBounds(
-        left = edgeBox.left,
-        top = edgeBox.top + edgeY,
-        right = edgeBox.right,
-        bottom = edgeBox.bottom + edgeY,
-      )
-    layoutChildren.add(
-      LayoutInspectorNode(
-        nodeId = "edge-raster",
-        component = "Image", // an opaque raster component → emitted as an <image>, cropped from frame
-        bounds = edgeStacked,
-        size = LayoutInspectorSize(edgeBox.right - edgeBox.left, edgeBox.bottom - edgeBox.top),
-      )
-    )
-    y += edge.height + gap
-    // Hug the EdgeButton: only a small bottom pad, so the capsule's bottom curve wraps the crescent
-    // (which already tapers to the round-face bottom) instead of leaving a flat dead band under it.
-    val bottomPad = 8
-    val totalHeight = y - gap + bottomPad
-
-    // One synthetic frame root spanning the full stacked size — its bounds drive the export's canvas
-    // and, because it is much taller than wide, the auto-selected capsule (stadium) clip.
-    val combinedLayout =
-      LayoutInspectorPayload(
-        LayoutInspectorNode(
-          nodeId = "wear-parts-root",
-          component = "WearScrollExtract",
-          bounds = LayoutInspectorBounds(0, 0, deviceDp, totalHeight),
-          size = LayoutInspectorSize(deviceDp, totalHeight),
-          children = layoutChildren,
-        )
-      )
-    val combinedSemantics =
-      ComposeSemanticsPayload(
-        ComposeSemanticsNode(
-          nodeId = "wear-parts-root",
-          boundsInRoot = "0,0,$deviceDp,$totalHeight",
-          children = semChildren,
-        )
-      )
-
-    // Composite the frame the hybrid export crops rasters from: a transparent canvas the size of the
-    // stacked frame with just the EdgeButton's isolated pixels pasted at its stacked position. The
-    // vector cards need no pixels here — only the one `Image` node reads from this frame.
-    val edgeFrame = ImageIO.read(File(rootDir, "part-edge.png"))
-    val cropW = (edgeBox.right - edgeBox.left).coerceAtMost(edgeFrame.width - edgeBox.left)
-    val cropH = (edgeBox.bottom - edgeBox.top).coerceAtMost(edgeFrame.height - edgeBox.top)
-    val edgeCrop = edgeFrame.getSubimage(edgeBox.left, edgeBox.top, cropW, cropH)
-    val composited = BufferedImage(deviceDp, totalHeight, BufferedImage.TYPE_INT_ARGB)
-    composited.createGraphics().apply {
-      drawImage(edgeCrop, edgeStacked.left, edgeStacked.top, null)
-      dispose()
-    }
-    val framePng = File(rootDir, "wear-parts-frame.png")
-    ImageIO.write(composited, "png", framePng)
-
-    ComposeFigmaSvgDataProducer.writeSvg(
-      rootDir = rootDir,
-      previewId = "wear-parts",
-      layout = combinedLayout,
-      semantics = combinedSemantics,
-      density = 1f,
-      frameImage = framePng,
-      roundClip = true,
-    )
-    val svg = File(rootDir, "wear-parts/compose-figma.svg").readText()
-    File("build/wear-scroll-svg/figma-raster").mkdirs()
-    File("build/wear-scroll-svg/wear-parts.svg").writeText(svg)
-    File(rootDir, "wear-parts/figma-raster").listFiles()?.forEach { src ->
-      src.copyTo(File("build/wear-scroll-svg/figma-raster/${src.name}"), overwrite = true)
-    }
-
-    // Tall → capsule clip, every row present as editable vector, the pinned header, and the EdgeButton
-    // as a faithful raster whose PNG the export actually wrote.
+    // Tall → capsule clip, every row present as editable vector, the pinned TimeText + header, and the
+    // EdgeButton as a faithful raster whose PNG the export actually wrote.
     assertTrue(
       "the stacked frame must use the capsule clip:\n$svg",
       svg.contains("""<clipPath id="deviceRound"><rect"""),
@@ -600,6 +616,78 @@ class WearScrollSvgGrowthTest {
       "the EdgeButton raster PNG must be written next to the SVG",
       File(rootDir, "wear-parts/figma-raster/edge_raster.png").exists(),
     )
+  }
+
+  @Test
+  fun `stacks a TransformingLazyColumn screen with no EdgeButton`() {
+    // A plain TLC list screen — header + rows, no bottom control. The same isolation-capture stack,
+    // just with no rastered part: everything stays editable vector.
+    val timeText =
+      capturePart("nb-time", frameHeightDp = deviceDp) {
+        MaterialTheme { TimeText(timeSource = FixedTime) }
+      }
+    val header = capturePart("nb-header") { MaterialTheme { ListHeader { Text("Activity") } } }
+    val cards =
+      activities.take(6).mapIndexed { i, (title, subtitle) ->
+        capturePart("nb-card-$i") { CardPart(title, subtitle) }
+      }
+
+    val svg = stackToCapsule("wear-parts-noedge", listOf(header) + cards, timeText = timeText)
+
+    assertTrue(
+      "the no-edge frame must use the capsule clip:\n$svg",
+      svg.contains("""<clipPath id="deviceRound"><rect"""),
+    )
+    assertEquals("all 6 rows land as vector layers:\n$svg", 6, itemLayerCount(svg))
+    assertTrue("TimeText is pinned on the rim", svg.contains("10:10"))
+    assertTrue("the header is kept", svg.contains(">Activity</text>"))
+    assertFalse("with no EdgeButton there is no raster <image>", svg.contains("<image "))
+  }
+
+  /** A flat, unscaled full-width `Button` row — the resting look of a Column-scroller item. */
+  @Composable
+  private fun ButtonRow(label: String) {
+    MaterialTheme {
+      Box(Modifier.width(deviceDp.dp).padding(horizontal = 12.dp)) {
+        Button(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text(label) }
+      }
+    }
+  }
+
+  @Test
+  fun `stacks a verticalScroll Column of buttons into a capsule SVG`() {
+    // A different scrolling container: a `Column(Modifier.verticalScroll())` settings screen whose
+    // items are full-width Buttons rather than TLC cards. The extraction is container-agnostic — each
+    // item is captured flat and stacked the same way.
+    val labels =
+      listOf(
+        "Notifications",
+        "Display",
+        "Vibration",
+        "Connectivity",
+        "Tiles",
+        "Battery",
+        "System",
+        "About",
+      )
+    val timeText =
+      capturePart("col-time", frameHeightDp = deviceDp) {
+        MaterialTheme { TimeText(timeSource = FixedTime) }
+      }
+    val header = capturePart("col-header") { MaterialTheme { ListHeader { Text("Settings") } } }
+    val buttons = labels.mapIndexed { i, label -> capturePart("col-btn-$i") { ButtonRow(label) } }
+
+    val svg = stackToCapsule("wear-parts-column", listOf(header) + buttons, timeText = timeText)
+
+    assertTrue(
+      "the Column frame must use the capsule clip:\n$svg",
+      svg.contains("""<clipPath id="deviceRound"><rect"""),
+    )
+    val landed = labels.count { svg.contains(">$it</text>") }
+    assertEquals("every button label lands as a vector layer:\n$svg", labels.size, landed)
+    assertTrue("TimeText is pinned on the rim", svg.contains("10:10"))
+    assertTrue("the Settings header is kept", svg.contains(">Settings</text>"))
+    assertFalse("a Button list needs no raster <image>", svg.contains("<image "))
   }
 }
 
