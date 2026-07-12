@@ -30,6 +30,10 @@ plugins {
   id("composeai.maven-publishing")
   alias(libs.plugins.android.library)
   alias(libs.plugins.compose.compiler)
+  // Like every other published android-library runtime (`:splash`, `:notification`, …): the
+  // maven-publishing convention only runs `configureKotlinCompatibility(...)` when tapmoc is
+  // present, so without this the AAR ships without the documented `kotlinCoreLibraries` floor.
+  alias(libs.plugins.tapmoc)
 }
 
 android {

@@ -18,8 +18,6 @@ import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
 import ee.schimke.composeai.preview.ScrollMode
 import ee.schimke.composeai.preview.ScrollingPreview
-import ee.schimke.composeai.wear.preview.ProvideTlcScalePosition
-import ee.schimke.composeai.wear.preview.TlcScalePosition
 import ee.schimke.composeai.wear.preview.TlcScalingHost
 
 private const val WEAR_LARGE_ROUND = "id:wearos_large_round"
@@ -27,24 +25,28 @@ private const val WEAR_LARGE_ROUND = "id:wearos_large_round"
 /**
  * A **single** Wear Card shown with real `TransformingLazyColumn` item scaling — authored in the
  * normal list-item code (`transformedHeight(this, spec)` + `SurfaceTransformation(spec)`), with no
- * list. `TlcScalingHost` (`:wear-preview-runtime`) hosts it in a real single-item TLC and hands over
- * the genuine scope + spec; [ProvideTlcScalePosition] rides it up to the top [TlcScalePosition.Edge]
- * so the still shows the scaled + faded state a lone `@Preview` otherwise can't.
+ * list of its own. `TlcScalingHost` (`:wear-preview-runtime`) hosts it in a real single-item TLC and
+ * hands over the genuine scope + spec; the item sits **centred at full scale by default**.
+ *
+ * The author pins **nothing** — the scroll harness drives the position and reuses this one preview:
+ * `@ScrollingPreview` [ScrollMode.TOP] captures the resting, unscaled frame, and [ScrollMode.END]
+ * (bounded by `maxScrollPx`) rides the card up into the top scaling zone so it renders scaled +
+ * faded. `reduceMotion = false` keeps the real scaling transforms on. `maxScrollPx` is tuned to the
+ * large-round canvas (454px) so END lands the card at the top edge rather than scrolling it off.
  */
 @Preview(name = "Large Round", device = WEAR_LARGE_ROUND, showBackground = true, backgroundColor = 0xFF000000)
+@ScrollingPreview(modes = [ScrollMode.TOP, ScrollMode.END], maxScrollPx = 180, reduceMotion = false)
 @Composable
-fun CardScalingStill() =
-  ProvideTlcScalePosition(TlcScalePosition.Edge) {
-    TlcScalingHost { spec ->
-      Card(
-        onClick = {},
-        modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-        transformation = SurfaceTransformation(spec),
-      ) {
-        Column {
-          Text("Heart rate")
-          Text("72 bpm")
-        }
+fun CardScaling() =
+  TlcScalingHost { spec ->
+    Card(
+      onClick = {},
+      modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+      transformation = SurfaceTransformation(spec),
+    ) {
+      Column {
+        Text("Heart rate")
+        Text("72 bpm")
       }
     }
   }
@@ -63,7 +65,7 @@ private val scrollGifItems =
  * `TransformingLazyColumn`, so the cards scale + fade as they ride through the curved top/bottom edges
  * — one preview, harness-controlled scroll (same mechanism as `:samples:wear`'s
  * `ActivityListGifPreview`). TLC scaling is a list behaviour, so the GIF is authored as a short list
- * rather than a lone item; the isolated-component case is [CardScalingStill].
+ * rather than a lone item; the isolated-component case is [CardScaling].
  */
 @Preview(name = "Large Round", device = WEAR_LARGE_ROUND, showBackground = true, backgroundColor = 0xFF000000)
 @ScrollingPreview(modes = [ScrollMode.GIF], reduceMotion = false)
