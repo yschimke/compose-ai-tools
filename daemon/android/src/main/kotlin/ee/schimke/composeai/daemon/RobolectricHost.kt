@@ -768,6 +768,12 @@ open class RobolectricHost(
       // pre-resolved into widthPx/heightPx/density by `JsonRpcServer.encodeRenderPayload`.
       append("widthPx=").append(inbound["widthPx"] ?: base.widthPx).append(';')
       append("heightPx=").append(inbound["heightPx"] ?: base.heightPx).append(';')
+      // AS-parity wrap flags must ride the serialized payload — `parseFromPayloadOrNull` defaults
+      // them false, so a held/stream render of a no-height preview would otherwise reflow past the
+      // frame to zero height. An inbound explicit size (a `device=` override arrives pre-resolved as
+      // widthPx/heightPx per encodeRenderPayload) pins the axis, dropping its wrap flag.
+      if (base.wrapWidth && inbound["widthPx"] == null) append("wrapWidth=true;")
+      if (base.wrapHeight && inbound["heightPx"] == null) append("wrapHeight=true;")
       append("density=").append(inbound["density"] ?: base.density).append(';')
       append("showBackground=").append(base.showBackground).append(';')
       if (base.backgroundColor != 0L) {

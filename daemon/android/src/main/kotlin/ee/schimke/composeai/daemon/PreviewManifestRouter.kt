@@ -109,6 +109,17 @@ class PreviewManifestRouter(
       // per-preview manifest default.
       append("widthPx=").append(inbound["widthPx"] ?: baseWidthPx).append(';')
       append("heightPx=").append(inbound["heightPx"] ?: baseHeightPx).append(';')
+      // AS-parity wrap flags MUST ride the serialized payload — `RenderSpec.parseFromPayloadOrNull`
+      // defaults them false, so without emitting them here the render body never enters the
+      // measure-and-crop path and no-height previews reflow past the frame to zero height. An
+      // inbound explicit size or a device override pins the axis, so the wrap flag drops on that
+      // axis (the base px above already reflect the device/override size).
+      if (resolved.wrapWidth && inbound["widthPx"] == null && deviceOverride == null) {
+        append("wrapWidth=true;")
+      }
+      if (resolved.wrapHeight && inbound["heightPx"] == null && deviceOverride == null) {
+        append("wrapHeight=true;")
+      }
       append("density=").append(inbound["density"] ?: baseDensity).append(';')
       append("showBackground=").append(resolved.showBackground).append(';')
       if (resolved.backgroundColor != 0L) {
