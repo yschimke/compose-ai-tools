@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/pr`. 237 preview(s) across 19 module(s) · 19 error(s) · 4 warning(s) · 26 info._
+_Auto-generated from `compose-preview/a11y/pr`. 227 preview(s) across 19 module(s) · 16 error(s) · 4 warning(s) · 37 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -22,6 +22,7 @@ Browse inline; image URLs are pinned to the commit SHA on the baseline branch so
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
 | 1 | ERROR | SpeakableTextPresentCheck | android.widget.Button | This item may not have a label readable by screen readers. |
+| 2 | ERROR | TouchTargetSizeCheck | android.widget.Button | This item's size is 20dp x 20dp. Consider making this touch target 32dp wide and 32dp high or larger. |
 
 ### `BigPictureStylePreview`
 
@@ -115,7 +116,10 @@ _No findings._
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/DeviceFontFamilyShowcasePreview_Device_Font_Family_Showcase.a11y.png" width="400" />
 
-_No findings._
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "The quick brown fox (700)" is identical to that of 3 other item(s). |
+| 2 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "The quick brown fox (400)" is identical to that of 4 other item(s). |
 
 ### `ExpandedSurfacePreview`
 
@@ -161,7 +165,12 @@ _No findings._
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/GoogleFontsShowcasePreview_Google_Fonts_Showcase.a11y.png" width="400" />
 
-_No findings._
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "The quick brown fox (700)" is identical to that of 3 other item(s). |
+| 2 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "The quick brown fox (900)" is identical to that of 2 other item(s). |
+| 3 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "The quick brown fox (400)" is identical to that of 3 other item(s). |
+| 4 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "The quick brown fox (100)" is identical to that of 1 other item(s). |
 
 ### `GreenBoxPreview`
 
@@ -181,7 +190,8 @@ _No findings._
 
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
-| 1 | INFO | TextSizeCheck | android.view.NotificationHeaderView #notification_header | Consider modifying the LayoutParams to allow for text expansion. |
+| 1 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView #header_text_divider | This non-clickable item's speakable text: "•" is identical to that of 1 other item(s). |
+| 2 | INFO | TextSizeCheck | android.view.NotificationHeaderView #notification_header | Consider modifying the LayoutParams to allow for text expansion. |
 
 ### `HeadsUpSurfacePreview`
 
@@ -209,7 +219,8 @@ _No findings._
 
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
-| 1 | INFO | TextSizeCheck | android.view.NotificationHeaderView #notification_header | Consider modifying the LayoutParams to allow for text expansion. |
+| 1 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView #header_text_divider | This non-clickable item's speakable text: "•" is identical to that of 1 other item(s). |
+| 2 | INFO | TextSizeCheck | android.view.NotificationHeaderView #notification_header | Consider modifying the LayoutParams to allow for text expansion. |
 
 ### `KeyboardDemoPreview`
 
@@ -273,11 +284,8 @@ _No findings._
 
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
-| 1 | ERROR | TouchTargetSizeCheck | android.widget.Button #action0 desc="Reply" | This item's width is 32dp. Consider making the width of this touch target 48dp or larger. |
-| 2 | ERROR | TouchTargetSizeCheck | android.widget.Button #action0 desc="Archive" | This item's width is 32dp. Consider making the width of this touch target 48dp or larger. |
-| 3 | ERROR | TouchTargetSizeCheck | android.widget.Button #action0 desc="Snooze" | This item's width is 32dp. Consider making the width of this touch target 48dp or larger. |
-| 4 | INFO | TextSizeCheck | android.view.NotificationHeaderView #notification_header | Consider modifying the LayoutParams to allow for text expansion. |
-| 5 | INFO | TextSizeCheck | com.android.internal.widget.NotificationActionListLayout #actions | Consider modifying the LayoutParams to allow for text expansion. |
+| 1 | INFO | TextSizeCheck | android.view.NotificationHeaderView #notification_header | Consider modifying the LayoutParams to allow for text expansion. |
+| 2 | INFO | TextSizeCheck | com.android.internal.widget.NotificationActionListLayout #actions | Consider modifying the LayoutParams to allow for text expansion. |
 
 ### `MediaStylePreview`
 
@@ -294,7 +302,9 @@ _No findings._
 
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
-| 1 | INFO | TextSizeCheck | android.view.NotificationHeaderView #notification_header | Consider modifying the LayoutParams to allow for text expansion. |
+| 1 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView #header_text_secondary_divider | This non-clickable item's speakable text: "•" is identical to that of 1 other item(s). |
+| 2 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView #header_text_secondary | This non-clickable item's speakable text: "Alice" is identical to that of 1 other item(s). |
+| 3 | INFO | TextSizeCheck | android.view.NotificationHeaderView #notification_header | Consider modifying the LayoutParams to allow for text expansion. |
 
 ### `NamedColorPaletteSpecimenPreview`
 
@@ -314,7 +324,8 @@ _No findings._
 
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
-| 1 | INFO | TextSizeCheck | android.view.NotificationHeaderView #notification_header | Consider modifying the LayoutParams to allow for text expansion. |
+| 1 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView #header_text_secondary_divider | This non-clickable item's speakable text: "•" is identical to that of 1 other item(s). |
+| 2 | INFO | TextSizeCheck | android.view.NotificationHeaderView #notification_header | Consider modifying the LayoutParams to allow for text expansion. |
 
 ### `NoTextPreview`
 
@@ -1051,68 +1062,6 @@ _No findings._
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/ButtonPressed.a11y.png" width="400" />
 
 _No findings._
-
-### `CardScalingEdge` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CardScalingEdge_Large_Round.a11y.png" width="400" />
-
-_No findings._
-
-### `CardScalingMiddle` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CardScalingMiddle_Large_Round.a11y.png" width="400" />
-
-_No findings._
-
-### `CardScalingStarting` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CardScalingStarting_Large_Round.a11y.png" width="400" />
-
-_No findings._
-
-### `CardScroll0` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CardScroll0_Large_Round.a11y.png" width="400" />
-
-_No findings._
-
-### `CardScroll1` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CardScroll1_Large_Round.a11y.png" width="400" />
-
-_No findings._
-
-### `CardScroll2` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CardScroll2_Large_Round.a11y.png" width="400" />
-
-_No findings._
-
-### `CardScroll3` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CardScroll3_Large_Round.a11y.png" width="400" />
-
-_No findings._
-
-### `CardScroll4` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CardScroll4_Large_Round.a11y.png" width="400" />
-
-_No findings._
-
-### `CardScroll5` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CardScroll5_Large_Round.a11y.png" width="400" />
-
-_No findings._
-
-### `CardScroll6` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CardScroll6_Large_Round.a11y.png" width="400" />
-
-| # | Level | Rule | Element | Message |
-|--:|---|---|---|---|
-| 1 | ERROR | SpeakableTextPresentCheck | android.view.View | This item may not have a label readable by screen readers. |
 
 ### `CardSticker`
 
