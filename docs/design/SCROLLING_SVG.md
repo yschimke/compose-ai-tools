@@ -231,8 +231,16 @@ inside the stadium mask.)*
     `GET /render/<id>.svg?scroll=long` and the viewer surfaces it as the "Full page (scroll)" toggle
     under SVG mode. A round preview that turns out not to be scrollable falls back to the grow-tall /
     inscribed-circle export.
-- **Remaining:** registering a Wear scroll `@Preview` with the preview-harness for CI visual diffing,
-  and the same **override-aware** re-render gap the mobile path has.
+  - **CI visual diff:** the capsule is registered with the vscode preview-harness as a self-contained
+    page fixture (`vscode-extension/preview-harness/fixtures/pages/serve-wear-scroll-long-capsule.html`),
+    so the `vscode-preview-diff` bot screenshots + diffs the actual rendered SVG on every PR — the
+    `?scroll=long` surface had no committed capture path before (the compose-preview bot diffs the
+    raster LONG PNG, but nothing diffed the vector capsule). `WearScrollSvgGrowthTest` regenerates the
+    fixture from the production assembler output (inlining the EdgeButton crescent raster as a `data:`
+    URI so the harness — which stubs `/render/**` — can render it offline); regenerate after a
+    renderer/stitcher change with `UPDATE_WEAR_SCROLL_FIXTURE=true`.
+- **Remaining:** the same **override-aware** re-render gap the mobile path has (the `data/fetch`
+  re-render is keyed by preview id, not by the applied overrides).
 
 ## Non-goals
 

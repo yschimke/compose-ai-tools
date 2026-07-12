@@ -448,8 +448,91 @@ class WearScrollSvgGrowthTest {
     assertTrue("TimeText on the rim", svg.contains("10:10"))
     assertTrue("Activity header", svg.contains(">Activity</text>"))
     assertTrue("EdgeButton crescent as a raster", svg.contains("<image "))
+
+    // Wire the capsule into the vscode preview-harness page-fixture lane so the CI visual-diff bot
+    // (`vscode-preview-diff`) screenshots + diffs it on every PR — the `?scroll=long` SVG surface had
+    // no committed capture path before. The harness stubs `/render/**`, so the fixture must be
+    // self-contained: inline the one EdgeButton raster crop as a `data:` URI. The committed HTML is
+    // the vehicle for the screenshot diff (identical on baseline + PR until it changes); regenerate
+    // it after a renderer/stitcher change with `UPDATE_WEAR_SCROLL_FIXTURE=true`.
+    val fixtureHtml = wearScrollLongPageFixture(inlineRasters(svg, File(rootDir, "wear-slice/figma-raster")))
+    val fixture =
+      File(repoRoot(), "vscode-extension/preview-harness/fixtures/pages/$WEAR_SCROLL_FIXTURE.html")
+    if (
+      System.getenv("UPDATE_WEAR_SCROLL_FIXTURE") == "true" ||
+        System.getProperty("updateWearScrollFixture") == "true"
+    ) {
+      fixture.parentFile?.mkdirs()
+      fixture.writeText(fixtureHtml)
+    }
+    assertTrue(
+      "capsule page fixture committed (regenerate with UPDATE_WEAR_SCROLL_FIXTURE=true): ${fixture.path}",
+      fixture.isFile,
+    )
+    val committed = fixture.readText()
+    assertTrue(
+      "fixture inlines the capsule SVG with the EdgeButton raster as a data URI",
+      committed.contains("<svg") && committed.contains("data:image/png;base64,"),
+    )
+    assertFalse(
+      "fixture must be self-contained — no /render refs the harness would stub",
+      committed.contains("/render/"),
+    )
   }
 }
+
+/** Base64-inlines each `figma-raster/<name>.png` reference in [svg] as a `data:` URI. */
+private fun inlineRasters(svg: String, rasterDir: File): String {
+  var out = svg
+  rasterDir.listFiles().orEmpty().forEach { png ->
+    val b64 = java.util.Base64.getEncoder().encodeToString(png.readBytes())
+    out = out.replace("figma-raster/${png.name}", "data:image/png;base64,$b64")
+  }
+  return out
+}
+
+/** Minimal self-contained page hosting the capsule [svg] — the vscode preview-harness fixture. */
+private fun wearScrollLongPageFixture(svg: String): String =
+  """
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Wear scroll-long capsule — compose-preview</title>
+        <style>
+          :root { color-scheme: light dark; }
+          * { box-sizing: border-box; }
+          body {
+            margin: 0;
+            padding: 24px;
+            display: flex;
+            justify-content: center;
+            background: #808080;
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+          }
+          svg { height: auto; max-width: 100%; }
+        </style>
+      </head>
+      <body>
+        $svg
+      </body>
+    </html>
+  """
+    .trimIndent()
+
+/** Repo root (the dir carrying `settings.gradle.kts`), walking up from the test working dir. */
+private fun repoRoot(): File {
+  var dir: File? = File(System.getProperty("user.dir") ?: ".").absoluteFile
+  while (dir != null) {
+    if (File(dir, "settings.gradle.kts").isFile) return dir
+    dir = dir.parentFile
+  }
+  error("could not locate repo root (settings.gradle.kts) from ${System.getProperty("user.dir")}")
+}
+
+/** Basename of the committed capsule page fixture (auto-discovered by `pages-snapshot.spec.mjs`). */
+private const val WEAR_SCROLL_FIXTURE = "serve-wear-scroll-long-capsule"
 
 @OptIn(InternalComposeApi::class)
 @Composable
