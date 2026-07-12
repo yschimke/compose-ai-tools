@@ -283,7 +283,8 @@
         "lint": "eslint src --ext ts",
         "package": "npm run compile && vsce package --no-dependencies",
         "harness:snapshot": "node esbuild.webview.mjs && playwright test -c preview-harness/playwright.config.mjs snapshot",
-        "harness:contract": "node esbuild.webview.mjs && playwright test -c preview-harness/playwright.config.mjs contract"
+        "harness:contract": "node esbuild.webview.mjs && playwright test -c preview-harness/playwright.config.mjs contract",
+        "harness:serve-lanes": "playwright test -c preview-harness/serve-lanes.config.mjs"
     },
     "devDependencies": {
         "@happy-dom/global-registrator": "^20.9.0",

@@ -96,6 +96,14 @@ html:not(.cp-bg-transparent) .cp-card[data-card-theme="dark"] .cp-imgwrap { back
 .cp-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; }
 .cp-controls input, .cp-controls select { padding: 5px 6px; font-size: 0.85rem; }
 .cp-status { font-size: 0.75rem; color: #6b6b70; min-height: 1em; }
+/* Visible mode-activation error overlay: shown when a lane (Live stream, Wasm
+   app, or a /render) fails to activate, so a failed mode reads as an error
+   instead of a silent stale frame. Centered over the stage; [hidden] hides it. */
+.cp-error { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  max-width: 80%; z-index: 3; padding: 10px 14px; border-radius: 8px;
+  font-size: 0.8rem; line-height: 1.4; text-align: center; color: #8a1c1c;
+  background: #fdecec; border: 1px solid #f3b6b6; box-shadow: 0 1px 4px rgba(0,0,0,0.12); }
+.cp-error[hidden] { display: none; }
 .cp-note { font-size: 0.75rem; color: #6b6b70; line-height: 1.4; padding: 8px 10px;
   border-radius: 8px; background: #f4f4f6; }
 .cp-controls label:has(:disabled) { opacity: 0.55; }
@@ -200,7 +208,7 @@ html:not(.cp-bg-transparent) .cp-card[data-card-theme="dark"] .cp-imgwrap { back
       </div>
       <div class="cp-viewer cp-controls-open" data-preview-id="com.example.ProfileScreenPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="false" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2">
         
-        <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="Profile screen"><canvas id="cp-canvas" hidden></canvas></div>
+        <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="Profile screen"><canvas id="cp-canvas" hidden></canvas><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         <div class="cp-controls" id="cp-controls">
           
           <div class="cp-modes" role="radiogroup" aria-label="Render mode">
@@ -365,7 +373,27 @@ html:not(.cp-bg-transparent) .cp-card[data-card-theme="dark"] .cp-imgwrap { back
   var img = document.getElementById("cp-img");
   var canvas = document.getElementById("cp-canvas");
   var status = document.getElementById("cp-status");
+  var errorBox = document.getElementById("cp-error");
   var live = document.getElementById("cp-live");
+  // Surface a mode-activation failure visibly, instead of leaving a stale frame that reads as a
+  // (wrong) render. Every lane routes its failure here — a dead Live stream, a Wasm app that
+  // never boots, a /render that errors — so "can't activate this mode" is never silent.
+  function showModeError(msg) {
+    if (!errorBox) { status.textContent = msg; return; }
+    errorBox.textContent = msg;
+    errorBox.hidden = false;
+    status.textContent = "";
+  }
+  function clearModeError() { if (errorBox) { errorBox.hidden = true; errorBox.textContent = ""; } }
+  // Human-readable reason for a Live stream that closed before delivering a frame. Maps the
+  // server's close codes (1013 capacity, 1008 unauthorized, 1003/CANNOT_ACCEPT carries a reason);
+  // a bare abnormal close (1006, e.g. a proxy 502 on the WS upgrade) gets the generic message.
+  function liveCloseReason(ev) {
+    if (ev && ev.code === 1013) return "Live preview is at capacity — try again shortly.";
+    if (ev && ev.code === 1008) return "Live preview unauthorized.";
+    if (ev && ev.reason) return "Live preview unavailable: " + ev.reason;
+    return "Live preview couldn't connect — the live stream may be unavailable on this server.";
+  }
   // Whether the snapshot lane is static (baked PNGs, no /render re-render) — the explicit signal
   // for the wasm auto-enable below. NOT `live.disabled`: a trusted-catalog live session serves
   // static snapshots yet leaves the Live toggle enabled, so `live.disabled` no longer implies
@@ -554,8 +582,10 @@ html:not(.cp-bg-transparent) .cp-card[data-card-theme="dark"] .cp-imgwrap { back
     var url =
       base + "/render/" + encodeURIComponent(previewId) + snapshotExt + (qs ? "?" + qs : "");
     var next = new Image();
-    next.onload = function () { img.src = url; status.textContent = ""; };
-    next.onerror = function () { status.textContent = "render failed"; };
+    next.onload = function () { img.src = url; status.textContent = ""; clearModeError(); };
+    next.onerror = function () {
+      showModeError((snapshotExt === ".svg" ? "SVG" : "PNG") + " render failed for this preview.");
+    };
     next.src = url;
     refreshLinks();
   }
@@ -736,6 +766,9 @@ html:not(.cp-bg-transparent) .cp-card[data-card-theme="dark"] .cp-imgwrap { back
     // Request WebP frames (smaller; the browser decodes them via the data URL, and the daemon
     // downgrades to PNG when it can't encode WebP — each frame carries its actual codec).
     var qs = query();
+    // Track whether the stream ever delivered a frame: a close/error *before* the first frame is
+    // a failed activation (surface it), whereas a close *after* frames is just a normal teardown.
+    var liveGotFrame = false;
     ws = new WebSocket(proto + "//" + location.host + base + "/ws/" +
       encodeURIComponent(previewId) + "?" + (qs ? qs + "&codec=webp" : "codec=webp"));
     ws.onopen = function () {
@@ -749,11 +782,22 @@ html:not(.cp-bg-transparent) .cp-card[data-card-theme="dark"] .cp-imgwrap { back
     ws.onmessage = function (ev) {
       var m;
       try { m = JSON.parse(ev.data); } catch (e) { return; }
-      if (m.type === "frame") { drawFrame(m.dataBase64, m.codec); status.textContent = ""; }
-      else if (m.type === "error") { status.textContent = m.message || "error"; }
+      if (m.type === "frame") { liveGotFrame = true; clearModeError(); drawFrame(m.dataBase64, m.codec); status.textContent = ""; }
+      else if (m.type === "error") { showModeError(m.message || "Live preview error."); }
     };
-    ws.onerror = function () { status.textContent = "stream error"; };
-    ws.onclose = function () { ws = null; };
+    // onerror always precedes onclose; let onclose decide (it carries the code/reason). Only
+    // surface here if the socket somehow errors while already open+frame-less and never closes.
+    ws.onerror = function () { if (!liveGotFrame) status.textContent = "connecting…"; };
+    ws.onclose = function (ev) {
+      ws = null;
+      // Closed before any frame ⇒ the mode failed to activate. Drop the stale seeded snapshot
+      // from the canvas so it can't masquerade as a live render, and surface why.
+      if (!liveGotFrame && live && live.checked) {
+        canvas.hidden = true;
+        img.style.removeProperty("visibility");
+        showModeError(liveCloseReason(ev));
+      }
+    };
   }
   function closeStream() {
     root.setAttribute("data-mode", "snapshot");
@@ -782,6 +826,9 @@ html:not(.cp-bg-transparent) .cp-card[data-card-theme="dark"] .cp-imgwrap { back
   // control change re-points ?query (initial load); after, it posts an override patch so the
   // app recomposes in place instead of reloading the whole ~20 MB Wasm bundle.
   var wasmReady = false;
+  // Boot watchdog: if the app never signals "cp-wasm-ready" (bundle 404, Wasm/GL failure, …),
+  // surface a visible error instead of leaving the stage stuck on "loading Wasm…" forever.
+  var wasmBootTimer = null;
   function wasmBaseSrc() {
     if (!wasmSrc) return "";
     // The src comes from a server-set data- attribute, but resolve it against our own origin and
@@ -909,6 +956,8 @@ html:not(.cp-bg-transparent) .cp-card[data-card-theme="dark"] .cp-imgwrap { back
   function revealWasm() {
     if (!wasmActive() || wasmReady) return;
     wasmReady = true;
+    if (wasmBootTimer) { clearTimeout(wasmBootTimer); wasmBootTimer = null; }
+    clearModeError();
     positionWasmFrame();
     wasmFrame.classList.add("cp-wasm-live");
     img.style.visibility = "hidden";
@@ -932,6 +981,12 @@ html:not(.cp-bg-transparent) .cp-card[data-card-theme="dark"] .cp-imgwrap { back
     wasmReady = false;
     wasmFrame.src = wasmInitialSrc();
     status.textContent = "loading Wasm…";
+    if (wasmBootTimer) clearTimeout(wasmBootTimer);
+    wasmBootTimer = setTimeout(function () {
+      if (!wasmReady && wasmActive()) {
+        showModeError("Wasm preview didn't start — the in-browser app failed to load.");
+      }
+    }, 20000);
   }
   function closeWasm() {
     // No Wasm iframe (non-Wasm session) ⇒ nothing to tear down; enterMode() still calls this
@@ -939,6 +994,7 @@ html:not(.cp-bg-transparent) .cp-card[data-card-theme="dark"] .cp-imgwrap { back
     if (!wasmFrame) return;
     root.setAttribute("data-mode", "snapshot");
     wasmReady = false;
+    if (wasmBootTimer) { clearTimeout(wasmBootTimer); wasmBootTimer = null; }
     wasmFrame.classList.remove("cp-wasm-live");
     wasmFrame.hidden = true; wasmFrame.removeAttribute("src");
     img.style.removeProperty("visibility");
@@ -982,6 +1038,8 @@ html:not(.cp-bg-transparent) .cp-card[data-card-theme="dark"] .cp-imgwrap { back
   // and wasm reset snapshotExt so a later fallback refresh serves the raster PNG, not a stale
   // ".svg".
   function enterMode(m) {
+    // A mode switch always clears a prior lane's error; the new lane re-raises its own if it fails.
+    clearModeError();
     if (m === "live") { snapshotExt = ".png"; closeWasm(); openStream(); }
     else if (m === "wasm") { snapshotExt = ".png"; closeStream(); openWasm(); }
     else if (m === "svg") {
