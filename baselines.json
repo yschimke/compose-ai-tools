@@ -1628,7 +1628,7 @@
     "functionName": "AssistChipSticker",
     "module": "samples:design-catalog-m3",
     "renderBasename": "AssistChipSticker_Dark.png",
-    "sha256": "9e304f00ee4a35d1b161932840277684af6f7b35bda2e69a00d9470d291af91f",
+    "sha256": "3826065792f78f99d5d8fed9d0046b8d8c2b6f521c32e3e65c89d018cef64d57",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.AssistChipSticker_Light": {
@@ -1636,7 +1636,7 @@
     "functionName": "AssistChipSticker",
     "module": "samples:design-catalog-m3",
     "renderBasename": "AssistChipSticker_Light.png",
-    "sha256": "b3a1f49723192e729bcc5651d2ebb0b7e7ed885604c739b2096554488b635c48",
+    "sha256": "6fd836fa7f2ac955283a9ad38fda0c187740bddbc3916a580e2155c199ebae59",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.BadgeSticker_Dark": {
@@ -1676,7 +1676,7 @@
     "functionName": "CheckboxUnchecked",
     "module": "samples:design-catalog-m3",
     "renderBasename": "CheckboxUnchecked_Dark.png",
-    "sha256": "75dda6f4860b8450ef8f24987c97548fceeca651b449597196d11cfbd986a4e8",
+    "sha256": "4251148c0fa68083a815701a2386f58208db21ef0c7d48bc729702ec3e9ef119",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.CheckboxUnchecked_Light": {
@@ -1684,7 +1684,7 @@
     "functionName": "CheckboxUnchecked",
     "module": "samples:design-catalog-m3",
     "renderBasename": "CheckboxUnchecked_Light.png",
-    "sha256": "d6fd0f06a9e873bfac6884a2a27d056eacb50f2d2fb097b92eee5aec4e088d37",
+    "sha256": "5c535ccb0ea32dbed70b7caa3b1300bf376598a1c9943d0f346f4e5af7afa005",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.CircularProgressSticker_Dark": {
@@ -1884,7 +1884,7 @@
     "functionName": "FilterChipUnselected",
     "module": "samples:design-catalog-m3",
     "renderBasename": "FilterChipUnselected_Dark.png",
-    "sha256": "f5c9d09ce7fb515ecea568c5d23ed0dc282590e873b03b9377a681e9679d8563",
+    "sha256": "c8783fa6623eae2bda845bb56c0d7440e209d9f4aa4d6ca1c4bb48f22c015a8d",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilterChipUnselected_Light": {
@@ -1892,7 +1892,7 @@
     "functionName": "FilterChipUnselected",
     "module": "samples:design-catalog-m3",
     "renderBasename": "FilterChipUnselected_Light.png",
-    "sha256": "c18b826718692e015502b30d7476164b071be95a71658a2a9bb1fc3f618017fe",
+    "sha256": "67e5682247855dcd75ef1fa0a1b5090ddd8c15f2ec8a350f03ff20b91b5ed9d8",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.LinearProgressSticker_Dark": {
@@ -1916,7 +1916,7 @@
     "functionName": "OutlinedButtonDisabled",
     "module": "samples:design-catalog-m3",
     "renderBasename": "OutlinedButtonDisabled_Dark.png",
-    "sha256": "695cf6e782ca01fad584745ba74b4accd4eaf4325b066bac7bd9347ee40955cd",
+    "sha256": "8e3b1696166524487485b246f5999170bc6cea635a2633a9a590ce3eefacd61e",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.OutlinedButtonDisabled_Light": {
@@ -1924,7 +1924,7 @@
     "functionName": "OutlinedButtonDisabled",
     "module": "samples:design-catalog-m3",
     "renderBasename": "OutlinedButtonDisabled_Light.png",
-    "sha256": "6b5be155d509ebcc2091e2e24031f53200215f3c49dab13e02fc8c4c1c03041f",
+    "sha256": "1ad8c4237473646437a88e86f0b48452d8ea449710f8f1cfb5423d221d01b857",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.OutlinedButtonSticker_Dark": {
@@ -1932,7 +1932,7 @@
     "functionName": "OutlinedButtonSticker",
     "module": "samples:design-catalog-m3",
     "renderBasename": "OutlinedButtonSticker_Dark.png",
-    "sha256": "b6c8000e1079b2d7cebca81d9ea05d82ed655c3f217761aec1bd7ddbef6ad415",
+    "sha256": "d4fb776518e67ab93edcaff7faa975505ea8fd1e3ba9eaa9406192fb8d4b626a",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.OutlinedButtonSticker_Light": {
@@ -1940,7 +1940,7 @@
     "functionName": "OutlinedButtonSticker",
     "module": "samples:design-catalog-m3",
     "renderBasename": "OutlinedButtonSticker_Light.png",
-    "sha256": "7e1aeb91f8c189630bad6e2f38a5bab328eec31bec76d8ec71dabcddd35317e7",
+    "sha256": "137b26c29a750ff27a71b2692e0bbf94d1c9ba8d88aa5b82ae38ad7feb5eb720",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.OutlinedCardSticker_Dark": {
@@ -1948,7 +1948,7 @@
     "functionName": "OutlinedCardSticker",
     "module": "samples:design-catalog-m3",
     "renderBasename": "OutlinedCardSticker_Dark.png",
-    "sha256": "10e4ab5625faf49c75d7ecf176cc8ac5a5ffa2beb612b72aa3e2a641263deb43",
+    "sha256": "6d0d67eea5a3447ebfeb42c96067c0b7f0fd3688004fbf488ae530c2a02235a5",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.OutlinedCardSticker_Light": {
@@ -1956,7 +1956,7 @@
     "functionName": "OutlinedCardSticker",
     "module": "samples:design-catalog-m3",
     "renderBasename": "OutlinedCardSticker_Light.png",
-    "sha256": "bcc3eb5532fc64e05420ab85cf14471847cc27304b251a98aecb36788923e7b2",
+    "sha256": "ac12eaf2edad7809be09a7d590ac232acb20a0a2016ef1e00629a118a9f81c97",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.OutlinedTextFieldSticker_Dark": {
@@ -1964,7 +1964,7 @@
     "functionName": "OutlinedTextFieldSticker",
     "module": "samples:design-catalog-m3",
     "renderBasename": "OutlinedTextFieldSticker_Dark.png",
-    "sha256": "887f71ee2e0522f0aa390135f2bd12fb2ab22a8bb22a5b842712ef59d63e4b0e",
+    "sha256": "c8c5c9ade4e4ec78e7f57e4b7871d14eacdebc3d8a6041b14cabd4ebd7dfb898",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.OutlinedTextFieldSticker_Light": {
@@ -1972,7 +1972,7 @@
     "functionName": "OutlinedTextFieldSticker",
     "module": "samples:design-catalog-m3",
     "renderBasename": "OutlinedTextFieldSticker_Light.png",
-    "sha256": "d8ac67f022172c024b4242ebb9ad0b0fb4f8a7f94720815fb9d34c289c9a37d0",
+    "sha256": "42d4cb2987e3f037a2e82644ec75338d555c2394588ce6cca5e26061f91fbd30",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.RadioSelected_Dark": {
@@ -1996,7 +1996,7 @@
     "functionName": "SegmentedToggle",
     "module": "samples:design-catalog-m3",
     "renderBasename": "SegmentedToggle_Dark.png",
-    "sha256": "a4c354b23c54598d3a45c2502b114e0cf20a6b95e2cd213743b03139955381c4",
+    "sha256": "806c7701445d07072efffb8e89adfdbadb262207b19bcc639b49a05d44933fbc",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SegmentedToggle_Light": {
@@ -2004,7 +2004,7 @@
     "functionName": "SegmentedToggle",
     "module": "samples:design-catalog-m3",
     "renderBasename": "SegmentedToggle_Light.png",
-    "sha256": "34d550e5d311be8fe8ca41f8ac168c7fa04eb5500dd064c7cd8d29c281b2f81f",
+    "sha256": "a6410b569f1ea8b3bc23be33e771912944818de7f4b52234efe30c562e8c505a",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SliderMid_Dark": {
@@ -2092,7 +2092,7 @@
     "functionName": "TextButtonSticker",
     "module": "samples:design-catalog-m3",
     "renderBasename": "TextButtonSticker_Dark.png",
-    "sha256": "bca86f30fa8ea9bbf4cfaee5f703b6b5413dc521e22320bdbf386de5129eff39",
+    "sha256": "3d345f6d9b171376557a9a18d576f4996860d5fb8802b36a855b9c95839e92db",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.TextButtonSticker_Light": {
@@ -2100,7 +2100,7 @@
     "functionName": "TextButtonSticker",
     "module": "samples:design-catalog-m3",
     "renderBasename": "TextButtonSticker_Light.png",
-    "sha256": "c30bebd7899256d0c376d3a1c0ee4527e187ff7a92d0763d33719dbd7da6e40e",
+    "sha256": "c66f91c2256bcf25124d05c7b0b34c7f5018f467a39a7efd9af3ed3b7a569418",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.TextFieldSticker_Dark": {
@@ -2124,7 +2124,7 @@
     "functionName": "TextMaxLinesTruncated",
     "module": "samples:design-catalog-m3",
     "renderBasename": "TextMaxLinesTruncated_Dark.png",
-    "sha256": "72efd58e85b024aa27afeadf3f238b792513bab97a5e8166dab454241447fa51",
+    "sha256": "1d68aab8b632ee6e9181bc28b3d9ab209424caf7f3cb43180337f61c32cd2f13",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.TextMaxLinesTruncated_Light": {
@@ -2132,7 +2132,7 @@
     "functionName": "TextMaxLinesTruncated",
     "module": "samples:design-catalog-m3",
     "renderBasename": "TextMaxLinesTruncated_Light.png",
-    "sha256": "e15c6fa5f34956f4112f4c3b4fa9778dc7c096fc7b3bc542fabbd8abe93d212d",
+    "sha256": "1b6abf5051b2bd2a513158b18fa4e31f43508c26c72e5cc4ad04f21e79326cc7",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.TextMonospaceSpecimen_Dark": {
@@ -2140,7 +2140,7 @@
     "functionName": "TextMonospaceSpecimen",
     "module": "samples:design-catalog-m3",
     "renderBasename": "TextMonospaceSpecimen_Dark.png",
-    "sha256": "7e98c0d79479bc14c3e01747b0c5f87c276ef53e75e8f1cde57527e6c3650da7",
+    "sha256": "e6194d174b1a78b1fd0aad27ebf2a0282b4727aadcf45b98e8e5efd213c87205",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.TextMonospaceSpecimen_Light": {
@@ -2148,7 +2148,7 @@
     "functionName": "TextMonospaceSpecimen",
     "module": "samples:design-catalog-m3",
     "renderBasename": "TextMonospaceSpecimen_Light.png",
-    "sha256": "0675c02c208d6ae651d8d1d3ea42cf33f79f726cf3f6a8f71eca50ba52cc22dd",
+    "sha256": "cc72d9acc7811610c6b17b2df348cc94f1b9daf9ce263bbfc14f1fc167a47dcf",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.TextSerifSpecimen_Dark": {
@@ -2156,7 +2156,7 @@
     "functionName": "TextSerifSpecimen",
     "module": "samples:design-catalog-m3",
     "renderBasename": "TextSerifSpecimen_Dark.png",
-    "sha256": "207bb122bbbe8b0c3f849a22244dbbe7bcfbbfde9e693669b37b071c6b5bc421",
+    "sha256": "451e68945300c7c0674288cd27439a4c96360f05acbae49d2e8786bc311c56d0",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.TextSerifSpecimen_Light": {
@@ -2164,7 +2164,7 @@
     "functionName": "TextSerifSpecimen",
     "module": "samples:design-catalog-m3",
     "renderBasename": "TextSerifSpecimen_Light.png",
-    "sha256": "b2c15caf289f6891e4715f5b25e021fe0000c67716b2a1a2610d7e344978c0f1",
+    "sha256": "7b4d47fde4aec12ea3027b11d188eae98ffca635ecc4b38c31f7fba293049e00",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.BorderedRemoteButton": {
