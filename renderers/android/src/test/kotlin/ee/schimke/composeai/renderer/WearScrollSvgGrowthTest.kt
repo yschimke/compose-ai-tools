@@ -44,11 +44,8 @@ import ee.schimke.composeai.daemon.ComposeFigmaSvgDataProducer
 import ee.schimke.composeai.daemon.ComposeSemanticsDataProducer
 import ee.schimke.composeai.daemon.LayoutInspectorDataProducer
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
-import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
-import ee.schimke.composeai.data.layoutinspector.LayoutInspectorBounds
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorNode
-import ee.schimke.composeai.data.layoutinspector.LayoutInspectorPayload
-import ee.schimke.composeai.data.layoutinspector.LayoutInspectorSize
+import ee.schimke.composeai.data.layoutinspector.WearCapsuleStacker
 import ee.schimke.composeai.data.render.PreviewContext
 import java.awt.image.BufferedImage
 import java.io.File
@@ -430,7 +427,7 @@ class WearScrollSvgGrowthTest {
           // The rule's frame root fills the throwaway 420dp window; its children are the composed
           // content. Strip the frame and measure the content's true bottom (its natural height).
           val contentLayers = layout.root.children
-          val height = contentLayers.maxOfOrNull { it.maxBottom() } ?: 0
+          val height = WearCapsuleStacker.contentHeight(contentLayers)
           out = Part(contentLayers, semantics.root.children, height, frameFile)
         }
       }
@@ -456,14 +453,12 @@ class WearScrollSvgGrowthTest {
   }
 
   /**
-   * Stacks captured [parts] into one tall capsule SVG and returns it. [timeText], when present, is
-   * pinned at dy = 0 so its captured curve (from a square round face) rides the capsule's top rim;
-   * the remaining parts stack top-to-bottom from [topPad] by offsetting each captured subtree. [edge],
-   * when present, is a Canvas-drawn control (`EdgeButton`) the vector export can't read, so it's
-   * emitted as one opaque `Image` node cropped from a composited frame (a transparent canvas with just
-   * that part's pixels pasted at its stacked position). Container-agnostic: the parts are already flat
-   * captured layers, so the same stack serves a `TransformingLazyColumn` or a `Column` scroller. Also
-   * mirrors the SVG (+ any rasters) into `build/wear-scroll-svg/` for rendering.
+   * Drives the production [WearCapsuleStacker] with captured [parts] (plus optional [timeText] and
+   * [edge]) and writes the resulting capsule SVG. All the tree surgery — offsetting each captured
+   * subtree, the correct top/bottom padding so the round clip frames content without shearing it, the
+   * synthetic frame root that auto-selects the capsule clip, and the `EdgeButton` raster placement —
+   * lives in the stacker; this only composites the edge control's pixels into the frame the hybrid
+   * export crops from and mirrors the SVG (+ any rasters) into `build/wear-scroll-svg/` for rendering.
    */
   private fun stackToCapsule(
     previewId: String,
@@ -471,96 +466,38 @@ class WearScrollSvgGrowthTest {
     timeText: Part? = null,
     edge: Part? = null,
   ): String {
-    val gap = 6
-    // Enough top inset that the left-aligned header clears the capsule's rounded top corner.
-    val topPad = 44
-    val layoutChildren = mutableListOf<LayoutInspectorNode>()
-    val semChildren = mutableListOf<ComposeSemanticsNode>()
-
-    timeText?.let { tt ->
-      tt.layout.forEach { layoutChildren.add(it.offsetY(0)) }
-      tt.semantics.forEach { semChildren.add(it.offsetY(0)) }
-    }
-
-    var y = topPad
-    for (part in parts) {
-      part.layout.forEach { layoutChildren.add(it.offsetY(y)) }
-      part.semantics.forEach { semChildren.add(it.offsetY(y)) }
-      y += part.height + gap
-    }
-
-    var edgeStacked: LayoutInspectorBounds? = null
-    var edgeBox: LayoutInspectorBounds? = null
-    if (edge != null) {
-      val edgeY = y
-      edgeBox = edge.layout.boundingBox()
-      edgeStacked =
-        LayoutInspectorBounds(
-          left = edgeBox.left,
-          top = edgeBox.top + edgeY,
-          right = edgeBox.right,
-          bottom = edgeBox.bottom + edgeY,
-        )
-      layoutChildren.add(
-        LayoutInspectorNode(
-          nodeId = "edge-raster",
-          component = "Image", // opaque raster component → emitted as an <image>, cropped from frame
-          bounds = edgeStacked,
-          size = LayoutInspectorSize(edgeBox.right - edgeBox.left, edgeBox.bottom - edgeBox.top),
-        )
-      )
-      y += edge.height + gap
-    }
-    // Bottom pad depends on the last part's shape. A tapering EdgeButton crescent nestles into the
-    // capsule's bottom curve, so hug it tight (8). A rectangular last item (a card / button row) would
-    // get its bottom corners sheared by that curve, so give it the same inset as the top so it clears
-    // the arc into the straight section.
-    val bottomPad = if (edge != null) 8 else topPad
-    val totalHeight = y - gap + bottomPad
-
-    // One synthetic frame root spanning the full stacked size — its bounds drive the export's canvas
-    // and, because it is much taller than wide, the auto-selected capsule (stadium) clip.
-    val combinedLayout =
-      LayoutInspectorPayload(
-        LayoutInspectorNode(
-          nodeId = "$previewId-root",
-          component = "WearScrollExtract",
-          bounds = LayoutInspectorBounds(0, 0, deviceDp, totalHeight),
-          size = LayoutInspectorSize(deviceDp, totalHeight),
-          children = layoutChildren,
-        )
-      )
-    val combinedSemantics =
-      ComposeSemanticsPayload(
-        ComposeSemanticsNode(
-          nodeId = "$previewId-root",
-          boundsInRoot = "0,0,$deviceDp,$totalHeight",
-          children = semChildren,
-        )
+    fun Part.toStackerPart() = WearCapsuleStacker.Part(layout, semantics, height)
+    val stacked =
+      WearCapsuleStacker.stack(
+        rootId = previewId,
+        width = deviceDp,
+        parts = parts.map { it.toStackerPart() },
+        timeText = timeText?.toStackerPart(),
+        edge = edge?.toStackerPart(),
       )
 
     // When there's a rastered control, composite the frame the hybrid export crops it from: a
-    // transparent canvas the size of the stacked frame with just that part's isolated pixels pasted at
-    // its stacked position. Vector parts need no pixels here.
+    // transparent canvas the size of the stacked frame with just the EdgeButton's isolated pixels
+    // (cropped at the source box) pasted at its stacked destination. Vector parts need no pixels here.
     val framePng =
-      if (edge != null && edgeBox != null && edgeStacked != null) {
-        val edgeFrame = ImageIO.read(edge.frame)
-        val cropW = (edgeBox.right - edgeBox.left).coerceAtMost(edgeFrame.width - edgeBox.left)
-        val cropH = (edgeBox.bottom - edgeBox.top).coerceAtMost(edgeFrame.height - edgeBox.top)
-        val edgeCrop = edgeFrame.getSubimage(edgeBox.left, edgeBox.top, cropW, cropH)
-        val composited = BufferedImage(deviceDp, totalHeight, BufferedImage.TYPE_INT_ARGB)
+      stacked.edge?.let { er ->
+        val edgeFrame = ImageIO.read(edge!!.frame)
+        val cropW = (er.source.right - er.source.left).coerceAtMost(edgeFrame.width - er.source.left)
+        val cropH = (er.source.bottom - er.source.top).coerceAtMost(edgeFrame.height - er.source.top)
+        val edgeCrop = edgeFrame.getSubimage(er.source.left, er.source.top, cropW, cropH)
+        val composited = BufferedImage(stacked.width, stacked.height, BufferedImage.TYPE_INT_ARGB)
         composited.createGraphics().apply {
-          drawImage(edgeCrop, edgeStacked.left, edgeStacked.top, null)
+          drawImage(edgeCrop, er.dest.left, er.dest.top, null)
           dispose()
         }
         File(rootDir, "$previewId-frame.png").also { ImageIO.write(composited, "png", it) }
-      } else null
+      }
 
     ComposeFigmaSvgDataProducer.writeSvg(
       rootDir = rootDir,
       previewId = previewId,
-      layout = combinedLayout,
-      semantics = combinedSemantics,
+      layout = stacked.layout,
+      semantics = stacked.semantics,
       density = 1f,
       frameImage = framePng,
       roundClip = true,
@@ -689,54 +626,6 @@ class WearScrollSvgGrowthTest {
     assertTrue("the Settings header is kept", svg.contains(">Settings</text>"))
     assertFalse("a Button list needs no raster <image>", svg.contains("<image "))
   }
-}
-
-/** Union of every node's bounds in this subtree list, in the parts' local px space. */
-private fun List<LayoutInspectorNode>.boundingBox(): LayoutInspectorBounds {
-  var l = Int.MAX_VALUE
-  var t = Int.MAX_VALUE
-  var r = Int.MIN_VALUE
-  var b = Int.MIN_VALUE
-  fun visit(n: LayoutInspectorNode) {
-    l = minOf(l, n.bounds.left)
-    t = minOf(t, n.bounds.top)
-    r = maxOf(r, n.bounds.right)
-    b = maxOf(b, n.bounds.bottom)
-    n.children.forEach(::visit)
-  }
-  forEach(::visit)
-  return LayoutInspectorBounds(l, t, r, b)
-}
-
-/** Deepest bottom edge in this subtree, in root px — a part's natural content height. */
-private fun LayoutInspectorNode.maxBottom(): Int =
-  maxOf(bounds.bottom, children.maxOfOrNull { it.maxBottom() } ?: bounds.bottom)
-
-/** Shift a whole captured layout subtree down by [dy] px (bounds, modifiers, curved text). */
-private fun LayoutInspectorNode.offsetY(dy: Int): LayoutInspectorNode =
-  copy(
-    bounds = bounds.copy(top = bounds.top + dy, bottom = bounds.bottom + dy),
-    modifiers =
-      modifiers.map { m ->
-        val b = m.bounds ?: return@map m
-        m.copy(bounds = b.copy(top = b.top + dy, bottom = b.bottom + dy))
-      },
-    curvedTexts = curvedTexts.map { it.copy(centerYPx = it.centerYPx + dy) },
-    children = children.map { it.offsetY(dy) },
-  )
-
-/** Shift a captured semantics subtree down by [dy] px, re-serialising its `l,t,r,b` bounds. */
-private fun ComposeSemanticsNode.offsetY(dy: Int): ComposeSemanticsNode {
-  val parts = boundsInRoot.split(",")
-  val shifted =
-    if (parts.size == 4) {
-      val l = parts[0].trim()
-      val t = parts[1].trim().toIntOrNull()
-      val r = parts[2].trim()
-      val b = parts[3].trim().toIntOrNull()
-      if (t != null && b != null) "$l,${t + dy},$r,${b + dy}" else boundsInRoot
-    } else boundsInRoot
-  return copy(boundsInRoot = shifted, children = children.map { it.offsetY(dy) })
 }
 
 @OptIn(InternalComposeApi::class)
