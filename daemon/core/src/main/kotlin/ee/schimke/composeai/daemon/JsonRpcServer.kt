@@ -2041,7 +2041,20 @@ class JsonRpcServer(
     hostIdToPreviewId[hostId] = previewId
     acceptedAtMs[hostId] = System.currentTimeMillis()
     inFlightRenders.add(hostId)
-    val payload = encodeRenderPayloadWithMode(previewId, mode)
+    // Thread any caller-supplied overrides (theme / device / locale / font-scale / knobs, carried
+    // in
+    // the fetch's `params` bag) into the re-render, so a `?scroll=long` fetch at non-default
+    // overrides produces the matching artefact rather than the preview's defaults.
+    val overrides = decodeFetchOverrides(params.params)
+    // Register the overrides against this hostId (as `renderNow` does) so `emitRenderFinished`
+    // hands
+    // them to `onRender` — registries that stamp per-render metadata (e.g. locale / font-scale in
+    // the
+    // strings product) must see this fetch's overrides, not null, or an override-bearing scroll
+    // fetch
+    // records its data products as if the default preview rendered.
+    overrides?.let { hostIdToOverrides[hostId] = it }
+    val payload = encodeRenderPayloadWithMode(previewId, mode, overrides)
     Thread(
         {
           // Submit goes through the same render thread as renderNow but on a worker so the
@@ -2084,9 +2097,13 @@ class JsonRpcServer(
               // producer bug — we don't recurse, we surface a fetch-failed so callers see it.
               val secondOutcome =
                 try {
+                  // Strip `force` for the re-ask: the re-render just wrote the artefact, so this
+                  // fetch must read it (a still-forced fetch would re-trigger RequiresRerender,
+                  // which
+                  // the code below treats as a producer bug).
                   extensions
                     .publicDataProducts()
-                    .fetch(params.previewId, params.kind, params.params, params.inline)
+                    .fetch(params.previewId, params.kind, stripForce(params.params), params.inline)
                 } catch (t: Throwable) {
                   DataProductRegistry.Outcome.FetchFailed(
                     "registry threw on post-rerender fetch: ${t.message ?: t.javaClass.simpleName}"
@@ -2148,13 +2165,45 @@ class JsonRpcServer(
    * producer-supplied tag. Fake-mode hosts (the test harness's `FakeHost`, `FakeRenderHost` in unit
    * tests) ignore unknown payload keys, so this is forward-compatible.
    */
-  private fun encodeRenderPayloadWithMode(previewId: String, mode: String): String = buildString {
-    if (previewId.isNotEmpty()) append("previewId=").append(previewId)
+  private fun encodeRenderPayloadWithMode(
+    previewId: String,
+    mode: String,
+    overrides: PreviewOverrides? = null,
+  ): String = buildString {
+    // Reuse the full override serialization (typed size/locale/fontScale/uiMode/device tokens + the
+    // base64 `overrides=` bag) so the mode re-render honours the same overrides the normal render
+    // path does; then tag the render mode. `overrides == null` reduces to `previewId` alone, i.e.
+    // the
+    // prior behaviour for override-free re-renders.
+    append(encodeRenderPayload(previewId, overrides))
     if (mode.isNotEmpty()) {
       if (isNotEmpty()) append(';')
       append("mode=").append(mode)
     }
   }
+
+  /**
+   * Decodes a [PreviewOverrides] from a fetch's `params` bag ([DataFetchParams.PARAM_OVERRIDES]).
+   */
+  private fun decodeFetchOverrides(params: JsonElement?): PreviewOverrides? =
+    runCatching {
+        (params as? JsonObject)?.get(DataFetchParams.PARAM_OVERRIDES)?.let {
+          json.decodeFromJsonElement(PreviewOverrides.serializer(), it)
+        }
+      }
+      .getOrNull()
+
+  /**
+   * Returns [params] without the [DataFetchParams.PARAM_FORCE_RERENDER] key (other keys intact).
+   */
+  private fun stripForce(params: JsonElement?): JsonElement? =
+    when (params) {
+      is JsonObject ->
+        if (DataFetchParams.PARAM_FORCE_RERENDER in params)
+          JsonObject(params - DataFetchParams.PARAM_FORCE_RERENDER)
+        else params
+      else -> params
+    }
 
   private fun sendDataFetchOutcome(
     req: JsonRpcRequest,

@@ -1323,7 +1323,25 @@ data class DataFetchParams(
   val kind: String,
   val params: JsonElement? = null,
   val inline: Boolean = false,
-)
+) {
+  companion object {
+    /**
+     * `params` key: when `true`, a `requiresRerender` kind re-renders even if its on-disk artefact
+     * already exists — used by the serve host's `?scroll=long` lane to force a fresh render at the
+     * requested [PreviewOverrides] (the full-page SVG file is shared per preview, so a stale
+     * differently-themed file must be re-rendered rather than served). Ignored by kinds that don't
+     * re-render.
+     */
+    const val PARAM_FORCE_RERENDER: String = "force"
+
+    /**
+     * `params` key: a serialized [PreviewOverrides] the daemon threads into a `requiresRerender`
+     * re-render, so the produced artefact reflects the caller's theme / device / locale /
+     * font-scale / knob overrides rather than the preview's defaults.
+     */
+    const val PARAM_OVERRIDES: String = "overrides"
+  }
+}
 
 @Serializable
 data class DataFetchResult(

@@ -239,8 +239,13 @@ inside the stadium mask.)*
     fixture from the production assembler output (inlining the EdgeButton crescent raster as a `data:`
     URI so the harness — which stubs `/render/**` — can render it offline); regenerate after a
     renderer/stitcher change with `UPDATE_WEAR_SCROLL_FIXTURE=true`.
-- **Remaining:** the same **override-aware** re-render gap the mobile path has (the `data/fetch`
-  re-render is keyed by preview id, not by the applied overrides).
+  - **Override-aware.** A `?scroll=long` fetch now re-renders at the caller's theme / device / locale
+    / font-scale / knob overrides: the serve host rides them through the `data/fetch` `params` bag
+    ([`DataFetchParams.PARAM_OVERRIDES`]) and forces a fresh render
+    ([`DataFetchParams.PARAM_FORCE_RERENDER`]) since the full-page SVG file is shared per preview; the
+    daemon folds the overrides into the `figma-svg-long` re-render payload and the serve cache keys by
+    [`ServeOverrides.cacheKey`] so themed and default capsules don't collide. The render bodies
+    already honoured `spec.overrides`, so the fix is serve→fetch→re-render plumbing only.
 
 ## Non-goals
 

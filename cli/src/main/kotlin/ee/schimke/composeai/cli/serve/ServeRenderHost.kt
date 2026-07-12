@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.daemon.protocol.DataFetchParams
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
@@ -25,6 +26,8 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import okio.FileSystem
@@ -441,19 +444,19 @@ internal constructor(
    * a cached result when one exists. Thread-safe.
    *
    * Unlike [renderSvg] this fetches the `requiresRerender = true` long kind directly:
-   * `session.fetchData` drives the daemon's `figma-svg-long` re-render (an expanded-viewport render
-   * that composes the whole list) and returns the written SVG path — so there's no separate PNG
-   * render to force first. Still serialised through [renderLock] with the fetch reading the file
-   * the re-render just wrote.
+   * `session.fetchData` drives the daemon's `figma-svg-long` re-render (an expanded-viewport /
+   * slice- stitched render that composes the whole list) and returns the written SVG path — so
+   * there's no separate PNG render to force first. Still serialised through [renderLock] with the
+   * fetch reading the file the re-render just wrote.
    *
-   * The full-page export currently renders at the preview's **default** overrides — the
-   * `data/fetch` re-render path is keyed by `(previewId, kind)` and doesn't carry the live `uiMode`
-   * / `device` / locale / theme / knob overrides (the same limitation the scroll PNG data products
-   * have). So [overrides] are deliberately **not** part of the cache key: keying by them would
-   * cache the one override-independent file under many keys (a stale-looking hit under a different
-   * override). Threading overrides through the long re-render is a follow-up (see
-   * docs/design/SCROLLING_SVG.md); until then the cache stays correct by keying on the preview id
-   * alone.
+   * **Override-aware.** The full-page SVG file is shared per preview, so serving it at non-default
+   * overrides needs a fresh render: the [overrides] ride the fetch's kind-agnostic `params` bag
+   * ([DataFetchParams.PARAM_OVERRIDES]) — the daemon threads them into the `figma-svg-long`
+   * re-render — and [DataFetchParams.PARAM_FORCE_RERENDER] makes the file-backed registry re-render
+   * even though a prior (differently-themed) file exists. The cache is keyed by
+   * [ServeOverrides.cacheKey] so themed and default capsules don't collide; the held [renderLock]
+   * keeps the shared file from being overwritten between the re-render and the read, mirroring the
+   * viewport [renderSvg] lane.
    */
   override fun renderScrollSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome {
     check(!closed.get()) { "ServeRenderHost is closed" }
@@ -462,7 +465,7 @@ internal constructor(
     // [renderSvg].
     if (!hasSvgExport) return SvgOutcome.NotFound
 
-    val key = previewId
+    val key = ServeOverrides.cacheKey(previewId, overrides)
     scrollSvgCache.get(key)?.let {
       return SvgOutcome.Ok(it)
     }
@@ -472,9 +475,21 @@ internal constructor(
         return@withLock SvgOutcome.Ok(it)
       }
 
+      // Force a fresh full-page render at these overrides (the shared per-preview file may hold a
+      // different theme's export) and read it under the held lock.
+      val fetchParams = buildJsonObject {
+        put(DataFetchParams.PARAM_FORCE_RERENDER, JsonPrimitive(true))
+        put(
+          DataFetchParams.PARAM_OVERRIDES,
+          Json.encodeToJsonElement(PreviewOverrides.serializer(), overrides),
+        )
+      }
       val svgPath =
         try {
-          session.fetchData(previewId, ComposeFigmaSvgProduct.KIND_LONG).path?.toPath()
+          session
+            .fetchData(previewId, ComposeFigmaSvgProduct.KIND_LONG, params = fetchParams)
+            .path
+            ?.toPath()
         } catch (e: Exception) {
           val reason = "figma-svg-long fetch failed: ${e.message}"
           onLog(reason)

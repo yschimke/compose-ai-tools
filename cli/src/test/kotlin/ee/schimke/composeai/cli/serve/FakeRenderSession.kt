@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.daemon.protocol.ChangeType
+import ee.schimke.composeai.daemon.protocol.DataFetchParams
 import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataSubscribeResult
 import ee.schimke.composeai.daemon.protocol.ExtensionsDisableResult
@@ -92,6 +93,12 @@ internal class FakeRenderSession(
   private val figmaSvgAvailable: Boolean = true,
 ) : RenderSession {
   val renderCount = AtomicInteger(0)
+
+  /**
+   * Count of `figma-svg-long` fetches + the `params` bag of the last one — for scroll-lane asserts.
+   */
+  val scrollFetchCount = AtomicInteger(0)
+  @Volatile var lastScrollFetchParams: JsonElement? = null
 
   /** Extension ids passed to [enableExtensions], in call order — for assertions. */
   val enabledExtensionIds = CopyOnWriteArrayList<String>()
@@ -273,10 +280,18 @@ internal class FakeRenderSession(
       )
     }
     if (kind == ComposeFigmaSvgProduct.KIND_LONG) {
-      // Model the daemon's `requiresRerender` full-page export: the fetch itself produces the file.
+      // Model the daemon's `requiresRerender` full-page export: the fetch itself produces the file,
+      // reflecting the overrides threaded through the `params` bag (as the real re-render does) so
+      // the serve host's override-awareness is observable.
+      scrollFetchCount.incrementAndGet()
+      lastScrollFetchParams = params
+      val o =
+        params?.jsonObject?.get(DataFetchParams.PARAM_OVERRIDES)?.let {
+          Json.decodeFromJsonElement(PreviewOverrides.serializer(), it)
+        }
       val previewDir = File(renderRoot, previewId).apply { mkdirs() }
       val file = File(previewDir, ComposeFigmaSvgProduct.FILE_SVG_LONG)
-      file.writeText("svg-long:$previewId")
+      file.writeText("svg-long:$previewId:${o?.uiMode}:${o?.localeTag}:${o?.device}")
       return DataFetchResult(
         kind = kind,
         schemaVersion = ComposeFigmaSvgProduct.SCHEMA_VERSION,
