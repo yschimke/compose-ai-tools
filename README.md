@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/pr`. 225 preview(s) across 19 module(s) · 18 error(s) · 4 warning(s) · 26 info._
+_Auto-generated from `compose-preview/a11y/pr`. 237 preview(s) across 19 module(s) · 19 error(s) · 4 warning(s) · 26 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -1052,6 +1052,68 @@ _No findings._
 
 _No findings._
 
+### `CardScalingEdge` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CardScalingEdge_Large_Round.a11y.png" width="400" />
+
+_No findings._
+
+### `CardScalingMiddle` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CardScalingMiddle_Large_Round.a11y.png" width="400" />
+
+_No findings._
+
+### `CardScalingStarting` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CardScalingStarting_Large_Round.a11y.png" width="400" />
+
+_No findings._
+
+### `CardScroll0` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CardScroll0_Large_Round.a11y.png" width="400" />
+
+_No findings._
+
+### `CardScroll1` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CardScroll1_Large_Round.a11y.png" width="400" />
+
+_No findings._
+
+### `CardScroll2` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CardScroll2_Large_Round.a11y.png" width="400" />
+
+_No findings._
+
+### `CardScroll3` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CardScroll3_Large_Round.a11y.png" width="400" />
+
+_No findings._
+
+### `CardScroll4` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CardScroll4_Large_Round.a11y.png" width="400" />
+
+_No findings._
+
+### `CardScroll5` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CardScroll5_Large_Round.a11y.png" width="400" />
+
+_No findings._
+
+### `CardScroll6` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CardScroll6_Large_Round.a11y.png" width="400" />
+
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | ERROR | SpeakableTextPresentCheck | android.view.View | This item may not have a label readable by screen readers. |
+
 ### `CardSticker`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CardSticker.a11y.png" width="400" />
@@ -1356,6 +1418,18 @@ _No findings._
 |--:|---|---|---|---|
 | 1 | ERROR | TouchTargetSizeCheck | android.view.View | This item's height is 39dp. Consider making the height of this touch target 48dp or larger. |
 | 2 | ERROR | TouchTargetSizeCheck | android.view.View | This item's height is 39dp. Consider making the height of this touch target 48dp or larger. |
+
+### `MediaGestureScreenHintPreview` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/MediaGestureScreenHintPreview_Media_hints_on.png" width="400" />
+
+_No findings._
+
+### `MediaGestureScreenPreview` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/MediaGestureScreenPreview_Media_hints_off.png" width="400" />
+
+_No findings._
 
 ### `PageGestureScreenPreview` · `wearos_large_round`
 

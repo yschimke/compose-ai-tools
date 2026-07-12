@@ -1989,6 +1989,114 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "CardScalingEdge_Large_Round.a11y.png",
+      "cleanBasename": "CardScalingEdge_Large_Round.png",
+      "findings": [],
+      "functionName": "CardScalingEdge",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.CardScalingExampleKt.CardScalingEdge_Large Round",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CardScalingExample.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "CardScalingMiddle_Large_Round.a11y.png",
+      "cleanBasename": "CardScalingMiddle_Large_Round.png",
+      "findings": [],
+      "functionName": "CardScalingMiddle",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.CardScalingExampleKt.CardScalingMiddle_Large Round",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CardScalingExample.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "CardScalingStarting_Large_Round.a11y.png",
+      "cleanBasename": "CardScalingStarting_Large_Round.png",
+      "findings": [],
+      "functionName": "CardScalingStarting",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.CardScalingExampleKt.CardScalingStarting_Large Round",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CardScalingExample.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "CardScroll0_Large_Round.a11y.png",
+      "cleanBasename": "CardScroll0_Large_Round.png",
+      "findings": [],
+      "functionName": "CardScroll0",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.TlcScalingGifFramesKt.CardScroll0_Large Round",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/TlcScalingGifFrames.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "CardScroll1_Large_Round.a11y.png",
+      "cleanBasename": "CardScroll1_Large_Round.png",
+      "findings": [],
+      "functionName": "CardScroll1",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.TlcScalingGifFramesKt.CardScroll1_Large Round",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/TlcScalingGifFrames.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "CardScroll2_Large_Round.a11y.png",
+      "cleanBasename": "CardScroll2_Large_Round.png",
+      "findings": [],
+      "functionName": "CardScroll2",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.TlcScalingGifFramesKt.CardScroll2_Large Round",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/TlcScalingGifFrames.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "CardScroll3_Large_Round.a11y.png",
+      "cleanBasename": "CardScroll3_Large_Round.png",
+      "findings": [],
+      "functionName": "CardScroll3",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.TlcScalingGifFramesKt.CardScroll3_Large Round",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/TlcScalingGifFrames.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "CardScroll4_Large_Round.a11y.png",
+      "cleanBasename": "CardScroll4_Large_Round.png",
+      "findings": [],
+      "functionName": "CardScroll4",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.TlcScalingGifFramesKt.CardScroll4_Large Round",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/TlcScalingGifFrames.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "CardScroll5_Large_Round.a11y.png",
+      "cleanBasename": "CardScroll5_Large_Round.png",
+      "findings": [],
+      "functionName": "CardScroll5",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.TlcScalingGifFramesKt.CardScroll5_Large Round",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/TlcScalingGifFrames.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "CardScroll6_Large_Round.a11y.png",
+      "cleanBasename": "CardScroll6_Large_Round.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,454,454",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "android.view.View"
+        }
+      ],
+      "functionName": "CardScroll6",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.TlcScalingGifFramesKt.CardScroll6_Large Round",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/TlcScalingGifFrames.kt",
+      "variant": "wearos_large_round"
+    },
+    {
       "annotatedBasename": "CardSticker.a11y.png",
       "cleanBasename": "CardSticker.png",
       "findings": [],
@@ -2459,6 +2567,26 @@
       "module": "wear",
       "previewId": "com.example.samplewear.GesturesKt.GestureGalleryPreview_Devices - Large Round",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "MediaGestureScreenHintPreview_Media_hints_on.png",
+      "findings": [],
+      "functionName": "MediaGestureScreenHintPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.GestureHintPreviewsKt.MediaGestureScreenHintPreview_Media \u2014 hints on",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/GestureHintPreviews.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "MediaGestureScreenPreview_Media_hints_off.png",
+      "findings": [],
+      "functionName": "MediaGestureScreenPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.GestureHintPreviewsKt.MediaGestureScreenPreview_Media \u2014 hints off",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/GestureHintPreviews.kt",
       "variant": "wearos_large_round"
     },
     {
