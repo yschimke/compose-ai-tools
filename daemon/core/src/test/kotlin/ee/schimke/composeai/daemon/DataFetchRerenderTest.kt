@@ -3,6 +3,8 @@ package ee.schimke.composeai.daemon
 import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.daemon.protocol.UiMode
 import java.io.PipedInputStream
 import java.io.PipedOutputStream
 import java.util.concurrent.CountDownLatch
@@ -100,6 +102,63 @@ class DataFetchRerenderTest {
       assertEquals("producer should observe the completed render", 1, producer.onRenderCalls.get())
       assertEquals("com.example.Foo_bar", producer.lastOnRenderPreviewId)
       assertEquals(3L, producer.lastOnRenderMetrics?.get("tookMs"))
+    }
+  }
+
+  /**
+   * Overrides carried in the fetch's `params` bag are threaded into the re-render payload (so a
+   * `?scroll=long`-style themed fetch re-renders at those overrides), and the `force` flag is
+   * stripped before the post-rerender re-ask (so it doesn't re-trigger `RequiresRerender`).
+   */
+  @Test(timeout = 30_000)
+  fun rerender_threads_overrides_into_payload_and_strips_force_on_reask() {
+    val producer = FakeProducer(modeForKind = mapOf("a11y/hierarchy" to "a11y"))
+    runWithServer(producer = producer) { rpc ->
+      rpc.initialize()
+      // uiMode rides a typed token; maxWidthPx rides the base64 `overrides=` extension bag — assert
+      // both channels thread through, matching what the normal render lane's encoder carries.
+      val overridesJson =
+        Json.encodeToString(
+          PreviewOverrides.serializer(),
+          PreviewOverrides(uiMode = UiMode.DARK, maxWidthPx = 480),
+        )
+      rpc.send(
+        """
+        {"jsonrpc":"2.0","id":51,"method":"data/fetch","params":{
+          "previewId":"com.example.Foo_bar","kind":"a11y/hierarchy",
+          "params":{"force":true,"overrides":$overridesJson}
+        }}
+        """
+          .trimIndent()
+      )
+
+      val response = rpc.pollUntil { it["id"]?.jsonPrimitive?.intOrNull == 51 }
+      assertNotNull("data/fetch should resolve once the re-render produces the payload", response)
+      assertNotNull(
+        "payload must be present on Ok",
+        response!!["result"]?.jsonObject?.get("payload"),
+      )
+
+      val payload = producer.lastRenderPayload
+      assertNotNull("producer should observe the host payload", payload)
+      assertTrue(
+        "render payload should carry the mode, was: $payload",
+        payload!!.contains("mode=a11y"),
+      )
+      assertTrue(
+        "override token should thread into the re-render payload, was: $payload",
+        payload.contains("uiMode=dark"),
+      )
+      assertTrue(
+        "the base64 overrides bag should ride along, was: $payload",
+        payload.contains("overrides="),
+      )
+      // The post-rerender re-ask must not carry `force` (else it would loop on RequiresRerender).
+      val reaskParams = producer.lastFetchParams as? JsonObject
+      assertNull(
+        "force must be stripped before the post-rerender re-ask",
+        reaskParams?.get("force"),
+      )
     }
   }
 
@@ -278,6 +337,7 @@ class DataFetchRerenderTest {
 
     val renderSubmits = AtomicInteger(0)
     @Volatile var lastRenderPayload: String? = null
+    @Volatile var lastFetchParams: JsonElement? = null
     @Volatile var renderObserved: Boolean = false
     val onRenderCalls = AtomicInteger(0)
     @Volatile var lastOnRenderPreviewId: String? = null
@@ -316,6 +376,7 @@ class DataFetchRerenderTest {
       params: JsonElement?,
       inline: Boolean,
     ): DataProductRegistry.Outcome {
+      lastFetchParams = params
       if (immediateOk != null && kind == immediateOk.kind) {
         return DataProductRegistry.Outcome.Ok(immediateOk)
       }

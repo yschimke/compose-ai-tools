@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.protocol.DataFetchParams
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductExtra
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
@@ -165,6 +166,37 @@ class FileBackedDataProductRegistryTest {
     writeFile(tempFolder.root, "p", "payload.json", "not json")
     val outcome = reg.fetch("p", "demo/inline", params = null, inline = true)
     assertTrue(outcome is DataProductRegistry.Outcome.FetchFailed)
+  }
+
+  private val forceParams: JsonObject =
+    JsonObject(mapOf(DataFetchParams.PARAM_FORCE_RERENDER to JsonPrimitive(true)))
+
+  @Test
+  fun fetch_force_rerenders_existing_file_for_rerender_kind() {
+    val reg = RerenderRegistry(tempFolder.root)
+    writeFile(tempFolder.root, "p", "rerender.json", "{\"stale\":true}")
+    // File exists, but `force` on a requiresRerender kind must re-render (serve the fresh
+    // artefact).
+    val outcome = reg.fetch("p", "demo/rerender", params = forceParams, inline = false)
+    assertEquals(DataProductRegistry.Outcome.RequiresRerender(mode = "demo"), outcome)
+  }
+
+  @Test
+  fun fetch_without_force_serves_existing_rerender_file() {
+    val reg = RerenderRegistry(tempFolder.root)
+    val written = writeFile(tempFolder.root, "p", "rerender.json", "{\"k\":1}")
+    val outcome = reg.fetch("p", "demo/rerender", params = null, inline = false)
+    assertEquals(written.absolutePath, (outcome as DataProductRegistry.Outcome.Ok).result.path)
+  }
+
+  @Test
+  fun fetch_force_is_noop_for_non_rerender_kind() {
+    val reg = PathRegistry(tempFolder.root)
+    val written = writeFile(tempFolder.root, "p", "payload.json", "{\"k\":1}")
+    // A non-rerender kind has no RequiresRerender outcome; honouring `force` would wrongly hide the
+    // existing file, so it must still serve it.
+    val outcome = reg.fetch("p", "demo/path", params = forceParams, inline = false)
+    assertEquals(written.absolutePath, (outcome as DataProductRegistry.Outcome.Ok).result.path)
   }
 
   @Test

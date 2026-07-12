@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.daemon.protocol.DataFetchParams
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
@@ -15,8 +16,11 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 class ServeRenderHostTest {
 
@@ -129,7 +133,14 @@ class ServeRenderHostTest {
     host(session).use { h ->
       val out = h.renderScrollSvg(previewId, PreviewOverrides())
       assertTrue(out is SvgOutcome.Ok)
-      assertEquals("svg-long:$previewId", (out as SvgOutcome.Ok).svg.decodeToString())
+      assertEquals(
+        "svg-long:$previewId:null:null:null",
+        (out as SvgOutcome.Ok).svg.decodeToString(),
+      )
+      // The fetch carries the force flag + a serialized overrides bag (default here).
+      val params = session.lastScrollFetchParams as JsonObject
+      assertEquals(JsonPrimitive(true), params[DataFetchParams.PARAM_FORCE_RERENDER])
+      assertNotNull(params[DataFetchParams.PARAM_OVERRIDES])
     }
   }
 
@@ -141,6 +152,38 @@ class ServeRenderHostTest {
       val b = h.renderScrollSvg(previewId, PreviewOverrides())
       assertTrue(a is SvgOutcome.Ok && b is SvgOutcome.Ok)
       assertContentEquals(a.svg, b.svg)
+      assertEquals(
+        1,
+        session.scrollFetchCount.get(),
+        "identical overrides ⇒ one fetch, then cached",
+      )
+    }
+  }
+
+  @Test
+  fun `renderScrollSvg is override-aware — distinct overrides re-render and don't collide in cache`() {
+    val session = FakeRenderSession(newRenderRoot())
+    host(session).use { h ->
+      val dark = h.renderScrollSvg(previewId, PreviewOverrides(uiMode = UiMode.DARK))
+      val light = h.renderScrollSvg(previewId, PreviewOverrides(uiMode = UiMode.LIGHT))
+      assertTrue(dark is SvgOutcome.Ok && light is SvgOutcome.Ok)
+      assertEquals(
+        "svg-long:$previewId:DARK:null:null",
+        (dark as SvgOutcome.Ok).svg.decodeToString(),
+      )
+      assertEquals(
+        "svg-long:$previewId:LIGHT:null:null",
+        (light as SvgOutcome.Ok).svg.decodeToString(),
+      )
+      assertEquals(2, session.scrollFetchCount.get(), "each distinct override re-renders")
+      // Re-requesting the dark capsule is a cache hit — no third fetch, and its bytes are intact.
+      val darkAgain = h.renderScrollSvg(previewId, PreviewOverrides(uiMode = UiMode.DARK))
+      assertContentEquals(dark.svg, (darkAgain as SvgOutcome.Ok).svg)
+      assertEquals(
+        2,
+        session.scrollFetchCount.get(),
+        "the repeat dark request is served from cache",
+      )
     }
   }
 

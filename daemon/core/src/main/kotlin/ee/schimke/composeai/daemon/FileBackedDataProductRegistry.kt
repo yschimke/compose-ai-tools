@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.protocol.DataFetchParams
 import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
@@ -9,6 +10,9 @@ import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okio.FileSystem
 import okio.Path.Companion.toPath
 
@@ -111,7 +115,16 @@ abstract class FileBackedDataProductRegistry(
   ): DataProductRegistry.Outcome {
     val cap = byKind[kind] ?: return DataProductRegistry.Outcome.Unknown
     val file = fileFor(previewId, kind) ?: return DataProductRegistry.Outcome.Unknown
-    if (!file.exists()) return missingOutcome(previewId, kind)
+    // `force` (from the caller's `params`) re-renders even when a file already exists — but only
+    // for
+    // a `requiresRerender` kind, whose `missingOutcome` is a `RequiresRerender` the dispatcher acts
+    // on. The full-page SVG file is shared per preview, so a differently-overridden fetch must
+    // re-render rather than serve the stale file. For non-rerender kinds `force` is a no-op (their
+    // `missingOutcome` is just `NotAvailable`, so honouring it would wrongly hide an existing
+    // file).
+    if (!file.exists() || (cap.requiresRerender && forceRerender(params))) {
+      return missingOutcome(previewId, kind)
+    }
     val shouldInline =
       cap.transport == DataProductTransport.INLINE || (inline && allowInlineUpgrade(kind))
     return if (shouldInline) {
@@ -182,6 +195,15 @@ abstract class FileBackedDataProductRegistry(
     }
     return out
   }
+
+  /**
+   * Reads the [DataFetchParams.PARAM_FORCE_RERENDER] flag from a fetch's kind-agnostic `params`.
+   */
+  private fun forceRerender(params: JsonElement?): Boolean =
+    runCatching {
+        params?.jsonObject?.get(DataFetchParams.PARAM_FORCE_RERENDER)?.jsonPrimitive?.booleanOrNull
+      }
+      .getOrNull() == true
 
   companion object {
     private val DEFAULT_JSON = Json { ignoreUnknownKeys = true }
