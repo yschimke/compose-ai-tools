@@ -72,15 +72,19 @@ class PreviewManifestEntryResolveTest {
   }
 
   @Test
-  fun `non-Compose kind pins the frame - no wrap`() {
+  fun `non-Compose kind pins the frame - no wrap, keeps the 320px frame`() {
     // Tile / notification / Glance render helpers consume the concrete widthPx/heightPx; they must
-    // not be handed a wrapped sandbox bound.
+    // not be handed a wrapped sandbox bound. Regression: an early version of the wrap fix used the
+    // 400x800 sandbox as the fallback unconditionally, resizing every no-size notification preview
+    // (their baselines all changed). A pinned, no-size preview must keep the historical 320px frame.
     val raw =
-      """{"id":"tile","className":"X","functionName":"R",""" +
-        """"params":{"kind":"TILE","density":2.0}}"""
+      """{"id":"notif","className":"X","functionName":"R",""" +
+        """"params":{"kind":"NOTIFICATION","density":2.0}}"""
     val resolved = json.decodeFromString(PreviewManifestEntry.serializer(), raw).resolved()
     assertEquals(false, resolved.wrapWidth)
     assertEquals(false, resolved.wrapHeight)
+    assertEquals(320, resolved.widthPx) // fixed frame, NOT the 400dp sandbox bound
+    assertEquals(320, resolved.heightPx)
   }
 
   @Test

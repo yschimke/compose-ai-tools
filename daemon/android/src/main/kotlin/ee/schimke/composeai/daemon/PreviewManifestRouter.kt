@@ -271,8 +271,14 @@ data class PreviewManifestEntry(
     val explicitHeightPx = heightPx ?: p?.heightDp?.let { (it * density).toInt() }
     val wrapWidth = explicitWidthPx == null && !pinned
     val wrapHeight = explicitHeightPx == null && !pinned
-    val resolvedWidthPx = explicitWidthPx ?: (WRAP_SANDBOX_WIDTH_DP * density).toInt()
-    val resolvedHeightPx = explicitHeightPx ?: (WRAP_SANDBOX_HEIGHT_DP * density).toInt()
+    // The generous sandbox bound is only for a WRAPPING axis (measured + cropped). A pinned preview
+    // with no explicit size (notification / tile / Glance — their render helpers consume the concrete
+    // px) keeps the historical fixed 320px frame, so this fix doesn't resize those surfaces.
+    val resolvedWidthPx =
+      explicitWidthPx ?: if (wrapWidth) (WRAP_SANDBOX_WIDTH_DP * density).toInt() else DEFAULT_FRAME_PX
+    val resolvedHeightPx =
+      explicitHeightPx
+        ?: if (wrapHeight) (WRAP_SANDBOX_HEIGHT_DP * density).toInt() else DEFAULT_FRAME_PX
     val showBackground = showBackground ?: p?.showBackground ?: true
     val backgroundColor = backgroundColor ?: p?.backgroundColor ?: 0L
     val wrapperClassName = p?.wrapperClassName
@@ -300,6 +306,14 @@ data class PreviewManifestEntry(
      */
     const val WRAP_SANDBOX_WIDTH_DP: Int = 400
     const val WRAP_SANDBOX_HEIGHT_DP: Int = 800
+
+    /**
+     * Historical fixed frame (px) for a preview that declares no explicit size and doesn't wrap
+     * (device / tile / notification / Glance surfaces). Matches [RenderSpec]'s 320px default —
+     * preserving these surfaces' prior render exactly while wrap-content previews use the sandbox
+     * bound above.
+     */
+    const val DEFAULT_FRAME_PX: Int = 320
   }
 }
 
