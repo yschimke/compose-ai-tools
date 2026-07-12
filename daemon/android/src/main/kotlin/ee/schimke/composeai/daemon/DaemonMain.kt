@@ -778,8 +778,27 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
     RenderSpec(previewId = info.id, className = info.className, functionName = info.methodName)
   val params = info.params ?: return defaults
   val density = params.density ?: defaults.density
-  val widthPx = params.widthDp?.let { (it * density).toInt() } ?: defaults.widthPx
-  val heightPx = params.heightDp?.let { (it * density).toInt() } ?: defaults.heightPx
+  // AS-parity wrap-content, mirroring the batch resolver ([PreviewManifestEntry.resolved]) and the
+  // desktop daemon's [renderSpecFromInfo]. A preview that declares no explicit size on an axis and
+  // isn't pinned by a device / non-Compose surface renders wrap-content on that axis: the render
+  // measures the composable's intrinsic size within the 400×800 dp sandbox bound and crops to it,
+  // instead of reflowing content past the fixed 320 px frame to zero height. Without this the held
+  // interactive / stream lane collapses no-height previews exactly as the batch render did.
+  val explicitWidthPx = params.widthDp?.let { (it * density).toInt() }
+  val explicitHeightPx = params.heightDp?.let { (it * density).toInt() }
+  val pinned =
+    (params.device ?: defaults.device) != null ||
+      ((params.kind ?: defaults.kind)?.let { it != "COMPOSE" } ?: false)
+  val wrapWidth = explicitWidthPx == null && !pinned
+  val wrapHeight = explicitHeightPx == null && !pinned
+  val widthPx =
+    explicitWidthPx
+      ?: if (wrapWidth) (PreviewManifestEntry.WRAP_SANDBOX_WIDTH_DP * density).toInt()
+      else defaults.widthPx
+  val heightPx =
+    explicitHeightPx
+      ?: if (wrapHeight) (PreviewManifestEntry.WRAP_SANDBOX_HEIGHT_DP * density).toInt()
+      else defaults.heightPx
   val uiMode = if (uiModeIsNight(params.uiMode)) RenderSpec.SpecUiMode.DARK else defaults.uiMode
   return RenderSpec(
     previewId = info.id,
@@ -787,6 +806,8 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
     functionName = info.methodName,
     widthPx = widthPx,
     heightPx = heightPx,
+    wrapWidth = wrapWidth,
+    wrapHeight = wrapHeight,
     density = density,
     showBackground = params.showBackground ?: defaults.showBackground,
     backgroundColor = params.backgroundColor ?: defaults.backgroundColor,

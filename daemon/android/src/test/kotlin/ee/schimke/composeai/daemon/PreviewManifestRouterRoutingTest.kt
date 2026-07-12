@@ -55,6 +55,96 @@ class PreviewManifestRouterRoutingTest {
   }
 
   @Test
+  fun `routePayload emits wrapHeight for a widthDp-only preview - the TcpConnectPanel shape`() {
+    // Regression for the figma-svg collapse: the wrap flags MUST ride the serialized payload, or
+    // RenderSpec.parseFromPayloadOrNull defaults them false and RenderEngine never enters the
+    // measure-and-crop path — leaving no-height previews reflowed past the 320px frame to zero.
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "tcp",
+              className = "com.example.PreviewsKt",
+              functionName = "TcpConnectPanel",
+              params = PreviewParamsEntry(widthDp = 340, density = 2.625f, showBackground = true),
+            )
+          )
+      )
+    val routed = PreviewManifestRouter(manifest = manifest).routePayload("previewId=tcp")
+
+    assertTrue("width is pinned → no wrapWidth. payload=$routed", !routed.contains("wrapWidth="))
+    assertTrue("no height → wrapHeight=true must ride the payload. payload=$routed",
+      routed.contains("wrapHeight=true"))
+    assertTrue("pinned width stays 340dp × 2.625 = 892px. payload=$routed",
+      routed.contains("widthPx=892"))
+    assertTrue("wrapped height uses the 800dp sandbox bound (2100px). payload=$routed",
+      routed.contains("heightPx=2100"))
+  }
+
+  @Test
+  fun `routePayload emits both wrap flags for a no-size preview`() {
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "sticker",
+              className = "com.example.PreviewsKt",
+              functionName = "Sticker",
+              params = PreviewParamsEntry(density = 2.0f, showBackground = true),
+            )
+          )
+      )
+    val routed = PreviewManifestRouter(manifest = manifest).routePayload("previewId=sticker")
+
+    assertTrue("wrapWidth=true must ride the payload. payload=$routed", routed.contains("wrapWidth=true"))
+    assertTrue("wrapHeight=true must ride the payload. payload=$routed", routed.contains("wrapHeight=true"))
+  }
+
+  @Test
+  fun `routePayload omits wrap flags for an explicitly sized preview`() {
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "sized",
+              className = "com.example.PreviewsKt",
+              functionName = "Sized",
+              params = PreviewParamsEntry(widthDp = 300, heightDp = 170),
+            )
+          )
+      )
+    val routed = PreviewManifestRouter(manifest = manifest).routePayload("previewId=sized")
+
+    assertFalse("explicit size → no wrapWidth token. payload=$routed", routed.contains("wrapWidth="))
+    assertFalse("explicit size → no wrapHeight token. payload=$routed", routed.contains("wrapHeight="))
+  }
+
+  @Test
+  fun `routePayload omits wrapHeight when an inbound heightPx override pins the axis`() {
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "tcp",
+              className = "com.example.PreviewsKt",
+              functionName = "TcpConnectPanel",
+              params = PreviewParamsEntry(widthDp = 340, density = 2.625f),
+            )
+          )
+      )
+    val routed =
+      PreviewManifestRouter(manifest = manifest).routePayload("previewId=tcp;heightPx=900")
+
+    assertFalse("inbound heightPx override pins the axis → no wrapHeight. payload=$routed",
+      routed.contains("wrapHeight="))
+    assertTrue("inbound heightPx override wins. payload=$routed", routed.contains("heightPx=900"))
+  }
+
+  @Test
   fun `routePayload omits wrapperClassName when params has none`() {
     val manifest =
       PreviewManifest(

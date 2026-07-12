@@ -39,6 +39,104 @@ class RenderEngineTest {
 
   @get:Rule val tempFolder: TemporaryFolder = TemporaryFolder()
 
+  /** Deepest text-bearing leaves (width > 0) and their measured heights, from a layout-inspector. */
+  private fun leafHeights(layoutJson: kotlinx.serialization.json.JsonObject): List<Int> {
+    val out = mutableListOf<Int>()
+    fun walk(node: kotlinx.serialization.json.JsonObject) {
+      val children = node["children"]?.jsonArray ?: kotlinx.serialization.json.JsonArray(emptyList())
+      val size = node["size"]!!.jsonObject
+      val w = (size["width"] as JsonPrimitive).content.toInt()
+      val h = (size["height"] as JsonPrimitive).content.toInt()
+      if (children.isEmpty() && w > 0) out += h
+      children.forEach { walk(it.jsonObject) }
+    }
+    walk(layoutJson["root"]!!.jsonObject)
+    return out
+  }
+
+  private fun renderTallColumn(host: RobolectricHost, outputDir: File, wrap: Boolean, base: String) =
+    host.submit(
+      RenderRequest.Render(
+        payload =
+          "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+            "functionName=TallWrapColumn;" +
+            // widthDp=200 @ density 2.625 ⇒ 525 px (pinned width). Wrap OFF pins the historical
+            // 320 px height frame (the bug); wrap ON uses the 800 dp sandbox bound + intrinsic crop.
+            "widthPx=525;heightPx=${if (wrap) 2100 else 320};density=2.625;" +
+            "wrapWidth=false;wrapHeight=$wrap;" +
+            "showBackground=true;outputBaseName=$base",
+      ),
+      timeoutMs = 120_000,
+    )
+
+  /**
+   * Wrap-height regression (the `TcpConnectPanel` figma-svg collapse). A no-height preview whose
+   * content is taller than the historical 320 px daemon frame reflowed its overflow children to zero
+   * height — a `Column` hands each child the remaining height, so once the 320 px budget is spent the
+   * lower rows measure to zero lines. The AS-parity wrap fix renders the full content against the
+   * sandbox bound and crops to the measured intrinsic size, so nothing collapses.
+   *
+   * Asserts both directions through the real Robolectric render: wrap OFF still collapses lower rows
+   * (proving the fixture reproduces the bug and the assertion has teeth); wrap ON keeps every row at
+   * its natural height and the captured tree is taller than the old frame.
+   */
+  @Test
+  fun tallWrapHeightPreviewDoesNotCollapse() {
+    val outputDir = tempFolder.newFolder("renders")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost()
+    host.start()
+    try {
+      val off = renderTallColumn(host, outputDir, wrap = false, base = "tall-fixed-320")
+      val on = renderTallColumn(host, outputDir, wrap = true, base = "tall-wrapped")
+
+      // Before/after PNGs for the PR's visual evidence (build dir, not committed).
+      File("build/wrap-evidence").apply { mkdirs() }.let { dir ->
+        off.pngPath?.let { File(it).copyTo(File(dir, "tall-fixed-320.png"), overwrite = true) }
+        on.pngPath?.let { File(it).copyTo(File(dir, "tall-wrapped.png"), overwrite = true) }
+      }
+
+      fun layout(base: String) =
+        Json.parseToJsonElement(
+            outputDir.parentFile!!
+              .resolve("data")
+              .resolve(base)
+              .resolve(LayoutInspectorDataProducer.FILE)
+              .readText()
+          )
+          .jsonObject
+
+      // Wrap OFF (old behaviour): the tree is clamped to the 320 px frame and lower rows collapse.
+      val fixed = layout("tall-fixed-320")
+      val fixedRootH =
+        (fixed["root"]!!.jsonObject["size"]!!.jsonObject["height"] as JsonPrimitive).content.toInt()
+      assertTrue("wrap-off root should be clamped near 320 px (was $fixedRootH)", fixedRootH <= 340)
+      assertTrue(
+        "wrap-off must collapse at least one overflow row to height 0 (the bug)",
+        leafHeights(fixed).any { it == 0 },
+      )
+
+      // Wrap ON (the fix): full natural height, no collapsed rows.
+      val wrapped = layout("tall-wrapped")
+      val wrappedRootH =
+        (wrapped["root"]!!.jsonObject["size"]!!.jsonObject["height"] as JsonPrimitive).content.toInt()
+      assertTrue(
+        "wrap-on root must measure the full content, well past the 320 px frame (was $wrappedRootH)",
+        wrappedRootH > 340,
+      )
+      val wrappedLeaves = leafHeights(wrapped)
+      assertTrue("wrap-on must render all rows", wrappedLeaves.size >= 20)
+      assertEquals(
+        "wrap-on must not collapse any row to height 0 (heights=$wrappedLeaves)",
+        0,
+        wrappedLeaves.count { it == 0 },
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
   @Test
   fun redSquareRendersToValidPng() {
     val outputDir = tempFolder.newFolder("renders")
