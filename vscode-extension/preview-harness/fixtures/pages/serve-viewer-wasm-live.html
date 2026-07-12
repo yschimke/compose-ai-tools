@@ -59,6 +59,13 @@ a:hover { text-decoration: underline; }
    to inspect the raw transparent PNG; the choice persists per-visitor in localStorage['cp-bg']. */
 html.cp-bg-transparent .cp-imgwrap, html.cp-bg-transparent .cp-stage {
   background: repeating-conic-gradient(#f4f4f6 0% 25%, #fff 0% 50%) 50% / 16px 16px; }
+/* Back each card by its OWN render theme: a light-rendered sticker always sits on a light
+   surface and a dark-rendered one on a dark surface, independent of the browser's color scheme
+   or the explicitly-selected catalog theme. Without this a transparent light sticker (dark
+   strokes) shown on the dark browser backing — or dark on light — washes to near-invisible.
+   Solid mode only; the Transparent toggle's checkerboard still wins via cp-bg-transparent. */
+html:not(.cp-bg-transparent) .cp-card[data-card-theme="light"] .cp-imgwrap { background: #fff; }
+html:not(.cp-bg-transparent) .cp-card[data-card-theme="dark"] .cp-imgwrap { background: #1d1d20; }
 .cp-bg { display: inline-flex; border: 1px solid #d7d7de; border-radius: 999px; overflow: hidden; }
 .cp-bg-btn { border: 0; background: #fff; color: #6b6b70; font: inherit; font-size: 0.78rem;
   padding: 3px 14px; cursor: pointer; }
