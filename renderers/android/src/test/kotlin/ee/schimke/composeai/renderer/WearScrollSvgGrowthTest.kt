@@ -396,7 +396,8 @@ class WearScrollSvgGrowthTest {
           assembled =
             WearScrollSvgAssembler.assemble(
               rule = rule,
-              deviceDp = deviceDp,
+              // mdpi ⇒ px == dp, so the 227dp round device is 227px wide.
+              deviceWidthPx = deviceDp,
               workDir = File(rootDir, "work"),
               captureFrame = { f -> rule.onRoot().captureRoboImage(file = f) },
               captureTree = {

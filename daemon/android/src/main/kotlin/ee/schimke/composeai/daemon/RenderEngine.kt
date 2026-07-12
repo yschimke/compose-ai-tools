@@ -1194,7 +1194,9 @@ class RenderEngine(
           assembled =
             WearScrollSvgAssembler.assemble(
               rule = rule,
-              deviceDp = deviceDp,
+              // The captured frames + tree bounds are in pixels, so the stitcher width and crescent
+              // crop must be the frame's *pixel* width — `deviceDp` above is for qualifiers only.
+              deviceWidthPx = spec.widthPx,
               workDir = workDir,
               // No device crop: the tall capsule's `<clipPath>` masks the frame, so the source
               // frames (which the crescent raster crops from) must keep their full pixels.
