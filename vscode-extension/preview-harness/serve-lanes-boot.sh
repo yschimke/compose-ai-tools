@@ -5,40 +5,58 @@
 # `--catalogs` system live-rendered from its carried liveBundle, so every render
 # lane (PNG / SVG / Live WS) exercises a real Compose render daemon.
 #
+# IMPORTANT: serve must run MODULE-LESS (hosting only the fetched --catalogs). It
+# decides that by NOT being inside a Gradle project — so this launches it from a
+# scratch dir OUTSIDE the repo. Run from the repo root, serve instead tries to
+# discover + build the ~20 local preview modules and never answers /version. All
+# input paths are resolved to absolute BEFORE we cd out.
+#
 # Env:
 #   SERVE_CLI          path to the compose-preview launcher (default: the
 #                      :cli:installDist output under cli/build/install)
 #   SERVE_PORT         bind port (default 8725)
 #   SERVE_SYSTEM       catalog system to serve (default compose-m3)
 #   SERVE_TRUST_STORE  producer trust store (default deploy/image/trust/producers.json)
-#   SERVE_LOG          serve log file (default serve-lanes.log)
+#   SERVE_LOG          serve log file, relative to the repo root (default serve-lanes.log)
 #
-# Writes the pid to serve-lanes.pid so the caller can tear it down. Needs xvfb +
-# software GL on the PATH (the workflow installs them).
+# Writes the pid to serve-lanes.pid (repo root) so the caller can tear it down, and
+# the log where the caller can upload it. Needs xvfb + software GL on the PATH (the
+# workflow installs them).
 set -euo pipefail
 
-CLI="${SERVE_CLI:-cli/build/install/compose-preview/bin/compose-preview}"
+REPO_ROOT="$(pwd)"
+CLI="$(readlink -f "${SERVE_CLI:-cli/build/install/compose-preview/bin/compose-preview}")"
+TRUST="$(readlink -f "${SERVE_TRUST_STORE:-deploy/image/trust/producers.json}")"
 PORT="${SERVE_PORT:-8725}"
 SYSTEM="${SERVE_SYSTEM:-compose-m3}"
-TRUST="${SERVE_TRUST_STORE:-deploy/image/trust/producers.json}"
-LOG="${SERVE_LOG:-serve-lanes.log}"
+LOG="${REPO_ROOT}/${SERVE_LOG:-serve-lanes.log}"
+PID_FILE="${REPO_ROOT}/serve-lanes.pid"
 BASE="http://127.0.0.1:${PORT}"
 
-echo "serve-lanes: booting daemon-backed serve ($SYSTEM) on $BASE" >&2
+if [ ! -x "$CLI" ]; then
+  echo "::error::serve CLI not found or not executable at $CLI — run :cli:installDist first" >&2
+  exit 1
+fi
+
+# Launch from a scratch dir OUTSIDE the Gradle project so serve runs module-less.
+WORK="$(mktemp -d "${RUNNER_TEMP:-/tmp}/serve-lanes.XXXXXX")"
+echo "serve-lanes: booting daemon-backed serve ($SYSTEM) on $BASE (module-less, cwd=$WORK)" >&2
+cd "$WORK"
 LIBGL_ALWAYS_SOFTWARE=1 nohup xvfb-run -a "$CLI" serve \
   --catalogs "$SYSTEM" --public --host 127.0.0.1 --port "$PORT" \
   --trust-store "$TRUST" --allow-render-trusted --live-seats 1 \
   > "$LOG" 2>&1 &
-echo $! > serve-lanes.pid
+echo $! > "$PID_FILE"
 
 # 1) Wait for the HTTP server to answer.
+up=""
 for _ in $(seq 1 120); do
-  if curl -sf -o /dev/null --max-time 4 "$BASE/version"; then break; fi
+  if curl -sf -o /dev/null --max-time 4 "$BASE/version"; then up=1; break; fi
   sleep 2
 done
-if ! curl -sf -o /dev/null --max-time 4 "$BASE/version"; then
+if [ -z "$up" ]; then
   echo "::error::serve did not answer /version in time" >&2
-  tail -40 "$LOG" >&2 || true
+  tail -60 "$LOG" >&2 || true
   exit 1
 fi
 
