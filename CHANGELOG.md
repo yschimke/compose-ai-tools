@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.16.42](https://github.com/yschimke/compose-ai-tools/compare/v0.16.41...v0.16.42) (2026-07-12)
+
+
+### Features
+
+* **serve:** e2e-test every render lane's overrides + surface mode-activation errors ([#2443](https://github.com/yschimke/compose-ai-tools/issues/2443)) ([fc5c56a](https://github.com/yschimke/compose-ai-tools/commit/fc5c56a96f4d1bda8bbe8c41fa39a829cd920573))
+* **serve:** make figma-svg-long re-render override-aware ([#2442](https://github.com/yschimke/compose-ai-tools/issues/2442)) ([51be959](https://github.com/yschimke/compose-ai-tools/commit/51be9593404bcc4f0d4c725e2032f91a7f63e63e))
+
+
+### Bug Fixes
+
+* **deploy:** drop Caddy flush_interval -1 so aborted renders cancel ([#2441](https://github.com/yschimke/compose-ai-tools/issues/2441)) ([072049c](https://github.com/yschimke/compose-ai-tools/commit/072049c9a7fd35ca9768abac77c090f2ecb3f8ca))
+* **deploy:** make Caddy WebSocket-safe so Live Compose /ws/ streams ([#2440](https://github.com/yschimke/compose-ai-tools/issues/2440)) ([6d30996](https://github.com/yschimke/compose-ai-tools/commit/6d30996a9f109e33b1918772bb8459454cc35171))
+
 ## [0.16.41](https://github.com/yschimke/compose-ai-tools/compare/v0.16.40...v0.16.41) (2026-07-12)
 
 
