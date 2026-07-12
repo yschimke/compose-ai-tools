@@ -42,6 +42,14 @@ test.beforeAll(async ({ request }) => {
 });
 
 function requirePreview() {
+  // In CI the boot step starts a known compose-m3 daemon serve, so a missing
+  // label-knob preview is a real regression — FAIL, don't green-skip the required
+  // suite. The skip path is only for a local run without a suitable serve target.
+  if (!previewId && process.env.CI) {
+    throw new Error(
+      `no label-knob preview at /${SYSTEM}/api/previews — the daemon-backed serve isn't exposing the expected catalog; refusing to green-skip the Serve Lanes suite`,
+    );
+  }
   test.skip(
     !previewId,
     `no label-knob preview reachable at /${SYSTEM}/api/previews — is a daemon-backed serve running at ${process.env.SERVE_URL}?`,
@@ -183,16 +191,16 @@ test("viewer wires the knob into every render lane", async ({ page }) => {
     })
     .toBeGreaterThan(0);
 
-  // Live mode: the stream opens (status must not settle on an error).
+  // Live mode: the stream must actually open. A failed activation now routes
+  // through #cp-error (and CLEARS #cp-status), so checking status alone would pass
+  // on a silent failure — assert the error overlay stays hidden instead, which is
+  // only true once a frame has painted (the WS-frame test proves the frame itself).
   await page.click("#cp-live");
   await page.waitForTimeout(6000);
-  const status = (await page.locator("#cp-status").textContent())?.trim() ?? "";
-  expect(status.toLowerCase(), `live status was "${status}"`).not.toContain(
-    "error",
-  );
-  expect(status.toLowerCase(), `live status was "${status}"`).not.toContain(
-    "failed",
-  );
+  await expect(
+    page.locator("#cp-error"),
+    "live stream should open, not surface an activation error",
+  ).toBeHidden();
 });
 
 test("Live mode surfaces a visible error when the stream can't activate", async ({
