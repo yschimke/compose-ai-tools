@@ -75,6 +75,12 @@ object ServeWeb {
        Solid mode only; the Transparent toggle's checkerboard still wins via cp-bg-transparent. */
     html:not(.cp-bg-transparent) .cp-card[data-card-theme="light"] .cp-imgwrap { background: #fff; }
     html:not(.cp-bg-transparent) .cp-card[data-card-theme="dark"] .cp-imgwrap { background: #1d1d20; }
+    /* The single-preview viewer's stage follows the preview's background theme the same way the grid
+       thumbnails do (data-card-theme on .cp-viewer): a dark variant — or any preview in a dark-first
+       system like Wear — sits on a dark stage so a light-on-transparent render stays readable.
+       Solid mode only; the Transparent checkerboard still wins via cp-bg-transparent. */
+    html:not(.cp-bg-transparent) .cp-viewer[data-card-theme="dark"] .cp-stage { background: #1d1d20; }
+    html:not(.cp-bg-transparent) .cp-viewer[data-card-theme="light"] .cp-stage { background: #fff; }
     .cp-bg { display: inline-flex; border: 1px solid #d7d7de; border-radius: 999px; overflow: hidden; }
     .cp-bg-btn { border: 0; background: #fff; color: #6b6b70; font: inherit; font-size: 0.78rem;
       padding: 3px 14px; cursor: pointer; }
@@ -338,6 +344,28 @@ object ServeWeb {
    */
   private fun cardTheme(id: String): String? =
     id.split("__").drop(1).lastOrNull { it == "light" || it == "dark" }
+
+  /**
+   * A dark-first design system draws its components for a dark surface (Wear OS is
+   * black-watch-face-first), so a preview with no explicit light/dark token should sit on the DARK
+   * stage — otherwise a light-on-transparent Wear render lands on the default white stage and its
+   * light text is unreadable. Keyed off the served system name — the `/<system>` path mount
+   * ([basePath]) or, for the legacy `?session=` form, the session id.
+   */
+  private fun isDarkFirstSystem(basePath: String, sessionId: String?): Boolean {
+    val system = basePath.trim('/').ifBlank { sessionId ?: "" }
+    return system.startsWith("wear", ignoreCase = true)
+  }
+
+  /**
+   * The stage / thumbnail **background** theme for a preview: its explicit `__light` / `__dark`
+   * variant token when it has one, else the DARK default for a dark-first system
+   * ([isDarkFirstSystem]), else none (the default light stage). Distinct from [cardTheme] — which
+   * drives the light/dark *filter axis* and must stay explicit-only, so a dark-first catalog with
+   * no light variants doesn't sprout a dead Light/Dark toggle.
+   */
+  private fun bgTheme(id: String, darkFirst: Boolean): String? =
+    cardTheme(id) ?: if (darkFirst) "dark" else null
 
   /**
    * The sticky light/dark control for the catalog header. Persists to `localStorage['cp-theme']`
@@ -658,6 +686,10 @@ object ServeWeb {
     basePath: String = "",
   ): String {
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
+    // A dark-first system (Wear) puts every unthemed card on the dark stage; explicit light/dark
+    // variants keep their own token. Only affects the background — the Light/Dark filter axis below
+    // still keys off the explicit-only [cardTheme].
+    val darkFirst = isDarkFirstSystem(basePath, sessionId)
     val cards =
       if (previews.isEmpty()) {
         "<p class=\"cp-sub\">No previews discovered in this module.</p>"
@@ -666,7 +698,7 @@ object ServeWeb {
           val idSeg = WebEscaping.urlEncodeSegment(p.id)
           val label = WebEscaping.htmlEscape(p.label)
           val idText = WebEscaping.htmlEscape(p.id)
-          val themeAttr = cardTheme(p.id)?.let { " data-card-theme=\"$it\"" } ?: ""
+          val themeAttr = bgTheme(p.id, darkFirst)?.let { " data-card-theme=\"$it\"" } ?: ""
           """
           <a class="cp-card"$themeAttr href="$basePath/p/$idSeg$q">
             <div class="cp-imgwrap">
@@ -1010,6 +1042,12 @@ object ServeWeb {
       else
         "<button type=\"button\" class=\"cp-drawer-toggle\" id=\"cp-nav-toggle\" " +
           "aria-expanded=\"false\" aria-controls=\"cp-nav\">☰ Components</button>"
+    // Stage background follows the preview's theme (dark variant → dark stage), with a dark-first
+    // system (Wear) defaulting to dark — see the `.cp-viewer[data-card-theme] .cp-stage` CSS.
+    val cardThemeAttr =
+      bgTheme(preview.id, isDarkFirstSystem(basePath, sessionId))?.let {
+        " data-card-theme=\"$it\""
+      } ?: ""
     val body =
       """
       <p class="cp-head"><a href="$basePath/$q">← previews</a>${trustBadge(trust)}</p>
@@ -1018,7 +1056,7 @@ object ServeWeb {
         $navToggle
         <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
-      <div class="cp-viewer cp-controls-open" data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr>
+      <div class="cp-viewer cp-controls-open"$cardThemeAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr>
         $navDrawer
         <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$wasmFrame<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         <div class="cp-controls" id="cp-controls">

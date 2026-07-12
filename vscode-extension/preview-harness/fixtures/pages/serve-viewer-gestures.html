@@ -66,6 +66,12 @@ html.cp-bg-transparent .cp-imgwrap, html.cp-bg-transparent .cp-stage {
    Solid mode only; the Transparent toggle's checkerboard still wins via cp-bg-transparent. */
 html:not(.cp-bg-transparent) .cp-card[data-card-theme="light"] .cp-imgwrap { background: #fff; }
 html:not(.cp-bg-transparent) .cp-card[data-card-theme="dark"] .cp-imgwrap { background: #1d1d20; }
+/* The single-preview viewer's stage follows the preview's background theme the same way the grid
+   thumbnails do (data-card-theme on .cp-viewer): a dark variant — or any preview in a dark-first
+   system like Wear — sits on a dark stage so a light-on-transparent render stays readable.
+   Solid mode only; the Transparent checkerboard still wins via cp-bg-transparent. */
+html:not(.cp-bg-transparent) .cp-viewer[data-card-theme="dark"] .cp-stage { background: #1d1d20; }
+html:not(.cp-bg-transparent) .cp-viewer[data-card-theme="light"] .cp-stage { background: #fff; }
 .cp-bg { display: inline-flex; border: 1px solid #d7d7de; border-radius: 999px; overflow: hidden; }
 .cp-bg-btn { border: 0; background: #fff; color: #6b6b70; font: inherit; font-size: 0.78rem;
   padding: 3px 14px; cursor: pointer; }
@@ -206,7 +212,7 @@ html:not(.cp-bg-transparent) .cp-card[data-card-theme="dark"] .cp-imgwrap { back
         
         <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
-      <div class="cp-viewer cp-controls-open" data-preview-id="com.example.OneHandedPreview" data-mode="snapshot" data-modes="snapshot" data-static-snapshot="false" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2">
+      <div class="cp-viewer cp-controls-open" data-card-theme="dark" data-preview-id="com.example.OneHandedPreview" data-mode="snapshot" data-modes="snapshot" data-static-snapshot="false" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2">
         
         <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="One-handed"><canvas id="cp-canvas" hidden></canvas><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         <div class="cp-controls" id="cp-controls">
