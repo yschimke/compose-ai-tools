@@ -232,8 +232,8 @@
     "serve-viewer-catalog-knobs.dark.png": {
       "fixture": "serve-viewer-catalog-knobs",
       "theme": "dark",
-      "sha256": "b639aa7b321fe4888b72b9c3d144b22cf71df2396a15e80ddb1c62b6f599acc5",
-      "size": 90973
+      "sha256": "82b1e89b3e895276a0a806f7f6288c8478a6645e40e5c52aef192203f35389dc",
+      "size": 91132
     },
     "serve-viewer-catalog-knobs.light.png": {
       "fixture": "serve-viewer-catalog-knobs",
@@ -262,8 +262,8 @@
     "serve-viewer-gestures.light.png": {
       "fixture": "serve-viewer-gestures",
       "theme": "light",
-      "sha256": "2323ca1f075c92ef3a15f5340219e2859890cefa3a006ecaa250114f3448dd41",
-      "size": 53523
+      "sha256": "323e8a32f30fcf95be0e030ada29d2079d85a42e4b8cbc1ae02d6fe403e5eeb0",
+      "size": 51356
     },
     "serve-viewer-path.dark.png": {
       "fixture": "serve-viewer-path",
