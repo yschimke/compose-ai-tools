@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 227 preview(s) across 19 module(s) · 18 error(s) · 4 warning(s) · 26 info._
+_Auto-generated from `compose-preview/a11y/main`. 227 preview(s) across 19 module(s) · 16 error(s) · 4 warning(s) · 37 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -22,6 +22,7 @@ Browse inline; image URLs are pinned to the commit SHA on the baseline branch so
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
 | 1 | ERROR | SpeakableTextPresentCheck | android.widget.Button | This item may not have a label readable by screen readers. |
+| 2 | ERROR | TouchTargetSizeCheck | android.widget.Button | This item's size is 20dp x 20dp. Consider making this touch target 32dp wide and 32dp high or larger. |
 
 ### `BigPictureStylePreview`
 
@@ -115,7 +116,10 @@ _No findings._
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/DeviceFontFamilyShowcasePreview_Device_Font_Family_Showcase.a11y.png" width="400" />
 
-_No findings._
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "The quick brown fox (700)" is identical to that of 3 other item(s). |
+| 2 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "The quick brown fox (400)" is identical to that of 4 other item(s). |
 
 ### `ExpandedSurfacePreview`
 
@@ -161,7 +165,12 @@ _No findings._
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/GoogleFontsShowcasePreview_Google_Fonts_Showcase.a11y.png" width="400" />
 
-_No findings._
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "The quick brown fox (700)" is identical to that of 3 other item(s). |
+| 2 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "The quick brown fox (900)" is identical to that of 2 other item(s). |
+| 3 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "The quick brown fox (400)" is identical to that of 3 other item(s). |
+| 4 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "The quick brown fox (100)" is identical to that of 1 other item(s). |
 
 ### `GreenBoxPreview`
 
@@ -181,7 +190,8 @@ _No findings._
 
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
-| 1 | INFO | TextSizeCheck | android.view.NotificationHeaderView #notification_header | Consider modifying the LayoutParams to allow for text expansion. |
+| 1 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView #header_text_divider | This non-clickable item's speakable text: "•" is identical to that of 1 other item(s). |
+| 2 | INFO | TextSizeCheck | android.view.NotificationHeaderView #notification_header | Consider modifying the LayoutParams to allow for text expansion. |
 
 ### `HeadsUpSurfacePreview`
 
@@ -209,7 +219,8 @@ _No findings._
 
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
-| 1 | INFO | TextSizeCheck | android.view.NotificationHeaderView #notification_header | Consider modifying the LayoutParams to allow for text expansion. |
+| 1 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView #header_text_divider | This non-clickable item's speakable text: "•" is identical to that of 1 other item(s). |
+| 2 | INFO | TextSizeCheck | android.view.NotificationHeaderView #notification_header | Consider modifying the LayoutParams to allow for text expansion. |
 
 ### `KeyboardDemoPreview`
 
@@ -273,11 +284,8 @@ _No findings._
 
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
-| 1 | ERROR | TouchTargetSizeCheck | android.widget.Button #action0 desc="Reply" | This item's width is 32dp. Consider making the width of this touch target 48dp or larger. |
-| 2 | ERROR | TouchTargetSizeCheck | android.widget.Button #action0 desc="Archive" | This item's width is 32dp. Consider making the width of this touch target 48dp or larger. |
-| 3 | ERROR | TouchTargetSizeCheck | android.widget.Button #action0 desc="Snooze" | This item's width is 32dp. Consider making the width of this touch target 48dp or larger. |
-| 4 | INFO | TextSizeCheck | android.view.NotificationHeaderView #notification_header | Consider modifying the LayoutParams to allow for text expansion. |
-| 5 | INFO | TextSizeCheck | com.android.internal.widget.NotificationActionListLayout #actions | Consider modifying the LayoutParams to allow for text expansion. |
+| 1 | INFO | TextSizeCheck | android.view.NotificationHeaderView #notification_header | Consider modifying the LayoutParams to allow for text expansion. |
+| 2 | INFO | TextSizeCheck | com.android.internal.widget.NotificationActionListLayout #actions | Consider modifying the LayoutParams to allow for text expansion. |
 
 ### `MediaStylePreview`
 
@@ -294,7 +302,9 @@ _No findings._
 
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
-| 1 | INFO | TextSizeCheck | android.view.NotificationHeaderView #notification_header | Consider modifying the LayoutParams to allow for text expansion. |
+| 1 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView #header_text_secondary_divider | This non-clickable item's speakable text: "•" is identical to that of 1 other item(s). |
+| 2 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView #header_text_secondary | This non-clickable item's speakable text: "Alice" is identical to that of 1 other item(s). |
+| 3 | INFO | TextSizeCheck | android.view.NotificationHeaderView #notification_header | Consider modifying the LayoutParams to allow for text expansion. |
 
 ### `NamedColorPaletteSpecimenPreview`
 
@@ -314,7 +324,8 @@ _No findings._
 
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
-| 1 | INFO | TextSizeCheck | android.view.NotificationHeaderView #notification_header | Consider modifying the LayoutParams to allow for text expansion. |
+| 1 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView #header_text_secondary_divider | This non-clickable item's speakable text: "•" is identical to that of 1 other item(s). |
+| 2 | INFO | TextSizeCheck | android.view.NotificationHeaderView #notification_header | Consider modifying the LayoutParams to allow for text expansion. |
 
 ### `NoTextPreview`
 

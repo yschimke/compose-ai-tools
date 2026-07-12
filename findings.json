@@ -203,14 +203,14 @@
       "cleanBasename": "ActionsPreview_Actions.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,317,147",
+          "boundsInScreen": "0,0,1050,147",
           "level": "INFO",
           "message": "Consider modifying the LayoutParams to allow for text expansion.",
           "type": "TextSizeCheck",
           "viewDescription": "android.view.NotificationHeaderView #notification_header"
         },
         {
-          "boundsInScreen": "0,159,285,317",
+          "boundsInScreen": "0,257,1018,415",
           "level": "INFO",
           "message": "Consider modifying the LayoutParams to allow for text expansion.",
           "type": "TextSizeCheck",
@@ -228,10 +228,17 @@
       "cleanBasename": "BadButtonPreview_Bad_Button.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,91,91",
+          "boundsInScreen": "0,0,53,53",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
+          "viewDescription": "android.widget.Button"
+        },
+        {
+          "boundsInScreen": "0,0,53,53",
+          "level": "ERROR",
+          "message": "This item's size is 20dp x 20dp. Consider making this touch target 32dp wide and 32dp high or larger.",
+          "type": "TouchTargetSizeCheck",
           "viewDescription": "android.widget.Button"
         }
       ],
@@ -246,7 +253,7 @@
       "cleanBasename": "BigPictureStylePreview_Big_picture.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,317,147",
+          "boundsInScreen": "0,0,1050,147",
           "level": "INFO",
           "message": "Consider modifying the LayoutParams to allow for text expansion.",
           "type": "TextSizeCheck",
@@ -264,7 +271,7 @@
       "cleanBasename": "BigTextVariantsPreview_Arabic.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,317,147",
+          "boundsInScreen": "0,0,1050,147",
           "level": "INFO",
           "message": "Consider modifying the LayoutParams to allow for text expansion.",
           "type": "TextSizeCheck",
@@ -332,7 +339,7 @@
       "cleanBasename": "CollapsedSurfacePreview_Surface_collapsed.png",
       "findings": [
         {
-          "boundsInScreen": "137,108,170,161",
+          "boundsInScreen": "137,108,903,161",
           "level": "WARNING",
           "message": "Consider modifying the LayoutParams to allow for text expansion.",
           "type": "TextSizeCheck",
@@ -438,7 +445,7 @@
       "cleanBasename": "DecoratedCustomViewPreview_Decorated_custom_view.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,317,147",
+          "boundsInScreen": "0,0,1050,147",
           "level": "INFO",
           "message": "Consider modifying the LayoutParams to allow for text expansion.",
           "type": "TextSizeCheck",
@@ -454,7 +461,22 @@
     {
       "annotatedBasename": "DeviceFontFamilyShowcasePreview_Device_Font_Family_Showcase.a11y.png",
       "cleanBasename": "DeviceFontFamilyShowcasePreview_Device_Font_Family_Showcase.png",
-      "findings": [],
+      "findings": [
+        {
+          "boundsInScreen": "42,231,631,294",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"The quick brown fox (700)\" is identical to that of 3 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        },
+        {
+          "boundsInScreen": "42,168,620,231",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"The quick brown fox (400)\" is identical to that of 4 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        }
+      ],
       "functionName": "DeviceFontFamilyShowcasePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewsKt.DeviceFontFamilyShowcasePreview_Device Font Family Showcase",
@@ -466,7 +488,7 @@
       "cleanBasename": "ExpandedSurfacePreview_Surface_expanded.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,317,147",
+          "boundsInScreen": "0,0,1050,147",
           "level": "INFO",
           "message": "Consider modifying the LayoutParams to allow for text expansion.",
           "type": "TextSizeCheck",
@@ -540,7 +562,36 @@
     {
       "annotatedBasename": "GoogleFontsShowcasePreview_Google_Fonts_Showcase.a11y.png",
       "cleanBasename": "GoogleFontsShowcasePreview_Google_Fonts_Showcase.png",
-      "findings": [],
+      "findings": [
+        {
+          "boundsInScreen": "42,231,631,294",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"The quick brown fox (700)\" is identical to that of 3 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        },
+        {
+          "boundsInScreen": "42,294,634,357",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"The quick brown fox (900)\" is identical to that of 2 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        },
+        {
+          "boundsInScreen": "42,168,620,231",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"The quick brown fox (400)\" is identical to that of 3 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        },
+        {
+          "boundsInScreen": "42,105,603,168",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"The quick brown fox (100)\" is identical to that of 1 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        }
+      ],
       "functionName": "GoogleFontsShowcasePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewsKt.GoogleFontsShowcasePreview_Google Fonts Showcase",
@@ -572,7 +623,14 @@
       "cleanBasename": "GroupedSummaryPreview_Edge_grouped_summary.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,317,147",
+          "boundsInScreen": "374,52,385,95",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"\u2022\" is identical to that of 1 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView #header_text_divider"
+        },
+        {
+          "boundsInScreen": "0,0,1050,147",
           "level": "INFO",
           "message": "Consider modifying the LayoutParams to allow for text expansion.",
           "type": "TextSizeCheck",
@@ -590,7 +648,7 @@
       "cleanBasename": "HeadsUpSurfacePreview_Surface_heads_up.png",
       "findings": [
         {
-          "boundsInScreen": "137,108,170,161",
+          "boundsInScreen": "137,108,903,161",
           "level": "WARNING",
           "message": "Consider modifying the LayoutParams to allow for text expansion.",
           "type": "TextSizeCheck",
@@ -628,7 +686,14 @@
       "cleanBasename": "InboxStylePreview_Inbox_style.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,317,147",
+          "boundsInScreen": "374,52,385,95",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"\u2022\" is identical to that of 1 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView #header_text_divider"
+        },
+        {
+          "boundsInScreen": "0,0,1050,147",
           "level": "INFO",
           "message": "Consider modifying the LayoutParams to allow for text expansion.",
           "type": "TextSizeCheck",
@@ -726,7 +791,7 @@
       "cleanBasename": "LongTitlePreview_Edge_long_title.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,317,147",
+          "boundsInScreen": "0,0,1050,147",
           "level": "INFO",
           "message": "Consider modifying the LayoutParams to allow for text expansion.",
           "type": "TextSizeCheck",
@@ -744,35 +809,14 @@
       "cleanBasename": "ManyActionsPreview_Edge_many_actions.png",
       "findings": [
         {
-          "boundsInScreen": "11,175,95,301",
-          "level": "ERROR",
-          "message": "This item's width is 32dp. Consider making the width of this touch target 48dp or larger.",
-          "type": "TouchTargetSizeCheck",
-          "viewDescription": "android.widget.Button #action0 desc=\"Reply\""
-        },
-        {
-          "boundsInScreen": "106,175,190,301",
-          "level": "ERROR",
-          "message": "This item's width is 32dp. Consider making the width of this touch target 48dp or larger.",
-          "type": "TouchTargetSizeCheck",
-          "viewDescription": "android.widget.Button #action0 desc=\"Archive\""
-        },
-        {
-          "boundsInScreen": "201,175,285,301",
-          "level": "ERROR",
-          "message": "This item's width is 32dp. Consider making the width of this touch target 48dp or larger.",
-          "type": "TouchTargetSizeCheck",
-          "viewDescription": "android.widget.Button #action0 desc=\"Snooze\""
-        },
-        {
-          "boundsInScreen": "0,0,317,147",
+          "boundsInScreen": "0,0,1050,147",
           "level": "INFO",
           "message": "Consider modifying the LayoutParams to allow for text expansion.",
           "type": "TextSizeCheck",
           "viewDescription": "android.view.NotificationHeaderView #notification_header"
         },
         {
-          "boundsInScreen": "0,159,285,317",
+          "boundsInScreen": "0,257,1018,415",
           "level": "INFO",
           "message": "Consider modifying the LayoutParams to allow for text expansion.",
           "type": "TextSizeCheck",
@@ -790,14 +834,14 @@
       "cleanBasename": "MediaStylePreview_Media_style.png",
       "findings": [
         {
-          "boundsInScreen": "137,253,275,306",
+          "boundsInScreen": "137,204,1008,257",
           "level": "WARNING",
           "message": "Consider modifying the LayoutParams to allow for text expansion.",
           "type": "TextSizeCheck",
           "viewDescription": "com.android.internal.widget.ImageFloatingTextView #text"
         },
         {
-          "boundsInScreen": "0,0,317,147",
+          "boundsInScreen": "0,0,1050,147",
           "level": "INFO",
           "message": "Consider modifying the LayoutParams to allow for text expansion.",
           "type": "TextSizeCheck",
@@ -815,7 +859,21 @@
       "cleanBasename": "MessagingStylePreview_Messaging_style.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,317,147",
+          "boundsInScreen": "374,52,385,95",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"\u2022\" is identical to that of 1 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView #header_text_secondary_divider"
+        },
+        {
+          "boundsInScreen": "395,52,466,95",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"Alice\" is identical to that of 1 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView #header_text_secondary"
+        },
+        {
+          "boundsInScreen": "0,0,1050,147",
           "level": "INFO",
           "message": "Consider modifying the LayoutParams to allow for text expansion.",
           "type": "TextSizeCheck",
@@ -853,7 +911,14 @@
       "cleanBasename": "NoLargeIconPreview_Edge_no_large_icon.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,317,147",
+          "boundsInScreen": "374,52,385,95",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"\u2022\" is identical to that of 1 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView #header_text_secondary_divider"
+        },
+        {
+          "boundsInScreen": "0,0,1050,147",
           "level": "INFO",
           "message": "Consider modifying the LayoutParams to allow for text expansion.",
           "type": "TextSizeCheck",
@@ -871,7 +936,7 @@
       "cleanBasename": "NoTextPreview_Edge_no_text.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,317,147",
+          "boundsInScreen": "0,0,1050,147",
           "level": "INFO",
           "message": "Consider modifying the LayoutParams to allow for text expansion.",
           "type": "TextSizeCheck",
