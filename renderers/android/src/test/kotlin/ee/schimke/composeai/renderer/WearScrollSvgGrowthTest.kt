@@ -44,9 +44,15 @@ import ee.schimke.composeai.daemon.ComposeFigmaSvgDataProducer
 import ee.schimke.composeai.daemon.ComposeSemanticsDataProducer
 import ee.schimke.composeai.daemon.LayoutInspectorDataProducer
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
+import ee.schimke.composeai.data.layoutinspector.LayoutInspectorBounds
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorNode
+import ee.schimke.composeai.data.layoutinspector.LayoutInspectorPayload
+import ee.schimke.composeai.data.layoutinspector.LayoutInspectorSize
 import ee.schimke.composeai.data.layoutinspector.WearCapsuleStacker
 import ee.schimke.composeai.data.render.PreviewContext
+import ee.schimke.composeai.scroll.ScrollAxis
+import ee.schimke.composeai.scroll.driveScrollByViewport
 import java.awt.image.BufferedImage
 import java.io.File
 import java.nio.file.Files
@@ -646,6 +652,352 @@ class WearScrollSvgGrowthTest {
     assertTrue("TimeText is pinned on the rim", svg.contains("10:10"))
     assertTrue("the Settings header is kept", svg.contains(">Settings</text>"))
     assertFalse("a Button list needs no raster <image>", svg.contains("<image "))
+  }
+
+  // --- Slice-stitch of the REAL preview (exploratory) --------------------------------------------
+
+  /** Every (text, top, bottom) in a captured semantics tree, for inspecting slice structure. */
+  private fun textRows(node: ComposeSemanticsNode, out: MutableList<Triple<String, Int, Int>>) {
+    val t = node.text?.takeIf { it.isNotBlank() } ?: node.layoutText?.takeIf { it.isNotBlank() }
+    val b = node.boundsInRoot.split(",").mapNotNull { it.trim().toIntOrNull() }
+    if (t != null && b.size == 4) out.add(Triple(t, b[1], b[3]))
+    node.children.forEach { textRows(it, out) }
+  }
+
+  /** Indented layout-tree dump: component [l,t,r,b] (+curved text) — to locate the scrollable. */
+  private fun dumpLayout(node: LayoutInspectorNode, depth: Int, out: StringBuilder) {
+    val b = node.bounds
+    val curved = node.curvedTexts.joinToString("") { " curve='${it.text}'@${it.centerYPx.toInt()}" }
+    val bg = node.tokens?.backgroundColor?.let { " bg=$it" } ?: ""
+    val corner = node.tokens?.cornerRadius?.let { " r=$it" } ?: ""
+    out.append("  ".repeat(depth))
+      .append(node.component)
+      .append(" [${b.left},${b.top},${b.right},${b.bottom}]")
+      .append(bg)
+      .append(corner)
+      .append(curved)
+      .append('\n')
+    node.children.forEach { dumpLayout(it, depth + 1, out) }
+  }
+
+  @Test
+  fun `explore real preview slice capture`() {
+    RuntimeEnvironment.setQualifiers("w${deviceDp}dp-h${deviceDp}dp-round-mdpi")
+    @Suppress("DEPRECATION") val rule = createAndroidComposeRule<ComponentActivity>()
+    val log = StringBuilder()
+    val layoutLog = StringBuilder()
+    val statement =
+      object : Statement() {
+        override fun evaluate() {
+          val slotTables = mutableSetOf<CompositionData>()
+          rule.mainClock.autoAdvance = false
+          val rml = WearReduceMotionLocal.get()
+          assertNotNull("wear-compose-foundation on classpath", rml)
+          rule.setContent {
+            InspectableContent(slotTables) {
+              CompositionLocalProvider(rml!! provides true) { WearList() }
+            }
+          }
+          rule.mainClock.advanceTimeBy(500)
+          rule.waitForIdle()
+
+          var sliceIdx = 0
+          fun capture(scrolledPx: Float) {
+            rule.onRoot().captureRoboImage(file = File(rootDir, "explore-$sliceIdx.png"))
+            val semRoot = rule.onRoot(useUnmergedTree = true).fetchSemanticsNode()
+            val sem = ComposeSemanticsDataProducer.buildPayload(semRoot, density = 1f)
+            val rows = mutableListOf<Triple<String, Int, Int>>()
+            textRows(sem.root, rows)
+            log.append("=== slice $sliceIdx scrolledPx=$scrolledPx ===\n")
+            rows.sortedBy { it.second }.forEach { (t, top, bot) ->
+              log.append("  [$top..$bot] $t\n")
+            }
+            if (sliceIdx == 0 || sliceIdx == 6) {
+              val ctx =
+                PreviewContext.Builder(
+                    previewId = "explore",
+                    backend = null,
+                    renderMode = null,
+                    outputBaseName = "explore",
+                  )
+                  .rootForTest(semRoot.root as RootForTest)
+                  .addSlotTables(slotTables.toList())
+                  .parameterInformationCollected()
+                  .build()
+              val layout = LayoutInspectorDataProducer.buildPayload(ctx, density = 1f)!!
+              layoutLog.append("=== LAYOUT slice $sliceIdx ===\n")
+              dumpLayout(layout.root, 0, layoutLog)
+            }
+            sliceIdx++
+          }
+
+          driveScrollByViewport(
+            rule = rule,
+            axis = ScrollAxis.VERTICAL,
+            stepPx = deviceDp * 0.8f,
+            maxScrollPx = 0,
+          ) { scrolledPx ->
+            capture(scrolledPx)
+          }
+        }
+      }
+    rule.apply(statement, Description.createTestDescription(javaClass, "explore")).evaluate()
+    File("build/wear-scroll-svg").mkdirs()
+    File("build/wear-scroll-svg/explore.txt").writeText(log.toString())
+    File("build/wear-scroll-svg/explore-layout.txt").writeText(layoutLog.toString())
+  }
+
+  /** Shift a captured layout subtree down by [dy] px (bounds, modifiers, curved text, children). */
+  private fun LayoutInspectorNode.shiftY(dy: Int): LayoutInspectorNode =
+    copy(
+      bounds = bounds.copy(top = bounds.top + dy, bottom = bounds.bottom + dy),
+      modifiers =
+        modifiers.map { m ->
+          val b = m.bounds ?: return@map m
+          m.copy(bounds = b.copy(top = b.top + dy, bottom = b.bottom + dy))
+        },
+      curvedTexts = curvedTexts.map { it.copy(centerYPx = it.centerYPx + dy) },
+      children = children.map { it.shiftY(dy) },
+    )
+
+  private fun ComposeSemanticsNode.shiftY(dy: Int): ComposeSemanticsNode {
+    val p = boundsInRoot.split(",")
+    val nb =
+      if (p.size == 4) {
+        val t = p[1].trim().toIntOrNull()
+        val b = p[3].trim().toIntOrNull()
+        if (t != null && b != null) "${p[0].trim()},${t + dy},${p[2].trim()},${b + dy}"
+        else boundsInRoot
+      } else boundsInRoot
+    return copy(boundsInRoot = nb, children = children.map { it.shiftY(dy) })
+  }
+
+  /** The `TransformingLazyColumn`'s item container — the subcomposition node holding the most cards. */
+  private fun findItemContainer(root: LayoutInspectorNode): LayoutInspectorNode? {
+    var best: LayoutInspectorNode? = null
+    var bestCount = 0
+    fun visit(n: LayoutInspectorNode) {
+      val cards = n.children.count { it.tokens?.backgroundColor == "#FF332E3C" }
+      if (n.component == "LayoutNodeSubcompositionsState" && cards > bestCount) {
+        best = n
+        bestCount = cards
+      }
+      n.children.forEach(::visit)
+    }
+    visit(root)
+    return best
+  }
+
+  private fun findCurved(root: LayoutInspectorNode): LayoutInspectorNode? {
+    if (root.curvedTexts.isNotEmpty()) return root
+    root.children.forEach { c -> findCurved(c)?.let { return it } }
+    return null
+  }
+
+  private fun collectSemText(
+    node: ComposeSemanticsNode,
+    dy: Int,
+    seen: MutableSet<String>,
+    out: MutableList<ComposeSemanticsNode>,
+  ) {
+    val t = node.text?.takeIf { it.isNotBlank() } ?: node.layoutText?.takeIf { it.isNotBlank() }
+    val b = node.boundsInRoot.split(",").mapNotNull { it.trim().toIntOrNull() }
+    if (t != null && b.size == 4 && b[3] > b[1]) {
+      val absTop = b[1] + dy
+      val key = "$t@${absTop / 6}"
+      if (seen.add(key)) out.add(node.copy(children = emptyList()).shiftY(dy))
+    }
+    node.children.forEach { collectSemText(it, dy, seen, out) }
+  }
+
+  @Test
+  fun `slice-stitches the real preview into a capsule`() {
+    RuntimeEnvironment.setQualifiers("w${deviceDp}dp-h${deviceDp}dp-round-mdpi")
+    @Suppress("DEPRECATION") val rule = createAndroidComposeRule<ComponentActivity>()
+
+    data class Cap(
+      val layout: LayoutInspectorNode,
+      val sem: ComposeSemanticsNode,
+      val titleTops: Map<String, Int>,
+      val frame: File,
+    )
+    val caps = mutableListOf<Cap>()
+    var settledFrame: File? = null
+    var edgeButtonBounds: LayoutInspectorBounds? = null
+
+    val statement =
+      object : Statement() {
+        override fun evaluate() {
+          val slotTables = mutableSetOf<CompositionData>()
+          rule.mainClock.autoAdvance = false
+          val rml = WearReduceMotionLocal.get()
+          assertNotNull("wear-compose-foundation on classpath", rml)
+          rule.setContent {
+            InspectableContent(slotTables) {
+              CompositionLocalProvider(rml!! provides true) { WearList() }
+            }
+          }
+          rule.mainClock.advanceTimeBy(500)
+          rule.waitForIdle()
+
+          fun capture(@Suppress("UNUSED_PARAMETER") scrolledPx: Float) {
+            val frame = File(rootDir, "sscap-${caps.size}.png")
+            rule.onRoot().captureRoboImage(file = frame)
+            val semRoot = rule.onRoot(useUnmergedTree = true).fetchSemanticsNode()
+            val sem = ComposeSemanticsDataProducer.buildPayload(semRoot, density = 1f)
+            val ctx =
+              PreviewContext.Builder(
+                  previewId = "ss",
+                  backend = null,
+                  renderMode = null,
+                  outputBaseName = "ss",
+                )
+                .rootForTest(semRoot.root as RootForTest)
+                .addSlotTables(slotTables.toList())
+                .parameterInformationCollected()
+                .build()
+            val layout = LayoutInspectorDataProducer.buildPayload(ctx, density = 1f)!!
+            // Title tops for chaining: text strings that occur exactly once in this slice.
+            val rows = mutableListOf<Triple<String, Int, Int>>()
+            textRows(sem.root, rows)
+            val counts = rows.groupingBy { it.first }.eachCount()
+            val unique = rows.filter { counts[it.first] == 1 }.associate { it.first to it.second }
+            caps.add(Cap(layout.root, sem.root, unique, frame))
+          }
+
+          driveScrollByViewport(
+            rule = rule,
+            axis = ScrollAxis.VERTICAL,
+            stepPx = deviceDp * 0.8f,
+            maxScrollPx = 0,
+          ) { scrolledPx ->
+            capture(scrolledPx)
+          }
+
+          // The EdgeButton reveals with an animation that lands *after* the scroll settles, so the
+          // last scroll slice catches it mid-reveal (a grey nub). Advance the clock to let it settle,
+          // then capture a final frame + its EdgeButton bounds — the raster path's "final frame".
+          rule.mainClock.advanceTimeBy(2000)
+          rule.waitForIdle()
+          settledFrame = File(rootDir, "ss-settled.png")
+          rule.onRoot().captureRoboImage(file = settledFrame!!)
+          val semRoot2 = rule.onRoot(useUnmergedTree = true).fetchSemanticsNode()
+          val ctx2 =
+            PreviewContext.Builder(
+                previewId = "ss2",
+                backend = null,
+                renderMode = null,
+                outputBaseName = "ss2",
+              )
+              .rootForTest(semRoot2.root as RootForTest)
+              .addSlotTables(slotTables.toList())
+              .parameterInformationCollected()
+              .build()
+          val settledLayout = LayoutInspectorDataProducer.buildPayload(ctx2, density = 1f)!!
+          // EdgeButton label chip carries the primary-container fill; its top anchors the crescent.
+          fun findEdge(n: LayoutInspectorNode): LayoutInspectorNode? {
+            if (n.tokens?.backgroundColor == "#FFE9DDFF" && n.bounds.bottom > n.bounds.top) return n
+            n.children.forEach { c -> findEdge(c)?.let { return it } }
+            return null
+          }
+          edgeButtonBounds = findEdge(settledLayout.root)?.bounds
+        }
+      }
+    rule.apply(statement, Description.createTestDescription(javaClass, "ss")).evaluate()
+
+    // Chain offsets by shared unique-text movement (reported scrolledPx drifts near the end).
+    val offsets = IntArray(caps.size)
+    for (i in 1 until caps.size) {
+      val shared = caps[i - 1].titleTops.keys.intersect(caps[i].titleTops.keys)
+      val deltas =
+        shared.map { caps[i - 1].titleTops.getValue(it) - caps[i].titleTops.getValue(it) }.sorted()
+      offsets[i] = offsets[i - 1] + if (deltas.isEmpty()) 0 else deltas[deltas.size / 2]
+    }
+
+    // Collect unique list items (scrollable's children) + their text, placed at true absolute y.
+    val itemLayers = mutableListOf<LayoutInspectorNode>()
+    val seenTops = mutableSetOf<Int>()
+    val semLayers = mutableListOf<ComposeSemanticsNode>()
+    val seenText = mutableSetOf<String>()
+    for (i in caps.indices) {
+      val container = findItemContainer(caps[i].layout) ?: continue
+      for (child in container.children) {
+        if (child.bounds.bottom <= child.bounds.top) continue
+        val absTop = child.bounds.top + offsets[i]
+        if (seenTops.add(absTop / 6)) itemLayers.add(child.shiftY(offsets[i]))
+      }
+      collectSemText(caps[i].sem, offsets[i], seenText, semLayers)
+    }
+    // Pinned TimeText from the first slice (curved, already on the top rim).
+    val timeText = findCurved(caps.first().layout)?.let { listOf(it.shiftY(0)) } ?: emptyList()
+
+    val lastItemBottom = itemLayers.maxOf { it.bounds.bottom }
+    // Pinned EdgeButton: crop the settled crescent from the final frame (black-backed, so it
+    // composites onto the black capsule), starting a little above the label so the crescent's upper
+    // curve is included, and placed below the last item.
+    val cropTop = ((edgeButtonBounds?.top ?: 140) - 40).coerceIn(0, deviceDp - 1)
+    val edgeH = deviceDp - cropTop
+    val edgeY = lastItemBottom + 6
+    val totalHeight = edgeY + edgeH + 8
+
+    val combinedLayout =
+      LayoutInspectorPayload(
+        LayoutInspectorNode(
+          nodeId = "ss-root",
+          component = "WearScrollExtract",
+          bounds = LayoutInspectorBounds(0, 0, deviceDp, totalHeight),
+          size = LayoutInspectorSize(deviceDp, totalHeight),
+          children =
+            timeText +
+              itemLayers +
+              LayoutInspectorNode(
+                nodeId = "edge-raster",
+                component = "Image",
+                bounds = LayoutInspectorBounds(0, edgeY, deviceDp, edgeY + edgeH),
+                size = LayoutInspectorSize(deviceDp, edgeH),
+              ),
+        )
+      )
+    val combinedSem =
+      ComposeSemanticsPayload(
+        ComposeSemanticsNode(
+          nodeId = "ss-root",
+          boundsInRoot = "0,0,$deviceDp,$totalHeight",
+          children = semLayers,
+        )
+      )
+
+    // Composite the settled edge crescent into a frame the hybrid export crops from.
+    val settled = ImageIO.read(settledFrame ?: caps.last().frame)
+    val edgeCrop = settled.getSubimage(0, cropTop, deviceDp, edgeH)
+    val composited = BufferedImage(deviceDp, totalHeight, BufferedImage.TYPE_INT_ARGB)
+    composited.createGraphics().apply {
+      drawImage(edgeCrop, 0, edgeY, null)
+      dispose()
+    }
+    val framePng = File(rootDir, "ss-frame.png").also { ImageIO.write(composited, "png", it) }
+
+    ComposeFigmaSvgDataProducer.writeSvg(
+      rootDir = rootDir,
+      previewId = "wear-slice",
+      layout = combinedLayout,
+      semantics = combinedSem,
+      density = 1f,
+      frameImage = framePng,
+      roundClip = true,
+      deviceBackground = "#FF000000",
+    )
+    val svg = File(rootDir, "wear-slice/compose-figma.svg").readText()
+    File("build/wear-scroll-svg/figma-raster").mkdirs()
+    File("build/wear-scroll-svg/wear-slice.svg").writeText(svg)
+    File(rootDir, "wear-slice/figma-raster").listFiles()?.forEach {
+      it.copyTo(File("build/wear-scroll-svg/figma-raster/${it.name}"), overwrite = true)
+    }
+
+    assertTrue("capsule clip", svg.contains("""<clipPath id="deviceRound"><rect"""))
+    assertEquals("all 15 activity titles land", itemCount, itemLayerCount(svg))
+    assertTrue("TimeText on the rim", svg.contains("10:10"))
+    assertTrue("Activity header", svg.contains(">Activity</text>"))
   }
 }
 
