@@ -309,14 +309,27 @@ class ServeCommand(args: List<String>) : Command(args) {
       return
     }
 
-    // Default (opt-in Gradle): unless the caller scoped a `--module` or asked for
-    // `--discover`, run as a pure preview server — no Gradle discover/build, ever —
-    // hosting only the fetched sources (`--bundle(s)` / `--catalogs` / uploaded bundles).
-    // This holds even inside a Gradle checkout, so a stray `serve` at a repo root no longer
-    // kicks off a full multi-module build (which could hang). `runBundleServer` prints a
-    // clear "nothing to serve / pass --discover" error when there are no hosted sources. To
-    // build local previews, pass `--discover` (all modules) or `--module`.
-    if (explicitModule == null && !discover) {
+    // Default (opt-in Gradle): unless something explicitly asks for local Gradle work, run as
+    // a pure preview server — no discover/build, ever — hosting only the fetched sources
+    // (`--bundle(s)` / `--catalogs` / uploaded bundles). This holds even inside a Gradle
+    // checkout, so a stray `serve` at a repo root no longer kicks off a full multi-module
+    // build (which could hang). `runBundleServer` prints a clear "nothing to serve / pass
+    // --discover" error when there are no hosted sources.
+    //
+    // The opt-in signals are `--module` / `--discover` plus the modes that STRUCTURALLY need
+    // the Gradle path (runBundleServer can't do any of them): `--export` (build + write a
+    // bundle, consumed below after the build), `--catalog-source-root` (worktree-based trusted
+    // catalog source-build), and `--revisions` (per-revision worktree forking). Each is an
+    // explicit build request on its own, so it implies discovery — keeping existing callers
+    // (e.g. the deploy image's `serve --export …` and `--catalog-source-root …`) working
+    // without also having to pass `--discover`.
+    val needsGradle =
+      explicitModule != null ||
+        discover ||
+        exportPath != null ||
+        catalogSourceRoot != null ||
+        revisions
+    if (!needsGradle) {
       runBundleServer()
       return
     }
