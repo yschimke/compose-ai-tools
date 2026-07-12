@@ -16,14 +16,14 @@
       "module": "android",
       "pngBasename": "com.example.sampleandroid.NotificationPreviewsKt.bigTextNotificationPreview.png",
       "previewId": "com.example.sampleandroid.NotificationPreviewsKt.bigTextNotificationPreview",
-      "sha256": "8e28a19a5234d51e44a72787955845bbd24db2ec772485e19e7fbdc89f8a8df1",
+      "sha256": "ee6914ce1ea305e1677c3b09495fd1761853eb7d0d1d49e146e4348305f1823a",
       "sidecarBasename": "com.example.sampleandroid.NotificationPreviewsKt.bigTextNotificationPreview.notification.json"
     },
     {
       "module": "android",
       "pngBasename": "com.example.sampleandroid.NotificationPreviewsKt.simpleNotificationPreview.png",
       "previewId": "com.example.sampleandroid.NotificationPreviewsKt.simpleNotificationPreview",
-      "sha256": "32a727e7360965f104f7667e7064fc6f6121537b7dd4cca86f576d02501e8640",
+      "sha256": "970446db1c8f9967e816d69e6abd731706072db3c246486f0b5e00abd36b0cfd",
       "sidecarBasename": "com.example.sampleandroid.NotificationPreviewsKt.simpleNotificationPreview.notification.json"
     },
     {
