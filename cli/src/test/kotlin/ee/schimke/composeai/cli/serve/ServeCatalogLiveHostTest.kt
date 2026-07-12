@@ -250,6 +250,21 @@ class ServeCatalogLiveHostTest {
   }
 
   @Test
+  fun `a plain SVG export of a mapped id prefers the daemon's per-variant vector over the baked slug`() {
+    // The baked figma/<slug>.svg is slug-keyed + light-preferred (the catalog emits one SVG per
+    // component, the light variant), so a `…__dark` id would otherwise serve the LIGHT vector even
+    // though its PNG + live render are dark. A daemon-twinned id must route its plain SVG to the
+    // daemon — which carries the variant's uiMode/theme — NOT the baked slug SVG, which still
+    // exists.
+    val (composite, live, baked) = host()
+    val out = composite.renderSvg(catalogId, PreviewOverrides()) as SvgOutcome.Ok
+    assertEquals("live-svg:$daemonId", out.svg.decodeToString())
+    assertEquals(daemonId, live.lastSvgId)
+    // The baked slug SVG was NOT consulted (the daemon vector wins).
+    assertNull(baked.lastSvgId)
+  }
+
+  @Test
   fun `a plain SVG export falls back to the daemon when the baked vector is absent`() {
     // The SVG row is advertised because a lane can export, but this mapped preview has no baked
     // figma/<slug>.svg — the baked lane 404s. Rather than 404 the advertised link, a plain

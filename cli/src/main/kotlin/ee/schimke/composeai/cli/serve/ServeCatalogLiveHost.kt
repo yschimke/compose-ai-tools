@@ -166,10 +166,18 @@ class ServeCatalogLiveHost(
     daemonIdForOverrideRender(previewId, overrides)?.let {
       return liveHostFor(it).renderSvg(it, overrides)
     }
-    val bakedOutcome = baked.renderSvg(previewId, overrides)
-    if (bakedOutcome !is SvgOutcome.NotFound) return bakedOutcome
-    val daemonId = alias[previewId] ?: return bakedOutcome
-    return liveHostFor(daemonId).renderSvg(daemonId, overrides)
+    // No override — but the baked `figma/<slug>.svg` is keyed by component slug and light-preferred
+    // (the catalog emits one SVG per component, the light variant), so a `…__dark` id would serve
+    // the
+    // LIGHT vector even though its PNG and live render are dark. Prefer the daemon's per-variant
+    // SVG,
+    // which carries the actual variant's theme (uiMode), for any daemon-twinned id; the baked slug
+    // SVG stays the fallback for unmapped (Android-only) ids and if the daemon can't export.
+    alias[previewId]?.let { daemonId ->
+      val live = liveHostFor(daemonId).renderSvg(daemonId, overrides)
+      if (live !is SvgOutcome.NotFound) return live
+    }
+    return baked.renderSvg(previewId, overrides)
   }
 
   /**

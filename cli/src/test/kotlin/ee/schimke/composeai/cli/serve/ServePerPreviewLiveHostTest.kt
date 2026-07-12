@@ -178,18 +178,27 @@ class ServePerPreviewLiveHostTest {
   }
 
   @Test
-  fun `svg prefers the per-preview daemon for an override, else the baked vector`() {
+  fun `svg prefers the per-preview daemon for a mapped id, override or not`() {
     val live = RecordingHost(listOf(ServePreview(daemonId, daemonId)), "live", streaming = true)
     val (composite, baked) = host(live)
     // Override → the daemon's figma-svg, by daemon id.
     val overSvg = composite.renderSvg(catalogId, knobOverride())
     assertEquals(daemonId, live.lastSvgId)
     assertEquals("live-svg:$daemonId", (overSvg as SvgOutcome.Ok).svg.decodeToString())
-    // No override → the baked catalog's committed vector (no daemon).
+    // No override → STILL the daemon's per-variant vector. The baked figma/<slug>.svg is slug-keyed
+    // +
+    // light-preferred (the catalog emits one SVG per component, the light variant), so a `…__dark`
+    // id
+    // would otherwise serve the LIGHT vector even though its PNG + live render are dark. A mapped
+    // id
+    // routes its plain SVG to the daemon (which carries the variant's uiMode/theme); the baked slug
+    // SVG — which still exists here — isn't consulted.
     resolved.clear()
-    val bakedSvg = composite.renderSvg(catalogId, PreviewOverrides())
-    assertEquals(catalogId, baked.lastSvgId)
-    assertEquals("baked-svg:$catalogId", (bakedSvg as SvgOutcome.Ok).svg.decodeToString())
+    live.lastSvgId = null
+    val plainSvg = composite.renderSvg(catalogId, PreviewOverrides())
+    assertEquals(daemonId, live.lastSvgId)
+    assertEquals("live-svg:$daemonId", (plainSvg as SvgOutcome.Ok).svg.decodeToString())
+    assertNull(baked.lastSvgId)
   }
 
   @Test
