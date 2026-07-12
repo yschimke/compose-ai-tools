@@ -1,11 +1,14 @@
 # Representing scrolling screens in the layered SVG export
 
-Status: **mobile validated and landed. Wear: capsule clip + reduce-motion + the grow-and-measure loop
-land and are covered on real geometry (`WearScrollSvgGrowthTest`, using the real `ActivityListLongPreview`
-code), BUT grow-tall does not fully fit Wear — a real `ScreenScaffold`'s round-face content padding is
-a fraction of screen height, so it balloons into a top gap on the grown frame. The production-useful
-Wear path is the split-scaffold extraction (render native, composite the pinned chrome around the
-list) — not yet built.**
+Status: **mobile validated and landed. Wear: the production path is the **slice-stitch** — render the
+real screen at native round size, drive its scroll, and stitch the captured slices into one tall
+editable capsule (the tree-level analogue of the raster `ScrollSliceStitcher`). The pure assembler
+(`WearScrollSliceStitcher`) and the render-side orchestration (`WearScrollSvgAssembler`) are landed
+and covered end-to-end on the real `ActivityListLongPreview` code, wired into the daemon's
+`figma-svg-long` path, and served at `GET /render/<id>.svg?scroll=long` (viewer: SVG mode → "Full page
+(scroll)"). The earlier grow-tall pass is kept as the phone path and as the round fallback when a
+preview isn't scrollable — it does not fully fit Wear, because a real `ScreenScaffold`'s round-face
+content padding is a fraction of screen height and balloons into a top gap when the frame is grown.**
 
 ## Problem
 
@@ -207,14 +210,29 @@ inside the stadium mask.)*
   preview would be faking a screen no developer writes, so the test uses the real preview and treats
   the gap as the honest signal that **grow-tall is not the right Wear strategy**.
 
-- **Remaining (the real Wear work): the split-scaffold extraction.** The useful Wear path is the one
-  first proposed above — *don't grow the frame*. Render the real screen at its native round size
-  (padding stays native), capture the pinned chrome (`TimeText` at scroll-start, the `EdgeButton` at
-  scroll-end) and the unscaled list slices, and composite them into the capsule — the tree-level
-  analogue of what the raster LONG path already does with `ScrollSliceStitcher`. It needs no preview
-  edits (the feature does the work) and sidesteps the height-relative padding entirely. Also remaining:
-  registering a Wear scroll `@Preview` with the preview-harness for CI visual diffing, and the same
-  **override-aware** re-render gap the mobile path has.
+- **Landed (the real Wear path): the slice-stitch.** *Don't grow the frame.* Render the real screen at
+  its native round size (padding stays native), drive its scroll one viewport-step at a time, capture
+  the pinned chrome (`TimeText` at scroll-start, the `EdgeButton` from a settled final frame) and the
+  unscaled list slices, and stitch them into the capsule — the tree-level analogue of what the raster
+  LONG path does with `ScrollSliceStitcher`. It needs no preview edits and sidesteps the
+  height-relative padding entirely.
+  - **Pure assembler:** [`WearScrollSliceStitcher`](../../data/layoutinspector/core/src/main/kotlin/ee/schimke/composeai/data/layoutinspector/WearScrollSliceStitcher.kt)
+    (`data-layoutinspector-core`) — chains slices by shared once-occurring text movement (not the
+    drifting scroll offset), places each item at its true content position de-duplicated across
+    overlaps, pins `TimeText`, and emits the Canvas-drawn `EdgeButton` crescent as one raster layer.
+    Unit-tested in `WearScrollSliceStitcherTest`.
+  - **Render orchestration:** [`WearScrollSvgAssembler`](../../renderers/android/src/main/kotlin/ee/schimke/composeai/renderer/WearScrollSvgAssembler.kt)
+    (`renderer-android`) drives the live scroll via `driveScrollByViewport`, captures the layout +
+    semantics trees per slice, runs the stitcher, and composites the settled crescent. Exercised
+    end-to-end on the real `ActivityListLongPreview` by `WearScrollSvgGrowthTest`.
+  - **Daemon-wired + served:** the daemon's `figma-svg-long` path routes a round Wear preview into
+    `runWearScrollSliceSvg` (which calls the same assembler), writing the capsule to
+    `<dataDir>/<previewId>/figma-long/compose-figma-long.svg`; the preview server serves it at
+    `GET /render/<id>.svg?scroll=long` and the viewer surfaces it as the "Full page (scroll)" toggle
+    under SVG mode. A round preview that turns out not to be scrollable falls back to the grow-tall /
+    inscribed-circle export.
+- **Remaining:** registering a Wear scroll `@Preview` with the preview-harness for CI visual diffing,
+  and the same **override-aware** re-render gap the mobile path has.
 
 ## Non-goals
 

@@ -67,6 +67,10 @@ dependencies {
   // stay in `:data-scroll-core` so the desktop renderer can pull them in without dragging
   // Compose test JUnit deps.
   implementation(project(":data-scroll-android"))
+  // Layout-inspector models + the pure Wear scroll-slice stitcher (`WearScrollSliceStitcher`) that
+  // `WearScrollSvgAssembler` drives; the connector's SVG producers stay a `testImplementation` /
+  // daemon-side dependency, so main only pulls the backend-agnostic core.
+  implementation(project(":data-layoutinspector-core"))
   // Focus / keyboard-traversal connector. Owns `KeyboardInputModeManager`, the
   // `LaunchedEffect`-driven focus walk via `FocusOverrideExtension`, the per-capture state
   // holder `FocusController`, and the post-capture `FocusOverlay`. The renderer's per-capture
