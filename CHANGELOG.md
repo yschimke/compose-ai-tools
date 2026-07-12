@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.16.43](https://github.com/yschimke/compose-ai-tools/compare/v0.16.42...v0.16.43) (2026-07-12)
+
+
+### Features
+
+* **deploy:** bake Caddyfile into a Watchtower-watched image ([#2445](https://github.com/yschimke/compose-ai-tools/issues/2445)) ([d5fb4f7](https://github.com/yschimke/compose-ai-tools/commit/d5fb4f7a29a2db969c7e42728f0f65ab126e1dd6))
+
+
+### Bug Fixes
+
+* **ci:** boot serve-lanes module-less so the daemon actually comes up ([#2446](https://github.com/yschimke/compose-ai-tools/issues/2446)) ([62b6d93](https://github.com/yschimke/compose-ai-tools/commit/62b6d93405e87532235181f5c9013d5a3365b738))
+
 ## [0.16.42](https://github.com/yschimke/compose-ai-tools/compare/v0.16.41...v0.16.42) (2026-07-12)
 
 
