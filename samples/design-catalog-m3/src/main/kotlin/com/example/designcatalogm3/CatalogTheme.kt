@@ -20,7 +20,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.designcatalogm3.shared.LocalGenericFonts
 import com.example.designcatalogm3.shared.catalogTypography
-import ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared
 
 /**
  * The catalog's theme wrapper. Each sticker is a stock [MaterialTheme] — the default light/dark
@@ -34,32 +33,18 @@ import ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared
  * stickers stable across the Android→CMP renderer switch (Skiko's own default is not Roboto).
  */
 @Composable
-fun CatalogSticker(background: Boolean = false, content: @Composable () -> Unit) {
+fun CatalogSticker(content: @Composable () -> Unit) {
   val dark = isSystemInDarkTheme()
   CompositionLocalProvider(LocalGenericFonts provides CatalogGenericFonts) {
     MaterialTheme(
       colorScheme = if (dark) darkColorScheme() else lightColorScheme(),
       typography = catalogTypography(Roboto),
     ) {
-      // Component stickers render on a TRANSPARENT surface by default, so each one reads as a
-      // component silhouette on whatever the viewer paints behind the transparent PNG (the preview
-      // server / catalog index checkerboard). `contentColor = onSurface` keeps text/icons themed so
-      // they stay readable against that backing.
-      //
-      // A preview opts back into the opaque themed `colorScheme.surface` with `background = true` —
-      // for specimens that are illegible as a bare silhouette (the generic-family text specimens
-      // are
-      // plain `onSurface` glyphs with no container of their own). The theme-aware `surface` keeps
-      // them light-on-dark / dark-on-light in the matching mode.
-      //
-      // The renderer's `clearBackground` ("crisp outline") override still forces transparent even
-      // for `background = true`, so an explicit clear wins over the per-preview opt-in.
-      val cleared = LocalPreviewBackgroundCleared.current
-      Surface(
-        color =
-          if (background && !cleared) MaterialTheme.colorScheme.surface else Color.Transparent,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-      ) {
+      // Component stickers render on a TRANSPARENT surface, so each one reads as a component
+      // silhouette on whatever the viewer paints behind the transparent PNG (the preview server /
+      // catalog index checkerboard, or the preview server's solid-surface backing). `contentColor =
+      // onSurface` keeps text/icons themed so they stay readable against that backing.
+      Surface(color = Color.Transparent, contentColor = MaterialTheme.colorScheme.onSurface) {
         Box(Modifier.padding(16.dp)) { content() }
       }
     }
@@ -78,8 +63,7 @@ fun CatalogSticker(background: Boolean = false, content: @Composable () -> Unit)
  */
 // No `showBackground` — the harness background stays transparent so a component sticker is a
 // silhouette on the viewer's checkerboard. The sticker's own [CatalogSticker] surface is
-// transparent by default too (opt into an opaque themed surface with `CatalogSticker(background =
-// true)` for text specimens). The full-screen [CatalogTemplate] keeps its device background.
+// transparent too. The full-screen [CatalogTemplate] keeps its device background.
 @Preview(name = "Light", group = "modes")
 @Preview(name = "Dark", uiMode = 32, group = "modes")
 annotation class CatalogModes
