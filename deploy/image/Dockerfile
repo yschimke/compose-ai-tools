@@ -13,7 +13,7 @@
 # `# x-release-please-version` can't go on the ARG line (Docker folds it into the value), so use
 # the block-marker form.
 # x-release-please-start-version
-ARG CP_VERSION=0.16.42
+ARG CP_VERSION=0.16.43
 # x-release-please-end
 
 # ---------------------------------------------------------------------------
