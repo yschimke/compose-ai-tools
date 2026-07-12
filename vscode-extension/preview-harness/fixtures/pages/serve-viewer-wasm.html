@@ -64,14 +64,16 @@ html.cp-bg-transparent .cp-imgwrap, html.cp-bg-transparent .cp-stage {
    or the explicitly-selected catalog theme. Without this a transparent light sticker (dark
    strokes) shown on the dark browser backing — or dark on light — washes to near-invisible.
    Solid mode only; the Transparent toggle's checkerboard still wins via cp-bg-transparent. */
-html:not(.cp-bg-transparent) .cp-card[data-card-theme="light"] .cp-imgwrap { background: #fff; }
-html:not(.cp-bg-transparent) .cp-card[data-card-theme="dark"] .cp-imgwrap { background: #1d1d20; }
+html:not(.cp-bg-transparent) .cp-card[data-bg-theme="light"] .cp-imgwrap { background: #fff; }
+html:not(.cp-bg-transparent) .cp-card[data-bg-theme="dark"] .cp-imgwrap { background: #1d1d20; }
 /* The single-preview viewer's stage follows the preview's background theme the same way the grid
-   thumbnails do (data-card-theme on .cp-viewer): a dark variant — or any preview in a dark-first
-   system like Wear — sits on a dark stage so a light-on-transparent render stays readable.
+   thumbnails do (data-bg-theme on .cp-viewer, kept SEPARATE from the explicit-only
+   data-card-theme filter axis): a dark variant — or any preview in a dark-first system like Wear
+   — sits on a dark stage so a light-on-transparent render stays readable. The viewer JS keeps
+   data-bg-theme in step with the chosen Theme (uiMode) so it doesn't clash after a re-render.
    Solid mode only; the Transparent checkerboard still wins via cp-bg-transparent. */
-html:not(.cp-bg-transparent) .cp-viewer[data-card-theme="dark"] .cp-stage { background: #1d1d20; }
-html:not(.cp-bg-transparent) .cp-viewer[data-card-theme="light"] .cp-stage { background: #fff; }
+html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="dark"] .cp-stage { background: #1d1d20; }
+html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { background: #fff; }
 .cp-bg { display: inline-flex; border: 1px solid #d7d7de; border-radius: 999px; overflow: hidden; }
 .cp-bg-btn { border: 0; background: #fff; color: #6b6b70; font: inherit; font-size: 0.78rem;
   padding: 3px 14px; cursor: pointer; }
@@ -354,12 +356,32 @@ html:not(.cp-bg-transparent) .cp-viewer[data-card-theme="light"] .cp-stage { bac
     var stored = localStorage.getItem("cp-theme");
     if (!themed && !el.value && (stored === "light" || stored === "dark")) el.value = stored;
   } catch (e) {}
-  // Round-trip: a Theme change writes the shared key so the catalog remembers it.
+  // Keep the stage backing colour in step with the CHOSEN theme, so a re-render in the opposite
+  // uiMode never lands a transparent sticker on a clashing surface. The server seeds
+  // data-bg-theme from the baked variant (or the dark-first default); a light/dark Theme choice
+  // overrides it, and clearing it reverts to that default.
+  var bgDefault = (root && root.getAttribute("data-bg-theme")) || "";
+  function syncBg() {
+    if (!root) return;
+    // Only let the Theme choice drive the stage backing when the control can actually re-render
+    // (daemon or Wasm). On a static bundle the select is disabled but the seeding above may still
+    // have copied a remembered localStorage value into el.value — honoring it would tint the
+    // stage while ServeBundleHost keeps returning the UNCHANGED baked PNG. Keep bgDefault there.
+    var chosen =
+      !el.disabled && (el.value === "light" || el.value === "dark") ? el.value : "";
+    var m = chosen || bgDefault;
+    if (m) root.setAttribute("data-bg-theme", m);
+    else root.removeAttribute("data-bg-theme");
+  }
+  // Round-trip: a Theme change writes the shared key so the catalog remembers it, and re-syncs
+  // the stage backing colour.
   el.addEventListener("change", function () {
     if (el.value === "light" || el.value === "dark") {
       try { localStorage.setItem("cp-theme", el.value); } catch (e) {}
     }
+    syncBg();
   });
+  syncBg();
 })();</script>
       <script>(function () {
   "use strict";
