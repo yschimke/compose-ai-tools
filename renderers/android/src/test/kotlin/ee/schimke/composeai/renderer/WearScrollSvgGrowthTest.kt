@@ -501,6 +501,9 @@ class WearScrollSvgGrowthTest {
       density = 1f,
       frameImage = framePng,
       roundClip = true,
+      // These are device previews: paint the black watch face behind the tree (clipped to the
+      // capsule) so the light TimeText/header read correctly and the corners stay transparent.
+      deviceBackground = "#FF000000",
     )
     val svg = File(rootDir, "$previewId/compose-figma.svg").readText()
     File("build/wear-scroll-svg/figma-raster").mkdirs()
@@ -548,6 +551,10 @@ class WearScrollSvgGrowthTest {
     )
     assertTrue("the stacked frame pins TimeText on the rim", svg.contains("10:10"))
     assertTrue("the stacked frame keeps its header", svg.contains(">Activity</text>"))
+    assertTrue(
+      "the device preview paints the black watch face behind the capsule",
+      svg.contains("""rx="113" ry="113" fill="#000000""""),
+    )
     assertTrue("the EdgeButton is composited as a raster <image>", svg.contains("<image "))
     assertTrue(
       "the EdgeButton raster PNG must be written next to the SVG",

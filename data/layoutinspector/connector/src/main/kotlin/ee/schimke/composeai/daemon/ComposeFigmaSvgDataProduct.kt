@@ -70,6 +70,7 @@ object ComposeFigmaSvgDataProducer {
     frameImage: File? = null,
     fontResolver: FigmaFontResolver? = null,
     roundClip: Boolean = false,
+    deviceBackground: String? = null,
     fileSystem: FileSystem = SystemFileSystem,
   ) {
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
@@ -89,6 +90,10 @@ object ComposeFigmaSvgDataProducer {
         // mask the export to the same circle so its square full-frame background doesn't paint the
         // corners the render leaves clear.
         roundClip = roundClip,
+        // A device preview opts into painting its screen background (the black watch face) behind
+        // the
+        // tree, clipped to the device mask; component previews pass null and stay background-free.
+        deviceBackground = deviceBackground,
       )
     val fonts = fontResolver?.let { resolveFonts(model, it, fileSystem) }
     val svg =

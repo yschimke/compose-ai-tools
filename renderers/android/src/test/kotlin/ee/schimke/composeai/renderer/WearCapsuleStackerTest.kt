@@ -114,4 +114,22 @@ class WearCapsuleStackerTest {
     assertNotNull(model.capsuleClip)
     assertNull(model.roundClip)
   }
+
+  @Test
+  fun `device background fills the capsule only for a device preview that opts in`() {
+    val stacked =
+      WearCapsuleStacker.stack(rootId = "t", width = width, parts = List(8) { part("r$it", 60) })
+    // Device preview (has a mask) + opted in ⇒ the screen background is set.
+    val withBg =
+      FigmaSvgModel.from(layout = stacked.layout, roundClip = true, deviceBackground = "#FF000000")
+    assertNotNull(withBg.deviceBackground)
+    assertEquals("#000000", withBg.deviceBackground!!.hex)
+    // Device preview but not opted in ⇒ no background (unchanged export).
+    assertNull(FigmaSvgModel.from(layout = stacked.layout, roundClip = true).deviceBackground)
+    // Component preview (no device mask) ⇒ no background even when a colour is passed.
+    assertNull(
+      FigmaSvgModel.from(layout = stacked.layout, roundClip = false, deviceBackground = "#FF000000")
+        .deviceBackground
+    )
+  }
 }
