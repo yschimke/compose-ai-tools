@@ -101,6 +101,16 @@ function imageLabel(image) {
   return esc(image.theme ?? image.size ?? image.state ?? "");
 }
 
+/**
+ * The checkerboard backing for a capture, chosen so a transparent sticker reads on the backing that
+ * matches its baked theme — a light-theme component (dark strokes/text) sits on a LIGHT check, a
+ * dark-theme (or theme-less) one on the default dark check. Emitted as a `data-bg` attribute rather
+ * than a class so the `.shot` / `.state-shot` class hooks stay intact.
+ */
+function bgThemeAttr(image) {
+  return String(image?.theme ?? "").toLowerCase() === "light" ? ' data-bg="light"' : "";
+}
+
 /** The component's a11y greenlines collapsed to short role/severity chips. */
 function greenlineChips(component) {
   const lines = component.greenlines ?? [];
@@ -128,7 +138,7 @@ function componentCard(component, wireframeSlugs, figmaSvgSlugs) {
     ? `<a class="statechip" href="#d-${slug(id)}">+${extras.length} ${noun}${extras.length > 1 ? "s" : ""}</a>`
     : "";
   const figure = img
-    ? `<a class="shot" href="#d-${slug(id)}" aria-label="Zoom ${esc(id)}"><img loading="lazy" src="${esc(img.path)}" alt="${esc(id)}" /></a>`
+    ? `<a class="shot"${bgThemeAttr(img)} href="#d-${slug(id)}" aria-label="Zoom ${esc(id)}"><img loading="lazy" src="${esc(img.path)}" alt="${esc(id)}" /></a>`
     : `<div class="shot shot--missing">no render</div>`;
   return `<article class="card" id="c-${slug(id)}">
   ${figure}
@@ -157,7 +167,7 @@ function componentDetail(component) {
       const shots = group.images
         .map(
           (image) =>
-            `<div class="state-shot"><img loading="lazy" src="${esc(image.path)}" alt="${esc(id)} ${esc(group.label)}" /><span>${imageLabel(image)}</span></div>`,
+            `<div class="state-shot"${bgThemeAttr(image)}><img loading="lazy" src="${esc(image.path)}" alt="${esc(id)} ${esc(group.label)}" /><span>${imageLabel(image)}</span></div>`,
         )
         .join("");
       return `<figure class="state"><figcaption>${esc(group.label)}</figcaption><div class="state-shots">${shots}</div></figure>`;
@@ -274,16 +284,21 @@ export function renderIndexHtml(catalog, opts = {}) {
   .group h2 { font-size:16px; border-bottom:1px solid var(--line); padding-bottom:8px; position:sticky; top:0; background:var(--bg); }
   .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(180px,1fr)); gap:16px; }
   .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
-  /* Checkerboard so transparent component stickers read clearly; full-screen
-     stickers carry their own black round and just sit on top of it. */
-  .shot { margin:0; display:grid; place-items:center; min-height:120px; padding:12px;
-    background-color:#161617;
+  /* Theme-aware checkerboard so a transparent component sticker reads on the backing that matches
+     its baked theme — a light-theme component (dark strokes/text) on a LIGHT check, a dark-theme (or
+     theme-less) one on the default dark check — instead of light-mode content washing out on a fixed
+     dark backing. --ck-a / --ck-b are the two check colours; [data-bg=light] swaps them. Full-screen
+     stickers carry their own round and just sit on top. Shared by the grid hero and zoom variants. */
+  .shot, .state-shot { --ck-a:#161617; --ck-b:#202022;
+    background-color:var(--ck-a);
     background-image:
-      linear-gradient(45deg,#202022 25%,transparent 25%),
-      linear-gradient(-45deg,#202022 25%,transparent 25%),
-      linear-gradient(45deg,transparent 75%,#202022 75%),
-      linear-gradient(-45deg,transparent 75%,#202022 75%);
+      linear-gradient(45deg,var(--ck-b) 25%,transparent 25%),
+      linear-gradient(-45deg,var(--ck-b) 25%,transparent 25%),
+      linear-gradient(45deg,transparent 75%,var(--ck-b) 75%),
+      linear-gradient(-45deg,transparent 75%,var(--ck-b) 75%);
     background-size:16px 16px; background-position:0 0,0 8px,8px -8px,-8px 0; }
+  .shot[data-bg="light"], .state-shot[data-bg="light"] { --ck-a:#e9e9ef; --ck-b:#ffffff; }
+  .shot { margin:0; display:grid; place-items:center; min-height:120px; padding:12px; }
   .shot img { max-width:100%; max-height:240px; height:auto; display:block; }
   a.shot { cursor:zoom-in; text-decoration:none; }
   .shot--missing { color:var(--muted); font-style:italic; }
@@ -315,13 +330,6 @@ export function renderIndexHtml(catalog, opts = {}) {
   figure.state figcaption { font-size:12px; color:var(--muted); margin-bottom:6px; text-transform:capitalize; }
   .state-shots { display:flex; flex-wrap:wrap; gap:10px; }
   .state-shot { display:flex; flex-direction:column; align-items:center; gap:5px;
-    background-color:#161617;
-    background-image:
-      linear-gradient(45deg,#202022 25%,transparent 25%),
-      linear-gradient(-45deg,#202022 25%,transparent 25%),
-      linear-gradient(45deg,transparent 75%,#202022 75%),
-      linear-gradient(-45deg,transparent 75%,#202022 75%);
-    background-size:16px 16px; background-position:0 0,0 8px,8px -8px,-8px 0;
     border:1px solid var(--line); border-radius:10px; padding:12px; }
   .state-shot img { max-width:220px; max-height:220px; height:auto; display:block; }
   .state-shot span { font-size:11px; color:var(--muted); text-transform:capitalize; }
