@@ -7,9 +7,17 @@
 {$DOMAIN} {
 	encode zstd gzip
 
+	# The backend serves two long-lived request shapes: multi-second cold renders
+	# and the persistent /ws/ WebSocket frame lane (Live Compose). Stream responses
+	# straight through (flush_interval -1) and DON'T put a read deadline on the
+	# upstream connection — a `read_timeout` on the http transport fails the
+	# WebSocket upgrade with a 502 (the /ws/ frame lane never opens). Bound only the
+	# initial dial; the app enforces its own render timeout, so an un-capped read
+	# here won't hold a render open forever.
 	reverse_proxy preview:8080 {
+		flush_interval -1
 		transport http {
-			read_timeout 120s
+			dial_timeout 30s
 		}
 	}
 }
