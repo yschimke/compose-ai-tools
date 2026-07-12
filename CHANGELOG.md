@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.16.44](https://github.com/yschimke/compose-ai-tools/compare/v0.16.43...v0.16.44) (2026-07-12)
+
+
+### Features
+
+* **serve:** make local Gradle discovery opt-in via --discover ([#2451](https://github.com/yschimke/compose-ai-tools/issues/2451)) ([460ad9c](https://github.com/yschimke/compose-ai-tools/commit/460ad9c61fe62eff61b892e986a8d5db77e749f5))
+
+
+### Bug Fixes
+
+* **serve:** render SVG on the daemon so dark variants aren't served the light vector ([#2448](https://github.com/yschimke/compose-ai-tools/issues/2448)) ([8ecdd47](https://github.com/yschimke/compose-ai-tools/commit/8ecdd47a548fc8492625c5672478953f86f06624))
+* **serve:** separate stage background theme from the Light/Dark filter axis and sync it to the Theme choice ([#2450](https://github.com/yschimke/compose-ai-tools/issues/2450)) ([c76fd93](https://github.com/yschimke/compose-ai-tools/commit/c76fd93224b54c5dd079ed44dbc203da65924fef))
+* **serve:** stage background follows the preview theme; Wear is dark-first ([#2449](https://github.com/yschimke/compose-ai-tools/issues/2449)) ([8bb22cc](https://github.com/yschimke/compose-ai-tools/commit/8bb22cc81395cfdf57b9a534716cf33200d78d94))
+
 ## [0.16.43](https://github.com/yschimke/compose-ai-tools/compare/v0.16.42...v0.16.43) (2026-07-12)
 
 
