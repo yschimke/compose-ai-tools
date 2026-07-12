@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.16.41](https://github.com/yschimke/compose-ai-tools/compare/v0.16.40...v0.16.41) (2026-07-12)
+
+
+### Features
+
+* **daemon:** serve Wear scroll-slice capsule via figma-svg-long + viewer toggle ([#2436](https://github.com/yschimke/compose-ai-tools/issues/2436)) ([bcd1059](https://github.com/yschimke/compose-ai-tools/commit/bcd1059604ed8e0c5f422b7286ac0850671d844c))
+* **design-catalog-m3:** transparent component stickers, text specimens keep a surface ([#2432](https://github.com/yschimke/compose-ai-tools/issues/2432)) ([5649f6c](https://github.com/yschimke/compose-ai-tools/commit/5649f6c4e5a5cd7ea3d745cd025842753bd43732))
+* **layoutinspector:** slice-stitch real Wear preview into a tall capsule SVG ([#2430](https://github.com/yschimke/compose-ai-tools/issues/2430)) ([2faab0c](https://github.com/yschimke/compose-ai-tools/commit/2faab0c281656e410213a2a4bdb255c3677e443a))
+* **serve:** default sticker backing to a solid surface, add Background/Transparent toggle ([#2435](https://github.com/yschimke/compose-ai-tools/issues/2435)) ([2ec6a2e](https://github.com/yschimke/compose-ai-tools/commit/2ec6a2e76bf18aae4223fbb9d52a1042c09559b8))
+* **wear:** publish wear-preview-runtime for isolated TLC item scaling ([#2433](https://github.com/yschimke/compose-ai-tools/issues/2433)) ([186312d](https://github.com/yschimke/compose-ai-tools/commit/186312dee62633a6ad567efa41974d292c021344))
+
+
+### Bug Fixes
+
+* **daemon:** wrap-height Android previews instead of clamping to 320px ([#2434](https://github.com/yschimke/compose-ai-tools/issues/2434)) ([4d81128](https://github.com/yschimke/compose-ai-tools/commit/4d81128c6491f06101637a8aa20abf7169c87bf0))
+* **serve:** keep transparent catalog stickers legible via theme-aware backing ([#2437](https://github.com/yschimke/compose-ai-tools/issues/2437)) ([5af3aac](https://github.com/yschimke/compose-ai-tools/commit/5af3aac266a29619cb4caae424a66da6d4cd002d))
+
 ## [0.16.40](https://github.com/yschimke/compose-ai-tools/compare/v0.16.39...v0.16.40) (2026-07-11)
 
 
