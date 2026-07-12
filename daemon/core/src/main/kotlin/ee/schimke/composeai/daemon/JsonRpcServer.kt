@@ -2046,6 +2046,14 @@ class JsonRpcServer(
     // the fetch's `params` bag) into the re-render, so a `?scroll=long` fetch at non-default
     // overrides produces the matching artefact rather than the preview's defaults.
     val overrides = decodeFetchOverrides(params.params)
+    // Register the overrides against this hostId (as `renderNow` does) so `emitRenderFinished`
+    // hands
+    // them to `onRender` — registries that stamp per-render metadata (e.g. locale / font-scale in
+    // the
+    // strings product) must see this fetch's overrides, not null, or an override-bearing scroll
+    // fetch
+    // records its data products as if the default preview rendered.
+    overrides?.let { hostIdToOverrides[hostId] = it }
     val payload = encodeRenderPayloadWithMode(previewId, mode, overrides)
     Thread(
         {

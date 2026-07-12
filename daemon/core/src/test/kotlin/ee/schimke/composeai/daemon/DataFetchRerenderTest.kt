@@ -159,6 +159,13 @@ class DataFetchRerenderTest {
         "force must be stripped before the post-rerender re-ask",
         reaskParams?.get("force"),
       )
+      // The overrides must also reach `onRender` (registered against the hostId) so per-render
+      // metadata (locale / font-scale) isn't recorded as the default preview's.
+      assertEquals(
+        "onRender should observe the fetch overrides",
+        UiMode.DARK,
+        producer.lastOnRenderOverrides?.uiMode,
+      )
     }
   }
 
@@ -397,10 +404,17 @@ class DataFetchRerenderTest {
     override fun attachmentsFor(previewId: String, kinds: Set<String>) =
       emptyList<ee.schimke.composeai.daemon.protocol.DataProductAttachment>()
 
+    @Volatile var lastOnRenderOverrides: PreviewOverrides? = null
+
     override fun onRender(previewId: String, result: RenderResult) {
       onRenderCalls.incrementAndGet()
       lastOnRenderPreviewId = previewId
       lastOnRenderMetrics = result.metrics
+    }
+
+    override fun onRender(previewId: String, result: RenderResult, overrides: PreviewOverrides?) {
+      lastOnRenderOverrides = overrides
+      onRender(previewId, result)
     }
 
     /** Called by [TestRenderHost] when the dispatcher submits a render. */
