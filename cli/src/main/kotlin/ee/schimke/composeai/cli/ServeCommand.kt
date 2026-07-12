@@ -78,6 +78,16 @@ class ServeCommand(args: List<String>) : Command(args) {
   private val revisions: Boolean = "--revisions" in args
 
   /**
+   * Opt in to local Gradle discovery + build. By default `serve` never runs Gradle: it hosts only
+   * the fetched sources (`--bundle` / `--bundles` / `--catalogs` / uploaded bundles) as a pure
+   * preview server, even when launched from inside a Gradle checkout. Passing `--discover` (or
+   * scoping with `--module <path>`) opts into the old behaviour — discover the project's modules,
+   * build their previews, and host one. Kept off by default because a stray `serve` at a repo root
+   * would otherwise trigger a full module build (and, on a large multi-module tree, hang).
+   */
+  private val discover: Boolean = "--discover" in args
+
+  /**
    * Trusted server-side re-render (SECURITY/RCE, opt-in, default off). When set, a `--catalogs`
    * catalog that verifies as `Trusted` AND declares a `source` is served by a **daemon-backed,
    * re-renderable** session built from that source (full-fidelity overrides) instead of static
@@ -299,14 +309,27 @@ class ServeCommand(args: List<String>) : Command(args) {
       return
     }
 
-    // Module-less mode: no --module and no local Gradle project to build, but there ARE hosted
-    // sources (fetched --bundle(s) / --catalogs / --accept-bundles). Serve them directly with no
-    // discover/build — the "render any fetched bundle live from a trusted server" path. When run
-    // from inside a project (findProjectRoot != null), the module is still served as before and the
-    // hosted sources ride alongside it.
-    val hasHostedSources =
-      bundleSpecs.isNotEmpty() || bundlesDir != null || catalogRefs.isNotEmpty() || acceptBundles
-    if (explicitModule == null && hasHostedSources && findProjectRoot() == null) {
+    // Default (opt-in Gradle): unless something explicitly asks for local Gradle work, run as
+    // a pure preview server — no discover/build, ever — hosting only the fetched sources
+    // (`--bundle(s)` / `--catalogs` / uploaded bundles). This holds even inside a Gradle
+    // checkout, so a stray `serve` at a repo root no longer kicks off a full multi-module
+    // build (which could hang). `runBundleServer` prints a clear "nothing to serve / pass
+    // --discover" error when there are no hosted sources.
+    //
+    // The opt-in signals are `--module` / `--discover` plus the modes that STRUCTURALLY need
+    // the Gradle path (runBundleServer can't do any of them): `--export` (build + write a
+    // bundle, consumed below after the build), `--catalog-source-root` (worktree-based trusted
+    // catalog source-build), and `--revisions` (per-revision worktree forking). Each is an
+    // explicit build request on its own, so it implies discovery — keeping existing callers
+    // (e.g. the deploy image's `serve --export …` and `--catalog-source-root …`) working
+    // without also having to pass `--discover`.
+    val needsGradle =
+      explicitModule != null ||
+        discover ||
+        exportPath != null ||
+        catalogSourceRoot != null ||
+        revisions
+    if (!needsGradle) {
       runBundleServer()
       return
     }
@@ -540,6 +563,14 @@ class ServeCommand(args: List<String>) : Command(args) {
         "serve: nothing to serve — no --bundle / --bundles / --catalogs registered a session, and " +
           "--accept-bundles is off."
       )
+      // Guide the common "ran serve in my project expecting a build" case: Gradle discovery is now
+      // opt-in, so point at --discover / --module rather than leaving them staring at a bare error.
+      if (findProjectRoot() != null) {
+        System.err.println(
+          "  This looks like a Gradle project. Local preview discovery/build is opt-in: pass " +
+            "--discover to build all modules, or --module <path> to scope to one."
+        )
+      }
       exitProcess(3)
     }
 
@@ -1295,9 +1326,14 @@ class ServeCommand(args: List<String>) : Command(args) {
       Read-only today; bound to loopback unless you opt into LAN exposure.
 
       Options:
-        --module <path>   Module to serve. Optional: when omitted outside a Gradle project, serve
-                          runs module-less — a pure server hosting only the fetched --bundle(s) /
-                          --catalogs / uploaded bundles, with no local discover/build.
+        --module <path>   Module to serve, scoping local Gradle discovery + build to it. Implies
+                          --discover. Omit it (and --discover) to run module-less — see below.
+        --discover        Opt in to local Gradle discovery + build. By default serve NEVER runs
+                          Gradle: it hosts only the fetched --bundle(s) / --catalogs / uploaded
+                          bundles as a pure preview server, even inside a Gradle checkout (so a
+                          stray `serve` at a repo root can't trigger a full — possibly hanging —
+                          module build). Pass --discover to build every module's previews and host
+                          one, or --module <path> to scope to a single module.
         --bundle <url|path>[, --bundle <name>=<url|path>, …]
                           Serve one or more fetched preview bundles directly — no --module, no
                           build. A URL is fetched at startup (operator-supplied, so no SSRF gate;
