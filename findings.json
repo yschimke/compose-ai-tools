@@ -2054,6 +2054,16 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "com.example.designcatalogwearm3.CardScalingPreviewKt.CardScalingScrollGif_Large Round.a11y.png",
+      "cleanBasename": "",
+      "findings": [],
+      "functionName": "CardScalingScrollGif",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.CardScalingPreviewKt.CardScalingScrollGif_Large Round",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CardScalingPreview.kt",
+      "variant": "wearos_large_round"
+    },
+    {
       "annotatedBasename": "CardSticker.a11y.png",
       "cleanBasename": "CardSticker.png",
       "findings": [],
