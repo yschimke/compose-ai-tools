@@ -1,9 +1,13 @@
 package ee.schimke.composeai.renderer
 
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import androidx.activity.ComponentActivity
-import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.InternalComposeApi
@@ -11,15 +15,25 @@ import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.tooling.CompositionData
 import androidx.compose.runtime.tooling.LocalInspectionTables
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.node.RootForTest
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.unit.dp
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
+import androidx.wear.compose.material3.AppScaffold
+import androidx.wear.compose.material3.Button
+import androidx.wear.compose.material3.CardDefaults
+import androidx.wear.compose.material3.EdgeButton
+import androidx.wear.compose.material3.EdgeButtonSize
+import androidx.wear.compose.material3.ListHeader
+import androidx.wear.compose.material3.ListHeaderDefaults
 import androidx.wear.compose.material3.MaterialTheme
+import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
+import androidx.wear.compose.material3.TimeSource
+import androidx.wear.compose.material3.TimeText
 import androidx.wear.compose.material3.TitleCard
 import androidx.wear.compose.material3.SurfaceTransformation
 import androidx.wear.compose.material3.lazy.rememberTransformationSpec
@@ -29,9 +43,17 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import ee.schimke.composeai.daemon.ComposeFigmaSvgDataProducer
 import ee.schimke.composeai.daemon.ComposeSemanticsDataProducer
 import ee.schimke.composeai.daemon.LayoutInspectorDataProducer
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
+import ee.schimke.composeai.data.layoutinspector.LayoutInspectorBounds
+import ee.schimke.composeai.data.layoutinspector.LayoutInspectorNode
+import ee.schimke.composeai.data.layoutinspector.WearScrollSliceStitcher
 import ee.schimke.composeai.data.render.PreviewContext
+import ee.schimke.composeai.scroll.ScrollAxis
+import ee.schimke.composeai.scroll.driveScrollByViewport
+import java.awt.image.BufferedImage
 import java.io.File
 import java.nio.file.Files
+import javax.imageio.ImageIO
 import kotlin.math.ceil
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -78,7 +100,27 @@ class WearScrollSvgGrowthTest {
   // The round-watch device preview we start from: `id:wearos_large_round` is 227×227dp. mdpi keeps
   // px == dp so the grown-height arithmetic reads directly.
   private val deviceDp = 227
-  private val itemCount = 12
+
+  // A realistic activity list — the same content shape as `:samples:wear`'s `LongActivityListScreen`,
+  // the canonical Wear scroll fixture. Each title carries a unique index so it counts cleanly.
+  private val activities: List<Pair<String, String>> =
+    List(15) { i ->
+      when (i % 6) {
+        0 -> "Morning run ${i + 1}" to "5.2 km · 28 min"
+        1 -> "Heart rate ${i + 1}" to "${70 + i} bpm"
+        2 -> "Sleep day ${i + 1}" to "7h ${(i * 3) % 60}m"
+        3 -> "Steps day ${i + 1}" to "${6000 + i * 120}"
+        4 -> "Calories day ${i + 1}" to "${400 + i * 5} kcal"
+        else -> "Timer ${i + 1}" to "${10 + i}:${(i * 7) % 60} remaining"
+      }
+    }
+  private val itemCount
+    get() = activities.size
+
+  /** Deterministic `10:10` clock, mirroring `:samples:wear`'s `FixedPreviewTimeSource`. */
+  private object FixedTime : TimeSource {
+    @Composable override fun currentTime(): String = "10:10"
+  }
 
   @Before
   fun setUp() {
@@ -93,34 +135,56 @@ class WearScrollSvgGrowthTest {
   }
 
   /**
-   * A round-watch list with the **real** Wear `TransformingLazyColumn` item scaling
-   * (`transformedHeight` against a `TransformationSpec`): rows shrink toward the top and bottom of
-   * the round face. Providing `LocalReduceMotion` = [reduceMotion] toggles that scaling — `false`
-   * gives the fisheye watch look, `true` flattens every row to its natural height (the state the
-   * extraction targets). The local is resolved through the same reflective seam the daemon uses.
+   * The **real** Wear activity screen, verbatim from `:samples:wear`'s `ActivityListLongPreview`: an
+   * `AppScaffold` pinning `TimeText` (10:10), a `ScreenScaffold` whose `edgeButton` slot holds the
+   * "Start workout" `EdgeButton`, and a `TransformingLazyColumn` with an "Activity" `ListHeader` and
+   * `TitleCard` rows scaled by `SurfaceTransformation` / `transformedHeight`. No `reduceMotion`
+   * parameter and no hand-tuned padding — this is exactly the code a Wear developer writes. The
+   * extraction harness (see [probe]) provides `LocalReduceMotion` externally when it needs the list
+   * flattened, the same way the daemon does; the preview itself is unaware of it.
    */
   @Composable
-  private fun WearList(reduceMotion: Boolean) {
-    val reduceMotionLocal = WearReduceMotionLocal.get()
-    assertNotNull("wear-compose-foundation must be on this module's test classpath", reduceMotionLocal)
-    CompositionLocalProvider(reduceMotionLocal!! provides reduceMotion) {
-      MaterialTheme {
+  private fun WearList() {
+    MaterialTheme {
+      AppScaffold(timeText = { TimeText(timeSource = FixedTime) }) {
         val state = rememberTransformingLazyColumnState()
         val spec = rememberTransformationSpec()
-        TransformingLazyColumn(
-          state = state,
-          modifier = Modifier.fillMaxSize().background(Color.Black),
-        ) {
-          items(itemCount) { i ->
-            // Real Wear item scaling: `transformedHeight` + `SurfaceTransformation` shrink/curve the
-            // card toward the round face's edges. `LocalReduceMotion` (provided above) flattens both
-            // to natural size — the state the extraction targets.
-            TitleCard(
-              onClick = {},
-              title = { Text("Item $i") },
-              modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-              transformation = SurfaceTransformation(spec),
-            )
+        ScreenScaffold(
+          scrollState = state,
+          edgeButton = {
+            EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) { Text("Start workout") }
+          },
+        ) { contentPadding ->
+          TransformingLazyColumn(
+            state = state,
+            contentPadding = contentPadding,
+            modifier = Modifier.fillMaxSize(),
+          ) {
+            item {
+              ListHeader(
+                modifier =
+                  Modifier.minimumVerticalContentPadding(
+                      top = ListHeaderDefaults.minimumTopListContentPadding,
+                      bottom = 0.dp,
+                    )
+                    .transformedHeight(this, spec),
+                transformation = SurfaceTransformation(spec),
+              ) {
+                Text("Activity")
+              }
+            }
+            items(activities) { (title, subtitle) ->
+              TitleCard(
+                onClick = {},
+                title = { Text(title) },
+                subtitle = { Text(subtitle) },
+                modifier =
+                  Modifier.fillMaxWidth()
+                    .minimumVerticalContentPadding(CardDefaults.minimumVerticalListContentPadding)
+                    .transformedHeight(this, spec),
+                transformation = SurfaceTransformation(spec),
+              )
+            }
           }
         }
       }
@@ -153,7 +217,24 @@ class WearScrollSvgGrowthTest {
         override fun evaluate() {
           val slotTables = mutableSetOf<CompositionData>()
           rule.mainClock.autoAdvance = false
-          rule.setContent { InspectableContent(slotTables) { WearList(reduceMotion) } }
+          // The extraction harness provides Wear's `LocalReduceMotion` externally to flatten the
+          // TransformingLazyColumn scaling — exactly how the daemon does it, via the same reflective
+          // seam. The preview stays a plain Wear screen with no knowledge of it. Resolved off this
+          // module's own classloader (its test classpath carries wear-compose-foundation).
+          val reduceMotionLocal = WearReduceMotionLocal.get()
+          assertNotNull(
+            "wear-compose-foundation must be on this module's test classpath",
+            reduceMotionLocal,
+          )
+          rule.setContent {
+            InspectableContent(slotTables) {
+              if (reduceMotion) {
+                CompositionLocalProvider(reduceMotionLocal!! provides true) { WearList() }
+              } else {
+                WearList()
+              }
+            }
+          }
           rule.mainClock.advanceTimeBy(500)
           rule.waitForIdle()
           // A square frame is a round device → device-crop it to the watch circle; a grown frame is
@@ -207,9 +288,10 @@ class WearScrollSvgGrowthTest {
     return out
   }
 
-  // Count list items by their captured label text — robust whether the card fill lands as a vector
-  // rect or (via the hybrid path) a raster `<image>`.
-  private fun itemLayerCount(svg: String) = Regex(""">Item \d+<""").findAll(svg).count()
+  // Count list items by their captured title text — each activity title is unique, so a present
+  // `<text>…title…</text>` proves that row composed and reached the export.
+  private fun itemLayerCount(svg: String) =
+    activities.count { (title, _) -> svg.contains(">$title</text>") }
 
   @Test
   fun `grows a square round device preview into a tall capsule that carries the whole list`() {
@@ -278,6 +360,142 @@ class WearScrollSvgGrowthTest {
       itemCount,
       itemLayerCount(tallSvg),
     )
+    // The pinned scaffold chrome frames the extracted screen: the ListHeader and the revealed
+    // EdgeButton both land in the tall frame (the scaffold pins them for free — no bespoke capture).
+    assertTrue("the extracted screen keeps its header", tallSvg.contains(">Activity</text>"))
+    assertTrue(
+      "the extracted screen reveals the EdgeButton",
+      tallSvg.contains(">Start workout</text>"),
+    )
+  }
+
+  /**
+   * Slice-stitches the **real** `ActivityListLongPreview` into a capsule SVG: capture the preview at
+   * viewport-steps down its scroll (reduce-motion on, so items are unscaled), feed the layout +
+   * semantics trees to the production [WearScrollSliceStitcher], and export. The stitcher chains the
+   * slices by shared-item movement, places each list item at its true content position, pins TimeText
+   * on the rim, and emits the Canvas-drawn EdgeButton crescent as one raster the test composites from
+   * a settled final frame. The result is the tree-level twin of the raster `render-scroll-long` PNG —
+   * from the unmodified preview, no reconstructed boxes.
+   */
+  @Test
+  fun `slice-stitches the real preview into a capsule`() {
+    RuntimeEnvironment.setQualifiers("w${deviceDp}dp-h${deviceDp}dp-round-mdpi")
+    @Suppress("DEPRECATION") val rule = createAndroidComposeRule<ComponentActivity>()
+
+    val slices = mutableListOf<WearScrollSliceStitcher.Slice>()
+    var settledFrame: File? = null
+    var edgeButtonBounds: LayoutInspectorBounds? = null
+
+    val statement =
+      object : Statement() {
+        override fun evaluate() {
+          val slotTables = mutableSetOf<CompositionData>()
+          rule.mainClock.autoAdvance = false
+          val rml = WearReduceMotionLocal.get()
+          assertNotNull("wear-compose-foundation on classpath", rml)
+          rule.setContent {
+            InspectableContent(slotTables) {
+              CompositionLocalProvider(rml!! provides true) { WearList() }
+            }
+          }
+          rule.mainClock.advanceTimeBy(500)
+          rule.waitForIdle()
+
+          fun captureTree(previewId: String): Pair<LayoutInspectorNode, ComposeSemanticsNode> {
+            val semRoot = rule.onRoot(useUnmergedTree = true).fetchSemanticsNode()
+            val sem = ComposeSemanticsDataProducer.buildPayload(semRoot, density = 1f)
+            val ctx =
+              PreviewContext.Builder(
+                  previewId = previewId,
+                  backend = null,
+                  renderMode = null,
+                  outputBaseName = previewId,
+                )
+                .rootForTest(semRoot.root as RootForTest)
+                .addSlotTables(slotTables.toList())
+                .parameterInformationCollected()
+                .build()
+            val layout = LayoutInspectorDataProducer.buildPayload(ctx, density = 1f)!!
+            return layout.root to sem.root
+          }
+
+          driveScrollByViewport(
+            rule = rule,
+            axis = ScrollAxis.VERTICAL,
+            stepPx = deviceDp * 0.8f,
+            maxScrollPx = 0,
+          ) { _ ->
+            // Force a draw so the layout inspector sees z-sorted children, then capture the trees.
+            rule.onRoot().captureRoboImage(file = File(rootDir, "ss-${slices.size}.png"))
+            val (l, s) = captureTree("ss")
+            slices.add(WearScrollSliceStitcher.Slice(l, s))
+          }
+
+          // The EdgeButton reveals with an animation that lands *after* the scroll settles (the last
+          // scroll slice catches a grey nub). Advance the clock, then capture a settled final frame +
+          // the EdgeButton's bounds — the raster path's "final frame".
+          rule.mainClock.advanceTimeBy(2000)
+          rule.waitForIdle()
+          settledFrame = File(rootDir, "ss-settled.png")
+          rule.onRoot().captureRoboImage(file = settledFrame!!)
+          val (settledLayout, _) = captureTree("ss2")
+          fun findEdge(n: LayoutInspectorNode): LayoutInspectorNode? {
+            if (n.tokens?.backgroundColor == "#FFE9DDFF" && n.bounds.bottom > n.bounds.top) return n
+            n.children.forEach { c -> findEdge(c)?.let { return it } }
+            return null
+          }
+          edgeButtonBounds = findEdge(settledLayout)?.bounds
+        }
+      }
+    rule.apply(statement, Description.createTestDescription(javaClass, "ss")).evaluate()
+
+    // Start the crescent crop a little above the label so its upper curve is included.
+    val cropTop = ((edgeButtonBounds?.top ?: 140) - 40).coerceIn(0, deviceDp - 1)
+    val stitched =
+      WearScrollSliceStitcher.stitch(
+        rootId = "wear-slice",
+        width = deviceDp,
+        slices = slices,
+        edgeCropTop = cropTop,
+      )
+
+    // Composite the settled crescent into the frame the hybrid export crops from (black-backed, so
+    // it lands cleanly on the black capsule face).
+    val framePng =
+      stitched.edge?.let { er ->
+        val settled = ImageIO.read(settledFrame)
+        val crop = settled.getSubimage(0, er.sourceTop, deviceDp, deviceDp - er.sourceTop)
+        val composited = BufferedImage(deviceDp, stitched.height, BufferedImage.TYPE_INT_ARGB)
+        composited.createGraphics().apply {
+          drawImage(crop, er.dest.left, er.dest.top, null)
+          dispose()
+        }
+        File(rootDir, "ss-frame.png").also { ImageIO.write(composited, "png", it) }
+      }
+
+    ComposeFigmaSvgDataProducer.writeSvg(
+      rootDir = rootDir,
+      previewId = "wear-slice",
+      layout = stitched.layout,
+      semantics = stitched.semantics,
+      density = 1f,
+      frameImage = framePng,
+      roundClip = true,
+      deviceBackground = "#FF000000",
+    )
+    val svg = File(rootDir, "wear-slice/compose-figma.svg").readText()
+    File("build/wear-scroll-svg/figma-raster").mkdirs()
+    File("build/wear-scroll-svg/wear-slice.svg").writeText(svg)
+    File(rootDir, "wear-slice/figma-raster").listFiles()?.forEach {
+      it.copyTo(File("build/wear-scroll-svg/figma-raster/${it.name}"), overwrite = true)
+    }
+
+    assertTrue("capsule clip", svg.contains("""<clipPath id="deviceRound"><rect"""))
+    assertEquals("all 15 activity titles land", itemCount, itemLayerCount(svg))
+    assertTrue("TimeText on the rim", svg.contains("10:10"))
+    assertTrue("Activity header", svg.contains(">Activity</text>"))
+    assertTrue("EdgeButton crescent as a raster", svg.contains("<image "))
   }
 }
 

@@ -247,6 +247,16 @@ data class FigmaSvgModel(
    * render (see [FigmaSvgCapsuleClip]). Mutually exclusive with [roundClip].
    */
   val capsuleClip: FigmaSvgCapsuleClip? = null,
+  /**
+   * The device screen background painted behind the whole tree, clipped to the device mask
+   * ([roundClip]/[capsuleClip]) — the black watch face a Wear **device** preview sits on. Only set
+   * for a device frame that opted in (a `deviceBackground` was passed to [from]); component
+   * previews (no device mask) never carry one, so their export stays transparent behind the
+   * content. Without it a device export is transparent between rows and behind light-on-dark
+   * chrome, so the light `TimeText`/header vanish on a light canvas (Figma) — the fill gives them
+   * the dark face to read against while the corners outside the mask stay transparent.
+   */
+  val deviceBackground: FigmaSvgColor? = null,
 ) {
   val tx: Int
     get() = padding - minX
@@ -333,6 +343,7 @@ data class FigmaSvgModel(
       captureCanvasDraws: Boolean = false,
       roundClip: Boolean = false,
       capsuleClip: Boolean = false,
+      deviceBackground: String? = null,
     ): FigmaSvgModel {
       val textByNodeId =
         semantics?.let { assignTextToLayers(layout.root, it, density) } ?: emptyMap()
@@ -371,6 +382,15 @@ data class FigmaSvgModel(
         if (clip != null || capsule != null)
           Extent(frame.left, frame.top, frame.right, frame.bottom)
         else rootLayer.extent() ?: Extent(0, 0, 0, 0)
+      // A device preview (round or capsule mask) that opted in paints its screen background behind
+      // the tree, clipped to that mask — so a Wear device export reads as a solid face with light
+      // chrome legible, while the corners outside the mask stay transparent. Component previews
+      // pass
+      // no `deviceBackground` (and carry no mask), so they never get one.
+      val deviceBg =
+        if ((clip != null || capsule != null) && deviceBackground != null)
+          argbToColor(deviceBackground, names)
+        else null
       return FigmaSvgModel(
         root = rootLayer,
         minX = extent.minX,
@@ -381,6 +401,7 @@ data class FigmaSvgModel(
         rasterTargets = ctx.rasterTargets,
         roundClip = clip,
         capsuleClip = capsule,
+        deviceBackground = deviceBg,
       )
     }
 

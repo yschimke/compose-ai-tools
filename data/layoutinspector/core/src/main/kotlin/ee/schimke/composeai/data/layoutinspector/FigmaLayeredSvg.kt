@@ -100,6 +100,23 @@ object FigmaLayeredSvg {
     val clipAttr = if (clip != null || capsule != null) """ clip-path="url(#deviceRound)"""" else ""
     sb.append("""<g transform="translate(${model.tx}, ${model.ty})"$clipAttr>""")
     sb.append('\n')
+    // A device preview paints its screen background (the black watch face) behind the tree, in the
+    // device-mask shape so it fills the face and the corners stay transparent — set only when a
+    // device frame opted in, so component previews stay background-free.
+    model.deviceBackground?.let { bg ->
+      val fillOpacity = opacity("fill", bg)
+      val shape =
+        when {
+          capsule != null ->
+            """<rect x="${capsule.x}" y="${capsule.y}" width="${capsule.width}" """ +
+              """height="${capsule.height}" rx="${capsule.rx}" ry="${capsule.rx}" """ +
+              """fill="${bg.hex}"$fillOpacity/>"""
+          clip != null ->
+            """<circle cx="${clip.cx}" cy="${clip.cy}" r="${clip.r}" fill="${bg.hex}"$fillOpacity/>"""
+          else -> null
+        }
+      if (shape != null) sb.append("  ").append(shape).append('\n')
+    }
     renderLayer(model.root, sb, options, familyOverrides, depth = 1)
     sb.append("</g>\n")
     sb.append("</svg>\n")

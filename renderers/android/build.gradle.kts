@@ -24,6 +24,22 @@ android {
     // at compileSdk 36) link against this AAR without bumping their own compileSdk.
     aarMetadata { minCompileSdk = 36 }
   }
+  testOptions {
+    unitTests.all {
+      // The Robolectric-on-JDK-17+ open set the production render JVM uses
+      // (`AndroidPreviewClasspath.buildJvmArgs`). `WearScrollSvgGrowthTest` renders a full Wear
+      // scaffold whose `TimeText` curved-text renderer reaches `DirectByteBuffer.address()` via
+      // `PathIterator` — without `--add-opens=java.base/java.nio` that throws
+      // `InaccessibleObjectException` under Robolectric's `ShadowVMRuntime`.
+      it.jvmArgs(
+        "--add-opens=java.base/java.io=ALL-UNNAMED",
+        "--add-opens=java.base/java.lang=ALL-UNNAMED",
+        "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
+        "--add-opens=java.base/java.nio=ALL-UNNAMED",
+        "--add-opens=java.base/jdk.internal.access=ALL-UNNAMED",
+      )
+    }
+  }
 }
 
 dependencies {
