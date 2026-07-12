@@ -18,6 +18,7 @@ import androidx.compose.runtime.reflect.getDeclaredComposableMethod
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.tooling.CompositionData
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -355,6 +356,10 @@ class RenderEngine(
     // the composition down once `evaluate()` returns) so theme consumer attribution (#1847) can run
     // against them afterwards, once the resolved tokens are assembled.
     var capturedThemeFacts: List<NodeThemeFacts> = emptyList()
+    // AS-parity wrap-content: the intrinsic size the wrapped content measured to, recorded from
+    // inside composition so the captured PNG can be cropped to it after `captureRoboImage`. `[0,0]`
+    // until the first measure; only consulted on wrapped axes (see `spec.wrapWidth`/`wrapHeight`).
+    val measuredContent = intArrayOf(0, 0)
     val description =
       org.junit.runner.Description.createTestDescription(
         RenderEngine::class.java,
@@ -414,7 +419,32 @@ class RenderEngine(
                       renderMode = spec.renderMode,
                       sink = RecordingExtensionCompositionSink(),
                     ) {
-                      Box(modifier = Modifier.fillMaxSize()) {
+                      // AS-parity wrap: on a wrapped axis, measure the composable with a relaxed
+                      // (min = 0) constraint against the sandbox max and size the box to the child's
+                      // intrinsic size, so the captured tree (and the figma-svg / wireframe /
+                      // semantics derived from it) reflects the preview's natural size instead of the
+                      // fixed sandbox frame — a Column handed only the sandbox height reflows overflow
+                      // children to zero. Fixed axes keep `fillMaxSize` so `fillMax*` / LazyColumn
+                      // still have a finite viewport. Mirrors the desktop daemon + standalone renderer.
+                      val contentBoxModifier =
+                        if (spec.wrapWidth || spec.wrapHeight) {
+                          Modifier.layout { measurable, constraints ->
+                            val wrapped =
+                              androidx.compose.ui.unit.Constraints(
+                                minWidth = if (spec.wrapWidth) 0 else constraints.minWidth,
+                                maxWidth = constraints.maxWidth,
+                                minHeight = if (spec.wrapHeight) 0 else constraints.minHeight,
+                                maxHeight = constraints.maxHeight,
+                              )
+                            val placeable = measurable.measure(wrapped)
+                            measuredContent[0] = placeable.width
+                            measuredContent[1] = placeable.height
+                            layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+                          }
+                        } else {
+                          Modifier.fillMaxSize()
+                        }
+                      Box(modifier = contentBoxModifier) {
                         if (isProtolayoutIr) {
                           // v5 IR replay — inflate the captured protolayout `Layout` + `Resources`
                           // protos through `TileRenderer`, with no reference to the tile function
@@ -549,6 +579,20 @@ class RenderEngine(
             System.err.println(
               "compose-ai-daemon: [render] phase=captureRoboImage.done outputBaseName=${spec.outputBaseName}"
             )
+
+            // AS-parity wrap crop: the sandbox window is generous (400×800 dp) so wrap-content
+            // measures naturally, but that leaves the composable in the top-left of a large PNG.
+            // Crop back to the measured intrinsic size on wrapped axes (content is placed at 0,0),
+            // matching the standalone renderer's `cropPngTopLeft`. No-op for fixed-size previews.
+            if (spec.wrapWidth || spec.wrapHeight) {
+              cropWrappedPngTopLeft(
+                file = outputFile,
+                wrapWidth = spec.wrapWidth,
+                wrapHeight = spec.wrapHeight,
+                measuredWidth = measuredContent[0],
+                measuredHeight = measuredContent[1],
+              )
+            }
 
             // Pull per-node theme facts while the composition is still alive so theme consumer
             // attribution (#1847) can run after the rule tears the scene down.
@@ -1098,6 +1142,9 @@ class RenderEngine(
         spec.copy(
           renderMode = null,
           heightPx = sizedHeight,
+          // The grown scroll render uses an explicit computed height — never wrap it (mirrors the
+          // desktop daemon's growth-probe copy), so the tall frame isn't cropped back to intrinsic.
+          wrapHeight = false,
           previewId = null,
           outputBaseName = tmpBase,
         ),
@@ -1305,6 +1352,32 @@ class RenderEngine(
   private fun pxToDp(px: Int, density: Float): Int {
     if (density <= 0f) return px
     return (px / density).toInt().coerceAtLeast(1)
+  }
+
+  /**
+   * Crops [file] in-place to the measured intrinsic size on wrapped axes (content is placed at the
+   * top-left of the sandbox window). The non-wrapped axis keeps its captured pixel extent; a wrapped
+   * axis whose measured size wasn't recorded (`<= 0`) or already fills the window is left unchanged
+   * (`fillMax*` composables). Uses `javax.imageio` on the JVM side — `captureRoboImage` has already
+   * written a standard PNG — so no Robolectric `Bitmap` shadow is needed. Mirrors the standalone
+   * renderer's `cropPngTopLeft` and the desktop daemon's `cropToMeasured`.
+   */
+  private fun cropWrappedPngTopLeft(
+    file: File,
+    wrapWidth: Boolean,
+    wrapHeight: Boolean,
+    measuredWidth: Int,
+    measuredHeight: Int,
+  ) {
+    if (!file.exists()) return
+    val original = runCatching { javax.imageio.ImageIO.read(file) }.getOrNull() ?: return
+    val cropW =
+      if (wrapWidth && measuredWidth in 1 until original.width) measuredWidth else original.width
+    val cropH =
+      if (wrapHeight && measuredHeight in 1 until original.height) measuredHeight else original.height
+    if (cropW >= original.width && cropH >= original.height) return
+    val cropped = original.getSubimage(0, 0, cropW, cropH)
+    runCatching { javax.imageio.ImageIO.write(cropped, "PNG", file) }
   }
 
   /**
@@ -1703,6 +1776,19 @@ data class RenderSpec(
   val functionName: String,
   val widthPx: Int = 320,
   val heightPx: Int = 320,
+  /**
+   * AS-parity wrap-content flags. Set when the preview declares no explicit size (and no device /
+   * system UI), so [widthPx]/[heightPx] are a generous sandbox bound rather than a fixed frame: the
+   * render measures the composable's intrinsic size on the wrapped axis and crops the PNG to it, and
+   * the captured layout tree (figma-svg / wireframe / semantics derived from it) reflects the
+   * preview's natural size. Without this a no-height preview rendered into the historical 320px frame
+   * and any content taller than the frame reflowed to zero height — a `Column` hands each child the
+   * *remaining* height, so once the 320px budget is spent the overflow children measure to 0 lines
+   * (collapsed text fields / buttons in the export). Mirrors the standalone renderer's
+   * `wrapWidth`/`wrapHeight` and the desktop daemon's identically-named [RenderSpec] fields.
+   */
+  val wrapWidth: Boolean = false,
+  val wrapHeight: Boolean = false,
   val density: Float = 2.0f,
   val showBackground: Boolean = true,
   val backgroundColor: Long = 0L,
@@ -1819,6 +1905,8 @@ data class RenderSpec(
         functionName = functionName,
         widthPx = map["widthPx"]?.toIntOrNull() ?: defaults.widthPx,
         heightPx = map["heightPx"]?.toIntOrNull() ?: defaults.heightPx,
+        wrapWidth = map["wrapWidth"]?.toBoolean() ?: defaults.wrapWidth,
+        wrapHeight = map["wrapHeight"]?.toBoolean() ?: defaults.wrapHeight,
         density = map["density"]?.toFloatOrNull() ?: defaults.density,
         showBackground = map["showBackground"]?.toBoolean() ?: defaults.showBackground,
         backgroundColor = map["backgroundColor"]?.toLongOrNull() ?: defaults.backgroundColor,

@@ -71,6 +71,28 @@ fun RedSquare() {
 }
 
 /**
+ * Wrap-height regression fixture: a `Column` of many text rows whose natural height (~20 rows ×
+ * ~40 px ≈ 800 px) far exceeds the historical fixed 320 px daemon frame. Rendered wrap-content, a
+ * `Column` hands each child the *remaining* height, so under the old 320 px frame every row past the
+ * budget measured to zero lines — the exact mechanism that collapsed `TcpConnectPanel`'s Port field
+ * / Connect button in the figma-svg export. With the AS-parity wrap fix the render measures the full
+ * ~800 px against the sandbox bound and crops to it, so no row collapses. Declared with `widthDp`
+ * only (like the real component previews) so the height wraps.
+ */
+@Composable
+fun TallWrapColumn() {
+  Column(modifier = Modifier.fillMaxWidth().background(Color.White)) {
+    repeat(20) { i ->
+      Text(
+        "Row $i — the quick brown fox",
+        modifier = Modifier.fillMaxWidth().padding(6.dp),
+        color = Color(0xFFB71C1C),
+      )
+    }
+  }
+}
+
+/**
  * Fixture for `PreviewOverridesDataFetchE2ETest`: declares two opt-in `previewOverride*` knobs (a
  * colour `fill` and a string `label`) so a render through the sandbox records them into the
  * sandbox-classloader `PreviewOverrideController`. The test then asserts the host-side

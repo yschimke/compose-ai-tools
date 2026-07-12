@@ -189,6 +189,8 @@ private fun PreviewManifestEntry.renderSpec(): RenderSpec {
     outputBaseName = resolved.outputBaseName,
     kind = resolved.kind,
     wrapperClassName = resolved.wrapperClassName,
+    wrapWidth = resolved.wrapWidth,
+    wrapHeight = resolved.wrapHeight,
   )
 }
 
@@ -243,16 +245,29 @@ data class PreviewManifestEntry(
   fun resolved(): ResolvedRenderParams {
     val p = params
     val density = density ?: p?.density ?: 2.0f
-    val widthPx = widthPx ?: p?.widthDp?.let { (it * density).toInt() } ?: 320
-    val heightPx = heightPx ?: p?.heightDp?.let { (it * density).toInt() } ?: 320
-    val showBackground = showBackground ?: p?.showBackground ?: true
-    val backgroundColor = backgroundColor ?: p?.backgroundColor ?: 0L
     val device = device ?: p?.device
     val kind = kind ?: p?.kind
+    // A preview that declares an explicit size — or is pinned to a fixed frame by a device or a
+    // non-Compose surface (tile / notification / Glance, whose render helpers consume the concrete
+    // widthPx/heightPx) — keeps that frame. One that declares NONE renders wrap-content (AS-parity):
+    // the render measures the composable's intrinsic size within a generous sandbox bound and crops
+    // to it, so the captured layout/semantics tree — and the figma-svg / wireframe derived from it —
+    // reflect the preview's natural size instead of the historical fixed 320² frame that clipped
+    // wide content and reflowed tall content to zero height. Mirrors the desktop daemon's resolver
+    // and the standalone renderer's wrap crop.
+    val pinned = device != null || (kind != null && kind != "COMPOSE")
+    val explicitWidthPx = widthPx ?: p?.widthDp?.let { (it * density).toInt() }
+    val explicitHeightPx = heightPx ?: p?.heightDp?.let { (it * density).toInt() }
+    val wrapWidth = explicitWidthPx == null && !pinned
+    val wrapHeight = explicitHeightPx == null && !pinned
+    val resolvedWidthPx = explicitWidthPx ?: (WRAP_SANDBOX_WIDTH_DP * density).toInt()
+    val resolvedHeightPx = explicitHeightPx ?: (WRAP_SANDBOX_HEIGHT_DP * density).toInt()
+    val showBackground = showBackground ?: p?.showBackground ?: true
+    val backgroundColor = backgroundColor ?: p?.backgroundColor ?: 0L
     val wrapperClassName = p?.wrapperClassName
     return ResolvedRenderParams(
-      widthPx = widthPx,
-      heightPx = heightPx,
+      widthPx = resolvedWidthPx,
+      heightPx = resolvedHeightPx,
       density = density,
       showBackground = showBackground,
       backgroundColor = backgroundColor,
@@ -260,7 +275,20 @@ data class PreviewManifestEntry(
       outputBaseName = outputBaseName ?: id,
       kind = kind,
       wrapperClassName = wrapperClassName,
+      wrapWidth = wrapWidth,
+      wrapHeight = wrapHeight,
     )
+  }
+
+  companion object {
+    /**
+     * Sandbox bound (dp) for a no-size preview's wrap-content render — matches the standalone
+     * renderer's 400×800 dp default and the desktop daemon's [WRAP_SANDBOX_WIDTH_DP]. The render
+     * crops to the composable's intrinsic size within this bound; `fillMax*` / LazyColumn measure
+     * against it.
+     */
+    const val WRAP_SANDBOX_WIDTH_DP: Int = 400
+    const val WRAP_SANDBOX_HEIGHT_DP: Int = 800
   }
 }
 
@@ -312,4 +340,11 @@ data class ResolvedRenderParams(
   val outputBaseName: String,
   val kind: String? = null,
   val wrapperClassName: String? = null,
+  /**
+   * AS-parity wrap-content flags (see [RenderSpec.wrapWidth]). Set when the preview declares no
+   * explicit size / device / non-Compose surface, so [widthPx]/[heightPx] are a sandbox bound and
+   * the render crops to the composable's intrinsic size.
+   */
+  val wrapWidth: Boolean = false,
+  val wrapHeight: Boolean = false,
 )
