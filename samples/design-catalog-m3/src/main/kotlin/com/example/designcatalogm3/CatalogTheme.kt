@@ -34,21 +34,29 @@ import ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared
  * stickers stable across the Android→CMP renderer switch (Skiko's own default is not Roboto).
  */
 @Composable
-fun CatalogSticker(content: @Composable () -> Unit) {
+fun CatalogSticker(background: Boolean = false, content: @Composable () -> Unit) {
   val dark = isSystemInDarkTheme()
   CompositionLocalProvider(LocalGenericFonts provides CatalogGenericFonts) {
     MaterialTheme(
       colorScheme = if (dark) darkColorScheme() else lightColorScheme(),
       typography = catalogTypography(Roboto),
     ) {
-      // Honour the renderer's `clearBackground` ("crisp outline") toggle: drop the opaque
-      // `colorScheme.surface` fill for a transparent one so the sticker is a component silhouette,
-      // but keep `onSurface` as the content colour so text/icons stay readable on whatever the
-      // downstream viewer paints behind the transparent PNG. Untoggled, this is pixel-identical to
-      // the previous `Surface { … }` (same default colour + content colour).
+      // Component stickers render on a TRANSPARENT surface by default, so each one reads as a
+      // component silhouette on whatever the viewer paints behind the transparent PNG (the preview
+      // server / catalog index checkerboard). `contentColor = onSurface` keeps text/icons themed so
+      // they stay readable against that backing.
+      //
+      // A preview opts back into the opaque themed `colorScheme.surface` with `background = true` —
+      // for specimens that are illegible as a bare silhouette (the generic-family text specimens are
+      // plain `onSurface` glyphs with no container of their own). The theme-aware `surface` keeps
+      // them light-on-dark / dark-on-light in the matching mode.
+      //
+      // The renderer's `clearBackground` ("crisp outline") override still forces transparent even
+      // for `background = true`, so an explicit clear wins over the per-preview opt-in.
       val cleared = LocalPreviewBackgroundCleared.current
       Surface(
-        color = if (cleared) Color.Transparent else MaterialTheme.colorScheme.surface,
+        color =
+          if (background && !cleared) MaterialTheme.colorScheme.surface else Color.Transparent,
         contentColor = MaterialTheme.colorScheme.onSurface,
       ) {
         Box(Modifier.padding(16.dp)) { content() }
@@ -67,8 +75,12 @@ fun CatalogSticker(content: @Composable () -> Unit) {
  * source set has no `android.content.res.Configuration`, so (as `:samples:cmp` does) the bit is
  * written directly; the renderer treats `uiMode` as an int and flips `isSystemInDarkTheme()`.
  */
-@Preview(name = "Light", showBackground = true, group = "modes")
-@Preview(name = "Dark", showBackground = true, uiMode = 32, group = "modes")
+// No `showBackground` — the harness background stays transparent so a component sticker is a
+// silhouette on the viewer's checkerboard. The sticker's own [CatalogSticker] surface is
+// transparent by default too (opt into an opaque themed surface with `CatalogSticker(background =
+// true)` for text specimens). The full-screen [CatalogTemplate] keeps its device background.
+@Preview(name = "Light", group = "modes")
+@Preview(name = "Dark", uiMode = 32, group = "modes")
 annotation class CatalogModes
 
 /**

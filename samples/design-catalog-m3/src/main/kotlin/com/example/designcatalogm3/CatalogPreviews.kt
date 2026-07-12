@@ -104,11 +104,15 @@ fun SlottedCardSlotsSticker() = CatalogSticker {
 
 // --- Text options — maxLines + ellipsis overflow, generic-family specimens. ---
 
-@CatalogModes @Composable fun TextMaxLinesTruncated() = Sticker("text-maxlines-truncated")
+// Text specimens are bare `onSurface` glyphs with no container of their own, so they'd be
+// near-invisible as a transparent silhouette — they opt into the opaque themed surface.
+@CatalogModes
+@Composable
+fun TextMaxLinesTruncated() = Sticker("text-maxlines-truncated", background = true)
 
-@CatalogModes @Composable fun TextSerifSpecimen() = Sticker("text-serif")
+@CatalogModes @Composable fun TextSerifSpecimen() = Sticker("text-serif", background = true)
 
-@CatalogModes @Composable fun TextMonospaceSpecimen() = Sticker("text-monospace")
+@CatalogModes @Composable fun TextMonospaceSpecimen() = Sticker("text-monospace", background = true)
 
 // --- States — interaction (pressed / focused), disabled, and toggle off↔on. ---
 
@@ -128,9 +132,14 @@ fun SlottedCardSlotsSticker() = CatalogSticker {
 
 @CatalogModes @Composable fun SegmentedToggle() = Sticker("segmentedbutton")
 
-/** Every sticker is the shared component (deterministic frame) inside the catalog theme wrapper. */
+/**
+ * Every sticker is the shared component (deterministic frame) inside the catalog theme wrapper.
+ * [background] opts the sticker into an opaque themed surface (default transparent silhouette) —
+ * used by the text specimens, which have no container of their own to read against.
+ */
 @Composable
-private fun Sticker(id: String) = CatalogSticker { CatalogComponent(id, interactive = false) }
+private fun Sticker(id: String, background: Boolean = false) =
+  CatalogSticker(background = background) { CatalogComponent(id, interactive = false) }
 
 // ---------------------------------------------------------------------------
 // Scaffold templates — full-screen, pre-built screen skeletons an app copies
