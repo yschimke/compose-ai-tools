@@ -61,5 +61,8 @@ dependencies {
   // `PreviewSlot` / `LocalSlotMode` — the Figma slot placeholders for the fillable regions of the
   // Wear cards, list rows, and scaffold templates.
   implementation(project(":slot-preview-runtime"))
+  // `TlcScalingHost` — hosts a component in a real single-item TransformingLazyColumn so
+  // `CardScalingPreview` shows genuine TLC item scaling (see `CardScalingPreview.kt`).
+  implementation(project(":wear-preview-runtime"))
   debugImplementation("androidx.compose.ui:ui-tooling")
 }

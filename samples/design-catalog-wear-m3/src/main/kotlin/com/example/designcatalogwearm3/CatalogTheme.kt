@@ -24,6 +24,9 @@ import androidx.wear.compose.material3.MaterialTheme
  * progress ring) would otherwise sit at the frame's top-left. Centring places it mid-canvas — the
  * content-cropped figma-svg export and the content-bbox fidelity score are unaffected (both crop to
  * the component), so this only moves where the component lands in the full-frame render PNG.
+ *
+ * TLC item scaling is shown separately (see `CardScalingPreview.kt`), which hosts a component in a
+ * real `TransformingLazyColumn` via `:wear-preview-runtime`; a plain sticker here is unchanged.
  */
 @Composable
 fun WearSticker(content: @Composable () -> Unit) {

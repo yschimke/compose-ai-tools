@@ -176,6 +176,10 @@ include(":slot-preview-runtime")
 
 project(":slot-preview-runtime").projectDir = file("runtimes/slots")
 
+include(":wear-preview-runtime")
+
+project(":wear-preview-runtime").projectDir = file("runtimes/wear-preview")
+
 include(":samples:android")
 
 // Compose Material 3 **design catalog** — one `@Preview` per component in its
