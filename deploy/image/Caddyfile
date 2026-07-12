@@ -7,15 +7,19 @@
 {$DOMAIN} {
 	encode zstd gzip
 
-	# The backend serves two long-lived request shapes: multi-second cold renders
-	# and the persistent /ws/ WebSocket frame lane (Live Compose). Stream responses
-	# straight through (flush_interval -1) and DON'T put a read deadline on the
-	# upstream connection — a `read_timeout` on the http transport fails the
-	# WebSocket upgrade with a 502 (the /ws/ frame lane never opens). Bound only the
-	# initial dial; the app enforces its own render timeout, so an un-capped read
-	# here won't hold a render open forever.
+	# The /ws/ WebSocket frame lane (Live Compose) was 502ing: a `read_timeout` on
+	# the http transport puts a read deadline on the upstream connection and fails
+	# the WebSocket upgrade before a 101 is produced. Dropping it fixes the upgrade —
+	# WebSockets are proxied by connection hijack (no read deadline, no response
+	# buffering involved), and long cold renders are already bounded by the app's own
+	# --timeout, so the proxy needn't cap the read. Bound only the initial dial.
+	#
+	# Deliberately NOT `flush_interval -1`: a negative flush interval disables
+	# response buffering globally AND, per Caddy's reverse_proxy docs, does not cancel
+	# the upstream request on client disconnect — an abandoned /render/*.png|svg tab
+	# would then hold a render slot for the whole cold-render budget. WS doesn't need
+	# it (hijacked); render endpoints must keep cancel-on-disconnect.
 	reverse_proxy preview:8080 {
-		flush_interval -1
 		transport http {
 			dial_timeout 30s
 		}
