@@ -461,13 +461,24 @@ class ServeWebFixtureTest {
       "themed catalog shows the theme toggle",
     )
     assertTrue(
-      landingThemed.contains("data-card-theme=\"dark\"") &&
-        landingThemed.contains("data-card-theme=\"light\""),
+      landingThemed.contains("cp-card\" data-card-theme=\"dark\"") &&
+        landingThemed.contains("cp-card\" data-card-theme=\"light\""),
       "themed cards are tagged with their baked theme",
     )
     assertTrue(
       landingThemed.contains("localStorage.setItem(\"cp-theme\""),
       "toggle persists the choice to the shared cp-theme key",
+    )
+    // Dark-first system (Wear): a preview with no explicit __light/__dark token still tags the
+    // viewer stage dark, so a light-on-transparent Wear render stays readable — while a non-dark-
+    // first viewer with no theme token leaves the stage on its default (light).
+    assertTrue(
+      viewerGestures.contains("cp-controls-open\" data-card-theme=\"dark\""),
+      "a Wear (dark-first) viewer tags the stage dark even without a __dark token",
+    )
+    assertFalse(
+      viewerFocus.contains("cp-controls-open\" data-card-theme="),
+      "a non-dark-first viewer with no theme token leaves the stage default (light)",
     )
     assertFalse(
       landing.contains("class=\"cp-theme\""),
