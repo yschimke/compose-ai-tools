@@ -1,0 +1,107 @@
+# End-to-end proof that every render lane of a live `compose-preview serve` honors
+# a named-knob override. Boots a daemon-backed serve the same way preview.coo.ee
+# runs (a Trusted --catalogs system live-rendered from its carried liveBundle) and
+# drives it in Chromium via preview-harness/serve-lanes.spec.mjs: PNG re-render,
+# SVG override text in the vector, the Live /ws/ WebSocket frame lane, and the
+# in-browser Wasm tier — each asserted to actually change output when a knob flips.
+#
+# This closes the gap where the viewer's knob wiring was only checked structurally
+# (ServeWebFixtureTest) and the /ws/ lane had no coverage at all — it's the guard
+# that would have caught the compose/figma-svg SVG-override regression and the
+# Caddy WebSocket break.
+name: Serve Lanes E2E
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/**"
+      - "daemon/**"
+      - "render-session/**"
+      - "render-session-subprocess/**"
+      - "vscode-extension/preview-harness/serve-lanes.*"
+      - "vscode-extension/preview-harness/serve-lanes-boot.sh"
+      - ".github/workflows/serve-lanes-e2e.yml"
+  pull_request:
+    paths:
+      - "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/**"
+      - "daemon/**"
+      - "render-session/**"
+      - "render-session-subprocess/**"
+      - "vscode-extension/preview-harness/serve-lanes.*"
+      - "vscode-extension/preview-harness/serve-lanes-boot.sh"
+      - ".github/workflows/serve-lanes-e2e.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: serve-lanes-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  serve-lanes:
+    name: Serve render lanes honor overrides
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+
+      # The live render daemon (desktop Compose + Skia) renders headlessly through
+      # a virtual X display routed to Mesa's software rasteriser — no GPU.
+      - name: Install Xvfb + Mesa software GL
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb libgl1-mesa-dri libglx-mesa0
+
+      - name: Build the CLI (installDist)
+        shell: bash
+        run: ./gradlew --no-daemon :cli:installDist --stacktrace
+
+      - name: Install harness deps + Chromium
+        working-directory: vscode-extension
+        shell: bash
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      # Boot the daemon-backed serve (backgrounded; pid in serve-lanes.pid) and
+      # export its URL. The script waits for /version + warms one render so the
+      # spec's per-test budget isn't spent on cold-daemon warm-up.
+      - name: Boot daemon-backed serve
+        shell: bash
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          GALLIUM_DRIVER: llvmpipe
+        run: |
+          echo "SERVE_URL=$(bash vscode-extension/preview-harness/serve-lanes-boot.sh)" >> "$GITHUB_ENV"
+
+      - name: Drive every render lane (Chromium)
+        working-directory: vscode-extension
+        shell: bash
+        env:
+          CI: "true"
+          SERVE_SYSTEM: compose-m3
+        run: npm run harness:serve-lanes
+
+      - name: Tear down serve
+        if: always()
+        shell: bash
+        run: |
+          [ -f serve-lanes.pid ] && kill "$(cat serve-lanes.pid)" 2>/dev/null || true
+          pkill -f 'MainKt serve' 2>/dev/null || true
+
+      - name: Upload serve log + trace on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: serve-lanes-artifacts
+          path: |
+            serve-lanes.log
+            vscode-extension/preview-harness/test-results-serve-lanes/**
+          if-no-files-found: warn
