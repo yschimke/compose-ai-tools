@@ -193,6 +193,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-viewer-wasm-live/dark](renders/serve-viewer-wasm-live.dark.png) |
 | `light` | ![serve-viewer-wasm-live/light](renders/serve-viewer-wasm-live.light.png) |
 
+## serve-wear-scroll-long-capsule
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-wear-scroll-long-capsule/dark](renders/serve-wear-scroll-long-capsule.dark.png) |
+| `light` | ![serve-wear-scroll-long-capsule/light](renders/serve-wear-scroll-long-capsule.light.png) |
+
 ## spatial-semantics
 
 | Theme | Capture |

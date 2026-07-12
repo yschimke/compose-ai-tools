@@ -325,6 +325,18 @@
       "sha256": "e8eccd86cd2b3495ecfd29163fc6ccbee580e1cbf4ae3bcb0e2f644d5d7d01a3",
       "size": 57339
     },
+    "serve-wear-scroll-long-capsule.dark.png": {
+      "fixture": "serve-wear-scroll-long-capsule",
+      "theme": "dark",
+      "sha256": "f35db4dec418afe1fdc841e5360498ea4ace35b601d34f00708cc2bf9c90cb57",
+      "size": 81702
+    },
+    "serve-wear-scroll-long-capsule.light.png": {
+      "fixture": "serve-wear-scroll-long-capsule",
+      "theme": "light",
+      "sha256": "f35db4dec418afe1fdc841e5360498ea4ace35b601d34f00708cc2bf9c90cb57",
+      "size": 81702
+    },
     "spatial-semantics.dark.png": {
       "fixture": "spatial-semantics",
       "theme": "dark",
