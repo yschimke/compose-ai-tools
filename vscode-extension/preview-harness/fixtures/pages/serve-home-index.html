@@ -51,15 +51,25 @@ a:hover { text-decoration: underline; }
   display: block; color: inherit; }
 .cp-card[hidden] { display: none; }
 .cp-imgwrap { display: flex; align-items: center; justify-content: center; min-height: 88px;
-  background: repeating-conic-gradient(#f4f4f6 0% 25%, #fff 0% 50%) 50% / 16px 16px; padding: 12px; }
+  background: #fff; padding: 12px; }
 .cp-imgwrap img { max-width: 100%; max-height: 240px; height: auto; display: block; }
+/* Sticker backing: the preview server shows components on a solid surface by DEFAULT, so a
+   transparent sticker reads like a real component instead of washing out. The header's
+   Background/Transparent toggle flips the whole page to a checkerboard (html.cp-bg-transparent)
+   to inspect the raw transparent PNG; the choice persists per-visitor in localStorage['cp-bg']. */
+html.cp-bg-transparent .cp-imgwrap, html.cp-bg-transparent .cp-stage {
+  background: repeating-conic-gradient(#f4f4f6 0% 25%, #fff 0% 50%) 50% / 16px 16px; }
+.cp-bg { display: inline-flex; border: 1px solid #d7d7de; border-radius: 999px; overflow: hidden; }
+.cp-bg-btn { border: 0; background: #fff; color: #6b6b70; font: inherit; font-size: 0.78rem;
+  padding: 3px 14px; cursor: pointer; }
+.cp-bg-btn[aria-pressed="true"] { background: #ececff; color: #3a3a8a; font-weight: 600; }
 .cp-meta { padding: 8px 10px; font-size: 0.82rem; }
 .cp-label { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp-id { color: #6b6b70; font-size: 0.7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp-viewer { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
 .cp-stage { position: relative; flex: 1 1 360px; min-width: 280px; border: 1px solid #e3e3e8;
   border-radius: 10px;
-  background: repeating-conic-gradient(#f4f4f6 0% 25%, #fff 0% 50%) 50% / 16px 16px; padding: 12px;
+  background: #fff; padding: 12px;
   display: flex; align-items: center; justify-content: center; min-height: 220px; }
 .cp-stage img, .cp-stage canvas { max-width: 100%; height: auto; }
 .cp-backend { position: absolute; top: 8px; right: 8px; font-size: 0.62rem; font-weight: 600;
@@ -152,7 +162,12 @@ a:hover { text-decoration: underline; }
   .cp-theme-btn { background: #1d1d20; color: #a0a0a8; }
   .cp-theme-btn[aria-pressed="true"] { background: #26264a; color: #c9c9ff; }
   .cp-note { background: #26262b; color: #a0a0a8; }
-  .cp-imgwrap, .cp-stage { background: repeating-conic-gradient(#26262b 0% 25%, #1d1d20 0% 50%) 50% / 16px 16px; }
+  .cp-imgwrap, .cp-stage { background: #1d1d20; }
+  html.cp-bg-transparent .cp-imgwrap, html.cp-bg-transparent .cp-stage {
+    background: repeating-conic-gradient(#26262b 0% 25%, #1d1d20 0% 50%) 50% / 16px 16px; }
+  .cp-bg { border-color: #34343a; }
+  .cp-bg-btn { background: #1d1d20; color: #a0a0a8; }
+  .cp-bg-btn[aria-pressed="true"] { background: #26264a; color: #c9c9ff; }
   .cp-badge--trusted { background: #14361f; color: #6cd98a; border-color: #2c6b40; }
   .cp-badge--unverified { background: #3a2a12; color: #e6b067; border-color: #6b4f24; }
   .cp-drawer-toggle { background: #1d1d20; border-color: #34343a; color: #c9c9d0; }
@@ -166,6 +181,8 @@ a:hover { text-decoration: underline; }
   .cp-nav-thumb { background: repeating-conic-gradient(#26262b 0% 25%, #1d1d20 0% 50%) 50% / 8px 8px; }
   .cp-nav-empty { color: #a0a0a8; }
 }</style>
+        <!-- Apply the sticky Background/Transparent choice before first paint (no checkerboard flash). -->
+        <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
       <body>
                 <section class="cp-about">
