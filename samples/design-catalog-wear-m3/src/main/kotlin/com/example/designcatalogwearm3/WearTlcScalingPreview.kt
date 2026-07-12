@@ -43,15 +43,12 @@ import androidx.wear.compose.material3.lazy.rememberTransformationSpec
  * }
  * ```
  *
- * **The override is an ambient [LocalTlcScalePosition].** The item sits between tall spacer items, so
- * the list can scroll it anywhere; the position picks where:
- * - [TlcScalePosition.Middle] (the default — nothing provides it) centres the item → full scale, so a
- *   plain preview does nothing.
- * - [TlcScalePosition.Starting] scrolls it up to where the top scaling zone begins to bite.
- * - [TlcScalePosition.Edge] rides it to the top edge → high scale.
- *
- * Wrap a preview (or a producer / viewer control) in [ProvideTlcScalePosition] to dial it, with no
- * change to the component code or the preview signature.
+ * **The override is an ambient [LocalTlcScrollFraction]** — how far up the screen (as a fraction of
+ * screen height) to scroll the item from centred. The item sits between tall spacer items, so the
+ * list can scroll it anywhere: `0f` (the default — nothing provides it) centres it → full scale, so a
+ * plain preview does nothing; larger values ride it up through the real scaling zones and eventually
+ * off the top edge. [TlcScalePosition] names the useful still points; [ProvideTlcScrollFraction]
+ * takes an arbitrary fraction (the GIF animates it). Either way the component code is unchanged.
  */
 enum class TlcScalePosition(
   /** How far up the screen (as a fraction of screen height) to scroll the item from centred. */
@@ -65,34 +62,40 @@ enum class TlcScalePosition(
   Edge(0.4f),
 }
 
-/** The ambient scaling position [TlcScalingHost] reads; [TlcScalePosition.Middle] (full scale) by default. */
-val LocalTlcScalePosition: ProvidableCompositionLocal<TlcScalePosition> =
-  compositionLocalOf {
-    TlcScalePosition.Middle
-  }
+/**
+ * The ambient scroll fraction [TlcScalingHost] reads: `0f` = centred / full scale (the default),
+ * larger = scrolled up toward and past the top edge.
+ */
+val LocalTlcScrollFraction: ProvidableCompositionLocal<Float> = compositionLocalOf { 0f }
 
-/** Provides [position] to [content] for [TlcScalingHost]. */
+/** Provides an arbitrary scroll [fraction] to [content] for [TlcScalingHost] (used by the GIF sweep). */
+@Composable
+fun ProvideTlcScrollFraction(fraction: Float, content: @Composable () -> Unit) {
+  CompositionLocalProvider(LocalTlcScrollFraction provides fraction, content = content)
+}
+
+/** Provides a named [position] to [content] for [TlcScalingHost]. */
 @Composable
 fun ProvideTlcScalePosition(position: TlcScalePosition, content: @Composable () -> Unit) {
-  CompositionLocalProvider(LocalTlcScalePosition provides position, content = content)
+  ProvideTlcScrollFraction(position.scrollFraction, content)
 }
 
 /**
  * Hosts a real [TransformingLazyColumn] — the item flanked by tall spacer items so the list is
  * genuinely scrollable — and passes its genuine [TransformingLazyColumnItemScope] (the lambda
  * receiver) + [TransformationSpec] into [content]. The list is scrolled to the ambient
- * [LocalTlcScalePosition] ([TlcScalePosition.Middle] = centred / full scale).
+ * [LocalTlcScrollFraction] (`0` = centred / full scale).
  */
 @Composable
 fun TlcScalingHost(content: @Composable TransformingLazyColumnItemScope.(TransformationSpec) -> Unit) {
-  val position = LocalTlcScalePosition.current
+  val scrollFraction = LocalTlcScrollFraction.current
   val screenHeightDp = LocalConfiguration.current.screenHeightDp
   val screenHeightPx = with(LocalDensity.current) { screenHeightDp.dp.roundToPx() }
   val state =
     rememberTransformingLazyColumnState(
-      // Anchor the item (index 1, between the spacers) and scroll it up from centred by the position.
+      // Anchor the item (index 1, between the spacers) and scroll it up from centred by the fraction.
       initialAnchorItemIndex = 1,
-      initialAnchorItemScrollOffset = (screenHeightPx * position.scrollFraction).toInt(),
+      initialAnchorItemScrollOffset = (screenHeightPx * scrollFraction).toInt(),
     )
   val spec = rememberTransformationSpec()
   MaterialTheme {

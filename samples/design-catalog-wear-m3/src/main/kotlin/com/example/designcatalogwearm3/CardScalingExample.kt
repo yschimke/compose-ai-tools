@@ -52,3 +52,10 @@ fun CardScalingStarting() = ProvideTlcScalePosition(TlcScalePosition.Starting) {
 @Preview(name = "Large Round", device = WEAR_LARGE_ROUND, showBackground = true, backgroundColor = 0xFF000000)
 @Composable
 fun CardScalingEdge() = ProvideTlcScalePosition(TlcScalePosition.Edge) { HeartRateCard() }
+
+/**
+ * The same card, exposed to the GIF render harness (`TlcScalingGifRenderTest`) so it can drive the
+ * scroll fraction across a whole animation without any preview scaffolding. Not a `@Preview`.
+ */
+@Composable
+fun HeartRateCardAt(fraction: Float) = ProvideTlcScrollFraction(fraction) { HeartRateCard() }

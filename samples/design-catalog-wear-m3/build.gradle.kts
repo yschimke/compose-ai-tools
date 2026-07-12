@@ -66,7 +66,7 @@ dependencies {
   // Wear cards, list rows, and scaffold templates.
   implementation(project(":slot-preview-runtime"))
   debugImplementation("androidx.compose.ui:ui-tooling")
-  // `TlcOffsetFractionsTest` (pure-arithmetic derivation checks) and `TlcScalingGifTest` (reads the
-  // plugin-rendered sweep PNGs and encodes the GIF) are both plain JVM JUnit — no Robolectric.
+  // `TlcScrollOffsetTest` (position math) and `TlcScalingGifTest` (reads the plugin-rendered
+  // `CardScroll*` frame PNGs and encodes the scroll GIF) are both plain JVM JUnit — no Robolectric.
   testImplementation(libs.junit)
 }
