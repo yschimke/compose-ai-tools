@@ -21,10 +21,6 @@ composePreview {
   // Pin Robolectric to SDK 35; see `:samples:wear` for the JDK 17 toolchain
   // rationale (Robolectric SDK 36 requires JDK 21+).
   sdkVersion.set(35)
-  // `TlcScalingGifTest` reads the plugin-rendered `TlcScalingSweep*` frame PNGs from
-  // `build/compose-previews/renders/` and stitches the down-and-up scaling GIF, so the unit-test
-  // tasks must render first (mirrors `:samples:wear`).
-  renderBeforeUnitTests.set(true)
 }
 
 android {
@@ -65,8 +61,8 @@ dependencies {
   // `PreviewSlot` / `LocalSlotMode` — the Figma slot placeholders for the fillable regions of the
   // Wear cards, list rows, and scaffold templates.
   implementation(project(":slot-preview-runtime"))
+  // `TlcScalingHost` — hosts a component in a real single-item TransformingLazyColumn so
+  // `CardScalingPreview` shows genuine TLC item scaling (see `CardScalingPreview.kt`).
+  implementation(project(":wear-preview-runtime"))
   debugImplementation("androidx.compose.ui:ui-tooling")
-  // `TlcScrollOffsetTest` (position math) and `TlcScalingGifTest` (reads the plugin-rendered
-  // `CardScroll*` frame PNGs and encodes the scroll GIF) are both plain JVM JUnit — no Robolectric.
-  testImplementation(libs.junit)
 }
