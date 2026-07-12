@@ -478,8 +478,27 @@ class WearScrollSvgGrowthTest {
       "fixture must be self-contained — no /render refs the harness would stub",
       committed.contains("/render/"),
     )
+    // Drift guard: fail if the committed fixture no longer matches what the current assembler + SVG
+    // producer emit, so a renderer change can't leave `vscode-preview-diff` screenshotting a stale
+    // capsule. The inlined crescent's PNG bytes are normalised out — their pixels aren't
+    // deterministic across environments (and the screenshot diff already covers them); everything the
+    // vector export controls (cards, text, positions, clip, device face, the crescent's placement) is
+    // compared exactly. Regenerate with `UPDATE_WEAR_SCROLL_FIXTURE=true` when this trips.
+    assertEquals(
+      "committed capsule fixture is stale — regenerate with UPDATE_WEAR_SCROLL_FIXTURE=true",
+      stripRasterBytes(fixtureHtml),
+      stripRasterBytes(committed),
+    )
   }
 }
+
+/**
+ * Replaces every inlined PNG data URI's base64 payload with a fixed marker, so the fixture drift
+ * check compares the deterministic vector structure without depending on cross-environment PNG
+ * encoding of the crescent raster (whose pixels the screenshot diff covers instead).
+ */
+private fun stripRasterBytes(html: String): String =
+  html.replace(Regex("data:image/png;base64,[A-Za-z0-9+/=]+"), "data:image/png;base64,<raster>")
 
 /** Base64-inlines each `figma-raster/<name>.png` reference in [svg] as a `data:` URI. */
 private fun inlineRasters(svg: String, rasterDir: File): String {
