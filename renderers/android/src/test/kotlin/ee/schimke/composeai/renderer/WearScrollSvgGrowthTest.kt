@@ -437,6 +437,20 @@ class WearScrollSvgGrowthTest {
     return out
   }
 
+  /**
+   * The list header captured full-width, so `ListHeader` centres its text the way the scaffold's
+   * `TransformingLazyColumn` item does — capturing a bare `ListHeader` lets it wrap its content and
+   * land left-aligned, which doesn't match the real screen.
+   */
+  @Composable
+  private fun HeaderPart(title: String) {
+    MaterialTheme {
+      Box(Modifier.width(deviceDp.dp)) {
+        ListHeader(modifier = Modifier.fillMaxWidth()) { Text(title) }
+      }
+    }
+  }
+
   /** A flat, unscaled activity row — the resting look of a `TitleCard`, no fisheye transform. */
   @Composable
   private fun CardPart(title: String, subtitle: String) {
@@ -522,7 +536,7 @@ class WearScrollSvgGrowthTest {
       capturePart("time", frameHeightDp = deviceDp) {
         MaterialTheme { TimeText(timeSource = FixedTime) }
       }
-    val header = capturePart("header") { MaterialTheme { ListHeader { Text("Activity") } } }
+    val header = capturePart("header") { HeaderPart("Activity") }
     val cards =
       activities.mapIndexed { i, (title, subtitle) ->
         capturePart("card-$i") { CardPart(title, subtitle) }
@@ -570,7 +584,7 @@ class WearScrollSvgGrowthTest {
       capturePart("nb-time", frameHeightDp = deviceDp) {
         MaterialTheme { TimeText(timeSource = FixedTime) }
       }
-    val header = capturePart("nb-header") { MaterialTheme { ListHeader { Text("Activity") } } }
+    val header = capturePart("nb-header") { HeaderPart("Activity") }
     val cards =
       activities.take(6).mapIndexed { i, (title, subtitle) ->
         capturePart("nb-card-$i") { CardPart(title, subtitle) }
@@ -618,7 +632,7 @@ class WearScrollSvgGrowthTest {
       capturePart("col-time", frameHeightDp = deviceDp) {
         MaterialTheme { TimeText(timeSource = FixedTime) }
       }
-    val header = capturePart("col-header") { MaterialTheme { ListHeader { Text("Settings") } } }
+    val header = capturePart("col-header") { HeaderPart("Settings") }
     val buttons = labels.mapIndexed { i, label -> capturePart("col-btn-$i") { ButtonRow(label) } }
 
     val svg = stackToCapsule("wear-parts-column", listOf(header) + buttons, timeText = timeText)
