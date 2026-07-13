@@ -81,17 +81,68 @@ RUN chmod +x ./gradlew \
     rm -rf /tmp/warm-bundle
 
 # ---------------------------------------------------------------------------
+# Stage 1b (optional): Android/Wear live daemon — "do the slow work upfront".
+#
+# An Android/Wear catalog (wear-m3) renders live through a Robolectric daemon, NOT
+# the desktop Skiko one. That runtime ships SEPARATELY (it's ~150-200 MB, too big
+# for the CLI tarball) as `compose-preview-android-daemon-<ver>.zip`, and needs
+# `android.jar` from an Android SDK plus, on its FIRST render, Robolectric's
+# `android-all-instrumented` jar (~150 MB). All three are baked here so the runtime
+# never pays a download on the request path — combined with serve's startup
+# `prewarm()` (warmInBackground), the first live Wear browse is already warm.
+#
+# The runtime stage always carries these (this image fronts the Wear catalog); they
+# stay inert unless a served catalog actually resolves an android `liveBundle`, in
+# which case ServeBundleDaemon.materialize picks up the sidecar + android.jar here.
+FROM base AS android-daemon
+ARG CP_VERSION
+ARG ANDROID_SDK_PLATFORM=android-35
+# Minimal Android SDK: just the cmdline-tools + one platform's android.jar (no
+# emulator/build-tools — Robolectric renders host-side).
+ENV ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/android-sdk
+RUN set -eu; \
+    apt-get update && apt-get install -y --no-install-recommends unzip; \
+    rm -rf /var/lib/apt/lists/*; \
+    mkdir -p "${ANDROID_HOME}/cmdline-tools"; \
+    curl -fsSL -o /tmp/cmdtools.zip \
+      "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"; \
+    unzip -q /tmp/cmdtools.zip -d "${ANDROID_HOME}/cmdline-tools"; \
+    mv "${ANDROID_HOME}/cmdline-tools/cmdline-tools" "${ANDROID_HOME}/cmdline-tools/latest"; \
+    rm /tmp/cmdtools.zip; \
+    yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null; \
+    "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" "platforms;${ANDROID_SDK_PLATFORM}" >/dev/null
+# Unpack the released Android daemon sidecar → /opt/lib-daemon-android (same retry
+# window as the CLI tarball, for the release-asset upload race).
+RUN set -eu; \
+    curl -fsSL --retry 20 --retry-delay 30 --retry-all-errors -o /tmp/android-daemon.zip \
+      "https://github.com/yschimke/compose-ai-tools/releases/download/v${CP_VERSION}/compose-preview-android-daemon-${CP_VERSION}.zip"; \
+    unzip -q /tmp/android-daemon.zip -d /opt; \
+    rm /tmp/android-daemon.zip; \
+    test -d /opt/lib-daemon-android
+
+# ---------------------------------------------------------------------------
 # Stage 2: runtime.
 # ---------------------------------------------------------------------------
 FROM base AS runtime
 ARG CP_VERSION
 COPY --from=build "/opt/compose-preview-${CP_VERSION}" "/opt/compose-preview-${CP_VERSION}"
 RUN ln -s "/opt/compose-preview-${CP_VERSION}" /opt/compose-preview
+# Android/Wear live-render bits (see the android-daemon stage): the Robolectric
+# daemon sidecar + a minimal Android SDK (android.jar). Carried so a served Wear
+# catalog with an android liveBundle renders live per-variant.
+COPY --from=android-daemon /opt/lib-daemon-android /opt/lib-daemon-android
+COPY --from=android-daemon /opt/android-sdk /opt/android-sdk
+# JAVA_TOOL_OPTIONS points the CLI at the unpacked Android daemon sidecar, warms the
+# daemon off the request path (warmInBackground → serve's prewarm), and gives its
+# cold Robolectric render a generous budget so a browse never blocks. See
+# ServeCatalogLiveHost / ServeRenderHost.
 ENV PATH="/opt/compose-preview/bin:${PATH}" \
     SERVE_IDLE_EXIT=0 \
     SERVE_TIMEOUT=1800 \
     COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1 \
-    JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70"
+    ANDROID_HOME=/opt/android-sdk \
+    ANDROID_SDK_ROOT=/opt/android-sdk \
+    JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70 -Dcomposeai.cli.libDaemonAndroidDir=/opt/lib-daemon-android -Dcomposeai.serve.warmInBackground=true -Dcomposeai.serve.renderTimeoutSeconds=900"
 
 WORKDIR /project
 # Carry the project + warmed Gradle cache + module build outputs so the first
