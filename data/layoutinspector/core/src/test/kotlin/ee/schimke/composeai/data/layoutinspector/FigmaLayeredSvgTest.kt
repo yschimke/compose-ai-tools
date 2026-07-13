@@ -67,6 +67,32 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun layerNameStripsMeasurePolicySuffixSoGroupsReadAsComposables() {
+    // When source-info resolution fails the component falls back to the measure-policy class name
+    // (`BoxMeasurePolicy`, `RootMeasurePolicy`); the layer id should read as the composable
+    // instead.
+    val svg =
+      render(
+        layoutNode(
+          "RootMeasurePolicy",
+          0,
+          0,
+          200,
+          100,
+          children =
+            listOf(
+              layoutNode("BoxMeasurePolicy", 0, 0, 100, 50),
+              layoutNode("OutlinedTextFieldMeasurePolicy", 0, 50, 200, 100),
+            ),
+        )
+      )
+    assertTrue(svg, svg.contains("""<g id="Root""""))
+    assertTrue(svg, svg.contains("""<g id="Box""""))
+    assertTrue(svg, svg.contains("""<g id="OutlinedTextField""""))
+    assertFalse(svg, svg.contains("MeasurePolicy"))
+  }
+
+  @Test
   fun rootSvgRequestsGeometricPrecisionSoTextMatchesTheRender() {
     // The default `text-rendering:auto` grid-fits glyphs to pixel boundaries in the browser, which
     // leaves a constant edge diff against the Skiko render on text-heavy previews. Pin the

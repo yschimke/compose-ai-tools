@@ -743,7 +743,20 @@ data class FigmaSvgModel(
       )
     }
 
-    private fun LayoutInspectorNode.layerName(): String = component.ifBlank { "Layer" }
+    private fun LayoutInspectorNode.layerName(): String =
+      composableName(component).ifBlank { "Layer" }
+
+    /**
+     * The composable name to show as the SVG layer id. When source-info resolution succeeds
+     * [LayoutInspectorNode.component] already carries the composable name (`Box`, `Card`, …); when
+     * it falls back to the measure-policy class it reads `BoxMeasurePolicy` / `RootMeasurePolicy` /
+     * `OutlinedTextFieldMeasurePolicy`. Strip that implementation-detail suffix so the layer reads
+     * as the composable — `BoxMeasurePolicy` → `Box` — rather than exposing an internal class name.
+     */
+    private fun composableName(component: String): String =
+      component.removeSuffix(MEASURE_POLICY_SUFFIX).ifBlank { component }
+
+    private const val MEASURE_POLICY_SUFFIX = "MeasurePolicy"
 
     /**
      * Assigns each semantics text node to the single best-matching layout node, keyed by layout
