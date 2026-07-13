@@ -110,6 +110,8 @@ fun SlottedCardSlotsSticker() = CatalogSticker {
 
 @CatalogModes @Composable fun TextMonospaceSpecimen() = Sticker("text-monospace")
 
+@CatalogModes @Composable fun TextBrandedSpecimen() = Sticker("text-branded")
+
 // --- States — interaction (pressed / focused), disabled, and toggle off↔on. ---
 
 @CatalogModes @Composable fun FilledButtonPressed() = Sticker("button-filled-pressed")

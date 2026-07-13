@@ -18,6 +18,14 @@
       "name": "monospace",
       "role": "generic",
       "fonts": [{ "file": "DroidSansMono.ttf", "weight": 400 }]
+    },
+    {
+      "name": "Orbitron",
+      "role": "named",
+      "fonts": [
+        { "file": "orbitron-400.ttf", "weight": 400 },
+        { "file": "orbitron-700.ttf", "weight": 700 }
+      ]
     }
   ]
 }

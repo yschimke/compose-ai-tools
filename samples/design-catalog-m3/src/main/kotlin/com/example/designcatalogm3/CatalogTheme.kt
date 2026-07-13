@@ -19,6 +19,7 @@ import androidx.compose.ui.text.platform.Font
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.designcatalogm3.shared.LocalGenericFonts
+import com.example.designcatalogm3.shared.LocalNamedFonts
 import com.example.designcatalogm3.shared.catalogTypography
 
 /**
@@ -35,7 +36,10 @@ import com.example.designcatalogm3.shared.catalogTypography
 @Composable
 fun CatalogSticker(content: @Composable () -> Unit) {
   val dark = isSystemInDarkTheme()
-  CompositionLocalProvider(LocalGenericFonts provides CatalogGenericFonts) {
+  CompositionLocalProvider(
+    LocalGenericFonts provides CatalogGenericFonts,
+    LocalNamedFonts provides CatalogNamedFonts,
+  ) {
     MaterialTheme(
       colorScheme = if (dark) darkColorScheme() else lightColorScheme(),
       typography = catalogTypography(Roboto),
@@ -126,4 +130,40 @@ val CatalogGenericFonts: Map<String, FontFamily> =
   mapOf(
     "serif" to FontFamily(Font("NotoSerif-Regular", fontBytes("NotoSerif-Regular.ttf"))),
     "monospace" to FontFamily(Font("DroidSansMono", fontBytes("DroidSansMono.ttf"))),
+  )
+
+/**
+ * Named downloadable-GoogleFont substitutes keyed by the GoogleFont display name
+ * `namedFontFamily(…)` looks up — the desktop-render counterpart to the wasm tier's `role: "named"`
+ * families, built from the branded TTFs vendored under `resources/fonts/` (`<slug>-<weight>.ttf`,
+ * the exact filenames the fonts manifest expects).
+ *
+ * The face `identity` is deliberately the downloadable-GoogleFont label string
+ * (`Font(GoogleFont("Orbitron", …), …)`) rather than a plain id: the daemon's font-usage recorder
+ * reports a resolved face by its `identity`, and the export's manifest generator regexes the
+ * GoogleFont display name back out of exactly that shape. So this desktop face round-trips into a
+ * `role: "named"` manifest entry at export — the same family the wasm tier then fetches — with no
+ * daemon-pipeline change. `namedFontFamily(...)` (sealed-resolver-safe lookup) is what a catalog
+ * component says in place of the Android-only `FontFamily(Font(GoogleFont("Orbitron"), provider))`.
+ */
+val CatalogNamedFonts: Map<String, FontFamily> =
+  mapOf(
+    "Orbitron" to
+      FontFamily(
+        googleFontFace("Orbitron", "orbitron-400.ttf", FontWeight.Normal),
+        googleFontFace("Orbitron", "orbitron-700.ttf", FontWeight.Bold),
+      )
+  )
+
+/**
+ * A desktop [Font] for a vendored downloadable-GoogleFont face, tagged with the GoogleFont label
+ * `identity` the daemon recorder / manifest generator round-trip on (see [CatalogNamedFonts]).
+ */
+private fun googleFontFace(name: String, file: String, weight: FontWeight) =
+  Font(
+    identity =
+      "Font(GoogleFont(\"$name\", bestEffort=true), weight=${weight.weight}, style=Normal)",
+    data = fontBytes(file),
+    weight = weight,
+    style = FontStyle.Normal,
   )

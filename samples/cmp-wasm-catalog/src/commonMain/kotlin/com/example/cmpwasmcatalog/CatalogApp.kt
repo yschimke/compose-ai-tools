@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.example.designcatalogm3.shared.CatalogComponent
 import com.example.designcatalogm3.shared.LocalGenericFonts
+import com.example.designcatalogm3.shared.LocalNamedFonts
 import com.example.designcatalogm3.shared.catalogComponentIds
 import com.example.designcatalogm3.shared.catalogTypography
 
@@ -86,6 +87,13 @@ fun CatalogApp(
    * consults. Empty ⇒ skiko's own (bundled-font) fallback, as before.
    */
   genericFamilies: Map<String, FontFamily> = emptyMap(),
+  /**
+   * Named downloadable-GoogleFont substitutes (`fonts.json` `role: "named"`): the font's display
+   * name (`Orbitron`, `Space Grotesk`, …) → the URL-loaded [FontFamily] holding the vendored faces.
+   * Provided as `LocalNamedFonts`, which `namedFontFamily` (in the shared module) consults. Empty ⇒
+   * the shared fallback (platform sans), as before.
+   */
+  namedFamilies: Map<String, FontFamily> = emptyMap(),
   onFirstFrame: (() -> Unit)? = null,
 ) {
   val scheme = if (dark) darkColorScheme() else lightColorScheme()
@@ -103,6 +111,7 @@ fun CatalogApp(
     LocalDensity provides scaled,
     LocalLayoutDirection provides direction,
     LocalGenericFonts provides genericFamilies,
+    LocalNamedFonts provides namedFamilies,
   ) {
     MaterialTheme(colorScheme = scheme, typography = catalogTypography(fontFamily)) {
       if (id in catalogComponentIds) {

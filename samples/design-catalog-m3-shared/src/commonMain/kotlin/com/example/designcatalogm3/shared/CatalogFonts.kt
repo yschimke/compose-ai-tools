@@ -35,6 +35,31 @@ fun genericFontFamily(name: String): FontFamily =
     }
 
 /**
+ * Named downloadable-GoogleFont substitutes for the running catalog: the font's display name
+ * (`Orbitron`, `Space Grotesk`, …) → the [FontFamily] holding the faces vendored for it (the same
+ * ones Android's downloadable-font provider fetches at that name). Empty (the default) ⇒
+ * [namedFontFamily] falls back to the M3 default sans, exactly as if the manifest had never listed
+ * the family.
+ *
+ * Same rationale as [LocalGenericFonts]: CMP's `FontFamily.Resolver` is **sealed**, so a
+ * `Font(GoogleFont("Orbitron"))` request can't be intercepted at the resolver on desktop/wasm.
+ * Catalog components therefore say `namedFontFamily("Orbitron")` where an Android-only component
+ * would say `FontFamily(Font(GoogleFont("Orbitron"), provider))`; the lookup is shared so the
+ * desktop render and the wasm tier resolve the branded face identically.
+ */
+val LocalNamedFonts = staticCompositionLocalOf<Map<String, FontFamily>> { emptyMap() }
+
+/**
+ * The [FontFamily] for a named GoogleFont [name], preferring the catalog's supplied vendored faces
+ * ([LocalNamedFonts]). Falls back to [fallback] (default: the platform sans) when the tier didn't
+ * vendor that family — the same graceful degradation the manifest generator assumes when it drops a
+ * face the dist doesn't carry.
+ */
+@Composable
+fun namedFontFamily(name: String, fallback: FontFamily = FontFamily.SansSerif): FontFamily =
+  LocalNamedFonts.current[name] ?: fallback
+
+/**
  * The stock M3 [Typography] with every style re-pointed at [fontFamily] — the type scale keeps its
  * real Material sizes/weights/line-heights, only the typeface changes (to the Roboto both the
  * desktop render and the baked snapshots use). Null ⇒ the untouched default scale (the platform

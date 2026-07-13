@@ -321,6 +321,12 @@ fun CatalogComponent(id: String, interactive: Boolean) {
         catalogOverrideString("text", "Mono specimen 0123"),
         fontFamily = genericFontFamily("monospace"),
       )
+    // Named downloadable-GoogleFont specimen — where an Android-only component would say
+    // `FontFamily(Font(GoogleFont("Orbitron"), provider))`, this uses `namedFontFamily(...)` so the
+    // desktop render and the wasm tier resolve the vendored Orbitron faces (`role: "named"` in the
+    // fonts manifest). Falls back to the platform sans if the tier didn't vendor the family.
+    "text-branded" ->
+      Text(catalogOverrideString("text", "Orbitron 0123"), fontFamily = namedFontFamily("Orbitron"))
   }
 }
 
@@ -363,6 +369,7 @@ val catalogComponentIds: List<String> =
     "text-maxlines-truncated",
     "text-serif",
     "text-monospace",
+    "text-branded",
   )
 
 /**
