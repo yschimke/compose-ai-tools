@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.cli.AndroidBundleLaunch
 import ee.schimke.composeai.cli.BundleReader
 import ee.schimke.composeai.cli.CoordinateResolver
 import ee.schimke.composeai.cli.PreviewManifest
@@ -27,21 +28,32 @@ import okio.Path.Companion.toPath
  * → registry.register` path unmodified — [ServeSessionRegistry] resumes a suspended session by
  * re-opening the same descriptor path, so suspend/resume works for free.
  *
- * Desktop-only for now — mirrors `bundle daemon`'s desktop launch (`DaemonMain` +
- * `lib-daemon-desktop` + `lib-renderer`). An `android`-backend bundle would need the Robolectric
- * sidecar + `ANDROID_HOME` wiring `bundle daemon` also does for that backend; out of scope here —
- * [materialize] returns `null` (logging why) so the caller falls back to the catalog's baked PNGs
- * or its Gradle `source` build.
+ * Backend-aware, mirroring `bundle daemon`'s two launches over the **same** `DaemonMain`
+ * entrypoint: a `desktop` bundle spawns the CMP/Skiko daemon (`lib-daemon-desktop` +
+ * `lib-renderer`), an `android` bundle spawns the Robolectric daemon (`lib-daemon-android` +
+ * `android.jar` + the JDK-17 `--add-opens` + `robolectric.*` sysprops [AndroidBundleLaunch]
+ * supplies). Wiring the Android backend here is what gives an Android/Wear catalog (e.g. `wear-m3`)
+ * a live daemon session — and hence per-variant renders + the daemon-produced `compose/figma-svg`
+ * lane (`renderSvg` on [ServeCatalogLiveHost]) that a baked, per-slug `figma/<slug>.svg` can't
+ * match. Any other backend makes [materialize] return `null` (logging why) so the caller falls back
+ * to the catalog's baked PNGs or its Gradle `source` build.
+ *
+ * The `android` backend needs the ~150-200 MB `lib-daemon-android` sidecar (shipped separately as
+ * `compose-preview-android-daemon-<version>.zip`, not in the CLI tarball) unpacked and reachable
+ * via `-Dcomposeai.cli.libDaemonAndroidDir=…`, plus `android.jar` from a local SDK
+ * (`ANDROID_HOME`/`ANDROID_SDK_ROOT`); on its first render the Robolectric runtime fetches the
+ * `android-all-instrumented` jar (network + cold-start latency). Missing either → `null` + a clear
+ * log, same fail-soft as a missing desktop sidecar.
  */
 internal object ServeBundleDaemon {
 
   /**
    * Extract [bundleFile] into [destDir] and synthesise a working [ServeSessionState] for it, or
-   * `null` (logging a clear reason via [onLog]) on any failure — a bad/foreign bundle, a
-   * non-desktop backend, missing sidecar jars, or an empty preview manifest. [offline] forces
-   * classpath resolution to skip the network (mirrors `-Dcomposeai.bundle.offline`); default
-   * `false` still honours that sysprop / `COMPOSE_PREVIEW_OFFLINE` via [CoordinateResolver]'s own
-   * default.
+   * `null` (logging a clear reason via [onLog]) on any failure — a bad/foreign bundle, an
+   * unsupported backend, missing sidecar jars (desktop or android), or an empty preview manifest.
+   * [offline] forces classpath resolution to skip the network (mirrors
+   * `-Dcomposeai.bundle.offline`); default `false` still honours that sysprop /
+   * `COMPOSE_PREVIEW_OFFLINE` via [CoordinateResolver]'s own default.
    */
   fun materialize(
     bundleFile: File,
@@ -67,10 +79,11 @@ internal object ServeBundleDaemon {
         onLog("catalog $system: could not read bundle metadata (${e.message})")
         return null
       }
-    if (manifest.backend != "desktop") {
+    val backend = manifest.backend
+    if (backend != "desktop" && backend != "android") {
       onLog(
-        "catalog $system: bundle backend '${manifest.backend}' is not 'desktop' — live daemon " +
-          "from bundle is desktop-only for now"
+        "catalog $system: bundle backend '$backend' is not 'desktop' or 'android' — no live daemon " +
+          "for this backend"
       )
       return null
     }
@@ -120,39 +133,28 @@ internal object ServeBundleDaemon {
       (listOf(classesDir) + extraClasspathDirs.filter { it.isDirectory } + libJars + resolvedJars)
         .joinToString(File.pathSeparator) { it.absolutePath }
 
-    val daemonJars = locateBundleSidecarJars("lib-daemon-desktop")
-    if (daemonJars.isEmpty()) {
-      onLog(
-        "catalog $system: no daemon jars found (looked in " +
-          "${bundleSidecarSearchDescription("lib-daemon-desktop")}) — is this a " +
-          "`:cli:installDist` build?"
-      )
-      return null
-    }
-    val rendererJars = locateBundleSidecarJars("lib-renderer")
-    if (rendererJars.isEmpty()) {
-      onLog(
-        "catalog $system: no renderer jars found (looked in " +
-          "${bundleSidecarSearchDescription("lib-renderer")})"
-      )
-      return null
-    }
-    val daemonClasspath = (daemonJars + rendererJars).map { it.absolutePath }
+    val backendLaunch =
+      when (backend) {
+        "android" -> androidBundleDaemonLaunch(system, onLog)
+        else -> desktopBundleDaemonLaunch(system, onLog)
+      } ?: return null
 
     val descriptor =
       DaemonLaunchDescriptor(
         schemaVersion = DAEMON_LAUNCH_SCHEMA_VERSION,
         modulePath = ":catalog",
-        variant = "desktop",
+        variant = backendLaunch.variant,
         enabled = true,
-        mainClass = DESKTOP_DAEMON_MAIN_CLASS,
+        // Both backends speak the same JSON-RPC over stdio via the same `DaemonMain`; only the
+        // classpath / JVM args / sysprops differ (see [BackendDaemonLaunch]).
+        mainClass = DAEMON_MAIN_CLASS,
         javaLauncher = null,
-        classpath = daemonClasspath,
-        jvmArgs = listOf("--enable-native-access=ALL-UNNAMED"),
+        classpath = backendLaunch.daemonClasspath,
+        jvmArgs = backendLaunch.jvmArgs,
         systemProperties =
-          mapOf(
-            "composeai.daemon.userClassDirs" to userClassPath,
-            "composeai.daemon.previewsJsonPath" to previewsJson.absolutePath,
+          buildMap {
+            put("composeai.daemon.userClassDirs", userClassPath)
+            put("composeai.daemon.previewsJsonPath", previewsJson.absolutePath)
             // Point the daemon's render output at `<destDir>/renders`. This is what makes
             // `DaemonMain.dataRoot` non-null (`<destDir>/data`), which is the gate that *registers*
             // the file-based data products — including `compose/figma-svg` (+ `-long`). Without it
@@ -163,8 +165,11 @@ internal object ServeBundleDaemon {
             // `enableExtensions` gets it back in `unknown`). `RenderEngine.dataDir` resolves to the
             // SAME `<destDir>/data` (`outputDir.parent/data`), so the registry reads exactly where
             // the render wrote. Keep the key literal to avoid a `:daemon:desktop` compile dep.
-            "composeai.render.outputDir" to File(destDir, "renders").absolutePath,
-          ),
+            put("composeai.render.outputDir", File(destDir, "renders").absolutePath)
+            // Backend extras: the Robolectric `robolectric.*` flags for `android`; none for
+            // desktop.
+            putAll(backendLaunch.extraSystemProperties)
+          },
         workingDirectory = destDir.absolutePath,
         manifestPath = previewsJson.absolutePath,
       )
@@ -322,8 +327,96 @@ internal object ServeBundleDaemon {
     isLenient = true
   }
 
-  /** `ee.schimke.composeai.daemon.DaemonMain` — the desktop daemon entrypoint a bundle spawns. */
-  private const val DESKTOP_DAEMON_MAIN_CLASS = "ee.schimke.composeai.daemon.DaemonMain"
+  /**
+   * The backend-specific half of a bundle daemon launch: the daemon (parent `-cp`) classpath, the
+   * JVM args, and any extra `-D` system properties. Mirrors `BundleDaemonCommand.DaemonLaunch` but
+   * flattened for the descriptor path (which applies `jvmArgs` + `systemProperties` + `classpath`
+   * directly — see `SubprocessDaemonClientFactory.spawn`). The daemon's own classpath carries the
+   * renderer; the bundle's app classes ride the `composeai.daemon.userClassDirs` sysprop, so they
+   * are NOT in [daemonClasspath].
+   */
+  private data class BackendDaemonLaunch(
+    val variant: String,
+    val daemonClasspath: List<String>,
+    val jvmArgs: List<String>,
+    val extraSystemProperties: Map<String, String>,
+  )
+
+  /** Desktop (CMP/Skiko) launch: `lib-daemon-desktop` + `lib-renderer`, native-access opened. */
+  private fun desktopBundleDaemonLaunch(
+    system: String,
+    onLog: (String) -> Unit,
+  ): BackendDaemonLaunch? {
+    val daemonJars = locateBundleSidecarJars("lib-daemon-desktop")
+    if (daemonJars.isEmpty()) {
+      onLog(
+        "catalog $system: no daemon jars found (looked in " +
+          "${bundleSidecarSearchDescription("lib-daemon-desktop")}) — is this a " +
+          "`:cli:installDist` build?"
+      )
+      return null
+    }
+    val rendererJars = locateBundleSidecarJars("lib-renderer")
+    if (rendererJars.isEmpty()) {
+      onLog(
+        "catalog $system: no renderer jars found (looked in " +
+          "${bundleSidecarSearchDescription("lib-renderer")})"
+      )
+      return null
+    }
+    return BackendDaemonLaunch(
+      variant = "desktop",
+      daemonClasspath = (daemonJars + rendererJars).map { it.absolutePath },
+      jvmArgs = listOf("--enable-native-access=ALL-UNNAMED"),
+      extraSystemProperties = emptyMap(),
+    )
+  }
+
+  /**
+   * Android (Robolectric) launch: `lib-daemon-android` + `android.jar`, plus the JDK-17
+   * `--add-opens` args and `robolectric.*` mode sysprops [AndroidBundleLaunch] supplies (the same
+   * ones `bundle daemon`'s `androidDaemonLaunch` passes). `resolveAndroidJar(null)` falls back to
+   * `ANDROID_HOME`/`ANDROID_SDK_ROOT` since a module-less serve has no `local.properties`. Missing
+   * the sidecar or android.jar → `null` + an actionable log (caller falls back to baked PNGs).
+   */
+  private fun androidBundleDaemonLaunch(
+    system: String,
+    onLog: (String) -> Unit,
+  ): BackendDaemonLaunch? {
+    val daemonJars = locateBundleSidecarJars("lib-daemon-android")
+    if (daemonJars.isEmpty()) {
+      onLog(
+        "catalog $system: backend=android needs the Android daemon sidecar (`lib-daemon-android/`)," +
+          " which ships separately as `compose-preview-android-daemon-<version>.zip` (too large for" +
+          " the CLI tarball). Unpack it and set" +
+          " `-Dcomposeai.cli.libDaemonAndroidDir=<dir>/lib-daemon-android`. Looked in " +
+          "${bundleSidecarSearchDescription("lib-daemon-android")}."
+      )
+      return null
+    }
+    val androidJar =
+      AndroidBundleLaunch.resolveAndroidJar(localPropertiesFile = null)
+        ?: run {
+          onLog(
+            "catalog $system: backend=android needs android.jar — set ANDROID_HOME / " +
+              "ANDROID_SDK_ROOT."
+          )
+          return null
+        }
+    val launch = AndroidBundleLaunch()
+    return BackendDaemonLaunch(
+      variant = "android",
+      daemonClasspath = (daemonJars + listOf(androidJar)).map { it.absolutePath },
+      jvmArgs = launch.jvmArgs(),
+      extraSystemProperties = launch.robolectricSystemProperties(),
+    )
+  }
+
+  /**
+   * `ee.schimke.composeai.daemon.DaemonMain` — the daemon entrypoint a bundle spawns (both
+   * backends).
+   */
+  private const val DAEMON_MAIN_CLASS = "ee.schimke.composeai.daemon.DaemonMain"
 
   /** Descriptor schema version — mirrors `SubprocessRenderSessions.openBundleDaemon`. */
   private const val DAEMON_LAUNCH_SCHEMA_VERSION = 2
