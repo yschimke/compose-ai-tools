@@ -988,8 +988,12 @@ internal object ComposeLayoutInspector {
   }
 
   private data class LayoutSource(
-    /** Friendly display label — the node's own `C(...)` name, or the nearest enclosing one. */
-    val component: String,
+    /**
+     * Friendly display label — the node's own `C(...)` name, or the nearest enclosing one. Null
+     * when the group carries source info (a `file:line` link worth keeping) but no name at all; the
+     * caller then falls back to the measure-policy class for the label.
+     */
+    val component: String?,
     /**
      * The node's **own** composable identity (its own `C(...)`, or its LayoutNode class when the
      * group carried source info) — never an inherited name. Null when only an enclosing name was
@@ -1020,23 +1024,30 @@ internal object ComposeLayoutInspector {
      */
     private fun index(group: CompositionGroup, enclosingName: String?) {
       val sourceInfo = group.sourceInfo
-      // The node's own composable name (its own `C(...)`), or its LayoutNode class when the group
-      // carried source info but no `C(...)` — never inherited. Only a real `C(...)` propagates as
-      // the enclosing name to descendants.
-      val ownName = sourceInfo?.let { it.componentName() ?: group.node?.javaClass?.simpleName }
-      val currentName = sourceInfo?.componentName() ?: enclosingName
+      // The node's own composable name — its own `C(...)`, or null. The raw LayoutNode class
+      // (`LayoutNode`) is deliberately NOT used as a fallback: it names nothing a developer wrote
+      // and is the same string for every node, so leaving `ownComponent` null lets `toWireNode`
+      // fall through to the node's *measure-policy* class instead — a real layout identity
+      // (`Column`, `OutlinedTextFieldMeasurePolicy`, …) that both reads like the code and keeps
+      // opaque-component raster matching working for controls the token export can't vectorise.
+      val ownName = sourceInfo?.componentName()
+      // Display label: own `C(...)`, else the nearest enclosing composable. Only a real `C(...)`
+      // propagates as the enclosing name to descendants — the label tracks the composable the
+      // developer wrote, not Compose's internal layout classes.
+      val currentName = ownName ?: enclosingName
       val node = group.node
-      if (node != null) {
-        val display = currentName ?: ownName
-        if (display != null) {
-          byNode[node] =
-            LayoutSource(
-              component = display,
-              ownComponent = ownName,
-              source = sourceInfo?.sourceLocation(),
-              sourceInfo = sourceInfo,
-            )
-        }
+      // Record an entry when there's a name to carry OR source info to preserve. Skipping a
+      // source-info-bearing group would drop its `file:line` source link (the layout-inspector /
+      // source-link UI reads it) even though it has no `C(...)` name — so keep the entry and let
+      // only `component`/`ownComponent` be null.
+      if (node != null && (currentName != null || sourceInfo != null)) {
+        byNode[node] =
+          LayoutSource(
+            component = currentName,
+            ownComponent = ownName,
+            source = sourceInfo?.sourceLocation(),
+            sourceInfo = sourceInfo,
+          )
       }
       group.compositionGroups.forEach { index(it, currentName) }
     }
