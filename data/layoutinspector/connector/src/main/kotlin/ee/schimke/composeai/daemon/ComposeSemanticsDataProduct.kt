@@ -988,8 +988,12 @@ internal object ComposeLayoutInspector {
   }
 
   private data class LayoutSource(
-    /** Friendly display label — the node's own `C(...)` name, or the nearest enclosing one. */
-    val component: String,
+    /**
+     * Friendly display label — the node's own `C(...)` name, or the nearest enclosing one. Null
+     * when the group carries source info (a `file:line` link worth keeping) but no name at all; the
+     * caller then falls back to the measure-policy class for the label.
+     */
+    val component: String?,
     /**
      * The node's **own** composable identity (its own `C(...)`, or its LayoutNode class when the
      * group carried source info) — never an inherited name. Null when only an enclosing name was
@@ -1032,7 +1036,11 @@ internal object ComposeLayoutInspector {
       // developer wrote, not Compose's internal layout classes.
       val currentName = ownName ?: enclosingName
       val node = group.node
-      if (node != null && currentName != null) {
+      // Record an entry when there's a name to carry OR source info to preserve. Skipping a
+      // source-info-bearing group would drop its `file:line` source link (the layout-inspector /
+      // source-link UI reads it) even though it has no `C(...)` name — so keep the entry and let
+      // only `component`/`ownComponent` be null.
+      if (node != null && (currentName != null || sourceInfo != null)) {
         byNode[node] =
           LayoutSource(
             component = currentName,
