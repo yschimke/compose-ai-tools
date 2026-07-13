@@ -192,6 +192,77 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun layerLabelPrefersInheritedDisplayNameOverOwnComponent() {
+    // A node keeps its own identity in `component` (here a measure-policy fallback), but the layer
+    // label reads the friendly inherited `displayName`.
+    val svg =
+      render(
+        LayoutInspectorNode(
+          nodeId = "root",
+          component = "BoxMeasurePolicy",
+          displayName = "Card",
+          bounds = LayoutInspectorBounds(0, 0, 100, 60),
+          size = LayoutInspectorSize(100, 60),
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FF000000"),
+        )
+      )
+    assertTrue(svg, svg.contains("""<g id="Card""""))
+    assertFalse(svg, svg.contains("""id="Box"""))
+  }
+
+  @Test
+  fun inheritedDisplayNameIsNotUsedForOpaqueRasterMatching() {
+    // Regression guard (#2469 follow-up): an IconButton's internal wrapper inherits the label
+    // "IconButton" for display, but its own identity is a plain Box — it must NOT match the "Icon"
+    // raster fragment and rasterise, which would drop the whole editable button subtree into a PNG.
+    // Only the real Icon leaf, whose own `component` is "Icon", rasterises.
+    val model =
+      FigmaSvgModel.from(
+        layout =
+          LayoutInspectorPayload(
+            LayoutInspectorNode(
+              nodeId = "screen",
+              component = "Screen",
+              bounds = LayoutInspectorBounds(0, 0, 200, 100),
+              size = LayoutInspectorSize(200, 100),
+              children =
+                listOf(
+                  LayoutInspectorNode(
+                    nodeId = "iconButton",
+                    component = "BoxMeasurePolicy",
+                    displayName = "IconButton",
+                    bounds = LayoutInspectorBounds(0, 0, 48, 48),
+                    size = LayoutInspectorSize(48, 48),
+                    children =
+                      listOf(
+                        LayoutInspectorNode(
+                          nodeId = "icon",
+                          component = "Icon",
+                          bounds = LayoutInspectorBounds(12, 12, 36, 36),
+                          size = LayoutInspectorSize(24, 24),
+                        ),
+                        LayoutInspectorNode(
+                          nodeId = "ripple",
+                          component = "BoxMeasurePolicy",
+                          displayName = "IconButton",
+                          bounds = LayoutInspectorBounds(0, 0, 48, 48),
+                          size = LayoutInspectorSize(48, 48),
+                          tokens = ComposeSemanticsTokens(backgroundColor = "#22000000"),
+                        ),
+                      ),
+                  )
+                ),
+            )
+          ),
+        rasterComponents = setOf("Icon"),
+      )
+    // Only the real Icon leaf became a raster; the IconButton wrapper stayed editable vector.
+    assertEquals(listOf("icon"), model.rasterTargets.map { it.nodeId })
+    val svg = FigmaLayeredSvg.render(model)
+    assertTrue(svg, svg.contains("""<g id="IconButton""""))
+  }
+
+  @Test
   fun rootSvgRequestsGeometricPrecisionSoTextMatchesTheRender() {
     // The default `text-rendering:auto` grid-fits glyphs to pixel boundaries in the browser, which
     // leaves a constant edge diff against the Skiko render on text-heavy previews. Pin the

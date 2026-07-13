@@ -95,9 +95,9 @@ class ComposeSemanticsDataProductRegistryTest {
     val registry = LayoutInspectorDataProductRegistry(rootDir)
     val cap = registry.capabilities.single()
     assertEquals("layout/inspector", cap.kind)
-    // v2 (#1903): per-node `tokens` added to LayoutInspectorNode.
-    // v3 (#1908 follow-up): `tokens.cornerRadiusPx` added for raw-pixel RoundedCornerShape corners.
-    assertEquals(3, cap.schemaVersion)
+    // Assert against the producer's constant rather than a literal so an additive schema bump
+    // (tokens, cornerRadiusPx, curvedTexts, displayName, …) updates the contract in one place.
+    assertEquals(LayoutInspectorDataProducer.SCHEMA_VERSION, cap.schemaVersion)
     assertTrue(cap.attachable)
     assertTrue(cap.fetchable)
     assertTrue(!cap.requiresRerender)

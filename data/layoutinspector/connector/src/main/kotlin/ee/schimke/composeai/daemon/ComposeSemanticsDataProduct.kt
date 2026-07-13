@@ -785,18 +785,23 @@ internal object ComposeLayoutInspector {
   ): LayoutInspectorNode {
     val rootCoords = rootCoordinates ?: coordinates
     val source = sources.sourceFor(raw)
+    // The node's own identity (own `C(...)` or measure-policy class) drives raster/curved matching;
+    // the friendly, possibly-inherited label rides separately in `displayName`. Keying matching off
+    // the own identity keeps an inherited label like `IconButton` (⊃ `Icon`) from wrongly
+    // rasterising a non-opaque wrapper's subtree (#2469 follow-up).
+    val ownComponent = source?.ownComponent ?: componentFallback
+    val displayComponent = source?.component ?: componentFallback
     // A Wear `CurvedLayout`/`TimeText` draws text along an arc via a `CurvedTextChild` that no
     // LayoutNode represents; pull those runs (string + baseline arc + font) so the export can
     // reproduce them as an SVG `<textPath>` instead of dropping the clock.
     val curvedTexts =
-      if ((source?.component ?: componentFallback).contains("Curved"))
-        CurvedTextExtractor.extract(this)
-      else emptyList()
+      if (ownComponent.contains("Curved")) CurvedTextExtractor.extract(this) else emptyList()
     val children = children.map { it.toWireNode(rootCoords, sources, density) }
     val modifiers = modifierInfo
     return LayoutInspectorNode(
       nodeId = semanticsId?.toString() ?: identityId,
-      component = source?.component ?: componentFallback,
+      component = ownComponent,
+      displayName = displayComponent.takeIf { it != ownComponent },
       source = source?.source,
       sourceInfo = source?.sourceInfo,
       bounds = coordinates.boundsIn(rootCoords),
@@ -983,7 +988,15 @@ internal object ComposeLayoutInspector {
   }
 
   private data class LayoutSource(
+    /** Friendly display label — the node's own `C(...)` name, or the nearest enclosing one. */
     val component: String,
+    /**
+     * The node's **own** composable identity (its own `C(...)`, or its LayoutNode class when the
+     * group carried source info) — never an inherited name. Null when only an enclosing name was
+     * available, so the caller falls back to the measure-policy class for identity matching exactly
+     * as it did before name inheritance existed.
+     */
+    val ownComponent: String?,
     val source: String?,
     val sourceInfo: String?,
   )
@@ -1006,16 +1019,22 @@ internal object ComposeLayoutInspector {
      * wins for its own subtree; the inherited name only fills the gaps.
      */
     private fun index(group: CompositionGroup, enclosingName: String?) {
-      val currentName = group.sourceInfo?.componentName() ?: enclosingName
+      val sourceInfo = group.sourceInfo
+      // The node's own composable name (its own `C(...)`), or its LayoutNode class when the group
+      // carried source info but no `C(...)` — never inherited. Only a real `C(...)` propagates as
+      // the enclosing name to descendants.
+      val ownName = sourceInfo?.let { it.componentName() ?: group.node?.javaClass?.simpleName }
+      val currentName = sourceInfo?.componentName() ?: enclosingName
       val node = group.node
       if (node != null) {
-        val name = currentName ?: group.sourceInfo?.let { node.javaClass.simpleName }
-        if (name != null) {
+        val display = currentName ?: ownName
+        if (display != null) {
           byNode[node] =
             LayoutSource(
-              component = name,
-              source = group.sourceInfo?.sourceLocation(),
-              sourceInfo = group.sourceInfo,
+              component = display,
+              ownComponent = ownName,
+              source = sourceInfo?.sourceLocation(),
+              sourceInfo = sourceInfo,
             )
         }
       }
