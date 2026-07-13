@@ -1193,6 +1193,13 @@ class ServeCommand(args: List<String>) : Command(args) {
         // URLs and falls back to baked PNGs for ids it can't render.
         previewAliases = alias,
         bakedFallback = bakedFallback,
+        // A source-built Android/Robolectric catalog costs the same heavier live-seat weight as the
+        // bundle path — read from the built daemon descriptor, since there's no bundle
+        // manifest.backend here — so a from-source deployment keeps the OOM protection the
+        // weighting
+        // adds (a --live-seats budget can't admit two Android daemons thinking they're
+        // desktop-cost).
+        liveSeatWeight = ServeBundleDaemon.liveSeatWeightForDescriptor(built.descriptor),
       )
     val host = openHost(state) ?: return false
     registry.register(system, state, host = host)
