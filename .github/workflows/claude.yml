@@ -56,7 +56,7 @@ jobs:
           # base-vs-head when rendering before/after evidence.
           fetch-depth: 0
       - uses: ./.github/actions/setup
-      - uses: anthropics/claude-code-action@558b1d6cab4085c7753fe402c10bef0fbb92ac7a # v1.0.165
+      - uses: anthropics/claude-code-action@e90deca47693f9457b72f2b53c17d7c445a87342 # v1.0.171
         with:
           # Bills the Claude subscription's included usage (shared with
           # interactive Claude Code sessions) rather than per-token API spend.
