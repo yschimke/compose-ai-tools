@@ -3,6 +3,8 @@ package ee.schimke.composeai.cli.serve
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamFrameParams
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 
 /**
  * A [ServeHost] that fronts a trusted design-system catalog with its baked-PNG render **and** an
@@ -66,6 +68,15 @@ class ServeCatalogLiveHost(
   private val perPreviewResolve: ((daemonId: String) -> ServeHost?)? = null,
   /** Live upstream stream count across the pooled per-preview daemons (supplied by the pool). */
   private val perPreviewStreamCount: () -> Int = { 0 },
+  /**
+   * Serve the baked vector immediately and warm the daemon in the background rather than blocking a
+   * browse on a cold (possibly minutes-long, esp. Android/Robolectric) first render — see the
+   * cold-start note below. Off by default so the synchronous #2448 per-variant guarantee (and its
+   * tests) are unchanged; a deploy fronting a slow-cold-starting catalog sets it on via
+   * `-Dcomposeai.serve.warmInBackground=true`.
+   */
+  private val warmInBackground: Boolean =
+    System.getProperty("composeai.serve.warmInBackground")?.toBooleanStrictOrNull() ?: false,
 ) : ServeHost {
 
   /**
@@ -77,6 +88,58 @@ class ServeCatalogLiveHost(
    * keeps the baked entry as-is (no live lane, no editable knobs).
    */
   override val previews: List<ServePreview> = mergeDeclaredKnobs(baked.previews, live.previews)
+
+  // ── Non-blocking cold start ────────────────────────────────────────────────────────────────────
+  // The no-override SVG lane prefers the daemon's per-variant vector over the baked per-slug one
+  // (the #2448 fix). But a daemon's FIRST render can be slow — a desktop/Skiko daemon warms in
+  // seconds, an Android/Robolectric daemon's cold render can take minutes. When [warmInBackground]
+  // is on, a not-yet-"warm" daemon serves the BAKED vector immediately and warms in the background;
+  // once a daemon id has produced one successful render it's warm and the per-variant lane kicks in
+  // for it. [prewarm] closes the window off the request path so the first real browse is already
+  // per-variant.
+  private val warmDaemonIds = ConcurrentHashMap.newKeySet<String>()
+  private val warmingInFlight = ConcurrentHashMap.newKeySet<String>()
+  private val warmExecutor by lazy {
+    Executors.newSingleThreadExecutor { r ->
+      Thread(r, "serve-catalog-warm").apply { isDaemon = true }
+    }
+  }
+
+  /**
+   * True when [daemonId] is warm (a live render is safe to await now). When it isn't and
+   * [warmInBackground] is on, kick a one-shot background warm (a throwaway render that flips it
+   * warm on success) and return false so the caller falls back to baked — the request never blocks
+   * on a cold daemon. With [warmInBackground] off this always returns true (old always-block
+   * behaviour).
+   */
+  private fun daemonWarmOrScheduling(daemonId: String): Boolean {
+    if (!warmInBackground || warmDaemonIds.contains(daemonId)) return true
+    if (warmingInFlight.add(daemonId)) {
+      warmExecutor.execute {
+        try {
+          if (liveHostFor(daemonId).render(daemonId, PreviewOverrides()) is RenderOutcome.Ok) {
+            warmDaemonIds.add(daemonId)
+          }
+        } catch (_: Throwable) {
+          // Best-effort: a failed warm just leaves the id cold; the next request retries.
+        } finally {
+          warmingInFlight.remove(daemonId)
+        }
+      }
+    }
+    return false
+  }
+
+  /**
+   * Warm the live daemon(s) off the request path so the first real browse already gets the
+   * per-variant SVG lane rather than the baked fallback. Best-effort + async: warms up to
+   * [PREWARM_MAX] distinct daemon ids (a monolithic daemon shares one; a per-preview pool has many,
+   * and the rest warm lazily on first request). No-op when [warmInBackground] is off.
+   */
+  fun prewarm() {
+    if (!warmInBackground) return
+    alias.values.distinct().take(PREWARM_MAX).forEach { daemonWarmOrScheduling(it) }
+  }
 
   override val label: String = baked.label
 
@@ -174,8 +237,15 @@ class ServeCatalogLiveHost(
     // which carries the actual variant's theme (uiMode), for any daemon-twinned id; the baked slug
     // SVG stays the fallback for unmapped (Android-only) ids and if the daemon can't export.
     alias[previewId]?.let { daemonId ->
-      val live = liveHostFor(daemonId).renderSvg(daemonId, overrides)
-      if (live !is SvgOutcome.NotFound) return live
+      // Only await the daemon when it's warm — otherwise a cold (possibly minutes-long) render
+      // would
+      // hang the browse. A cold daemon serves the baked vector now and warms in the background; a
+      // warm daemon that still fails/NotFounds also falls through to baked (never surface an error
+      // where a baked vector exists).
+      if (daemonWarmOrScheduling(daemonId)) {
+        val live = liveHostFor(daemonId).renderSvg(daemonId, overrides)
+        if (live is SvgOutcome.Ok) return live
+      }
     }
     return baked.renderSvg(previewId, overrides)
   }
@@ -230,10 +300,26 @@ class ServeCatalogLiveHost(
   }
 
   override fun close() {
+    if (warmInBackground) {
+      try {
+        warmExecutor.shutdownNow()
+      } catch (_: Throwable) {
+        // ignore — best-effort shutdown of the daemon-thread warm pool
+      }
+    }
     try {
       live.close()
     } finally {
       baked.close()
     }
+  }
+
+  private companion object {
+    /**
+     * Cap on how many distinct daemon ids [prewarm] warms eagerly, so a per-preview pool doesn't
+     * spawn a render per preview at once (a thundering herd on startup). The rest warm lazily on
+     * first request. A monolithic daemon shares one id, so the cap is irrelevant there.
+     */
+    const val PREWARM_MAX = 8
   }
 }

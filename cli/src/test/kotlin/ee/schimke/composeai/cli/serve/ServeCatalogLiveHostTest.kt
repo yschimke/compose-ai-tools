@@ -312,6 +312,71 @@ class ServeCatalogLiveHostTest {
   }
 
   @Test
+  fun `warmInBackground serves the baked SVG first, then per-variant once the daemon warms`() {
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        streaming = true,
+      )
+    val composite =
+      ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked, warmInBackground = true)
+
+    // Cold: the first no-override SVG serves the BAKED vector immediately — a cold daemon must
+    // never
+    // block the browse. The daemon's renderSvg is NOT awaited synchronously on this first call.
+    val first = composite.renderSvg(catalogId, PreviewOverrides()) as SvgOutcome.Ok
+    assertEquals("baked-svg:$catalogId", first.svg.decodeToString())
+
+    // The background warm rendered the daemon (a throwaway render()), flipping it warm; once warm,
+    // the per-variant daemon vector takes over for subsequent browses.
+    val warmed =
+      awaitOk(2_000) {
+        (composite.renderSvg(catalogId, PreviewOverrides()) as? SvgOutcome.Ok)?.takeIf {
+          it.svg.decodeToString() == "live-svg:$daemonId"
+        }
+      }
+    assertEquals("live-svg:$daemonId", warmed.svg.decodeToString())
+    assertEquals(daemonId, live.lastRenderId) // the warm went through the daemon's render()
+  }
+
+  @Test
+  fun `prewarm warms the daemon so the first browse is already per-variant`() {
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        streaming = true,
+      )
+    val composite =
+      ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked, warmInBackground = true)
+    composite.prewarm()
+
+    // After prewarm settles, the very first no-override browse already gets the per-variant vector.
+    val out =
+      awaitOk(2_000) {
+        (composite.renderSvg(catalogId, PreviewOverrides()) as? SvgOutcome.Ok)?.takeIf {
+          it.svg.decodeToString() == "live-svg:$daemonId"
+        }
+      }
+    assertEquals("live-svg:$daemonId", out.svg.decodeToString())
+  }
+
+  /** Poll [block] until it returns non-null or [timeoutMs] elapses (for the async warm). */
+  private fun <T : Any> awaitOk(timeoutMs: Long, block: () -> T?): T {
+    val deadline = System.nanoTime() + timeoutMs * 1_000_000
+    while (System.nanoTime() < deadline) {
+      block()?.let {
+        return it
+      }
+      Thread.sleep(20)
+    }
+    error("condition not met within ${timeoutMs}ms")
+  }
+
+  @Test
   fun `a knob-bearing render on an unmapped id stays baked`() {
     // No daemon twin → nothing can honour the knob; serve the baked PNG rather than 404.
     val (composite, live, baked) = host()
