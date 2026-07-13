@@ -350,7 +350,7 @@ data class FigmaSvgModel(
       val names = colorNames.mapKeys { it.key.uppercase() }
       val ctx =
         BuildContext(textByNodeId, names, density, rasterComponents, rasterHref, captureCanvasDraws)
-      val rootLayer = layout.root.toLayer(ctx)
+      val rootLayer = collapsePassthroughGroups(layout.root.toLayer(ctx))
       // A round Wear device screen is masked to the inscribed circle of the frame (the root node's
       // bounds) — content outside it (the corners, and any list item scrolled below the frame) is
       // clipped away, matching Roborazzi's device crop. Clamp the extent to that frame so the
@@ -630,6 +630,35 @@ data class FigmaSvgModel(
         children = children.map { it.toLayer(ctx, bounds) },
       )
     }
+
+    /**
+     * Collapse pure-grouping pass-through layers — a `<g>` that draws nothing (no
+     * fill/stroke/text/raster/background, no shadow) and only wraps a *single* child — into that
+     * child. Compose's `LayoutNode` tree stacks several such nodes per widget (a `Button` nests a
+     * handful of internal boxes), so a 1:1 layer-per-node export reads as a deep pile of anonymous
+     * `Box` groups. Dropping a wrapper that neither paints nor groups siblings is pixel-identical —
+     * a bare grouping `<g>` carries no transform/clip/opacity, so removing it moves nothing — while
+     * flattening the tree down to the layers that actually stand for something in the design.
+     *
+     * Two deliberate narrowings keep meaningful structure:
+     * - the **root** frame is never dropped (it anchors the canvas); only its descendants collapse.
+     * - a grouping node with **2+ children** is kept — it genuinely groups siblings, so it's real
+     *   structure, not a redundant nesting level.
+     */
+    private fun collapsePassthroughGroups(root: FigmaSvgLayer): FigmaSvgLayer =
+      root.copy(children = root.children.map { it.collapseSubtree() })
+
+    private fun FigmaSvgLayer.collapseSubtree(): FigmaSvgLayer {
+      var layer = copy(children = children.map { it.collapseSubtree() })
+      while (layer.isPassthroughGroup && layer.children.size == 1) {
+        layer = layer.children.single()
+      }
+      return layer
+    }
+
+    /** A layer that neither paints ([FigmaSvgLayer.paints]) nor casts a shadow — pure nesting. */
+    private val FigmaSvgLayer.isPassthroughGroup: Boolean
+      get() = !paints && elevationPx == 0.0
 
     /**
      * The node's captured [LayoutInspectorNode.bounds], or — only for the exact all-zero

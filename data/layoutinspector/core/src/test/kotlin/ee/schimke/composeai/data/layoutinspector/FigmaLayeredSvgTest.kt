@@ -107,6 +107,91 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun collapsesPurePassthroughWrappersIntoTheirSingleChild() {
+    // Compose stacks anonymous single-child layout nodes per widget (padding / min-size / clip
+    // wrappers). Those draw nothing and only nest one child, so they collapse into the child that
+    // actually paints — the export shouldn't emit a pile of empty <g> groups.
+    val svg =
+      render(
+        layoutNode(
+          "Screen",
+          0,
+          0,
+          200,
+          100,
+          children =
+            listOf(
+              layoutNode(
+                "WrapperA",
+                0,
+                0,
+                100,
+                40,
+                children =
+                  listOf(
+                    layoutNode(
+                      "WrapperB",
+                      0,
+                      0,
+                      100,
+                      40,
+                      children =
+                        listOf(
+                          layoutNode(
+                            "Button",
+                            0,
+                            0,
+                            100,
+                            40,
+                            tokens = ComposeSemanticsTokens(backgroundColor = "#FF000000"),
+                          )
+                        ),
+                    )
+                  ),
+              )
+            ),
+        )
+      )
+    // The two empty wrappers are gone; the painting Button and the root frame survive.
+    assertFalse(svg, svg.contains("WrapperA"))
+    assertFalse(svg, svg.contains("WrapperB"))
+    assertTrue(svg, svg.contains("""<g id="Screen""""))
+    assertTrue(svg, svg.contains("""<g id="Button""""))
+    assertTrue(svg, svg.contains("<rect"))
+  }
+
+  @Test
+  fun keepsGroupingLayersThatHoldMultipleChildren() {
+    // A pass-through node with 2+ children genuinely groups siblings — it's real structure, not a
+    // redundant nesting level, so it must be preserved even though it draws nothing itself.
+    val svg =
+      render(
+        layoutNode(
+          "Screen",
+          0,
+          0,
+          200,
+          100,
+          children =
+            listOf(
+              layoutNode("Header", 0, 0, 200, 40),
+              layoutNode(
+                "Row",
+                0,
+                0,
+                200,
+                40,
+                children =
+                  listOf(layoutNode("Left", 0, 0, 100, 40), layoutNode("Right", 100, 0, 200, 40)),
+              ),
+            ),
+        )
+      )
+    assertTrue(svg, svg.contains("""<g id="Left""""))
+    assertTrue(svg, svg.contains("""<g id="Right""""))
+  }
+
+  @Test
   fun rootSvgRequestsGeometricPrecisionSoTextMatchesTheRender() {
     // The default `text-rendering:auto` grid-fits glyphs to pixel boundaries in the browser, which
     // leaves a constant edge diff against the Skiko render on text-heavy previews. Pin the
