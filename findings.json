@@ -1866,6 +1866,16 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "TextBrandedSpecimen_Dark.a11y.png",
+      "cleanBasename": "TextBrandedSpecimen_Dark.png",
+      "findings": [],
+      "functionName": "TextBrandedSpecimen",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.TextBrandedSpecimen_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "TextButtonSticker_Dark.a11y.png",
       "cleanBasename": "TextButtonSticker_Dark.png",
       "findings": [],
