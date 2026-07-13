@@ -98,6 +98,7 @@ fun main() {
         checkerPhase,
         loaded.family,
         loaded.generics,
+        loaded.named,
         ::postFirstFrame,
       )
     }
@@ -127,8 +128,11 @@ private const val FONT_LOAD_TIMEOUT_MS = 8_000L
 private sealed interface FontsState {
   data object Loading : FontsState
 
-  data class Ready(val family: FontFamily?, val generics: Map<String, FontFamily> = emptyMap()) :
-    FontsState
+  data class Ready(
+    val family: FontFamily?,
+    val generics: Map<String, FontFamily> = emptyMap(),
+    val named: Map<String, FontFamily> = emptyMap(),
+  ) : FontsState
 }
 
 /**
@@ -211,7 +215,24 @@ private suspend fun loadCatalogFonts(): FontsState.Ready {
         )
       }
     }
-  return FontsState.Ready(default, generics)
+  // Named downloadable-GoogleFont families (`role: "named"`), keyed by the GoogleFont display name
+  // that namedFontFamily() looks up (`Orbitron`, `Space Grotesk`, …). Same fail-soft isolation as
+  // the generics: a family whose faces don't fetch drops to namedFontFamily's fallback.
+  val named = mutableMapOf<String, FontFamily>()
+  entries
+    .filter { it.role == "named" && it.family.isNotEmpty() }
+    .groupBy { it.family }
+    .forEach { (name, list) ->
+      try {
+        named[name] = FontFamily(list.map { load(it) })
+      } catch (e: Throwable) {
+        consoleWarn(
+          "compose-ai wasm catalog: named family '$name' load failed (${e.message}); " +
+            "using fallback font"
+        )
+      }
+    }
+  return FontsState.Ready(default, generics, named)
 }
 
 /** One font file declared by `fonts.json`, flattened out of its family entry. */

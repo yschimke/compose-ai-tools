@@ -19,6 +19,7 @@ import androidx.compose.ui.text.platform.Font
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.designcatalogm3.shared.LocalGenericFonts
+import com.example.designcatalogm3.shared.LocalNamedFonts
 import com.example.designcatalogm3.shared.catalogTypography
 
 /**
@@ -35,7 +36,10 @@ import com.example.designcatalogm3.shared.catalogTypography
 @Composable
 fun CatalogSticker(content: @Composable () -> Unit) {
   val dark = isSystemInDarkTheme()
-  CompositionLocalProvider(LocalGenericFonts provides CatalogGenericFonts) {
+  CompositionLocalProvider(
+    LocalGenericFonts provides CatalogGenericFonts,
+    LocalNamedFonts provides CatalogNamedFonts,
+  ) {
     MaterialTheme(
       colorScheme = if (dark) darkColorScheme() else lightColorScheme(),
       typography = catalogTypography(Roboto),
@@ -127,3 +131,12 @@ val CatalogGenericFonts: Map<String, FontFamily> =
     "serif" to FontFamily(Font("NotoSerif-Regular", fontBytes("NotoSerif-Regular.ttf"))),
     "monospace" to FontFamily(Font("DroidSansMono", fontBytes("DroidSansMono.ttf"))),
   )
+
+/**
+ * Named downloadable-GoogleFont substitutes keyed by the GoogleFont display name
+ * `namedFontFamily(…)` looks up — the desktop-render counterpart to the wasm tier's `role: "named"`
+ * families, built from the same branded TTFs vendored under `resources/fonts/`. Empty until a
+ * catalog component requests a branded face (then Android resolves it via the downloadable-font
+ * provider and this supplies the matching vendored faces so the desktop/wasm renders match).
+ */
+val CatalogNamedFonts: Map<String, FontFamily> = emptyMap()
