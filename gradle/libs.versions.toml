@@ -21,13 +21,13 @@ ktfmt = "0.26.0"
 play-publisher = "4.0.0"
 tapmoc = "0.4.2"
 robolectric = "4.16.1"
-roborazzi = "1.64.0"
+roborazzi = "1.66.0"
 classgraph = "4.8.184"
 # Stable BOM line — what samples use and what `composePreviewRender` /
 # `Compare previews` is exercised against. Renovate updates this freely;
 # the variant below (`compose-bom-compat`) is the older line that
 # renderer-android compiles its public API against.
-compose-bom-stable = "2026.06.00"
+compose-bom-stable = "2026.06.01"
 # renderer-android compiles its public API surface against this OLDER BOM so
 # the emitted bytecode only references Compose 1.9.x method signatures.
 # AndroidX honours binary-backward-compatibility within a major version, so
@@ -53,7 +53,7 @@ compose-multiplatform = "1.10.3"
 # build.gradle.kts) rather than the repo default 36 — a scoped divergence, like
 # `:samples:design-catalog-remote-m3`. Drop this pin and revert to `libs.compose.material3`
 # once material3 1.5.0 is stable in `compose-bom-stable`.
-compose-material3-catalog = "1.5.0-alpha22"
+compose-material3-catalog = "1.5.0-alpha23"
 # JetBrains Compose Multiplatform material3 tracks its own line: the
 # `org.jetbrains.compose` 1.10.3 plugin pins `compose.material3` to 1.9.0
 # (material3 multiplatform 1.10.x is still alpha), so the explicit coordinate
@@ -81,14 +81,14 @@ navigation-compose = "2.9.8"
 # preview-DSL stabilisation.
 glance-appwidget = "1.2.0-rc01"
 wear-compose = "1.7.0-alpha05"
-wear-tiles = "1.6.0"
-wear-protolayout = "1.4.0"
+wear-tiles = "1.6.1"
+wear-protolayout = "1.4.1"
 wear-tooling-preview = "1.0.0"
 # Jetpack Compose Glimmer — the Compose UI toolkit for Android XR display AI
 # glasses (`androidx.xr.glimmer`). Alpha10+ requires AGP 9.2+ and
 # `compileSdk = 37` (matched by `:samples:xr-glimmer`'s `compileSdk` and our
 # `agp = 9.2.x` toolchain). Alpha13 was published 2026-05-19.
-xr-glimmer = "1.0.0-alpha14"
+xr-glimmer = "1.0.0-alpha15"
 # Jetpack Compose for XR (`androidx.xr.compose`) — the spatial-UI toolkit
 # (`Subspace`, `SpatialPanel`, `Orbiter`, `SpatialElevation`, `SpatialDialog`).
 # AAR metadata declares `minCompileSdk = 36` / `minAgp = 8.9.1`, so it builds on
@@ -144,19 +144,19 @@ horologist = "0.7.15"
 #    `RemoteDensity` + `LayoutDirection`; the `RemotePreview` composable became
 #    `RemoteContentPreview`), so the pair now tracks the latest
 #    verified-together alpha.
-compose-remote = "1.0.0-alpha13"
-wear-compose-remote = "1.0.0-alpha06"
+compose-remote = "1.0.0-alpha14"
+wear-compose-remote = "1.0.0-alpha07"
 # Pre-release compose-ui artifacts used by `:samples:remotecompose`, which
 # deliberately diverges from `compose-bom-stable` (1.10.x) to track what
 # wear-compose-remote-material3 alpha pulls in transitively — compose 1.11.0+
 # is the first release that ships `PreviewWrapper`. Renovate updates this
 # freely; the sample is meant to ride the latest prerelease compose.
-compose-ui-prerelease = "1.11.3"
+compose-ui-prerelease = "1.11.4"
 kotlinx-coroutines = "1.11.0"
 kotlinx-serialization = "1.11.0"
 mcp-kotlin-sdk = "0.14.0"
 okio = "3.17.0"
-fontbox = "2.0.34"
+fontbox = "2.0.36"
 junit = "4.13.2"
 truth = "1.4.5"
 maven-publish = "0.37.0"
@@ -176,7 +176,7 @@ android-compose-screenshot = "0.0.1-alpha15"
 # getter. Adding `compileOnly(libs.checker.qual)` is enough to silence the
 # warning without exporting the annotation to consumers (it's marker-only;
 # zero runtime impact).
-checker-qual = "4.2.0"
+checker-qual = "4.2.1"
 # KMP port of Google's Material Color Utilities. Powers the wallpaper data
 # extension's seed → ColorScheme derivation (HCT tonal palettes, palette
 # styles, contrast level) so the result matches what Android's wallpaper-
@@ -199,7 +199,7 @@ material-kolor = "4.0.5"
 # subtree (see `settings.gradle.kts`) — the rest of the repo can keep
 # building under JDK 17. Kotlin 2.3.21 is supported per Metro's
 # compatibility table (`docs/compatibility.md` upstream).
-metro = "1.2.1"
+metro = "1.3.0"
 # Jake Wharton's Mosaic — Compose-based TUI library, used by the `:tui-cli` module.
 # 0.18.0-1 is a release published by the fork at `yschimke/mosaic@compose-ai-tools` under the
 # `ee.schimke.composeai.mosaic` group, which adds the `RawText` + `Image` composables proposed
