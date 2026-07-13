@@ -248,6 +248,45 @@ const SCORER = String.raw`
     return "bad";
   }
 
+  // Display both columns cropped to the component's content bbox — the region [(-tx,-ty), vw×vh]
+  // of the render, where (tx,ty) is the figma-svg's root translate and (vw,vh) its viewBox. The
+  // PNG tile is clipped to that window (a wear sticker rendered on a 454² device canvas shows just
+  // the component, not the empty frame); the SVG column already *is* the component, so it's sized
+  // to match. A no-op for close-cropped renders where the bbox already fills the frame.
+  function frameToComponent(tr, rw, rh, tx, ty, vw, vh) {
+    if (!(vw > 0 && vh > 0 && rw > 0 && rh > 0)) return;
+    const cap = 240; // px — matches the old max-width/height envelope
+    const scale = Math.min(1, cap / Math.max(vw, vh));
+    const dw = Math.max(1, Math.round(vw * scale)), dh = Math.max(1, Math.round(vh * scale));
+    const pngShot = tr.querySelector(".col-png .shot");
+    if (pngShot && !pngShot.classList.contains("shot--missing")) {
+      const img = pngShot.querySelector("img");
+      pngShot.classList.add("shot--framed");
+      pngShot.style.width = dw + "px";
+      pngShot.style.height = dh + "px";
+      if (img) {
+        img.style.width = Math.round(rw * scale) + "px";
+        img.style.height = Math.round(rh * scale) + "px";
+        // (tx,ty) is negative for a centred component, so tx*scale shifts the render left/up to
+        // bring the component's top-left to the clip origin.
+        img.style.left = Math.round(tx * scale) + "px";
+        img.style.top = Math.round(ty * scale) + "px";
+      }
+    }
+    const svgShot = tr.querySelector(".col-svg .shot");
+    if (svgShot && !svgShot.classList.contains("shot--missing")) {
+      const img = svgShot.querySelector("img");
+      svgShot.classList.add("shot--framed");
+      svgShot.style.width = dw + "px";
+      svgShot.style.height = dh + "px";
+      if (img) {
+        img.style.position = "static";
+        img.style.width = dw + "px";
+        img.style.height = dh + "px";
+      }
+    }
+  }
+
   async function scoreRow(tr) {
     const cell = tr.querySelector(".score");
     try {
@@ -292,6 +331,8 @@ const SCORER = String.raw`
         th,
       );
       const pct = Math.max(0, Math.min(100, ssim(ga, gb, tw, th) * 100));
+      // Crop both display columns to the component now that we've read its bbox from the SVG.
+      frameToComponent(tr, rw, rh, tx, ty, sw, sh);
       const shown = pct.toFixed(1);
       cell.textContent = shown + "%";
       cell.classList.add("score--" + grade(pct));
@@ -466,6 +507,13 @@ export function renderCompareHtml(catalog, opts = {}) {
       linear-gradient(-45deg,transparent 75%,#202022 75%);
     background-size:16px 16px; background-position:0 0,0 8px,8px -8px,-8px 0; }
   .shot img { max-width:260px; max-height:200px; height:auto; display:block; }
+  /* Framed mode: the scorer sizes the tile to the component's content bbox (read from the
+     figma-svg's translate + viewBox) and absolutely-positions the PNG so only the component
+     shows — so a wear sticker rendered on a 454² device canvas is displayed cropped to the
+     component, matching the content-cropped SVG column instead of floating in an empty frame.
+     A no-op for close-cropped renders (phone), where the bbox already fills the frame. */
+  .shot--framed { overflow:hidden; padding:0; min-width:0; min-height:0; }
+  .shot--framed img { position:absolute; max-width:none; max-height:none; }
   .shot--missing { color:var(--muted); font-style:italic; background:var(--panel); }
   .badge { position:absolute; top:4px; right:4px; font-size:10px; padding:0 5px; border-radius:999px;
     background:rgba(0,0,0,0.6); color:var(--warn); border:1px solid var(--warn); }

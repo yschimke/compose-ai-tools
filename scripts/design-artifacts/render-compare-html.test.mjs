@@ -78,6 +78,16 @@ test("the scorer aligns the SVG's export padding out before scoring (translate c
   assert.match(html, /fetch\(tr\.dataset\.svg\)/); // fetches the SVG source to read the translate
 });
 
+test("both columns are framed to the component's content bbox", () => {
+  // A wear sticker is rendered on a 454² device canvas but its figma-svg is content-cropped; the
+  // page reads the svg's translate + viewBox and clips the PNG column to the same window so the two
+  // columns display at matching sizes instead of a speck-in-a-frame vs a tight vector. Pin it.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /function frameToComponent/);
+  assert.match(html, /\.shot--framed/); // the clip style the scorer toggles on
+  assert.match(html, /frameToComponent\(tr, rw, rh, tx, ty, sw, sh\)/); // called with the read bbox
+});
+
 test("a component with no figma-svg gets an inert row (no data-svg, '—' score)", () => {
   const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
   // card-elevated has a PNG but no svg → not scored, no data-svg attribute for it.

@@ -301,6 +301,14 @@ export function renderIndexHtml(catalog, opts = {}) {
   .shot { margin:0; display:grid; place-items:center; min-height:120px; padding:12px; }
   .shot img { max-width:100%; max-height:240px; height:auto; display:block; }
   a.shot { cursor:zoom-in; text-decoration:none; }
+  /* Framed mode (set by the crop script below): the hero is sized to the component's content bbox
+     — read from the figma-svg's translate + viewBox — and the PNG is absolutely-positioned so only
+     the component shows. A wear sticker rendered on a 454² device canvas is displayed cropped to
+     the component instead of floating in an empty frame; a no-op for close-cropped (phone) renders
+     where the bbox already fills the frame. */
+  .shot--framed { overflow:hidden; padding:0; min-height:0; position:relative; place-items:stretch;
+    margin:16px auto; border-radius:8px; }
+  .shot--framed img { position:absolute; max-width:none; max-height:none; }
   .shot--missing { color:var(--muted); font-style:italic; }
   .meta { padding:10px 12px 12px; border-top:1px solid var(--line); }
   .meta h3 { margin:0; font-size:13px; font-weight:600; word-break:break-word; }
@@ -347,6 +355,56 @@ export function renderIndexHtml(catalog, opts = {}) {
   <main>${main}</main>
 </div>
 ${details}
+<script>
+// Crop each component's hero (and its zoom-view default capture) to the component's content bbox,
+// read from its figma-svg's root translate + viewBox. A wear sticker rendered on a 454² device
+// canvas then displays cropped to the component instead of floating in an empty frame. A no-op for
+// close-cropped renders (the bbox already fills the frame) and for components with no figma-svg.
+(function () {
+  function parseBox(svgText) {
+    var t = /translate\\(\\s*(-?\\d+)\\s*,\\s*(-?\\d+)\\s*\\)/.exec(svgText);
+    var v = /viewBox="0 0 (\\d+(?:\\.\\d+)?) (\\d+(?:\\.\\d+)?)"/.exec(svgText);
+    if (!v) return null;
+    return { tx: t ? +t[1] : 0, ty: t ? +t[2] : 0, vw: +v[1], vh: +v[2] };
+  }
+  function frame(shot, box) {
+    var img = shot.querySelector("img");
+    if (!img) return;
+    function apply() {
+      var rw = img.naturalWidth || img.width, rh = img.naturalHeight || img.height;
+      if (!(rw > 0 && rh > 0)) return;
+      if (box.vw >= rw * 0.9 && box.vh >= rh * 0.9) return; // already close-cropped
+      var cap = 240, scale = Math.min(1, cap / Math.max(box.vw, box.vh));
+      var dw = Math.max(1, Math.round(box.vw * scale)), dh = Math.max(1, Math.round(box.vh * scale));
+      shot.classList.add("shot--framed");
+      shot.style.width = dw + "px";
+      shot.style.height = dh + "px";
+      img.style.width = Math.round(rw * scale) + "px";
+      img.style.height = Math.round(rh * scale) + "px";
+      // (tx,ty) is negative for a centred component, so tx*scale shifts the render to bring the
+      // component's top-left to the clip origin.
+      img.style.left = Math.round(box.tx * scale) + "px";
+      img.style.top = Math.round(box.ty * scale) + "px";
+    }
+    if (img.complete) apply();
+    else img.addEventListener("load", apply);
+  }
+  document.querySelectorAll(".card").forEach(function (card) {
+    var link = card.querySelector('a.wf[href^="figma/"]');
+    if (!link) return;
+    var hero = card.querySelector("a.shot");
+    if (!hero) return;
+    fetch(link.getAttribute("href"))
+      .then(function (r) { return r.ok ? r.text() : null; })
+      .then(function (txt) {
+        if (!txt) return;
+        var box = parseBox(txt);
+        if (box) frame(hero, box);
+      })
+      .catch(function () {});
+  });
+})();
+</script>
 </body>
 </html>
 `;
