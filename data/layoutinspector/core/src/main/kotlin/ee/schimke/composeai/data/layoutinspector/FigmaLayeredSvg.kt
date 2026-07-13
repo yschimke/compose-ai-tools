@@ -556,13 +556,19 @@ object FigmaLayeredSvg {
           "opentype" -> "font/otf"
           else -> "font/woff2"
         }
-      append("@font-face{font-family:'").append(cssFamily(f.family)).append("';")
+      // `<style>` content is XML character data, so a raw `&`/`<`/`>` in a family or format keyword
+      // is a fatal parse error the moment the exported `.svg` is read as XML (the Figma /
+      // Illustrator
+      // import this export targets) — even though Chromium's lenient HTML parser tolerates it. XML-
+      // escape the two free-form strings on top of the CSS-escaping; the parser decodes the entity
+      // back before the CSS engine sees it, so the declared family still matches the `<text>` name.
+      append("@font-face{font-family:'").append(escape(cssFamily(f.family))).append("';")
       append("font-style:").append(if (f.italic) "italic" else "normal").append(';')
       append("font-weight:").append(f.weight).append(';')
       append("src:url(data:$mime;base64,")
         .append(f.dataBase64)
         .append(") format('")
-        .append(f.format)
+        .append(escape(f.format))
         .append("');}")
     }
     append("</style></defs>\n")

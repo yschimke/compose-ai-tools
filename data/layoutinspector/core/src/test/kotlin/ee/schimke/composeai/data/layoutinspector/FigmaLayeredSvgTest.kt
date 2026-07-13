@@ -1,5 +1,7 @@
 package ee.schimke.composeai.data.layoutinspector
 
+import java.io.ByteArrayInputStream
+import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -10,6 +12,18 @@ import org.junit.Test
 class FigmaLayeredSvgTest {
 
   private fun bounds(l: Int, t: Int, r: Int, b: Int) = LayoutInspectorBounds(l, t, r, b)
+
+  /**
+   * Parses [svg] with a namespace-aware XML parser and fails the test if it isn't well-formed. The
+   * layered export is meant to round-trip through Figma / Illustrator, which read the `.svg` as XML
+   * (strict), not through Chromium's lenient HTML parser — so an unescaped `&`/`<` anywhere (a
+   * `<text>`, an attribute, or the `@font-face` `<style>` block) is a hard import failure, not a
+   * cosmetic one. The document declares no DTD, so parsing pulls no external entities.
+   */
+  private fun assertWellFormedXml(svg: String) {
+    val builder = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+    builder.newDocumentBuilder().parse(ByteArrayInputStream(svg.toByteArray(Charsets.UTF_8)))
+  }
 
   private fun layoutNode(
     component: String,
@@ -1372,6 +1386,106 @@ class FigmaLayeredSvgTest {
     val svg = render(layoutNode("Screen", 0, 0, 100, 100))
     assertFalse(svg.contains("@font-face"))
     assertTrue(svg.contains("""font-family="sans-serif""""))
+  }
+
+  @Test
+  fun embeddedFontFaceFamilyIsXmlEscapedInTheStyleBlock() {
+    // The `@font-face` family rides inside `<defs><style>`, whose content is XML character data —
+    // so
+    // a family carrying `&`/`<`/`>` must be entity-escaped there too, not just CSS-escaped, or the
+    // exported `.svg` fails to parse on Figma/Illustrator import (Chromium's HTML parser hides it).
+    val model = FigmaSvgModel.from(LayoutInspectorPayload(layoutNode("Screen", 0, 0, 100, 100)))
+    val svg =
+      FigmaLayeredSvg.render(
+        model,
+        FigmaLayeredSvg.Options(defaultFontFamily = "Roboto"),
+        listOf(FigmaSvgFontFace("Ampersand & Co <b>", 400, italic = false, dataBase64 = "QUJD")),
+      )
+    val style = svg.substringAfter("<style>").substringBefore("</style>")
+    assertTrue(
+      "family is entity-escaped inside <style>",
+      style.contains("font-family:'Ampersand &amp; Co &lt;b&gt;'"),
+    )
+    assertFalse("no raw < survives in the style block", style.contains('<'))
+    assertFalse("no raw > survives in the style block", style.contains('>'))
+    assertFalse(
+      "no bare & survives in the style block",
+      style.contains(Regex("&(?!amp;|lt;|gt;|quot;|apos;)")),
+    )
+    assertWellFormedXml(svg)
+  }
+
+  @Test
+  fun hostileStringsInEveryTextSurfaceStillParseAsXml() {
+    // Layer names, theme-token labels, straight `<text>`, and curved `<textPath>` runs are all
+    // attacker-influenced — a composable name or a `Text("<b>&…")` can carry any character. This is
+    // the whole-document regression guard: every escape site (`escape`/`escapeAttr`/the `<style>`
+    // block) must combine into a document a strict XML parser accepts.
+    val hostile = "a < b & \"c\" 'd' >e"
+    val layout =
+      layoutNode(
+        hostile, // layer name → `id` attr + `<title>`
+        0,
+        0,
+        200,
+        200,
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4"),
+        children =
+          listOf(
+            LayoutInspectorNode(
+              nodeId = "clock",
+              component = hostile,
+              bounds = bounds(0, 0, 200, 60),
+              size = LayoutInspectorSize(200, 60),
+              curvedTexts =
+                listOf(
+                  LayoutInspectorCurvedText(
+                    text = hostile,
+                    centerXPx = 100.0,
+                    centerYPx = 100.0,
+                    radiusPx = 80.0,
+                    startAngleRadians = 4.4652,
+                    sweepRadians = 0.5,
+                    clockwise = true,
+                    fontSizePx = 20.0,
+                    fontWeight = 600,
+                    colorArgb = "#FFC6C6C7",
+                  )
+                ),
+            ),
+            layoutNode("Text", 8, 80, 192, 120),
+          ),
+      )
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,200",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "Text",
+              boundsInRoot = "8,80,192,120",
+              text = hostile,
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp"),
+            )
+          ),
+      )
+    val model =
+      FigmaSvgModel.from(
+        LayoutInspectorPayload(layout),
+        ComposeSemanticsPayload(semantics),
+        colorNames = mapOf("#FF6750A4" to hostile), // token name → `data-token` attr + `<title>`
+      )
+    val svg =
+      FigmaLayeredSvg.render(
+        model,
+        FigmaLayeredSvg.Options(),
+        listOf(FigmaSvgFontFace(hostile, 400, italic = false, dataBase64 = "QUJD")),
+      )
+    // Straight text content and the clock string are entity-escaped, not passed through raw …
+    assertTrue(svg.contains("a &lt; b &amp; \"c\" 'd' &gt;e"))
+    // … and the whole document — names, tokens, text, curved text, font-face — parses as XML.
+    assertWellFormedXml(svg)
   }
 
   @Test
