@@ -51,6 +51,8 @@ export function renderReadmeMd(catalog, opts = {}) {
   const branch = `design-artifacts/${system}`;
   const indexUrl = `https://htmlpreview.github.io/?https://github.com/${repo}/blob/${branch}/index.html`;
   const compareUrl = `https://htmlpreview.github.io/?https://github.com/${repo}/blob/${branch}/compare.html`;
+  const crossSystem = opts.crossSystem;
+  const matchesUrl = `https://htmlpreview.github.io/?https://github.com/${repo}/blob/${branch}/matches.html`;
   const previewBase = opts.previewBase ?? DEFAULT_PREVIEW_BASE;
   const liveUrl = liveSessionUrl(previewBase, system);
 
@@ -104,12 +106,33 @@ dark scheme.
     .map(([g, n]) => `| ${cell(g)} | ${n} |`)
     .join("\n");
 
+  const crossSection = crossSystem
+    ? `
+## ↔ Compare across systems
+
+**[▶ Open the ${cell(title)} ↔ ${cell(crossSystem.title)} matches (htmlpreview)](${matchesUrl})**
+
+Every component paired with its counterpart in **${cell(crossSystem.title)}**, side by side — the
+authored \`parallel\` mapping in the catalog spec, rendered as a cross-system contact sheet. This
+branch's baked render on the left; the ${cell(crossSystem.system)} render fetched live from its own
+\`design-artifacts/${cell(crossSystem.system)}\` branch on the right.
+`
+    : "";
+
   const files = [
     [`\`index.html\``, `Self-contained gallery — [open via htmlpreview](${indexUrl})`],
     [
       `\`compare.html\``,
       `PNG↔SVG comparison with a live structural-similarity score — [open via htmlpreview](${compareUrl})`,
     ],
+    ...(crossSystem
+      ? [
+          [
+            `\`matches.html\``,
+            `Cross-system component pairing vs \`${crossSystem.system}\` — [open via htmlpreview](${matchesUrl})`,
+          ],
+        ]
+      : []),
     [
       `\`catalog.json\``,
       `Machine-readable catalog (\`${schema}\`): components, variants, design tokens, greenlines, and per-variant \`livePreview\` deep links`,
@@ -143,7 +166,7 @@ re-rasterized by the browser, plus a live **structural-similarity (SSIM)** match
 score — so you can eyeball vector fidelity across the whole system at once and
 spot which stickers drift. The score is pre-blurred and downscaled, so a
 half-pixel rasterizer offset doesn't read as a mismatch.
-
+${crossSection}
 ## 🎛 Customise live
 
 **[▶ Open this catalog in the live preview server](${liveUrl})**

@@ -196,6 +196,7 @@ export function renderIndexHtml(catalog, opts = {}) {
   const components = catalog.components ?? [];
   const wireframeSlugs = opts.wireframeSlugs;
   const figmaSvgSlugs = opts.figmaSvgSlugs;
+  const crossSystem = opts.crossSystem;
 
   // Group preserving first-seen group order.
   const groupOrder = [];
@@ -348,7 +349,11 @@ export function renderIndexHtml(catalog, opts = {}) {
 <header class="top">
   <h1>${esc(title)}</h1>
   <div class="subtitle">${subtitleParts.join(" · ")}</div>
-  <div class="subtitle"><a class="pagelink" href="compare.html">PNG vs SVG compare ↗</a></div>
+  <div class="subtitle"><a class="pagelink" href="compare.html">PNG vs SVG compare ↗</a>${
+    crossSystem
+      ? ` <a class="pagelink" href="matches.html">↔ ${esc(crossSystem.title)} matches ↗</a>`
+      : ""
+  }</div>
 </header>
 <div class="layout">
   <nav class="index">${nav}</nav>
