@@ -119,6 +119,23 @@ RUN set -eu; \
     unzip -q /tmp/android-daemon.zip -d /opt; \
     rm /tmp/android-daemon.zip; \
     test -d /opt/lib-daemon-android
+# Pre-fetch Robolectric's instrumented `android-all` runtime (~200 MB) into the local
+# Maven cache so the daemon's FIRST render doesn't download it (the runtime stage
+# carries this m2 subtree). This removes the download from the cold start — though the
+# dominant cold cost is the per-process Robolectric/Compose warm-up + first render,
+# which only serve's prewarm can move off the request path (a cached android-all still
+# leaves that). The coordinate is Robolectric-version + SDK specific (4.16.1 → SDK 35),
+# so it's an ARG: bump it when the bundled robolectric or ANDROID_SDK_PLATFORM changes
+# (it's the `android-all-instrumented-<ver>` dir that appears under ~/.m2 after a first
+# render). Best-effort — the daemon still fetches at runtime if this is stale/missing.
+ARG ANDROID_ALL_VERSION=15-robolectric-13954326-i7
+RUN set -eu; \
+    d="/root/.m2/repository/org/robolectric/android-all-instrumented/${ANDROID_ALL_VERSION}"; \
+    mkdir -p "$d"; \
+    curl -fsSL --retry 10 --retry-delay 15 --retry-all-errors \
+      -o "$d/android-all-instrumented-${ANDROID_ALL_VERSION}.jar" \
+      "https://repo1.maven.org/maven2/org/robolectric/android-all-instrumented/${ANDROID_ALL_VERSION}/android-all-instrumented-${ANDROID_ALL_VERSION}.jar" \
+      || echo "warn: android-all prefetch failed (coordinate stale?); daemon will fetch at runtime"
 
 # ---------------------------------------------------------------------------
 # Stage 2: runtime.
@@ -157,6 +174,10 @@ WORKDIR /project
 COPY --from=build /project /project
 COPY --from=build /root/.gradle /root/.gradle
 COPY --from=build /root/.m2 /root/.m2
+# Merge the pre-fetched Robolectric `android-all` runtime into the Maven cache (after
+# the build-stage m2 so it lands alongside it), so the Android daemon's first render
+# skips the ~200 MB download.
+COPY --from=android-daemon /root/.m2/repository/org/robolectric /root/.m2/repository/org/robolectric
 
 # Bake the branch-trust store so a public deploy badges the published
 # design-artifacts catalogs as Trusted(Branch) out of the box (SERVE_TRUST_STORE
