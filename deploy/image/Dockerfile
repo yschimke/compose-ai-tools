@@ -132,17 +132,23 @@ RUN ln -s "/opt/compose-preview-${CP_VERSION}" /opt/compose-preview
 # catalog with an android liveBundle renders live per-variant.
 COPY --from=android-daemon /opt/lib-daemon-android /opt/lib-daemon-android
 COPY --from=android-daemon /opt/android-sdk /opt/android-sdk
-# JAVA_TOOL_OPTIONS points the CLI at the unpacked Android daemon sidecar, warms the
-# daemon off the request path (warmInBackground → serve's prewarm), and gives its
-# cold Robolectric render a generous budget so a browse never blocks. See
-# ServeCatalogLiveHost / ServeRenderHost.
+# JAVA_TOOL_OPTIONS (inherited by the spawned daemon JVM too) points the CLI at the
+# unpacked Android daemon sidecar, warms the daemon off the request path
+# (warmInBackground → serve's prewarm), and lifts BOTH cold-start budgets so a cold
+# Robolectric daemon doesn't abort before it can serve live:
+#   * sandboxBootTimeoutMs — the Robolectric sandbox boot (the one-time
+#     `android-all-instrumented` ~150 MB fetch + instrumentation, in RobolectricHost.start,
+#     default 600s) — the dominant cold cost; raised so a first boot completes.
+#   * renderTimeoutSeconds — serve's per-render budget once booted.
+# Both are absorbed by prewarm off the request path, so a browse never blocks. See
+# RobolectricHost / ServeCatalogLiveHost / ServeRenderHost.
 ENV PATH="/opt/compose-preview/bin:${PATH}" \
     SERVE_IDLE_EXIT=0 \
     SERVE_TIMEOUT=1800 \
     COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1 \
     ANDROID_HOME=/opt/android-sdk \
     ANDROID_SDK_ROOT=/opt/android-sdk \
-    JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70 -Dcomposeai.cli.libDaemonAndroidDir=/opt/lib-daemon-android -Dcomposeai.serve.warmInBackground=true -Dcomposeai.serve.renderTimeoutSeconds=900"
+    JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70 -Dcomposeai.cli.libDaemonAndroidDir=/opt/lib-daemon-android -Dcomposeai.serve.warmInBackground=true -Dcomposeai.serve.renderTimeoutSeconds=900 -Dcomposeai.daemon.sandboxBootTimeoutMs=1800000"
 
 WORKDIR /project
 # Carry the project + warmed Gradle cache + module build outputs so the first
