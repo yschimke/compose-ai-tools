@@ -687,10 +687,15 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
       };
       if (!navigator.clipboard || !navigator.clipboard.writeText) { reset("No clipboard"); return; }
       btn.textContent = "Copying…";
+      // fetch() resolves even on a non-2xx render (503 saturated, 400 bad override, 404 a
+      // preview that can't export that lane), so guard on r.ok — otherwise the error body,
+      // not the artefact, would land on the clipboard and still report "Copied".
+      var okOrThrow = function (r) { if (!r.ok) throw new Error("render " + r.status); return r; };
       var toText =
         ext === ".svg"
-          ? fetch(field.value).then(function (r) { return r.text(); })
+          ? fetch(field.value).then(okOrThrow).then(function (r) { return r.text(); })
           : fetch(field.value)
+              .then(okOrThrow)
               .then(function (r) { return r.blob(); })
               .then(function (blob) {
                 return new Promise(function (resolve, reject) {
