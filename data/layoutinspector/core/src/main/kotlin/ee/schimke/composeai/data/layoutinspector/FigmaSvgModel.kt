@@ -773,7 +773,7 @@ data class FigmaSvgModel(
     }
 
     private fun LayoutInspectorNode.layerName(): String =
-      composableName(component).ifBlank { "Layer" }
+      composableName(displayName ?: component).ifBlank { "Layer" }
 
     /**
      * The composable name to show as the SVG layer id. When source-info resolution succeeds

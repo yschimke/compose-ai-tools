@@ -56,7 +56,11 @@ object LayoutInspectorProduct {
   // arc (string + baseline circle + font), captured from the `CurvedTextChild` runtime state a
   // LayoutNode walk can't see, so the figma-svg export reproduces the clock as an SVG `<textPath>`
   // instead of dropping it. Additive — older entries parse with an empty list.
-  const val SCHEMA_VERSION: Int = 4
+  // v5: each node may carry a `displayName` — the nearest enclosing composable name, used as the
+  // figma-svg layer label so an internal `Box`/`Row` reads as the `Button`/`IconButton` that owns
+  // it, while `component` stays the node's own identity for raster/curved matching. Additive —
+  // older entries parse with `displayName = null` and fall back to `component`.
+  const val SCHEMA_VERSION: Int = 5
   const val FILE: String = "layout-inspector.json"
 }
 
@@ -357,7 +361,23 @@ data class ComposeSemanticsInsets(
 @Serializable
 data class LayoutInspectorNode(
   val nodeId: String,
+  /**
+   * The node's **own** identity — its own `C(Composable)` name, or (when it has none) its
+   * measure-policy class. Kept as the node's own identity on purpose: opaque-component raster
+   * matching (`Icon`/`Image`/`TextField`/…) and curved-text detection key off *what the node
+   * actually is*, so an inherited display label (`IconButton` ⊃ `Icon`) can never wrongly rasterise
+   * a non-opaque wrapper's subtree. The friendly, possibly-inherited label lives in [displayName].
+   */
   val component: String,
+  /**
+   * Friendly layer label — the nearest *enclosing* composable name, filled in when this node's own
+   * group carries no `C(Composable)` marker (a library-internal `Box`/`Row` a `Button`/`IconButton`
+   * builds itself from). Used only as the figma-svg `<g>` layer id, so the export reads
+   * `IconButton` instead of an anonymous `Box`. Null when it would just equal [component]. Additive
+   * (v5) — older `layout-inspector.json` decodes with `displayName = null` and falls back to
+   * [component].
+   */
+  val displayName: String? = null,
   val source: String? = null,
   val sourceInfo: String? = null,
   val bounds: LayoutInspectorBounds,
