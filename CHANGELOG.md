@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.16.45](https://github.com/yschimke/compose-ai-tools/compare/v0.16.44...v0.16.45) (2026-07-13)
+
+
+### Features
+
+* **catalog:** render a downloadable GoogleFont (Orbitron) in the wasm + desktop tiers ([#2456](https://github.com/yschimke/compose-ai-tools/issues/2456)) ([05b0274](https://github.com/yschimke/compose-ai-tools/commit/05b02747506f4a7a8f79d1f7866f220d866c01e3))
+* **design-artifacts:** crop catalog stickers to the component in the gallery + compare ([#2464](https://github.com/yschimke/compose-ai-tools/issues/2464)) ([fefcc68](https://github.com/yschimke/compose-ai-tools/commit/fefcc6812a9a8c98ae953274ecdbc796e27e1b6c))
+* **design-artifacts:** render downloadable GoogleFonts in the wasm/desktop catalog tiers ([#2455](https://github.com/yschimke/compose-ai-tools/issues/2455)) ([f5ed52c](https://github.com/yschimke/compose-ai-tools/commit/f5ed52c4c20dd6045573725b615b7d433cf49b67))
+* **serve:** render wear-m3 live via an Android daemon so the SVG lane is per-variant ([#2460](https://github.com/yschimke/compose-ai-tools/issues/2460)) ([edd2ec3](https://github.com/yschimke/compose-ai-tools/commit/edd2ec3b98b22f89a20e52337398b2ee6279253e))
+
+
+### Bug Fixes
+
+* **deps:** update dependency org.apache.pdfbox:fontbox to v3 ([#2454](https://github.com/yschimke/compose-ai-tools/issues/2454)) ([bbdb917](https://github.com/yschimke/compose-ai-tools/commit/bbdb917604e24465828eb603f0fb3fc3d4b0846a))
+* **deps:** update gradle minor/patch ([#2453](https://github.com/yschimke/compose-ai-tools/issues/2453)) ([d1911f2](https://github.com/yschimke/compose-ai-tools/commit/d1911f2b6334feb30eb52a8eebfad076afbd429b))
+* **design-artifacts:** preserve catalog-token sheets when filtering non-raster previews ([#2459](https://github.com/yschimke/compose-ai-tools/issues/2459)) ([602fb2d](https://github.com/yschimke/compose-ai-tools/commit/602fb2db4ef260b32eafb3a723d6aafb52bc8388))
+* **design-artifacts:** skip animated-GIF previews in the catalog export ([#2458](https://github.com/yschimke/compose-ai-tools/issues/2458)) ([0cef01d](https://github.com/yschimke/compose-ai-tools/commit/0cef01d7ab609dd4fb97b190e63c3285b25d6895))
+
 ## [0.16.44](https://github.com/yschimke/compose-ai-tools/compare/v0.16.43...v0.16.44) (2026-07-12)
 
 
