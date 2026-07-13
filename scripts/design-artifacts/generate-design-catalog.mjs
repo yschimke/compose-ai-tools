@@ -56,7 +56,7 @@ import { renderWireframeSvg, slug } from "./render-wireframe-svg.mjs";
 import { renderLayoutWireframeSvg } from "./render-layout-wireframe-svg.mjs";
 import { DEFAULT_PREVIEW_BASE, livePreviewUrl } from "./live-preview.mjs";
 import { buildFontsManifest, fontsPayloadsFromBundle } from "./render-fonts-manifest.mjs";
-import { dropNonRasterPreviews } from "./bundle-previews.mjs";
+import { candidatePreviewBundle } from "./bundle-previews.mjs";
 
 /** Relative paths of every file under `dir` (forward-slashed), for the webRender manifest. */
 async function listFilesRecursive(dir) {
@@ -85,26 +85,26 @@ async function listFilesRecursive(dir) {
  */
 async function loadCandidates(path) {
   const bundle = await readPreviewBundle(path);
-  // `bundleToCandidates` represents every preview as a static PNG sticker — it looks up
-  // `previews/<id>.png` and throws `InvalidBundleError` if it's missing. A `@ScrollingPreview`
-  // `ScrollMode.GIF` preview (e.g. the wear catalog's `CardScalingScrollGif`) only emits an animated
-  // `previews/<id>.gif`, so it has no PNG and can't be a static catalog candidate. Drop those up
-  // front (logging what's dropped) so one animated preview can't fail the whole catalog export.
-  const dropped = dropNonRasterPreviews(bundle);
-  if (dropped.length > 0) {
-    console.warn(
-      `[${basename(path)}] skipped ${dropped.length} preview(s) with no static PNG ` +
-        `(animated GIF / non-raster capture): ${dropped.join(", ")}`,
-    );
-  }
   for (const preview of bundle.previews) {
     sanitizeNullSizes(preview.params);
     for (const capture of preview.captures ?? []) sanitizeNullSizes(capture.params);
   }
-  const candidates = bundleToCandidates(bundle, (entry) => entry.functionName ?? entry.id);
-  // Keep the bundle around: its raw `entries` carry the per-preview
-  // `previews/<id>.layout.json` (the layout-inspector tree) the layout wireframe
-  // is built from — a sidecar `bundleToCandidates` doesn't surface.
+  // `bundleToCandidates` represents every preview as a static PNG sticker — it looks up
+  // `previews/<id>.png` and throws `InvalidBundleError` if it's missing. Feed it a filtered *view*
+  // (animated `ScrollMode.GIF` previews and PNG-less catalog-token sheets removed) rather than
+  // mutating `bundle`, so the original keeps those records: the catalog-token sheets are read
+  // separately by `catalogTokensFromBundle(bundle)` below, and layout/fonts iterate the full list.
+  const { bundle: candidateBundle, dropped } = candidatePreviewBundle(bundle);
+  if (dropped.length > 0) {
+    console.warn(
+      `[${basename(path)}] excluded ${dropped.length} preview(s) with no static PNG from the ` +
+        `candidate join (animated GIF / metadata sheet): ${dropped.join(", ")}`,
+    );
+  }
+  const candidates = bundleToCandidates(candidateBundle, (entry) => entry.functionName ?? entry.id);
+  // Return the ORIGINAL (unfiltered) bundle: its raw `entries` carry the per-preview
+  // `previews/<id>.layout.json` (layout-inspector tree) the wireframe is built from, and its full
+  // `previews` list carries the catalog-token sheets `catalogTokensFromBundle` needs.
   return { candidates, bundle };
 }
 
