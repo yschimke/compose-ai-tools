@@ -251,13 +251,14 @@ class ServeBundleDaemonTest {
           else -> System.err.println("[android daemon] warm-up attempt $attempt: $r")
         }
       }
-      if (!warm) {
-        System.err.println(
-          "[ServeBundleDaemonTest] skipping android per-variant SVG — daemon never warmed after 4 " +
-            "render attempts (cold Robolectric start too slow for this box)."
-        )
-        return
-      }
+      // A daemon that never warms is an environment signal (a box too slow/small to cold-start
+      // Robolectric), NOT a pass — mark it SKIPPED via Assume so it can't masquerade as green while
+      // the per-variant assertions below never ran.
+      org.junit.jupiter.api.Assumptions.assumeTrue(
+        warm,
+        "android daemon never warmed after 4 render attempts (cold Robolectric start too slow " +
+          "for this box) — skipping the per-variant SVG assertions",
+      )
 
       // Slug-sharing state pairs that the baked per-slug SVG collapses; each must now differ.
       val pairs =
