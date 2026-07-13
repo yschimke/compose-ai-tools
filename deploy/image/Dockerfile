@@ -129,13 +129,22 @@ RUN set -eu; \
 # (it's the `android-all-instrumented-<ver>` dir that appears under ~/.m2 after a first
 # render). Best-effort — the daemon still fetches at runtime if this is stale/missing.
 ARG ANDROID_ALL_VERSION=15-robolectric-13954326-i7
+# Download to a temp path and move on success. A partial jar left at the real
+# `jarPath()` would be worse than no prefetch: Robolectric 4.16.1's MavenArtifactFetcher
+# skips its runtime download when the target exists, so a truncated file would boot the
+# daemon with a corrupt android-all instead of falling back. On any failure, delete the
+# temp file and let the daemon fetch at runtime.
 RUN set -eu; \
     d="/root/.m2/repository/org/robolectric/android-all-instrumented/${ANDROID_ALL_VERSION}"; \
+    f="$d/android-all-instrumented-${ANDROID_ALL_VERSION}.jar"; \
     mkdir -p "$d"; \
-    curl -fsSL --retry 10 --retry-delay 15 --retry-all-errors \
-      -o "$d/android-all-instrumented-${ANDROID_ALL_VERSION}.jar" \
-      "https://repo1.maven.org/maven2/org/robolectric/android-all-instrumented/${ANDROID_ALL_VERSION}/android-all-instrumented-${ANDROID_ALL_VERSION}.jar" \
-      || echo "warn: android-all prefetch failed (coordinate stale?); daemon will fetch at runtime"
+    if curl -fsSL --retry 10 --retry-delay 15 --retry-all-errors -o "$f.tmp" \
+        "https://repo1.maven.org/maven2/org/robolectric/android-all-instrumented/${ANDROID_ALL_VERSION}/android-all-instrumented-${ANDROID_ALL_VERSION}.jar"; then \
+      mv "$f.tmp" "$f"; \
+    else \
+      rm -f "$f.tmp"; \
+      echo "warn: android-all prefetch failed (coordinate stale?); daemon will fetch at runtime"; \
+    fi
 
 # ---------------------------------------------------------------------------
 # Stage 2: runtime.
