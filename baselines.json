@@ -64,14 +64,14 @@
     "history-a11y-diff.dark.png": {
       "fixture": "history-a11y-diff",
       "theme": "dark",
-      "sha256": "f816c7e59ad95b1cf42dc69b054caa955f1a9ea358add890e1ad6dc66ce99882",
-      "size": 46429
+      "sha256": "18439eb860d3dc018975a3a06e86d7d6e9da362575395408b7177b9ab300d7e6",
+      "size": 46515
     },
     "history-a11y-diff.light.png": {
       "fixture": "history-a11y-diff",
       "theme": "light",
-      "sha256": "baac6412a15492c8484f223fda81f5e6d3ca445164b916d6dc426fef01e52428",
-      "size": 45858
+      "sha256": "a6971d21d3da49a8a4f414349966885cc9d353478832521ae70bafc7940a3159",
+      "size": 45934
     },
     "history-diff.dark.png": {
       "fixture": "history-diff",
@@ -88,38 +88,38 @@
     "history-semantics-diff.dark.png": {
       "fixture": "history-semantics-diff",
       "theme": "dark",
-      "sha256": "7220ec5de2ab6d43616f26c157fbd6f00b35ef91b89393eaff3f58a693e97e49",
-      "size": 47958
+      "sha256": "a22a7b00ca4c330ddfbada03e6ee0a092ab9dd542a4f0b2f5e614e3a4db9786c",
+      "size": 48045
     },
     "history-semantics-diff.light.png": {
       "fixture": "history-semantics-diff",
       "theme": "light",
-      "sha256": "df8875fa8cfc9bb8df897330d861a4e071c44436931be868a73fbf32f8b4d5f5",
-      "size": 47349
+      "sha256": "038226718f1fc00d3297807f189ab5b793ff1056d43735e265d674f248a6cb5c",
+      "size": 47424
     },
     "history-source-ref.dark.png": {
       "fixture": "history-source-ref",
       "theme": "dark",
-      "sha256": "339fa5a504ababf9314aff7a26d7f0865e3ac73b51fb676c1e0450340b1bd1c2",
-      "size": 21812
+      "sha256": "d6f0ac4f6dbd4dbf6cd716b133371427451e45041788a97520bf2bc13bb0f93d",
+      "size": 21882
     },
     "history-source-ref.light.png": {
       "fixture": "history-source-ref",
       "theme": "light",
-      "sha256": "b528724161e99bf538c6656a72768c1820cc3377e4db4ca14766f4f542ffe003",
-      "size": 21181
+      "sha256": "2a3b57478aeeb5b1aad764324d7649de5f348db6dd6c2958a36df48bb489c9e6",
+      "size": 21266
     },
     "history-theme-diff.dark.png": {
       "fixture": "history-theme-diff",
       "theme": "dark",
-      "sha256": "21a1ff73d581c76d087849b98aaef0f4456e97b9efc5ea6f59aa48f0336412f5",
-      "size": 55593
+      "sha256": "850104d5b1b9b380ca0f89b0970403bfbdbf80d8190ec1dc98addcca5d8cebe6",
+      "size": 55679
     },
     "history-theme-diff.light.png": {
       "fixture": "history-theme-diff",
       "theme": "light",
-      "sha256": "0c87ce873f33159a5831cf88d7271a20de1677d4e6b5dc190ae161d6110e71f6",
-      "size": 55015
+      "sha256": "b46a44c84b9e4664e2478ffa560d3005beb09413731267ce7672d0b8804cb2af",
+      "size": 55091
     },
     "inspection-tree.dark.png": {
       "fixture": "inspection-tree",
