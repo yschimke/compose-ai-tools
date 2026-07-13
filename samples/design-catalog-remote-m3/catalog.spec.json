@@ -1,5 +1,5 @@
 {
-  "$comment": "Phase-0 catalog spec for Remote Compose (Wear Compose Remote Material 3 + remote-creation-compose primitives). Code-led: each sticker is a real RemoteDocument built by RemotePreview and rasterised by the Remote Compose player, so the render is authoritative. Remote Compose carries explicit colours in the document rather than a light/dark theme split, so there is a single primary mode. Consumed by @design-parity/catalog-export to populate ComponentSource group/caption/reference. Sibling of samples/design-catalog-{m3,wear-m3}; see docs/design/DESIGN_CATALOGS.md.",
+  "$comment": "Catalog spec for Remote Compose (Wear Compose Remote Material 3 + remote-creation-compose primitives). Code-led: each sticker is a real RemoteDocument built by RemotePreview and rasterised by the Remote Compose player, so the render is authoritative. Remote Compose carries explicit colours in the document rather than a light/dark theme split, so there is a single primary mode. The component set mirrors the androidx.wear.compose.remote.material3 surface (the port of Wear Compose Material 3 to Remote Compose), minus the two non-component helpers RemoteContainerPainter (a painter factory) and RemoteTypographyTokens (the raw token table behind RemoteTypography). Each component carries a `parallel` field naming its Wear Compose Material 3 counterpart (a componentId in samples/design-catalog-wear-m3); the design-artifacts cross-system compare page pairs them side by side. Sibling of samples/design-catalog-{m3,wear-m3}; see docs/design/DESIGN_CATALOGS.md.",
   "system": "remote-m3",
   "title": "Remote Compose Material 3",
   "library": [
@@ -9,31 +9,60 @@
   "module": "samples:design-catalog-remote-m3",
   "modes": ["light"],
   "referenceKits": [],
+  "compareWith": "wear-m3",
   "groups": [
     {
       "name": "Buttons",
       "components": [
-        { "componentId": "Button/Filled", "preview": "FilledRemoteButton", "caption": "Remote Material 3 button — the primary action." },
-        { "componentId": "Button/Bordered", "preview": "BorderedRemoteButton", "caption": "Button with an explicit remote border + border colour." },
-        { "componentId": "Button/CustomShape", "preview": "CustomShapeRemoteButton", "caption": "Button with a RemoteRoundedCornerShape override." }
+        { "componentId": "Button/Filled", "preview": "FilledRemoteButton", "parallel": "Button/Filled", "caption": "Remote Material 3 filled button — the primary action." },
+        { "componentId": "Button/Outlined", "preview": "OutlinedRemoteButton", "parallel": "Button/Outlined", "caption": "Remote Material 3 outlined-emphasis button (RemoteButton with an explicit border + border colour)." },
+        { "componentId": "Button/Text", "preview": "TextRemoteButton", "parallel": "Button/Child", "caption": "Low-emphasis round text button (RemoteTextButton)." },
+        { "componentId": "Button/Icon", "preview": "IconRemoteButton", "parallel": "IconButton", "caption": "Round icon button (RemoteIconButton) carrying a single RemoteIcon." },
+        { "componentId": "Button/Compact", "preview": "CompactRemoteButton", "parallel": "CompactButton", "caption": "Compact single-line button (RemoteCompactButton)." },
+        { "componentId": "Button/Group", "preview": "ButtonGroupRemote", "parallel": "ButtonGroup", "caption": "Two buttons laid out edge-to-edge by RemoteButtonGroup." },
+        { "componentId": "Button/CustomShape", "preview": "CustomShapeRemoteButton", "parallel": "Button/Filled", "caption": "Filled button with a RemoteRoundedCornerShape override." },
+        { "componentId": "Button/NamedLabel", "preview": "NamedLabelRemoteButton", "parallel": "Button/Filled", "caption": "Filled button whose label is bound to a Remote Compose named value — the connector flips it live (default render shows \"Tap me\")." }
+      ]
+    },
+    {
+      "name": "Containment",
+      "components": [
+        { "componentId": "Card", "preview": "CardRemote", "parallel": "Card", "caption": "Remote Material 3 card." },
+        { "componentId": "Card/Outlined", "preview": "OutlinedCardRemote", "parallel": "Card", "caption": "Outlined card variant (RemoteOutlinedCard)." },
+        { "componentId": "TitleCard", "preview": "TitleCardRemote", "parallel": "TitleCard", "caption": "Card with title, subtitle and supporting text slots." },
+        { "componentId": "AppCard", "preview": "AppCardRemote", "parallel": "AppCard", "caption": "App card with app name, icon, time and content slots." }
+      ]
+    },
+    {
+      "name": "Communication",
+      "components": [
+        { "componentId": "Progress/Circular", "preview": "CircularProgressRemote", "parallel": "Progress/Circular", "caption": "Determinate circular progress indicator at a fixed 66%." }
+      ]
+    },
+    {
+      "name": "Iconography",
+      "components": [
+        { "componentId": "Icon", "preview": "IconRemote", "parallel": "Icon", "caption": "The standalone RemoteIcon primitive." }
       ]
     },
     {
       "name": "Text",
       "components": [
-        { "componentId": "Text/Body", "preview": "RemoteTextSticker", "caption": "The Remote Material 3 text primitive on its own." }
+        { "componentId": "Text/Body", "preview": "RemoteTextSticker", "parallel": "Text/MaxLines-Truncated", "caption": "The Remote Material 3 text primitive on its own." },
+        { "componentId": "Text/MaxLines-Truncated", "preview": "TruncatedTextRemote", "parallel": "Text/MaxLines-Truncated", "caption": "maxLines=2 + ellipsis on a narrow column." }
       ]
     },
     {
-      "name": "Interactive",
+      "name": "Theme",
       "components": [
-        { "componentId": "Button/NamedLabel", "preview": "NamedLabelRemoteButton", "caption": "Label bound to a Remote Compose named value — the connector flips it live (default render shows \"Tap me\")." }
+        { "componentId": "Theme/Typography", "preview": "TypographyRemote", "parallel": "Typography", "caption": "A type ramp read from RemoteMaterialTheme.typography." },
+        { "componentId": "Theme/ColorScheme", "preview": "ColorSchemeRemote", "parallel": "ColorScheme", "caption": "Colour-scheme swatches read from RemoteMaterialTheme.colorScheme." }
       ]
     },
     {
       "name": "Shaders",
       "components": [
-        { "componentId": "Shader/LinearGradient", "preview": "ShaderGradientSticker", "caption": "Document-level gradient shader fill; the middle stop is a named value the connector can recolour live." }
+        { "componentId": "Shader/LinearGradient", "preview": "ShaderGradientSticker", "caption": "Document-level gradient shader fill; the middle stop is a named value the connector can recolour live. A remote-creation-compose primitive with no Wear Material 3 component peer." }
       ]
     }
   ]
