@@ -263,6 +263,39 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun ownMeasurePolicyIdentityStillRastersUnderAnInheritedLabel() {
+    // Counterpart to the IconButton guard: a control's own identity is its measure-policy class
+    // (OutlinedTextFieldMeasurePolicy) even though its friendly label was inherited from the
+    // enclosing Column. Raster matching keys off `component`, so the control still rasterises — the
+    // token export can't vectorise its imperatively drawn chrome, and an inherited label must not
+    // hide that own identity.
+    val model =
+      FigmaSvgModel.from(
+        layout =
+          LayoutInspectorPayload(
+            LayoutInspectorNode(
+              nodeId = "form",
+              component = "Column",
+              bounds = LayoutInspectorBounds(0, 0, 300, 200),
+              size = LayoutInspectorSize(300, 200),
+              children =
+                listOf(
+                  LayoutInspectorNode(
+                    nodeId = "textField",
+                    component = "OutlinedTextFieldMeasurePolicy",
+                    displayName = "Column",
+                    bounds = LayoutInspectorBounds(0, 0, 300, 56),
+                    size = LayoutInspectorSize(300, 56),
+                  )
+                ),
+            )
+          ),
+        rasterComponents = setOf("TextField"),
+      )
+    assertEquals(listOf("textField"), model.rasterTargets.map { it.nodeId })
+  }
+
+  @Test
   fun rootSvgRequestsGeometricPrecisionSoTextMatchesTheRender() {
     // The default `text-rendering:auto` grid-fits glyphs to pixel boundaries in the browser, which
     // leaves a constant edge diff against the Skiko render on text-heavy previews. Pin the
