@@ -218,20 +218,28 @@ There are two ways to stand that daemon up, both fail-closed on the `Trusted` ve
 
 Because path (1) is cheap and safe, both public profiles turn it **on by default**: `deploy/vps`
 (from source) and the prebuilt `deploy/image` (`preview.coo.ee`) both default
-`SERVE_ALLOW_RENDER_TRUSTED=1` + `SERVE_LIVE_SEATS=1` — a bare image pull "just works" with live CMP,
-no clone and no build. Set `SERVE_ALLOW_RENDER_TRUSTED=0` to opt out (the Wasm tier still carries
-CMP). The other published catalogs (`wear-m3`, `remote-m3`) are **Android** — no desktop-runnable
-bundle — so they fall back to baked PNG (fail-closed): no error, just no daemon tier for them.
+`SERVE_ALLOW_RENDER_TRUSTED=1` and auto-size the live-seat budget from the box's memory — a bare
+image pull "just works" with live CMP, no clone and no build. Set `SERVE_ALLOW_RENDER_TRUSTED=0` to
+opt out (the Wasm tier still carries CMP). The other published catalogs (`wear-m3`, `remote-m3`) are
+**Android** — no desktop-runnable bundle — so their live lane runs a heavier Robolectric daemon (and
+those that carry no runnable bundle fall back to baked PNG, fail-closed: no error, just no daemon
+tier).
 
 ### Bounding the live tier — `--live-seats` / `SERVE_LIVE_SEATS`
 
 Each live (daemon-backed) stream holds a JVM Compose render session, so on a constrained box a burst
-of viewers could exhaust memory. `--live-seats <n>` (env `SERVE_LIVE_SEATS`) caps concurrent live
-streams: a stream that would exceed the cap is refused with WebSocket close `1013` (*Try Again
-Later*) instead of spawning an unbounded daemon and risking the OOM killer. `0` (the default) is
-unbounded; snapshot + Wasm sessions never consume a seat. On a small box (e.g. a 4 GB / 2 vCPU VM),
-keep it to **1–2** when you turn the live tier on — it's just another env var, so flip it with a
-compose redeploy (`SERVE_LIVE_SEATS=1` in `.env`, then `docker compose up -d`).
+of viewers could exhaust memory. `--live-seats <n>` (env `SERVE_LIVE_SEATS`) is a **permit budget**,
+not a flat count: each live session charges permits by backend weight — a desktop CMP daemon costs
+**1**, a heavier Robolectric **Android** daemon costs **2** — so one heavy `wear-m3` catalog can't
+hog a single seat and starve the cheap `compose-m3` CMP lanes. A session that can't get its permits
+is refused with WebSocket close `1013` (*Try Again Later*) instead of spawning a daemon that risks
+the OOM killer; `0` is unbounded, and snapshot + Wasm sessions never consume a permit.
+
+**Auto-sizing.** When `SERVE_LIVE_SEATS` is unset, the prebuilt image derives the budget from the
+container's memory limit (reserve ~1 GB for the host + OS, ~1.2 GB per permit, clamped to **[2, 8]**),
+so a bigger box scales up on its own with no compose edit: a 4 GB box gets **2** permits (two
+concurrent CMP sessions, or one Android), an 8 GB box gets **5**. Set `SERVE_LIVE_SEATS` explicitly
+in `.env` (then `docker compose up -d`) to override, or `0` for unbounded.
 
 ## Endpoints
 

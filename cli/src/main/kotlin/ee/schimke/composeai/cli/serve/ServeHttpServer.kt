@@ -102,13 +102,15 @@ class ServeHttpServer(
    */
   maxConcurrentRenders: Int = Runtime.getRuntime().availableProcessors().coerceAtLeast(1),
   /**
-   * Max concurrent **live** (daemon-backed) stream sessions — the "live seats". Each holds a JVM
-   * Compose render session on the box, so a constrained host (e.g. a 4 GB / 2-vCPU VM) can bound
-   * them: a stream that would exceed the cap is refused with WebSocket close 1013 (Try Again Later)
-   * rather than spawning an unbounded daemon and risking the OOM killer. `0` (the default) is
-   * unbounded — the historical behaviour for a local `serve` on a developer box. Static
-   * (snapshot/Wasm) sessions never consume a seat, so the public server's default tiers are
-   * unaffected; this only bites when `--allow-render-trusted` puts a live daemon behind a catalog.
+   * Live-seat **permit budget** for concurrent **live** (daemon-backed) stream sessions. Each live
+   * session charges permits equal to its backend weight ([ServeSessionState.liveSeatWeight]): a
+   * desktop CMP daemon costs 1, a heavier Android/Robolectric one costs more, so one heavy catalog
+   * can't hog a flat seat count and starve several cheap ones. A session that can't get its permits
+   * is refused with WebSocket close 1013 (Try Again Later) rather than spawning a daemon that would
+   * risk the OOM killer. `0` (the default) is unbounded — the historical behaviour for a local
+   * `serve` on a developer box. Static (snapshot/Wasm) sessions never consume a permit, so the
+   * public server's default tiers are unaffected; this only bites when `--allow-render-trusted`
+   * puts a live daemon behind a catalog. See [LiveSeatLimiter].
    */
   maxLiveSeats: Int = 0,
 ) {
@@ -117,8 +119,12 @@ class ServeHttpServer(
 
   private val renderSemaphore = Semaphore(maxConcurrentRenders.coerceAtLeast(1))
 
-  /** Live-seat limiter; null ⇒ unbounded (`maxLiveSeats <= 0`). See [maxLiveSeats]. */
-  private val liveSeats: Semaphore? = if (maxLiveSeats > 0) Semaphore(maxLiveSeats) else null
+  /**
+   * Live-seat limiter: a permit **budget** ([maxLiveSeats]) charged per session by its backend
+   * weight, so a heavy Android daemon costs more of the box than a cheap desktop CMP one. `<= 0` ⇒
+   * unbounded. See [maxLiveSeats] and [LiveSeatLimiter].
+   */
+  private val liveSeats: LiveSeatLimiter = LiveSeatLimiter(maxLiveSeats)
 
   private val server: EmbeddedServer<*, *> =
     embeddedServer(CIO, host = host, port = port) {
@@ -810,15 +816,19 @@ class ServeHttpServer(
     }
     val sessionId =
       call.parameters["system"] ?: call.request.queryParameters["session"] ?: defaultSessionId
-    // Reserve a live seat BEFORE opening the session: leasing resumes a suspended/forked host,
-    // which
-    // spawns the JVM render daemon, so a post-lease check would let an over-cap burst spawn the
-    // very
-    // daemons this cap bounds. A known-static (pinned bundle/catalog) session never takes a seat;
-    // an
-    // as-yet-unregistered one (lazily forked, e.g. --revisions) counts as daemon-backed.
-    val seats = if (liveSeats != null && !sessions.isKnownStatic(sessionId)) liveSeats else null
-    if (seats != null && !seats.tryAcquire()) {
+    // Reserve live-seat permits BEFORE opening the session: leasing resumes a suspended/forked
+    // host,
+    // which spawns the JVM render daemon, so a post-lease check would let an over-budget burst
+    // spawn
+    // the very daemons this budget bounds. A known-static (pinned bundle/catalog) session takes no
+    // permit (weight 0); a daemon-backed one charges its backend weight (desktop 1, Android
+    // heavier),
+    // read from the session state without opening the daemon. A lazily-forked session (e.g.
+    // --revisions), unregistered until its build runs, defaults to weight 1 — a desktop-cost
+    // daemon.
+    val weight = if (sessions.isKnownStatic(sessionId)) 0 else sessions.liveSeatWeight(sessionId)
+    val seatTicket = liveSeats.acquire(weight)
+    if (seatTicket == null) {
       close(CloseReason(1013.toShort(), "live preview at capacity — try again shortly"))
       return
     }
@@ -896,7 +906,7 @@ class ServeHttpServer(
         lease.close()
       }
     } finally {
-      seats?.release()
+      seatTicket.close()
     }
   }
 

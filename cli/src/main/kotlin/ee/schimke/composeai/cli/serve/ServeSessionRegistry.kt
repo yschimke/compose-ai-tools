@@ -186,6 +186,17 @@ class ServeSessionRegistry(
   }
 
   /**
+   * Live-seat cost of [sessionId]'s daemon in [LiveSeatLimiter] permits — its session state's
+   * [ServeSessionState.liveSeatWeight], or `1` for an unknown / lazily-forked session (whose
+   * on-demand build hasn't run yet, so it's treated as a default desktop-weight daemon). Read
+   * before leasing so the seat gate can charge a heavy Android catalog more than a cheap desktop
+   * one without opening the daemon.
+   */
+  fun liveSeatWeight(sessionId: String): Int = lock.withLock {
+    sessions[sessionId]?.state?.liveSeatWeight ?: 1
+  }
+
+  /**
    * Milliseconds the *whole server* has been idle, or `null` when it's busy (any session has an
    * open lease — e.g. a live WebSocket). Idle counts from the last acquire/lease/release; with no
    * leases and no requests it grows unbounded. Drives the ephemeral "exit when idle" watchdog.

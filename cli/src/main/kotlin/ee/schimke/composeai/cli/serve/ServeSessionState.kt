@@ -65,4 +65,13 @@ data class ServeSessionState(
    * idempotent — the registry runs it under `runCatching`.
    */
   val reclaim: (() -> Unit)? = null,
+  /**
+   * Cost of this session's live daemon in **live-seat permits** ([LiveSeatLimiter]). Defaults to
+   * `1` (a desktop CMP daemon, and every plain project / revision session). A trusted-catalog live
+   * session sets it higher for a heavier backend — an Android/Robolectric daemon costs
+   * [ServeBundleDaemon.ANDROID_LIVE_SEAT_WEIGHT] — so one heavy catalog can't starve several cheap
+   * ones out of a flat seat count. Only consulted when [ServeHttpServer] enforces a live-seat
+   * budget (`--live-seats`); ignored for static (snapshot/Wasm) sessions, which take no seat.
+   */
+  val liveSeatWeight: Int = 1,
 )
