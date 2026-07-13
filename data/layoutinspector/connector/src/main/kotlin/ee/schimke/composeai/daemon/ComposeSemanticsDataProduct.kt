@@ -992,30 +992,38 @@ internal object ComposeLayoutInspector {
     private val byNode = java.util.IdentityHashMap<Any, LayoutSource>()
 
     init {
-      slotTables
-        .snapshot()
-        .asSequence()
-        .flatMap { it.compositionGroups.asSequence() }
-        .flatMap { it.flattenGroups().asSequence() }
-        .forEach { group ->
-          val node = group.node ?: return@forEach
-          val sourceInfo = group.sourceInfo
-          if (sourceInfo != null) {
-            byNode[node] =
-              LayoutSource(
-                component = sourceInfo.componentName() ?: node.javaClass.simpleName,
-                source = sourceInfo.sourceLocation(),
-                sourceInfo = sourceInfo,
-              )
-          }
+      slotTables.snapshot().forEach { data ->
+        data.compositionGroups.forEach { index(it, enclosingName = null) }
+      }
+    }
+
+    /**
+     * Walk the composition-group tree depth-first, carrying the nearest enclosing composable name.
+     * A LayoutNode whose own group has no `C(Composable)` marker — a library-internal
+     * `Box`/`Row`/`Layout` that a `Button`/`Card`/… builds itself from, which otherwise falls back
+     * to its measure-policy class name — inherits the name of the composable that encloses it, so
+     * the export layer reads `Button` rather than an anonymous `Box`. A group's own `C(...)` still
+     * wins for its own subtree; the inherited name only fills the gaps.
+     */
+    private fun index(group: CompositionGroup, enclosingName: String?) {
+      val currentName = group.sourceInfo?.componentName() ?: enclosingName
+      val node = group.node
+      if (node != null) {
+        val name = currentName ?: group.sourceInfo?.let { node.javaClass.simpleName }
+        if (name != null) {
+          byNode[node] =
+            LayoutSource(
+              component = name,
+              source = group.sourceInfo?.sourceLocation(),
+              sourceInfo = group.sourceInfo,
+            )
         }
+      }
+      group.compositionGroups.forEach { index(it, currentName) }
     }
 
     fun sourceFor(node: Any): LayoutSource? = byNode[node]
   }
-
-  private fun CompositionGroup.flattenGroups(): List<CompositionGroup> =
-    listOf(this) + compositionGroups.flatMap { it.flattenGroups() }
 
   private fun String.componentName(): String? =
     Regex("""C\(([^)]+)\)""").find(this)?.groupValues?.getOrNull(1)?.takeIf { it.isNotBlank() }
