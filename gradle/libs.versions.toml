@@ -144,14 +144,14 @@ horologist = "0.7.15"
 #    `RemoteDensity` + `LayoutDirection`; the `RemotePreview` composable became
 #    `RemoteContentPreview`), so the pair now tracks the latest
 #    verified-together alpha.
-compose-remote = "1.0.0-alpha14"
-wear-compose-remote = "1.0.0-alpha07"
+compose-remote = "1.0.0-alpha13"
+wear-compose-remote = "1.0.0-alpha06"
 # Pre-release compose-ui artifacts used by `:samples:remotecompose`, which
 # deliberately diverges from `compose-bom-stable` (1.10.x) to track what
 # wear-compose-remote-material3 alpha pulls in transitively — compose 1.11.0+
 # is the first release that ships `PreviewWrapper`. Renovate updates this
 # freely; the sample is meant to ride the latest prerelease compose.
-compose-ui-prerelease = "1.11.4"
+compose-ui-prerelease = "1.11.3"
 kotlinx-coroutines = "1.11.0"
 kotlinx-serialization = "1.11.0"
 mcp-kotlin-sdk = "0.14.0"
