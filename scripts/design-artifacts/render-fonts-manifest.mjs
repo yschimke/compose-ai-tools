@@ -193,7 +193,13 @@ export function buildFontsManifest(payloads, availableFiles) {
       role: "named",
       fonts: [...byFace.values()]
         .sort((a, b) => a.weight - b.weight || Number(a.italic) - Number(b.italic))
-        .map(({ file, weight, italic }) => (italic ? { file, weight, italic } : { file, weight })),
+        // `style: "italic"` (not `italic: true`): the Wasm manifest bridge (`flattenFontsManifest`
+        // in the cmp-wasm-catalog app) keys a face's style off `f.style`, so an italic face must
+        // carry that field or it registers as normal and an Italic request can't match it. Normal
+        // faces omit style entirely — the reader defaults a missing style to normal.
+        .map(({ file, weight, italic }) =>
+          italic ? { file, weight, style: "italic" } : { file, weight },
+        ),
     }));
   return { manifest: { version: 1, families: [...families, ...named] }, warnings };
 }

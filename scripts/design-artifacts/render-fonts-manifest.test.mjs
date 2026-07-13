@@ -147,12 +147,14 @@ test("a named GoogleFont face with no vendored file warns and drops just that fa
   ]);
 });
 
-test("italic GoogleFont faces vendor with the -italic stem and carry the flag", () => {
+test("italic GoogleFont faces vendor with the -italic stem and carry style:italic", () => {
+  // The Wasm manifest bridge keys style off `f.style`, so an italic face must emit
+  // `style: "italic"` (not an `italic` boolean) or it registers as a normal face.
   const files = new Set([...ALL_FILES, "space-grotesk-400-italic.ttf"]);
   const payloads = [{ fonts: [gf("Space Grotesk", 400, "italic")] }];
   const { manifest } = buildFontsManifest(payloads, files);
   assert.deepEqual(manifest.families.find((f) => f.name === "Space Grotesk").fonts, [
-    { file: "space-grotesk-400-italic.ttf", weight: 400, italic: true },
+    { file: "space-grotesk-400-italic.ttf", weight: 400, style: "italic" },
   ]);
 });
 
