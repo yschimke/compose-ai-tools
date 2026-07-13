@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.16.46](https://github.com/yschimke/compose-ai-tools/compare/v0.16.45...v0.16.46) (2026-07-13)
+
+
+### Features
+
+* **layoutinspector:** flatten synthetic SVG layers and inherit composable names ([#2469](https://github.com/yschimke/compose-ai-tools/issues/2469)) ([35e9643](https://github.com/yschimke/compose-ai-tools/commit/35e964332e514b61942e02630f84f24ed48f95b7))
+* **serve:** copy PNG or SVG artefact to clipboard from the viewer ([#2467](https://github.com/yschimke/compose-ai-tools/issues/2467)) ([0cc65bf](https://github.com/yschimke/compose-ai-tools/commit/0cc65bf819fae6874570d2d230aa98ae3d3bd2f7))
+
+
+### Bug Fixes
+
+* **figma-svg:** XML-escape [@font-face](https://github.com/font-face) family names in the layered SVG ([#2466](https://github.com/yschimke/compose-ai-tools/issues/2466)) ([4b932d7](https://github.com/yschimke/compose-ai-tools/commit/4b932d7e5437c967012823c42bb52eecd89cf046))
+* **layoutinspector:** drop LayoutNode fallback so SVG layers keep their layout identity ([#2471](https://github.com/yschimke/compose-ai-tools/issues/2471)) ([1a43e81](https://github.com/yschimke/compose-ai-tools/commit/1a43e817980b0c5086cd423524c13869d880220a))
+* **layoutinspector:** key SVG raster matching off own component, not inherited name ([#2470](https://github.com/yschimke/compose-ai-tools/issues/2470)) ([c5578e2](https://github.com/yschimke/compose-ai-tools/commit/c5578e255c6a0fddc5025042f40af448c6f12db0))
+* **layoutinspector:** strip MeasurePolicy suffix from SVG layer names ([#2468](https://github.com/yschimke/compose-ai-tools/issues/2468)) ([70718d6](https://github.com/yschimke/compose-ai-tools/commit/70718d6ff1325589d5267412197d1456e4b5e740))
+
 ## [0.16.45](https://github.com/yschimke/compose-ai-tools/compare/v0.16.44...v0.16.45) (2026-07-13)
 
 
