@@ -12,6 +12,11 @@ classic Roboto 2.x and CMP's bundled default both differ measurably (see PR hist
   (`fonts.xml`) maps the generic `serif` / `monospace` families to (`role: "generic"`;
   consumed by `genericFontFamily(...)` lookups in catalog components — CMP's
   `FontFamily.Resolver` is sealed, so resolver-level interception isn't available to apps).
+- `orbitron-400.ttf` + `orbitron-700.ttf` — a downloadable **GoogleFont** (`role: "named"`), the
+  faces the `text-branded` specimen resolves via `namedFontFamily("Orbitron")`. Filenames follow
+  the `<slug>-<weight>.ttf` scheme the manifest generator expects (`GoogleFontKey.slugify`); the
+  export regenerates the `role: "named"` entry from the recorded `Font(GoogleFont("Orbitron"), …)`
+  usage. Downloaded from Google Fonts, SIL OFL-1.1 — see [Orbitron-OFL.txt](Orbitron-OFL.txt).
 
 The committed [`fonts.json`](fonts.json) is the **dev-time default**; the design-catalog export
 regenerates it from the per-preview `fonts/used` records (`previews/<id>.fonts.json` in the packed
@@ -34,4 +39,5 @@ partition, so the embedding viewer page cannot warm fonts for it.
 The manifest is additive: future roles (named families, generic-family mappings like `serif`)
 can be declared per family without breaking older apps, which only consume `role: "default"`.
 
-License: Apache 2.0 (Roboto, Google) — see [LICENSE.txt](LICENSE.txt).
+License: Apache 2.0 (Roboto / Noto Serif / Droid Sans Mono, Google) — see [LICENSE.txt](LICENSE.txt);
+Orbitron is SIL OFL-1.1 — see [Orbitron-OFL.txt](Orbitron-OFL.txt).

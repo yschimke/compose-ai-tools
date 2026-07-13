@@ -135,8 +135,35 @@ val CatalogGenericFonts: Map<String, FontFamily> =
 /**
  * Named downloadable-GoogleFont substitutes keyed by the GoogleFont display name
  * `namedFontFamily(…)` looks up — the desktop-render counterpart to the wasm tier's `role: "named"`
- * families, built from the same branded TTFs vendored under `resources/fonts/`. Empty until a
- * catalog component requests a branded face (then Android resolves it via the downloadable-font
- * provider and this supplies the matching vendored faces so the desktop/wasm renders match).
+ * families, built from the branded TTFs vendored under `resources/fonts/` (`<slug>-<weight>.ttf`,
+ * the exact filenames the fonts manifest expects).
+ *
+ * The face `identity` is deliberately the downloadable-GoogleFont label string
+ * (`Font(GoogleFont("Orbitron", …), …)`) rather than a plain id: the daemon's font-usage recorder
+ * reports a resolved face by its `identity`, and the export's manifest generator regexes the
+ * GoogleFont display name back out of exactly that shape. So this desktop face round-trips into a
+ * `role: "named"` manifest entry at export — the same family the wasm tier then fetches — with no
+ * daemon-pipeline change. `namedFontFamily(...)` (sealed-resolver-safe lookup) is what a catalog
+ * component says in place of the Android-only `FontFamily(Font(GoogleFont("Orbitron"), provider))`.
  */
-val CatalogNamedFonts: Map<String, FontFamily> = emptyMap()
+val CatalogNamedFonts: Map<String, FontFamily> =
+  mapOf(
+    "Orbitron" to
+      FontFamily(
+        googleFontFace("Orbitron", "orbitron-400.ttf", FontWeight.Normal),
+        googleFontFace("Orbitron", "orbitron-700.ttf", FontWeight.Bold),
+      )
+  )
+
+/**
+ * A desktop [Font] for a vendored downloadable-GoogleFont face, tagged with the GoogleFont label
+ * `identity` the daemon recorder / manifest generator round-trip on (see [CatalogNamedFonts]).
+ */
+private fun googleFontFace(name: String, file: String, weight: FontWeight) =
+  Font(
+    identity =
+      "Font(GoogleFont(\"$name\", bestEffort=true), weight=${weight.weight}, style=Normal)",
+    data = fontBytes(file),
+    weight = weight,
+    style = FontStyle.Normal,
+  )
