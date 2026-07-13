@@ -69,11 +69,12 @@ import androidx.wear.compose.remote.material3.buttonSizeModifier
 // payload and a remote-float handler id.
 private val testAction = hostAction("catalogAction".rs, 1.rf)
 
-// A near-black content colour for stickers drawn straight onto the sticker's white
-// `showBackground` (rather than inside a coloured button/card surface, which
-// carries its own contrasting content colour). `RemoteText` / `RemoteIcon` default
-// to a near-white content colour that would be invisible on white.
-private val onLight = RemoteColor(Color(0xFF1D1B20))
+// A neutral outline colour for the bordered (outlined-emphasis) button. The
+// stickers render on a transparent background (like the Wear catalog), so
+// standalone text/icons keep the theme's default (light) content colour rather
+// than an explicit dark one — matching how the Wear stickers read on the same
+// transparent checkerboard.
+private val outline = RemoteColor(Color(0xFF8A8A8E))
 
 // A simple five-point star used by the icon stickers. Remote Compose has no bundled
 // icon set and `RemoteIcon` takes an `ImageVector`, so the catalog carries one
@@ -130,7 +131,7 @@ fun OutlinedRemoteButton() = RemoteSticker {
     onClick = testAction,
     modifier = RemoteModifier.buttonSizeModifier(),
     border = 2.rdp,
-    borderColor = onLight,
+    borderColor = outline,
     content = { RemoteText("Outlined".rs) },
   )
 }
@@ -169,7 +170,7 @@ fun NamedLabelRemoteButton() = RemoteSticker {
 @CatalogRemoteModes
 @Composable
 fun TextRemoteButton() = RemoteSticker {
-  RemoteTextButton(onClick = testAction, content = { RemoteText("OK".rs) })
+  RemoteTextButton(onClick = testAction, content = { RemoteText("Child".rs) })
 }
 
 // A round icon button (`RemoteIconButton`) carrying a single `RemoteIcon`. Inside the
@@ -225,9 +226,8 @@ fun OutlinedCardRemote() = RemoteSticker {
 fun TitleCardRemote() = RemoteSticker {
   RemoteTitleCard(
     onClick = testAction,
-    title = { RemoteText("Title".rs) },
-    subtitle = { RemoteText("Subtitle".rs) },
-    content = { RemoteText("Supporting text".rs) },
+    title = { RemoteText("Morning run".rs) },
+    subtitle = { RemoteText("5.2 km · 28 min".rs) },
   )
 }
 
@@ -237,10 +237,9 @@ fun AppCardRemote() = RemoteSticker {
   RemoteAppCard(
     onClick = testAction,
     appName = { RemoteText("App".rs) },
-    title = { RemoteText("Title".rs) },
+    title = { RemoteText("Morning run".rs) },
     appImage = { RemoteIcon(starIcon, null, modifier = RemoteModifier.size(16.rdp)) },
-    time = { RemoteText("now".rs) },
-    content = { RemoteText("Content".rs) },
+    content = { RemoteText("5.2 km · 28 min".rs) },
   )
 }
 
@@ -264,7 +263,7 @@ fun CircularProgressRemote() = RemoteSticker {
 @CatalogRemoteModes
 @Composable
 fun IconRemote() = RemoteSticker {
-  RemoteIcon(starIcon, "Star".rs, modifier = RemoteModifier.size(48.rdp), tint = onLight)
+  RemoteIcon(starIcon, "Star".rs, modifier = RemoteModifier.size(48.rdp))
 }
 
 // ---------------------------------------------------------------------------
@@ -275,7 +274,7 @@ fun IconRemote() = RemoteSticker {
 
 @CatalogRemoteModes
 @Composable
-fun RemoteTextSticker() = RemoteSticker { RemoteText("Remote".rs, color = onLight) }
+fun RemoteTextSticker() = RemoteSticker { RemoteText("Remote".rs) }
 
 // The text primitive exercising the maxLines / overflow product on a narrow column —
 // the Remote parallel of Wear M3's `Text/MaxLines-Truncated`. `RemoteText` carries the
@@ -288,7 +287,6 @@ fun TruncatedTextRemote() = RemoteSticker {
     modifier = RemoteModifier.width(150.rdp),
     maxLines = 2,
     overflow = TextOverflow.Ellipsis,
-    color = onLight,
   )
 }
 
@@ -308,13 +306,9 @@ fun TruncatedTextRemote() = RemoteSticker {
 @Composable
 fun TypographyRemote() = RemoteSticker {
   RemoteColumn {
-    RemoteText("Body Large".rs, style = RemoteMaterialTheme.typography.bodyLarge, color = onLight)
-    RemoteText(
-      "Label Medium".rs,
-      style = RemoteMaterialTheme.typography.labelMedium,
-      color = onLight,
-    )
-    RemoteText("Label Small".rs, style = RemoteMaterialTheme.typography.labelSmall, color = onLight)
+    RemoteText("Body Large".rs, style = RemoteMaterialTheme.typography.bodyLarge)
+    RemoteText("Label Medium".rs, style = RemoteMaterialTheme.typography.labelMedium)
+    RemoteText("Label Small".rs, style = RemoteMaterialTheme.typography.labelSmall)
   }
 }
 

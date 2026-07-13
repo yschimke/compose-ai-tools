@@ -600,10 +600,7 @@ fun IconButtonSticker() =
 @Composable
 fun CompactButtonSticker() =
   WearSticker {
-    CompactButton(
-      onClick = {},
-      label = { Text(previewOverrideString("label", stringResource(R.string.label_start))) },
-    )
+    CompactButton(onClick = {}, label = { Text(previewOverrideString("label", "Compact")) })
   }
 
 @CatalogWearModes
@@ -642,7 +639,7 @@ fun TypographySpecimen() =
   WearSticker {
     Column {
       Text("Body Large", style = MaterialTheme.typography.bodyLarge)
-      Text("Title Medium", style = MaterialTheme.typography.titleMedium)
+      Text("Label Medium", style = MaterialTheme.typography.labelMedium)
       Text("Label Small", style = MaterialTheme.typography.labelSmall)
     }
   }

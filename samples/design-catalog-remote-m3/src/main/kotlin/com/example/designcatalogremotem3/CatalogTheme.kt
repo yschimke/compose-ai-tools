@@ -48,7 +48,7 @@ fun RemoteSticker(content: @Composable @RemoteComposable () -> Unit) {
  * `remote-m3` spec's single `light` mode. Bump `widthDp` / `heightDp` if a component needs more
  * room than a single button.
  */
-@Preview(showBackground = true, widthDp = 200, heightDp = 200) annotation class CatalogRemoteModes
+@Preview(showBackground = false, widthDp = 200, heightDp = 200) annotation class CatalogRemoteModes
 
 /**
  * A larger single-capture multipreview for the components that need more room than a single button —
@@ -56,4 +56,4 @@ fun RemoteSticker(content: @Composable @RemoteComposable () -> Unit) {
  * specimens. Same solid-background, single-mode contract as [CatalogRemoteModes]; only the canvas is
  * bigger so the content isn't clipped by the 200×200 frame.
  */
-@Preview(showBackground = true, widthDp = 320, heightDp = 240) annotation class CatalogRemoteLarge
+@Preview(showBackground = false, widthDp = 320, heightDp = 240) annotation class CatalogRemoteLarge
