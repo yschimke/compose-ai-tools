@@ -1,10 +1,10 @@
 package ee.schimke.composeai.daemon
 
-import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import org.apache.fontbox.ttf.TTFParser
 import org.apache.fontbox.ttf.TTFSubsetter
+import org.apache.pdfbox.io.RandomAccessReadBuffer
 
 /**
  * Shrinks an embedded TrueType/OpenType face to just the glyphs the `compose/figma-svg` export
@@ -78,7 +78,7 @@ object FontSubsetter {
     // Cyrillic, CJK, …) render one glyph per code point with no reordering, so stripping is safe.
     if (requiresShaping(codePoints)) return null
     return runCatching {
-        val ttf = TTFParser(true).parse(ByteArrayInputStream(fontBytes))
+        val ttf = TTFParser(true).parse(RandomAccessReadBuffer(fontBytes))
         // TTFSubsetter rebuilds `glyf`/`loca`; a CFF/PostScript-outline `.otf` has no `glyf`, so
         // don't try — return null and let the caller embed the full face instead.
         if (ttf.tableMap["glyf"] == null) return@runCatching null
