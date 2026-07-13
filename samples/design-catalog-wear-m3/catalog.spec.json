@@ -23,7 +23,10 @@
         { "componentId": "Button/Tonal", "preview": "FilledTonalButtonSticker" },
         { "componentId": "Button/Outlined", "preview": "OutlinedButtonSticker" },
         { "componentId": "Button/Child", "preview": "ChildButtonSticker" },
-        { "componentId": "EdgeButton", "preview": "EdgeButtonSticker", "caption": "Screen-hugging bottom action unique to Wear." }
+        { "componentId": "EdgeButton", "preview": "EdgeButtonSticker", "caption": "Screen-hugging bottom action unique to Wear." },
+        { "componentId": "IconButton", "preview": "IconButtonSticker", "caption": "Round icon button." },
+        { "componentId": "CompactButton", "preview": "CompactButtonSticker", "caption": "Compact single-line button." },
+        { "componentId": "ButtonGroup", "preview": "ButtonGroupSticker", "caption": "Two buttons laid out edge-to-edge." }
       ]
     },
     {
@@ -40,7 +43,8 @@
       "components": [
         { "componentId": "Card", "preview": "CardSticker" },
         { "componentId": "TitleCard", "preview": "TitleCardSticker" },
-        { "componentId": "ListHeader", "preview": "ListHeaderSticker" }
+        { "componentId": "ListHeader", "preview": "ListHeaderSticker" },
+        { "componentId": "AppCard", "preview": "AppCardSticker", "caption": "Card with app name, icon, title and content slots." }
       ]
     },
     {
@@ -73,6 +77,19 @@
       "name": "Text options",
       "components": [
         { "componentId": "Text/MaxLines-Truncated", "preview": "TextMaxLinesTruncated", "caption": "maxLines=2 + ellipsis on a round screen." }
+      ]
+    },
+    {
+      "name": "Iconography",
+      "components": [
+        { "componentId": "Icon", "preview": "IconSticker", "caption": "The standalone Icon primitive." }
+      ]
+    },
+    {
+      "name": "Theme",
+      "components": [
+        { "componentId": "Typography", "preview": "TypographySpecimen", "caption": "A type ramp read from MaterialTheme.typography." },
+        { "componentId": "ColorScheme", "preview": "ColorSchemeSpecimen", "caption": "Colour-scheme swatches read from MaterialTheme.colorScheme." }
       ]
     }
   ]
