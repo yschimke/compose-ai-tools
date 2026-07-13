@@ -310,6 +310,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `SwitchOff` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SwitchOff_Light.png" width="150" /> |
 | `SwitchOn` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SwitchOn_Dark.png" width="150" /> |
 | `SwitchOn` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SwitchOn_Light.png" width="150" /> |
+| `TextBrandedSpecimen` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextBrandedSpecimen_Dark.png" width="150" /> |
+| `TextBrandedSpecimen` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextBrandedSpecimen_Light.png" width="150" /> |
 | `TextButtonSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextButtonSticker_Dark.png" width="150" /> |
 | `TextButtonSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextButtonSticker_Light.png" width="150" /> |
 | `TextFieldSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextFieldSticker_Dark.png" width="150" /> |

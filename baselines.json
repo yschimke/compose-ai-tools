@@ -2087,6 +2087,22 @@
     "sha256": "56653f06167a33c39267c576b1daa0f99ba9c49ea70d819f782baba07530f43c",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.TextBrandedSpecimen_Dark": {
+    "captureLabel": "",
+    "functionName": "TextBrandedSpecimen",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "TextBrandedSpecimen_Dark.png",
+    "sha256": "4325d707d8e11bb1c0bb82c44edb93f015069cc6ca197156746738cc61b3b0e4",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.TextBrandedSpecimen_Light": {
+    "captureLabel": "",
+    "functionName": "TextBrandedSpecimen",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "TextBrandedSpecimen_Light.png",
+    "sha256": "ed8251834dfcae6115e99ea33f56ea50c79bba1d2807e6c16b71d19196a61692",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.TextButtonSticker_Dark": {
     "captureLabel": "",
     "functionName": "TextButtonSticker",
@@ -2780,7 +2796,7 @@
     "functionName": "ActivityListLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round.png",
-    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
+    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
