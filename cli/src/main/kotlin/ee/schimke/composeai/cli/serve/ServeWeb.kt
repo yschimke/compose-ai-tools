@@ -139,10 +139,11 @@ object ServeWeb {
     .cp-link-kind { font-size: 0.72rem; font-weight: 600; color: #6b6b70; width: 30px; flex: none; }
     .cp-url { flex: 1; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       font-size: 0.72rem; padding: 4px 6px; border: 1px solid #d7d7de; border-radius: 6px;
-      background: #fff; color: #1b1b1f; }
-    .cp-copy, .cp-dl { font-size: 0.72rem; padding: 4px 8px; border-radius: 6px; border: 1px solid #d7d7de;
-      background: #fff; color: #5b5bd6; cursor: pointer; text-decoration: none; flex: none; }
-    .cp-copy:hover, .cp-dl:hover { background: #f0f0f3; }
+      background: #fff; color: #1b1b1f; cursor: pointer; }
+    .cp-url.cp-url-copied { border-color: #5b5bd6; box-shadow: 0 0 0 2px rgba(91, 91, 214, 0.25); }
+    .cp-copyimg, .cp-dl { font-size: 0.72rem; padding: 4px 8px; border-radius: 6px; border: 1px solid #d7d7de;
+      background: #fff; color: #5b5bd6; cursor: pointer; text-decoration: none; flex: none; white-space: nowrap; }
+    .cp-copyimg:hover, .cp-dl:hover { background: #f0f0f3; }
     /* Drawer toggles + the two collapsible drawers (left component nav, right overrides). The open
        state is a class on .cp-viewer — cp-controls-open (default on) and cp-nav-open (default off) —
        so a drawer hides purely in CSS and the toggle JS just flips the class + aria-expanded. */
@@ -179,8 +180,9 @@ object ServeWeb {
       .cp-sub, .cp-id, .cp-status, .cp-about-links, .cp-sys-desc, .cp-sys-foot { color: #a0a0a8; }
       .cp-card, .cp-stage, .cp-knobs, .cp-links, .cp-about { border-color: #34343a; }
       .cp-url { background: #1d1d20; color: #e6e6e9; border-color: #34343a; }
-      .cp-copy, .cp-dl { background: #1d1d20; border-color: #34343a; }
-      .cp-copy:hover, .cp-dl:hover { background: #26262b; }
+      .cp-url.cp-url-copied { border-color: #8f8ff0; box-shadow: 0 0 0 2px rgba(143, 143, 240, 0.3); }
+      .cp-copyimg, .cp-dl { background: #1d1d20; border-color: #34343a; }
+      .cp-copyimg:hover, .cp-dl:hover { background: #26262b; }
       .cp-card, .cp-about { background: #1d1d20; }
       .cp-about-body { color: #c9c9d0; }
       .cp-about-body code { background: #2a2a30; }
@@ -1423,21 +1425,61 @@ object ServeWeb {
           if (dl) dl.href = url;
         });
       }
-      document.querySelectorAll(".cp-copy").forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          var field = document.getElementById(btn.getAttribute("data-copy-target"));
-          if (!field) return;
-          var done = function () {
-            var was = btn.textContent;
-            btn.textContent = "Copied";
-            setTimeout(function () { btn.textContent = was; }, 1200);
+      // Click the read-only URL field to copy the /render URL to the clipboard (no separate button).
+      // The text is selected either way as a fallback + visible affordance, and the field flashes via
+      // .cp-url-copied so the click reads as "copied".
+      document.querySelectorAll(".cp-url").forEach(function (field) {
+        field.addEventListener("click", function () {
+          field.select();
+          var flash = function () {
+            field.classList.add("cp-url-copied");
+            setTimeout(function () { field.classList.remove("cp-url-copied"); }, 1200);
           };
           if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(field.value).then(done, function () { field.select(); });
+            navigator.clipboard.writeText(field.value).then(flash, function () {});
           } else {
-            field.select();
-            try { document.execCommand("copy"); done(); } catch (e) {}
+            try { document.execCommand("copy"); flash(); } catch (e) {}
           }
+        });
+      });
+      // "Copy PNG" / "Copy SVG": fetch the current /render artefact and put it on the clipboard as
+      // text — SVG markup verbatim, PNG as a base64 data: URI — so it can be pasted straight into an
+      // editor, prompt, or issue without downloading a file. Uses the same live cp-url-<ext> field
+      // the URL Copy button reads, so the copied artefact matches the on-screen overrides.
+      document.querySelectorAll(".cp-copyimg").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var field = document.getElementById(btn.getAttribute("data-copyimg-target"));
+          if (!field || !field.value) return;
+          var ext = btn.getAttribute("data-copyimg-ext");
+          var was = btn.getAttribute("data-copyimg-label") || btn.textContent;
+          btn.setAttribute("data-copyimg-label", was);
+          var reset = function (label) {
+            btn.textContent = label;
+            setTimeout(function () { btn.textContent = was; }, 1400);
+          };
+          if (!navigator.clipboard || !navigator.clipboard.writeText) { reset("No clipboard"); return; }
+          btn.textContent = "Copying…";
+          // fetch() resolves even on a non-2xx render (503 saturated, 400 bad override, 404 a
+          // preview that can't export that lane), so guard on r.ok — otherwise the error body,
+          // not the artefact, would land on the clipboard and still report "Copied".
+          var okOrThrow = function (r) { if (!r.ok) throw new Error("render " + r.status); return r; };
+          var toText =
+            ext === ".svg"
+              ? fetch(field.value).then(okOrThrow).then(function (r) { return r.text(); })
+              : fetch(field.value)
+                  .then(okOrThrow)
+                  .then(function (r) { return r.blob(); })
+                  .then(function (blob) {
+                    return new Promise(function (resolve, reject) {
+                      var fr = new FileReader();
+                      fr.onload = function () { resolve(fr.result); };
+                      fr.onerror = function () { reject(fr.error); };
+                      fr.readAsDataURL(blob);
+                    });
+                  });
+          toText
+            .then(function (text) { return navigator.clipboard.writeText(text); })
+            .then(function () { reset("Copied"); }, function () { reset("Failed"); });
         });
       });
       function drawFrame(b64, codec) {
@@ -2150,20 +2192,24 @@ object ServeWeb {
 
   /**
    * The copyable direct-link panel: the `/render/<id>.png` (and, when [hasSvgExport], `.svg`) URL
-   * for the preview **with the current overrides applied**. Each row shows a read-only URL field, a
-   * Copy button, and a Download link (`<a download>`). The viewer JS keeps the URLs in sync as the
-   * controls / knobs change (see `refreshLinks`), so the copied URL always reflects the on-screen
-   * state — a shareable, scriptable handle on the exact render (a `curl`-able PNG/SVG). The URLs
-   * are built client-side from `location.origin` + the session base, so they're absolute and work
-   * from anywhere; the fields start empty and are filled on first render.
+   * for the preview **with the current overrides applied**. Each row shows a read-only URL field
+   * (click it to copy the URL), a one-click "Copy PNG"/"Copy SVG" button that copies the rendered
+   * artefact itself as clipboard text (SVG markup verbatim; PNG as a base64 `data:` URI), and a
+   * Download link (`<a download>`). The viewer JS keeps the URLs in sync as the controls / knobs
+   * change (see `refreshLinks`), so the copied URL/artefact always reflects the on-screen state — a
+   * shareable, scriptable handle on the exact render (a `curl`-able PNG/SVG). The URLs are built
+   * client-side from `location.origin` + the session base, so they're absolute and work from
+   * anywhere; the fields start empty and are filled on first render.
    */
   private fun downloadLinksHtml(hasSvgExport: Boolean): String {
     fun row(kind: String, ext: String): String =
       """
       <div class="cp-link-row">
         <span class="cp-link-kind">$kind</span>
-        <input id="cp-url-$ext" class="cp-url" type="text" readonly aria-label="$kind URL">
-        <button type="button" class="cp-copy" data-copy-target="cp-url-$ext">Copy</button>
+        <input id="cp-url-$ext" class="cp-url" type="text" readonly aria-label="$kind URL"
+          title="Click to copy the URL">
+        <button type="button" class="cp-copyimg" data-copyimg-target="cp-url-$ext"
+          data-copyimg-ext=".$ext">Copy $kind</button>
         <a id="cp-dl-$ext" class="cp-dl" download>Download</a>
       </div>
       """

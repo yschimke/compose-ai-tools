@@ -130,10 +130,11 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-link-kind { font-size: 0.72rem; font-weight: 600; color: #6b6b70; width: 30px; flex: none; }
 .cp-url { flex: 1; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.72rem; padding: 4px 6px; border: 1px solid #d7d7de; border-radius: 6px;
-  background: #fff; color: #1b1b1f; }
-.cp-copy, .cp-dl { font-size: 0.72rem; padding: 4px 8px; border-radius: 6px; border: 1px solid #d7d7de;
-  background: #fff; color: #5b5bd6; cursor: pointer; text-decoration: none; flex: none; }
-.cp-copy:hover, .cp-dl:hover { background: #f0f0f3; }
+  background: #fff; color: #1b1b1f; cursor: pointer; }
+.cp-url.cp-url-copied { border-color: #5b5bd6; box-shadow: 0 0 0 2px rgba(91, 91, 214, 0.25); }
+.cp-copyimg, .cp-dl { font-size: 0.72rem; padding: 4px 8px; border-radius: 6px; border: 1px solid #d7d7de;
+  background: #fff; color: #5b5bd6; cursor: pointer; text-decoration: none; flex: none; white-space: nowrap; }
+.cp-copyimg:hover, .cp-dl:hover { background: #f0f0f3; }
 /* Drawer toggles + the two collapsible drawers (left component nav, right overrides). The open
    state is a class on .cp-viewer — cp-controls-open (default on) and cp-nav-open (default off) —
    so a drawer hides purely in CSS and the toggle JS just flips the class + aria-expanded. */
@@ -170,8 +171,9 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   .cp-sub, .cp-id, .cp-status, .cp-about-links, .cp-sys-desc, .cp-sys-foot { color: #a0a0a8; }
   .cp-card, .cp-stage, .cp-knobs, .cp-links, .cp-about { border-color: #34343a; }
   .cp-url { background: #1d1d20; color: #e6e6e9; border-color: #34343a; }
-  .cp-copy, .cp-dl { background: #1d1d20; border-color: #34343a; }
-  .cp-copy:hover, .cp-dl:hover { background: #26262b; }
+  .cp-url.cp-url-copied { border-color: #8f8ff0; box-shadow: 0 0 0 2px rgba(143, 143, 240, 0.3); }
+  .cp-copyimg, .cp-dl { background: #1d1d20; border-color: #34343a; }
+  .cp-copyimg:hover, .cp-dl:hover { background: #26262b; }
   .cp-card, .cp-about { background: #1d1d20; }
   .cp-about-body { color: #c9c9d0; }
   .cp-about-body code { background: #2a2a30; }

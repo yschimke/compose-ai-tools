@@ -1032,6 +1032,30 @@ class ServeWebFixtureTest {
       catalogKnobs.contains("id=\"cp-url-svg\"") && catalogKnobs.contains("id=\"cp-dl-svg\""),
       "an SVG-exporting session also offers an SVG URL row",
     )
+    // Next to Download, a one-click "Copy PNG"/"Copy SVG" button that copies the rendered artefact
+    // itself as clipboard text (PNG as a base64 data: URI, SVG markup verbatim) via .cp-copyimg.
+    assertTrue(
+      catalogKnobs.contains("class=\"cp-copyimg\"") &&
+        catalogKnobs.contains("data-copyimg-ext=\".png\"") &&
+        catalogKnobs.contains("data-copyimg-ext=\".svg\""),
+      "each URL row has a Copy PNG / Copy SVG button that copies the artefact as text",
+    )
+    assertTrue(
+      catalogKnobs.contains("readAsDataURL") &&
+        catalogKnobs.contains("navigator.clipboard.writeText"),
+      "the Copy PNG/SVG handler fetches the render and writes it to the clipboard as text",
+    )
+    // The URL itself is copied by clicking the field (no separate "Copy URL" button) — the handler
+    // binds to .cp-url and flashes .cp-url-copied.
+    assertFalse(
+      catalogKnobs.contains("class=\"cp-copy\"") || catalogKnobs.contains(">Copy URL<"),
+      "the separate Copy URL button is gone — the field is click-to-copy",
+    )
+    assertTrue(
+      catalogKnobs.contains("querySelectorAll(\".cp-url\")") &&
+        catalogKnobs.contains("cp-url-copied"),
+      "clicking the URL field copies the URL and flashes the field",
+    )
     assertTrue(
       catalogKnobs.contains("function refreshLinks()") && catalogKnobs.contains("location.origin"),
       "the links are rebuilt from location.origin as the controls change",
