@@ -101,6 +101,63 @@ test("the default family is always included when anything was recorded", () => {
   );
 });
 
+const gf = (name, weight = 400, style = "normal") =>
+  entry(
+    `Font(GoogleFont("${name}", bestEffort=true), weight=FontWeight(weight=${weight}), ` +
+      `style=${style === "italic" ? "Italic" : "Normal"}, fontVariationSettings=Settings(settings=[]))`,
+    weight,
+    style,
+  );
+
+test("downloadable GoogleFonts become named families keyed by display name", () => {
+  const files = new Set([
+    ...ALL_FILES,
+    "space-grotesk-400.ttf",
+    "space-grotesk-700.ttf",
+    "orbitron-500.ttf",
+  ]);
+  const payloads = [
+    { fonts: [gf("Space Grotesk", 400), gf("Space Grotesk", 700), gf("Orbitron", 500)] },
+  ];
+  const { manifest, warnings } = buildFontsManifest(payloads, files);
+  assert.equal(warnings.length, 0);
+  // Roboto (default) is always present; named families follow, alphabetically.
+  assert.deepEqual(
+    manifest.families.map((f) => [f.name, f.role]),
+    [
+      ["Roboto", "default"],
+      ["Orbitron", "named"],
+      ["Space Grotesk", "named"],
+    ],
+  );
+  assert.deepEqual(manifest.families[2].fonts, [
+    { file: "space-grotesk-400.ttf", weight: 400 },
+    { file: "space-grotesk-700.ttf", weight: 700 },
+  ]);
+});
+
+test("a named GoogleFont face with no vendored file warns and drops just that face", () => {
+  const files = new Set([...ALL_FILES, "space-grotesk-400.ttf"]);
+  const payloads = [{ fonts: [gf("Space Grotesk", 400), gf("Space Grotesk", 700)] }];
+  const { manifest, warnings } = buildFontsManifest(payloads, files);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /space-grotesk-700\.ttf/);
+  assert.deepEqual(manifest.families.find((f) => f.name === "Space Grotesk").fonts, [
+    { file: "space-grotesk-400.ttf", weight: 400 },
+  ]);
+});
+
+test("italic GoogleFont faces vendor with the -italic stem and carry style:italic", () => {
+  // The Wasm manifest bridge keys style off `f.style`, so an italic face must emit
+  // `style: "italic"` (not an `italic` boolean) or it registers as a normal face.
+  const files = new Set([...ALL_FILES, "space-grotesk-400-italic.ttf"]);
+  const payloads = [{ fonts: [gf("Space Grotesk", 400, "italic")] }];
+  const { manifest } = buildFontsManifest(payloads, files);
+  assert.deepEqual(manifest.families.find((f) => f.name === "Space Grotesk").fonts, [
+    { file: "space-grotesk-400-italic.ttf", weight: 400, style: "italic" },
+  ]);
+});
+
 test("no recorded usage keeps the committed manifest (null)", () => {
   assert.equal(buildFontsManifest([], ALL_FILES).manifest, null);
   assert.equal(buildFontsManifest([{ fonts: [] }], ALL_FILES).manifest, null);

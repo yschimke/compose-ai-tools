@@ -34,6 +34,44 @@ function familyKey(requestedFamily) {
 }
 
 /**
+ * Pull the display name out of a downloadable-GoogleFont `requestedFamily` record, e.g.
+ * `Font(GoogleFont("Space Grotesk", bestEffort=true), weight=…, …)` → `"Space Grotesk"`. Returns
+ * null for any record that isn't a GoogleFont request. The name is the same string the consumer's
+ * `Font(GoogleFont("Space Grotesk"), …)` passes, so the wasm/desktop tiers can key a vendored
+ * family off it.
+ */
+export function googleFontName(requestedFamily) {
+  const m = /GoogleFont\(\s*"([^"]+)"/.exec(requestedFamily ?? "");
+  return m ? m[1] : null;
+}
+
+/**
+ * Slugify a GoogleFont display name into the vendored-file stem, matching the renderer's
+ * `GoogleFontKey.slugify` (lowercase, every non-alphanumeric run collapsed to a single `-`, no
+ * leading/trailing `-`). `"Space Grotesk"` → `"space-grotesk"`, so its 400-weight face vendors as
+ * `space-grotesk-400.ttf` — the exact file the download step writes.
+ */
+export function fontSlug(name) {
+  let out = "";
+  let prevDash = true;
+  for (const ch of name.toLowerCase()) {
+    if ((ch >= "a" && ch <= "z") || (ch >= "0" && ch <= "9")) {
+      out += ch;
+      prevDash = false;
+    } else if (!prevDash) {
+      out += "-";
+      prevDash = true;
+    }
+  }
+  return out.replace(/^-+|-+$/g, "") || "font";
+}
+
+/** Vendored file stem for a named GoogleFont at [weight] (italic faces get an `-italic` suffix). */
+function namedFontFile(name, weight, italic) {
+  return `${fontSlug(name)}-${weight}${italic ? "-italic" : ""}.ttf`;
+}
+
+/**
  * Parse every `previews/<id>.fonts.json` entry out of a read preview bundle into an array of
  * `fonts/used` payloads (`{fonts: [{requestedFamily, weight, style, …}]}`). Unparseable entries
  * are skipped — the record is best-effort by design.
@@ -63,9 +101,29 @@ export function fontsPayloadsFromBundle(bundle) {
 export function buildFontsManifest(payloads, availableFiles) {
   const warnings = [];
   const wanted = new Map(); // familyKey -> Map(weight -> file)
+  const namedWanted = new Map(); // GoogleFont display name -> Map("<weight>[i]" -> {file,weight,italic})
   const unknown = new Set();
   const missing = new Set();
   let recorded = 0;
+
+  // A downloadable GoogleFont resolves to one vendored file per (weight, italic). Unlike the
+  // generic families there's no nearest-weight snap: each recorded face has its own vendored TTF
+  // (`<slug>-<weight>[-italic].ttf`), so a face whose file the dist doesn't carry warns and drops
+  // just that face (the tier falls back to its bundled default for it) without taking the family's
+  // other weights down.
+  const wantNamed = (name, weight, italic) => {
+    const w = Number(weight) || 400;
+    const file = namedFontFile(name, w, italic);
+    if (!availableFiles.has(file)) {
+      if (!missing.has(file)) {
+        missing.add(file);
+        warnings.push(`'${name}' needs ${file}, which the dist fonts/ does not carry — dropped`);
+      }
+      return;
+    }
+    if (!namedWanted.has(name)) namedWanted.set(name, new Map());
+    namedWanted.get(name).set(`${w}${italic ? "i" : ""}`, { file, weight: w, italic });
+  };
 
   const want = (key, weight) => {
     const table = FAMILY_FILES[key].files;
@@ -89,6 +147,11 @@ export function buildFontsManifest(payloads, availableFiles) {
       recorded++;
       const key = familyKey(entry.requestedFamily);
       if (key === null) {
+        const gf = googleFontName(entry.requestedFamily);
+        if (gf) {
+          wantNamed(gf, entry.weight, entry.style === "italic");
+          continue;
+        }
         if (!unknown.has(entry.requestedFamily)) {
           unknown.add(entry.requestedFamily);
           warnings.push(
@@ -120,5 +183,23 @@ export function buildFontsManifest(payloads, availableFiles) {
         .sort(([a], [b]) => a - b)
         .map(([weight, file]) => ({ file, weight })),
     }));
-  return { manifest: { version: 1, families }, warnings };
+  // Named GoogleFont families follow the default/generic block, alphabetically. Each carries the
+  // GoogleFont display name so the wasm/desktop tiers can resolve a `Font(GoogleFont("<name>"), …)`
+  // request onto the vendored faces instead of falling back to Roboto.
+  const named = [...namedWanted.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, byFace]) => ({
+      name,
+      role: "named",
+      fonts: [...byFace.values()]
+        .sort((a, b) => a.weight - b.weight || Number(a.italic) - Number(b.italic))
+        // `style: "italic"` (not `italic: true`): the Wasm manifest bridge (`flattenFontsManifest`
+        // in the cmp-wasm-catalog app) keys a face's style off `f.style`, so an italic face must
+        // carry that field or it registers as normal and an Italic request can't match it. Normal
+        // faces omit style entirely — the reader defaults a missing style to normal.
+        .map(({ file, weight, italic }) =>
+          italic ? { file, weight, style: "italic" } : { file, weight },
+        ),
+    }));
+  return { manifest: { version: 1, families: [...families, ...named] }, warnings };
 }
