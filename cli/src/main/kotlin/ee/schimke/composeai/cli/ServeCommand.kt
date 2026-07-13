@@ -613,12 +613,16 @@ class ServeCommand(args: List<String>) : Command(args) {
         val fallback = state.bakedFallback
         if (fallback != null)
           ServeCatalogLiveHost(
-            alias = state.previewAliases,
-            live = daemon,
-            baked = fallback(),
-            perPreviewResolve = state.perPreviewResolve,
-            perPreviewStreamCount = state.perPreviewStreamCount,
-          )
+              alias = state.previewAliases,
+              live = daemon,
+              baked = fallback(),
+              perPreviewResolve = state.perPreviewResolve,
+              perPreviewStreamCount = state.perPreviewStreamCount,
+            )
+            // Warm the daemon off the request path so the first browse already gets the per-variant
+            // SVG lane instead of the baked fallback — critical for a slow-cold-starting Android
+            // daemon, where a lazy first render would otherwise take minutes.
+            .also { it.prewarm() }
         else daemon
       }
       .getOrNull()

@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RenderTier
 import ee.schimke.composeai.mcp.DaemonLaunchDescriptor
 import ee.schimke.composeai.render.session.RenderSessionConfig
@@ -160,6 +161,143 @@ class ServeBundleDaemonTest {
   }
 
   /**
+   * The load-bearing proof for the **android** backend: an Android/Wear catalog's `liveBundle`
+   * materialises to a Robolectric daemon whose `compose/figma-svg` lane is **per-variant** — the
+   * fix for the baked `figma/<slug>.svg` collapsing every state/selection variant of a component
+   * onto one vector (`FilledButton` == `ButtonDisabled` == … in the served SVG). Renders the SVG
+   * for pairs that share a slug but differ in state and asserts the bytes differ.
+   *
+   * Self-skips unless pointed at a packed **android** bundle via
+   * `-Dcomposeai.test.androidBundlePath` (pack one with
+   * `:samples:design-catalog-wear-m3:composePreviewBundle`) with the Android daemon sidecar
+   * reachable (`-Dcomposeai.cli.libDaemonAndroidDir=<…>/staged-daemon-android-libs`) and a local
+   * Android SDK (`ANDROID_HOME`/`ANDROID_SDK_ROOT`). The first render cold-starts Robolectric
+   * (fetches `android-all-instrumented`), so the budget is generous.
+   */
+  @Test
+  fun `android bundle serves per-variant SVG through a real Robolectric daemon`() {
+    val bundlePath = System.getProperty(ANDROID_BUNDLE_PATH_PROPERTY)
+    if (bundlePath.isNullOrBlank()) {
+      System.err.println(
+        "[ServeBundleDaemonTest] skipping android per-variant SVG — set " +
+          "-D$ANDROID_BUNDLE_PATH_PROPERTY=<wear bundle .png> (from " +
+          "`:samples:design-catalog-wear-m3:composePreviewBundle`)."
+      )
+      return
+    }
+    val bundleFile = File(bundlePath)
+    if (!bundleFile.isFile) {
+      System.err.println("[ServeBundleDaemonTest] skipping android — no bundle at $bundlePath")
+      return
+    }
+    ensureAppHomeConfigured()
+
+    val destDir = Files.createTempDirectory("serve-bundle-daemon-android").toFile()
+    val state = ServeBundleDaemon.materialize(bundleFile, destDir, "wear-m3")
+    if (state == null) {
+      System.err.println(
+        "[ServeBundleDaemonTest] skipping android — materialize returned null (see log). Needs the " +
+          "lib-daemon-android sidecar (-Dcomposeai.cli.libDaemonAndroidDir=…) + android.jar " +
+          "(ANDROID_HOME/ANDROID_SDK_ROOT)."
+      )
+      return
+    }
+    // Sanity: the descriptor really is the android launch (Robolectric flags present).
+    val parsed =
+      Json { ignoreUnknownKeys = true }
+        .decodeFromString(DaemonLaunchDescriptor.serializer(), state.descriptor.readText())
+    assertEquals("android", parsed.variant, "wear-m3 bundle should materialize an android daemon")
+    assertTrue(
+      parsed.systemProperties["robolectric.graphicsMode"] == "NATIVE",
+      "android descriptor should carry the robolectric.* render flags",
+    )
+
+    val host =
+      try {
+        ServeRenderHost.open(
+          descriptorPath = state.descriptor,
+          workspaceRoot = state.workspaceRoot,
+          workspaceName = state.workspaceName,
+          previews = state.previews,
+          label = state.label,
+          declaredThemes = state.declaredThemes,
+          onLog = { line -> System.err.println("[android daemon] $line") },
+        )
+      } catch (e: Exception) {
+        System.err.println(
+          "[ServeBundleDaemonTest] skipping android live render — daemon failed to open " +
+            "(${e.message})."
+        )
+        return
+      }
+
+    host.use {
+      val ids = state.previews.map { it.id }
+      // Warm the Robolectric daemon: its FIRST render cold-starts (android-all instrumentation +
+      // Compose init) and can blow the host's internal 180s render budget. The daemon stays alive
+      // across a timed-out render, so retry a throwaway PNG render until one lands before timing
+      // the
+      // real per-variant SVG lane. Skip (not fail) if it never warms — that's an
+      // environment-too-slow
+      // signal, not a regression.
+      val warmId = ids.firstOrNull { it.endsWith("CatalogPreviewsKt.FilledButton") } ?: ids.first()
+      var warm = false
+      for (attempt in 1..4) {
+        when (val r = host.render(warmId, PreviewOverrides())) {
+          is RenderOutcome.Ok -> {
+            warm = true
+            break
+          }
+          else -> System.err.println("[android daemon] warm-up attempt $attempt: $r")
+        }
+      }
+      // A daemon that never warms is an environment signal (a box too slow/small to cold-start
+      // Robolectric), NOT a pass — mark it SKIPPED via Assume so it can't masquerade as green while
+      // the per-variant assertions below never ran.
+      org.junit.jupiter.api.Assumptions.assumeTrue(
+        warm,
+        "android daemon never warmed after 4 render attempts (cold Robolectric start too slow " +
+          "for this box) — skipping the per-variant SVG assertions",
+      )
+
+      // Slug-sharing state pairs that the baked per-slug SVG collapses; each must now differ.
+      val pairs =
+        listOf(
+          "CatalogPreviewsKt.FilledButton" to "CatalogPreviewsKt.ButtonDisabled",
+          "CatalogPreviewsKt.SwitchButtonOn" to "CatalogPreviewsKt.SwitchButtonOff",
+          "CatalogPreviewsKt.CheckboxButtonChecked" to "CatalogPreviewsKt.CheckboxButtonUnchecked",
+        )
+      var checked = 0
+      for ((aSuffix, bSuffix) in pairs) {
+        val aId = ids.firstOrNull { it.endsWith(aSuffix) } ?: continue
+        val bId = ids.firstOrNull { it.endsWith(bSuffix) } ?: continue
+        val a = host.renderSvg(aId, PreviewOverrides())
+        val b = host.renderSvg(bId, PreviewOverrides())
+        assertTrue(a is SvgOutcome.Ok, "SVG render of $aId should succeed, got $a")
+        assertTrue(b is SvgOutcome.Ok, "SVG render of $bId should succeed, got $b")
+        val aBytes = (a as SvgOutcome.Ok).svg
+        val bBytes = (b as SvgOutcome.Ok).svg
+        assertTrue(aBytes.isNotEmpty() && bBytes.isNotEmpty(), "SVGs must be non-empty")
+        // Optional: dump the rendered vectors so a human can eyeball the per-variant difference.
+        System.getProperty("composeai.test.svgDumpDir")
+          ?.takeIf { it.isNotBlank() }
+          ?.let { dir ->
+            File(dir).mkdirs()
+            File(dir, "$aSuffix.svg").writeBytes(aBytes)
+            File(dir, "$bSuffix.svg").writeBytes(bBytes)
+          }
+        assertTrue(
+          !aBytes.contentEquals(bBytes),
+          "per-variant SVG regression: $aSuffix and $bSuffix rendered byte-identical SVGs " +
+            "(the daemon collapsed the state variant)",
+        )
+        checked++
+      }
+      assertTrue(checked > 0, "expected at least one slug-sharing state pair in the wear bundle")
+    }
+  }
+
+  /**
    * Locates the bundle + sidecars and calls [ServeBundleDaemon.materialize] into a fresh temp dir
    * under [label], or logs why and returns `null` so the caller self-skips.
    */
@@ -215,6 +353,7 @@ class ServeBundleDaemonTest {
 
   private companion object {
     const val BUNDLE_PATH_PROPERTY = "composeai.test.bundlePath"
+    const val ANDROID_BUNDLE_PATH_PROPERTY = "composeai.test.androidBundlePath"
     const val APP_HOME_PROPERTY = "composeai.cli.appHome"
     const val DEFAULT_BUNDLE_PATH = "/tmp/m3-bundle.png"
 

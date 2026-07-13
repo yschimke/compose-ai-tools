@@ -740,11 +740,25 @@ internal constructor(
     /** RPC ack budget for the (fast, queue-only) `renderNow` call itself. */
     private val RENDER_ACK_TIMEOUT = 60.seconds
 
-    /** Cold-start render budget — the first render pays Skiko/JVM warm-up. */
-    private const val RENDER_TIMEOUT_SECONDS = 180L
+    /**
+     * Cold-start render budget — the first render pays the daemon's warm-up. 180s covers a
+     * desktop/Skiko daemon, but an **Android/Robolectric** daemon's first render is much slower (it
+     * fetches the `android-all-instrumented` runtime and initialises the Android/Compose stack), so
+     * make it overridable via `-Dcomposeai.serve.renderTimeoutSeconds=<n>` for those backends.
+     */
+    private val RENDER_TIMEOUT_SECONDS: Long =
+      System.getProperty("composeai.serve.renderTimeoutSeconds")?.toLongOrNull()?.coerceAtLeast(1)
+        ?: 180L
 
-    /** Per-frame render budget once warm; a wedged render can't hold the slot past this. */
-    private const val FRAME_RENDER_TIMEOUT_SECONDS = 10L
+    /**
+     * Per-frame render budget once warm; a wedged render can't hold the slot past this. 10s suits a
+     * warm Skiko daemon; a warm Android/Robolectric render is slower, so it's overridable via
+     * `-Dcomposeai.serve.frameRenderTimeoutSeconds=<n>`.
+     */
+    private val FRAME_RENDER_TIMEOUT_SECONDS: Long =
+      System.getProperty("composeai.serve.frameRenderTimeoutSeconds")
+        ?.toLongOrNull()
+        ?.coerceAtLeast(1) ?: 10L
 
     /**
      * Bounded retries when the daemon coalesces an override-bearing render already in flight. The

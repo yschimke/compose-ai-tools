@@ -63,6 +63,13 @@ jobs:
           - system: wear-m3
             module: 'samples:design-catalog-wear-m3'
             spec: 'samples/design-catalog-wear-m3/catalog.spec.json'
+            # Publish the Android bundle as a `liveBundle` so a serve box that carries
+            # the Android (Robolectric) daemon renders Wear live + per-variant (the SVG
+            # lane in particular — the baked per-slug vector collapses state variants).
+            # No wasm tier (androidx.wear.compose has no wasmJs target), so it's flagged
+            # explicitly rather than piggy-backing on `wasmModule`. Inert until a box with
+            # the Android daemon fronts it (else serve falls back to the baked PNGs).
+            androidLiveBundle: '1'
           - system: remote-m3
             module: 'samples:design-catalog-remote-m3'
             spec: 'samples/design-catalog-remote-m3/catalog.spec.json'
@@ -211,10 +218,11 @@ jobs:
           # Presence flag: fold the Android-only supplement render in (see above).
           EXTRA_RENDERS: ${{ matrix.androidExtraModule }}
           # Carry the executable bundle onto the branch so a trusted serve can launch
-          # a render daemon from it (no build). Only for the DESKTOP CMP catalog
-          # (compose-m3, the only row with a wasm tier) — the Android catalogs' bundle
-          # can't run on the desktop-only public box, so they stay baked-PNG.
-          PUBLISH_LIVE_BUNDLE: ${{ matrix.wasmModule != '' && '1' || '' }}
+          # a render daemon from it (no build). The DESKTOP CMP catalog (compose-m3,
+          # the wasm-tier row) runs on the Skiko daemon; an Android catalog flagged
+          # `androidLiveBundle` (wear-m3) runs on the Robolectric daemon a box carrying
+          # the Android sidecar provides — see deploy/image. remote-m3 stays baked-PNG.
+          PUBLISH_LIVE_BUNDLE: ${{ (matrix.wasmModule != '' || matrix.androidLiveBundle == '1') && '1' || '' }}
           # Buildable source for trusted server-side re-render: catalog.json gets a
           # `source: {repo, ref, module}` so a `serve --allow-render-trusted` box can
           # rebuild + re-render this catalog live. Inert on the public desktop box,
@@ -254,8 +262,10 @@ jobs:
         env:
           SYSTEM: ${{ matrix.system }}
           EXTRA_RENDERS: ${{ matrix.androidExtraModule }}
-          # FULL for the CMP (live-bundle) tier, --view-only for the baked-only Android tiers.
-          SPLIT_MODE: ${{ matrix.wasmModule != '' && 'full' || 'view-only' }}
+          # FULL for any live-bundle tier (the CMP wasm row + an androidLiveBundle row),
+          # so each per-preview bundle carries its re-render classpath; --view-only for
+          # the baked-only tiers (remote-m3).
+          SPLIT_MODE: ${{ (matrix.wasmModule != '' || matrix.androidLiveBundle == '1') && 'full' || 'view-only' }}
         run: |
           set -euo pipefail
           view_only_flag=""
