@@ -228,8 +228,14 @@ fun CardRemote() = RemoteSticker {
 @CatalogRemoteLarge
 @Composable
 fun OutlinedCardRemote() = RemoteSticker {
-  // Same label as its `Card` parallel — only the outlined (vs filled) treatment differs.
-  RemoteOutlinedCard(onClick = testAction, content = { RemoteText("Card".rs) })
+  // Same label as its `Card` parallel — only the outlined (vs filled) treatment differs. Unlike the
+  // filled `RemoteCard` (whose surface carries a light content colour), the outlined card's
+  // transparent container leaves the default content colour invisible on the sticker canvas, so pin
+  // the label to the theme's `onSurface` token — the same token the outlined button uses.
+  RemoteOutlinedCard(
+    onClick = testAction,
+    content = { RemoteText("Card".rs, color = RemoteMaterialTheme.colorScheme.onSurface) },
+  )
 }
 
 @CatalogRemoteLarge
