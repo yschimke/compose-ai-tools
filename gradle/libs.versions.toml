@@ -143,9 +143,11 @@ horologist = "0.7.15"
 #    `captureSingleRemoteDocument` now takes `RemoteCreationDisplayInfo` +
 #    `RemoteDensity` + `LayoutDirection`; the `RemotePreview` composable became
 #    `RemoteContentPreview`), so the pair now tracks the latest
-#    verified-together alpha.
-compose-remote = "1.0.0-alpha13"
-wear-compose-remote = "1.0.0-alpha06"
+#    verified-together alpha. alpha14 / alpha07 is the next such pair:
+#    `RemoteDensity.from` dropped its trailing `Context` arg and now derives
+#    density solely from the `RemoteCreationDisplayInfo` it's handed.
+compose-remote = "1.0.0-alpha14"
+wear-compose-remote = "1.0.0-alpha07"
 # Pre-release compose-ui artifacts used by `:samples:remotecompose`, which
 # deliberately diverges from `compose-bom-stable` (1.10.x) to track what
 # wear-compose-remote-material3 alpha pulls in transitively — compose 1.11.0+
