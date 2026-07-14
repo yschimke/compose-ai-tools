@@ -2284,7 +2284,7 @@
     "functionName": "OutlinedRemoteButton",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "OutlinedRemoteButton.png",
-    "sha256": "009a6d297b31728e3907f0d55b5e9090aa479ce613e705a2981ae6f2fdd66558",
+    "sha256": "3fbf83a5675df28f6376801c3ffe250b41c5741ca6b7a6722a1eef0b4669b11b",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.RemoteTextSticker": {
