@@ -9,9 +9,19 @@ package ee.schimke.composeai.preview
  * file/class; tokens sharing a [group] render together, and a module-wide sheet aggregates them
  * all.
  *
+ * Two field types are recognised, dispatched by the annotated property's declared type:
+ * * a single `androidx.compose.ui.graphics.Color` → one swatch row.
+ * * a whole `androidx.compose.material3.ColorScheme` → the Material 3 colour roles expanded into
+ *   one swatch each. This is the "entire ColorScheme" catalog the theme-override surface offers as
+ *   a selectable palette, the colour counterpart to a whole `Typography` under [TypographyCatalog]
+ *   or a whole `Shapes` under [ShapeCatalog].
+ *
  * ```kotlin
  * @ColorCatalog(group = "Brand")
  * val Coral: Color = Color(0xFFFF6F61)
+ *
+ * @ColorCatalog(name = "Brand scheme")
+ * val BrandColors: ColorScheme = lightColorScheme(primary = Coral)
  * ```
  *
  * Discovered by FQN via the property's **backing field** — hence `@Target(FIELD)` plus `BINARY`

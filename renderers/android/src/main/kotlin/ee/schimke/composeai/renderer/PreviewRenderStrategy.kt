@@ -12,7 +12,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
@@ -21,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -293,22 +297,8 @@ private object CatalogPreviewStrategy : PreviewRenderStrategy {
   ) {
     val rows =
       remember(preview.id) {
-        preview.params.catalogTokens.mapNotNull { token ->
-          runCatching {
-              when (token.tokenKind) {
-                CatalogTokenKind.COLOR ->
-                  CatalogRow.Swatch(
-                    token.label,
-                    CatalogValueReflection.reflectColor(token.className, token.member),
-                  )
-                CatalogTokenKind.TEXT_STYLE ->
-                  CatalogRow.Type(
-                    token.label,
-                    CatalogValueReflection.reflectTextStyle(token.className, token.member),
-                  )
-              }
-            }
-            .getOrNull()
+        preview.params.catalogTokens.flatMap { token ->
+          runCatching { catalogRowsFor(token) }.getOrDefault(emptyList())
         }
       }
     // Emit the resolved-token sidecar (issue #2167) once per sheet, alongside the PNG. Keyed by
@@ -320,6 +310,7 @@ private object CatalogPreviewStrategy : PreviewRenderStrategy {
           when (row) {
             is CatalogRow.Swatch -> CatalogSwatchRow(label = row.label, color = row.color)
             is CatalogRow.Type -> CatalogTypeRow(label = row.label, style = row.style)
+            is CatalogRow.ShapeSpec -> CatalogShapeRow(label = row.label, shape = row.shape)
           }
         }
       }
@@ -365,6 +356,7 @@ private object ThemeCatalogStrategy : PreviewRenderStrategy {
 private fun ThemeSpecimen(previewId: String, themeName: String) {
   val scheme = MaterialTheme.colorScheme
   val typography = MaterialTheme.typography
+  val shapes = MaterialTheme.shapes
   val roles =
     listOf(
       "primary" to scheme.primary,
@@ -386,6 +378,17 @@ private fun ThemeSpecimen(previewId: String, themeName: String) {
       "bodyLarge" to typography.bodyLarge,
       "labelSmall" to typography.labelSmall,
     )
+  // The shape scale the theme resolved — the third leg of the M3 triad, so a `@ThemeCatalog` sheet
+  // shows colour + type + shape (issue #2179 / shape parity). Read from `MaterialTheme.shapes` in
+  // the theme's own composition, same as the colours and type above.
+  val shapeRoles =
+    listOf(
+      "extraSmall" to shapes.extraSmall,
+      "small" to shapes.small,
+      "medium" to shapes.medium,
+      "large" to shapes.large,
+      "extraLarge" to shapes.extraLarge,
+    )
   // Emit the resolved-token sidecar (issue #2179) once per sheet, alongside the PNG — the live
   // `MaterialTheme` values above, captured *inside* the theme's composition (the differentiator
   // from the reflection-only `@ColorCatalog` / `@TypographyCatalog` sidecars). Keyed by theme so
@@ -396,23 +399,131 @@ private fun ThemeSpecimen(previewId: String, themeName: String) {
       previewId,
       themeName,
       roles.map { (label, color) -> CatalogTokenSidecar.ResolvedToken.Colour(label, color) } +
-        types.map { (label, style) -> CatalogTokenSidecar.ResolvedToken.Type(label, style) },
+        types.map { (label, style) -> CatalogTokenSidecar.ResolvedToken.Type(label, style) } +
+        shapeRoles.map { (label, shape) -> CatalogTokenSidecar.ResolvedToken.ShapeToken(label, shape) },
     )
   }
   Box(Modifier.fillMaxSize().background(CATALOG_SHEET_BACKGROUND).padding(16.dp)) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
       for ((label, color) in roles) CatalogSwatchRow(label = label, color = color)
       for ((label, style) in types) CatalogTypeRow(label = label, style = style)
+      for ((label, shape) in shapeRoles) CatalogShapeRow(label = label, shape = shape)
     }
   }
 }
 
-/** A resolved catalog row — a colour swatch or a type specimen — ready to lay out. */
+/** A resolved catalog row — a colour swatch, a type specimen, or a shape — ready to lay out. */
 private sealed interface CatalogRow {
   data class Swatch(val label: String, val color: Color) : CatalogRow
 
   data class Type(val label: String, val style: TextStyle) : CatalogRow
+
+  data class ShapeSpec(val label: String, val shape: Shape) : CatalogRow
 }
+
+/**
+ * Resolves one [CatalogToken] to the row(s) it contributes. A single-token kind
+ * (`COLOR` / `TEXT_STYLE` / `SHAPE`) yields one row; a whole-object kind
+ * (`COLOR_SCHEME` / `TYPOGRAPHY` / `SHAPES`) reflects the object off the consumer class and expands
+ * it into the Material 3 role rows for that scale (each row labelled `<token> · <role>`), so a
+ * declared whole `ColorScheme` / `Typography` / `Shapes` — the "entire object" catalog the
+ * theme-override surface offers — renders as a full specimen sheet.
+ */
+private fun catalogRowsFor(token: CatalogToken): List<CatalogRow> =
+  when (token.tokenKind) {
+    CatalogTokenKind.COLOR ->
+      listOf(
+        CatalogRow.Swatch(
+          token.label,
+          CatalogValueReflection.reflectColor(token.className, token.member),
+        )
+      )
+    CatalogTokenKind.TEXT_STYLE ->
+      listOf(
+        CatalogRow.Type(
+          token.label,
+          CatalogValueReflection.reflectTextStyle(token.className, token.member),
+        )
+      )
+    CatalogTokenKind.SHAPE ->
+      listOf(
+        CatalogRow.ShapeSpec(
+          token.label,
+          CatalogValueReflection.reflectAs(token.className, token.member),
+        )
+      )
+    CatalogTokenKind.COLOR_SCHEME -> {
+      val scheme = CatalogValueReflection.reflectAs<ColorScheme>(token.className, token.member)
+      colorSchemeRoles(scheme).map { (role, color) ->
+        CatalogRow.Swatch("${token.label} · $role", color)
+      }
+    }
+    CatalogTokenKind.TYPOGRAPHY -> {
+      val typography = CatalogValueReflection.reflectAs<Typography>(token.className, token.member)
+      typographyRoles(typography).map { (role, style) ->
+        CatalogRow.Type("${token.label} · $role", style)
+      }
+    }
+    CatalogTokenKind.SHAPES -> {
+      val shapes = CatalogValueReflection.reflectAs<Shapes>(token.className, token.member)
+      shapesRoles(shapes).map { (role, shape) ->
+        CatalogRow.ShapeSpec("${token.label} · $role", shape)
+      }
+    }
+  }
+
+/** The Material 3 colour roles, in specimen order, read off a resolved [ColorScheme]. */
+private fun colorSchemeRoles(scheme: ColorScheme): List<Pair<String, Color>> =
+  listOf(
+    "primary" to scheme.primary,
+    "onPrimary" to scheme.onPrimary,
+    "primaryContainer" to scheme.primaryContainer,
+    "onPrimaryContainer" to scheme.onPrimaryContainer,
+    "secondary" to scheme.secondary,
+    "secondaryContainer" to scheme.secondaryContainer,
+    "tertiary" to scheme.tertiary,
+    "tertiaryContainer" to scheme.tertiaryContainer,
+    "error" to scheme.error,
+    "errorContainer" to scheme.errorContainer,
+    "background" to scheme.background,
+    "onBackground" to scheme.onBackground,
+    "surface" to scheme.surface,
+    "onSurface" to scheme.onSurface,
+    "surfaceVariant" to scheme.surfaceVariant,
+    "onSurfaceVariant" to scheme.onSurfaceVariant,
+    "outline" to scheme.outline,
+    "outlineVariant" to scheme.outlineVariant,
+  )
+
+/** The Material 3 type scale, in specimen order, read off a resolved [Typography]. */
+private fun typographyRoles(typography: Typography): List<Pair<String, TextStyle>> =
+  listOf(
+    "displayLarge" to typography.displayLarge,
+    "displayMedium" to typography.displayMedium,
+    "displaySmall" to typography.displaySmall,
+    "headlineLarge" to typography.headlineLarge,
+    "headlineMedium" to typography.headlineMedium,
+    "headlineSmall" to typography.headlineSmall,
+    "titleLarge" to typography.titleLarge,
+    "titleMedium" to typography.titleMedium,
+    "titleSmall" to typography.titleSmall,
+    "bodyLarge" to typography.bodyLarge,
+    "bodyMedium" to typography.bodyMedium,
+    "bodySmall" to typography.bodySmall,
+    "labelLarge" to typography.labelLarge,
+    "labelMedium" to typography.labelMedium,
+    "labelSmall" to typography.labelSmall,
+  )
+
+/** The five Material 3 shape roles, in specimen order, read off a resolved [Shapes]. */
+private fun shapesRoles(shapes: Shapes): List<Pair<String, Shape>> =
+  listOf(
+    "extraSmall" to shapes.extraSmall,
+    "small" to shapes.small,
+    "medium" to shapes.medium,
+    "large" to shapes.large,
+    "extraLarge" to shapes.extraLarge,
+  )
 
 /** One swatch row: a bounded colour square, the token label, and its `#AARRGGBB` hex. */
 @Composable
@@ -456,11 +567,34 @@ private fun CatalogTypeRow(label: String, style: TextStyle) {
   }
 }
 
+/**
+ * One shape specimen row: the token name as a small caption, then a bounded box clipped to the
+ * reflected [shape] (filled with the sheet's neutral swatch tint and outlined so the corner geometry
+ * reads). The shape counterpart to [CatalogSwatchRow] / [CatalogTypeRow].
+ */
+@Composable
+private fun CatalogShapeRow(label: String, shape: Shape) {
+  Row(
+    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Box(
+      modifier =
+        Modifier.size(40.dp)
+          .clip(shape)
+          .background(CATALOG_SHAPE_FILL)
+          .border(1.dp, CATALOG_SWATCH_BORDER, shape)
+    )
+    Box(modifier = Modifier.padding(start = 12.dp)) { BasicText(text = label, style = CATALOG_LABEL_STYLE) }
+  }
+}
+
 /** Sample text for type specimens — the canonical pangram, so ascenders/descenders/kerning show. */
 private const val CATALOG_TYPE_SAMPLE = "The quick brown fox"
 
 private val CATALOG_SHEET_BACKGROUND: Color = Color(0xFFFFFFFF)
 private val CATALOG_SWATCH_BORDER: Color = Color(0xFF9E9E9E)
+private val CATALOG_SHAPE_FILL: Color = Color(0xFFE3E1EC)
 private val CATALOG_LABEL_STYLE: TextStyle = TextStyle(color = Color(0xFF1B1B1F), fontSize = 13.sp)
 private val CATALOG_HEX_STYLE: TextStyle =
   TextStyle(color = Color(0xFF5F5F66), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
@@ -493,7 +627,18 @@ internal object CatalogValueReflection {
    * backing field holds the object directly — no value-class unboxing, just a plain reflective get
    * (off the `INSTANCE` singleton for a property declared inside a Kotlin `object`).
    */
-  fun reflectTextStyle(className: String, member: String): TextStyle {
+  fun reflectTextStyle(className: String, member: String): TextStyle =
+    reflectAs(className, member)
+
+  /**
+   * Reads any ordinary (non-value-class) design-token property value off the consumer's loaded
+   * class and casts it to [T] — the generic sibling of [reflectTextStyle], used for a single `Shape`
+   * and for the whole-object `ColorScheme` / `Typography` / `Shapes` scales. These are all plain
+   * object references (unlike `Color`, which erases to a `long` and needs [reflectColor]'s reboxing),
+   * so a plain reflective get suffices (off the `INSTANCE` singleton for a property declared inside a
+   * Kotlin `object`).
+   */
+  inline fun <reified T> reflectAs(className: String, member: String): T {
     val owner = Class.forName(className)
     val field = owner.getDeclaredField(member).apply { isAccessible = true }
     val receiver =
@@ -502,6 +647,6 @@ internal object CatalogValueReflection {
       } else {
         runCatching { owner.getField("INSTANCE").get(null) }.getOrNull()
       }
-    return field.get(receiver) as TextStyle
+    return field.get(receiver) as T
   }
 }

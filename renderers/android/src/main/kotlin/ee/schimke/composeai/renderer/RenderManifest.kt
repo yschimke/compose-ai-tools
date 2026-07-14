@@ -34,6 +34,10 @@ enum class PreviewKind {
 enum class CatalogTokenKind {
   COLOR,
   TEXT_STYLE,
+  SHAPE,
+  COLOR_SCHEME,
+  TYPOGRAPHY,
+  SHAPES,
 }
 
 /** Renderer-side mirror of the plugin's `CatalogToken`. */

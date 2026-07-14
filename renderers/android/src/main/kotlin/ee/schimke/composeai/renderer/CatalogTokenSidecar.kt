@@ -1,6 +1,7 @@
 package ee.schimke.composeai.renderer
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.TextUnit
@@ -81,6 +82,8 @@ internal object CatalogTokenSidecar {
     data class Colour(override val label: String, val color: Color) : ResolvedToken
 
     data class Type(override val label: String, val style: TextStyle) : ResolvedToken
+
+    data class ShapeToken(override val label: String, val shape: Shape) : ResolvedToken
   }
 
   /**
@@ -143,6 +146,7 @@ internal object CatalogTokenSidecar {
       when (token) {
         is ResolvedToken.Colour -> "\"kind\":\"COLOR\"," + colorJson(token.color)
         is ResolvedToken.Type -> "\"kind\":\"TEXT_STYLE\"," + textStyleJson(token.style)
+        is ResolvedToken.ShapeToken -> "\"kind\":\"SHAPE\"," + shapeJson(token.shape)
       }
     return "{\"label\":${jsonString(token.label)},$value}"
   }
@@ -178,6 +182,19 @@ internal object CatalogTokenSidecar {
               textStyleJson(CatalogValueReflection.reflectTextStyle(token.className, token.member))
             }
             .getOrNull()
+        CatalogTokenKind.SHAPE ->
+          runCatching {
+              shapeJson(CatalogValueReflection.reflectAs(token.className, token.member))
+            }
+            .getOrNull()
+        // Whole-object scales (`ColorScheme` / `Typography` / `Shapes`) expand to a specimen sheet
+        // visually; the per-role resolved values are surfaced by the `@ThemeCatalog` `writeResolved`
+        // path (which reads them live from `MaterialTheme`), not this static reflection path. Emit a
+        // marker so the sheet's declaration still shows up in the sidecar without erasure-fragile
+        // role reflection.
+        CatalogTokenKind.COLOR_SCHEME -> "\"colorScheme\":{\"whole\":true}"
+        CatalogTokenKind.TYPOGRAPHY -> "\"typography\":{\"whole\":true}"
+        CatalogTokenKind.SHAPES -> "\"shapes\":{\"whole\":true}"
       } ?: return null
     val sb = StringBuilder()
     sb.append('{')
@@ -189,6 +206,15 @@ internal object CatalogTokenSidecar {
     sb.append('}')
     return sb.toString()
   }
+
+  /**
+   * `"shape":{"type":"<simple class name>"}` — a `Shape` carries no portable metric to serialise
+   * (corner sizes are density-dependent and behind `CornerBasedShape`'s internal `CornerSize`), so
+   * the sidecar records the shape's class (e.g. `RoundedCornerShape`, `CutCornerShape`) as a stable,
+   * best-effort descriptor; the PNG carries the actual geometry.
+   */
+  private fun shapeJson(shape: Shape): String =
+    "\"shape\":{\"type\":${jsonString(shape::class.java.simpleName)}}"
 
   /** `"color":{"hex":"#AARRGGBB","argb":<int>}` — hex matches the sheet's swatch label. */
   private fun colorJson(color: Color): String {

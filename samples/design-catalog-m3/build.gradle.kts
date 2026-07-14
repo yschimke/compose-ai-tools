@@ -35,6 +35,11 @@ dependencies {
   // `api(":slot-preview-runtime")`.
   implementation(project(":data-preview-overrides-runtime"))
 
+  // `@TypographyCatalog` / `@ColorCatalog` / `@ShapeCatalog` — the whole-object theme catalogs the
+  // module declares (Roboto Flex + Google Sans Flex type scales, the light/dark schemes, the shape
+  // scale) for discovery to auto-detect. See `CatalogCatalogs.kt`.
+  implementation(project(":preview-annotations"))
+
   // Desktop CMP compose — mirrors the sibling `:samples:cmp` desktop sample.
   implementation(compose.desktop.currentOs)
   implementation(libs.jetbrains.compose.material3)

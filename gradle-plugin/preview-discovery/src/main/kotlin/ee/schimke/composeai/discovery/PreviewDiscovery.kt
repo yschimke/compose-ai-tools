@@ -239,10 +239,24 @@ object PreviewDiscovery {
   // backing field. Same BINARY / `@Target(FIELD)` FQN-match policy. See `TypographyCatalog.kt`.
   internal const val TYPOGRAPHY_CATALOG_FQN = "ee.schimke.composeai.preview.TypographyCatalog"
 
+  // `@ShapeCatalog` — the shape-scoped sibling of `@ColorCatalog` / `@TypographyCatalog`, on a
+  // `Shape` (single token) or `Shapes` (whole scale) property's backing field. Same BINARY /
+  // `@Target(FIELD)` FQN-match policy. See `ShapeCatalog.kt`.
+  internal const val SHAPE_CATALOG_FQN = "ee.schimke.composeai.preview.ShapeCatalog"
+
   // `@ThemeCatalog` — the theme-scoped sibling. Placed on a `PreviewWrapperProvider` CLASS (BINARY
   // retention, `@Target(CLASS)`), so it's an FQN match on the class annotation rather than a field.
   // See `ThemeCatalog.kt`.
   internal const val THEME_CATALOG_FQN = "ee.schimke.composeai.preview.ThemeCatalog"
+
+  // Whole-object catalog field types: a `@ColorCatalog` / `@TypographyCatalog` / `@ShapeCatalog`
+  // annotation on a field of one of these types catalogs the *entire* theme object (the scheme /
+  // type scale / shape scale) rather than a single token — dispatched by the field's declared type
+  // descriptor at scan time (a single `Color` erases to `long`, so the whole-object types are the
+  // discriminator). See [catalogTokenKindFor].
+  private const val COLOR_SCHEME_TYPE = "androidx.compose.material3.ColorScheme"
+  private const val TYPOGRAPHY_TYPE = "androidx.compose.material3.Typography"
+  private const val SHAPES_TYPE = "androidx.compose.material3.Shapes"
 
   // failOnEmpty diagnostics: cap the JAR + annotation FQN sample sizes
   // so the lifecycle log stays readable on projects with huge classpaths.
@@ -334,9 +348,11 @@ object PreviewDiscovery {
     var reachablePreviewFqns: List<String> = emptyList()
 
     // `@ColorCatalog`-annotated design-token fields collected during the scan, aggregated into
-    // synthetic [PreviewKind.CATALOG] sheets after the class walk.
+    // synthetic [PreviewKind.CATALOG] sheets after the class walk. Each token carries its resolved
+    // [CatalogTokenKind] (single `Color` vs whole `ColorScheme`, etc.), dispatched by field type.
     val rawColorCatalogTokens = mutableListOf<RawCatalogToken>()
     val rawTypographyCatalogTokens = mutableListOf<RawCatalogToken>()
+    val rawShapeCatalogTokens = mutableListOf<RawCatalogToken>()
     // `@ThemeCatalog`-annotated `PreviewWrapperProvider` classes → one theme catalog sheet each.
     val rawThemeCatalogs = mutableListOf<RawThemeCatalog>()
 
@@ -403,16 +419,40 @@ object PreviewDiscovery {
                 warnings,
               )
             }
-            // `@ColorCatalog` / `@TypographyCatalog` design tokens: an annotated `Color` /
-            // `TextStyle`
-            // property's backing field. Collect the coordinates + display metadata here; the values
-            // are reflected at render time.
+            // `@ColorCatalog` / `@TypographyCatalog` / `@ShapeCatalog` design tokens: an annotated
+            // `Color` / `TextStyle` / `Shape` (single token) or `ColorScheme` / `Typography` /
+            // `Shapes` (whole-object) backing field. Collect the coordinates + display metadata
+            // here; the values are reflected at render time. The token kind is dispatched by the
+            // field's declared type (see [catalogTokenKindFor]) so a whole-object field catalogs
+            // the
+            // entire scheme / type scale / shape scale.
             for (field in classInfo.fieldInfo) {
               field.getAnnotationInfo(COLOR_CATALOG_FQN)?.let { ann ->
-                rawColorCatalogTokens += rawCatalogToken(classInfo, field, ann)
+                rawColorCatalogTokens +=
+                  rawCatalogToken(
+                    classInfo,
+                    field,
+                    ann,
+                    catalogTokenKindFor(field, single = CatalogTokenKind.COLOR),
+                  )
               }
               field.getAnnotationInfo(TYPOGRAPHY_CATALOG_FQN)?.let { ann ->
-                rawTypographyCatalogTokens += rawCatalogToken(classInfo, field, ann)
+                rawTypographyCatalogTokens +=
+                  rawCatalogToken(
+                    classInfo,
+                    field,
+                    ann,
+                    catalogTokenKindFor(field, single = CatalogTokenKind.TEXT_STYLE),
+                  )
+              }
+              field.getAnnotationInfo(SHAPE_CATALOG_FQN)?.let { ann ->
+                rawShapeCatalogTokens +=
+                  rawCatalogToken(
+                    classInfo,
+                    field,
+                    ann,
+                    catalogTokenKindFor(field, single = CatalogTokenKind.SHAPE),
+                  )
               }
             }
             // `@ThemeCatalog` on a `PreviewWrapperProvider` class → a theme catalog sheet. The
@@ -450,16 +490,20 @@ object PreviewDiscovery {
         buildCatalogPreviews(
           rawColorCatalogTokens,
           input.catalogRenderSupported,
-          CatalogTokenKind.COLOR,
           idPrefix = "colorcatalog",
           noun = "colours",
         ) +
         buildCatalogPreviews(
           rawTypographyCatalogTokens,
           input.catalogRenderSupported,
-          CatalogTokenKind.TEXT_STYLE,
           idPrefix = "typographycatalog",
           noun = "type styles",
+        ) +
+        buildCatalogPreviews(
+          rawShapeCatalogTokens,
+          input.catalogRenderSupported,
+          idPrefix = "shapecatalog",
+          noun = "shapes",
         ) +
         buildThemeCatalogPreviews(rawThemeCatalogs, input.catalogRenderSupported)
 
@@ -750,7 +794,28 @@ object PreviewDiscovery {
     val member: String,
     val name: String,
     val group: String,
+    val kind: CatalogTokenKind,
   )
+
+  /**
+   * Resolves a catalog field to its [CatalogTokenKind]: a field whose declared type is a whole M3
+   * theme object ([COLOR_SCHEME_TYPE] / [TYPOGRAPHY_TYPE] / [SHAPES_TYPE]) catalogs the *entire*
+   * object; anything else is the [single] token kind for that annotation. A single `Color` erases
+   * to `long` in bytecode, so matching the whole-object type name is a reliable discriminator. Uses
+   * the type descriptor's string form (`toString()` yields the source-level FQN for class types).
+   */
+  private fun catalogTokenKindFor(
+    field: io.github.classgraph.FieldInfo,
+    single: CatalogTokenKind,
+  ): CatalogTokenKind {
+    val type = runCatching { field.typeSignatureOrTypeDescriptor.toString() }.getOrNull()
+    return when (type) {
+      COLOR_SCHEME_TYPE -> CatalogTokenKind.COLOR_SCHEME
+      TYPOGRAPHY_TYPE -> CatalogTokenKind.TYPOGRAPHY
+      SHAPES_TYPE -> CatalogTokenKind.SHAPES
+      else -> single
+    }
+  }
 
   /**
    * Raw `@ThemeCatalog` hit: the annotated `PreviewWrapperProvider` class + its display metadata.
@@ -765,12 +830,14 @@ object PreviewDiscovery {
     classInfo: ClassInfo,
     field: io.github.classgraph.FieldInfo,
     ann: AnnotationInfo,
+    kind: CatalogTokenKind,
   ): RawCatalogToken =
     RawCatalogToken(
       className = classInfo.name,
       member = field.name,
       name = annStringOrDefault(ann, "name", field.name),
       group = annStringOrDefault(ann, "group", defaultCatalogGroup(classInfo.name)),
+      kind = kind,
     )
 
   /**
@@ -793,18 +860,18 @@ object PreviewDiscovery {
   }
 
   /**
-   * Aggregates the collected `@ColorCatalog` / `@TypographyCatalog` tokens into synthetic
-   * [PreviewKind.CATALOG] sheets: one per `group`, plus a module-wide "All <noun>" sheet when there
-   * is more than one group (a single group would just duplicate itself). [idPrefix] namespaces the
-   * render-output filename (`colorcatalog` / `typographycatalog`), [noun] labels the sheet
-   * ("colours" / "type styles"), and [kind] tags each emitted [CatalogToken] so the renderer picks
-   * the swatch-vs-type layout. Appended after [normalizeRenderOutputs] with render outputs already
-   * shell-safe, like the Lottie assets.
+   * Aggregates the collected `@ColorCatalog` / `@TypographyCatalog` / `@ShapeCatalog` tokens into
+   * synthetic [PreviewKind.CATALOG] sheets: one per `group`, plus a module-wide "All <noun>" sheet
+   * when there is more than one group (a single group would just duplicate itself). [idPrefix]
+   * namespaces the render-output filename (`colorcatalog` / `typographycatalog` / `shapecatalog`)
+   * and [noun] labels the sheet ("colours" / "type styles" / "shapes"). Each token carries its own
+   * [RawCatalogToken.kind] (single token vs whole-object) so the renderer picks the right layout
+   * and a whole-object token expands into its scheme / type-scale / shape roles. Appended after
+   * [normalizeRenderOutputs] with render outputs already shell-safe, like the Lottie assets.
    */
   private fun buildCatalogPreviews(
     tokens: List<RawCatalogToken>,
     renderSupported: Boolean,
-    kind: CatalogTokenKind,
     idPrefix: String,
     noun: String,
   ): List<PreviewInfo> {
@@ -820,7 +887,6 @@ object PreviewDiscovery {
           displayName = "$group $noun",
           tokens = groupTokens,
           renderSupported = renderSupported,
-          kind = kind,
         )
     }
     if (byGroup.size > 1) {
@@ -830,7 +896,6 @@ object PreviewDiscovery {
           displayName = "All $noun",
           tokens = tokens,
           renderSupported = renderSupported,
-          kind = kind,
         )
     }
     return entries
@@ -841,7 +906,6 @@ object PreviewDiscovery {
     displayName: String,
     tokens: List<RawCatalogToken>,
     renderSupported: Boolean,
-    kind: CatalogTokenKind,
   ): PreviewInfo =
     PreviewInfo(
       id = id,
@@ -857,7 +921,7 @@ object PreviewDiscovery {
                 className = it.className,
                 member = it.member,
                 label = it.name,
-                tokenKind = kind,
+                tokenKind = it.kind,
               )
             },
         ),
