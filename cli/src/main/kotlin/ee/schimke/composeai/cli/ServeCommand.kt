@@ -231,6 +231,13 @@ class ServeCommand(args: List<String>) : Command(args) {
   private val registeredCatalogs = mutableListOf<String>()
 
   /**
+   * The unlisted app catalogs (`--catalogs-unlisted`) that registered successfully. Served at
+   * `/<system>/` like [registeredCatalogs] but surfaced under the front page's separate "Apps"
+   * section instead of the "Design systems" nav.
+   */
+  private val registeredUnlistedCatalogs = mutableListOf<String>()
+
+  /**
    * Per-catalog per-preview daemon pools built by [buildTrustedCatalogBundle], keyed by system.
    * Each backs a live catalog's default (per-preview) render lane and outlives suspend/resume, so
    * it's owned here — torn down at server shutdown ([catalogPerPreviewPoolsCloseable] in the
@@ -688,6 +695,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         isPublic = public,
         wasmCatalogs = wasmCatalogs,
         catalogSessions = registeredCatalogs.toList(),
+        appCatalogSessions = registeredUnlistedCatalogs.toList(),
         maxLiveSeats = liveSeats,
       )
 
@@ -1001,9 +1009,9 @@ class ServeCommand(args: List<String>) : Command(args) {
     for (ref in catalogRefs) {
       when (val r = store.load(ref.system, sourceRepo = ref.repo)) {
         is ServeCatalogStore.Result.Ok -> {
-          // Only listed catalogs feed the front-page nav; unlisted ones stay reachable by
-          // /<system>/ and ?session=<system> but off the landing "Design systems" row.
-          if (ref.listed) registeredCatalogs += r.system
+          // Listed catalogs feed the front-page "Design systems" nav; unlisted app catalogs feed
+          // the separate "Apps" section (both reachable at /<system>/ and ?session=<system>).
+          if (ref.listed) registeredCatalogs += r.system else registeredUnlistedCatalogs += r.system
           System.err.println(
             "serve: catalog ${r.system} → ${r.previewCount} preview(s), trust=${r.trust} " +
               "(/${r.system}/${if (ref.listed) "" else ", unlisted"})"
