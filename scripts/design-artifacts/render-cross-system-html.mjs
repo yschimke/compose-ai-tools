@@ -179,7 +179,15 @@ const RESOLVER = (catalogUrl, branchBase) => String.raw`
     });
     document.querySelectorAll(".shot--other[data-parallel]").forEach(function (slot) {
       var path = bySlug[slot.getAttribute("data-parallel")];
-      if (!path) return;
+      if (!path) {
+        // The sibling catalog loaded but carries no render for this parallel —
+        // e.g. the other branch is stale (published before its matching sticker
+        // landed) or that render was skipped. Don't leave "loading …" forever.
+        var pending = slot.querySelector(".pending");
+        if (pending) pending.textContent = "not published yet";
+        slot.classList.add("shot--stale");
+        return;
+      }
       var img = new Image();
       img.loading = "lazy";
       img.decoding = "async";
@@ -279,6 +287,7 @@ export function renderCrossSystemHtml(catalog, opts = {}) {
   .shot img { max-width:260px; max-height:200px; height:auto; display:block; }
   .shot--missing { color:var(--muted); font-style:italic; background:var(--panel); }
   .shot--other .pending { color:var(--muted); font-size:12px; }
+  .shot--stale .pending { color:var(--warn); font-style:italic; }
   .shot--other .wf { position:absolute; bottom:4px; right:6px; font-size:11px; }
   .rel code { font-size:12px; }
   a.wf { color:#8ab4f8; text-decoration:none; }

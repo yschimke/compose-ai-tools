@@ -107,6 +107,15 @@ test("the client resolver fetches the other branch catalog for thumbnails", () =
   assert.match(html, /img\.crossOrigin = "anonymous"/);
 });
 
+test("the resolver marks a paired slot 'not published yet' when the sibling render is missing", () => {
+  const html = renderCrossSystemHtml(catalog, { parallelById, otherComponents, otherSystem: "wear-m3" });
+  // When the fetched sibling catalog carries no render for a declared parallel,
+  // the slot must not stay stuck on the "loading …" placeholder forever.
+  assert.match(html, /if \(!path\) \{/);
+  assert.match(html, /textContent = "not published yet"/);
+  assert.match(html, /shot--stale/);
+});
+
 test("the summary counts pairs and how many render both sides", () => {
   const html = renderCrossSystemHtml(catalog, { parallelById, otherComponents, otherSystem: "wear-m3" });
   assert.match(html, /2 paired/);
