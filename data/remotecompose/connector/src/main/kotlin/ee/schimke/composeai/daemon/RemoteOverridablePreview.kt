@@ -94,7 +94,7 @@ fun RemoteOverridablePreview(
           captureSingleRemoteDocument(
               context,
               displayInfo,
-              RemoteDensity.from(displayInfo, context),
+              RemoteDensity.from(displayInfo),
               LayoutDirection.Ltr,
               profile = profile,
               content = content,
