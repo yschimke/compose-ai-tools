@@ -46,6 +46,7 @@ import { buildCatalog, writeCatalog } from "@design-parity/catalog-export";
 import { foldVariants } from "./catalog-variants.mjs";
 import { renderIndexHtml } from "./render-index-html.mjs";
 import { renderCompareHtml } from "./render-compare-html.mjs";
+import { renderCrossSystemHtml } from "./render-cross-system-html.mjs";
 import { renderReadmeMd } from "./render-readme-md.mjs";
 import {
   figmaRastersForId,
@@ -697,8 +698,64 @@ for (const component of catalog.components) {
 // `component.images`, so passing the manifest is what makes the stickers actually
 // show (and lets the zoom view group them by `state`).
 const indexManifest = JSON.parse(await readFile(join(outPath, "catalog.json"), "utf8"));
+
+// Cross-system component-parallel page (matches.html): pair every component with
+// its declared counterpart in the sibling system named by `spec.compareWith`,
+// side by side, so a reader sees how the two design systems line up. The pairing
+// is authored per component via the `parallel` field; the other system's spec
+// (its componentId list + captions) comes from the same repo checkout, and its
+// renders are fetched from its own design-artifacts branch at view time (see
+// render-cross-system-html.mjs). Best-effort: a missing/broken sibling spec just
+// skips the page rather than failing the publish.
+let crossSystem = null;
+if (spec.compareWith) {
+  try {
+    const otherSpecPath = join(
+      dirname(dirname(specPath)),
+      `design-catalog-${spec.compareWith}`,
+      "catalog.spec.json",
+    );
+    const otherSpec = JSON.parse(await readFile(otherSpecPath, "utf8"));
+    const parallelById = {};
+    for (const group of spec.groups ?? []) {
+      for (const component of group.components ?? []) {
+        if (component.parallel) parallelById[component.componentId] = component.parallel;
+      }
+    }
+    const otherComponents = (otherSpec.groups ?? []).flatMap((group) =>
+      (group.components ?? []).map((c) => ({
+        componentId: c.componentId,
+        group: group.name,
+        caption: c.caption,
+      })),
+    );
+    const matchesPath = join(outPath, "matches.html");
+    await writeFile(
+      matchesPath,
+      renderCrossSystemHtml(indexManifest, {
+        parallelById,
+        otherComponents,
+        otherSystem: spec.compareWith,
+        otherTitle: otherSpec.title,
+        repo: values["source-repo"] || process.env.GITHUB_REPOSITORY || undefined,
+      }),
+      "utf8",
+    );
+    crossSystem = { system: spec.compareWith, title: otherSpec.title ?? spec.compareWith };
+    console.log(`[${spec.system}] matches → ${matchesPath}`);
+  } catch (err) {
+    console.warn(
+      `[${spec.system}] cross-system page skipped (${err.message?.split("\n")[0] ?? err})`,
+    );
+  }
+}
+
 const indexPath = join(outPath, "index.html");
-await writeFile(indexPath, renderIndexHtml(indexManifest, { wireframeSlugs, figmaSvgSlugs }), "utf8");
+await writeFile(
+  indexPath,
+  renderIndexHtml(indexManifest, { wireframeSlugs, figmaSvgSlugs, crossSystem }),
+  "utf8",
+);
 
 // PNG-vs-SVG comparison page next to index.html: every component on one row, its
 // rendered PNG beside its browser-rasterized figma-svg, and a live structural
@@ -722,6 +779,7 @@ await writeFile(
     wireframeCount,
     figmaSvgCount,
     previewBase,
+    crossSystem,
   }),
   "utf8",
 );

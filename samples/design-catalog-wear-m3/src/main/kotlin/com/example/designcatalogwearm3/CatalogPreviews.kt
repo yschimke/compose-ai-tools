@@ -6,8 +6,21 @@ import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
+import androidx.wear.compose.material3.AppCard
+import androidx.wear.compose.material3.ButtonGroup
+import androidx.wear.compose.material3.CompactButton
+import androidx.wear.compose.material3.Icon
+import androidx.wear.compose.material3.IconButton
+import androidx.wear.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -541,4 +554,103 @@ fun CheckboxButtonUnchecked() =
       onCheckedChange = {},
       label = { Text(previewOverrideString("label", stringResource(R.string.label_sync))) },
     )
+  }
+
+// ---------------------------------------------------------------------------
+// Parallels of the Remote Compose Material 3 catalog. These mirror the extra
+// components the remote-m3 sheet carries (IconButton, CompactButton, ButtonGroup,
+// AppCard, Icon, and the theme specimens), so the cross-system compare page pairs
+// every remote sticker with a real Wear M3 counterpart rather than a placeholder.
+// ---------------------------------------------------------------------------
+
+// A simple five-point star shared by the icon stickers — the catalog doesn't pull
+// in material-icons, so it carries one hand-built vector. `Icon` re-tints it, so
+// the path fill here is a placeholder.
+private val catalogIcon: ImageVector =
+  ImageVector.Builder(
+      name = "Star",
+      defaultWidth = 24.dp,
+      defaultHeight = 24.dp,
+      viewportWidth = 24f,
+      viewportHeight = 24f,
+    )
+    .apply {
+      path(fill = SolidColor(Color.White)) {
+        moveTo(12f, 2f)
+        lineTo(15.1f, 8.3f)
+        lineTo(22f, 9.3f)
+        lineTo(17f, 14.1f)
+        lineTo(18.2f, 21f)
+        lineTo(12f, 17.8f)
+        lineTo(5.8f, 21f)
+        lineTo(7f, 14.1f)
+        lineTo(2f, 9.3f)
+        lineTo(8.9f, 8.3f)
+        close()
+      }
+    }
+    .build()
+
+@CatalogWearModes
+@Composable
+fun IconButtonSticker() =
+  WearSticker { IconButton(onClick = {}) { Icon(catalogIcon, "Favourite") } }
+
+@CatalogWearModes
+@Composable
+fun CompactButtonSticker() =
+  WearSticker {
+    CompactButton(onClick = {}, label = { Text(previewOverrideString("label", "Compact")) })
+  }
+
+@CatalogWearModes
+@Composable
+fun ButtonGroupSticker() =
+  WearSticker {
+    ButtonGroup {
+      Button(onClick = {}, modifier = Modifier.weight(1f)) { Text("Yes") }
+      Button(onClick = {}, modifier = Modifier.weight(1f)) { Text("No") }
+    }
+  }
+
+@CatalogWearModes
+@Composable
+fun AppCardSticker() =
+  WearSticker {
+    AppCard(
+      onClick = {},
+      appName = { Text("App") },
+      title = { Text(previewOverrideString("title", stringResource(R.string.title_morning_run))) },
+      appImage = { Icon(catalogIcon, null, Modifier.size(16.dp)) },
+    ) {
+      Text("5.2 km · 28 min")
+    }
+  }
+
+@CatalogWearModes
+@Composable
+fun IconSticker() = WearSticker { Icon(catalogIcon, "Star", Modifier.size(48.dp)) }
+
+// Theme specimens — the Wear M3 type ramp and colour-scheme swatches read straight
+// from MaterialTheme, parallels of the remote-m3 theme stickers.
+@CatalogWearModes
+@Composable
+fun TypographySpecimen() =
+  WearSticker {
+    Column {
+      Text("Body Large", style = MaterialTheme.typography.bodyLarge)
+      Text("Label Medium", style = MaterialTheme.typography.labelMedium)
+      Text("Label Small", style = MaterialTheme.typography.labelSmall)
+    }
+  }
+
+@CatalogWearModes
+@Composable
+fun ColorSchemeSpecimen() =
+  WearSticker {
+    Row {
+      Box(Modifier.size(44.dp).background(MaterialTheme.colorScheme.primary))
+      Box(Modifier.size(44.dp).background(MaterialTheme.colorScheme.surfaceContainer))
+      Box(Modifier.size(44.dp).background(MaterialTheme.colorScheme.onBackground))
+    }
   }
