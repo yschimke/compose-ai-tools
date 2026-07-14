@@ -38,6 +38,7 @@ import androidx.wear.compose.foundation.pager.rememberPagerState
 import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.Card
+import androidx.wear.compose.material3.OutlinedCard
 import androidx.wear.compose.material3.CheckboxButton
 import androidx.wear.compose.material3.ChildButton
 import androidx.wear.compose.material3.CircularProgressIndicator
@@ -432,6 +433,19 @@ fun CheckboxButtonChecked() =
 fun CardSticker() =
   WearSticker {
     Card(onClick = {}) {
+      PreviewSlot("content", Modifier.fillMaxWidth()) {
+        Text(previewOverrideString("label", stringResource(R.string.label_card)))
+      }
+    }
+  }
+
+// The outlined card variant (`OutlinedCard`) — the Wear parallel of remote-m3's `Card/Outlined`.
+// Same "Card" label as the filled `Card` above; only the outlined-vs-filled treatment differs.
+@CatalogWearModes
+@Composable
+fun OutlinedCardSticker() =
+  WearSticker {
+    OutlinedCard(onClick = {}) {
       PreviewSlot("content", Modifier.fillMaxWidth()) {
         Text(previewOverrideString("label", stringResource(R.string.label_card)))
       }
