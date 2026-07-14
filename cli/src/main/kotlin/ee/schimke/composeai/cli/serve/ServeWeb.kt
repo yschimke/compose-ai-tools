@@ -372,6 +372,22 @@ object ServeWeb {
     cardTheme(id) ?: if (darkFirst) "dark" else null
 
   /**
+   * Whether the sticky Light/Dark toggle should show for this catalog. The toggle is a *filter*
+   * over baked per-theme variants, so it's only meaningful when the catalog is genuinely two-sided
+   * AND theme-paired: it carries BOTH `__light` and `__dark` variants, and themed previews are the
+   * majority. A catalog that's mostly theme-neutral — an app catalog whose screens each render in a
+   * single theme, with only a couple of explicit theme-showcase previews — would otherwise sprout a
+   * toggle that hides a handful of cards and otherwise does nothing, reading as broken. This is the
+   * same "no dead toggle" rule [bgTheme] keeps for a dark-first catalog with no light variants,
+   * generalised. Kept generic across every catalog (app or design-system) — keyed purely off the
+   * preview theme distribution, never the system name.
+   */
+  private fun hasThemeVariants(previews: List<ServePreview>): Boolean {
+    val themes = previews.mapNotNull { cardTheme(it.id) }
+    return themes.toSet().containsAll(listOf("light", "dark")) && themes.size * 2 > previews.size
+  }
+
+  /**
    * The sticky light/dark control for the catalog header. Persists to `localStorage['cp-theme']`
    * (shared with the viewer's Theme select) and filters the card grid to the chosen theme's
    * variants. Purely client-side — the server emits every card tagged with `data-card-theme`, and
@@ -594,66 +610,81 @@ object ServeWeb {
   )
 
   /**
-   * The public preview server's **front door**: an index of the design systems it publishes, each a
-   * card carrying a meaningful preview, the system's title + library, its trust badge, and a link
-   * to its `/<system>/` catalog. This replaces showing an arbitrary default module's previews at
-   * `/` (the point of `preview.coo.ee` is the catalogs, so the landing lists them rather than
-   * hiding them behind a nav pill). Non-catalog `serve` (no `--catalogs`) keeps the plain
-   * [landingPage].
+   * The public preview server's **front door**: an index of the systems it publishes, each a card
+   * carrying a meaningful preview, the system's title + library, its trust badge, and a link to its
+   * `/<system>/` catalog. This replaces showing an arbitrary default module's previews at `/` (the
+   * point of `preview.coo.ee` is the catalogs, so the landing lists them rather than hiding them
+   * behind a nav pill). Non-catalog `serve` (no `--catalogs`) keeps the plain [landingPage].
+   *
+   * [systems] are the published design systems (the `--catalogs` set) shown under "Design systems";
+   * [apps] are the app catalogs (the `--catalogs-unlisted` set, e.g. meshcore-mobile / cadence)
+   * shown under a separate "Apps" section so they surface on the front door too — while staying off
+   * the in-catalog "Design systems" nav row. Either group may be empty.
    */
-  fun homeIndexPage(systems: List<HomeSystem>, token: String, isPublic: Boolean = false): String {
+  fun homeIndexPage(
+    systems: List<HomeSystem>,
+    token: String,
+    isPublic: Boolean = false,
+    apps: List<HomeSystem> = emptyList(),
+  ): String {
     val about = if (isPublic) aboutSection() + "\n" else ""
     // Public routes are open — no token param on the cards; a token-gated box keeps it.
     val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
-    val body =
-      if (systems.isEmpty()) {
-        "<p class=\"cp-sub\">No design systems are configured on this server.</p>"
-      } else {
-        val cards =
-          systems.joinToString("\n") { s ->
-            val sysSeg = WebEscaping.urlEncodeSegment(s.system)
-            val title = WebEscaping.htmlEscape(s.title)
-            val sysId = WebEscaping.htmlEscape(s.system)
-            val img =
-              if (s.heroPreviewId != null) {
-                val idSeg = WebEscaping.urlEncodeSegment(s.heroPreviewId)
-                "<img loading=\"lazy\" alt=\"$title preview\" src=\"/$sysSeg/render/$idSeg.png$suffix\">"
-              } else {
-                "<span class=\"cp-sys-noimg\">no preview</span>"
-              }
-            val desc =
-              s.subtitle
-                ?.takeIf { it.isNotBlank() }
-                ?.let {
-                  "\n            <div class=\"cp-sys-desc\">${WebEscaping.htmlEscape(it)}</div>"
-                } ?: ""
-            """
-            <a class="cp-card cp-sys" href="/$sysSeg/$suffix">
-              <div class="cp-imgwrap">$img</div>
-              <div class="cp-meta">
-                <div class="cp-sys-title">$title${compactTrustBadge(s.trust)}</div>
-                <div class="cp-id">$sysId</div>$desc
-                <div class="cp-sys-foot">${s.previewCount} preview(s)</div>
-              </div>
-            </a>
-            """
-              .trimIndent()
-          }
-        """
-        <p class="cp-sub">${systems.size} design system(s) · pick one to browse its components and
-          open a live, customisable preview.</p>
-        <div class="cp-grid cp-syslist" id="cp-grid">
-        $cards
+    fun card(s: HomeSystem): String {
+      val sysSeg = WebEscaping.urlEncodeSegment(s.system)
+      val title = WebEscaping.htmlEscape(s.title)
+      val sysId = WebEscaping.htmlEscape(s.system)
+      val img =
+        if (s.heroPreviewId != null) {
+          val idSeg = WebEscaping.urlEncodeSegment(s.heroPreviewId)
+          "<img loading=\"lazy\" alt=\"$title preview\" src=\"/$sysSeg/render/$idSeg.png$suffix\">"
+        } else {
+          "<span class=\"cp-sys-noimg\">no preview</span>"
+        }
+      val desc =
+        s.subtitle
+          ?.takeIf { it.isNotBlank() }
+          ?.let { "\n            <div class=\"cp-sys-desc\">${WebEscaping.htmlEscape(it)}</div>" }
+          ?: ""
+      return """
+      <a class="cp-card cp-sys" href="/$sysSeg/$suffix">
+        <div class="cp-imgwrap">$img</div>
+        <div class="cp-meta">
+          <div class="cp-sys-title">$title${compactTrustBadge(s.trust)}</div>
+          <div class="cp-id">$sysId</div>$desc
+          <div class="cp-sys-foot">${s.previewCount} preview(s)</div>
         </div>
-        """
-          .trimIndent()
+      </a>
+      """
+        .trimIndent()
+    }
+    fun section(heading: String, list: List<HomeSystem>, noun: String, gridId: String): String =
+      """
+      <p class="cp-head">$heading</p>
+      <p class="cp-sub">${list.size} $noun · pick one to browse its components and
+        open a live, customisable preview.</p>
+      <div class="cp-grid cp-syslist" id="$gridId">
+      ${list.joinToString("\n") { card(it) }}
+      </div>
+      """
+        .trimIndent()
+    val body =
+      if (systems.isEmpty() && apps.isEmpty()) {
+        "<p class=\"cp-head\">Design systems</p>\n" +
+          "<p class=\"cp-sub\">No design systems are configured on this server.</p>"
+      } else {
+        buildList {
+            if (systems.isNotEmpty())
+              add(section("Design systems", systems, "design system(s)", "cp-grid"))
+            if (apps.isNotEmpty()) add(section("Apps", apps, "app(s)", "cp-grid-apps"))
+          }
+          .joinToString("\n")
       }
     return document(
       title = "Design systems — compose-preview",
       body =
         """
-        $about<p class="cp-head">Design systems</p>
-        $body
+        $about$body
         """
           .trimIndent(),
     )
@@ -746,8 +777,10 @@ object ServeWeb {
     val about = if (isPublic) aboutSection() + "\n" else ""
     val nav =
       if (catalogs.isNotEmpty()) catalogNav(catalogs, token, sessionId, isPublic) + "\n" else ""
-    // The theme toggle only makes sense when the catalog carries per-theme variants to filter.
-    val hasThemes = previews.any { cardTheme(it.id) != null }
+    // The theme toggle only makes sense when the catalog is genuinely theme-paired (both light and
+    // dark variants, themed previews in the majority) — otherwise it's a near-dead filter. See
+    // [hasThemeVariants].
+    val hasThemes = hasThemeVariants(previews)
     val themeToggle = if (hasThemes) themeToggleHtml() + "\n" else ""
     // Search + empty-state + the combined filter script are shown whenever there are previews to
     // filter, independent of the theme axis.

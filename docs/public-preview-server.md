@@ -22,10 +22,13 @@
    A catalog entry may name a **per-system source repo** as `<system>@<owner>/<repo>`, so one server
    can serve systems published to *different* repos — e.g. `compose-m3,wear-m3` from this repo
    alongside `--catalogs-unlisted meshcore-mobile@yschimke/meshcore-mobile` from the app's own repo.
-   `--catalogs-unlisted` serves a system exactly like `--catalogs` but keeps it **off the front-page
-   "Design systems" nav** — reachable at `/<system>/` (and `?session=`) but not advertised on the
-   landing page. Every catalog's branch (whatever repo) must be in the `--trust-store` to badge
-   `Trusted(Branch)`; otherwise it serves `Unverified` (the data tiers serve either way).
+   `--catalogs-unlisted` serves a system exactly like `--catalogs` but groups it under a separate
+   **"Apps"** section on the front page instead of the **"Design systems"** section — the app
+   catalogs (meshcore-mobile, cadence, …) still surface on the landing page, just under their own
+   heading and kept off the in-catalog "Design systems" nav row. Reachable at `/<system>/` (and
+   `?session=`) like any catalog. Every catalog's branch (whatever repo) must be in the
+   `--trust-store` to badge `Trusted(Branch)`; otherwise it serves `Unverified` (the data tiers serve
+   either way).
 
 In `--public` mode the landing page opens with a short **"about" intro** explaining what the host is
 and its safety model, with a link to the machine-readable [`/version`](#endpoints):
@@ -243,8 +246,10 @@ in `.env` (then `docker compose up -d`) to override, or `0` for unbounded.
 
 ## Endpoints
 
-`GET /` — with `--catalogs`, the **design-systems index** (one card per listed system); otherwise
-the served module's preview grid · `GET /p/{id}?session=<s>` viewer · `GET /render/{id}.png` PNG ·
+`GET /` — with `--catalogs` / `--catalogs-unlisted`, the **systems index** (a "Design systems"
+section for the listed catalogs and an "Apps" section for the unlisted app catalogs, one card each);
+otherwise the served module's preview grid · `GET /p/{id}?session=<s>` viewer ·
+`GET /render/{id}.png` PNG ·
 `GET /api/previews` JSON (now includes `trust`) · `POST /bundles/{name}` upload (returns `trust`) ·
 `GET /wasm/{system}/…` in-browser CMP app (ungated static assets) · `GET /healthz` ·
 `GET /version`. In `--public` mode all are open **and links carry no `?token`** (the token gates

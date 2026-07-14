@@ -93,6 +93,14 @@ class ServeHttpServer(
    * default).
    */
   private val catalogSessions: List<String> = emptyList(),
+  /**
+   * App catalogs registered UNLISTED (`--catalogs-unlisted`), e.g. `["meshcore-mobile","cadence"]`.
+   * Served at `/<system>/` exactly like [catalogSessions], but grouped under a separate "Apps"
+   * section on the front-page index and kept OFF the in-catalog "Design systems" nav row. Empty ⇒
+   * no Apps section (the historical behaviour, where unlisted catalogs were reachable only by their
+   * path / `?session=`).
+   */
+  private val appCatalogSessions: List<String> = emptyList(),
   portRange: Int = DEFAULT_PORT_RANGE,
   /**
    * Max renders in flight across the HTTP `/render` lane. Defaults to the host's CPU count so a
@@ -366,7 +374,7 @@ class ServeHttpServer(
     // below.
     if (
       !sessionInPath &&
-        catalogSessions.isNotEmpty() &&
+        (catalogSessions.isNotEmpty() || appCatalogSessions.isNotEmpty()) &&
         call.request.queryParameters["session"] == null
     ) {
       handleHomeIndex()
@@ -405,38 +413,46 @@ class ServeHttpServer(
     }
 
   /**
-   * The public server's front-page index of published design-system catalogs ([catalogSessions]).
-   * Leases each catalog in turn (they're cheap, pinned bundle hosts) to read its title, preview
-   * count, trust verdict, and pick a meaningful hero preview — then renders a card per system. A
-   * catalog that can't be leased (e.g. transiently unavailable) is skipped rather than sinking the
-   * whole page.
+   * The public server's front-page index: the published design systems ([catalogSessions]) under a
+   * "Design systems" section and the app catalogs ([appCatalogSessions]) under a separate "Apps"
+   * section, each a card linking to its `/<system>/` catalog. See [homeSystemsFor].
    */
   private suspend fun RoutingContext.handleHomeIndex() {
-    val systems =
+    val (systems, apps) =
       withContext(Dispatchers.IO) {
-        catalogSessions.mapNotNull { system ->
-          val lease = sessions.lease(system) ?: return@mapNotNull null
-          try {
-            val host = lease.host
-            val bundle = catalogBundleHost(host)
-            ServeWeb.HomeSystem(
-              system = system,
-              title = bundle?.title?.takeIf { it.isNotBlank() } ?: host.label,
-              subtitle = bundle?.subtitle,
-              previewCount = host.previews.size,
-              trust = bundle?.let { BundleVerifier.summary(it.trust) },
-              heroPreviewId = ServeWeb.representativePreviewId(host.previews),
-            )
-          } finally {
-            lease.close()
-          }
-        }
+        homeSystemsFor(catalogSessions) to homeSystemsFor(appCatalogSessions)
       }
     call.respondText(
-      ServeWeb.homeIndexPage(systems, token, isPublic = isPublic),
+      ServeWeb.homeIndexPage(systems, token, isPublic = isPublic, apps = apps),
       ContentType.Text.Html,
     )
   }
+
+  /**
+   * Resolve a list of catalog [ids] into [ServeWeb.HomeSystem] cards for the front-page index.
+   * Leases each in turn (they're cheap, pinned bundle hosts) to read its title, preview count,
+   * trust verdict, and pick a meaningful hero preview. A catalog that can't be leased (e.g.
+   * transiently unavailable) is skipped rather than sinking the whole page. Blocking — call inside
+   * a `Dispatchers.IO` context.
+   */
+  private fun homeSystemsFor(ids: List<String>): List<ServeWeb.HomeSystem> =
+    ids.mapNotNull { system ->
+      val lease = sessions.lease(system) ?: return@mapNotNull null
+      try {
+        val host = lease.host
+        val bundle = catalogBundleHost(host)
+        ServeWeb.HomeSystem(
+          system = system,
+          title = bundle?.title?.takeIf { it.isNotBlank() } ?: host.label,
+          subtitle = bundle?.subtitle,
+          previewCount = host.previews.size,
+          trust = bundle?.let { BundleVerifier.summary(it.trust) },
+          heroPreviewId = ServeWeb.representativePreviewId(host.previews),
+        )
+      } finally {
+        lease.close()
+      }
+    }
 
   /**
    * `GET /api/previews` (query) and `GET /{system}/api/previews` (path): the session's preview

@@ -149,6 +149,28 @@ class ServeWebFixtureTest {
         ),
         token,
         isPublic = true,
+        // The app catalogs (`--catalogs-unlisted`): served like the design systems but grouped
+        // under
+        // a separate "Apps" section on the front door instead of the "Design systems" nav.
+        apps =
+          listOf(
+            ServeWeb.HomeSystem(
+              system = "meshcore-mobile",
+              title = "MeshCore",
+              subtitle = "ee.schimke.meshcore",
+              previewCount = 33,
+              trust = "branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile",
+              heroPreviewId = "device-manycontacts__ideal__default__compact",
+            ),
+            ServeWeb.HomeSystem(
+              system = "cadence",
+              title = "Cadence",
+              subtitle = "ee.schimke.cadence",
+              previewCount = 12,
+              trust = "branch:yschimke/cadence@design-artifacts/cadence",
+              heroPreviewId = null,
+            ),
+          ),
       )
     val viewer =
       ServeWeb.viewerPage(
@@ -416,6 +438,22 @@ class ServeWebFixtureTest {
     assertTrue(
       homeIndex.contains("cp-badge--trusted"),
       "the index badges each system's producer trust",
+    )
+    // The app catalogs (`--catalogs-unlisted`) show under a separate "Apps" section, each linking
+    // to
+    // its canonical /<system>/ path — so meshcore-mobile / cadence surface on the front door too,
+    // while staying off the "Design systems" nav.
+    assertTrue(
+      homeIndex.contains("<p class=\"cp-head\">Apps</p>"),
+      "home index has an Apps section",
+    )
+    assertTrue(
+      homeIndex.contains("href=\"/meshcore-mobile/\"") && homeIndex.contains("href=\"/cadence/\""),
+      "app cards link to each app catalog's canonical /<system>/ path",
+    )
+    assertTrue(
+      homeIndex.contains("MeshCore") && homeIndex.contains("Cadence"),
+      "each app appears in the Apps section with its human title",
     )
     // Public mode opens every route, so server-rendered links carry NO ?token param.
     assertFalse(homeIndex.contains("token="), "public home index links are token-free")
@@ -1142,6 +1180,55 @@ class ServeWebFixtureTest {
     // A live daemon-backed module carries no trust verdict → no badge element (the CSS still
     // defines `.cp-badge`, so check for the rendered `class="cp-badge…` span, not the bare string).
     assertTrue(!ServeWeb.landingPage(moduleLabel, previews, token).contains("class=\"cp-badge"))
+  }
+
+  @Test
+  fun `theme toggle shows only for a genuinely theme-paired catalog`() {
+    // A theme-PAIRED catalog (every component has both a __light and a __dark variant): the toggle
+    // is meaningful — flipping it swaps the whole grid between the light and dark set — so it
+    // shows.
+    val paired =
+      listOf(
+        ServePreview("button__ideal__default__light", "Button (light)"),
+        ServePreview("button__ideal__default__dark", "Button (dark)"),
+        ServePreview("switch__ideal__default__light", "Switch (light)"),
+        ServePreview("switch__ideal__default__dark", "Switch (dark)"),
+      )
+    assertTrue(
+      ServeWeb.landingPage("compose-m3", paired, token).contains("class=\"cp-theme\""),
+      "a theme-paired catalog shows the Light/Dark toggle",
+    )
+
+    // An APP catalog (meshcore-mobile shape): mostly theme-neutral app screens, with only a couple
+    // of explicit theme-showcase previews. The toggle would filter a handful of cards and otherwise
+    // do nothing — reading as broken — so it is suppressed. This is the fix applied uniformly to
+    // every app catalog: it keys off the preview theme distribution, never the system name.
+    val appCatalog =
+      listOf(
+        ServePreview("theme-meshcore__ideal__default__light__compact", "Theme (light)"),
+        ServePreview("theme-meshcore__ideal__default__dark__compact", "Theme (dark)"),
+        ServePreview("contactlist-many__ideal__default__compact", "Contacts"),
+        ServePreview("scanner-blefew__ideal__default__compact", "Scanner"),
+        ServePreview("device-lowbattery__ideal__default__compact", "Device"),
+        ServePreview("tcpconnectpanel-idle__ideal__default__compact", "TCP connect"),
+      )
+    assertFalse(
+      ServeWeb.landingPage("meshcore-mobile", appCatalog, token, basePath = "/meshcore-mobile")
+        .contains("class=\"cp-theme\""),
+      "a mostly theme-neutral app catalog shows no near-dead Light/Dark toggle",
+    )
+
+    // A one-sided themed catalog (dark variants only, no light pair) also shows no toggle — the
+    // filter would have nothing to switch to.
+    val darkOnly =
+      listOf(
+        ServePreview("a__ideal__default__dark", "A"),
+        ServePreview("b__ideal__default__dark", "B"),
+      )
+    assertFalse(
+      ServeWeb.landingPage("x", darkOnly, token).contains("class=\"cp-theme\""),
+      "a catalog with only one theme side shows no toggle",
+    )
   }
 
   private fun assertGolden(file: File, rendered: String) {
