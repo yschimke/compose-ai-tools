@@ -70,13 +70,6 @@ import androidx.wear.compose.remote.material3.buttonSizeModifier
 // payload and a remote-float handler id.
 private val testAction = hostAction("catalogAction".rs, 1.rf)
 
-// A neutral outline colour for the bordered (outlined-emphasis) button. The
-// stickers render on a transparent background (like the Wear catalog), so
-// standalone text/icons keep the theme's default (light) content colour rather
-// than an explicit dark one — matching how the Wear stickers read on the same
-// transparent checkerboard.
-private val outline = RemoteColor(Color(0xFF8A8A8E))
-
 // A simple five-point star used by the icon stickers. Remote Compose has no bundled
 // icon set and `RemoteIcon` takes an `ImageVector`, so the catalog carries one
 // hand-built vector rather than depending on `material-icons`. `RemoteIcon` re-tints
@@ -128,9 +121,12 @@ fun FilledRemoteButton() = RemoteSticker {
 // hood: a `RemoteButton` with a **transparent container** + a border. Overriding
 // `containerColor` is the key — the default `buttonColors()` is `primary`-filled,
 // so a bare `RemoteButton` + border would render as a *filled* button with an
-// outline, not an outlined one. `contentColor` follows `onBackground` so the label
-// stays legible over the transparent fill. Wear M3 parallel: `OutlinedButton`
-// (`Button/Outlined`).
+// outline, not an outlined one. Every other colour is pulled straight from the
+// theme (`buttonColors()` leaves un-passed colours at their exact defaults) rather
+// than re-encoded here: the content is `onSurface` and the border is the theme's
+// `outline` token — the same tokens Wear's `outlinedButtonColors()` uses — so the
+// two systems' outlined buttons stay in lockstep with the theme. Wear M3 parallel:
+// `OutlinedButton` (`Button/Outlined`).
 @CatalogRemoteModes
 @Composable
 fun OutlinedRemoteButton() = RemoteSticker {
@@ -140,10 +136,10 @@ fun OutlinedRemoteButton() = RemoteSticker {
     colors =
       RemoteButtonDefaults.buttonColors(
         containerColor = RemoteColor(Color.Transparent),
-        contentColor = RemoteMaterialTheme.colorScheme.onBackground,
+        contentColor = RemoteMaterialTheme.colorScheme.onSurface,
       ),
     border = 2.rdp,
-    borderColor = outline,
+    borderColor = RemoteMaterialTheme.colorScheme.outline,
     content = { RemoteText("Outlined".rs) },
   )
 }
