@@ -236,10 +236,15 @@ is refused with WebSocket close `1013` (*Try Again Later*) instead of spawning a
 the OOM killer; `0` is unbounded, and snapshot + Wasm sessions never consume a permit.
 
 **Auto-sizing.** When `SERVE_LIVE_SEATS` is unset, the prebuilt image derives the budget from the
-container's memory limit (reserve ~1 GB for the host + OS, ~1.2 GB per permit, clamped to **[2, 8]**),
-so a bigger box scales up on its own with no compose edit: a 4 GB box gets **2** permits (two
-concurrent CMP sessions, or one Android), an 8 GB box gets **5**. Set `SERVE_LIVE_SEATS` explicitly
-in `.env` (then `docker compose up -d`) to override, or `0` for unbounded.
+container's memory (reserve ~1 GB for the host + OS, ~1.2 GB per permit, clamped to **[2, 8]**), so a
+bigger box scales up on its own with no compose edit: an 8 GB box gets **5** permits, a 4 GB box gets
+**2** (two concurrent CMP sessions, or one Android). The `preview` container is **unbounded by
+default** (`mem_limit: ${PREVIEW_MEM_LIMIT:-0}`), so it uses the box's full RAM and the entrypoint
+falls back to physical RAM when there's no cgroup cap — redeploy onto a larger dedicated box and it
+scales automatically. Admission control (the live-seat budget + the per-render concurrency limiter)
+is the memory guard, rather than a hard cgroup kill. On a **shared** host, set `PREVIEW_MEM_LIMIT` in
+`.env` (e.g. `PREVIEW_MEM_LIMIT=4g`) to cap the container — which also lowers the derived seat budget
+to match. Set `SERVE_LIVE_SEATS` explicitly to override the budget directly, or `0` for unbounded.
 
 ## Endpoints
 

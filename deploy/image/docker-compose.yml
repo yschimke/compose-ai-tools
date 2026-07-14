@@ -67,8 +67,15 @@ services:
     #   - ./producers.json:/trust/producers.json:ro
     expose:
       - "8080"
-    # The baked warm cache makes renders incremental; this just caps a render storm.
-    mem_limit: 4g
+    # Container memory limit. Default UNBOUNDED (0 = no cgroup cap) so the box's full RAM is
+    # available and the live-seat budget auto-sizes to it: the entrypoint reads the container's
+    # memory limit and, finding none, falls back to physical RAM (~1 GB reserved for the host,
+    # ~1.2 GB per live-seat permit, clamped [2, 8]). So a bigger dedicated box scales on its own —
+    # redeploy and it uses the whole machine, no compose edit. Admission control (the live-seat
+    # budget + the per-render concurrency limiter) is the memory guard here, not a hard cgroup kill.
+    # Set PREVIEW_MEM_LIMIT in .env (e.g. `PREVIEW_MEM_LIMIT=4g`) to cap it on a shared host, which
+    # also lowers the derived seat budget to match.
+    mem_limit: "${PREVIEW_MEM_LIMIT:-0}"
     # Opt this service in to Watchtower auto-updates. Caddy is opted in too (below)
     # via its baked-config image, so both the server and the reverse-proxy config
     # roll automatically.
