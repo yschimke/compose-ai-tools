@@ -1866,6 +1866,16 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "TextBrandedSpecimen_Dark.a11y.png",
+      "cleanBasename": "TextBrandedSpecimen_Dark.png",
+      "findings": [],
+      "functionName": "TextBrandedSpecimen",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.TextBrandedSpecimen_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "TextButtonSticker_Dark.a11y.png",
       "cleanBasename": "TextButtonSticker_Dark.png",
       "findings": [],
@@ -1916,8 +1926,76 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "BorderedRemoteButton.a11y.png",
-      "cleanBasename": "BorderedRemoteButton.png",
+      "annotatedBasename": "AppCardRemote.a11y.png",
+      "cleanBasename": "AppCardRemote.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,840,630",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "AppCardRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.AppCardRemote",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "ButtonGroupRemote.a11y.png",
+      "cleanBasename": "ButtonGroupRemote.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,840,630",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        },
+        {
+          "boundsInScreen": "23,275,414,354",
+          "level": "ERROR",
+          "message": "This item's height is 30dp. Consider making the height of this touch target 48dp or larger.",
+          "type": "TouchTargetSizeCheck",
+          "viewDescription": "android.view.View"
+        },
+        {
+          "boundsInScreen": "425,275,816,354",
+          "level": "ERROR",
+          "message": "This item's height is 30dp. Consider making the height of this touch target 48dp or larger.",
+          "type": "TouchTargetSizeCheck",
+          "viewDescription": "android.view.View"
+        }
+      ],
+      "functionName": "ButtonGroupRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.ButtonGroupRemote",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "CardRemote.a11y.png",
+      "cleanBasename": "CardRemote.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,840,630",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "CardRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.CardRemote",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "CircularProgressRemote.a11y.png",
+      "cleanBasename": "CircularProgressRemote.png",
       "findings": [
         {
           "boundsInScreen": "0,0,525,525",
@@ -1927,9 +2005,45 @@
           "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
         }
       ],
-      "functionName": "BorderedRemoteButton",
+      "functionName": "CircularProgressRemote",
       "module": "design-catalog-remote-m3",
-      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.BorderedRemoteButton",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.CircularProgressRemote",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "ColorSchemeRemote.a11y.png",
+      "cleanBasename": "ColorSchemeRemote.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,840,630",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "ColorSchemeRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.ColorSchemeRemote",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "CompactRemoteButton.a11y.png",
+      "cleanBasename": "CompactRemoteButton.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,525,525",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "CompactRemoteButton",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.CompactRemoteButton",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -1970,6 +2084,42 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "IconRemote.a11y.png",
+      "cleanBasename": "IconRemote.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,525,525",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "IconRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.IconRemote",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "IconRemoteButton.a11y.png",
+      "cleanBasename": "IconRemoteButton.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,525,525",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "IconRemoteButton",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.IconRemoteButton",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "NamedLabelRemoteButton.a11y.png",
       "cleanBasename": "NamedLabelRemoteButton.png",
       "findings": [
@@ -1984,6 +2134,42 @@
       "functionName": "NamedLabelRemoteButton",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.NamedLabelRemoteButton",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "OutlinedCardRemote.a11y.png",
+      "cleanBasename": "OutlinedCardRemote.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,840,630",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "OutlinedCardRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.OutlinedCardRemote",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "OutlinedRemoteButton.a11y.png",
+      "cleanBasename": "OutlinedRemoteButton.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,525,525",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "OutlinedRemoteButton",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.OutlinedRemoteButton",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -2024,6 +2210,88 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "TextRemoteButton.a11y.png",
+      "cleanBasename": "TextRemoteButton.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,525,525",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "TextRemoteButton",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.TextRemoteButton",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "TitleCardRemote.a11y.png",
+      "cleanBasename": "TitleCardRemote.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,840,630",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "TitleCardRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.TitleCardRemote",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "TruncatedTextRemote.a11y.png",
+      "cleanBasename": "TruncatedTextRemote.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,840,630",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "TruncatedTextRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.TruncatedTextRemote",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "TypographyRemote.a11y.png",
+      "cleanBasename": "TypographyRemote.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,840,630",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "TypographyRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.TypographyRemote",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "AppCardSticker.a11y.png",
+      "cleanBasename": "AppCardSticker.png",
+      "findings": [],
+      "functionName": "AppCardSticker",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.AppCardSticker",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "ButtonDisabled.a11y.png",
       "cleanBasename": "ButtonDisabled.png",
       "findings": [],
@@ -2044,6 +2312,16 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "ButtonGroupSticker.a11y.png",
+      "cleanBasename": "ButtonGroupSticker.png",
+      "findings": [],
+      "functionName": "ButtonGroupSticker",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonGroupSticker",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "ButtonPressed.a11y.png",
       "cleanBasename": "ButtonPressed.png",
       "findings": [],
@@ -2052,6 +2330,16 @@
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonPressed",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
+    },
+    {
+      "annotatedBasename": "com.example.designcatalogwearm3.CardScalingPreviewKt.CardScalingScrollGif_Large Round.a11y.png",
+      "cleanBasename": "",
+      "findings": [],
+      "functionName": "CardScalingScrollGif",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.CardScalingPreviewKt.CardScalingScrollGif_Large Round",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CardScalingPreview.kt",
+      "variant": "wearos_large_round"
     },
     {
       "annotatedBasename": "CardSticker.a11y.png",
@@ -2104,6 +2392,26 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "",
+      "cleanBasename": "ColorSchemeSpecimen.png",
+      "findings": [],
+      "functionName": "ColorSchemeSpecimen",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ColorSchemeSpecimen",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "CompactButtonSticker.a11y.png",
+      "cleanBasename": "CompactButtonSticker.png",
+      "findings": [],
+      "functionName": "CompactButtonSticker",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CompactButtonSticker",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "FilledButton.a11y.png",
       "cleanBasename": "FilledButton.png",
       "findings": [],
@@ -2120,6 +2428,26 @@
       "functionName": "FilledTonalButtonSticker",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.FilledTonalButtonSticker",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "IconButtonSticker.a11y.png",
+      "cleanBasename": "IconButtonSticker.png",
+      "findings": [],
+      "functionName": "IconButtonSticker",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.IconButtonSticker",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "IconSticker.a11y.png",
+      "cleanBasename": "IconSticker.png",
+      "findings": [],
+      "functionName": "IconSticker",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.IconSticker",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -2210,6 +2538,16 @@
       "functionName": "TitleCardSticker",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TitleCardSticker",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "TypographySpecimen.a11y.png",
+      "cleanBasename": "TypographySpecimen.png",
+      "findings": [],
+      "functionName": "TypographySpecimen",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TypographySpecimen",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
     },
