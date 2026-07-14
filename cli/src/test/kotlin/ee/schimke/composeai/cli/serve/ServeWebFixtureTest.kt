@@ -492,20 +492,36 @@ class ServeWebFixtureTest {
       "the hero pick prefers a default-state, light, filled-button render",
     )
 
-    // The sticky theme toggle appears only for a catalog with per-theme variants, and each themed
-    // card is tagged for client-side filtering; a plain component module shows no toggle.
+    // The sticky theme toggle appears only for a catalog with light/dark pairs, and each paired
+    // component collapses into ONE swap card carrying both themes' baked render; a plain component
+    // module shows no toggle.
     assertTrue(
       landingThemed.contains("class=\"cp-theme\""),
       "themed catalog shows the theme toggle",
     )
     assertTrue(
-      landingThemed.contains("cp-card\" data-card-theme=\"dark\"") &&
-        landingThemed.contains("cp-card\" data-card-theme=\"light\""),
-      "themed cards are tagged with their baked theme",
+      landingThemed.contains("class=\"cp-card\" data-swap=\"1\"") &&
+        landingThemed.contains("data-l-src=") &&
+        landingThemed.contains("data-d-src="),
+      "a paired component renders one swap card carrying both themes' baked render",
+    )
+    // The swap collapses the two variants into one card: the button-filled light+dark pair is a
+    // single card, not two, so the dark variant's id no longer appears as its own card id line.
+    assertFalse(
+      landingThemed.contains(">button-filled__ideal__default__dark</div>"),
+      "the dark variant is folded into the swap card, not a separate card",
     )
     assertTrue(
       landingThemed.contains("localStorage.setItem(\"cp-theme\""),
       "toggle persists the choice to the shared cp-theme key",
+    )
+    // The swap re-points the image + viewer link + id + label to the chosen theme's baked render.
+    assertTrue(
+      landingThemed.contains("img.src = src;") &&
+        landingThemed.contains(
+          "c.setAttribute(\"href\", c.getAttribute(\"data-\" + k + \"-href\"))"
+        ),
+      "the toggle swaps the card's render and viewer link in place (not a filter)",
     )
     // Dark-first system (Wear): a preview with no explicit __light/__dark token still tags the
     // viewer stage dark (data-bg-theme, the background axis — separate from the data-card-theme
@@ -1183,10 +1199,10 @@ class ServeWebFixtureTest {
   }
 
   @Test
-  fun `theme toggle shows only for a genuinely theme-paired catalog`() {
-    // A theme-PAIRED catalog (every component has both a __light and a __dark variant): the toggle
-    // is meaningful — flipping it swaps the whole grid between the light and dark set — so it
-    // shows.
+  fun `theme toggle shows only when the grid has light-dark pairs to swap`() {
+    // A theme-PAIRED catalog: each component is baked in both __light and __dark, so those two
+    // previews collapse into ONE swap card and the toggle re-points it between them — the toggle
+    // shows, and the grid has one card per component (not two).
     val paired =
       listOf(
         ServePreview("button__ideal__default__light", "Button (light)"),
@@ -1194,19 +1210,31 @@ class ServeWebFixtureTest {
         ServePreview("switch__ideal__default__light", "Switch (light)"),
         ServePreview("switch__ideal__default__dark", "Switch (dark)"),
       )
+    val pairedHtml = ServeWeb.landingPage("compose-m3", paired, token)
     assertTrue(
-      ServeWeb.landingPage("compose-m3", paired, token).contains("class=\"cp-theme\""),
+      pairedHtml.contains("class=\"cp-theme\""),
       "a theme-paired catalog shows the Light/Dark toggle",
     )
+    // Two components × two themes → two swap cards, each carrying both themes' render.
+    assertEquals(
+      2,
+      Regex("class=\"cp-card\" data-swap=\"1\"").findAll(pairedHtml).count(),
+      "each paired component is one swap card (two components → two cards, not four)",
+    )
+    assertTrue(
+      pairedHtml.contains("data-l-src=") && pairedHtml.contains("data-d-src="),
+      "a swap card carries both the light and dark baked render",
+    )
 
-    // An APP catalog (meshcore-mobile shape): mostly theme-neutral app screens, with only a couple
-    // of explicit theme-showcase previews. The toggle would filter a handful of cards and otherwise
-    // do nothing — reading as broken — so it is suppressed. This is the fix applied uniformly to
-    // every app catalog: it keys off the preview theme distribution, never the system name.
+    // An APP catalog (meshcore-mobile shape): theme-neutral app screens plus two theme-showcase
+    // previews that are DISTINCT components (theme-meshcore-light vs theme-meshcore-dark), so
+    // nothing
+    // pairs into a swap card. No pair → no toggle. This is the behaviour uniformly across every app
+    // catalog: it keys off whether any component is baked in both themes, never the system name.
     val appCatalog =
       listOf(
-        ServePreview("theme-meshcore__ideal__default__light__compact", "Theme (light)"),
-        ServePreview("theme-meshcore__ideal__default__dark__compact", "Theme (dark)"),
+        ServePreview("theme-meshcore-light__ideal__default__light__compact", "MeshCore light"),
+        ServePreview("theme-meshcore-dark__ideal__default__dark__compact", "MeshCore dark"),
         ServePreview("contactlist-many__ideal__default__compact", "Contacts"),
         ServePreview("scanner-blefew__ideal__default__compact", "Scanner"),
         ServePreview("device-lowbattery__ideal__default__compact", "Device"),
@@ -1215,11 +1243,12 @@ class ServeWebFixtureTest {
     assertFalse(
       ServeWeb.landingPage("meshcore-mobile", appCatalog, token, basePath = "/meshcore-mobile")
         .contains("class=\"cp-theme\""),
-      "a mostly theme-neutral app catalog shows no near-dead Light/Dark toggle",
+      "an app catalog with no light/dark pairs shows no Light/Dark toggle",
     )
 
-    // A one-sided themed catalog (dark variants only, no light pair) also shows no toggle — the
-    // filter would have nothing to switch to.
+    // A one-sided themed catalog (dark variants only, no light pair) also shows no toggle — there
+    // is
+    // nothing to swap to.
     val darkOnly =
       listOf(
         ServePreview("a__ideal__default__dark", "A"),
