@@ -471,7 +471,9 @@ fun ListHeaderSticker() =
 @CatalogWearModes
 @Composable
 fun CircularProgressSticker() =
-  WearSticker { CircularProgressIndicator(modifier = Modifier.size(48.dp)) }
+  // Determinate at a fixed 66% (matching the remote `Progress/Circular` parallel) rather than the
+  // animated indeterminate overload, so the static capture is deterministic and the pair lines up.
+  WearSticker { CircularProgressIndicator(progress = { 0.66f }, modifier = Modifier.size(72.dp)) }
 
 // ---------------------------------------------------------------------------
 // Text options — exercises the maxLines / overflow product on a round screen.

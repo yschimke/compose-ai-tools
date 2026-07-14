@@ -151,21 +151,23 @@ fun CustomShapeRemoteButton() = RemoteSticker {
     onClick = testAction,
     modifier = RemoteModifier.buttonSizeModifier(),
     shape = RemoteRoundedCornerShape(4.rdp),
-    content = { RemoteText("Custom shape".rs) },
+    // Same label as its `Button/Filled` parallel — only the corner shape differs, so the
+    // cross-system comparison isolates that one attribute.
+    content = { RemoteText("Filled".rs) },
   )
 }
 
 /**
  * Reads its label from a Remote Compose named-value binding ([rememberNamedRemoteString]). The
- * default render shows `"Tap me"`, so the sticker is a useful static capture; the connector's
- * override path (`renderNow.overrides.remoteCompose.namedValues = {"label": …}`) flips the label
- * live without rebuilding the document — the interactive story the `:data-remotecompose-connector`
- * demonstrates.
+ * default render shows `"Filled"` — the same label as its `Button/Filled` parallel, so the static
+ * capture lines up apples-to-apples; the connector's override path
+ * (`renderNow.overrides.remoteCompose.namedValues = {"label": …}`) flips the label live without
+ * rebuilding the document — the interactive story the `:data-remotecompose-connector` demonstrates.
  */
 @CatalogRemoteModes
 @Composable
 fun NamedLabelRemoteButton() = RemoteSticker {
-  val label = rememberNamedRemoteString("label", "Tap me")
+  val label = rememberNamedRemoteString("label", "Filled")
   RemoteButton(
     onClick = testAction,
     modifier = RemoteModifier.buttonSizeModifier(),
@@ -226,7 +228,8 @@ fun CardRemote() = RemoteSticker {
 @CatalogRemoteLarge
 @Composable
 fun OutlinedCardRemote() = RemoteSticker {
-  RemoteOutlinedCard(onClick = testAction, content = { RemoteText("Outlined card".rs) })
+  // Same label as its `Card` parallel — only the outlined (vs filled) treatment differs.
+  RemoteOutlinedCard(onClick = testAction, content = { RemoteText("Card".rs) })
 }
 
 @CatalogRemoteLarge
@@ -282,7 +285,11 @@ fun IconRemote() = RemoteSticker {
 
 @CatalogRemoteModes
 @Composable
-fun RemoteTextSticker() = RemoteSticker { RemoteText("Remote".rs) }
+fun RemoteTextSticker() = RemoteSticker {
+  // Same copy as the truncated sticker (and Wear's) — here it flows in full; the
+  // `Text/MaxLines-Truncated` pair below shows the same string clipped.
+  RemoteText("This body text is long enough to overflow two lines and truncate.".rs)
+}
 
 // The text primitive exercising the maxLines / overflow product on a narrow column —
 // the Remote parallel of Wear M3's `Text/MaxLines-Truncated`. `RemoteText` carries the
@@ -291,7 +298,8 @@ fun RemoteTextSticker() = RemoteSticker { RemoteText("Remote".rs) }
 @Composable
 fun TruncatedTextRemote() = RemoteSticker {
   RemoteText(
-    "A longer passage of body text that runs past two lines and clips with an ellipsis".rs,
+    // Identical copy to Wear's `Text/MaxLines-Truncated` parallel, so the pair is apples-to-apples.
+    "This body text is long enough to overflow two lines and truncate.".rs,
     modifier = RemoteModifier.width(150.rdp),
     maxLines = 2,
     overflow = TextOverflow.Ellipsis,
