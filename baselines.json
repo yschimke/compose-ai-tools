@@ -2236,7 +2236,7 @@
     "functionName": "CustomShapeRemoteButton",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "CustomShapeRemoteButton.png",
-    "sha256": "36db53d7d8468879f9533732fa4818c2a02a411b7db588f083d29df4d43179d5",
+    "sha256": "8d26b3f995645cfe4adba6181320ddcc2c4c6bd942d4a00235db1d26f564d364",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.FilledRemoteButton": {
@@ -2268,7 +2268,7 @@
     "functionName": "NamedLabelRemoteButton",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "NamedLabelRemoteButton.png",
-    "sha256": "72732499d31af80f740a6883d0972ece465c6f6a7bf567ec798a47799722b3be",
+    "sha256": "fc16b84430bda7a36d38c531be1561bc315aaa4e9ba6fc94626045ab8b3a12af",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.OutlinedCardRemote": {
@@ -2276,7 +2276,7 @@
     "functionName": "OutlinedCardRemote",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "OutlinedCardRemote.png",
-    "sha256": "818fea30de07d3f15b6f5d28d07bc255636d6e0b89844fa1b7c43fabbfd50268",
+    "sha256": "711218822e5bacc9e17bf6ab6ae12b862996887c71cbc952b692e90786fb60f3",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.OutlinedRemoteButton": {
@@ -2292,7 +2292,7 @@
     "functionName": "RemoteTextSticker",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "RemoteTextSticker.png",
-    "sha256": "8a53cce6529caf6661faff16f9a81e2cb6787d235072c3b56f2d2eb97bac4599",
+    "sha256": "d1172fad3e29e672ff94d81672c80a0ae3d3cf28be0a4ced8cd5513508f3f9c4",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.ShaderGradientSticker": {
@@ -2324,7 +2324,7 @@
     "functionName": "TruncatedTextRemote",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "TruncatedTextRemote.png",
-    "sha256": "11ec9375642aa02a6b92395eacb3c26d13d821f7a606928ab44433689c30c4ca",
+    "sha256": "9718d92b5fbc583f04f51b7691d64047c9e33a2f0701027c3b0b9a47513d800d",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.TypographyRemote": {
@@ -2460,7 +2460,7 @@
     "functionName": "CircularProgressSticker",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "CircularProgressSticker.png",
-    "sha256": "3ed6cac0154b896c13c241417a025be77e2202d3eb1fa3a14616a703926d7dc9",
+    "sha256": "716b7ca5a10d63476b3bd051cef30d18ea5151e80e1f6c2ecfadea14c218738a",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ColorSchemeSpecimen": {
@@ -2644,7 +2644,7 @@
     "functionName": "TextMaxLinesTruncated",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "TextMaxLinesTruncated.png",
-    "sha256": "7c370c87df387be13839fdeb8ec30232120348da11bcd0228ddbb5e6ed8b44f0",
+    "sha256": "74d2fc6cb0e0252846ac58a0a9876a6d46f781596905534b1d8e022f692bfaad",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Extra Large Round": {
