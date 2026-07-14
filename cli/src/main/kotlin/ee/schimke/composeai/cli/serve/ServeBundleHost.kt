@@ -136,6 +136,41 @@ class ServeBundleHost(
   }
 
   /**
+   * The content-crop that frames [previewId]'s thumbnail to the component box, or `null` when the
+   * card should show the raw render (no figma-svg for the slug, unknown id, unreadable files, or a
+   * render already tight to the component — see [computeThumbCrop]). Read once from the baked
+   * `figma/<slug>.svg` (its root `viewBox` + `translate`) and the render PNG's IHDR dimensions,
+   * then memoised: a catalog's baked files don't change under a resident host, and a refresh
+   * re-registers a fresh host (dropping this cache), so this stays a couple of small local reads
+   * per preview across the whole life of a landing page — no daemon, no per-request re-read.
+   */
+  fun contentCrop(previewId: String): ContentCrop? =
+    cropCache
+      .computeIfAbsent(previewId) { java.util.Optional.ofNullable(computeContentCrop(it)) }
+      .orElse(null)
+
+  private val cropCache =
+    java.util.concurrent.ConcurrentHashMap<String, java.util.Optional<ContentCrop>>()
+
+  private fun computeContentCrop(previewId: String): ContentCrop? {
+    val figma = figmaDir ?: return null
+    if (previewId !in previewIds) return null
+    val svgFile =
+      File(figma, "${previewId.substringBefore(SLUG_SEPARATOR)}$SVG_SUFFIX").toOkioPath()
+    if (!fileSystem.exists(svgFile)) return null
+    val png = File(previewsDir, "$previewId$PNG_SUFFIX").toOkioPath()
+    if (!fileSystem.exists(png)) return null
+    return try {
+      val svg = fileSystem.read(svgFile) { readUtf8() }
+      val header = fileSystem.read(png) { readByteArray(PNG_HEADER_BYTES) }
+      val (rw, rh) = WebEscaping.pngDimensions(header)
+      computeThumbCrop(svg, rw, rh)
+    } catch (e: Exception) {
+      null
+    }
+  }
+
+  /**
    * A bundle has no daemon, so no live lane — callers fall back to the snapshot ([render]) lane.
    */
   override fun subscribeStream(
@@ -155,6 +190,8 @@ class ServeBundleHost(
   companion object {
     private const val PREVIEWS_SUBDIR = "previews"
     private const val PNG_SUFFIX = ".png"
+    /** Bytes of a PNG needed to read its IHDR width/height (8 sig + 4 len + 4 tag + 4 + 4). */
+    private const val PNG_HEADER_BYTES = 24L
     private const val SVG_SUFFIX = ".svg"
     /** A preview id folds the component slug and variant as `<slug>__<variant>`. */
     private const val SLUG_SEPARATOR = "__"

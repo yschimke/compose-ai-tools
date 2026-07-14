@@ -62,6 +62,11 @@ object ServeWeb {
     .cp-imgwrap { display: flex; align-items: center; justify-content: center; min-height: 88px;
       background: #fff; padding: 12px; }
     .cp-imgwrap img { max-width: 100%; max-height: 240px; height: auto; display: block; }
+    /* A framed thumbnail: a fixed-size clip window (inline width/height = the component box) that
+       crops away a sticker's empty watch canvas. The render <img> inside is absolutely positioned,
+       sized + offset inline so only the component shows. Overrides the fit-to-box rule above. */
+    .cp-crop { position: relative; overflow: hidden; display: block; }
+    .cp-imgwrap .cp-crop img { position: absolute; max-width: none; max-height: none; margin: 0; }
     /* Sticker backing: the preview server shows components on a solid surface by DEFAULT, so a
        transparent sticker reads like a real component instead of washing out. The header's
        Background/Transparent toggle flips the whole page to a checkerboard (html.cp-bg-transparent)
@@ -607,7 +612,30 @@ object ServeWeb {
     val previewCount: Int,
     val trust: String?,
     val heroPreviewId: String?,
+    /** Content-crop for the hero thumbnail (frames a Wear sticker to its component); null ⇒ raw. */
+    val heroCrop: ContentCrop? = null,
   )
+
+  /**
+   * A thumbnail `<img>` for [src], optionally framed to its component content box ([crop]). With no
+   * crop it's the plain image the card CSS scales to fit; with a crop it's wrapped in a fixed-size
+   * `.cp-crop` clip window whose inline dimensions + negative offsets show only the component (a
+   * Wear sticker's watch canvas is clipped away). [extraImgAttrs] carries per-call `<img>`
+   * attributes (e.g. `loading="lazy"`). All numeric; [alt] is pre-escaped by the caller.
+   */
+  private fun thumbImg(
+    src: String,
+    alt: String,
+    extraImgAttrs: String,
+    crop: ContentCrop?,
+  ): String {
+    val img = "<img$extraImgAttrs alt=\"$alt\" src=\"$src\">"
+    if (crop == null) return img
+    val cropped =
+      "<img$extraImgAttrs alt=\"$alt\" src=\"$src\" " +
+        "style=\"width:${crop.imgW}px;height:${crop.imgH}px;left:${crop.left}px;top:${crop.top}px\">"
+    return "<span class=\"cp-crop\" style=\"width:${crop.boxW}px;height:${crop.boxH}px\">$cropped</span>"
+  }
 
   /**
    * The public preview server's **front door**: an index of the systems it publishes, each a card
@@ -637,7 +665,12 @@ object ServeWeb {
       val img =
         if (s.heroPreviewId != null) {
           val idSeg = WebEscaping.urlEncodeSegment(s.heroPreviewId)
-          "<img loading=\"lazy\" alt=\"$title preview\" src=\"/$sysSeg/render/$idSeg.png$suffix\">"
+          thumbImg(
+            src = "/$sysSeg/render/$idSeg.png$suffix",
+            alt = "$title preview",
+            extraImgAttrs = " loading=\"lazy\"",
+            crop = s.heroCrop,
+          )
         } else {
           "<span class=\"cp-sys-noimg\">no preview</span>"
         }
@@ -739,6 +772,14 @@ object ServeWeb {
      * `&session=` param (the path carries the session). Empty ⇒ links are exactly as before.
      */
     basePath: String = "",
+    /**
+     * Per-preview thumbnail content-crop lookup — frames a card's render to its component box (a
+     * Wear sticker on a 454² watch canvas shows just the component). Returns null for a card that
+     * should show the raw render (no figma-svg, or a render already tight to the component). The
+     * default `{ null }` keeps every card uncropped — used by the plain-module landing and by
+     * tests.
+     */
+    thumbCrop: (String) -> ContentCrop? = { null },
   ): String {
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
     // A dark-first system (Wear) puts every unthemed card on the dark stage; explicit light/dark
@@ -763,7 +804,7 @@ object ServeWeb {
           """
           <a class="cp-card"$filterAttr$bgAttr href="$basePath/p/$idSeg$q">
             <div class="cp-imgwrap">
-              <img loading="lazy" alt="$label" src="$basePath/render/$idSeg.png$q">
+              ${thumbImg("$basePath/render/$idSeg.png$q", label, " loading=\"lazy\"", thumbCrop(p.id))}
             </div>
             <div class="cp-meta">
               <div class="cp-label" title="$idText">$label</div>

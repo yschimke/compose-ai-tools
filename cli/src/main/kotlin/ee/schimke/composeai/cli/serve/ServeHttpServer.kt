@@ -392,6 +392,10 @@ class ServeHttpServer(
           isPublic = isPublic,
           catalogs = catalogSessions,
           basePath = basePath,
+          // Crop each card's thumbnail to the component's figma-svg content box (cheap baked
+          // reads),
+          // so a Wear sticker shows the component, not the empty watch canvas around it.
+          thumbCrop = { id -> catalogBundleHost(renderHost)?.contentCrop(id) },
         ),
         ContentType.Text.Html,
       )
@@ -441,13 +445,16 @@ class ServeHttpServer(
       try {
         val host = lease.host
         val bundle = catalogBundleHost(host)
+        val heroId = ServeWeb.representativePreviewId(host.previews)
         ServeWeb.HomeSystem(
           system = system,
           title = bundle?.title?.takeIf { it.isNotBlank() } ?: host.label,
           subtitle = bundle?.subtitle,
           previewCount = host.previews.size,
           trust = bundle?.let { BundleVerifier.summary(it.trust) },
-          heroPreviewId = ServeWeb.representativePreviewId(host.previews),
+          heroPreviewId = heroId,
+          // Frame the hero to its component box too, so the front-page Wear card isn't a speck.
+          heroCrop = heroId?.let { bundle?.contentCrop(it) },
         )
       } finally {
         lease.close()
