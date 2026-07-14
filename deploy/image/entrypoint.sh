@@ -78,11 +78,51 @@ if [[ "${SERVE_ALLOW_RENDER_TRUSTED}" == "1" || "${SERVE_ALLOW_RENDER_TRUSTED}" 
     args+=(--catalog-source-root "${src_root}")
   fi
 fi
-# Bound concurrent live (daemon-backed) stream seats — each seat holds a JVM Compose daemon, so with
-# the live tier on by default we default the cap to 1 for the reference 4 GB / 2 vCPU box
-# (preview.coo.ee): an over-cap viewer is refused (WS 1013) rather than OOM-ing the box. Raise it on
-# a beefier box (SERVE_LIVE_SEATS=4), or set 0 for unbounded.
-: "${SERVE_LIVE_SEATS:=1}"
+# Bound concurrent live (daemon-backed) stream sessions by a PERMIT BUDGET — each live session
+# charges permits by backend weight (a desktop CMP daemon = 1, a heavier Robolectric Android one = 2,
+# see LiveSeatLimiter), so one heavy catalog can't hog a flat seat count and starve the cheap CMP
+# lanes. An over-budget viewer is refused (WS 1013) rather than OOM-ing the box.
+#
+# When SERVE_LIVE_SEATS is unset we AUTO-DERIVE the budget from the container's memory limit so a
+# bigger box scales up on its own (no compose edit, no rebuild): reserve ~1 GB for the serve host +
+# OS, budget ~1.2 GB of headroom per permit, and clamp to [2, 8]. The floor of 2 means even the
+# reference 4 GB box always runs at least two cheap CMP sessions concurrently (4 GB → 2; 8 GB → 5).
+# Set SERVE_LIVE_SEATS explicitly to override, or 0 for unbounded.
+if [[ -z "${SERVE_LIVE_SEATS:-}" ]]; then
+  # Detect the cgroup memory limit (v2 then v1), capped by physical RAM so an "unlimited" sentinel
+  # (a huge number or the literal "max") falls back to the real total instead of overshooting.
+  mem_total_mb=0
+  if [[ -r /proc/meminfo ]]; then
+    mem_total_mb=$(awk '/^MemTotal:/ {printf "%d", $2/1024}' /proc/meminfo 2>/dev/null || echo 0)
+  fi
+  limit_bytes=""
+  if [[ -r /sys/fs/cgroup/memory.max ]]; then
+    limit_bytes=$(cat /sys/fs/cgroup/memory.max 2>/dev/null)          # cgroup v2
+  elif [[ -r /sys/fs/cgroup/memory/memory.limit_in_bytes ]]; then
+    limit_bytes=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null)  # cgroup v1
+  fi
+  mem_limit_mb=0
+  if [[ "${limit_bytes}" =~ ^[0-9]+$ ]]; then
+    mem_limit_mb=$(( limit_bytes / 1024 / 1024 ))
+  fi
+  # Effective memory = the tighter of the cgroup limit and physical RAM (0 = unknown → ignore).
+  eff_mb=0
+  if (( mem_limit_mb > 0 && mem_total_mb > 0 )); then
+    eff_mb=$(( mem_limit_mb < mem_total_mb ? mem_limit_mb : mem_total_mb ))
+  elif (( mem_limit_mb > 0 )); then
+    eff_mb=${mem_limit_mb}
+  else
+    eff_mb=${mem_total_mb}
+  fi
+  seats=2
+  if (( eff_mb > 0 )); then
+    seats=$(( (eff_mb - 1024) / 1200 ))
+    (( seats < 2 )) && seats=2
+    (( seats > 8 )) && seats=8
+  fi
+  SERVE_LIVE_SEATS="${seats}"
+  echo "entrypoint: auto live-seat budget ${SERVE_LIVE_SEATS} (effective mem ${eff_mb} MB)" >&2
+fi
 [[ -n "${SERVE_LIVE_SEATS}" ]] && args+=(--live-seats "${SERVE_LIVE_SEATS}")
 if [[ "${SERVE_ACCEPT_BUNDLES:-}" == "1" || "${SERVE_ACCEPT_BUNDLES:-}" == "true" ]]; then
   args+=(--accept-bundles)

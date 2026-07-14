@@ -1193,6 +1193,13 @@ class ServeCommand(args: List<String>) : Command(args) {
         // URLs and falls back to baked PNGs for ids it can't render.
         previewAliases = alias,
         bakedFallback = bakedFallback,
+        // A source-built Android/Robolectric catalog costs the same heavier live-seat weight as the
+        // bundle path — read from the built daemon descriptor, since there's no bundle
+        // manifest.backend here — so a from-source deployment keeps the OOM protection the
+        // weighting
+        // adds (a --live-seats budget can't admit two Android daemons thinking they're
+        // desktop-cost).
+        liveSeatWeight = ServeBundleDaemon.liveSeatWeightForDescriptor(built.descriptor),
       )
     val host = openHost(state) ?: return false
     registry.register(system, state, host = host)
@@ -1388,11 +1395,13 @@ class ServeCommand(args: List<String>) : Command(args) {
                           separate checkout (e.g. a prebuilt image serving sample-project that clones
                           the CMP catalog repo for live render). The trust + same-repo + ref-allowlist
                           gates are unchanged.
-        --live-seats <n>  Cap concurrent live (daemon-backed) stream sessions. Each seat holds a JVM
-                          Compose daemon, so on a small box bound this (e.g. 1–2) when the live tier
-                          is on (--allow-render-trusted) — an over-cap stream is refused (WS 1013)
-                          rather than risking the OOM killer. Default 0 = unbounded. Snapshot + Wasm
-                          sessions never take a seat.
+        --live-seats <n>  Live (daemon-backed) stream PERMIT BUDGET. Each live session charges permits
+                          by backend weight — a desktop CMP daemon costs 1, a heavier Robolectric
+                          Android one costs 2 — so one heavy catalog can't hog a flat seat count and
+                          starve the cheap CMP lanes. On a small box bound this (e.g. 2) when the live
+                          tier is on (--allow-render-trusted); an over-budget stream is refused (WS
+                          1013) rather than risking the OOM killer. Default 0 = unbounded. Snapshot +
+                          Wasm sessions never take a permit.
         --exit-when-idle[=<seconds>]
                           Ephemeral mode: shut the server down once it's been idle (no open
                           connections and no requests) for <seconds> (default ${DEFAULT_IDLE_EXIT_SECONDS}s). Use a small

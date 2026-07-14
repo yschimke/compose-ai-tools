@@ -48,6 +48,38 @@ import okio.Path.Companion.toPath
 internal object ServeBundleDaemon {
 
   /**
+   * Live-seat cost ([LiveSeatLimiter] permits) of an **Android/Robolectric** catalog daemon. It
+   * boots a sandbox fleet (each `wear-m3` daemon spins ~5 Robolectric sandboxes) and holds ~1.5–2
+   * GB RSS, versus ~0.5–1 GB for a desktop CMP daemon — so it consumes two permits where desktop
+   * takes one. Tuned for the reference 4 GB box's default budget; a bigger box's budget scales up
+   * (see `deploy/image/entrypoint.sh`), letting more of these run at once.
+   */
+  const val ANDROID_LIVE_SEAT_WEIGHT: Int = 2
+
+  /**
+   * Live-seat weight ([LiveSeatLimiter] permits) of an already-built daemon [descriptor] file — for
+   * the Gradle **source-build** catalog path ([ServeCommand.buildTrustedCatalogSource]), which has
+   * no bundle `manifest.backend` to read. Detects the Android/Robolectric backend by the
+   * `robolectric.*` JVM sysprops every Android daemon launch carries (see
+   * [AndroidPreviewClasspath]) and a desktop CMP daemon never does, so a source-served Android
+   * catalog is charged [ANDROID_LIVE_SEAT_WEIGHT] exactly like the bundle path — keeping the OOM
+   * protection intact in from-source deployments. Defaults to `1` (desktop) when the descriptor is
+   * missing or unreadable.
+   */
+  fun liveSeatWeightForDescriptor(descriptor: File): Int {
+    val text = descriptor.takeIf { it.isFile }?.let { runCatching { it.readText() }.getOrNull() }
+    val launch =
+      text?.let {
+        runCatching { overridesJson.decodeFromString(DaemonLaunchDescriptor.serializer(), it) }
+          .getOrNull()
+      } ?: return 1
+    val android =
+      launch.systemProperties.keys.any { it.startsWith("robolectric.") } ||
+        launch.jvmArgs.any { it.contains("robolectric.", ignoreCase = true) }
+    return if (android) ANDROID_LIVE_SEAT_WEIGHT else 1
+  }
+
+  /**
    * Extract [bundleFile] into [destDir] and synthesise a working [ServeSessionState] for it, or
    * `null` (logging a clear reason via [onLog]) on any failure — a bad/foreign bundle, an
    * unsupported backend, missing sidecar jars (desktop or android), or an empty preview manifest.
@@ -208,6 +240,10 @@ internal object ServeBundleDaemon {
       // so a published catalog's live lane offers the App theme selector (its daemon applies the
       // themeProvider override on demand). Empty when the app declares none.
       declaredThemes = readDeclaredThemes(previewsJson, fileSystem),
+      // An Android/Robolectric daemon boots a sandbox fleet and is far heavier than a desktop CMP
+      // one, so it costs more of the live-seat budget (see [LiveSeatLimiter]); a desktop bundle
+      // keeps the default weight of 1.
+      liveSeatWeight = if (backend == "android") ANDROID_LIVE_SEAT_WEIGHT else 1,
     )
   }
 

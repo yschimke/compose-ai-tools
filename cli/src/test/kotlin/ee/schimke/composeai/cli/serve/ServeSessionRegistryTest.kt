@@ -127,6 +127,18 @@ class ServeSessionRegistryTest {
       }
   }
 
+  @Test
+  fun `liveSeatWeight surfaces the session state's weight, defaulting to 1`() {
+    ServeSessionRegistry(open = Opener()).use { reg ->
+      val heavy = stateFor("wear-m3").copy(liveSeatWeight = 2)
+      reg.register("wear-m3", heavy)
+      reg.register("compose-m3", stateFor("compose-m3")) // default weight
+      assertEquals(2, reg.liveSeatWeight("wear-m3"), "the Android session's heavier weight is read")
+      assertEquals(1, reg.liveSeatWeight("compose-m3"), "a default-weight session reads 1")
+      assertEquals(1, reg.liveSeatWeight("unknown"), "an unknown/forked session defaults to 1")
+    }
+  }
+
   /** Minimal [ServeHost] that only records whether it was closed. */
   private class RecordingHost : ServeHost {
     var closed = false
