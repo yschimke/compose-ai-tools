@@ -21,7 +21,7 @@ ktfmt = "0.26.0"
 play-publisher = "4.0.0"
 tapmoc = "0.4.2"
 robolectric = "4.16.1"
-roborazzi = "1.66.0"
+roborazzi = "1.67.0"
 classgraph = "4.8.184"
 # Stable BOM line — what samples use and what `composePreviewRender` /
 # `Compare previews` is exercised against. Renovate updates this freely;
@@ -153,7 +153,7 @@ wear-compose-remote = "1.0.0-alpha07"
 # wear-compose-remote-material3 alpha pulls in transitively — compose 1.11.0+
 # is the first release that ships `PreviewWrapper`. Renovate updates this
 # freely; the sample is meant to ride the latest prerelease compose.
-compose-ui-prerelease = "1.11.3"
+compose-ui-prerelease = "1.11.4"
 kotlinx-coroutines = "1.11.0"
 kotlinx-serialization = "1.11.0"
 mcp-kotlin-sdk = "0.14.0"
