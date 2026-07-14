@@ -32,6 +32,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.remote.material3.RemoteAppCard
 import androidx.wear.compose.remote.material3.RemoteButton
+import androidx.wear.compose.remote.material3.RemoteButtonDefaults
 import androidx.wear.compose.remote.material3.RemoteButtonGroup
 import androidx.wear.compose.remote.material3.RemoteCard
 import androidx.wear.compose.remote.material3.RemoteCircularProgressIndicator
@@ -121,15 +122,26 @@ fun FilledRemoteButton() = RemoteSticker {
   )
 }
 
-// Remote Material 3's outlined-emphasis button: a `RemoteButton` with an explicit
-// border + border colour (Remote Compose has no separate `OutlinedButton`). Wear
-// M3 parallel: `OutlinedButton` (`Button/Outlined`).
+// Remote Material 3's outlined-emphasis button. Remote Compose alpha06 has no
+// separate `RemoteOutlinedButton` (it ships `RemoteOutlinedCard`, but not the
+// button), so we build it the same way Wear's own `OutlinedButton` does under the
+// hood: a `RemoteButton` with a **transparent container** + a border. Overriding
+// `containerColor` is the key — the default `buttonColors()` is `primary`-filled,
+// so a bare `RemoteButton` + border would render as a *filled* button with an
+// outline, not an outlined one. `contentColor` follows `onBackground` so the label
+// stays legible over the transparent fill. Wear M3 parallel: `OutlinedButton`
+// (`Button/Outlined`).
 @CatalogRemoteModes
 @Composable
 fun OutlinedRemoteButton() = RemoteSticker {
   RemoteButton(
     onClick = testAction,
     modifier = RemoteModifier.buttonSizeModifier(),
+    colors =
+      RemoteButtonDefaults.buttonColors(
+        containerColor = RemoteColor(Color.Transparent),
+        contentColor = RemoteMaterialTheme.colorScheme.onBackground,
+      ),
     border = 2.rdp,
     borderColor = outline,
     content = { RemoteText("Outlined".rs) },
