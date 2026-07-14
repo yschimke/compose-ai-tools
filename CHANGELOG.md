@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.16.47](https://github.com/yschimke/compose-ai-tools/compare/v0.16.46...v0.16.47) (2026-07-14)
+
+
+### Features
+
+* **deploy:** default the preview container to unbounded memory so the live-seat budget scales to the box ([#2476](https://github.com/yschimke/compose-ai-tools/issues/2476)) ([a3af39d](https://github.com/yschimke/compose-ai-tools/commit/a3af39dc41cd0c5d8ca70ea6a0d1b623d57adaa5))
+* **samples:** remote-m3 ↔ wear-m3 catalog parity + cross-system compare page ([#2474](https://github.com/yschimke/compose-ai-tools/issues/2474)) ([6b33824](https://github.com/yschimke/compose-ai-tools/commit/6b33824c3fcc3b7095d4f0d6abfe8e8407fe85b7))
+* **serve:** weight live seats by backend and auto-size the budget from box memory ([#2473](https://github.com/yschimke/compose-ai-tools/issues/2473)) ([f00b5fc](https://github.com/yschimke/compose-ai-tools/commit/f00b5fcab904901508c9745e7058be156e7a0810))
+
+
+### Bug Fixes
+
+* **deps:** update gradle minor/patch ([#2457](https://github.com/yschimke/compose-ai-tools/issues/2457)) ([bf8c7d3](https://github.com/yschimke/compose-ai-tools/commit/bf8c7d3f16f564dbdf99ab2790acc7b6d740bf68))
+* **remotecompose:** track compose-remote alpha14 RemoteDensity.from signature ([#2475](https://github.com/yschimke/compose-ai-tools/issues/2475)) ([baa723c](https://github.com/yschimke/compose-ai-tools/commit/baa723c720241bfcb1fc128013d71572a8f1398d))
+
 ## [0.16.46](https://github.com/yschimke/compose-ai-tools/compare/v0.16.45...v0.16.46) (2026-07-13)
 
 
