@@ -79,6 +79,10 @@ dependencies {
   // `renderNow.overrides.namedOverrides` into the `previewOverride*` lookups and produces the
   // `compose/overrides` data product (the preview's declared editable knobs).
   implementation(project(":data-preview-overrides-connector"))
+  // Desktop-only half of the named-override surface: wraps CMP's `LocalResourceReader` so every
+  // `stringResource(...)` lookup becomes an editable `compose/overrides` knob automatically (no
+  // `previewOverrideString(...)` needed) and applies the daemon-seeded replacement.
+  implementation(project(":data-preview-overrides-connector-desktop"))
   // Launcher-widget container-size connector — same module Android consumes. The around-composable
   // wraps the preview body in a sized `Box` matching the clamped whole-cell footprint, driven
   // from `renderNow.overrides.launcherWidget`.

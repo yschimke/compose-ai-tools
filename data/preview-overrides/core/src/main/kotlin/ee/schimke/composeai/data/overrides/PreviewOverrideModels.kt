@@ -79,3 +79,52 @@ data class PreviewOverrideDeclaration(
  */
 @Serializable
 data class PreviewOverridesPayload(val declarations: List<PreviewOverrideDeclaration> = emptyList())
+
+/**
+ * Marks a [PreviewOverrideDeclaration] that the render backend synthesised for a **string loaded
+ * from resources** (Android `stringResource` / CMP `org.jetbrains.compose.resources.stringResource`)
+ * rather than an author's explicit `previewOverride*` call. Any string a preview pulls from
+ * resources is editable without the author having to wrap it — a resource lookup already tells the
+ * backend what text was rendered and gives us a stable key to seed a replacement against.
+ *
+ * The marker is a **key prefix** rather than a new schema field so older readers of the
+ * `compose/overrides` payload tolerate it unchanged: to them a resource knob is just another string
+ * knob whose `key` happens to start with `res:`. The backend mints the key deterministically (the
+ * Android resource entry name, or the CMP resource `path#offset`) so the same key is recomputed at
+ * declaration time and at substitution time, keeping the `namedOverrides` seed round-trip intact.
+ */
+const val RESOURCE_OVERRIDE_KEY_PREFIX: String = "res:"
+
+/** True when [key] was minted for a resource-loaded string (see [RESOURCE_OVERRIDE_KEY_PREFIX]). */
+fun isResourceOverrideKey(key: String): Boolean = key.startsWith(RESOURCE_OVERRIDE_KEY_PREFIX)
+
+/** True when this declaration was synthesised for a resource-loaded string. */
+fun PreviewOverrideDeclaration.isResourceOverride(): Boolean = isResourceOverrideKey(key)
+
+/**
+ * Collapse the "same string offered twice" case the auto-resource surface can create: when a preview
+ * both loads a string from resources **and** passes it through an explicit `previewOverride*` call,
+ * the render records two knobs whose author default is the same text — one resource-synthesised, one
+ * explicit. Drop the resource-synthesised duplicate so the viewer shows a single control; the
+ * explicit knob wins because the author named it deliberately.
+ *
+ * A resource knob is dropped only when its author [PreviewOverrideDeclaration.default] equals the
+ * default of some **explicit** (non-resource) string knob. Resource knobs that no explicit knob
+ * shadows are kept, and explicit knobs are never removed. Declaration order is otherwise preserved.
+ */
+fun dedupeResourceOverrideDeclarations(
+  declarations: List<PreviewOverrideDeclaration>
+): List<PreviewOverrideDeclaration> {
+  if (declarations.isEmpty()) return declarations
+  val explicitStringDefaults: Set<String> =
+    declarations
+      .asSequence()
+      .filterNot { it.isResourceOverride() }
+      .mapNotNull { (it.default as? PreviewOverrideValue.StringValue)?.value }
+      .toSet()
+  if (explicitStringDefaults.isEmpty()) return declarations
+  return declarations.filterNot { declaration ->
+    declaration.isResourceOverride() &&
+      (declaration.default as? PreviewOverrideValue.StringValue)?.value in explicitStringDefaults
+  }
+}

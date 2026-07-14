@@ -4,7 +4,9 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
+import ee.schimke.composeai.data.overrides.PreviewOverrideType
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
+import ee.schimke.composeai.data.overrides.dedupeResourceOverrideDeclarations
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.serialization.json.Json
 
@@ -54,6 +56,18 @@ object PreviewOverrideController {
   // for the viewer while letting a re-declared key (recomposition) replace its prior entry in
   // place.
   private val declarationsState: MutableState<Map<String, PreviewOverrideDeclaration>> =
+    mutableStateOf(emptyMap())
+
+  // Auto-synthesised knobs for strings loaded from resources (see [recordResource]). Held in a
+  // SEPARATE bucket from the explicit `previewOverride*` declarations above because the two have
+  // different lifecycles: the resource interceptor records eagerly while resources load (on desktop
+  // that is an async coroutine dispatcher, out of step with composition), whereas the explicit knobs
+  // record from a post-composition `SideEffect` after [clearDeclarations] has wiped the prior
+  // render. Folding resource knobs into `declarationsState` would let `clearDeclarations` erase a
+  // resource record that already landed this render, and the warm CMP string cache would keep the
+  // interceptor from re-recording it — the knob would vanish. Keeping them apart, reset once per
+  // render via [resetResourceDeclarations] (not on the explicit-knob clear), makes the two independent.
+  private val resourceDeclarationsState: MutableState<Map<String, PreviewOverrideDeclaration>> =
     mutableStateOf(emptyMap())
 
   private val listeners: MutableList<() -> Unit> = CopyOnWriteArrayList()
@@ -121,8 +135,69 @@ object PreviewOverrideController {
     )
   }
 
-  /** The knobs declared so far this render, in declaration order. */
-  fun declarations(): List<PreviewOverrideDeclaration> = declarationsState.value.values.toList()
+  /**
+   * Record an auto-synthesised knob for a string just loaded from resources, keyed by
+   * [PreviewOverrideDeclaration.seedKey] (a `res:`-prefixed key the backend mints deterministically).
+   * Kept in the resource bucket so the explicit-knob [clearDeclarations] can't erase it mid-render;
+   * [resetResourceDeclarations] clears this bucket once per render instead. A repeat record of the
+   * same key (a later render pass, or the same string read twice) replaces the prior entry in place,
+   * preserving first-seen order.
+   */
+  fun recordResource(declaration: PreviewOverrideDeclaration) {
+    val current = resourceDeclarationsState.value
+    if (current[declaration.seedKey] == declaration) return
+    val next = LinkedHashMap(current)
+    next[declaration.seedKey] = declaration
+    resourceDeclarationsState.value = next
+    listeners.toList().forEach { it() }
+  }
+
+  /**
+   * Resolve the effective text for a resource-loaded string and record it as an editable knob in one
+   * call — the entry point the platform resource interceptors use. Returns the daemon-seeded
+   * replacement bound to [key] (via the same `namedOverrides` map that seeds explicit knobs) when one
+   * is present and string-typed, otherwise [default]. Either way the knob is recorded (with its
+   * resolved `current`) so a viewer can offer an editable control. [key] must carry the
+   * `res:` prefix; [label] is what the viewer shows (typically the author default text).
+   */
+  fun resolveResourceString(key: String, default: String, label: String = default): String {
+    val effective = (valueOf(key) as? PreviewOverrideValue.StringValue)?.value ?: default
+    recordResource(
+      PreviewOverrideDeclaration(
+        key = key,
+        type = PreviewOverrideType.STRING,
+        label = label,
+        default = PreviewOverrideValue.StringValue(default),
+        current = PreviewOverrideValue.StringValue(effective),
+      )
+    )
+    return effective
+  }
+
+  /**
+   * Drop the resource-synthesised knobs so the next render re-discovers its own set. Called once per
+   * render by the resource interceptor's around-composable (keyed on the extension instance so it
+   * runs at render start, not on every recomposition) — deliberately NOT wired into
+   * [clearDeclarations], which only owns the explicit `previewOverride*` bucket.
+   */
+  fun resetResourceDeclarations() {
+    if (resourceDeclarationsState.value.isEmpty()) return
+    resourceDeclarationsState.value = emptyMap()
+  }
+
+  /**
+   * The knobs declared so far this render, in declaration order: the explicit `previewOverride*`
+   * knobs first, then the auto-synthesised resource-string knobs. A resource knob that merely
+   * duplicates an explicit knob's author default is dropped (see [dedupeResourceOverrideDeclarations])
+   * so a preview that wraps a `stringResource(...)` in `previewOverrideString(...)` shows one control,
+   * not two.
+   */
+  fun declarations(): List<PreviewOverrideDeclaration> {
+    val explicit = declarationsState.value.values
+    val resource = resourceDeclarationsState.value.values
+    if (resource.isEmpty()) return explicit.toList()
+    return dedupeResourceOverrideDeclarations(explicit + resource)
+  }
 
   /** Register a callback fired on every state change. Returns an unregister handle. */
   fun addChangeListener(listener: () -> Unit): () -> Unit {
@@ -138,6 +213,7 @@ object PreviewOverrideController {
     val scope = bridgeScope()
     seededValuesState.value = emptyMap()
     declarationsState.value = emptyMap()
+    resourceDeclarationsState.value = emptyMap()
     activePreviewId = null
     bridgeForwarder?.reset(scope)
   }

@@ -504,6 +504,11 @@ include(":data-preview-overrides-connector")
 
 project(":data-preview-overrides-connector").projectDir = file("data/preview-overrides/connector")
 
+include(":data-preview-overrides-connector-desktop")
+
+project(":data-preview-overrides-connector-desktop").projectDir =
+  file("data/preview-overrides/connector-desktop")
+
 // UIAutomator-shaped query/action API for the Compose preview renderer. Carries the matcher,
 // the Selector DSL, and the JSON wire format — consumed by `:daemon:android` for
 // `record_preview`'s `uia.*` script events.
