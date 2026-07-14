@@ -82,10 +82,11 @@ data class PreviewOverridesPayload(val declarations: List<PreviewOverrideDeclara
 
 /**
  * Marks a [PreviewOverrideDeclaration] that the render backend synthesised for a **string loaded
- * from resources** (Android `stringResource` / CMP `org.jetbrains.compose.resources.stringResource`)
- * rather than an author's explicit `previewOverride*` call. Any string a preview pulls from
- * resources is editable without the author having to wrap it — a resource lookup already tells the
- * backend what text was rendered and gives us a stable key to seed a replacement against.
+ * from resources** (Android `stringResource` / CMP
+ * `org.jetbrains.compose.resources.stringResource`) rather than an author's explicit
+ * `previewOverride*` call. Any string a preview pulls from resources is editable without the author
+ * having to wrap it — a resource lookup already tells the backend what text was rendered and gives
+ * us a stable key to seed a replacement against.
  *
  * The marker is a **key prefix** rather than a new schema field so older readers of the
  * `compose/overrides` payload tolerate it unchanged: to them a resource knob is just another string
@@ -102,11 +103,11 @@ fun isResourceOverrideKey(key: String): Boolean = key.startsWith(RESOURCE_OVERRI
 fun PreviewOverrideDeclaration.isResourceOverride(): Boolean = isResourceOverrideKey(key)
 
 /**
- * Collapse the "same string offered twice" case the auto-resource surface can create: when a preview
- * both loads a string from resources **and** passes it through an explicit `previewOverride*` call,
- * the render records two knobs whose author default is the same text — one resource-synthesised, one
- * explicit. Drop the resource-synthesised duplicate so the viewer shows a single control; the
- * explicit knob wins because the author named it deliberately.
+ * Collapse the "same string offered twice" case the auto-resource surface can create: when a
+ * preview both loads a string from resources **and** passes it through an explicit
+ * `previewOverride*` call, the render records two knobs whose author default is the same text — one
+ * resource-synthesised, one explicit. Drop the resource-synthesised duplicate so the viewer shows a
+ * single control; the explicit knob wins because the author named it deliberately.
  *
  * A resource knob is dropped only when its author [PreviewOverrideDeclaration.default] equals the
  * default of some **explicit** (non-resource) string knob. Resource knobs that no explicit knob

@@ -11,8 +11,8 @@ import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import ee.schimke.composeai.data.overrides.PreviewOverridesPayload
-import ee.schimke.composeai.data.overrides.dedupeResourceOverrideDeclarations
 import ee.schimke.composeai.data.overrides.PreviewOverridesProduct
+import ee.schimke.composeai.data.overrides.dedupeResourceOverrideDeclarations
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.extensions.DataExtension
 import ee.schimke.composeai.data.render.extensions.DataExtensionCapability
@@ -198,21 +198,21 @@ class PreviewOverridesDataProductRegistry : DataProductRegistry {
    */
   private fun readDeclarationsAcrossClassloaders(scope: String): List<PreviewOverrideDeclaration> {
     val bridge = SandboxPreviewOverridesBridgeReader.tryLoad()
-    // `declarations()` already merges + dedupes the explicit and resource-string buckets. The bridge
+    // `declarations()` already merges + dedupes the explicit and resource-string buckets. The
+    // bridge
     // path decodes raw per-key JSON snapshots that never went through it, so dedupe that list too
     // (a no-op until the Android sandbox bridge also forwards resource knobs).
     val controllerDeclarations = PreviewOverrideController.declarations()
     if (bridge == null) return controllerDeclarations
     val bridgeJson = bridge.snapshot(scope)
     if (bridgeJson.isEmpty()) return controllerDeclarations
-    val decoded =
-      bridgeJson.mapNotNull { entry ->
-        try {
-          json.decodeFromString(PreviewOverrideDeclaration.serializer(), entry)
-        } catch (_: Exception) {
-          null
-        }
+    val decoded = bridgeJson.mapNotNull { entry ->
+      try {
+        json.decodeFromString(PreviewOverrideDeclaration.serializer(), entry)
+      } catch (_: Exception) {
+        null
       }
+    }
     return dedupeResourceOverrideDeclarations(decoded)
   }
 

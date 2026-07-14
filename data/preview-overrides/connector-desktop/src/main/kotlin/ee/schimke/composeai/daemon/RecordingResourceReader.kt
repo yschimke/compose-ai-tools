@@ -7,9 +7,10 @@ import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.ResourceReader
 
 /**
- * Resolves a resource-loaded string to its effective (possibly daemon-seeded) text and records it as
- * an editable knob. The production sink is backed by `PreviewOverrideController.resolveResourceString`;
- * tests supply a fake so [RecordingResourceReader] can be exercised without the controller.
+ * Resolves a resource-loaded string to its effective (possibly daemon-seeded) text and records it
+ * as an editable knob. The production sink is backed by
+ * `PreviewOverrideController.resolveResourceString`; tests supply a fake so
+ * [RecordingResourceReader] can be exercised without the controller.
  */
 @FunctionalInterface
 fun interface ResourceOverrideSink {
@@ -27,20 +28,20 @@ fun interface ResourceOverrideSink {
  * [ResourceOverrideSink] — which records it as a `compose/overrides` knob and returns the
  * daemon-seeded replacement (or the original when unseeded) — and re-encodes the effective value.
  *
- * **Why the reader, not an explicit call.** CMP resolves `stringResource(...)` through this byte-level
- * reader; intercepting here means the author doesn't have to wrap the lookup in
+ * **Why the reader, not an explicit call.** CMP resolves `stringResource(...)` through this
+ * byte-level reader; intercepting here means the author doesn't have to wrap the lookup in
  * `previewOverrideString(...)`. A resource read already tells us the exact text that rendered, and
  * `(path, offset)` gives a stable key to seed a replacement against.
  *
  * **Record format** (same as `PseudolocalizingResourceReader`): UTF-8 bytes split on `|`; the last
  * segment is the data. `string` — one Base64 payload; `string-array` — comma-separated Base64;
- * `plurals` — comma-separated `<category>:<Base64>`. Any record without a `|` (fonts, drawables, raw
- * bytes) or of an unrecognised type passes through byte-for-byte.
+ * `plurals` — comma-separated `<category>:<Base64>`. Any record without a `|` (fonts, drawables,
+ * raw bytes) or of an unrecognised type passes through byte-for-byte.
  *
- * **Key.** `res:<path>#<offset>` for a scalar string; the array index or plural category is appended
- * (`…#<offset>[<i>]`, `…#<offset>:<category>`) so each editable slot round-trips independently. The
- * key is minted identically here at record time and at substitution time (both inside this
- * `readPart`), keeping the `namedOverrides` seed round-trip intact.
+ * **Key.** `res:<path>#<offset>` for a scalar string; the array index or plural category is
+ * appended (`…#<offset>[<i>]`, `…#<offset>:<category>`) so each editable slot round-trips
+ * independently. The key is minted identically here at record time and at substitution time (both
+ * inside this `readPart`), keeping the `namedOverrides` seed round-trip intact.
  */
 @OptIn(ExperimentalResourceApi::class, ExperimentalEncodingApi::class)
 class RecordingResourceReader(
@@ -82,27 +83,25 @@ class RecordingResourceReader(
 
   private fun transformArray(baseKey: String, data: String): String? {
     val parts = data.split(",")
-    val encoded =
-      parts.mapIndexed { index, item ->
-        val decoded = decodeOrNull(item) ?: return null
-        val effective = sink.resolve("$baseKey[$index]", decoded)
-        Base64.encode(effective.encodeToByteArray())
-      }
+    val encoded = parts.mapIndexed { index, item ->
+      val decoded = decodeOrNull(item) ?: return null
+      val effective = sink.resolve("$baseKey[$index]", decoded)
+      Base64.encode(effective.encodeToByteArray())
+    }
     return encoded.joinToString(",")
   }
 
   private fun transformPlurals(baseKey: String, data: String): String? {
     val parts = data.split(",")
-    val encoded =
-      parts.map { item ->
-        val colon = item.indexOf(':')
-        if (colon < 0) return null
-        val category = item.substring(0, colon)
-        val payload = item.substring(colon + 1)
-        val decoded = decodeOrNull(payload) ?: return null
-        val effective = sink.resolve("$baseKey:$category", decoded)
-        "$category:${Base64.encode(effective.encodeToByteArray())}"
-      }
+    val encoded = parts.map { item ->
+      val colon = item.indexOf(':')
+      if (colon < 0) return null
+      val category = item.substring(0, colon)
+      val payload = item.substring(colon + 1)
+      val decoded = decodeOrNull(payload) ?: return null
+      val effective = sink.resolve("$baseKey:$category", decoded)
+      "$category:${Base64.encode(effective.encodeToByteArray())}"
+    }
     return encoded.joinToString(",")
   }
 

@@ -723,10 +723,13 @@ internal fun buildDesktopExtensions(
       previewOverrideExtensions =
         listOf(
           PreviewOverridesPreviewOverrideExtension(),
-          // Desktop-only, always-on: wraps CMP's `LocalResourceReader` so every `stringResource(...)`
+          // Desktop-only, always-on: wraps CMP's `LocalResourceReader` so every
+          // `stringResource(...)`
           // a preview loads becomes an editable knob on the same `compose/overrides` product — no
-          // `previewOverrideString(...)` needed — and applies the daemon-seeded replacement. Ordered
-          // after the named-override planner so `LocalPreviewOverrideHost` + the seed are already in
+          // `previewOverrideString(...)` needed — and applies the daemon-seeded replacement.
+          // Ordered
+          // after the named-override planner so `LocalPreviewOverrideHost` + the seed are already
+          // in
           // place when the resource reader resolves.
           ResourceOverridePreviewOverrideExtensionDesktop(),
           // Fake wall clock (#1968): plans an extension only when

@@ -11,10 +11,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Verifies the desktop connector turns `stringResource(...)` lookups into editable override knobs at
- * the `org.jetbrains.compose.resources.ResourceReader` byte level — the auto-resource counterpart to
- * `PseudolocalizingResourceReaderTest`. Uses a fake [ResourceOverrideSink] to observe the (key,
- * default) the reader records and to inject a seeded replacement, without standing up the controller.
+ * Verifies the desktop connector turns `stringResource(...)` lookups into editable override knobs
+ * at the `org.jetbrains.compose.resources.ResourceReader` byte level — the auto-resource
+ * counterpart to `PseudolocalizingResourceReaderTest`. Uses a fake [ResourceOverrideSink] to
+ * observe the (key, default) the reader records and to inject a seeded replacement, without
+ * standing up the controller.
  */
 @OptIn(ExperimentalResourceApi::class, ExperimentalEncodingApi::class)
 class RecordingResourceReaderTest {
@@ -38,8 +39,7 @@ class RecordingResourceReaderTest {
   @Test
   fun `a seeded replacement is written back into the record`() {
     val (path, offset, size, raw) = stringRecord("Hello")
-    val reader =
-      RecordingResourceReader(stubReader(path, raw)) { _, _ -> "Bonjour" }
+    val reader = RecordingResourceReader(stubReader(path, raw)) { _, _ -> "Bonjour" }
 
     val out = runBlocking { reader.readPart(path, offset, size) }
 
@@ -62,7 +62,11 @@ class RecordingResourceReaderTest {
     val decoded = parts.map { Base64.decode(it).decodeToString() }
 
     assertEquals(
-      listOf("res:$path#$offset[0]" to "Save", "res:$path#$offset[1]" to "Cancel", "res:$path#$offset[2]" to "Retry"),
+      listOf(
+        "res:$path#$offset[0]" to "Save",
+        "res:$path#$offset[1]" to "Cancel",
+        "res:$path#$offset[2]" to "Retry",
+      ),
       seen,
     )
     assertEquals(listOf("Save", "Dismiss", "Retry"), decoded)
@@ -121,7 +125,12 @@ class RecordingResourceReaderTest {
 
   // -- helpers --------------------------------------------------------------
 
-  private data class Record(val path: String, val offset: Long, val size: Long, val bytes: ByteArray)
+  private data class Record(
+    val path: String,
+    val offset: Long,
+    val size: Long,
+    val bytes: ByteArray,
+  )
 
   private fun stringRecord(text: String): Record {
     val bytes = "string|${Base64.encode(text.encodeToByteArray())}".encodeToByteArray()

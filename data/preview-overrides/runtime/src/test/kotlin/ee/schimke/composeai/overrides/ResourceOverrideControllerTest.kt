@@ -10,8 +10,9 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * Covers the resource-string half of the controller: [PreviewOverrideController.resolveResourceString]
- * (record + seed), the separate resource-declaration bucket surviving the explicit-knob
+ * Covers the resource-string half of the controller:
+ * [PreviewOverrideController.resolveResourceString] (record + seed), the separate
+ * resource-declaration bucket surviving the explicit-knob
  * [PreviewOverrideController.clearDeclarations], and the merge + dedupe in
  * [PreviewOverrideController.declarations].
  */
@@ -63,17 +64,12 @@ class ResourceOverrideControllerTest {
   @Test
   fun `declarations lists explicit knobs first then resource knobs, deduped`() {
     // Explicit knob whose default equals a resource string → the resource duplicate is dropped.
-    PreviewOverrideController.record(
-      declaration("title", "Shopping list")
-    )
+    PreviewOverrideController.record(declaration("title", "Shopping list"))
     PreviewOverrideController.resolveResourceString("res:strings.cvr#0", "Shopping list")
     PreviewOverrideController.resolveResourceString("res:strings.cvr#1", "Standalone label")
 
     val declarations = PreviewOverrideController.declarations()
-    assertEquals(
-      listOf("title", "res:strings.cvr#1"),
-      declarations.map { it.key },
-    )
+    assertEquals(listOf("title", "res:strings.cvr#1"), declarations.map { it.key })
   }
 
   private fun declaration(key: String, default: String) =

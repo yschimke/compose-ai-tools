@@ -1,17 +1,17 @@
 package ee.schimke.composeai.daemon
 
 /**
- * Reflective shim that clears Compose Multiplatform Resources' process-wide string-item cache so the
- * wrapped [org.jetbrains.compose.resources.LocalResourceReader] is actually re-invoked for a
+ * Reflective shim that clears Compose Multiplatform Resources' process-wide string-item cache so
+ * the wrapped [org.jetbrains.compose.resources.LocalResourceReader] is actually re-invoked for a
  * `stringResource(...)` lookup, rather than served the value a prior render already cached.
  *
  * **Why a second copy.** The pseudolocale desktop connector has the same need and its own
- * `PseudolocaleResourceCache`; that one is `internal` to `:data-pseudolocale-connector-desktop`, and
- * the resource-override feature is intentionally decoupled from pseudolocale, so this connector
+ * `PseudolocaleResourceCache`; that one is `internal` to `:data-pseudolocale-connector-desktop`,
+ * and the resource-override feature is intentionally decoupled from pseudolocale, so this connector
  * carries its own equivalent rather than depending on that module. Both reach the same CMP internal
  * (`StringResourcesUtilsKt.stringItemsCache`, an `AsyncCache<String, StringItem>` keyed by
- * `path/offset-size`) via reflection; if a future CMP version reshapes it, both degrade the same way
- * (the reader stops being re-invoked, and an already-cached string is returned unmodified).
+ * `path/offset-size`) via reflection; if a future CMP version reshapes it, both degrade the same
+ * way (the reader stops being re-invoked, and an already-cached string is returned unmodified).
  *
  * Clearing on every render is required because [DesktopHost] reuses the JVM / classloader across
  * requests: without it, the first render of a given string in the JVM warms the cache and every
