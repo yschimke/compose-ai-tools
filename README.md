@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/pr`. 249 preview(s) across 19 module(s) · 31 error(s) · 4 warning(s) · 37 info._
+_Auto-generated from `compose-preview/a11y/pr`. 252 preview(s) across 19 module(s) · 34 error(s) · 4 warning(s) · 37 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -1150,6 +1150,30 @@ _No findings._
 ### `TypographyRemote`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-remote-m3/TypographyRemote.a11y.png" width="400" />
+
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | ERROR | SpeakableTextPresentCheck | androidx.compose.remote.player.view.RemoteComposePlayer | This item may not have a label readable by screen readers. |
+
+### `WidgetContainerGradientRemote`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-remote-m3/WidgetContainerGradientRemote.a11y.png" width="400" />
+
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | ERROR | SpeakableTextPresentCheck | androidx.compose.remote.player.view.RemoteComposePlayer | This item may not have a label readable by screen readers. |
+
+### `WidgetContainerLargeRemote`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-remote-m3/WidgetContainerLargeRemote.a11y.png" width="400" />
+
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | ERROR | SpeakableTextPresentCheck | androidx.compose.remote.player.view.RemoteComposePlayer | This item may not have a label readable by screen readers. |
+
+### `WidgetContainerSmallRemote`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-remote-m3/WidgetContainerSmallRemote.a11y.png" width="400" />
 
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
