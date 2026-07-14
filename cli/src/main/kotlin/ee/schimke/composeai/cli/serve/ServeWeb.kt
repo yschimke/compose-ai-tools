@@ -377,26 +377,71 @@ object ServeWeb {
     cardTheme(id) ?: if (darkFirst) "dark" else null
 
   /**
-   * Whether the sticky Light/Dark toggle should show for this catalog. The toggle is a *filter*
-   * over baked per-theme variants, so it's only meaningful when the catalog is genuinely two-sided
-   * AND theme-paired: it carries BOTH `__light` and `__dark` variants, and themed previews are the
-   * majority. A catalog that's mostly theme-neutral — an app catalog whose screens each render in a
-   * single theme, with only a couple of explicit theme-showcase previews — would otherwise sprout a
-   * toggle that hides a handful of cards and otherwise does nothing, reading as broken. This is the
-   * same "no dead toggle" rule [bgTheme] keeps for a dark-first catalog with no light variants,
-   * generalised. Kept generic across every catalog (app or design-system) — keyed purely off the
-   * preview theme distribution, never the system name.
+   * The flattened id with its theme token stripped — the key that pairs a component's light and
+   * dark variants into ONE grid card. `button-filled__ideal__default__light` and `…__dark` both key
+   * to `button-filled__ideal__default`, so the Light/Dark control can swap the card between the two
+   * baked renders in place.
+   *
+   * Strips ONLY the segment [cardTheme] treats as the theme — the *last* standalone `light`/`dark`
+   * segment after the component-id head — never every one. A flattened id can carry a non-theme
+   * `light`/`dark` *state* segment earlier (e.g. `toggle__dark__default__light` is the dark-state
+   * toggle rendered in the light theme); stripping all of them would collapse `toggle__dark__…` and
+   * `toggle__light__…` onto one key and drop a state. A component slug like `theme-meshcore-light`
+   * is a single segment and is never a theme token.
    */
-  private fun hasThemeVariants(previews: List<ServePreview>): Boolean {
-    val themes = previews.mapNotNull { cardTheme(it.id) }
-    return themes.toSet().containsAll(listOf("light", "dark")) && themes.size * 2 > previews.size
+  private fun baseKey(id: String): String {
+    val parts = id.split("__")
+    val themeIdx =
+      parts.indices.lastOrNull { it >= 1 && (parts[it] == "light" || parts[it] == "dark") }
+    return if (themeIdx == null) id
+    else parts.filterIndexed { i, _ -> i != themeIdx }.joinToString("__")
+  }
+
+  /**
+   * One grid card: a component that may carry a baked `light` and/or `dark` variant (a pair the
+   * Light/Dark control [swaps][GridCard.swappable] in place) and/or a theme-neutral render. [order]
+   * preserves first-seen position so the grid keeps catalog order.
+   */
+  private class GridCard(val order: Int) {
+    var light: ServePreview? = null
+    var dark: ServePreview? = null
+    var neutral: ServePreview? = null
+
+    /** True when both themes are baked, so the card can swap between them (rather than filter). */
+    val swappable: Boolean
+      get() = light != null && dark != null
+
+    /** The variant shown by default (server-side): light, else dark, else the neutral render. */
+    val default: ServePreview
+      get() = light ?: dark ?: neutral!!
+  }
+
+  /**
+   * Collapse a catalog's per-theme previews into grid cards keyed by [baseKey], so a component's
+   * `__light`/`__dark` variants become a SINGLE card the Light/Dark control swaps between — instead
+   * of two separate cards a filter hides between. A component captured in only one theme (or a
+   * theme-neutral app screen) stays a lone card the toggle leaves untouched. Order follows first
+   * appearance.
+   */
+  private fun groupPreviews(previews: List<ServePreview>): List<GridCard> {
+    val byKey = LinkedHashMap<String, GridCard>()
+    previews.forEachIndexed { i, p ->
+      val card = byKey.getOrPut(baseKey(p.id)) { GridCard(i) }
+      when (cardTheme(p.id)) {
+        "light" -> if (card.light == null) card.light = p
+        "dark" -> if (card.dark == null) card.dark = p
+        else -> if (card.neutral == null) card.neutral = p
+      }
+    }
+    return byKey.values.sortedBy { it.order }
   }
 
   /**
    * The sticky light/dark control for the catalog header. Persists to `localStorage['cp-theme']`
-   * (shared with the viewer's Theme select) and filters the card grid to the chosen theme's
-   * variants. Purely client-side — the server emits every card tagged with `data-card-theme`, and
-   * [catalogThemeScript] does the hiding, so a no-JS client still sees the full catalog.
+   * (shared with the viewer's Theme select). [catalogFilterScript] wires it to *swap* each
+   * swappable card between its baked light/dark render in place — a no-JS client still sees the
+   * full catalog on its default renders. Shown only when the grid has at least one light/dark pair
+   * to swap.
    */
   private fun themeToggleHtml(): String =
     """
@@ -431,13 +476,13 @@ object ServeWeb {
       .trimIndent()
 
   /**
-   * Combined landing-grid filter: owns every `.cp-card`'s visibility from two independent inputs —
-   * the search box (matches the card's label + id, case-insensitive) and, when the catalog carries
-   * per-theme variants, the sticky light/dark toggle. A card is shown only when it satisfies BOTH,
-   * so the two filters compose instead of fighting over `hidden`. Theme state persists to the
-   * shared `localStorage['cp-theme']` key (round-tripped with the viewer's Theme select); the
-   * search text is ephemeral. Fully client-side progressive enhancement — a no-JS client sees the
-   * whole grid.
+   * Landing-grid controls: the search box (matches a card's label + id, case-insensitive) and, when
+   * the catalog carries light/dark pairs, the sticky Light/Dark **toggle** — which *swaps* each
+   * swappable card between its baked light and dark render in place (image, viewer link, id, label,
+   * and stage backing), rather than hiding cards. Single-theme / theme-neutral cards carry no swap
+   * data and are left untouched. Theme state persists to the shared `localStorage['cp-theme']` key
+   * (round-tripped with the viewer's Theme select); the search text is ephemeral. Fully client-side
+   * progressive enhancement — a no-JS client sees the full grid on its baked (default) renders.
    */
   private fun catalogFilterScript(hasThemes: Boolean): String {
     val themeInit =
@@ -451,13 +496,33 @@ object ServeWeb {
         """
           .trimIndent()
       else ""
-    val reflectTheme =
+    // Swap every swappable card to the chosen theme's baked render (src / viewer href / id / label
+    // /
+    // stage backing), and light up the pressed button. A card missing the chosen theme is skipped.
+    val applyTheme =
       if (hasThemes)
-        """themeBtns.forEach(function (b) {
+        """
+        themeBtns.forEach(function (b) {
           b.setAttribute("aria-pressed", b.getAttribute("data-theme-choice") === theme ? "true" : "false");
-        });"""
+        });
+        var k = theme === "dark" ? "d" : "l";
+        cards.forEach(function (c) {
+          if (c.getAttribute("data-swap") !== "1") return;
+          var src = c.getAttribute("data-" + k + "-src");
+          if (!src) return;
+          var img = c.querySelector("img");
+          var lab = c.querySelector(".cp-label");
+          var idn = c.querySelector(".cp-id");
+          var lbl = c.getAttribute("data-" + k + "-label");
+          if (img) { img.src = src; img.setAttribute("alt", lbl); }
+          c.setAttribute("href", c.getAttribute("data-" + k + "-href"));
+          if (lab) { lab.textContent = lbl; lab.setAttribute("title", lbl); }
+          if (idn) idn.textContent = c.getAttribute("data-" + k + "-id");
+          c.setAttribute("data-bg-theme", theme);
+        });
+        """
+          .trimIndent()
       else ""
-    val themeOk = if (hasThemes) "(!ct || ct === theme)" else "true"
     val themeWiring =
       if (hasThemes)
         """themeBtns.forEach(function (b) {
@@ -477,18 +542,16 @@ object ServeWeb {
       var total = cards.length;
       $themeInit
       function apply() {
-        $reflectTheme
+        $applyTheme
         var q = input ? input.value.trim().toLowerCase() : "";
         var shown = 0;
         cards.forEach(function (c) {
-          var ct = c.getAttribute("data-card-theme");
           var lab = c.querySelector(".cp-label");
           var idn = c.querySelector(".cp-id");
           var hay = ((lab ? lab.textContent : "") + " " + (idn ? idn.textContent : "")).toLowerCase();
           var searchOk = q === "" || hay.indexOf(q) !== -1;
-          var visible = $themeOk && searchOk;
-          c.hidden = !visible;
-          if (visible) shown++;
+          c.hidden = !searchOk;
+          if (searchOk) shown++;
         });
         if (count) count.textContent = q === "" ? "" : (shown + " of " + total);
         if (empty) empty.hidden = shown !== 0;
@@ -786,23 +849,47 @@ object ServeWeb {
     // variants keep their own token. Only affects the background — the Light/Dark filter axis below
     // still keys off the explicit-only [cardTheme].
     val darkFirst = isDarkFirstSystem(basePath, sessionId)
-    val cards =
-      if (previews.isEmpty()) {
-        "<p class=\"cp-sub\">No previews discovered in this module.</p>"
-      } else {
-        previews.joinToString("\n") { p ->
-          val idSeg = WebEscaping.urlEncodeSegment(p.id)
-          val label = WebEscaping.htmlEscape(p.label)
-          val idText = WebEscaping.htmlEscape(p.id)
-          // Two distinct axes: data-card-theme is the EXPLICIT light/dark token (drives the
-          // Light/Dark
-          // filter — must stay null for an unthemed card so it shows under both), while
-          // data-bg-theme
-          // is the thumbnail's background (explicit token, else the dark-first default).
-          val filterAttr = cardTheme(p.id)?.let { " data-card-theme=\"$it\"" } ?: ""
-          val bgAttr = bgTheme(p.id, darkFirst)?.let { " data-bg-theme=\"$it\"" } ?: ""
-          """
-          <a class="cp-card"$filterAttr$bgAttr href="$basePath/p/$idSeg$q">
+    // Collapse per-theme variants into one card each so the Light/Dark control swaps a card between
+    // its baked light/dark render *in place*, rather than filtering two cards. A single-theme /
+    // theme-neutral card carries no swap data and the toggle leaves it alone.
+    val groups = groupPreviews(previews)
+    fun renderSrc(p: ServePreview) = "$basePath/render/${WebEscaping.urlEncodeSegment(p.id)}.png$q"
+    fun viewerHref(p: ServePreview) = "$basePath/p/${WebEscaping.urlEncodeSegment(p.id)}$q"
+    fun swapCard(card: GridCard): String {
+      val l = card.light!!
+      val d = card.dark!!
+      // Default to the light render (dark-first systems open dark); the JS re-swaps to the sticky
+      // choice on load. Each theme's src / viewer href / id / label ride as data-* so the swap
+      // needs
+      // no URL-building in the browser.
+      val def = if (darkFirst) d else l
+      val defTheme = if (darkFirst) "dark" else "light"
+      return """
+        <a class="cp-card" data-swap="1" data-bg-theme="$defTheme"
+          data-l-src="${renderSrc(l)}" data-l-href="${viewerHref(l)}"
+          data-l-id="${WebEscaping.htmlEscape(l.id)}" data-l-label="${WebEscaping.htmlEscape(l.label)}"
+          data-d-src="${renderSrc(d)}" data-d-href="${viewerHref(d)}"
+          data-d-id="${WebEscaping.htmlEscape(d.id)}" data-d-label="${WebEscaping.htmlEscape(d.label)}"
+          href="${viewerHref(def)}">
+          <div class="cp-imgwrap">
+            <img loading="lazy" alt="${WebEscaping.htmlEscape(def.label)}" src="${renderSrc(def)}">
+          </div>
+          <div class="cp-meta">
+            <div class="cp-label" title="${WebEscaping.htmlEscape(def.label)}">${WebEscaping.htmlEscape(def.label)}</div>
+            <div class="cp-id">${WebEscaping.htmlEscape(def.id)}</div>
+          </div>
+        </a>
+        """
+        .trimIndent()
+    }
+    fun singleCard(p: ServePreview): String {
+      val idSeg = WebEscaping.urlEncodeSegment(p.id)
+      val label = WebEscaping.htmlEscape(p.label)
+      val idText = WebEscaping.htmlEscape(p.id)
+      // data-bg-theme is the thumbnail's background (explicit token, else the dark-first default).
+      val bgAttr = bgTheme(p.id, darkFirst)?.let { " data-bg-theme=\"$it\"" } ?: ""
+      return """
+          <a class="cp-card"$bgAttr href="$basePath/p/$idSeg$q">
             <div class="cp-imgwrap">
               ${thumbImg("$basePath/render/$idSeg.png$q", label, " loading=\"lazy\"", thumbCrop(p.id))}
             </div>
@@ -812,16 +899,22 @@ object ServeWeb {
             </div>
           </a>
           """
-            .trimIndent()
-        }
+        .trimIndent()
+    }
+    val cards =
+      if (groups.isEmpty()) {
+        "<p class=\"cp-sub\">No previews discovered in this module.</p>"
+      } else {
+        groups.joinToString("\n") { if (it.swappable) swapCard(it) else singleCard(it.default) }
       }
     val about = if (isPublic) aboutSection() + "\n" else ""
     val nav =
       if (catalogs.isNotEmpty()) catalogNav(catalogs, token, sessionId, isPublic) + "\n" else ""
-    // The theme toggle only makes sense when the catalog is genuinely theme-paired (both light and
-    // dark variants, themed previews in the majority) — otherwise it's a near-dead filter. See
-    // [hasThemeVariants].
-    val hasThemes = hasThemeVariants(previews)
+    // The Light/Dark toggle shows only when at least one component is baked in BOTH themes, i.e.
+    // the
+    // grid has something to swap. A catalog with no light/dark pairs (mostly theme-neutral app
+    // screens) never sprouts a control that would do nothing.
+    val hasThemes = groups.any { it.swappable }
     val themeToggle = if (hasThemes) themeToggleHtml() + "\n" else ""
     // Search + empty-state + the combined filter script are shown whenever there are previews to
     // filter, independent of the theme axis.

@@ -296,14 +296,12 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
     var q = input ? input.value.trim().toLowerCase() : "";
     var shown = 0;
     cards.forEach(function (c) {
-      var ct = c.getAttribute("data-card-theme");
       var lab = c.querySelector(".cp-label");
       var idn = c.querySelector(".cp-id");
       var hay = ((lab ? lab.textContent : "") + " " + (idn ? idn.textContent : "")).toLowerCase();
       var searchOk = q === "" || hay.indexOf(q) !== -1;
-      var visible = true && searchOk;
-      c.hidden = !visible;
-      if (visible) shown++;
+      c.hidden = !searchOk;
+      if (searchOk) shown++;
     });
     if (count) count.textContent = q === "" ? "" : (shown + " of " + total);
     if (empty) empty.hidden = shown !== 0;

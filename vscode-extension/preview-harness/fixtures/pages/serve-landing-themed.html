@@ -251,40 +251,32 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   </span>
 </div>
 <div class="cp-grid" id="cp-grid">
-        <a class="cp-card" data-card-theme="light" data-bg-theme="light" href="/p/button-filled__ideal__default__light">
+        <a class="cp-card" data-swap="1" data-bg-theme="light"
+  data-l-src="/render/button-filled__ideal__default__light.png" data-l-href="/p/button-filled__ideal__default__light"
+  data-l-id="button-filled__ideal__default__light" data-l-label="Button · Filled (light)"
+  data-d-src="/render/button-filled__ideal__default__dark.png" data-d-href="/p/button-filled__ideal__default__dark"
+  data-d-id="button-filled__ideal__default__dark" data-d-label="Button · Filled (dark)"
+  href="/p/button-filled__ideal__default__light">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="Button · Filled (light)" src="/render/button-filled__ideal__default__light.png">
   </div>
   <div class="cp-meta">
-    <div class="cp-label" title="button-filled__ideal__default__light">Button · Filled (light)</div>
+    <div class="cp-label" title="Button · Filled (light)">Button · Filled (light)</div>
     <div class="cp-id">button-filled__ideal__default__light</div>
   </div>
 </a>
-<a class="cp-card" data-card-theme="dark" data-bg-theme="dark" href="/p/button-filled__ideal__default__dark">
-  <div class="cp-imgwrap">
-    <img loading="lazy" alt="Button · Filled (dark)" src="/render/button-filled__ideal__default__dark.png">
-  </div>
-  <div class="cp-meta">
-    <div class="cp-label" title="button-filled__ideal__default__dark">Button · Filled (dark)</div>
-    <div class="cp-id">button-filled__ideal__default__dark</div>
-  </div>
-</a>
-<a class="cp-card" data-card-theme="light" data-bg-theme="light" href="/p/switch-on__ideal__default__light">
+<a class="cp-card" data-swap="1" data-bg-theme="light"
+  data-l-src="/render/switch-on__ideal__default__light.png" data-l-href="/p/switch-on__ideal__default__light"
+  data-l-id="switch-on__ideal__default__light" data-l-label="Switch · On (light)"
+  data-d-src="/render/switch-on__ideal__default__dark.png" data-d-href="/p/switch-on__ideal__default__dark"
+  data-d-id="switch-on__ideal__default__dark" data-d-label="Switch · On (dark)"
+  href="/p/switch-on__ideal__default__light">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="Switch · On (light)" src="/render/switch-on__ideal__default__light.png">
   </div>
   <div class="cp-meta">
-    <div class="cp-label" title="switch-on__ideal__default__light">Switch · On (light)</div>
+    <div class="cp-label" title="Switch · On (light)">Switch · On (light)</div>
     <div class="cp-id">switch-on__ideal__default__light</div>
-  </div>
-</a>
-<a class="cp-card" data-card-theme="dark" data-bg-theme="dark" href="/p/switch-on__ideal__default__dark">
-  <div class="cp-imgwrap">
-    <img loading="lazy" alt="Switch · On (dark)" src="/render/switch-on__ideal__default__dark.png">
-  </div>
-  <div class="cp-meta">
-    <div class="cp-label" title="switch-on__ideal__default__dark">Switch · On (dark)</div>
-    <div class="cp-id">switch-on__ideal__default__dark</div>
   </div>
 </a>
 <a class="cp-card" href="/p/badge">
@@ -311,19 +303,32 @@ var theme = (stored === "light" || stored === "dark") ? stored
 var themeBtns = document.querySelectorAll(".cp-theme-btn");
       function apply() {
         themeBtns.forEach(function (b) {
-          b.setAttribute("aria-pressed", b.getAttribute("data-theme-choice") === theme ? "true" : "false");
-        });
+  b.setAttribute("aria-pressed", b.getAttribute("data-theme-choice") === theme ? "true" : "false");
+});
+var k = theme === "dark" ? "d" : "l";
+cards.forEach(function (c) {
+  if (c.getAttribute("data-swap") !== "1") return;
+  var src = c.getAttribute("data-" + k + "-src");
+  if (!src) return;
+  var img = c.querySelector("img");
+  var lab = c.querySelector(".cp-label");
+  var idn = c.querySelector(".cp-id");
+  var lbl = c.getAttribute("data-" + k + "-label");
+  if (img) { img.src = src; img.setAttribute("alt", lbl); }
+  c.setAttribute("href", c.getAttribute("data-" + k + "-href"));
+  if (lab) { lab.textContent = lbl; lab.setAttribute("title", lbl); }
+  if (idn) idn.textContent = c.getAttribute("data-" + k + "-id");
+  c.setAttribute("data-bg-theme", theme);
+});
         var q = input ? input.value.trim().toLowerCase() : "";
         var shown = 0;
         cards.forEach(function (c) {
-          var ct = c.getAttribute("data-card-theme");
           var lab = c.querySelector(".cp-label");
           var idn = c.querySelector(".cp-id");
           var hay = ((lab ? lab.textContent : "") + " " + (idn ? idn.textContent : "")).toLowerCase();
           var searchOk = q === "" || hay.indexOf(q) !== -1;
-          var visible = (!ct || ct === theme) && searchOk;
-          c.hidden = !visible;
-          if (visible) shown++;
+          c.hidden = !searchOk;
+          if (searchOk) shown++;
         });
         if (count) count.textContent = q === "" ? "" : (shown + " of " + total);
         if (empty) empty.hidden = shown !== 0;
