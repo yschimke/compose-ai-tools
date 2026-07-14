@@ -372,14 +372,25 @@ object ServeWeb {
     cardTheme(id) ?: if (darkFirst) "dark" else null
 
   /**
-   * The flattened id with its `light`/`dark` theme token stripped — the key that pairs a
-   * component's light and dark variants into ONE grid card. `button-filled__ideal__default__light`
-   * and `…__dark` both key to `button-filled__ideal__default`, so the Light/Dark control can swap
-   * the card between the two baked renders in place. Only a standalone theme *segment* is removed
-   * (a component slug like `theme-meshcore-light` is one segment and stays intact).
+   * The flattened id with its theme token stripped — the key that pairs a component's light and
+   * dark variants into ONE grid card. `button-filled__ideal__default__light` and `…__dark` both key
+   * to `button-filled__ideal__default`, so the Light/Dark control can swap the card between the two
+   * baked renders in place.
+   *
+   * Strips ONLY the segment [cardTheme] treats as the theme — the *last* standalone `light`/`dark`
+   * segment after the component-id head — never every one. A flattened id can carry a non-theme
+   * `light`/`dark` *state* segment earlier (e.g. `toggle__dark__default__light` is the dark-state
+   * toggle rendered in the light theme); stripping all of them would collapse `toggle__dark__…` and
+   * `toggle__light__…` onto one key and drop a state. A component slug like `theme-meshcore-light`
+   * is a single segment and is never a theme token.
    */
-  private fun baseKey(id: String): String =
-    id.split("__").filterNot { it == "light" || it == "dark" }.joinToString("__")
+  private fun baseKey(id: String): String {
+    val parts = id.split("__")
+    val themeIdx =
+      parts.indices.lastOrNull { it >= 1 && (parts[it] == "light" || parts[it] == "dark") }
+    return if (themeIdx == null) id
+    else parts.filterIndexed { i, _ -> i != themeIdx }.joinToString("__")
+  }
 
   /**
    * One grid card: a component that may carry a baked `light` and/or `dark` variant (a pair the

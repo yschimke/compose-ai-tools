@@ -1260,6 +1260,40 @@ class ServeWebFixtureTest {
     )
   }
 
+  @Test
+  fun `grouping strips only the theme segment, keeping a non-theme light-dark state segment`() {
+    // A flattened id can carry a non-theme `light`/`dark` STATE segment before the theme segment
+    // (the `toggle__<state>__default__<theme>` shape the catalog routing already documents). Only
+    // the LAST light/dark (the theme, per cardTheme) may be stripped for the grouping key — else
+    // the
+    // dark-state and light-state toggles collapse onto one card and a state disappears.
+    val stateful =
+      listOf(
+        ServePreview("toggle__dark__default__light", "Toggle · dark state (light)"),
+        ServePreview("toggle__dark__default__dark", "Toggle · dark state (dark)"),
+        ServePreview("toggle__light__default__light", "Toggle · light state (light)"),
+        ServePreview("toggle__light__default__dark", "Toggle · light state (dark)"),
+      )
+    val html = ServeWeb.landingPage("compose-m3", stateful, token)
+    // Two distinct components (dark-state, light-state), each a swap pair → two swap cards, not
+    // one.
+    assertEquals(
+      2,
+      Regex("class=\"cp-card\" data-swap=\"1\"").findAll(html).count(),
+      "the dark-state and light-state toggles stay separate swap cards",
+    )
+    // Both states survive: each state's light+dark ids appear as swap-card data (none dropped).
+    for (id in
+      listOf(
+        "toggle__dark__default__light",
+        "toggle__dark__default__dark",
+        "toggle__light__default__light",
+        "toggle__light__default__dark",
+      )) {
+      assertTrue(html.contains(id), "the $id variant must survive grouping, not be dropped")
+    }
+  }
+
   private fun assertGolden(file: File, rendered: String) {
     assertTrue(
       file.isFile,
