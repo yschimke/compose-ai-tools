@@ -113,9 +113,10 @@ dark scheme.
 **[▶ Open the ${cell(title)} ↔ ${cell(crossSystem.title)} matches (htmlpreview)](${matchesUrl})**
 
 Every component paired with its counterpart in **${cell(crossSystem.title)}**, side by side — the
-authored \`parallel\` mapping in the catalog spec, rendered as a cross-system contact sheet. This
-branch's baked render on the left; the ${cell(crossSystem.system)} render fetched live from its own
-\`design-artifacts/${cell(crossSystem.system)}\` branch on the right.
+authored \`parallel\` mapping in the catalog spec, rendered as a cross-system contact sheet. Both
+sides are static thumbnails — this branch's baked render on the left, the ${cell(crossSystem.system)}
+render baked from its own \`design-artifacts/${cell(crossSystem.system)}\` branch on the right — and each
+links to the live preview server on click.
 `
     : "";
 

@@ -12,55 +12,25 @@
  * spec, and the other system's component list (also from its committed spec), and
  * computes three buckets: paired, only-here, and only-there.
  *
- * The local (this-system) render is referenced by the catalog's own relative
- * `images/...` path, so it works straight from the branch checkout. The OTHER
- * system's render lives on its own `design-artifacts/<other>` branch, so the page
- * fetches that branch's `catalog.json` at view time (from the same
- * `raw.githubusercontent.com` origin the images already load from) and fills in
- * the parallel thumbnails by slug. That keeps the page self-contained at build
- * time and always fresh; if the fetch fails (offline, or opened over file://) the
- * pair still lists the parallel's name with a link to the other catalog.
+ * Both columns are **static PNG thumbnails that link to the live preview server**
+ * (see render-preview-embed.mjs): the this-system render is referenced by the
+ * catalog's own relative `images/...` path; the other system's render lives on its
+ * own `design-artifacts/<other>` branch, so its thumbnail is baked to that
+ * branch's `raw.githubusercontent.com` URL. The URL comes from the sibling's
+ * `catalog.json`, resolved once at BUILD time (the driver passes it in as
+ * `otherManifest`) — no runtime fetch, so the thumbnails render on
+ * htmlpreview.github.io / file:// / the raw branch alike. Clicking either
+ * thumbnail opens the component on the live server for a re-render. A parallel
+ * that's declared in the sibling spec but not yet rendered on its branch shows a
+ * "not rendered yet" cell with a link — never a perpetual "loading …".
  *
  * Pure + dependency-free: returns an HTML string. Slug derivation matches
- * render-wireframe-svg's `slug` so the client can map componentId → image path
- * the same way the export wrote them.
+ * render-wireframe-svg's `slug` for the only-here / only-there buckets.
  */
 
 import { slug } from "./render-wireframe-svg.mjs";
-
-/** Minimal HTML-escape for text interpolated into the page. */
-function esc(s) {
-  return String(s ?? "").replace(
-    /[&<>"']/g,
-    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
-  );
-}
-
-/** A component's `ideal` capture images (excludes the `layout` wireframe variant). */
-function idealImages(component) {
-  return (component.images ?? []).filter((i) => i.variant === "ideal");
-}
-
-/** True for the label-only, resting render (no folded state, no content-axis props). */
-function isDefault(image) {
-  const hasProps = Object.keys(image.props ?? {}).length > 0;
-  return !hasProps && (image.state ?? "default") === "default";
-}
-
-/**
- * The hero PNG for a component: the default, light-themed, largest render — the
- * same pick the index/compare pages make, so the paired thumbnail matches what a
- * browser sees elsewhere. Returns the image record (with `.path`) or undefined.
- */
-function heroImage(component) {
-  const ideal = idealImages(component);
-  const pool = ideal.length ? ideal : (component.images ?? []);
-  const defaults = pool.filter(isDefault);
-  const byDefault = defaults.length ? defaults : pool;
-  const light = byDefault.filter((i) => i.theme === "light");
-  const chooseFrom = light.length ? light : byDefault;
-  return [...chooseFrom].sort((a, b) => (b.width ?? 0) - (a.width ?? 0))[0];
-}
+import { esc, heroImageOf, previewEmbed, previewEmbedStyles } from "./render-preview-embed.mjs";
+import { DEFAULT_PREVIEW_BASE, livePreviewUrl } from "./live-preview.mjs";
 
 /**
  * Split the local catalog against the other system's components using the authored
@@ -94,34 +64,46 @@ export function crossSystemMatches(localComponents, parallelById, otherComponent
   return { paired, onlyLocal, onlyOther };
 }
 
-/** The `<img>` (or placeholder) for the local render column. */
-function localShot(component) {
-  const hero = heroImage(component);
+/** The this-system thumbnail: baked relative PNG, links to its own live preview. */
+function localEmbed(component) {
+  const hero = heroImageOf(component);
   const id = component.componentId ?? "(unnamed)";
-  return hero
-    ? `<div class="shot"><img loading="lazy" src="${esc(hero.path)}" alt="${esc(id)}" /></div>`
-    : `<div class="shot shot--missing">no render</div>`;
+  if (!hero?.path) return previewEmbed({ fallback: "no render", frame: "solid" });
+  return previewEmbed({ imageUrl: hero.path, liveUrl: hero.livePreview, alt: id, title: id });
 }
 
 /**
- * The other-system column: a slot the client fills from the other branch's
- * catalog.json (keyed by the parallel's slug via `data-parallel`), plus a link to
- * the other catalog. When the parallel isn't catalogued there yet, an inert note.
+ * The other-system thumbnail. Three cases, none of which ever "load":
+ *  - the parallel isn't in the sibling spec at all → an inert "no sticker yet";
+ *  - it's rendered on the sibling branch → a baked PNG on that branch's raw URL,
+ *    linking to the sibling's live preview;
+ *  - it's declared but not (yet) rendered on the branch → "not rendered yet" + a
+ *    link to the sibling catalog.
  */
-function otherShot(parallelId, other, otherBranchBase, otherIndexUrl) {
+function otherEmbed(pair, opts) {
+  const { parallelId, other } = pair;
   if (!other) {
-    return `<div class="shot shot--missing">no <code>${esc(parallelId)}</code> sticker yet</div>`;
+    return `<span class="pv-embed"><span class="pv-frame pv-frame--solid"><span class="pv-missing">no <code>${esc(parallelId)}</code> sticker yet</span></span></span>`;
   }
-  const s = slug(parallelId);
-  return `<div class="shot shot--other" data-parallel="${esc(s)}">
-    <span class="pending">loading ${esc(parallelId)}…</span>
-    <a class="wf" href="${esc(otherIndexUrl)}" target="_blank" rel="noopener">open ↗</a>
-  </div>`;
+  const hero = opts.otherHeroById?.get(parallelId);
+  if (hero?.path) {
+    const imageUrl = opts.otherBranchBase + hero.path;
+    const liveUrl = hero.livePreview || livePreviewUrl(opts.previewBase, opts.otherSystem, hero.path);
+    return previewEmbed({ imageUrl, liveUrl, alt: parallelId, title: parallelId });
+  }
+  return `<span class="pv-embed" data-parallel="${esc(slug(parallelId))}"><span class="pv-frame pv-frame--solid"><span class="pv-missing">not rendered yet</span></span><a class="pv-open" href="${esc(opts.otherIndexUrl)}" target="_blank" rel="noopener">open ${esc(opts.otherSystem)} ↗</a></span>`;
+}
+
+/** True when both sides carry a rendered thumbnail (the pair fully renders). */
+function rendersBothSides(pair, opts) {
+  const localOk = Boolean(heroImageOf(pair.local)?.path);
+  const otherOk = Boolean(pair.other && opts.otherHeroById?.get(pair.parallelId)?.path);
+  return localOk && otherOk;
 }
 
 /**
- * One `<tr>` per pairing. The local render is baked in; the other render is
- * resolved client-side from the other branch's catalog.
+ * One `<tr>` per pairing. Both renders are baked static thumbnails that link to
+ * the live server; nothing is resolved at view time.
  */
 function pairRow(pair, opts) {
   const { local, parallelId, other } = pair;
@@ -129,8 +111,8 @@ function pairRow(pair, opts) {
   const group = local.group ?? "Components";
   return `<tr class="crow">
   <th scope="row" class="rowhead"><span class="cid">${esc(id)}</span><span class="grp">${esc(group)}</span></th>
-  <td class="col-a">${localShot(local)}</td>
-  <td class="col-b">${otherShot(parallelId, other, opts.otherBranchBase, opts.otherIndexUrl)}</td>
+  <td class="col-a">${localEmbed(local)}</td>
+  <td class="col-b">${otherEmbed(pair, opts)}</td>
   <td class="rel"><code>${esc(parallelId)}</code>${other ? "" : `<span class="badge" title="the parallel isn't in the ${esc(opts.otherSystem)} catalog yet">unpaired</span>`}</td>
 </tr>`;
 }
@@ -146,70 +128,30 @@ function soloRow(component) {
 const DEFAULT_REPO = "yschimke/compose-ai-tools";
 
 /**
- * The client-side resolver, inlined so the page is self-contained. It fetches the
- * other branch's catalog.json once, maps componentId-slug → hero image path, and
- * fills each `[data-parallel]` slot with an <img> pointing at the other branch's
- * raw asset. Best-effort: on any failure the slots keep their name + link.
+ * Build `parallelId → hero image record` from a fetched sibling `catalog.json`
+ * manifest, so the other-system column can bake a static thumbnail URL. Empty map
+ * when no manifest was resolved (offline / first publish) — the column then shows
+ * the "not rendered yet" fallback instead.
  */
-const RESOLVER = (catalogUrl, branchBase) => String.raw`
-(() => {
-  "use strict";
-  var CATALOG = ${JSON.stringify(catalogUrl)};
-  var BASE = ${JSON.stringify(branchBase)};
-  function slugOf(s) {
-    return String(s == null ? "" : s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+function heroIndex(manifest) {
+  const out = new Map();
+  for (const component of manifest?.components ?? []) {
+    const hero = heroImageOf(component);
+    if (hero?.path) out.set(component.componentId, hero);
   }
-  function heroPath(component) {
-    var imgs = (component.images || []).filter(function (i) { return i.variant === "ideal"; });
-    if (!imgs.length) imgs = component.images || [];
-    var defaults = imgs.filter(function (i) {
-      return Object.keys(i.props || {}).length === 0 && (i.state || "default") === "default";
-    });
-    var pool = defaults.length ? defaults : imgs;
-    var light = pool.filter(function (i) { return i.theme === "light"; });
-    var from = light.length ? light : pool;
-    from = from.slice().sort(function (a, b) { return (b.width || 0) - (a.width || 0); });
-    return from[0] && from[0].path;
-  }
-  fetch(CATALOG).then(function (r) { return r.json(); }).then(function (manifest) {
-    var bySlug = {};
-    (manifest.components || []).forEach(function (c) {
-      var p = heroPath(c);
-      if (p) bySlug[slugOf(c.componentId)] = p;
-    });
-    document.querySelectorAll(".shot--other[data-parallel]").forEach(function (slot) {
-      var path = bySlug[slot.getAttribute("data-parallel")];
-      if (!path) {
-        // The sibling catalog loaded but carries no render for this parallel —
-        // e.g. the other branch is stale (published before its matching sticker
-        // landed) or that render was skipped. Don't leave "loading …" forever.
-        var pending = slot.querySelector(".pending");
-        if (pending) pending.textContent = "not published yet";
-        slot.classList.add("shot--stale");
-        return;
-      }
-      var img = new Image();
-      img.loading = "lazy";
-      img.decoding = "async";
-      img.crossOrigin = "anonymous";
-      img.alt = slot.getAttribute("data-parallel");
-      img.src = BASE + path;
-      img.onload = function () {
-        var pending = slot.querySelector(".pending");
-        if (pending) pending.remove();
-        slot.insertBefore(img, slot.firstChild);
-        slot.classList.add("shot--loaded");
-      };
-    });
-  }).catch(function () { /* offline / file:// — keep the name + link fallback */ });
-})();
-`;
+  return out;
+}
 
 /**
  * Render the catalog to a complete cross-system comparison page.
  * @param {object} catalog the local flattened manifest (system, title, components, …)
  * @param {object} opts
- *   { parallelById, otherComponents, otherSystem, otherTitle?, repo? }
+ *   {
+ *     parallelById,        // componentId → sibling componentId (from the spec)
+ *     otherComponents,     // sibling spec components ({componentId, group, caption})
+ *     otherManifest,       // OPTIONAL fetched sibling catalog.json (for baked thumbnails)
+ *     otherSystem, otherTitle?, repo?, previewBase?
+ *   }
  * @returns {string} a self-contained matches.html
  */
 export function renderCrossSystemHtml(catalog, opts = {}) {
@@ -222,8 +164,9 @@ export function renderCrossSystemHtml(catalog, opts = {}) {
   const otherTitle = opts.otherTitle ?? otherSystem;
   const otherBranch = `design-artifacts/${otherSystem}`;
   const otherBranchBase = `https://raw.githubusercontent.com/${repo}/${otherBranch}/`;
-  const otherCatalogUrl = `${otherBranchBase}catalog.json`;
   const otherIndexUrl = `https://htmlpreview.github.io/?https://github.com/${repo}/blob/${otherBranch}/index.html`;
+  const previewBase = opts.previewBase ?? DEFAULT_PREVIEW_BASE;
+  const otherHeroById = heroIndex(opts.otherManifest);
 
   const { paired, onlyLocal, onlyOther } = crossSystemMatches(
     components,
@@ -231,9 +174,9 @@ export function renderCrossSystemHtml(catalog, opts = {}) {
     opts.otherComponents ?? [],
   );
 
-  const rowOpts = { otherSystem, otherBranchBase, otherIndexUrl };
+  const rowOpts = { otherSystem, otherBranchBase, otherIndexUrl, otherHeroById, previewBase };
   const body = paired.map((p) => pairRow(p, rowOpts)).join("\n");
-  const pairedReal = paired.filter((p) => p.other).length;
+  const pairedReal = paired.filter((p) => rendersBothSides(p, rowOpts)).length;
 
   const onlyLocalList = onlyLocal.length
     ? `<section class="solo"><h2>Only in ${esc(system)} <span>${onlyLocal.length}</span></h2>
@@ -258,7 +201,7 @@ export function renderCrossSystemHtml(catalog, opts = {}) {
 <title>${esc(title)} ↔ ${esc(otherTitle)} — component matches</title>
 <style>
   :root { color-scheme: light dark; --bg:#0f0f10; --panel:#1b1b1d; --fg:#e8e8ea; --muted:#9b9ba1; --line:#2a2a2d;
-    --accent:#7dd87d; --warn:#e0c060; }
+    --accent:#7dd87d; --warn:#e0c060; --link:#8ab4f8; }
   * { box-sizing: border-box; }
   body { margin:0; font:14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--fg); }
   header.top { padding:24px clamp(16px,4vw,40px); border-bottom:1px solid var(--line); }
@@ -276,22 +219,11 @@ export function renderCrossSystemHtml(catalog, opts = {}) {
   th.rowhead .cid { display:block; word-break:break-word; }
   th.rowhead .grp { display:block; margin-top:3px; font-weight:400; font-size:11px; color:var(--muted); }
   td { padding:10px 12px; vertical-align:middle; }
-  .shot { position:relative; display:inline-grid; place-items:center; min-width:120px; min-height:80px; padding:10px; border-radius:10px;
-    background-color:#161617;
-    background-image:
-      linear-gradient(45deg,#202022 25%,transparent 25%),
-      linear-gradient(-45deg,#202022 25%,transparent 25%),
-      linear-gradient(45deg,transparent 75%,#202022 75%),
-      linear-gradient(-45deg,transparent 75%,#202022 75%);
-    background-size:16px 16px; background-position:0 0,0 8px,8px -8px,-8px 0; }
-  .shot img { max-width:260px; max-height:200px; height:auto; display:block; }
-  .shot--missing { color:var(--muted); font-style:italic; background:var(--panel); }
-  .shot--other .pending { color:var(--muted); font-size:12px; }
-  .shot--stale .pending { color:var(--warn); font-style:italic; }
-  .shot--other .wf { position:absolute; bottom:4px; right:6px; font-size:11px; }
+${previewEmbedStyles({ accent: "var(--link)", muted: "var(--muted)" })}
+  .pv-missing code { background:var(--panel); padding:0 4px; border-radius:4px; font-style:normal; }
+  a.pv-open { font-size:11px; color:var(--link); text-decoration:none; }
+  a.pv-open:hover { text-decoration:underline; }
   .rel code { font-size:12px; }
-  a.wf { color:#8ab4f8; text-decoration:none; }
-  a.wf:hover { text-decoration:underline; }
   .badge { display:inline-block; margin-left:6px; font-size:10px; padding:0 6px; border-radius:999px;
     background:rgba(224,192,96,0.12); color:var(--warn); border:1px solid var(--warn); }
   section.solo { margin-top:36px; }
@@ -302,7 +234,7 @@ export function renderCrossSystemHtml(catalog, opts = {}) {
   section.solo .cid { font-weight:600; }
   section.solo .grp { color:var(--muted); font-size:11px; margin-left:8px; }
   section.solo .cap { display:block; color:var(--muted); font-size:12px; }
-  @media (max-width:640px){ .shot img { max-width:150px; } th.rowhead { width:auto; } }
+  @media (max-width:640px){ th.rowhead { width:auto; } }
 </style>
 </head>
 <body>
@@ -310,10 +242,11 @@ export function renderCrossSystemHtml(catalog, opts = {}) {
   <h1>${esc(title)} ↔ ${esc(otherTitle)}</h1>
   <div class="subtitle">${subtitleParts.map((s) => `<span>${s}</span>`).join("")}</div>
   <p class="note">Each row pairs a <strong>${esc(system)}</strong> component with its declared
-  <strong>${esc(otherSystem)}</strong> parallel (the <code>parallel</code> field in the catalog spec). The
-  left render is this branch's baked PNG; the right one is fetched live from the
-  <code>${esc(otherBranch)}</code> branch, so browsing this page shows both systems side by side. A parallel
-  that isn't catalogued in ${esc(otherSystem)} yet is flagged <span class="badge">unpaired</span>. Components with
+  <strong>${esc(otherSystem)}</strong> parallel (the <code>parallel</code> field in the catalog spec). Both
+  renders are static thumbnails — the left from this branch, the right baked from the
+  <code>${esc(otherBranch)}</code> branch — and each <strong>links to the live preview server</strong> on
+  click, where the component re-renders under other themes / locales / devices. A parallel that isn't
+  catalogued in ${esc(otherSystem)} yet is flagged <span class="badge">unpaired</span>. Components with
   no parallel on either side are listed below the table.</p>
 </header>
 <main>
@@ -331,7 +264,6 @@ export function renderCrossSystemHtml(catalog, opts = {}) {
   ${onlyLocalList}
   ${onlyOtherList}
 </main>
-<script>${RESOLVER(otherCatalogUrl, otherBranchBase)}</script>
 </body>
 </html>
 `;

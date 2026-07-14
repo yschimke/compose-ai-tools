@@ -59,6 +59,28 @@ import { DEFAULT_PREVIEW_BASE, livePreviewUrl } from "./live-preview.mjs";
 import { buildFontsManifest, fontsPayloadsFromBundle } from "./render-fonts-manifest.mjs";
 import { candidatePreviewBundle } from "./bundle-previews.mjs";
 
+/**
+ * Best-effort fetch + parse of a JSON URL, with a short timeout. Returns null on
+ * any failure (offline, 404, non-JSON, timeout) so callers degrade gracefully.
+ * Used to resolve a sibling `design-artifacts/<system>` branch's `catalog.json`
+ * at BUILD time, so the cross-system `matches.html` can bake static sibling
+ * thumbnails (which render anywhere) instead of fetching them at view time
+ * (which htmlpreview's CSP silently blocks, leaving cells stuck on "loading …").
+ */
+async function fetchJsonBestEffort(url, { timeoutMs = 15000 } = {}) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Relative paths of every file under `dir` (forward-slashed), for the webRender manifest. */
 async function listFilesRecursive(dir) {
   const out = [];
@@ -729,15 +751,41 @@ if (spec.compareWith) {
         caption: c.caption,
       })),
     );
+    // Resolve the sibling branch's rendered catalog.json now, so each paired
+    // thumbnail can be baked to a static PNG URL on the sibling's own
+    // `design-artifacts/<other>` branch (raw.githubusercontent.com) — no runtime
+    // fetch, so the thumbnails render on htmlpreview / file:// / the raw branch
+    // alike. Best-effort: if the sibling branch isn't published yet (first run) or
+    // is unreachable, `otherManifest` is null and those cells fall back to a
+    // "not rendered yet" note with a link, never a perpetual "loading …". The
+    // fetched manifest may be one generation stale (both branches regenerate in the
+    // same workflow run), but the baked image URLs point at the branch tip, so the
+    // pixels stay current — only a brand-new sibling component waits a run.
+    const repo = values["source-repo"] || process.env.GITHUB_REPOSITORY || "yschimke/compose-ai-tools";
+    const otherCatalogUrl = `https://raw.githubusercontent.com/${repo}/design-artifacts/${spec.compareWith}/catalog.json`;
+    const otherManifest = await fetchJsonBestEffort(otherCatalogUrl);
+    if (otherManifest) {
+      console.log(
+        `[${spec.system}] resolved ${otherManifest.components?.length ?? 0} sibling render(s) ` +
+          `from ${spec.compareWith} for matches thumbnails`,
+      );
+    } else {
+      console.warn(
+        `[${spec.system}] sibling ${spec.compareWith} catalog not fetched — matches thumbnails ` +
+          `show "not rendered yet" until it publishes`,
+      );
+    }
     const matchesPath = join(outPath, "matches.html");
     await writeFile(
       matchesPath,
       renderCrossSystemHtml(indexManifest, {
         parallelById,
         otherComponents,
+        otherManifest,
         otherSystem: spec.compareWith,
         otherTitle: otherSpec.title,
-        repo: values["source-repo"] || process.env.GITHUB_REPOSITORY || undefined,
+        repo,
+        previewBase,
       }),
       "utf8",
     );
