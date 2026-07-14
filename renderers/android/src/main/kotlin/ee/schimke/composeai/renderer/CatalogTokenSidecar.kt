@@ -1,9 +1,12 @@
 package ee.schimke.composeai.renderer
 
+import androidx.compose.foundation.shape.CornerBasedShape
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.isSpecified
 import ee.schimke.composeai.io.SystemFileSystem
@@ -36,6 +39,10 @@ import okio.Path.Companion.toPath
 internal object CatalogTokenSidecar {
 
   const val SCHEMA = "compose-preview-catalog-tokens/v1"
+
+  /** Reference square (px, at density 1) a `CornerBasedShape`'s corners resolve against — see
+   * [shapeJson]. Fixed so an 8dp vs 18dp vs 50% corner produce distinct, comparable radii. */
+  private const val SHAPE_REFERENCE_PX = 48f
 
   /**
    * `<outputDir>/data/catalog-tokens/<id>.catalog.json`, mirroring [NotificationSidecar.pathFor].
@@ -153,7 +160,7 @@ internal object CatalogTokenSidecar {
 
   /** Returns the sidecar JSON, or null when no token resolved (nothing worth writing). */
   private fun buildJson(previewId: String, tokens: List<CatalogToken>): String? {
-    val entries = tokens.mapNotNull { tokenJson(it) }
+    val entries = tokens.flatMap { tokenEntries(it) }
     if (entries.isEmpty()) return null
     val sb = StringBuilder()
     sb.append('{')
@@ -168,53 +175,134 @@ internal object CatalogTokenSidecar {
     return sb.toString()
   }
 
-  /** One token object, or null if its value couldn't be reflected. */
-  private fun tokenJson(token: CatalogToken): String? {
-    val value =
-      when (token.tokenKind) {
-        CatalogTokenKind.COLOR ->
-          runCatching {
-              colorJson(CatalogValueReflection.reflectColor(token.className, token.member))
+  /**
+   * The sidecar entries a token contributes: one for a single token (`COLOR` / `TEXT_STYLE` /
+   * `SHAPE`), or one **per resolved role** for a whole-object scale (`COLOR_SCHEME` / `TYPOGRAPHY` /
+   * `SHAPES`) — the exact palette / type / shape roles the PNG sheet drew, each with its resolved
+   * value, so the detached bundle/export path keeps the data even though it never re-renders. The
+   * whole-object roles are read via the same typed property access the render strategy uses (a
+   * `ColorScheme`/`Typography`/`Shapes` is a plain object field, so there's no `Color`-erasure
+   * problem — only a single top-level `Color` erases to `long`, which [reflectColor] handles). A
+   * token whose value can't be reflected contributes nothing (empty list), not a fatal error.
+   */
+  private fun tokenEntries(token: CatalogToken): List<String> =
+    runCatching {
+        when (token.tokenKind) {
+          CatalogTokenKind.COLOR ->
+            listOf(
+              entryJson(
+                token.label,
+                token.className,
+                token.member,
+                "COLOR",
+                colorJson(CatalogValueReflection.reflectColor(token.className, token.member)),
+              )
+            )
+          CatalogTokenKind.TEXT_STYLE ->
+            listOf(
+              entryJson(
+                token.label,
+                token.className,
+                token.member,
+                "TEXT_STYLE",
+                textStyleJson(
+                  CatalogValueReflection.reflectTextStyle(token.className, token.member)
+                ),
+              )
+            )
+          CatalogTokenKind.SHAPE ->
+            listOf(
+              entryJson(
+                token.label,
+                token.className,
+                token.member,
+                "SHAPE",
+                shapeJson(CatalogValueReflection.reflectAs(token.className, token.member)),
+              )
+            )
+          CatalogTokenKind.COLOR_SCHEME ->
+            colorSchemeRoles(CatalogValueReflection.reflectAs(token.className, token.member)).map {
+              (role, color) ->
+              entryJson(
+                "${token.label} · $role",
+                token.className,
+                token.member,
+                "COLOR",
+                colorJson(color),
+              )
             }
-            .getOrNull()
-        CatalogTokenKind.TEXT_STYLE ->
-          runCatching {
-              textStyleJson(CatalogValueReflection.reflectTextStyle(token.className, token.member))
+          CatalogTokenKind.TYPOGRAPHY ->
+            typographyRoles(CatalogValueReflection.reflectAs(token.className, token.member)).map {
+              (role, style) ->
+              entryJson(
+                "${token.label} · $role",
+                token.className,
+                token.member,
+                "TEXT_STYLE",
+                textStyleJson(style),
+              )
             }
-            .getOrNull()
-        CatalogTokenKind.SHAPE ->
-          runCatching {
-              shapeJson(CatalogValueReflection.reflectAs(token.className, token.member))
+          CatalogTokenKind.SHAPES ->
+            shapesRoles(CatalogValueReflection.reflectAs(token.className, token.member)).map {
+              (role, shape) ->
+              entryJson(
+                "${token.label} · $role",
+                token.className,
+                token.member,
+                "SHAPE",
+                shapeJson(shape),
+              )
             }
-            .getOrNull()
-        // Whole-object scales (`ColorScheme` / `Typography` / `Shapes`) expand to a specimen sheet
-        // visually; the per-role resolved values are surfaced by the `@ThemeCatalog` `writeResolved`
-        // path (which reads them live from `MaterialTheme`), not this static reflection path. Emit a
-        // marker so the sheet's declaration still shows up in the sidecar without erasure-fragile
-        // role reflection.
-        CatalogTokenKind.COLOR_SCHEME -> "\"colorScheme\":{\"whole\":true}"
-        CatalogTokenKind.TYPOGRAPHY -> "\"typography\":{\"whole\":true}"
-        CatalogTokenKind.SHAPES -> "\"shapes\":{\"whole\":true}"
-      } ?: return null
+        }
+      }
+      .getOrDefault(emptyList())
+
+  /** One `{label, className, member, kind, <value>}` sidecar entry. */
+  private fun entryJson(
+    label: String,
+    className: String,
+    member: String,
+    kind: String,
+    value: String,
+  ): String {
     val sb = StringBuilder()
     sb.append('{')
-    sb.append("\"label\":").append(jsonString(token.label)).append(',')
-    sb.append("\"className\":").append(jsonString(token.className)).append(',')
-    sb.append("\"member\":").append(jsonString(token.member)).append(',')
-    sb.append("\"kind\":").append(jsonString(token.tokenKind.name)).append(',')
+    sb.append("\"label\":").append(jsonString(label)).append(',')
+    sb.append("\"className\":").append(jsonString(className)).append(',')
+    sb.append("\"member\":").append(jsonString(member)).append(',')
+    sb.append("\"kind\":").append(jsonString(kind)).append(',')
     sb.append(value)
     sb.append('}')
     return sb.toString()
   }
 
   /**
-   * `"shape":{"type":"<simple class name>"}` — a `Shape` carries no portable metric to serialise
-   * (corner sizes are density-dependent and behind `CornerBasedShape`'s internal `CornerSize`), so
-   * the sidecar records the shape's class (e.g. `RoundedCornerShape`, `CutCornerShape`) as a stable,
-   * best-effort descriptor; the PNG carries the actual geometry.
+   * `"shape":{"type":"<class>", "cornersPx":{…}, "referenceSizePx":48}` — a `Shape`'s corner sizes
+   * are density- and size-relative (a `CornerSize` resolves against a shape size + `Density`), so
+   * there's no single portable metric. To keep the data comparable across tokens (an 8dp vs 18dp vs
+   * 50% corner must not collapse to the same class name), we resolve each corner to px at a fixed
+   * [SHAPE_REFERENCE_PX] reference square at density 1 and record both the class and those resolved
+   * radii. Non-`CornerBasedShape` shapes (e.g. `CircleShape`) record just the class.
    */
-  private fun shapeJson(shape: Shape): String =
-    "\"shape\":{\"type\":${jsonString(shape::class.java.simpleName)}}"
+  private fun shapeJson(shape: Shape): String {
+    val type = jsonString(shape::class.java.simpleName)
+    val corners =
+      (shape as? CornerBasedShape)?.let { s ->
+        runCatching {
+            val size = Size(SHAPE_REFERENCE_PX, SHAPE_REFERENCE_PX)
+            val density = Density(1f)
+            "\"cornersPx\":{" +
+              "\"topStart\":${s.topStart.toPx(size, density)}," +
+              "\"topEnd\":${s.topEnd.toPx(size, density)}," +
+              "\"bottomEnd\":${s.bottomEnd.toPx(size, density)}," +
+              "\"bottomStart\":${s.bottomStart.toPx(size, density)}}," +
+              "\"referenceSizePx\":${SHAPE_REFERENCE_PX.toInt()}"
+          }
+          .getOrNull()
+      }
+    return if (corners != null) "\"shape\":{\"type\":$type,$corners}"
+    else "\"shape\":{\"type\":$type}"
+  }
 
   /** `"color":{"hex":"#AARRGGBB","argb":<int>}` — hex matches the sheet's swatch label. */
   private fun colorJson(color: Color): String {

@@ -473,7 +473,7 @@ private fun catalogRowsFor(token: CatalogToken): List<CatalogRow> =
   }
 
 /** The Material 3 colour roles, in specimen order, read off a resolved [ColorScheme]. */
-private fun colorSchemeRoles(scheme: ColorScheme): List<Pair<String, Color>> =
+internal fun colorSchemeRoles(scheme: ColorScheme): List<Pair<String, Color>> =
   listOf(
     "primary" to scheme.primary,
     "onPrimary" to scheme.onPrimary,
@@ -496,7 +496,7 @@ private fun colorSchemeRoles(scheme: ColorScheme): List<Pair<String, Color>> =
   )
 
 /** The Material 3 type scale, in specimen order, read off a resolved [Typography]. */
-private fun typographyRoles(typography: Typography): List<Pair<String, TextStyle>> =
+internal fun typographyRoles(typography: Typography): List<Pair<String, TextStyle>> =
   listOf(
     "displayLarge" to typography.displayLarge,
     "displayMedium" to typography.displayMedium,
@@ -516,7 +516,7 @@ private fun typographyRoles(typography: Typography): List<Pair<String, TextStyle
   )
 
 /** The five Material 3 shape roles, in specimen order, read off a resolved [Shapes]. */
-private fun shapesRoles(shapes: Shapes): List<Pair<String, Shape>> =
+internal fun shapesRoles(shapes: Shapes): List<Pair<String, Shape>> =
   listOf(
     "extraSmall" to shapes.extraSmall,
     "small" to shapes.small,
