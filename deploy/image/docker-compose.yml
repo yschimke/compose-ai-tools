@@ -47,8 +47,10 @@ services:
       # SERVE_ALLOW_RENDER_TRUSTED=1 and auto-sizes SERVE_LIVE_SEATS from the box's RAM (unbounded
       # mem_limit below ⇒ physical RAM; e.g. an 8 GB host — what preview.coo.ee runs — derives 5
       # permits). Fail-closed: only Trusted catalogs execute. wear-m3 publishes an Android liveBundle
-      # and this image bakes the Robolectric Android daemon + SDK, so it renders live (2 seat
-      # permits); remote-m3 carries no runnable bundle → baked PNG. Set SERVE_ALLOW_RENDER_TRUSTED=0
+      # and this image bakes the Robolectric Android daemon + SDK, so it CAN render live (2 seat
+      # permits) — but only once its stickers carry the `previewId` daemon mapping (the published
+      # wear-m3 catalog doesn't yet, so the viewer serves it baked; see docs/public-preview-server.md).
+      # remote-m3 carries no runnable bundle → baked PNG. Set SERVE_ALLOW_RENDER_TRUSTED=0
       # in .env to opt out (Wasm still carries CMP).
       #
       # SERVE_CATALOG_SOURCE_REPO is the OPTIONAL source-build fallback only (a catalog with a Gradle

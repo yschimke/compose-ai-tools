@@ -189,7 +189,8 @@ release that carries `--catalogs-unlisted`).
 released `compose-preview-host` image on an **8 GB host**, no build, with Watchtower rolling each new
 release image (and the server auto-refreshing the catalog branches in between). This is the canonical
 public deployment. Because the image bakes the Android/Robolectric daemon + a minimal Android SDK, it
-serves the Android **Wear** catalog **live** — not just baked PNGs (see below).
+*can* serve an Android catalog like **Wear** live server-side — but only once that catalog's stickers
+carry the `previewId` daemon-mapping (see the live-lane note below).
 
 The from-source [`deploy/vps`](../deploy/vps) path (`cd deploy/vps && DOMAIN=preview.coo.ee
 ./setup.sh`) is the **alternative** for when you need a serve feature *before* it ships in a CLI
@@ -218,9 +219,10 @@ There are two ways to stand that daemon up, both fail-closed on the `Trusted` ve
    ([`ServeBundleDaemon.materialize`](../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt)):
    a **desktop** bundle spawns the Skiko desktop daemon, and an **android** bundle spawns the
    Robolectric daemon **on a box that carries the Android sidecar + SDK** — the prebuilt `deploy/image`
-   does, which is how `wear-m3` renders live here. A bundle whose backend is neither, or an `android`
-   bundle on a box that lacks the Android runtime (e.g. the desktop-only from-source `deploy/vps`),
-   falls through to (2) or baked PNGs.
+   does, which is what lets `wear-m3` render live server-side (the viewer additionally needs the
+   catalog's `previewId` sticker mapping — see the live-lane note below). A bundle whose backend is
+   neither, or an `android` bundle on a box that lacks the Android runtime (e.g. the desktop-only
+   from-source `deploy/vps`), falls through to (2) or baked PNGs.
 
 2. **From source (`source: { repo, ref, module }`) — Gradle build fallback.** For a catalog that
    declares a buildable `source` but no `liveBundle`. This runs the source's Gradle (code execution),
@@ -238,10 +240,20 @@ opt out (the Wasm tier still carries CMP). The other published catalogs (`wear-m
 **Android** — no desktop-runnable bundle — so their live lane runs a heavier Robolectric daemon
 (2 live-seat permits) instead of the desktop one. The prebuilt `deploy/image` (**what `preview.coo.ee`
 runs**) bakes that Robolectric Android daemon + a minimal Android SDK, so `wear-m3` — which publishes
-an Android `liveBundle` — renders **live and per-variant** there (the SVG lane in particular, which a
-baked per-slug vector can't match). A box **without** the Android runtime — the desktop-only
-from-source `deploy/vps` — instead falls back to baked PNGs for these catalogs, fail-closed: no error,
-just no daemon tier. (`remote-m3` carries no runnable bundle, so it stays baked-PNG on either box.)
+an Android `liveBundle` — *can* be rendered live and per-variant there. A box **without** the Android
+runtime — the desktop-only from-source `deploy/vps` — instead falls back to baked PNGs for these
+catalogs, fail-closed: no error, just no daemon tier. (`remote-m3` carries no runnable bundle, so it
+stays baked-PNG on either box.)
+
+> **The live lane also needs a `previewId` sticker→daemon mapping.** The viewer only exposes the
+> live/override controls for a preview whose baked sticker is mapped to its daemon twin — the
+> `previewId` field the exporter records on each `catalog.json` image, from which `ServeCatalogStore`
+> builds the daemon `alias` (`canRenderOverridesFor`). `compose-m3` carries these; the currently
+> published **`wear-m3`/`remote-m3` stickers do not**, so even with the Robolectric daemon running and
+> prewarmed, the viewer serves them baked and the override controls are disabled ("input requires a
+> live stream" if Live Compose is selected). Lighting up the Android live lane end-to-end therefore
+> needs the exporter to emit `previewId` for these catalogs, followed by a `design-artifacts/<system>`
+> regen — the daemon plumbing on the box is already in place.
 
 ### Bounding the live tier — `--live-seats` / `SERVE_LIVE_SEATS`
 
