@@ -1,7 +1,10 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.cli.serve.clampTo
 import ee.schimke.composeai.cli.serve.contentBoxFillsRender
+import ee.schimke.composeai.cli.serve.pngAlphaBounds
 import ee.schimke.composeai.cli.serve.svgContentBox
+import ee.schimke.composeai.cli.serve.union
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -13,6 +16,7 @@ import javax.imageio.ImageIO
 import kotlin.system.exitProcess
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
@@ -115,16 +119,17 @@ internal fun splitBundleZip(
     // canvas. A no-op when cropping is off, the preview carries no figma-svg, or the box already
     // fills the render (a full-screen component / a phone capture). The figma-svg's `translate`
     // still
-    // describes the full render, but every downstream reader either renders the svg by its own
-    // content-cropped `viewBox` or no-ops its view-time crop once the PNG ≈ the box, so this stays
-    // self-consistent (serve's ServeBundleHost.contentCrop guard).
-    val cover =
+    // describes the full render, but it renders by its own content-cropped `viewBox`, and the
+    // coordinate sidecars are re-based below, so the cropped sticker stays fully self-consistent.
+    val cropped: CroppedCover? =
       if (crop) {
-        val svg = entries["$BUNDLE_PREVIEWS_DIR/$id$BUNDLE_FIGMA_SVG_SUFFIX"]?.decodeToString()
-        svg?.let { cropPngToContentBox(rawCover, it) } ?: rawCover
+        entries["$BUNDLE_PREVIEWS_DIR/$id$BUNDLE_FIGMA_SVG_SUFFIX"]?.decodeToString()?.let {
+          cropPngToContentBox(rawCover, it)
+        }
       } else {
-        rawCover
+        null
       }
+    val cover = cropped?.png ?: rawCover
 
     val out = LinkedHashMap<String, ByteArray>()
     if (fullMode) out.putAll(shared)
@@ -135,6 +140,15 @@ internal fun splitBundleZip(
     // The sidecar copy above re-added the *uncropped* `.png`; replace it with the cropped cover so
     // the addressable bundle's `previews/<id>.png` matches the polyglot cover byte-for-byte.
     out["$BUNDLE_PREVIEWS_DIR/$id.png"] = cover
+    // Re-base the carried coordinate sidecars (`semantics` / `layout` bounds are in full-render
+    // pixels) into the cropped image's space, so a consumer overlaying them on the tight PNG stays
+    // aligned instead of offset by the discarded canvas margin.
+    if (cropped != null && (cropped.cropX != 0 || cropped.cropY != 0)) {
+      for (suffix in listOf(BUNDLE_SEMANTICS_SUFFIX, BUNDLE_LAYOUT_SUFFIX)) {
+        val key = "$BUNDLE_PREVIEWS_DIR/$id$suffix"
+        out[key]?.let { out[key] = rebaseSidecarCoords(it, cropped.cropX, cropped.cropY) }
+      }
+    }
     val rasterPrefix = "$BUNDLE_PREVIEWS_DIR/$id$BUNDLE_FIGMA_RASTER_DIR_SUFFIX/"
     val irPrefix = "ir/$id."
     for ((name, bytes) in entries) {
@@ -219,20 +233,25 @@ private fun perPreviewPreviews(
  * re-encoded cropped PNG — or `null` (caller keeps the full image) when the svg carries no box, the
  * PNG can't be decoded, or the box already fills the render (a full-screen component / an
  * already-tight capture, via [contentBoxFillsRender]). The box is clamped to the image so a padded
- * box that overruns the edge still crops safely. Pure + deterministic (ImageIO writes no
- * timestamp), so [splitBundleZip] stays byte-reproducible.
+ * box that overruns the edge still crops safely; the returned [CroppedCover.cropX]/[cropY] are the
+ * clamped origin, which the caller uses to re-base coordinate sidecars into the tight image's
+ * space. Pure + deterministic (ImageIO writes no timestamp), so [splitBundleZip] stays
+ * byte-reproducible.
  */
-internal fun cropPngToContentBox(pngBytes: ByteArray, svgText: String): ByteArray? {
-  val box = svgContentBox(svgText) ?: return null
+internal fun cropPngToContentBox(pngBytes: ByteArray, svgText: String): CroppedCover? {
+  val svgBox = svgContentBox(svgText) ?: return null
   val src = runCatching { ImageIO.read(ByteArrayInputStream(pngBytes)) }.getOrNull() ?: return null
   val rw = src.width
   val rh = src.height
   if (rw <= 0 || rh <= 0) return null
+  // Union the render's actual non-transparent extent into the figma box so a focus ring / disabled
+  // outline drawn outside the layout-derived box is never clipped (self-correcting per variant).
+  val box = (pngAlphaBounds(pngBytes)?.let { svgBox.union(it) } ?: svgBox).clampTo(rw, rh)
   if (contentBoxFillsRender(box, rw, rh)) return null
-  val x = box.x.coerceIn(0, rw - 1)
-  val y = box.y.coerceIn(0, rh - 1)
-  val w = box.w.coerceIn(1, rw - x)
-  val h = box.h.coerceIn(1, rh - y)
+  val x = box.x
+  val y = box.y
+  val w = box.w
+  val h = box.h
   val cropped = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
   val g = cropped.createGraphics()
   try {
@@ -242,7 +261,92 @@ internal fun cropPngToContentBox(pngBytes: ByteArray, svgText: String): ByteArra
     g.dispose()
   }
   val baos = ByteArrayOutputStream()
-  return if (ImageIO.write(cropped, "png", baos)) baos.toByteArray() else null
+  return if (ImageIO.write(cropped, "png", baos)) CroppedCover(baos.toByteArray(), x, y) else null
+}
+
+/**
+ * A cropped sticker cover: the re-encoded PNG plus the crop origin (in the full render's pixels).
+ */
+internal class CroppedCover(val png: ByteArray, val cropX: Int, val cropY: Int)
+
+/**
+ * Re-base a coordinate sidecar (`.semantics.json` / `.layout.json`) into a cropped image's pixel
+ * space by subtracting the crop origin ([dx],[dy]) from every absolute coordinate, so a consumer
+ * overlaying the carried bounds on the tight PNG lands them in the right place instead of offset by
+ * the discarded canvas margin. A **whole-tree JSON transform** (not a model round-trip) so every
+ * unrelated field survives verbatim and no schema drift can drop data. The absolute-coordinate
+ * fields, per the layout-inspector / semantics models:
+ * - `boundsInRoot` — the semantics node's `"left,top,right,bottom"` root-pixel string;
+ * - `bounds` — the layout node's / modifier's `{left,top,right,bottom}` object;
+ * - `centerXPx` / `centerYPx` — a Wear curved-text run's arc centre (root-pixel).
+ *
+ * Sizes, constraints, radii, angles, and node-relative text-line offsets are position-independent
+ * and left untouched. Malformed values pass through unchanged (defensive). A zero origin is a
+ * no-op.
+ */
+internal fun rebaseSidecarCoords(jsonBytes: ByteArray, dx: Int, dy: Int): ByteArray {
+  if (dx == 0 && dy == 0) return jsonBytes
+  val root =
+    runCatching { SPLIT_JSON.parseToJsonElement(jsonBytes.decodeToString()) }.getOrNull()
+      ?: return jsonBytes
+  val shifted = rebaseCoordsTree(root, dx, dy)
+  return SPLIT_JSON.encodeToString(JsonElement.serializer(), shifted).encodeToByteArray()
+}
+
+private fun rebaseCoordsTree(el: JsonElement, dx: Int, dy: Int): JsonElement =
+  when (el) {
+    is JsonObject ->
+      buildJsonObject {
+        for ((k, v) in el) {
+          when {
+            k == "boundsInRoot" && v is JsonPrimitive && v.isString ->
+              put(k, JsonPrimitive(shiftBoundsCsv(v.content, dx, dy)))
+            k == "bounds" && v is JsonObject && "left" in v -> put(k, shiftBoundsObject(v, dx, dy))
+            k == "centerXPx" && v is JsonPrimitive -> put(k, shiftNumber(v, dx))
+            k == "centerYPx" && v is JsonPrimitive -> put(k, shiftNumber(v, dy))
+            else -> put(k, rebaseCoordsTree(v, dx, dy))
+          }
+        }
+      }
+    is JsonArray -> JsonArray(el.map { rebaseCoordsTree(it, dx, dy) })
+    else -> el
+  }
+
+/**
+ * Shift a `"left,top,right,bottom"` string by (`dx`,`dy`); pass through anything that isn't 4 ints.
+ */
+private fun shiftBoundsCsv(csv: String, dx: Int, dy: Int): String {
+  val n = csv.split(",").map { it.trim().toIntOrNull() }
+  if (n.size != 4 || n.any { it == null }) return csv
+  return "${n[0]!! - dx},${n[1]!! - dy},${n[2]!! - dx},${n[3]!! - dy}"
+}
+
+/** Shift a `{left,top,right,bottom, …}` object by (`dx`,`dy`), preserving any other keys. */
+private fun shiftBoundsObject(o: JsonObject, dx: Int, dy: Int): JsonObject = buildJsonObject {
+  for ((k, v) in o) {
+    val d =
+      when (k) {
+        "left",
+        "right" -> dx
+        "top",
+        "bottom" -> dy
+        else -> 0
+      }
+    if (d != 0 && v is JsonPrimitive) put(k, shiftNumber(v, d)) else put(k, v)
+  }
+}
+
+/**
+ * Subtract [d] from a numeric [JsonPrimitive], keeping int/decimal shape; pass through non-numbers.
+ */
+private fun shiftNumber(v: JsonPrimitive, d: Int): JsonPrimitive {
+  v.content.toIntOrNull()?.let {
+    return JsonPrimitive(it - d)
+  }
+  v.content.toDoubleOrNull()?.let {
+    return JsonPrimitive(it - d)
+  }
+  return v
 }
 
 private fun readZipEntries(zipBytes: ByteArray): LinkedHashMap<String, ByteArray> {

@@ -162,9 +162,11 @@ class ServeBundleHost(
     if (!fileSystem.exists(png)) return null
     return try {
       val svg = fileSystem.read(svgFile) { readUtf8() }
-      val header = fileSystem.read(png) { readByteArray(PNG_HEADER_BYTES) }
-      val (rw, rh) = WebEscaping.pngDimensions(header)
-      computeThumbCrop(svg, rw, rh)
+      val bytes = fileSystem.read(png) { readByteArray() }
+      val (rw, rh) = WebEscaping.pngDimensions(bytes.copyOf(PNG_HEADER_BYTES.toInt()))
+      // Union the render's actual non-transparent extent into the crop box so a focus ring or
+      // disabled outline drawn outside the layout-derived figma box is never clipped.
+      computeThumbCrop(svg, rw, rh, contentBounds = pngAlphaBounds(bytes))
     } catch (e: Exception) {
       null
     }

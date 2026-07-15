@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
+import java.io.ByteArrayInputStream
+import javax.imageio.ImageIO
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -73,15 +75,74 @@ fun svgContentBox(svgText: String): SvgContentBox? {
 fun contentBoxFillsRender(box: SvgContentBox, renderW: Int, renderH: Int): Boolean =
   box.w >= renderW * 0.9 && box.h >= renderH * 0.9
 
+/** The smallest box covering both [this] and [other]. */
+fun SvgContentBox.union(other: SvgContentBox): SvgContentBox {
+  val x1 = min(x, other.x)
+  val y1 = min(y, other.y)
+  val x2 = max(x + w, other.x + other.w)
+  val y2 = max(y + h, other.y + other.h)
+  return SvgContentBox(x1, y1, x2 - x1, y2 - y1)
+}
+
+/** Clamp [this] to a [renderW]×[renderH] canvas (origin ≥ 0, extent within bounds). */
+fun SvgContentBox.clampTo(renderW: Int, renderH: Int): SvgContentBox {
+  val nx = x.coerceIn(0, renderW)
+  val ny = y.coerceIn(0, renderH)
+  return SvgContentBox(nx, ny, max(1, min(x + w, renderW) - nx), max(1, min(y + h, renderH) - ny))
+}
+
+/**
+ * The tight bounding box of a PNG's **non-transparent** pixels (alpha ≥ [threshold]) in render
+ * pixels, or `null` when the image can't be decoded or is fully transparent. This is the render's
+ * *actual* drawn extent — including decorations the layout-derived figma box misses, like a focus
+ * ring or disabled outline drawn **outside** the component's bounds. Unioning it into the crop box
+ * (see [computeThumbCrop]) guarantees the crop never clips real pixels, self-correcting per variant
+ * without needing a per-variant figma-svg.
+ */
+fun pngAlphaBounds(pngBytes: ByteArray, threshold: Int = 16): SvgContentBox? {
+  val img = runCatching { ImageIO.read(ByteArrayInputStream(pngBytes)) }.getOrNull() ?: return null
+  val w = img.width
+  val h = img.height
+  if (w <= 0 || h <= 0) return null
+  var minX = w
+  var minY = h
+  var maxX = -1
+  var maxY = -1
+  for (y in 0 until h) {
+    for (x in 0 until w) {
+      if ((img.getRGB(x, y) ushr 24 and 0xff) < threshold) continue
+      if (x < minX) minX = x
+      if (y < minY) minY = y
+      if (x > maxX) maxX = x
+      if (y > maxY) maxY = y
+    }
+  }
+  if (maxX < 0) return null // fully transparent
+  return SvgContentBox(minX, minY, maxX - minX + 1, maxY - minY + 1)
+}
+
 /**
  * Compute the crop that frames the component box (read from [svgText]) within a [renderW]×[renderH]
  * render, or `null` when no crop is warranted: the svg has no parseable `viewBox`, the render
  * dimensions are unknown (`<= 0`), or the component box already nearly fills the render (a tight
  * phone/desktop capture — within 10% on both axes). [cap] bounds the displayed size.
+ *
+ * [contentBounds] (the render's actual non-transparent extent, from [pngAlphaBounds]) is
+ * **unioned** into the figma box when supplied, so the crop never clips pixels the layout-derived
+ * box misses — a focus ring / disabled outline drawn outside the component's bounds. It only ever
+ * *grows* the box (clamped to the render), so a full-screen component whose box already fills the
+ * canvas still trips the no-op guard and stays uncropped.
  */
-fun computeThumbCrop(svgText: String, renderW: Int, renderH: Int, cap: Int = CAP): ContentCrop? {
+fun computeThumbCrop(
+  svgText: String,
+  renderW: Int,
+  renderH: Int,
+  contentBounds: SvgContentBox? = null,
+  cap: Int = CAP,
+): ContentCrop? {
   if (renderW <= 0 || renderH <= 0) return null
-  val box = svgContentBox(svgText) ?: return null
+  val svgBox = svgContentBox(svgText) ?: return null
+  val box = (contentBounds?.let { svgBox.union(it) } ?: svgBox).clampTo(renderW, renderH)
   // Already close-cropped (the render is tight to the component) → leave it untouched.
   if (contentBoxFillsRender(box, renderW, renderH)) return null
   // Don't upscale past 1× — a tiny component shows at its native pixels, not blown up.

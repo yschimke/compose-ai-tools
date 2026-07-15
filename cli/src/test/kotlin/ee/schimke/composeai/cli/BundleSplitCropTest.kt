@@ -47,7 +47,23 @@ class BundleSplitCropTest {
     val png = renderPng(x = 144, y = 159, w = 166, h = 136)
     val cropped = cropPngToContentBox(png, figmaSvg(144, 159, 166, 136))
     assertNotNull(cropped)
-    assertEquals(166 to 136, dims(cropped!!), "cropped to the figma-svg content box")
+    assertEquals(166 to 136, dims(cropped!!.png), "cropped to the figma-svg content box")
+    assertEquals(
+      144 to 159,
+      cropped.cropX to cropped.cropY,
+      "crop origin reported for sidecar re-base",
+    )
+  }
+
+  @Test
+  fun `unions the render's actual pixels so a focus ring outside the figma box is not clipped`() {
+    // The layout-derived figma box (144,159,166,136) under-covers a variant whose focus ring is
+    // drawn a few px outside it — here opaque pixels span (140,155)…(315,300).
+    val png = renderPng(x = 140, y = 155, w = 175, h = 145)
+    val cropped = cropPngToContentBox(png, figmaSvg(144, 159, 166, 136))
+    assertNotNull(cropped)
+    assertEquals(175 to 145, dims(cropped!!.png), "grown to cover the ring's actual pixels")
+    assertEquals(140 to 155, cropped.cropX to cropped.cropY, "crop origin is the unioned top-left")
   }
 
   @Test
@@ -69,7 +85,7 @@ class BundleSplitCropTest {
     val png = renderPng(x = 400, y = 400, w = 60, h = 60)
     val cropped = cropPngToContentBox(png, figmaSvg(400, 400, 80, 80))
     assertNotNull(cropped)
-    assertEquals(54 to 54, dims(cropped!!), "clamped to the 454 edge (454-400)")
+    assertEquals(54 to 54, dims(cropped!!.png), "clamped to the 454 edge (454-400)")
   }
 
   private fun sheetZip(png: ByteArray, svg: String): ByteArray {
@@ -120,5 +136,35 @@ class BundleSplitCropTest {
 
     val full = splitBundleZip(sheet, SplitMode.VIEW_ONLY, crop = false).single()
     assertEquals(454 to 454, dims(full.coverPng), "--no-crop ships the full render")
+  }
+
+  @Test
+  fun `rebaseSidecarCoords shifts absolute coordinates into the cropped image space`() {
+    val json =
+      """
+      {"nodes":[{"boundsInRoot":"144,159,310,295","bounds":{"left":144,"top":159,"right":310,"bottom":295,"width":166},
+        "curvedTexts":[{"centerXPx":227.0,"centerYPx":227.0,"radiusPx":180}]}]}
+      """
+        .trimIndent()
+    val out = rebaseSidecarCoords(json.encodeToByteArray(), dx = 144, dy = 159).decodeToString()
+    // Absolute coords shift by the crop origin; sizes/radii/angles are position-independent.
+    assertTrue("\"0,0,166,136\"" in out, "boundsInRoot re-based to the tight image")
+    assertTrue("\"left\":0" in out && "\"top\":0" in out, "bounds object re-based")
+    assertTrue("\"right\":166" in out && "\"bottom\":136" in out, "bounds far edge re-based")
+    assertTrue("\"width\":166" in out, "size preserved")
+    assertTrue(
+      "\"centerXPx\":83" in out && "\"centerYPx\":68" in out,
+      "curved-text centre re-based",
+    )
+    assertTrue("\"radiusPx\":180" in out, "radius preserved")
+  }
+
+  @Test
+  fun `rebaseSidecarCoords is a no-op at a zero origin`() {
+    val json = """{"boundsInRoot":"1,2,3,4"}"""
+    assertTrue(
+      rebaseSidecarCoords(json.encodeToByteArray(), 0, 0).contentEquals(json.encodeToByteArray()),
+      "zero origin returns the bytes unchanged",
+    )
   }
 }

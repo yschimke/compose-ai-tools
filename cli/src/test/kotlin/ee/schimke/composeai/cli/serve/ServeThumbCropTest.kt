@@ -1,5 +1,9 @@
 package ee.schimke.composeai.cli.serve
 
+import java.awt.Color
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
+import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -74,6 +78,72 @@ class ServeThumbCropTest {
     assertEquals(166, box.w)
     assertEquals(136, box.h)
     assertNull(svgContentBox(svg(null, "translate(-1,-1)")), "no viewBox → null")
+  }
+
+  /** An ARGB PNG with an opaque rect at [x],[y] sized [w]×[h] on a transparent [canvas]² canvas. */
+  private fun opaqueRectPng(x: Int, y: Int, w: Int, h: Int, canvas: Int = 454): ByteArray {
+    val img = BufferedImage(canvas, canvas, BufferedImage.TYPE_INT_ARGB)
+    val g = img.createGraphics()
+    g.color = Color(0x66, 0x55, 0x88)
+    g.fillRect(x, y, w, h)
+    g.dispose()
+    val baos = ByteArrayOutputStream()
+    ImageIO.write(img, "png", baos)
+    return baos.toByteArray()
+  }
+
+  @Test
+  fun `pngAlphaBounds reads the tight bbox of the non-transparent pixels`() {
+    val box = pngAlphaBounds(opaqueRectPng(x = 140, y = 155, w = 175, h = 145))
+    assertNotNull(box)
+    assertEquals(140, box.x)
+    assertEquals(155, box.y)
+    assertEquals(175, box.w)
+    assertEquals(145, box.h)
+    assertNull(
+      pngAlphaBounds(
+        BufferedImage(4, 4, BufferedImage.TYPE_INT_ARGB).let {
+          val baos = ByteArrayOutputStream()
+          ImageIO.write(it, "png", baos)
+          baos.toByteArray()
+        }
+      ),
+      "fully transparent → null",
+    )
+    assertNull(pngAlphaBounds(byteArrayOf(1, 2, 3)), "undecodable → null")
+  }
+
+  @Test
+  fun `contentBounds unions into the crop box so pixels outside the figma box are not clipped`() {
+    // figma box = 166×136 at (144,159); the render's opaque pixels overrun it to
+    // (140,155)…(315,300).
+    val alpha = pngAlphaBounds(opaqueRectPng(x = 140, y = 155, w = 175, h = 145))
+    val crop = computeThumbCrop(svg("0 0 166 136", "translate(-144, -159)"), 454, 454, alpha)
+    assertNotNull(crop)
+    // Box grew to the unioned 175×145 (< cap 240 → scale 1); origin is the unioned top-left.
+    assertEquals(175, crop.boxW)
+    assertEquals(145, crop.boxH)
+    assertEquals(-140, crop.left)
+    assertEquals(-155, crop.top)
+  }
+
+  @Test
+  fun `contentBounds within the figma box leaves the crop unchanged`() {
+    // Opaque pixels sit inside the figma box → union is the figma box, same crop as without bounds.
+    val alpha = pngAlphaBounds(opaqueRectPng(x = 170, y = 210, w = 100, h = 40))
+    val crop = computeThumbCrop(svg("0 0 120 48", "translate(-167, -203)"), 454, 454, alpha)
+    assertNotNull(crop)
+    assertEquals(120, crop.boxW)
+    assertEquals(48, crop.boxH)
+    assertEquals(-167, crop.left)
+    assertEquals(-203, crop.top)
+  }
+
+  @Test
+  fun `a full-screen render stays uncropped even when alpha bounds are supplied`() {
+    // Opaque pixels fill the canvas → union still fills the render → the no-op guard trips.
+    val alpha = pngAlphaBounds(opaqueRectPng(x = 0, y = 0, w = 454, h = 454))
+    assertNull(computeThumbCrop(svg("0 0 454 454", "translate(0, 0)"), 454, 454, alpha))
   }
 
   @Test
