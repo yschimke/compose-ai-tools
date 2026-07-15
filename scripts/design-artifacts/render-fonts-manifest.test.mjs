@@ -158,6 +158,83 @@ test("italic GoogleFont faces vendor with the -italic stem and carry style:itali
   ]);
 });
 
+// The catalog's declared theme-override typefaces, shipped in the dist's committed fonts.json.
+// Clean previews apply them only via the theme wrapper, so the recorder never emits them.
+const COMMITTED = {
+  version: 1,
+  families: [
+    { name: "Roboto Flex", role: "default", fonts: [{ file: "RobotoFlex.ttf", weight: 400 }] },
+    {
+      name: "Lobster Two",
+      role: "named",
+      fonts: [
+        { file: "LobsterTwo-Regular.ttf", weight: 400 },
+        { file: "LobsterTwo-Bold.ttf", weight: 700 },
+      ],
+    },
+  ],
+};
+const OVERRIDE_FILES = new Set([
+  "RobotoFlex.ttf",
+  "LobsterTwo-Regular.ttf",
+  "LobsterTwo-Bold.ttf",
+]);
+
+test("committed override faces survive regeneration: default supersedes Roboto, named kept", () => {
+  const files = new Set([...ALL_FILES, ...OVERRIDE_FILES]);
+  const payloads = [{ fonts: [entry("FontFamily.Default", 400), entry("serif")] }];
+  const { manifest, warnings } = buildFontsManifest(payloads, files, COMMITTED);
+  assert.equal(warnings.length, 0);
+  // The committed default leads; the recorded static-Roboto default is superseded, not duplicated.
+  assert.deepEqual(
+    manifest.families.map((f) => [f.name, f.role]),
+    [
+      ["Roboto Flex", "default"],
+      ["serif", "generic"],
+      ["Lobster Two", "named"],
+    ],
+  );
+  assert.deepEqual(manifest.families.find((f) => f.name === "Lobster Two").fonts, [
+    { file: "LobsterTwo-Regular.ttf", weight: 400 },
+    { file: "LobsterTwo-Bold.ttf", weight: 700 },
+  ]);
+});
+
+test("committed named faces merge with recorded GoogleFonts, alphabetically", () => {
+  const files = new Set([...ALL_FILES, ...OVERRIDE_FILES, "orbitron-500.ttf"]);
+  const payloads = [{ fonts: [entry("FontFamily.Default"), gf("Orbitron", 500)] }];
+  const { manifest } = buildFontsManifest(payloads, files, COMMITTED);
+  assert.deepEqual(
+    manifest.families.map((f) => [f.name, f.role]),
+    [
+      ["Roboto Flex", "default"],
+      ["Lobster Two", "named"],
+      ["Orbitron", "named"],
+    ],
+  );
+});
+
+test("a committed face with any unvendored file is dropped whole", () => {
+  // Lobster Two's bold isn't vendored → drop the named face; the default (Roboto Flex) still lands.
+  const files = new Set([...ALL_FILES, "RobotoFlex.ttf", "LobsterTwo-Regular.ttf"]);
+  const payloads = [{ fonts: [entry("FontFamily.Default")] }];
+  const { manifest } = buildFontsManifest(payloads, files, COMMITTED);
+  assert.deepEqual(
+    manifest.families.map((f) => f.name),
+    ["Roboto Flex"],
+  );
+});
+
+test("a committed default whose file is missing falls back to the bundled Roboto default", () => {
+  const files = new Set([...ALL_FILES]); // no RobotoFlex.ttf / Lobster Two faces vendored
+  const payloads = [{ fonts: [entry("FontFamily.Default")] }];
+  const { manifest } = buildFontsManifest(payloads, files, COMMITTED);
+  assert.deepEqual(
+    manifest.families.map((f) => [f.name, f.role]),
+    [["Roboto", "default"]],
+  );
+});
+
 test("no recorded usage keeps the committed manifest (null)", () => {
   assert.equal(buildFontsManifest([], ALL_FILES).manifest, null);
   assert.equal(buildFontsManifest([{ fonts: [] }], ALL_FILES).manifest, null);
