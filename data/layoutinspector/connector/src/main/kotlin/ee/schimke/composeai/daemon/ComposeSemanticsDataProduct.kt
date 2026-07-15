@@ -1012,11 +1012,16 @@ internal object ComposeLayoutInspector {
       runCatching { extractOrNull(node) }.getOrNull()
 
     private fun extractOrNull(node: LayoutNodeFacade): LayoutInspectorVectorGraphic? {
+      // The `VectorPainter` an `Icon`/`Image` paints with rides in the node's draw modifier — as a
+      // `Modifier.paint(painter)` `PainterElement` field, or (depending on the Compose version /
+      // wrapping) nested a level inside it. Scan each modifier element's fields shallowly for the
+      // painter rather than assume a single exact field name, so the capture survives those shapes.
+      val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Any, Boolean>())
       val painter =
-        node.modifierInfo
-          .asSequence()
-          .mapNotNull { info -> runCatching { field(info.modifier, "painter") }.getOrNull() }
-          .firstOrNull { it.javaClass.simpleName == "VectorPainter" } ?: return null
+        (node.modifierInfo.asSequence().map { it.modifier } + sequenceOf(node.measurePolicy))
+          .mapNotNull { candidate -> findVectorPainter(candidate, 0, seen) }
+          .firstOrNull()
+      if (painter == null) return null
       val vector = field(painter, "vector") ?: return null // VectorComponent
       val (vw, vh) = viewport(vector) ?: return null
       if (vw <= 0f || vh <= 0f) return null
@@ -1026,19 +1031,68 @@ internal object ComposeLayoutInspector {
       return LayoutInspectorVectorGraphic(vw, vh, paths)
     }
 
-    /** The vector's viewport, trying `viewportWidth`/`viewportHeight` then a `viewportSize` Size. */
+    /**
+     * Depth-limited search of a modifier element for the `VectorPainter` it draws with. The painter
+     * is usually a direct `painter` field on a `Modifier.paint(...)` `PainterElement`, but a version
+     * bump or a wrapping node can bury it one level down, so scan declared fields (across the class
+     * hierarchy) up to a shallow depth rather than hard-code the path. Identity-tracked to avoid
+     * cycles; confined to `androidx` objects so it never wanders into unrelated graphs.
+     */
+    private fun findVectorPainter(o: Any?, depth: Int, seen: MutableSet<Any>): Any? {
+      if (o == null || depth > 2 || o is String || o is Number || o is Boolean) return null
+      if (!seen.add(o)) return null
+      if (o.javaClass.simpleName == "VectorPainter") return o
+      if (!o.javaClass.name.startsWith("androidx")) return null
+      var c: Class<*>? = o.javaClass
+      while (c != null) {
+        for (f in c.declaredFields) {
+          val v = runCatching { f.isAccessible = true; f.get(o) }.getOrNull()
+          findVectorPainter(v, depth + 1, seen)?.let { return it }
+        }
+        c = c.superclass
+      }
+      return null
+    }
+
+    /**
+     * The vector's viewport in its own units. Older Compose exposed plain `viewportWidth` /
+     * `viewportHeight` floats (or a raw `viewportSize` Long); current Compose keeps it as a
+     * `MutableState<Size>` behind `viewportSize$delegate`, so read the delegate's current value and
+     * unpack the `Size`. A `Size` value class packs two floats into a Long (width high, height low).
+     */
     private fun viewport(vector: Any): Pair<Float, Float>? {
       floatField(vector, "viewportWidth")?.let { w ->
         floatField(vector, "viewportHeight")?.let { h -> return w.toFloat() to h.toFloat() }
       }
-      // A `Size` value class packs two floats into a Long (width high bits, height low bits).
-      longField(vector, "viewportSize")?.let { packed ->
-        val w = Float.fromBits((packed shr 32).toInt())
-        val h = Float.fromBits((packed and 0xFFFFFFFFL).toInt())
-        if (w > 0f && h > 0f) return w to h
-      }
-      return null
+      val packed =
+        sizePackedValue(runCatching { field(vector, "viewportSize") }.getOrNull())
+          ?: sizePackedValue(
+            currentStateValue(runCatching { field(vector, "viewportSize\$delegate") }.getOrNull())
+          )
+          ?: return null
+      val w = Float.fromBits((packed shr 32).toInt())
+      val h = Float.fromBits((packed and 0xFFFFFFFFL).toInt())
+      return if (w > 0f && h > 0f) w to h else null
     }
+
+    /** The current value held by a Compose `MutableState`, via its value getter or newest record. */
+    private fun currentStateValue(state: Any?): Any? {
+      if (state == null) return null
+      runCatching { state.javaClass.getMethod("getValue").invoke(state) }
+        .getOrNull()
+        ?.let { return it }
+      // Fall back to the newest state record's `value` when reading outside a live snapshot.
+      val record = runCatching { field(state, "next") }.getOrNull() ?: return null
+      return runCatching { field(record, "value") }.getOrNull()
+    }
+
+    /** A packed `Size` Long from a boxed `Size` value class (its `packedValue`) or a raw Long. */
+    private fun sizePackedValue(v: Any?): Long? =
+      when (v) {
+        null -> null
+        is Long -> v
+        else -> longField(v, "packedValue")
+      }
 
     /**
      * Walks a `VNode` tree collecting `PathComponent`s. Returns false when a group carries a

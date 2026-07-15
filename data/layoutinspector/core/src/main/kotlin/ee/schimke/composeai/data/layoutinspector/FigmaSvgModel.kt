@@ -225,6 +225,7 @@ data class FigmaSvgLayer(
         stroke != null ||
         text != null ||
         raster != null ||
+        vector != null ||
         background != null ||
         curvedTexts.isNotEmpty()
 }
