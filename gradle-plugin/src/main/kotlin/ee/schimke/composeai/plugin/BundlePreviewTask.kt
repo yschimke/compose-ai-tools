@@ -429,15 +429,15 @@ abstract class BundlePreviewTask : DefaultTask() {
         )
     }
 
-    // v6 Android resource carriage: a protolayout (Wear tile) IR replays through `TileRenderer`,
-    // which resolves a library theme resource and links the non-final library `R$style` class —
-    // neither of which a detached daemon has. When the bundle carries protolayout IR, pack the
-    // AGP-built merged resource APK + manifest and the generated library R classes under `android/`
-    // (added to `irZipFiles`, written verbatim by `buildZip`). No-op for desktop / non-protolayout.
+    // Android resource carriage: pack the AGP-built merged resource APK + manifest (+ generated
+    // library R classes) under `android/` for ANY Android bundle. Both a Wear-tile IR replay (via
+    // `TileRenderer`, which links the library `R$style`) AND a classic `@Preview` that calls
+    // `stringResource(R.string.…)` need the app's `0x7f` resource table at detached-render time — a
+    // detached daemon has neither the merged table nor those R classes. Added to `irZipFiles`,
+    // written verbatim by `buildZip`. `resolveAndroidResources` no-ops (returns null) when there's no
+    // prior render / no binary resources, so desktop and render-less packs stay unchanged.
     val androidResources =
-      if (irByPreview.values.any { it.format == IR_FORMAT_PROTOLAYOUT })
-        resolveAndroidResources(irZipFiles)
-      else null
+      if (backend.get() == "android") resolveAndroidResources(irZipFiles) else null
 
     // v7 optional data-extension carriage: when asked, pack the per-extension report sidecars (a11y
     // findings, theme tokens, …) so a detached reader can surface that data without re-rendering.
@@ -838,9 +838,9 @@ abstract class BundlePreviewTask : DefaultTask() {
         .firstOrNull { it.isFile && it.name == "test_config.properties" }
     if (configFile == null) {
       logger.warn(
-        "composePreviewBundle: protolayout IR present but no test_config.properties on the " +
-          "unit-test config / runtime-classpath inputs — tile replay on a detached daemon can't " +
-          "resolve resources. Run composePreviewRender first so AGP generates it."
+        "composePreviewBundle: no test_config.properties on the unit-test config / runtime-classpath " +
+          "inputs — a detached daemon can't resolve app resources (stringResource / tile themes). " +
+          "Run composePreviewRender first so AGP generates it."
       )
       return null
     }
@@ -871,9 +871,9 @@ abstract class BundlePreviewTask : DefaultTask() {
     val manifestFile = resolveModulePath(manifestPath)
     if (apkFile == null || !apkFile.isFile || manifestFile == null || !manifestFile.isFile) {
       logger.warn(
-        "composePreviewBundle: protolayout IR present but the merged resource APK / manifest from " +
-          "test_config.properties is missing (apk='$apkPath', manifest='$manifestPath') — tile " +
-          "replay on a detached daemon can't resolve resources."
+        "composePreviewBundle: the merged resource APK / manifest from test_config.properties is " +
+          "missing (apk='$apkPath', manifest='$manifestPath') — a detached daemon can't resolve app " +
+          "resources (stringResource / tile themes)."
       )
       return null
     }
@@ -882,7 +882,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     val rClassesJar = packAndroidRClasses()
     if (rClassesJar != null) zipFiles[ANDROID_R_CLASSES_JAR_PATH] = rClassesJar
     logger.lifecycle(
-      "composePreviewBundle — carried Android resources for protolayout replay " +
+      "composePreviewBundle — carried Android resources for detached render " +
         "(apk=${apkFile.length()}B, manifest=${manifestFile.length()}B, " +
         "rClasses=${if (rClassesJar != null) "${rClassesJar.size}B" else "none"})"
     )
