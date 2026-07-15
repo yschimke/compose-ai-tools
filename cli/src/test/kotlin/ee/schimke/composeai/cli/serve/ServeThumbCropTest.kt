@@ -65,6 +65,18 @@ class ServeThumbCropTest {
   }
 
   @Test
+  fun `svgContentBox reads the native-pixel box (viewBox size, translate origin)`() {
+    val box = svgContentBox(svg("0 0 166 136", "translate(-144, -159)"))
+    assertNotNull(box)
+    // Origin is the negated translate (component's top-left in the render); size is the viewBox.
+    assertEquals(144, box.x)
+    assertEquals(159, box.y)
+    assertEquals(166, box.w)
+    assertEquals(136, box.h)
+    assertNull(svgContentBox(svg(null, "translate(-1,-1)")), "no viewBox → null")
+  }
+
+  @Test
   fun `no viewBox, non-positive dimensions, or degenerate box yield no crop`() {
     assertNull(computeThumbCrop(svg(null, "translate(-10, -10)"), 454, 454)) // no viewBox
     assertNull(computeThumbCrop(svg("0 0 120 48", "translate(-1, -1)"), 0, 454)) // renderW <= 0

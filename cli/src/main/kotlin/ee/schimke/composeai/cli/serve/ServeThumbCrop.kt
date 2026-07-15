@@ -39,6 +39,41 @@ private val TRANSLATE_RE = Regex("""translate\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)""")
 private val VIEWBOX_RE = Regex("""viewBox="0 0 (\d+(?:\.\d+)?) (\d+(?:\.\d+)?)"""")
 
 /**
+ * The component's content box in the render's native pixel space, read from a figma-svg: crop
+ * origin ([x],[y]) and size ([w]×[h]). The figma-svg is content-cropped — its root `viewBox` is the
+ * box size and its root `<g transform="translate(tx,ty)">` places it, so the component's top-left
+ * in the render is `(-tx, -ty)`. This is the *unscaled* box (native render pixels);
+ * [computeThumbCrop] adds the display scaling on top, while the bundle PNG crop
+ * ([ee.schimke.composeai.cli] `bundle split`) uses it at full resolution.
+ */
+data class SvgContentBox(val x: Int, val y: Int, val w: Int, val h: Int)
+
+/**
+ * Parse a figma-svg's content box (root `viewBox` size + `translate` origin) in render pixels, or
+ * `null` when the svg carries no parseable `viewBox`. A missing `translate` places the box at the
+ * origin.
+ */
+fun svgContentBox(svgText: String): SvgContentBox? {
+  val vb = VIEWBOX_RE.find(svgText) ?: return null
+  val w = vb.groupValues[1].toDouble()
+  val h = vb.groupValues[2].toDouble()
+  if (w <= 0.0 || h <= 0.0) return null
+  val tr = TRANSLATE_RE.find(svgText)
+  val tx = tr?.groupValues?.get(1)?.toInt() ?: 0
+  val ty = tr?.groupValues?.get(2)?.toInt() ?: 0
+  return SvgContentBox(x = -tx, y = -ty, w = w.roundToInt(), h = h.roundToInt())
+}
+
+/**
+ * True when [box] is close enough to a [renderW]×[renderH] render that cropping to it is pointless
+ * (a tight phone/desktop capture, or a full-screen Wear component whose box already fills the
+ * canvas) — the shared "within 10% on both axes" no-op guard. Consumers that read a pre-cropped PNG
+ * then find their box ≈ the image and no-op via this same test.
+ */
+fun contentBoxFillsRender(box: SvgContentBox, renderW: Int, renderH: Int): Boolean =
+  box.w >= renderW * 0.9 && box.h >= renderH * 0.9
+
+/**
  * Compute the crop that frames the component box (read from [svgText]) within a [renderW]×[renderH]
  * render, or `null` when no crop is warranted: the svg has no parseable `viewBox`, the render
  * dimensions are unknown (`<= 0`), or the component box already nearly fills the render (a tight
@@ -46,23 +81,18 @@ private val VIEWBOX_RE = Regex("""viewBox="0 0 (\d+(?:\.\d+)?) (\d+(?:\.\d+)?)""
  */
 fun computeThumbCrop(svgText: String, renderW: Int, renderH: Int, cap: Int = CAP): ContentCrop? {
   if (renderW <= 0 || renderH <= 0) return null
-  val vb = VIEWBOX_RE.find(svgText) ?: return null
-  val vw = vb.groupValues[1].toDouble()
-  val vh = vb.groupValues[2].toDouble()
-  if (vw <= 0.0 || vh <= 0.0) return null
+  val box = svgContentBox(svgText) ?: return null
   // Already close-cropped (the render is tight to the component) → leave it untouched.
-  if (vw >= renderW * 0.9 && vh >= renderH * 0.9) return null
-  val tr = TRANSLATE_RE.find(svgText)
-  val tx = tr?.groupValues?.get(1)?.toInt() ?: 0
-  val ty = tr?.groupValues?.get(2)?.toInt() ?: 0
+  if (contentBoxFillsRender(box, renderW, renderH)) return null
   // Don't upscale past 1× — a tiny component shows at its native pixels, not blown up.
-  val scale = min(1.0, cap / max(vw, vh))
+  val scale = min(1.0, cap / max(box.w, box.h).toDouble())
   return ContentCrop(
-    boxW = max(1, (vw * scale).roundToInt()),
-    boxH = max(1, (vh * scale).roundToInt()),
+    boxW = max(1, (box.w * scale).roundToInt()),
+    boxH = max(1, (box.h * scale).roundToInt()),
     imgW = (renderW * scale).roundToInt(),
     imgH = (renderH * scale).roundToInt(),
-    left = (tx * scale).roundToInt(),
-    top = (ty * scale).roundToInt(),
+    // `left`/`top` are the render's offset under the clip window: negative of the box origin.
+    left = (-box.x * scale).roundToInt(),
+    top = (-box.y * scale).roundToInt(),
   )
 }

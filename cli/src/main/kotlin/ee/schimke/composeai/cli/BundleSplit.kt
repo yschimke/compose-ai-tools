@@ -1,11 +1,15 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.cli.serve.contentBoxFillsRender
+import ee.schimke.composeai.cli.serve.svgContentBox
+import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
+import javax.imageio.ImageIO
 import kotlin.system.exitProcess
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -75,7 +79,11 @@ private val SPLIT_JSON = Json {
  * Pure + deterministic (sorted entries, DOS-epoch timestamps), so it's exercised directly by tests
  * without a Gradle build or a daemon.
  */
-internal fun splitBundleZip(sheetZip: ByteArray, mode: SplitMode): List<SplitPreview> {
+internal fun splitBundleZip(
+  sheetZip: ByteArray,
+  mode: SplitMode,
+  crop: Boolean = true,
+): List<SplitPreview> {
   val entries = readZipEntries(sheetZip)
   val bundleJsonBytes =
     entries["bundle.json"]
@@ -100,7 +108,23 @@ internal fun splitBundleZip(sheetZip: ByteArray, mode: SplitMode): List<SplitPre
 
   val result = ArrayList<SplitPreview>(ids.size)
   for (id in ids) {
-    val cover = entries["$BUNDLE_PREVIEWS_DIR/$id.png"] ?: continue // no image → nothing to address
+    val rawCover =
+      entries["$BUNDLE_PREVIEWS_DIR/$id.png"] ?: continue // no image → nothing to address
+    // Crop the sticker's cover PNG to its component content box (read from the carried figma-svg),
+    // so a Wear sticker rendered on a 454² watch canvas ships tight instead of a speck in empty
+    // canvas. A no-op when cropping is off, the preview carries no figma-svg, or the box already
+    // fills the render (a full-screen component / a phone capture). The figma-svg's `translate`
+    // still
+    // describes the full render, but every downstream reader either renders the svg by its own
+    // content-cropped `viewBox` or no-ops its view-time crop once the PNG ≈ the box, so this stays
+    // self-consistent (serve's ServeBundleHost.contentCrop guard).
+    val cover =
+      if (crop) {
+        val svg = entries["$BUNDLE_PREVIEWS_DIR/$id$BUNDLE_FIGMA_SVG_SUFFIX"]?.decodeToString()
+        svg?.let { cropPngToContentBox(rawCover, it) } ?: rawCover
+      } else {
+        rawCover
+      }
 
     val out = LinkedHashMap<String, ByteArray>()
     if (fullMode) out.putAll(shared)
@@ -108,6 +132,9 @@ internal fun splitBundleZip(sheetZip: ByteArray, mode: SplitMode): List<SplitPre
       val key = "$BUNDLE_PREVIEWS_DIR/$id$suffix"
       entries[key]?.let { out[key] = it }
     }
+    // The sidecar copy above re-added the *uncropped* `.png`; replace it with the cropped cover so
+    // the addressable bundle's `previews/<id>.png` matches the polyglot cover byte-for-byte.
+    out["$BUNDLE_PREVIEWS_DIR/$id.png"] = cover
     val rasterPrefix = "$BUNDLE_PREVIEWS_DIR/$id$BUNDLE_FIGMA_RASTER_DIR_SUFFIX/"
     val irPrefix = "ir/$id."
     for ((name, bytes) in entries) {
@@ -187,6 +214,37 @@ private fun perPreviewPreviews(
   }
 }
 
+/**
+ * Crop [pngBytes] to the component content box read from its [svgText] (a figma-svg), returning the
+ * re-encoded cropped PNG — or `null` (caller keeps the full image) when the svg carries no box, the
+ * PNG can't be decoded, or the box already fills the render (a full-screen component / an
+ * already-tight capture, via [contentBoxFillsRender]). The box is clamped to the image so a padded
+ * box that overruns the edge still crops safely. Pure + deterministic (ImageIO writes no
+ * timestamp), so [splitBundleZip] stays byte-reproducible.
+ */
+internal fun cropPngToContentBox(pngBytes: ByteArray, svgText: String): ByteArray? {
+  val box = svgContentBox(svgText) ?: return null
+  val src = runCatching { ImageIO.read(ByteArrayInputStream(pngBytes)) }.getOrNull() ?: return null
+  val rw = src.width
+  val rh = src.height
+  if (rw <= 0 || rh <= 0) return null
+  if (contentBoxFillsRender(box, rw, rh)) return null
+  val x = box.x.coerceIn(0, rw - 1)
+  val y = box.y.coerceIn(0, rh - 1)
+  val w = box.w.coerceIn(1, rw - x)
+  val h = box.h.coerceIn(1, rh - y)
+  val cropped = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
+  val g = cropped.createGraphics()
+  try {
+    // Draw the render shifted up-left by the box origin, so only the component lands in the frame.
+    g.drawImage(src, -x, -y, null)
+  } finally {
+    g.dispose()
+  }
+  val baos = ByteArrayOutputStream()
+  return if (ImageIO.write(cropped, "png", baos)) baos.toByteArray() else null
+}
+
 private fun readZipEntries(zipBytes: ByteArray): LinkedHashMap<String, ByteArray> {
   val entries = LinkedHashMap<String, ByteArray>()
   ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
@@ -217,9 +275,12 @@ internal class SplitSubcommand(private val args: List<String>) {
     val path = args.firstOrNull { !it.startsWith("-") }
     val outDirArg = args.flagValue("--output") ?: args.flagValue("-o")
     val mode = if ("--view-only" in args) SplitMode.VIEW_ONLY else SplitMode.FULL
+    // Content-crop each sticker's PNG to its component box by default (tight importable stickers);
+    // `--no-crop` keeps the full render canvas.
+    val crop = "--no-crop" !in args
     if (path == null) {
       System.err.println(
-        "Usage: compose-preview bundle split <bundle.png | URL> -o <dir> [--view-only]"
+        "Usage: compose-preview bundle split <bundle.png | URL> -o <dir> [--view-only] [--no-crop]"
       )
       exitProcess(64)
     }
@@ -240,7 +301,7 @@ internal class SplitSubcommand(private val args: List<String>) {
     val zipBytes = BundleReader.extractZipBytes(file)
     val split =
       try {
-        splitBundleZip(zipBytes, mode)
+        splitBundleZip(zipBytes, mode, crop = crop)
       } catch (e: IllegalArgumentException) {
         System.err.println("bundle split: ${e.message}")
         exitProcess(1)
