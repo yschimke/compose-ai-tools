@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.16.48](https://github.com/yschimke/compose-ai-tools/compare/v0.16.47...v0.16.48) (2026-07-15)
+
+
+### Features
+
+* **catalog:** whole-object + @ShapeCatalog theme catalogs; Roboto Flex default ([#2485](https://github.com/yschimke/compose-ai-tools/issues/2485)) ([4416933](https://github.com/yschimke/compose-ai-tools/commit/441693384a1ccbbcdffb2257b80989617b74b70e))
+* **design-artifacts:** static preview embeds + fix remote OutlinedButton ([#2479](https://github.com/yschimke/compose-ai-tools/issues/2479)) ([e459a9f](https://github.com/yschimke/compose-ai-tools/commit/e459a9f27558f6b3156b332930fd86a31941fbf9))
+* **design-catalog-remote-m3:** sticker the Wear widget container via glance-wear preview tooling ([#2486](https://github.com/yschimke/compose-ai-tools/issues/2486)) ([2adc8aa](https://github.com/yschimke/compose-ai-tools/commit/2adc8aad17502f825c23ea0c43b6acae47474795))
+* **samples:** add wear-m3 OutlinedCard sticker so outlined cards pair outlined↔outlined ([#2484](https://github.com/yschimke/compose-ai-tools/issues/2484)) ([4d07984](https://github.com/yschimke/compose-ai-tools/commit/4d0798496984d519cf0f192ea1345e54db6dfbf0))
+* **serve:** add an "Apps" front-page section and fix the near-dead theme toggle ([#2480](https://github.com/yschimke/compose-ai-tools/issues/2480)) ([54bca95](https://github.com/yschimke/compose-ai-tools/commit/54bca95e02d01de6adc65e9dfd5218cf83506a22))
+* **serve:** swap catalog previews between light/dark in place instead of filtering ([#2481](https://github.com/yschimke/compose-ai-tools/issues/2481)) ([7651bde](https://github.com/yschimke/compose-ai-tools/commit/7651bded98ff975e9bf25bde91a71795cce9ec35))
+
+
+### Bug Fixes
+
+* **serve:** crop catalog thumbnails to the component box so Wear stickers aren't a speck ([#2482](https://github.com/yschimke/compose-ai-tools/issues/2482)) ([324fcd4](https://github.com/yschimke/compose-ai-tools/commit/324fcd453c7aa0c86785bd01b6bf74c8fa5d234a))
+
 ## [0.16.47](https://github.com/yschimke/compose-ai-tools/compare/v0.16.46...v0.16.47) (2026-07-14)
 
 
