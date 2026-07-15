@@ -1991,6 +1991,22 @@
     "sha256": "ecb93101642c6b4f61c821428ff6b93ffc7193eb5d1cdf6f546f5e6005dc3d0d",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.RadioUnselected_Dark": {
+    "captureLabel": "",
+    "functionName": "RadioUnselected",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "RadioUnselected_Dark.png",
+    "sha256": "b974792701a5dcbe7de6cc66a4d245639d06861183d7854d48040f36577114db",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.RadioUnselected_Light": {
+    "captureLabel": "",
+    "functionName": "RadioUnselected",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "RadioUnselected_Light.png",
+    "sha256": "bbea4546bc474e5045da86ddcb8e33a527029585157ef9397c8b7f33cf49fb54",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SegmentedToggle_Dark": {
     "captureLabel": "",
     "functionName": "SegmentedToggle",
