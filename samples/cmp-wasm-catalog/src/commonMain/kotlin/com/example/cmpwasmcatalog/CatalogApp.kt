@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.example.designcatalogm3.shared.CATALOG_COLORS_KNOB
+import com.example.designcatalogm3.shared.CATALOG_FONT_GOOGLE_SANS_FLEX
 import com.example.designcatalogm3.shared.CATALOG_FONT_KNOB
 import com.example.designcatalogm3.shared.CATALOG_FONT_ROBOTO_FLEX
 import com.example.designcatalogm3.shared.CATALOG_PALETTE_M3
@@ -110,8 +111,7 @@ fun CatalogApp(
   val scheme =
     catalogColorScheme(catalogOverrideString(CATALOG_COLORS_KNOB, CATALOG_PALETTE_M3), dark)
   val fontName = catalogOverrideString(CATALOG_FONT_KNOB, CATALOG_FONT_ROBOTO_FLEX)
-  val resolvedFont =
-    if (fontName == CATALOG_FONT_ROBOTO_FLEX) fontFamily else namedFamilies[fontName] ?: fontFamily
+  val resolvedFont = resolveCatalogFont(fontName, fontFamily, namedFamilies)
   // Re-point density's fontScale (preserving the real pixel density) and the layout direction, so
   // the viewer's font-scale + locale controls take effect client-side — same overrides the server
   // render honours, just running in the browser sandbox.
@@ -199,6 +199,26 @@ fun CatalogApp(
     }
   }
 }
+
+/**
+ * Resolves a selected typeface [name] to the URL-loaded family, mirroring the desktop `catalogFont`
+ * so the live Wasm render matches the baked snapshot:
+ * * Roboto Flex → the default [family] (`fonts.json` `role: "default"`).
+ * * Google Sans Flex → its `role: "named"` family if the dist vendors it, else
+ *   `FontFamily.SansSerif` — the **same** fallback the desktop catalog uses for the unvendored
+ *   brand face (not the default), so the two tiers agree on that choice.
+ * * any other named face (Lobster Two, …) → its named family, else the default.
+ */
+internal fun resolveCatalogFont(
+  name: String,
+  family: FontFamily?,
+  named: Map<String, FontFamily>,
+): FontFamily? =
+  when (name) {
+    CATALOG_FONT_ROBOTO_FLEX -> family
+    CATALOG_FONT_GOOGLE_SANS_FLEX -> named[name] ?: FontFamily.SansSerif
+    else -> named[name] ?: family
+  }
 
 /**
  * The serve viewer's stage checkerboard, replicated pixel-for-pixel: CSS
