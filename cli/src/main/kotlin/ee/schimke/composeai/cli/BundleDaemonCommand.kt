@@ -110,38 +110,28 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       extractIrArtifacts(zipBytes, irDir!!, bundleManifestFile!!, file)
     }
 
-    // v6 Android resource carriage: a protolayout (Wear tile) IR replays through `TileRenderer`,
-    // which resolves a library theme resource via `getResources()` and links the non-final library
-    // `R$style` class. A detached daemon has neither the merged resource table (no AGP build) nor
-    // those generated R classes (an AAR's published classes.jar omits them), so an android bundle
-    // carrying protolayout IR also carries the merged resource APK + manifest + R classes under
-    // `android/`. Extract them, synthesize the Robolectric
-    // `com/android/tools/test_config.properties`
-    // the daemon's RobolectricTestRunner auto-reads from the classpath (exactly how the in-Gradle
-    // render path gets resources), and expose the R classes to the parent (renderer) classloader.
-    // The synthesized-config dir and the R jar both ride the IR-carriage `-cp` seam below. Absent
-    // for desktop / classic / Remote-Compose-only bundles.
+    // Android resource carriage (ungated by IR): any `backend == "android"` bundle carries the
+    // app's
+    // merged resource APK + manifest (+ generated R classes) under `android/`, because a classic
+    // `@Preview` that calls `stringResource(R.string.…)` needs the `0x7f` app table just as much as
+    // a
+    // Wear tile does. A detached daemon has neither the merged table (no AGP build) nor those R
+    // classes, so [AndroidBundleResources] extracts them and synthesizes the Robolectric
+    // `com/android/tools/test_config.properties` the daemon's RobolectricTestRunner auto-reads from
+    // the classpath — exactly how the in-Gradle render path gets resources — and the config dir + R
+    // jar ride the `-cp` seam below. Empty for a bundle with no `android/` payload (packed before
+    // this
+    // carriage / no binary resources): renders framework-resources-only, as before.
     val androidReplayClasspath = mutableListOf<File>()
-    if (manifest.backend == "android" && hasIr) {
-      val androidDir = workDir.resolve("android").apply { mkdirs() }
-      val res = extractAndroidResources(zipBytes, androidDir)
-      if (res != null) {
-        val testConfigDir = workDir.resolve("test-config")
-        writeAndroidTestConfig(
-          testConfigDir,
-          res.resourceApk,
-          res.mergedManifest,
+    if (manifest.backend == "android") {
+      androidReplayClasspath +=
+        AndroidBundleResources.daemonClasspath(
+          zipBytes,
+          workDir,
           manifest.androidResources?.applicationPackage,
         )
-        androidReplayClasspath += testConfigDir
-        res.rClassesJar?.let { androidReplayClasspath += it }
-      }
-      // Always surface what the bundle carried (even when nothing) — this is the one signal that
-      // distinguishes a pack-side miss (bundle has no `android/` payload) from a launch-side miss,
-      // and it prints near the top of the daemon's own stderr.
       System.err.println(
-        "[bundle-daemon] android carriage: resourcesAp_=${res != null} " +
-          "rClasses=${res?.rClassesJar != null} cpEntries=${androidReplayClasspath.size}"
+        "[bundle-daemon] android carriage: cpEntries=${androidReplayClasspath.size}"
       )
     }
 
@@ -180,9 +170,16 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       add("-cp")
       add(
         composeDaemonClasspath(
-          launch.classpath,
-          libJars + resolvedJars + androidReplayClasspath,
-          hasIr,
+          // The Android resource carriage (test-config dir + r-classes jar) must reach the
+          // daemon `-cp` for *every* android bundle, not just IR-carrying ones — a classic
+          // `stringResource` preview needs the resource table regardless of IR. Fold it into
+          // the base classpath so it survives the `hasIr` gate that only guards the carried
+          // lib/coordinate jars.
+          base =
+            (listOf(launch.classpath) + androidReplayClasspath.map { it.absolutePath })
+              .joinToString(File.pathSeparator),
+          carriedDeps = libJars + resolvedJars,
+          hasIr = hasIr,
         )
       )
       add("ee.schimke.composeai.daemon.DaemonMain")
@@ -403,85 +400,6 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
     require(sawManifest) {
       "bundle daemon: bundle.json missing in ${bundleFile.path} — cannot resolve IR descriptors"
     }
-  }
-
-  /** The extracted v6 `android/` resource carriage (see [extractAndroidResources]). */
-  private data class AndroidReplayResources(
-    val resourceApk: File,
-    val mergedManifest: File,
-    val rClassesJar: File?,
-  )
-
-  /**
-   * Extract the v6 `android/` resource carriage from [zipBytes] into [androidDir]: the merged
-   * resource APK and manifest (both required) plus the generated R-class jar (optional). Returns
-   * null when the bundle carries no resource APK — a protolayout bundle from a pre-v6 producer, or
-   * one whose pack couldn't locate AGP's merged resources — in which case the daemon falls back to
-   * its pre-v6 (failing) tile-replay path. Each destination is verified to live inside [androidDir]
-   * (Zip Slip guard), same shape as [extractIrArtifacts].
-   */
-  private fun extractAndroidResources(
-    zipBytes: ByteArray,
-    androidDir: File,
-  ): AndroidReplayResources? {
-    val canonical = androidDir.canonicalFile
-    var apk: File? = null
-    var mergedManifest: File? = null
-    var rJar: File? = null
-    ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
-      while (true) {
-        val entry = zin.nextEntry ?: break
-        val name = entry.name
-        if (!entry.isDirectory && name.startsWith("android/")) {
-          val dest = File(androidDir, File(name).name).canonicalFile
-          if (dest.path.startsWith(canonical.path + File.separator)) {
-            dest.outputStream().use { sink -> zin.copyTo(sink) }
-            when (name) {
-              "android/resources.ap_" -> apk = dest
-              "android/AndroidManifest.xml" -> mergedManifest = dest
-              "android/r-classes.jar" -> rJar = dest
-            }
-          }
-        }
-        zin.closeEntry()
-      }
-    }
-    val resolvedApk = apk
-    val resolvedManifest = mergedManifest
-    return if (resolvedApk != null && resolvedManifest != null)
-      AndroidReplayResources(resolvedApk, resolvedManifest, rJar)
-    else null
-  }
-
-  /**
-   * Write the Robolectric `com/android/tools/test_config.properties` the daemon's
-   * RobolectricTestRunner reads from the classpath — the same file AGP generates for the in-Gradle
-   * render path — pointing at the extracted merged resource APK + manifest. Returns [root], which
-   * the caller puts on the daemon `-cp` so the resource resolves. Binary-resources mode:
-   * `android_resource_apk` carries the resource table; package + theme come from
-   * `android_merged_manifest`. [applicationPackage] (when the pack step recorded it) is written as
-   * `android_custom_package` — the package Robolectric/AGP use for the final R class; without it,
-   * for projects whose namespace isn't recoverable from the merged manifest alone, the final R
-   * would resolve against the wrong/default package and tile replay could miss its resources.
-   */
-  private fun writeAndroidTestConfig(
-    root: File,
-    resourceApk: File,
-    mergedManifest: File,
-    applicationPackage: String?,
-  ): File {
-    val dir = File(root, "com/android/tools").apply { mkdirs() }
-    File(dir, "test_config.properties")
-      .writeText(
-        buildString {
-          appendLine("android_resource_apk=${resourceApk.absolutePath}")
-          appendLine("android_merged_manifest=${mergedManifest.absolutePath}")
-          if (!applicationPackage.isNullOrBlank()) {
-            appendLine("android_custom_package=$applicationPackage")
-          }
-        }
-      )
-    return root
   }
 
   private fun createTempWorkDir(): File {

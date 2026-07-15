@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.cli.AndroidBundleLaunch
+import ee.schimke.composeai.cli.AndroidBundleResources
 import ee.schimke.composeai.cli.BundleReader
 import ee.schimke.composeai.cli.CoordinateResolver
 import ee.schimke.composeai.cli.PreviewManifest
@@ -165,6 +166,26 @@ internal object ServeBundleDaemon {
       (listOf(classesDir) + extraClasspathDirs.filter { it.isDirectory } + libJars + resolvedJars)
         .joinToString(File.pathSeparator) { it.absolutePath }
 
+    // Android app-resource carriage: a classic `@Preview` that calls `stringResource(R.string.…)`
+    // needs the app's own `0x7f` resource table at render time. Extract the bundle's carried
+    // `android/` payload and synthesize the Robolectric `test_config.properties` onto the daemon
+    // `-cp` — the same wiring `bundle daemon` uses — or Robolectric throws
+    // `Resources$NotFoundException`. Empty for a desktop bundle, or an Android bundle packed before
+    // this carriage existed (renders framework-resources-only, exactly as before).
+    val androidResourceClasspath =
+      if (backend == "android")
+        AndroidBundleResources.daemonClasspath(
+            zipBytes,
+            destDir,
+            manifest.androidResources?.applicationPackage,
+          )
+          .map { it.absolutePath }
+          .also {
+            if (it.isNotEmpty())
+              onLog("catalog $system: android resource carriage → ${it.size} classpath entry(s)")
+          }
+      else emptyList()
+
     val backendLaunch =
       when (backend) {
         "android" -> androidBundleDaemonLaunch(system, onLog)
@@ -181,7 +202,7 @@ internal object ServeBundleDaemon {
         // classpath / JVM args / sysprops differ (see [BackendDaemonLaunch]).
         mainClass = DAEMON_MAIN_CLASS,
         javaLauncher = null,
-        classpath = backendLaunch.daemonClasspath,
+        classpath = backendLaunch.daemonClasspath + androidResourceClasspath,
         jvmArgs = backendLaunch.jvmArgs,
         systemProperties =
           buildMap {
