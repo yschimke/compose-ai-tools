@@ -10,9 +10,12 @@ and pushed to GHCR, so hosts just pull it.
 - **Image:** `ghcr.io/yschimke/compose-preview-host:<version>` (and `:latest`)
 - **Render target:** Compose **Desktop** (Skiko software GL) for the warm-render sample, **plus** a
   baked **Android/Robolectric** daemon + minimal Android SDK so a served Android **Wear** catalog
-  (`wear-m3`) *can* render live server-side — provided its stickers carry the `previewId` daemon
-  mapping (the currently-published `wear-m3` catalog doesn't yet, so it serves baked in the viewer;
-  see `docs/public-preview-server.md`). This is what `preview.coo.ee` runs.
+  (`wear-m3`) renders live server-side. Lighting the Android live lane needs the catalog's stickers to
+  carry the `previewId` daemon mapping **and** the bundle to carry the app's resource table under
+  `android/`; both shipped in **0.16.50** (previewId #2492, app-resource carriage #2498 + missing-
+  resource placeholder fallback #2499), so `wear-m3` renders live once the box rolls that image and
+  re-fetches the regenerated bundle. See `docs/public-preview-server.md`. This is what
+  `preview.coo.ee` runs.
 - **Bundle uploads:** disabled. **Auth:** shared token. **TLS:** via Caddy.
 
 ## How it's fast

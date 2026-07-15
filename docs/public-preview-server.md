@@ -186,11 +186,27 @@ release that carries `--catalogs-unlisted`).
 | Picks up a regenerated `design-artifacts/<system>` branch | via the same auto-refresh (rebuild + re-run) | **auto**: the server re-checks each catalog branch head every `SERVE_CATALOG_REFRESH`s (default 600) and re-fetches on change — **no restart**. Watchtower only rolls the *image*; this keeps the *catalog content* current. Set `SERVE_CATALOG_REFRESH=0` to disable. |
 
 `preview.coo.ee` **runs the prebuilt [`deploy/image`](../deploy/image)** — a `docker pull` of the
-released `compose-preview-host` image on an **8 GB host**, no build, with Watchtower rolling each new
-release image (and the server auto-refreshing the catalog branches in between). This is the canonical
-public deployment. Because the image bakes the Android/Robolectric daemon + a minimal Android SDK, it
-*can* serve an Android catalog like **Wear** live server-side — but only once that catalog's stickers
-carry the `previewId` daemon-mapping (see the live-lane note below).
+released `compose-preview-host` image on an **8 GB host**, no build. The **whole deploy chain is
+automatic**: cutting a CLI release publishes the host image to GHCR (release-please invokes
+[`preview-host-image.yml`](../.github/workflows/preview-host-image.yml) via `workflow_call`, tagging
+that version **and** `:latest`), and **Watchtower** on the box polls the `:latest` tag hourly and
+rolls the `preview` container onto the new image — no manual step.
+
+> **Why the *Publish preview-host image* Actions list can look stale.** Because that publish runs as
+> a **reusable-workflow call** from the release job, its runs appear *inside the release-please run*,
+> **not** as standalone *Publish preview-host image* runs — so that workflow's run list shows only the
+> occasional manual `workflow_dispatch`, and can read as "hasn't built since <months ago>" even though
+> **every release rebuilds the image**. To confirm which build is deployed, check the release-please
+> run, the GHCR `:latest` digest, or [`GET /version`](#endpoints) — not the preview-host-image run list.
+
+The two delivery paths move on **different clocks**: a **daemon/CLI change** reaches the box on the
+next Watchtower pull of a new release image, while a **`design-artifacts` regen** reaches it much
+sooner — the server **auto-refreshes the catalog branches** in between image rolls (re-checks each
+`design-artifacts/<system>` head every `SERVE_CATALOG_REFRESH`s, default 600, and re-fetches on
+change, no restart). So a catalog repack needs no image roll, but a change to how the daemon *renders*
+(or *loads resources*) does. This is the canonical public deployment. The image bakes the
+Android/Robolectric daemon + a minimal Android SDK, so it serves the Android **Wear** catalog
+(`wear-m3`) live server-side (see the live-lane note below).
 
 The from-source [`deploy/vps`](../deploy/vps) path (`cd deploy/vps && DOMAIN=preview.coo.ee
 ./setup.sh`) is the **alternative** for when you need a serve feature *before* it ships in a CLI
@@ -245,15 +261,22 @@ runtime — the desktop-only from-source `deploy/vps` — instead falls back to 
 catalogs, fail-closed: no error, just no daemon tier. (`remote-m3` carries no runnable bundle, so it
 stays baked-PNG on either box.)
 
-> **The live lane also needs a `previewId` sticker→daemon mapping.** The viewer only exposes the
-> live/override controls for a preview whose baked sticker is mapped to its daemon twin — the
-> `previewId` field the exporter records on each `catalog.json` image, from which `ServeCatalogStore`
-> builds the daemon `alias` (`canRenderOverridesFor`). `compose-m3` carries these; the currently
-> published **`wear-m3`/`remote-m3` stickers do not**, so even with the Robolectric daemon running and
-> prewarmed, the viewer serves them baked and the override controls are disabled ("input requires a
-> live stream" if Live Compose is selected). Lighting up the Android live lane end-to-end therefore
-> needs the exporter to emit `previewId` for these catalogs, followed by a `design-artifacts/<system>`
-> regen — the daemon plumbing on the box is already in place.
+> **The live lane also needs a `previewId` sticker→daemon mapping — and, for Android, the app's
+> resource table.** The viewer only exposes live/override controls for a preview whose baked sticker
+> is mapped to its daemon twin — the `previewId` field the exporter records on each `catalog.json`
+> image, from which `ServeCatalogStore` builds the daemon `alias` (`canRenderOverridesFor`). For an
+> **Android** catalog there is a second requirement: the packed bundle must **carry the app's compiled
+> resource table** (`resources.arsc` / `apk-for-local-test.ap_` under `android/`) *and* the daemon
+> must load it onto the render classpath, or a classic `stringResource(R.string.…)` render throws
+> `Resources$NotFoundException` and the whole preview fails.
+>
+> Both requirements have **landed for `wear-m3`**: `previewId` for un-themed state-variant catalogs
+> (#2492), and the Android app-resource carriage + daemon-load (#2498) — with a missing-resource
+> **placeholder fallback** (#2499, renders an obvious `⟦res 0x7f…⟧` / magenta marker rather than
+> crashing) as a safety net — shipped in **0.16.50**. So `wear-m3` renders live and per-variant once
+> the box has **rolled the 0.16.50 image** (Watchtower) **and** re-fetched the `design-artifacts/wear-m3`
+> bundle regenerated to carry the `android/` resources (catalog auto-refresh). `compose-m3` carried
+> `previewId` already; `remote-m3` stays baked-PNG — it publishes no runnable bundle.
 
 ### Bounding the live tier — `--live-seats` / `SERVE_LIVE_SEATS`
 
