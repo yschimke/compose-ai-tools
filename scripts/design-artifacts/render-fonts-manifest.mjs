@@ -97,8 +97,18 @@ export function fontsPayloadsFromBundle(bundle) {
  * committed manifest in that case). The default (Roboto) family is always included when its files
  * are available — the app's whole M3 type scale hangs off it even for previews that render no
  * text of their own.
+ *
+ * [committed] is the dist's own `fonts.json` (already parsed) when the caller has one. Its
+ * `role: "default"` and `role: "named"` families are the catalog's declared **theme-override**
+ * typefaces (e.g. a Roboto Flex default, a Lobster Two named face). Those are applied to *clean*
+ * previews via the theme wrapper, so the recorder never sees them in `fonts/used` — regeneration
+ * would otherwise drop them and the published Wasm tier's font-override picks would silently fall
+ * back. So a committed default (whose files are still vendored) supersedes the forced Roboto
+ * default, and committed named faces are merged in alongside any recorded GoogleFont families.
+ * Generic families and recorded GoogleFonts still come from [payloads]. Omit [committed] (or pass
+ * null) for the pure-recorded behaviour.
  */
-export function buildFontsManifest(payloads, availableFiles) {
+export function buildFontsManifest(payloads, availableFiles, committed = null) {
   const warnings = [];
   const wanted = new Map(); // familyKey -> Map(weight -> file)
   const namedWanted = new Map(); // GoogleFont display name -> Map("<weight>[i]" -> {file,weight,italic})
@@ -164,17 +174,47 @@ export function buildFontsManifest(payloads, availableFiles) {
       want(key, entry.weight);
     }
   }
-  if (recorded === 0) return { manifest: null, warnings };
+  // Committed theme-override faces the recorder can't re-derive (clean previews apply them only via
+  // the theme wrapper): a `role: "default"` typeface and any `role: "named"` faces, kept only when
+  // every one of their files is still vendored in the dist.
+  const committedFamilies = Array.isArray(committed?.families) ? committed.families : [];
+  const vendored = (fam) =>
+    Array.isArray(fam?.fonts) &&
+    fam.fonts.length > 0 &&
+    fam.fonts.every((f) => availableFiles.has(f.file));
+  const normalizeCommitted = (fam) => ({
+    name: fam.name,
+    role: fam.role,
+    fonts: [...fam.fonts]
+      .sort((a, b) => a.weight - b.weight || Number(Boolean(a.style)) - Number(Boolean(b.style)))
+      .map((f) =>
+        f.style
+          ? { file: f.file, weight: f.weight, style: f.style }
+          : { file: f.file, weight: f.weight },
+      ),
+  });
+  const committedDefault = committedFamilies.find((f) => f.role === "default" && vendored(f)) ?? null;
+  const committedNamed = committedFamilies.filter((f) => f.role === "named" && vendored(f));
 
-  // The M3 typography always needs the default family, even if every recorded resolution was a
-  // generic one (a text-less catalog still themes its diagnostics through it).
-  if (!wanted.has("Roboto")) {
+  if (recorded === 0 && !committedDefault && committedNamed.length === 0) {
+    return { manifest: null, warnings };
+  }
+
+  // The M3 typography always needs a default family. A committed default (the catalog's declared
+  // default typeface, e.g. Roboto Flex) wins and supersedes the recorded static-Roboto default;
+  // otherwise force the bundled M3 Roboto pair, even if every recorded resolution was a generic one
+  // (a text-less catalog still themes its diagnostics through the default).
+  if (committedDefault) {
+    wanted.delete("Roboto");
+  } else if (!wanted.has("Roboto")) {
     for (const weight of Object.keys(FAMILY_FILES.Roboto.files)) want("Roboto", weight);
   }
-  if (wanted.size === 0) return { manifest: null, warnings };
+  if (!committedDefault && wanted.size === 0 && committedNamed.length === 0) {
+    return { manifest: null, warnings };
+  }
 
   const roleOrder = (key) => (FAMILY_FILES[key].role === "default" ? 0 : 1);
-  const families = [...wanted.entries()]
+  const recordedFamilies = [...wanted.entries()]
     .sort(([a], [b]) => roleOrder(a) - roleOrder(b) || a.localeCompare(b))
     .map(([key, byWeight]) => ({
       name: key,
@@ -183,23 +223,37 @@ export function buildFontsManifest(payloads, availableFiles) {
         .sort(([a], [b]) => a - b)
         .map(([weight, file]) => ({ file, weight })),
     }));
-  // Named GoogleFont families follow the default/generic block, alphabetically. Each carries the
-  // GoogleFont display name so the wasm/desktop tiers can resolve a `Font(GoogleFont("<name>"), …)`
-  // request onto the vendored faces instead of falling back to Roboto.
-  const named = [...namedWanted.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([name, byFace]) => ({
+  // The committed default (if any) leads the block; recorded default/generic families follow.
+  const families = committedDefault
+    ? [normalizeCommitted(committedDefault), ...recordedFamilies]
+    : recordedFamilies;
+
+  // Named families follow the default/generic block, alphabetically: recorded GoogleFont families
+  // (each carrying the GoogleFont display name so the wasm/desktop tiers can resolve a
+  // `Font(GoogleFont("<name>"), …)` request onto the vendored faces) plus any committed override
+  // faces the recorder never saw. Recorded usage wins on name collisions.
+  const namedByName = new Map(
+    [...namedWanted.entries()].map(([name, byFace]) => [
       name,
-      role: "named",
-      fonts: [...byFace.values()]
-        .sort((a, b) => a.weight - b.weight || Number(a.italic) - Number(b.italic))
-        // `style: "italic"` (not `italic: true`): the Wasm manifest bridge (`flattenFontsManifest`
-        // in the cmp-wasm-catalog app) keys a face's style off `f.style`, so an italic face must
-        // carry that field or it registers as normal and an Italic request can't match it. Normal
-        // faces omit style entirely — the reader defaults a missing style to normal.
-        .map(({ file, weight, italic }) =>
-          italic ? { file, weight, style: "italic" } : { file, weight },
-        ),
-    }));
+      {
+        name,
+        role: "named",
+        fonts: [...byFace.values()]
+          .sort((a, b) => a.weight - b.weight || Number(a.italic) - Number(b.italic))
+          // `style: "italic"` (not `italic: true`): the Wasm manifest bridge (`flattenFontsManifest`
+          // in the cmp-wasm-catalog app) keys a face's style off `f.style`, so an italic face must
+          // carry that field or it registers as normal and an Italic request can't match it. Normal
+          // faces omit style entirely — the reader defaults a missing style to normal.
+          .map(({ file, weight, italic }) =>
+            italic ? { file, weight, style: "italic" } : { file, weight },
+          ),
+      },
+    ]),
+  );
+  for (const fam of committedNamed) {
+    if (!namedByName.has(fam.name)) namedByName.set(fam.name, normalizeCommitted(fam));
+  }
+  const named = [...namedByName.values()].sort((a, b) => a.name.localeCompare(b.name));
+
   return { manifest: { version: 1, families: [...families, ...named] }, warnings };
 }

@@ -5,6 +5,9 @@ import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
+import com.example.designcatalogm3.shared.CATALOG_PALETTE_CORAL
+import com.example.designcatalogm3.shared.CATALOG_PALETTE_TEAL
+import com.example.designcatalogm3.shared.catalogColorScheme
 import com.example.designcatalogm3.shared.catalogTypography
 import ee.schimke.composeai.preview.ColorCatalog
 import ee.schimke.composeai.preview.ShapeCatalog
@@ -49,11 +52,11 @@ val CatalogDarkScheme: ColorScheme = darkColorScheme()
 
 /** Coral brand palette — a selectable colour override (`knob.theme.colors=Coral`). */
 @ColorCatalog(name = "Coral", group = "Palette")
-val CoralScheme: ColorScheme = catalogColorScheme("Coral", dark = false)
+val CoralScheme: ColorScheme = catalogColorScheme(CATALOG_PALETTE_CORAL, dark = false)
 
 /** Teal brand palette — a selectable colour override (`knob.theme.colors=Teal`). */
 @ColorCatalog(name = "Teal", group = "Palette")
-val TealScheme: ColorScheme = catalogColorScheme("Teal", dark = true)
+val TealScheme: ColorScheme = catalogColorScheme(CATALOG_PALETTE_TEAL, dark = true)
 
 /**
  * The stock Material 3 shape scale (`extraSmall` … `extraLarge`) — the catalog's default shapes.

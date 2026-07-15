@@ -9,8 +9,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -34,10 +32,17 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import com.example.designcatalogm3.shared.CATALOG_COLORS_KNOB
+import com.example.designcatalogm3.shared.CATALOG_FONT_GOOGLE_SANS_FLEX
+import com.example.designcatalogm3.shared.CATALOG_FONT_KNOB
+import com.example.designcatalogm3.shared.CATALOG_FONT_ROBOTO_FLEX
+import com.example.designcatalogm3.shared.CATALOG_PALETTE_M3
 import com.example.designcatalogm3.shared.CatalogComponent
 import com.example.designcatalogm3.shared.LocalGenericFonts
 import com.example.designcatalogm3.shared.LocalNamedFonts
+import com.example.designcatalogm3.shared.catalogColorScheme
 import com.example.designcatalogm3.shared.catalogComponentIds
+import com.example.designcatalogm3.shared.catalogOverrideString
 import com.example.designcatalogm3.shared.catalogTypography
 
 /**
@@ -96,7 +101,17 @@ fun CatalogApp(
   namedFamilies: Map<String, FontFamily> = emptyMap(),
   onFirstFrame: (() -> Unit)? = null,
 ) {
-  val scheme = if (dark) darkColorScheme() else lightColorScheme()
+  // Typeface + palette are read from the override surface (the viewer pushes `knob.theme.*` into
+  // `LocalWasmCatalogKnobs`) and resolved via the *shared* catalog choices, so the live Wasm render
+  // agrees with the desktop-baked snapshot. No seed ⇒ Roboto Flex + the M3 light/dark scheme (the
+  // baked default). A selected typeface resolves to the URL-loaded family: the default `fontFamily`
+  // for Roboto Flex, else the matching `role: "named"` family from `fonts.json` (falling back to
+  // the
+  // default when a face isn't vendored, e.g. Google Sans Flex).
+  val scheme =
+    catalogColorScheme(catalogOverrideString(CATALOG_COLORS_KNOB, CATALOG_PALETTE_M3), dark)
+  val fontName = catalogOverrideString(CATALOG_FONT_KNOB, CATALOG_FONT_ROBOTO_FLEX)
+  val resolvedFont = resolveCatalogFont(fontName, fontFamily, namedFamilies)
   // Re-point density's fontScale (preserving the real pixel density) and the layout direction, so
   // the viewer's font-scale + locale controls take effect client-side — same overrides the server
   // render honours, just running in the browser sandbox.
@@ -113,7 +128,7 @@ fun CatalogApp(
     LocalGenericFonts provides genericFamilies,
     LocalNamedFonts provides namedFamilies,
   ) {
-    MaterialTheme(colorScheme = scheme, typography = catalogTypography(fontFamily)) {
+    MaterialTheme(colorScheme = scheme, typography = catalogTypography(resolvedFont)) {
       if (id in catalogComponentIds) {
         Box(
           modifier =
@@ -184,6 +199,26 @@ fun CatalogApp(
     }
   }
 }
+
+/**
+ * Resolves a selected typeface [name] to the URL-loaded family, mirroring the desktop `catalogFont`
+ * so the live Wasm render matches the baked snapshot:
+ * * Roboto Flex → the default [family] (`fonts.json` `role: "default"`).
+ * * Google Sans Flex → its `role: "named"` family if the dist vendors it, else
+ *   `FontFamily.SansSerif` — the **same** fallback the desktop catalog uses for the unvendored
+ *   brand face (not the default), so the two tiers agree on that choice.
+ * * any other named face (Lobster Two, …) → its named family, else the default.
+ */
+internal fun resolveCatalogFont(
+  name: String,
+  family: FontFamily?,
+  named: Map<String, FontFamily>,
+): FontFamily? =
+  when (name) {
+    CATALOG_FONT_ROBOTO_FLEX -> family
+    CATALOG_FONT_GOOGLE_SANS_FLEX -> named[name] ?: FontFamily.SansSerif
+    else -> named[name] ?: family
+  }
 
 /**
  * The serve viewer's stage checkerboard, replicated pixel-for-pixel: CSS

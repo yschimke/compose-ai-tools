@@ -18,8 +18,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.platform.Font
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.example.designcatalogm3.shared.CATALOG_COLORS_KNOB
+import com.example.designcatalogm3.shared.CATALOG_FONT_GOOGLE_SANS_FLEX
+import com.example.designcatalogm3.shared.CATALOG_FONT_KNOB
+import com.example.designcatalogm3.shared.CATALOG_FONT_LOBSTER_TWO
+import com.example.designcatalogm3.shared.CATALOG_FONT_ROBOTO_FLEX
+import com.example.designcatalogm3.shared.CATALOG_PALETTE_M3
 import com.example.designcatalogm3.shared.LocalGenericFonts
 import com.example.designcatalogm3.shared.LocalNamedFonts
+import com.example.designcatalogm3.shared.catalogColorScheme
 import com.example.designcatalogm3.shared.catalogOverrideString
 import com.example.designcatalogm3.shared.catalogTypography
 
@@ -48,9 +55,9 @@ fun CatalogSticker(content: @Composable () -> Unit) {
   // `themeProvider` — the wear catalog's route — needs Compose 1.11's `PreviewWrapperProvider`,
   // which
   // this CMP 1.10 desktop module doesn't have, so the override is read in-composition instead.)
-  val font = catalogFont(catalogOverrideString("theme.font", CATALOG_DEFAULT_FONT_NAME))
+  val font = catalogFont(catalogOverrideString(CATALOG_FONT_KNOB, CATALOG_FONT_ROBOTO_FLEX))
   val colorScheme =
-    catalogColorScheme(catalogOverrideString("theme.colors", CATALOG_DEFAULT_PALETTE), dark)
+    catalogColorScheme(catalogOverrideString(CATALOG_COLORS_KNOB, CATALOG_PALETTE_M3), dark)
   CatalogStickerFrame(
     colorScheme = colorScheme,
     typography = catalogTypography(font),
@@ -59,42 +66,17 @@ fun CatalogSticker(content: @Composable () -> Unit) {
 }
 
 /**
- * Default override values (also the labels the preview server shows), so no seed = catalog default.
- */
-const val CATALOG_DEFAULT_FONT_NAME = "Roboto Flex"
-const val CATALOG_DEFAULT_PALETTE = "M3"
-
-/**
- * Resolves a selected typeface [name] (a declared `@TypographyCatalog` label) to its [FontFamily],
- * falling back to the Roboto Flex default for an unknown name. The catalog's font-choice registry —
- * add a vendored face here and to `CatalogCatalogs.kt` to offer it.
+ * Resolves a selected typeface [name] (a declared `@TypographyCatalog` label) to its desktop
+ * [FontFamily], falling back to the Roboto Flex default for an unknown name. Add a vendored face
+ * here and to `CatalogCatalogs.kt` (and, for the Wasm tier, to `cmp-wasm-catalog`'s `fonts.json`)
+ * to offer it. The palette resolver + choice names are shared (`CatalogThemeChoices`) so the Wasm
+ * viewer resolves the same override identically.
  */
 fun catalogFont(name: String): FontFamily =
   when (name) {
-    "Google Sans Flex" -> GoogleSansFlex
-    "Lobster Two" -> LobsterTwo
+    CATALOG_FONT_GOOGLE_SANS_FLEX -> GoogleSansFlex
+    CATALOG_FONT_LOBSTER_TWO -> LobsterTwo
     else -> RobotoFlex
-  }
-
-/**
- * Resolves a selected palette [name] (a declared `@ColorCatalog` label) to a [ColorScheme]. `"M3"`
- * is the stock light/dark scheme (honouring [dark]); the brand palettes are fixed-tone schemes.
- */
-fun catalogColorScheme(name: String, dark: Boolean): androidx.compose.material3.ColorScheme =
-  when (name) {
-    "Coral" ->
-      lightColorScheme(
-        primary = Color(0xFFFF6F61),
-        secondary = Color(0xFFFFB4A9),
-        tertiary = Color(0xFFB8860B),
-      )
-    "Teal" ->
-      darkColorScheme(
-        primary = Color(0xFF4DD0E1),
-        secondary = Color(0xFF80CBC4),
-        tertiary = Color(0xFFFFE082),
-      )
-    else -> if (dark) darkColorScheme() else lightColorScheme()
   }
 
 /**

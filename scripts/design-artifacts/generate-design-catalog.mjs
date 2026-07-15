@@ -462,7 +462,17 @@ if (values["wasm-dist"]) {
   const fontsPayloads = fontsPayloadsFromBundle(bundle);
   if (fontsPayloads.length > 0) {
     const available = new Set(await readdir(fontsDir).catch(() => []));
-    const { manifest: fontsManifest, warnings } = buildFontsManifest(fontsPayloads, available);
+    // The dist's committed fonts.json (just cp'd into place) carries the catalog's declared
+    // theme-override typefaces, which clean previews never record; pass it so regeneration keeps
+    // them instead of dropping the override faces.
+    const committed = await readFile(join(fontsDir, "fonts.json"), "utf8")
+      .then((s) => JSON.parse(s))
+      .catch(() => null);
+    const { manifest: fontsManifest, warnings } = buildFontsManifest(
+      fontsPayloads,
+      available,
+      committed,
+    );
     for (const warning of warnings) console.warn(`[${spec.system}] fonts: ${warning}`);
     if (fontsManifest) {
       await writeFile(
