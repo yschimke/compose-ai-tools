@@ -2,12 +2,9 @@
   "version": 1,
   "families": [
     {
-      "name": "Roboto",
+      "name": "Roboto Flex",
       "role": "default",
-      "fonts": [
-        { "file": "Roboto-Regular.ttf", "weight": 400 },
-        { "file": "Roboto-Medium.ttf", "weight": 500 }
-      ]
+      "fonts": [{ "file": "RobotoFlex.ttf", "weight": 400 }]
     },
     {
       "name": "serif",
@@ -25,6 +22,14 @@
       "fonts": [
         { "file": "orbitron-400.ttf", "weight": 400 },
         { "file": "orbitron-700.ttf", "weight": 700 }
+      ]
+    },
+    {
+      "name": "Lobster Two",
+      "role": "named",
+      "fonts": [
+        { "file": "LobsterTwo-Regular.ttf", "weight": 400 },
+        { "file": "LobsterTwo-Bold.ttf", "weight": 700 }
       ]
     }
   ]
