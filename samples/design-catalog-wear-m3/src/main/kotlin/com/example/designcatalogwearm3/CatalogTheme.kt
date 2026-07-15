@@ -6,10 +6,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material3.AppScaffold
+import androidx.wear.compose.material3.ColorScheme
 import androidx.wear.compose.material3.MaterialTheme
+import androidx.wear.compose.material3.Typography
+import ee.schimke.composeai.overrides.previewOverrideString
 
 /**
  * The catalog's **component** sticker frame: a single component wrapped in the stock Wear
@@ -30,10 +35,49 @@ import androidx.wear.compose.material3.MaterialTheme
  */
 @Composable
 fun WearSticker(content: @Composable () -> Unit) {
-  MaterialTheme {
+  WearCatalogTheme {
     Box(Modifier.fillMaxSize().padding(8.dp), contentAlignment = Alignment.Center) { content() }
   }
 }
+
+/**
+ * The Wear catalog theme, with the typeface and palette read from the override surface so the
+ * preview server can re-skin any sticker (`knob.theme.font` / `knob.theme.colors`) without a preview
+ * change — the previews stay clean. Absent an override both resolve to the Wear M3 default, so an
+ * un-overridden render is pixel-identical. The choices are the declared `@TypographyCatalog` /
+ * `@ColorCatalog` names in `WearCatalogFonts.kt`; this is the one place that maps a selected name to
+ * its family / scheme.
+ *
+ * The whole Wear type scale is re-pointed in one call via `Typography(defaultFontFamily = …)`; the
+ * palette re-tints the default Wear scheme.
+ */
+@Composable
+fun WearCatalogTheme(content: @Composable () -> Unit) {
+  val font = wearCatalogFont(previewOverrideString("theme.font", "Roboto Flex"))
+  val colorScheme = wearColorScheme(previewOverrideString("theme.colors", "M3"), MaterialTheme.colorScheme)
+  MaterialTheme(typography = Typography(defaultFontFamily = font), colorScheme = colorScheme) {
+    content()
+  }
+}
+
+/** Resolves a selected typeface [name] (a declared `@TypographyCatalog` label) to its [FontFamily]. */
+fun wearCatalogFont(name: String): FontFamily =
+  when (name) {
+    "Google Sans Flex" -> GoogleSansFlex
+    "Lobster Two" -> LobsterTwo
+    else -> RobotoFlex
+  }
+
+/**
+ * Resolves a selected palette [name] to a Wear [ColorScheme]: `"M3"` keeps the default [base]; the
+ * brand palettes re-tint it. Copying [base] keeps every other Wear role intact.
+ */
+fun wearColorScheme(name: String, base: ColorScheme): ColorScheme =
+  when (name) {
+    "Coral" -> base.copy(primary = Color(0xFFFF6F61), secondary = Color(0xFFFFB4A9))
+    "Teal" -> base.copy(primary = Color(0xFF4DD0E1), secondary = Color(0xFF80CBC4))
+    else -> base
+  }
 
 /**
  * The catalog's **component** multipreview: a single transparent capture, cropped to the component
@@ -51,7 +95,7 @@ fun WearSticker(content: @Composable () -> Unit) {
  */
 @Composable
 fun FullScreenWear(content: @Composable () -> Unit) {
-  MaterialTheme { AppScaffold(timeText = {}) { content() } }
+  WearCatalogTheme { AppScaffold(timeText = {}) { content() } }
 }
 
 /**
@@ -64,7 +108,7 @@ fun FullScreenWear(content: @Composable () -> Unit) {
  */
 @Composable
 fun WearScaffoldTemplate(content: @Composable () -> Unit) {
-  MaterialTheme { content() }
+  WearCatalogTheme { content() }
 }
 
 /**

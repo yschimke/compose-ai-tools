@@ -137,6 +137,9 @@ fun SlottedCardSlotsSticker() = CatalogSticker {
  * than carrying a baked-in surface of its own.
  */
 @Composable
+// A clean one-liner: the theme (and the font / palette override) lives entirely in
+// [CatalogSticker],
+// so a preview never spells the typeface or knows an override exists.
 private fun Sticker(id: String) = CatalogSticker { CatalogComponent(id, interactive = false) }
 
 // ---------------------------------------------------------------------------

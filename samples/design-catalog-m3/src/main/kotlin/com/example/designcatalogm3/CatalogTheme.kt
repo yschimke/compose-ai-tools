@@ -20,6 +20,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.designcatalogm3.shared.LocalGenericFonts
 import com.example.designcatalogm3.shared.LocalNamedFonts
+import com.example.designcatalogm3.shared.catalogOverrideString
 import com.example.designcatalogm3.shared.catalogTypography
 
 /**
@@ -36,18 +37,89 @@ import com.example.designcatalogm3.shared.catalogTypography
 @Composable
 fun CatalogSticker(content: @Composable () -> Unit) {
   val dark = isSystemInDarkTheme()
+  // The typeface and palette are read from the override surface, so the preview server can re-skin
+  // any sticker (`knob.theme.font` / `knob.theme.colors`) with no preview change — the previews
+  // stay
+  // clean one-liners. Absent an override both resolve to the catalog default (Roboto Flex + M3
+  // light/dark), so an un-overridden render is pixel-identical. The choices are the declared
+  // `@TypographyCatalog` / `@ColorCatalog` names (see `CatalogCatalogs.kt`); this wrapper is the
+  // one
+  // place that maps a selected name back to its `FontFamily` / `ColorScheme`. (`@ThemeCatalog` +
+  // `themeProvider` — the wear catalog's route — needs Compose 1.11's `PreviewWrapperProvider`,
+  // which
+  // this CMP 1.10 desktop module doesn't have, so the override is read in-composition instead.)
+  val font = catalogFont(catalogOverrideString("theme.font", CATALOG_DEFAULT_FONT_NAME))
+  val colorScheme =
+    catalogColorScheme(catalogOverrideString("theme.colors", CATALOG_DEFAULT_PALETTE), dark)
+  CatalogStickerFrame(
+    colorScheme = colorScheme,
+    typography = catalogTypography(font),
+    content = content,
+  )
+}
+
+/**
+ * Default override values (also the labels the preview server shows), so no seed = catalog default.
+ */
+const val CATALOG_DEFAULT_FONT_NAME = "Roboto Flex"
+const val CATALOG_DEFAULT_PALETTE = "M3"
+
+/**
+ * Resolves a selected typeface [name] (a declared `@TypographyCatalog` label) to its [FontFamily],
+ * falling back to the Roboto Flex default for an unknown name. The catalog's font-choice registry —
+ * add a vendored face here and to `CatalogCatalogs.kt` to offer it.
+ */
+fun catalogFont(name: String): FontFamily =
+  when (name) {
+    "Google Sans Flex" -> GoogleSansFlex
+    "Lobster Two" -> LobsterTwo
+    else -> RobotoFlex
+  }
+
+/**
+ * Resolves a selected palette [name] (a declared `@ColorCatalog` label) to a [ColorScheme]. `"M3"`
+ * is the stock light/dark scheme (honouring [dark]); the brand palettes are fixed-tone schemes.
+ */
+fun catalogColorScheme(name: String, dark: Boolean): androidx.compose.material3.ColorScheme =
+  when (name) {
+    "Coral" ->
+      lightColorScheme(
+        primary = Color(0xFFFF6F61),
+        secondary = Color(0xFFFFB4A9),
+        tertiary = Color(0xFFB8860B),
+      )
+    "Teal" ->
+      darkColorScheme(
+        primary = Color(0xFF4DD0E1),
+        secondary = Color(0xFF80CBC4),
+        tertiary = Color(0xFFFFE082),
+      )
+    else -> if (dark) darkColorScheme() else lightColorScheme()
+  }
+
+/**
+ * The sticker frame with its [colorScheme] / [typography] supplied by the caller — the shared body
+ * of the catalog theme. [CatalogSticker] resolves the two from the override surface (defaulting to
+ * Roboto Flex + M3) and passes them here, so the font / palette override re-skins every sticker
+ * from this one place without touching a single preview — the point of keeping the previews clean.
+ *
+ * The generic / named font families ([LocalGenericFonts] / [LocalNamedFonts]) are always provided
+ * so a component that asks for `serif` / a named GoogleFont resolves the vendored face regardless
+ * of the selected typeface. Component stickers render on a TRANSPARENT surface so each reads as a
+ * silhouette on the viewer's backing; `contentColor = onSurface` keeps text/icons themed against
+ * it.
+ */
+@Composable
+fun CatalogStickerFrame(
+  colorScheme: androidx.compose.material3.ColorScheme,
+  typography: androidx.compose.material3.Typography,
+  content: @Composable () -> Unit,
+) {
   CompositionLocalProvider(
     LocalGenericFonts provides CatalogGenericFonts,
     LocalNamedFonts provides CatalogNamedFonts,
   ) {
-    MaterialTheme(
-      colorScheme = if (dark) darkColorScheme() else lightColorScheme(),
-      typography = catalogTypography(CatalogDefaultFont),
-    ) {
-      // Component stickers render on a TRANSPARENT surface, so each one reads as a component
-      // silhouette on whatever the viewer paints behind the transparent PNG (the preview server /
-      // catalog index checkerboard, or the preview server's solid-surface backing). `contentColor =
-      // onSurface` keeps text/icons themed so they stay readable against that backing.
+    MaterialTheme(colorScheme = colorScheme, typography = typography) {
       Surface(color = Color.Transparent, contentColor = MaterialTheme.colorScheme.onSurface) {
         Box(Modifier.padding(16.dp)) { content() }
       }
@@ -131,6 +203,22 @@ val Roboto: FontFamily =
  */
 val RobotoFlex: FontFamily =
   FontFamily(Font("RobotoFlex", fontBytes("RobotoFlex.ttf"), FontWeight.Normal, FontStyle.Normal))
+
+/**
+ * Lobster Two — a display face vendored from fonts.google.com's `ofl/lobstertwo`, offered as a
+ * selectable typeface theme (see [CatalogThemes]). A deliberately distinctive script/serif so the
+ * font-override is unmistakable when applied to a sticker.
+ */
+val LobsterTwo: FontFamily =
+  FontFamily(
+    Font(
+      "LobsterTwo-Regular",
+      fontBytes("LobsterTwo-Regular.ttf"),
+      FontWeight.Normal,
+      FontStyle.Normal,
+    ),
+    Font("LobsterTwo-Bold", fontBytes("LobsterTwo-Bold.ttf"), FontWeight.Bold, FontStyle.Normal),
+  )
 
 /**
  * Google Sans Flex — offered as a **named** downloadable-GoogleFont family (the same `role:

@@ -34,6 +34,9 @@ val RobotoFlex: FontFamily = FontFamily(Font(R.font.roboto_flex, weight = FontWe
 /** Google Sans Flex — declared choice; graceful sans fallback until a brand face is supplied. */
 val GoogleSansFlex: FontFamily = FontFamily.SansSerif
 
+/** Lobster Two — a display face vendored from fonts.google.com's `ofl/lobstertwo`. */
+val LobsterTwo: FontFamily = FontFamily(Font(R.font.lobster_two, weight = FontWeight.Normal))
+
 // --- Roboto Flex type-scale specimens (the default face) ------------------------------------------
 
 @TypographyCatalog(name = "Display", group = "Roboto Flex")
@@ -65,6 +68,20 @@ val GoogleSansFlexTitle: TextStyle =
 @TypographyCatalog(name = "Body", group = "Google Sans Flex")
 val GoogleSansFlexBody: TextStyle =
   TextStyle(fontFamily = GoogleSansFlex, fontSize = 15.sp, fontWeight = FontWeight.Normal)
+
+// --- Lobster Two type-scale specimens (a selectable display face) --------------------------------
+
+@TypographyCatalog(name = "Display", group = "Lobster Two")
+val LobsterTwoDisplay: TextStyle =
+  TextStyle(fontFamily = LobsterTwo, fontSize = 40.sp, fontWeight = FontWeight.Normal)
+
+@TypographyCatalog(name = "Title", group = "Lobster Two")
+val LobsterTwoTitle: TextStyle =
+  TextStyle(fontFamily = LobsterTwo, fontSize = 20.sp, fontWeight = FontWeight.Normal)
+
+@TypographyCatalog(name = "Body", group = "Lobster Two")
+val LobsterTwoBody: TextStyle =
+  TextStyle(fontFamily = LobsterTwo, fontSize = 15.sp, fontWeight = FontWeight.Normal)
 
 // --- Colour-role tokens ---------------------------------------------------------------------------
 

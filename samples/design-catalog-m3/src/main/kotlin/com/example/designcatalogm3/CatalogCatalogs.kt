@@ -35,6 +35,10 @@ val RobotoFlexTypography: Typography = catalogTypography(RobotoFlex)
 @TypographyCatalog(name = "Google Sans Flex", group = "Typeface")
 val GoogleSansFlexTypography: Typography = catalogTypography(GoogleSansFlex)
 
+/** Lobster Two — the whole M3 type scale re-pointed at the Lobster Two display face. */
+@TypographyCatalog(name = "Lobster Two", group = "Typeface")
+val LobsterTwoTypography: Typography = catalogTypography(LobsterTwo)
+
 /** The stock Material 3 **light** colour scheme — the catalog's default palette. */
 @ColorCatalog(name = "Light scheme", group = "Palette")
 val CatalogLightScheme: ColorScheme = lightColorScheme()
@@ -42,6 +46,14 @@ val CatalogLightScheme: ColorScheme = lightColorScheme()
 /** The stock Material 3 **dark** colour scheme. */
 @ColorCatalog(name = "Dark scheme", group = "Palette")
 val CatalogDarkScheme: ColorScheme = darkColorScheme()
+
+/** Coral brand palette — a selectable colour override (`knob.theme.colors=Coral`). */
+@ColorCatalog(name = "Coral", group = "Palette")
+val CoralScheme: ColorScheme = catalogColorScheme("Coral", dark = false)
+
+/** Teal brand palette — a selectable colour override (`knob.theme.colors=Teal`). */
+@ColorCatalog(name = "Teal", group = "Palette")
+val TealScheme: ColorScheme = catalogColorScheme("Teal", dark = true)
 
 /**
  * The stock Material 3 shape scale (`extraSmall` … `extraLarge`) — the catalog's default shapes.
