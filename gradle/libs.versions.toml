@@ -148,6 +148,14 @@ horologist = "0.7.15"
 #    density solely from the `RemoteCreationDisplayInfo` it's handed.
 compose-remote = "1.0.0-alpha14"
 wear-compose-remote = "1.0.0-alpha07"
+# Glance Wear — the Wear OS *widget* layer on top of Remote Compose. Used by
+# `:samples:design-catalog-remote-m3` to sticker the widget **container** (the
+# squircle the host draws around widget content) via the
+# `wear-tooling-preview` artifact's `WearWidgetPreview` wrapper. alpha13 is
+# built against compose-remote alpha14 (see its POM), so bump this in lockstep
+# with the `compose-remote` pin above — a skewed pair risks the same
+# creation/player version drift the Remote Compose comment describes.
+glance-wear = "1.0.0-alpha13"
 # Pre-release compose-ui artifacts used by `:samples:remotecompose`, which
 # deliberately diverges from `compose-bom-stable` (1.10.x) to track what
 # wear-compose-remote-material3 alpha pulls in transitively — compose 1.11.0+
@@ -319,6 +327,9 @@ compose-remote-player-compose = { module = "androidx.compose.remote:remote-playe
 compose-remote-player-core = { module = "androidx.compose.remote:remote-player-core", version.ref = "compose-remote" }
 compose-remote-player-view = { module = "androidx.compose.remote:remote-player-view", version.ref = "compose-remote" }
 wear-compose-remote-material3 = { module = "androidx.wear.compose.remote:remote-material3", version.ref = "wear-compose-remote" }
+glance-wear = { module = "androidx.glance.wear:wear", version.ref = "glance-wear" }
+glance-wear-core = { module = "androidx.glance.wear:wear-core", version.ref = "glance-wear" }
+glance-wear-tooling-preview = { module = "androidx.glance.wear:wear-tooling-preview", version.ref = "glance-wear" }
 compose-ui-tooling-preview-wrapper = { module = "androidx.compose.ui:ui-tooling-preview", version.ref = "compose-ui-prerelease" }
 compose-ui-tooling-prerelease = { module = "androidx.compose.ui:ui-tooling", version.ref = "compose-ui-prerelease" }
 wear-protolayout = { module = "androidx.wear.protolayout:protolayout", version.ref = "wear-protolayout" }

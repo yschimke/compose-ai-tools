@@ -1,10 +1,11 @@
 {
-  "$comment": "Catalog spec for Remote Compose (Wear Compose Remote Material 3 + remote-creation-compose primitives). Code-led: each sticker is a real RemoteDocument built by RemotePreview and rasterised by the Remote Compose player, so the render is authoritative. Remote Compose carries explicit colours in the document rather than a light/dark theme split, so there is a single primary mode. The component set mirrors the androidx.wear.compose.remote.material3 surface (the port of Wear Compose Material 3 to Remote Compose), minus the two non-component helpers RemoteContainerPainter (a painter factory) and RemoteTypographyTokens (the raw token table behind RemoteTypography). Each component carries a `parallel` field naming its Wear Compose Material 3 counterpart (a componentId in samples/design-catalog-wear-m3); the design-artifacts cross-system compare page pairs them side by side. Sibling of samples/design-catalog-{m3,wear-m3}; see docs/design/DESIGN_CATALOGS.md.",
+  "$comment": "Catalog spec for Remote Compose (Wear Compose Remote Material 3 + remote-creation-compose primitives). Code-led: each sticker is a real RemoteDocument built by RemotePreview and rasterised by the Remote Compose player, so the render is authoritative. Remote Compose carries explicit colours in the document rather than a light/dark theme split, so there is a single primary mode. The component set mirrors the androidx.wear.compose.remote.material3 surface (the port of Wear Compose Material 3 to Remote Compose), minus the two non-component helpers RemoteContainerPainter (a painter factory) and RemoteTypographyTokens (the raw token table behind RemoteTypography). Each component carries a `parallel` field naming its Wear Compose Material 3 counterpart (a componentId in samples/design-catalog-wear-m3); the design-artifacts cross-system compare page pairs them side by side. The Widget Container group is the other Remote-only extra besides the shader: the squircle frame the Wear widget host draws around widget content, rendered through androidx.glance.wear:wear-tooling-preview's WearWidgetPreview wrapper (no remote-material3 or Wear M3 peer — it is a host frame, not a component). Sibling of samples/design-catalog-{m3,wear-m3}; see docs/design/DESIGN_CATALOGS.md.",
   "system": "remote-m3",
   "title": "Remote Compose Material 3",
   "library": [
     "androidx.wear.compose.remote:remote-material3",
-    "androidx.compose.remote:remote-creation-compose"
+    "androidx.compose.remote:remote-creation-compose",
+    "androidx.glance.wear:wear"
   ],
   "module": "samples:design-catalog-remote-m3",
   "modes": ["light"],
@@ -63,6 +64,14 @@
       "name": "Shaders",
       "components": [
         { "componentId": "Shader/LinearGradient", "preview": "ShaderGradientSticker", "caption": "Document-level gradient shader fill; the middle stop is a named value the connector can recolour live. A remote-creation-compose primitive with no Wear Material 3 component peer." }
+      ]
+    },
+    {
+      "name": "Widget Container",
+      "components": [
+        { "componentId": "WidgetContainer/Small", "preview": "WidgetContainerSmallRemote", "caption": "The Small (200×60dp) squircle widget container the Wear widget host draws around widget content — default surfaceContainerLow fill, 8dp padding, 26dp corners — rendered through the glance-wear WearWidgetPreview tooling wrapper." },
+        { "componentId": "WidgetContainer/Large", "preview": "WidgetContainerLargeRemote", "caption": "The Large (200×108dp) squircle widget container with the host's default background, carrying a title + supporting line." },
+        { "componentId": "WidgetContainer/GradientBackground", "preview": "WidgetContainerGradientRemote", "caption": "A Small container whose widget declares its own WearWidgetBrush background (vertical gradient) — the corner clipping over the brush is the point." }
       ]
     }
   ]

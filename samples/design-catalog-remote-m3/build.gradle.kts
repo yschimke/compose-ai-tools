@@ -69,6 +69,17 @@ dependencies {
   implementation(libs.compose.remote.creation)
   implementation(libs.compose.remote.creation.compose)
   implementation(libs.wear.compose.remote.material3)
+  // Glance Wear — the Wear OS widget layer on Remote Compose. The widget-container
+  // stickers (`WidgetContainerPreviews.kt`) render through its `wear-tooling-preview`
+  // `WearWidgetPreview` wrapper, which recreates the host-drawn squircle container
+  // (background + rounded corners + padding, `WearWidgetContainer`) around remote
+  // content. `wear` carries the brush/document types, `wear-core` the
+  // `WearWidgetParams` / `ContainerInfo` container spec; both are compile-scope
+  // needs of the sticker code, so declared explicitly rather than trusted to
+  // transitive scoping (same rationale as the remote-creation pair above).
+  implementation(libs.glance.wear)
+  implementation(libs.glance.wear.core)
+  implementation(libs.glance.wear.tooling.preview)
   implementation(libs.activity.compose)
   // The sticker frame captures through the connector's `RemoteOverridablePreview`
   // rather than raw upstream `RemotePreview`, so the named-value stickers
