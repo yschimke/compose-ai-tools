@@ -128,6 +128,8 @@ fun SlottedCardSlotsSticker() = CatalogSticker {
 
 @CatalogModes @Composable fun FilterChipUnselected() = Sticker("chip-filter-unselected")
 
+@CatalogModes @Composable fun RadioUnselected() = Sticker("radiobutton-unselected")
+
 @CatalogModes @Composable fun SegmentedToggle() = Sticker("segmentedbutton")
 
 /**
