@@ -185,11 +185,17 @@ release that carries `--catalogs-unlisted`).
 | In-browser Wasm tier | local build, `SERVE_WASM_DIR=compose-m3=samples/cmp-wasm-catalog/build/wasmDist` | branch-fetch: `--catalogs` pulls each system's `web/wasm/` from the trusted branch (needs the branch to carry it) |
 | Picks up a regenerated `design-artifacts/<system>` branch | via the same auto-refresh (rebuild + re-run) | **auto**: the server re-checks each catalog branch head every `SERVE_CATALOG_REFRESH`s (default 600) and re-fetches on change — **no restart**. Watchtower only rolls the *image*; this keeps the *catalog content* current. Set `SERVE_CATALOG_REFRESH=0` to disable. |
 
-So **today** (before a release), deploy from source: `cd deploy/vps && DOMAIN=preview.coo.ee ./setup.sh`
-— it builds the current `main`, including the Wasm app, and comes up public. **After** the serve
-features ship in a CLI release *and* the `design-artifacts/compose-m3` branch carries `web/wasm/`,
-the prebuilt `deploy/image` path serves the same thing with no host build (and Watchtower keeps it
-current).
+`preview.coo.ee` **runs the prebuilt [`deploy/image`](../deploy/image)** — a `docker pull` of the
+released `compose-preview-host` image on an **8 GB host**, no build, with Watchtower rolling each new
+release image (and the server auto-refreshing the catalog branches in between). This is the canonical
+public deployment. Because the image bakes the Android/Robolectric daemon + a minimal Android SDK, it
+serves the Android **Wear** catalog **live** — not just baked PNGs (see below).
+
+The from-source [`deploy/vps`](../deploy/vps) path (`cd deploy/vps && DOMAIN=preview.coo.ee
+./setup.sh`) is the **alternative** for when you need a serve feature *before* it ships in a CLI
+release: it builds the current `main`, including the Wasm app, and comes up public. But a from-source
+box is **desktop-only** (no Android SDK), so it falls back to baked PNGs for the Android catalogs —
+use the prebuilt image for live Wear.
 - **Re-render of trusted Compose** stays off unless the operator opts in; a public box should leave
   `--revisions` *off* (that path runs arbitrary Gradle = RCE).
 
@@ -224,9 +230,13 @@ Because path (1) is cheap and safe, both public profiles turn it **on by default
 `SERVE_ALLOW_RENDER_TRUSTED=1` and auto-size the live-seat budget from the box's memory — a bare
 image pull "just works" with live CMP, no clone and no build. Set `SERVE_ALLOW_RENDER_TRUSTED=0` to
 opt out (the Wasm tier still carries CMP). The other published catalogs (`wear-m3`, `remote-m3`) are
-**Android** — no desktop-runnable bundle — so their live lane runs a heavier Robolectric daemon (and
-those that carry no runnable bundle fall back to baked PNG, fail-closed: no error, just no daemon
-tier).
+**Android** — no desktop-runnable bundle — so their live lane runs a heavier Robolectric daemon
+(2 live-seat permits) instead of the desktop one. The prebuilt `deploy/image` (**what `preview.coo.ee`
+runs**) bakes that Robolectric Android daemon + a minimal Android SDK, so `wear-m3` — which publishes
+an Android `liveBundle` — renders **live and per-variant** there (the SVG lane in particular, which a
+baked per-slug vector can't match). A box **without** the Android runtime — the desktop-only
+from-source `deploy/vps` — instead falls back to baked PNGs for these catalogs, fail-closed: no error,
+just no daemon tier. (`remote-m3` carries no runnable bundle, so it stays baked-PNG on either box.)
 
 ### Bounding the live tier — `--live-seats` / `SERVE_LIVE_SEATS`
 
@@ -241,8 +251,10 @@ the OOM killer; `0` is unbounded, and snapshot + Wasm sessions never consume a p
 **Auto-sizing.** When `SERVE_LIVE_SEATS` is unset, the prebuilt image derives the budget from the
 container's memory (reserve ~1 GB for the host + OS, ~1.2 GB per permit, clamped to **[2, 8]**), so a
 bigger box scales up on its own with no compose edit: an 8 GB box gets **5** permits, a 4 GB box gets
-**2** (two concurrent CMP sessions, or one Android). The `preview` container is **unbounded by
-default** (`mem_limit: ${PREVIEW_MEM_LIMIT:-0}`), so it uses the box's full RAM and the entrypoint
+**2** (two concurrent CMP sessions, or one Android). `preview.coo.ee` runs on an **8 GB host**, so it
+derives **5** permits — enough for the heavier Wear/Android daemon (2 permits) plus concurrent CMP
+lanes. The `preview` container is **unbounded by default** (`mem_limit: ${PREVIEW_MEM_LIMIT:-0}`), so
+it uses the box's full RAM and the entrypoint
 falls back to physical RAM when there's no cgroup cap — redeploy onto a larger dedicated box and it
 scales automatically. Admission control (the live-seat budget + the per-render concurrency limiter)
 is the memory guard, rather than a hard cgroup kill. On a **shared** host, set `PREVIEW_MEM_LIMIT` in

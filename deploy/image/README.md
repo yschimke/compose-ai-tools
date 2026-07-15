@@ -8,7 +8,9 @@ and renders it with the **published** plugin from Maven Central. Built once in C
 and pushed to GHCR, so hosts just pull it.
 
 - **Image:** `ghcr.io/yschimke/compose-preview-host:<version>` (and `:latest`)
-- **Render target:** Compose **Desktop** only (Skiko software GL).
+- **Render target:** Compose **Desktop** (Skiko software GL) for the warm-render sample, **plus** a
+  baked **Android/Robolectric** daemon + minimal Android SDK so a served Android **Wear** catalog
+  (`wear-m3`) renders live, not just baked PNGs. This is what `preview.coo.ee` runs.
 - **Bundle uploads:** disabled. **Auth:** shared token. **TLS:** via Caddy.
 
 ## How it's fast

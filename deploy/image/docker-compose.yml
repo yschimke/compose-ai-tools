@@ -44,9 +44,12 @@ services:
       # carries an executable `liveBundle` (the desktop CMP `compose-m3`), serve fetches that bundle
       # from the trusted branch and launches a render daemon straight from it — no checkout, no
       # Gradle build. So a bare image pull "just works" with live CMP; the entrypoint defaults
-      # SERVE_ALLOW_RENDER_TRUSTED=1 + SERVE_LIVE_SEATS=1 (bound for the 4 GB box). Fail-closed: only
-      # Trusted catalogs execute; the Android wear/remote catalogs have no runnable bundle → baked
-      # PNG. Set SERVE_ALLOW_RENDER_TRUSTED=0 in .env to opt out (Wasm still carries CMP).
+      # SERVE_ALLOW_RENDER_TRUSTED=1 and auto-sizes SERVE_LIVE_SEATS from the box's RAM (unbounded
+      # mem_limit below ⇒ physical RAM; e.g. an 8 GB host — what preview.coo.ee runs — derives 5
+      # permits). Fail-closed: only Trusted catalogs execute. wear-m3 publishes an Android liveBundle
+      # and this image bakes the Robolectric Android daemon + SDK, so it renders live (2 seat
+      # permits); remote-m3 carries no runnable bundle → baked PNG. Set SERVE_ALLOW_RENDER_TRUSTED=0
+      # in .env to opt out (Wasm still carries CMP).
       #
       # SERVE_CATALOG_SOURCE_REPO is the OPTIONAL source-build fallback only (a catalog with a Gradle
       # `source` but no bundle): setting it makes the entrypoint clone that repo and pay a one-time
