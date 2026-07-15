@@ -2743,6 +2743,14 @@
     "sha256": "94c5d33d0bb413a4b69ffa4d0940033eba6170058e9d2b01e2db14449f41c0eb",
     "sourceFile": null
   },
+  "samples:design-catalog-wear-m3/typographycatalog__Lobster_Two": {
+    "captureLabel": "",
+    "functionName": "Lobster Two type styles",
+    "module": "samples:design-catalog-wear-m3",
+    "renderBasename": "typographycatalog__Lobster_Two.png",
+    "sha256": "4d764238a6d43c30a38c72e0581c5ff834bc0a8cb632eef6de48805cb0717c73",
+    "sourceFile": null
+  },
   "samples:design-catalog-wear-m3/typographycatalog__Roboto_Flex": {
     "captureLabel": "",
     "functionName": "Roboto Flex type styles",
@@ -2756,7 +2764,7 @@
     "functionName": "All type styles",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "typographycatalog__all.png",
-    "sha256": "2d16bb5f4dd5c13d037f203ace7fcdc263c8828a6a656ff66014e3607b9a1be7",
+    "sha256": "2418c0094f068272ece6a4812cae61a48dfa97ba7a129cf22da98ab2c38f422c",
     "sourceFile": null
   },
   "samples:desktop-daemon-bench/com.example.desktopdaemonbench.BenchPreviewsKt.BlueLabelPreview_BlueLabel": {
