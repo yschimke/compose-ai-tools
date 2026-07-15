@@ -294,6 +294,8 @@ fun CatalogComponent(id: String, interactive: Boolean) {
       if (interactive) StatefulFilterChip(selected, label)
       else FilterChip(selected = selected, onClick = {}, label = { Text(label) })
     }
+    "radiobutton-unselected" ->
+      RadioButton(selected = catalogOverrideBoolean("selected", false), onClick = {})
     "segmentedbutton" -> SegmentedToggle(interactive)
 
     // Text options — maxLines + ellipsis overflow. The 128dp box reproduces the wrap/truncation
@@ -365,6 +367,7 @@ val catalogComponentIds: List<String> =
     "switch-off",
     "checkbox-unchecked",
     "chip-filter-unselected",
+    "radiobutton-unselected",
     "segmentedbutton",
     "text-maxlines-truncated",
     "text-serif",
