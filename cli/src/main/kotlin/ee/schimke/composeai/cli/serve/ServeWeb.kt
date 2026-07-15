@@ -424,15 +424,39 @@ object ServeWeb {
     else state.replace('-', ' ').replaceFirstChar { it.uppercaseChar() }
 
   /**
+   * A preview id with only its **state** segment removed — the key that groups renders differing
+   * *only* in state (the state axis) while holding every other axis fixed (theme, and any `content`
+   * / `size` / `k=v` props axes a component also varies on). The state segment is the one right
+   * after the `ideal` marker in the flattened id (`<slug>__ideal__<state>[__theme][__props…]`, from
+   * [ServeCatalogStore.previewIdFor]); it equals the preview's [ServePreview.state]. So
+   * `button-filled__ideal__default__light` and `…__pressed__light` share the key
+   * `button-filled__ideal__light`, but the `content=icon+label` render
+   * `button-filled__ideal__default__light__content-icon-label` keeps its props segment and keys
+   * apart — its state switcher won't drag the visitor back to the label-only button. Falls back to
+   * the whole id when there's no state (a plain preview) or the state token isn't found, so such a
+   * preview only ever groups with itself.
+   */
+  private fun stateInvariantKey(p: ServePreview): String {
+    val state = p.state ?: return p.id
+    val parts = p.id.split("__")
+    val idealIdx = parts.indexOf("ideal")
+    val stateIdx =
+      if (idealIdx in 0 until parts.lastIndex && parts[idealIdx + 1] == state) idealIdx + 1
+      else parts.indexOfFirst { it == state }.takeIf { it >= 1 } ?: return p.id
+    return parts.filterIndexed { i, _ -> i != stateIdx }.joinToString("__")
+  }
+
+  /**
    * The viewer's **state switcher**: a `<nav>` of plain links from [current] to each of its
    * component's baked states *in the same theme* (one link per distinct state, the default state
    * first, the current one marked `aria-current="page"`). No daemon, no JS state machine — each
    * link is a normal navigation to a sibling `/p/<id>` page, so it works with scripting off.
    *
    * Siblings are drawn from [all] (the host's whole preview list, which still carries the
-   * non-default states the grid folds out): same component **slug** (`id` up to the first `__`) and
-   * the same [ServePreview.theme] as [current] (both null for an unthemed catalog). Returns the
-   * empty string when the component has fewer than two states in this theme — nothing to toggle.
+   * non-default states the grid folds out) by [stateInvariantKey] + [ServePreview.theme]: renders
+   * that differ *only* in state, holding the theme and any other variant axis (content / size /
+   * props) fixed, so a component that also varies on a non-state axis doesn't cross-link its axes.
+   * Returns the empty string when fewer than two states share this key — nothing to toggle.
    */
   private fun stateSwitcherHtml(
     current: ServePreview,
@@ -440,12 +464,13 @@ object ServeWeb {
     basePath: String,
     q: String,
   ): String {
-    val slug = current.id.substringBefore("__")
-    // One preview per distinct state, first appearance wins, restricted to the current theme so the
-    // switcher never jumps the visitor between light and dark.
+    val key = stateInvariantKey(current)
+    // One preview per distinct state, first appearance wins, restricted to the current variant
+    // (same
+    // key) and theme so the switcher never jumps the visitor across a non-state axis or light/dark.
     val byState = LinkedHashMap<String, ServePreview>()
     for (p in all) {
-      if (p.id.substringBefore("__") != slug || p.theme != current.theme) continue
+      if (stateInvariantKey(p) != key || p.theme != current.theme) continue
       byState.putIfAbsent(p.state ?: "default", p)
     }
     if (byState.size < 2) return ""

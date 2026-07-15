@@ -81,6 +81,56 @@ class ServeWebTest {
   }
 
   @Test
+  fun `the state switcher stays within the current variant axis, not just the slug`() {
+    // Button/Filled varies on BOTH a state axis (default/pressed) and a content-props axis
+    // (label-only default vs a content=icon+label render, which keeps state=default). All share the
+    // `button-filled` slug, so keying on slug alone would cross-link the two axes.
+    val labelDefault =
+      ServePreview(
+        "button-filled__ideal__default__light",
+        "Filled",
+        state = "default",
+        theme = "light",
+      )
+    val labelPressed =
+      ServePreview(
+        "button-filled__ideal__pressed__light",
+        "Filled",
+        state = "pressed",
+        theme = "light",
+      )
+    val iconLabel =
+      ServePreview(
+        "button-filled__ideal__default__light__content-icon-label",
+        "Filled · icon+label",
+        state = "default",
+        theme = "light",
+      )
+    val all = listOf(labelDefault, labelPressed, iconLabel)
+
+    // The label-only default page toggles between its OWN states (default/pressed) and never links
+    // the icon+label render (a different variant axis).
+    val labelHtml =
+      ServeWeb.viewerPage(labelDefault, token = "t", basePath = "/compose-m3", siblings = all)
+    val labelNav = labelHtml.substringAfter("class=\"cp-states\"").substringBefore("</nav>")
+    assertTrue(labelNav.contains("aria-current=\"page\">Default</a>"), "current state active")
+    assertTrue(
+      labelNav.contains("/p/button-filled__ideal__pressed__light"),
+      "links its own pressed state",
+    )
+    assertFalse(labelNav.contains("content-icon-label"), "does not cross into the content axis")
+
+    // The icon+label render has no sibling state of its own, so it shows no switcher (rather than a
+    // switcher that navigates back to the label-only button).
+    val iconHtml =
+      ServeWeb.viewerPage(iconLabel, token = "t", basePath = "/compose-m3", siblings = all)
+    assertFalse(
+      iconHtml.contains("class=\"cp-states\""),
+      "the content variant with no state siblings shows no switcher",
+    )
+  }
+
+  @Test
   fun `a plain stateless catalog renders grid and viewer unchanged`() {
     val plain =
       listOf(
