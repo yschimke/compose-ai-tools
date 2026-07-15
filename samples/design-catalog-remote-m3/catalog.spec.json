@@ -29,7 +29,7 @@
       "name": "Containment",
       "components": [
         { "componentId": "Card", "preview": "CardRemote", "parallel": "Card", "caption": "Remote Material 3 card." },
-        { "componentId": "Card/Outlined", "preview": "OutlinedCardRemote", "parallel": "Card", "caption": "Outlined card variant (RemoteOutlinedCard)." },
+        { "componentId": "Card/Outlined", "preview": "OutlinedCardRemote", "parallel": "Card/Outlined", "caption": "Outlined card variant (RemoteOutlinedCard)." },
         { "componentId": "TitleCard", "preview": "TitleCardRemote", "parallel": "TitleCard", "caption": "Card with title, subtitle and supporting text slots." },
         { "componentId": "AppCard", "preview": "AppCardRemote", "parallel": "AppCard", "caption": "App card with app name, icon, time and content slots." }
       ]

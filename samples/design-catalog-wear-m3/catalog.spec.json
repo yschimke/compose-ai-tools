@@ -42,6 +42,7 @@
       "name": "Containment",
       "components": [
         { "componentId": "Card", "preview": "CardSticker" },
+        { "componentId": "Card/Outlined", "preview": "OutlinedCardSticker", "caption": "Outlined card variant (OutlinedCard)." },
         { "componentId": "TitleCard", "preview": "TitleCardSticker" },
         { "componentId": "ListHeader", "preview": "ListHeaderSticker" },
         { "componentId": "AppCard", "preview": "AppCardSticker", "caption": "Card with app name, icon, title and content slots." }
