@@ -219,6 +219,15 @@ internal object ServeBundleDaemon {
             // SAME `<destDir>/data` (`outputDir.parent/data`), so the registry reads exactly where
             // the render wrote. Keep the key literal to avoid a `:daemon:desktop` compile dep.
             put("composeai.render.outputDir", File(destDir, "renders").absolutePath)
+            // Opt in to the missing-resource placeholder fallback: this is the live/serve viewer,
+            // so
+            // an app-resource lookup absent from a stale or incompletely-packed bundle degrades to
+            // an
+            // obvious placeholder rather than throwing and showing a broken image. The pack-time
+            // semantics daemon leaves this off so a miss fails loudly instead of baking a
+            // placeholder
+            // into a published catalog sticker. Key kept literal to avoid a `:daemon:android` dep.
+            put("composeai.render.placeholderMissingResources", "true")
             // Backend extras: the Robolectric `robolectric.*` flags for `android`; none for
             // desktop.
             putAll(backendLaunch.extraSystemProperties)
