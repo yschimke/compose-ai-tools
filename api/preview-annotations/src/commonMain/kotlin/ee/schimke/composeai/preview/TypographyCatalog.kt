@@ -11,9 +11,20 @@ package ee.schimke.composeai.preview
  * file/class; tokens sharing a [group] render together, and a module-wide sheet aggregates them
  * all.
  *
+ * Two field types are recognised, dispatched by the annotated property's declared type:
+ * * a single `androidx.compose.ui.text.TextStyle` → one sample-text row in that style.
+ * * a whole `androidx.compose.material3.Typography` → the Material 3 type scale (display … label)
+ *   expanded into one sample row each. This is the "entire Typography" catalog the theme-override
+ *   surface offers as a selectable type scale — how a catalog declares, say, a Roboto Flex vs a
+ *   Google Sans Flex face for the whole scale — the type counterpart to a whole `ColorScheme` under
+ *   [ColorCatalog] or a whole `Shapes` under [ShapeCatalog].
+ *
  * ```kotlin
  * @TypographyCatalog(group = "Display")
  * val DisplayLarge: TextStyle = TextStyle(fontSize = 57.sp, fontWeight = FontWeight.Normal)
+ *
+ * @TypographyCatalog(name = "Roboto Flex")
+ * val RobotoFlexType: Typography = catalogTypography(RobotoFlex)
  * ```
  *
  * Discovered by FQN via the property's **backing field** — hence `@Target(FIELD)` plus `BINARY`

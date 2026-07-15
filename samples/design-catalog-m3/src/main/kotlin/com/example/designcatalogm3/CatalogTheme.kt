@@ -42,7 +42,7 @@ fun CatalogSticker(content: @Composable () -> Unit) {
   ) {
     MaterialTheme(
       colorScheme = if (dark) darkColorScheme() else lightColorScheme(),
-      typography = catalogTypography(Roboto),
+      typography = catalogTypography(CatalogDefaultFont),
     ) {
       // Component stickers render on a TRANSPARENT surface, so each one reads as a component
       // silhouette on whatever the viewer paints behind the transparent PNG (the preview server /
@@ -121,6 +121,40 @@ val Roboto: FontFamily =
     Font("Roboto-Regular", fontBytes("Roboto-Regular.ttf"), FontWeight.Normal, FontStyle.Normal),
     Font("Roboto-Medium", fontBytes("Roboto-Medium.ttf"), FontWeight.Medium, FontStyle.Normal),
   )
+
+/**
+ * Roboto Flex — the catalog's **default** typeface (see [CatalogDefaultFont]), the variable-font
+ * evolution of [Roboto] and the face Material 3 now ships as its default sans. One variable TTF
+ * (`RobotoFlex.ttf`, vendored under `resources/fonts/` from fonts.google.com's `ofl/robotoflex`)
+ * carries the whole weight axis, so a single face backs the entire type scale; Skiko rasterises the
+ * default (400) instance and synthesises the heavier scale steps.
+ */
+val RobotoFlex: FontFamily =
+  FontFamily(Font("RobotoFlex", fontBytes("RobotoFlex.ttf"), FontWeight.Normal, FontStyle.Normal))
+
+/**
+ * Google Sans Flex — offered as a **named** downloadable-GoogleFont family (the same `role:
+ * "named"` tier as [CatalogNamedFonts]'s Orbitron), so the catalog declares it as a selectable
+ * typeface. It is **not** distributed on fonts.google.com (Google Sans is a Google-brand font), so
+ * the branded TTF isn't vendored here; [optionalGoogleFontFamily] therefore degrades gracefully to
+ * the platform sans until a `GoogleSansFlex.ttf` is dropped into `resources/fonts/`, at which point
+ * the real face round-trips into the fonts manifest exactly like any other named GoogleFont. The
+ * declaration (the choice) exists regardless — the point of the theme-override typeface catalog.
+ */
+val GoogleSansFlex: FontFamily =
+  optionalGoogleFontFamily("Google Sans Flex", "GoogleSansFlex.ttf") ?: FontFamily.SansSerif
+
+/** The catalog's default typeface: Roboto Flex, re-pointed onto the whole type scale. */
+val CatalogDefaultFont: FontFamily = RobotoFlex
+
+/**
+ * Builds a named downloadable-GoogleFont [FontFamily] from a vendored face, or returns null when
+ * the TTF isn't present (so a not-yet-vendored brand face degrades to a caller-chosen fallback
+ * rather than failing the build — the same graceful degradation the fonts-manifest generator
+ * assumes).
+ */
+private fun optionalGoogleFontFamily(name: String, file: String): FontFamily? =
+  runCatching { FontFamily(googleFontFace(name, file, FontWeight.Normal)) }.getOrNull()
 
 /**
  * Generic-family substitutes keyed by the name `genericFontFamily(...)` looks up — the same files

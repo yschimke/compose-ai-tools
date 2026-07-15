@@ -70,6 +70,25 @@ enum class CatalogTokenKind {
    * An `androidx.compose.ui.text.TextStyle` property → a labelled sample-text row in that style.
    */
   TEXT_STYLE,
+  /** An `androidx.compose.ui.graphics.Shape` property → a labelled box clipped to that shape. */
+  SHAPE,
+  /**
+   * A whole `androidx.compose.material3.ColorScheme` property → the Material 3 colour roles
+   * expanded into one swatch row each. The "entire ColorScheme" catalog (`@ColorCatalog` on a
+   * `ColorScheme`).
+   */
+  COLOR_SCHEME,
+  /**
+   * A whole `androidx.compose.material3.Typography` property → the Material 3 type scale expanded
+   * into one sample row each. The "entire Typography" catalog (`@TypographyCatalog` on a
+   * `Typography`).
+   */
+  TYPOGRAPHY,
+  /**
+   * A whole `androidx.compose.material3.Shapes` property → the five M3 shape roles expanded into
+   * one row each. The "entire Shapes" catalog (`@ShapeCatalog` on a `Shapes`).
+   */
+  SHAPES,
 }
 
 /**
@@ -282,13 +301,15 @@ enum class AmbientCaptureState {
 /**
  * Per-preview Wear OS one-handed-gesture **hint** override discovered from a `@GestureHintPreview`
  * annotation. Non-null when present; the renderer wraps the composition with
- * `:data-gestures-connector`'s `GestureOverrideExtension` so `GestureHint` force-shows the indicator
- * — the same seam daemon-driven `renderNow.overrides.gestures.showHints` drives through the
- * connector's planner.
+ * `:data-gestures-connector`'s `GestureOverrideExtension` so `GestureHint` force-shows the
+ * indicator — the same seam daemon-driven `renderNow.overrides.gestures.showHints` drives through
+ * the connector's planner.
  */
 @Serializable
 data class GestureHintCapture(
-  /** Force-show the one-handed-gesture hints for the render. Mirrors `GestureOverride.showHints`. */
+  /**
+   * Force-show the one-handed-gesture hints for the render. Mirrors `GestureOverride.showHints`.
+   */
   val showHints: Boolean = true
 )
 

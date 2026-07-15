@@ -290,6 +290,90 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
+  fun `composePreviewDiscover aggregates @ShapeCatalog and whole-object catalogs by field type`() {
+    val projectDir = createCmpTestProject()
+
+    val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+    annDir.mkdirs()
+    // Declare all three field-target catalog annotations locally so the test needs no external
+    // `preview-annotations` artifact — same policy as the colour/type tests above.
+    File(annDir, "Catalogs.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FIELD)
+        annotation class ShapeCatalog(val name: String = "", val group: String = "")
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FIELD)
+        annotation class ColorCatalog(val name: String = "", val group: String = "")
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FIELD)
+        annotation class TypographyCatalog(val name: String = "", val group: String = "")
+        """
+          .trimIndent()
+      )
+
+    File(projectDir, "src/main/kotlin/test/ThemeTokens.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.foundation.shape.RoundedCornerShape
+        import androidx.compose.material3.ColorScheme
+        import androidx.compose.material3.Shapes
+        import androidx.compose.material3.Typography
+        import androidx.compose.material3.lightColorScheme
+        import androidx.compose.ui.graphics.Shape
+        import ee.schimke.composeai.preview.ColorCatalog
+        import ee.schimke.composeai.preview.ShapeCatalog
+        import ee.schimke.composeai.preview.TypographyCatalog
+
+        // Single-token Shape vs whole Shapes — dispatched by field type.
+        @ShapeCatalog(group = "Shape") val Pill: Shape = RoundedCornerShape(50)
+        @ShapeCatalog(name = "Scale", group = "Shape") val BrandShapes: Shapes = Shapes()
+
+        // Whole-object ColorScheme / Typography under the colour / type annotations.
+        @ColorCatalog(name = "Scheme", group = "Palette") val BrandScheme: ColorScheme = lightColorScheme()
+        @TypographyCatalog(name = "Scale", group = "Type") val BrandType: Typography = Typography()
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val byId = manifest.previews.associateBy { it.id }
+
+    // `@ShapeCatalog` sheet namespaced under `shapecatalog__`, carrying a single-Shape token and a
+    // whole-Shapes token tagged with distinct kinds.
+    val shapeSheet = byId.getValue("shapecatalog__Shape")
+    assertThat(shapeSheet.params.kind).isEqualTo(PreviewKind.CATALOG)
+    assertThat(shapeSheet.params.catalogTokens.map { it.tokenKind })
+      .containsExactly(CatalogTokenKind.SHAPE, CatalogTokenKind.SHAPES)
+
+    // A `@ColorCatalog` on a whole `ColorScheme` is tagged COLOR_SCHEME (not COLOR).
+    assertThat(byId.getValue("colorcatalog__Palette").params.catalogTokens.single().tokenKind)
+      .isEqualTo(CatalogTokenKind.COLOR_SCHEME)
+    // A `@TypographyCatalog` on a whole `Typography` is tagged TYPOGRAPHY (not TEXT_STYLE).
+    assertThat(byId.getValue("typographycatalog__Type").params.catalogTokens.single().tokenKind)
+      .isEqualTo(CatalogTokenKind.TYPOGRAPHY)
+  }
+
+  @Test
   fun `composePreviewDiscover emits a theme catalog sheet per @ThemeCatalog provider`() {
     val projectDir = createCmpTestProject()
 
