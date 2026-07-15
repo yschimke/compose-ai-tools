@@ -434,7 +434,8 @@ abstract class BundlePreviewTask : DefaultTask() {
     // `TileRenderer`, which links the library `R$style`) AND a classic `@Preview` that calls
     // `stringResource(R.string.…)` need the app's `0x7f` resource table at detached-render time — a
     // detached daemon has neither the merged table nor those R classes. Added to `irZipFiles`,
-    // written verbatim by `buildZip`. `resolveAndroidResources` no-ops (returns null) when there's no
+    // written verbatim by `buildZip`. `resolveAndroidResources` no-ops (returns null) when there's
+    // no
     // prior render / no binary resources, so desktop and render-less packs stay unchanged.
     val androidResources =
       if (backend.get() == "android") resolveAndroidResources(irZipFiles) else null

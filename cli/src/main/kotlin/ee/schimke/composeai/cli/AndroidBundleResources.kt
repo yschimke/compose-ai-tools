@@ -10,18 +10,19 @@ import java.util.zip.ZipInputStream
  *
  * A classic `@Composable @Preview` that calls `stringResource(R.string.…)` needs the app's compiled
  * resource table (the `0x7f` package, `resources.arsc` / `apk-for-local-test.ap_`) at render time.
- * The in-Gradle render path gets it for free — AGP puts a `com/android/tools/test_config.properties`
- * on the unit-test classpath and Robolectric's `RobolectricTestRunner` auto-reads it. A **detached**
- * render (a packed bundle spawned by `bundle daemon` / `bundle render`, or a `serve --catalogs`
- * live bundle) has neither the AGP build nor that config file, so without re-supplying them the
- * sandbox has only the framework `android-all` table and `R.string.…` throws
- * `Resources$NotFoundException: String resource ID #0x7f…`.
+ * The in-Gradle render path gets it for free — AGP puts a
+ * `com/android/tools/test_config.properties` on the unit-test classpath and Robolectric's
+ * `RobolectricTestRunner` auto-reads it. A **detached** render (a packed bundle spawned by `bundle
+ * daemon` / `bundle render`, or a `serve --catalogs` live bundle) has neither the AGP build nor
+ * that config file, so without re-supplying them the sandbox has only the framework `android-all`
+ * table and `R.string.…` throws `Resources$NotFoundException: String resource ID #0x7f…`.
  *
  * `BundlePreviewTask.resolveAndroidResources` packs `android/resources.ap_` +
  * `android/AndroidManifest.xml` (+ optional `android/r-classes.jar`) for any `backend == "android"`
  * bundle; this object extracts that payload and synthesizes the `test_config.properties` both the
- * `bundle daemon` ([BundleDaemonCommand]) and `serve` ([ee.schimke.composeai.cli.serve.ServeBundleDaemon])
- * paths prepend to the Robolectric daemon's `-cp`. Shared so both wire resources identically.
+ * `bundle daemon` ([BundleDaemonCommand]) and `serve`
+ * ([ee.schimke.composeai.cli.serve.ServeBundleDaemon]) paths prepend to the Robolectric daemon's
+ * `-cp`. Shared so both wire resources identically.
  */
 internal object AndroidBundleResources {
 
@@ -102,13 +103,18 @@ internal object AndroidBundleResources {
    * Convenience for a daemon launch: extract [zipBytes]'s `android/` resources into
    * `<workDir>/android`, synthesize the `test_config.properties` under `<workDir>/test-config`, and
    * return the classpath entries (the `test-config` dir + optional `r-classes.jar`) to prepend to
-   * the Robolectric daemon's `-cp`. Empty when the bundle carries no `android/` payload — the render
-   * then falls back to framework resources only (unchanged pre-carriage behaviour).
+   * the Robolectric daemon's `-cp`. Empty when the bundle carries no `android/` payload — the
+   * render then falls back to framework resources only (unchanged pre-carriage behaviour).
    */
   fun daemonClasspath(zipBytes: ByteArray, workDir: File, applicationPackage: String?): List<File> {
     val res = extract(zipBytes, File(workDir, "android")) ?: return emptyList()
     val testConfigDir =
-      writeTestConfig(File(workDir, "test-config"), res.resourceApk, res.mergedManifest, applicationPackage)
+      writeTestConfig(
+        File(workDir, "test-config"),
+        res.resourceApk,
+        res.mergedManifest,
+        applicationPackage,
+      )
     return buildList {
       add(testConfigDir)
       res.rClassesJar?.let { add(it) }

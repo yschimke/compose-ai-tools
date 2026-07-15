@@ -54,7 +54,8 @@ class AndroidBundleResourcesTest {
   @Test
   fun `extract returns null when the bundle carries no android payload`() {
     val dir = Files.createTempDirectory("abr-none").toFile()
-    val zip = zipOf(mapOf("classes/app.jar" to byteArrayOf(1), "previews.json" to "{}".toByteArray()))
+    val zip =
+      zipOf(mapOf("classes/app.jar" to byteArrayOf(1), "previews.json" to "{}".toByteArray()))
 
     assertNull(AndroidBundleResources.extract(zip, File(dir, "android")))
   }
@@ -73,7 +74,8 @@ class AndroidBundleResourcesTest {
     val apk = File(dir, "resources.ap_").apply { writeText("x") }
     val manifest = File(dir, "AndroidManifest.xml").apply { writeText("y") }
 
-    val root = AndroidBundleResources.writeTestConfig(File(dir, "cfg"), apk, manifest, "com.example.app")
+    val root =
+      AndroidBundleResources.writeTestConfig(File(dir, "cfg"), apk, manifest, "com.example.app")
 
     val props = File(root, "com/android/tools/test_config.properties").readText()
     assertTrue(props.contains("android_resource_apk=${apk.absolutePath}"), props)

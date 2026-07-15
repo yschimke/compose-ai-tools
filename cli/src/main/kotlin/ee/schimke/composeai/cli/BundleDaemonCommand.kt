@@ -110,14 +110,17 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       extractIrArtifacts(zipBytes, irDir!!, bundleManifestFile!!, file)
     }
 
-    // Android resource carriage (ungated by IR): any `backend == "android"` bundle carries the app's
+    // Android resource carriage (ungated by IR): any `backend == "android"` bundle carries the
+    // app's
     // merged resource APK + manifest (+ generated R classes) under `android/`, because a classic
-    // `@Preview` that calls `stringResource(R.string.…)` needs the `0x7f` app table just as much as a
+    // `@Preview` that calls `stringResource(R.string.…)` needs the `0x7f` app table just as much as
+    // a
     // Wear tile does. A detached daemon has neither the merged table (no AGP build) nor those R
     // classes, so [AndroidBundleResources] extracts them and synthesizes the Robolectric
     // `com/android/tools/test_config.properties` the daemon's RobolectricTestRunner auto-reads from
     // the classpath — exactly how the in-Gradle render path gets resources — and the config dir + R
-    // jar ride the `-cp` seam below. Empty for a bundle with no `android/` payload (packed before this
+    // jar ride the `-cp` seam below. Empty for a bundle with no `android/` payload (packed before
+    // this
     // carriage / no binary resources): renders framework-resources-only, as before.
     val androidReplayClasspath = mutableListOf<File>()
     if (manifest.backend == "android") {
@@ -167,9 +170,16 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       add("-cp")
       add(
         composeDaemonClasspath(
-          launch.classpath,
-          libJars + resolvedJars + androidReplayClasspath,
-          hasIr,
+          // The Android resource carriage (test-config dir + r-classes jar) must reach the
+          // daemon `-cp` for *every* android bundle, not just IR-carrying ones — a classic
+          // `stringResource` preview needs the resource table regardless of IR. Fold it into
+          // the base classpath so it survives the `hasIr` gate that only guards the carried
+          // lib/coordinate jars.
+          base =
+            (listOf(launch.classpath) + androidReplayClasspath.map { it.absolutePath })
+              .joinToString(File.pathSeparator),
+          carriedDeps = libJars + resolvedJars,
+          hasIr = hasIr,
         )
       )
       add("ee.schimke.composeai.daemon.DaemonMain")
