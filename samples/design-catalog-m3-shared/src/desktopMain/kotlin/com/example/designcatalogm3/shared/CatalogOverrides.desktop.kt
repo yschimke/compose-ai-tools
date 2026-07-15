@@ -5,7 +5,6 @@ import androidx.compose.ui.graphics.Color
 import ee.schimke.composeai.overrides.previewOverrideBoolean
 import ee.schimke.composeai.overrides.previewOverrideColor
 import ee.schimke.composeai.overrides.previewOverrideFloat
-import ee.schimke.composeai.overrides.previewOverrideFont
 import ee.schimke.composeai.overrides.previewOverrideInt
 import ee.schimke.composeai.overrides.previewOverrideString
 
@@ -16,10 +15,6 @@ import ee.schimke.composeai.overrides.previewOverrideString
 @Composable
 actual fun catalogOverrideString(key: String, default: String, index: Int?): String =
   previewOverrideString(key, default, index)
-
-@Composable
-actual fun catalogOverrideFont(key: String, default: String, suggestions: List<String>): String =
-  previewOverrideFont(key, default, suggestions = suggestions, googleFonts = true)
 
 @Composable
 actual fun catalogOverrideInt(key: String, default: Int, index: Int?): Int =

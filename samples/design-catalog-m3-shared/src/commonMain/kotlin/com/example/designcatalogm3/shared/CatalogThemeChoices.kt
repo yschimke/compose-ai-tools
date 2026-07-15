@@ -26,15 +26,6 @@ const val CATALOG_FONT_GOOGLE_SANS_FLEX = "Google Sans Flex"
 const val CATALOG_FONT_LOBSTER_TWO = "Lobster Two"
 
 /**
- * The declared typeface choices, in the order the font-override autocomplete shows them first
- * (before the full fonts.google.com list). Roboto Flex — the default — leads. Passed as the
- * `catalogOverrideFont` suggestions so "by default show the typography catalog" holds while any
- * Google font stays selectable.
- */
-val CATALOG_FONT_NAMES: List<String> =
-  listOf(CATALOG_FONT_ROBOTO_FLEX, CATALOG_FONT_GOOGLE_SANS_FLEX, CATALOG_FONT_LOBSTER_TWO)
-
-/**
  * Palette choice names (declared `@ColorCatalog` labels). `M3` is the default light/dark scheme.
  */
 const val CATALOG_PALETTE_M3 = "M3"

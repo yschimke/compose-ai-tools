@@ -36,13 +36,6 @@ private fun seededKnob(key: String, index: Int?): String? =
 actual fun catalogOverrideString(key: String, default: String, index: Int?): String =
   seededKnob(key, index) ?: default
 
-// The in-browser tier only resolves the knob's *value* (the viewer pushes `knob.theme.font`); the
-// autocomplete [suggestions] shape the control the daemon-backed serve UI renders, so they're
-// unused here. Resolves identically to a plain string knob.
-@Composable
-actual fun catalogOverrideFont(key: String, default: String, suggestions: List<String>): String =
-  seededKnob(key, null) ?: default
-
 @Composable
 actual fun catalogOverrideInt(key: String, default: Int, index: Int?): Int =
   seededKnob(key, index)?.trim()?.toIntOrNull() ?: default
