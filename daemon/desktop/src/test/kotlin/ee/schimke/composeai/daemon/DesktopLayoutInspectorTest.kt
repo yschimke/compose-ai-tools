@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.ImageComposeScene
@@ -15,8 +16,11 @@ import androidx.compose.ui.draw.paint
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.painter.ColorPainter
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.unit.Density
@@ -97,6 +101,50 @@ class DesktopLayoutInspectorTest {
     // reflection walk reaches `LayoutNode` children after `scene.render()` Z-sorts the tree.
     assertTrue("root must have a measured width", root.size.width > 0)
     assertTrue("root must have a non-empty subtree", root.children.isNotEmpty())
+  }
+
+  @Test
+  fun captures_an_imagevector_icon_as_editable_vector_paths() {
+    // Tier 1 capture: an `Icon` backed by an `ImageVector` paints through a `VectorPainter`; the
+    // inspector must reflect its path tree into `vectorGraphic` (in the vector's 24×24 viewport) so
+    // the figma-svg export can emit `<path>`s instead of a raster crop. Exercises the reflection
+    // against the real androidx VectorPainter/VectorComponent/PathComponent/PathNode classes.
+    val star =
+      ImageVector.Builder(
+          defaultWidth = 24.dp,
+          defaultHeight = 24.dp,
+          viewportWidth = 24f,
+          viewportHeight = 24f,
+        )
+        .apply {
+          path(fill = SolidColor(Color(0xFF112233))) {
+            moveTo(12f, 0f)
+            lineTo(15f, 9f)
+            lineTo(24f, 9f)
+            lineTo(17f, 14f)
+            lineTo(20f, 24f)
+            lineTo(12f, 18f)
+            lineTo(4f, 24f)
+            lineTo(7f, 14f)
+            lineTo(0f, 9f)
+            lineTo(9f, 9f)
+            close()
+          }
+        }
+        .build()
+
+    val root = writeAndRead { Icon(star, "star", Modifier.size(48.dp)) }
+
+    val node = root.firstWhere { it.vectorGraphic != null }
+    assertNotNull("an ImageVector-backed Icon must carry a captured vectorGraphic", node)
+    val graphic = node!!.vectorGraphic!!
+    assertEquals(24f, graphic.viewportWidth, 0.01f)
+    assertEquals(24f, graphic.viewportHeight, 0.01f)
+    assertEquals("one path captured", 1, graphic.paths.size)
+    val path = graphic.paths.first()
+    assertTrue("path starts at the star tip", path.pathData.startsWith("M12 0"))
+    assertTrue("path is closed", path.pathData.trimEnd().endsWith("Z"))
+    assertEquals("solid fill resolved", "#FF112233", path.fillArgb)
   }
 
   @Test

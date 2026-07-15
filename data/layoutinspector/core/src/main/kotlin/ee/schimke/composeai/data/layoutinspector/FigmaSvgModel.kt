@@ -93,6 +93,29 @@ data class FigmaSvgFontFace(
 data class FigmaSvgRaster(val href: String)
 
 /**
+ * An editable vector graphic (an `Icon`/`Image`'s `ImageVector`) emitted as real `<path>` layers —
+ * the vector alternative to a [FigmaSvgRaster] leaf. Path coordinates are in the vector's own
+ * [viewportWidth] × [viewportHeight]; the emitter wraps them in a `translate(left,top)
+ * scale(w/viewportWidth, h/viewportHeight)` group so they land on the layer's placed box.
+ */
+data class FigmaSvgVector(
+  val viewportWidth: Float,
+  val viewportHeight: Float,
+  val paths: List<FigmaSvgVectorPath>,
+)
+
+/** One `<path>` of a [FigmaSvgVector] in viewport coordinates, with its resolved solid paint. */
+data class FigmaSvgVectorPath(
+  val pathData: String,
+  val fillArgb: String? = null,
+  val fillAlpha: Float = 1f,
+  val strokeArgb: String? = null,
+  val strokeWidth: Float = 0f,
+  val strokeAlpha: Float = 1f,
+  val evenOdd: Boolean = false,
+)
+
+/**
  * A raster drawn beneath a layer's content ([FigmaSvgLayer.background]) — the pixels of a
  * `Modifier.drawBehind {…}` cropped to the drawn region, which may be tighter than the layer's own
  * box (a padded `Spacer` paints only the bar). Carries its own bounds so the `<image>` lands on the
@@ -161,6 +184,12 @@ data class FigmaSvgLayer(
   val text: FigmaSvgText? = null,
   /** Set when this layer is an opaque component rendered as an `<image>`. */
   val raster: FigmaSvgRaster? = null,
+  /**
+   * Set when this layer is an `Icon`/`Image` whose `ImageVector` was captured — emitted as editable
+   * `<path>` layers instead of a [raster] crop. Mutually exclusive with [raster]: a vector-backed
+   * icon takes this path, a bitmap-backed one still rasters.
+   */
+  val vector: FigmaSvgVector? = null,
   /**
    * A raster `<image>` drawn *beneath* this layer's own shape/text/children — the pixels of an
    * imperative `Modifier.drawBehind {…}` (a progress track, a slider groove, a custom-drawn
@@ -416,6 +445,32 @@ data class FigmaSvgModel(
       val rasterTargets: MutableList<FigmaSvgRasterTarget> = mutableListOf(),
     )
 
+    /**
+     * The emitter-native [FigmaSvgVector] for a captured [LayoutInspectorVectorGraphic], or null
+     * when it carries nothing paintable — no paths, a degenerate viewport, or only
+     * gradient/brush-filled paths (whose colour the capture left null, matching the
+     * vector-vs-raster rule: what we can't resolve to a flat paint, we don't emit as vector).
+     */
+    private fun LayoutInspectorVectorGraphic.toFigmaSvgVector(): FigmaSvgVector? {
+      if (viewportWidth <= 0f || viewportHeight <= 0f) return null
+      val emittable =
+        paths
+          .filter { it.pathData.isNotBlank() && (it.fillArgb != null || it.strokeArgb != null) }
+          .map {
+            FigmaSvgVectorPath(
+              pathData = it.pathData,
+              fillArgb = it.fillArgb,
+              fillAlpha = it.fillAlpha,
+              strokeArgb = it.strokeArgb,
+              strokeWidth = it.strokeWidth,
+              strokeAlpha = it.strokeAlpha,
+              evenOdd = it.evenOdd,
+            )
+          }
+      return if (emittable.isEmpty()) null
+      else FigmaSvgVector(viewportWidth, viewportHeight, emittable)
+    }
+
     private fun LayoutInspectorNode.toLayer(
       ctx: BuildContext,
       parentBounds: LayoutInspectorBounds? = null,
@@ -433,6 +488,21 @@ data class FigmaSvgModel(
       // origin, clamped to the parent, and use it everywhere below. Best-effort geometry for a
       // pathological capture; a normally-placed node keeps its real `bounds` untouched.
       val bounds = recoverBounds(parentBounds)
+      // An `Icon`/`Image` whose `ImageVector` the inspector captured emits as editable `<path>`
+      // layers rather than a raster crop — the vector alternative to the opaque-by-name fallback
+      // below. Placed before the raster branch so a vector-backed icon never rasterises; a
+      // bitmap-backed one (no `vectorGraphic`) falls through and rasters as before. An empty/
+      // gradient-only capture yields null and also falls through.
+      vectorGraphic?.toFigmaSvgVector()?.let { vec ->
+        return FigmaSvgLayer(
+          name = layerName(),
+          left = bounds.left,
+          top = bounds.top,
+          right = bounds.right,
+          bottom = bounds.bottom,
+          vector = vec,
+        )
+      }
       // An opaque component matched by name (Image/Icon/TextField/…) can't be vectorised at all —
       // emit an <image> for the whole node and drop the subtree.
       val opaqueByName = isOpaque(ctx.rasterComponents)
