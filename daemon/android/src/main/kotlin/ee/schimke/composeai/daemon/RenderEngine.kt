@@ -379,7 +379,18 @@ class RenderEngine(
             // writers) — built per render so each extension owns its own recorder lifecycle.
             // Threaded through the same Compose pipeline as `previewOverrideExtensions` and
             // re-used during the post-capture pass below to write the artefacts.
-            val builtDataArtifactExtensions = dataArtifactExtensions.build(rule.activity)
+            //
+            // Built off a placeholder-wrapped context (not the raw activity) so the missing-resource
+            // fallback sits *underneath* these extensions. The resources recorder re-provides
+            // `LocalContext` from a `RecordingResources` that delegates to this base
+            // (`ResourcesUsedDataProducer.recorder`), which would otherwise shadow the outer
+            // `LocalContext provides placeholderContext` below and route a missing `stringResource`
+            // straight to the raw table → `Resources$NotFoundException`. Wrapping the base here keeps
+            // the fallback active through every extension that carries this context onward. The real
+            // activity is threaded separately via `RenderDataArtifactContextKeys.HeldActivity`, so
+            // nothing that needs the `ComponentActivity` reads it from this (wrapped) context.
+            val builtDataArtifactExtensions =
+              dataArtifactExtensions.build(rule.activity.wrappedForPlaceholderResources())
 
             System.err.println(
               "compose-ai-daemon: [render] phase=setContent.start outputBaseName=${spec.outputBaseName}"

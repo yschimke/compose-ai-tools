@@ -75,4 +75,24 @@ class PlaceholderFallbackResourcesTest {
     // And the wrapped context resolves a miss to a placeholder through the standard accessor.
     assertTrue(ctx.getString(missingId).startsWith("⟦res 0x"))
   }
+
+  @Test
+  fun `the resources recorder built over the fallback keeps the fallback active`() {
+    // Regression for the shadowing path: `ResourcesRecorderExtension` re-provides `LocalContext`
+    // from a `RecordingResources` that delegates to the context it was built with. When that base
+    // is the placeholder-wrapped context, a missing lookup must degrade to a placeholder instead
+    // of throwing `Resources$NotFoundException` — otherwise the recorder's inner provider silently
+    // defeats the fallback for the main daemon/serve render.
+    val recordingContext =
+      RuntimeEnvironment.getApplication().wrappedForPlaceholderResources().let { fallbackContext ->
+        val recorder = ResourcesUsedDataProducer.recorder(fallbackContext)
+        ResourcesUsedDataProducer.context(fallbackContext, recorder)
+      }
+    assertTrue(recordingContext.getString(missingId).startsWith("⟦res 0x"))
+    // A resolvable resource still records + returns its real value through the recorder.
+    assertEquals(
+      RuntimeEnvironment.getApplication().resources.getString(android.R.string.ok),
+      recordingContext.getString(android.R.string.ok),
+    )
+  }
 }
