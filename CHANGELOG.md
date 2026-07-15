@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.16.50](https://github.com/yschimke/compose-ai-tools/compare/v0.16.49...v0.16.50) (2026-07-15)
+
+
+### Features
+
+* **samples:** add compose-m3 RadioButton unselected state variant ([#2497](https://github.com/yschimke/compose-ai-tools/issues/2497)) ([6091e95](https://github.com/yschimke/compose-ai-tools/commit/6091e95e11b5ed85e136f063fc67812e8b67742b))
+* **serve:** fold component states into one grid card + add a viewer state switcher ([#2496](https://github.com/yschimke/compose-ai-tools/issues/2496)) ([f2c6789](https://github.com/yschimke/compose-ai-tools/commit/f2c6789ba310a486e2330d66c39dbbf2d3983b64))
+* **serve:** make the theme.font override an autocompleting Google Fonts field ([#2495](https://github.com/yschimke/compose-ai-tools/issues/2495)) ([7250125](https://github.com/yschimke/compose-ai-tools/commit/7250125bd0e1607377b94b8bdc49eb85afc3b0b4))
+
+
+### Bug Fixes
+
+* **bundle:** carry + load app resources for classic Android previews ([#2498](https://github.com/yschimke/compose-ai-tools/issues/2498)) ([ee16896](https://github.com/yschimke/compose-ai-tools/commit/ee168969fc915ac158b951281d14ae7a069d4f9b))
+
 ## [0.16.49](https://github.com/yschimke/compose-ai-tools/compare/v0.16.48...v0.16.49) (2026-07-15)
 
 
