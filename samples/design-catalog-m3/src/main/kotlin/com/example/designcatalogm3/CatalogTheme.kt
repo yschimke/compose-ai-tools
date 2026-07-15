@@ -22,11 +22,13 @@ import com.example.designcatalogm3.shared.CATALOG_COLORS_KNOB
 import com.example.designcatalogm3.shared.CATALOG_FONT_GOOGLE_SANS_FLEX
 import com.example.designcatalogm3.shared.CATALOG_FONT_KNOB
 import com.example.designcatalogm3.shared.CATALOG_FONT_LOBSTER_TWO
+import com.example.designcatalogm3.shared.CATALOG_FONT_NAMES
 import com.example.designcatalogm3.shared.CATALOG_FONT_ROBOTO_FLEX
 import com.example.designcatalogm3.shared.CATALOG_PALETTE_M3
 import com.example.designcatalogm3.shared.LocalGenericFonts
 import com.example.designcatalogm3.shared.LocalNamedFonts
 import com.example.designcatalogm3.shared.catalogColorScheme
+import com.example.designcatalogm3.shared.catalogOverrideFont
 import com.example.designcatalogm3.shared.catalogOverrideString
 import com.example.designcatalogm3.shared.catalogTypography
 
@@ -55,7 +57,10 @@ fun CatalogSticker(content: @Composable () -> Unit) {
   // `themeProvider` — the wear catalog's route — needs Compose 1.11's `PreviewWrapperProvider`,
   // which
   // this CMP 1.10 desktop module doesn't have, so the override is read in-composition instead.)
-  val font = catalogFont(catalogOverrideString(CATALOG_FONT_KNOB, CATALOG_FONT_ROBOTO_FLEX))
+  val font =
+    catalogFont(
+      catalogOverrideFont(CATALOG_FONT_KNOB, CATALOG_FONT_ROBOTO_FLEX, CATALOG_FONT_NAMES)
+    )
   val colorScheme =
     catalogColorScheme(catalogOverrideString(CATALOG_COLORS_KNOB, CATALOG_PALETTE_M3), dark)
   CatalogStickerFrame(

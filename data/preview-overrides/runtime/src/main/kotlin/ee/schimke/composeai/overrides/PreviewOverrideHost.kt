@@ -43,6 +43,23 @@ interface PreviewOverrideHost {
   @Composable fun color(key: String, default: Color, index: Int?): Color
 
   @Composable fun dp(key: String, default: Dp, index: Int?): Dp
+
+  /**
+   * Declare and resolve a **font-family** string knob — a [string] knob a viewer renders as an
+   * autocomplete over [suggestions] (typically the declared `@TypographyCatalog` names), optionally
+   * splicing the full Google Fonts family list when [googleFonts]. The default implementation
+   * ignores the extra metadata and behaves exactly like [string]; the controller-backed host
+   * overrides it to record the richer declaration. Having a default body keeps existing
+   * [PreviewOverrideHost] implementations (test fakes) source-compatible.
+   */
+  @Composable
+  fun font(
+    key: String,
+    default: String,
+    index: Int?,
+    suggestions: List<String>,
+    googleFonts: Boolean,
+  ): String = string(key, default, index)
 }
 
 /**
@@ -145,12 +162,37 @@ object ControllerPreviewOverrideHost : PreviewOverrideHost {
   }
 
   @Composable
+  override fun font(
+    key: String,
+    default: String,
+    index: Int?,
+    suggestions: List<String>,
+    googleFonts: Boolean,
+  ): String {
+    val seeded by PreviewOverrideController.seededValues
+    val effective =
+      (seeded[seedKey(key, index)] as? PreviewOverrideValue.StringValue)?.value ?: default
+    declare(
+      key,
+      index,
+      PreviewOverrideType.STRING,
+      PreviewOverrideValue.StringValue(default),
+      PreviewOverrideValue.StringValue(effective),
+      suggestions = suggestions,
+      googleFonts = googleFonts,
+    )
+    return effective
+  }
+
+  @Composable
   private fun declare(
     key: String,
     index: Int?,
     type: String,
     default: PreviewOverrideValue,
     current: PreviewOverrideValue,
+    suggestions: List<String> = emptyList(),
+    googleFonts: Boolean = false,
   ) {
     val declaration =
       PreviewOverrideDeclaration(
@@ -160,6 +202,8 @@ object ControllerPreviewOverrideHost : PreviewOverrideHost {
         default = default,
         current = current,
         index = index,
+        suggestions = suggestions,
+        googleFonts = googleFonts,
       )
     // Record on commit, not mid-composition: keeps the controller mutation a side effect of a
     // successful composition (idempotent — the controller de-dupes by seedKey).
@@ -233,3 +277,20 @@ fun previewOverrideColor(key: String, default: Color, index: Int? = null): Color
 @Composable
 fun previewOverrideDp(key: String, default: Dp, index: Int? = null): Dp =
   LocalPreviewOverrideHost.current.dp(key, default, index)
+
+/**
+ * Editable **font-family** knob: a string knob a viewer renders as an autocompleting text field
+ * seeded with [suggestions] (typically the declared `@TypographyCatalog` names, shown first) and —
+ * when [googleFonts] (the default) — the full fonts.google.com family list, while staying free-text
+ * so any typed family resolves. Resolves like [previewOverrideString] (the daemon-seeded value, or
+ * [default]); the extra metadata only shapes the control a viewer offers. See
+ * [previewOverrideString].
+ */
+@Composable
+fun previewOverrideFont(
+  key: String,
+  default: String,
+  suggestions: List<String> = emptyList(),
+  googleFonts: Boolean = true,
+  index: Int? = null,
+): String = LocalPreviewOverrideHost.current.font(key, default, index, suggestions, googleFonts)

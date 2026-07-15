@@ -26,6 +26,20 @@ import androidx.compose.ui.graphics.Color
 @Composable
 expect fun catalogOverrideString(key: String, default: String, index: Int? = null): String
 
+/**
+ * Editable **font-family** knob (the theme typeface override). Like [catalogOverrideString], but a
+ * viewer renders it as an autocompleting text field seeded with [suggestions] (the declared
+ * `@TypographyCatalog` names, shown first) plus the full fonts.google.com family list, so any
+ * family is selectable while the field stays free-text. Resolves to the seeded value, or [default]
+ * when none is seeded, so an un-overridden sticker is pixel-unchanged.
+ */
+@Composable
+expect fun catalogOverrideFont(
+  key: String,
+  default: String,
+  suggestions: List<String> = emptyList(),
+): String
+
 /** Editable **int** knob (an item count, a badge number). See [catalogOverrideString]. */
 @Composable expect fun catalogOverrideInt(key: String, default: Int, index: Int? = null): Int
 
