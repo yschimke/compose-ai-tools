@@ -353,11 +353,15 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `TitleCardRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/TitleCardRemote.png" width="150" /> |
 | `TruncatedTextRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/TruncatedTextRemote.png" width="150" /> |
 | `TypographyRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/TypographyRemote.png" width="150" /> |
+| `WidgetContainerGradientRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/WidgetContainerGradientRemote.png" width="150" /> |
+| `WidgetContainerLargeRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/WidgetContainerLargeRemote.png" width="150" /> |
+| `WidgetContainerSmallRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/WidgetContainerSmallRemote.png" width="150" /> |
 
 ## samples:design-catalog-wear-m3
 
 | Preview | Image |
 |---------|-------|
+| `Wear palette colours` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/colorcatalog__Wear_palette.png" width="150" /> |
 | `CardScalingScrollGif · scroll gif` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/CardScalingScrollGif_Large_Round.gif" width="150" /> |
 | `CardScaling · scroll top` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/CardScaling_Large_Round_SCROLL_top.png" width="150" /> |
 | `CardScaling · scroll end` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/CardScaling_Large_Round_SCROLL_end.png" width="150" /> |
@@ -388,6 +392,7 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `IconSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/IconSticker.png" width="150" /> |
 | `ListHeaderSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/ListHeaderSticker.png" width="150" /> |
 | `OutlinedButtonSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/OutlinedButtonSticker.png" width="150" /> |
+| `OutlinedCardSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/OutlinedCardSticker.png" width="150" /> |
 | `PageIndicatorScaffoldTemplate` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/PageIndicatorScaffoldTemplate_Extra_Large_Round.png" width="150" /> |
 | `PageIndicatorScaffoldTemplate` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/PageIndicatorScaffoldTemplate_Large_Round.png" width="150" /> |
 | `PageIndicatorScaffoldTemplate` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/PageIndicatorScaffoldTemplate_Small_Round.png" width="150" /> |
@@ -402,6 +407,10 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `TimeTextScaffoldTemplate` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/TimeTextScaffoldTemplate_Small_Round.png" width="150" /> |
 | `TitleCardSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/TitleCardSticker.png" width="150" /> |
 | `TypographySpecimen` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/TypographySpecimen.png" width="150" /> |
+| `Wear shapes shapes` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/shapecatalog__Wear_shapes.png" width="150" /> |
+| `Google Sans Flex type styles` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/typographycatalog__Google_Sans_Flex.png" width="150" /> |
+| `Roboto Flex type styles` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/typographycatalog__Roboto_Flex.png" width="150" /> |
+| `All type styles` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/typographycatalog__all.png" width="150" /> |
 
 ## samples:desktop-daemon-bench
 
