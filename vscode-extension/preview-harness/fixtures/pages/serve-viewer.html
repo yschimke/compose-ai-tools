@@ -36,6 +36,11 @@ a:hover { text-decoration: underline; }
 .cp-theme-btn { border: 0; background: #fff; color: #6b6b70; font: inherit; font-size: 0.78rem;
   padding: 3px 14px; cursor: pointer; }
 .cp-theme-btn[aria-pressed="true"] { background: #ececff; color: #3a3a8a; font-weight: 600; }
+.cp-states { display: inline-flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.cp-state-btn { border: 1px solid #d7d7de; border-radius: 999px; background: #fff; color: #6b6b70;
+  font: inherit; font-size: 0.78rem; padding: 3px 14px; cursor: pointer; text-decoration: none; }
+.cp-state-btn:hover { border-color: #b9b9c6; color: #3a3a8a; }
+.cp-state-btn[aria-current="page"] { background: #ececff; border-color: #c5c5f0; color: #3a3a8a; font-weight: 600; }
 .cp-badge { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px;
   font-size: 0.7rem; font-weight: 600; vertical-align: middle; white-space: nowrap; }
 .cp-badge--trusted { background: #e7f4ea; color: #1e7a34; border: 1px solid #b6e0c2; }
@@ -191,6 +196,9 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   .cp-theme { border-color: #34343a; }
   .cp-theme-btn { background: #1d1d20; color: #a0a0a8; }
   .cp-theme-btn[aria-pressed="true"] { background: #26264a; color: #c9c9ff; }
+  .cp-state-btn { background: #1d1d20; color: #a0a0a8; border-color: #34343a; }
+  .cp-state-btn:hover { border-color: #4a4a55; color: #c9c9ff; }
+  .cp-state-btn[aria-current="page"] { background: #26264a; border-color: #3a3a6a; color: #c9c9ff; }
   .cp-note { background: #26262b; color: #a0a0a8; }
   .cp-imgwrap, .cp-stage { background: #1d1d20; }
   html.cp-bg-transparent .cp-imgwrap, html.cp-bg-transparent .cp-stage {
@@ -217,6 +225,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
       <body>
               <p class="cp-head"><a href="/?token=demo-token-fixture">← previews</a> <span class="cp-badge cp-badge--unverified" title="producer trust: unverified">⚠ unverified</span></p>
       <p class="cp-sub" title="com.example.ProfileScreenPreview">Profile screen</p>
+      
       <div class="cp-viewer-bar">
         <button type="button" class="cp-drawer-toggle" id="cp-nav-toggle" aria-expanded="false" aria-controls="cp-nav">☰ Components</button>
         <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>

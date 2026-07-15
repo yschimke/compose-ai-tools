@@ -71,6 +71,63 @@ class ServeWebFixtureTest {
       ServePreview("badge", "Badge"),
     )
 
+  // A catalog whose components carry baked non-default STATES (checkbox checked/unchecked, radio
+  // selected/unselected), each in light + dark, tagged via the `state`/`theme` metadata the
+  // `previews/variants.json` manifest carries. The landing folds each component to ONE (default)
+  // card; the viewer grows the `<nav class="cp-states">` switcher to the component's other
+  // same-theme states. Captured so the visual-diff bot covers the state toggle end-to-end.
+  private val statefulPreviews =
+    listOf(
+      ServePreview(
+        "checkbox__ideal__default__light",
+        "Checkbox · Checked (light)",
+        state = "default",
+        theme = "light",
+      ),
+      ServePreview(
+        "checkbox__ideal__default__dark",
+        "Checkbox · Checked (dark)",
+        state = "default",
+        theme = "dark",
+      ),
+      ServePreview(
+        "checkbox__ideal__unchecked__light",
+        "Checkbox · Unchecked (light)",
+        state = "unchecked",
+        theme = "light",
+      ),
+      ServePreview(
+        "checkbox__ideal__unchecked__dark",
+        "Checkbox · Unchecked (dark)",
+        state = "unchecked",
+        theme = "dark",
+      ),
+      ServePreview(
+        "radiobutton__ideal__default__light",
+        "Radio · Selected (light)",
+        state = "default",
+        theme = "light",
+      ),
+      ServePreview(
+        "radiobutton__ideal__default__dark",
+        "Radio · Selected (dark)",
+        state = "default",
+        theme = "dark",
+      ),
+      ServePreview(
+        "radiobutton__ideal__unselected__light",
+        "Radio · Unselected (light)",
+        state = "unselected",
+        theme = "light",
+      ),
+      ServePreview(
+        "radiobutton__ideal__unselected__dark",
+        "Radio · Unselected (dark)",
+        state = "unselected",
+        theme = "dark",
+      ),
+    )
+
   // A trusted-catalog preview that declares author knobs (a `label` string + an accent `color`) —
   // the `compose/overrides` payload PR #2281 added across the M3 catalog. On a live catalog session
   // (ServeCatalogLiveHost) these render as LIVE controls that re-render via `/render` on edit.
@@ -321,6 +378,27 @@ class ServeWebFixtureTest {
         isPublic = true,
         catalogs = listOf("compose-m3", "wear-m3"),
       )
+    // A catalog whose components carry baked non-default states: the landing folds each to ONE card
+    // (the default), the non-default states reachable via the viewer switcher.
+    val landingStates =
+      ServeWeb.landingPage(
+        "compose-m3",
+        statefulPreviews,
+        token,
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        isPublic = true,
+        catalogs = listOf("compose-m3", "wear-m3"),
+      )
+    // The default-state viewer for that catalog: renders the `<nav class="cp-states">` switcher of
+    // links to the component's other same-theme states, the current (Default) state marked active.
+    val viewerStates =
+      ServeWeb.viewerPage(
+        statefulPreviews.first(),
+        token,
+        sessionId = "compose-m3",
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        siblings = statefulPreviews,
+      )
 
     if (update) {
       pagesDir.mkdirs()
@@ -337,6 +415,8 @@ class ServeWebFixtureTest {
       File(pagesDir, "serve-landing-path.html").writeText(landingPath)
       File(pagesDir, "serve-viewer-path.html").writeText(viewerPath)
       File(pagesDir, "serve-landing-themed.html").writeText(landingThemed)
+      File(pagesDir, "serve-landing-states.html").writeText(landingStates)
+      File(pagesDir, "serve-viewer-states.html").writeText(viewerStates)
       writePlaceholderPng(File(pagesDir, "_render-placeholder.png"))
       return
     }
@@ -413,6 +493,27 @@ class ServeWebFixtureTest {
     assertGolden(File(pagesDir, "serve-landing-path.html"), landingPath)
     assertGolden(File(pagesDir, "serve-viewer-path.html"), viewerPath)
     assertGolden(File(pagesDir, "serve-landing-themed.html"), landingThemed)
+    assertGolden(File(pagesDir, "serve-landing-states.html"), landingStates)
+    assertGolden(File(pagesDir, "serve-viewer-states.html"), viewerStates)
+    // The state landing folds each component's non-default states out: checkbox + radio yield ONE
+    // card each (two total), and no `unchecked`/`unselected` card is emitted.
+    assertEquals(
+      2,
+      Regex("class=\"cp-card\"").findAll(landingStates).count(),
+      "each component folds to a single default card",
+    )
+    assertFalse(
+      landingStates.contains("unchecked") || landingStates.contains("unselected"),
+      "non-default states are folded out of the state landing grid",
+    )
+    // The default-state viewer renders the state switcher, marking Default active and linking the
+    // same-theme unchecked sibling.
+    val statesNav = viewerStates.substringAfter("class=\"cp-states\"").substringBefore("</nav>")
+    assertTrue(
+      statesNav.contains("aria-current=\"page\">Default</a>") &&
+        statesNav.contains("/p/checkbox__ideal__unchecked__light"),
+      "the viewer state switcher marks Default active and links the same-theme sibling",
+    )
     assertTrue(
       File(pagesDir, "_render-placeholder.png").isFile,
       "missing _render-placeholder.png — regenerate with UPDATE_SERVE_WEB_FIXTURES=true",
