@@ -2282,6 +2282,60 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "WidgetContainerGradientRemote.a11y.png",
+      "cleanBasename": "WidgetContainerGradientRemote.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,567,196",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "WidgetContainerGradientRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.WidgetContainerPreviewsKt.WidgetContainerGradientRemote",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/WidgetContainerPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "WidgetContainerLargeRemote.a11y.png",
+      "cleanBasename": "WidgetContainerLargeRemote.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,567,322",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "WidgetContainerLargeRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.WidgetContainerPreviewsKt.WidgetContainerLargeRemote",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/WidgetContainerPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "WidgetContainerSmallRemote.a11y.png",
+      "cleanBasename": "WidgetContainerSmallRemote.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,567,196",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "WidgetContainerSmallRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.WidgetContainerPreviewsKt.WidgetContainerSmallRemote",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/WidgetContainerPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "AppCardSticker.a11y.png",
       "cleanBasename": "AppCardSticker.png",
       "findings": [],
@@ -2468,6 +2522,16 @@
       "functionName": "OutlinedButtonSticker",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.OutlinedButtonSticker",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "OutlinedCardSticker.a11y.png",
+      "cleanBasename": "OutlinedCardSticker.png",
+      "findings": [],
+      "functionName": "OutlinedCardSticker",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.OutlinedCardSticker",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
     },
