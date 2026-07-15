@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.16.49](https://github.com/yschimke/compose-ai-tools/compare/v0.16.48...v0.16.49) (2026-07-15)
+
+
+### Features
+
+* **bundle:** content-crop sticker PNGs in `bundle split` so exported wear stickers are tight ([#2489](https://github.com/yschimke/compose-ai-tools/issues/2489)) ([7e2d9f5](https://github.com/yschimke/compose-ai-tools/commit/7e2d9f58c0737c08bc8b162482fcdd110d77aa50))
+* **catalog:** font + palette theme overrides on clean previews ([#2490](https://github.com/yschimke/compose-ai-tools/issues/2490)) ([49140d1](https://github.com/yschimke/compose-ai-tools/commit/49140d10c2900ec1e320a30420643fcb2797fc16))
+* **catalog:** honour theme.font / theme.colors in the Wasm viewer ([#2491](https://github.com/yschimke/compose-ai-tools/issues/2491)) ([b0bc64b](https://github.com/yschimke/compose-ai-tools/commit/b0bc64b34c7da43457c039adbad8120a63abb0aa))
+
+
+### Bug Fixes
+
+* **design-artifacts:** bridge live preview ids for un-themed state-variant catalogs ([#2492](https://github.com/yschimke/compose-ai-tools/issues/2492)) ([adaa867](https://github.com/yschimke/compose-ai-tools/commit/adaa867d95fa416659b0a4e6eac278270db5b137))
+
 ## [0.16.48](https://github.com/yschimke/compose-ai-tools/compare/v0.16.47...v0.16.48) (2026-07-15)
 
 
