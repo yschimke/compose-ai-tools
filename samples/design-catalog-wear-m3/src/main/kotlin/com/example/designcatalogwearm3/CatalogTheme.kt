@@ -14,6 +14,7 @@ import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.material3.ColorScheme
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Typography
+import ee.schimke.composeai.overrides.previewOverrideFont
 import ee.schimke.composeai.overrides.previewOverrideString
 
 /**
@@ -53,12 +54,19 @@ fun WearSticker(content: @Composable () -> Unit) {
  */
 @Composable
 fun WearCatalogTheme(content: @Composable () -> Unit) {
-  val font = wearCatalogFont(previewOverrideString("theme.font", "Roboto Flex"))
+  val font =
+    wearCatalogFont(previewOverrideFont("theme.font", "Roboto Flex", suggestions = WEAR_FONT_NAMES))
   val colorScheme = wearColorScheme(previewOverrideString("theme.colors", "M3"), MaterialTheme.colorScheme)
   MaterialTheme(typography = Typography(defaultFontFamily = font), colorScheme = colorScheme) {
     content()
   }
 }
+
+/**
+ * The declared typeface choices (`@TypographyCatalog` labels), shown first in the font-override
+ * autocomplete before the full fonts.google.com list. Roboto Flex — the default — leads.
+ */
+val WEAR_FONT_NAMES: List<String> = listOf("Roboto Flex", "Google Sans Flex", "Lobster Two")
 
 /** Resolves a selected typeface [name] (a declared `@TypographyCatalog` label) to its [FontFamily]. */
 fun wearCatalogFont(name: String): FontFamily =

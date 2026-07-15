@@ -90,6 +90,17 @@ class ServeWebFixtureTest {
             type = PreviewOverrideType.COLOR,
             default = PreviewOverrideValue.ColorValue("#FF6750A4"),
           ),
+          // A font knob (`catalogOverrideFont` / `previewOverrideFont`): a string knob a viewer
+          // renders as an autocompleting combobox seeded with the declared `@TypographyCatalog`
+          // names. The real catalog knob sets `googleFonts = true` (splicing the full
+          // fonts.google.com list); the fixture keeps it off so the committed golden isn't ~1900
+          // `<option>` lines — the full-list splice is covered by a dedicated behavioural test.
+          PreviewOverrideDeclaration(
+            key = "theme.font",
+            type = PreviewOverrideType.STRING,
+            default = PreviewOverrideValue.StringValue("Roboto Flex"),
+            suggestions = listOf("Roboto Flex", "Google Sans Flex", "Lobster Two"),
+          ),
         ),
     )
 
@@ -1292,6 +1303,65 @@ class ServeWebFixtureTest {
       )) {
       assertTrue(html.contains(id), "the $id variant must survive grouping, not be dropped")
     }
+  }
+
+  @Test
+  fun `a font knob renders an autocompleting combobox, catalog names first then Google Fonts`() {
+    val fontPreview =
+      ServePreview(
+        "button-filled__ideal__default__light",
+        "Button · Filled (light)",
+        overrides =
+          listOf(
+            PreviewOverrideDeclaration(
+              key = "theme.font",
+              type = PreviewOverrideType.STRING,
+              default = PreviewOverrideValue.StringValue("Roboto Flex"),
+              suggestions = listOf("Roboto Flex", "Google Sans Flex", "Lobster Two"),
+              googleFonts = true,
+            )
+          ),
+      )
+    val view =
+      ServeWeb.viewerPage(
+        fontPreview,
+        token,
+        sessionId = "compose-m3",
+        canApplyOverrides = false,
+        canRenderOverrides = true,
+      )
+    // A font knob is a free-text `<input list>` bound to a `<datalist>` — a combobox, not a plain
+    // text input — so any family is selectable while the field stays editable.
+    assertTrue(
+      view.contains("data-knob-key=\"theme.font\"") && view.contains("list=\"cp-dl-theme-font\""),
+      "the font knob renders as an <input list> combobox",
+    )
+    assertTrue(
+      view.contains("<datalist id=\"cp-dl-theme-font\">"),
+      "the font knob emits a matching <datalist>",
+    )
+    val datalist =
+      view.substringAfter("<datalist id=\"cp-dl-theme-font\">").substringBefore("</datalist>")
+    val robotoIdx = datalist.indexOf("<option value=\"Roboto Flex\">")
+    val lobsterIdx = datalist.indexOf("<option value=\"Lobster Two\">")
+    val interIdx = datalist.indexOf("<option value=\"Inter\">")
+    // The declared @TypographyCatalog names come first, in order ("by default show the typography
+    // catalog")…
+    assertTrue(
+      robotoIdx in 0 until lobsterIdx,
+      "the declared suggestions render first, in declaration order",
+    )
+    // …then `googleFonts = true` splices the full fonts.google.com list after them, so an arbitrary
+    // family (Inter) is offered — de-duplicated, so Roboto Flex / Lobster Two aren't repeated.
+    assertTrue(
+      interIdx > lobsterIdx,
+      "the Google Fonts list follows the declared suggestions (an arbitrary family is offered)",
+    )
+    assertEquals(
+      1,
+      Regex("<option value=\"Roboto Flex\">").findAll(datalist).count(),
+      "a declared name that's also a Google family isn't duplicated",
+    )
   }
 
   private fun assertGolden(file: File, rendered: String) {

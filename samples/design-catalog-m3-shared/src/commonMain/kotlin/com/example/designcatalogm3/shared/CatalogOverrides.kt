@@ -26,6 +26,13 @@ import androidx.compose.ui.graphics.Color
 @Composable
 expect fun catalogOverrideString(key: String, default: String, index: Int? = null): String
 
+// NOTE: a `catalogOverrideFont` wrapper (the autocompleting typeface override — see the wear
+// catalog's `previewOverrideFont`) is deliberately NOT declared here yet: this shared module is
+// built against the *released* `previewOverride*` runtime for the `design-artifacts` publish
+// (`composeaiUseReleasedRuntimes`), which won't carry `previewOverrideFont` until the release that
+// ships it lands. Add it (delegating to `previewOverrideFont` on desktop) once
+// `composeaiReleasedRuntimeVersion` bumps.
+
 /** Editable **int** knob (an item count, a badge number). See [catalogOverrideString]. */
 @Composable expect fun catalogOverrideInt(key: String, default: Int, index: Int? = null): Int
 

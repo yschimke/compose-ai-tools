@@ -62,6 +62,19 @@ data class PreviewOverrideDeclaration(
   val current: PreviewOverrideValue? = null,
   /** Non-null for one instance of a repeated/indexed knob; the wire key is then [seedKey]. */
   val index: Int? = null,
+  /**
+   * Author-supplied autocomplete suggestions for a [PreviewOverrideType.STRING] knob (e.g. a font
+   * knob's declared `@TypographyCatalog` names). A viewer offers these as a combobox datalist while
+   * keeping the field free-text. Empty for an ordinary knob. Back-compatible: an older reader that
+   * doesn't know the field renders the plain string input it always did.
+   */
+  val suggestions: List<String> = emptyList(),
+  /**
+   * When true, this string knob is a **Google Fonts family** field: a viewer additionally splices
+   * the full fonts.google.com family list into the datalist (after [suggestions]), so any family is
+   * selectable while the declared [suggestions] stay at the top. Off for an ordinary knob.
+   */
+  val googleFonts: Boolean = false,
 ) {
   /**
    * The composite key the daemon seeds against: the bare [key] for a scalar knob, or the key with
