@@ -33,6 +33,8 @@ The bootstrap installer's canonical home is now [`yschimke/skills/scripts/instal
 
 ## Common commands
 
+**The full toolchain builds and runs in the agent cloud environment** — not just unit/functional tests but the end-to-end Android/Robolectric and Desktop catalog renders (`composePreviewRenderAll`, `compose-preview` CLI, the `design-catalog-*` `bundle pack` + `compose/figma-svg` export, and the `FigmaFidelity` render-vs-SVG scoring). Nothing here is CI-only: build it, run it, and measure it in-session rather than deferring to the `design-artifacts` / preview-comment workflows. The first `./gradlew` invocation resolves the toolchain + dependencies through the agent proxy, so it is slow; subsequent builds are warm. See [`agent-cloud.md`](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/agent-cloud.md) for the network allowlist and the `install.sh --android-sdk` setup step.
+
 Build / test everything:
 ```
 ./gradlew check                   # plugin unit + functional tests, CLI tests
