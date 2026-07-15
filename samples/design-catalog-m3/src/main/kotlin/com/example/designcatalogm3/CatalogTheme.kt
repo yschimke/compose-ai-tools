@@ -100,8 +100,8 @@ fun catalogColorScheme(name: String, dark: Boolean): androidx.compose.material3.
 /**
  * The sticker frame with its [colorScheme] / [typography] supplied by the caller — the shared body
  * of the catalog theme. [CatalogSticker] resolves the two from the override surface (defaulting to
- * Roboto Flex + M3) and passes them here, so the font / palette override re-skins every sticker from
- * this one place without touching a single preview — the point of keeping the previews clean.
+ * Roboto Flex + M3) and passes them here, so the font / palette override re-skins every sticker
+ * from this one place without touching a single preview — the point of keeping the previews clean.
  *
  * The generic / named font families ([LocalGenericFonts] / [LocalNamedFonts]) are always provided
  * so a component that asks for `serif` / a named GoogleFont resolves the vendored face regardless
