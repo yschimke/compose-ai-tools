@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -392,8 +393,18 @@ class RenderEngine(
                 // renderer already pays in its always-on a11y pass.
                 val inspectionMode =
                   if (effectiveRunAccessibility) false else spec.inspectionMode ?: true
+                // Missing-resource fallback: wrap LocalContext so a `stringResource` /
+                // `colorResource` / `context.getString` lookup that isn't in the (possibly absent
+                // or stale) packed resource table falls back to an obvious placeholder instead of
+                // throwing `Resources$NotFoundException` and aborting the whole render. Transparent
+                // for every resolvable resource; only misses are substituted. Outermost so the data
+                // extensions (incl. pseudolocale) and preview content all see the guarded context.
+                val baseContext = LocalContext.current
+                val placeholderContext =
+                  remember(baseContext) { baseContext.wrappedForPlaceholderResources() }
                 val provided =
                   buildList {
+                      add(LocalContext provides placeholderContext)
                       add(LocalInspectionMode provides inspectionMode)
                       // Cleared background ("crisp outline"): a composable drawing its own opaque
                       // fill drops it to match the transparent decor-view background. Defaults false.
