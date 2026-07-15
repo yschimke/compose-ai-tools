@@ -214,8 +214,13 @@ There are two ways to stand that daemon up, both fail-closed on the `Trusted` ve
    in `catalog.json`. `serve` fetches that bundle like it fetches the Wasm app, resolves its
    classpath from the local Maven/Gradle caches (or Central), and launches the render daemon
    **straight from it** — no repo checkout, no Gradle build, no per-request compile. This is what the
-   public server uses for `compose-m3`. Desktop-backend only for now (the daemon is the Skiko desktop
-   renderer); a catalog whose bundle isn't a desktop bundle falls through to (2) or baked PNGs.
+   public server uses for `compose-m3`. Both backends are supported
+   ([`ServeBundleDaemon.materialize`](../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt)):
+   a **desktop** bundle spawns the Skiko desktop daemon, and an **android** bundle spawns the
+   Robolectric daemon **on a box that carries the Android sidecar + SDK** — the prebuilt `deploy/image`
+   does, which is how `wear-m3` renders live here. A bundle whose backend is neither, or an `android`
+   bundle on a box that lacks the Android runtime (e.g. the desktop-only from-source `deploy/vps`),
+   falls through to (2) or baked PNGs.
 
 2. **From source (`source: { repo, ref, module }`) — Gradle build fallback.** For a catalog that
    declares a buildable `source` but no `liveBundle`. This runs the source's Gradle (code execution),
