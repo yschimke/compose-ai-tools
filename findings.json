@@ -1806,6 +1806,16 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "RadioUnselected_Dark.a11y.png",
+      "cleanBasename": "RadioUnselected_Dark.png",
+      "findings": [],
+      "functionName": "RadioUnselected",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.RadioUnselected_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "SegmentedToggle_Dark.a11y.png",
       "cleanBasename": "SegmentedToggle_Dark.png",
       "findings": [],
