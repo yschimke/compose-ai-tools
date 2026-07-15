@@ -75,6 +75,20 @@ data class ServePreview(
    * gates the control to Android-backed sessions.
    */
   val supportsGestures: Boolean = false,
+  /**
+   * The baked component **state** this preview render represents — `"unchecked"`, `"pressed"`,
+   * `"disabled"`, `"unselected"`, … — or `null`/`"default"` for the default render (and for plain
+   * bundles / app screens that carry no state). Carried from the catalog's `previews/variants.json`
+   * manifest so the grid can fold non-default states into one card and the viewer can offer a state
+   * switcher. Null keeps the current behaviour everywhere.
+   */
+  val state: String? = null,
+  /**
+   * The baked **theme** this preview render represents — `"light"`/`"dark"` — or `null` when the
+   * render is unthemed (or a plain bundle). Also from `previews/variants.json`; used to scope the
+   * viewer's state switcher to same-theme siblings.
+   */
+  val theme: String? = null,
 )
 
 /**

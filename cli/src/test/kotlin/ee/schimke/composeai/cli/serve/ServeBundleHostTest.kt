@@ -83,6 +83,43 @@ class ServeBundleHostTest {
   }
 
   @Test
+  fun `previews are tagged with state and theme from the variants manifest`() {
+    val dir =
+      bundle(
+        "checkbox__ideal__default__light" to byteArrayOf(1),
+        "checkbox__ideal__unchecked__light" to byteArrayOf(2),
+      )
+    File(dir, "previews/${ServeCatalogStore.VARIANTS_FILE}")
+      .writeText(
+        """
+        {
+          "checkbox__ideal__default__light": { "state": "default", "theme": "light" },
+          "checkbox__ideal__unchecked__light": { "state": "unchecked", "theme": "light" }
+        }
+        """
+          .trimIndent()
+      )
+    val host = ServeBundleHost(dir, label = "compose-m3")
+    val byId = host.previews.associateBy { it.id }
+    assertEquals(
+      "default" to "light",
+      byId.getValue("checkbox__ideal__default__light").let { it.state to it.theme },
+    )
+    assertEquals(
+      "unchecked" to "light",
+      byId.getValue("checkbox__ideal__unchecked__light").let { it.state to it.theme },
+    )
+  }
+
+  @Test
+  fun `a plain bundle without a variants manifest keeps null state and theme`() {
+    val host = ServeBundleHost(bundle("com.example.Red" to byteArrayOf(1)), label = "b")
+    val p = host.previews.single()
+    assertNull(p.state)
+    assertNull(p.theme)
+  }
+
+  @Test
   fun `render returns the baked png and NotFound for unknown ids`() {
     val host = ServeBundleHost(bundle("com.example.Red" to byteArrayOf(9, 8, 7)), label = "b")
 

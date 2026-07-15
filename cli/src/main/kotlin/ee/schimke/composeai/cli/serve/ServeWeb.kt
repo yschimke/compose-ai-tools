@@ -45,6 +45,11 @@ object ServeWeb {
     .cp-theme-btn { border: 0; background: #fff; color: #6b6b70; font: inherit; font-size: 0.78rem;
       padding: 3px 14px; cursor: pointer; }
     .cp-theme-btn[aria-pressed="true"] { background: #ececff; color: #3a3a8a; font-weight: 600; }
+    .cp-states { display: inline-flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+    .cp-state-btn { border: 1px solid #d7d7de; border-radius: 999px; background: #fff; color: #6b6b70;
+      font: inherit; font-size: 0.78rem; padding: 3px 14px; cursor: pointer; text-decoration: none; }
+    .cp-state-btn:hover { border-color: #b9b9c6; color: #3a3a8a; }
+    .cp-state-btn[aria-current="page"] { background: #ececff; border-color: #c5c5f0; color: #3a3a8a; font-weight: 600; }
     .cp-badge { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px;
       font-size: 0.7rem; font-weight: 600; vertical-align: middle; white-space: nowrap; }
     .cp-badge--trusted { background: #e7f4ea; color: #1e7a34; border: 1px solid #b6e0c2; }
@@ -200,6 +205,9 @@ object ServeWeb {
       .cp-theme { border-color: #34343a; }
       .cp-theme-btn { background: #1d1d20; color: #a0a0a8; }
       .cp-theme-btn[aria-pressed="true"] { background: #26264a; color: #c9c9ff; }
+      .cp-state-btn { background: #1d1d20; color: #a0a0a8; border-color: #34343a; }
+      .cp-state-btn:hover { border-color: #4a4a55; color: #c9c9ff; }
+      .cp-state-btn[aria-current="page"] { background: #26264a; border-color: #3a3a6a; color: #c9c9ff; }
       .cp-note { background: #26262b; color: #a0a0a8; }
       .cp-imgwrap, .cp-stage { background: #1d1d20; }
       html.cp-bg-transparent .cp-imgwrap, html.cp-bg-transparent .cp-stage {
@@ -395,6 +403,91 @@ object ServeWeb {
       parts.indices.lastOrNull { it >= 1 && (parts[it] == "light" || parts[it] == "dark") }
     return if (themeIdx == null) id
     else parts.filterIndexed { i, _ -> i != themeIdx }.joinToString("__")
+  }
+
+  /**
+   * Whether [p] is a **non-default** component state render (`unchecked`, `pressed`, `disabled`,
+   * `unselected`, …) — a render the grid folds out so each component shows a single (default) card,
+   * with its other states reachable via the viewer's [state switcher][stateSwitcherHtml]. Keyed off
+   * the catalog's `state` metadata (from `variants.json`), not the id: a stateless preview / plain
+   * bundle screen has `state == null` and is treated as default (always shown).
+   */
+  private fun isNonDefaultState(p: ServePreview): Boolean = p.state != null && p.state != "default"
+
+  /**
+   * Human label for a component [state] token: the default render reads "Default"; a hyphenated
+   * token like `keyboard-focus` becomes "Keyboard focus" (dashes → spaces, first letter
+   * capitalised). Used for the viewer's state-switcher buttons.
+   */
+  private fun stateLabel(state: String?): String =
+    if (state == null || state == "default") "Default"
+    else state.replace('-', ' ').replaceFirstChar { it.uppercaseChar() }
+
+  /**
+   * A preview id with only its **state** segment removed — the key that groups renders differing
+   * *only* in state (the state axis) while holding every other axis fixed (theme, and any `content`
+   * / `size` / `k=v` props axes a component also varies on). The state segment is the one right
+   * after the `ideal` marker in the flattened id (`<slug>__ideal__<state>[__theme][__props…]`, from
+   * [ServeCatalogStore.previewIdFor]); it equals the preview's [ServePreview.state]. So
+   * `button-filled__ideal__default__light` and `…__pressed__light` share the key
+   * `button-filled__ideal__light`, but the `content=icon+label` render
+   * `button-filled__ideal__default__light__content-icon-label` keeps its props segment and keys
+   * apart — its state switcher won't drag the visitor back to the label-only button. Falls back to
+   * the whole id when there's no state (a plain preview) or the state token isn't found, so such a
+   * preview only ever groups with itself.
+   */
+  private fun stateInvariantKey(p: ServePreview): String {
+    val state = p.state ?: return p.id
+    val parts = p.id.split("__")
+    val idealIdx = parts.indexOf("ideal")
+    val stateIdx =
+      if (idealIdx in 0 until parts.lastIndex && parts[idealIdx + 1] == state) idealIdx + 1
+      else parts.indexOfFirst { it == state }.takeIf { it >= 1 } ?: return p.id
+    return parts.filterIndexed { i, _ -> i != stateIdx }.joinToString("__")
+  }
+
+  /**
+   * The viewer's **state switcher**: a `<nav>` of plain links from [current] to each of its
+   * component's baked states *in the same theme* (one link per distinct state, the default state
+   * first, the current one marked `aria-current="page"`). No daemon, no JS state machine — each
+   * link is a normal navigation to a sibling `/p/<id>` page, so it works with scripting off.
+   *
+   * Siblings are drawn from [all] (the host's whole preview list, which still carries the
+   * non-default states the grid folds out) by [stateInvariantKey] + [ServePreview.theme]: renders
+   * that differ *only* in state, holding the theme and any other variant axis (content / size /
+   * props) fixed, so a component that also varies on a non-state axis doesn't cross-link its axes.
+   * Returns the empty string when fewer than two states share this key — nothing to toggle.
+   */
+  private fun stateSwitcherHtml(
+    current: ServePreview,
+    all: List<ServePreview>,
+    basePath: String,
+    q: String,
+  ): String {
+    val key = stateInvariantKey(current)
+    // One preview per distinct state, first appearance wins, restricted to the current variant
+    // (same
+    // key) and theme so the switcher never jumps the visitor across a non-state axis or light/dark.
+    val byState = LinkedHashMap<String, ServePreview>()
+    for (p in all) {
+      if (stateInvariantKey(p) != key || p.theme != current.theme) continue
+      byState.putIfAbsent(p.state ?: "default", p)
+    }
+    if (byState.size < 2) return ""
+    // Default state leads; the rest keep catalog order (a stable sort preserves first appearance).
+    val ordered = byState.entries.sortedBy { if (it.key == "default") 0 else 1 }
+    val links =
+      ordered.joinToString("\n") { (_, p) ->
+        val href = "$basePath/p/${WebEscaping.urlEncodeSegment(p.id)}$q"
+        val active = if (p.id == current.id) " aria-current=\"page\"" else ""
+        "<a class=\"cp-state-btn\" href=\"$href\"$active>${WebEscaping.htmlEscape(stateLabel(p.state))}</a>"
+      }
+    return """
+      <nav class="cp-states" aria-label="Component state">
+        $links
+      </nav>
+      """
+      .trimIndent()
   }
 
   /**
@@ -852,7 +945,11 @@ object ServeWeb {
     // Collapse per-theme variants into one card each so the Light/Dark control swaps a card between
     // its baked light/dark render *in place*, rather than filtering two cards. A single-theme /
     // theme-neutral card carries no swap data and the toggle leaves it alone.
-    val groups = groupPreviews(previews)
+    // Fold non-default component states (unchecked/pressed/disabled/…) out of the grid first, so a
+    // component shows ONE card (its default state) instead of a card per state; the folded states
+    // stay reachable through the viewer's state switcher. Stateless previews (plain bundle screens)
+    // have no state and pass straight through.
+    val groups = groupPreviews(previews.filterNot { isNonDefaultState(it) })
     fun renderSrc(p: ServePreview) = "$basePath/render/${WebEscaping.urlEncodeSegment(p.id)}.png$q"
     fun viewerHref(p: ServePreview) = "$basePath/p/${WebEscaping.urlEncodeSegment(p.id)}$q"
     fun swapCard(card: GridCard): String {
@@ -1246,10 +1343,15 @@ object ServeWeb {
     val bgThemeAttr =
       bgTheme(preview.id, isDarkFirstSystem(basePath, sessionId))?.let { " data-bg-theme=\"$it\"" }
         ?: ""
+    // The component-state switcher: plain links to this component's other baked states (same
+    // theme).
+    // Empty for a single-state component / a stateless preview, so nothing renders there.
+    val stateSwitcher = stateSwitcherHtml(preview, siblings, basePath, q)
     val body =
       """
       <p class="cp-head"><a href="$basePath/$q">← previews</a>${trustBadge(trust)}</p>
       <p class="cp-sub" title="$idText">$label</p>
+      $stateSwitcher
       <div class="cp-viewer-bar">
         $navToggle
         <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>

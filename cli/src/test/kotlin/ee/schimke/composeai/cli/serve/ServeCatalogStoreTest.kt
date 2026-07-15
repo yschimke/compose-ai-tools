@@ -159,6 +159,62 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `a state-bearing catalog writes a variants manifest that round-trips onto host previews`() {
+    // A checkbox with a default + a non-default (unchecked) state, each in light and dark.
+    val stateful =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3","components":[
+        {"componentId":"Checkbox","images":[
+          {"path":"images/checkbox/ideal__default__light.png","state":"default","theme":"light"},
+          {"path":"images/checkbox/ideal__default__dark.png","state":"default","theme":"dark"},
+          {"path":"images/checkbox/ideal__unchecked__light.png","state":"unchecked","theme":"light"},
+          {"path":"images/checkbox/ideal__unchecked__dark.png","state":"unchecked","theme":"dark"}]}]}
+      """
+        .trimIndent()
+    val root = tempRoot()
+    val fetch: (String) -> ByteArray? = { url ->
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> stateful.toByteArray()
+        url.endsWith(".png") -> png()
+        else -> null
+      }
+    }
+    val store =
+      ServeCatalogStore(
+        root = root,
+        register = { n, h -> registered[n] = h },
+        trust = TrustStore.EMPTY,
+        fetch = fetch,
+        registerWasm = { s, d -> registeredWasm[s] = d },
+      )
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+
+    // The manifest is written into the served previews dir, with null keys omitted (all present
+    // here).
+    val manifest = File(root, "compose-m3/previews/${ServeCatalogStore.VARIANTS_FILE}")
+    assertTrue(manifest.isFile, "variants.json is written")
+    val text = manifest.readText()
+    assertTrue(
+      text.contains(
+        "\"checkbox__ideal__unchecked__light\":{\"state\":\"unchecked\",\"theme\":\"light\"}"
+      ),
+      "manifest carries the unchecked/light entry: $text",
+    )
+
+    // …and round-trips onto the registered host's previews.
+    val host = registered.getValue("compose-m3")
+    val byId = host.previews.associateBy { it.id }
+    assertEquals(
+      "unchecked" to "dark",
+      byId.getValue("checkbox__ideal__unchecked__dark").let { it.state to it.theme },
+    )
+    assertEquals(
+      "default" to "light",
+      byId.getValue("checkbox__ideal__default__light").let { it.state to it.theme },
+    )
+  }
+
+  @Test
   fun `a trusted liveBundle catalog hands the builder the catalog-id to daemon-id alias`() {
     // A catalog that carries a liveBundle and per-image previewId: the store fetches the bundle and
     // invokes the live builder with the catalog-id → daemon-id alias so it can bridge the two id

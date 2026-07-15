@@ -6,6 +6,8 @@ import ee.schimke.composeai.daemon.protocol.StreamFrameParams
 import ee.schimke.composeai.data.overrides.PreviewOverridesPayload
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import okio.FileSystem
 import okio.Path.Companion.toOkioPath
@@ -55,6 +57,14 @@ class ServeBundleHost(
 
   private val previewsDir = File(bundleDir, PREVIEWS_SUBDIR)
 
+  /**
+   * Per-preview `state`/`theme` from the catalog's `previews/variants.json` manifest (written by
+   * [ServeCatalogStore]). Empty for a plain uploaded bundle that carries no manifest — every
+   * preview then stays stateless (null state/theme), preserving the pre-toggle behaviour.
+   * Best-effort: an unreadable / malformed manifest degrades to empty rather than failing the host.
+   */
+  private val variantMeta: Map<String, ServeCatalogStore.VariantMeta> = readVariantMeta()
+
   override val previews: List<ServePreview> =
     // Walk recursively: a preview id may contain '/', stored as a nested `previews/<id>.png`. Ids
     // are reconstructed relative to `previews/` with '/' separators (matching the bundle layout).
@@ -63,8 +73,36 @@ class ServeBundleHost(
       .filter { it.isFile && it.name.endsWith(PNG_SUFFIX) }
       .map { it.relativeTo(previewsDir).invariantSeparatorsPath.removeSuffix(PNG_SUFFIX) }
       .sorted()
-      .map { id -> ServePreview(id = id, label = id, overrides = readOverrides(id)) }
+      .map { id ->
+        val meta = variantMeta[id]
+        ServePreview(
+          id = id,
+          label = id,
+          overrides = readOverrides(id),
+          state = meta?.state,
+          theme = meta?.theme,
+        )
+      }
       .toList()
+
+  /**
+   * Best-effort read of the catalog's `previews/variants.json` state/theme manifest. Mirrors
+   * [readOverrides] / [declaredThemes]: absent or unparseable → empty map, so a plain bundle (no
+   * manifest) simply has no state/theme metadata.
+   */
+  private fun readVariantMeta(): Map<String, ServeCatalogStore.VariantMeta> {
+    val manifest = File(previewsDir, ServeCatalogStore.VARIANTS_FILE).toOkioPath()
+    if (!fileSystem.exists(manifest)) return emptyMap()
+    return try {
+      val text = fileSystem.read(manifest) { readUtf8() }
+      OVERRIDES_JSON.decodeFromString(
+        MapSerializer(String.serializer(), ServeCatalogStore.VariantMeta.serializer()),
+        text,
+      )
+    } catch (e: Exception) {
+      emptyMap()
+    }
+  }
 
   /**
    * The app-declared `@ThemeCatalog` themes, read from the bundle's `previews.json` when it carries

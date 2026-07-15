@@ -7,6 +7,8 @@ import java.io.InputStream
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -176,6 +178,12 @@ class ServeCatalogStore(
     var count = 0
     // The component slugs whose baked figma-svg to fetch (a slug is the preview id up to `__`).
     val slugs = LinkedHashSet<String>()
+    // Per-preview state/theme, carried to the host via `previews/variants.json` so the grid can
+    // fold
+    // non-default states into one card and the viewer can offer a state switcher. Only populated
+    // for
+    // renders that actually carry a state or theme; plain (stateless) previews stay out of the map.
+    val variants = LinkedHashMap<String, VariantMeta>()
     for (component in catalog.components) {
       for (image in component.images) {
         if (count >= maxImages) break
@@ -191,12 +199,24 @@ class ServeCatalogStore(
         target.parentFile?.mkdirs()
         target.writeBytes(bytes)
         slugs.add(id.substringBefore(SLUG_SEPARATOR))
+        if (image.state != null || image.theme != null) {
+          variants[id] = VariantMeta(state = image.state, theme = image.theme)
+        }
         count++
       }
     }
     if (count == 0) {
       staging.deleteRecursively()
       return Result.Failed(system, "catalog had no usable images")
+    }
+
+    // Write the state/theme manifest into the staged previews dir *before* the atomic swap, so a
+    // reader never sees a `dir` whose `variants.json` disagrees with its images. Absent when no
+    // render carried state/theme (a plain catalog) — the host then treats every preview as default.
+    if (variants.isNotEmpty()) {
+      val manifest =
+        json.encodeToString(MapSerializer(String.serializer(), VariantMeta.serializer()), variants)
+      File(previewsDir, VARIANTS_FILE).writeText(manifest)
     }
 
     // The staged catalog is usable — atomically replace the live dir with it. The delete + rename
@@ -647,7 +667,26 @@ class ServeCatalogStore(
      * no runnable desktop preview) — then the id has no live lane and stays baked-PNG.
      */
     val previewId: String? = null,
+    /**
+     * The baked component **state** this render represents (`"unchecked"`, `"pressed"`,
+     * `"disabled"`, `"unselected"`, …), or `"default"`/null for the default render. `foldVariants`
+     * re-tags each folded variant's images with its `state`, so this is populated for every
+     * state-bearing catalog. Carried into `previews/variants.json` for the serve host.
+     */
+    val state: String? = null,
+    /**
+     * The baked **theme** this render represents (`"light"`/`"dark"`), or null when unthemed. Used
+     * to scope the viewer's state switcher to same-theme siblings.
+     */
+    val theme: String? = null,
   )
+
+  /**
+   * One entry of the `previews/variants.json` manifest: the baked [state]/[theme] a preview render
+   * represents. Written by the catalog fetch loop and read back by [ServeBundleHost]; null keys are
+   * omitted on write and default to null on read.
+   */
+  @Serializable data class VariantMeta(val state: String? = null, val theme: String? = null)
 
   /**
    * `catalog.json`'s `webRender`: an app under [path] (e.g. `web/wasm/`) with its [files] listed.
@@ -680,6 +719,14 @@ class ServeCatalogStore(
      * live lane.
      */
     const val PER_PREVIEW_DIR = "previews"
+
+    /**
+     * Filename (under a staged/served catalog's `previews/` dir) of the per-preview state/theme
+     * manifest — `{ "<preview-id>": { "state": "unchecked", "theme": "light" }, … }` (null keys
+     * omitted). Written by the fetch loop from each catalog `Image`'s `state`/`theme`, read back by
+     * [ServeBundleHost] to tag its previews. Absent for a plain (stateless) catalog.
+     */
+    const val VARIANTS_FILE = "variants.json"
 
     /**
      * Branch-relative subdir (under the `liveBundle.path`) holding the bundle's externalized
