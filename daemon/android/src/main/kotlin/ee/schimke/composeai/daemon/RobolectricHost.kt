@@ -410,8 +410,11 @@ open class RobolectricHost(
       if (userClassloaderHolder != null) it.set(0, userClassloaderHolder)
     }
 
-  private val workerThreads: List<Thread> =
-    (0 until sandboxCount).map { i ->
+  // Mutable so [start] can replace a slot's worker with a fresh one when its first boot attempt
+  // fails transiently (see the retry loop in [start] / [bootSlotWithRetries]). A dead worker's
+  // Thread can't be re-`start()`ed, so a retry allocates a new one at the same index.
+  private val workerThreads: Array<Thread> =
+    Array(sandboxCount) { i ->
       Thread({ runJUnit(workerIndex = i) }, threadName(i)).apply { isDaemon = false }
     }
 
@@ -471,36 +474,7 @@ open class RobolectricHost(
     var bootedThrough = -1
     try {
       for (i in 0 until sandboxCount) {
-        workerThreads[i].start()
-        StartupTimings.mark(
-          if (sandboxCount == 1) "worker thread launched (Robolectric init begins)"
-          else "worker $i launched (Robolectric init begins)"
-        )
-        val slot = DaemonHostBridge.slot(i)
-        val ready = slot.awaitSandboxReady(timeoutMs)
-        // [runJUnit] trips the latch + records the JUnit failure in [workerBootErrors] when the
-        // worker thread exits before `holdSandboxOpen` registered the slot. Check that path first
-        // so a bootstrap crash surfaces with its real cause rather than the timeout message
-        // below — `ready` will read `true` in that case because the latch was counted down by
-        // the same recording step.
-        val bootErr = workerBootErrors.get(i)
-        if (bootErr != null) {
-          if (sandboxCount > 1) dumpAllThreadsToStderr(slot = i, timeoutMs = timeoutMs)
-          throw IllegalStateException(
-            "Robolectric sandbox slot $i aborted during bootstrap — see the " +
-              "SandboxRunner[$i] failure(s) logged above for the underlying cause.",
-            bootErr,
-          )
-        }
-        if (!ready) {
-          if (sandboxCount > 1) dumpAllThreadsToStderr(slot = i, timeoutMs = timeoutMs)
-          error(
-            "Robolectric sandbox slot $i failed to bootstrap within ${timeoutMs}ms — " +
-              "holdSandboxOpen never registered. On a cold cache the instrumented android-all " +
-              "jar download can dominate; raise the timeout via -D$SANDBOX_BOOT_TIMEOUT_PROP=<ms>." +
-              " Otherwise check the SandboxHoldingRunner / Robolectric sandbox bootstrap logs."
-          )
-        }
+        bootSlotWithRetries(i, timeoutMs)
         bootedThrough = i
       }
     } catch (t: Throwable) {
@@ -510,6 +484,87 @@ open class RobolectricHost(
     StartupTimings.mark(
       if (sandboxCount == 1) "sandbox-ready latch fired" else "all sandbox-ready latches fired"
     )
+  }
+
+  /**
+   * Boot the worker for sandbox slot [i] and block until its sandbox registers, **retrying a
+   * transient bootstrap failure** before giving up.
+   *
+   * A single sandbox occasionally dies during Robolectric bootstrap on a memory-pressured host —
+   * observed in production as `Unable to load Robolectric native runtime library` on one slot of a
+   * five-sandbox `wear-m3` pool while its siblings (and a prior daemon's full pool) booted fine, so
+   * the failure is transient, not a hard incompatibility. Previously any single slot's failure threw
+   * straight out of [start] and aborted the **whole** host, which on the public preview server
+   * collapsed the entire live (daemon-backed) lane to the baked-PNG snapshot fallback — the `input
+   * requires a live stream` symptom. Retrying the one flaky slot lets the full pool come up instead
+   * of one hiccup taking down every live render.
+   *
+   * A dead [Thread] can't be restarted, so each retry resets the slot's ready latch + recorded boot
+   * error and installs a fresh worker at index [i] (the sandbox never claimed the slot — the native
+   * load fails before `registerSandbox` — so the slot's `sandboxClassLoaderRef` is still null and a
+   * fresh sandbox re-claims it cleanly). If every attempt fails the last failure is rethrown exactly
+   * as before, so an unrecoverable slot degrades no worse than the pre-retry behaviour.
+   */
+  private fun bootSlotWithRetries(i: Int, timeoutMs: Long) {
+    var attempt = 0
+    while (true) {
+      workerThreads[i].start()
+      StartupTimings.mark(
+        if (sandboxCount == 1) "worker thread launched (Robolectric init begins)"
+        else "worker $i launched (Robolectric init begins)"
+      )
+      val slot = DaemonHostBridge.slot(i)
+      val ready = slot.awaitSandboxReady(timeoutMs)
+      // [runJUnit] trips the latch + records the JUnit failure in [workerBootErrors] when the
+      // worker thread exits before `holdSandboxOpen` registered the slot. Check that path first so
+      // a bootstrap crash surfaces with its real cause rather than the timeout message below —
+      // `ready` reads `true` in that case because the latch was counted down by the same step.
+      val bootErr = workerBootErrors.get(i)
+      if (bootErr == null && ready) return
+
+      // Only a *recorded* boot error is safe to retry. [runJUnit] sets [workerBootErrors] just
+      // after `JUnitCore.runClasses` returns, so a non-null entry proves the worker has exited and
+      // its slot (never claimed — the failure happens before `registerSandbox`) is free to re-boot.
+      // A bare `awaitSandboxReady` timeout with no recorded error is different: the worker may still
+      // be inside Robolectric bootstrap, so swapping in a replacement would leave two workers racing
+      // to `registerSandbox` / count down the slot latch. Treat that as a clean startup failure —
+      // the pre-retry behaviour — and only ever replace a worker that demonstrably exited.
+      val canRetry = bootErr != null && attempt < MAX_SANDBOX_BOOT_RETRIES
+      if (!canRetry) {
+        if (sandboxCount > 1) dumpAllThreadsToStderr(slot = i, timeoutMs = timeoutMs)
+        if (bootErr != null) {
+          throw IllegalStateException(
+            "Robolectric sandbox slot $i aborted during bootstrap after ${attempt + 1} " +
+              "attempt(s) — see the SandboxRunner[$i] failure(s) logged above for the underlying " +
+              "cause.",
+            bootErr,
+          )
+        }
+        error(
+          "Robolectric sandbox slot $i failed to bootstrap within ${timeoutMs}ms — holdSandboxOpen " +
+            "never registered. On a cold cache the instrumented android-all jar download can " +
+            "dominate; raise the timeout via -D$SANDBOX_BOOT_TIMEOUT_PROP=<ms>. Otherwise check the " +
+            "SandboxHoldingRunner / Robolectric sandbox bootstrap logs."
+        )
+      }
+      attempt++
+
+      System.err.println(
+        "RobolectricHost: sandbox slot $i failed to boot with a recorded error " +
+          "(attempt ${attempt}/${MAX_SANDBOX_BOOT_RETRIES + 1}: ${bootErr!!.message}); " +
+          "retrying with a fresh worker."
+      )
+      // The failed worker has exited (its `SandboxRunner` JUnit run returned with the failure);
+      // join briefly to be sure, then reset the slot's boot state and install a fresh worker. A
+      // fresh ready latch is required because `runJUnit`'s failure path already counted the old one
+      // down; `registerSandbox` / the sandbox prologue counts down whatever latch the slot ref holds
+      // at retry time.
+      runCatching { workerThreads[i].join(2_000) }
+      workerBootErrors.set(i, null)
+      DaemonHostBridge.slot(i).sandboxReadyLatchRef.set(java.util.concurrent.CountDownLatch(1))
+      workerThreads[i] =
+        Thread({ runJUnit(workerIndex = i) }, threadName(i)).apply { isDaemon = false }
+    }
   }
 
   /**
@@ -1392,6 +1447,16 @@ open class RobolectricHost(
 
     /** 10 minutes — covers a cold-cache instrumented-android-all download + first-time scan. */
     const val DEFAULT_SANDBOX_BOOT_TIMEOUT_MS: Long = 10L * 60L * 1000L
+
+    /**
+     * How many times [start] re-launches a single sandbox slot whose first boot attempt failed
+     * before it gives up and aborts the host. A transient per-sandbox bootstrap failure (e.g.
+     * `Unable to load Robolectric native runtime library` on a memory-pressured pooled boot) then
+     * no longer takes down the whole live daemon — only a slot that fails every attempt does. Two
+     * retries (three attempts total) clears the observed intermittent case cheaply; a genuinely
+     * broken slot still fails fast rather than looping.
+     */
+    const val MAX_SANDBOX_BOOT_RETRIES: Int = 2
 
     /**
      * Forensic-dump payload prefix — see docs/daemon/CLASSLOADER-FORENSICS.md § Implementation
