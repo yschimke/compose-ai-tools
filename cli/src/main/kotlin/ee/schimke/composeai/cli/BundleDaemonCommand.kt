@@ -266,7 +266,9 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
     }
     return DaemonLaunch(
       classpath = (daemonJars + rendererJars).joinToString(File.pathSeparator) { it.absolutePath },
-      jvmArgs = listOf("--enable-native-access=ALL-UNNAMED"),
+      // -Dapple.awt.UIElement=true runs the desktop daemon JVM as a macOS background agent
+      // (no Dock icon / focus steal). Launch -D so it lands before AWT inits; macOS-only.
+      jvmArgs = listOf("--enable-native-access=ALL-UNNAMED", "-Dapple.awt.UIElement=true"),
       sysProps = emptyList(),
     )
   }

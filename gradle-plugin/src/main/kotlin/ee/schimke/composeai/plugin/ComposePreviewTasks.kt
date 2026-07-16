@@ -717,6 +717,14 @@ internal object ComposePreviewTasks {
       // apply here. `-Xmx` is the only essential JVM arg; B-desktop follow-ups can add Skia /
       // ImageComposeScene-specific opens if profiling shows a need.
       jvmArgs.add(extension.daemon.maxHeapMb.map { "-Xmx${it}m" })
+      // Run the long-lived desktop daemon JVM as a macOS "background agent" (LSUIElement) so it
+      // never claims a Dock icon or steals keyboard focus. The daemon renders offscreen (Skiko /
+      // ImageComposeScene, no window), but any non-headless AWT init still registers a Dock tile +
+      // focus grab on macOS — far more noticeable than a one-shot render because the daemon stays
+      // resident for the whole editing session. Passed as a launch `-D` (before AWT initializes);
+      // ignored off macOS, so it's safe unconditionally. See the twin flag on the one-shot render
+      // JavaExec in RenderPreviewsTask.
+      jvmArgs.add("-Dapple.awt.UIElement=true")
 
       // Desktop sysprops are a strict subset of the Android side — no Robolectric / Roborazzi
       // keys. Per-key `put(...)` so each Provider chain captures only serialisable references

@@ -329,6 +329,15 @@ abstract class RenderPreviewsTask : DefaultTask() {
     execOperations.javaexec {
       classpath = renderClasspath
       this.mainClass.set(mainClass)
+      // Run the render JVM as a macOS "background agent" (LSUIElement) so it never claims a Dock
+      // icon or steals keyboard focus while capturing. DesktopRendererMain draws offscreen via
+      // ImageComposeScene and never opens a window, but any non-headless AWT/Skiko init still
+      // registers a Dock tile + focus grab on macOS. Setting it here on the JavaExec spec forwards
+      // it as a `-D` on the forked JVM command line, i.e. *before* AWT initializes (a
+      // `System.setProperty` inside main() is too late once Skiko touches the toolkit). Ignored on
+      // Linux/Windows, so it's safe to set unconditionally. Headless=true would be stronger but can
+      // break Skiko font/graphics init, so scope this to the focus/Dock symptom only.
+      systemProperty("apple.awt.UIElement", "true")
       // Forward the display-filter selection so DesktopRendererMain can call
       // DisplayFilterDataProducer.writeArtifacts after each render. Empty string is fine —
       // DisplayFilterConfig.parseFilters treats blank input as "feature disabled".
