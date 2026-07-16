@@ -72,7 +72,7 @@ private constructor(
   private fun restart(parsed: PreviewOverrides) {
     handle?.close()
     handle =
-      renderHost.subscribeStream(previewId, parsed, codec, maxFps, ::onFrame)
+      renderHost.subscribeStream(previewId, parsed, codec, maxFps, onFrame = ::onFrame)
         ?: run {
           send(ServeStreamProtocol.errorMessage("live stream ended"))
           null
@@ -95,7 +95,8 @@ private constructor(
         }
         is OverrideParse.Ok -> p.overrides
       }
-    val next = renderHost.subscribeStream(message.previewId, parsed, codec, maxFps, ::onFrame)
+    val next =
+      renderHost.subscribeStream(message.previewId, parsed, codec, maxFps, onFrame = ::onFrame)
     if (next == null) {
       send(ServeStreamProtocol.errorMessage("cannot switch to preview: ${message.previewId}"))
       return
@@ -145,6 +146,7 @@ private constructor(
       codec: StreamCodec? = null,
       maxFps: Int? = null,
       send: (String) -> Unit,
+      onUnavailable: ((String) -> Unit)? = null,
     ): ServeLiveSession? {
       val knobKinds =
         ServeOverrides.declaredKnobKinds(renderHost.previews.firstOrNull { it.id == previewId })
@@ -153,8 +155,14 @@ private constructor(
           ?: PreviewOverrides()
       val session = ServeLiveSession(renderHost, previewId, overrides, codec, maxFps, send)
       session.handle =
-        renderHost.subscribeStream(previewId, initial, codec, maxFps, session::onFrame)
-          ?: return null
+        renderHost.subscribeStream(
+          previewId,
+          initial,
+          codec,
+          maxFps,
+          onUnavailable = onUnavailable,
+          onFrame = session::onFrame,
+        ) ?: return null
       return session
     }
   }

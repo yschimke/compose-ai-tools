@@ -155,6 +155,7 @@ class ServeSessionRegistryTest {
       overrides: PreviewOverrides,
       codec: ee.schimke.composeai.daemon.protocol.StreamCodec?,
       maxFps: Int?,
+      onUnavailable: ((String) -> Unit)?,
       onFrame: (ee.schimke.composeai.daemon.protocol.StreamFrameParams) -> Unit,
     ): StreamHandle? = null
 

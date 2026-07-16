@@ -27,6 +27,9 @@ class ServeStreamSessionTest {
   private fun typeOf(text: String): String =
     Json.parseToJsonElement(text).jsonObject.getValue("type").jsonPrimitive.content
 
+  private fun messageOf(text: String): String =
+    Json.parseToJsonElement(text).jsonObject.getValue("message").jsonPrimitive.content
+
   private fun frameBytes(text: String): ByteArray =
     Base64.getDecoder()
       .decode(Json.parseToJsonElement(text).jsonObject.getValue("dataBase64").jsonPrimitive.content)
@@ -131,6 +134,41 @@ class ServeStreamSessionTest {
       // The bad override must not poison the session — the previous view still renders.
       session.onClientMessage("""{"type":"requestFrame"}""")
       assertEquals("frame", typeOf(sent.last()))
+    }
+  }
+
+  @Test
+  fun `input on the snapshot lane reports the original live-lane failure when known`() {
+    host().use { h ->
+      val sent = CopyOnWriteArrayList<String>()
+      val session =
+        ServeStreamSession(
+          h,
+          previewId,
+          emptyMap(),
+          sent::add,
+          liveUnavailableReason =
+            "the daemon could not hold an interactive session for this preview",
+        )
+      session.onClientMessage("""{"type":"input","kind":"click","pixelX":1,"pixelY":1}""")
+      assertEquals("error", typeOf(sent.single()))
+      val message = messageOf(sent.single())
+      assertTrue(message.contains("input requires a live stream"), "keeps the base explanation")
+      assertTrue(
+        message.contains("the daemon could not hold an interactive session"),
+        "surfaces the original live-lane failure instead of the opaque message: $message",
+      )
+    }
+  }
+
+  @Test
+  fun `input on the snapshot lane falls back to the bare message when no reason is known`() {
+    host().use { h ->
+      val sent = CopyOnWriteArrayList<String>()
+      // No liveUnavailableReason (e.g. a backend that returned null without one).
+      val session = ServeStreamSession(h, previewId, emptyMap(), sent::add)
+      session.onClientMessage("""{"type":"input","kind":"click","pixelX":1,"pixelY":1}""")
+      assertEquals("input requires a live stream", messageOf(sent.single()))
     }
   }
 

@@ -218,8 +218,12 @@ class ServeBundleHost(
     overrides: PreviewOverrides,
     codec: StreamCodec?,
     maxFps: Int?,
+    onUnavailable: ((String) -> Unit)?,
     onFrame: (StreamFrameParams) -> Unit,
-  ): StreamHandle? = null
+  ): StreamHandle? {
+    onUnavailable?.invoke("this session serves baked snapshots only (no live daemon)")
+    return null
+  }
 
   override fun activeStreamCount(): Int = 0
 

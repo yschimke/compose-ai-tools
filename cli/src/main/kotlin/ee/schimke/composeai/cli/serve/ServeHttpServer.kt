@@ -898,10 +898,22 @@ class ServeHttpServer(
           }
         val maxFps = call.request.queryParameters["maxFps"]?.toIntOrNull()?.takeIf { it > 0 }
         // Prefer the daemon's live stream lane (frames pushed, input dispatched); fall back to the
-        // snapshot re-render lane when the backend doesn't support streaming.
+        // snapshot re-render lane when the backend doesn't support streaming. Capture the live
+        // lane's original failure so the snapshot session can explain why input isn't live. The
+        // callback fires synchronously inside tryStart (before it returns), so a plain var is safe.
+        var liveUnavailableReason: String? = null
         val live =
           withContext(Dispatchers.IO) {
-            ServeLiveSession.tryStart(renderHost, previewId, initialOverrides, codec, maxFps, send)
+            ServeLiveSession.tryStart(
+              renderHost,
+              previewId,
+              initialOverrides,
+              codec,
+              maxFps,
+              send,
+            ) { reason ->
+              if (liveUnavailableReason == null) liveUnavailableReason = reason
+            }
           }
         if (live != null) {
           try {
@@ -915,7 +927,14 @@ class ServeHttpServer(
             withContext(Dispatchers.IO) { live.close() }
           }
         } else {
-          val session = ServeStreamSession(renderHost, previewId, initialOverrides, send)
+          val session =
+            ServeStreamSession(
+              renderHost,
+              previewId,
+              initialOverrides,
+              send,
+              liveUnavailableReason = liveUnavailableReason,
+            )
           // Renders block (renderNow + await); keep them off the socket's event-loop thread.
           withContext(Dispatchers.IO) { session.onOpen() }
           for (frame in incoming) {

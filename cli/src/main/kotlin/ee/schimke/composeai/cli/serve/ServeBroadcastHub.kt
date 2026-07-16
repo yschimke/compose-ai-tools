@@ -16,6 +16,7 @@ fun interface StreamOpener {
     overrides: PreviewOverrides,
     codec: StreamCodec?,
     maxFps: Int?,
+    onUnavailable: ((String) -> Unit)?,
     onFrame: (StreamFrameParams) -> Unit,
   ): StreamHandle?
 }
@@ -53,6 +54,7 @@ class ServeBroadcastHub(private val opener: StreamOpener) {
     overrides: PreviewOverrides,
     codec: StreamCodec? = null,
     maxFps: Int? = null,
+    onUnavailable: ((String) -> Unit)? = null,
     onFrame: (StreamFrameParams) -> Unit,
   ): StreamHandle? = lock.withLock {
     val key = keyOf(previewId, overrides, codec, maxFps)
@@ -61,9 +63,10 @@ class ServeBroadcastHub(private val opener: StreamOpener) {
         ?: run {
           val fresh = Broadcast(key)
           // Hold the lock across the open so two racing first-subscribers can't open two upstreams
-          // for one key; opens are cheap relative to a dev server's client count.
+          // for one key; opens are cheap relative to a dev server's client count. A failed open
+          // reports its reason through [onUnavailable] (forwarded to the opener) before the null.
           val handle =
-            opener.open(previewId, overrides, codec, maxFps, fresh::onUpstreamFrame)
+            opener.open(previewId, overrides, codec, maxFps, onUnavailable, fresh::onUpstreamFrame)
               ?: return@withLock null
           fresh.handle = handle
           broadcasts[key] = fresh

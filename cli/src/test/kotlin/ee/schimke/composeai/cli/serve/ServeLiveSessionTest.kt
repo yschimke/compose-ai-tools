@@ -30,7 +30,49 @@ class ServeLiveSessionTest {
   @Test
   fun `tryStart returns null when streaming is unsupported`() {
     val session = FakeRenderSession(newRenderRoot()) // streaming = false
-    host(session).use { h -> assertNull(ServeLiveSession.tryStart(h, previewId, emptyMap()) {}) }
+    host(session).use { h ->
+      assertNull(ServeLiveSession.tryStart(h, previewId, emptyMap(), send = {}))
+    }
+  }
+
+  @Test
+  fun `tryStart forwards the daemon's original failure to onUnavailable`() {
+    val session = FakeRenderSession(newRenderRoot()) // streaming = false → streamStart throws
+    host(session).use { h ->
+      var reason: String? = null
+      assertNull(
+        ServeLiveSession.tryStart(
+          h,
+          previewId,
+          emptyMap(),
+          send = {},
+          onUnavailable = { reason = it },
+        )
+      )
+      // The daemon's own exception message is carried through, not swallowed into a log.
+      assertEquals("streaming not supported", reason)
+    }
+  }
+
+  @Test
+  fun `tryStart forwards a no-held-session reason to onUnavailable`() {
+    val session = FakeRenderSession(newRenderRoot(), streaming = true, heldSession = false)
+    host(session).use { h ->
+      var reason: String? = null
+      assertNull(
+        ServeLiveSession.tryStart(
+          h,
+          previewId,
+          emptyMap(),
+          send = {},
+          onUnavailable = { reason = it },
+        )
+      )
+      assertTrue(
+        reason?.contains("could not hold an interactive session") == true,
+        "expected a held-session reason, got: $reason",
+      )
+    }
   }
 
   @Test
@@ -91,7 +133,7 @@ class ServeLiveSessionTest {
   fun `input messages dispatch interactive input`() {
     val session = FakeRenderSession(newRenderRoot(), streaming = true)
     host(session).use { h ->
-      val live = assertNotNull(ServeLiveSession.tryStart(h, previewId, emptyMap()) {})
+      val live = assertNotNull(ServeLiveSession.tryStart(h, previewId, emptyMap(), send = {}))
       live.onClientMessage("""{"type":"input","kind":"click","pixelX":10,"pixelY":20}""")
       assertEquals(1, session.interactiveInputs.size)
       val input = session.interactiveInputs[0]
@@ -105,7 +147,7 @@ class ServeLiveSessionTest {
   fun `pointer drag, scroll and key inputs are forwarded with their fields`() {
     val session = FakeRenderSession(newRenderRoot(), streaming = true)
     host(session).use { h ->
-      val live = assertNotNull(ServeLiveSession.tryStart(h, previewId, emptyMap()) {})
+      val live = assertNotNull(ServeLiveSession.tryStart(h, previewId, emptyMap(), send = {}))
       live.onClientMessage(
         """{"type":"input","kind":"pointerDown","pixelX":3,"pixelY":4,"pointerId":1}"""
       )
@@ -152,7 +194,7 @@ class ServeLiveSessionTest {
   fun `setOverrides restarts the held stream`() {
     val session = FakeRenderSession(newRenderRoot(), streaming = true)
     host(session).use { h ->
-      val live = assertNotNull(ServeLiveSession.tryStart(h, previewId, emptyMap()) {})
+      val live = assertNotNull(ServeLiveSession.tryStart(h, previewId, emptyMap(), send = {}))
       val first = assertNotNull(session.lastFrameStreamId)
       assertEquals(1, session.streamStarts.get())
 
@@ -196,7 +238,7 @@ class ServeLiveSessionTest {
         renderTimeoutSeconds = 30,
       )
       .use { h ->
-        val live = assertNotNull(ServeLiveSession.tryStart(h, previewId, emptyMap()) {})
+        val live = assertNotNull(ServeLiveSession.tryStart(h, previewId, emptyMap(), send = {}))
         val firstFsid = assertNotNull(session.lastFrameStreamId)
         assertEquals(1, session.streamStarts.get())
 
@@ -234,7 +276,7 @@ class ServeLiveSessionTest {
   fun `closing the live session stops the stream`() {
     val session = FakeRenderSession(newRenderRoot(), streaming = true)
     host(session).use { h ->
-      val live = assertNotNull(ServeLiveSession.tryStart(h, previewId, emptyMap()) {})
+      val live = assertNotNull(ServeLiveSession.tryStart(h, previewId, emptyMap(), send = {}))
       val fsid = assertNotNull(session.lastFrameStreamId)
       live.close()
       assertEquals(listOf(fsid), session.streamStops)

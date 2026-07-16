@@ -146,10 +146,29 @@ class ServePerPreviewLiveHost(
     overrides: PreviewOverrides,
     codec: StreamCodec?,
     maxFps: Int?,
+    onUnavailable: ((String) -> Unit)?,
     onFrame: (StreamFrameParams) -> Unit,
   ): StreamHandle? {
-    val daemonId = alias[previewId] ?: return null
-    return resolveLive(daemonId)?.subscribeStream(daemonId, overrides, codec, maxFps, onFrame)
+    val daemonId =
+      alias[previewId]
+        ?: run {
+          onUnavailable?.invoke("no live daemon twin for '$previewId' (baked snapshot only)")
+          return null
+        }
+    val live =
+      resolveLive(daemonId)
+        ?: run {
+          onUnavailable?.invoke("live daemon for '$previewId' could not be resolved")
+          return null
+        }
+    return live.subscribeStream(
+      daemonId,
+      overrides,
+      codec,
+      maxFps,
+      onUnavailable = onUnavailable,
+      onFrame = onFrame,
+    )
   }
 
   override fun activeStreamCount(): Int = streamCount()

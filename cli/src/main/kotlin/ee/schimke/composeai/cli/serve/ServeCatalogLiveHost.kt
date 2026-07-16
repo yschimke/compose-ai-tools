@@ -264,10 +264,26 @@ class ServeCatalogLiveHost(
     overrides: PreviewOverrides,
     codec: StreamCodec?,
     maxFps: Int?,
+    onUnavailable: ((String) -> Unit)?,
     onFrame: (StreamFrameParams) -> Unit,
   ): StreamHandle? {
-    val daemonId = alias[previewId] ?: return null
-    return liveHostFor(daemonId).subscribeStream(daemonId, overrides, codec, maxFps, onFrame)
+    val daemonId =
+      alias[previewId]
+        ?: run {
+          // An unmapped (Android-only) variant has no daemon twin, so no live lane — report it so
+          // the viewer explains the snapshot fallback rather than a bare "input requires a stream".
+          onUnavailable?.invoke("no live daemon twin for '$previewId' (baked snapshot only)")
+          return null
+        }
+    return liveHostFor(daemonId)
+      .subscribeStream(
+        daemonId,
+        overrides,
+        codec,
+        maxFps,
+        onUnavailable = onUnavailable,
+        onFrame = onFrame,
+      )
   }
 
   override fun activeStreamCount(): Int = live.activeStreamCount() + perPreviewStreamCount()

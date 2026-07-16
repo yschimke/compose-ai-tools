@@ -29,6 +29,7 @@ class ServePerPreviewDaemonPoolTest {
       overrides: PreviewOverrides,
       codec: StreamCodec?,
       maxFps: Int?,
+      onUnavailable: ((String) -> Unit)?,
       onFrame: (StreamFrameParams) -> Unit,
     ): StreamHandle? = null
 

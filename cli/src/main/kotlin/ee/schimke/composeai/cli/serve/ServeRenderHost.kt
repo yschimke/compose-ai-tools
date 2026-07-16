@@ -634,10 +634,14 @@ internal constructor(
     overrides: PreviewOverrides,
     codec: StreamCodec? = null,
     maxFps: Int? = null,
+    onUnavailable: ((String) -> Unit)? = null,
     onFrame: (StreamFrameParams) -> Unit,
   ): StreamHandle? {
     check(!closed.get()) { "ServeRenderHost is closed" }
-    if (previewId !in previewIds) return null
+    if (previewId !in previewIds) {
+      onUnavailable?.invoke("daemon has no preview '$previewId'")
+      return null
+    }
 
     // Register the listener BEFORE stream/start: the daemon's frame loop can emit the initial
     // keyframe before the RPC response returns, and missing it leaves static previews blank (later
@@ -678,7 +682,14 @@ internal constructor(
         )
       } catch (e: Exception) {
         // UnsupportedOperationException (no streaming on this backend) or a daemon error — degrade.
-        onLog("stream/start unavailable for $previewId (${e.message}); falling back to snapshots")
+        // The exception message IS the daemon's original failure (e.g. "interactive session already
+        // held", "previewSpecResolver returned null for previewId=…", a 30s interactive-start
+        // timeout) — carry it to the viewer via [onUnavailable] rather than only logging it, so the
+        // client can show why input isn't live instead of the opaque "input requires a live
+        // stream".
+        val reason = e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
+        onLog("stream/start unavailable for $previewId ($reason); falling back to snapshots")
+        onUnavailable?.invoke(reason)
         runCatching { listener.close() }
         return null
       }
@@ -687,6 +698,7 @@ internal constructor(
       // The daemon accepted stream/start but couldn't hold an interactive session, so it won't run
       // the live frame loop — fall back to the snapshot lane rather than open a frameless stream.
       onLog("stream/start for $previewId has no held session; falling back to snapshots")
+      onUnavailable?.invoke("the daemon could not hold an interactive session for this preview")
       runCatching { listener.close() }
       runCatching { session.streamStop(result.frameStreamId) }
       return null
@@ -747,10 +759,18 @@ internal constructor(
     overrides: PreviewOverrides,
     codec: StreamCodec?,
     maxFps: Int?,
+    onUnavailable: ((String) -> Unit)?,
     onFrame: (StreamFrameParams) -> Unit,
   ): StreamHandle? {
     check(!closed.get()) { "ServeRenderHost is closed" }
-    return broadcast.subscribe(previewId, overrides, codec, maxFps, onFrame)
+    return broadcast.subscribe(
+      previewId,
+      overrides,
+      codec,
+      maxFps,
+      onUnavailable = onUnavailable,
+      onFrame = onFrame,
+    )
   }
 
   /** Live shared upstream streams (one per distinct preview/overrides/codec/fps). Diagnostics. */
