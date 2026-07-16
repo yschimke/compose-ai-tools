@@ -1140,6 +1140,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
       root.setAttribute("data-mode", "svg"); refreshSnapshot();
     } else { snapshotExt = ".png"; closeStream(); closeWasm(); refreshSnapshot(); }
     syncOverlayToggles();
+    syncServerControls();
     syncScrollToggle();
   }
   // "Full page (scroll)" is only meaningful for the SVG lane; enable it iff SVG is the active
@@ -1159,6 +1160,34 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   function syncOverlayToggles() {
     var on = !!(live && live.checked);
     Array.prototype.forEach.call(overlayToggles, function (el) { el.disabled = !on; });
+  }
+  // The server-render display controls (Theme / Device / Locale / Font scale / Orientation /
+  // Background / Size) are baked-disabled on a static snapshot — a published catalog's PNG can't
+  // honour them. But a trusted-catalog live session (staticSnapshot yet canRenderOverrides) CAN
+  // re-render every one of them through its carried daemon over the live socket, so enable them
+  // while Live Compose is the active mode and restore the baked-static disabled state otherwise.
+  // Without this the Live lane streamed frames but its overrides (locale, device, …) stayed
+  // greyed out, so "Live Compose" looked interactive yet every axis control did nothing. A
+  // change to a re-enabled control routes through onControlsChanged, which pushes a fresh
+  // setOverrides down the open stream (or, on the snapshot-fallback lane, re-renders via
+  // /render) — both paths honour the override, so this is correct regardless of which lane the
+  // socket resolved to. The Wasm-honoured trio (uiMode / localeTag / fontScale) is left enabled
+  // on a Wasm-backed static snapshot exactly as the baked markup had it, so leaving Live mode
+  // there doesn't wrongly disable the in-browser controls.
+  var serverOnlyControlIds =
+    ["device", "orientation", "background", "sizeMode",
+     "fixedW", "fixedH", "minW", "minH", "maxW", "maxH"];
+  var wasmHonouredControlIds = ["uiMode", "localeTag", "fontScale"];
+  function syncServerControls() {
+    var liveOn = !!(live && live.checked) && canRenderOverrides;
+    serverOnlyControlIds.forEach(function (id) {
+      var el = document.getElementById("cp-" + id);
+      if (el) el.disabled = liveOn ? false : staticSnapshot;
+    });
+    wasmHonouredControlIds.forEach(function (id) {
+      var el = document.getElementById("cp-" + id);
+      if (el) el.disabled = liveOn ? false : (staticSnapshot && !wasmSrc);
+    });
   }
   // Programmatic switch (e.g. a wasm-only control auto-enabling Wasm): tick the radio so the UI
   // reflects it, then run the transition.
