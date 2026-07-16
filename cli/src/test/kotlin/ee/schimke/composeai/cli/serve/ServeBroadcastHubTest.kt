@@ -62,9 +62,13 @@ class ServeBroadcastHubTest {
       overrides: PreviewOverrides,
       codec: StreamCodec?,
       maxFps: Int?,
+      onUnavailable: ((String) -> Unit)?,
       onFrame: (StreamFrameParams) -> Unit,
     ): StreamHandle? {
-      if (!streamable) return null
+      if (!streamable) {
+        onUnavailable?.invoke("fake opener: not streamable")
+        return null
+      }
       val up = FakeUpstream()
       up.emit = onFrame
       opens.add(up)
@@ -157,6 +161,14 @@ class ServeBroadcastHubTest {
     val hub = ServeBroadcastHub(FakeOpener(streamable = false))
     assertNull(hub.subscribe("p", PreviewOverrides()) {})
     assertEquals(0, hub.activeStreamCount())
+  }
+
+  @Test
+  fun `subscribe forwards the opener's unavailable reason`() {
+    val hub = ServeBroadcastHub(FakeOpener(streamable = false))
+    var reason: String? = null
+    assertNull(hub.subscribe("p", PreviewOverrides(), onUnavailable = { reason = it }) {})
+    assertEquals("fake opener: not streamable", reason)
   }
 
   @Test

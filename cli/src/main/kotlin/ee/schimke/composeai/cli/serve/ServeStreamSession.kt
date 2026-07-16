@@ -22,6 +22,15 @@ class ServeStreamSession(
   previewId: String,
   initialOverrides: Map<String, String> = emptyMap(),
   private val send: (String) -> Unit,
+  /**
+   * Why this connection is on the snapshot-fallback lane rather than the live daemon stream — the
+   * daemon's original failure captured by [ServeLiveSession.tryStart]'s `onUnavailable` (e.g.
+   * `interactive session already held`, a `stream/start` timeout, or "no live daemon twin"). Folded
+   * into the input-rejection message so a click reports *why* input isn't live instead of the
+   * opaque "input requires a live stream". Null when the reason is unknown (e.g. a backend that
+   * returned null without one).
+   */
+  private val liveUnavailableReason: String? = null,
 ) {
   private var previewId: String = previewId
   private var overrides: Map<String, String> = initialOverrides
@@ -47,8 +56,9 @@ class ServeStreamSession(
       is ServeStreamProtocol.ClientMessage.Switch -> switchTo(message)
       is ServeStreamProtocol.ClientMessage.Input ->
         // The snapshot fallback can't dispatch input into a live composition — only the daemon
-        // stream lane ([ServeLiveSession]) can. Report it rather than silently dropping.
-        send(ServeStreamProtocol.errorMessage("input requires a live stream"))
+        // stream lane ([ServeLiveSession]) can. Report it — with the original reason the live lane
+        // was unavailable when known — rather than silently dropping or showing a bare message.
+        send(ServeStreamProtocol.errorMessage(inputUnavailableMessage()))
       is ServeStreamProtocol.ClientMessage.Unsupported ->
         send(ServeStreamProtocol.errorMessage(message.reason))
     }
@@ -85,6 +95,16 @@ class ServeStreamSession(
    */
   private fun knobKindsFor(id: String): Map<String, String> =
     ServeOverrides.declaredKnobKinds(renderHost.previews.firstOrNull { it.id == id })
+
+  /**
+   * The message for an [input][ServeStreamProtocol.ClientMessage.Input] the snapshot lane can't
+   * dispatch. When the live lane's original failure was captured, surface it so the user sees *why*
+   * (e.g. "…: the daemon could not hold an interactive session for this preview") instead of a bare
+   * "input requires a live stream".
+   */
+  private fun inputUnavailableMessage(): String =
+    if (liveUnavailableReason.isNullOrBlank()) "input requires a live stream"
+    else "input requires a live stream — unavailable: $liveUnavailableReason"
 
   private fun renderCurrent() {
     when (val parsed = ServeOverrides.parse(overrides, knobKindsFor(previewId))) {

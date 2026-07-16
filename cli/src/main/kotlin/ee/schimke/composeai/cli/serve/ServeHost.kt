@@ -128,12 +128,20 @@ interface ServeHost : AutoCloseable {
   /**
    * Join the shared live stream for [previewId], or `null` when this host has no live lane (the
    * snapshot fallback is used instead — always the case for [ServeBundleHost]).
+   *
+   * [onUnavailable] is invoked (once, before the `null` return) with a short human-readable reason
+   * when the live lane can't be opened — the daemon's original failure (e.g. `interactive session
+   * already held`, `previewSpecResolver returned null`, a `stream/start` timeout) or "no live
+   * daemon twin for this variant". The caller surfaces it so the viewer shows *why* it fell back to
+   * re-rendered snapshots instead of the opaque "input requires a live stream". Not called on
+   * success (a non-null return).
    */
   fun subscribeStream(
     previewId: String,
     overrides: PreviewOverrides,
     codec: StreamCodec?,
     maxFps: Int?,
+    onUnavailable: ((String) -> Unit)? = null,
     onFrame: (StreamFrameParams) -> Unit,
   ): StreamHandle?
 
