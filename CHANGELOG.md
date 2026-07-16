@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.16.52](https://github.com/yschimke/compose-ai-tools/compare/v0.16.51...v0.16.52) (2026-07-16)
+
+
+### Bug Fixes
+
+* **desktop:** run the desktop preview JVM as a macOS background agent ([#2510](https://github.com/yschimke/compose-ai-tools/issues/2510)) ([c48209d](https://github.com/yschimke/compose-ai-tools/commit/c48209d87c435cc551a07b0fbc417787d32d49c1))
+* **figma-svg:** match opaque raster components case-sensitively ([#2512](https://github.com/yschimke/compose-ai-tools/issues/2512)) ([f9dcb21](https://github.com/yschimke/compose-ai-tools/commit/f9dcb2156e2a41e35ef49e6128bcd43005950030))
+* **serve:** re-enable Live Compose axis controls on a catalog live session ([#2511](https://github.com/yschimke/compose-ai-tools/issues/2511)) ([bbc7f5c](https://github.com/yschimke/compose-ai-tools/commit/bbc7f5c97765337e98cb1079c15c92ac7d351a4f))
+
 ## [0.16.51](https://github.com/yschimke/compose-ai-tools/compare/v0.16.50...v0.16.51) (2026-07-16)
 
 
