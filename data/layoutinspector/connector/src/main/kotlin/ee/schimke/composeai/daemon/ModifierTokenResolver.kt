@@ -278,11 +278,47 @@ internal object ModifierTokenResolver {
           }
           .getOrNull()
         ?: return null
-    if (painter.javaClass.simpleName != "ColorPainter") return null
+    // A Wear M3 scaling list (`TransformingLazyColumn` + `SurfaceTransformation`) doesn't fill its
+    // cards with a bare `ColorPainter` — it wraps that painter in a
+    // `androidx.wear.compose.material3.lazy.BackgroundPainter`, which morphs the container shape as
+    // the item scales through the curved edges. That wrapper stringifies to a class name, so an
+    // un-unwrapped resolver leaves `backgroundColor` null and the whole card (title + subtitle
+    // included) rasterises as one opaque `<image>` — the labels get baked into pixels instead of
+    // staying editable `<text>`. The wrapper holds the real fill on its `backgroundPainter` field,
+    // so unwrap to it and resolve the flat colour from there; the export then draws the card as a
+    // vector fill with editable text. Only the colour is recovered (not the per-item morph/scale) —
+    // an image/gradient-backed card still has a non-`ColorPainter` base and correctly falls through
+    // to the raster path below.
+    val fillPainter =
+      if (painter.javaClass.simpleName == "BackgroundPainter") {
+        // A BackgroundPainter also carries a BorderStroke (its `border` field) — an OutlinedCard /
+        // bordered surface morphs its outline through the same wrapper. We only recover the inner
+        // fill colour here, not the border (nor the wrapper's morphing shape), so resolving a
+        // bordered wrapper would make `backgroundColor` non-null, skip the `<image>` fallback, and
+        // drop the outline from the vector export. Leave bordered wrappers unresolved so the raster
+        // path preserves the full pixels (fill + border); only a borderless wrapper — the common
+        // filled TitleCard/Card — collapses to a flat vector fill with editable text.
+        val border =
+          runCatching {
+              painter.javaClass.getDeclaredField("border").apply { isAccessible = true }.get(painter)
+            }
+            .getOrNull()
+        if (border != null) return null
+        runCatching {
+            painter.javaClass
+              .getDeclaredField("backgroundPainter")
+              .apply { isAccessible = true }
+              .get(painter)
+          }
+          .getOrNull() ?: return null
+      } else {
+        painter
+      }
+    if (fillPainter.javaClass.simpleName != "ColorPainter") return null
     val baseArgb =
       runCatching {
-          val field = painter.javaClass.getDeclaredField("color").apply { isAccessible = true }
-          val packed = field.getLong(painter).toULong()
+          val field = fillPainter.javaClass.getDeclaredField("color").apply { isAccessible = true }
+          val packed = field.getLong(fillPainter).toULong()
           if (packed and 0xFFFFFFFFuL != 0uL) return null
           (packed shr 32).toInt()
         }
