@@ -291,6 +291,19 @@ internal object ModifierTokenResolver {
     // to the raster path below.
     val fillPainter =
       if (painter.javaClass.simpleName == "BackgroundPainter") {
+        // A BackgroundPainter also carries a BorderStroke (its `border` field) — an OutlinedCard /
+        // bordered surface morphs its outline through the same wrapper. We only recover the inner
+        // fill colour here, not the border (nor the wrapper's morphing shape), so resolving a
+        // bordered wrapper would make `backgroundColor` non-null, skip the `<image>` fallback, and
+        // drop the outline from the vector export. Leave bordered wrappers unresolved so the raster
+        // path preserves the full pixels (fill + border); only a borderless wrapper — the common
+        // filled TitleCard/Card — collapses to a flat vector fill with editable text.
+        val border =
+          runCatching {
+              painter.javaClass.getDeclaredField("border").apply { isAccessible = true }.get(painter)
+            }
+            .getOrNull()
+        if (border != null) return null
         runCatching {
             painter.javaClass
               .getDeclaredField("backgroundPainter")

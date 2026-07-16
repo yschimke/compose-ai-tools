@@ -17,6 +17,7 @@ import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.material3.MaterialTheme
+import androidx.wear.compose.material3.OutlinedCard
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.SurfaceTransformation
 import androidx.wear.compose.material3.Text
@@ -118,6 +119,49 @@ class FigmaSvgWearScalingCardTest {
     assertTrue(
       "the card must export a vector fill (resolved from the wrapped ColorPainter):\n$svg",
       svg.contains("fill=\"#332E3C\""),
+    )
+  }
+
+  @Test
+  fun `a bordered scaling card keeps its outline instead of dropping it to a fill-only vector`() {
+    val svg =
+      renderSvg("wear-outlined-card") {
+        MaterialTheme {
+          AppScaffold {
+            val state = rememberTransformingLazyColumnState()
+            val spec = rememberTransformationSpec()
+            ScreenScaffold(scrollState = state) { contentPadding ->
+              TransformingLazyColumn(
+                state = state,
+                contentPadding = contentPadding,
+                modifier = Modifier.fillMaxSize(),
+              ) {
+                item {
+                  OutlinedCard(
+                    onClick = {},
+                    modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+                    transformation = SurfaceTransformation(spec),
+                  ) {
+                    Text("Outlined")
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+    File("build/figma-svg-wear-scaling").mkdirs()
+    File("build/figma-svg-wear-scaling/wear-outlined-card.svg").writeText(svg)
+
+    // A scaling OutlinedCard fills + outlines through one BackgroundPainter that carries a
+    // BorderStroke. We can't yet vectorise that morphing outline, so the fix must NOT silently
+    // resolve the fill alone (which would drop the border): the card stays on the raster path,
+    // preserving the outline as pixels. Guard the guarantee that matters — the border is never lost:
+    // the card is either a raster <image> (pixels preserved) or carries a real vector stroke.
+    assertTrue(
+      "a bordered scaling card must not export as a fill-only vector with no outline:\n$svg",
+      svg.contains("<image ") || svg.contains("stroke="),
     )
   }
 
