@@ -770,9 +770,19 @@ data class FigmaSvgModel(
     }
 
     /** True when the composable name matches a [rasterComponents] fragment. */
+    /**
+     * True when the node's composable name carries an opaque, un-vectorisable component as a
+     * CamelCase token — `AsyncImage`/`Image`, `IconButton`/`Icon`, `OutlinedTextField`/`TextField`.
+     * The match is **case-sensitive** on purpose: the fragments and Compose component names are all
+     * PascalCase, so a token boundary is an uppercase letter. A case-insensitive `contains` instead
+     * false-matches a keyword buried across a lowercase→uppercase seam — e.g.
+     * `MultiContentMeasurePolicyImpl` (the `SegmentedButton`/multi-content layout policy) contains
+     * "icon" in "Mult**iCon**tent", which would raster the whole labelled subtree as if it were an
+     * `Icon`.
+     */
     private fun LayoutInspectorNode.isOpaque(rasterComponents: Set<String>): Boolean =
       rasterComponents.any {
-        component.contains(it, ignoreCase = true)
+        component.contains(it)
       }
 
     /**
