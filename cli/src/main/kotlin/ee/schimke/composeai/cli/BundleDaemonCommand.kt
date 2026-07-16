@@ -166,6 +166,10 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       bundleManifestFile?.let { add("-D${BUNDLE_MANIFEST_PATH_PROP}=${it.absolutePath}") }
       // Tag the temp dir on the daemon so logs / debug dumps make it discoverable.
       add("-Dcomposeai.daemon.bundleSource=${file.absolutePath}")
+      // Detached-bundle viewer: degrade a missing app-resource lookup to an obvious placeholder
+      // rather than throwing on a stale/incompletely-packed bundle. Off by default in the daemon;
+      // the pack-time semantics daemon never sets it, so published stickers still fail loudly.
+      add("-Dcomposeai.render.placeholderMissingResources=true")
       for (prop in launch.sysProps) add(prop)
       add("-cp")
       add(

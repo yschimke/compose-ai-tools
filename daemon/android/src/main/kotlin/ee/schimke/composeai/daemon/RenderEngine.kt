@@ -224,6 +224,10 @@ class RenderEngine(
     val trace = PerfettoTraceDataProducer.recorder(spec.outputBaseName, backend = "android")
     val slotTableCapture = PreviewSlotTableCapture()
     val themeFallbackCapture = MaterialThemeFallbackCapture()
+    // Opt-in (serve / bundle-daemon set it) — see [PLACEHOLDER_MISSING_RESOURCES_PROP]. Off for the
+    // pack semantics daemon so a missing resource fails loudly instead of baking a placeholder.
+    val placeholderMissingResources =
+      System.getProperty(PLACEHOLDER_MISSING_RESOURCES_PROP) == "true"
 
     val isTile = spec.kind.equals(TILE_KIND, ignoreCase = true)
     val isNotification = spec.kind.equals(NOTIFICATION_KIND, ignoreCase = true)
@@ -390,7 +394,10 @@ class RenderEngine(
             // activity is threaded separately via `RenderDataArtifactContextKeys.HeldActivity`, so
             // nothing that needs the `ComponentActivity` reads it from this (wrapped) context.
             val builtDataArtifactExtensions =
-              dataArtifactExtensions.build(rule.activity.wrappedForPlaceholderResources())
+              dataArtifactExtensions.build(
+                if (placeholderMissingResources) rule.activity.wrappedForPlaceholderResources()
+                else rule.activity
+              )
 
             System.err.println(
               "compose-ai-daemon: [render] phase=setContent.start outputBaseName=${spec.outputBaseName}"
@@ -412,10 +419,14 @@ class RenderEngine(
                 // extensions (incl. pseudolocale) and preview content all see the guarded context.
                 val baseContext = LocalContext.current
                 val placeholderContext =
-                  remember(baseContext) { baseContext.wrappedForPlaceholderResources() }
+                  if (placeholderMissingResources)
+                    remember(baseContext) { baseContext.wrappedForPlaceholderResources() }
+                  else null
                 val provided =
                   buildList {
-                      add(LocalContext provides placeholderContext)
+                      if (placeholderContext != null) {
+                        add(LocalContext provides placeholderContext)
+                      }
                       add(LocalInspectionMode provides inspectionMode)
                       // Cleared background ("crisp outline"): a composable drawing its own opaque
                       // fill drops it to match the transparent decor-view background. Defaults false.
@@ -1705,6 +1716,22 @@ class RenderEngine(
      * side uses; the gradle plugin's daemon launch descriptor sets it once at JVM start.
      */
     const val OUTPUT_DIR_PROP: String = "composeai.render.outputDir"
+
+    /**
+     * Opt-in for the missing-resource placeholder fallback (see [PlaceholderFallbackResources]).
+     * When `true`, a `stringResource` / `colorResource` lookup absent from the resource table
+     * renders an obvious placeholder instead of throwing `Resources$NotFoundException`.
+     *
+     * **Off by default, on purpose.** The detached live/serve paths ([serve.ServeBundleDaemon],
+     * [BundleDaemonCommand]) set it so a stale/incomplete packed bundle degrades gracefully in the
+     * interactive viewer rather than showing a broken image. The `bundle pack --with-semantics`
+     * semantics daemon (spawned from the gradle `daemon-launch.json`) deliberately leaves it off: it
+     * renders from source where the app resource table is *supposed* to resolve, so a miss should
+     * fail loudly (the pack then keeps the standalone `composePreviewRender` PNG) instead of baking a
+     * placeholder into the published catalog sticker.
+     */
+    const val PLACEHOLDER_MISSING_RESOURCES_PROP: String =
+      "composeai.render.placeholderMissingResources"
 
     /**
      * D2.2 — `RenderSpec.renderMode` value the daemon stamps when a `data/fetch` for an a11y kind
