@@ -120,6 +120,12 @@ class FigmaSvgWearScalingCardTest {
       "the card must export a vector fill (resolved from the wrapped ColorPainter):\n$svg",
       svg.contains("fill=\"#332E3C\""),
     )
+    // ...and keeps its rounded corners — the card's shape lives on the BackgroundPainter, so the
+    // fill rect must carry a corner radius (`rx`) rather than drawing as a sharp rectangle.
+    assertTrue(
+      "the card fill must keep its rounded corners (rx) instead of a square rect:\n$svg",
+      Regex("<rect[^>]*\\brx=\"[^\"]+\"[^>]*fill=\"#332E3C\"").containsMatchIn(svg),
+    )
   }
 
   @Test

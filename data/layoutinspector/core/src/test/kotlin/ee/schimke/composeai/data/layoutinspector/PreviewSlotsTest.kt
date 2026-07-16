@@ -39,7 +39,7 @@ class PreviewSlotsTest {
   }
 
   @Test
-  fun `parses scope and scroll attributes from the tag; bare tags read as unknown`() {
+  fun `parses scope and scroll attributes from the tag - bare tags read as unknown`() {
     val tree =
       ComposeSemanticsPayload(
         node(
