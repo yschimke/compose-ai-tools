@@ -165,16 +165,31 @@ COPY --from=android-daemon /opt/android-sdk /opt/android-sdk
 #   * sandboxBootTimeoutMs — the Robolectric sandbox boot (the one-time
 #     `android-all-instrumented` ~150 MB fetch + instrumentation, in RobolectricHost.start,
 #     default 600s) — the dominant cold cost; raised so a first boot completes.
-#   * renderTimeoutSeconds — serve's per-render budget once booted.
+#   * renderTimeoutSeconds — serve's per-render *cold* budget once booted.
+#   * frameRenderTimeoutSeconds — serve's per-render budget for a *warm* frame. The 10s default
+#     suits a warm Skiko desktop frame but starves a warm Robolectric (Wear) frame and any
+#     override-bearing re-render (a `?knob.…=` edit forces a real recompose) on this shared box,
+#     which surfaced as `/render?knob.…` returning `500 timed out after 10s`. Lift it in lockstep
+#     with the cold budget so warm overrides/Wear frames have room (ServeRenderHost also gives the
+#     first override render the cold budget, so this only bounds steady-state frames).
 # Both are absorbed by prewarm off the request path, so a browse never blocks. See
 # RobolectricHost / ServeCatalogLiveHost / ServeRenderHost.
+#
+# sandboxCount — the Android/Robolectric daemon defaults to a **5**-sandbox pool (DaemonMain,
+# warmSpare). Five instrumented sandboxes (each ~150 MB+ of instrumented android-all in its own
+# classloader) is heavy for this 8 GB box; the memory pressure is what makes one sandbox
+# intermittently die with `Unable to load Robolectric native runtime library` mid-boot. Pin the
+# pooled Android daemons to **3** (interactive needs ≥2; 3 keeps an interactive slot + two render
+# slots) to cut that footprint ~40%. RobolectricHost also now retries a transient per-sandbox boot
+# failure, so the two changes together keep the Wear live lane up instead of collapsing it to the
+# baked-PNG snapshot. Desktop (CMP) daemons ignore this knob.
 ENV PATH="/opt/compose-preview/bin:${PATH}" \
     SERVE_IDLE_EXIT=0 \
     SERVE_TIMEOUT=1800 \
     COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1 \
     ANDROID_HOME=/opt/android-sdk \
     ANDROID_SDK_ROOT=/opt/android-sdk \
-    JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70 -Dcomposeai.cli.libDaemonAndroidDir=/opt/lib-daemon-android -Dcomposeai.serve.warmInBackground=true -Dcomposeai.serve.renderTimeoutSeconds=900 -Dcomposeai.daemon.sandboxBootTimeoutMs=1800000"
+    JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70 -Dcomposeai.cli.libDaemonAndroidDir=/opt/lib-daemon-android -Dcomposeai.serve.warmInBackground=true -Dcomposeai.serve.renderTimeoutSeconds=900 -Dcomposeai.serve.frameRenderTimeoutSeconds=120 -Dcomposeai.daemon.sandboxCount=3 -Dcomposeai.daemon.sandboxBootTimeoutMs=1800000"
 
 WORKDIR /project
 # Carry the project + warmed Gradle cache + module build outputs so the first

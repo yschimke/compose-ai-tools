@@ -280,6 +280,16 @@ internal constructor(
   // [frameRenderTimeoutSeconds] so a single wedged render can't hold the only render slot.
   private val warmedUp = AtomicBoolean(false)
 
+  // An override-bearing render (a `?knob.…=` edit, device/locale/theme override, …) forces a real
+  // recomposition and is much slower than a plain re-emit — its first occurrence is effectively
+  // cold even when [warmedUp] is already set by a background prewarm (a throwaway default render
+  // that flips [warmedUp] without ever exercising the override path). Without a separate gate the
+  // very first override render on `preview.coo.ee` — where `warmInBackground` prewarms — is charged
+  // the tight [frameRenderTimeoutSeconds] cap and times out (the public `?knob.…` 500). Give the
+  // first override render the generous [renderTimeoutSeconds] budget too; subsequent override frames
+  // are capped like any other so a wedged one can't pin the slot.
+  private val overridesWarmedUp = AtomicBoolean(false)
+
   // Fans one upstream daemon stream out to all watchers of the same preview/overrides/codec/fps, so
   // many browsers cost one held session instead of one each. Built on [startStream]; shared because
   // there's one host per server.
@@ -357,8 +367,12 @@ internal constructor(
         }
 
         // Cold start gets the generous budget; every frame after the first is capped so a wedged
-        // render can't pin the slot.
-        val budget = if (warmedUp.get()) frameRenderTimeoutSeconds else renderTimeoutSeconds
+        // render can't pin the slot. An override-bearing render's *first* occurrence is cold too
+        // (real recompose, and prewarm may have flipped [warmedUp] without ever paying it), so it
+        // keeps the generous budget until one override render has succeeded.
+        val hasOverrides = overrides != PreviewOverrides()
+        val warmForThisRender = warmedUp.get() && (!hasOverrides || overridesWarmedUp.get())
+        val budget = if (warmForThisRender) frameRenderTimeoutSeconds else renderTimeoutSeconds
         if (!latch.await(budget, TimeUnit.SECONDS)) {
           // The daemon still owes this queued render a `renderFinished`; record it so the late
           // event
@@ -369,6 +383,7 @@ internal constructor(
           return@withLock RenderOutcome.Failed(reason)
         }
         warmedUp.set(true)
+        if (hasOverrides) overridesWarmedUp.set(true)
         break
       }
 
