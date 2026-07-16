@@ -52,6 +52,23 @@ import org.gradle.api.tasks.TaskAction
 @CacheableTask
 abstract class DaemonBootstrapTask : DefaultTask() {
 
+  /**
+   * The descriptor schema version stamped into [outputFile]. Declared as an `@Input` — even though
+   * it's a compile-time constant with no per-module configuration — so that bumping
+   * [DAEMON_DESCRIPTOR_SCHEMA_VERSION] participates in this task's up-to-date fingerprint.
+   *
+   * Without this, a plugin upgrade that bumps the schema (e.g. 1 → 2 when `btaCompile` landed)
+   * leaves every other declared input unchanged, so Gradle reports the task UP-TO-DATE and skips
+   * re-emitting. The stale lower-schema `daemon-launch.json` survives on disk, the VS Code reader
+   * hard-rejects it (`daemonProcess.ts` → "descriptor schema mismatch: got 1, expected 2"), and the
+   * daemon warm path loops forever — re-running `composePreviewDaemonStart` is a no-op because the
+   * task is still up-to-date. Surfacing the version here makes a schema bump invalidate the cached
+   * descriptor so the next warm rewrites it at the current schema.
+   */
+  @get:Input
+  val schemaVersion: Int
+    get() = DAEMON_DESCRIPTOR_SCHEMA_VERSION
+
   /** `:samples:android` — the Gradle path of the consumer module. */
   @get:Input abstract val modulePath: Property<String>
 
@@ -229,7 +246,7 @@ abstract class DaemonBootstrapTask : DefaultTask() {
   fun emit() {
     val descriptor =
       DaemonClasspathDescriptor(
-        schemaVersion = DAEMON_DESCRIPTOR_SCHEMA_VERSION,
+        schemaVersion = schemaVersion,
         modulePath = modulePath.get(),
         variant = variant.get(),
         enabled = daemonEnabled.get(),
