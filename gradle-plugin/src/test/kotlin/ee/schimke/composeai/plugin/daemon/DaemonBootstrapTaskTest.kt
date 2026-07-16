@@ -33,6 +33,29 @@ class DaemonBootstrapTaskTest {
   }
 
   @Test
+  fun `schema version is a declared Input so a schema bump invalidates the cached descriptor`() {
+    // Regression: DAEMON_DESCRIPTOR_SCHEMA_VERSION must participate in the task fingerprint.
+    // Without it, a plugin upgrade that bumps the schema (all other inputs unchanged) leaves the
+    // task UP-TO-DATE, so the stale lower-schema daemon-launch.json survives and the VS Code reader
+    // hard-rejects it ("descriptor schema mismatch: got 1, expected 2"), bricking the daemon warm
+    // path. Reflect on the accessor so a stray drop-of-@Input regression is caught here.
+    val getter = DaemonBootstrapTask::class.java.getMethod("getSchemaVersion")
+    assertThat(getter.isAnnotationPresent(org.gradle.api.tasks.Input::class.java)).isTrue()
+
+    // And it must stamp the current constant into the emitted descriptor.
+    val project = newProject()
+    val outFile = File(tempDir.root, "build/compose-previews/daemon-launch.json")
+    val task =
+      project.tasks.register("bootstrapSchema", DaemonBootstrapTask::class.java) {
+        baseInputs(outFile)
+      }
+    assertThat(task.get().schemaVersion).isEqualTo(DAEMON_DESCRIPTOR_SCHEMA_VERSION)
+    task.get().emit()
+    val descriptor = json.decodeFromString<DaemonClasspathDescriptor>(outFile.readText())
+    assertThat(descriptor.schemaVersion).isEqualTo(DAEMON_DESCRIPTOR_SCHEMA_VERSION)
+  }
+
+  @Test
   fun `classpath fingerprint tracks launch paths not class contents`() {
     val project = newProject()
     val outFile = File(tempDir.root, "build/compose-previews/daemon-launch.json")
