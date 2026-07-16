@@ -433,7 +433,9 @@ internal object ServeBundleDaemon {
     return BackendDaemonLaunch(
       variant = "desktop",
       daemonClasspath = (daemonJars + rendererJars).map { it.absolutePath },
-      jvmArgs = listOf("--enable-native-access=ALL-UNNAMED"),
+      // -Dapple.awt.UIElement=true runs the desktop daemon JVM as a macOS background agent
+      // (no Dock icon / focus steal). Launch -D so it lands before AWT inits; macOS-only.
+      jvmArgs = listOf("--enable-native-access=ALL-UNNAMED", "-Dapple.awt.UIElement=true"),
       extraSystemProperties = emptyMap(),
     )
   }

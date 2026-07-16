@@ -435,6 +435,10 @@ class BundleRenderer(
       ProcessBuilder(
           javaBin,
           "--enable-native-access=ALL-UNNAMED",
+          // Run the desktop renderer JVM as a macOS background agent (LSUIElement) so it
+          // doesn't claim a Dock icon or steal focus. Must be a launch -D (before AWT inits);
+          // macOS-only, ignored on Linux/Windows.
+          "-Dapple.awt.UIElement=true",
           "-cp",
           classpath,
           "ee.schimke.composeai.renderer.DesktopRendererMainKt",
