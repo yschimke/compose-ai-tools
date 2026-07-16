@@ -1,6 +1,7 @@
 package ee.schimke.composeai.renderer
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
@@ -10,6 +11,7 @@ import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.tooling.CompositionData
 import androidx.compose.runtime.tooling.LocalInspectionTables
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -86,6 +88,27 @@ class FigmaSvgVectorIconRenderTest {
       }
       .build()
 
+  // A single gradient-filled square: its `Brush` fill can't be lowered to a flat colour, so the
+  // whole graphic must raster rather than vectorise into an empty/partial icon (#2504 P2).
+  private val gradientVector: ImageVector =
+    ImageVector.Builder(
+        name = "Grad",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+      )
+      .apply {
+        path(fill = Brush.linearGradient(listOf(Color.Red, Color.Blue))) {
+          moveTo(0f, 0f)
+          lineTo(24f, 0f)
+          lineTo(24f, 24f)
+          lineTo(0f, 24f)
+          close()
+        }
+      }
+      .build()
+
   @Before
   fun setUp() {
     rootDir = Files.createTempDirectory("figma-svg-vector-icon").toFile()
@@ -121,6 +144,29 @@ class FigmaSvgVectorIconRenderTest {
       "no raster sidecars for a fully-vectorised icon: ${rasterDir.listFiles()?.joinToString()}",
       rasterDir.isDirectory && (rasterDir.listFiles()?.isNotEmpty() ?: false),
     )
+  }
+
+  @Test
+  fun `a tinted Icon exports its paths in the tint colour, not the source fill`() {
+    val svg =
+      renderIconSvg("icon-tinted") {
+        Icon(catalogStar, "Star", Modifier.size(48.dp), tint = Color(0xFF112233))
+      }
+    assertTrue("a tinted icon still vectorises:\n$svg", svg.contains("<path "))
+    assertFalse("no <image> raster crop for a vectorised icon:\n$svg", svg.contains("<image "))
+    // `Icon` applies its tint as a SrcIn colorFilter at draw time; the export must recolour the path
+    // to that tint, not emit the ImageVector's intrinsic white fill.
+    assertTrue("the path carries the tint:\n$svg", svg.contains("fill=\"#112233\""))
+    assertFalse("the source white fill must not leak through:\n$svg", svg.contains("fill=\"#FFFFFF\""))
+  }
+
+  @Test
+  fun `an icon with a gradient path rasters instead of dropping the path`() {
+    val svg = renderIconSvg("icon-gradient") { Image(gradientVector, null, Modifier.size(48.dp)) }
+    // The gradient fill can't be represented as a flat colour, so the whole graphic falls back to a
+    // raster crop rather than silently vectorising into a partial/empty icon.
+    assertTrue("a gradient-filled icon rasters:\n$svg", svg.contains("<image "))
+    assertFalse("no vector path for an unrepresentable gradient icon:\n$svg", svg.contains("<path "))
   }
 
   /**

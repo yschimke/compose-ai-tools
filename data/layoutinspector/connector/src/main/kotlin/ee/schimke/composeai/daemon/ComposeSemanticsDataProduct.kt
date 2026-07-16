@@ -997,13 +997,14 @@ internal object ComposeLayoutInspector {
 
   /**
    * Extracts an editable [LayoutInspectorVectorGraphic] from a node whose `Icon`/`Image` paints an
-   * `ImageVector` through a `Modifier.paint(VectorPainter)`. Reflects the painter's live vector tree
-   * (`VectorComponent` → `GroupComponent`/`PathComponent`) into SVG path data + solid paints, in the
-   * vector's own viewport coordinates. All reflective and best-effort — any failure yields null and
-   * the node keeps its raster fallback:
+   * `ImageVector` through a `Modifier.paint(VectorPainter)`. Reflects the painter's live vector
+   * tree (`VectorComponent` → `GroupComponent`/`PathComponent`) into SVG path data + solid paints,
+   * in the vector's own viewport coordinates. All reflective and best-effort — any failure yields
+   * null and the node keeps its raster fallback:
    * - a `BitmapPainter`/`ColorPainter`/other painter (not a `VectorPainter`) → null,
-   * - a path with a gradient/brush paint (no resolvable solid colour) is dropped, and a graphic left
-   *   with no paintable path → null (matching the vector-vs-raster rule the export already follows),
+   * - a path with a gradient/brush paint (no resolvable solid colour) is dropped, and a graphic
+   *   left with no paintable path → null (matching the vector-vs-raster rule the export already
+   *   follows),
    * - a group carrying a non-identity transform (translate/scale/rotate/clip) → null, so a
    *   transformed icon rasters rather than emitting misplaced geometry (kept minimal on purpose).
    */
@@ -1022,21 +1023,85 @@ internal object ComposeLayoutInspector {
           .mapNotNull { candidate -> findVectorPainter(candidate, 0, seen) }
           .firstOrNull()
       if (painter == null) return null
+      // An `Icon` recolours its vector with a tint `colorFilter` (Material's `LocalContentColor`
+      // default) applied at draw time — the painter tree still holds the *source* path colours.
+      // Read
+      // that tint so we recolour the paths to what actually renders; a colour filter we can't
+      // represent as a flat SrcIn tint (a colour-matrix filter, an unusual blend mode) declines
+      // vectorisation so the node rasters at full fidelity rather than emitting the wrong colour.
+      val tint =
+        when (val t = resolveTint(painter)) {
+          UnsupportedTint -> return null
+          NoTint -> null
+          is SolidTint -> t.argb
+        }
       val vector = field(painter, "vector") ?: return null // VectorComponent
       val (vw, vh) = viewport(vector) ?: return null
       if (vw <= 0f || vh <= 0f) return null
       val root = field(vector, "root") ?: return null // GroupComponent
       val paths = ArrayList<LayoutInspectorVectorPath>()
       if (!collect(root, paths) || paths.isEmpty()) return null
-      return LayoutInspectorVectorGraphic(vw, vh, paths)
+      val painted = if (tint != null) paths.map { it.recoloured(tint) } else paths
+      return LayoutInspectorVectorGraphic(vw, vh, painted)
+    }
+
+    private sealed interface TintResult
+
+    private object NoTint : TintResult
+
+    private object UnsupportedTint : TintResult
+
+    private data class SolidTint(val argb: String) : TintResult
+
+    /** `BlendMode.SrcIn` as it reads back off a `BlendModeColorFilter` (the mode `tint()` uses). */
+    private const val BLEND_SRC_IN = 5
+
+    /**
+     * The tint an `Icon`/`Image` recolours its vector with. `null` filter ⇒ [NoTint] (keep source
+     * colours). A `BlendModeColorFilter` with a `SrcIn` tint ⇒ [SolidTint] (recolour every painted
+     * path). Anything else — a different blend mode, a colour-matrix filter, an unreadable colour ⇒
+     * [UnsupportedTint], so the caller declines vectorisation and the node rasters instead.
+     */
+    private fun resolveTint(painter: Any): TintResult {
+      val filter =
+        runCatching { field(painter, "colorFilter") }.getOrNull()
+          ?: runCatching { field(painter, "currentColorFilter") }.getOrNull()
+          ?: return NoTint
+      if (filter.javaClass.simpleName != "BlendModeColorFilter") return UnsupportedTint
+      val blend =
+        runCatching { field(filter, "blendMode") }.getOrNull() as? Int ?: return UnsupportedTint
+      if (blend != BLEND_SRC_IN) return UnsupportedTint
+      val argb =
+        colorArgb(runCatching { field(filter, "color") }.getOrNull()) ?: return UnsupportedTint
+      return SolidTint(argb)
     }
 
     /**
+     * A `Color` value (a packed sRGB Long, or a boxed `Color`) as `#AARRGGBB`; null if unreadable.
+     */
+    private fun colorArgb(value: Any?): String? {
+      val packed =
+        (value as? Long ?: longField(value ?: return null, "value") ?: return null).toULong()
+      if (packed and 0xFFFFFFFFuL != 0uL) return null // non-sRGB packing we can't read as flat ARGB
+      val argb = (packed shr 32).toInt()
+      return if (argb == 0) null else "#%08X".format(argb)
+    }
+
+    /**
+     * Recolours a path's solid fill/stroke to [argb] (the icon tint), leaving unpainted sides bare.
+     */
+    private fun LayoutInspectorVectorPath.recoloured(argb: String) =
+      copy(
+        fillArgb = if (fillArgb != null) argb else null,
+        strokeArgb = if (strokeArgb != null) argb else null,
+      )
+
+    /**
      * Depth-limited search of a modifier element for the `VectorPainter` it draws with. The painter
-     * is usually a direct `painter` field on a `Modifier.paint(...)` `PainterElement`, but a version
-     * bump or a wrapping node can bury it one level down, so scan declared fields (across the class
-     * hierarchy) up to a shallow depth rather than hard-code the path. Identity-tracked to avoid
-     * cycles; confined to `androidx` objects so it never wanders into unrelated graphs.
+     * is usually a direct `painter` field on a `Modifier.paint(...)` `PainterElement`, but a
+     * version bump or a wrapping node can bury it one level down, so scan declared fields (across
+     * the class hierarchy) up to a shallow depth rather than hard-code the path. Identity-tracked
+     * to avoid cycles; confined to `androidx` objects so it never wanders into unrelated graphs.
      */
     private fun findVectorPainter(o: Any?, depth: Int, seen: MutableSet<Any>): Any? {
       if (o == null || depth > 2 || o is String || o is Number || o is Boolean) return null
@@ -1046,8 +1111,15 @@ internal object ComposeLayoutInspector {
       var c: Class<*>? = o.javaClass
       while (c != null) {
         for (f in c.declaredFields) {
-          val v = runCatching { f.isAccessible = true; f.get(o) }.getOrNull()
-          findVectorPainter(v, depth + 1, seen)?.let { return it }
+          val v =
+            runCatching {
+                f.isAccessible = true
+                f.get(o)
+              }
+              .getOrNull()
+          findVectorPainter(v, depth + 1, seen)?.let {
+            return it
+          }
         }
         c = c.superclass
       }
@@ -1058,11 +1130,14 @@ internal object ComposeLayoutInspector {
      * The vector's viewport in its own units. Older Compose exposed plain `viewportWidth` /
      * `viewportHeight` floats (or a raw `viewportSize` Long); current Compose keeps it as a
      * `MutableState<Size>` behind `viewportSize$delegate`, so read the delegate's current value and
-     * unpack the `Size`. A `Size` value class packs two floats into a Long (width high, height low).
+     * unpack the `Size`. A `Size` value class packs two floats into a Long (width high, height
+     * low).
      */
     private fun viewport(vector: Any): Pair<Float, Float>? {
       floatField(vector, "viewportWidth")?.let { w ->
-        floatField(vector, "viewportHeight")?.let { h -> return w.toFloat() to h.toFloat() }
+        floatField(vector, "viewportHeight")?.let { h ->
+          return w.toFloat() to h.toFloat()
+        }
       }
       val packed =
         sizePackedValue(runCatching { field(vector, "viewportSize") }.getOrNull())
@@ -1075,12 +1150,16 @@ internal object ComposeLayoutInspector {
       return if (w > 0f && h > 0f) w to h else null
     }
 
-    /** The current value held by a Compose `MutableState`, via its value getter or newest record. */
+    /**
+     * The current value held by a Compose `MutableState`, via its value getter or newest record.
+     */
     private fun currentStateValue(state: Any?): Any? {
       if (state == null) return null
       runCatching { state.javaClass.getMethod("getValue").invoke(state) }
         .getOrNull()
-        ?.let { return it }
+        ?.let {
+          return it
+        }
       // Fall back to the newest state record's `value` when reading outside a live snapshot.
       val record = runCatching { field(state, "next") }.getOrNull() ?: return null
       return runCatching { field(record, "value") }.getOrNull()
@@ -1107,11 +1186,36 @@ internal object ComposeLayoutInspector {
           return true
         }
         "PathComponent" -> {
-          pathOf(vnode)?.let(out::add)
-          return true
+          val path = pathOf(vnode)
+          if (path != null) {
+            out.add(path)
+            return true
+          }
+          // `pathOf` gave up on this path. If it draws nothing (blank geometry, or no paint), skip
+          // it. But if it has geometry filled/stroked with a brush we can't represent (a gradient
+          // or
+          // shader), fail so the whole icon rasters — otherwise that path silently vanishes while
+          // the
+          // rest of the icon vectorises. (#2504 review follow-up.)
+          return !hasUnrepresentablePaint(vnode)
         }
         else -> return true
       }
+    }
+
+    /**
+     * True when a path has real geometry painted by a brush we can't lower to a flat colour — a
+     * gradient/shader `Brush` (anything that isn't a `SolidColor`). A `SolidColor` we merely can't
+     * read (transparent, non-sRGB) is treated as invisible, not unrepresentable.
+     */
+    private fun hasUnrepresentablePaint(p: Any): Boolean {
+      val nodes = runCatching { field(p, "pathData") as? List<*> }.getOrNull()
+      if (nodes.isNullOrEmpty()) return false
+      fun unrepresentable(name: String): Boolean {
+        val brush = runCatching { field(p, name) }.getOrNull() ?: return false
+        return brush.javaClass.simpleName != "SolidColor"
+      }
+      return unrepresentable("fill") || unrepresentable("stroke")
     }
 
     private fun isIdentityGroup(g: Any): Boolean {
@@ -1134,7 +1238,8 @@ internal object ComposeLayoutInspector {
       val fill = brushArgb(runCatching { field(p, "fill") }.getOrNull())
       val stroke = brushArgb(runCatching { field(p, "stroke") }.getOrNull())
       if (fill == null && stroke == null) return null
-      val strokeWidth = if (stroke != null) (floatField(p, "strokeLineWidth")?.toFloat() ?: 0f) else 0f
+      val strokeWidth =
+        if (stroke != null) (floatField(p, "strokeLineWidth")?.toFloat() ?: 0f) else 0f
       // `PathFillType` is a value class over Int (NonZero = 0, EvenOdd = 1), so the backing field
       // reads back as an Int; fall back to a name match for any boxed representation.
       val fillType = runCatching { field(p, "pathFillType") }.getOrNull()
@@ -1154,7 +1259,9 @@ internal object ComposeLayoutInspector {
       )
     }
 
-    /** A `SolidColor` brush's colour as `#AARRGGBB`; null for gradient/none or a non-sRGB packing. */
+    /**
+     * A `SolidColor` brush's colour as `#AARRGGBB`; null for gradient/none or a non-sRGB packing.
+     */
     private fun brushArgb(brush: Any?): String? {
       if (brush == null || brush.javaClass.simpleName != "SolidColor") return null
       val packed = (longField(brush, "value") ?: return null).toULong()
@@ -1169,7 +1276,8 @@ internal object ComposeLayoutInspector {
       for (n in nodes) {
         if (n == null) continue
         fun g(name: String) = num(floatField(n, name)?.toFloat() ?: 0f)
-        fun b(name: String) = if (runCatching { field(n, name) as? Boolean }.getOrNull() == true) "1" else "0"
+        fun b(name: String) =
+          if (runCatching { field(n, name) as? Boolean }.getOrNull() == true) "1" else "0"
         when (n.javaClass.simpleName) {
           "MoveTo" -> sb.append("M").append(g("x")).append(" ").append(g("y"))
           "RelativeMoveTo" -> sb.append("m").append(g("dx")).append(" ").append(g("dy"))
@@ -1224,8 +1332,8 @@ internal object ComposeLayoutInspector {
       var c: Class<*>? = cls
       while (c != null) {
         runCatching {
-            return c!!.getDeclaredField(name).apply { isAccessible = true }
-          }
+          return c!!.getDeclaredField(name).apply { isAccessible = true }
+        }
         c = c.superclass
       }
       return null

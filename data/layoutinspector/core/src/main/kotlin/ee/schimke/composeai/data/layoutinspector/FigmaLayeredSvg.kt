@@ -282,7 +282,8 @@ object FigmaLayeredSvg {
     val sy = if (vec.viewportHeight > 0f) layer.height / vec.viewportHeight.toDouble() else 1.0
     val sb = StringBuilder()
     sb.append("""$indent<g id="${escapeAttr(layer.name)}">""").append('\n')
-    sb.append(
+    sb
+      .append(
         """$indent  <g transform="translate(${layer.left} ${layer.top}) scale(${fmt(sx)} ${fmt(sy)})">"""
       )
       .append('\n')

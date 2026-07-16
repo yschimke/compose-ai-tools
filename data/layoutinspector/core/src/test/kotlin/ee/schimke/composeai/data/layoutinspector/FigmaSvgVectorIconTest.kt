@@ -8,9 +8,9 @@ import org.junit.Test
 
 /**
  * Tier 1 — an `Icon`/`Image` backed by a captured [LayoutInspectorVectorGraphic] emits as editable
- * `<path>` layers instead of an opaque `<image>` raster crop, while a bitmap-backed one (no captured
- * graphic) still rasters. The capture side (reflecting the `VectorPainter`) is exercised on-device;
- * this covers the pure model/emitter half from a synthetic payload.
+ * `<path>` layers instead of an opaque `<image>` raster crop, while a bitmap-backed one (no
+ * captured graphic) still rasters. The capture side (reflecting the `VectorPainter`) is exercised
+ * on-device; this covers the pure model/emitter half from a synthetic payload.
  */
 class FigmaSvgVectorIconTest {
 
@@ -76,7 +76,8 @@ class FigmaSvgVectorIconTest {
   @Test
   fun gradientOnlyGraphicFallsBackToRaster() {
     // A path whose fill/stroke never resolved to a solid colour (a gradient/brush) carries no
-    // paintable path, so the icon falls through to the raster fallback rather than emitting nothing.
+    // paintable path, so the icon falls through to the raster fallback rather than emitting
+    // nothing.
     val gradientOnly =
       LayoutInspectorVectorGraphic(
         viewportWidth = 24f,
