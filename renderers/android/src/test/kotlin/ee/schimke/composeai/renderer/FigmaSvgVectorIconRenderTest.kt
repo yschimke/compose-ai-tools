@@ -109,6 +109,31 @@ class FigmaSvgVectorIconRenderTest {
       }
       .build()
 
+  // A single path with a solid fill AND a gradient stroke: `pathOf` could vectorise the solid fill
+  // and silently drop the gradient stroke, so the whole icon must raster instead (#2505 review).
+  private val mixedPaintSquare: ImageVector =
+    ImageVector.Builder(
+        name = "Mixed",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+      )
+      .apply {
+        path(
+          fill = SolidColor(Color.Red),
+          stroke = Brush.linearGradient(listOf(Color.Green, Color.Blue)),
+          strokeLineWidth = 2f,
+        ) {
+          moveTo(2f, 2f)
+          lineTo(22f, 2f)
+          lineTo(22f, 22f)
+          lineTo(2f, 22f)
+          close()
+        }
+      }
+      .build()
+
   @Before
   fun setUp() {
     rootDir = Files.createTempDirectory("figma-svg-vector-icon").toFile()
@@ -167,6 +192,15 @@ class FigmaSvgVectorIconRenderTest {
     // raster crop rather than silently vectorising into a partial/empty icon.
     assertTrue("a gradient-filled icon rasters:\n$svg", svg.contains("<image "))
     assertFalse("no vector path for an unrepresentable gradient icon:\n$svg", svg.contains("<path "))
+  }
+
+  @Test
+  fun `an icon with a mixed solid-fill gradient-stroke path rasters`() {
+    val svg = renderIconSvg("icon-mixed") { Image(mixedPaintSquare, null, Modifier.size(48.dp)) }
+    // One side (the stroke) is an unrepresentable gradient, so the whole icon rasters rather than
+    // emitting the solid fill alone and silently dropping the gradient stroke.
+    assertTrue("a mixed-paint icon rasters:\n$svg", svg.contains("<image "))
+    assertFalse("no partial vector for a mixed-paint icon:\n$svg", svg.contains("<path "))
   }
 
   /**

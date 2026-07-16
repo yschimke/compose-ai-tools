@@ -1061,11 +1061,20 @@ internal object ComposeLayoutInspector {
      * colours). A `BlendModeColorFilter` with a `SrcIn` tint ⇒ [SolidTint] (recolour every painted
      * path). Anything else — a different blend mode, a colour-matrix filter, an unreadable colour ⇒
      * [UnsupportedTint], so the caller declines vectorisation and the node rasters instead.
+     *
+     * The filter can arrive three ways: the external filter the `Icon`/`Image` passed
+     * (`colorFilter`), the resolved filter used at the last draw (`currentColorFilter`), or — when
+     * a vector carries its own `tintColor` and no external filter is passed — the painter's
+     * `intrinsicColorFilter`. Probe all three so an intrinsically-tinted vector isn't vectorised in
+     * its untinted source colours.
      */
     private fun resolveTint(painter: Any): TintResult {
       val filter =
         runCatching { field(painter, "colorFilter") }.getOrNull()
           ?: runCatching { field(painter, "currentColorFilter") }.getOrNull()
+          ?: currentStateValue(
+            runCatching { field(painter, "intrinsicColorFilter\$delegate") }.getOrNull()
+          )
           ?: return NoTint
       if (filter.javaClass.simpleName != "BlendModeColorFilter") return UnsupportedTint
       val blend =
@@ -1186,18 +1195,17 @@ internal object ComposeLayoutInspector {
           return true
         }
         "PathComponent" -> {
-          val path = pathOf(vnode)
-          if (path != null) {
-            out.add(path)
-            return true
-          }
-          // `pathOf` gave up on this path. If it draws nothing (blank geometry, or no paint), skip
-          // it. But if it has geometry filled/stroked with a brush we can't represent (a gradient
-          // or
-          // shader), fail so the whole icon rasters — otherwise that path silently vanishes while
-          // the
-          // rest of the icon vectorises. (#2504 review follow-up.)
-          return !hasUnrepresentablePaint(vnode)
+          // A path with geometry filled or stroked by a brush we can't represent (a
+          // gradient/shader,
+          // on the fill OR the stroke) fails the whole icon to raster. Gating before `pathOf` also
+          // covers a *mixed*-paint path (e.g. a solid fill with a gradient stroke): `pathOf` would
+          // otherwise return a partial vector for the solid side and silently drop the gradient
+          // one.
+          // A path that draws nothing (blank geometry / no paint) is skipped. (#2504 / #2505
+          // review.)
+          if (hasUnrepresentablePaint(vnode)) return false
+          pathOf(vnode)?.let(out::add)
+          return true
         }
         else -> return true
       }
