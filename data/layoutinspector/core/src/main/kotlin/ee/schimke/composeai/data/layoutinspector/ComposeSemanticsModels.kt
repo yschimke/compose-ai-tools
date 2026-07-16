@@ -406,8 +406,8 @@ data class LayoutInspectorNode(
    * An editable vector graphic captured from this node's `VectorPainter` (an `Icon`/`Image` backed
    * by an `ImageVector`), so the `compose/figma-svg` export can emit it as real `<path>` layers
    * instead of an opaque raster crop. Null for the common node — including a *bitmap*-backed
-   * `Icon`/`Image` (a `BitmapPainter`), which has no vector form and still rasterises. Additive (v6):
-   * older `layout-inspector.json` decodes with `vectorGraphic = null`.
+   * `Icon`/`Image` (a `BitmapPainter`), which has no vector form and still rasterises. Additive
+   * (v6): older `layout-inspector.json` decodes with `vectorGraphic = null`.
    */
   val vectorGraphic: LayoutInspectorVectorGraphic? = null,
   val children: List<LayoutInspectorNode> = emptyList(),
@@ -428,7 +428,9 @@ data class LayoutInspectorVectorGraphic(
   val paths: List<LayoutInspectorVectorPath>,
 )
 
-/** One `<path>` of a [LayoutInspectorVectorGraphic]: SVG path data plus its resolved solid paint. */
+/**
+ * One `<path>` of a [LayoutInspectorVectorGraphic]: SVG path data plus its resolved solid paint.
+ */
 @Serializable
 data class LayoutInspectorVectorPath(
   /** SVG path `d` string, in viewport coordinates. */
