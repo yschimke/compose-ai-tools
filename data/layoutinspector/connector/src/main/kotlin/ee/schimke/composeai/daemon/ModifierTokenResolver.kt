@@ -72,7 +72,7 @@ internal object ModifierTokenResolver {
       // — a clip and the shadow). Skipped when zero (a clip-only graphicsLayer).
       if (name == "graphicsLayer" || simpleName.contains("GraphicsLayer")) {
         shadowElevationDp(mod, elements, density)?.let { dp ->
-          if (elevation == null || dp > (elevation!!.removeSuffix("dp").toDoubleOrNull() ?: 0.0)) {
+          if (elevation == null || dp > (elevation.removeSuffix("dp").toDoubleOrNull() ?: 0.0)) {
             elevation = "${dp}dp"
           }
         }
@@ -434,9 +434,27 @@ internal object ModifierTokenResolver {
     (elements["shape"] as? Shape)?.let {
       return it
     }
-    return runCatching {
+    runCatching {
         val field = mod.javaClass.getDeclaredField("shape").apply { isAccessible = true }
         field.get(mod) as? Shape
+      }
+      .getOrNull()
+      ?.let {
+        return it
+      }
+    // A Wear scaling card (`TransformingLazyColumn` + `SurfaceTransformation`) fills through a
+    // `Modifier.paint(BackgroundPainter)` whose rounded/morphing shape rides on the *painter*
+    // (`BackgroundPainter.shape`), not the modifier — so without this a vectorised card would draw
+    // as a sharp rect, losing its corner radius. Surface the wrapper's shape here so the existing
+    // corner-radius resolution rounds the exported fill. Best-effort: a non-`CornerBasedShape` (e.g.
+    // a bespoke morph shape) yields no corners downstream and the card simply stays square, as
+    // before — no regression.
+    return runCatching {
+        val painter =
+          mod.javaClass.getDeclaredField("painter").apply { isAccessible = true }.get(mod)
+        if (painter?.javaClass?.simpleName != "BackgroundPainter") return null
+        painter.javaClass.getDeclaredField("shape").apply { isAccessible = true }.get(painter)
+          as? Shape
       }
       .getOrNull()
   }
