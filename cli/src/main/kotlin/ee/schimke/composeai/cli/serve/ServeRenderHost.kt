@@ -697,8 +697,14 @@ internal constructor(
     if (!result.heldSession) {
       // The daemon accepted stream/start but couldn't hold an interactive session, so it won't run
       // the live frame loop — fall back to the snapshot lane rather than open a frameless stream.
-      onLog("stream/start for $previewId has no held session; falling back to snapshots")
-      onUnavailable?.invoke("the daemon could not hold an interactive session for this preview")
+      // The daemon records the actual acquisition failure in `fallbackReason` (e.g.
+      // `UnsupportedOperationException: interactive session already held`); prefer it so the viewer
+      // shows the real cause, and use the generic text only when the daemon sent none.
+      val reason =
+        result.fallbackReason?.takeIf { it.isNotBlank() }
+          ?: "the daemon could not hold an interactive session for this preview"
+      onLog("stream/start for $previewId has no held session ($reason); falling back to snapshots")
+      onUnavailable?.invoke(reason)
       runCatching { listener.close() }
       runCatching { session.streamStop(result.frameStreamId) }
       return null

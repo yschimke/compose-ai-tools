@@ -66,6 +66,11 @@ internal class FakeRenderSession(
    * `StreamStartResult.heldSession` value when [streaming]; false models a non-interactive host.
    */
   private val heldSession: Boolean = true,
+  /**
+   * `StreamStartResult.fallbackReason` — the daemon's real acquisition failure when [heldSession]
+   * is false (e.g. `interactive session already held`). Null models a daemon that sent none.
+   */
+  private val heldFallbackReason: String? = null,
   /** When set, [streamStart] emits a keyframe with this base64 payload *before* it returns. */
   private val emitKeyframeOnStart: String? = null,
   /**
@@ -400,6 +405,7 @@ internal class FakeRenderSession(
       frameStreamId = fsid,
       codec = codec ?: StreamCodec.PNG,
       heldSession = heldSession,
+      fallbackReason = heldFallbackReason,
     )
   }
 

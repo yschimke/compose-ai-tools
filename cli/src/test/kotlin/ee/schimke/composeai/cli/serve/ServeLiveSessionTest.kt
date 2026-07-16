@@ -55,7 +55,7 @@ class ServeLiveSessionTest {
   }
 
   @Test
-  fun `tryStart forwards a no-held-session reason to onUnavailable`() {
+  fun `tryStart forwards the generic no-held-session reason when the daemon sent none`() {
     val session = FakeRenderSession(newRenderRoot(), streaming = true, heldSession = false)
     host(session).use { h ->
       var reason: String? = null
@@ -70,8 +70,34 @@ class ServeLiveSessionTest {
       )
       assertTrue(
         reason?.contains("could not hold an interactive session") == true,
-        "expected a held-session reason, got: $reason",
+        "expected the generic held-session reason, got: $reason",
       )
+    }
+  }
+
+  @Test
+  fun `tryStart prefers the daemon's fallbackReason for a non-held session`() {
+    // The daemon accepted stream/start but couldn't hold the session AND told us why — surface it
+    // rather than the generic text (Codex #2515 review).
+    val session =
+      FakeRenderSession(
+        newRenderRoot(),
+        streaming = true,
+        heldSession = false,
+        heldFallbackReason = "UnsupportedOperationException: interactive session already held",
+      )
+    host(session).use { h ->
+      var reason: String? = null
+      assertNull(
+        ServeLiveSession.tryStart(
+          h,
+          previewId,
+          emptyMap(),
+          send = {},
+          onUnavailable = { reason = it },
+        )
+      )
+      assertEquals("UnsupportedOperationException: interactive session already held", reason)
     }
   }
 
