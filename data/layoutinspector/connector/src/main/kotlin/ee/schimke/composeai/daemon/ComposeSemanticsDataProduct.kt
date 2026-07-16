@@ -1062,18 +1062,24 @@ internal object ComposeLayoutInspector {
      * path). Anything else — a different blend mode, a colour-matrix filter, an unreadable colour ⇒
      * [UnsupportedTint], so the caller declines vectorisation and the node rasters instead.
      *
-     * The filter can arrive three ways: the external filter the `Icon`/`Image` passed
+     * The filter can arrive several ways: the external filter the `Icon`/`Image` passed
      * (`colorFilter`), the resolved filter used at the last draw (`currentColorFilter`), or — when
-     * a vector carries its own `tintColor` and no external filter is passed — the painter's
-     * `intrinsicColorFilter`. Probe all three so an intrinsically-tinted vector isn't vectorised in
-     * its untinted source colours.
+     * a vector carries its own `tintColor` and no external filter is passed — the intrinsic filter.
+     * `VectorPainter.intrinsicColorFilter` is a forwarding property backed on the
+     * `VectorComponent`, so its `intrinsicColorFilter$delegate` state lives on the vector (older
+     * layouts kept it on the painter); probe both so an intrinsically-tinted vector isn't
+     * vectorised in its source colours.
      */
     private fun resolveTint(painter: Any): TintResult {
+      val vector = runCatching { field(painter, "vector") }.getOrNull()
       val filter =
         runCatching { field(painter, "colorFilter") }.getOrNull()
           ?: runCatching { field(painter, "currentColorFilter") }.getOrNull()
           ?: currentStateValue(
             runCatching { field(painter, "intrinsicColorFilter\$delegate") }.getOrNull()
+          )
+          ?: currentStateValue(
+            runCatching { vector?.let { field(it, "intrinsicColorFilter\$delegate") } }.getOrNull()
           )
           ?: return NoTint
       if (filter.javaClass.simpleName != "BlendModeColorFilter") return UnsupportedTint

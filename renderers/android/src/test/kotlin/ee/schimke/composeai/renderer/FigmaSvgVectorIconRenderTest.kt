@@ -109,6 +109,29 @@ class FigmaSvgVectorIconRenderTest {
       }
       .build()
 
+  // An ImageVector carrying its own `tintColor`, drawn via `Image` (no external `Icon` tint): its
+  // intrinsic colour filter lives on the VectorComponent, so the export must recolour to that tint
+  // rather than the source white (#2506 review).
+  private val intrinsicallyTintedSquare: ImageVector =
+    ImageVector.Builder(
+        name = "TintedSquare",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+        tintColor = Color(0xFF445566),
+      )
+      .apply {
+        path(fill = SolidColor(Color.White)) {
+          moveTo(2f, 2f)
+          lineTo(22f, 2f)
+          lineTo(22f, 22f)
+          lineTo(2f, 22f)
+          close()
+        }
+      }
+      .build()
+
   // A single path with a solid fill AND a gradient stroke: `pathOf` could vectorise the solid fill
   // and silently drop the gradient stroke, so the whole icon must raster instead (#2505 review).
   private val mixedPaintSquare: ImageVector =
@@ -192,6 +215,19 @@ class FigmaSvgVectorIconRenderTest {
     // raster crop rather than silently vectorising into a partial/empty icon.
     assertTrue("a gradient-filled icon rasters:\n$svg", svg.contains("<image "))
     assertFalse("no vector path for an unrepresentable gradient icon:\n$svg", svg.contains("<path "))
+  }
+
+  @Test
+  fun `an intrinsically tinted vector exports in its tint colour, not the source fill`() {
+    val svg =
+      renderIconSvg("icon-intrinsic") {
+        Image(intrinsicallyTintedSquare, null, Modifier.size(48.dp))
+      }
+    assertTrue("an intrinsically tinted vector still vectorises:\n$svg", svg.contains("<path "))
+    assertFalse("no <image> raster crop for a vectorised icon:\n$svg", svg.contains("<image "))
+    // The vector's own `tintColor` is applied through the intrinsic colour filter on its component.
+    assertTrue("the intrinsic tint is applied:\n$svg", svg.contains("fill=\"#445566\""))
+    assertFalse("the source white fill must not leak through:\n$svg", svg.contains("fill=\"#FFFFFF\""))
   }
 
   @Test
