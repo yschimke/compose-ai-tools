@@ -300,7 +300,10 @@ internal object ModifierTokenResolver {
         // filled TitleCard/Card — collapses to a flat vector fill with editable text.
         val border =
           runCatching {
-              painter.javaClass.getDeclaredField("border").apply { isAccessible = true }.get(painter)
+              painter.javaClass
+                .getDeclaredField("border")
+                .apply { isAccessible = true }
+                .get(painter)
             }
             .getOrNull()
         if (border != null) return null
@@ -446,7 +449,8 @@ internal object ModifierTokenResolver {
     // `Modifier.paint(BackgroundPainter)` whose rounded/morphing shape rides on the *painter*
     // (`BackgroundPainter.shape`), not the modifier — so without this a vectorised card would draw
     // as a sharp rect, losing its corner radius. Surface the wrapper's shape here so the existing
-    // corner-radius resolution rounds the exported fill. Best-effort: a non-`CornerBasedShape` (e.g.
+    // corner-radius resolution rounds the exported fill. Best-effort: a non-`CornerBasedShape`
+    // (e.g.
     // a bespoke morph shape) yields no corners downstream and the card simply stays square, as
     // before — no regression.
     return runCatching {
