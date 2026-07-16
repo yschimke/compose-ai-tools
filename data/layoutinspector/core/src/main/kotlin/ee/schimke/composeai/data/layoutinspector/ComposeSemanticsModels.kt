@@ -402,7 +402,49 @@ data class LayoutInspectorNode(
    * baseline arc. Empty for the common case.
    */
   val curvedTexts: List<LayoutInspectorCurvedText> = emptyList(),
+  /**
+   * An editable vector graphic captured from this node's `VectorPainter` (an `Icon`/`Image` backed
+   * by an `ImageVector`), so the `compose/figma-svg` export can emit it as real `<path>` layers
+   * instead of an opaque raster crop. Null for the common node — including a *bitmap*-backed
+   * `Icon`/`Image` (a `BitmapPainter`), which has no vector form and still rasterises. Additive (v6):
+   * older `layout-inspector.json` decodes with `vectorGraphic = null`.
+   */
+  val vectorGraphic: LayoutInspectorVectorGraphic? = null,
   val children: List<LayoutInspectorNode> = emptyList(),
+)
+
+/**
+ * An editable vector graphic (an `ImageVector` an `Icon`/`Image` painted) captured off a node's
+ * `VectorPainter`. Path coordinates are in the vector's own viewport ([viewportWidth] ×
+ * [viewportHeight]); the figma-svg export scales+translates them onto the node's placed bounds, so
+ * the same icon renders crisp at any component size. Only solid (`SolidColor`) fills/strokes are
+ * captured — a gradient/brush leaves its colour null and the export drops that fill rather than
+ * guessing — matching the vector-vs-raster rule the rest of the export follows.
+ */
+@Serializable
+data class LayoutInspectorVectorGraphic(
+  val viewportWidth: Float,
+  val viewportHeight: Float,
+  val paths: List<LayoutInspectorVectorPath>,
+)
+
+/** One `<path>` of a [LayoutInspectorVectorGraphic]: SVG path data plus its resolved solid paint. */
+@Serializable
+data class LayoutInspectorVectorPath(
+  /** SVG path `d` string, in viewport coordinates. */
+  val pathData: String,
+  /** Solid fill as `#AARRGGBB`, or null when there is no fill (or a non-solid brush fill). */
+  val fillArgb: String? = null,
+  /** Extra fill alpha (`fillAlpha`, 0..1) multiplied onto [fillArgb]'s own alpha. */
+  val fillAlpha: Float = 1f,
+  /** Solid stroke as `#AARRGGBB`, or null when there is no stroke (or a non-solid brush stroke). */
+  val strokeArgb: String? = null,
+  /** Stroke width in viewport units; 0 when unstroked. */
+  val strokeWidth: Float = 0f,
+  /** Extra stroke alpha (`strokeAlpha`, 0..1) multiplied onto [strokeArgb]'s own alpha. */
+  val strokeAlpha: Float = 1f,
+  /** True when the fill uses the even-odd winding rule (SVG `fill-rule="evenodd"`). */
+  val evenOdd: Boolean = false,
 )
 
 /**

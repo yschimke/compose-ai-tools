@@ -143,6 +143,13 @@ object FigmaLayeredSvg {
       sb.append("$indent</g>\n")
       return
     }
+    // A captured `ImageVector` (an `Icon`/`Image`) emits as editable `<path>` layers under a
+    // transform that maps the vector's own viewport onto the layer's placed box — the vector
+    // alternative to the `<image>` leaf above. Also a leaf: an icon's art has no editable subtree.
+    if (layer.vector != null) {
+      sb.append(vectorGroup(layer, layer.vector, indent)).append('\n')
+      return
+    }
     val tokenName = layer.fill?.tokenName ?: layer.stroke?.tokenName
     val dataToken =
       if (options.annotateTokens && tokenName != null) """ data-token="${escapeAttr(tokenName)}""""
@@ -264,6 +271,55 @@ object FigmaLayeredSvg {
   private fun backgroundImage(bg: FigmaSvgBackgroundRaster): String =
     """<image href="${escapeAttr(bg.href)}" x="${bg.left}" y="${bg.top}" """ +
       """width="${bg.width}" height="${bg.height}"/>"""
+
+  /**
+   * A captured icon [FigmaSvgVector] as a named `<g>` holding a `translate(left,top)
+   * scale(w/viewportW, h/viewportH)` group of `<path>`s — the vector's viewport coordinates mapped
+   * onto the layer's placed box, so the icon draws crisp at the component's actual size.
+   */
+  private fun vectorGroup(layer: FigmaSvgLayer, vec: FigmaSvgVector, indent: String): String {
+    val sx = if (vec.viewportWidth > 0f) layer.width / vec.viewportWidth.toDouble() else 1.0
+    val sy = if (vec.viewportHeight > 0f) layer.height / vec.viewportHeight.toDouble() else 1.0
+    val sb = StringBuilder()
+    sb.append("""$indent<g id="${escapeAttr(layer.name)}">""").append('\n')
+    sb.append(
+        """$indent  <g transform="translate(${layer.left} ${layer.top}) scale(${fmt(sx)} ${fmt(sy)})">"""
+      )
+      .append('\n')
+    for (p in vec.paths) sb.append(indent).append("    ").append(vectorPath(p)).append('\n')
+    sb.append("$indent  </g>\n")
+    sb.append("$indent</g>")
+    return sb.toString()
+  }
+
+  private fun vectorPath(p: FigmaSvgVectorPath): String {
+    val fill = paintAttr("fill", p.fillArgb, p.fillAlpha) ?: """fill="none""""
+    val fillRule = if (p.evenOdd && p.fillArgb != null) """ fill-rule="evenodd"""" else ""
+    val stroke =
+      if (p.strokeArgb != null && p.strokeWidth > 0f) {
+        paintAttr("stroke", p.strokeArgb, p.strokeAlpha)?.let {
+          """ $it stroke-width="${fmt(p.strokeWidth.toDouble())}""""
+        } ?: ""
+      } else ""
+    return """<path d="${escapeAttr(p.pathData)}" $fill$fillRule$stroke/>"""
+  }
+
+  /**
+   * A captured `#AARRGGBB` paint as an SVG colour + opacity pair (`fill="#RRGGBB"
+   * fill-opacity="0.5"`), folding the channel alpha and the painter's extra [extraAlpha] together.
+   * Null when fully transparent or absent, so the caller can fall back to `fill="none"`.
+   */
+  private fun paintAttr(kind: String, argb: String?, extraAlpha: Float): String? {
+    if (argb == null) return null
+    val hex = argb.removePrefix("#")
+    val (a, rgb) =
+      if (hex.length == 8) hex.substring(0, 2).toInt(16) to hex.substring(2)
+      else 255 to hex.takeLast(6)
+    val op = (a / 255.0) * extraAlpha.coerceIn(0f, 1f).toDouble()
+    if (op <= 0.0) return null
+    val opAttr = if (op < 0.999) """ $kind-opacity="${fmt(op)}"""" else ""
+    return """$kind="#$rgb"$opAttr"""
+  }
 
   private fun shape(layer0: FigmaSvgLayer): String {
     // Compose's `Modifier.border` draws the stroke *inside* the layout bounds; SVG centers a stroke

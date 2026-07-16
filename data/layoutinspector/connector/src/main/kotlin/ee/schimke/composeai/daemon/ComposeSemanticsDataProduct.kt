@@ -33,6 +33,8 @@ import ee.schimke.composeai.daemon.protocol.RecordingProbeNode
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorCurvedText
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorProduct
+import ee.schimke.composeai.data.layoutinspector.LayoutInspectorVectorGraphic
+import ee.schimke.composeai.data.layoutinspector.LayoutInspectorVectorPath
 import ee.schimke.composeai.data.layoutinspector.SemanticsRefs
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.extensions.compose.ExtensionSlotTables
@@ -796,6 +798,11 @@ internal object ComposeLayoutInspector {
     // reproduce them as an SVG `<textPath>` instead of dropping the clock.
     val curvedTexts =
       if (ownComponent.contains("Curved")) CurvedTextExtractor.extract(this) else emptyList()
+    // An `Icon`/`Image` backed by an `ImageVector` paints through a `VectorPainter`; pull its path
+    // tree (Tier 1) so the figma-svg export emits editable `<path>`s instead of a raster crop.
+    // Reflective + best-effort: any failure (or a bitmap/gradient/transformed painter) yields null
+    // and the node simply rasters as before.
+    val vectorGraphic = VectorGraphicExtractor.extract(this)
     val children = children.map { it.toWireNode(rootCoords, sources, density) }
     val modifiers = modifierInfo
     return LayoutInspectorNode(
@@ -824,6 +831,7 @@ internal object ComposeLayoutInspector {
           density = density,
         ),
       curvedTexts = curvedTexts,
+      vectorGraphic = vectorGraphic,
       children = children,
     )
   }
@@ -985,6 +993,243 @@ internal object ComposeLayoutInspector {
 
     private fun floatField(o: Any, name: String): Double? =
       runCatching { (field(o, name) as? Float)?.toDouble() }.getOrNull()
+  }
+
+  /**
+   * Extracts an editable [LayoutInspectorVectorGraphic] from a node whose `Icon`/`Image` paints an
+   * `ImageVector` through a `Modifier.paint(VectorPainter)`. Reflects the painter's live vector tree
+   * (`VectorComponent` → `GroupComponent`/`PathComponent`) into SVG path data + solid paints, in the
+   * vector's own viewport coordinates. All reflective and best-effort — any failure yields null and
+   * the node keeps its raster fallback:
+   * - a `BitmapPainter`/`ColorPainter`/other painter (not a `VectorPainter`) → null,
+   * - a path with a gradient/brush paint (no resolvable solid colour) is dropped, and a graphic left
+   *   with no paintable path → null (matching the vector-vs-raster rule the export already follows),
+   * - a group carrying a non-identity transform (translate/scale/rotate/clip) → null, so a
+   *   transformed icon rasters rather than emitting misplaced geometry (kept minimal on purpose).
+   */
+  private object VectorGraphicExtractor {
+    fun extract(node: LayoutNodeFacade): LayoutInspectorVectorGraphic? =
+      runCatching { extractOrNull(node) }.getOrNull()
+
+    private fun extractOrNull(node: LayoutNodeFacade): LayoutInspectorVectorGraphic? {
+      // The `VectorPainter` an `Icon`/`Image` paints with rides in the node's draw modifier — as a
+      // `Modifier.paint(painter)` `PainterElement` field, or (depending on the Compose version /
+      // wrapping) nested a level inside it. Scan each modifier element's fields shallowly for the
+      // painter rather than assume a single exact field name, so the capture survives those shapes.
+      val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Any, Boolean>())
+      val painter =
+        (node.modifierInfo.asSequence().map { it.modifier } + sequenceOf(node.measurePolicy))
+          .mapNotNull { candidate -> findVectorPainter(candidate, 0, seen) }
+          .firstOrNull()
+      if (painter == null) return null
+      val vector = field(painter, "vector") ?: return null // VectorComponent
+      val (vw, vh) = viewport(vector) ?: return null
+      if (vw <= 0f || vh <= 0f) return null
+      val root = field(vector, "root") ?: return null // GroupComponent
+      val paths = ArrayList<LayoutInspectorVectorPath>()
+      if (!collect(root, paths) || paths.isEmpty()) return null
+      return LayoutInspectorVectorGraphic(vw, vh, paths)
+    }
+
+    /**
+     * Depth-limited search of a modifier element for the `VectorPainter` it draws with. The painter
+     * is usually a direct `painter` field on a `Modifier.paint(...)` `PainterElement`, but a version
+     * bump or a wrapping node can bury it one level down, so scan declared fields (across the class
+     * hierarchy) up to a shallow depth rather than hard-code the path. Identity-tracked to avoid
+     * cycles; confined to `androidx` objects so it never wanders into unrelated graphs.
+     */
+    private fun findVectorPainter(o: Any?, depth: Int, seen: MutableSet<Any>): Any? {
+      if (o == null || depth > 2 || o is String || o is Number || o is Boolean) return null
+      if (!seen.add(o)) return null
+      if (o.javaClass.simpleName == "VectorPainter") return o
+      if (!o.javaClass.name.startsWith("androidx")) return null
+      var c: Class<*>? = o.javaClass
+      while (c != null) {
+        for (f in c.declaredFields) {
+          val v = runCatching { f.isAccessible = true; f.get(o) }.getOrNull()
+          findVectorPainter(v, depth + 1, seen)?.let { return it }
+        }
+        c = c.superclass
+      }
+      return null
+    }
+
+    /**
+     * The vector's viewport in its own units. Older Compose exposed plain `viewportWidth` /
+     * `viewportHeight` floats (or a raw `viewportSize` Long); current Compose keeps it as a
+     * `MutableState<Size>` behind `viewportSize$delegate`, so read the delegate's current value and
+     * unpack the `Size`. A `Size` value class packs two floats into a Long (width high, height low).
+     */
+    private fun viewport(vector: Any): Pair<Float, Float>? {
+      floatField(vector, "viewportWidth")?.let { w ->
+        floatField(vector, "viewportHeight")?.let { h -> return w.toFloat() to h.toFloat() }
+      }
+      val packed =
+        sizePackedValue(runCatching { field(vector, "viewportSize") }.getOrNull())
+          ?: sizePackedValue(
+            currentStateValue(runCatching { field(vector, "viewportSize\$delegate") }.getOrNull())
+          )
+          ?: return null
+      val w = Float.fromBits((packed shr 32).toInt())
+      val h = Float.fromBits((packed and 0xFFFFFFFFL).toInt())
+      return if (w > 0f && h > 0f) w to h else null
+    }
+
+    /** The current value held by a Compose `MutableState`, via its value getter or newest record. */
+    private fun currentStateValue(state: Any?): Any? {
+      if (state == null) return null
+      runCatching { state.javaClass.getMethod("getValue").invoke(state) }
+        .getOrNull()
+        ?.let { return it }
+      // Fall back to the newest state record's `value` when reading outside a live snapshot.
+      val record = runCatching { field(state, "next") }.getOrNull() ?: return null
+      return runCatching { field(record, "value") }.getOrNull()
+    }
+
+    /** A packed `Size` Long from a boxed `Size` value class (its `packedValue`) or a raw Long. */
+    private fun sizePackedValue(v: Any?): Long? =
+      when (v) {
+        null -> null
+        is Long -> v
+        else -> longField(v, "packedValue")
+      }
+
+    /**
+     * Walks a `VNode` tree collecting `PathComponent`s. Returns false when a group carries a
+     * non-identity transform — the caller then drops to raster rather than emit misplaced paths.
+     */
+    private fun collect(vnode: Any, out: MutableList<LayoutInspectorVectorPath>): Boolean {
+      when (vnode.javaClass.simpleName) {
+        "GroupComponent" -> {
+          if (!isIdentityGroup(vnode)) return false
+          val children = field(vnode, "children") as? List<*> ?: return true
+          for (child in children) if (child != null && !collect(child, out)) return false
+          return true
+        }
+        "PathComponent" -> {
+          pathOf(vnode)?.let(out::add)
+          return true
+        }
+        else -> return true
+      }
+    }
+
+    private fun isIdentityGroup(g: Any): Boolean {
+      fun v(name: String, id: Float) = (floatField(g, name)?.toFloat() ?: id) == id
+      val clip = runCatching { field(g, "clipPathData") as? List<*> }.getOrNull()
+      return v("translationX", 0f) &&
+        v("translationY", 0f) &&
+        v("scaleX", 1f) &&
+        v("scaleY", 1f) &&
+        v("rotation", 0f) &&
+        v("pivotX", 0f) &&
+        v("pivotY", 0f) &&
+        (clip == null || clip.isEmpty())
+    }
+
+    private fun pathOf(p: Any): LayoutInspectorVectorPath? {
+      val nodes = field(p, "pathData") as? List<*> ?: return null
+      val d = pathData(nodes)
+      if (d.isBlank()) return null
+      val fill = brushArgb(runCatching { field(p, "fill") }.getOrNull())
+      val stroke = brushArgb(runCatching { field(p, "stroke") }.getOrNull())
+      if (fill == null && stroke == null) return null
+      val strokeWidth = if (stroke != null) (floatField(p, "strokeLineWidth")?.toFloat() ?: 0f) else 0f
+      // `PathFillType` is a value class over Int (NonZero = 0, EvenOdd = 1), so the backing field
+      // reads back as an Int; fall back to a name match for any boxed representation.
+      val fillType = runCatching { field(p, "pathFillType") }.getOrNull()
+      val evenOdd =
+        when (fillType) {
+          is Int -> fillType == 1
+          else -> fillType?.toString()?.contains("EvenOdd", ignoreCase = true) == true
+        }
+      return LayoutInspectorVectorPath(
+        pathData = d,
+        fillArgb = fill,
+        fillAlpha = floatField(p, "fillAlpha")?.toFloat() ?: 1f,
+        strokeArgb = stroke,
+        strokeWidth = strokeWidth,
+        strokeAlpha = floatField(p, "strokeAlpha")?.toFloat() ?: 1f,
+        evenOdd = evenOdd,
+      )
+    }
+
+    /** A `SolidColor` brush's colour as `#AARRGGBB`; null for gradient/none or a non-sRGB packing. */
+    private fun brushArgb(brush: Any?): String? {
+      if (brush == null || brush.javaClass.simpleName != "SolidColor") return null
+      val packed = (longField(brush, "value") ?: return null).toULong()
+      if (packed and 0xFFFFFFFFuL != 0uL) return null // non-sRGB packing we can't read as flat ARGB
+      val argb = (packed shr 32).toInt()
+      return if (argb == 0) null else "#%08X".format(argb)
+    }
+
+    /** Serialises a `List<PathNode>` (SVG-shaped commands) into an SVG path `d` string. */
+    private fun pathData(nodes: List<*>): String {
+      val sb = StringBuilder()
+      for (n in nodes) {
+        if (n == null) continue
+        fun g(name: String) = num(floatField(n, name)?.toFloat() ?: 0f)
+        fun b(name: String) = if (runCatching { field(n, name) as? Boolean }.getOrNull() == true) "1" else "0"
+        when (n.javaClass.simpleName) {
+          "MoveTo" -> sb.append("M").append(g("x")).append(" ").append(g("y"))
+          "RelativeMoveTo" -> sb.append("m").append(g("dx")).append(" ").append(g("dy"))
+          "LineTo" -> sb.append("L").append(g("x")).append(" ").append(g("y"))
+          "RelativeLineTo" -> sb.append("l").append(g("dx")).append(" ").append(g("dy"))
+          "HorizontalTo" -> sb.append("H").append(g("x"))
+          "RelativeHorizontalTo" -> sb.append("h").append(g("dx"))
+          "VerticalTo" -> sb.append("V").append(g("y"))
+          "RelativeVerticalTo" -> sb.append("v").append(g("dy"))
+          "CurveTo" ->
+            sb.append("C ${g("x1")} ${g("y1")} ${g("x2")} ${g("y2")} ${g("x3")} ${g("y3")}")
+          "RelativeCurveTo" ->
+            sb.append("c ${g("dx1")} ${g("dy1")} ${g("dx2")} ${g("dy2")} ${g("dx3")} ${g("dy3")}")
+          "ReflectiveCurveTo" -> sb.append("S ${g("x1")} ${g("y1")} ${g("x2")} ${g("y2")}")
+          "RelativeReflectiveCurveTo" ->
+            sb.append("s ${g("dx1")} ${g("dy1")} ${g("dx2")} ${g("dy2")}")
+          "QuadTo" -> sb.append("Q ${g("x1")} ${g("y1")} ${g("x2")} ${g("y2")}")
+          "RelativeQuadTo" -> sb.append("q ${g("dx1")} ${g("dy1")} ${g("dx2")} ${g("dy2")}")
+          "ReflectiveQuadTo" -> sb.append("T ${g("x1")} ${g("y1")}")
+          "RelativeReflectiveQuadTo" -> sb.append("t ${g("dx1")} ${g("dy1")}")
+          "ArcTo" ->
+            sb.append(
+              "A ${g("horizontalEllipseRadius")} ${g("verticalEllipseRadius")} ${g("theta")} " +
+                "${b("isMoreThanHalf")} ${b("isPositiveArc")} ${g("arcStartX")} ${g("arcStartY")}"
+            )
+          "RelativeArcTo" ->
+            sb.append(
+              "a ${g("horizontalEllipseRadius")} ${g("verticalEllipseRadius")} ${g("theta")} " +
+                "${b("isMoreThanHalf")} ${b("isPositiveArc")} ${g("arcStartDx")} ${g("arcStartDy")}"
+            )
+          "Close" -> sb.append("Z")
+          else -> return "" // an unknown node type means we can't faithfully serialise — bail
+        }
+        sb.append(" ")
+      }
+      return sb.toString().trim()
+    }
+
+    /** Compact number: drop a trailing `.0` so `12.0` → `12`, keeping the path string small. */
+    private fun num(v: Float): String =
+      if (v == v.toLong().toFloat()) v.toLong().toString() else v.toString()
+
+    private fun field(o: Any, name: String): Any? = findField(o.javaClass, name)?.get(o)
+
+    private fun floatField(o: Any, name: String): Double? =
+      runCatching { (field(o, name) as? Float)?.toDouble() }.getOrNull()
+
+    private fun longField(o: Any, name: String): Long? =
+      runCatching { findField(o.javaClass, name)?.getLong(o) }.getOrNull()
+
+    private fun findField(cls: Class<*>, name: String): java.lang.reflect.Field? {
+      var c: Class<*>? = cls
+      while (c != null) {
+        runCatching {
+            return c!!.getDeclaredField(name).apply { isAccessible = true }
+          }
+        c = c.superclass
+      }
+      return null
+    }
   }
 
   private data class LayoutSource(
