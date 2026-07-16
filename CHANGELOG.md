@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.16.51](https://github.com/yschimke/compose-ai-tools/compare/v0.16.50...v0.16.51) (2026-07-16)
+
+
+### Features
+
+* **figma-svg:** vectorize ImageVector icons in the layered SVG export ([#2504](https://github.com/yschimke/compose-ai-tools/issues/2504)) ([d8b0080](https://github.com/yschimke/compose-ai-tools/commit/d8b00800d3084c65d14283107d3a1987e8ed3fc0))
+
+
+### Bug Fixes
+
+* **daemon:** invalidate cached launch descriptor on schema bump ([#2507](https://github.com/yschimke/compose-ai-tools/issues/2507)) ([d8c1faa](https://github.com/yschimke/compose-ai-tools/commit/d8c1faa2daf9127894af676ffea2b50e37b27f88))
+* **daemon:** make missing-resource placeholder opt-in (serve/bundle-daemon only) ([#2503](https://github.com/yschimke/compose-ai-tools/issues/2503)) ([b02f47f](https://github.com/yschimke/compose-ai-tools/commit/b02f47f42bd9275bd3f2e315ab0f628eaf17572c))
+* **figma-svg:** apply the icon tint and raster icons with unrepresentable paths ([#2505](https://github.com/yschimke/compose-ai-tools/issues/2505)) ([86140f2](https://github.com/yschimke/compose-ai-tools/commit/86140f2dbcc0572a2b9ef1df2eee9135dd9f122f))
+* **figma-svg:** raster mixed-paint icon paths and probe the intrinsic tint ([#2506](https://github.com/yschimke/compose-ai-tools/issues/2506)) ([77de77e](https://github.com/yschimke/compose-ai-tools/commit/77de77e16eaac66e47b1b809bf981cfca0d531dc))
+* **serve:** keep the live render lane up for knob overrides and Wear ([#2508](https://github.com/yschimke/compose-ai-tools/issues/2508)) ([e06c639](https://github.com/yschimke/compose-ai-tools/commit/e06c639e7a3433e8bfa9bd9b9c1d43feacecd47a))
+
 ## [0.16.50](https://github.com/yschimke/compose-ai-tools/compare/v0.16.49...v0.16.50) (2026-07-15)
 
 
