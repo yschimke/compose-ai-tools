@@ -522,30 +522,37 @@ open class RobolectricHost(
       val bootErr = workerBootErrors.get(i)
       if (bootErr == null && ready) return
 
-      if (attempt++ >= MAX_SANDBOX_BOOT_RETRIES) {
+      // Only a *recorded* boot error is safe to retry. [runJUnit] sets [workerBootErrors] just
+      // after `JUnitCore.runClasses` returns, so a non-null entry proves the worker has exited and
+      // its slot (never claimed — the failure happens before `registerSandbox`) is free to re-boot.
+      // A bare `awaitSandboxReady` timeout with no recorded error is different: the worker may still
+      // be inside Robolectric bootstrap, so swapping in a replacement would leave two workers racing
+      // to `registerSandbox` / count down the slot latch. Treat that as a clean startup failure —
+      // the pre-retry behaviour — and only ever replace a worker that demonstrably exited.
+      val canRetry = bootErr != null && attempt < MAX_SANDBOX_BOOT_RETRIES
+      if (!canRetry) {
         if (sandboxCount > 1) dumpAllThreadsToStderr(slot = i, timeoutMs = timeoutMs)
         if (bootErr != null) {
           throw IllegalStateException(
-            "Robolectric sandbox slot $i aborted during bootstrap after " +
-              "${MAX_SANDBOX_BOOT_RETRIES + 1} attempt(s) — see the SandboxRunner[$i] failure(s) " +
-              "logged above for the underlying cause.",
+            "Robolectric sandbox slot $i aborted during bootstrap after ${attempt + 1} " +
+              "attempt(s) — see the SandboxRunner[$i] failure(s) logged above for the underlying " +
+              "cause.",
             bootErr,
           )
         }
         error(
-          "Robolectric sandbox slot $i failed to bootstrap within ${timeoutMs}ms after " +
-            "${MAX_SANDBOX_BOOT_RETRIES + 1} attempt(s) — holdSandboxOpen never registered. On a " +
-            "cold cache the instrumented android-all jar download can dominate; raise the timeout " +
-            "via -D$SANDBOX_BOOT_TIMEOUT_PROP=<ms>. Otherwise check the SandboxHoldingRunner / " +
-            "Robolectric sandbox bootstrap logs."
+          "Robolectric sandbox slot $i failed to bootstrap within ${timeoutMs}ms — holdSandboxOpen " +
+            "never registered. On a cold cache the instrumented android-all jar download can " +
+            "dominate; raise the timeout via -D$SANDBOX_BOOT_TIMEOUT_PROP=<ms>. Otherwise check the " +
+            "SandboxHoldingRunner / Robolectric sandbox bootstrap logs."
         )
       }
+      attempt++
 
       System.err.println(
-        "RobolectricHost: sandbox slot $i failed to boot " +
-          "(attempt ${attempt}/${MAX_SANDBOX_BOOT_RETRIES + 1}" +
-          (bootErr?.message?.let { ": $it" } ?: " — sandbox-ready timeout") +
-          "); retrying with a fresh worker."
+        "RobolectricHost: sandbox slot $i failed to boot with a recorded error " +
+          "(attempt ${attempt}/${MAX_SANDBOX_BOOT_RETRIES + 1}: ${bootErr!!.message}); " +
+          "retrying with a fresh worker."
       )
       // The failed worker has exited (its `SandboxRunner` JUnit run returned with the failure);
       // join briefly to be sure, then reset the slot's boot state and install a fresh worker. A

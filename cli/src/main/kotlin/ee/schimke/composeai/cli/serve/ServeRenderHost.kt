@@ -286,7 +286,8 @@ internal constructor(
   // that flips [warmedUp] without ever exercising the override path). Without a separate gate the
   // very first override render on `preview.coo.ee` — where `warmInBackground` prewarms — is charged
   // the tight [frameRenderTimeoutSeconds] cap and times out (the public `?knob.…` 500). Give the
-  // first override render the generous [renderTimeoutSeconds] budget too; subsequent override frames
+  // first override render the generous [renderTimeoutSeconds] budget too; subsequent override
+  // frames
   // are capped like any other so a wedged one can't pin the slot.
   private val overridesWarmedUp = AtomicBoolean(false)
 
