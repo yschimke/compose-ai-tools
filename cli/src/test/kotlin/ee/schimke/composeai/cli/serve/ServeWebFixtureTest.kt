@@ -1117,6 +1117,34 @@ class ServeWebFixtureTest {
       catalogKnobs.contains("setOverrides\", overrides: overrides()"),
       "live-stream setOverrides sends liveOverrides() (knobs included), not the display-only map",
     )
+    // The server-render display controls (Device / Locale / Font scale / Orientation / …) are baked
+    // disabled on the static snapshot, but a live catalog's carried daemon CAN re-render them — so
+    // entering Live Compose must re-enable them (and leaving restores the baked-static disabled
+    // state). Without this, "Live Compose" streamed frames yet the locale/device/etc. controls
+    // stayed greyed out and every axis change did nothing (the reported Wear regression). The
+    // mode-transition JS calls syncServerControls(), which flips the disabled state on when Live is
+    // the active mode and canRenderOverrides.
+    assertTrue(
+      catalogKnobs.contains("function syncServerControls()"),
+      "the viewer has a syncServerControls() that re-enables display controls in Live mode",
+    )
+    assertTrue(
+      catalogKnobs.contains("syncServerControls();"),
+      "syncServerControls() is invoked on every mode transition",
+    )
+    assertTrue(
+      catalogKnobs.contains("!!(live && live.checked) && canRenderOverrides"),
+      "display controls re-enable only when Live is active AND the daemon can render overrides",
+    )
+    // The server-render-only controls (device/orientation/size) render disabled in the baked markup
+    // (restored when not live); Locale is in the wasm-honoured trio and is disabled on this
+    // no-Wasm static snapshot too, so it's inert until Live Compose flips it on.
+    assertTrue(
+      catalogKnobs.contains("id=\"cp-device\" disabled") &&
+        catalogKnobs.contains("id=\"cp-localeTag\"") &&
+        catalogKnobs.contains("autocomplete=\"off\" disabled"),
+      "display controls (incl. locale) render baked-disabled until Live Compose re-enables them",
+    )
     // A plain static bundle (no daemon) still shows the knobs as DISABLED, informational controls.
     val staticKnobs = ServeWeb.viewerPage(knobPreview, token)
     assertTrue(
