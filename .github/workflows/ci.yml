@@ -608,3 +608,53 @@ jobs:
         if: ${{ github.event_name != 'pull_request' || steps.changes.outputs.run == 'true' }}
         working-directory: vscode-extension
         run: xvfb-run -a npm run test:electron
+
+  # Hard signal that the BuildFetch remote cache is actually being SEEDED, not
+  # just "written to" in the Gradle log. The seeding build jobs push task
+  # outputs on every push to main, but a read-only / over-quota token makes
+  # each PUT return 429 — which Gradle only logs as a non-fatal warning, so the
+  # build stays green while the remote stays empty and every consumer (PRs, dev
+  # machines, cloud sessions) gets 0 remote hits. Grepping the build log for
+  # "Stored cache entry" does NOT catch this: that line is emitted when Gradle
+  # hands the entry to the cache, before/regardless of the remote HTTP result.
+  # So verify the write path directly: PUT a sentinel entry with the SAME token
+  # the seeding jobs push with, then GET it back and assert it persisted.
+  # Push-only (that's the sole event where the read/write token is resolved).
+  # Not wired into branch protection: a BuildFetch outage should show a red X
+  # here without blocking merges.
+  buildfetch-write-check:
+    name: BuildFetch remote write check
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Round-trip a sentinel entry through the remote cache
+        env:
+          # Same secret the buildfetch-cache action passes as rw-token on push.
+          TOKEN: ${{ secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TOKEN:-}" ]; then
+            echo "::error::BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN is unset — the remote cache is never seeded (dev/PR/cloud builds will get 0 remote hits)."
+            exit 1
+          fi
+          base="https://cache.eu-central-a.buildfetch.com/8ESz2z/gradle/"
+          # Namespaced, run-unique key so this probe never collides with a real
+          # Gradle cache entry (those are 32-hex-char hashes).
+          key="ci-writecheck-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          payload="$(mktemp)"; printf 'buildfetch-write-check %s' "${GITHUB_SHA}" > "$payload"
+          put="$(curl -sS --retry 2 -o /dev/null -w '%{http_code}' -X PUT \
+                   -u "token-auth:${TOKEN}" --data-binary @"$payload" "${base}${key}")"
+          get="$(curl -sS -o /dev/null -w '%{http_code}' \
+                   -u "token-auth:${TOKEN}" "${base}${key}")"
+          echo "PUT -> HTTP ${put} ; GET -> HTTP ${get}"
+          case "${put}" in
+            200|201|202|204) ;;
+            401|403) echo "::error::BuildFetch write rejected (HTTP ${put}): token is not authorized to write. Remote cache will stay empty."; exit 1 ;;
+            429)     echo "::error::BuildFetch write rejected (HTTP 429): token is read-only or the plan/quota is exhausted. Remote cache will stay empty."; exit 1 ;;
+            *)       echo "::error::BuildFetch write failed (HTTP ${put})."; exit 1 ;;
+          esac
+          if [ "${get}" != "200" ]; then
+            echo "::error::BuildFetch stored the entry (PUT ${put}) but it did not read back (GET ${get}) — writes are not persisting."
+            exit 1
+          fi
+          echo "::notice::BuildFetch remote write verified — PUT ${put}, GET ${get}. The seeding token can write; the remote is being populated."
