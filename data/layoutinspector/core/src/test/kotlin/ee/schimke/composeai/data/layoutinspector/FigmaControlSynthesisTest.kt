@@ -72,7 +72,7 @@ class FigmaControlSynthesisTest {
   @Test
   fun checkboxChecked_emitsPrimaryBoxAndTick() {
     val node = layout("CheckboxKt", 0, 0, 48, 48)
-    val sem = control(0, 0, 48, 48, ComposeSemanticsControl(toggle = "on"))
+    val sem = control(0, 0, 48, 48, ComposeSemanticsControl(role = "Checkbox", toggle = "on"))
     val (out, model) = svg(node, sem, scheme)
     assertTrue("filled primary box", out.contains("""fill="#6750A4""""))
     assertTrue("checkmark path", out.contains("""id="Checkmark""""))
@@ -84,7 +84,7 @@ class FigmaControlSynthesisTest {
   @Test
   fun checkboxUnchecked_emitsOutlineOnly() {
     val node = layout("CheckboxKt", 0, 0, 48, 48)
-    val sem = control(0, 0, 48, 48, ComposeSemanticsControl(toggle = "off"))
+    val sem = control(0, 0, 48, 48, ComposeSemanticsControl(role = "Checkbox", toggle = "off"))
     val (out, _) = svg(node, sem, scheme)
     assertTrue("outline stroke", out.contains("""stroke="#49454F""""))
     assertFalse("no primary fill", out.contains("""fill="#6750A4""""))
@@ -93,11 +93,32 @@ class FigmaControlSynthesisTest {
   @Test
   fun radioSelected_emitsRingAndDot() {
     val node = layout("RadioButtonKt", 0, 0, 48, 48)
-    val sem = control(0, 0, 48, 48, ComposeSemanticsControl(selected = true))
+    val sem = control(0, 0, 48, 48, ComposeSemanticsControl(role = "RadioButton", selected = true))
     val (out, _) = svg(node, sem, scheme)
     assertTrue("primary ring stroke", out.contains("""stroke="#6750A4""""))
     assertTrue("dot layer", out.contains("""id="Dot""""))
     assertTrue("dot filled primary", out.contains("""fill="#6750A4""""))
+  }
+
+  @Test
+  fun switchToggle_isNotDrawnAsCheckbox() {
+    // A Switch also carries ToggleableState; keying off the role (not the state) must decline it so
+    // its own chrome is preserved rather than replaced by a checkbox box + tick.
+    val node = layout("SwitchKt", 0, 0, 52, 32)
+    val sem = control(0, 0, 52, 32, ComposeSemanticsControl(role = "Switch", toggle = "on"))
+    val (out, _) = svg(node, sem, scheme)
+    assertFalse("no checkmark", out.contains("""id="Checkmark""""))
+    assertFalse("no synthesized checkbox fill", out.contains("""fill="#6750A4""""))
+  }
+
+  @Test
+  fun selectedTab_isNotDrawnAsRadio() {
+    // A selectable tab/chip carries Selected; the role gate must decline it so it isn't replaced by
+    // a radio ring + dot.
+    val node = layout("TabKt", 0, 0, 90, 48)
+    val sem = control(0, 0, 90, 48, ComposeSemanticsControl(role = "Tab", selected = true))
+    val (out, _) = svg(node, sem, scheme)
+    assertFalse("no radio dot", out.contains("""id="Dot""""))
   }
 
   @Test

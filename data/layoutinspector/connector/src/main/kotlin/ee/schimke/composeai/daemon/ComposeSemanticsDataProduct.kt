@@ -174,8 +174,13 @@ object ComposeSemanticsDataProducer {
           val span = info.range.endInclusive - info.range.start
           if (span <= 0f) null else ((info.current - info.range.start) / span).coerceIn(0f, 1f)
         }
-    return if (toggle == null && selected == null && progress == null) null
-    else ComposeSemanticsControl(toggle = toggle, selected = selected, progress = progress)
+    if (toggle == null && selected == null && progress == null) return null
+    return ComposeSemanticsControl(
+      role = getOrNull(SemanticsProperties.Role)?.toString(),
+      toggle = toggle,
+      selected = selected,
+      progress = progress,
+    )
   }
 
   /**

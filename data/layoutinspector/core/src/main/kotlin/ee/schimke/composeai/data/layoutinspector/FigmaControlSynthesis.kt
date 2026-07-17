@@ -41,6 +41,10 @@ internal object FigmaControlSynthesis {
     CIRCULAR_PROGRESS,
   }
 
+  // Compose `Role.toString()` values (see `androidx.compose.ui.semantics.Role`).
+  private const val ROLE_CHECKBOX = "Checkbox"
+  private const val ROLE_RADIO = "RadioButton"
+
   /** A resolved theme role colour, or null when the render's scheme didn't carry that role. */
   fun interface ColorResolver {
     fun role(name: String): FigmaSvgColor?
@@ -72,8 +76,15 @@ internal object FigmaControlSynthesis {
   }
 
   private fun kindOf(state: ComposeSemanticsControl, w: Int, h: Int, density: Float): Kind? {
-    if (state.toggle != null) return Kind.CHECKBOX
-    if (state.selected != null) return Kind.RADIO
+    // `ToggleableState` is set by both `Checkbox` and `Switch`, and `Selected` by both
+    // `RadioButton`
+    // and selectable tabs/chips — so the state signal alone is ambiguous. Key off the semantics
+    // role
+    // and decline (→ null, keeping the node's normal token/raster rendering) for anything that
+    // isn't
+    // a checkbox/radio, so a switch is never redrawn as a checkbox nor a chip as a radio ring.
+    if (state.toggle != null) return if (state.role == ROLE_CHECKBOX) Kind.CHECKBOX else null
+    if (state.selected != null) return if (state.role == ROLE_RADIO) Kind.RADIO else null
     if (state.progress == null) return null
     // A value/progress control: distinguish circular (square-ish box) from the two horizontal bars,
     // and a slider (a tall touch box around a thin track) from a bare linear bar, by aspect ratio.

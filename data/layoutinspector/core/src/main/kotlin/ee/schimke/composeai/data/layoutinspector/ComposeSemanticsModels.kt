@@ -199,6 +199,14 @@ data class ComposeSemanticsNode(
 @Serializable
 data class ComposeSemanticsControl(
   /**
+   * The node's semantics `Role` (`SemanticsProperties.Role`, e.g. `"Checkbox"`, `"Switch"`,
+   * `"RadioButton"`, `"Tab"`), or null when it declares none. Disambiguates controls that share a
+   * state signal: `ToggleableState` is set by both `Checkbox` *and* `Switch`, and `Selected` by
+   * both `RadioButton` *and* selectable tabs/chips — so the vectoriser must key off the role, not
+   * the state alone, to avoid drawing a switch as a checkbox or a chip as a radio ring.
+   */
+  val role: String? = null,
+  /**
    * Toggle state of a `Checkbox`/`TriStateCheckbox` (from `SemanticsProperties.ToggleableState`):
    * `"on"`, `"off"`, or `"indeterminate"`. Null when the control is not toggleable.
    */
