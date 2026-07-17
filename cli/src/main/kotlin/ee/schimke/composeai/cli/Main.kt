@@ -146,7 +146,12 @@ private fun printFullUsage() {
       list             List discovered previews
       render           Render previews; with --output copies a single match to disk.
                        --bundle additionally packs each module's previews into a
-                       portable PNG+ZIP bundle (off by default).
+                       portable PNG+ZIP bundle (off by default). --format svg emits
+                       the editable compose/figma-svg vector per preview (into
+                       renders/<id>.svg, or --output for a single match) alongside
+                       the PNGs — driven through a short-lived render daemon. Combine
+                       --format svg --bundle to inject the vectors into each module's
+                       bundle.png as previews/<id>.figma.svg.
       render-matrix    Render one preview across a cross-product of display axes
                        (--device/--locale/--ui-mode/--font-scale); per-cell hashes +
                        optional --contact-sheet grid PNG.
@@ -207,14 +212,16 @@ private fun printFullUsage() {
       --json               Emit JSON (show, list, a11y, devices)
       --brief              JSON only: drop functionName/className/sourceFile/params
       --changed-only       JSON only (show, a11y): drop previews with no changed capture
-      --output <path>      Copy matched preview PNG to this path (render)
+      --output <path>      Copy a single matched preview to this path (render; the PNG, or the
+                           .svg under --format svg)
       --preview <ref>      record: preview to record — an id, a `Class.function` reference, or a
                            unique substring of an id
       --script <path>      record: JSON array of RecordingScriptEvent driving the session
       --out <path>         record: write the encoded recording here (extension auto-selects the
                            format unless --format is set)
-      --format <fmt>       record: gif | apng | mp4 | webm. gif/apng always available (pure-JVM);
-                           mp4/webm need ffmpeg on PATH
+      --format <fmt>       render: png (default) | svg — svg emits the editable compose/figma-svg
+                           vector per preview (daemon-driven). record: gif | apng | mp4 | webm.
+                           gif/apng always available (pure-JVM); mp4/webm need ffmpeg on PATH
       --fps <n>            record: frames per second of the virtual playback clock (default 30)
       --scale <f>          record: capture scale multiplier (default 1.0)
       --overrides <k=v,…>  record: per-render overrides, e.g. touchOverlay=true (also device,
