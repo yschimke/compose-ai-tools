@@ -814,9 +814,26 @@ internal object ComposeLayoutInspector {
     // rasters as before. Restricted to childless nodes: a captured `vectorGraphic` makes the export
     // return a leaf (dropping children), so capturing a `Box(Modifier.drawBehind{…}){ Text(…) }`
     // container would delete its content — matching the leaf-only rule the raster-crop path uses.
+    // Size the draw capture to the node's *placed* bounds, not its measured `size`. The export
+    // scales the captured viewport onto the layer's `bounds` box, so the two must match; a node
+    // with
+    // `Modifier.minimumInteractiveComponentSize()` (every `RadioButton`/`Checkbox`/`IconButton`)
+    // measures to the 48dp touch target while it paints at the smaller visual `bounds`, so sizing
+    // the capture to `size` would place the drawn chrome in a 48dp viewport that the export then
+    // shrinks onto the ~20dp box — the radio ring came out ~0.4× too small.
+    val placedBounds = coordinates.boundsIn(rootCoords)
+    val boundsW = placedBounds.right - placedBounds.left
+    val boundsH = placedBounds.bottom - placedBounds.top
+    // A detached / not-yet-placed node reports `(0,0,0,0)` bounds; `FigmaSvgModel.toLayer` recovers
+    // those from the measured `size` (and places the vector against the recovered box), so fall
+    // back
+    // to `size` here when bounds are zero-area — otherwise a zero-sized viewport drops the chrome.
+    val captureW = if (boundsW > 0) boundsW else width
+    val captureH = if (boundsH > 0) boundsH else height
     val vectorGraphic =
       VectorGraphicExtractor.extract(this)
-        ?: if (children.isEmpty()) DrawCaptureExtractor.extract(modifiers, width, height, density)
+        ?: if (children.isEmpty())
+          DrawCaptureExtractor.extract(modifiers, captureW, captureH, density)
         else null
     return LayoutInspectorNode(
       nodeId = semanticsId?.toString() ?: identityId,
@@ -824,7 +841,7 @@ internal object ComposeLayoutInspector {
       displayName = displayComponent.takeIf { it != ownComponent },
       source = source?.source,
       sourceInfo = source?.sourceInfo,
-      bounds = coordinates.boundsIn(rootCoords),
+      bounds = placedBounds,
       size = LayoutInspectorSize(width = width, height = height),
       constraints = constraints,
       placed = placed,
