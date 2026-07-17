@@ -16,6 +16,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalInspectionMode
 import com.example.designcatalogm3.shared.CatalogComponent
 import com.example.designcatalogm3.shared.generated.resources.Res
 import com.example.designcatalogm3.shared.generated.resources.msg_deploy
@@ -29,10 +30,19 @@ import ee.schimke.composeai.preview.slots.LocalSlotMode
 import org.jetbrains.compose.resources.stringResource
 
 // The M3 catalog sticker sheet: one `@Preview` per component, in light + dark (`@CatalogModes`).
-// Each is a thin wrapper — `CatalogSticker { CatalogComponent("<slug>", interactive = false) }` —
-// over the shared component set in `:samples:design-catalog-m3-shared`, so the bodies live in one
-// place (also mounted live by the in-browser wasm tier). `interactive = false` renders the
-// deterministic baked frame (static toggles / determinate progress) the published catalog shows.
+// Each is a thin wrapper — `CatalogSticker { CatalogComponent("<slug>", interactive = …) }` — over
+// the shared component set in `:samples:design-catalog-m3-shared`, so the bodies live in one place
+// (also mounted live by the in-browser wasm tier).
+//
+// `interactive` is derived from `LocalInspectionMode` rather than hard-coded, so the SAME `@Preview`
+// serves both lanes correctly (the two share this sticker sheet — see [Sticker]):
+//   * baked snapshot / one-shot `/render` (`LocalInspectionMode = true`) → `interactive = false`,
+//     the deterministic frame (static toggles / determinate progress) the published catalog shows —
+//     pixel-unchanged.
+//   * held **Live Compose** daemon session (`LocalInspectionMode = false`) → `interactive = true`,
+//     so its click dispatch actually toggles the segmented button / switch / chip and drives the
+//     stateful widgets — matching what the in-browser wasm tier already does. Hard-coding `false`
+//     left every live-lane click a no-op (the segmented toggle wouldn't flip).
 //
 // Function names are the join key the export driver matches against `catalog.spec.json`'s `preview`
 // field (`PreviewDiscovery` keys off the function name), so they must not change.
@@ -140,9 +150,19 @@ fun SlottedCardSlotsSticker() = CatalogSticker {
  */
 @Composable
 // A clean one-liner: the theme (and the font / palette override) lives entirely in
-// [CatalogSticker],
-// so a preview never spells the typeface or knows an override exists.
-private fun Sticker(id: String) = CatalogSticker { CatalogComponent(id, interactive = false) }
+// [CatalogSticker], so a preview never spells the typeface or knows an override exists.
+//
+// `interactive = !LocalInspectionMode.current`, so a single sticker serves both render lanes:
+//   * one-shot / baked render — `LocalInspectionMode = true` (Compose's preview signal, and what
+//     the daemon's one-shot `/render` lane sets) → `interactive = false` → a deterministic static
+//     frame, pixel-unchanged from before.
+//   * held Live Compose daemon session — `DesktopHost.acquireInteractiveSession` seeds
+//     `inspectionMode = false` → `interactive = true` → live, stateful widgets whose click dispatch
+//     actually mutates state (the segmented toggle flips, the switch/chip toggle).
+// This is the one lever on which the baked and live lanes diverge, exactly as `CatalogComponent`
+// documents.
+private fun Sticker(id: String) =
+  CatalogSticker { CatalogComponent(id, interactive = !LocalInspectionMode.current) }
 
 // ---------------------------------------------------------------------------
 // Scaffold templates — full-screen, pre-built screen skeletons an app copies
