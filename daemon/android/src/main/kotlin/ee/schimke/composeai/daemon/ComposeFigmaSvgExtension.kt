@@ -8,6 +8,7 @@ import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.DataExtensionTarget
 import ee.schimke.composeai.data.render.extensions.ExtensionPostCaptureContext
 import ee.schimke.composeai.data.render.extensions.PostCaptureProcessor
+import ee.schimke.composeai.data.theme.ThemePayload
 
 /**
  * Always-on post-capture extension that writes the `compose/figma-svg` layered SVG for the rendered
@@ -43,11 +44,20 @@ class ComposeFigmaSvgExtension : PostCaptureProcessor {
     // The captured frame PNG, when the engine threaded it, turns on hybrid raster export: opaque
     // components become `<image>` layers backed by a background-free crop of the frame.
     val frameImage = context.get(RenderDataArtifactContextKeys.OutputPng)
+    // The render's resolved Material colour scheme (role → #AARRGGBB), published on the preview
+    // context by the theme capture, so controls drawn imperatively (Slider/progress/Checkbox/
+    // RadioButton) synthesise as editable vectors in the render's own colours. Empty when no theme
+    // was captured, which keeps those controls as raster crops.
+    val colorScheme =
+      (previewContext.inspection.values[MATERIAL3_THEME_PAYLOAD_CONTEXT_KEY] as? ThemePayload)
+        ?.resolvedTokens
+        ?.colorScheme ?: emptyMap()
     ComposeFigmaSvgDataProducer.writeSvg(
       rootDir = rootDir,
       previewId = previewId,
       layout = layout,
       semantics = semantics,
+      colorScheme = colorScheme,
       density = density,
       // Size sp text at the render's font scale (setFontScale) so the vector matches the render.
       fontScale = fontScale,

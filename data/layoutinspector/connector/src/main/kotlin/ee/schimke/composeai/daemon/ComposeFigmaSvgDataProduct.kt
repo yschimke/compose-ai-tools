@@ -56,6 +56,9 @@ object ComposeFigmaSvgDataProducer {
    *   text + typography.
    * @param colorNames optional `#AARRGGBB` → theme-role-name map so named fills carry their
    *   variable.
+   * @param colorScheme optional Material role → `#AARRGGBB` map (the render's resolved scheme) used
+   *   to colour controls synthesised from captured state (slider / progress / checkbox / radio);
+   *   empty keeps those controls as raster crops.
    * @param density px-per-dp of the captured frame (dp/sp tokens are converted to px against it).
    * @param fontScale the render's font-scale multiplier; sp text is emitted at `sp × density ×
    *   fontScale` so the `<text>` matches the render whose (already fontScale-scaled) layer geometry
@@ -69,6 +72,7 @@ object ComposeFigmaSvgDataProducer {
     layout: LayoutInspectorPayload,
     semantics: ComposeSemanticsPayload? = null,
     colorNames: Map<String, String> = emptyMap(),
+    colorScheme: Map<String, String> = emptyMap(),
     density: Float = 1f,
     fontScale: Float = 1f,
     frameImage: File? = null,
@@ -84,6 +88,7 @@ object ComposeFigmaSvgDataProducer {
         layout = layout,
         semantics = semantics,
         colorNames = colorNames,
+        colorScheme = colorScheme,
         density = density,
         fontScale = fontScale,
         rasterComponents =

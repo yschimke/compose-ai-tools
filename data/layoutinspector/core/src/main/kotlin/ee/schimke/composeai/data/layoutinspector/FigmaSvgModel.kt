@@ -355,6 +355,11 @@ data class FigmaSvgModel(
      * @param density px-per-dp of the captured frame, used to convert dp corner radii and sp font
      *   sizes into the px coordinate space the bounds live in.
      * @param padding transparent margin around the extent.
+     * @param colorScheme the render's resolved Material colour scheme — a role name (`primary`,
+     *   `onPrimary`, `surfaceVariant`, `onSurfaceVariant`, `outline`) → `#AARRGGBB` map. Used to
+     *   paint controls synthesised from captured state (slider / progress / checkbox / radio) in
+     *   the render's own light/dark colours; empty (default) suppresses that synthesis (those
+     *   controls keep their raster crop), so a caller with no theme handy never mis-colours them.
      * @param rasterComponents opaque component name-fragments; empty (default) = vector-only.
      * @param captureCanvasDraws when true (hybrid mode — a frame PNG is available to crop), a node
      *   that paints via an imperative `drawBehind` / `drawWithContent` Canvas modifier (which the
@@ -366,6 +371,7 @@ data class FigmaSvgModel(
       layout: LayoutInspectorPayload,
       semantics: ComposeSemanticsPayload? = null,
       colorNames: Map<String, String> = emptyMap(),
+      colorScheme: Map<String, String> = emptyMap(),
       density: Float = 1f,
       fontScale: Float = 1f,
       padding: Int = DEFAULT_PADDING,
@@ -378,9 +384,19 @@ data class FigmaSvgModel(
     ): FigmaSvgModel {
       val textByNodeId =
         semantics?.let { assignTextToLayers(layout.root, it, density, fontScale) } ?: emptyMap()
+      val controlByNodeId = semantics?.let { assignControlToLayers(layout.root, it) } ?: emptyMap()
       val names = colorNames.mapKeys { it.key.uppercase() }
       val ctx =
-        BuildContext(textByNodeId, names, density, rasterComponents, rasterHref, captureCanvasDraws)
+        BuildContext(
+          textByNodeId,
+          names,
+          colorScheme,
+          controlByNodeId,
+          density,
+          rasterComponents,
+          rasterHref,
+          captureCanvasDraws,
+        )
       val rootLayer = collapsePassthroughGroups(layout.root.toLayer(ctx))
       // A round Wear device screen is masked to the inscribed circle of the frame (the root node's
       // bounds) — content outside it (the corners, and any list item scrolled below the frame) is
@@ -440,6 +456,10 @@ data class FigmaSvgModel(
     private class BuildContext(
       val textByNodeId: Map<String, FigmaSvgText>,
       val colorNames: Map<String, String>,
+      /** Material role → `#AARRGGBB`, used to colour synthesised controls. Empty ⇒ no synthesis. */
+      val colorScheme: Map<String, String>,
+      /** Layout nodeId → captured control state, for the control-vectoriser. */
+      val controlByNodeId: Map<String, ComposeSemanticsControl>,
       val density: Float,
       val rasterComponents: Set<String>,
       val rasterHref: (String) -> String,
@@ -504,6 +524,26 @@ data class FigmaSvgModel(
           bottom = bounds.bottom,
           vector = vec,
         )
+      }
+      // A Material control drawn imperatively (Slider/progress/Checkbox/RadioButton) whose captured
+      // state we matched to this node is synthesised as editable vector geometry (track/thumb/tick/
+      // ring) instead of an opaque raster crop — placed before every raster branch so it pre-empts
+      // both the opaque-by-name (`Slider`) and the Canvas-draw background paths. Returns null (→
+      // the
+      // raster path runs unchanged) when the theme colours it needs are absent, so a capture with
+      // no
+      // colour scheme threaded never mis-colours a control; it just keeps the faithful crop.
+      ctx.controlByNodeId[nodeId]?.let { control ->
+        FigmaControlSynthesis.synthesize(
+            name = layerName(),
+            bounds = bounds,
+            state = control,
+            colors = { role -> ctx.colorScheme[role]?.let { argbToColor(it, ctx.colorNames) } },
+            density = ctx.density,
+          )
+          ?.let {
+            return it
+          }
       }
       // An opaque component matched by name (Image/Icon/TextField/…) can't be vectorised at all —
       // emit an <image> for the whole node and drop the subtree.
@@ -926,6 +966,69 @@ data class FigmaSvgModel(
       }
       walk(semantics.root)
       return textByNodeId
+    }
+
+    /**
+     * Per-edge slack (px) when matching a control's semantics node to its layout box. A shade more
+     * lenient than [BOUNDS_TOLERANCE_PX] (text): a control's merged interactive semantics box and
+     * the layout node it draws into are the same rect but rounded by two producers, and a 48dp
+     * touch target vs. its placed box can drift a pixel more than a tight `Text` leaf does.
+     */
+    private const val CONTROL_BOUNDS_TOLERANCE_PX: Int = 4
+
+    /**
+     * Assigns each control's captured [ComposeSemanticsControl] state to the single best-matching
+     * layout node (keyed by [LayoutInspectorNode.nodeId]), by bounds with
+     * [CONTROL_BOUNDS_TOLERANCE_PX] slack — the same closest-match scheme [assignTextToLayers] uses
+     * for text. The state lives on the semantics node the control merges into; the geometry lives
+     * on the layout node, so this bridges the two so [FigmaControlSynthesis] can draw the control's
+     * chrome on its real box. Each layout node keeps only its closest control, so nested boxes
+     * sharing bounds don't double-claim it.
+     */
+    private fun assignControlToLayers(
+      layoutRoot: LayoutInspectorNode,
+      semantics: ComposeSemanticsPayload,
+    ): Map<String, ComposeSemanticsControl> {
+      val candidates = mutableListOf<Pair<String, IntArray>>()
+      fun collect(n: LayoutInspectorNode) {
+        candidates.add(
+          n.nodeId to intArrayOf(n.bounds.left, n.bounds.top, n.bounds.right, n.bounds.bottom)
+        )
+        n.children.forEach(::collect)
+      }
+      collect(layoutRoot)
+
+      val controlByNodeId = HashMap<String, ComposeSemanticsControl>()
+      val bestDistForNode = HashMap<String, Int>()
+      fun walk(node: ComposeSemanticsNode) {
+        val control = node.control
+        val b = parseBoundsList(node.boundsInRoot)
+        if (control != null && b != null) {
+          var bestId: String? = null
+          var bestDist = Int.MAX_VALUE
+          for ((id, lb) in candidates) {
+            val d0 = abs(lb[0] - b[0])
+            val d1 = abs(lb[1] - b[1])
+            val d2 = abs(lb[2] - b[2])
+            val d3 = abs(lb[3] - b[3])
+            if (maxOf(d0, d1, d2, d3) <= CONTROL_BOUNDS_TOLERANCE_PX) {
+              val d = d0 + d1 + d2 + d3
+              if (d < bestDist) {
+                bestDist = d
+                bestId = id
+              }
+            }
+          }
+          val chosen = bestId
+          if (chosen != null && bestDist < (bestDistForNode[chosen] ?: Int.MAX_VALUE)) {
+            controlByNodeId[chosen] = control
+            bestDistForNode[chosen] = bestDist
+          }
+        }
+        node.children.forEach(::walk)
+      }
+      walk(semantics.root)
+      return controlByNodeId
     }
 
     private fun textFrom(

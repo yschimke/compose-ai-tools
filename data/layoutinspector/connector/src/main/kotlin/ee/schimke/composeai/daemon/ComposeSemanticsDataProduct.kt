@@ -8,11 +8,13 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.ModifierInfo
 import androidx.compose.ui.node.RootForTest
 import androidx.compose.ui.platform.InspectableValue
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsConfiguration
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
@@ -30,6 +32,7 @@ import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.daemon.protocol.RecordingProbeNode
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsControl
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorCurvedText
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorProduct
@@ -140,8 +143,39 @@ object ComposeSemanticsDataProducer {
         },
       clickable = cfg.getOrNull(SemanticsActions.OnClick) != null,
       tokens = resolvedTokens(density),
+      control = cfg.controlState(),
       children = children.map { it.toWireNode(density) },
     )
+  }
+
+  /**
+   * The state of a Material control this node draws imperatively — a `Slider` / determinate
+   * progress indicator's fill fraction (`ProgressBarRangeInfo`, `current` mapped through its
+   * `range`), a `Checkbox`'s toggle (`ToggleableState`), a `RadioButton`'s selected flag. The
+   * figma-svg export reads this to synthesise the control as editable vectors; the geometry-only
+   * layout tree can't see the imperative draw. Null when the node exposes none of them (the common
+   * case), or for an indeterminate indicator (no fraction to draw), so the export keeps its raster
+   * crop.
+   */
+  private fun SemanticsConfiguration.controlState(): ComposeSemanticsControl? {
+    val toggle =
+      getOrNull(SemanticsProperties.ToggleableState)?.let {
+        when (it) {
+          ToggleableState.On -> "on"
+          ToggleableState.Off -> "off"
+          ToggleableState.Indeterminate -> "indeterminate"
+        }
+      }
+    val selected = getOrNull(SemanticsProperties.Selected)
+    val progress =
+      getOrNull(SemanticsProperties.ProgressBarRangeInfo)
+        ?.takeIf { it != ProgressBarRangeInfo.Indeterminate }
+        ?.let { info ->
+          val span = info.range.endInclusive - info.range.start
+          if (span <= 0f) null else ((info.current - info.range.start) / span).coerceIn(0f, 1f)
+        }
+    return if (toggle == null && selected == null && progress == null) null
+    else ComposeSemanticsControl(toggle = toggle, selected = selected, progress = progress)
   }
 
   /**

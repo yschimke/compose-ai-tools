@@ -36,7 +36,13 @@ object ComposeSemanticsProduct {
   // px relative to the node's top-left) for wrapped text, so the figma-svg export places one run
   // per line at the render's break points instead of collapsing the string onto one baseline.
   // Additive; older entries decode with `lines = null` (single-line rendering).
-  const val SCHEMA_VERSION: Int = 8
+  // v9: each node may carry a `control` object — the *state* of a Material control drawn
+  // imperatively (a `Slider`'s value, a progress indicator's fraction, a `Checkbox`/`RadioButton`'s
+  // toggle/selected state) that the geometry-only layout tree can't see. Read from the node's
+  // `ProgressBarRangeInfo` / `ToggleableState` / `Selected` semantics, it lets the figma-svg export
+  // synthesise the track/thumb/tick/ring as editable vectors instead of an opaque raster crop.
+  // Additive; older entries decode with `control = null` (the raster-crop path).
+  const val SCHEMA_VERSION: Int = 9
   const val FILE: String = "compose-semantics.json"
 }
 
@@ -171,7 +177,43 @@ data class ComposeSemanticsNode(
    * that declares none of them (pure layout / text nodes).
    */
   val tokens: ComposeSemanticsTokens? = null,
+  /**
+   * State of a Material control this node draws imperatively (issue: vectorising slider / progress
+   * / selection controls). Its value/toggle/selected state lives in semantics, not in the modifier
+   * tokens or the layout geometry, so the figma-svg export reads it from here to synthesise the
+   * track/thumb/tick/ring as editable vectors instead of an opaque raster crop. Null for the common
+   * case of a node that is not a stateful control.
+   */
+  val control: ComposeSemanticsControl? = null,
   val children: List<ComposeSemanticsNode> = emptyList(),
+)
+
+/**
+ * The captured *state* of a Material control drawn imperatively (a `Slider`,
+ * `LinearProgressIndicator` / `CircularProgressIndicator`, `Checkbox`, or `RadioButton`). The
+ * layout tree carries the control's box geometry but not what it draws inside it — the drawing is a
+ * `Canvas`/`drawBehind` the token export can't read — so this rides on the semantics node the
+ * control merges into. Every field is optional: a control populates only the ones its semantics
+ * expose.
+ */
+@Serializable
+data class ComposeSemanticsControl(
+  /**
+   * Toggle state of a `Checkbox`/`TriStateCheckbox` (from `SemanticsProperties.ToggleableState`):
+   * `"on"`, `"off"`, or `"indeterminate"`. Null when the control is not toggleable.
+   */
+  val toggle: String? = null,
+  /**
+   * Selected state of a `RadioButton` (from `SemanticsProperties.Selected`). Null when the control
+   * carries no selected state.
+   */
+  val selected: Boolean? = null,
+  /**
+   * Normalised fill fraction in `0f..1f` for a value control — a `Slider`'s thumb position or a
+   * determinate progress indicator's progress — resolved from `ProgressBarRangeInfo` (`current`
+   * mapped through its `range`). Null for an indeterminate indicator or a non-value control.
+   */
+  val progress: Float? = null,
 )
 
 /**

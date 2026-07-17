@@ -677,6 +677,15 @@ class RenderEngine(
                 // sized its text — and the boxes measured around it — via Density(density,
                 // fontScale)).
                 fontScale = state.spec.fontScale ?: 1.0f,
+                // The render's resolved Material colour scheme (role → #AARRGGBB), so controls
+                // drawn
+                // imperatively (Slider/progress/Checkbox/RadioButton) synthesise as editable
+                // vectors
+                // in the render's own light/dark colours instead of an opaque raster crop. Empty
+                // when
+                // no theme was captured, which keeps those controls as crops.
+                colorScheme =
+                  state.themeFallbackCapture?.payload?.resolvedTokens?.colorScheme ?: emptyMap(),
                 // Hand the just-written frame PNG so opaque components (Image/Icon/Canvas/charts)
                 // export as `<image>` layers backed by a real background-free crop of the frame.
                 frameImage = state.outputFile,
