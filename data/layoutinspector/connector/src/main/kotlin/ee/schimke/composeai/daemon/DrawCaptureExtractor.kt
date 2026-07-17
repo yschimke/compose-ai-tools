@@ -162,25 +162,42 @@ internal object DrawCaptureExtractor {
     private fun solidColor(brush: Brush): Color =
       (brush as? SolidColor)?.value ?: throw UnsupportedOperationException("non-solid brush")
 
-    // Only a default stroke (butt cap, miter join, no path effect) maps cleanly to an SVG `<path>`.
-    // A round/square cap, a bevel/round join, or a dash effect would render as a *different* shape
-    // (a round-capped line paints longer, a dashed path becomes solid), so abort → raster crop.
-    private fun assertPlainStroke(cap: StrokeCap, join: StrokeJoin, effect: PathEffect?) {
-      if (cap != StrokeCap.Butt || join != StrokeJoin.Miter || effect != null) {
-        throw UnsupportedOperationException("unsupported stroke style")
+    /** SVG `stroke-linecap` for a non-default cap; null = butt (the SVG default). */
+    private fun capName(cap: StrokeCap): String? =
+      when (cap) {
+        StrokeCap.Round -> "round"
+        StrokeCap.Square -> "square"
+        else -> null
       }
+
+    /** SVG `stroke-linejoin` for a non-default join; null = miter (the SVG default). */
+    private fun joinName(join: StrokeJoin): String? =
+      when (join) {
+        StrokeJoin.Round -> "round"
+        StrokeJoin.Bevel -> "bevel"
+        else -> null
+      }
+
+    // A dashed stroke (a `PathEffect`) can't be reproduced from the opaque effect object, so it
+    // aborts the whole capture → raster crop. Cap and join, by contrast, map straight to SVG
+    // `stroke-linecap` / `stroke-linejoin`, so they're carried through (an M3 checkmark / progress
+    // arc strokes with a round cap — dropping it would paint a visibly shorter, different shape).
+    private fun assertNoPathEffect(effect: PathEffect?) {
+      if (effect != null) throw UnsupportedOperationException("dashed stroke not captured")
     }
 
     private fun add(d: String, color: Color, style: DrawStyle, alpha: Float) {
       val hex = argb(color)
       if (style is Stroke) {
-        assertPlainStroke(style.cap, style.join, style.pathEffect)
+        assertNoPathEffect(style.pathEffect)
         paths.add(
           LayoutInspectorVectorPath(
             pathData = d,
             strokeArgb = hex,
             strokeWidth = style.width,
             strokeAlpha = alpha,
+            strokeCap = capName(style.cap),
+            strokeJoin = joinName(style.join),
           )
         )
       } else {
@@ -423,7 +440,7 @@ internal object DrawCaptureExtractor {
       colorFilter: ColorFilter?,
       blendMode: androidx.compose.ui.graphics.BlendMode,
     ) {
-      assertPlainStroke(cap, StrokeJoin.Miter, pathEffect)
+      assertNoPathEffect(pathEffect)
       val d = "M${fmt(start.x)},${fmt(start.y)} L${fmt(end.x)},${fmt(end.y)}"
       paths.add(
         LayoutInspectorVectorPath(
@@ -431,6 +448,7 @@ internal object DrawCaptureExtractor {
           strokeArgb = argb(color),
           strokeWidth = strokeWidth,
           strokeAlpha = alpha,
+          strokeCap = capName(cap),
         )
       )
     }
@@ -447,7 +465,7 @@ internal object DrawCaptureExtractor {
       blendMode: androidx.compose.ui.graphics.BlendMode,
     ) {
       val color = solidColor(brush)
-      assertPlainStroke(cap, StrokeJoin.Miter, pathEffect)
+      assertNoPathEffect(pathEffect)
       val d = "M${fmt(start.x)},${fmt(start.y)} L${fmt(end.x)},${fmt(end.y)}"
       paths.add(
         LayoutInspectorVectorPath(
@@ -455,6 +473,7 @@ internal object DrawCaptureExtractor {
           strokeArgb = argb(color),
           strokeWidth = strokeWidth,
           strokeAlpha = alpha,
+          strokeCap = capName(cap),
         )
       )
     }

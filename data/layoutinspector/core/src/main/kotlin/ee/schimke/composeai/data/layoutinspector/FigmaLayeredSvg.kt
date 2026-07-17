@@ -299,7 +299,9 @@ object FigmaLayeredSvg {
     val stroke =
       if (p.strokeArgb != null && p.strokeWidth > 0f) {
         paintAttr("stroke", p.strokeArgb, p.strokeAlpha)?.let {
-          """ $it stroke-width="${fmt(p.strokeWidth.toDouble())}""""
+          val cap = p.strokeCap?.let { c -> """ stroke-linecap="$c"""" } ?: ""
+          val join = p.strokeJoin?.let { j -> """ stroke-linejoin="$j"""" } ?: ""
+          """ $it stroke-width="${fmt(p.strokeWidth.toDouble())}"$cap$join"""
         } ?: ""
       } else ""
     return """<path d="${escapeAttr(p.pathData)}" $fill$fillRule$stroke/>"""

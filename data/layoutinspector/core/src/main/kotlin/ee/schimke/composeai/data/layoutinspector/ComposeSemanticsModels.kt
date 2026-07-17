@@ -60,7 +60,11 @@ object LayoutInspectorProduct {
   // figma-svg layer label so an internal `Box`/`Row` reads as the `Button`/`IconButton` that owns
   // it, while `component` stays the node's own identity for raster/curved matching. Additive —
   // older entries parse with `displayName = null` and fall back to `component`.
-  const val SCHEMA_VERSION: Int = 5
+  // v6: each node may carry a `vectorGraphic` — editable `<path>`s captured either from an
+  // `Icon`/`Image`'s `ImageVector` or (draw-capture) from a control's imperative draw lambda; its
+  // paths may carry `strokeCap` / `strokeJoin` (SVG linecap/linejoin) for round-capped chrome.
+  // Additive — older entries parse with `vectorGraphic = null` and paths with butt/miter defaults.
+  const val SCHEMA_VERSION: Int = 6
   const val FILE: String = "layout-inspector.json"
 }
 
@@ -445,6 +449,14 @@ data class LayoutInspectorVectorPath(
   val strokeWidth: Float = 0f,
   /** Extra stroke alpha (`strokeAlpha`, 0..1) multiplied onto [strokeArgb]'s own alpha. */
   val strokeAlpha: Float = 1f,
+  /**
+   * SVG `stroke-linecap` (`"round"`/`"square"`) for a non-default cap; null = butt (the default).
+   */
+  val strokeCap: String? = null,
+  /**
+   * SVG `stroke-linejoin` (`"round"`/`"bevel"`) for a non-default join; null = miter (the default).
+   */
+  val strokeJoin: String? = null,
   /** True when the fill uses the even-odd winding rule (SVG `fill-rule="evenodd"`). */
   val evenOdd: Boolean = false,
 )
