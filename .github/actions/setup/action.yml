@@ -17,18 +17,6 @@ inputs:
       avoids cache poisoning from untrusted PR runs reading those entries
       on subsequent workflow invocations. (zizmor: cache-poisoning)
     default: 'false'
-  buildfetch-rw-token:
-    description: >
-      BuildFetch cache:readwrite token. Exported (and cache writes enabled via
-      ON_CI=true) only on trusted main-branch push builds. Never exposed to PR
-      runs, so a write-capable token can't leak from a fork/branch PR job.
-    default: ''
-  buildfetch-ro-token:
-    description: >
-      BuildFetch cache:readonly token. Exported for read-only cache access on
-      PRs and other non-push events. Optional — when unset those builds simply
-      fall back to the local build cache.
-    default: ''
 
 runs:
   using: 'composite'
@@ -41,33 +29,3 @@ runs:
       with:
         cache-provider: ${{ inputs.cache-provider }}
         cache-read-only: ${{ inputs.cache-read-only }}
-    # Select the BuildFetch remote-cache credential for the current event and
-    # export it (plus ON_CI) to the job env, where settings.gradle.kts reads it.
-    # Writes are confined to trusted main-branch push builds (readwrite token +
-    # ON_CI=true); PRs and other events get read-only access with the readonly
-    # token, if one is provided. The readwrite token is never placed in a PR
-    # job's environment. GitHub masks both secrets in logs.
-    - name: Configure BuildFetch remote cache
-      shell: bash
-      env:
-        EVENT_NAME: ${{ github.event_name }}
-        RW_TOKEN: ${{ inputs.buildfetch-rw-token }}
-        RO_TOKEN: ${{ inputs.buildfetch-ro-token }}
-      run: |
-        if [ "$EVENT_NAME" = "push" ]; then
-          if [ -n "$RW_TOKEN" ]; then
-            printf 'BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN=%s\n' "$RW_TOKEN" >> "$GITHUB_ENV"
-            echo "ON_CI=true" >> "$GITHUB_ENV"
-            echo "BuildFetch remote cache: read/write (trusted push build)."
-          else
-            echo "BuildFetch remote cache: disabled (no readwrite token provided)."
-          fi
-        else
-          if [ -n "$RO_TOKEN" ]; then
-            printf 'BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN=%s\n' "$RO_TOKEN" >> "$GITHUB_ENV"
-            echo "ON_CI=false" >> "$GITHUB_ENV"
-            echo "BuildFetch remote cache: read-only."
-          else
-            echo "BuildFetch remote cache: disabled (no readonly token provided)."
-          fi
-        fi
