@@ -317,6 +317,24 @@ mcp/
         └── RealMcpEndToEndTest.kt     # opt-in real-daemon JUnit (use -Pmcp.real=true)
 ```
 
+## Storybook-compatible tools
+
+The server also exposes a handful of aliases named after Storybook's official MCP server (GA in
+Storybook 10.3), so an agent harness that has learned the Storybook-MCP vocabulary drives this server
+unmodified. They address a preview by a **story id** (minted CSF-style, `title--name`) instead of a
+`compose-preview://` URI, and route to the native handlers via the `StorybookMcp` adapter (a raw
+native URI is still accepted):
+
+| Storybook tool | Maps to | Returns |
+|---|---|---|
+| `list-all-documentation` | the resource catalog | every preview as a Storybook story (`id`, `title`, `name`, `importPath`, native `uri`) |
+| `get-documentation-for-story` | catalog lookup | one story's metadata + native `uri`/coords |
+| `preview-stories` | `render_preview` | the rendered image(s); `observe` + `overrides` pass through |
+| `run-story-tests` | `enable_extensions(a11y)` + `get_preview_data(a11y/atf)` | the accessibility (ATF) findings |
+
+Deferred for now: `get-changed-stories` (composable from `history_list`/`history_diff`) and
+`get-storybook-story-instructions`.
+
 ## See also
 
 - [`docs/daemon/MCP.md`](../docs/daemon/MCP.md) — protocol-level design
