@@ -822,15 +822,18 @@ internal object ComposeLayoutInspector {
     // the capture to `size` would place the drawn chrome in a 48dp viewport that the export then
     // shrinks onto the ~20dp box — the radio ring came out ~0.4× too small.
     val placedBounds = coordinates.boundsIn(rootCoords)
+    val boundsW = placedBounds.right - placedBounds.left
+    val boundsH = placedBounds.bottom - placedBounds.top
+    // A detached / not-yet-placed node reports `(0,0,0,0)` bounds; `FigmaSvgModel.toLayer` recovers
+    // those from the measured `size` (and places the vector against the recovered box), so fall
+    // back
+    // to `size` here when bounds are zero-area — otherwise a zero-sized viewport drops the chrome.
+    val captureW = if (boundsW > 0) boundsW else width
+    val captureH = if (boundsH > 0) boundsH else height
     val vectorGraphic =
       VectorGraphicExtractor.extract(this)
         ?: if (children.isEmpty())
-          DrawCaptureExtractor.extract(
-            modifiers,
-            placedBounds.right - placedBounds.left,
-            placedBounds.bottom - placedBounds.top,
-            density,
-          )
+          DrawCaptureExtractor.extract(modifiers, captureW, captureH, density)
         else null
     return LayoutInspectorNode(
       nodeId = semanticsId?.toString() ?: identityId,
