@@ -343,11 +343,15 @@ in remote-URL mode) can crawl a compose-preview `serve` with **no compose-specif
   embedding the freshly-rendered PNG (a `data:` URI on a white ground), which is exactly what a
   screenshot tool captures. Accepts the same override query params as `/render` (e.g. `&uiMode=dark`),
   and also accepts a raw native preview id as `id=` for hand-authored deep links.
-  - `&format=svg` inlines the figma-svg export **as `<svg>` markup** instead of a raster `<img>`.
-    That's real, resolution-independent, self-contained (embedded-font) DOM, so the **DOM-capture**
-    visual tools (Percy, Chromatic, Applitools) — which serialize the page's DOM and re-render it in
-    their own cloud browsers — have something faithful to work with, not an opaque bitmap. SVG is
-    produced by a daemon-backed session only, so a static bundle 404s this lane (like `/render.svg`).
+  - `&format=svg` serves the figma-svg export as an **inert `<img src="data:image/svg+xml">`**
+    instead of the raster PNG. That's a still-**vector**, resolution-independent render, so the
+    **DOM-capture** visual tools (Percy, Chromatic, Applitools) — which serialize the page and
+    re-render it in their own cloud browsers — get faithful vector output, not a fixed-resolution
+    bitmap. It's an `<img>` (not inline `<svg>`) on purpose: a serve host can return an *unverified*
+    catalog's repo-controlled SVG, and SVG referenced through `<img>` is processed in the browser's
+    restricted, non-scripting mode — so untrusted bytes can't execute, here or in the downstream
+    tool's browser. SVG is produced by a daemon-backed session only, so a static bundle 404s this
+    lane (like `/render.svg`).
 
 Both come in the `?session=` and path (`/{system}/index.json`, `/{system}/iframe.html`) forms like the
 rest, and follow the same token gate: open in `--public` mode, otherwise `?token=` is required (pass it

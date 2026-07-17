@@ -127,20 +127,20 @@ class StorybookCompatTest {
   }
 
   @Test
-  fun `iframe svg page inlines the svg markup as real dom and strips the xml prolog`() {
+  fun `iframe svg page embeds the vector as an inert svg image not inline markup`() {
+    // A hostile SVG (e.g. from an unverified catalog) must not run when the page is opened. Serving
+    // it via <img src=data:image/svg+xml> keeps it in the browser's restricted (non-scripting)
+    // mode.
     val svg =
-      "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+      "<?xml version=\"1.0\"?>\n" +
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"4\">" +
-        "<rect width=\"10\" height=\"4\"/></svg>"
+        "<script>alert(1)</script><rect width=\"10\" height=\"4\"/></svg>"
     val page = StorybookCompat.iframeSvgPage("main--greeting", svg.toByteArray())
     assertTrue(page.startsWith("<!doctype html>"), "is an html document")
-    assertTrue(
-      page.contains("<svg xmlns=\"http://www.w3.org/2000/svg\""),
-      "inlines the svg root as markup: $page",
-    )
-    assertTrue(!page.contains("<?xml"), "strips the xml prolog: $page")
-    // Inline DOM, not an opaque image element — that's the whole point for DOM-capture tools.
-    assertTrue(!page.contains("data:image"), "not embedded as an image: $page")
+    assertTrue(page.contains("src=\"data:image/svg+xml;base64,"), "embeds as an svg image: $page")
+    // The raw SVG (and any embedded <script>) is base64'd inside the data URI — never live markup.
+    assertTrue(!page.contains("<svg"), "no inline svg markup in the document: $page")
+    assertTrue(!page.contains("<script>alert"), "no live script from the svg: $page")
     assertTrue(page.contains("main--greeting"), "labels with the story id")
   }
 }

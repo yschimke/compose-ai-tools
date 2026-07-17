@@ -54,7 +54,7 @@ import kotlinx.serialization.json.Json
  * - `GET /` landing page, `GET /p/{id}` viewer page,
  * - `GET /render/{id}.png` PNG bytes, `GET /api/previews` JSON, `GET /healthz` liveness,
  * - `GET /index.json` Storybook stories index, `GET /iframe.html?id=` isolated story render
- *   (`&format=svg` inlines the vector export as real DOM for DOM-capture tools),
+ *   (`&format=svg` serves the vector export as an inert SVG image for DOM-capture tools),
  *   ([StorybookCompat]) — the drop-in surface downstream Storybook visual tools consume,
  * - `GET /version` host identity (CLI version, serve schema, public flag),
  * - `GET /bundle.zip` portable bundle, `WS /ws/{id}` streamed-frame lane.
@@ -514,11 +514,12 @@ class ServeHttpServer(
    * `GET /iframe.html?id=<storyId>` (query) and `GET /{system}/iframe.html?id=<storyId>` (path):
    * render one story in isolation. Answers with a chrome-free HTML page embedding the freshly-
    * rendered preview — a raster PNG `data:` URI by default ([StorybookCompat.iframePage]), or with
-   * `&format=svg` the figma-svg export inlined **as `<svg>` markup**
-   * ([StorybookCompat.iframeSvgPage]) so DOM-serializing visual tools (Percy/Chromatic/Applitools)
-   * have real DOM to re-render. SVG is daemon-only, so a static bundle 404s that lane. Honours the
-   * same override query params as `/render` (e.g. `&uiMode=dark`), and load-sheds through the
-   * shared render semaphore.
+   * `&format=svg` the figma-svg export as an **inert `<img src="data:image/svg+xml">`**
+   * ([StorybookCompat.iframeSvgPage]): a still-vector, resolution-independent render for
+   * DOM-capture visual tools (Percy/Chromatic/Applitools), kept in the browser's non-scripting
+   * `<img>` mode so an unverified catalog's untrusted SVG can't execute. SVG is daemon-only, so a
+   * static bundle 404s that lane. Honours the same override query params as `/render` (e.g.
+   * `&uiMode=dark`), and load-sheds through the shared render semaphore.
    */
   private suspend fun RoutingContext.handleStorybookIframe(sessionInPath: Boolean) {
     if (rejectBadToken()) return
@@ -549,8 +550,9 @@ class ServeHttpServer(
           .toMap()
       val knobKinds =
         ServeOverrides.declaredKnobKinds(renderHost.previews.firstOrNull { it.id == previewId })
-      // `?format=svg` inlines the figma-svg export as real DOM (for DOM-capture visual tools);
-      // default (png) inlines the raster. SVG is daemon-only, so a static bundle 404s it.
+      // `?format=svg` serves the figma-svg export as an inert svg <img> (vector, for DOM-capture
+      // visual tools); default (png) inlines the raster. SVG is daemon-only, so a static bundle
+      // 404s.
       val wantSvg = call.request.queryParameters["format"]?.lowercase() == "svg"
       when (val parsed = ServeOverrides.parse(overrideParams, knobKinds)) {
         is OverrideParse.Invalid ->
@@ -601,8 +603,9 @@ class ServeHttpServer(
   }
 
   /**
-   * SVG lane of [handleStorybookIframe]: render the figma-svg export and inline it as markup — real
-   * DOM for DOM-capture visual tools. Daemon-only, so a static bundle host 404s (like
+   * SVG lane of [handleStorybookIframe]: render the figma-svg export and serve it as an inert svg
+   * `<img>` — a vector render for DOM-capture visual tools, safe even for an untrusted catalog's
+   * SVG (see [StorybookCompat.iframeSvgPage]). Daemon-only, so a static bundle host 404s (like
    * `/render.svg`).
    */
   private suspend fun RoutingContext.storybookIframeSvg(

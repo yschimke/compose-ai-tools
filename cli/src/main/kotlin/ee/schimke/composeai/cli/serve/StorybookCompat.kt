@@ -161,38 +161,33 @@ object StorybookCompat {
 
   /**
    * The SVG isolation page for `iframe.html?id=<storyId>&format=svg`: the figma-svg export
-   * ([svgBytes] from `/render/<id>.svg`) inlined **as markup** into the document body. Unlike the
-   * PNG page (an opaque `<img>`), an inline `<svg>` is real, browser-native DOM — the
-   * resolution-independent, self-contained (embedded-font) content that DOM-serializing visual
-   * tools (Percy, Chromatic, Applitools) re-render in their own cloud browsers. Any XML prolog /
-   * doctype is stripped so the `<svg>` element drops straight into HTML5. [storyId] is HTML-escaped
-   * into the title.
+   * ([svgBytes] from `/render/<id>.svg`) embedded as an **`<img>` with a `data:image/svg+xml` URI**
+   * — a still-**vector**, resolution-independent render that the DOM-serializing visual tools
+   * (Percy, Chromatic, Applitools) re-render in their own cloud browsers, unlike the
+   * fixed-resolution raster PNG page.
+   *
+   * **Deliberately an `<img>`, not inline `<svg>` markup** (security): a serve host can hand back
+   * the `figma/<slug>.svg` bytes of an *unverified* catalog (repo-controlled, unsanitised —
+   * `ServeCatalogStore.fetchFigmaSvgs`). Inlining that as markup into a same-origin document would
+   * let a hostile SVG run `<script>` / `on*` handlers. SVG referenced through `<img>` is processed
+   * in the browser's restricted mode — no script execution, no external fetches, everywhere
+   * including the downstream tool's browser — so untrusted bytes are inert while still rendering as
+   * vector. The bytes are base64'd verbatim (no need to strip the XML prolog for a data URI).
+   * [storyId] is HTML-escaped into the title/alt.
    */
   fun iframeSvgPage(storyId: String, svgBytes: ByteArray): String {
-    val svg = stripXmlProlog(svgBytes.toString(Charsets.UTF_8))
+    val b64 = Base64.getEncoder().encodeToString(svgBytes)
     val esc = WebEscaping.htmlEscape(storyId)
     return buildString {
       append("<!doctype html>\n")
       append("<html><head><meta charset=\"utf-8\">\n")
       append("<title>").append(esc).append(" · compose-preview</title>\n")
-      append("<style>html,body{margin:0;padding:0;background:#fff}svg{display:block}</style>\n")
+      append("<style>html,body{margin:0;padding:0;background:#fff}img{display:block}</style>\n")
       append("</head><body>\n")
-      append(svg)
-      append("\n</body></html>\n")
+      append("<img alt=\"").append(esc).append("\" src=\"data:image/svg+xml;base64,")
+      append(b64).append("\">\n")
+      append("</body></html>\n")
     }
-  }
-
-  /**
-   * Drop a leading `<?xml …?>` declaration and `<!DOCTYPE …>` from an SVG document so its `<svg>`
-   * root can be inlined directly into an HTML5 body (HTML5 has no place for an XML prolog).
-   */
-  private fun stripXmlProlog(svg: String): String {
-    var s = svg.trimStart()
-    if (s.startsWith("<?xml")) s = s.substringAfter("?>").trimStart()
-    if (s.startsWith("<!DOCTYPE", ignoreCase = true) || s.startsWith("<!doctype")) {
-      s = s.substringAfter(">").trimStart()
-    }
-    return s
   }
 
   /**
