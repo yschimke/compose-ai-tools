@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.16.53](https://github.com/yschimke/compose-ai-tools/compare/v0.16.52...v0.16.53) (2026-07-17)
+
+
+### Features
+
+* **compare:** add override controls to the PNG-vs-SVG compare page ([#2518](https://github.com/yschimke/compose-ai-tools/issues/2518)) ([ead0f82](https://github.com/yschimke/compose-ai-tools/commit/ead0f82eff5125e26f55877edf239936e4954e5d))
+* **mcp:** Storybook-compatible MCP profile (--storybook) ([#2517](https://github.com/yschimke/compose-ai-tools/issues/2517)) ([975d356](https://github.com/yschimke/compose-ai-tools/commit/975d3568fd4b10302cbb434dd52c22510be1e71f))
+
+
+### Bug Fixes
+
+* **figma-svg:** apply the render's font scale to exported text ([#2520](https://github.com/yschimke/compose-ai-tools/issues/2520)) ([5a95cd5](https://github.com/yschimke/compose-ai-tools/commit/5a95cd5dd2c5c53d15de4d977de21b1346316e82))
+* **figma-svg:** keep Wear scaling-list card labels as editable text ([#2514](https://github.com/yschimke/compose-ai-tools/issues/2514)) ([f2db7f2](https://github.com/yschimke/compose-ai-tools/commit/f2db7f24b9d9e41b2baae1249f148e2157b11e83))
+* **figma-svg:** round vectorized Wear scaling-card corners + small cleanups ([#2516](https://github.com/yschimke/compose-ai-tools/issues/2516)) ([ad1fc10](https://github.com/yschimke/compose-ai-tools/commit/ad1fc10acb2f6b56803ae51f4d543e5e93013320))
+* **serve:** surface the live lane's original failure instead of a bare input error ([#2515](https://github.com/yschimke/compose-ai-tools/issues/2515)) ([6477b07](https://github.com/yschimke/compose-ai-tools/commit/6477b074ced55b03a6be43856878634aa9d970e8))
+
 ## [0.16.52](https://github.com/yschimke/compose-ai-tools/compare/v0.16.51...v0.16.52) (2026-07-16)
 
 
