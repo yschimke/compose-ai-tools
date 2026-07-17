@@ -148,6 +148,19 @@ async function main() {
     console.warn(`[code-connect] "${a.name}" matched ${a.ids.length} nodes; using ${a.ids[0]}`);
   }
 
+  // Nothing resolved ⇒ every layer name was absent (wrong file, or the board's frames were renamed).
+  // A `send_code_connect_mappings` payload needs at least one real node id — the top-level `nodeId` is
+  // required — so writing one with an empty anchor + no mappings would be a success-looking invalid
+  // artifact. Fail loudly instead of emitting it.
+  if (resolved.length === 0) {
+    console.error(
+      `[code-connect] resolved 0/${manifest.mappings?.length ?? 0} mapping(s) in file ${fileKey} — ` +
+        "no layer names matched. Check the file is the imported catalog and its frames are named by " +
+        "componentId. Nothing written.",
+    );
+    process.exit(1);
+  }
+
   const payload = toSendMappingsPayload(fileKey, resolved);
   const json = `${JSON.stringify(payload, null, 2)}\n`;
   if (values.out) {
