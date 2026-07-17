@@ -129,6 +129,42 @@ test("buildCodeConnectManifest: explicit spec component wins over an inferred ta
   assert.equal(m.source, "https://github.com/o/r/blob/main/ui/src/Button.kt");
 });
 
+test("explicit component without a source does NOT inherit a rejected inference's file", () => {
+  const manifest = buildCodeConnectManifest({
+    components: [{ componentId: "Btn/Primary" }],
+    fnByComponentId: new Map([["Btn/Primary", "BtnPrimaryPreview"]]),
+    // Author pins the component to override the inference, but supplies no explicit source.
+    componentByComponentId: new Map([["Btn/Primary", { component: "PrimaryButton" }]]),
+    // The inference guessed a DIFFERENT composable — its file must not be linked.
+    targetByFn: new Map([
+      ["BtnPrimaryPreview", { functionName: "WrongGuess", sourceFile: "src/WrongGuess.kt", confidence: "LOW" }],
+    ]),
+    // The preview's own file is the honest fallback.
+    sourceByFn: new Map([["BtnPrimaryPreview", { sourceFile: "src/BtnPreviews.kt" }]]),
+    slug,
+    figmaSvgSlugs: new Set(),
+    source: { repo: "o/r", ref: "main", module: ":ui" },
+  });
+  const m = manifest.mappings[0];
+  assert.equal(m.componentName, "PrimaryButton");
+  // Falls back to the preview's file, NOT src/WrongGuess.kt.
+  assert.equal(m.source, "https://github.com/o/r/blob/main/ui/src/BtnPreviews.kt");
+});
+
+test("explicit component reuses the inferred file only when the inference matches it", () => {
+  const manifest = buildCodeConnectManifest({
+    components: [{ componentId: "Fab/Default" }],
+    fnByComponentId: new Map([["Fab/Default", "FabPreview"]]),
+    componentByComponentId: new Map([["Fab/Default", { component: "Fab" }]]),
+    // Inference agrees with the explicit component ⇒ its source file is trustworthy.
+    targetByFn: new Map([["FabPreview", { functionName: "Fab", sourceFile: "src/Fab.kt", confidence: "HIGH" }]]),
+    slug,
+    figmaSvgSlugs: new Set(),
+    source: { repo: "o/r", ref: "main", module: ":ui" },
+  });
+  assert.equal(manifest.mappings[0].source, "https://github.com/o/r/blob/main/ui/src/Fab.kt");
+});
+
 test("buildCodeConnectManifest skips components with no preview function (nothing to bind)", () => {
   const manifest = buildCodeConnectManifest({
     components: [{ componentId: "Known/One" }, { componentId: "Orphan/Two" }],

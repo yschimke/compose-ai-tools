@@ -101,7 +101,15 @@ export function buildCodeConnectManifest({
     let confidence;
     if (explicit?.component) {
       componentName = explicit.component;
-      sourceFile = explicit.source ?? target?.sourceFile ?? sourceByFn?.get(fn)?.sourceFile;
+      // Don't inherit the inferred target's file for an explicit component — the explicit override is
+      // often there precisely to reject a wrong inference, so its sourceFile would point at the wrong
+      // composable. Reuse it only when the inferred function IS the explicit component; otherwise use
+      // the authored `source`, then the preview's own file, then (via resolveSource) the module.
+      const inferredMatches = target?.functionName === explicit.component;
+      sourceFile =
+        explicit.source ??
+        (inferredMatches ? target?.sourceFile : undefined) ??
+        sourceByFn?.get(fn)?.sourceFile;
       confidence = "explicit";
     } else if (target?.functionName) {
       componentName = target.functionName;
