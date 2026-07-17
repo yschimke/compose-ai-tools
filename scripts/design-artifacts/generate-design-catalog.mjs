@@ -53,6 +53,7 @@ import {
   figmaSvgByFunction,
   rewriteRasterHrefs,
 } from "./figma-svg-emit.mjs";
+import { buildCodeConnectManifest } from "./figma-code-connect-emit.mjs";
 import { renderWireframeSvg, slug } from "./render-wireframe-svg.mjs";
 import { renderLayoutWireframeSvg } from "./render-layout-wireframe-svg.mjs";
 import { DEFAULT_PREVIEW_BASE, livePreviewUrl } from "./live-preview.mjs";
@@ -161,6 +162,25 @@ function layoutByFunction(bundle) {
   return out;
 }
 
+
+/**
+ * Build a `functionName → { sourceFile }` lookup from the bundle's previews, so a Code Connect
+ * mapping can point at the exact `@Preview` source file rather than the bare module. `sourceFile`
+ * (module-root-relative) is carried per preview when discovery recorded it; prefer the light variant
+ * for a deterministic pick, and fall through to `undefined` when no variant carried a path (the
+ * mapping then falls back to the module directory).
+ */
+function sourceByFunction(bundle) {
+  const out = new Map();
+  const prefer = (id) => /(_|\b)light$/i.test(id);
+  for (const preview of bundle.previews ?? []) {
+    const fn = preview.functionName ?? preview.id;
+    if (out.has(fn) && !prefer(preview.id)) continue;
+    if (preview.sourceFile) out.set(fn, { sourceFile: preview.sourceFile });
+    else if (!out.has(fn)) out.set(fn, { sourceFile: undefined });
+  }
+  return out;
+}
 
 /** Drop `widthDp`/`heightDp` when serialized as JSON null so the published
  *  normalizeSize doesn't `.trim()` a null. */
@@ -640,6 +660,37 @@ for (const component of catalog.components) {
   figmaSvgSlugs.add(componentSlug);
   figmaSvgCount += 1;
 }
+
+// Figma Code Connect manifest next to the figma-svg vectors: one mapping per component binding its
+// Figma layer (by componentId) to the `@Preview` function that renders it, plus the repo source. It
+// carries everything `send_code_connect_mappings` needs except the node id, which only exists once a
+// designer imports the catalog — `publish-code-connect.mjs` resolves layer-name → node id against
+// the imported file and produces the send payload. Emitting the manifest is plan-agnostic; only
+// publishing needs an Org/Enterprise Dev/Full seat. Written for every catalog so the surface is
+// covered automatically.
+const codeConnect = buildCodeConnectManifest({
+  components: catalog.components,
+  fnByComponentId,
+  slug,
+  figmaSvgSlugs,
+  sourceByFn: sourceByFunction(bundle),
+  system: spec.system,
+  title: spec.title,
+  source: {
+    repo: values["source-repo"],
+    ref: values["source-ref"],
+    module: values["source-module"],
+  },
+  generatedAt: new Date().toISOString(),
+});
+await writeFile(
+  join(outPath, "code-connect.json"),
+  `${JSON.stringify(codeConnect, null, 2)}\n`,
+  "utf8",
+);
+console.log(
+  `[${spec.system}] code-connect → ${codeConnect.mappings.length} mapping(s) (code-connect.json)`,
+);
 
 // Browsable index next to catalog.json + images/ — a designer can open this
 // straight from the branch to skim every component (its a11y greenlines and the

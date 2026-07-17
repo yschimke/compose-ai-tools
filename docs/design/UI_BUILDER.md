@@ -267,7 +267,7 @@ Figma MCP server — real Compose, mapped to the assembled nodes.
 |---|---|---|---|
 | **1** | `PreviewSlot`-ify the scaffold templates (Gap 1). | days | "Pick a scaffold, fill its slots" through the existing plugin flow — no new UI. |
 | **2** | `screen.json` schema + `POST/GET /screens/<name>` on `compose-preview serve`; figma-plugin reads a saved composition (Gap 2). | 1–2 wks | Surface (c): compositions are saved, shared, referenced, rendered as a whole, inserted into Figma. Durable beyond one canvas. |
-| **3** | Stamp stable `ref` onto figma-svg groups (Gap 3); emit **Code Connect** mappings. | ~1 wk | Lossless composition ↔ Figma-node round-trip; screens surface in Dev Mode / MCP. |
+| **3** | Stamp stable `ref` onto figma-svg groups (Gap 3); ~~emit **Code Connect** mappings~~ **done** — the catalog export writes `code-connect.json` per component ([scripts/design-artifacts/docs/code-connect.md](../../scripts/design-artifacts/docs/code-connect.md)); `publish-code-connect.mjs` resolves node ids + emits the `send_code_connect_mappings` payload. | ~1 wk | Lossless composition ↔ Figma-node round-trip; screens surface in Dev Mode / MCP. |
 | **4** | `screen.json` → real `Scaffold(...)` Compose codegen (Gap 4). | 2–3 wks | The dream: assembled screen → idiomatic Compose using real slots. |
 
 **Interop, not reinvention, at the edges:** keep emitting **DTCG tokens**
