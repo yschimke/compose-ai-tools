@@ -36,7 +36,10 @@ import kotlin.math.sin
  * bar/arc, a `Checkbox` box+tick, a `RadioButton` ring+dot) by re-invoking its draw lambda against
  * a recording [DrawScope] and translating the primitive calls into editable SVG `<path>`s — the
  * same [LayoutInspectorVectorGraphic] an `Icon`'s `ImageVector` produces, so it rides the existing
- * vector-export pipeline instead of the opaque raster crop.
+ * vector-export pipeline instead of the opaque raster crop. (An `ImageVector` icon can't use this
+ * recorder — a `VectorPainter` draws through a cached `GraphicsLayer` a recording scope can't see
+ * into — so `VectorGraphicExtractor` reflects that geometry instead; the two are separate on
+ * purpose.)
  *
  * The draw lambda is read from the draw modifier the same way the token resolver reads container
  * tokens: preferring the modifier's [InspectableValue] projection (`properties["onDraw"]`, the
