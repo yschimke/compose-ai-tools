@@ -2066,7 +2066,16 @@ private fun handleAnimatedCapture(
     }.coerceAtLeast(frameIntervalMs)
   val totalFrames = (effectiveDurationMs / frameIntervalMs).coerceAtLeast(1)
 
-  val curveTracksByLabel = linkedMapOf<String, MutableList<Pair<Long, Any?>>>()
+  // Curve series keyed by (tracked-animation identity, sample index) rather than
+  // by display label. AnimatedContent composes its outgoing and incoming slots at
+  // the same time, and the tooling exposes each slot's alpha under an identical
+  // label ("Built-in alpha", "enter/exit for … alpha"); keying by label alone
+  // collapsed the two mirror-image values (one slot 1→0, the other 0→1) into a
+  // single zig-zag series. Identity + sample index is stable across frames, so
+  // the slots stay separate, smooth lines. Base labels shared by more than one
+  // series are suffixed "(1)", "(2)", … when the panel is built.
+  val curveSamplesByKey = linkedMapOf<Pair<Int, Int>, MutableList<Pair<Long, Any?>>>()
+  val curveBaseLabelByKey = linkedMapOf<Pair<Int, Int>, String>()
   val frameTimes = mutableListOf<Long>()
 
   fun captureFrame(virtualTimeMs: Long) {
@@ -2085,9 +2094,10 @@ private fun handleAnimatedCapture(
       // animation was first registered.
       inspector.setClockTime(virtualTimeMs)
       inspector.snapshot().forEach { tracked ->
-        tracked.samples.forEach { sample ->
-          val key = "${tracked.label} · ${sample.label}"
-          curveTracksByLabel.getOrPut(key) { mutableListOf() }.add(virtualTimeMs to sample.value)
+        tracked.samples.forEachIndexed { sampleIndex, sample ->
+          val key = tracked.animationId to sampleIndex
+          curveBaseLabelByKey.getOrPut(key) { "${tracked.label} · ${sample.label}" }
+          curveSamplesByKey.getOrPut(key) { mutableListOf() }.add(virtualTimeMs to sample.value)
         }
       }
     }
@@ -2117,9 +2127,26 @@ private fun handleAnimatedCapture(
     // information. Filtering by "values change" is more principled
     // than maintaining a denylist of internal labels — if a track
     // genuinely doesn't move, it's not interesting to plot.
+    // Turn each series into a Track. When two or more series share a base label
+    // (AnimatedContent's concurrent slots), suffix them "(1)", "(2)", … in
+    // first-seen order so the panel shows separate labelled lines rather than one
+    // merged zig-zag.
+    val baseLabelCounts = curveBaseLabelByKey.values.groupingBy { it }.eachCount()
+    val baseLabelSeen = mutableMapOf<String, Int>()
     val tracks =
-      curveTracksByLabel
-        .map { (label, samples) -> AnimationCurvePlotter.Track(label = label, samples = samples) }
+      curveSamplesByKey
+        .map { (key, samples) ->
+          val base = curveBaseLabelByKey.getValue(key)
+          val label =
+            if ((baseLabelCounts[base] ?: 1) <= 1) {
+              base
+            } else {
+              val n = (baseLabelSeen[base] ?: 0) + 1
+              baseLabelSeen[base] = n
+              "$base ($n)"
+            }
+          AnimationCurvePlotter.Track(label = label, samples = samples)
+        }
         .filter { it.hasVisibleVariation() }
 
     // Combined-GIF mode: each frame composes the screenshot above a
