@@ -87,6 +87,30 @@ At publish time `publish-code-connect.mjs` wraps `codeSnippet` into a `figma.cod
 component name. A component with no required params, or one whose signature couldn't be read, degrades
 to a bare `Foo()` — still valid.
 
+### Binding parameters to Figma variant properties
+
+When the target Figma component is a real **component set** with variant properties, the publisher
+binds them to the matching parameters — a param whose name matches a Figma property gets a live
+`figma.properties.*` interpolation instead of a `TODO`:
+
+```kotlin
+DeviceSummaryCard(
+    state = ${figma.properties.enum('State', { 'Loading': 'DeviceState.Loading', 'Populated': 'DeviceState.Populated' })},
+    title = ${figma.properties.string('Title')},
+)
+```
+
+`VARIANT` → `figma.properties.enum` (options mapped best-effort to `Type.Option`, for you to confirm),
+`BOOLEAN` → `figma.properties.boolean`, `TEXT` → `figma.properties.string`. Matching is by normalized
+name; a param with no matching property keeps its `TODO`. Bound property names are recorded in
+`templateDataJson.props`.
+
+**Important:** variant properties live on Figma **component sets**. The code-led rendered catalog is
+plain frames with none, so binding is a no-op there — it activates when you publish against an actual
+Figma design system whose components carry variants (e.g. a hand-built or generated `Button` set). This
+is the same boundary Figma's own Code Connect draws: prop mapping is a component-set concept, and the
+final design-prop → code-value mapping is expected to be reviewed/completed by hand.
+
 Join sources (all already in the pipeline):
 
 - `componentId` → the Figma frame name (from the catalog spec / importer).

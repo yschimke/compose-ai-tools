@@ -9,17 +9,95 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  bindingExpression,
+  buildBoundTemplate,
   codeConnectTemplate,
   fileKeyFromArg,
   indexNodesByName,
   resolveMappings,
   toSendMappingsPayload,
+  variantPropsByName,
 } from "./publish-code-connect.mjs";
 
 test("codeConnectTemplate wraps a snippet in a figma.code parserless template", () => {
   const t = codeConnectTemplate("Foo(\n    bar = /* Baz */,\n)");
   assert.match(t, /export default figma\.code`Foo\(/);
   assert.match(t, /const figma = require\('figma'\)/);
+});
+
+test("variantPropsByName indexes component sets, ignores plain frames", () => {
+  const doc = {
+    children: [
+      {
+        type: "COMPONENT_SET",
+        name: "DeviceSummaryCard",
+        componentPropertyDefinitions: { State: { type: "VARIANT", variantOptions: ["Loading", "Populated"] } },
+      },
+      { type: "FRAME", name: "Just A Sticker", children: [] },
+    ],
+  };
+  const idx = variantPropsByName(doc);
+  assert.equal(idx.size, 1);
+  assert.ok(idx.get("DeviceSummaryCard").State);
+  assert.equal(idx.get("Just A Sticker"), undefined);
+});
+
+test("bindingExpression maps variant/boolean/text to figma.properties.*", () => {
+  assert.equal(
+    bindingExpression("State", { type: "VARIANT", variantOptions: ["Loading", "Populated"] }, { type: "DeviceState" }),
+    'figma.properties.enum("State", {"Loading":"DeviceState.Loading","Populated":"DeviceState.Populated"})',
+  );
+  assert.equal(bindingExpression("Disabled", { type: "BOOLEAN" }, {}), 'figma.properties.boolean("Disabled")');
+  assert.equal(bindingExpression("Label", { type: "TEXT" }, {}), 'figma.properties.string("Label")');
+  assert.equal(bindingExpression("Icon", { type: "INSTANCE_SWAP" }, {}), null);
+  // A property name with an apostrophe stays valid JS (JSON-escaped, not `'...'`).
+  assert.equal(
+    bindingExpression("Owner's state", { type: "BOOLEAN" }, {}),
+    'figma.properties.boolean("Owner\'s state")',
+  );
+});
+
+test("buildBoundTemplate interpolates matched params, keeps TODO for the rest", () => {
+  const built = buildBoundTemplate(
+    "DeviceSummaryCard",
+    [
+      { name: "state", type: "DeviceState", hasDefault: false },
+      { name: "title", type: "String", hasDefault: false }, // no matching Figma prop → TODO
+    ],
+    { State: { type: "VARIANT", variantOptions: ["Loading", "Populated"] } },
+  );
+  assert.deepEqual(built.boundProps, ["State"]);
+  assert.match(built.template, /state = \$\{figma\.properties\.enum\("State"/);
+  assert.match(built.template, /title = TODO\("String"\)/);
+});
+
+test("buildBoundTemplate returns null when nothing binds (plain catalog case)", () => {
+  assert.equal(
+    buildBoundTemplate("Foo", [{ name: "bar", type: "Baz", hasDefault: false }], {}),
+    null,
+  );
+});
+
+test("toSendMappingsPayload prefers a prop-bound template and records props", () => {
+  const payload = toSendMappingsPayload(
+    "K",
+    [
+      {
+        nodeId: "1:1",
+        figmaLayerName: "DeviceSummaryCard",
+        componentName: "DeviceSummaryCard",
+        source: "s",
+        label: "Compose",
+        codeSnippet: 'DeviceSummaryCard(\n    state = TODO("DeviceState"),\n)',
+        imports: ["import x.DeviceSummaryCard"],
+        parameters: [{ name: "state", type: "DeviceState", hasDefault: false }],
+      },
+    ],
+    new Map([["DeviceSummaryCard", { State: { type: "VARIANT", variantOptions: ["Loading", "Populated"] } }]]),
+  );
+  const m = payload.mappings[0];
+  assert.match(m.template, /figma\.properties\.enum\("State"/);
+  assert.deepEqual(JSON.parse(m.templateDataJson).props, ["State"]);
 });
 
 test("toSendMappingsPayload turns a codeSnippet into template + templateDataJson", () => {

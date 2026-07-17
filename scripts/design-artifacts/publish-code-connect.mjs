@@ -98,16 +98,108 @@ export function codeConnectTemplate(codeSnippet) {
 }
 
 /**
+ * Index a Figma document's **component sets / components** by name → their
+ * `componentPropertyDefinitions` (variant / boolean / text properties). This is where the props a
+ * call site can bind to live — a real design-system `Button` component set carries `State`, `Size`,
+ * etc. NOTE: the code-led rendered catalog is plain frames with *no* component sets, so this is empty
+ * for it; variant binding activates when publishing against an actual Figma design system.
+ */
+export function variantPropsByName(document) {
+  const byName = new Map();
+  const visit = (node) => {
+    if (!node || typeof node !== "object") return;
+    if (
+      (node.type === "COMPONENT_SET" || node.type === "COMPONENT") &&
+      node.componentPropertyDefinitions &&
+      typeof node.name === "string"
+    ) {
+      byName.set(node.name, node.componentPropertyDefinitions);
+    }
+    for (const child of node.children ?? []) visit(child);
+  };
+  visit(document);
+  return byName;
+}
+
+/** Normalized key for matching a Figma property name to a Kotlin parameter name. */
+const normalizeName = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/** Strip Figma's `#nodeId` suffix from a boolean/text property key to get its display name. */
+const propDisplayName = (key) => key.split("#")[0];
+
+/** A safe Kotlin/Figma identifier — guards the string-built template against injection. */
+const isSafeIdent = (s) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(s);
+
+/**
+ * The `figma.properties.*` expression that binds a Kotlin parameter to a Figma property, or null for
+ * an unsupported/instance-swap property. A VARIANT (enum) maps each option to a best-effort code
+ * value `Type.Option` for the developer to confirm; BOOLEAN → `figma.properties.boolean`; TEXT →
+ * `figma.properties.string`.
+ */
+export function bindingExpression(name, def, param) {
+  const type = def?.type;
+  if (type === "VARIANT") {
+    const options = Array.isArray(def.variantOptions) ? def.variantOptions : [];
+    const enumType = param?.type && isSafeIdent(param.type) ? param.type : null;
+    const map = {};
+    for (const opt of options) {
+      const optIdent = String(opt).replace(/[^A-Za-z0-9_]/g, "");
+      map[opt] = enumType && optIdent ? `${enumType}.${optIdent}` : optIdent || String(opt);
+    }
+    // JSON.stringify the display name (not `'${name}'`) so an apostrophe/backslash in a Figma-authored
+    // property name can't break out of the JS string and produce an invalid template.
+    return `figma.properties.enum(${JSON.stringify(name)}, ${JSON.stringify(map)})`;
+  }
+  if (type === "BOOLEAN") return `figma.properties.boolean(${JSON.stringify(name)})`;
+  if (type === "TEXT") return `figma.properties.string(${JSON.stringify(name)})`;
+  return null; // INSTANCE_SWAP and anything else: no scalar binding.
+}
+
+/**
+ * Build a `figma.code` template whose required parameters are **bound to Figma properties** where a
+ * property name matches the parameter name. Bound params interpolate a live `figma.properties.*`
+ * expression; unmatched params keep their `TODO("Type")` / `{ }` placeholder. Returns
+ * `{ template, boundProps }`, or null when nothing bound (caller falls back to the static template).
+ */
+export function buildBoundTemplate(componentName, parameters = [], propDefs = {}) {
+  if (!isSafeIdent(componentName)) return null;
+  // Figma property display-name (normalized) → { name, def }.
+  const propByNorm = new Map();
+  for (const [key, def] of Object.entries(propDefs)) {
+    const dn = propDisplayName(key);
+    propByNorm.set(normalizeName(dn), { name: dn, def });
+  }
+  const required = parameters.filter((p) => !p.hasDefault);
+  const boundProps = [];
+  const lines = required.map((p) => {
+    const match = isSafeIdent(p.name) ? propByNorm.get(normalizeName(p.name)) : undefined;
+    const expr = match ? bindingExpression(match.name, match.def, p) : null;
+    if (expr) {
+      boundProps.push(match.name);
+      return `    ${p.name} = \${${expr}},`;
+    }
+    if (p.composableSlot) return `    ${p.name} = { },`;
+    return `    ${p.name} = TODO(${JSON.stringify(p.type ?? "")}),`;
+  });
+  if (boundProps.length === 0) return null;
+  const body =
+    lines.length === 0 ? `${componentName}()` : `${componentName}(\n${lines.join("\n")}\n)`;
+  const template = "const figma = require('figma')\nexport default figma.code`" + body + "`";
+  return { template, boundProps };
+}
+
+/**
  * Shape resolved mappings into the argument object for Figma's `send_code_connect_mappings` MCP
  * tool: `{ fileKey, nodeId, mappings: [{ nodeId, componentName, source, label, template?,
  * templateDataJson? }] }`. `nodeId` at the top level is required by the tool and set to the first
  * mapping's node (an anchor); the per-mapping `nodeId`s carry the real bindings.
  *
- * When a mapping carries a `codeSnippet` (a real call site, from the emit step), it is turned into a
- * `figma.code` template + `templateDataJson` (`isParserless` + `imports`) so Dev Mode shows the real
- * call, not just the component name. An explicit `m.template` overrides the generated one.
+ * Template precedence per mapping: an explicit `m.template` wins; else, when the file has variant
+ * properties for the component AND the mapping carries `parameters`, a **prop-bound** `figma.code`
+ * template (`figma.properties.*` interpolated per matching param); else the static call site from
+ * `m.codeSnippet`. `templateDataJson` carries `isParserless`, `imports`, and any bound `props`.
  */
-export function toSendMappingsPayload(fileKey, resolved) {
+export function toSendMappingsPayload(fileKey, resolved, propsByName = new Map()) {
   const mappings = resolved.map((m) => {
     const out = {
       nodeId: m.nodeId,
@@ -115,10 +207,18 @@ export function toSendMappingsPayload(fileKey, resolved) {
       source: m.source,
       label: m.label,
     };
-    const template = m.template ?? (m.codeSnippet ? codeConnectTemplate(m.codeSnippet) : null);
+    const propDefs = propsByName.get(m.figmaLayerName) ?? propsByName.get(m.componentName);
+    const bound =
+      !m.template && propDefs && m.parameters?.length
+        ? buildBoundTemplate(m.componentName, m.parameters, propDefs)
+        : null;
+    const template =
+      m.template ?? bound?.template ?? (m.codeSnippet ? codeConnectTemplate(m.codeSnippet) : null);
     if (template) {
       out.template = template;
-      out.templateDataJson = JSON.stringify({ isParserless: true, imports: m.imports ?? [] });
+      const data = { isParserless: true, imports: m.imports ?? [] };
+      if (bound?.boundProps.length) data.props = bound.boundProps;
+      out.templateDataJson = JSON.stringify(data);
     }
     return out;
   });
@@ -186,12 +286,23 @@ async function main() {
     process.exit(1);
   }
 
-  const payload = toSendMappingsPayload(fileKey, resolved);
+  // Variant properties from the file's component sets, so a matching parameter binds to a Figma prop
+  // (figma.properties.*) instead of a TODO. Empty for the code-led rendered catalog (plain frames).
+  const propsByName = variantPropsByName(doc.document);
+  const payload = toSendMappingsPayload(fileKey, resolved, propsByName);
+  const boundCount = payload.mappings.filter((m) => {
+    try {
+      return (m.templateDataJson && JSON.parse(m.templateDataJson).props?.length) > 0;
+    } catch {
+      return false;
+    }
+  }).length;
   const json = `${JSON.stringify(payload, null, 2)}\n`;
   if (values.out) {
     await writeFile(values.out, json, "utf8");
     console.log(
-      `[code-connect] resolved ${resolved.length}/${manifest.mappings?.length ?? 0} mapping(s) → ${values.out}`,
+      `[code-connect] resolved ${resolved.length}/${manifest.mappings?.length ?? 0} mapping(s), ` +
+        `${boundCount} with bound variant props → ${values.out}`,
     );
   } else {
     process.stdout.write(json);
