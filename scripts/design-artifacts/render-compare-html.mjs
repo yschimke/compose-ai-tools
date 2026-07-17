@@ -235,13 +235,26 @@ const SCORER = String.raw`
 
   // Point a display <img> at the overridden SVG so the column shows what was scored
   // (glyphs overflowing at >1x, the substituted face with fonts off). Revoked after
-  // the browser has had a chance to decode it.
+  // the browser has had a chance to decode it. Marks the row so a later return to
+  // identity knows to restore the original source.
   function showSvg(tr, svgText) {
     const img = tr.querySelector(".col-svg .shot img");
     if (!img) return;
     const url = svgBlobUrl(svgText);
     img.src = url;
+    tr.dataset.svgShown = "override";
     setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+
+  // Put the display <img> back to the authored figma-svg once the overrides return to
+  // identity — otherwise the column keeps showing the last override's blob while the
+  // score is recomputed from the baseline vector. Only acts when a blob was actually
+  // installed, so an unchanged rescore doesn't thrash the src.
+  function restoreSvg(tr) {
+    if (tr.dataset.svgShown !== "override") return;
+    const img = tr.querySelector(".col-svg .shot img");
+    if (img) img.src = tr.dataset.svg;
+    tr.dataset.svgShown = "base";
   }
 
   // The figma-svg's root translate. The export (FigmaSvgModel) pads the canvas by
@@ -385,14 +398,15 @@ const SCORER = String.raw`
     }
   }
 
-  async function scoreRow(tr) {
+  async function scoreRow(tr, seq) {
     const cell = tr.querySelector(".score");
     try {
       // PNG as an <img> (theme override picks light/dark); the SVG as text (to read its
       // translate, apply the active overrides, and inline any raster crops). Both are
       // same-origin and cache-shared.
+      const pngPath = currentPng(tr);
       const [png, resp] = await Promise.all([
-        loadImage(currentPng(tr)),
+        loadImage(pngPath),
         fetch(tr.dataset.svg),
       ]);
       const rawSvg = await resp.text();
@@ -408,10 +422,9 @@ const SCORER = String.raw`
       // is the branch asset's real location (it followed the same base/redirects the fetch did).
       const inlined = await inlineRasters(svgText, resp.url);
       // Overridden or hybrid → rasterize the (blob) string; untouched vector-only → the
-      // cheap <img src=svg> path. Either way, show the overridden vector in the column.
+      // cheap <img src=svg> path.
       const changed = inlined !== rawSvg;
       const svg = changed ? await loadSvgString(inlined) : await loadImage(tr.dataset.svg);
-      if (changed) showSvg(tr, inlined);
       // The render PNG defines the aligned coordinate space (padding-free, content at
       // (0,0)); size the shared canvas from it, capped to MAX_SIDE for offset-robustness.
       const rw = png.naturalWidth || png.width, rh = png.naturalHeight || png.height;
@@ -437,6 +450,23 @@ const SCORER = String.raw`
         th,
       );
       const pct = Math.max(0, Math.min(100, ssim(ga, gb, tw, th) * 100));
+      // A newer control change may have started while this row was awaiting its fetch /
+      // decode. Everything above only read; from here down mutates the row, so bail now
+      // if superseded — otherwise a stale pass could overwrite the current one's image
+      // and score after the newer pass already finished this row.
+      if (seq !== runSeq) return null;
+      // Reflect the *scored* inputs in the display so what's shown matches what was
+      // measured: the theme-selected PNG (only touch src when it actually changes, to
+      // avoid a reload each rescore) and the overridden vector — or the authored SVG
+      // back once the overrides return to identity.
+      const pngImg = tr.querySelector(".col-png .shot img");
+      const shownPng = tr.dataset.pngShown || tr.dataset.png;
+      if (pngImg && shownPng !== pngPath) {
+        pngImg.src = pngPath;
+        tr.dataset.pngShown = pngPath;
+      }
+      if (changed) showSvg(tr, inlined);
+      else restoreSvg(tr);
       // Crop both display columns to the component now that we've read its bbox from the SVG.
       frameToComponent(tr, rw, rh, tx, ty, sw, sh);
       const shown = pct.toFixed(1);
@@ -445,7 +475,9 @@ const SCORER = String.raw`
       tr.dataset.scoreValue = shown;
       return pct;
     } catch (err) {
-      // A tainted canvas (SecurityError) or a broken image lands here.
+      // A tainted canvas (SecurityError) or a broken image lands here. A superseded pass
+      // must not stamp "n/a" over the current pass's result either.
+      if (seq !== runSeq) return null;
       cell.textContent = "n/a";
       cell.className = "score score--na";
       cell.title = String(err && err.message || err);
@@ -496,7 +528,7 @@ const SCORER = String.raw`
     if (done) done.textContent = "0";
     for (const tr of rows) {
       if (mySeq !== runSeq) return; // a newer pass took over
-      const s = await scoreRow(tr);
+      const s = await scoreRow(tr, mySeq);
       if (s != null) scores.push(s);
       if (done) done.textContent = String(scores.length);
     }

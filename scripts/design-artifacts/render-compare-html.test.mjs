@@ -242,3 +242,29 @@ test("identity overrides keep the cheap unchanged-vector path (baseline score pr
   assert.match(html, /const changed = inlined !== rawSvg/);
   assert.match(html, /changed \? await loadSvgString\(inlined\) : await loadImage\(tr\.dataset\.svg\)/);
 });
+
+test("returning overrides to identity restores the displayed SVG (not the last blob)", () => {
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /function restoreSvg/);
+  // The scorer takes the restore branch when the vector is unchanged.
+  assert.match(html, /if \(changed\) showSvg\(tr, inlined\);\s*else restoreSvg\(tr\);/);
+  // restoreSvg only acts when a blob was actually installed, and puts src back to the source.
+  assert.match(html, /tr\.dataset\.svgShown !== "override"/);
+  assert.match(html, /img\.src = tr\.dataset\.svg/);
+});
+
+test("the theme override repoints the displayed PNG, not just the scored one", () => {
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  // The PNG column's <img> src follows the theme-selected path (guarded to avoid reloads).
+  assert.match(html, /const pngImg = tr\.querySelector\("\.col-png \.shot img"\)/);
+  assert.match(html, /shownPng !== pngPath/);
+  assert.match(html, /pngImg\.src = pngPath/);
+});
+
+test("a superseded scoring pass bails before mutating the row", () => {
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  // scoreRow receives the run token and re-checks it after its awaits, before any DOM write.
+  assert.match(html, /async function scoreRow\(tr, seq\)/);
+  assert.match(html, /await scoreRow\(tr, mySeq\)/);
+  assert.match(html, /if \(seq !== runSeq\) return null/);
+});
