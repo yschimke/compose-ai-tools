@@ -207,15 +207,13 @@ export function populatePreviewCard(
     }
     setCardCaptures(
         p.id,
-        captures.map(
-            (c): CapturePresentation => ({
-                label: c.label || "",
-                renderOutput: c.renderOutput || "",
-                imageData: null,
-                errorMessage: null,
-                renderError: null,
-            }),
-        ),
+        captures.map((c): CapturePresentation => ({
+            label: c.label || "",
+            renderOutput: c.renderOutput || "",
+            imageData: null,
+            errorMessage: null,
+            renderError: null,
+        })),
     );
 
     const header = document.createElement("div");
@@ -273,6 +271,26 @@ export function populatePreviewCard(
         }
     });
     titleRow.appendChild(focusBtn);
+
+    // Per-card "Copy SVG" affordance. Copies the preview's layered, editable
+    // compose/figma-svg export to the clipboard — the host pulls it through the
+    // daemon's data/fetch on click (the vector isn't shipped to the webview),
+    // so this is best-effort: previews the backend can't vectorise surface a
+    // warning from the host rather than failing here.
+    const copySvgBtn = document.createElement("button");
+    copySvgBtn.type = "button";
+    copySvgBtn.className = "card-copy-svg-btn";
+    copySvgBtn.innerHTML =
+        '<i class="codicon codicon-copy" aria-hidden="true"></i>';
+    copySvgBtn.title = "Copy this preview as SVG";
+    copySvgBtn.setAttribute("aria-label", "Copy this preview as SVG");
+    copySvgBtn.addEventListener("click", (evt) => {
+        evt.stopPropagation();
+        const previewId = card.dataset.previewId;
+        if (!previewId) return;
+        config.vscode.postMessage({ command: "copyFigmaSvg", previewId });
+    });
+    titleRow.appendChild(copySvgBtn);
 
     // Stale-tier refresh button — only attached up front for cards
     // already known to be stale at setPreviews time. updateStaleBadges

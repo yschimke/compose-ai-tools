@@ -125,16 +125,10 @@ export type PreviewDataProductFacet =
     | "INTERACTIVE";
 
 export type PreviewDataProductSampling =
-    | "START"
-    | "END"
-    | "EACH_FRAME"
-    | "ON_DEMAND"
-    | "AGGREGATE"
-    | "FAILURE";
+    "START" | "END" | "EACH_FRAME" | "ON_DEMAND" | "AGGREGATE" | "FAILURE";
 
 export type PreviewExtensionUsageMode =
-    | "EXPLICIT_EFFECT"
-    | "SUGGESTED_EXTRA_PREVIEW";
+    "EXPLICIT_EFFECT" | "SUGGESTED_EXTRA_PREVIEW";
 
 export interface PreviewInfo {
     id: string;
@@ -301,24 +295,13 @@ export interface PreviewRenderErrorTopFrame {
 // -------------------------------------------------------------------------
 
 export type ResourceType =
-    | "VECTOR"
-    | "ANIMATED_VECTOR"
-    | "ADAPTIVE_ICON"
-    | string;
+    "VECTOR" | "ANIMATED_VECTOR" | "ADAPTIVE_ICON" | string;
 
 export type AdaptiveShape =
-    | "CIRCLE"
-    | "SQUIRCLE"
-    | "ROUNDED_SQUARE"
-    | "SQUARE"
-    | string;
+    "CIRCLE" | "SQUIRCLE" | "ROUNDED_SQUARE" | "SQUARE" | string;
 
 export type AdaptiveStyle =
-    | "FULL_COLOR"
-    | "THEMED_LIGHT"
-    | "THEMED_DARK"
-    | "LEGACY"
-    | string;
+    "FULL_COLOR" | "THEMED_LIGHT" | "THEMED_DARK" | "LEGACY" | string;
 
 export interface ResourceVariant {
     /**
@@ -1005,6 +988,12 @@ export type WebviewToExtension =
      * focused preview).
      */
     | { command: "requestExportPreviewBundle"; previewId: string }
+    /**
+     * Copy the preview's `compose/figma-svg` export (the layered, editable
+     * vector) to the clipboard. The host pulls the SVG through the daemon's
+     * `data/fetch` and writes the file's text to the clipboard.
+     */
+    | { command: "copyFigmaSvg"; previewId: string }
     /**
      * User dragged a file onto the sidebar preview panel. The host
      * checks that [fsPath] is a `composePreviewBundle` polyglot
