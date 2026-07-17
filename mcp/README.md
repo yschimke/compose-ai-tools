@@ -317,6 +317,37 @@ mcp/
         └── RealMcpEndToEndTest.kt     # opt-in real-daemon JUnit (use -Pmcp.real=true)
 ```
 
+## Storybook-compatible profile
+
+Run with **`--storybook`** (or `-Dcomposeai.mcp.profile=storybook`) to present a surface named after
+Storybook's official MCP server (GA in Storybook 10.3), so an agent harness that has learned the
+Storybook-MCP vocabulary drives compose-preview unmodified. In this profile the server identifies as
+`compose-preview-storybook` and exposes **only** the Storybook tools below — the native tools are
+hidden, so there's no overlapping/duplicate surface (e.g. `render_preview` *and* `preview-stories`)
+to confuse tool routing. The default profile is the full native tool set.
+
+The tools address a preview by a **story id** (minted CSF-style, `title--name`) instead of a
+`compose-preview://` URI, and route to the same native handlers via the `StorybookMcp` adapter (a raw
+native URI is still accepted):
+
+| Storybook tool | Maps to | Returns |
+|---|---|---|
+| `list-all-documentation` | the resource catalog | every preview as a Storybook story (`id`, `title`, `name`, `importPath`, native `uri`) |
+| `get-documentation-for-story` | catalog lookup | one story's metadata + native `uri`/coords |
+| `preview-stories` | `render_preview` | the rendered image(s); `observe` + `overrides` pass through |
+| `run-story-tests` | `record_preview` scripted assertions | test results — the compose analogue of Storybook's play + expect |
+
+**`run-story-tests`** is a façade over our scripted-recording assertions (`record_preview`): pass a
+`script` — a timeline of `input.*` events to drive the UI and `assert.visible` / `assert.notVisible`
+/ `assert.textEquals` / `assert.a11y` / `assert.pixels` events to check it — and each assertion is
+recorded APPLIED/FAILED. With no script it runs an accessibility smoke (`preview.reload` +
+`assert.a11y`). `emitTest` also returns a generated Compose UI test. Assertion coverage is
+backend-dependent (desktop vs Android — tracked in
+[issue #2519](https://github.com/yschimke/compose-ai-tools/issues/2519)).
+
+Deferred for now: `get-changed-stories` (composable from `history_list`/`history_diff`) and
+`get-storybook-story-instructions`.
+
 ## See also
 
 - [`docs/daemon/MCP.md`](../docs/daemon/MCP.md) — protocol-level design

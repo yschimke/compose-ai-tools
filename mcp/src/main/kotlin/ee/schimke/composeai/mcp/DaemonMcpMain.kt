@@ -1,5 +1,6 @@
 package ee.schimke.composeai.mcp
 
+import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.JsonObject
@@ -13,7 +14,14 @@ import kotlinx.serialization.json.JsonObject
  * ```
  * compose-preview-mcp [--project <path>[:<rootProjectName>]]...
  *                     [--replicas-per-daemon <N>]
+ *                     [--storybook]
  * ```
+ *
+ * `--storybook` (or `-Dcomposeai.mcp.profile=storybook`) runs the **Storybook-compatibility
+ * profile**: the server exposes only the Storybook-MCP tools (`list-all-documentation`,
+ * `get-documentation-for-story`, `preview-stories`, `run-story-tests`) with the native tools
+ * hidden, and identifies as `compose-preview-storybook`. Point a Storybook-MCP-trained agent at
+ * this to drive compose-preview unmodified. Omit it for the full native tool set (the default).
  *
  * Each `--project` flag pre-registers a workspace with the supervisor at startup so connecting
  * clients see the project in `list_projects` immediately. Projects can also be added at runtime via
@@ -41,7 +49,19 @@ object DaemonMcpMain {
         clientFactory = SubprocessDaemonClientFactory(),
         replicasPerDaemon = replicasPerDaemon,
       )
-    val server = DaemonMcpServer(supervisor)
+    val server =
+      if (parseStorybookProfile(args)) {
+        // Storybook-compat face: present ONLY the Storybook-MCP tools (native tools hidden) and
+        // identify as `compose-preview-storybook`, so a Storybook-MCP-trained agent sees a clean
+        // Storybook surface. Same daemon core + handlers underneath.
+        DaemonMcpServer(
+          supervisor,
+          serverInfo = Implementation(name = "compose-preview-storybook", version = "v0"),
+          profile = McpToolProfile.STORYBOOK,
+        )
+      } else {
+        DaemonMcpServer(supervisor)
+      }
 
     parseProjects(args).forEach { (path, name) ->
       runCatching { supervisor.registerProject(File(path), name) }
@@ -93,6 +113,17 @@ object DaemonMcpMain {
       }
     }
     return out
+  }
+
+  /**
+   * True when the server should run the Storybook-compatibility profile — either the `--storybook`
+   * flag or the `composeai.mcp.profile=storybook` system property. In that profile only the
+   * Storybook-MCP tools are exposed (native tools hidden). See [McpToolProfile].
+   */
+  private fun parseStorybookProfile(args: Array<String>): Boolean {
+    if (args.any { it == "--storybook" }) return true
+    return System.getProperty("composeai.mcp.profile")?.equals("storybook", ignoreCase = true) ==
+      true
   }
 
   private fun splitProjectArg(raw: String): Pair<String, String?> {

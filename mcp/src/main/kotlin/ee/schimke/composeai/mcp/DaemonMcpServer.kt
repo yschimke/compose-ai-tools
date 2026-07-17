@@ -54,6 +54,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
@@ -64,6 +65,33 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import okio.FileSystem
 import okio.Path.Companion.toPath
+
+/**
+ * Which tool surface a [DaemonMcpServer] presents. [NATIVE] is the full compose-preview tool set;
+ * [STORYBOOK] is the Storybook-MCP-compatible subset only (native tools hidden), so a
+ * Storybook-MCP-trained agent sees a clean Storybook surface with no overlapping/duplicate tools.
+ */
+enum class McpToolProfile {
+  NATIVE,
+  STORYBOOK,
+}
+
+/**
+ * The Storybook alias tool names (excludes `status`, which both profiles expose). Used to filter
+ * the two profiles apart from the single `buildFullToolDefs` source so no `ToolDef` literal is
+ * duplicated: NATIVE serves everything except these; STORYBOOK serves only these + `status`.
+ *
+ * Top-level (not an instance `val`) on purpose: the async full-tool-catalog loader reads it off the
+ * `toolCatalogExecutor` thread during construction, before instance properties declared later would
+ * have initialized — a top-level val is class-load-time, so there's no init-order race.
+ */
+private val STORYBOOK_ALIAS_NAMES =
+  setOf(
+    "list-all-documentation",
+    "get-documentation-for-story",
+    "preview-stories",
+    "run-story-tests",
+  )
 
 /**
  * The load-bearing wiring layer. Owns:
@@ -110,10 +138,18 @@ class DaemonMcpServer(
   private val samplingIntervalMs: Long = DEFAULT_SAMPLING_INTERVAL_MS,
   private val fileSystem: FileSystem = SystemFileSystem,
   fullToolDefsLoader: (() -> List<ToolDef>)? = null,
+  /**
+   * Which tool surface this server presents. [McpToolProfile.NATIVE] (default) exposes the full
+   * compose-preview tool set. [McpToolProfile.STORYBOOK] exposes ONLY the Storybook-compatible
+   * tools ([storybookToolDefs]) with the native tools hidden, so a Storybook-MCP-trained agent sees
+   * a clean Storybook surface without the overlapping/duplicate native tools (e.g. `render_preview`
+   * alongside `preview-stories`). Both profiles route through the same handlers.
+   */
+  private val profile: McpToolProfile = McpToolProfile.NATIVE,
 ) {
 
   private val fullToolDefsLoader: () -> List<ToolDef> =
-    fullToolDefsLoader ?: { buildFullToolDefs() }
+    fullToolDefsLoader ?: { effectiveFullToolDefs() }
 
   private val json = Json {
     ignoreUnknownKeys = true
@@ -942,7 +978,26 @@ class DaemonMcpServer(
     }
   }
 
+  /** Tools served in the [McpToolProfile.STORYBOOK] profile: the aliases plus `status`. */
+  private fun storybookToolDefs(): List<ToolDef> =
+    buildFullToolDefs().filter { it.name == "status" || it.name in STORYBOOK_ALIAS_NAMES }
+
+  /** The full tool list for the active [profile] — native-only, or Storybook-only. */
+  private fun effectiveFullToolDefs(): List<ToolDef> =
+    when (profile) {
+      McpToolProfile.NATIVE -> buildFullToolDefs().filterNot { it.name in STORYBOOK_ALIAS_NAMES }
+      McpToolProfile.STORYBOOK -> storybookToolDefs()
+    }
+
+  /** Bootstrap tools served before the full catalog loads, for the active [profile]. */
   private val bootstrapToolDefs: List<ToolDef> by lazy {
+    when (profile) {
+      McpToolProfile.NATIVE -> nativeBootstrapToolDefs
+      McpToolProfile.STORYBOOK -> storybookToolDefs()
+    }
+  }
+
+  private val nativeBootstrapToolDefs: List<ToolDef> by lazy {
     listOf(
       ToolDef(
         name = "status",
@@ -1788,6 +1843,78 @@ class DaemonMcpServer(
               .trimIndent()
           ),
       ),
+      // ---------------------------------------------------------------------
+      // Storybook-MCP-compatible aliases (issue: storybook downstream adoption)
+      //
+      // Storybook shipped an official MCP server (GA in Storybook 10.3) whose tool NAMES an agent's
+      // harness learns. These kebab-named aliases map that vocabulary onto our catalog/render/a11y
+      // capabilities and accept a Storybook **story id** (minted by [StorybookMcp]) wherever we'd
+      // take a `compose-preview://` URI — so a Storybook-MCP-trained agent drives this server
+      // unmodified. Each routes to an existing `tool…()` handler; a raw native URI is still
+      // accepted.
+      // ---------------------------------------------------------------------
+      ToolDef(
+        name = "list-all-documentation",
+        description =
+          "Storybook-compatible: list every catalogued preview as a Storybook story — its stable " +
+            "`id` (title--name), `title`, `name`, synthetic `importPath`, and the native " +
+            "compose-preview `uri`. The story-catalog equivalent of Storybook's " +
+            "`list-all-documentation`; use the returned ids with `preview-stories`, " +
+            "`get-documentation-for-story`, and `run-story-tests`.",
+        inputSchema = parseSchema("""{"type":"object","properties":{}}"""),
+      ),
+      ToolDef(
+        name = "get-documentation-for-story",
+        description =
+          "Storybook-compatible: return one story's metadata — id, title, name, the native " +
+            "compose-preview `uri`, and its workspace/module/fqn. Accepts a story id from " +
+            "`list-all-documentation` (or a raw compose-preview URI) as `storyId`/`id`. Render it " +
+            "with `preview-stories`; check accessibility with `run-story-tests`.",
+        inputSchema =
+          parseSchema(
+            """
+            {"type":"object","properties":{"storyId":{"type":"string","description":"Story id from list-all-documentation, or a raw compose-preview:// URI."},"id":{"type":"string","description":"Alias for storyId."}}}
+            """
+              .trimIndent()
+          ),
+      ),
+      ToolDef(
+        name = "preview-stories",
+        description =
+          "Storybook-compatible: render one or more stories in isolation and return the images. " +
+            "Maps to `render_preview` per story. Pass `storyIds` (array) or a single `storyId` " +
+            "(ids from `list-all-documentation`, or raw compose-preview URIs). `observe` defaults " +
+            "to 'png' (the rendered image); 'semantics'/'hash' return the token-frugal structured " +
+            "observation instead. Optional `overrides` are the same per-call display overrides as " +
+            "`render_preview.overrides`.",
+        inputSchema =
+          parseSchema(
+            """
+            {"type":"object","properties":{"storyIds":{"type":"array","items":{"type":"string"},"description":"Story ids from list-all-documentation, or raw compose-preview:// URIs."},"storyId":{"type":"string","description":"A single story id, if not using storyIds."},"observe":{"type":"string","enum":["png","semantics","hash"],"description":"Default 'png'."},"overrides":{"type":"object","description":"Optional per-call display overrides, same shape as render_preview.overrides."}}}
+            """
+              .trimIndent()
+          ),
+      ),
+      ToolDef(
+        name = "run-story-tests",
+        description =
+          "Storybook-compatible: run a story's tests and return structured results. Maps to our " +
+            "scripted-recording assertions (record_preview) — the compose analogue of Storybook's " +
+            "play-function + expect. Pass a `script`: a record_preview event timeline where " +
+            "`input.*` events drive the UI and `assert.visible`/`assert.notVisible`/" +
+            "`assert.textEquals`/`assert.a11y`/`assert.pixels` events check it (each records " +
+            "APPLIED/FAILED). With NO script it runs an accessibility smoke (`preview.reload` + " +
+            "`assert.a11y`). Set `emitTest` to also get a generated Compose UI test. Assertion " +
+            "support is backend-dependent (desktop vs Android — see issue #2519). Accepts a story " +
+            "id from `list-all-documentation` (or a raw compose-preview URI) as `storyId`/`id`.",
+        inputSchema =
+          parseSchema(
+            """
+            {"type":"object","properties":{"storyId":{"type":"string","description":"Story id from list-all-documentation, or a raw compose-preview:// URI."},"id":{"type":"string","description":"Alias for storyId."},"script":{"type":"array","description":"Optional record_preview event timeline (input.* to drive, assert.* to check). Omit to run an accessibility smoke test.","items":{"type":"object"}},"emitTest":{"type":"boolean","description":"Also return a runnable Compose UI test generated from the interaction."},"observe":{"type":"string","enum":["frames","media"],"description":"record_preview observation level; default 'frames' (structured per-frame + per-assertion evidence, no inline media)."},"format":{"type":"string","enum":["apng","gif","mp4","webm"],"description":"Recording format for the artifact; default 'apng'."}}}
+            """
+              .trimIndent()
+          ),
+      ),
     )
 
   private fun handleCallTool(
@@ -1823,8 +1950,164 @@ class DaemonMcpServer(
       "subscribe_preview_data" -> toolDataSubOrUnsub(session, args, subscribe = true)
       "unsubscribe_preview_data" -> toolDataSubOrUnsub(session, args, subscribe = false)
       "record_preview" -> toolRecordPreview(args)
+      // Storybook-MCP-compatible aliases → existing handlers via the story-id adapter.
+      "list-all-documentation" -> toolStorybookListDocs()
+      "get-documentation-for-story" -> toolStorybookGetDoc(args)
+      "preview-stories" -> toolStorybookPreviewStories(args)
+      "run-story-tests" -> toolStorybookRunTests(args)
       else -> errorCallToolResult("unknown tool: $name")
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Storybook-MCP-compatible alias handlers (see [StorybookMcp]). Each takes a Storybook story id
+  // (or a raw compose-preview URI) and routes to an existing handler via the id→URI adapter.
+  // -------------------------------------------------------------------------
+
+  /** `list-all-documentation`: the whole catalog presented as Storybook stories. */
+  private fun toolStorybookListDocs(): CallToolResult {
+    val stories = StorybookMcp.stories(catalogResources())
+    val payload = buildJsonObject {
+      put("schema", "compose-preview-mcp-storybook/v1")
+      put("count", stories.size)
+      putJsonArray("stories") {
+        stories.forEach { s ->
+          add(
+            buildJsonObject {
+              put("id", s.storyId)
+              put("title", s.title)
+              put("name", s.name)
+              put("type", "story")
+              put("importPath", "virtual:compose-preview/${s.fqn}")
+              put("uri", s.uri)
+            }
+          )
+        }
+      }
+    }
+    return textCallToolResult(payload.toString())
+  }
+
+  /** `get-documentation-for-story`: one story's metadata (id, title, name, native URI, coords). */
+  private fun toolStorybookGetDoc(args: JsonObject): CallToolResult {
+    val id =
+      (args["storyId"] ?: args["id"])?.jsonPrimitive?.contentOrNull
+        ?: return errorCallToolResult("get-documentation-for-story: missing 'storyId'")
+    val story =
+      StorybookMcp.stories(catalogResources()).firstOrNull { it.storyId == id || it.uri == id }
+        ?: return errorCallToolResult("get-documentation-for-story: no such story: $id")
+    val parsed = PreviewUri.parseOrNull(story.uri)
+    val payload = buildJsonObject {
+      put("schema", "compose-preview-mcp-storybook/v1")
+      put("id", story.storyId)
+      put("title", story.title)
+      put("name", story.name)
+      put("uri", story.uri)
+      put("importPath", "virtual:compose-preview/${story.fqn}")
+      if (parsed != null) {
+        put("workspaceId", parsed.workspaceId.value)
+        put("module", parsed.modulePath)
+        put("fqn", parsed.previewFqn)
+        parsed.config?.let { put("config", it) }
+      }
+      put(
+        "note",
+        "Render with preview-stories; check accessibility with run-story-tests. Native tools " +
+          "(render_preview, get_preview_data, …) accept `uri` directly.",
+      )
+    }
+    return textCallToolResult(payload.toString())
+  }
+
+  /** `preview-stories`: render one or more stories in isolation and return the images. */
+  private fun toolStorybookPreviewStories(args: JsonObject): CallToolResult {
+    val ids =
+      storybookStoryIds(args)
+        ?: return errorCallToolResult("preview-stories: provide 'storyIds' (array) or 'storyId'")
+    val observe = args["observe"]?.jsonPrimitive?.contentOrNull?.lowercase() ?: "png"
+    val overrides = args["overrides"]
+    val resources = catalogResources()
+    val blocks = mutableListOf<ContentBlock>()
+    var anyOk = false
+    var anyError = false
+    for (id in ids) {
+      val uri = StorybookMcp.resolveUri(id, resources)
+      if (uri == null) {
+        blocks.add(ContentBlock.Text("preview-stories: no such story: $id"))
+        anyError = true
+        continue
+      }
+      blocks.add(ContentBlock.Text("story: $id → $uri"))
+      val sub = buildJsonObject {
+        put("uri", uri)
+        put("observe", observe)
+        if (overrides != null) put("overrides", overrides)
+      }
+      val res = toolRenderPreview(sub)
+      blocks.addAll(res.content)
+      if (res.isError == true) anyError = true else anyOk = true
+    }
+    // Error only when nothing rendered — a partial success still returns the frames that worked.
+    return CallToolResult(content = blocks, isError = !anyOk && anyError)
+  }
+
+  /**
+   * `run-story-tests`: enable a11y, render, and return the ATF accessibility findings for a story.
+   */
+  private fun toolStorybookRunTests(args: JsonObject): CallToolResult {
+    val id =
+      (args["storyId"] ?: args["id"])?.jsonPrimitive?.contentOrNull
+        ?: return errorCallToolResult("run-story-tests: missing 'storyId'")
+    val uri =
+      StorybookMcp.resolveUri(id, catalogResources())
+        ?: return errorCallToolResult("run-story-tests: no such story: $id")
+    // Our recording-assertion surface IS the play-function + expect equivalent: an `input.*` +
+    // `assert.*` timeline evaluated against the held scene. Delegate to record_preview, which
+    // drives
+    // the script and records each assertion APPLIED/FAILED. With no script, run an a11y smoke so a
+    // bare `run-story-tests <id>` still returns a meaningful check.
+    val events = (args["script"] as? JsonArray) ?: defaultA11ySmokeScript
+    return toolRecordPreview(
+      buildJsonObject {
+        put("uri", uri)
+        put("events", events)
+        put("observe", args["observe"]?.jsonPrimitive?.contentOrNull ?: "frames")
+        args["emitTest"]?.let { put("emitTest", it) }
+        args["format"]?.let { put("format", it) }
+      }
+    )
+  }
+
+  /**
+   * Default `run-story-tests` script when the caller gives none: reload the scene, then assert no
+   * accessibility findings — the a11y-smoke degenerate case of the interaction+assertion timeline.
+   */
+  private val defaultA11ySmokeScript: JsonArray = buildJsonArray {
+    add(
+      buildJsonObject {
+        put("tMs", 0)
+        put("kind", "preview.reload")
+      }
+    )
+    add(
+      buildJsonObject {
+        put("tMs", 100)
+        put("kind", "assert.a11y")
+      }
+    )
+  }
+
+  /**
+   * One or many story ids from `storyIds` (array) or `storyId`/`id`. Null when neither is present.
+   */
+  private fun storybookStoryIds(args: JsonObject): List<String>? {
+    (args["storyIds"] as? JsonArray)?.let { arr ->
+      val ids = arr.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }.filter { it.isNotBlank() }
+      return ids.ifEmpty { null }
+    }
+    val single =
+      (args["storyId"] ?: args["id"])?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+    return single?.let { listOf(it) }
   }
 
   private fun toolStatus(): CallToolResult {
