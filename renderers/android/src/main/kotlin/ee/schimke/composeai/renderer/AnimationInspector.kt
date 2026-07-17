@@ -68,10 +68,23 @@ private constructor(
    */
   fun snapshot(): List<TrackedAnimation> =
     getAnimations().map { anim ->
-      TrackedAnimation(label = getAnimationLabel(anim), samples = getAnimatedProperties(anim))
+      TrackedAnimation(
+        label = getAnimationLabel(anim),
+        // Object identity of the tracked ComposeAnimation. The clock registers
+        // each animation once and only seeks it per frame, so this is stable
+        // across the capture — the plotter uses it to keep two concurrently
+        // composed slots that share a label (e.g. AnimatedContent's outgoing
+        // and incoming content) as separate series.
+        animationId = System.identityHashCode(anim),
+        samples = getAnimatedProperties(anim),
+      )
     }
 
-  data class TrackedAnimation(val label: String, val samples: List<AnimatedSample>)
+  data class TrackedAnimation(
+    val label: String,
+    val animationId: Int,
+    val samples: List<AnimatedSample>,
+  )
 
   companion object {
     private const val PREVIEW_ANIMATION_CLOCK_FQN =
