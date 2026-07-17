@@ -1037,6 +1037,16 @@ internal object ComposeLayoutInspector {
    *   follows),
    * - a group carrying a non-identity transform (translate/scale/rotate/clip) → null, so a
    *   transformed icon rasters rather than emitting misplaced geometry (kept minimal on purpose).
+   *
+   * Why reflection here rather than the [DrawCaptureExtractor] recorder that vectorises imperative
+   * chrome (`Slider`/`Checkbox`/progress): those controls issue `drawPath`/`drawCircle`/… straight
+   * to the `DrawScope`, so re-invoking their draw lambda against a recording scope captures the
+   * primitives directly. A `VectorPainter` does NOT — its `onDraw` records the vector into a cached
+   * `GraphicsLayer` and then `drawLayer`s it, so a recording scope would only see the opaque layer
+   * blit (which the recorder rejects) and never the underlying paths, aborting every icon to
+   * raster. Reflecting the live `VectorComponent` tree is the mechanism that actually reaches an
+   * `ImageVector`'s geometry; the two extractors are deliberately separate, not a duplication to
+   * fold together.
    */
   private object VectorGraphicExtractor {
     fun extract(node: LayoutNodeFacade): LayoutInspectorVectorGraphic? =
