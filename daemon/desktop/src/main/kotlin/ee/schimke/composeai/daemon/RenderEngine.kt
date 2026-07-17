@@ -673,6 +673,10 @@ class RenderEngine(
                 layout = layout,
                 semantics = payload,
                 density = density,
+                // Emit sp text at the render's font scale so the vector matches the render (which
+                // sized its text — and the boxes measured around it — via Density(density,
+                // fontScale)).
+                fontScale = state.spec.fontScale ?: 1.0f,
                 // Hand the just-written frame PNG so opaque components (Image/Icon/Canvas/charts)
                 // export as `<image>` layers backed by a real background-free crop of the frame.
                 frameImage = state.outputFile,

@@ -676,6 +676,7 @@ class RenderEngine(
                     add(RenderDataArtifactContextKeys.SemanticsRoot provides it)
                   }
                   add(RenderDataArtifactContextKeys.Density provides spec.density)
+                  add(RenderDataArtifactContextKeys.FontScale provides (spec.fontScale ?: 1.0f))
                   add(RenderDataArtifactContextKeys.OutputPng provides outputFile)
                   add(RenderDataArtifactContextKeys.HeldActivity provides rule.activity)
                   layoutInspectorPreviewContext?.let {
@@ -1290,6 +1291,9 @@ class RenderEngine(
       layout = out.layout,
       semantics = out.semantics,
       density = spec.density,
+      // Match the render's font scale (setFontScale) so the long-scroll vector's text isn't
+      // undersized against the boxes it was measured into.
+      fontScale = spec.fontScale ?: 1.0f,
       frameImage = out.framePng,
       roundClip = true,
       deviceBackground = WEAR_DEVICE_FACE,

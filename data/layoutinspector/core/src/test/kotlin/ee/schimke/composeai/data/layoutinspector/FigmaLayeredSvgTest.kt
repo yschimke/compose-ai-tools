@@ -305,6 +305,17 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun spToPxAppliesDensityAndFontScale() {
+    // sp text sizes as sp × density × fontScale; fontScale defaults to 1.0 (an un-scaled capture).
+    assertEquals(32.0, FigmaSvgModel.spToPx("16.0sp", 2f)!!, 0.001)
+    assertEquals(64.0, FigmaSvgModel.spToPx("16.0sp", 2f, 2f)!!, 0.001)
+    // An `em` line-height resolves against the (scaled) font px, so it grows with fontScale too.
+    assertEquals(1.5 * 64.0, FigmaSvgModel.lineHeightToPx("1.5em", "16.0sp", 2f, 2f)!!, 0.001)
+    // An `sp` line-height scales directly.
+    assertEquals(48.0, FigmaSvgModel.lineHeightToPx("12.0sp", "16.0sp", 2f, 2f)!!, 0.001)
+  }
+
+  @Test
   fun nestingIsPreservedAsNestedGroups() {
     val svg =
       render(
