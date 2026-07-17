@@ -146,10 +146,12 @@ export function bindingExpression(name, def, param) {
       const optIdent = String(opt).replace(/[^A-Za-z0-9_]/g, "");
       map[opt] = enumType && optIdent ? `${enumType}.${optIdent}` : optIdent || String(opt);
     }
-    return `figma.properties.enum('${name}', ${JSON.stringify(map)})`;
+    // JSON.stringify the display name (not `'${name}'`) so an apostrophe/backslash in a Figma-authored
+    // property name can't break out of the JS string and produce an invalid template.
+    return `figma.properties.enum(${JSON.stringify(name)}, ${JSON.stringify(map)})`;
   }
-  if (type === "BOOLEAN") return `figma.properties.boolean('${name}')`;
-  if (type === "TEXT") return `figma.properties.string('${name}')`;
+  if (type === "BOOLEAN") return `figma.properties.boolean(${JSON.stringify(name)})`;
+  if (type === "TEXT") return `figma.properties.string(${JSON.stringify(name)})`;
   return null; // INSTANCE_SWAP and anything else: no scalar binding.
 }
 

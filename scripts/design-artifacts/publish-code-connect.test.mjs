@@ -45,11 +45,16 @@ test("variantPropsByName indexes component sets, ignores plain frames", () => {
 test("bindingExpression maps variant/boolean/text to figma.properties.*", () => {
   assert.equal(
     bindingExpression("State", { type: "VARIANT", variantOptions: ["Loading", "Populated"] }, { type: "DeviceState" }),
-    "figma.properties.enum('State', {\"Loading\":\"DeviceState.Loading\",\"Populated\":\"DeviceState.Populated\"})",
+    'figma.properties.enum("State", {"Loading":"DeviceState.Loading","Populated":"DeviceState.Populated"})',
   );
-  assert.equal(bindingExpression("Disabled", { type: "BOOLEAN" }, {}), "figma.properties.boolean('Disabled')");
-  assert.equal(bindingExpression("Label", { type: "TEXT" }, {}), "figma.properties.string('Label')");
+  assert.equal(bindingExpression("Disabled", { type: "BOOLEAN" }, {}), 'figma.properties.boolean("Disabled")');
+  assert.equal(bindingExpression("Label", { type: "TEXT" }, {}), 'figma.properties.string("Label")');
   assert.equal(bindingExpression("Icon", { type: "INSTANCE_SWAP" }, {}), null);
+  // A property name with an apostrophe stays valid JS (JSON-escaped, not `'...'`).
+  assert.equal(
+    bindingExpression("Owner's state", { type: "BOOLEAN" }, {}),
+    'figma.properties.boolean("Owner\'s state")',
+  );
 });
 
 test("buildBoundTemplate interpolates matched params, keeps TODO for the rest", () => {
@@ -62,7 +67,7 @@ test("buildBoundTemplate interpolates matched params, keeps TODO for the rest", 
     { State: { type: "VARIANT", variantOptions: ["Loading", "Populated"] } },
   );
   assert.deepEqual(built.boundProps, ["State"]);
-  assert.match(built.template, /state = \$\{figma\.properties\.enum\('State'/);
+  assert.match(built.template, /state = \$\{figma\.properties\.enum\("State"/);
   assert.match(built.template, /title = TODO\("String"\)/);
 });
 
@@ -91,7 +96,7 @@ test("toSendMappingsPayload prefers a prop-bound template and records props", ()
     new Map([["DeviceSummaryCard", { State: { type: "VARIANT", variantOptions: ["Loading", "Populated"] } }]]),
   );
   const m = payload.mappings[0];
-  assert.match(m.template, /figma\.properties\.enum\('State'/);
+  assert.match(m.template, /figma\.properties\.enum\("State"/);
   assert.deepEqual(JSON.parse(m.templateDataJson).props, ["State"]);
 });
 
