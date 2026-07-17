@@ -179,23 +179,15 @@ test("viewer wires the knob into every render lane", async ({ page }) => {
     })
     .toBeGreaterThan(0);
 
-  // SVG mode: the same <img> repoints at the override SVG and loads.
-  await page.click("#cp-mode-svg");
-  await expect(page.locator("#cp-img")).toHaveAttribute(
-    "src",
-    new RegExp(`\\.svg.*knob\\.label=${OVERRIDE}`),
-  );
-  await expect
-    .poll(() => page.locator("#cp-img").evaluate((im) => im.naturalWidth), {
-      timeout: 30000,
-    })
-    .toBeGreaterThan(0);
+  // SVG is export-only now: the copyable SVG URL still tracks the override (asserted
+  // above via #cp-url-svg); there is no on-screen SVG render mode to switch to.
 
-  // Live mode: the stream must actually open. A failed activation now routes
-  // through #cp-error (and CLEARS #cp-status), so checking status alone would pass
-  // on a silent failure — assert the error overlay stays hidden instead, which is
-  // only true once a frame has painted (the WS-frame test proves the frame itself).
-  await page.click("#cp-live");
+  // Live mode: flipping the single Static⇄Live toggle must actually open the stream. A
+  // failed activation now routes through #cp-error (and CLEARS #cp-status), so checking
+  // status alone would pass on a silent failure — assert the error overlay stays hidden
+  // instead, which is only true once a frame has painted (the WS-frame test proves the
+  // frame itself).
+  await page.click("#cp-live-toggle");
   await page.waitForTimeout(6000);
   await expect(
     page.locator("#cp-error"),
@@ -219,15 +211,15 @@ test("Live mode surfaces a visible error when the stream can't activate", async 
     "no error before switching modes",
   ).toBeHidden();
 
-  await page.click("#cp-live");
+  await page.click("#cp-live-toggle");
   // The viewer must raise a VISIBLE error overlay (not leave a stale snapshot masquerading as live).
   await expect(page.locator("#cp-error")).toBeVisible();
   await expect(page.locator("#cp-error")).toContainText(/live preview/i);
   // And the stale seeded canvas must not be left painted over the stage as a fake render.
   await expect(page.locator("#cp-canvas")).toBeHidden();
 
-  // Recovering to a working lane clears the error.
-  await page.click("#cp-mode-png");
+  // Toggling back to static (Live off) clears the error.
+  await page.click("#cp-live-toggle");
   await expect(page.locator("#cp-error")).toBeHidden();
 });
 
@@ -245,7 +237,13 @@ test("Wasm iframe re-renders on knob override", async ({ page }) => {
   await knob.dispatchEvent("input");
   await knob.dispatchEvent("change");
 
-  await wasmToggle.click();
+  // The wasm transport radio is hidden behind the single Static⇄Live toggle (which, on a
+  // daemon-backed catalog, prefers the stream). Drive the wasm lane directly to exercise the
+  // in-browser tier specifically: tick its radio and fire change so the transition JS enters it.
+  await wasmToggle.evaluate((el) => {
+    el.checked = true;
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  });
   const frame = page.locator("#cp-wasm");
   await expect(frame).toBeVisible();
   await page.waitForTimeout(9000); // Kotlin/Wasm boot + first frame

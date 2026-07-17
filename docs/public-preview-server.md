@@ -80,9 +80,11 @@ So: **CMP renders in the browser** (Wasm sandbox), **Compose Android uses the se
 PNG** is the universal fallback when an image is needed. Remote Compose / Protolayout are *separate,
 data-only* formats — the safest uploads.
 
-The CMP-Wasm tier is built (`:samples:cmp-wasm-catalog`): a CMP catalog session's viewer shows a **"Run in browser
-(Wasm)"** toggle that mounts the M3 components client-side in a sandboxed iframe — no server
-round-trip, so safe even for an unverified session. The app is sourced two ways:
+The CMP-Wasm tier is built (`:samples:cmp-wasm-catalog`): a CMP catalog session's viewer has a single
+**"Live preview"** toggle (static snapshot by default) that, when a Wasm app backs the session,
+mounts the M3 components client-side in a sandboxed iframe — no server round-trip, so safe even for
+an unverified session. (When the session also carries a live daemon, the toggle prefers that stream;
+the corner badge's icon flips ▪→▶ to show which lane is live.) The app is sourced two ways:
 
 - **From the trusted branch (default).** When the `design-artifacts/<system>` catalog declares a
   `webRender` (a `web/wasm/` app committed to the branch), `--catalogs` fetches it alongside
