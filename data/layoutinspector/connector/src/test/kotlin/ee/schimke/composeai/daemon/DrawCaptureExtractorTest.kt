@@ -93,13 +93,31 @@ class DrawCaptureExtractorTest {
   }
 
   @Test
-  fun gradientBrush_isSkipped() {
-    // Only solid colours are captured (matching the vector-vs-raster rule); a brush fill is
-    // dropped.
+  fun gradientMixedWithSolid_abortsWholeCapture() {
+    // A non-solid brush aborts the whole capture (not just its own op), so a lambda mixing a
+    // gradient with a solid primitive falls back to the raster crop rather than exporting only the
+    // part we understood.
     val g = capture {
       drawRect(
         androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color.Red, Color.Blue)),
         size = Size(40f, 40f),
+      )
+      drawCircle(Color.Red, radius = 10f, center = Offset(20f, 20f))
+    }
+    assertNull(g)
+  }
+
+  @Test
+  fun nonDefaultStrokeCap_fallsBackToNull() {
+    // A round/square cap (or a dash effect) can't be represented, so it aborts rather than emitting
+    // a butt-capped path that paints a visibly different (shorter) line.
+    val g = capture {
+      drawLine(
+        Color(0xFF6750A4),
+        Offset(0f, 4f),
+        Offset(48f, 4f),
+        strokeWidth = 8f,
+        cap = androidx.compose.ui.graphics.StrokeCap.Round,
       )
     }
     assertNull(g)

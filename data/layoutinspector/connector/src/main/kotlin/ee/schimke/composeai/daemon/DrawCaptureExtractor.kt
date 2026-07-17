@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.PointMode
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawContext
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.DrawStyle
@@ -153,11 +154,27 @@ internal object DrawCaptureExtractor {
           get() = throw UnsupportedOperationException("transform/clip not captured")
       }
 
-    private fun solid(brush: Brush): Color? = (brush as? SolidColor)?.value
+    // A non-solid brush (a gradient / bitmap shader) can't be a flat SVG paint. Abort the whole
+    // capture — rather than silently dropping just this op — so a lambda that mixes a gradient with
+    // a
+    // solid primitive falls back to the faithful raster crop instead of exporting only the part we
+    // understood (the all-or-raster guarantee).
+    private fun solidColor(brush: Brush): Color =
+      (brush as? SolidColor)?.value ?: throw UnsupportedOperationException("non-solid brush")
+
+    // Only a default stroke (butt cap, miter join, no path effect) maps cleanly to an SVG `<path>`.
+    // A round/square cap, a bevel/round join, or a dash effect would render as a *different* shape
+    // (a round-capped line paints longer, a dashed path becomes solid), so abort → raster crop.
+    private fun assertPlainStroke(cap: StrokeCap, join: StrokeJoin, effect: PathEffect?) {
+      if (cap != StrokeCap.Butt || join != StrokeJoin.Miter || effect != null) {
+        throw UnsupportedOperationException("unsupported stroke style")
+      }
+    }
 
     private fun add(d: String, color: Color, style: DrawStyle, alpha: Float) {
       val hex = argb(color)
       if (style is Stroke) {
+        assertPlainStroke(style.cap, style.join, style.pathEffect)
         paths.add(
           LayoutInspectorVectorPath(
             pathData = d,
@@ -270,7 +287,7 @@ internal object DrawCaptureExtractor {
       colorFilter: ColorFilter?,
       blendMode: androidx.compose.ui.graphics.BlendMode,
     ) {
-      solid(brush)?.let { add(rectPath(topLeft, size), it, style, alpha) }
+      add(rectPath(topLeft, size), solidColor(brush), style, alpha)
     }
 
     override fun drawRoundRect(
@@ -294,7 +311,7 @@ internal object DrawCaptureExtractor {
       colorFilter: ColorFilter?,
       blendMode: androidx.compose.ui.graphics.BlendMode,
     ) {
-      solid(brush)?.let { add(roundRectPath(topLeft, size, cornerRadius), it, style, alpha) }
+      add(roundRectPath(topLeft, size, cornerRadius), solidColor(brush), style, alpha)
     }
 
     override fun drawCircle(
@@ -316,7 +333,7 @@ internal object DrawCaptureExtractor {
       colorFilter: ColorFilter?,
       blendMode: androidx.compose.ui.graphics.BlendMode,
     ) {
-      solid(brush)?.let { add(ellipsePath(center.x, center.y, radius, radius), it, style, alpha) }
+      add(ellipsePath(center.x, center.y, radius, radius), solidColor(brush), style, alpha)
     }
 
     override fun drawOval(
@@ -349,19 +366,17 @@ internal object DrawCaptureExtractor {
       colorFilter: ColorFilter?,
       blendMode: androidx.compose.ui.graphics.BlendMode,
     ) {
-      solid(brush)?.let {
-        add(
-          ellipsePath(
-            topLeft.x + size.width / 2,
-            topLeft.y + size.height / 2,
-            size.width / 2,
-            size.height / 2,
-          ),
-          it,
-          style,
-          alpha,
-        )
-      }
+      add(
+        ellipsePath(
+          topLeft.x + size.width / 2,
+          topLeft.y + size.height / 2,
+          size.width / 2,
+          size.height / 2,
+        ),
+        solidColor(brush),
+        style,
+        alpha,
+      )
     }
 
     override fun drawArc(
@@ -389,9 +404,12 @@ internal object DrawCaptureExtractor {
       colorFilter: ColorFilter?,
       blendMode: androidx.compose.ui.graphics.BlendMode,
     ) {
-      solid(brush)?.let {
-        add(arcPath(topLeft, size, startAngle, sweepAngle, useCenter), it, style, alpha)
-      }
+      add(
+        arcPath(topLeft, size, startAngle, sweepAngle, useCenter),
+        solidColor(brush),
+        style,
+        alpha,
+      )
     }
 
     override fun drawLine(
@@ -405,6 +423,7 @@ internal object DrawCaptureExtractor {
       colorFilter: ColorFilter?,
       blendMode: androidx.compose.ui.graphics.BlendMode,
     ) {
+      assertPlainStroke(cap, StrokeJoin.Miter, pathEffect)
       val d = "M${fmt(start.x)},${fmt(start.y)} L${fmt(end.x)},${fmt(end.y)}"
       paths.add(
         LayoutInspectorVectorPath(
@@ -427,17 +446,17 @@ internal object DrawCaptureExtractor {
       colorFilter: ColorFilter?,
       blendMode: androidx.compose.ui.graphics.BlendMode,
     ) {
-      solid(brush)?.let {
-        val d = "M${fmt(start.x)},${fmt(start.y)} L${fmt(end.x)},${fmt(end.y)}"
-        paths.add(
-          LayoutInspectorVectorPath(
-            pathData = d,
-            strokeArgb = argb(it),
-            strokeWidth = strokeWidth,
-            strokeAlpha = alpha,
-          )
+      val color = solidColor(brush)
+      assertPlainStroke(cap, StrokeJoin.Miter, pathEffect)
+      val d = "M${fmt(start.x)},${fmt(start.y)} L${fmt(end.x)},${fmt(end.y)}"
+      paths.add(
+        LayoutInspectorVectorPath(
+          pathData = d,
+          strokeArgb = argb(color),
+          strokeWidth = strokeWidth,
+          strokeAlpha = alpha,
         )
-      }
+      )
     }
 
     override fun drawPath(
@@ -460,10 +479,9 @@ internal object DrawCaptureExtractor {
       colorFilter: ColorFilter?,
       blendMode: androidx.compose.ui.graphics.BlendMode,
     ) {
-      solid(brush)?.let {
-        val d = sampledPath(path)
-        if (d.isNotEmpty()) add(d, it, style, alpha)
-      }
+      val color = solidColor(brush)
+      val d = sampledPath(path)
+      if (d.isNotEmpty()) add(d, color, style, alpha)
     }
 
     // --- Unsupported: bitmaps and point clouds can't be vectorised → throw → raster fallback. ---
