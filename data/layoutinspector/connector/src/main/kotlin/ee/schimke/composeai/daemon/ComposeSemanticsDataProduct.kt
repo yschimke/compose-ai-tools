@@ -802,9 +802,17 @@ internal object ComposeLayoutInspector {
     // tree (Tier 1) so the figma-svg export emits editable `<path>`s instead of a raster crop.
     // Reflective + best-effort: any failure (or a bitmap/gradient/transformed painter) yields null
     // and the node simply rasters as before.
-    val vectorGraphic = VectorGraphicExtractor.extract(this)
-    val children = children.map { it.toWireNode(rootCoords, sources, density) }
     val modifiers = modifierInfo
+    // An `Icon`/`Image`'s `ImageVector` (Tier 1). Failing that, a node that paints its chrome via
+    // an
+    // imperative draw modifier (`Slider`/progress/`Checkbox`/`RadioButton`) — re-invoke its draw
+    // lambda against a recording DrawScope and capture the primitives as editable `<path>`s instead
+    // of rasterising. Both land on the same `vectorGraphic` and ride the same export path; anything
+    // the recorder can't represent yields null and the node rasters as before.
+    val vectorGraphic =
+      VectorGraphicExtractor.extract(this)
+        ?: DrawCaptureExtractor.extract(modifiers, width, height, density)
+    val children = children.map { it.toWireNode(rootCoords, sources, density) }
     return LayoutInspectorNode(
       nodeId = semanticsId?.toString() ?: identityId,
       component = ownComponent,
