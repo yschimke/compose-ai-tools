@@ -309,13 +309,22 @@ data class FigmaSvgModel(
      * vector assets (`Icon`), custom `Canvas`/chart drawing. Second, **Material components whose
      * chrome is drawn imperatively** (a `drawWithContent`/`Canvas` inside the component, not a
      * `Modifier.background`/`border` the layout inspector can read as a container token): the
-     * filled & outlined `TextField` container + indicator, and the `Slider` track + thumb. Their
-     * fills never surface as tokens, so a token-driven vector export drops them entirely — the
-     * filled `TextField` was the worst sticker in the fidelity audit (dark: 66%, container box
-     * missing). Rasterising the component's measure-policy node (`TextFieldMeasurePolicy`,
-     * `OutlinedTextFieldMeasurePolicy`, `SliderKt`) crops its faithful pixels out of the frame
-     * while the rest of the screen stays editable vector — the sanctioned hybrid split, tuned by
-     * the fidelity diff (render vs. SVG) rather than guessed per-component.
+     * filled & outlined `TextField` container + indicator. Its fills never surface as tokens, so a
+     * token-driven vector export drops them entirely — the filled `TextField` was the worst sticker
+     * in the fidelity audit (dark: 66%, container box missing). Rasterising the component's
+     * measure-policy node (`TextFieldMeasurePolicy`, `OutlinedTextFieldMeasurePolicy`) crops its
+     * faithful pixels out of the frame while the rest of the screen stays editable vector — the
+     * sanctioned hybrid split, tuned by the fidelity diff (render vs. SVG) rather than guessed
+     * per-component. `TextField` stays here because its live cursor / selection / IME state is
+     * genuinely raster-only.
+     *
+     * The `Slider` used to sit in this family too, for the same reason (its track + thumb are drawn
+     * imperatively by `SliderKt`, never as tokens). It no longer needs a name entry: the
+     * draw-capture extractor re-invokes those draw lambdas against a recording `DrawScope` and
+     * emits the track and thumb as editable `<path>`s, so the drawn descendants vectorise
+     * faithfully instead of being cropped out as an opaque `<image>`. Rasterising the `SliderKt`
+     * node by name would pre-empt that capture (the opaque-by-name branch drops the subtree before
+     * recursion reaches the drawn leaves), so keep `Slider` out of this set.
      */
     val DEFAULT_RASTER_COMPONENTS: Set<String> =
       setOf(
@@ -330,7 +339,6 @@ data class FigmaSvgModel(
         "AndroidView",
         "Painter",
         "TextField",
-        "Slider",
       )
 
     /** Default `<image>` href for an opaque node: a per-node PNG under `figma-raster/`. */
