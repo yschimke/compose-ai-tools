@@ -6,6 +6,19 @@
  * every component's PNG↔SVG fidelity at once and spot which vectors drift. Rows
  * sort **worst-match-first** once scored, so the biggest divergences surface first.
  *
+ * Override toolbar: the header carries a control bar (font scale, embedded-fonts
+ * toggle, theme, backdrop) that re-applies each override to the *in-browser*
+ * figma-svg and re-scores live. The figma-svg is a **fixed-geometry capture** — its
+ * layer boxes were measured once at capture time and intentionally do **not**
+ * reflow — so scaling the vector's `<text>` up while the boxes stay put is exactly
+ * how you *see* that a static sticker can't represent a `fontScale` render: the
+ * glyphs overflow their containers and the score drops. Dropping the embedded
+ * `@font-face` shows the no-embed / custom-font-substitution case the same way.
+ * Because the PNG column is the render captured at the catalog's own params (font
+ * scale 1.0), any non-identity override makes the score a *probe* of the SVG's
+ * sensitivity to that knob, not a like-for-like fidelity number — the header labels
+ * that state so the reading isn't mistaken for baseline drift.
+ *
  * Why the score is computed live in the page rather than baked at build time: the
  * whole point is to measure the *browser's* SVG rasterization against the PNG, so
  * the comparison has to run where the SVG is actually drawn. The page loads both
@@ -53,6 +66,14 @@ function isDefault(image) {
   return !hasProps && state === "default";
 }
 
+/** The default, resting render pool for a component (ideal-only if any, else all). */
+function defaultPool(component) {
+  const ideal = idealImages(component);
+  const pool = ideal.length ? ideal : component.images ?? [];
+  const defaults = pool.filter(isDefault);
+  return defaults.length ? defaults : pool;
+}
+
 /**
  * The PNG to pit against the figma-svg: the **default, light-themed** render, so
  * it matches the light-preferred vector `figmaSvgByFunction` carries. Falls back
@@ -60,20 +81,29 @@ function isDefault(image) {
  * one. Mirrors the index's hero pick, but pins the light theme for a fair compare.
  */
 function comparePng(component) {
-  const ideal = idealImages(component);
-  const pool = ideal.length ? ideal : component.images ?? [];
-  const defaults = pool.filter(isDefault);
-  const byDefault = defaults.length ? defaults : pool;
+  const byDefault = defaultPool(component);
   const light = byDefault.filter((i) => i.theme === "light");
   const chooseFrom = light.length ? light : byDefault;
   return [...chooseFrom].sort((a, b) => (b.width ?? 0) - (a.width ?? 0))[0];
 }
 
 /**
+ * The **dark**, default render for the theme override, or `null` when the catalog
+ * carries no dark capture for this component. The compare SVG is light-preferred,
+ * so switching the PNG column to dark is itself a probe: the vector column stays
+ * light, showing at a glance that the figma-svg has no dark variant.
+ */
+function compareDarkPng(component) {
+  const dark = defaultPool(component).filter((i) => i.theme === "dark");
+  if (!dark.length) return null;
+  return [...dark].sort((a, b) => (b.width ?? 0) - (a.width ?? 0))[0];
+}
+
+/**
  * The client-side scorer, inlined as a string so the page is self-contained. It
- * walks every `<tr data-png data-svg>`, rasterizes both images to a shared canvas
- * over white, writes a windowed-SSIM percentage into the row's score cell, then
- * re-orders the rows worst-match-first.
+ * walks every `<tr data-png data-svg>`, applies the active overrides to the SVG,
+ * rasterizes both images to a shared canvas over white, writes a windowed-SSIM
+ * percentage into the row's score cell, then re-orders the rows worst-match-first.
  */
 const SCORER = String.raw`
 (() => {
@@ -84,6 +114,59 @@ const SCORER = String.raw`
   // which is what makes the score robust to a sub-pixel offset. 192px max side is
   // plenty of structure for SSIM while keeping the per-row work cheap.
   const MAX_SIDE = 192;
+
+  // Active override state, read from the header control bar. Identity defaults
+  // (fontScale 1, fonts embedded, light theme) reproduce the pre-toolbar behaviour
+  // exactly, so the baseline score is unchanged.
+  const OV = { fontScale: 1, fonts: true, theme: "light", bg: "checker" };
+
+  function readControls() {
+    const fs = document.getElementById("ov-fontScale");
+    const fonts = document.getElementById("ov-fonts");
+    const theme = document.getElementById("ov-theme");
+    const bg = document.getElementById("ov-bg");
+    OV.fontScale = fs ? (parseFloat(fs.value) || 1) : 1;
+    OV.fonts = fonts ? fonts.checked : true;
+    OV.theme = theme ? theme.value : "light";
+    OV.bg = bg ? bg.value : "checker";
+  }
+
+  // Whether any override departs from identity. When true the score is a *probe* of
+  // the SVG's sensitivity to the knob (the PNG is the capture-time render), not a
+  // baseline fidelity number — the header says so.
+  function overridesActive() {
+    return Math.abs(OV.fontScale - 1) > 1e-6 || !OV.fonts || OV.theme !== "light";
+  }
+
+  // Apply the active overrides to the figma-svg source text.
+  //  - fontScale: multiply every <text>/<tspan> font-size and letter-spacing. The
+  //    layer geometry (x/y/width/height) is a fixed capture and deliberately is NOT
+  //    reflowed — glyphs overflowing their boxes at >1x is precisely the signal that
+  //    a static sticker can't stand in for a re-rendered fontScale.
+  //  - fonts off: drop the @font-face <style> so the browser substitutes its own
+  //    face — the no-embed / custom-font case (Figma resolves by family name, not the
+  //    embedded bytes, so this mirrors an importer without that font installed).
+  // Identity overrides return the text unchanged so the cheap <img src=svg> path and
+  // the exact baseline score are preserved.
+  function applyOverrides(svgText) {
+    let s = svgText;
+    if (!OV.fonts) {
+      s = s.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, (m) =>
+        /@font-face/i.test(m) ? "" : m);
+    }
+    const fs = OV.fontScale;
+    if (fs && Math.abs(fs - 1) > 1e-6) {
+      s = s.replace(/\b(font-size|letter-spacing)="(-?\d*\.?\d+)"/gi, (_, k, n) =>
+        k + '="' + (parseFloat(n) * fs).toFixed(3) + '"');
+    }
+    return s;
+  }
+
+  // The PNG the current theme override selects — the dark capture if the row carries
+  // one, else the light default (so the toggle is a no-op for light-only rows).
+  function currentPng(tr) {
+    return OV.theme === "dark" && tr.dataset.pngDark ? tr.dataset.pngDark : tr.dataset.png;
+  }
 
   function loadImage(src) {
     return new Promise((res, rej) => {
@@ -134,9 +217,13 @@ const SCORER = String.raw`
   }
 
   // Load an SVG given as a string (rasters already inlined) via a Blob URL, so it
-  // carries no external refs and the canvas it's drawn into stays untainted.
+  // carries no external refs and the canvas it's drawn into stays untainted. The
+  // caller may reuse the same blob to show the overridden vector in the display img.
+  function svgBlobUrl(svgText) {
+    return URL.createObjectURL(new Blob([svgText], { type: "image/svg+xml" }));
+  }
   async function loadSvgString(svgText) {
-    const url = URL.createObjectURL(new Blob([svgText], { type: "image/svg+xml" }));
+    const url = svgBlobUrl(svgText);
     try {
       return await loadImage(url);
     } finally {
@@ -144,6 +231,30 @@ const SCORER = String.raw`
       // still has the decoded bitmap.
       setTimeout(() => URL.revokeObjectURL(url), 0);
     }
+  }
+
+  // Point a display <img> at the overridden SVG so the column shows what was scored
+  // (glyphs overflowing at >1x, the substituted face with fonts off). Revoked after
+  // the browser has had a chance to decode it. Marks the row so a later return to
+  // identity knows to restore the original source.
+  function showSvg(tr, svgText) {
+    const img = tr.querySelector(".col-svg .shot img");
+    if (!img) return;
+    const url = svgBlobUrl(svgText);
+    img.src = url;
+    tr.dataset.svgShown = "override";
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+
+  // Put the display <img> back to the authored figma-svg once the overrides return to
+  // identity — otherwise the column keeps showing the last override's blob while the
+  // score is recomputed from the baseline vector. Only acts when a blob was actually
+  // installed, so an unchanged rescore doesn't thrash the src.
+  function restoreSvg(tr) {
+    if (tr.dataset.svgShown !== "override") return;
+    const img = tr.querySelector(".col-svg .shot img");
+    if (img) img.src = tr.dataset.svg;
+    tr.dataset.svgShown = "base";
   }
 
   // The figma-svg's root translate. The export (FigmaSvgModel) pads the canvas by
@@ -287,16 +398,21 @@ const SCORER = String.raw`
     }
   }
 
-  async function scoreRow(tr) {
+  async function scoreRow(tr, seq) {
     const cell = tr.querySelector(".score");
     try {
-      // PNG as an <img>; the SVG as text (to read its translate and inline any raster
-      // crops). Both are same-origin and cache-shared.
+      // PNG as an <img> (theme override picks light/dark); the SVG as text (to read its
+      // translate, apply the active overrides, and inline any raster crops). Both are
+      // same-origin and cache-shared.
+      const pngPath = currentPng(tr);
       const [png, resp] = await Promise.all([
-        loadImage(tr.dataset.png),
+        loadImage(pngPath),
         fetch(tr.dataset.svg),
       ]);
-      const svgText = await resp.text();
+      const rawSvg = await resp.text();
+      // Apply the header overrides (font scale, drop embedded @font-face) to the vector
+      // before anything else, so both the score and the shown column reflect the knob.
+      const svgText = applyOverrides(rawSvg);
       // Inline hybrid raster crops so their opaque layers draw; a vector-only SVG is
       // returned unchanged and takes the plain <img> path. Resolve the crop hrefs against
       // the SVG's *resolved* URL (resp.url), NOT location.href: under htmlpreview the page
@@ -305,7 +421,10 @@ const SCORER = String.raw`
       // wrong host, so nothing inlines and hybrids fall back to half-empty scoring. resp.url
       // is the branch asset's real location (it followed the same base/redirects the fetch did).
       const inlined = await inlineRasters(svgText, resp.url);
-      const svg = inlined === svgText ? await loadImage(tr.dataset.svg) : await loadSvgString(inlined);
+      // Overridden or hybrid → rasterize the (blob) string; untouched vector-only → the
+      // cheap <img src=svg> path.
+      const changed = inlined !== rawSvg;
+      const svg = changed ? await loadSvgString(inlined) : await loadImage(tr.dataset.svg);
       // The render PNG defines the aligned coordinate space (padding-free, content at
       // (0,0)); size the shared canvas from it, capped to MAX_SIDE for offset-robustness.
       const rw = png.naturalWidth || png.width, rh = png.naturalHeight || png.height;
@@ -319,7 +438,7 @@ const SCORER = String.raw`
       // the daemon's FigmaSvgFidelity does before scoring. No independent scaling: SVG px
       // and PNG px are the same space, so a genuine size drift shows up as a real mismatch
       // rather than being hidden by a fit-to-box rescale.
-      const { tx, ty } = translateOf(svgText);
+      const { tx, ty } = translateOf(rawSvg);
       const sw = svg.naturalWidth || svg.width, sh = svg.naturalHeight || svg.height;
       const gb = blur(
         grayFromDraw(
@@ -331,17 +450,36 @@ const SCORER = String.raw`
         th,
       );
       const pct = Math.max(0, Math.min(100, ssim(ga, gb, tw, th) * 100));
+      // A newer control change may have started while this row was awaiting its fetch /
+      // decode. Everything above only read; from here down mutates the row, so bail now
+      // if superseded — otherwise a stale pass could overwrite the current one's image
+      // and score after the newer pass already finished this row.
+      if (seq !== runSeq) return null;
+      // Reflect the *scored* inputs in the display so what's shown matches what was
+      // measured: the theme-selected PNG (only touch src when it actually changes, to
+      // avoid a reload each rescore) and the overridden vector — or the authored SVG
+      // back once the overrides return to identity.
+      const pngImg = tr.querySelector(".col-png .shot img");
+      const shownPng = tr.dataset.pngShown || tr.dataset.png;
+      if (pngImg && shownPng !== pngPath) {
+        pngImg.src = pngPath;
+        tr.dataset.pngShown = pngPath;
+      }
+      if (changed) showSvg(tr, inlined);
+      else restoreSvg(tr);
       // Crop both display columns to the component now that we've read its bbox from the SVG.
       frameToComponent(tr, rw, rh, tx, ty, sw, sh);
       const shown = pct.toFixed(1);
       cell.textContent = shown + "%";
-      cell.classList.add("score--" + grade(pct));
+      cell.className = "score score--" + grade(pct);
       tr.dataset.scoreValue = shown;
       return pct;
     } catch (err) {
-      // A tainted canvas (SecurityError) or a broken image lands here.
+      // A tainted canvas (SecurityError) or a broken image lands here. A superseded pass
+      // must not stamp "n/a" over the current pass's result either.
+      if (seq !== runSeq) return null;
       cell.textContent = "n/a";
-      cell.classList.add("score--na");
+      cell.className = "score score--na";
       cell.title = String(err && err.message || err);
       return null;
     }
@@ -354,16 +492,47 @@ const SCORER = String.raw`
     return Number.isFinite(v) ? v : Infinity;
   }
 
+  // Reflect the backdrop choice + the active-probe banner. The backdrop rides on the
+  // body so the checkerboard CSS can be overridden per shot.
+  function applyChrome() {
+    document.body.dataset.bg = OV.bg;
+    const banner = document.getElementById("ov-active");
+    if (banner) {
+      if (!overridesActive()) {
+        banner.textContent = "";
+        banner.hidden = true;
+      } else {
+        const bits = [];
+        if (Math.abs(OV.fontScale - 1) > 1e-6) bits.push("font scale " + OV.fontScale.toFixed(1) + "×");
+        if (!OV.fonts) bits.push("no embedded fonts");
+        if (OV.theme !== "light") bits.push(OV.theme + " theme");
+        banner.hidden = false;
+        banner.textContent = "Probing SVG: " + bits.join(" · ") +
+          " — the PNG is the capture-time render, so the match is this knob's SVG-vs-render divergence, not baseline drift.";
+      }
+    }
+  }
+
+  // A monotonic run token: a control change starts a fresh pass and supersedes any
+  // still-running one, so rapid slider drags don't interleave stale scores.
+  let runSeq = 0;
+
   async function run() {
+    readControls();
+    applyChrome();
+    const mySeq = ++runSeq;
     const rows = Array.from(document.querySelectorAll("tr[data-png][data-svg]"));
     const scores = [];
     // Sequential: keeps memory flat and the summary counter ticking predictably.
+    const done = document.getElementById("done");
+    if (done) done.textContent = "0";
     for (const tr of rows) {
-      const s = await scoreRow(tr);
+      if (mySeq !== runSeq) return; // a newer pass took over
+      const s = await scoreRow(tr, mySeq);
       if (s != null) scores.push(s);
-      const done = document.getElementById("done");
       if (done) done.textContent = String(scores.length);
     }
+    if (mySeq !== runSeq) return;
     const avgEl = document.getElementById("avg");
     if (avgEl) {
       avgEl.textContent = scores.length
@@ -388,25 +557,67 @@ const SCORER = String.raw`
     }
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", run);
-  } else {
+  // Debounce the re-score so dragging the font-scale slider doesn't launch a pass per
+  // pixel; the run token then makes the last drag win.
+  let pending = 0;
+  function scheduleRun() {
+    clearTimeout(pending);
+    pending = setTimeout(run, 120);
+  }
+
+  function updateFontScaleLabel() {
+    const fs = document.getElementById("ov-fontScale");
+    const out = document.getElementById("ov-fontScale-val");
+    if (fs && out) out.textContent = (parseFloat(fs.value) || 1).toFixed(1) + "×";
+  }
+
+  function wireControls() {
+    const fs = document.getElementById("ov-fontScale");
+    if (fs) fs.addEventListener("input", () => { updateFontScaleLabel(); scheduleRun(); });
+    for (const id of ["ov-fonts", "ov-theme", "ov-bg"]) {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener("change", scheduleRun);
+    }
+    const reset = document.getElementById("ov-reset");
+    if (reset) reset.addEventListener("click", () => {
+      if (fs) fs.value = "1";
+      const fonts = document.getElementById("ov-fonts");
+      const theme = document.getElementById("ov-theme");
+      const bg = document.getElementById("ov-bg");
+      if (fonts) fonts.checked = true;
+      if (theme) theme.value = "light";
+      if (bg) bg.value = "checker";
+      updateFontScaleLabel();
+      run();
+    });
+    updateFontScaleLabel();
+  }
+
+  function start() {
+    wireControls();
     run();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", start);
+  } else {
+    start();
   }
 })();
 `;
 
 /**
- * One `<tr>` per component. `data-png` / `data-svg` drive the scorer; the score
- * cell is filled in client-side. Components missing a PNG or a figma-svg still get
- * a row (so the table is a complete inventory) but with an inert "—" score that
- * sorts to the bottom.
+ * One `<tr>` per component. `data-png` / `data-svg` drive the scorer; `data-png-dark`
+ * (when present) feeds the theme override. The score cell is filled in client-side.
+ * Components missing a PNG or a figma-svg still get a row (so the table is a complete
+ * inventory) but with an inert "—" score that sorts to the bottom.
  */
 function componentRow(component, figmaSvgSlugs, hybridSlugs) {
   const id = component.componentId ?? "(unnamed)";
   const group = component.group ?? "Components";
   const s = slug(id);
   const png = comparePng(component);
+  const pngDark = compareDarkPng(component);
   const hasSvg = figmaSvgSlugs && figmaSvgSlugs.has(s);
   const svgPath = hasSvg ? `figma/${s}.svg` : null;
   const hybrid = Boolean(hybridSlugs && hybridSlugs.has(s));
@@ -426,7 +637,9 @@ function componentRow(component, figmaSvgSlugs, hybridSlugs) {
       : `<td class="score score--na" title="needs both a PNG and a figma-svg">—</td>`;
 
   const rowAttrs =
-    png && svgPath ? ` data-png="${esc(png.path)}" data-svg="${esc(svgPath)}"` : "";
+    png && svgPath
+      ? ` data-png="${esc(png.path)}"${pngDark ? ` data-png-dark="${esc(pngDark.path)}"` : ""} data-svg="${esc(svgPath)}"`
+      : "";
 
   return `<tr class="crow"${rowAttrs}>
   <th scope="row" class="rowhead"><span class="cid">${esc(id)}</span><span class="grp">${esc(group)}</span></th>
@@ -452,6 +665,16 @@ export function renderCompareHtml(catalog, opts = {}) {
     (c) => comparePng(c) && figmaSvgSlugs && figmaSvgSlugs.has(slug(c.componentId)),
   ).length;
 
+  // Whether any comparable component carries a dark default capture — the theme
+  // override is only offered when there's a dark PNG to switch to.
+  const hasDark = components.some(
+    (c) =>
+      figmaSvgSlugs &&
+      figmaSvgSlugs.has(slug(c.componentId)) &&
+      comparePng(c) &&
+      compareDarkPng(c),
+  );
+
   // One flat, client-sortable table — initial paint is catalog order; the scorer
   // re-orders worst-match-first once every row has a score.
   const body = components.map((c) => componentRow(c, figmaSvgSlugs, hybridSlugs)).join("\n");
@@ -465,6 +688,12 @@ export function renderCompareHtml(catalog, opts = {}) {
     `${comparable} comparable`,
   ].filter(Boolean);
 
+  // Theme control only when there's a dark capture to switch the PNG column to.
+  const themeControl = hasDark
+    ? `<label class="ov">Theme
+        <select id="ov-theme"><option value="light">Light</option><option value="dark">Dark</option></select></label>`
+    : "";
+
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -473,7 +702,7 @@ export function renderCompareHtml(catalog, opts = {}) {
 <title>${esc(title)} — PNG vs SVG compare</title>
 <style>
   :root { color-scheme: light dark; --bg:#0f0f10; --panel:#1b1b1d; --fg:#e8e8ea; --muted:#9b9ba1; --line:#2a2a2d;
-    --good:#7dd87d; --warn:#e0c060; --bad:#e08080; }
+    --good:#7dd87d; --warn:#e0c060; --bad:#e08080; --accent:#6ea8fe; }
   * { box-sizing: border-box; }
   body { margin:0; font:14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--fg); }
   header.top { padding:24px clamp(16px,4vw,40px); border-bottom:1px solid var(--line); }
@@ -487,6 +716,19 @@ export function renderCompareHtml(catalog, opts = {}) {
   .summary { margin-top:12px; display:flex; gap:20px; flex-wrap:wrap; font-size:13px; }
   .summary b { color:var(--fg); font-size:16px; }
   .summary .k { color:var(--muted); }
+  /* Override control bar: the font scale / embedded-fonts / theme / backdrop knobs
+     the scorer reads before re-rasterizing each SVG. */
+  .controls { margin-top:14px; display:flex; gap:16px 20px; flex-wrap:wrap; align-items:center;
+    padding:12px 14px; border:1px solid var(--line); border-radius:10px; background:var(--panel); }
+  .controls .ov { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); }
+  .controls .ov output { color:var(--fg); font-variant-numeric:tabular-nums; min-width:2.6em; }
+  .controls .ov input[type=range] { accent-color:var(--accent); }
+  .controls .ov select { background:var(--bg); color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:3px 6px; }
+  .controls .ov-check { color:var(--fg); }
+  .controls #ov-reset { margin-left:auto; background:var(--bg); color:var(--fg); border:1px solid var(--line);
+    border-radius:6px; padding:5px 12px; font-size:12px; cursor:pointer; }
+  .controls #ov-reset:hover { border-color:var(--accent); }
+  .ov-active { flex-basis:100%; margin-top:2px; color:var(--warn); font-size:12px; }
   main { padding:8px clamp(16px,4vw,40px) 64px; }
   table { border-collapse:collapse; width:100%; }
   thead th { position:sticky; top:0; background:var(--bg); text-align:left; font-size:12px; color:var(--muted);
@@ -506,6 +748,9 @@ export function renderCompareHtml(catalog, opts = {}) {
       linear-gradient(45deg,transparent 75%,#202022 75%),
       linear-gradient(-45deg,transparent 75%,#202022 75%);
     background-size:16px 16px; background-position:0 0,0 8px,8px -8px,-8px 0; }
+  /* Backdrop override (body[data-bg]) — flat white / dark to read glyph edges without the grid. */
+  body[data-bg="white"] .shot:not(.shot--missing) { background-color:#ffffff; background-image:none; }
+  body[data-bg="dark"] .shot:not(.shot--missing) { background-color:#0b0b0c; background-image:none; }
   .shot img { max-width:260px; max-height:200px; height:auto; display:block; }
   /* Framed mode: the scorer sizes the tile to the component's content bbox (read from the
      figma-svg's translate + viewBox) and absolutely-positions the PNG so only the component
@@ -533,14 +778,28 @@ export function renderCompareHtml(catalog, opts = {}) {
     <span><span class="k">avg structural match</span> <b id="avg">…</b></span>
     <span><span class="k">scored</span> <b id="done">0</b> / ${comparable}</span>
   </div>
+  <div class="controls" role="group" aria-label="Override options">
+    <label class="ov">Font scale <output id="ov-fontScale-val">1.0×</output>
+      <input id="ov-fontScale" type="range" min="0.5" max="2" step="0.1" value="1" aria-label="Font scale" /></label>
+    <label class="ov ov-check"><input id="ov-fonts" type="checkbox" checked /> Embedded fonts</label>
+    ${themeControl}
+    <label class="ov">Backdrop
+      <select id="ov-bg"><option value="checker">Checker</option><option value="white">White</option><option value="dark">Dark</option></select></label>
+    <button type="button" id="ov-reset">Reset</button>
+    <span class="ov-active" id="ov-active" hidden></span>
+  </div>
   <p class="note">Each row pairs the rendered <strong>PNG</strong> (raster source of truth) with the editable
   <strong>figma-svg</strong> re-rasterized <em>by your browser</em>. The match column is a windowed
   <strong>SSIM</strong> (structural similarity) computed live in the page — pre-blurred and downscaled so a
   half-pixel offset between the two rasterizers barely moves the score, unlike a per-pixel diff. The SVG is
   aligned to the PNG first (its export padding + root <code>translate</code> are cropped back out, matching the
   daemon's fidelity harness), so the score reflects real vector drift, not a constant inset. Hybrid stickers'
-  raster crop layers are inlined so their score reflects the full sticker. <strong>Rows sort largest-diff-first
-  once scored</strong>, so the worst offenders come to the top.</p>
+  raster crop layers are inlined so their score reflects the full sticker. The <strong>override controls</strong>
+  above re-apply a knob to the vector and re-score live: raising <strong>font scale</strong> grows the SVG's
+  <code>&lt;text&gt;</code> while its captured layer boxes stay put — a fixed-geometry sticker can't reflow, so
+  the glyphs overflow, showing why it can't stand in for a re-rendered <code>fontScale</code>; turning off
+  <strong>embedded fonts</strong> drops the <code>@font-face</code> so the browser substitutes its own face.
+  <strong>Rows sort largest-diff-first once scored</strong>, so the worst offenders come to the top.</p>
   <p class="taintwarn" id="taintwarn">⚠ The match scores read pixels back from a canvas, which the browser
   blocks when the images can't be read cross-origin — over <code>file://</code> (opaque origin), or from a
   host that doesn't send CORS headers for the PNGs. Open this page over <strong>http</strong> from a
