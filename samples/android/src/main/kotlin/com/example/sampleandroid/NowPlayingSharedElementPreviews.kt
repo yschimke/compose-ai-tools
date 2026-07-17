@@ -7,6 +7,8 @@ import androidx.compose.animation.ExperimentalLookaheadAnimationVisualDebugApi
 import androidx.compose.animation.LookaheadAnimationVisualDebugging
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.SeekableTransitionState
+import androidx.compose.animation.core.rememberTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -30,10 +32,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,7 +65,15 @@ import ee.schimke.composeai.preview.AnimatedPreview
  * card surface (`sharedBounds`) travel with it; the scrubber and transport controls exist only in the
  * expanded state and fade in over the morphing container.
  */
-private val playerBoundsSpec = BoundsTransform { _, _ -> tween(durationMillis = 1200) }
+/**
+ * Duration of the container-transform morph. Shared by the bounds tween *and* the [AnimatedContent]
+ * transition below: shared elements only animate while the `AnimatedContent` transition is active,
+ * so if the content transition (a short default fade) finishes first, the shared bounds snap to
+ * their target instead of tweening. Matching both to [MORPH_MS] keeps the whole morph on screen.
+ */
+private const val MORPH_MS = 1200
+
+private val playerBoundsSpec = BoundsTransform { _, _ -> tween(durationMillis = MORPH_MS) }
 
 private val artworkBrush =
   Brush.linearGradient(listOf(Color(0xFF7C4DFF), Color(0xFFB14DFF), Color(0xFFFF6BA6)))
@@ -112,10 +119,19 @@ fun NowPlayingDebugOverlayPreview() {
  */
 @Composable
 private fun NowPlayingSharedLayout(modifier: Modifier = Modifier) {
-  var screen by remember { mutableStateOf(PlayerScreen.MiniPlayer) }
-  LaunchedEffect(Unit) { screen = PlayerScreen.FullPlayer }
+  // Drive the transition with a SeekableTransitionState animated over MORPH_MS rather than by
+  // flipping an AnimatedContent targetState. Under the paused render clock a targetState flip snaps
+  // the shared-element bounds to their target in a single captured frame (only the fades tween);
+  // making the transition *fraction* the clock-driven animation means the bounds interpolate
+  // smoothly across every captured frame — the same seekable primitive SharedElementFilmstripPreview
+  // uses for fixed fractions, animated here instead of seeked.
+  val seekState = remember { SeekableTransitionState(PlayerScreen.MiniPlayer) }
+  LaunchedEffect(Unit) {
+    seekState.animateTo(PlayerScreen.FullPlayer, animationSpec = tween(MORPH_MS))
+  }
+  val transition = rememberTransition(seekState, label = "now-playing")
   SharedTransitionLayout(modifier = modifier) {
-    AnimatedContent(targetState = screen, label = "now-playing") { target ->
+    transition.AnimatedContent { target ->
       when (target) {
         PlayerScreen.MiniPlayer -> MiniPlayer(this@SharedTransitionLayout, this@AnimatedContent)
         PlayerScreen.FullPlayer -> FullPlayer(this@SharedTransitionLayout, this@AnimatedContent)
