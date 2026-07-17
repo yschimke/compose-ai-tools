@@ -24,8 +24,13 @@ export function bestTarget(targets) {
   if (!t || !t.functionName) return null;
   return {
     functionName: t.functionName,
+    className: t.className ?? undefined,
     sourceFile: t.sourceFile ?? undefined,
     confidence: t.confidence ?? undefined,
+    // The target composable's real value parameters (name / type / hasDefault / composableSlot),
+    // recovered from its Kotlin metadata — the raw material for a real call site. Empty when the
+    // signature couldn't be read.
+    parameters: Array.isArray(t.parameters) ? t.parameters : [],
   };
 }
 

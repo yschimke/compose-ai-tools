@@ -345,6 +345,10 @@ wear-protolayout-proto = { module = "androidx.wear.protolayout:protolayout-proto
 wear-protolayout-external-protobuf = { module = "androidx.wear.protolayout:protolayout-external-protobuf", version.ref = "wear-protolayout" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+# Reads a class file's `@kotlin.Metadata` to recover the real Kotlin signature (parameter names,
+# types, defaults) of a discovered target composable — the JVM bytecode alone drops names and
+# carries Compose's synthetic Composer/changed params. Version tracks the Kotlin toolchain.
+kotlin-metadata-jvm = { module = "org.jetbrains.kotlin:kotlin-metadata-jvm", version.ref = "kotlin" }
 mcp-kotlin-sdk-server = { module = "io.modelcontextprotocol:kotlin-sdk-server", version.ref = "mcp-kotlin-sdk" }
 okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
 okio-fakefilesystem = { module = "com.squareup.okio:okio-fakefilesystem", version.ref = "okio" }

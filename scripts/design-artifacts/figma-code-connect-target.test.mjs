@@ -13,15 +13,29 @@ import { bestTarget, targetsByFunction } from "./figma-code-connect-target.mjs";
 test("bestTarget takes the first (most-confident) entry, or null when none", () => {
   assert.deepEqual(
     bestTarget([
-      { functionName: "DeviceSummaryCard", sourceFile: "a.kt", confidence: "HIGH" },
+      {
+        functionName: "DeviceSummaryCard",
+        className: "com.x.DeviceKt",
+        sourceFile: "a.kt",
+        confidence: "HIGH",
+        parameters: [{ name: "state", type: "State", hasDefault: false }],
+      },
       { functionName: "Other", confidence: "LOW" },
     ]),
-    { functionName: "DeviceSummaryCard", sourceFile: "a.kt", confidence: "HIGH" },
+    {
+      functionName: "DeviceSummaryCard",
+      className: "com.x.DeviceKt",
+      sourceFile: "a.kt",
+      confidence: "HIGH",
+      parameters: [{ name: "state", type: "State", hasDefault: false }],
+    },
   );
   assert.equal(bestTarget([]), null);
   assert.equal(bestTarget(undefined), null);
   // A malformed entry with no functionName is treated as "no target".
   assert.equal(bestTarget([{ sourceFile: "a.kt" }]), null);
+  // A target with no parameters carried yields an empty array (never undefined).
+  assert.deepEqual(bestTarget([{ functionName: "X" }]).parameters, []);
 });
 
 test("targetsByFunction reads parsed preview.targets, preferring the light variant", () => {
@@ -40,11 +54,9 @@ test("targetsByFunction reads parsed preview.targets, preferring the light varia
     ],
   };
   const byFn = targetsByFunction(bundle);
-  assert.deepEqual(byFn.get("FabPreview"), {
-    functionName: "Fab",
-    sourceFile: "light.kt",
-    confidence: "HIGH",
-  });
+  assert.equal(byFn.get("FabPreview").functionName, "Fab");
+  assert.equal(byFn.get("FabPreview").sourceFile, "light.kt");
+  assert.equal(byFn.get("FabPreview").confidence, "HIGH");
 });
 
 test("targetsByFunction omits previews that carried no target", () => {
@@ -69,11 +81,35 @@ test("targetsByFunction falls back to the raw previews.json entry when parsing d
     entries: { "previews.json": new TextEncoder().encode(raw) },
   };
   const byFn = targetsByFunction(bundle);
-  assert.deepEqual(byFn.get("CardPreview"), {
-    functionName: "Card",
-    sourceFile: "Card.kt",
-    confidence: "HIGH",
-  });
+  assert.equal(byFn.get("CardPreview").functionName, "Card");
+  assert.equal(byFn.get("CardPreview").sourceFile, "Card.kt");
+  assert.equal(byFn.get("CardPreview").confidence, "HIGH");
+});
+
+test("targetsByFunction carries the target's parameters and className", () => {
+  const bundle = {
+    previews: [
+      {
+        id: "Btn_Light",
+        functionName: "BtnPreview",
+        targets: [
+          {
+            functionName: "Button",
+            className: "com.x.ButtonsKt",
+            confidence: "HIGH",
+            parameters: [
+              { name: "label", type: "String", hasDefault: false },
+              { name: "onClick", type: "() -> Unit", hasDefault: false, composableSlot: true },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const t = targetsByFunction(bundle).get("BtnPreview");
+  assert.equal(t.className, "com.x.ButtonsKt");
+  assert.equal(t.parameters.length, 2);
+  assert.equal(t.parameters[1].composableSlot, true);
 });
 
 test("targetsByFunction handles a bare-array previews.json and bad JSON gracefully", () => {
