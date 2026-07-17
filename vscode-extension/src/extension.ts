@@ -7331,9 +7331,37 @@ async function handleCopyFigmaSvg(previewId: string): Promise<void> {
         );
         return;
     }
+    // Inline any hybrid `figma-raster/<node>.png` crops as data URIs so the clipboard SVG is
+    // self-contained — a bare relative href can't resolve once the text is pasted into Figma or
+    // another consumer away from the sidecar dir. No-op for a pure-vector export.
+    svg = inlineFigmaSvgRasterLayers(svg, path.dirname(svgPath));
     await vscode.env.clipboard.writeText(svg);
     vscode.window.showInformationMessage(
         `Compose Preview: copied ${label} as SVG to the clipboard.`,
+    );
+}
+
+/**
+ * Rewrite a figma-svg's relative `figma-raster/<node>.png` `<image>` hrefs to inline
+ * `data:image/png;base64,…` URIs by reading the sibling crop files under [svgDir], so a copied SVG
+ * is self-contained (the CLI export path carries the crops as files instead; the clipboard can't,
+ * so it embeds them). A crop that can't be read is left as-is — best-effort. Pure-vector exports
+ * reference no crops, so this is a no-op for the common case. The `[^"'/]` node class keeps the
+ * read pinned to the crop dir (no `/` → no traversal).
+ */
+function inlineFigmaSvgRasterLayers(svgText: string, svgDir: string): string {
+    return svgText.replace(
+        /figma-raster\/([^"'/]+?\.png)/g,
+        (whole, node: string) => {
+            try {
+                const bytes = fs.readFileSync(
+                    path.join(svgDir, "figma-raster", node),
+                );
+                return `data:image/png;base64,${bytes.toString("base64")}`;
+            } catch {
+                return whole;
+            }
+        },
     );
 }
 
