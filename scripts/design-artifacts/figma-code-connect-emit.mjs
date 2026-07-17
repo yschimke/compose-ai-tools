@@ -44,14 +44,28 @@ export function resolveSource({ repo, ref, module, sourceFile } = {}) {
 /**
  * Build the `code-connect.json` manifest object.
  *
+ * `componentName`/`source` should point at the **production composable** the sticker renders — the
+ * thing a designer/agent actually calls — not the zero-arg `@Preview` wrapper. Three sources, in
+ * priority order (each mapping records which one won in `confidence`):
+ *   1. **explicit** — a `component` (+ optional `import`/`source`) authored on the catalog-spec entry,
+ *      surfaced here via `componentByComponentId`. Deterministic; use it where inference is uncertain.
+ *   2. **inferred** — discovery's `PreviewTarget` for the preview function (`targetByFn`), carrying
+ *      its own `HIGH`/`MEDIUM`/`LOW` confidence and the target's source file.
+ *   3. **preview-fallback** — the `@Preview` function itself, when neither of the above is available.
+ *      Still a valid mapping, but review it before publishing.
+ *
  * @param components   catalog components (each with a `componentId`).
  * @param fnByComponentId Map componentId → `@Preview` function name (from the catalog spec).
+ * @param componentByComponentId optional Map componentId → `{ component, import?, source? }` — the
+ *                     explicit spec override (source 1 above).
+ * @param targetByFn   optional Map function → `{ functionName, sourceFile?, confidence? }` — the
+ *                     inferred production composable (source 2 above), from `targetsByFunction`.
  * @param slug         componentId → slug (the same `slug()` the figma-svg emit uses), so a mapping
  *                     can link its editable vector at `figma/<slug>.svg`.
  * @param figmaSvgSlugs Set of slugs that actually carried a `figma/<slug>.svg` (so only real files
  *                     are linked).
- * @param sourceByFn   optional Map function → `{ sourceFile }` lifted from the bundle, so a mapping
- *                     can point at the exact preview source file rather than the bare module.
+ * @param sourceByFn   optional Map function → `{ sourceFile }` lifted from the bundle — the preview
+ *                     function's own source file, used only for the preview-fallback source.
  * @param system/title system id + title, copied onto the manifest for provenance.
  * @param source       `{ repo, ref, module }` — the catalog's buildable-source pointer.
  * @param label        Code Connect label (default {@link COMPOSE_LABEL}).
@@ -62,6 +76,8 @@ export function resolveSource({ repo, ref, module, sourceFile } = {}) {
 export function buildCodeConnectManifest({
   components = [],
   fnByComponentId,
+  componentByComponentId,
+  targetByFn,
   slug,
   figmaSvgSlugs,
   sourceByFn,
@@ -77,17 +93,50 @@ export function buildCodeConnectManifest({
     const fn = fnByComponentId?.get(componentId);
     // No preview function ⇒ no code symbol to bind; skip rather than emit a dangling mapping.
     if (!fn) continue;
-    const sourceFile = sourceByFn?.get(fn)?.sourceFile;
+    const explicit = componentByComponentId?.get(componentId);
+    const target = targetByFn?.get(fn);
+    // Resolve the code symbol + its source file by priority (explicit > inferred > preview).
+    let componentName;
+    let sourceFile;
+    let confidence;
+    if (explicit?.component) {
+      componentName = explicit.component;
+      // Don't inherit the inferred target's file for an explicit component — the explicit override is
+      // often there precisely to reject a wrong inference, so its sourceFile would point at the wrong
+      // composable. Reuse it only when the inferred function IS the explicit component; otherwise use
+      // the authored `source`, then the preview's own file, then (via resolveSource) the module.
+      const inferredMatches = target?.functionName === explicit.component;
+      sourceFile =
+        explicit.source ??
+        (inferredMatches ? target?.sourceFile : undefined) ??
+        sourceByFn?.get(fn)?.sourceFile;
+      confidence = "explicit";
+    } else if (target?.functionName) {
+      componentName = target.functionName;
+      sourceFile = target.sourceFile ?? sourceByFn?.get(fn)?.sourceFile;
+      confidence = target.confidence ?? "inferred";
+    } else {
+      componentName = fn;
+      sourceFile = sourceByFn?.get(fn)?.sourceFile;
+      confidence = "preview-fallback";
+    }
     const mapping = {
       componentId,
       // The Figma layer name a node must carry to receive this mapping. The design-parity importer
       // names each frame by componentId, so this is that name verbatim — resolved to a node id at
       // publish time.
       figmaLayerName: componentId,
-      componentName: fn,
+      componentName,
       source: resolveSource({ repo: source.repo, ref: source.ref, module: source.module, sourceFile }),
       label,
+      // How componentName/source were resolved, so the publish/review step knows what to trust:
+      // "explicit" | "HIGH" | "MEDIUM" | "LOW" | "preview-fallback".
+      confidence,
+      // The @Preview that rendered the sticker, always recorded for traceability even when the
+      // mapping points at the underlying component.
+      previewName: fn,
     };
+    if (explicit?.import) mapping.import = explicit.import;
     const s = slug?.(componentId);
     if (s && figmaSvgSlugs?.has(s)) mapping.figmaSvg = `figma/${s}.svg`;
     mappings.push(mapping);

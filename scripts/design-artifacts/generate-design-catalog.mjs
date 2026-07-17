@@ -54,6 +54,7 @@ import {
   rewriteRasterHrefs,
 } from "./figma-svg-emit.mjs";
 import { buildCodeConnectManifest } from "./figma-code-connect-emit.mjs";
+import { targetsByFunction } from "./figma-code-connect-target.mjs";
 import { renderWireframeSvg, slug } from "./render-wireframe-svg.mjs";
 import { renderLayoutWireframeSvg } from "./render-layout-wireframe-svg.mjs";
 import { DEFAULT_PREVIEW_BASE, livePreviewUrl } from "./live-preview.mjs";
@@ -662,15 +663,28 @@ for (const component of catalog.components) {
 }
 
 // Figma Code Connect manifest next to the figma-svg vectors: one mapping per component binding its
-// Figma layer (by componentId) to the `@Preview` function that renders it, plus the repo source. It
+// Figma layer (by componentId) to the **production composable** it renders, plus the repo source. It
 // carries everything `send_code_connect_mappings` needs except the node id, which only exists once a
 // designer imports the catalog — `publish-code-connect.mjs` resolves layer-name → node id against
 // the imported file and produces the send payload. Emitting the manifest is plan-agnostic; only
 // publishing needs an Org/Enterprise Dev/Full seat. Written for every catalog so the surface is
 // covered automatically.
+//
+// componentName/source resolve to the real component, not the zero-arg @Preview wrapper: an explicit
+// `component` authored on the spec entry wins; else discovery's inferred `PreviewTarget`
+// (`targetsByFunction`); else the preview function as a marked fallback.
+const componentByComponentId = new Map(
+  spec.groups.flatMap((g) =>
+    g.components
+      .filter((c) => c.component)
+      .map((c) => [c.componentId, { component: c.component, import: c.import, source: c.source }]),
+  ),
+);
 const codeConnect = buildCodeConnectManifest({
   components: catalog.components,
   fnByComponentId,
+  componentByComponentId,
+  targetByFn: targetsByFunction(bundle),
   slug,
   figmaSvgSlugs,
   sourceByFn: sourceByFunction(bundle),

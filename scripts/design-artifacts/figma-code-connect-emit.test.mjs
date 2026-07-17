@@ -73,7 +73,10 @@ test("buildCodeConnectManifest maps each component to its preview function and l
   assert.equal(device.componentId, "DeviceSummaryCard/Populated");
   // The layer name a Figma node must carry to receive this mapping = componentId verbatim.
   assert.equal(device.figmaLayerName, "DeviceSummaryCard/Populated");
+  // No explicit spec component and no inferred target here ⇒ the preview function is the fallback.
   assert.equal(device.componentName, "DeviceSummaryCardPopulatedPreview");
+  assert.equal(device.confidence, "preview-fallback");
+  assert.equal(device.previewName, "DeviceSummaryCardPopulatedPreview");
   assert.equal(
     device.source,
     "https://github.com/yschimke/meshcore-mobile/blob/main/app/src/DeviceBodyPreviews.kt",
@@ -82,6 +85,84 @@ test("buildCodeConnectManifest maps each component to its preview function and l
   // Only components that carried a figma-svg get a vector link.
   assert.equal(device.figmaSvg, "figma/devicesummarycard-populated.svg");
   assert.equal(manifest.mappings[1].figmaSvg, undefined);
+});
+
+test("buildCodeConnectManifest prefers an inferred target over the preview function", () => {
+  const manifest = buildCodeConnectManifest({
+    components: [{ componentId: "DeviceSummaryCard/Populated" }],
+    fnByComponentId: new Map([["DeviceSummaryCard/Populated", "DeviceSummaryCardPopulatedPreview"]]),
+    targetByFn: new Map([
+      [
+        "DeviceSummaryCardPopulatedPreview",
+        { functionName: "DeviceSummaryCard", sourceFile: "src/DeviceSummaryCard.kt", confidence: "HIGH" },
+      ],
+    ]),
+    slug,
+    figmaSvgSlugs: new Set(),
+    source: { repo: "o/r", ref: "main", module: ":app" },
+  });
+  const m = manifest.mappings[0];
+  // Points at the real component, not the wrapper.
+  assert.equal(m.componentName, "DeviceSummaryCard");
+  assert.equal(m.source, "https://github.com/o/r/blob/main/app/src/DeviceSummaryCard.kt");
+  assert.equal(m.confidence, "HIGH");
+  // The preview that rendered the sticker is still recorded for traceability.
+  assert.equal(m.previewName, "DeviceSummaryCardPopulatedPreview");
+});
+
+test("buildCodeConnectManifest: explicit spec component wins over an inferred target", () => {
+  const manifest = buildCodeConnectManifest({
+    components: [{ componentId: "Btn/Primary" }],
+    fnByComponentId: new Map([["Btn/Primary", "BtnPrimaryPreview"]]),
+    componentByComponentId: new Map([
+      ["Btn/Primary", { component: "PrimaryButton", import: "import com.x.PrimaryButton", source: "src/Button.kt" }],
+    ]),
+    targetByFn: new Map([["BtnPrimaryPreview", { functionName: "WrongGuess", confidence: "LOW" }]]),
+    slug,
+    figmaSvgSlugs: new Set(),
+    source: { repo: "o/r", ref: "main", module: ":ui" },
+  });
+  const m = manifest.mappings[0];
+  assert.equal(m.componentName, "PrimaryButton");
+  assert.equal(m.confidence, "explicit");
+  assert.equal(m.import, "import com.x.PrimaryButton");
+  assert.equal(m.source, "https://github.com/o/r/blob/main/ui/src/Button.kt");
+});
+
+test("explicit component without a source does NOT inherit a rejected inference's file", () => {
+  const manifest = buildCodeConnectManifest({
+    components: [{ componentId: "Btn/Primary" }],
+    fnByComponentId: new Map([["Btn/Primary", "BtnPrimaryPreview"]]),
+    // Author pins the component to override the inference, but supplies no explicit source.
+    componentByComponentId: new Map([["Btn/Primary", { component: "PrimaryButton" }]]),
+    // The inference guessed a DIFFERENT composable — its file must not be linked.
+    targetByFn: new Map([
+      ["BtnPrimaryPreview", { functionName: "WrongGuess", sourceFile: "src/WrongGuess.kt", confidence: "LOW" }],
+    ]),
+    // The preview's own file is the honest fallback.
+    sourceByFn: new Map([["BtnPrimaryPreview", { sourceFile: "src/BtnPreviews.kt" }]]),
+    slug,
+    figmaSvgSlugs: new Set(),
+    source: { repo: "o/r", ref: "main", module: ":ui" },
+  });
+  const m = manifest.mappings[0];
+  assert.equal(m.componentName, "PrimaryButton");
+  // Falls back to the preview's file, NOT src/WrongGuess.kt.
+  assert.equal(m.source, "https://github.com/o/r/blob/main/ui/src/BtnPreviews.kt");
+});
+
+test("explicit component reuses the inferred file only when the inference matches it", () => {
+  const manifest = buildCodeConnectManifest({
+    components: [{ componentId: "Fab/Default" }],
+    fnByComponentId: new Map([["Fab/Default", "FabPreview"]]),
+    componentByComponentId: new Map([["Fab/Default", { component: "Fab" }]]),
+    // Inference agrees with the explicit component ⇒ its source file is trustworthy.
+    targetByFn: new Map([["FabPreview", { functionName: "Fab", sourceFile: "src/Fab.kt", confidence: "HIGH" }]]),
+    slug,
+    figmaSvgSlugs: new Set(),
+    source: { repo: "o/r", ref: "main", module: ":ui" },
+  });
+  assert.equal(manifest.mappings[0].source, "https://github.com/o/r/blob/main/ui/src/Fab.kt");
 });
 
 test("buildCodeConnectManifest skips components with no preview function (nothing to bind)", () => {
