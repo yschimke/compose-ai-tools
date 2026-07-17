@@ -238,4 +238,11 @@ class ServeHttpRoutingTest {
     assertEquals(400, get("/compose-m3/iframe.html").first)
     assertEquals(404, get("/compose-m3/iframe.html?id=no.such.Story").first)
   }
+
+  @Test
+  fun `iframe_html format svg 404s on a static bundle`() {
+    // The SVG lane inlines the figma-svg export, which only a daemon-backed host produces; a static
+    // ServeBundleHost 404s it just like the /render/<id>.svg lane does.
+    assertEquals(404, get("/compose-m3/iframe.html?id=$previewId&format=svg").first)
+  }
 }

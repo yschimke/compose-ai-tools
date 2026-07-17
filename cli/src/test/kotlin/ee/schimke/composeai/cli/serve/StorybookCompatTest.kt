@@ -125,4 +125,22 @@ class StorybookCompatTest {
     assertTrue(page.contains("width=\"24\" height=\"8\""), "sizes to the png dimensions: $page")
     assertTrue(page.contains("main--greeting"), "labels with the story id")
   }
+
+  @Test
+  fun `iframe svg page embeds the vector as an inert svg image not inline markup`() {
+    // A hostile SVG (e.g. from an unverified catalog) must not run when the page is opened. Serving
+    // it via <img src=data:image/svg+xml> keeps it in the browser's restricted (non-scripting)
+    // mode.
+    val svg =
+      "<?xml version=\"1.0\"?>\n" +
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"4\">" +
+        "<script>alert(1)</script><rect width=\"10\" height=\"4\"/></svg>"
+    val page = StorybookCompat.iframeSvgPage("main--greeting", svg.toByteArray())
+    assertTrue(page.startsWith("<!doctype html>"), "is an html document")
+    assertTrue(page.contains("src=\"data:image/svg+xml;base64,"), "embeds as an svg image: $page")
+    // The raw SVG (and any embedded <script>) is base64'd inside the data URI — never live markup.
+    assertTrue(!page.contains("<svg"), "no inline svg markup in the document: $page")
+    assertTrue(!page.contains("<script>alert"), "no live script from the svg: $page")
+    assertTrue(page.contains("main--greeting"), "labels with the story id")
+  }
 }
