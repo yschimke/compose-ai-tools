@@ -68,6 +68,44 @@ dependencyResolutionManagement {
   }
 }
 
+// BuildFetch remote Gradle build cache. Complements the local build cache (org.gradle.caching=true
+// in gradle.properties) by sharing task outputs across CI runs and developer machines.
+//
+// Token: resolved from the first non-blank of, in order —
+//          1. env  BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN  (project-specific)
+//          2. prop BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN
+//          3. env  BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN            (shared / general fallback)
+//          4. prop BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN
+//        The project-specific name lets a developer keep a separate token per BuildFetch project
+//        (this repo and meshcore-mobile point at different caches) in one shared
+//        ~/.gradle/gradle.properties; the general name lets a single token serve everything and is
+//        what CI exports. Env wins over a gradle property of the same name so CI overrides a stray
+//        local property. Each source is trimmed and empty-checked independently so a present-but-
+//        empty value (e.g. an unset secret that CI still exports) never shadows a later source and
+//        never enables the cache with an empty credential. When nothing resolves the cache disables
+//        itself (isEnabled below) and the build falls back to the local cache with no error.
+// Push:  writes are restricted to trusted CI builds (ON_CI=true on main); PRs and developer machines
+//        are read-only. The gate is value-based so an explicit ON_CI=false is honoured as read-only.
+buildCache {
+  remote<HttpBuildCache> {
+    url = uri("https://cache.eu-central-a.buildfetch.com/8ESz2z/gradle/")
+
+    credentials {
+      username = "token-auth"
+      val nonBlank = { source: Provider<String> -> source.map { it.trim() }.filter { it.isNotEmpty() } }
+      password =
+        nonBlank(providers.environmentVariable("BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN"))
+          .orElse(nonBlank(providers.gradleProperty("BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN")))
+          .orElse(nonBlank(providers.environmentVariable("BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN")))
+          .orElse(nonBlank(providers.gradleProperty("BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN")))
+          .orNull
+    }
+
+    isPush = providers.environmentVariable("ON_CI").orElse("false").get().toBoolean()
+    isEnabled = credentials.password != null
+  }
+}
+
 rootProject.name = "compose-ai-tools"
 
 includeBuild("gradle-plugin")
