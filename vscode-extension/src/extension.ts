@@ -769,15 +769,13 @@ export function applyDataProductsToRegistry(
         try {
             if (dp.kind === "a11y/atf") {
                 const payload = (dp.payload ?? readJsonPath(dp.path, log)) as
-                    | { findings?: AccessibilityFinding[] }
-                    | undefined;
+                    { findings?: AccessibilityFinding[] } | undefined;
                 if (payload?.findings) {
                     findings = payload.findings;
                 }
             } else if (dp.kind === "a11y/hierarchy") {
                 const payload = (dp.payload ?? readJsonPath(dp.path, log)) as
-                    | { nodes?: AccessibilityNode[] }
-                    | undefined;
+                    { nodes?: AccessibilityNode[] } | undefined;
                 if (payload?.nodes) {
                     nodes = payload.nodes;
                 }
@@ -1789,14 +1787,12 @@ export async function activate(
                         picked: !scope.gitRef,
                         ref: undefined,
                     },
-                    ...branches.map(
-                        (b): RefItem => ({
-                            label: "$(git-branch) " + b.label,
-                            description: b.ref,
-                            picked: scope.gitRef === b.ref,
-                            ref: b.ref,
-                        }),
-                    ),
+                    ...branches.map((b): RefItem => ({
+                        label: "$(git-branch) " + b.label,
+                        description: b.ref,
+                        picked: scope.gitRef === b.ref,
+                        ref: b.ref,
+                    })),
                 ];
                 const pick = await vscode.window.showQuickPick(items, {
                     title: "Preview History — source",
@@ -4693,11 +4689,7 @@ function sourceLooksLikePreviewDeclaration(
  *   will run a real refresh.
  */
 type RefreshOutcome =
-    | "completed"
-    | "cancelled"
-    | "no-module"
-    | "failed"
-    | "gated";
+    "completed" | "cancelled" | "no-module" | "failed" | "gated";
 
 /**
  * Rank for the coalesce-or-supersede decision when a new refresh arrives
@@ -5903,6 +5895,9 @@ function handleWebviewMessage(msg: WebviewToExtension) {
                 void exportPreviewBundle(msg.previewId);
             }
             break;
+        case "copyFigmaSvg":
+            void handleCopyFigmaSvg(msg.previewId);
+            break;
         case "bundleDropped":
             if (earlyFeaturesEnabled()) {
                 void handleBundleDropped(msg.fsPath, msg.fileName);
@@ -6294,8 +6289,8 @@ async function handleSetRemoteComposeNamedValue(
     // would shadow user edits with stale values from the last-attached payload.
     const priorOverride = remoteComposeOverridesByPreview.get(previewId);
     let seed:
-        | import("./daemon/daemonProtocol").RemoteComposeOverride
-        | undefined = priorOverride;
+        import("./daemon/daemonProtocol").RemoteComposeOverride | undefined =
+        priorOverride;
     if (!seed) {
         const snapshot = latestRemoteComposeByPreview.get(previewId);
         if (snapshot) {
@@ -6419,7 +6414,10 @@ async function handleSetLottieProgress(
         // Compose over the host-authoritative bag so scrubbing keeps a co-active
         // permissions / remoteCompose / clear-background override. `lottie` itself is
         // daemon-sticky, so it's added here inline rather than stored host-side.
-        { ...(buildPreviewOverrides(previewId) ?? {}), lottie: { progress: clamped } },
+        {
+            ...(buildPreviewOverrides(previewId) ?? {}),
+            lottie: { progress: clamped },
+        },
     );
 }
 
@@ -7279,6 +7277,94 @@ function formatRelativeShort(iso: string | undefined): string {
  * success / failure via toasts; the resulting `.png` is a valid image that
  * also unzips to the bundle contents.
  */
+/**
+ * Copy a preview's `compose/figma-svg` export (the layered, editable vector) to the clipboard.
+ * Pulls the SVG through the daemon's `data/fetch` (may trigger a re-render), reads the file the
+ * daemon wrote, and writes its text to the clipboard. Best-effort: an unavailable export (backend
+ * without the figma-svg producer, or a preview that drew no vector layers) surfaces as a warning
+ * rather than an error.
+ */
+async function handleCopyFigmaSvg(previewId: string): Promise<void> {
+    const module = previewModuleIndex.get(previewId);
+    if (!module) {
+        vscode.window.showWarningMessage(
+            "Compose Preview: could not resolve the module for this preview.",
+        );
+        return;
+    }
+    if (!daemonScheduler) {
+        vscode.window.showInformationMessage(
+            "Compose Preview is not ready yet.",
+        );
+        return;
+    }
+    const label = lookupPreviewLabel(previewId) ?? previewId;
+    let svgPath: string | null = null;
+    try {
+        svgPath = await vscode.window.withProgress(
+            {
+                location: vscode.ProgressLocation.Window,
+                title: `Copying ${label} SVG…`,
+            },
+            () => daemonScheduler!.fetchFigmaSvg(module, previewId),
+        );
+    } catch (err) {
+        logLine(
+            `copy figma-svg: fetch failed for ${previewId}: ${(err as Error).message ?? String(err)}`,
+        );
+    }
+    if (!svgPath) {
+        vscode.window.showWarningMessage(
+            `Compose Preview: no SVG available for ${label}. The backend may not produce ` +
+                `compose/figma-svg, or the preview drew no vector layers.`,
+        );
+        return;
+    }
+    let svg: string;
+    try {
+        svg = fs.readFileSync(svgPath, "utf8");
+    } catch (err) {
+        const message = (err as Error).message ?? String(err);
+        logLine(`copy figma-svg: read failed at ${svgPath}: ${message}`);
+        vscode.window.showErrorMessage(
+            `Compose Preview: could not read the SVG for ${label} — ${message}`,
+        );
+        return;
+    }
+    // Inline any hybrid `figma-raster/<node>.png` crops as data URIs so the clipboard SVG is
+    // self-contained — a bare relative href can't resolve once the text is pasted into Figma or
+    // another consumer away from the sidecar dir. No-op for a pure-vector export.
+    svg = inlineFigmaSvgRasterLayers(svg, path.dirname(svgPath));
+    await vscode.env.clipboard.writeText(svg);
+    vscode.window.showInformationMessage(
+        `Compose Preview: copied ${label} as SVG to the clipboard.`,
+    );
+}
+
+/**
+ * Rewrite a figma-svg's relative `figma-raster/<node>.png` `<image>` hrefs to inline
+ * `data:image/png;base64,…` URIs by reading the sibling crop files under [svgDir], so a copied SVG
+ * is self-contained (the CLI export path carries the crops as files instead; the clipboard can't,
+ * so it embeds them). A crop that can't be read is left as-is — best-effort. Pure-vector exports
+ * reference no crops, so this is a no-op for the common case. The `[^"'/]` node class keeps the
+ * read pinned to the crop dir (no `/` → no traversal).
+ */
+function inlineFigmaSvgRasterLayers(svgText: string, svgDir: string): string {
+    return svgText.replace(
+        /figma-raster\/([^"'/]+?\.png)/g,
+        (whole, node: string) => {
+            try {
+                const bytes = fs.readFileSync(
+                    path.join(svgDir, "figma-raster", node),
+                );
+                return `data:image/png;base64,${bytes.toString("base64")}`;
+            } catch {
+                return whole;
+            }
+        },
+    );
+}
+
 async function exportPreviewBundle(previewId: string): Promise<void> {
     if (!gradleService) {
         vscode.window.showInformationMessage(

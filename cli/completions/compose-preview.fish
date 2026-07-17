@@ -203,7 +203,11 @@ end
 
 # render: --output <path>.
 complete -c compose-preview -r -n '__compose_preview_using_command render' \
-    -l output -d 'Copy the single matched PNG to this path'
+    -l output -d 'Copy the single matched preview (PNG, or .svg under --format svg) to this path'
+
+# render: --format png|svg (svg emits the editable compose/figma-svg vector per preview).
+complete -c compose-preview -x -n '__compose_preview_using_command render' \
+    -l format -a 'png svg' -d 'Output format (default png; svg = editable compose/figma-svg vector)'
 
 # a11y / report commands: --fail-on.
 complete -c compose-preview -x -n '__compose_preview_using_command a11y' \

@@ -1099,7 +1099,30 @@ class RenderCommand(args: List<String>) : Command(args) {
    */
   private val embedDeps: Boolean = "--embed-deps" in args
 
+  /**
+   * `--format png|svg` (default `png`). `svg` emits the layered, editable `compose/figma-svg`
+   * vector export per matched preview instead of stopping at the raster PNG. Because the standalone
+   * `composePreviewRender` task never produces figma-svg (it's a daemon-only structured data
+   * product — see `docs/DATA_PRODUCTS.md`), `--format svg` drives a short-lived render daemon after
+   * the render, exactly like `bundle pack --with-semantics`. The PNGs are still produced; the SVGs
+   * are the additional deliverable.
+   */
+  private val formatFlag: String? =
+    args.flagValue("--format")?.trim()?.lowercase()?.ifEmpty { null }
+
   override fun run() {
+    val svg =
+      when (formatFlag) {
+        null,
+        "png" -> false
+        "svg" -> true
+        else -> {
+          System.err.println(
+            "unsupported --format '$formatFlag' for render; expected 'png' or 'svg'"
+          )
+          exitProcess(1)
+        }
+      }
     withGradle { gradle ->
       val modules = resolveModules(gradle)
       val xrArgs = provisionXrCompositeArgs(gradle, modules, silenceStdout = false)
@@ -1123,6 +1146,11 @@ class RenderCommand(args: List<String>) : Command(args) {
       if (filtered.isEmpty()) {
         System.err.println("No previews matched.")
         exitProcess(3)
+      }
+
+      if (svg) {
+        emitSvgOutputs(gradle, modules, filtered)
+        return@withGradle
       }
 
       val missing = previewsMissingPng(filtered)
@@ -1159,6 +1187,175 @@ class RenderCommand(args: List<String>) : Command(args) {
         }
       }
     }
+  }
+
+  /**
+   * `--format svg` output pass. The standalone render never produces figma-svg (a daemon-only
+   * structured data product), so — exactly like `bundle pack --with-semantics` — we regenerate each
+   * module's `daemon-launch.json` and drive a short-lived [DaemonSemanticsFetcher] render so the
+   * always-on `compose/figma-svg` extension writes each preview's sidecar, then land those bytes.
+   *
+   * Where they land depends on `--bundle`:
+   * - **without `--bundle`**: loose `.svg` files. With `--output` a single matched preview's SVG is
+   *   written to that path; otherwise each lands at
+   *   `<module>/build/compose-previews/renders/<id>.svg` beside the PNGs.
+   * - **with `--bundle`**: the SVGs (and any hybrid `figma-raster/<node>.png` crops) are injected
+   *   into each module's freshly-packed `bundle.png` as `previews/<id>.figma.svg`, the same carrier
+   *   `bundle pack --with-semantics` uses — so the packaged live bundle ships the editable vector
+   *   per preview alongside the raster cover.
+   *
+   * Best-effort per preview (a backend with no figma-svg producer, or a preview that drew no vector
+   * layers, is simply skipped with a stderr note), but if *nothing* was produced the command exits
+   * non-zero — `--format svg` asked for SVG and got none.
+   */
+  private fun emitSvgOutputs(
+    gradle: GradleConnection,
+    modules: List<PreviewModule>,
+    filtered: List<PreviewResult>,
+  ) {
+    // A single-file `--output` target only makes sense for loose output; `--bundle` injects into
+    // each module's bundle, so the two are mutually exclusive.
+    if (output != null && bundle) {
+      System.err.println("--output cannot be combined with --bundle for --format svg.")
+      exitProcess(1)
+    }
+    if (output != null && filtered.size != 1) {
+      System.err.println(
+        "--output requires a single match (got ${filtered.size}). " +
+          "Narrow with --id <exact> or --filter <substring>."
+      )
+      exitProcess(1)
+    }
+
+    val moduleByPath = modules.associateBy { it.gradlePath }
+    var totalWritten = 0
+    for ((modulePath, rows) in filtered.groupBy { it.module }) {
+      val module = moduleByPath[modulePath] ?: continue
+      // Regenerate the launch descriptor against the current classpath in a separate invocation —
+      // its failure only forfeits this module's SVGs, it must not abort the whole command.
+      val daemonStarted =
+        runGradle(
+          gradle,
+          ":$modulePath:composePreviewDaemonStart",
+          arguments = gradleArgsWithForce(),
+        )
+      if (!daemonStarted) {
+        System.err.println(
+          "render --format svg: could not start the preview daemon for $modulePath " +
+            "(composePreviewDaemonStart failed) — no SVG produced for its previews."
+        )
+        continue
+      }
+
+      val fetcher =
+        DaemonSemanticsFetcher(onLog = { if (verbose) System.err.println("[daemon svg] $it") })
+      val outcome =
+        fetcher.fetch(
+          projectDir = module.projectDir,
+          moduleName = modulePath,
+          previewIds = rows.map { it.id },
+        )
+      val svgById: Map<String, ByteArray>
+      val rasterById: Map<String, Map<String, ByteArray>>
+      when (outcome) {
+        is DaemonSemanticsFetcher.Outcome.Ok -> {
+          svgById = outcome.figmaSvgById
+          rasterById = outcome.figmaRasterById
+        }
+        is DaemonSemanticsFetcher.Outcome.DescriptorMissing -> {
+          System.err.println(
+            "render --format svg: daemon-launch.json missing at ${outcome.expected.path} for " +
+              "$modulePath — no SVG produced."
+          )
+          continue
+        }
+        is DaemonSemanticsFetcher.Outcome.OpenFailed -> {
+          System.err.println(
+            "render --format svg: could not open a render session for $modulePath " +
+              "(${outcome.reason}) — no SVG produced."
+          )
+          continue
+        }
+      }
+
+      totalWritten +=
+        if (bundle) injectSvgIntoModuleBundle(module, modulePath, svgById, rasterById)
+        else writeLooseSvgFiles(module, rows, svgById, rasterById)
+
+      val noSvg = rows.filter { it.id !in svgById }
+      if (noSvg.isNotEmpty()) {
+        System.err.println(
+          "render --format svg: no figma-svg for ${noSvg.size} preview(s) in $modulePath " +
+            "(backend has no figma-svg producer, or the preview drew no vector layers):"
+        )
+        for (r in noSvg) System.err.println("  ${r.id}")
+      }
+    }
+
+    if (totalWritten == 0) {
+      System.err.println("render --format svg produced no SVG output.")
+      exitProcess(2)
+    }
+    if (output == null && !bundle) println("Wrote $totalWritten SVG file(s)")
+  }
+
+  /**
+   * Write one module's figma-svg exports as loose `.svg` files (the non-`--bundle` path) and return
+   * the number written. A hybrid preview's `figma-raster/<node>.png` crops ride along in a sibling
+   * `<id>.figma-raster/` dir via [RenderSvgOutput.write].
+   */
+  private fun writeLooseSvgFiles(
+    module: PreviewModule,
+    rows: List<PreviewResult>,
+    svgById: Map<String, ByteArray>,
+    rasterById: Map<String, Map<String, ByteArray>>,
+  ): Int {
+    val rendersDir = module.projectDir.resolve("build/compose-previews/renders")
+    var written = 0
+    for (row in rows) {
+      val svgBytes = svgById[row.id] ?: continue
+      val target =
+        if (output != null) File(output)
+        else File(rendersDir, RenderSvgOutput.safeFilename(row.id) + ".svg")
+      RenderSvgOutput.write(target, svgBytes, rasterById[row.id].orEmpty(), fileSystem)
+      written++
+      println(
+        if (output != null) "Rendered ${row.id} to ${target.path}" else "Wrote ${target.path}"
+      )
+    }
+    return written
+  }
+
+  /**
+   * Inject one module's figma-svg exports (and hybrid raster crops) into its freshly-packed
+   * `bundle.png` as `previews/<id>.figma.svg` — the same carrier + reusable injectors `bundle pack
+   * --with-semantics` uses. Returns the number of SVG entries written (0 if the bundle is missing).
+   * Best-effort: a missing bundle warns rather than aborting the whole command.
+   */
+  private fun injectSvgIntoModuleBundle(
+    module: PreviewModule,
+    modulePath: String,
+    svgById: Map<String, ByteArray>,
+    rasterById: Map<String, Map<String, ByteArray>>,
+  ): Int {
+    val bundleFile = module.projectDir.resolve("build/compose-previews/bundle.png")
+    if (!bundleFile.isFile) {
+      System.err.println(
+        "render --format svg --bundle: expected bundle missing at ${bundleFile.path} for " +
+          "$modulePath — cannot inject SVG."
+      )
+      return 0
+    }
+    val svgWritten = injectFigmaSvgIntoBundle(bundleFile, svgById, fileSystem)
+    val rasterWritten = injectFigmaRasterIntoBundle(bundleFile, rasterById, fileSystem)
+    if (svgWritten > 0) {
+      println(
+        "Injected $svgWritten figma-svg" +
+          (if (rasterWritten > 0) " + $rasterWritten raster crop(s)" else "") +
+          " into ${bundleFile.path} as previews/<id>$BUNDLE_FIGMA_SVG_SUFFIX"
+      )
+    }
+    return svgWritten
   }
 
   /**

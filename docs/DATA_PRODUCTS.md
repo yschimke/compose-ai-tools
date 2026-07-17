@@ -10,6 +10,10 @@ Consumers reach them three ways, all backed by the same daemon:
 - the VS Code chip toggle (`data/subscribe`),
 - `compose-preview a11y` and the MCP server (`get_preview_data`), which spin up or
   talk to a daemon,
+- `compose-preview bundle pack --with-semantics` and `compose-preview render --format
+  svg`, which drive a short-lived daemon (`DaemonSemanticsFetcher`) to bake the
+  `compose/figma-svg` (and semantics) sidecars, then carry them into the bundle or land
+  them as loose `.svg` files,
 - on-disk history (`compose-preview history`), which reads what the daemon archived.
 
 The standalone `composePreviewRenderAll` Gradle Test task is the **lean PNG path**:

@@ -225,6 +225,17 @@ export interface DaemonScheduler {
             absolutePath: string;
         },
     ): Promise<string | null>;
+    /**
+     * Pull a preview's `compose/figma-svg` export (the layered, editable vector) through the
+     * daemon's `data/fetch` re-render path and return the absolute on-disk path the daemon wrote
+     * (`<module>/build/compose-previews/data/<id>/compose-figma.svg`), or `null` when the daemon
+     * isn't ready, doesn't advertise the kind, or the preview drew no vector layers. The webview's
+     * "Copy SVG" affordance reads the file at this path and writes it to the clipboard.
+     */
+    fetchFigmaSvg(
+        module: ModuleInfo,
+        previewId: string,
+    ): Promise<string | null>;
     daemonEvents(moduleId: string): DaemonClientEvents;
 }
 
@@ -805,6 +816,31 @@ export class LiveDaemonScheduler implements DaemonScheduler {
         }
     }
 
+    async fetchFigmaSvg(
+        module: ModuleInfo,
+        previewId: string,
+    ): Promise<string | null> {
+        const client = await this.gate.getOrSpawn(
+            module,
+            this.daemonEvents(module.modulePath),
+        );
+        if (!client) return null;
+        try {
+            const result = await client.dataFetch({
+                previewId,
+                kind: "compose/figma-svg",
+                inline: false,
+            });
+            return result.path ?? null;
+        } catch (err) {
+            // DataProductUnknown (-32020) on a daemon without the figma-svg producer, or
+            // FetchFailed when the preview drew no vector layers — both surface as throws.
+            // Return null so the caller reports "SVG unavailable" rather than crashing.
+            void err;
+            return null;
+        }
+    }
+
     daemonEvents(moduleId: string) {
         return {
             onRenderFinished: (params: RenderFinishedParams) => {
@@ -1028,6 +1064,14 @@ export class GradleOnlyDaemonScheduler implements DaemonScheduler {
         },
     ): Promise<string | null> {
         /* no-op: minimal mode has no daemon; caller falls back to Gradle */
+        return null;
+    }
+
+    async fetchFigmaSvg(
+        _module: ModuleInfo,
+        _previewId: string,
+    ): Promise<string | null> {
+        /* no-op: minimal mode has no daemon, so no figma-svg export */
         return null;
     }
 
