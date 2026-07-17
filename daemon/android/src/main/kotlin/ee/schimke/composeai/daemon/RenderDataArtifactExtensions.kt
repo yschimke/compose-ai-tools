@@ -89,6 +89,14 @@ object RenderDataArtifactContextKeys {
     ExtensionContextKey(name = "render-data-artifact.density", type = Float::class.javaObjectType)
 
   /**
+   * Render font scale (`spec.fontScale`, the multiplier `RuntimeEnvironment.setFontScale` applied).
+   * Threaded so the `compose/figma-svg` export can size `sp` text as `sp × density × fontScale` —
+   * matching the render, whose layer geometry was measured with the scaled text. Absent ⇒ 1.0.
+   */
+  val FontScale: ExtensionContextKey<Float> =
+    ExtensionContextKey(name = "render-data-artifact.fontScale", type = Float::class.javaObjectType)
+
+  /**
    * The held [`androidx.activity.ComponentActivity`] the rule launched for this render. Threaded to
    * extensions that read activity-scoped state — `getIntent()` (deep-link routing audits),
    * `onBackPressedDispatcher.hasEnabledCallbacks()` (registered back callbacks). Robolectric's

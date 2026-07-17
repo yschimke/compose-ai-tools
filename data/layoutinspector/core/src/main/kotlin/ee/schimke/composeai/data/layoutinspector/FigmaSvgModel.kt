@@ -367,6 +367,7 @@ data class FigmaSvgModel(
       semantics: ComposeSemanticsPayload? = null,
       colorNames: Map<String, String> = emptyMap(),
       density: Float = 1f,
+      fontScale: Float = 1f,
       padding: Int = DEFAULT_PADDING,
       rasterComponents: Set<String> = emptySet(),
       rasterHref: (nodeId: String) -> String = ::defaultRasterHref,
@@ -376,7 +377,7 @@ data class FigmaSvgModel(
       deviceBackground: String? = null,
     ): FigmaSvgModel {
       val textByNodeId =
-        semantics?.let { assignTextToLayers(layout.root, it, density) } ?: emptyMap()
+        semantics?.let { assignTextToLayers(layout.root, it, density, fontScale) } ?: emptyMap()
       val names = colorNames.mapKeys { it.key.uppercase() }
       val ctx =
         BuildContext(textByNodeId, names, density, rasterComponents, rasterHref, captureCanvasDraws)
@@ -882,6 +883,7 @@ data class FigmaSvgModel(
       layoutRoot: LayoutInspectorNode,
       semantics: ComposeSemanticsPayload,
       density: Float,
+      fontScale: Float,
     ): Map<String, FigmaSvgText> {
       val candidates = mutableListOf<Pair<String, IntArray>>()
       fun collect(n: LayoutInspectorNode) {
@@ -916,7 +918,7 @@ data class FigmaSvgModel(
           }
           val chosen = bestId
           if (chosen != null && bestDist < (bestDistForNode[chosen] ?: Int.MAX_VALUE)) {
-            textByNodeId[chosen] = textFrom(node, content, density)
+            textByNodeId[chosen] = textFrom(node, content, density, fontScale)
             bestDistForNode[chosen] = bestDist
           }
         }
@@ -930,22 +932,24 @@ data class FigmaSvgModel(
       node: ComposeSemanticsNode,
       content: String,
       density: Float,
+      fontScale: Float,
     ): FigmaSvgText =
       FigmaSvgText(
         content = content,
-        fontSizePx = node.typography?.fontSize?.let { spToPx(it, density) },
+        fontSizePx = node.typography?.fontSize?.let { spToPx(it, density, fontScale) },
         fontFamily = node.typography?.fontFamily,
         fontWeight = node.typography?.fontWeight,
         italic = node.typography?.fontStyle == "italic",
         color = node.textColor?.foreground?.let { argbToColor(it, emptyMap()) },
         lineHeightPx =
           node.typography?.lineHeight?.let {
-            lineHeightToPx(it, node.typography.fontSize, density)
+            lineHeightToPx(it, node.typography.fontSize, density, fontScale)
           },
-        // Letter spacing uses the same sp×density / em×fontSize resolution as line height.
+        // Letter spacing uses the same sp×density×fontScale / em×fontSize resolution as line
+        // height.
         letterSpacingPx =
           node.typography?.letterSpacing?.let {
-            lineHeightToPx(it, node.typography.fontSize, density)
+            lineHeightToPx(it, node.typography.fontSize, density, fontScale)
           },
         // Carry per-line runs only for genuinely wrapped text (2+ lines). The captured offsets are
         // already in render px (same space as the node bounds), so they map straight to layer space
@@ -962,13 +966,19 @@ data class FigmaSvgModel(
      * resolved font size (in px). Returns null when neither the value nor (for `em`) the font size
      * parses.
      */
-    fun lineHeightToPx(value: String, fontSize: String?, density: Float): Double? {
+    fun lineHeightToPx(
+      value: String,
+      fontSize: String?,
+      density: Float,
+      fontScale: Float = 1f,
+    ): Double? {
       val trimmed = value.trim()
       return when {
-        trimmed.endsWith("sp") -> spToPx(trimmed, density)
+        trimmed.endsWith("sp") -> spToPx(trimmed, density, fontScale)
         trimmed.endsWith("em") -> {
           val em = trimmed.removeSuffix("em").trim().toDoubleOrNull() ?: return null
-          val fontPx = fontSize?.let { spToPx(it, density) } ?: return null
+          // em is a multiple of the (already fontScale-scaled) font size.
+          val fontPx = fontSize?.let { spToPx(it, density, fontScale) } ?: return null
           em * fontPx
         }
         else -> null
@@ -1054,10 +1064,16 @@ data class FigmaSvgModel(
       return n * density
     }
 
-    /** `"22.0sp"` → px at [density]. Font scale is intentionally not applied (capture is 1.0). */
-    fun spToPx(value: String, density: Float): Double? {
+    /**
+     * `"22.0sp"` → px at [density], scaled by [fontScale]. Compose sizes `sp` text as `sp × density
+     * × fontScale`, and the layer geometry this SVG places text into is captured *after* that
+     * fontScale is applied (the boxes are measured for scaled text), so the emitted `<text
+     * font-size>` must carry the same fontScale or the glyphs float undersized in boxes sized for
+     * larger text. [fontScale] defaults to 1.0 (an un-scaled capture).
+     */
+    fun spToPx(value: String, density: Float, fontScale: Float = 1f): Double? {
       val n = value.removeSuffix("sp").trim().toDoubleOrNull() ?: return null
-      return n * density
+      return n * density * fontScale
     }
 
     /**

@@ -57,6 +57,9 @@ object ComposeFigmaSvgDataProducer {
    * @param colorNames optional `#AARRGGBB` → theme-role-name map so named fills carry their
    *   variable.
    * @param density px-per-dp of the captured frame (dp/sp tokens are converted to px against it).
+   * @param fontScale the render's font-scale multiplier; sp text is emitted at `sp × density ×
+   *   fontScale` so the `<text>` matches the render whose (already fontScale-scaled) layer geometry
+   *   this export places it into. Defaults to 1.0 (an un-scaled capture).
    * @param frameImage the captured frame PNG in root-pixel space; when present, enables hybrid
    *   raster export by cropping opaque-node rasters out of it.
    */
@@ -67,6 +70,7 @@ object ComposeFigmaSvgDataProducer {
     semantics: ComposeSemanticsPayload? = null,
     colorNames: Map<String, String> = emptyMap(),
     density: Float = 1f,
+    fontScale: Float = 1f,
     frameImage: File? = null,
     fontResolver: FigmaFontResolver? = null,
     roundClip: Boolean = false,
@@ -81,6 +85,7 @@ object ComposeFigmaSvgDataProducer {
         semantics = semantics,
         colorNames = colorNames,
         density = density,
+        fontScale = fontScale,
         rasterComponents =
           if (frame != null) FigmaSvgModel.DEFAULT_RASTER_COMPONENTS else emptySet(),
         // Hybrid mode also crops Canvas-drawn chrome (progress track, slider groove) the token

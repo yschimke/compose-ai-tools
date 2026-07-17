@@ -34,6 +34,7 @@ class ComposeFigmaSvgExtension : PostCaptureProcessor {
     val previewContext =
       context.require(RenderDataArtifactContextKeys.LayoutInspectorPreviewContext)
     val density = context.get(RenderDataArtifactContextKeys.Density) ?: 1f
+    val fontScale = context.get(RenderDataArtifactContextKeys.FontScale) ?: 1f
     val layout = LayoutInspectorDataProducer.buildPayload(previewContext, density) ?: return
     val semantics: ComposeSemanticsPayload? =
       context.get(RenderDataArtifactContextKeys.SemanticsRoot)?.let {
@@ -48,6 +49,8 @@ class ComposeFigmaSvgExtension : PostCaptureProcessor {
       layout = layout,
       semantics = semantics,
       density = density,
+      // Size sp text at the render's font scale (setFontScale) so the vector matches the render.
+      fontScale = fontScale,
       frameImage = frameImage,
       // Embed the real (Google-downloadable) face so `<text>` renders faithfully — parity with the
       // desktop export. On Android the render itself is Roboto, so the embedded face is the exact
