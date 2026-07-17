@@ -54,6 +54,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
@@ -64,6 +65,33 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import okio.FileSystem
 import okio.Path.Companion.toPath
+
+/**
+ * Which tool surface a [DaemonMcpServer] presents. [NATIVE] is the full compose-preview tool set;
+ * [STORYBOOK] is the Storybook-MCP-compatible subset only (native tools hidden), so a
+ * Storybook-MCP-trained agent sees a clean Storybook surface with no overlapping/duplicate tools.
+ */
+enum class McpToolProfile {
+  NATIVE,
+  STORYBOOK,
+}
+
+/**
+ * The Storybook alias tool names (excludes `status`, which both profiles expose). Used to filter
+ * the two profiles apart from the single `buildFullToolDefs` source so no `ToolDef` literal is
+ * duplicated: NATIVE serves everything except these; STORYBOOK serves only these + `status`.
+ *
+ * Top-level (not an instance `val`) on purpose: the async full-tool-catalog loader reads it off the
+ * `toolCatalogExecutor` thread during construction, before instance properties declared later would
+ * have initialized — a top-level val is class-load-time, so there's no init-order race.
+ */
+private val STORYBOOK_ALIAS_NAMES =
+  setOf(
+    "list-all-documentation",
+    "get-documentation-for-story",
+    "preview-stories",
+    "run-story-tests",
+  )
 
 /**
  * The load-bearing wiring layer. Owns:
@@ -110,10 +138,18 @@ class DaemonMcpServer(
   private val samplingIntervalMs: Long = DEFAULT_SAMPLING_INTERVAL_MS,
   private val fileSystem: FileSystem = SystemFileSystem,
   fullToolDefsLoader: (() -> List<ToolDef>)? = null,
+  /**
+   * Which tool surface this server presents. [McpToolProfile.NATIVE] (default) exposes the full
+   * compose-preview tool set. [McpToolProfile.STORYBOOK] exposes ONLY the Storybook-compatible
+   * tools ([storybookToolDefs]) with the native tools hidden, so a Storybook-MCP-trained agent sees
+   * a clean Storybook surface without the overlapping/duplicate native tools (e.g. `render_preview`
+   * alongside `preview-stories`). Both profiles route through the same handlers.
+   */
+  private val profile: McpToolProfile = McpToolProfile.NATIVE,
 ) {
 
   private val fullToolDefsLoader: () -> List<ToolDef> =
-    fullToolDefsLoader ?: { buildFullToolDefs() }
+    fullToolDefsLoader ?: { effectiveFullToolDefs() }
 
   private val json = Json {
     ignoreUnknownKeys = true
@@ -942,7 +978,26 @@ class DaemonMcpServer(
     }
   }
 
+  /** Tools served in the [McpToolProfile.STORYBOOK] profile: the aliases plus `status`. */
+  private fun storybookToolDefs(): List<ToolDef> =
+    buildFullToolDefs().filter { it.name == "status" || it.name in STORYBOOK_ALIAS_NAMES }
+
+  /** The full tool list for the active [profile] — native-only, or Storybook-only. */
+  private fun effectiveFullToolDefs(): List<ToolDef> =
+    when (profile) {
+      McpToolProfile.NATIVE -> buildFullToolDefs().filterNot { it.name in STORYBOOK_ALIAS_NAMES }
+      McpToolProfile.STORYBOOK -> storybookToolDefs()
+    }
+
+  /** Bootstrap tools served before the full catalog loads, for the active [profile]. */
   private val bootstrapToolDefs: List<ToolDef> by lazy {
+    when (profile) {
+      McpToolProfile.NATIVE -> nativeBootstrapToolDefs
+      McpToolProfile.STORYBOOK -> storybookToolDefs()
+    }
+  }
+
+  private val nativeBootstrapToolDefs: List<ToolDef> by lazy {
     listOf(
       ToolDef(
         name = "status",
@@ -1843,15 +1898,19 @@ class DaemonMcpServer(
       ToolDef(
         name = "run-story-tests",
         description =
-          "Storybook-compatible: run the accessibility checks for a story and return structured " +
-            "results. Enables the `a11y` extension on the owning daemon, renders, and returns the " +
-            "Accessibility Test Framework (ATF) findings (`a11y/atf`) — the compose analogue of " +
-            "Storybook's `run-story-tests` accessibility pass. Accepts a story id from " +
-            "`list-all-documentation` (or a raw compose-preview URI) as `storyId`/`id`.",
+          "Storybook-compatible: run a story's tests and return structured results. Maps to our " +
+            "scripted-recording assertions (record_preview) — the compose analogue of Storybook's " +
+            "play-function + expect. Pass a `script`: a record_preview event timeline where " +
+            "`input.*` events drive the UI and `assert.visible`/`assert.notVisible`/" +
+            "`assert.textEquals`/`assert.a11y`/`assert.pixels` events check it (each records " +
+            "APPLIED/FAILED). With NO script it runs an accessibility smoke (`preview.reload` + " +
+            "`assert.a11y`). Set `emitTest` to also get a generated Compose UI test. Assertion " +
+            "support is backend-dependent (desktop vs Android — see issue #2519). Accepts a story " +
+            "id from `list-all-documentation` (or a raw compose-preview URI) as `storyId`/`id`.",
         inputSchema =
           parseSchema(
             """
-            {"type":"object","properties":{"storyId":{"type":"string","description":"Story id from list-all-documentation, or a raw compose-preview:// URI."},"id":{"type":"string","description":"Alias for storyId."}}}
+            {"type":"object","properties":{"storyId":{"type":"string","description":"Story id from list-all-documentation, or a raw compose-preview:// URI."},"id":{"type":"string","description":"Alias for storyId."},"script":{"type":"array","description":"Optional record_preview event timeline (input.* to drive, assert.* to check). Omit to run an accessibility smoke test.","items":{"type":"object"}},"emitTest":{"type":"boolean","description":"Also return a runnable Compose UI test generated from the interaction."},"observe":{"type":"string","enum":["frames","media"],"description":"record_preview observation level; default 'frames' (structured per-frame + per-assertion evidence, no inline media)."},"format":{"type":"string","enum":["apng","gif","mp4","webm"],"description":"Recording format for the artifact; default 'apng'."}}}
             """
               .trimIndent()
           ),
@@ -2002,30 +2061,38 @@ class DaemonMcpServer(
     val uri =
       StorybookMcp.resolveUri(id, catalogResources())
         ?: return errorCallToolResult("run-story-tests: no such story: $id")
-    val parsed =
-      PreviewUri.parseOrNull(uri)
-        ?: return errorCallToolResult("run-story-tests: could not parse resolved uri: $uri")
-    // Prime the daemon with one render (enable_extensions only reaches already-spawned daemons),
-    // enable the a11y extension on it, then fetch the ATF findings (get_preview_data re-renders
-    // with
-    // a11y attached). Priming errors are surfaced by the final fetch rather than masked here.
-    toolRenderPreview(
+    // Our recording-assertion surface IS the play-function + expect equivalent: an `input.*` +
+    // `assert.*` timeline evaluated against the held scene. Delegate to record_preview, which
+    // drives
+    // the script and records each assertion APPLIED/FAILED. With no script, run an a11y smoke so a
+    // bare `run-story-tests <id>` still returns a meaningful check.
+    val events = (args["script"] as? JsonArray) ?: defaultA11ySmokeScript
+    return toolRecordPreview(
       buildJsonObject {
         put("uri", uri)
-        put("observe", "hash")
+        put("events", events)
+        put("observe", args["observe"]?.jsonPrimitive?.contentOrNull ?: "frames")
+        args["emitTest"]?.let { put("emitTest", it) }
+        args["format"]?.let { put("format", it) }
       }
     )
-    toolEnableExtensions(
+  }
+
+  /**
+   * Default `run-story-tests` script when the caller gives none: reload the scene, then assert no
+   * accessibility findings — the a11y-smoke degenerate case of the interaction+assertion timeline.
+   */
+  private val defaultA11ySmokeScript: JsonArray = buildJsonArray {
+    add(
       buildJsonObject {
-        putJsonArray("ids") { add(JsonPrimitive("a11y")) }
-        put("workspaceId", parsed.workspaceId.value)
-        put("module", parsed.modulePath)
+        put("tMs", 0)
+        put("kind", "preview.reload")
       }
     )
-    return toolGetPreviewData(
+    add(
       buildJsonObject {
-        put("uri", uri)
-        put("kind", "a11y/atf")
+        put("tMs", 100)
+        put("kind", "assert.a11y")
       }
     )
   }

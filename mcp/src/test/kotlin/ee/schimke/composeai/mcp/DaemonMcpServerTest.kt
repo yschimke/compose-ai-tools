@@ -5,6 +5,7 @@ import com.google.common.truth.Truth.assertWithMessage
 import ee.schimke.composeai.mcp.protocol.ListToolsResult
 import ee.schimke.composeai.mcp.protocol.ReadResourceResult
 import ee.schimke.composeai.mcp.protocol.ResourceContents
+import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import java.awt.image.BufferedImage
 import java.io.IOException
 import java.io.InputStream
@@ -118,6 +119,45 @@ class DaemonMcpServerTest {
         "get_preview_extras",
         "record_preview",
       )
+  }
+
+  @Test
+  fun `storybook profile exposes only the storybook tools`() {
+    val sbSupervisor =
+      DaemonSupervisor(
+        descriptorProvider = FakeDescriptorProvider(),
+        clientFactory = FakeDaemonClientFactory(),
+      )
+    val sbServer =
+      DaemonMcpServer(
+        sbSupervisor,
+        serverInfo = Implementation(name = "compose-preview-storybook", version = "v0"),
+        profile = McpToolProfile.STORYBOOK,
+      )
+    val (c2s, sfc) = pipedPair()
+    val (s2c, cfs) = pipedPair()
+    val sbSession = sbServer.newSession(input = sfc, output = s2c)
+    sbSession.start()
+    val sbClient = McpTestClient(input = cfs, output = c2s)
+    try {
+      sbClient.initialize()
+      val tools = sbClient.awaitToolsContaining("preview-stories")
+      // Only the Storybook surface (+ status); native tools are hidden so the two surfaces never
+      // overlap.
+      assertThat(tools.tools.map { it.name }.toSet())
+        .containsExactly(
+          "status",
+          "list-all-documentation",
+          "get-documentation-for-story",
+          "preview-stories",
+          "run-story-tests",
+        )
+      assertThat(tools.tools.map { it.name }).doesNotContain("render_preview")
+    } finally {
+      runCatching { sbClient.close() }
+      runCatching { sbSession.close() }
+      runCatching { sbSupervisor.shutdown() }
+    }
   }
 
   @Test
