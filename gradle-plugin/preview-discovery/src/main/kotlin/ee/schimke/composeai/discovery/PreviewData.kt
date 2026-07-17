@@ -639,6 +639,31 @@ data class PreviewTarget(
   val sourceFile: String? = null,
   val confidence: TargetConfidence,
   val signals: List<TargetSignal> = emptyList(),
+  /**
+   * The target composable's real Kotlin value parameters, in declared order — recovered from its
+   * `@kotlin.Metadata` (see `ComposableSignature`), so a consumer can render a true call site
+   * (`Foo(bar = …, baz = …)`) for Figma Code Connect instead of a bare `Foo()`. Empty when the
+   * signature couldn't be read (metadata absent, produced by a newer compiler than the reader, or
+   * the function had no value parameters) — consumers degrade to a parameterless call.
+   */
+  val parameters: List<TargetParameter> = emptyList(),
+)
+
+/**
+ * One value parameter of a target composable, from its Kotlin metadata. [type] is a short,
+ * human-readable rendering (simple class name + `?` when nullable), enough to scaffold a call site
+ * and let a developer/agent fill the value — not a fully-qualified, resolvable type reference.
+ */
+@Serializable
+data class TargetParameter(
+  val name: String,
+  val type: String,
+  /** True when the parameter declares a default value (so a call site may legally omit it). */
+  val hasDefault: Boolean = false,
+  /**
+   * True when the parameter is a `@Composable` function-typed slot (a `content = { … }` lambda).
+   */
+  val composableSlot: Boolean = false,
 )
 
 @Serializable

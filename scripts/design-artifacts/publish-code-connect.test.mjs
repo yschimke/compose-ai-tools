@@ -9,11 +9,34 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  codeConnectTemplate,
   fileKeyFromArg,
   indexNodesByName,
   resolveMappings,
   toSendMappingsPayload,
 } from "./publish-code-connect.mjs";
+
+test("codeConnectTemplate wraps a snippet in a figma.code parserless template", () => {
+  const t = codeConnectTemplate("Foo(\n    bar = /* Baz */,\n)");
+  assert.match(t, /export default figma\.code`Foo\(/);
+  assert.match(t, /const figma = require\('figma'\)/);
+});
+
+test("toSendMappingsPayload turns a codeSnippet into template + templateDataJson", () => {
+  const payload = toSendMappingsPayload("K", [
+    {
+      nodeId: "1:1",
+      componentName: "Foo",
+      source: "s",
+      label: "Compose",
+      codeSnippet: "Foo(\n    bar = /* Baz */,\n)",
+      imports: ["import com.x.Foo"],
+    },
+  ]);
+  const m = payload.mappings[0];
+  assert.match(m.template, /figma\.code`Foo\(/);
+  assert.deepEqual(JSON.parse(m.templateDataJson), { isParserless: true, imports: ["import com.x.Foo"] });
+});
 
 test("fileKeyFromArg accepts a bare key or a /design/ URL", () => {
   assert.equal(fileKeyFromArg("gYzowY4cQ7rNr2gYoco1M6"), "gYzowY4cQ7rNr2gYoco1M6");

@@ -63,6 +63,30 @@ component by priority, and each mapping's `confidence` records which source won:
 `previewName` always records the `@Preview` that rendered the sticker, so the trace back to the render
 survives even when the mapping points at the underlying component.
 
+### Real call site (a template, not a bare mapping)
+
+When the emitted component IS the inferred target, the mapping also carries a real call site built
+from the component's **actual Kotlin parameters** — recovered from its `@kotlin.Metadata` (see
+`ComposableSignature`), which yields the source signature with names/types/defaults and none of the
+synthetic `Composer`/`changed` params the bytecode carries:
+
+```jsonc
+{
+  "componentName": "DeviceSummaryCard",
+  "codeSnippet": "DeviceSummaryCard(\n    state = TODO(\"DeviceState\"),\n    content = { },\n)",
+  "imports": ["import ee.schimke.meshcore.components.ui.DeviceSummaryCard"],
+  "parameters": [ { "name": "state", "type": "DeviceState", "hasDefault": false }, … ]
+}
+```
+
+Only **required** parameters (no default) form the minimal call; a function-typed slot renders as
+`name = { }`, everything else as `name = TODO("Type")` — valid, copyable Kotlin (`TODO()` returns
+`Nothing`, assignable anywhere) with the type as the hint for the developer/agent to replace.
+At publish time `publish-code-connect.mjs` wraps `codeSnippet` into a `figma.code` parserless
+`template` (with `imports` in `templateDataJson`), so Dev Mode shows the real call rather than just the
+component name. A component with no required params, or one whose signature couldn't be read, degrades
+to a bare `Foo()` — still valid.
+
 Join sources (all already in the pipeline):
 
 - `componentId` → the Figma frame name (from the catalog spec / importer).

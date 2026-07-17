@@ -40,6 +40,10 @@ dependencies {
   // only surfaces annotations + signatures, not method-body invocations. Used by
   // `PreviewTargetInference`.
   api(libs.asm)
+  // Parses a target composable's `@kotlin.Metadata` to recover its real Kotlin parameter list
+  // (names / types / defaults) for the Code Connect template — `implementation`, not `api`: the
+  // metadata types stay an internal detail of `ComposableSignature`, off the published API.
+  implementation(libs.kotlin.metadata.jvm)
 
   testImplementation(libs.junit)
   testImplementation(libs.truth)

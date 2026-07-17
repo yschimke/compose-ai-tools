@@ -42,6 +42,46 @@ export function resolveSource({ repo, ref, module, sourceFile } = {}) {
 }
 
 /**
+ * The `import <package>.<Component>` line for a target, from its owner-class FQN. A top-level
+ * composable's owner is the file facade (`com.x.ui.ButtonsKt`), so the package is the class FQN minus
+ * its last segment. Returns null when the class FQN has no package.
+ */
+export function importFor(className, componentName) {
+  if (!className || !componentName) return null;
+  const pkg = className.split(".").slice(0, -1).join(".");
+  return pkg ? `import ${pkg}.${componentName}` : null;
+}
+
+/**
+ * Render a real Kotlin call site for a component from its parameters — the payload that turns a Code
+ * Connect mapping from a bare `Foo()` into `Foo(bar = …, …)`.
+ *
+ * Only the **required** parameters (no default) form the minimal call; a defaulted parameter is
+ * omitted, since a real call site normally would. Values are valid, copyable Kotlin: a function-typed
+ * slot renders as `name = { }`; everything else as `name = TODO("Type")` — `TODO()` returns `Nothing`
+ * (assignable to any parameter) so the snippet compiles as-is, with the type as the hint, for the
+ * developer/agent to replace.
+ *
+ * @returns `{ codeSnippet, imports }` — `imports` is `[importLine]` or `[]`.
+ */
+export function renderCallSite(componentName, importLine, parameters = []) {
+  const required = parameters.filter((p) => !p.hasDefault);
+  const codeSnippet =
+    required.length === 0
+      ? `${componentName}()`
+      : `${componentName}(\n` +
+        required
+          .map((p) =>
+            p.composableSlot
+              ? `    ${p.name} = { },`
+              : `    ${p.name} = TODO(${JSON.stringify(p.type)}),`,
+          )
+          .join("\n") +
+        `\n)`;
+  return { codeSnippet, imports: importLine ? [importLine] : [] };
+}
+
+/**
  * Build the `code-connect.json` manifest object.
  *
  * `componentName`/`source` should point at the **production composable** the sticker renders — the
@@ -137,6 +177,16 @@ export function buildCodeConnectManifest({
       previewName: fn,
     };
     if (explicit?.import) mapping.import = explicit.import;
+    // A real call site, but only when the emitted component IS the inferred target — then its captured
+    // parameters genuinely belong to `componentName`. (An explicit override that names a different
+    // component has no matching signature, so it stays a bare mapping for review.)
+    if (target?.functionName && target.functionName === componentName) {
+      const importLine = explicit?.import ?? importFor(target.className, componentName);
+      const call = renderCallSite(componentName, importLine, target.parameters ?? []);
+      mapping.codeSnippet = call.codeSnippet;
+      if (call.imports.length > 0) mapping.imports = call.imports;
+      if ((target.parameters?.length ?? 0) > 0) mapping.parameters = target.parameters;
+    }
     const s = slug?.(componentId);
     if (s && figmaSvgSlugs?.has(s)) mapping.figmaSvg = `figma/${s}.svg`;
     mappings.push(mapping);

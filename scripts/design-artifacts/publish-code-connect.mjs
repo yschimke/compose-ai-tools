@@ -83,20 +83,45 @@ export function resolveMappings(manifest, nameIndex) {
   return { resolved, unresolved, ambiguous };
 }
 
+/** Escape a code string for safe embedding inside a JS template literal (`figma.code` ...``). */
+function escapeForTemplateLiteral(code) {
+  return code.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g, "\\${");
+}
+
+/**
+ * Wrap a rendered Kotlin call site in a Code Connect **parserless template** — executable JS that
+ * emits the snippet via `figma.code`, the form Figma's Dev Mode / MCP renders. Imports are carried
+ * separately in `templateDataJson`, per the `send_code_connect_mappings` contract.
+ */
+export function codeConnectTemplate(codeSnippet) {
+  return "const figma = require('figma')\nexport default figma.code`" + escapeForTemplateLiteral(codeSnippet) + "`";
+}
+
 /**
  * Shape resolved mappings into the argument object for Figma's `send_code_connect_mappings` MCP
- * tool: `{ fileKey, nodeId, mappings: [{ nodeId, componentName, source, label, template? }] }`.
- * `nodeId` at the top level is required by the tool and set to the first mapping's node (an anchor);
- * the per-mapping `nodeId`s carry the real bindings.
+ * tool: `{ fileKey, nodeId, mappings: [{ nodeId, componentName, source, label, template?,
+ * templateDataJson? }] }`. `nodeId` at the top level is required by the tool and set to the first
+ * mapping's node (an anchor); the per-mapping `nodeId`s carry the real bindings.
+ *
+ * When a mapping carries a `codeSnippet` (a real call site, from the emit step), it is turned into a
+ * `figma.code` template + `templateDataJson` (`isParserless` + `imports`) so Dev Mode shows the real
+ * call, not just the component name. An explicit `m.template` overrides the generated one.
  */
 export function toSendMappingsPayload(fileKey, resolved) {
-  const mappings = resolved.map((m) => ({
-    nodeId: m.nodeId,
-    componentName: m.componentName,
-    source: m.source,
-    label: m.label,
-    ...(m.template ? { template: m.template } : {}),
-  }));
+  const mappings = resolved.map((m) => {
+    const out = {
+      nodeId: m.nodeId,
+      componentName: m.componentName,
+      source: m.source,
+      label: m.label,
+    };
+    const template = m.template ?? (m.codeSnippet ? codeConnectTemplate(m.codeSnippet) : null);
+    if (template) {
+      out.template = template;
+      out.templateDataJson = JSON.stringify({ isParserless: true, imports: m.imports ?? [] });
+    }
+    return out;
+  });
   return {
     fileKey,
     nodeId: mappings[0]?.nodeId ?? "",

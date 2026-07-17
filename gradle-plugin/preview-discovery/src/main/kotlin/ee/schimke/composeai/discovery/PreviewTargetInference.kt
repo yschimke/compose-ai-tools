@@ -139,30 +139,33 @@ object PreviewTargetInference {
     if (candidates.isEmpty()) return emptyList()
 
     val survivors = candidates.size
-    val scored = candidates.map { (callerOwner, callerMethod, callerClassInfo) ->
-      score(
-        callerOwner = callerOwner,
-        callerMethod = callerMethod,
-        callerClassInfo = callerClassInfo,
-        previewClassFqn = previewFqn,
-        previewMethodName = previewMethodName,
-        previewSourceFile = previewSourceFile,
-        variantName = variantName,
-        hasPreviewParameter = hasPreviewParameter,
-        callerMethodHasComposableParam =
-          callerMethod.parameterInfo?.any { p ->
-            // Heuristic for "this candidate consumes a value of the same shape as the preview's
-            // @PreviewParameter" — a non-`@Composable () -> Unit` parameter on the candidate.
-            // Cheap stand-in for proper data-flow analysis; good enough to flag the common
-            // `@PreviewParameter color: Long → Foo(color)` pattern.
-            p.annotationInfo?.none { it.name == COMPOSABLE_FQN } ?: true
-          } == true,
-        totalSurvivors = survivors,
-        resolveSourceFile = resolveSourceFile,
-      )
+    // Keep each candidate paired with its score so the winner's resolved ClassInfo/MethodInfo is in
+    // hand for signature extraction (params come from the target's Kotlin metadata, below).
+    val scored = candidates.map { candidate ->
+      candidate to
+        score(
+          callerOwner = candidate.ownerFqn,
+          callerMethod = candidate.method,
+          callerClassInfo = candidate.classInfo,
+          previewClassFqn = previewFqn,
+          previewMethodName = previewMethodName,
+          previewSourceFile = previewSourceFile,
+          variantName = variantName,
+          hasPreviewParameter = hasPreviewParameter,
+          callerMethodHasComposableParam =
+            candidate.method.parameterInfo?.any { p ->
+              // Heuristic for "this candidate consumes a value of the same shape as the preview's
+              // @PreviewParameter" — a non-`@Composable () -> Unit` parameter on the candidate.
+              // Cheap stand-in for proper data-flow analysis; good enough to flag the common
+              // `@PreviewParameter color: Long → Foo(color)` pattern.
+              p.annotationInfo?.none { it.name == COMPOSABLE_FQN } ?: true
+            } == true,
+          totalSurvivors = survivors,
+          resolveSourceFile = resolveSourceFile,
+        )
     }
 
-    val best = scored.maxByOrNull { it.score } ?: return emptyList()
+    val (bestCandidate, best) = scored.maxByOrNull { it.second.score } ?: return emptyList()
     if (best.score < MIN_EMIT_SCORE) return emptyList()
 
     val confidence =
@@ -178,6 +181,9 @@ object PreviewTargetInference {
         sourceFile = best.sourceFile,
         confidence = confidence,
         signals = best.signals,
+        // The target's real Kotlin value parameters (names / types / defaults) for the call site a
+        // consumer renders into Code Connect. Best-effort — empty when metadata can't be read.
+        parameters = ComposableSignature.parametersOf(bestCandidate.classInfo, bestCandidate.method),
       )
     )
   }

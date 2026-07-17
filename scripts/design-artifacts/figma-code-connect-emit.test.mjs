@@ -10,8 +10,34 @@ import { test } from "node:test";
 import {
   COMPOSE_LABEL,
   buildCodeConnectManifest,
+  importFor,
+  renderCallSite,
   resolveSource,
 } from "./figma-code-connect-emit.mjs";
+
+test("importFor derives the import from the owner-facade FQN", () => {
+  assert.equal(importFor("com.x.ui.ButtonsKt", "Button"), "import com.x.ui.Button");
+  assert.equal(importFor("Button", "Button"), null); // no package
+  assert.equal(importFor(undefined, "Button"), null);
+});
+
+test("renderCallSite renders only required params, slots as lambdas", () => {
+  const { codeSnippet, imports } = renderCallSite("DeviceSummaryCard", "import com.x.DeviceSummaryCard", [
+    { name: "state", type: "State", hasDefault: false },
+    { name: "modifier", type: "Modifier", hasDefault: true }, // defaulted → omitted
+    { name: "content", type: "() -> Unit", hasDefault: false, composableSlot: true },
+  ]);
+  assert.equal(
+    codeSnippet,
+    'DeviceSummaryCard(\n    state = TODO("State"),\n    content = { },\n)',
+  );
+  assert.deepEqual(imports, ["import com.x.DeviceSummaryCard"]);
+});
+
+test("renderCallSite with no required params is a bare call", () => {
+  assert.equal(renderCallSite("Foo", null, [{ name: "a", type: "Int", hasDefault: true }]).codeSnippet, "Foo()");
+  assert.equal(renderCallSite("Foo", null, []).codeSnippet, "Foo()");
+});
 
 test("resolveSource builds a GitHub blob URL from repo + ref + module-relative source file", () => {
   const url = resolveSource({
@@ -108,6 +134,46 @@ test("buildCodeConnectManifest prefers an inferred target over the preview funct
   assert.equal(m.confidence, "HIGH");
   // The preview that rendered the sticker is still recorded for traceability.
   assert.equal(m.previewName, "DeviceSummaryCardPopulatedPreview");
+});
+
+test("buildCodeConnectManifest attaches a call site when the emitted component is the inferred target", () => {
+  const manifest = buildCodeConnectManifest({
+    components: [{ componentId: "Device/Summary" }],
+    fnByComponentId: new Map([["Device/Summary", "DeviceSummaryPreview"]]),
+    targetByFn: new Map([
+      [
+        "DeviceSummaryPreview",
+        {
+          functionName: "DeviceSummaryCard",
+          className: "com.x.ui.DeviceKt",
+          confidence: "HIGH",
+          parameters: [
+            { name: "state", type: "State", hasDefault: false },
+            { name: "modifier", type: "Modifier", hasDefault: true },
+          ],
+        },
+      ],
+    ]),
+    slug,
+    figmaSvgSlugs: new Set(),
+    source: { repo: "o/r", ref: "main", module: ":app" },
+  });
+  const m = manifest.mappings[0];
+  assert.equal(m.componentName, "DeviceSummaryCard");
+  assert.equal(m.codeSnippet, 'DeviceSummaryCard(\n    state = TODO("State"),\n)');
+  assert.deepEqual(m.imports, ["import com.x.ui.DeviceSummaryCard"]);
+  assert.equal(m.parameters.length, 2);
+});
+
+test("buildCodeConnectManifest: no call site for a preview-fallback (no matching target)", () => {
+  const manifest = buildCodeConnectManifest({
+    components: [{ componentId: "Theme/Light" }],
+    fnByComponentId: new Map([["Theme/Light", "ThemeLightPreview"]]),
+    slug,
+    figmaSvgSlugs: new Set(),
+    source: {},
+  });
+  assert.equal(manifest.mappings[0].codeSnippet, undefined);
 });
 
 test("buildCodeConnectManifest: explicit spec component wins over an inferred target", () => {
