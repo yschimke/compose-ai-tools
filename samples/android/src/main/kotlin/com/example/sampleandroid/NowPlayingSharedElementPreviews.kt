@@ -66,7 +66,7 @@ import ee.schimke.composeai.preview.AnimatedPreview
  * card surface (`sharedBounds`) travel with it; the scrubber and transport controls exist only in the
  * expanded state and fade in over the morphing container.
  */
-private val playerBoundsSpec = BoundsTransform { _, _ -> tween(durationMillis = 600) }
+private val playerBoundsSpec = BoundsTransform { _, _ -> tween(durationMillis = 1200) }
 
 private val artworkBrush =
   Brush.linearGradient(listOf(Color(0xFF7C4DFF), Color(0xFFB14DFF), Color(0xFFFF6BA6)))
@@ -81,7 +81,7 @@ private enum class PlayerScreen {
 
 /** Plain: the container transform as it ships, no debugging overlay. */
 @Preview(name = "Now Playing", widthDp = 320, heightDp = 560, showBackground = true)
-@AnimatedPreview(durationMs = 750)
+@AnimatedPreview(durationMs = 1300, frameIntervalMs = 55)
 @Composable
 fun NowPlayingContainerTransformPreview() {
   MaterialTheme {
@@ -94,7 +94,7 @@ fun NowPlayingContainerTransformPreview() {
 /** The identical scene, wrapped in the 1.11 lookahead debug overlay. */
 @OptIn(ExperimentalLookaheadAnimationVisualDebugApi::class)
 @Preview(name = "Now Playing (debug overlay)", widthDp = 320, heightDp = 560, showBackground = true)
-@AnimatedPreview(durationMs = 750)
+@AnimatedPreview(durationMs = 1300, frameIntervalMs = 55)
 @Composable
 fun NowPlayingDebugOverlayPreview() {
   MaterialTheme {
