@@ -60,6 +60,33 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun vectorPathCarriesStrokeLinecap() {
+    val node =
+      LayoutInspectorNode(
+        nodeId = "c",
+        component = "Canvas",
+        bounds = bounds(0, 0, 40, 40),
+        size = LayoutInspectorSize(40, 40),
+        vectorGraphic =
+          LayoutInspectorVectorGraphic(
+            viewportWidth = 40f,
+            viewportHeight = 40f,
+            paths =
+              listOf(
+                LayoutInspectorVectorPath(
+                  pathData = "M4,20 L36,20",
+                  strokeArgb = "#FF6750A4",
+                  strokeWidth = 8f,
+                  strokeCap = "round",
+                )
+              ),
+          ),
+      )
+    val svg = render(node)
+    assertTrue(svg.contains("""stroke-linecap="round""""))
+  }
+
+  @Test
   fun everyLayoutNodeBecomesANamedGroup() {
     val svg =
       render(

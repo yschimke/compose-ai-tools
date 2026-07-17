@@ -112,6 +112,10 @@ data class FigmaSvgVectorPath(
   val strokeArgb: String? = null,
   val strokeWidth: Float = 0f,
   val strokeAlpha: Float = 1f,
+  /** SVG `stroke-linecap` (`"round"`/`"square"`); null = butt. */
+  val strokeCap: String? = null,
+  /** SVG `stroke-linejoin` (`"round"`/`"bevel"`); null = miter. */
+  val strokeJoin: String? = null,
   val evenOdd: Boolean = false,
 )
 
@@ -466,6 +470,8 @@ data class FigmaSvgModel(
               strokeArgb = it.strokeArgb,
               strokeWidth = it.strokeWidth,
               strokeAlpha = it.strokeAlpha,
+              strokeCap = it.strokeCap,
+              strokeJoin = it.strokeJoin,
               evenOdd = it.evenOdd,
             )
           }

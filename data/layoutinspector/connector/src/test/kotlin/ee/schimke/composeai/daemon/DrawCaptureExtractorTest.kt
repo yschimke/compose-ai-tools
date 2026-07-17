@@ -108,9 +108,9 @@ class DrawCaptureExtractorTest {
   }
 
   @Test
-  fun nonDefaultStrokeCap_fallsBackToNull() {
-    // A round/square cap (or a dash effect) can't be represented, so it aborts rather than emitting
-    // a butt-capped path that paints a visibly different (shorter) line.
+  fun roundStrokeCap_isCapturedAsLinecap() {
+    // A round cap maps to SVG `stroke-linecap` — carried through so the checkmark / progress arc
+    // paint their true (round-capped) shape rather than aborting to a raster crop.
     val g = capture {
       drawLine(
         Color(0xFF6750A4),
@@ -120,6 +120,8 @@ class DrawCaptureExtractorTest {
         cap = androidx.compose.ui.graphics.StrokeCap.Round,
       )
     }
-    assertNull(g)
+    val p = g!!.paths.single()
+    assertEquals("round", p.strokeCap)
+    assertEquals("#FF6750A4", p.strokeArgb)
   }
 }
