@@ -34,7 +34,8 @@ import org.jetbrains.compose.resources.stringResource
 // the shared component set in `:samples:design-catalog-m3-shared`, so the bodies live in one place
 // (also mounted live by the in-browser wasm tier).
 //
-// `interactive` is derived from `LocalInspectionMode` rather than hard-coded, so the SAME `@Preview`
+// `interactive` is derived from `LocalInspectionMode` rather than hard-coded, so the SAME
+// `@Preview`
 // serves both lanes correctly (the two share this sticker sheet — see [Sticker]):
 //   * baked snapshot / one-shot `/render` (`LocalInspectionMode = true`) → `interactive = false`,
 //     the deterministic frame (static toggles / determinate progress) the published catalog shows —
@@ -161,8 +162,9 @@ fun SlottedCardSlotsSticker() = CatalogSticker {
 //     actually mutates state (the segmented toggle flips, the switch/chip toggle).
 // This is the one lever on which the baked and live lanes diverge, exactly as `CatalogComponent`
 // documents.
-private fun Sticker(id: String) =
-  CatalogSticker { CatalogComponent(id, interactive = !LocalInspectionMode.current) }
+private fun Sticker(id: String) = CatalogSticker {
+  CatalogComponent(id, interactive = !LocalInspectionMode.current)
+}
 
 // ---------------------------------------------------------------------------
 // Scaffold templates — full-screen, pre-built screen skeletons an app copies
