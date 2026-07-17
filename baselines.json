@@ -639,6 +639,22 @@
     "sha256": "50930c413d84ec47a2baa9e50c4bca32cffc9782dd08b010aa8797e3080c0707",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationVariantPreviews.kt"
   },
+  "samples:android/com.example.sampleandroid.NowPlayingSharedElementPreviewsKt.NowPlayingContainerTransformPreview_Now Playing": {
+    "captureLabel": "",
+    "functionName": "NowPlayingContainerTransformPreview",
+    "module": "samples:android",
+    "renderBasename": "NowPlayingContainerTransformPreview_Now_Playing.gif",
+    "sha256": "b2f04a40fd1be91160f79d1b70daa0c8bc53ec58a13b64fb66d34c9d222d1728",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/NowPlayingSharedElementPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.NowPlayingSharedElementPreviewsKt.NowPlayingDebugOverlayPreview_Now Playing (debug overlay)": {
+    "captureLabel": "",
+    "functionName": "NowPlayingDebugOverlayPreview",
+    "module": "samples:android",
+    "renderBasename": "NowPlayingDebugOverlayPreview_Now_Playing_debug_overlay.gif",
+    "sha256": "3789055daae863aa29406d798abbef2119e8474e05704693a780c4a85a66204f",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/NowPlayingSharedElementPreviews.kt"
+  },
   "samples:android/com.example.sampleandroid.PermissionGatedPreviewKt.CameraPermissionDeniedPreview_Camera permission \u2014 denied": {
     "captureLabel": "",
     "functionName": "CameraPermissionDeniedPreview",
@@ -1028,7 +1044,7 @@
     "functionName": "SharedElementDebugMatchedAnimatedPreview",
     "module": "samples:android",
     "renderBasename": "SharedElementDebugMatchedAnimatedPreview_Shared_Element_Debug_Matched.gif",
-    "sha256": "e85d94d35b7968d2c4a82169249515c16119f4dd9ffccc5238291fc1e92a94df",
+    "sha256": "b638e5b55201ad26a49a3b80bb1aa662afb664f1bd9f9e859005c8869cfdb7f0",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/SharedElementDebugPreviews.kt"
   },
   "samples:android/com.example.sampleandroid.SharedElementDebugPreviewsKt.SharedElementDebugUnmatchedAnimatedPreview_Shared Element Debug \u2014 Unmatched": {
@@ -1036,7 +1052,7 @@
     "functionName": "SharedElementDebugUnmatchedAnimatedPreview",
     "module": "samples:android",
     "renderBasename": "SharedElementDebugUnmatchedAnimatedPreview_Shared_Element_Debug_Unmatched.gif",
-    "sha256": "23e2b903e849a7083817b4bdaa6d84378a0bbf5a9cdf61c810425170f11082a3",
+    "sha256": "c86fac865d0f4eae8d470347a607cad12975301a61004a636c2cf75a7a7f9cdb",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/SharedElementDebugPreviews.kt"
   },
   "samples:android/com.example.sampleandroid.SharedElementFilmstripPreviewKt.SharedElementFilmstripPreview_Shared Element Filmstrip": {
@@ -1052,7 +1068,7 @@
     "functionName": "ContainerTransformAnimatedPreview",
     "module": "samples:android",
     "renderBasename": "ContainerTransformAnimatedPreview_Container_Transform.gif",
-    "sha256": "ebc77b2362f45138679bd956ac500490d19bb64d3fd10ef0d7bcdbbf422c917c",
+    "sha256": "881bb916caecaecf16efdc6ef933cbf52d9f76dcaf057b9e845bba950e5e718f",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/SharedElementPreviews.kt"
   },
   "samples:android/com.example.sampleandroid.SharedElementPreviewsKt.FabToSheetAnimatedPreview_FAB To Sheet": {
@@ -1060,7 +1076,7 @@
     "functionName": "FabToSheetAnimatedPreview",
     "module": "samples:android",
     "renderBasename": "FabToSheetAnimatedPreview_FAB_To_Sheet.gif",
-    "sha256": "89f42445c714aa7228c9253cea3de1a8e8d488f73bad4851d4955412e72d6f47",
+    "sha256": "f87557f12689b901d6bd9afa4455dd99eff18d768022c2c7519c7a569883c5a8",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/SharedElementPreviews.kt"
   },
   "samples:android/com.example.sampleandroid.SoftKeyboardAnimatedPreviewKt.SoftKeyboardAnimatedPreview_Soft Keyboard \u2014 typing": {
@@ -3052,7 +3068,7 @@
     "functionName": "ActivityListLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round.png",
-    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
+    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
