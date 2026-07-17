@@ -29,7 +29,7 @@ test("renderCallSite renders only required params, slots as lambdas", () => {
   ]);
   assert.equal(
     codeSnippet,
-    "DeviceSummaryCard(\n    state = /* State */,\n    content = { },\n)",
+    'DeviceSummaryCard(\n    state = TODO("State"),\n    content = { },\n)',
   );
   assert.deepEqual(imports, ["import com.x.DeviceSummaryCard"]);
 });
@@ -160,7 +160,7 @@ test("buildCodeConnectManifest attaches a call site when the emitted component i
   });
   const m = manifest.mappings[0];
   assert.equal(m.componentName, "DeviceSummaryCard");
-  assert.equal(m.codeSnippet, "DeviceSummaryCard(\n    state = /* State */,\n)");
+  assert.equal(m.codeSnippet, 'DeviceSummaryCard(\n    state = TODO("State"),\n)');
   assert.deepEqual(m.imports, ["import com.x.ui.DeviceSummaryCard"]);
   assert.equal(m.parameters.length, 2);
 });

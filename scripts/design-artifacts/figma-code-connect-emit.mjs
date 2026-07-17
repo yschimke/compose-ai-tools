@@ -57,8 +57,10 @@ export function importFor(className, componentName) {
  * Connect mapping from a bare `Foo()` into `Foo(bar = …, …)`.
  *
  * Only the **required** parameters (no default) form the minimal call; a defaulted parameter is
- * omitted, since a real call site normally would. A function-typed slot renders as a trailing-style
- * `name = { }`; everything else as a `name = <type-placeholder>` for the developer/agent to fill.
+ * omitted, since a real call site normally would. Values are valid, copyable Kotlin: a function-typed
+ * slot renders as `name = { }`; everything else as `name = TODO("Type")` — `TODO()` returns `Nothing`
+ * (assignable to any parameter) so the snippet compiles as-is, with the type as the hint, for the
+ * developer/agent to replace.
  *
  * @returns `{ codeSnippet, imports }` — `imports` is `[importLine]` or `[]`.
  */
@@ -69,7 +71,11 @@ export function renderCallSite(componentName, importLine, parameters = []) {
       ? `${componentName}()`
       : `${componentName}(\n` +
         required
-          .map((p) => (p.composableSlot ? `    ${p.name} = { },` : `    ${p.name} = /* ${p.type} */,`))
+          .map((p) =>
+            p.composableSlot
+              ? `    ${p.name} = { },`
+              : `    ${p.name} = TODO(${JSON.stringify(p.type)}),`,
+          )
           .join("\n") +
         `\n)`;
   return { codeSnippet, imports: importLine ? [importLine] : [] };

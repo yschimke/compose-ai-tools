@@ -73,14 +73,15 @@ synthetic `Composer`/`changed` params the bytecode carries:
 ```jsonc
 {
   "componentName": "DeviceSummaryCard",
-  "codeSnippet": "DeviceSummaryCard(\n    state = /* DeviceState */,\n    content = { },\n)",
+  "codeSnippet": "DeviceSummaryCard(\n    state = TODO(\"DeviceState\"),\n    content = { },\n)",
   "imports": ["import ee.schimke.meshcore.components.ui.DeviceSummaryCard"],
   "parameters": [ { "name": "state", "type": "DeviceState", "hasDefault": false }, … ]
 }
 ```
 
 Only **required** parameters (no default) form the minimal call; a function-typed slot renders as
-`name = { }`, everything else as a `name = <type-placeholder>` for the developer/agent to fill.
+`name = { }`, everything else as `name = TODO("Type")` — valid, copyable Kotlin (`TODO()` returns
+`Nothing`, assignable anywhere) with the type as the hint for the developer/agent to replace.
 At publish time `publish-code-connect.mjs` wraps `codeSnippet` into a `figma.code` parserless
 `template` (with `imports` in `templateDataJson`), so Dev Mode shows the real call rather than just the
 component name. A component with no required params, or one whose signature couldn't be read, degrades
