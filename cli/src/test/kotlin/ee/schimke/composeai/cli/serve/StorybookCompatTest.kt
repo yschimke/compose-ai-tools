@@ -125,4 +125,22 @@ class StorybookCompatTest {
     assertTrue(page.contains("width=\"24\" height=\"8\""), "sizes to the png dimensions: $page")
     assertTrue(page.contains("main--greeting"), "labels with the story id")
   }
+
+  @Test
+  fun `iframe svg page inlines the svg markup as real dom and strips the xml prolog`() {
+    val svg =
+      "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"4\">" +
+        "<rect width=\"10\" height=\"4\"/></svg>"
+    val page = StorybookCompat.iframeSvgPage("main--greeting", svg.toByteArray())
+    assertTrue(page.startsWith("<!doctype html>"), "is an html document")
+    assertTrue(
+      page.contains("<svg xmlns=\"http://www.w3.org/2000/svg\""),
+      "inlines the svg root as markup: $page",
+    )
+    assertTrue(!page.contains("<?xml"), "strips the xml prolog: $page")
+    // Inline DOM, not an opaque image element — that's the whole point for DOM-capture tools.
+    assertTrue(!page.contains("data:image"), "not embedded as an image: $page")
+    assertTrue(page.contains("main--greeting"), "labels with the story id")
+  }
 }

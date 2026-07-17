@@ -160,6 +160,42 @@ object StorybookCompat {
   }
 
   /**
+   * The SVG isolation page for `iframe.html?id=<storyId>&format=svg`: the figma-svg export
+   * ([svgBytes] from `/render/<id>.svg`) inlined **as markup** into the document body. Unlike the
+   * PNG page (an opaque `<img>`), an inline `<svg>` is real, browser-native DOM — the
+   * resolution-independent, self-contained (embedded-font) content that DOM-serializing visual
+   * tools (Percy, Chromatic, Applitools) re-render in their own cloud browsers. Any XML prolog /
+   * doctype is stripped so the `<svg>` element drops straight into HTML5. [storyId] is HTML-escaped
+   * into the title.
+   */
+  fun iframeSvgPage(storyId: String, svgBytes: ByteArray): String {
+    val svg = stripXmlProlog(svgBytes.toString(Charsets.UTF_8))
+    val esc = WebEscaping.htmlEscape(storyId)
+    return buildString {
+      append("<!doctype html>\n")
+      append("<html><head><meta charset=\"utf-8\">\n")
+      append("<title>").append(esc).append(" · compose-preview</title>\n")
+      append("<style>html,body{margin:0;padding:0;background:#fff}svg{display:block}</style>\n")
+      append("</head><body>\n")
+      append(svg)
+      append("\n</body></html>\n")
+    }
+  }
+
+  /**
+   * Drop a leading `<?xml …?>` declaration and `<!DOCTYPE …>` from an SVG document so its `<svg>`
+   * root can be inlined directly into an HTML5 body (HTML5 has no place for an XML prolog).
+   */
+  private fun stripXmlProlog(svg: String): String {
+    var s = svg.trimStart()
+    if (s.startsWith("<?xml")) s = s.substringAfter("?>").trimStart()
+    if (s.startsWith("<!DOCTYPE", ignoreCase = true) || s.startsWith("<!doctype")) {
+      s = s.substringAfter(">").trimStart()
+    }
+    return s
+  }
+
+  /**
    * Sidebar grouping ([Entry.title]) for a native preview id: the enclosing class/file simple name
    * for an FQN (`com.example.PreviewsKt.RedBoxPreview…` → `Previews`, trailing `Kt` dropped), the
    * component slug for a catalog id (`button__dark` → `button`), else the id itself.

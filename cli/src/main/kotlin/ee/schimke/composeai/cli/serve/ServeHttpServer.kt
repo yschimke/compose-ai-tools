@@ -54,6 +54,7 @@ import kotlinx.serialization.json.Json
  * - `GET /` landing page, `GET /p/{id}` viewer page,
  * - `GET /render/{id}.png` PNG bytes, `GET /api/previews` JSON, `GET /healthz` liveness,
  * - `GET /index.json` Storybook stories index, `GET /iframe.html?id=` isolated story render
+ *   (`&format=svg` inlines the vector export as real DOM for DOM-capture tools),
  *   ([StorybookCompat]) — the drop-in surface downstream Storybook visual tools consume,
  * - `GET /version` host identity (CLI version, serve schema, public flag),
  * - `GET /bundle.zip` portable bundle, `WS /ws/{id}` streamed-frame lane.
@@ -512,9 +513,12 @@ class ServeHttpServer(
   /**
    * `GET /iframe.html?id=<storyId>` (query) and `GET /{system}/iframe.html?id=<storyId>` (path):
    * render one story in isolation. Answers with a chrome-free HTML page embedding the freshly-
-   * rendered PNG as a `data:` URI ([StorybookCompat.iframePage]) — what a screenshot tool captures.
-   * Honours the same override query params as `/render` (e.g. `&uiMode=dark`), and load-sheds
-   * through the shared render semaphore exactly like [handleRender].
+   * rendered preview — a raster PNG `data:` URI by default ([StorybookCompat.iframePage]), or with
+   * `&format=svg` the figma-svg export inlined **as `<svg>` markup**
+   * ([StorybookCompat.iframeSvgPage]) so DOM-serializing visual tools (Percy/Chromatic/Applitools)
+   * have real DOM to re-render. SVG is daemon-only, so a static bundle 404s that lane. Honours the
+   * same override query params as `/render` (e.g. `&uiMode=dark`), and load-sheds through the
+   * shared render semaphore.
    */
   private suspend fun RoutingContext.handleStorybookIframe(sessionInPath: Boolean) {
     if (rejectBadToken()) return
@@ -545,42 +549,97 @@ class ServeHttpServer(
           .toMap()
       val knobKinds =
         ServeOverrides.declaredKnobKinds(renderHost.previews.firstOrNull { it.id == previewId })
+      // `?format=svg` inlines the figma-svg export as real DOM (for DOM-capture visual tools);
+      // default (png) inlines the raster. SVG is daemon-only, so a static bundle 404s it.
+      val wantSvg = call.request.queryParameters["format"]?.lowercase() == "svg"
       when (val parsed = ServeOverrides.parse(overrideParams, knobKinds)) {
         is OverrideParse.Invalid ->
           call.respondText(parsed.message, status = HttpStatusCode.BadRequest)
-        is OverrideParse.Ok -> {
-          val outcome =
-            withContext(Dispatchers.IO) {
-              if (!renderSemaphore.tryAcquire(RENDER_QUEUE_WAIT_SECONDS, TimeUnit.SECONDS)) {
-                null
-              } else {
-                try {
-                  renderHost.render(previewId, parsed.overrides)
-                } finally {
-                  renderSemaphore.release()
-                }
-              }
-            }
-          when (outcome) {
-            null -> {
-              call.response.headers.append(HttpHeaders.RetryAfter, "2")
-              call.respondText(
-                "render queue saturated; retry shortly",
-                status = HttpStatusCode.ServiceUnavailable,
-              )
-            }
-            is RenderOutcome.Ok ->
-              call.respondText(
-                StorybookCompat.iframePage(storyId, outcome.png),
-                ContentType.Text.Html,
-              )
-            RenderOutcome.NotFound ->
-              call.respondText("no such story", status = HttpStatusCode.NotFound)
-            is RenderOutcome.Failed ->
-              call.respondText(outcome.reason, status = HttpStatusCode.InternalServerError)
+        is OverrideParse.Ok ->
+          if (wantSvg) {
+            storybookIframeSvg(renderHost, storyId, previewId, parsed.overrides)
+          } else {
+            storybookIframePng(renderHost, storyId, previewId, parsed.overrides)
+          }
+      }
+    }
+  }
+
+  /** PNG lane of [handleStorybookIframe]: render, then inline the raster in the isolation page. */
+  private suspend fun RoutingContext.storybookIframePng(
+    renderHost: ServeHost,
+    storyId: String,
+    previewId: String,
+    overrides: PreviewOverrides,
+  ) {
+    val outcome =
+      withContext(Dispatchers.IO) {
+        if (!renderSemaphore.tryAcquire(RENDER_QUEUE_WAIT_SECONDS, TimeUnit.SECONDS)) {
+          null
+        } else {
+          try {
+            renderHost.render(previewId, overrides)
+          } finally {
+            renderSemaphore.release()
           }
         }
       }
+    when (outcome) {
+      null -> {
+        call.response.headers.append(HttpHeaders.RetryAfter, "2")
+        call.respondText(
+          "render queue saturated; retry shortly",
+          status = HttpStatusCode.ServiceUnavailable,
+        )
+      }
+      is RenderOutcome.Ok ->
+        call.respondText(StorybookCompat.iframePage(storyId, outcome.png), ContentType.Text.Html)
+      RenderOutcome.NotFound -> call.respondText("no such story", status = HttpStatusCode.NotFound)
+      is RenderOutcome.Failed ->
+        call.respondText(outcome.reason, status = HttpStatusCode.InternalServerError)
+    }
+  }
+
+  /**
+   * SVG lane of [handleStorybookIframe]: render the figma-svg export and inline it as markup — real
+   * DOM for DOM-capture visual tools. Daemon-only, so a static bundle host 404s (like
+   * `/render.svg`).
+   */
+  private suspend fun RoutingContext.storybookIframeSvg(
+    renderHost: ServeHost,
+    storyId: String,
+    previewId: String,
+    overrides: PreviewOverrides,
+  ) {
+    val outcome =
+      withContext(Dispatchers.IO) {
+        if (!renderSemaphore.tryAcquire(RENDER_QUEUE_WAIT_SECONDS, TimeUnit.SECONDS)) {
+          null
+        } else {
+          try {
+            renderHost.renderSvg(previewId, overrides)
+          } finally {
+            renderSemaphore.release()
+          }
+        }
+      }
+    when (outcome) {
+      null -> {
+        call.response.headers.append(HttpHeaders.RetryAfter, "2")
+        call.respondText(
+          "render queue saturated; retry shortly",
+          status = HttpStatusCode.ServiceUnavailable,
+        )
+      }
+      is SvgOutcome.Ok ->
+        call.respondText(StorybookCompat.iframeSvgPage(storyId, outcome.svg), ContentType.Text.Html)
+      SvgOutcome.NotFound ->
+        call.respondText(
+          "svg unavailable for this story (no daemon-backed SVG export)",
+          status = HttpStatusCode.NotFound,
+        )
+      is SvgOutcome.Failed ->
+        call.respondText(outcome.reason, status = HttpStatusCode.InternalServerError)
     }
   }
 
