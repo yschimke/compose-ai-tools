@@ -56,7 +56,11 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
         with:
-          buildfetch-rw-token: ${{ secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN }}
+          # Only resolve the write-capable token on trusted main-branch push builds. On a
+          # pull_request event this expression (evaluated from the base ci.yml, not the PR head)
+          # yields '' so the secret is never placed in a PR job's environment — a PR cannot
+          # exfiltrate it even by editing the composite action.
+          buildfetch-rw-token: ${{ github.event_name == 'push' && secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN || '' }}
           buildfetch-ro-token: ${{ secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_READONLY_TOKEN }}
       - name: Run unit tests
         run: ./gradlew :gradle-plugin:test
@@ -77,7 +81,11 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
         with:
-          buildfetch-rw-token: ${{ secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN }}
+          # Only resolve the write-capable token on trusted main-branch push builds. On a
+          # pull_request event this expression (evaluated from the base ci.yml, not the PR head)
+          # yields '' so the secret is never placed in a PR job's environment — a PR cannot
+          # exfiltrate it even by editing the composite action.
+          buildfetch-rw-token: ${{ github.event_name == 'push' && secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN || '' }}
           buildfetch-ro-token: ${{ secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_READONLY_TOKEN }}
       - name: Run functional tests
         run: ./gradlew :gradle-plugin:functionalTest
@@ -98,7 +106,11 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
         with:
-          buildfetch-rw-token: ${{ secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN }}
+          # Only resolve the write-capable token on trusted main-branch push builds. On a
+          # pull_request event this expression (evaluated from the base ci.yml, not the PR head)
+          # yields '' so the secret is never placed in a PR job's environment — a PR cannot
+          # exfiltrate it even by editing the composite action.
+          buildfetch-rw-token: ${{ github.event_name == 'push' && secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN || '' }}
           buildfetch-ro-token: ${{ secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_READONLY_TOKEN }}
       - name: Build CMP sample and discover previews
         run: ./gradlew :samples:cmp:composePreviewDiscover
@@ -182,7 +194,11 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
         with:
-          buildfetch-rw-token: ${{ secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN }}
+          # Only resolve the write-capable token on trusted main-branch push builds. On a
+          # pull_request event this expression (evaluated from the base ci.yml, not the PR head)
+          # yields '' so the secret is never placed in a PR job's environment — a PR cannot
+          # exfiltrate it even by editing the composite action.
+          buildfetch-rw-token: ${{ github.event_name == 'push' && secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN || '' }}
           buildfetch-ro-token: ${{ secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_READONLY_TOKEN }}
       - name: Build CLI
         run: ./gradlew :cli:build
@@ -206,7 +222,11 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
         with:
-          buildfetch-rw-token: ${{ secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN }}
+          # Only resolve the write-capable token on trusted main-branch push builds. On a
+          # pull_request event this expression (evaluated from the base ci.yml, not the PR head)
+          # yields '' so the secret is never placed in a PR job's environment — a PR cannot
+          # exfiltrate it even by editing the composite action.
+          buildfetch-rw-token: ${{ github.event_name == 'push' && secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN || '' }}
           buildfetch-ro-token: ${{ secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_READONLY_TOKEN }}
       # Build the compositor (clang + libc++ against the pinned Filament SDK) and its compiled
       # materials into dist/ — the same composite action the build/release workflows use.
@@ -360,7 +380,11 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
         with:
-          buildfetch-rw-token: ${{ secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN }}
+          # Only resolve the write-capable token on trusted main-branch push builds. On a
+          # pull_request event this expression (evaluated from the base ci.yml, not the PR head)
+          # yields '' so the secret is never placed in a PR job's environment — a PR cannot
+          # exfiltrate it even by editing the composite action.
+          buildfetch-rw-token: ${{ github.event_name == 'push' && secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN || '' }}
           buildfetch-ro-token: ${{ secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_READONLY_TOKEN }}
       # End-to-end: pack a bundle from a synthetic Compose Desktop project, then re-render it
       # outside of any Gradle project by spawning the actual CLI binary against the packed PNG.
@@ -398,7 +422,11 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
         with:
-          buildfetch-rw-token: ${{ secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN }}
+          # Only resolve the write-capable token on trusted main-branch push builds. On a
+          # pull_request event this expression (evaluated from the base ci.yml, not the PR head)
+          # yields '' so the secret is never placed in a PR job's environment — a PR cannot
+          # exfiltrate it even by editing the composite action.
+          buildfetch-rw-token: ${{ github.event_name == 'push' && secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN || '' }}
           buildfetch-ro-token: ${{ secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_READONLY_TOKEN }}
       # End-to-end for the Android path of `bundle daemon`: pack real-sample bundles (Wear tile +
       # Remote Compose IR, plus classic Compose previews), then spawn the actual CLI binary against
@@ -463,7 +491,11 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
         with:
-          buildfetch-rw-token: ${{ secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN }}
+          # Only resolve the write-capable token on trusted main-branch push builds. On a
+          # pull_request event this expression (evaluated from the base ci.yml, not the PR head)
+          # yields '' so the secret is never placed in a PR job's environment — a PR cannot
+          # exfiltrate it even by editing the composite action.
+          buildfetch-rw-token: ${{ github.event_name == 'push' && secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN || '' }}
           buildfetch-ro-token: ${{ secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_READONLY_TOKEN }}
       - name: Fetch agent audit script from yschimke/skills
         # The script lives in the sibling skills repo since it's part of the
