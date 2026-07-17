@@ -9,10 +9,10 @@ description: >
 inputs:
   rw-token:
     description: >
-      BuildFetch cache:readwrite token. Enables cache writes (ON_CI=true). Pass
-      this ONLY under a trusted push condition from the caller (e.g.
-      `${{ github.event_name == 'push' && secrets.… || '' }}`) so the write token
-      is never resolved into a pull_request job's environment.
+      BuildFetch cache:readwrite token. Enables cache writes (ON_CI=true). The
+      caller must gate this on a trusted push condition (resolve the secret only
+      when github.event_name is 'push', otherwise pass an empty string) so the
+      write token is never resolved into a pull_request job's environment.
     default: ''
   ro-token:
     description: >
