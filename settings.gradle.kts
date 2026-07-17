@@ -27,31 +27,9 @@ pluginManagement {
 val matrixRobolectricVersion: String? =
   providers.gradleProperty("composeai.matrix.robolectricVersion").orNull
 
-// The Mosaic-based interactive TUI (`:tui-cli`) is built by default. It depends on the Mosaic
-// fork (yschimke/mosaic@compose-ai-tools) published as a release under the
-// `ee.schimke.composeai.mosaic` group to Maven Central, so it resolves from the standard
-// `mavenCentral()` repo with no extra snapshot repository. The opt-in flag is kept for the rare
-// case a contributor wants to drop the module / Mosaic dependency from their build: set
-// `tui.enabled=false` in `local.properties` (gitignored). When the flag is unset it defaults to
-// enabled.
-val tuiEnabled: Boolean =
-  java.util.Properties()
-    .apply {
-      val localProperties = rootDir.resolve("local.properties")
-      if (localProperties.exists()) localProperties.inputStream().use { load(it) }
-    }
-    .getProperty("tui.enabled", "true")
-    .toBoolean()
-
 dependencyResolutionManagement {
   repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
   repositories {
-    // Mosaic fork release artifacts resolve from `mavenCentral()` below; `mavenLocal()` is kept
-    // (scoped to the fork's group so it can't shadow any other dependency) for iterating on the
-    // fork locally (`cd ../mosaic && ./gradlew publishToMavenLocal`). See `tui-cli/MOSAIC-FORK.md`.
-    if (tuiEnabled) {
-      mavenLocal { content { includeGroup("ee.schimke.composeai.mosaic") } }
-    }
     google()
     mavenCentral()
     maven("https://repo.gradle.org/gradle/libs-releases")
@@ -146,22 +124,6 @@ include(":clients:core")
 include(":clients:mobile")
 include(":clients:wear")
 
-// Alternative interactive CLI built on Jake Wharton's Mosaic. Renders a navigable preview
-// browser (list + image + a11y panel) to the terminal, with sticky live-mode that re-renders
-// on external file edits (vim in another terminal, VS Code, etc.). Separate module so the
-// classic `:cli` stays a thin batch driver and consumers who don't want a TUI dependency
-// don't pull Mosaic / Compose runtime onto their classpath.
-//
-// Built by default; opt out with `tui.enabled=false` in `local.properties` (see `tuiEnabled`
-// above). The module consumes a Maven Central release of the Mosaic fork
-// (yschimke/mosaic@compose-ai-tools, group `ee.schimke.composeai.mosaic`) carrying the
-// `RawText` + `Image` composables this module's RFCs propose upstream. See
-// `tui-cli/MOSAIC-FORK.md` for the fork workflow and `tui-cli/LIMITATIONS.md` for the Mosaic
-// API gaps we work around today.
-if (tuiEnabled) {
-  include(":tui-cli")
-  project(":tui-cli").projectDir = file("tui-cli")
-}
 
 // Published wire-format DTOs (`PreviewResult`, `PreviewManifest`, the v1 a11y mirror types, …).
 // Lives outside `:cli` so external consumers (contrib scripting, future MCP integrations,
@@ -630,30 +592,6 @@ project(":render-session-embedded-desktop").projectDir = file("render-session/em
 include(":render-cli")
 
 project(":render-cli").projectDir = file("render-session/cli")
-
-// Fake Android emulator — impersonates a running emulator (ADB device transport, emulator console,
-// emulator gRPC control + screenshot video) so the compose-preview render pipeline can be driven by
-// `adb` / Android Studio and a preview launched via the `am start … PreviewActivity` intent. See
-// docs/fake-emulator/README.md. Split so the verifiable, dependency-light ADB core stays free of the
-// protobuf/grpc toolchain and the render classpath.
-//
-//  * `:fake-emulator-core` — pure-Kotlin ADB transport + console + screencap + the `am start`
-//    preview-launch parser + the FrameSource/PreviewLauncher SPIs + the Studio discovery writer.
-//    `dadb`-tested.
-//  * `:fake-emulator-grpc` — the `EmulatorController` gRPC subset + screenshot stream (vendored
-//    proto; protobuf/grpc codegen lives only here).
-//  * `:fake-emulator` — runnable launcher wiring core + gRPC + a RenderSession-backed FrameSource.
-include(":fake-emulator-core")
-
-project(":fake-emulator-core").projectDir = file("fake-emulator/core")
-
-include(":fake-emulator-grpc")
-
-project(":fake-emulator-grpc").projectDir = file("fake-emulator/grpc")
-
-include(":fake-emulator")
-
-project(":fake-emulator").projectDir = file("fake-emulator/app")
 
 // JDK 21+ samples. Each module here pulls in tooling whose own gradle plugin
 // is compiled to Java 21 bytecode and therefore can't load on this repo's
