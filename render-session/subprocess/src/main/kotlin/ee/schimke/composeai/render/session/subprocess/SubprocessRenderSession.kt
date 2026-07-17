@@ -84,7 +84,7 @@ object SubprocessRenderSessions : RenderSessionFactory {
    * system properties the `compose-preview bundle daemon` CLI command uses, so the spawn +
    * initialize + notification wiring is identical to [open] from there on.
    *
-   * Keeping descriptor construction here (rather than in a consumer like `:tui-cli`) means the
+   * Keeping descriptor construction here (rather than in a downstream CLI consumer) means the
    * schema version and field names stay owned by the module that owns [DaemonLaunchDescriptor].
    *
    * @param daemonClasspath absolute paths of every jar on the daemon subprocess classpath.

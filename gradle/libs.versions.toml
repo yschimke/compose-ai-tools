@@ -210,15 +210,6 @@ material-kolor = "4.0.5"
 # building under JDK 17. Kotlin 2.3.21 is supported per Metro's
 # compatibility table (`docs/compatibility.md` upstream).
 metro = "1.3.0"
-# Jake Wharton's Mosaic — Compose-based TUI library, used by the `:tui-cli` module.
-# 0.18.0-1 is a release published by the fork at `yschimke/mosaic@compose-ai-tools` under the
-# `ee.schimke.composeai.mosaic` group, which adds the `RawText` + `Image` composables proposed
-# in `tui-cli/MOSAIC-IMAGE-RFC.md`. It's a normal Maven Central release
-# (https://repo1.maven.org/maven2/ee/schimke/composeai/mosaic/mosaic-runtime/0.18.0-1/), so it
-# resolves from the standard `mavenCentral()` repo with no extra snapshot repo needed. The
-# Kotlin compose-compiler plugin pulled in via our toolchain is what compiles the @Composable
-# functions, so no separate Mosaic gradle plugin is needed.
-mosaic = "0.18.0-1"
 # Ktor HTTP client (+ OkHttp engine) for downloading bundles given a URL. Ktor 3.x is current and
 # compatible with Kotlin 2.3 / coroutines 1.11; OkHttp 5.x is the stable engine backing it.
 ktor = "3.5.1"
@@ -227,32 +218,8 @@ okhttp = "5.4.0"
 # `_composeai._tcp` service the mobile/wear clients browse for. No slf4j dep (uses java.util.logging),
 # so it doesn't perturb the strict slf4j pin in :cli.
 jmdns = "3.6.3"
-# dadb — Maestro's pure-Kotlin ADB client. Speaks the device transport protocol (CNXN/OPEN/…)
-# DIRECTLY to a device's adbd over TCP, with no `adb` binary or real device required. Used as a
-# `testImplementation` in `:fake-emulator-core` to drive the fake emulator's ADB server end-to-end
-# (connect handshake, `shell,v2`, `screencap`, the `am start … PreviewActivity` preview-launch
-# intent) in a hermetic unit test.
-dadb = "2.0.0"
-# gRPC + Wire — only `:fake-emulator-grpc`, which serves a subset of the Android emulator's
-# `android.emulation.control.EmulatorController` gRPC API (the surface Studio's embedded "Running
-# Devices" view + screenshot video stream consume) from a vendored `emulator_controller.proto`.
-# Kept out of every other module so the codegen toolchain stays contained. Square Wire generates the
-# protobuf message classes (pure-Kotlin codegen — no `protoc` — `rpcRole = none`, messages only); the
-# gRPC server is bound by hand into grpc-netty via grpc-java's `ServerCalls` + a tiny Wire
-# `MethodDescriptor.Marshaller`. (Wire dropped its own server-side gRPC artifact after 4.9.11.)
-grpc = "1.82.1"
-wire = "6.4.5"
 
 [libraries]
-dadb = { module = "dev.mobile:dadb", version.ref = "dadb" }
-# grpc-stub carries ServerCalls + StreamObserver + MethodDescriptor (grpc-api is transitive);
-# grpc-netty-shaded is the server transport.
-grpc-stub = { module = "io.grpc:grpc-stub", version.ref = "grpc" }
-grpc-netty-shaded = { module = "io.grpc:grpc-netty-shaded", version.ref = "grpc" }
-# In-process transport — used only by `:fake-emulator-grpc` tests to exercise the EmulatorController
-# binding end-to-end (server + client) without a socket.
-grpc-inprocess = { module = "io.grpc:grpc-inprocess", version.ref = "grpc" }
-wire-runtime = { module = "com.squareup.wire:wire-runtime", version.ref = "wire" }
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
 # WebSocket client plugin for the streamed-frame lane the mobile/wear session-viewer clients consume
@@ -369,7 +336,6 @@ material-kolor = { module = "com.materialkolor:material-kolor", version.ref = "m
 # `metroViewModel()` + `LocalMetroViewModelFactory` + the `MetroViewModelFactory` /
 # `ViewModelGraph` base types live here. Used by `:samples:android-metro-viewmodel`.
 metro-viewmodel-compose = { module = "dev.zacsweers.metro:metrox-viewmodel-compose", version.ref = "metro" }
-mosaic-runtime = { module = "ee.schimke.composeai.mosaic:mosaic-runtime", version.ref = "mosaic" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -388,6 +354,3 @@ tapmoc = { id = "com.gradleup.tapmoc", version.ref = "tapmoc" }
 # get `@DependencyGraph` / `@Inject` / `@ContributesIntoMap` codegen.
 metro = { id = "dev.zacsweers.metro", version.ref = "metro" }
 play-publisher = { id = "com.github.triplet.play", version.ref = "play-publisher" }
-# Square Wire — pure-Kotlin protobuf codegen for `:fake-emulator-grpc` (no protoc binary; friendlier
-# with the repo's strict configuration cache). Generates the emulator-control message classes.
-wire = { id = "com.squareup.wire", version.ref = "wire" }

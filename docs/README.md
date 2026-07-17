@@ -72,5 +72,4 @@ not as separate docs — read them next to the code.
 
 ## Internal tooling
 
-- [fake-emulator/](fake-emulator/README.md) — the unpublished fake-emulator module.
 - [clients/](clients/SESSION-VIEWER.md) — mobile/Wear session-viewer apps and their publishing.

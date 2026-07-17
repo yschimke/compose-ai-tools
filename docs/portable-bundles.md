@@ -6,9 +6,8 @@
 > is grounded in what `compose-ai-tools` itself defines:
 > - the format — `gradle-plugin/.../PreviewBundleFormat.kt`
 > - the producer — `gradle-plugin/.../BundlePreviewTask.kt`
-> - the players/readers — `:bundle-viewer` (`BundleLoader`), `:tui-cli`
->   (`BundleView`/`BundleDump`), `:cli` (`BundleCommand`, `BundleRenderer`,
->   `BundleDaemonCommand`)
+> - the players/readers — `:bundle-viewer` (`BundleLoader`), `:cli`
+>   (`BundleCommand`, `BundleRenderer`, `BundleDaemonCommand`)
 > - the contrib contract — `contrib/README.md`, `docs/NON_GRADLE_INTEGRATION.md`
 >
 > Claims about contrib internals are marked **(contrib — verify)**.
@@ -83,8 +82,8 @@ opt-in behind `compose-preview bundle pack --with-semantics`.
 Players on this read path:
 - Any **PNG viewer** — the polyglot's leading bytes are the cover. Finder,
   Preview.app, GitHub, Slack show *something* with zero tooling.
-- `:tui-cli` — `BundleView` (interactive paging) / `BundleDump` (ASCII/half-block
-  to stdout, CI-friendly), opens a bundle from `~/Downloads` with no project.
+- `:bundle-viewer` — a Compose Desktop app that opens a bundle from
+  `~/Downloads` with no project and re-renders its `@Preview` live.
 
 So **the images are build-system-independent and self-contained already** —
 whoever produced the bundle (Gradle, Amper, Bazel), the baked PNGs read the same.
@@ -314,7 +313,7 @@ render.
 
 | Tier | Check |
 |---|---|
-| 0 | Open a v2 bundle in Preview.app / `tui-cli --dump` with no project (already in this repo's CI). |
+| 0 | Open a v2 bundle in Preview.app / `:bundle-viewer` with no project. |
 | 1 | Pack with `--embed-deps`; `unzip -l` shows `libs/*.jar`; render on a box with **no Gradle/Maven and no network**. |
 | 2 | `java -jar compose-preview-viewer-<os>-<arch>-<ver>.jar sample.png` on a clean JDK. (Headless smoke: the launch reaches Compose's composition + AWT `EventQueue` and stops only at `HeadlessException` — no `NoClassDefFoundError`, proving the runtime classpath is complete.) Or install the native `.deb`/`.dmg`/`.msi` on a box with **no JDK** and launch it. |
 | 3 | Open a `coordinates` bundle on a Bazel-only box; resolver fetches deps. |
