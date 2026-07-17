@@ -178,3 +178,67 @@ test("no figma-svgs at all → every row inert, still a complete inventory", () 
   assert.match(html, /button-filled/);
   assert.match(html, /card-elevated/);
 });
+
+test("the override control bar carries font scale, embedded fonts, and backdrop knobs", () => {
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /id="ov-fontScale"[^>]*type="range"/);
+  assert.match(html, /id="ov-fonts"[^>]*type="checkbox"/);
+  assert.match(html, /id="ov-bg"/);
+  assert.match(html, /id="ov-reset"/);
+  // The live value label + the active-probe banner the scorer fills in.
+  assert.match(html, /id="ov-fontScale-val"/);
+  assert.match(html, /id="ov-active"/);
+});
+
+test("the scorer applies the active overrides to the SVG before scoring", () => {
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /function applyOverrides/);
+  // Font scale multiplies font-size / letter-spacing on the vector's text.
+  assert.match(html, /font-size\|letter-spacing/);
+  assert.match(html, /parseFloat\(n\) \* fs/);
+  // Embedded-fonts-off drops the @font-face <style> so the browser substitutes a face.
+  assert.match(html, /@font-face/);
+  assert.match(html, /const svgText = applyOverrides\(rawSvg\)/);
+});
+
+test("a control change supersedes an in-flight scoring pass (run token)", () => {
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /let runSeq = 0/);
+  assert.match(html, /mySeq !== runSeq/);
+  // Slider drags are debounced so they don't launch a pass per pixel.
+  assert.match(html, /function scheduleRun/);
+});
+
+test("the theme control + data-png-dark appear only when a dark capture exists", () => {
+  // No dark render in the base catalog → no theme control, no data-png-dark.
+  const light = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.doesNotMatch(light, /id="ov-theme"/);
+  assert.doesNotMatch(light, /data-png-dark=/);
+
+  // A component with a dark default → theme control offered, dark path wired for the probe.
+  const dual = {
+    system: "compose-m3",
+    components: [
+      {
+        componentId: "button-filled",
+        group: "Buttons",
+        images: [
+          png("images/button-filled/ideal__default__light.png", { theme: "light" }),
+          png("images/button-filled/ideal__default__dark.png", { theme: "dark" }),
+        ],
+      },
+    ],
+  };
+  const html = renderCompareHtml(dual, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /id="ov-theme"/);
+  assert.match(html, /data-png-dark="images\/button-filled\/ideal__default__dark\.png"/);
+  // The light default still drives the primary data-png.
+  assert.match(html, /data-png="images\/button-filled\/ideal__default__light\.png"/);
+});
+
+test("identity overrides keep the cheap unchanged-vector path (baseline score preserved)", () => {
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  // When applyOverrides returns the text unchanged, the plain <img src=svg> load is used.
+  assert.match(html, /const changed = inlined !== rawSvg/);
+  assert.match(html, /changed \? await loadSvgString\(inlined\) : await loadImage\(tr\.dataset\.svg\)/);
+});
