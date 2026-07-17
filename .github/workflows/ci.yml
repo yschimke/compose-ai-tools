@@ -55,6 +55,13 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          # Only resolve the write token on trusted main-branch push builds — on a pull_request
+          # this expression (evaluated from the base ci.yml, not the PR head) yields '' so the
+          # write token is never placed in a PR job's environment.
+          rw-token: ${{ github.event_name == 'push' && secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN || '' }}
+          ro-token: ${{ secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_READONLY_TOKEN }}
       - name: Run unit tests
         run: ./gradlew :gradle-plugin:test
       - name: Upload test results
@@ -73,6 +80,13 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          # Only resolve the write token on trusted main-branch push builds — on a pull_request
+          # this expression (evaluated from the base ci.yml, not the PR head) yields '' so the
+          # write token is never placed in a PR job's environment.
+          rw-token: ${{ github.event_name == 'push' && secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN || '' }}
+          ro-token: ${{ secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_READONLY_TOKEN }}
       - name: Run functional tests
         run: ./gradlew :gradle-plugin:functionalTest
       - name: Upload test results
@@ -91,6 +105,13 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          # Only resolve the write token on trusted main-branch push builds — on a pull_request
+          # this expression (evaluated from the base ci.yml, not the PR head) yields '' so the
+          # write token is never placed in a PR job's environment.
+          rw-token: ${{ github.event_name == 'push' && secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN || '' }}
+          ro-token: ${{ secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_READONLY_TOKEN }}
       - name: Build CMP sample and discover previews
         run: ./gradlew :samples:cmp:composePreviewDiscover
       - name: Build Android sample and discover previews
@@ -172,6 +193,13 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          # Only resolve the write token on trusted main-branch push builds — on a pull_request
+          # this expression (evaluated from the base ci.yml, not the PR head) yields '' so the
+          # write token is never placed in a PR job's environment.
+          rw-token: ${{ github.event_name == 'push' && secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN || '' }}
+          ro-token: ${{ secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_READONLY_TOKEN }}
       - name: Build CLI
         run: ./gradlew :cli:build
 
@@ -193,6 +221,13 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          # Only resolve the write token on trusted main-branch push builds — on a pull_request
+          # this expression (evaluated from the base ci.yml, not the PR head) yields '' so the
+          # write token is never placed in a PR job's environment.
+          rw-token: ${{ github.event_name == 'push' && secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN || '' }}
+          ro-token: ${{ secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_READONLY_TOKEN }}
       # Build the compositor (clang + libc++ against the pinned Filament SDK) and its compiled
       # materials into dist/ — the same composite action the build/release workflows use.
       - uses: ./.github/actions/build-xr-composite
@@ -344,6 +379,13 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          # Only resolve the write token on trusted main-branch push builds — on a pull_request
+          # this expression (evaluated from the base ci.yml, not the PR head) yields '' so the
+          # write token is never placed in a PR job's environment.
+          rw-token: ${{ github.event_name == 'push' && secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN || '' }}
+          ro-token: ${{ secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_READONLY_TOKEN }}
       # End-to-end: pack a bundle from a synthetic Compose Desktop project, then re-render it
       # outside of any Gradle project by spawning the actual CLI binary against the packed PNG.
       # The aggregate task pre-publishes the plugin to mavenLocal (so the synthetic project's
@@ -379,6 +421,13 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          # Only resolve the write token on trusted main-branch push builds — on a pull_request
+          # this expression (evaluated from the base ci.yml, not the PR head) yields '' so the
+          # write token is never placed in a PR job's environment.
+          rw-token: ${{ github.event_name == 'push' && secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN || '' }}
+          ro-token: ${{ secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_READONLY_TOKEN }}
       # End-to-end for the Android path of `bundle daemon`: pack real-sample bundles (Wear tile +
       # Remote Compose IR, plus classic Compose previews), then spawn the actual CLI binary against
       # each and render protolayout / remotecompose / classic previews to PNG via the Robolectric
@@ -441,6 +490,13 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          # Only resolve the write token on trusted main-branch push builds — on a pull_request
+          # this expression (evaluated from the base ci.yml, not the PR head) yields '' so the
+          # write token is never placed in a PR job's environment.
+          rw-token: ${{ github.event_name == 'push' && secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN || '' }}
+          ro-token: ${{ secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_READONLY_TOKEN }}
       - name: Fetch agent audit script from yschimke/skills
         # The script lives in the sibling skills repo since it's part of the
         # compose-preview-review skill bundle; fetch the pinned ref so CI
