@@ -30,6 +30,24 @@ scheme:l=<role>:<AARRGGBB>,<role>:<AARRGGBB>,…;d=<role>:<AARRGGBB>,…
 
 Encoder: `serializeCatalogColorScheme(light, dark)`.
 
+### Light/dark support per theme
+
+A theme baked or shown in a mode it doesn't define renders an auto-derived variant its author never
+intended (a light-only palette force-darkened to muddy greys), so a consumer that enumerates
+variants — an exporter baking per-mode PNGs, the landing's Light/Dark selector — asks
+`catalogThemeModes(value)` which modes a theme actually supports and offers only those. Generating
+both modes for a single-mode theme just makes 50% of the output unusable.
+
+| Theme (`theme.colors`) | Light | Dark | How it's determined |
+| --- | :---: | :---: | --- |
+| `M3` (and any unknown name) | ✅ | ✅ | Declared — the stock M3 light/dark scheme. |
+| `Coral` | ✅ | — | Declared — a fixed **light** brand scheme. |
+| `Teal` | — | ✅ | Declared — a fixed **dark** brand scheme. |
+| `scheme:…` app palette | if `l=` | if `d=` | **Inferred** from which mode segments carry usable roles — reusing the same decoder the renderer uses, so it can't disagree with what actually renders; a blob with neither mode falls back to both. |
+
+So a meshcore palette serialized with both `l=` and `d=` segments is offered in both modes, while an
+app that ships only a light palette (`scheme:l=…`) is never baked or shown dark.
+
 ## `theme.shapes` — a serialized `Shapes`
 
 ```
