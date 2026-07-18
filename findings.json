@@ -1,84 +1,6 @@
 {
   "entries": [
     {
-      "annotatedBasename": "ConnectScreenDiscoveredPreview_Connect_discovered.a11y.png",
-      "cleanBasename": "ConnectScreenDiscoveredPreview_Connect_discovered.png",
-      "findings": [
-        {
-          "boundsInScreen": "95,895,404,1021",
-          "level": "WARNING",
-          "message": "This clickable item's speakable text: \"Use this server\" is identical to that of 1 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.view.View"
-        }
-      ],
-      "functionName": "ConnectScreenDiscoveredPreview",
-      "module": "mobile",
-      "previewId": "ee.schimke.composeai.clients.mobile.SessionViewerAppKt.ConnectScreenDiscoveredPreview_Connect \u2014 discovered",
-      "sourceFile": "src/main/kotlin/ee/schimke/composeai/clients/mobile/SessionViewerApp.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "ConnectScreenEmptyPreview_Connect_empty.a11y.png",
-      "cleanBasename": "ConnectScreenEmptyPreview_Connect_empty.png",
-      "findings": [],
-      "functionName": "ConnectScreenEmptyPreview",
-      "module": "mobile",
-      "previewId": "ee.schimke.composeai.clients.mobile.SessionViewerAppKt.ConnectScreenEmptyPreview_Connect \u2014 empty",
-      "sourceFile": "src/main/kotlin/ee/schimke/composeai/clients/mobile/SessionViewerApp.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "ConnectingOverlayPreview_Status_connecting.a11y.png",
-      "cleanBasename": "ConnectingOverlayPreview_Status_connecting.png",
-      "findings": [],
-      "functionName": "ConnectingOverlayPreview",
-      "module": "mobile",
-      "previewId": "ee.schimke.composeai.clients.mobile.SessionViewerAppKt.ConnectingOverlayPreview_Status \u2014 connecting",
-      "sourceFile": "src/main/kotlin/ee/schimke/composeai/clients/mobile/SessionViewerApp.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "FailedOverlayPreview_Status_failed.a11y.png",
-      "cleanBasename": "FailedOverlayPreview_Status_failed.png",
-      "findings": [],
-      "functionName": "FailedOverlayPreview",
-      "module": "mobile",
-      "previewId": "ee.schimke.composeai.clients.mobile.SessionViewerAppKt.FailedOverlayPreview_Status \u2014 failed",
-      "sourceFile": "src/main/kotlin/ee/schimke/composeai/clients/mobile/SessionViewerApp.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "WearConnectPreview_Wear_connect.a11y.png",
-      "cleanBasename": "WearConnectPreview_Wear_connect.png",
-      "findings": [],
-      "functionName": "WearConnectPreview",
-      "module": "wear",
-      "previewId": "ee.schimke.composeai.clients.wear.SessionViewerAppKt.WearConnectPreview_Wear connect",
-      "sourceFile": "src/main/kotlin/ee/schimke/composeai/clients/wear/SessionViewerApp.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "WearConnectingPreview_Wear_connecting.a11y.png",
-      "cleanBasename": "WearConnectingPreview_Wear_connecting.png",
-      "findings": [],
-      "functionName": "WearConnectingPreview",
-      "module": "wear",
-      "previewId": "ee.schimke.composeai.clients.wear.SessionViewerAppKt.WearConnectingPreview_Wear connecting",
-      "sourceFile": "src/main/kotlin/ee/schimke/composeai/clients/wear/SessionViewerApp.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "WearFailedPreview_Wear_failed.a11y.png",
-      "cleanBasename": "WearFailedPreview_Wear_failed.png",
-      "findings": [],
-      "functionName": "WearFailedPreview",
-      "module": "wear",
-      "previewId": "ee.schimke.composeai.clients.wear.SessionViewerAppKt.WearFailedPreview_Wear failed",
-      "sourceFile": "src/main/kotlin/ee/schimke/composeai/clients/wear/SessionViewerApp.kt",
-      "variant": ""
-    },
-    {
       "annotatedBasename": "FocusOverlayPreview_Focus_Overlay_FOCUS_0.a11y.png",
       "cleanBasename": "FocusOverlayPreview_Focus_Overlay_FOCUS_0.png",
       "findings": [],
@@ -977,6 +899,16 @@
       "module": "android",
       "previewId": "com.example.sampleandroid.RippleStatePreviewsKt.PressedButtonPreview_Pressed",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/RippleStatePreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "",
+      "findings": [],
+      "functionName": "PrivateProviderBadgePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewParameterPreviewsKt.PrivateProviderBadgePreview_Private Provider Badge",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewParameterPreviews.kt",
       "variant": ""
     },
     {
