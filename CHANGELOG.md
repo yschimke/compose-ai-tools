@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.16.54](https://github.com/yschimke/compose-ai-tools/compare/v0.16.53...v0.16.54) (2026-07-18)
+
+
+### Features
+
+* add BuildFetch remote Gradle build cache ([#2532](https://github.com/yschimke/compose-ai-tools/issues/2532)) ([0ebc476](https://github.com/yschimke/compose-ai-tools/commit/0ebc47667d0a8caf462edfddfc4cafef1f7f52ca))
+* capture imperative control draws as editable SVG instead of rastering ([#2526](https://github.com/yschimke/compose-ai-tools/issues/2526)) ([851777a](https://github.com/yschimke/compose-ai-tools/commit/851777ac8e9429e266c29b326fa6f0e8a6b99b0b))
+* carry stroke cap/join through draw capture as stroke-linecap/linejoin ([#2538](https://github.com/yschimke/compose-ai-tools/issues/2538)) ([f618b49](https://github.com/yschimke/compose-ai-tools/commit/f618b495177d5c5dd6edc930dce3974a6563d02f))
+* compose/figma-svg output from render, bundles, and a VS Code copy button ([#2530](https://github.com/yschimke/compose-ai-tools/issues/2530)) ([66348d4](https://github.com/yschimke/compose-ai-tools/commit/66348d41ed40570049e9a886e21cf5dcd37e0962))
+* **design-artifacts:** bind Code Connect params to Figma variant properties ([#2531](https://github.com/yschimke/compose-ai-tools/issues/2531)) ([5e3cc55](https://github.com/yschimke/compose-ai-tools/commit/5e3cc55ee86fb85b2ad6df354d823a840c008908))
+* **design-artifacts:** emit Figma Code Connect mappings from the catalog export ([#2524](https://github.com/yschimke/compose-ai-tools/issues/2524)) ([9ad3346](https://github.com/yschimke/compose-ai-tools/commit/9ad33464dfbc506a28c475136d05094f2e1d6f23))
+* **design-artifacts:** map Code Connect to the real composable, not the @Preview ([#2525](https://github.com/yschimke/compose-ai-tools/issues/2525)) ([4ef47d6](https://github.com/yschimke/compose-ai-tools/commit/4ef47d610014e9c6a66695392b59b2e9b60d934f))
+* **discovery:** capture target composable parameters for Code Connect call sites ([#2528](https://github.com/yschimke/compose-ai-tools/issues/2528)) ([9d2e24e](https://github.com/yschimke/compose-ai-tools/commit/9d2e24e48a3fb2f6144af0e7c6324725057b25df))
+* **samples:** now-playing container transform with lookahead debug overlay ([#2535](https://github.com/yschimke/compose-ai-tools/issues/2535)) ([00e268e](https://github.com/yschimke/compose-ai-tools/commit/00e268e5b17ef2d45fc34c2fc9a633e787735f23))
+* **serve:** rework the preview.coo.ee overrides bar ([#2544](https://github.com/yschimke/compose-ai-tools/issues/2544)) ([c48ef9d](https://github.com/yschimke/compose-ai-tools/commit/c48ef9d22af012bce011eb9ef8ea35129fb28f4c))
+* **serve:** serve inline SVG from iframe.html for DOM-capture visual tools ([#2522](https://github.com/yschimke/compose-ai-tools/issues/2522)) ([47b4385](https://github.com/yschimke/compose-ai-tools/commit/47b4385a392c506bdd59cfbb118db9368a668fc7))
+* vectorize Slider chrome via draw-capture instead of rastering by name ([#2539](https://github.com/yschimke/compose-ai-tools/issues/2539)) ([ca5800d](https://github.com/yschimke/compose-ai-tools/commit/ca5800d9a29f8c32e5168cf3e043d1cf4dfd0e97))
+
+
+### Bug Fixes
+
+* **catalog:** make Live Compose stickers interactive via LocalInspectionMode ([#2529](https://github.com/yschimke/compose-ai-tools/issues/2529)) ([eb6ca63](https://github.com/yschimke/compose-ai-tools/commit/eb6ca63fe2ee8dc29e53e24808df11e8821d5667))
+* **daemon:** apply missing-resource fallback on the Android interactive held path ([#2545](https://github.com/yschimke/compose-ai-tools/issues/2545)) ([e922d2b](https://github.com/yschimke/compose-ai-tools/commit/e922d2b80e4a8cc1f8fc7ad262d7c06e527afb05))
+* size draw capture to placed bounds so touch-inflated controls aren't shrunk ([#2536](https://github.com/yschimke/compose-ai-tools/issues/2536)) ([c8d85e4](https://github.com/yschimke/compose-ai-tools/commit/c8d85e4dfa2f7751e9b5cc1b9a9bdecf890703f2))
+
 ## [0.16.53](https://github.com/yschimke/compose-ai-tools/compare/v0.16.52...v0.16.53) (2026-07-17)
 
 
