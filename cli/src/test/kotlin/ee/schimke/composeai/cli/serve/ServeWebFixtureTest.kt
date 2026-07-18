@@ -307,32 +307,29 @@ class ServeWebFixtureTest {
             trust = "branch:yschimke/compose-ai-tools@design-artifacts/remote-m3",
             heroPreviewId = "Button-Filled__ideal__default__light",
           ),
+          // App systems published UNLISTED from their own repos but promoted to the LISTED set
+          // (`--catalogs`), so they show on the front door alongside the design systems.
+          ServeWeb.HomeSystem(
+            system = "meshcore-mobile",
+            title = "MeshCore",
+            subtitle = "ee.schimke.meshcore",
+            previewCount = 33,
+            trust = "branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile",
+            heroPreviewId = "device-manycontacts__ideal__default__compact",
+          ),
+          ServeWeb.HomeSystem(
+            system = "homeassistant-remotecompose",
+            title = "HomeAssistant RemoteCompose",
+            subtitle = "ee.schimke.homeassistant",
+            previewCount = 9,
+            trust =
+              "branch:yschimke/homeassistant-remotecompose@design-artifacts/homeassistant-remotecompose",
+            heroPreviewId = null,
+          ),
         ),
         token,
         isPublic = true,
         version = version,
-        // The app catalogs (`--catalogs-unlisted`): served like the design systems but grouped
-        // under
-        // a separate "Apps" section on the front door instead of the "Design systems" nav.
-        apps =
-          listOf(
-            ServeWeb.HomeSystem(
-              system = "meshcore-mobile",
-              title = "MeshCore",
-              subtitle = "ee.schimke.meshcore",
-              previewCount = 33,
-              trust = "branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile",
-              heroPreviewId = "device-manycontacts__ideal__default__compact",
-            ),
-            ServeWeb.HomeSystem(
-              system = "cadence",
-              title = "Cadence",
-              subtitle = "ee.schimke.cadence",
-              previewCount = 12,
-              trust = "branch:yschimke/cadence@design-artifacts/cadence",
-              heroPreviewId = null,
-            ),
-          ),
       )
     val viewer =
       ServeWeb.viewerPage(
@@ -721,21 +718,23 @@ class ServeWebFixtureTest {
       homeIndex.contains("cp-badge--trusted"),
       "the index badges each system's producer trust",
     )
-    // The app catalogs (`--catalogs-unlisted`) show under a separate "Apps" section, each linking
-    // to
-    // its canonical /<system>/ path — so meshcore-mobile / cadence surface on the front door too,
-    // while staying off the "Design systems" nav.
+    // meshcore-mobile + homeassistant-remotecompose are LISTED (`--catalogs`), so they show on the
+    // front door in the "Design systems" grid — served from their own repos.
     assertTrue(
+      homeIndex.contains("href=\"/meshcore-mobile/\"") &&
+        homeIndex.contains("href=\"/homeassistant-remotecompose/\""),
+      "listed app systems appear on the front door with their /<system>/ links",
+    )
+    assertTrue(
+      homeIndex.contains("MeshCore"),
+      "a listed app shows its human title on the front door",
+    )
+    // An UNLISTED catalog (cadence) is served at /<system>/ but kept OFF the front door: the home
+    // index carries no separate "Apps" section, so publishing it doesn't advertise it on the
+    // landing.
+    assertFalse(
       homeIndex.contains("<p class=\"cp-head\">Apps</p>"),
-      "home index has an Apps section",
-    )
-    assertTrue(
-      homeIndex.contains("href=\"/meshcore-mobile/\"") && homeIndex.contains("href=\"/cadence/\""),
-      "app cards link to each app catalog's canonical /<system>/ path",
-    )
-    assertTrue(
-      homeIndex.contains("MeshCore") && homeIndex.contains("Cadence"),
-      "each app appears in the Apps section with its human title",
+      "the front door has no Apps section — unlisted catalogs are not indexed",
     )
     // Public mode opens every route, so server-rendered links carry NO ?token param.
     assertFalse(homeIndex.contains("token="), "public home index links are token-free")
