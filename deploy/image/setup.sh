@@ -37,6 +37,13 @@ else
   echo "==> Reusing existing .env (token preserved)"
 fi
 
+# Install the vendored docker-rollout CLI plugin so `sudo docker rollout preview`
+# works from the host shell for a manual zero-downtime update. The `rollout`
+# service does this automatically on a poll; this is just for hands-on ops.
+echo "==> Installing the docker-rollout CLI plugin"
+sudo mkdir -p /usr/local/lib/docker/cli-plugins
+sudo install -m 0755 ./docker-rollout /usr/local/lib/docker/cli-plugins/docker-rollout
+
 echo "==> Pulling the prebuilt images and starting the stack"
 # Unauthenticated pull: both GHCR packages (compose-preview-host AND
 # compose-preview-caddy, which carries the baked Caddyfile) must be PUBLIC, or this
