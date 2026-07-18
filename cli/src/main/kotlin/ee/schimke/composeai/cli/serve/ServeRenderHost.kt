@@ -89,6 +89,27 @@ data class ServePreview(
    * viewer's state switcher to same-theme siblings.
    */
   val theme: String? = null,
+  /**
+   * The top-level **section** (tab) this preview belongs to — `"Themes"`, `"Components"`,
+   * `"Screens"`, `"Animations"`, … — from the catalog's `previews/variants.json`. Drives the
+   * landing page's tab bar: a catalog whose previews carry sections renders tabbed, one tab per
+   * distinct section, with [group] as a sub-heading inside a tab. Null for a plain (untabbed)
+   * catalog / uploaded bundle, which stays a flat grid.
+   */
+  val section: String? = null,
+  /**
+   * The sub-heading **group** within a [section] (e.g. `"Foundation"`, `"Contacts"`), from
+   * `previews/variants.json`. Rendered as a labelled sub-group inside its section's tab panel. Null
+   * ⇒ the section's cards are ungrouped.
+   */
+  val group: String? = null,
+  /**
+   * The preview's position in the catalog's **authored** component order, from
+   * `previews/variants.json`. [ServeBundleHost] lists previews sorted by id, so the landing uses
+   * this to order tabs, sub-groups, and cards by authoring intent (Themes before Components before
+   * Screens, …) rather than alphabetically. Null for a plain bundle (no ordering metadata).
+   */
+  val catalogOrder: Int? = null,
 )
 
 /**

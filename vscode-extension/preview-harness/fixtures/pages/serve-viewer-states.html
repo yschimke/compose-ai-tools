@@ -51,6 +51,29 @@ a:hover { text-decoration: underline; }
 .cp-count { font-size: 0.78rem; color: #6b6b70; }
 .cp-empty { margin: 12px 0 0; font-size: 0.85rem; color: #6b6b70; }
 .cp-empty[hidden] { display: none; }
+/* Tabbed catalog: a tab bar (role=tablist) over per-section panels. Progressive enhancement —
+   with no JS every section shows under its own <h2> and the tabs act as in-page anchor links;
+   the filter script turns them into real tabs (one panel shown at a time) and adds `cp-js` to
+   <html>, which hides the then-redundant per-section <h2> (the tab already names the section). */
+.cp-tabs { display: flex; flex-wrap: wrap; gap: 2px 4px; margin: 0 0 18px;
+  border-bottom: 1px solid #e3e3e8; }
+.cp-tab { display: inline-flex; align-items: center; gap: 7px; padding: 8px 15px;
+  font-size: 0.85rem; color: #6b6b70; border: 1px solid transparent; border-bottom: none;
+  border-radius: 9px 9px 0 0; margin-bottom: -1px; cursor: pointer; }
+.cp-tab:hover { color: #3a3a8a; background: #f0f0f3; text-decoration: none; }
+.cp-tab[aria-selected="true"] { color: #3a3a8a; font-weight: 600; background: #fafafb;
+  border-color: #e3e3e8; border-bottom-color: #fafafb; }
+.cp-tab-count { font-size: 0.7rem; padding: 0 7px; border-radius: 999px; background: #ececff;
+  color: #5a5a9a; }
+.cp-section { margin: 0; }
+.cp-section[hidden] { display: none; }
+.cp-section-head { margin: 0 0 14px; font-size: 1rem; font-weight: 600; }
+html.cp-js .cp-section-head { display: none; }
+.cp-subgroup { margin: 0 0 20px; }
+.cp-subgroup[hidden] { display: none; }
+.cp-group-head { margin: 18px 0 10px; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em;
+  text-transform: uppercase; color: #8a8a92; }
+.cp-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
 .cp-theme { display: inline-flex; border: 1px solid #d7d7de; border-radius: 999px; overflow: hidden; }
 .cp-theme-btn { border: 0; background: #fff; color: #6b6b70; font: inherit; font-size: 0.78rem;
   padding: 3px 14px; cursor: pointer; }
@@ -262,6 +285,13 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   .cp-prov-item code { background: #2a2a30; }
   .cp-search { border-color: #34343a; background: #1d1d20; }
   .cp-count, .cp-empty { color: #a0a0a8; }
+  .cp-tabs { border-bottom-color: #34343a; }
+  .cp-tab { color: #a0a0a8; }
+  .cp-tab:hover { color: #c9c9ff; background: #26262b; }
+  .cp-tab[aria-selected="true"] { color: #c9c9ff; background: #161618; border-color: #34343a;
+    border-bottom-color: #161618; }
+  .cp-tab-count { background: #26264a; color: #c9c9ff; }
+  .cp-group-head { color: #7a7a82; }
   .cp-theme { border-color: #34343a; }
   .cp-theme-btn { background: #1d1d20; color: #a0a0a8; }
   .cp-theme-btn[aria-pressed="true"] { background: #26264a; color: #c9c9ff; }
@@ -334,7 +364,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
     border-radius: 999px; background: #c9c9d0; }
   .cp-scrim.cp-scrim-on { display: block; position: fixed; inset: 0; z-index: 35;
     background: rgba(0, 0, 0, 0.38); }
-  .cp-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+  .cp-grid, .cp-cards { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
   .cp-syslist, .cp-syslist.cp-grid { grid-template-columns: 1fr; }
   .cp-imgwrap img { max-height: 200px; }
   /* Copyable direct-link rows: the URL field takes its own line above the Copy/Download

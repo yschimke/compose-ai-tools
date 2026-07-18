@@ -88,6 +88,9 @@ class ServeBundleHost(
           overrides = readOverrides(id),
           state = meta?.state,
           theme = meta?.theme,
+          section = meta?.section,
+          group = meta?.group,
+          catalogOrder = meta?.order,
         )
       }
       .toList()

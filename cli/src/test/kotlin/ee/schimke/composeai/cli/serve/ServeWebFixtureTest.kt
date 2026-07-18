@@ -177,6 +177,81 @@ class ServeWebFixtureTest {
         ),
     )
 
+  // An app catalog whose previews carry a `section` (the tab) + `group` (the sub-heading) + an
+  // authored `catalogOrder` — the tabbed-landing structure meshcore-mobile publishes. Three
+  // sections
+  // (Themes / Components / Screens) with sub-groups inside, and the group name "Device" reused
+  // across
+  // two sections (scoped per tab) so the fixture exercises that. Ordered by catalogOrder so the
+  // tabs
+  // read Themes → Components → Screens as authored, not id-sorted.
+  private val sectionedPreviews =
+    listOf(
+      ServePreview(
+        "theme-meshcore-light__ideal__default__compact",
+        "Theme · MeshCore (light)",
+        section = "Themes",
+        group = "Foundation",
+        catalogOrder = 0,
+      ),
+      ServePreview(
+        "theme-material3-light__ideal__default__compact",
+        "Theme · Material 3 (light)",
+        section = "Themes",
+        group = "Foundation",
+        catalogOrder = 1,
+      ),
+      ServePreview(
+        "devicesummarycard-populated__ideal__default__compact",
+        "Device summary · Populated",
+        section = "Components",
+        group = "Device",
+        catalogOrder = 2,
+      ),
+      ServePreview(
+        "devicesummarycard-loading__ideal__default__compact",
+        "Device summary · Loading",
+        section = "Components",
+        group = "Device",
+        catalogOrder = 3,
+      ),
+      ServePreview(
+        "contactrow-variants__ideal__default__compact",
+        "Contact row · Variants",
+        section = "Components",
+        group = "Contacts",
+        catalogOrder = 4,
+      ),
+      ServePreview(
+        "contactlist-many__ideal__default__compact",
+        "Contact list · Many",
+        section = "Components",
+        group = "Contacts",
+        catalogOrder = 5,
+      ),
+      ServePreview(
+        "scanner-savedpopulated__ideal__default__compact",
+        "Scanner · Saved populated",
+        section = "Screens",
+        group = "Scanner",
+        catalogOrder = 6,
+      ),
+      ServePreview(
+        "scanner-blemany__ideal__default__compact",
+        "Scanner · BLE many",
+        section = "Screens",
+        group = "Scanner",
+        catalogOrder = 7,
+      ),
+      ServePreview(
+        "device-manycontacts__ideal__default__compact",
+        "Device · Many contacts",
+        section = "Screens",
+        group = "Device",
+        catalogOrder = 8,
+      ),
+    )
+
   @Test
   fun `serve web fixtures are in sync with ServeWeb`() {
     val pagesDir = File(repoRoot(), "vscode-extension/preview-harness/fixtures/pages")
@@ -422,6 +497,21 @@ class ServeWebFixtureTest {
         hasHomeIndex = true,
         version = version,
       )
+    // An app catalog served under its path (/meshcore-mobile/) whose previews carry sections: the
+    // landing renders a TAB BAR (Themes / Components / Screens) over per-section panels, each with
+    // its `group` sub-headings. Captured so the visual-diff bot covers the tabbed structure.
+    val landingSections =
+      ServeWeb.landingPage(
+        "meshcore-mobile",
+        sectionedPreviews,
+        token,
+        sessionId = "meshcore-mobile",
+        trust = "branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile",
+        isPublic = true,
+        hasHomeIndex = true,
+        basePath = "/meshcore-mobile",
+        version = version,
+      )
     // The default-state viewer for that catalog: renders the `<nav class="cp-states">` switcher of
     // links to the component's other same-theme states, the current (Default) state marked active.
     val viewerStates =
@@ -449,6 +539,7 @@ class ServeWebFixtureTest {
       File(pagesDir, "serve-viewer-path.html").writeText(viewerPath)
       File(pagesDir, "serve-landing-themed.html").writeText(landingThemed)
       File(pagesDir, "serve-landing-states.html").writeText(landingStates)
+      File(pagesDir, "serve-landing-sections.html").writeText(landingSections)
       File(pagesDir, "serve-viewer-states.html").writeText(viewerStates)
       writePlaceholderPng(File(pagesDir, "_render-placeholder.png"))
       return
@@ -527,7 +618,64 @@ class ServeWebFixtureTest {
     assertGolden(File(pagesDir, "serve-viewer-path.html"), viewerPath)
     assertGolden(File(pagesDir, "serve-landing-themed.html"), landingThemed)
     assertGolden(File(pagesDir, "serve-landing-states.html"), landingStates)
+    assertGolden(File(pagesDir, "serve-landing-sections.html"), landingSections)
     assertGolden(File(pagesDir, "serve-viewer-states.html"), viewerStates)
+    // A sectioned catalog renders a tab bar (role=tablist) with one tab per section, in authored
+    // order (Themes → Components → Screens), each carrying its card count; a flat catalog shows
+    // none.
+    assertTrue(
+      landingSections.contains("class=\"cp-tabs\"") && landingSections.contains("role=\"tablist\""),
+      "a sectioned catalog renders the tab bar",
+    )
+    val tabOrder =
+      Regex("data-tab=\"([a-z0-9-]+)\"").findAll(landingSections).map { it.groupValues[1] }.toList()
+    assertEquals(
+      listOf("themes", "components", "screens"),
+      tabOrder,
+      "tabs are ordered by authored catalogOrder, not id-sorted",
+    )
+    // Each section is a role=tabpanel keyed by its slug, and the first tab opens selected.
+    assertTrue(
+      landingSections.contains("id=\"cp-panel-themes\" role=\"tabpanel\"") &&
+        landingSections.contains("id=\"cp-panel-components\" role=\"tabpanel\"") &&
+        landingSections.contains("id=\"cp-panel-screens\" role=\"tabpanel\""),
+      "each section renders a tabpanel",
+    )
+    assertTrue(
+      landingSections.contains(
+        "id=\"cp-tab-themes\" href=\"#cp-panel-themes\" data-tab=\"themes\"" +
+          " aria-controls=\"cp-panel-themes\" aria-selected=\"true\""
+      ),
+      "the first tab is selected and its anchor targets its panel",
+    )
+    // The `group` renders as a sub-heading inside a tab — including the same "Device" group name
+    // reused across the Components and Screens sections (scoped per tab, not merged).
+    assertTrue(
+      landingSections.contains("<h3 class=\"cp-group-head\">Foundation</h3>") &&
+        landingSections.contains("<h3 class=\"cp-group-head\">Contacts</h3>") &&
+        landingSections.contains("<h3 class=\"cp-group-head\">Scanner</h3>"),
+      "component groups render as sub-headings within their section tab",
+    )
+    assertEquals(
+      2,
+      Regex("<h3 class=\"cp-group-head\">Device</h3>").findAll(landingSections).count(),
+      "a group name reused across sections stays scoped per tab (one sub-heading each)",
+    )
+    // The tab JS is wired (adds cp-js, drives the tabs); a flat catalog's script omits all of it.
+    assertTrue(
+      landingSections.contains("classList.add(\"cp-js\")") &&
+        landingSections.contains("querySelectorAll(\".cp-tab\")"),
+      "the sectioned landing wires the tab-switching script",
+    )
+    // `role="tablist"` (the tab bar) and `classList.add("cp-js")` (the tab script) appear ONLY when
+    // tabs are rendered — the shared stylesheet's `.cp-tabs` / `html.cp-js` rules are on every
+    // page,
+    // so this checks the markup/script, not the CSS.
+    assertFalse(
+      landingThemed.contains("role=\"tablist\"") ||
+        landingThemed.contains("classList.add(\"cp-js\")"),
+      "a flat (section-less) catalog renders no tab bar and no tab script",
+    )
     // The state landing folds each component's non-default states out: checkbox + radio yield ONE
     // card each (two total), and no `unchecked`/`unselected` card is emitted.
     assertEquals(

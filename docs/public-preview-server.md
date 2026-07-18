@@ -30,6 +30,24 @@
    `--trust-store` to badge `Trusted(Branch)`; otherwise it serves `Unverified` (the data tiers serve
    either way).
 
+## Tabbed catalog pages
+
+A catalog whose components declare a **`section`** (set per group in the catalog spec — `Themes`,
+`Components`, `Screens`, `Animations`, …) is served with its previews grouped into **tabs**, one per
+section, and the component `group` shown as a sub-heading inside a tab. Sections, their groups, and
+the cards within follow the catalog's **authored order**, so the tabs read Themes → Components →
+Screens rather than alphabetically (the served preview list is otherwise id-sorted). Empty sections
+are omitted and the set is open-ended — tag a group with any section name to grow a new tab.
+
+Tabs are progressive enhancement: with scripting off every section shows under its own heading and
+the tabs are in-page anchor links; with scripting on, selecting a tab shows just that section while
+the **search box still spans every tab**. A catalog whose previews carry no section (the published
+design systems today) keeps the single flat grid, unchanged.
+
+![Tabbed catalog page — meshcore-mobile (light)](images/serve-tabs-sections-light.png)
+
+![Tabbed catalog page — meshcore-mobile (dark)](images/serve-tabs-sections-dark.png)
+
 In `--public` mode the landing page opens with a short **"about" intro** explaining what the host is
 and its safety model, with a link to the machine-readable [`/version`](#endpoints):
 

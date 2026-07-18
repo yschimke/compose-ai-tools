@@ -185,6 +185,10 @@ class ServeCatalogStore(
     // renders that actually carry a state or theme; plain (stateless) previews stay out of the map.
     val variants = LinkedHashMap<String, VariantMeta>()
     for (component in catalog.components) {
+      // The component's section/group tag every one of its previews (a component maps to one
+      // section + group), so the tabbed landing can bucket + sub-head + order them.
+      val section = component.section?.takeIf { it.isNotBlank() }
+      val group = component.group?.takeIf { it.isNotBlank() }
       for (image in component.images) {
         if (count >= maxImages) break
         val path = image.path
@@ -199,8 +203,22 @@ class ServeCatalogStore(
         target.parentFile?.mkdirs()
         target.writeBytes(bytes)
         slugs.add(id.substringBefore(SLUG_SEPARATOR))
-        if (image.state != null || image.theme != null) {
-          variants[id] = VariantMeta(state = image.state, theme = image.theme)
+        // Record variant metadata for any preview carrying state/theme OR a section/group tag. The
+        // authored `order` (the image's 0-based position in the catalog's component list) rides
+        // only
+        // with the section/group tags — it exists purely to order the tabbed landing, so a plain
+        // state/theme catalog (design systems) is unaffected and its manifest stays {state,theme}.
+        // A catalog with neither state/theme nor a section records nothing and stays a flat grid.
+        val hasSectionInfo = section != null || group != null
+        if (image.state != null || image.theme != null || hasSectionInfo) {
+          variants[id] =
+            VariantMeta(
+              state = image.state,
+              theme = image.theme,
+              section = section,
+              group = group,
+              order = if (hasSectionInfo) count else null,
+            )
         }
         count++
       }
@@ -686,7 +704,18 @@ class ServeCatalogStore(
   @Serializable
   private data class Source(val repo: String = "", val ref: String = "", val module: String = "")
 
-  @Serializable private data class Component(val images: List<Image> = emptyList())
+  @Serializable
+  private data class Component(
+    val images: List<Image> = emptyList(),
+    /**
+     * Top-level **section** (the tab a preview host buckets this component under — `"Themes"`,
+     * `"Components"`, `"Screens"`, `"Animations"`, …). Sits one level above [group]. Null ⇒ the
+     * component is untabbed (a flat catalog).
+     */
+    val section: String? = null,
+    /** Sub-heading group within a [section] (e.g. `"Buttons"`, `"Contacts"`). */
+    val group: String? = null,
+  )
 
   @Serializable
   private data class Image(
@@ -714,10 +743,24 @@ class ServeCatalogStore(
 
   /**
    * One entry of the `previews/variants.json` manifest: the baked [state]/[theme] a preview render
-   * represents. Written by the catalog fetch loop and read back by [ServeBundleHost]; null keys are
-   * omitted on write and default to null on read.
+   * represents, plus the catalog [section]/[group] it belongs to and its authored [order]. Written
+   * by the catalog fetch loop and read back by [ServeBundleHost]; null keys are omitted on write
+   * and default to null on read.
+   *
+   * [section]/[group]/[order] carry the tabbed-catalog structure: a preview host groups previews by
+   * [section] into tabs (Themes / Components / Screens / Animations / …), shows [group] as a
+   * sub-heading within a tab, and orders both by [order] — the image's position in the catalog's
+   * authored component list — because [ServeBundleHost] otherwise lists previews sorted by id. All
+   * three are null for a plain (untabbed) catalog / uploaded bundle, preserving the flat layout.
    */
-  @Serializable data class VariantMeta(val state: String? = null, val theme: String? = null)
+  @Serializable
+  data class VariantMeta(
+    val state: String? = null,
+    val theme: String? = null,
+    val section: String? = null,
+    val group: String? = null,
+    val order: Int? = null,
+  )
 
   /**
    * `catalog.json`'s `webRender`: an app under [path] (e.g. `web/wasm/`) with its [files] listed.
