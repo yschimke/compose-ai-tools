@@ -176,6 +176,9 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-nav-empty[hidden] { display: none; }
 .cp-viewer:not(.cp-nav-open) .cp-nav { display: none; }
 .cp-viewer:not(.cp-controls-open) .cp-controls { display: none; }
+/* Mobile drawer backdrop — hidden by default; shown (below) only while a drawer is open on a
+   narrow viewport, where the drawers render as bottom sheets. */
+.cp-scrim { display: none; }
 /* Collapsible override groups: each axis-set is a <details class="cp-group"> the viewer
    expands/collapses on its own. The summary is the group title with a rotating disclosure
    caret; the body holds the labelled controls. Replaces the old flat control stack so the
@@ -269,6 +272,61 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   .cp-fmt-toggle:hover { background: #26262b; }
   .cp-fmt-toggle[aria-pressed="true"] { background: #26264a; border-color: #45458a; color: #c9c9ff; }
   .cp-mode-hint { color: #a0a0a8; }
+}
+/* Mobile / narrow viewports. The viewer is a flex row of stage + overrides (+ optional nav);
+   on a phone we collapse it to a single stacked column and — crucially for usability on a tall
+   preview — turn the two drawers into bottom sheets reachable from a sticky toggle bar, so the
+   overrides and the component list are one tap away instead of a long scroll below the preview.
+   We also drop the flex items' min-width so nothing overflows the viewport, and reflow the
+   grids, size rows and copyable link rows to fit a ~320px screen without horizontal scrolling. */
+@media (max-width: 640px) {
+  body { padding: 14px; }
+  /* The trust badge can carry a long branch string; constrain it to the viewport and let it
+     wrap instead of forcing a horizontal scroll. */
+  .cp-badge { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  /* Sticky toggle bar so ⚙ Overrides / ☰ Components stay one tap away without scrolling. */
+  .cp-viewer-bar { position: sticky; top: 0; z-index: 20; margin: 0 0 10px; padding: 6px 0;
+    background: #fafafb; }
+  .cp-viewer { gap: 16px; }
+  /* Stage, overrides and nav each stack full-width; min-width:0 lets the flex items (and their
+     selects/inputs) shrink below their content's intrinsic width instead of overflowing. */
+  .cp-stage, .cp-controls, .cp-nav { flex: 1 1 100%; min-width: 0; }
+  .cp-controls label, .cp-group, .cp-group-body { min-width: 0; }
+  .cp-controls select, .cp-controls input { max-width: 100%; }
+  /* Open drawers overlay the preview as bottom sheets (with the scrim below), so overrides and
+     the component list are reachable without scrolling past a tall preview. */
+  .cp-viewer.cp-controls-open .cp-controls,
+  .cp-viewer.cp-nav-open .cp-nav {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; margin: 0;
+    max-height: 78vh; overflow: auto;
+    padding: 12px 14px calc(14px + env(safe-area-inset-bottom, 0px));
+    border: 0; border-top: 1px solid #e3e3e8; border-radius: 14px 14px 0 0;
+    background: #fafafb; box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.18); }
+  /* Grabber affordance at the top of a sheet. */
+  .cp-viewer.cp-controls-open .cp-controls::before,
+  .cp-viewer.cp-nav-open .cp-nav::before {
+    content: ""; display: block; width: 36px; height: 4px; margin: 0 auto 10px;
+    border-radius: 999px; background: #c9c9d0; }
+  .cp-scrim.cp-scrim-on { display: block; position: fixed; inset: 0; z-index: 35;
+    background: rgba(0, 0, 0, 0.38); }
+  .cp-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+  .cp-syslist, .cp-syslist.cp-grid { grid-template-columns: 1fr; }
+  .cp-imgwrap img { max-height: 200px; }
+  /* Copyable direct-link rows: the URL field takes its own line above the Copy/Download
+     buttons instead of squeezing all three onto one narrow row. */
+  .cp-link-row { flex-wrap: wrap; }
+  .cp-url { flex: 1 1 100%; }
+  /* The paired Min/Max (and Fixed W/H) size inputs stack rather than sit side by side. */
+  .cp-size-row:not([hidden]) { flex-direction: column; gap: 6px; }
+}
+/* Dark-mode surfaces for the mobile sticky bar + bottom sheets. */
+@media (max-width: 640px) and (prefers-color-scheme: dark) {
+  .cp-viewer-bar { background: #161618; }
+  .cp-viewer.cp-controls-open .cp-controls,
+  .cp-viewer.cp-nav-open .cp-nav { background: #161618; border-top-color: #34343a;
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.5); }
+  .cp-viewer.cp-controls-open .cp-controls::before,
+  .cp-viewer.cp-nav-open .cp-nav::before { background: #4a4a55; }
 }</style>
         <!-- Apply the sticky Background/Transparent choice before first paint (no checkerboard flash). -->
         <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
@@ -436,26 +494,63 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
           <div class="cp-status" id="cp-status"></div>
         </div>
       </div>
+      <!-- Backdrop shown behind an open drawer on mobile (drawers become bottom sheets there);
+           tapping it dismisses the sheet. Inert on desktop. -->
+      <div class="cp-scrim" id="cp-scrim" aria-hidden="true"></div>
       <script>(function () {
   var viewer = document.querySelector(".cp-viewer");
   if (!viewer) return;
+  var scrim = document.getElementById("cp-scrim");
+  function isMobile() {
+    return !!(window.matchMedia && window.matchMedia("(max-width: 640px)").matches);
+  }
+  // On a phone the drawers open as bottom sheets over the preview; show a scrim behind whichever
+  // is open. On desktop they're inline columns and the scrim rule never applies.
+  function syncScrim() {
+    var anyOpen =
+      viewer.classList.contains("cp-controls-open") ||
+      viewer.classList.contains("cp-nav-open");
+    if (scrim) scrim.classList.toggle("cp-scrim-on", anyOpen);
+  }
+  function toggleId(cls) {
+    return cls === "cp-nav-open" ? "cp-nav-toggle" : "cp-controls-toggle";
+  }
+  function setOpen(cls, open) {
+    // On mobile, opening one sheet closes the other so they never stack.
+    if (open && isMobile()) {
+      var other = cls === "cp-controls-open" ? "cp-nav-open" : "cp-controls-open";
+      if (viewer.classList.contains(other)) {
+        viewer.classList.remove(other);
+        var ob = document.getElementById(toggleId(other));
+        if (ob) ob.setAttribute("aria-expanded", "false");
+      }
+    }
+    viewer.classList.toggle(cls, open);
+    var b = document.getElementById(toggleId(cls));
+    if (b) b.setAttribute("aria-expanded", open ? "true" : "false");
+    syncScrim();
+  }
   function bindToggle(btnId, cls) {
     var btn = document.getElementById(btnId);
     if (!btn) return;
     btn.addEventListener("click", function () {
-      var open = viewer.classList.toggle(cls);
-      btn.setAttribute("aria-expanded", open ? "true" : "false");
+      setOpen(cls, !viewer.classList.contains(cls));
     });
   }
+  // Start with the overrides drawer collapsed on a phone so the preview leads; the sticky toggle
+  // bar keeps it (and the component list) one tap away as a bottom sheet.
+  if (isMobile()) setOpen("cp-controls-open", false);
   bindToggle("cp-controls-toggle", "cp-controls-open");
   bindToggle("cp-nav-toggle", "cp-nav-open");
   var close = document.getElementById("cp-nav-close");
-  if (close)
-    close.addEventListener("click", function () {
-      viewer.classList.remove("cp-nav-open");
-      var t = document.getElementById("cp-nav-toggle");
-      if (t) t.setAttribute("aria-expanded", "false");
+  if (close) close.addEventListener("click", function () { setOpen("cp-nav-open", false); });
+  // Tap the scrim to dismiss whichever bottom sheet is open.
+  if (scrim)
+    scrim.addEventListener("click", function () {
+      setOpen("cp-controls-open", false);
+      setOpen("cp-nav-open", false);
     });
+  syncScrim();
   var search = document.getElementById("cp-nav-search");
   if (search)
     search.addEventListener("input", function () {
