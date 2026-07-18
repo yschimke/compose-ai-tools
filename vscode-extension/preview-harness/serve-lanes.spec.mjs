@@ -41,6 +41,19 @@ test.beforeAll(async ({ request }) => {
   previewId = hit?.id ?? null;
 });
 
+// The declared knobs now live in a collapsed-by-default "Overrides"
+// `<details class="cp-group">` section (the viewer remembers each section's
+// open/closed state in localStorage, defaulting everything except Export to
+// closed). Expand it before touching a `.cp-knob`, since Playwright refuses to
+// fill a control inside a closed <details> ("element is not visible").
+async function openOverridesGroup(page) {
+  await page
+    .locator('details.cp-group[data-cp-group="overrides"]')
+    .evaluate((d) => {
+      d.open = true;
+    });
+}
+
 function requirePreview() {
   // In CI the boot step starts a known compose-m3 daemon serve, so a missing
   // label-knob preview is a real regression — FAIL, don't green-skip the required
@@ -152,6 +165,7 @@ test("viewer wires the knob into every render lane", async ({ page }) => {
     waitUntil: "domcontentloaded",
   });
 
+  await openOverridesGroup(page);
   const knob = page.locator('.cp-knob[data-knob-key="label"]');
   await expect(knob, "label knob control exists").toBeVisible();
   await knob.fill(OVERRIDE);
@@ -243,6 +257,7 @@ test("Wasm iframe re-renders on knob override", async ({ page }) => {
   const wasmToggle = page.locator("#cp-wasm-toggle");
   test.skip((await wasmToggle.count()) === 0, "no Wasm tier for this session");
 
+  await openOverridesGroup(page);
   const knob = page.locator('.cp-knob[data-knob-key="label"]');
   await knob.fill("WasmBefore");
   await knob.dispatchEvent("input");
