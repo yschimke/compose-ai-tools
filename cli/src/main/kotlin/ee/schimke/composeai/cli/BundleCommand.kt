@@ -200,6 +200,20 @@ private class PackSubcommand(private val args: List<String>) {
       .map { it.trim() }
       .filter { it.isNotEmpty() }
 
+  // Repeatable `--knob key=value`: a theme override baked into EVERY preview (the re-theme seam) —
+  // the catalog's `theme.colors` / `theme.font` / `theme.shapes` / `theme.typography` string knobs.
+  // A value can carry `,;:=` (a serialized `scheme:` blob), so the set can't be comma-joined like
+  // `--id`; it's Base64'd into one Gradle property below. Split on the FIRST `=` so the value keeps
+  // its own `=`. Last value wins for a repeated key.
+  private val knobs: Map<String, String> =
+    args
+      .flagValuesAll("--knob")
+      .mapNotNull { entry ->
+        val i = entry.indexOf('=')
+        if (i <= 0) null else entry.substring(0, i).trim() to entry.substring(i + 1)
+      }
+      .toMap()
+
   fun run() {
     if (perPreview) {
       runPerPreview()
@@ -234,6 +248,17 @@ private class PackSubcommand(private val args: List<String>) {
               if (embedDeps) add("-PbundleEmbedDeps=true")
               if (includeDataExtensions) add("-PbundleIncludeDataExtensions=true")
               add("-PbundleOutput=${resolvedOutput.absolutePath}")
+              // Re-theme seam: Base64 the `key=value`-per-line knob blob into one property (theme
+              // values carry `,;:=`). The gradle plugin forwards it to the renderer as
+              // `composeai.previewoverride.knobs`; DesktopRendererMain seeds it before each
+              // compose.
+              if (knobs.isNotEmpty()) {
+                val blob = knobs.entries.joinToString("\n") { "${it.key}=${it.value}" }
+                add(
+                  "-PcomposePreview.knobs=" +
+                    java.util.Base64.getEncoder().encodeToString(blob.toByteArray(Charsets.UTF_8))
+                )
+              }
             }
             // `--with-semantics` carries the per-preview semantics blob (issue #1843). The
             // semantics tree is produced exclusively by the daemon (the standalone

@@ -2694,6 +2694,17 @@ internal object AndroidPreviewSupport {
     project.providers.gradleProperty("composePreview.displayFilter.filters").orElse("")
 
   /**
+   * Lazy `Provider<String>` for the Base64 `--knob` theme-override blob (the re-theme bake seam).
+   * Reads `-PcomposePreview.knobs=...` (the CLI `bundle pack --knob key=value` emits it); defaults
+   * to empty (no re-theme) so existing builds don't change behaviour. Returns a Provider so it
+   * feeds a lazy task input without invalidating the configuration cache on toggle.
+   */
+  internal fun resolvePreviewOverrideKnobs(
+    project: org.gradle.api.Project
+  ): org.gradle.api.provider.Provider<String> =
+    project.providers.gradleProperty("composePreview.knobs").orElse("")
+
+  /**
    * Forwards the `composePreview.deviceFrame.device` Gradle property as the
    * `composeai.deviceframe.device` system property on the spawned renderer JVM, using the same
    * execution-time `CommandLineArgumentProvider` shape as [DisplayFilterSystemPropsProvider] so

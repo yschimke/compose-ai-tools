@@ -722,6 +722,50 @@ internal fun systemThemeFromUiMode(uiMode: Int): androidx.compose.ui.SystemTheme
     else -> androidx.compose.ui.SystemTheme.Unknown
   }
 
+/**
+ * Decode the `--knob key=value` bake seed the gradle plugin forwards as the raw
+ * `composeai.previewoverride.knobs` system property: Base64 of a `key=value`-per-line blob (theme
+ * values carry `,;:=`, so they can't be comma-joined like a filter list). Each line splits on its
+ * FIRST `=` so the value keeps its own. Blank/unset or malformed Base64 → empty (a plain stock
+ * render). Theme knobs are all string-valued, so every entry is a
+ * [PreviewOverrideValue.StringValue] under the knob key (its non-indexed `seedKey`). Pure +
+ * `internal` so it's unit-tested directly.
+ */
+internal fun parsePreviewOverrideKnobSeed(
+  raw: String?
+): Map<String, ee.schimke.composeai.data.overrides.PreviewOverrideValue> {
+  val trimmed = raw?.trim().orEmpty()
+  if (trimmed.isEmpty()) return emptyMap()
+  val decoded =
+    try {
+      String(java.util.Base64.getDecoder().decode(trimmed), Charsets.UTF_8)
+    } catch (_: IllegalArgumentException) {
+      return emptyMap()
+    }
+  return decoded
+    .split("\n")
+    .mapNotNull { line ->
+      val i = line.indexOf('=')
+      if (i <= 0) null
+      else
+        line.substring(0, i) to
+          ee.schimke.composeai.data.overrides.PreviewOverrideValue.StringValue(
+            line.substring(i + 1)
+          )
+    }
+    .toMap()
+}
+
+/**
+ * The `--knob` theme-override seed applied to every baked preview so a batch render re-themes
+ * exactly like the live daemon path. Parsed once per renderer JVM from the forwarded system
+ * property.
+ */
+private val previewOverrideKnobSeed:
+  Map<String, ee.schimke.composeai.data.overrides.PreviewOverrideValue> by lazy {
+  parsePreviewOverrideKnobSeed(System.getProperty("composeai.previewoverride.knobs"))
+}
+
 @OptIn(androidx.compose.ui.InternalComposeUiApi::class)
 internal fun renderPreview(
   className: String,
@@ -763,6 +807,14 @@ internal fun renderPreview(
   // Arm the named-override capture for this render: drop any knobs a prior preview declared so this
   // preview's `previewOverride*` lookups accumulate a clean set (drained into the sidecar below).
   ee.schimke.composeai.overrides.PreviewOverrideController.clearDeclarations()
+  // The `--knob` bake seam: seed the per-run theme override before composing, mirroring the live
+  // daemon's PreviewOverridesOverrideExtension. The fallback ControllerPreviewOverrideHost
+  // (LocalPreviewOverrideHost's default) routes CatalogSticker's `previewOverride*` lookups to
+  // these
+  // seeds, so the bake re-themes. No --knob ⇒ empty ⇒ the stock render is untouched.
+  if (previewOverrideKnobSeed.isNotEmpty()) {
+    ee.schimke.composeai.overrides.PreviewOverrideController.set(previewOverrideKnobSeed)
+  }
 
   // `@Preview(fontScale = ...)` rides on `Density.fontScale`. Threading it through the scene's
   // constructor makes the override visible to layout (sp → px) before the first measure pass; we

@@ -250,6 +250,7 @@ internal object ComposePreviewTasks {
         // several previews.
         previewFilters.convention(previewFilterProperty(project))
         displayFilterFilters.set(AndroidPreviewSupport.resolveDisplayFilterFilters(project))
+        previewOverrideKnobs.set(AndroidPreviewSupport.resolvePreviewOverrideKnobs(project))
         deviceFrameDevice.set(AndroidPreviewSupport.resolveDeviceFrameDevice(project))
         renderClasspath.from(sourceClassDirs)
         // Consumer's processed resources so previews can load classpath assets (Lottie `.json`,

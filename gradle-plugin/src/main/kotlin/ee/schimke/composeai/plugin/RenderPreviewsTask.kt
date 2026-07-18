@@ -14,6 +14,7 @@ import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
@@ -84,6 +85,15 @@ abstract class RenderPreviewsTask : DefaultTask() {
    * Android Test task. Marked `@Input` so a filter-list change drives re-render.
    */
   @get:Input abstract val displayFilterFilters: Property<String>
+
+  /**
+   * Base64 of the `--knob key=value` theme-override blob (the re-theme bake seam), forwarded to the
+   * renderer as `composeai.previewoverride.knobs`. `@Optional` so an unset value (the common
+   * no-knob build) contributes nothing to the cache key — a stock build stays cache-valid — while a
+   * `--knob` run's distinct value folds into the key and re-bakes rather than restoring the stock
+   * PNGs. See [AndroidPreviewSupport.resolvePreviewOverrideKnobs].
+   */
+  @get:Input @get:Optional abstract val previewOverrideKnobs: Property<String>
 
   /**
    * Device-frame selection (`auto`, a Device Art Generator id, or empty to disable) forwarded as
@@ -342,6 +352,9 @@ abstract class RenderPreviewsTask : DefaultTask() {
       // DisplayFilterDataProducer.writeArtifacts after each render. Empty string is fine —
       // DisplayFilterConfig.parseFilters treats blank input as "feature disabled".
       systemProperty("composeai.displayfilter.filters", displayFilterFilters.get())
+      // Forward the --knob theme-override seed (Base64) so DesktopRendererMain re-themes each bake.
+      // Empty / unset ⇒ a plain stock render.
+      systemProperty("composeai.previewoverride.knobs", previewOverrideKnobs.getOrElse(""))
       // Forward the device-frame selection + the prefetch cache dir so DesktopRendererMain can
       // composite the render into a device-art bezel (reading the cache the task action filled).
       // Empty string disables it (DeviceFrameConfig treats blank as "off").
