@@ -259,6 +259,20 @@ class ServeCatalogStore(
         subtitle =
           catalog.library.filter { it.isNotBlank() }.take(2).joinToString(" · ").ifBlank { null },
         figmaDir = figmaDir,
+        provenance =
+          ServeWeb.CatalogProvenance(
+            repo = repo,
+            branch = branch,
+            generatedAt = catalog.generatedAt?.takeIf { it.isNotBlank() },
+            // `renderer` is `compose-preview <version>`; show just the version.
+            toolVersion =
+              catalog.renderer
+                ?.takeIf { it.isNotBlank() }
+                ?.removePrefix("compose-preview")
+                ?.trim()
+                ?.ifBlank { null },
+            designParityVersion = catalog.designParity?.takeIf { it.isNotBlank() },
+          ),
       )
     }
 
@@ -635,6 +649,23 @@ class ServeCatalogStore(
     val title: String? = null,
     /** Underlying library coordinate(s); shown as the one-line descriptor on a system card. */
     val library: List<String> = emptyList(),
+    /**
+     * ISO-8601 timestamp the delivery branch was generated (from `catalog.json`'s flattened meta,
+     * written by `generate-design-catalog.mjs`). Surfaced on the catalog landing's provenance
+     * strip.
+     */
+    val generatedAt: String? = null,
+    /**
+     * The renderer that produced the catalog (`compose-preview <version>`), i.e. the
+     * compose-ai-tools version. Shown on the provenance strip (the `compose-preview ` prefix is
+     * stripped for display).
+     */
+    val renderer: String? = null,
+    /**
+     * The `@design-parity/catalog-export` version that built the catalog, recorded by
+     * `generate-design-catalog.mjs`. Shown on the provenance strip.
+     */
+    val designParity: String? = null,
     val components: List<Component> = emptyList(),
     /** Optional in-browser render descriptor (the CMP-Wasm app carried in the branch). */
     val webRender: WebRender? = null,

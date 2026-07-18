@@ -33,6 +33,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { basename, dirname, resolve, join, relative } from "node:path";
 import { parseArgs } from "node:util";
 
@@ -311,6 +312,7 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
     title: spec.title,
     ...(spec.library ? { library: spec.library } : {}),
     ...(opts.renderer ? { renderer: opts.renderer } : {}),
+    ...(opts.designParity ? { designParity: opts.designParity } : {}),
     generatedAt: opts.generatedAt ?? new Date().toISOString(),
   };
 
@@ -427,8 +429,21 @@ const themeTokens = catalogTokens
     )
   : undefined;
 
+// Resolve the installed `@design-parity/catalog-export` version so the catalog records the export
+// engine that built it (surfaced on the serve host's provenance strip). Best-effort: a resolution
+// failure just omits the field rather than sinking the render.
+function designParityVersion() {
+  try {
+    const require = createRequire(import.meta.url);
+    return require("@design-parity/catalog-export/package.json").version || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 const { catalog, missing, withoutSemantics } = catalogFromCandidates(candidates, spec, {
   ...(values.renderer ? { renderer: values.renderer } : {}),
+  ...(designParityVersion() ? { designParity: designParityVersion() } : {}),
   ...(themeTokens ? { themeTokens } : {}),
 });
 

@@ -39,6 +39,22 @@ class ServeWebFixtureTest {
   private val token = "demo-token-fixture"
   private val moduleLabel = ":samples:cmp"
 
+  // A FIXED server version for the goldens: the about box surfaces the running build, but pinning a
+  // constant here (rather than the real BUNDLE_VERSION) keeps the committed HTML stable across
+  // releases — production passes BUNDLE_VERSION, the fixtures pass this.
+  private val version = "0.0.0-fixture"
+
+  // Catalog provenance for the public compose-m3 landing golden — captures the provenance strip
+  // (delivery branch, generation date, tool versions, regenerate link) the visual-diff bot diffs.
+  private val provenance =
+    ServeWeb.CatalogProvenance(
+      repo = "yschimke/compose-ai-tools",
+      branch = "design-artifacts/compose-m3",
+      generatedAt = "2026-07-17T09:30:00.000Z",
+      toolVersion = "0.16.54",
+      designParityVersion = "0.1.25",
+    )
+
   // A representative spread: a few snapshot-only previews plus two that also advertise the future
   // `live` (CMP→JS) mode, so the captured chrome exercises the mode seam.
   private val previews =
@@ -181,7 +197,9 @@ class ServeWebFixtureTest {
         token,
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         isPublic = true,
-        catalogs = listOf("compose-m3", "wear-m3"),
+        hasHomeIndex = true,
+        version = version,
+        provenance = provenance,
       )
     // The public preview server's FRONT DOOR: an index of the published design systems, each a card
     // with a meaningful hero preview, its title + library, trust badge, and a link to /<system>/.
@@ -217,6 +235,7 @@ class ServeWebFixtureTest {
         ),
         token,
         isPublic = true,
+        version = version,
         // The app catalogs (`--catalogs-unlisted`): served like the design systems but grouped
         // under
         // a separate "Apps" section on the front door instead of the "Design systems" nav.
@@ -315,8 +334,9 @@ class ServeWebFixtureTest {
         sessionId = "meshcore-mobile",
         trust = "branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile",
         isPublic = true,
-        catalogs = listOf("compose-m3", "wear-m3"),
+        hasHomeIndex = true,
         basePath = "/meshcore-mobile",
+        version = version,
       )
     val viewerPath =
       ServeWeb.viewerPage(
@@ -387,7 +407,8 @@ class ServeWebFixtureTest {
         token,
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         isPublic = true,
-        catalogs = listOf("compose-m3", "wear-m3"),
+        hasHomeIndex = true,
+        version = version,
       )
     // A catalog whose components carry baked non-default states: the landing folds each to ONE card
     // (the default), the non-default states reachable via the viewer switcher.
@@ -398,7 +419,8 @@ class ServeWebFixtureTest {
         token,
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         isPublic = true,
-        catalogs = listOf("compose-m3", "wear-m3"),
+        hasHomeIndex = true,
+        version = version,
       )
     // The default-state viewer for that catalog: renders the `<nav class="cp-states">` switcher of
     // links to the component's other same-theme states, the current (Default) state marked active.
@@ -923,34 +945,109 @@ class ServeWebFixtureTest {
   }
 
   @Test
-  fun `landing lists served catalogs as session nav links, marking the current one`() {
-    // Default session (sessionId null): every catalog is a link to its canonical /<system>/ path.
-    val front =
-      ServeWeb.landingPage(moduleLabel, previews, token, catalogs = listOf("compose-m3", "wear-m3"))
-    assertTrue(front.contains("class=\"cp-systems\""), "expected the design-systems nav")
+  fun `a catalog landing shows a back-to-home button instead of a sideways catalog nav`() {
+    // A server that publishes a home index (hasHomeIndex) replaces the old design-systems nav row
+    // with a single back button that links HOME (the front-door index at /), token-gated here. The
+    // flag — not a catalog list — gates it, so an app-only server (--catalogs-unlisted, no listed
+    // catalogs) whose landings still have a home index keeps a way back.
+    val front = ServeWeb.landingPage(moduleLabel, previews, token, hasHomeIndex = true)
+    assertFalse(front.contains("class=\"cp-systems\""), "the sideways design-systems nav is gone")
     assertTrue(
-      front.contains("href=\"/compose-m3/?token=$token\""),
-      "expected a compose-m3 path link",
+      front.contains("class=\"cp-back\" href=\"/?token=$token\""),
+      "a landing with a home index links back to it",
     )
-    assertTrue(front.contains("href=\"/wear-m3/?token=$token\""), "expected a wear-m3 path link")
+    // No sideways links to the other catalogs any more.
+    assertFalse(
+      front.contains("href=\"/wear-m3/?token=$token\""),
+      "no sideways link to sibling catalogs",
+    )
 
-    // On a catalog session, that system is the current (non-link) pill, the other stays a link.
-    val onCompose =
+    // Public mode: the back button is token-free (every route is open).
+    val public =
+      ServeWeb.landingPage(moduleLabel, previews, token, isPublic = true, hasHomeIndex = true)
+    assertTrue(
+      public.contains("class=\"cp-back\" href=\"/\""),
+      "the public back button is token-free",
+    )
+
+    // No home index → no back button (a plain, single-module `serve` with nothing to go back to).
+    assertFalse(
+      ServeWeb.landingPage(moduleLabel, previews, token).contains("class=\"cp-back\""),
+      "a plain module landing shows no back button",
+    )
+  }
+
+  @Test
+  fun `a catalog landing shows the provenance strip with branch, date, versions and regenerate`() {
+    val landing =
       ServeWeb.landingPage(
-        moduleLabel,
-        previews,
+        "compose-m3",
+        themedPreviews,
         token,
-        sessionId = "compose-m3",
-        catalogs = listOf("compose-m3", "wear-m3"),
+        isPublic = true,
+        hasHomeIndex = true,
+        version = version,
+        provenance =
+          ServeWeb.CatalogProvenance(
+            repo = "yschimke/compose-ai-tools",
+            branch = "design-artifacts/compose-m3",
+            generatedAt = "2026-07-17T09:30:00.000Z",
+            toolVersion = "0.16.54",
+            designParityVersion = "0.1.25",
+          ),
       )
+    assertTrue(landing.contains("class=\"cp-prov\""), "the provenance strip renders")
+    // Links to the delivery branch and the regenerating workflow.
     assertTrue(
-      onCompose.contains("aria-current=\"page\">compose-m3</span>"),
-      "current catalog is marked",
+      landing.contains(
+        "href=\"https://github.com/yschimke/compose-ai-tools/tree/design-artifacts/compose-m3\""
+      ),
+      "the strip links the delivery branch on GitHub",
     )
-    assertTrue(onCompose.contains("href=\"/wear-m3/?token=$token\""), "other catalog stays a link")
+    assertTrue(
+      landing.contains(
+        "href=\"https://github.com/yschimke/compose-ai-tools/actions/workflows/design-artifacts.yml\""
+      ),
+      "the strip links the regenerating workflow",
+    )
+    // Friendly generation date + both tool versions.
+    assertTrue(landing.contains("2026-07-17 09:30 UTC"), "the generation date is shown")
+    assertTrue(
+      landing.contains("compose-ai-tools <code>0.16.54</code>") &&
+        landing.contains("design-parity <code>0.1.25</code>"),
+      "both generating tool versions are shown",
+    )
+    // No provenance passed → no strip (a plain bundle / non-catalog module).
+    assertFalse(
+      ServeWeb.landingPage(moduleLabel, previews, token, isPublic = true)
+        .contains("class=\"cp-prov\""),
+      "a landing without provenance shows no strip",
+    )
+  }
 
-    // No catalogs → no nav row.
-    assertTrue(!ServeWeb.landingPage(moduleLabel, previews, token).contains("class=\"cp-systems\""))
+  @Test
+  fun `the about box surfaces the server version with a GitHub icon`() {
+    val home =
+      ServeWeb.homeIndexPage(
+        listOf(
+          ServeWeb.HomeSystem(
+            system = "compose-m3",
+            title = "Compose Material 3",
+            subtitle = null,
+            previewCount = 1,
+            trust = null,
+            heroPreviewId = null,
+          )
+        ),
+        token,
+        isPublic = true,
+        version = "1.2.3",
+      )
+    assertTrue(home.contains("class=\"cp-about-ver\">v1.2.3<"), "the running version is shown")
+    assertTrue(home.contains("class=\"cp-gh\""), "the source link carries the GitHub icon")
+    // A null version simply omits the pill (no dangling separator crash).
+    val noVer = ServeWeb.homeIndexPage(emptyList(), token, isPublic = true)
+    assertFalse(noVer.contains("class=\"cp-about-ver\""), "no version pill when version is null")
   }
 
   @Test
