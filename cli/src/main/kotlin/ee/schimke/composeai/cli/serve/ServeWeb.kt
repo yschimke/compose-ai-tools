@@ -60,6 +60,29 @@ object ServeWeb {
     .cp-count { font-size: 0.78rem; color: #6b6b70; }
     .cp-empty { margin: 12px 0 0; font-size: 0.85rem; color: #6b6b70; }
     .cp-empty[hidden] { display: none; }
+    /* Tabbed catalog: a tab bar (role=tablist) over per-section panels. Progressive enhancement —
+       with no JS every section shows under its own <h2> and the tabs act as in-page anchor links;
+       the filter script turns them into real tabs (one panel shown at a time) and adds `cp-js` to
+       <html>, which hides the then-redundant per-section <h2> (the tab already names the section). */
+    .cp-tabs { display: flex; flex-wrap: wrap; gap: 2px 4px; margin: 0 0 18px;
+      border-bottom: 1px solid #e3e3e8; }
+    .cp-tab { display: inline-flex; align-items: center; gap: 7px; padding: 8px 15px;
+      font-size: 0.85rem; color: #6b6b70; border: 1px solid transparent; border-bottom: none;
+      border-radius: 9px 9px 0 0; margin-bottom: -1px; cursor: pointer; }
+    .cp-tab:hover { color: #3a3a8a; background: #f0f0f3; text-decoration: none; }
+    .cp-tab[aria-selected="true"] { color: #3a3a8a; font-weight: 600; background: #fafafb;
+      border-color: #e3e3e8; border-bottom-color: #fafafb; }
+    .cp-tab-count { font-size: 0.7rem; padding: 0 7px; border-radius: 999px; background: #ececff;
+      color: #5a5a9a; }
+    .cp-section { margin: 0; }
+    .cp-section[hidden] { display: none; }
+    .cp-section-head { margin: 0 0 14px; font-size: 1rem; font-weight: 600; }
+    html.cp-js .cp-section-head { display: none; }
+    .cp-subgroup { margin: 0 0 20px; }
+    .cp-subgroup[hidden] { display: none; }
+    .cp-group-head { margin: 18px 0 10px; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em;
+      text-transform: uppercase; color: #8a8a92; }
+    .cp-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
     .cp-theme { display: inline-flex; border: 1px solid #d7d7de; border-radius: 999px; overflow: hidden; }
     .cp-theme-btn { border: 0; background: #fff; color: #6b6b70; font: inherit; font-size: 0.78rem;
       padding: 3px 14px; cursor: pointer; }
@@ -271,6 +294,13 @@ object ServeWeb {
       .cp-prov-item code { background: #2a2a30; }
       .cp-search { border-color: #34343a; background: #1d1d20; }
       .cp-count, .cp-empty { color: #a0a0a8; }
+      .cp-tabs { border-bottom-color: #34343a; }
+      .cp-tab { color: #a0a0a8; }
+      .cp-tab:hover { color: #c9c9ff; background: #26262b; }
+      .cp-tab[aria-selected="true"] { color: #c9c9ff; background: #161618; border-color: #34343a;
+        border-bottom-color: #161618; }
+      .cp-tab-count { background: #26264a; color: #c9c9ff; }
+      .cp-group-head { color: #7a7a82; }
       .cp-theme { border-color: #34343a; }
       .cp-theme-btn { background: #1d1d20; color: #a0a0a8; }
       .cp-theme-btn[aria-pressed="true"] { background: #26264a; color: #c9c9ff; }
@@ -343,7 +373,7 @@ object ServeWeb {
         border-radius: 999px; background: #c9c9d0; }
       .cp-scrim.cp-scrim-on { display: block; position: fixed; inset: 0; z-index: 35;
         background: rgba(0, 0, 0, 0.38); }
-      .cp-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+      .cp-grid, .cp-cards { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
       .cp-syslist, .cp-syslist.cp-grid { grid-template-columns: 1fr; }
       .cp-imgwrap img { max-height: 200px; }
       /* Copyable direct-link rows: the URL field takes its own line above the Copy/Download
@@ -731,6 +761,88 @@ object ServeWeb {
     return byKey.values.sortedBy { it.order }
   }
 
+  /** Fallback tab for section-bearing catalogs whose stray card carries no section of its own. */
+  private const val OTHER_SECTION = "Other"
+
+  /** One sub-heading group inside a section tab: its [name] (null ⇒ ungrouped) and its cards. */
+  private class LandingGroup(val name: String?) {
+    val cards = mutableListOf<GridCard>()
+  }
+
+  /**
+   * One section (tab) of a tabbed landing: its display [name], a route-safe [slug] (the tab's
+   * `#cp-panel-<slug>` anchor / id), and its ordered sub-[groups]. [count] totals its cards for the
+   * tab's badge.
+   */
+  private class LandingSection(val name: String, var slug: String) {
+    val groups = mutableListOf<LandingGroup>()
+
+    val count: Int
+      get() = groups.sumOf { it.cards.size }
+  }
+
+  /** Route-safe slug for a section name (`"Screens · Scanner"` → `"screens-scanner"`). */
+  private fun sectionSlug(name: String): String {
+    val s =
+      name
+        .lowercase()
+        .map { if (it.isLetterOrDigit()) it else '-' }
+        .joinToString("")
+        .trim('-')
+        .replace(Regex("-+"), "-")
+    return s.ifEmpty { "section" }
+  }
+
+  /**
+   * Bucket [cards] into ordered [LandingSection] tabs (keyed by each card's [ServePreview.section])
+   * with ordered sub-[LandingGroup]s (keyed by [ServePreview.group]) inside — the tabbed-catalog
+   * structure the landing renders as a tab bar over per-section panels.
+   *
+   * Sections, groups, and cards are all ordered by their authored [ServePreview.catalogOrder] (min
+   * order for a section/group), because [ServeBundleHost] lists previews sorted by id — so without
+   * this the tabs would read alphabetically rather than Themes → Components → Screens → … as
+   * authored. A card missing a section falls into a trailing **"Other"** tab so nothing is dropped.
+   * Slugs are de-duplicated so two same-slug section names still get distinct tab anchors. Returns
+   * an empty list when NO card carries a section (a flat, untabbed catalog — the caller keeps the
+   * plain grid).
+   */
+  private fun buildSections(cards: List<GridCard>): List<LandingSection> {
+    if (cards.none { it.default.section != null }) return emptyList()
+    fun ord(c: GridCard) = c.default.catalogOrder ?: Int.MAX_VALUE
+    // section name -> (min order, group name -> cards), insertion-ordered as a stable fallback.
+    class SectionAcc {
+      var minOrder = Int.MAX_VALUE
+      val groups = LinkedHashMap<String?, LandingGroup>()
+    }
+    val bySection = LinkedHashMap<String, SectionAcc>()
+    for (card in cards) {
+      val secName = card.default.section ?: OTHER_SECTION
+      val acc = bySection.getOrPut(secName) { SectionAcc() }
+      acc.minOrder = minOf(acc.minOrder, ord(card))
+      acc.groups.getOrPut(card.default.group) { LandingGroup(card.default.group) }.cards.add(card)
+    }
+    val usedSlugs = HashSet<String>()
+    return bySection.entries
+      .sortedBy { it.value.minOrder }
+      .map { (name, acc) ->
+        var slug = sectionSlug(name)
+        var n = 2
+        while (!usedSlugs.add(slug)) {
+          slug = "${sectionSlug(name)}-$n"
+          n++
+        }
+        val section = LandingSection(name, slug)
+        acc.groups.values
+          .sortedBy { g -> g.cards.minOf { ord(it) } }
+          .forEach { g ->
+            val ordered = LandingGroup(g.name)
+            ordered.cards.addAll(g.cards.sortedBy { ord(it) })
+            section.groups.add(ordered)
+          }
+        section
+      }
+  }
+
   /**
    * The sticky light/dark control for the catalog header. Persists to `localStorage['cp-theme']`
    * (shared with the viewer's Theme select). [catalogFilterScript] wires it to *swap* each
@@ -778,8 +890,14 @@ object ServeWeb {
    * data and are left untouched. Theme state persists to the shared `localStorage['cp-theme']` key
    * (round-tripped with the viewer's Theme select); the search text is ephemeral. Fully client-side
    * progressive enhancement — a no-JS client sees the full grid on its baked (default) renders.
+   *
+   * When [hasTabs] (a sectioned catalog), the same script also drives the section **tabs**:
+   * clicking a tab shows only that section's panel (others' cards hidden) while a search spans
+   * every tab (tab selection ignored until the query clears), and empty sub-groups / sections
+   * collapse. All tab handling is emitted as inline additions that are empty for a flat catalog, so
+   * a section-less catalog's script is byte-for-byte unchanged.
    */
-  private fun catalogFilterScript(hasThemes: Boolean): String {
+  private fun catalogFilterScript(hasThemes: Boolean, hasTabs: Boolean): String {
     val themeInit =
       if (hasThemes)
         """
@@ -828,13 +946,51 @@ object ServeWeb {
         });
       });"""
       else ""
+    // Tab pieces — each empty for a flat (section-less) catalog and appended INLINE onto an
+    // existing
+    // line, so the emitted script for a plain catalog is byte-for-byte identical to the pre-tabs
+    // one.
+    // `cp-js` on <html> hides the redundant per-section <h2> (the tab bar labels the section).
+    val tabDecls =
+      if (hasTabs)
+        "\n      var tabBtns = document.querySelectorAll(\".cp-tab\");" +
+          "\n      var tabSections = document.querySelectorAll(\".cp-section\");" +
+          "\n      var tabGroups = document.querySelectorAll(\".cp-subgroup\");" +
+          "\n      var current = tabBtns.length ? tabBtns[0].getAttribute(\"data-tab\") : null;" +
+          "\n      document.documentElement.classList.add(\"cp-js\");"
+      else ""
+    // A card is shown when it matches the search AND (while not searching) sits in the current tab.
+    val tabOkLine =
+      if (hasTabs)
+        "\n          var sec = c.closest(\".cp-section\");" +
+          "\n          var tabOk = q !== \"\" || !sec || sec.getAttribute(\"data-section\") === current;"
+      else ""
+    val hiddenExpr = if (hasTabs) "!(searchOk && tabOk)" else "!searchOk"
+    val shownCond = if (hasTabs) "searchOk && tabOk" else "searchOk"
+    // After the per-card pass, collapse any sub-group / section left with no visible card.
+    val tabPost =
+      if (hasTabs)
+        "\n        tabGroups.forEach(function (g) { g.hidden = !g.querySelector(\".cp-card:not([hidden])\"); });" +
+          "\n        tabSections.forEach(function (s) { s.hidden = !s.querySelector(\".cp-card:not([hidden])\"); });"
+      else ""
+    val tabWiring =
+      if (hasTabs)
+        "\n      tabBtns.forEach(function (t) {" +
+          "\n        t.addEventListener(\"click\", function (e) {" +
+          "\n          e.preventDefault();" +
+          "\n          current = t.getAttribute(\"data-tab\");" +
+          "\n          tabBtns.forEach(function (x) { x.setAttribute(\"aria-selected\", x === t ? \"true\" : \"false\"); });" +
+          "\n          apply();" +
+          "\n        });" +
+          "\n      });"
+      else ""
     return """
     (function () {
       var cards = document.querySelectorAll(".cp-card");
       var input = document.getElementById("cp-search");
       var count = document.getElementById("cp-count");
       var empty = document.getElementById("cp-empty");
-      var total = cards.length;
+      var total = cards.length;$tabDecls
       $themeInit
       function apply() {
         $applyTheme
@@ -844,15 +1000,15 @@ object ServeWeb {
           var lab = c.querySelector(".cp-label");
           var idn = c.querySelector(".cp-id");
           var hay = ((lab ? lab.textContent : "") + " " + (idn ? idn.textContent : "")).toLowerCase();
-          var searchOk = q === "" || hay.indexOf(q) !== -1;
-          c.hidden = !searchOk;
-          if (searchOk) shown++;
+          var searchOk = q === "" || hay.indexOf(q) !== -1;$tabOkLine
+          c.hidden = $hiddenExpr;
+          if ($shownCond) shown++;
         });
         if (count) count.textContent = q === "" ? "" : (shown + " of " + total);
-        if (empty) empty.hidden = shown !== 0;
+        if (empty) empty.hidden = shown !== 0;$tabPost
       }
       if (input) input.addEventListener("input", apply);
-      $themeWiring
+      $themeWiring$tabWiring
       // Background/Transparent toggle: flips the whole page between a solid surface (default) and the
       // transparent-checkerboard backing, persisting the choice. Independent of theme/search filters.
       var bgBtns = document.querySelectorAll(".cp-bg-btn");
@@ -1233,11 +1389,65 @@ object ServeWeb {
           """
         .trimIndent()
     }
+    fun cardHtml(card: GridCard): String =
+      if (card.swappable) swapCard(card) else singleCard(card.default)
     val cards =
       if (groups.isEmpty()) {
         "<p class=\"cp-sub\">No previews discovered in this module.</p>"
       } else {
-        groups.joinToString("\n") { if (it.swappable) swapCard(it) else singleCard(it.default) }
+        groups.joinToString("\n") { cardHtml(it) }
+      }
+    // A catalog whose previews carry sections renders as TABS (one per section, e.g. Themes /
+    // Components / Screens / Animations) over per-section panels, with the component `group` as a
+    // sub-heading inside a tab. A plain (section-less) catalog keeps the single flat grid below.
+    val sections = buildSections(groups)
+    val hasTabs = sections.isNotEmpty()
+    val tabBar =
+      if (!hasTabs) ""
+      else
+        buildString {
+          append(
+            "<nav class=\"cp-tabs\" id=\"cp-tabs\" role=\"tablist\" aria-label=\"Catalog sections\">\n"
+          )
+          sections.forEachIndexed { i, sec ->
+            val selected = if (i == 0) "true" else "false"
+            append("  <a class=\"cp-tab\" role=\"tab\" id=\"cp-tab-${sec.slug}\"")
+            append(" href=\"#cp-panel-${sec.slug}\" data-tab=\"${sec.slug}\"")
+            append(" aria-controls=\"cp-panel-${sec.slug}\" aria-selected=\"$selected\">")
+            append(
+              "${WebEscaping.htmlEscape(sec.name)}<span class=\"cp-tab-count\">${sec.count}</span></a>\n"
+            )
+          }
+          append("</nav>\n")
+        }
+    // The grid body: either the tabbed section panels (id=cp-grid, so the search box's
+    // aria-controls
+    // + the filter script still target it) or the plain flat grid. The flat form reproduces the
+    // exact whitespace of the pre-tabs template (the `$cards` and `</div>` lines carried the body
+    // template's 8-space indent, which survives `trimIndent` because the interpolated cards sit at
+    // column 0) so a section-less catalog's committed golden is byte-for-byte unchanged.
+    val gridBlock =
+      if (!hasTabs) {
+        "<div class=\"cp-grid\" id=\"cp-grid\">\n        $cards\n        </div>"
+      } else {
+        buildString {
+          append("<div class=\"cp-sections\" id=\"cp-grid\">\n")
+          sections.forEach { sec ->
+            append("<section class=\"cp-section\" id=\"cp-panel-${sec.slug}\" role=\"tabpanel\"")
+            append(" aria-labelledby=\"cp-tab-${sec.slug}\" data-section=\"${sec.slug}\">\n")
+            append("<h2 class=\"cp-section-head\">${WebEscaping.htmlEscape(sec.name)}</h2>\n")
+            sec.groups.forEach { g ->
+              append("<div class=\"cp-subgroup\">\n")
+              if (g.name != null)
+                append("<h3 class=\"cp-group-head\">${WebEscaping.htmlEscape(g.name)}</h3>\n")
+              append("<div class=\"cp-cards\">\n")
+              g.cards.forEach { append(cardHtml(it)).append("\n") }
+              append("</div>\n</div>\n")
+            }
+            append("</section>\n")
+          }
+          append("</div>")
+        }
       }
     // The "about" intro now sits at the BOTTOM of a catalog page (below the grid) so the catalog's
     // own content leads; it still appears only for the public server.
@@ -1264,7 +1474,7 @@ object ServeWeb {
         "\n<p id=\"cp-empty\" class=\"cp-empty\" hidden>No previews match your filter.</p>"
       else ""
     val filterScript =
-      if (hasPreviews) "\n<script>${catalogFilterScript(hasThemes)}</script>" else ""
+      if (hasPreviews) "\n<script>${catalogFilterScript(hasThemes, hasTabs)}</script>" else ""
     return document(
       title = "$moduleLabel — compose-preview",
       body =
@@ -1272,9 +1482,7 @@ object ServeWeb {
         $back<p class="cp-head">${WebEscaping.htmlEscape(moduleLabel)}${trustBadge(trust)}</p>
         $prov$themeToggle<p class="cp-sub">${previews.size} preview(s) · click one to view with overrides ·
           <a href="$basePath/bundle.zip$q">download all (.zip)</a></p>
-        $searchBox<div class="cp-grid" id="cp-grid">
-        $cards
-        </div>$emptyState$filterScript$about
+        $searchBox$tabBar$gridBlock$emptyState$filterScript$about
         """
           .trimIndent(),
     )

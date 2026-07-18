@@ -300,6 +300,11 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
         group: group.name,
         ideal,
       };
+      // A group may declare a top-level `section` (the tab the preview server
+      // buckets it under: Themes / Components / Screens / Animations / …). It sits
+      // one level above `group`, which becomes the sub-heading inside a tab.
+      // Absent ⇒ an untabbed flat catalog, as before.
+      if (group.section !== undefined) source.section = group.section;
       if (component.caption !== undefined) source.caption = component.caption;
       if (component.reference !== undefined) source.reference = component.reference;
       if (candidate.semantics) source.semantics = candidate.semantics;

@@ -3,7 +3,7 @@
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>compose-m3 — compose-preview</title>
+        <title>meshcore-mobile — compose-preview</title>
         <style>:root { color-scheme: light dark; }
 * { box-sizing: border-box; }
 body { margin: 0; padding: 24px; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
@@ -388,136 +388,203 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
       </head>
       <body>
                 <a class="cp-back" href="/">← All design systems</a>
-<p class="cp-head">compose-m3 <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ branch:yschimke/compose-ai-tools@design-artifacts/compose-m3</span></p>
-        <div class="cp-toolbar">
-  <span class="cp-theme" role="group" aria-label="Preview theme">
-    <button type="button" class="cp-theme-btn" data-theme-choice="light">Light</button>
-    <button type="button" class="cp-theme-btn" data-theme-choice="dark">Dark</button>
-  </span>
-</div>
-<p class="cp-sub">5 preview(s) · click one to view with overrides ·
-          <a href="/bundle.zip">download all (.zip)</a></p>
+<p class="cp-head">meshcore-mobile <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile">✓ branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile</span></p>
+        <p class="cp-sub">9 preview(s) · click one to view with overrides ·
+          <a href="/meshcore-mobile/bundle.zip">download all (.zip)</a></p>
         <div class="cp-searchbar">
   <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
     autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
-  <span id="cp-count" class="cp-count" role="status" aria-live="polite" data-total="5"></span>
+  <span id="cp-count" class="cp-count" role="status" aria-live="polite" data-total="9"></span>
   <span class="cp-bg" role="group" aria-label="Sticker background">
     <button type="button" class="cp-bg-btn" data-bg-choice="on">Background</button>
     <button type="button" class="cp-bg-btn" data-bg-choice="off">Transparent</button>
   </span>
 </div>
-<div class="cp-grid" id="cp-grid">
-        <a class="cp-card" data-swap="1" data-bg-theme="light"
-  data-l-src="/render/button-filled__ideal__default__light.png" data-l-href="/p/button-filled__ideal__default__light"
-  data-l-id="button-filled__ideal__default__light" data-l-label="Button · Filled (light)"
-  data-d-src="/render/button-filled__ideal__default__dark.png" data-d-href="/p/button-filled__ideal__default__dark"
-  data-d-id="button-filled__ideal__default__dark" data-d-label="Button · Filled (dark)"
-  href="/p/button-filled__ideal__default__light">
+<nav class="cp-tabs" id="cp-tabs" role="tablist" aria-label="Catalog sections">
+  <a class="cp-tab" role="tab" id="cp-tab-themes" href="#cp-panel-themes" data-tab="themes" aria-controls="cp-panel-themes" aria-selected="true">Themes<span class="cp-tab-count">2</span></a>
+  <a class="cp-tab" role="tab" id="cp-tab-components" href="#cp-panel-components" data-tab="components" aria-controls="cp-panel-components" aria-selected="false">Components<span class="cp-tab-count">4</span></a>
+  <a class="cp-tab" role="tab" id="cp-tab-screens" href="#cp-panel-screens" data-tab="screens" aria-controls="cp-panel-screens" aria-selected="false">Screens<span class="cp-tab-count">3</span></a>
+</nav>
+<div class="cp-sections" id="cp-grid">
+<section class="cp-section" id="cp-panel-themes" role="tabpanel" aria-labelledby="cp-tab-themes" data-section="themes">
+<h2 class="cp-section-head">Themes</h2>
+<div class="cp-subgroup">
+<h3 class="cp-group-head">Foundation</h3>
+<div class="cp-cards">
+<a class="cp-card" href="/meshcore-mobile/p/theme-meshcore-light__ideal__default__compact">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Button · Filled (light)" src="/render/button-filled__ideal__default__light.png">
+    <img loading="lazy" alt="Theme · MeshCore (light)" src="/meshcore-mobile/render/theme-meshcore-light__ideal__default__compact.png">
   </div>
   <div class="cp-meta">
-    <div class="cp-label" title="Button · Filled (light)">Button · Filled (light)</div>
-    <div class="cp-id">button-filled__ideal__default__light</div>
+    <div class="cp-label" title="theme-meshcore-light__ideal__default__compact">Theme · MeshCore (light)</div>
+    <div class="cp-id">theme-meshcore-light__ideal__default__compact</div>
   </div>
 </a>
-<a class="cp-card" data-swap="1" data-bg-theme="light"
-  data-l-src="/render/switch-on__ideal__default__light.png" data-l-href="/p/switch-on__ideal__default__light"
-  data-l-id="switch-on__ideal__default__light" data-l-label="Switch · On (light)"
-  data-d-src="/render/switch-on__ideal__default__dark.png" data-d-href="/p/switch-on__ideal__default__dark"
-  data-d-id="switch-on__ideal__default__dark" data-d-label="Switch · On (dark)"
-  href="/p/switch-on__ideal__default__light">
+<a class="cp-card" href="/meshcore-mobile/p/theme-material3-light__ideal__default__compact">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Switch · On (light)" src="/render/switch-on__ideal__default__light.png">
+    <img loading="lazy" alt="Theme · Material 3 (light)" src="/meshcore-mobile/render/theme-material3-light__ideal__default__compact.png">
   </div>
   <div class="cp-meta">
-    <div class="cp-label" title="Switch · On (light)">Switch · On (light)</div>
-    <div class="cp-id">switch-on__ideal__default__light</div>
+    <div class="cp-label" title="theme-material3-light__ideal__default__compact">Theme · Material 3 (light)</div>
+    <div class="cp-id">theme-material3-light__ideal__default__compact</div>
   </div>
 </a>
-<a class="cp-card" href="/p/badge">
+</div>
+</div>
+</section>
+<section class="cp-section" id="cp-panel-components" role="tabpanel" aria-labelledby="cp-tab-components" data-section="components">
+<h2 class="cp-section-head">Components</h2>
+<div class="cp-subgroup">
+<h3 class="cp-group-head">Device</h3>
+<div class="cp-cards">
+<a class="cp-card" href="/meshcore-mobile/p/devicesummarycard-populated__ideal__default__compact">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Badge" src="/render/badge.png">
+    <img loading="lazy" alt="Device summary · Populated" src="/meshcore-mobile/render/devicesummarycard-populated__ideal__default__compact.png">
   </div>
   <div class="cp-meta">
-    <div class="cp-label" title="badge">Badge</div>
-    <div class="cp-id">badge</div>
+    <div class="cp-label" title="devicesummarycard-populated__ideal__default__compact">Device summary · Populated</div>
+    <div class="cp-id">devicesummarycard-populated__ideal__default__compact</div>
   </div>
 </a>
-        </div>
+<a class="cp-card" href="/meshcore-mobile/p/devicesummarycard-loading__ideal__default__compact">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="Device summary · Loading" src="/meshcore-mobile/render/devicesummarycard-loading__ideal__default__compact.png">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="devicesummarycard-loading__ideal__default__compact">Device summary · Loading</div>
+    <div class="cp-id">devicesummarycard-loading__ideal__default__compact</div>
+  </div>
+</a>
+</div>
+</div>
+<div class="cp-subgroup">
+<h3 class="cp-group-head">Contacts</h3>
+<div class="cp-cards">
+<a class="cp-card" href="/meshcore-mobile/p/contactrow-variants__ideal__default__compact">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="Contact row · Variants" src="/meshcore-mobile/render/contactrow-variants__ideal__default__compact.png">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="contactrow-variants__ideal__default__compact">Contact row · Variants</div>
+    <div class="cp-id">contactrow-variants__ideal__default__compact</div>
+  </div>
+</a>
+<a class="cp-card" href="/meshcore-mobile/p/contactlist-many__ideal__default__compact">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="Contact list · Many" src="/meshcore-mobile/render/contactlist-many__ideal__default__compact.png">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="contactlist-many__ideal__default__compact">Contact list · Many</div>
+    <div class="cp-id">contactlist-many__ideal__default__compact</div>
+  </div>
+</a>
+</div>
+</div>
+</section>
+<section class="cp-section" id="cp-panel-screens" role="tabpanel" aria-labelledby="cp-tab-screens" data-section="screens">
+<h2 class="cp-section-head">Screens</h2>
+<div class="cp-subgroup">
+<h3 class="cp-group-head">Scanner</h3>
+<div class="cp-cards">
+<a class="cp-card" href="/meshcore-mobile/p/scanner-savedpopulated__ideal__default__compact">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="Scanner · Saved populated" src="/meshcore-mobile/render/scanner-savedpopulated__ideal__default__compact.png">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="scanner-savedpopulated__ideal__default__compact">Scanner · Saved populated</div>
+    <div class="cp-id">scanner-savedpopulated__ideal__default__compact</div>
+  </div>
+</a>
+<a class="cp-card" href="/meshcore-mobile/p/scanner-blemany__ideal__default__compact">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="Scanner · BLE many" src="/meshcore-mobile/render/scanner-blemany__ideal__default__compact.png">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="scanner-blemany__ideal__default__compact">Scanner · BLE many</div>
+    <div class="cp-id">scanner-blemany__ideal__default__compact</div>
+  </div>
+</a>
+</div>
+</div>
+<div class="cp-subgroup">
+<h3 class="cp-group-head">Device</h3>
+<div class="cp-cards">
+<a class="cp-card" href="/meshcore-mobile/p/device-manycontacts__ideal__default__compact">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="Device · Many contacts" src="/meshcore-mobile/render/device-manycontacts__ideal__default__compact.png">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="device-manycontacts__ideal__default__compact">Device · Many contacts</div>
+    <div class="cp-id">device-manycontacts__ideal__default__compact</div>
+  </div>
+</a>
+</div>
+</div>
+</section>
+</div>
 <p id="cp-empty" class="cp-empty" hidden>No previews match your filter.</p>
-<script>    (function () {
-      var cards = document.querySelectorAll(".cp-card");
-      var input = document.getElementById("cp-search");
-      var count = document.getElementById("cp-count");
-      var empty = document.getElementById("cp-empty");
-      var total = cards.length;
-      var stored = null;
-try { stored = localStorage.getItem("cp-theme"); } catch (e) {}
-var theme = (stored === "light" || stored === "dark") ? stored
-  : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-var themeBtns = document.querySelectorAll(".cp-theme-btn");
-      function apply() {
-        themeBtns.forEach(function (b) {
-  b.setAttribute("aria-pressed", b.getAttribute("data-theme-choice") === theme ? "true" : "false");
-});
-var k = theme === "dark" ? "d" : "l";
-cards.forEach(function (c) {
-  if (c.getAttribute("data-swap") !== "1") return;
-  var src = c.getAttribute("data-" + k + "-src");
-  if (!src) return;
-  var img = c.querySelector("img");
-  var lab = c.querySelector(".cp-label");
-  var idn = c.querySelector(".cp-id");
-  var lbl = c.getAttribute("data-" + k + "-label");
-  if (img) { img.src = src; img.setAttribute("alt", lbl); }
-  c.setAttribute("href", c.getAttribute("data-" + k + "-href"));
-  if (lab) { lab.textContent = lbl; lab.setAttribute("title", lbl); }
-  if (idn) idn.textContent = c.getAttribute("data-" + k + "-id");
-  c.setAttribute("data-bg-theme", theme);
-});
-        var q = input ? input.value.trim().toLowerCase() : "";
-        var shown = 0;
-        cards.forEach(function (c) {
-          var lab = c.querySelector(".cp-label");
-          var idn = c.querySelector(".cp-id");
-          var hay = ((lab ? lab.textContent : "") + " " + (idn ? idn.textContent : "")).toLowerCase();
-          var searchOk = q === "" || hay.indexOf(q) !== -1;
-          c.hidden = !searchOk;
-          if (searchOk) shown++;
-        });
-        if (count) count.textContent = q === "" ? "" : (shown + " of " + total);
-        if (empty) empty.hidden = shown !== 0;
-      }
-      if (input) input.addEventListener("input", apply);
-      themeBtns.forEach(function (b) {
-        b.addEventListener("click", function () {
-          theme = b.getAttribute("data-theme-choice");
-          try { localStorage.setItem("cp-theme", theme); } catch (e) {}
-          apply();
-        });
-      });
-      // Background/Transparent toggle: flips the whole page between a solid surface (default) and the
-      // transparent-checkerboard backing, persisting the choice. Independent of theme/search filters.
-      var bgBtns = document.querySelectorAll(".cp-bg-btn");
-      function reflectBg() {
-        var off = document.documentElement.classList.contains("cp-bg-transparent");
-        bgBtns.forEach(function (b) {
-          b.setAttribute("aria-pressed",
-            b.getAttribute("data-bg-choice") === (off ? "off" : "on") ? "true" : "false");
-        });
-      }
-      bgBtns.forEach(function (b) {
-        b.addEventListener("click", function () {
-          var choice = b.getAttribute("data-bg-choice");
-          document.documentElement.classList.toggle("cp-bg-transparent", choice === "off");
-          try { localStorage.setItem("cp-bg", choice); } catch (e) {}
-          reflectBg();
-        });
-      });
-      reflectBg();
+<script>(function () {
+  var cards = document.querySelectorAll(".cp-card");
+  var input = document.getElementById("cp-search");
+  var count = document.getElementById("cp-count");
+  var empty = document.getElementById("cp-empty");
+  var total = cards.length;
+  var tabBtns = document.querySelectorAll(".cp-tab");
+  var tabSections = document.querySelectorAll(".cp-section");
+  var tabGroups = document.querySelectorAll(".cp-subgroup");
+  var current = tabBtns.length ? tabBtns[0].getAttribute("data-tab") : null;
+  document.documentElement.classList.add("cp-js");
+  
+  function apply() {
+    
+    var q = input ? input.value.trim().toLowerCase() : "";
+    var shown = 0;
+    cards.forEach(function (c) {
+      var lab = c.querySelector(".cp-label");
+      var idn = c.querySelector(".cp-id");
+      var hay = ((lab ? lab.textContent : "") + " " + (idn ? idn.textContent : "")).toLowerCase();
+      var searchOk = q === "" || hay.indexOf(q) !== -1;
+      var sec = c.closest(".cp-section");
+      var tabOk = q !== "" || !sec || sec.getAttribute("data-section") === current;
+      c.hidden = !(searchOk && tabOk);
+      if (searchOk && tabOk) shown++;
+    });
+    if (count) count.textContent = q === "" ? "" : (shown + " of " + total);
+    if (empty) empty.hidden = shown !== 0;
+    tabGroups.forEach(function (g) { g.hidden = !g.querySelector(".cp-card:not([hidden])"); });
+    tabSections.forEach(function (s) { s.hidden = !s.querySelector(".cp-card:not([hidden])"); });
+  }
+  if (input) input.addEventListener("input", apply);
+  
+  tabBtns.forEach(function (t) {
+    t.addEventListener("click", function (e) {
+      e.preventDefault();
+      current = t.getAttribute("data-tab");
+      tabBtns.forEach(function (x) { x.setAttribute("aria-selected", x === t ? "true" : "false"); });
       apply();
-    })();</script>
+    });
+  });
+  // Background/Transparent toggle: flips the whole page between a solid surface (default) and the
+  // transparent-checkerboard backing, persisting the choice. Independent of theme/search filters.
+  var bgBtns = document.querySelectorAll(".cp-bg-btn");
+  function reflectBg() {
+    var off = document.documentElement.classList.contains("cp-bg-transparent");
+    bgBtns.forEach(function (b) {
+      b.setAttribute("aria-pressed",
+        b.getAttribute("data-bg-choice") === (off ? "off" : "on") ? "true" : "false");
+    });
+  }
+  bgBtns.forEach(function (b) {
+    b.addEventListener("click", function () {
+      var choice = b.getAttribute("data-bg-choice");
+      document.documentElement.classList.toggle("cp-bg-transparent", choice === "off");
+      try { localStorage.setItem("cp-bg", choice); } catch (e) {}
+      reflectBg();
+    });
+  });
+  reflectBg();
+  apply();
+})();</script>
 <section class="cp-about">
   <p class="cp-about-title">compose-preview · public preview server</p>
   <p class="cp-about-body">Browse rendered Compose &amp; Compose&nbsp;Multiplatform design

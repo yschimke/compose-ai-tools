@@ -215,6 +215,60 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `a sectioned catalog carries section, group and order onto host previews`() {
+    // Two components tagged with a section (the tab) + group (the sub-heading) — the tabbed-catalog
+    // structure. Order follows the authored component list, not the id-sorted host order.
+    val sectioned =
+      """
+      {"schema":"design-parity-catalog/v1","system":"meshcore-mobile","components":[
+        {"componentId":"Theme/Light","section":"Themes","group":"Foundation","images":[
+          {"path":"images/theme-light/ideal__default__compact.png"}]},
+        {"componentId":"ContactRow","section":"Components","group":"Contacts","images":[
+          {"path":"images/contactrow/ideal__default__compact.png"}]}]}
+      """
+        .trimIndent()
+    val root = tempRoot()
+    val fetch: (String) -> ByteArray? = { url ->
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> sectioned.toByteArray()
+        url.endsWith(".png") -> png()
+        else -> null
+      }
+    }
+    val store =
+      ServeCatalogStore(
+        root = root,
+        register = { n, h -> registered[n] = h },
+        trust = TrustStore.EMPTY,
+        fetch = fetch,
+        registerWasm = { s, d -> registeredWasm[s] = d },
+      )
+    assertTrue(store.load("meshcore-mobile") is ServeCatalogStore.Result.Ok)
+
+    // variants.json carries the section/group/order the tabbed landing keys off (state/theme
+    // absent).
+    val manifest = File(root, "meshcore-mobile/previews/${ServeCatalogStore.VARIANTS_FILE}")
+    val text = manifest.readText()
+    assertTrue(
+      text.contains("\"section\":\"Themes\"") && text.contains("\"group\":\"Foundation\""),
+      "manifest carries section + group: $text",
+    )
+    assertTrue(text.contains("\"order\":"), "manifest carries the authored order: $text")
+
+    // …and round-trips onto the host previews, in authored order (Themes component first).
+    val host = registered.getValue("meshcore-mobile")
+    val byId = host.previews.associateBy { it.id }
+    val theme = byId.getValue("theme-light__ideal__default__compact")
+    assertEquals("Themes", theme.section)
+    assertEquals("Foundation", theme.group)
+    assertEquals(0, theme.catalogOrder)
+    val row = byId.getValue("contactrow__ideal__default__compact")
+    assertEquals("Components", row.section)
+    assertEquals("Contacts", row.group)
+    assertEquals(1, row.catalogOrder)
+  }
+
+  @Test
   fun `a trusted liveBundle catalog hands the builder the catalog-id to daemon-id alias`() {
     // A catalog that carries a liveBundle and per-image previewId: the store fetches the bundle and
     // invokes the live builder with the catalog-id → daemon-id alias so it can bridge the two id
