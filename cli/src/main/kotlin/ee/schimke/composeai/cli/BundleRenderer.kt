@@ -455,7 +455,7 @@ class BundleRenderer(
     return exitCode to tail
   }
 
-  private fun buildRendererArgs(preview: PreviewInfo, outFile: File): List<String> {
+  internal fun buildRendererArgs(preview: PreviewInfo, outFile: File): List<String> {
     // DesktopRendererMain arg positions (see renderer-desktop/DesktopRendererMain.kt):
     //  0 className  1 functionName  2 widthPx  3 heightPx  4 density  5 showBackground
     //  6 backgroundColor  7 outputFile  8 wrapperClassName  9 wrapWidth  10 wrapHeight
@@ -472,22 +472,37 @@ class BundleRenderer(
     val heightPx = (heightDp * density).toInt().coerceAtLeast(1)
     val wrapWidth = preview.params.widthDp == null
     val wrapHeight = preview.params.heightDp == null
-    return listOf(
-      preview.className,
-      preview.functionName,
-      widthPx.toString(),
-      heightPx.toString(),
-      density.toString(),
-      preview.params.showBackground.toString(),
-      preview.params.backgroundColor.toString(),
-      outFile.absolutePath,
-      preview.params.wrapperClassName.orEmpty(),
-      wrapWidth.toString(),
-      wrapHeight.toString(),
-      preview.params.previewParameterProviderClassName.orEmpty(),
-      preview.params.previewParameterLimit.toString(),
-      preview.params.locale.orEmpty(),
-    )
+    val base =
+      listOf(
+        preview.className,
+        preview.functionName,
+        widthPx.toString(),
+        heightPx.toString(),
+        density.toString(),
+        preview.params.showBackground.toString(),
+        preview.params.backgroundColor.toString(),
+        outFile.absolutePath,
+        preview.params.wrapperClassName.orEmpty(),
+        wrapWidth.toString(),
+        wrapHeight.toString(),
+        preview.params.previewParameterProviderClassName.orEmpty(),
+        preview.params.previewParameterLimit.toString(),
+        preview.params.locale.orEmpty(),
+      )
+    // Wrapped-axis size bounds (Max / Min / Within), when the bundle carries them, land at
+    // DesktopRendererMain arg indices 28–31. The intervening optional slots (14–27: scroll / kind /
+    // fontScale / systemUi / anim / siblings) aren't driven by the bundle path, so pad them with
+    // empty strings that DesktopRendererMain's `getOrNull(...)` reads as "unset". Emit nothing when
+    // no bound is set so the common case keeps the short, positional-stable arg list.
+    val bounds =
+      listOf(
+        preview.params.minWidthPx,
+        preview.params.minHeightPx,
+        preview.params.maxWidthPx,
+        preview.params.maxHeightPx,
+      )
+    if (bounds.all { it == null }) return base
+    return base + List(14) { "" } + bounds.map { it?.toString() ?: "" }
   }
 
   /**

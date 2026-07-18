@@ -327,13 +327,29 @@ class RenderEngine(
         ee.schimke.composeai.renderer.WearReduceMotionLocal.get(classLoader)
       else null
 
+    // Content-size bounds (the Max / Min / Within size modes) apply on a wrapped axis, where
+    // widthPx/heightPx are a sandbox bound rather than a fixed frame. A min bound larger than the
+    // default sandbox needs the Robolectric display enlarged to fit, otherwise the wrap measure is
+    // clamped to the sandbox window before it can reach the requested floor. Only widen (never
+    // shrink) the sandbox — the intrinsic-size crop still trims the PNG back to the measured size.
+    // Mirrors the desktop daemon's scene-enlarge in `:daemon:desktop`'s RenderEngine.
+    val sizeOverrides = spec.overrides
+    val sandboxWidthPx =
+      if (spec.wrapWidth)
+        maxOf(spec.widthPx, sizeOverrides?.minWidthPx ?: 0, sizeOverrides?.maxWidthPx ?: 0)
+      else spec.widthPx
+    val sandboxHeightPx =
+      if (spec.wrapHeight)
+        maxOf(spec.heightPx, sizeOverrides?.minHeightPx ?: 0, sizeOverrides?.maxHeightPx ?: 0)
+      else spec.heightPx
+
     // Per-preview Robolectric configuration — qualifiers re-applied so a previous render's size /
     // density doesn't bleed into this one. Same entrypoints `RobolectricRenderTest` uses; both
     // mutate `RuntimeEnvironment` global state, which is OK here because the sandbox is single-
     // threaded under our render loop (DESIGN § 9 invariant: no concurrent renders).
     applyPreviewQualifiers(
-      widthDp = pxToDp(spec.widthPx, spec.density),
-      heightDp = pxToDp(spec.heightPx, spec.density),
+      widthDp = pxToDp(sandboxWidthPx, spec.density),
+      heightDp = pxToDp(sandboxHeightPx, spec.density),
       density = spec.density,
       isRound = isRound,
       localeTag = spec.localeTag,
@@ -463,12 +479,29 @@ class RenderEngine(
                       val contentBoxModifier =
                         if (spec.wrapWidth || spec.wrapHeight) {
                           Modifier.layout { measurable, constraints ->
+                            // Size-mode bounds (Max / Min / Within) clamp the wrapped-axis measure:
+                            // a max bound lowers the sandbox ceiling so the composable can't grow
+                            // past it; a min bound raises the floor so it can't collapse below it.
+                            // Both are clamped to the (already-enlarged) sandbox so a bound larger
+                            // than the window can't produce an impossible constraint. Absent bounds
+                            // keep the AS-parity wrap (min = 0, max = sandbox). Mirrors the desktop
+                            // daemon RenderEngine.
+                            val maxWBound =
+                              sizeOverrides?.maxWidthPx?.coerceAtMost(constraints.maxWidth)
+                                ?: constraints.maxWidth
+                            val maxHBound =
+                              sizeOverrides?.maxHeightPx?.coerceAtMost(constraints.maxHeight)
+                                ?: constraints.maxHeight
+                            val minWBound = (sizeOverrides?.minWidthPx ?: 0).coerceIn(0, maxWBound)
+                            val minHBound = (sizeOverrides?.minHeightPx ?: 0).coerceIn(0, maxHBound)
                             val wrapped =
                               androidx.compose.ui.unit.Constraints(
-                                minWidth = if (spec.wrapWidth) 0 else constraints.minWidth,
-                                maxWidth = constraints.maxWidth,
-                                minHeight = if (spec.wrapHeight) 0 else constraints.minHeight,
-                                maxHeight = constraints.maxHeight,
+                                minWidth = if (spec.wrapWidth) minWBound else constraints.minWidth,
+                                maxWidth = if (spec.wrapWidth) maxWBound else constraints.maxWidth,
+                                minHeight =
+                                  if (spec.wrapHeight) minHBound else constraints.minHeight,
+                                maxHeight =
+                                  if (spec.wrapHeight) maxHBound else constraints.maxHeight,
                               )
                             val placeable = measurable.measure(wrapped)
                             measuredContent[0] = placeable.width

@@ -26,6 +26,19 @@ data class PreviewParams(
   val widthDp: Int? = null,
   val heightDp: Int? = null,
   /**
+   * Wrapped-axis content-size bounds (the Max / Min / Within size modes), in **pixels**. Null means
+   * "no bound" — the AS-parity wrap (min = 0, max = sandbox). They only bite on a wrapped axis (one
+   * with no fixed [widthDp]/[heightDp]), letting a bundle carry a "render this component as it
+   * would appear constrained to a list column" request that the desktop renderer honours — the same
+   * `PreviewOverrides.{min,max}{Width,Height}Px` the daemon applies for `compose-preview serve`.
+   * Absent from discovery today (no `@Preview` equivalent), so they round-trip only when a bundle /
+   * catalog author sets them; the render pipeline defaults them to the unbounded wrap.
+   */
+  val minWidthPx: Int? = null,
+  val minHeightPx: Int? = null,
+  val maxWidthPx: Int? = null,
+  val maxHeightPx: Int? = null,
+  /**
    * Compose density factor (= densityDpi / 160) resolved at discovery from the @Preview device;
    * null means "use the renderer default". Carried through so agents can spot per-device fan-outs
    * without re-reading the Gradle manifest.
