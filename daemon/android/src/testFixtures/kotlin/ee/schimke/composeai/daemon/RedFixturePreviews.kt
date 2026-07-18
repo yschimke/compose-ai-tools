@@ -93,6 +93,27 @@ fun TallWrapColumn() {
 }
 
 /**
+ * Wrap-content sticker fixture mirroring the desktop `WrapContentStickerPreview` (and the
+ * design-catalog `CatalogSticker`): a 56.dp badge in 16.dp padding with **no `fillMaxSize`**, so its
+ * intrinsic size is 88.dp on both axes — 176 px at density 2, far smaller than the wrap sandbox.
+ * Used by [RenderEngineSizeBoundsTest] to prove the Android backend honours the wrapped-axis size
+ * bounds (`PreviewOverrides.{min,max}{Width,Height}Px` — the Max / Min / Within size modes) the same
+ * way the desktop daemon does, so a `compose-preview serve` size override against an Android module
+ * reshapes the crop instead of being silently ignored.
+ */
+@Composable
+fun WrapContentStickerPreview() {
+  Box(modifier = Modifier.padding(16.dp)) {
+    Box(
+      modifier = Modifier.size(56.dp).background(Color(0xFFB71C1C), RoundedCornerShape(28.dp)),
+      contentAlignment = Alignment.Center,
+    ) {
+      Text(text = "8", color = Color.White)
+    }
+  }
+}
+
+/**
  * Fixture for `PreviewOverridesDataFetchE2ETest`: declares two opt-in `previewOverride*` knobs (a
  * colour `fill` and a string `label`) so a render through the sandbox records them into the
  * sandbox-classloader `PreviewOverrideController`. The test then asserts the host-side

@@ -77,6 +77,16 @@ import org.jetbrains.skia.EncodedImageFormat
  * cleanup must leave those siblings' files alone — see [deleteStaleFanoutFiles] (issue #2193). `|`
  * is safe as a separator because discovery's `sanitizeForPath` strips it from every stem.
  *
+ * Args 29–32 (indices 28–31) are the wrapped-axis content-size bounds — `minWidthPx`,
+ * `minHeightPx`, `maxWidthPx`, `maxHeightPx` (the Max / Min / Within size modes). Positive
+ * integers; missing / blank / non-positive means "no bound" (the AS-parity wrap). They only bite on
+ * a wrapped axis: a max bound lowers the wrap ceiling so the component can't grow past it, a min
+ * bound raises the floor (the scene is enlarged to fit) so it can't collapse below it, then the
+ * capture crops to the resulting intrinsic size. Mirror the daemon's
+ * `PreviewOverrides.{min,max}{Width,Height}Px` so a `compose-preview bundle render` matches what
+ * `compose-preview serve` produces for the same size override — letting a component be captured as
+ * it would appear constrained to e.g. a list column.
+ *
  * Args 15–18 carry `@ScrollingPreview` intent. When [scrollMode] is `"LONG"` or `"GIF"` the
  * renderer leaves the [ImageComposeScene] path and dispatches to [renderScrollPreview] (which uses
  * `runComposeUiTest` for paused-clock + semantic scroll). `"TOP"` / `"END"` / empty are handled by
@@ -192,6 +202,17 @@ fun main(args: Array<String>) {
   // 28th — sibling stems for the stale fan-out cleanup (issue #2193). Missing / blank keeps the
   // pre-#2193 behaviour (no sibling protection), so older callers stay arg-compatible.
   val fanoutSiblingStems = args.getOrNull(27)?.split('|')?.filter { it.isNotBlank() } ?: emptyList()
+  // Args 29–32 (indices 28–31) — wrapped-axis content-size bounds (the Max / Min / Within size
+  // modes). Positive integers; missing / blank / non-positive means "no bound" (the AS-parity
+  // wrap).
+  // Only consulted on a wrapped axis. Mirror the daemon's
+  // `PreviewOverrides.{min,max}{Width,Height}Px`, so a `compose-preview bundle render` matches what
+  // `compose-preview serve` produces for the same size-mode override. Older callers omit them and
+  // keep the unbounded wrap.
+  val minWidthPx = args.getOrNull(28)?.toIntOrNull()?.takeIf { it > 0 }
+  val minHeightPx = args.getOrNull(29)?.toIntOrNull()?.takeIf { it > 0 }
+  val maxWidthPx = args.getOrNull(30)?.toIntOrNull()?.takeIf { it > 0 }
+  val maxHeightPx = args.getOrNull(31)?.toIntOrNull()?.takeIf { it > 0 }
   if (previewKind == "LOTTIE") {
     val assetPath = args.getOrNull(19)?.takeIf { it.isNotBlank() }
     val sidecar = errorSidecarFor(outputFile)
@@ -390,6 +411,10 @@ fun main(args: Array<String>) {
             showSystemUi,
             uiMode,
             device,
+            minWidthPx = minWidthPx,
+            minHeightPx = minHeightPx,
+            maxWidthPx = maxWidthPx,
+            maxHeightPx = maxHeightPx,
           )
         }
       } else {
@@ -411,6 +436,10 @@ fun main(args: Array<String>) {
           showSystemUi,
           uiMode,
           device,
+          minWidthPx = minWidthPx,
+          minHeightPx = minHeightPx,
+          maxWidthPx = maxWidthPx,
+          maxHeightPx = maxHeightPx,
         )
       }
       // Display filters — post-capture colour-matrix variants (grayscale / invert / daltonizer
@@ -694,7 +723,7 @@ internal fun systemThemeFromUiMode(uiMode: Int): androidx.compose.ui.SystemTheme
   }
 
 @OptIn(androidx.compose.ui.InternalComposeUiApi::class)
-private fun renderPreview(
+internal fun renderPreview(
   className: String,
   functionName: String,
   widthPx: Int,
@@ -712,6 +741,15 @@ private fun renderPreview(
   showSystemUi: Boolean = false,
   uiMode: Int = 0,
   device: String? = null,
+  // Wrapped-axis content-size bounds (the Max / Min / Within size modes). Null keeps the AS-parity
+  // wrap (min = 0, max = sandbox); a max bound lowers the wrap ceiling, a min bound raises the
+  // floor.
+  // Only consulted on a wrapped axis. Mirrors the desktop daemon RenderEngine so a bundle re-render
+  // matches what `compose-preview serve` produces for the same size-mode override.
+  minWidthPx: Int? = null,
+  minHeightPx: Int? = null,
+  maxWidthPx: Int? = null,
+  maxHeightPx: Int? = null,
   fileSystem: FileSystem = SystemFileSystem,
 ) {
   val clazz = Class.forName(className)
@@ -732,7 +770,14 @@ private fun renderPreview(
   // paths read it directly during composition rather than via the scene density. Mirrors the
   // daemon's desktop RenderEngine (issue: @Preview(fontScale) was ignored on the CMP pipeline).
   val sceneDensity = Density(density, fontScale)
-  val scene = ImageComposeScene(width = widthPx, height = heightPx, density = sceneDensity)
+  // A min bound larger than the default sandbox needs the scene enlarged to fit, otherwise the
+  // composable is clipped to the scene before the intrinsic-size crop runs. Only widen (never
+  // shrink) on a wrapped axis; the crop still trims the PNG back to the measured intrinsic size.
+  val sceneWidthPx = if (wrapWidth) maxOf(widthPx, minWidthPx ?: 0, maxWidthPx ?: 0) else widthPx
+  val sceneHeightPx =
+    if (wrapHeight) maxOf(heightPx, minHeightPx ?: 0, maxHeightPx ?: 0) else heightPx
+  val scene =
+    ImageComposeScene(width = sceneWidthPx, height = sceneHeightPx, density = sceneDensity)
 
   // Measured content size in pixels, captured from the wrapping Box via
   // onGloballyPositioned. Only read when at least one axis wraps.
@@ -805,13 +850,24 @@ private fun renderPreview(
                   // small composables can shrink below the
                   // sandbox; keep the max bounded (the parent's
                   // maxWidth/maxHeight) so `fillMax*` / LazyColumn
-                  // still have a finite viewport.
+                  // still have a finite viewport. Size-mode bounds
+                  // (Max / Min / Within) clamp that further: a max
+                  // bound lowers the ceiling, a min bound raises the
+                  // floor, both clamped into the (already-enlarged)
+                  // sandbox so a bound larger than the scene can't
+                  // make an impossible constraint.
+                  val maxWBound =
+                    maxWidthPx?.coerceAtMost(constraints.maxWidth) ?: constraints.maxWidth
+                  val maxHBound =
+                    maxHeightPx?.coerceAtMost(constraints.maxHeight) ?: constraints.maxHeight
+                  val minWBound = (minWidthPx ?: 0).coerceIn(0, maxWBound)
+                  val minHBound = (minHeightPx ?: 0).coerceIn(0, maxHBound)
                   val wrappedConstraints =
                     Constraints(
-                      minWidth = if (wrapWidth) 0 else constraints.minWidth,
-                      maxWidth = constraints.maxWidth,
-                      minHeight = if (wrapHeight) 0 else constraints.minHeight,
-                      maxHeight = constraints.maxHeight,
+                      minWidth = if (wrapWidth) minWBound else constraints.minWidth,
+                      maxWidth = if (wrapWidth) maxWBound else constraints.maxWidth,
+                      minHeight = if (wrapHeight) minHBound else constraints.minHeight,
+                      maxHeight = if (wrapHeight) maxHBound else constraints.maxHeight,
                     )
                   val placeable = measurable.measure(wrappedConstraints)
                   measured = IntSize(placeable.width, placeable.height)
@@ -869,8 +925,10 @@ private fun renderPreview(
   // fall back to the sandbox dimensions and write the uncropped PNG.
   if ((wrapWidth || wrapHeight) && measured != null) {
     val m = measured!!
-    val cropW = (if (wrapWidth) m.width else widthPx).coerceIn(1, widthPx)
-    val cropH = (if (wrapHeight) m.height else heightPx).coerceIn(1, heightPx)
+    // Ceiling is the (possibly enlarged) scene dimension, not the raw widthPx/heightPx — a min
+    // bound larger than the original frame grew the scene, and the crop must keep that extent.
+    val cropW = (if (wrapWidth) m.width else widthPx).coerceIn(1, sceneWidthPx)
+    val cropH = (if (wrapHeight) m.height else heightPx).coerceIn(1, sceneHeightPx)
     val decoded = ByteArrayInputStream(pngData.bytes).use { ImageIO.read(it) }
     if (decoded != null && (cropW < decoded.width || cropH < decoded.height)) {
       val sub =
