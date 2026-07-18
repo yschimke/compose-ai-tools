@@ -421,6 +421,10 @@ private fun applyRoleMetrics(style: TextStyle, spec: String?): TextStyle {
     fontSize = parts.getOrNull(0)?.toFloatOrNull()?.sp ?: style.fontSize,
     lineHeight = parts.getOrNull(1)?.toFloatOrNull()?.sp ?: style.lineHeight,
     letterSpacing = parts.getOrNull(2)?.toFloatOrNull()?.sp ?: style.letterSpacing,
-    fontWeight = parts.getOrNull(3)?.toIntOrNull()?.let { FontWeight(it) } ?: style.fontWeight,
+    // `FontWeight(int)` requires 1..1000; this knob is query-driven, so an out-of-range weight must
+    // fall back rather than throw and sink the whole render.
+    fontWeight =
+      parts.getOrNull(3)?.toIntOrNull()?.takeIf { it in 1..1000 }?.let { FontWeight(it) }
+        ?: style.fontWeight,
   )
 }

@@ -79,4 +79,17 @@ class CatalogShapesTypographyTest {
     // `typo:` prefix but no usable role → base is returned untouched.
     assertEquals(base, catalogApplyTypography(base, "typo:"))
   }
+
+  @Test
+  fun `an out-of-range font weight is ignored rather than thrown`() {
+    val base = catalogTypography(null)
+    // FontWeight requires 1..1000; a query-driven 0 / 2000 must fall back to the base weight, not
+    // throw and sink the whole render.
+    val zero = catalogApplyTypography(base, "typo:bodyMedium=-/-/-/0")
+    assertEquals(base.bodyMedium.fontWeight, zero.bodyMedium.fontWeight)
+    val huge = catalogApplyTypography(base, "typo:bodyMedium=15/-/-/2000")
+    assertEquals(base.bodyMedium.fontWeight, huge.bodyMedium.fontWeight)
+    // A valid slot in the same spec still applies.
+    assertEquals(15f, huge.bodyMedium.fontSize.value)
+  }
 }
