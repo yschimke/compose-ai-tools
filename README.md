@@ -81,6 +81,9 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `BodyTextPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/BodyTextPreview_Body_Text_Lorem_ipsum_dolor_sit_amet_conse.png" width="150" /> |
 | `BodyTextPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/BodyTextPreview_Body_Text_Short.png" width="150" /> |
 | `BodyTextPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/BodyTextPreview_Body_Text_The_quick_brown_fox.png" width="150" /> |
+| `PrivateProviderBadgePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/PrivateProviderBadgePreview_Private_Provider_Badge_BETA.png" width="150" /> |
+| `PrivateProviderBadgePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/PrivateProviderBadgePreview_Private_Provider_Badge_NEW.png" width="150" /> |
+| `PrivateProviderBadgePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/PrivateProviderBadgePreview_Private_Provider_Badge_PRO.png" width="150" /> |
 | `UserCardPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/UserCardPreview_User_Card_Ada_Lovelace.png" width="150" /> |
 | `UserCardPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/UserCardPreview_User_Card_Alan_Turing.png" width="150" /> |
 | `UserCardPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/UserCardPreview_User_Card_Grace_Hopper.png" width="150" /> |

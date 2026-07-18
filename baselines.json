@@ -695,6 +695,30 @@
     "sha256": "c5c30f9e7082b46be97ec54eff78357ab0f0ced6f214606e01d566b4d0cea496",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewParameterPreviews.kt"
   },
+  "samples:android/com.example.sampleandroid.PreviewParameterPreviewsKt.PrivateProviderBadgePreview_Private Provider Badge": {
+    "captureLabel": "",
+    "functionName": "PrivateProviderBadgePreview",
+    "module": "samples:android",
+    "renderBasename": "PrivateProviderBadgePreview_Private_Provider_Badge_BETA.png",
+    "sha256": "c72edd956557a4b12aea55e81a72590e79d5cc2919f49f371dee4ece9b2d0e61",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewParameterPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewParameterPreviewsKt.PrivateProviderBadgePreview_Private Provider Badge#1": {
+    "captureLabel": "",
+    "functionName": "PrivateProviderBadgePreview",
+    "module": "samples:android",
+    "renderBasename": "PrivateProviderBadgePreview_Private_Provider_Badge_NEW.png",
+    "sha256": "5c43dde3197e1e3c07851b3b5e52056632563dde9e117c51cd97f023da94164a",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewParameterPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewParameterPreviewsKt.PrivateProviderBadgePreview_Private Provider Badge#2": {
+    "captureLabel": "",
+    "functionName": "PrivateProviderBadgePreview",
+    "module": "samples:android",
+    "renderBasename": "PrivateProviderBadgePreview_Private_Provider_Badge_PRO.png",
+    "sha256": "73107ba77045eba8116109755ca2ced8e553e1c31e4b581fcdae1d1c2ada9a42",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewParameterPreviews.kt"
+  },
   "samples:android/com.example.sampleandroid.PreviewParameterPreviewsKt.UserCardPreview_User Card": {
     "captureLabel": "",
     "functionName": "UserCardPreview",
@@ -3068,7 +3092,7 @@
     "functionName": "ActivityListLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round.png",
-    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
+    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
