@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/pr`. 252 preview(s) across 19 module(s) · 34 error(s) · 4 warning(s) · 37 info._
+_Auto-generated from `compose-preview/a11y/pr`. 248 preview(s) across 18 module(s) · 34 error(s) · 3 warning(s) · 37 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -350,6 +350,10 @@ _No findings._
 ### `PressedButtonPreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/PressedButtonPreview_Pressed.a11y.png" width="400" />
+
+_No findings._
+
+### `PrivateProviderBadgePreview`
 
 _No findings._
 
@@ -919,6 +923,12 @@ _No findings._
 
 _No findings._
 
+### `RadioUnselected`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-m3/RadioUnselected_Dark.a11y.png" width="400" />
+
+_No findings._
+
 ### `SegmentedToggle`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-m3/SegmentedToggle_Dark.a11y.png" width="400" />
@@ -1295,6 +1305,12 @@ _No findings._
 
 _No findings._
 
+### `OutlinedCardSticker`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/OutlinedCardSticker.a11y.png" width="400" />
+
+_No findings._
+
 ### `PageIndicatorScaffoldTemplate` · `wearos_large_round`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/PageIndicatorScaffoldTemplate_Large_Round.a11y.png" width="400" />
@@ -1372,34 +1388,6 @@ _No findings._
 ### `StackPreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/desktop-daemon-bench/StackPreview_Stack.a11y.png" width="400" />
-
-_No findings._
-
-## mobile
-
-### `ConnectScreenDiscoveredPreview`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/mobile/ConnectScreenDiscoveredPreview_Connect_discovered.a11y.png" width="400" />
-
-| # | Level | Rule | Element | Message |
-|--:|---|---|---|---|
-| 1 | WARNING | DuplicateSpeakableTextCheck | android.view.View | This clickable item's speakable text: "Use this server" is identical to that of 1 other item(s). |
-
-### `ConnectScreenEmptyPreview`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/mobile/ConnectScreenEmptyPreview_Connect_empty.a11y.png" width="400" />
-
-_No findings._
-
-### `ConnectingOverlayPreview`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/mobile/ConnectingOverlayPreview_Status_connecting.a11y.png" width="400" />
-
-_No findings._
-
-### `FailedOverlayPreview`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/mobile/FailedOverlayPreview_Status_failed.a11y.png" width="400" />
 
 _No findings._
 
@@ -1597,24 +1585,6 @@ _No findings._
 ### `ScrollIndicatorStickerPreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/ScrollIndicatorStickerPreview.png" width="400" />
-
-_No findings._
-
-### `WearConnectPreview`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/WearConnectPreview_Wear_connect.a11y.png" width="400" />
-
-_No findings._
-
-### `WearConnectingPreview`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/WearConnectingPreview_Wear_connecting.a11y.png" width="400" />
-
-_No findings._
-
-### `WearFailedPreview`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/WearFailedPreview_Wear_failed.a11y.png" width="400" />
 
 _No findings._
 
