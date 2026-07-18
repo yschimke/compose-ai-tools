@@ -950,10 +950,7 @@ class ServeWebFixtureTest {
     // back button that links HOME (the front-door index at /), token-gated here.
     val front =
       ServeWeb.landingPage(moduleLabel, previews, token, catalogs = listOf("compose-m3", "wear-m3"))
-    assertFalse(
-      front.contains("class=\"cp-systems\""),
-      "the sideways design-systems nav is gone",
-    )
+    assertFalse(front.contains("class=\"cp-systems\""), "the sideways design-systems nav is gone")
     assertTrue(
       front.contains("class=\"cp-back\" href=\"/?token=$token\""),
       "a catalog landing links back to the home index",
@@ -1027,7 +1024,8 @@ class ServeWebFixtureTest {
     )
     // No provenance passed → no strip (a plain bundle / non-catalog module).
     assertFalse(
-      ServeWeb.landingPage(moduleLabel, previews, token, isPublic = true).contains("class=\"cp-prov\""),
+      ServeWeb.landingPage(moduleLabel, previews, token, isPublic = true)
+        .contains("class=\"cp-prov\""),
       "a landing without provenance shows no strip",
     )
   }
@@ -1053,8 +1051,7 @@ class ServeWebFixtureTest {
     assertTrue(home.contains("class=\"cp-about-ver\">v1.2.3<"), "the running version is shown")
     assertTrue(home.contains("class=\"cp-gh\""), "the source link carries the GitHub icon")
     // A null version simply omits the pill (no dangling separator crash).
-    val noVer =
-      ServeWeb.homeIndexPage(emptyList(), token, isPublic = true)
+    val noVer = ServeWeb.homeIndexPage(emptyList(), token, isPublic = true)
     assertFalse(noVer.contains("class=\"cp-about-ver\""), "no version pill when version is null")
   }
 

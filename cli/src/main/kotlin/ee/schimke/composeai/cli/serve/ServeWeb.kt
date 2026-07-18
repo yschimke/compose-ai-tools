@@ -480,7 +480,8 @@ object ServeWeb {
   /**
    * A "back to all design systems" button for a catalog landing — replaces the in-catalog
    * design-systems nav row, so a catalog page links **home** (the front-door index at `/`) rather
-   * than sideways to its siblings. Token-free in [isPublic] mode; a token-gated box keeps the token.
+   * than sideways to its siblings. Token-free in [isPublic] mode; a token-gated box keeps the
+   * token.
    */
   private fun backButton(token: String, isPublic: Boolean): String {
     val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
@@ -489,9 +490,10 @@ object ServeWeb {
 
   /**
    * Provenance of a served design-system catalog: the trusted GitHub [repo]/[branch] it was fetched
-   * from, when it was [generatedAt] (ISO-8601), and the [toolVersion] (compose-ai-tools) +
-   * [designParityVersion] that produced it. Threaded from [ServeCatalogStore] (which knows the
-   * repo/branch) + the catalog's own `catalog.json` metadata. Null fields are simply omitted.
+   * from, when it was [generatedAt] (ISO-8601), and the [toolVersion]
+   * (compose-ai-tools) + [designParityVersion] that produced it. Threaded from [ServeCatalogStore]
+   * (which knows the repo/branch) + the catalog's own `catalog.json` metadata. Null fields are
+   * simply omitted.
    */
   data class CatalogProvenance(
     val repo: String,
@@ -501,7 +503,9 @@ object ServeWeb {
     val designParityVersion: String? = null,
   )
 
-  /** "2026-07-17T12:34:56.789Z" → "2026-07-17 12:34 UTC"; anything unparseable is shown verbatim. */
+  /**
+   * "2026-07-17T12:34:56.789Z" → "2026-07-17 12:34 UTC"; anything unparseable is shown verbatim.
+   */
   private fun prettyDate(iso: String): String {
     val m = Regex("""^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})""").find(iso) ?: return iso
     return "${m.groupValues[1]} ${m.groupValues[2]} UTC"

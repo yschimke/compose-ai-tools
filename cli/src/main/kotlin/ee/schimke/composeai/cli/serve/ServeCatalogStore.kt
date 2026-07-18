@@ -651,7 +651,8 @@ class ServeCatalogStore(
     val library: List<String> = emptyList(),
     /**
      * ISO-8601 timestamp the delivery branch was generated (from `catalog.json`'s flattened meta,
-     * written by `generate-design-catalog.mjs`). Surfaced on the catalog landing's provenance strip.
+     * written by `generate-design-catalog.mjs`). Surfaced on the catalog landing's provenance
+     * strip.
      */
     val generatedAt: String? = null,
     /**
