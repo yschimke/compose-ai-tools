@@ -50,6 +50,11 @@ dependencies {
   implementation(libs.wear.compose.foundation)
   implementation(libs.wear.compose.ui.tooling)
   implementation(libs.compose.ui.tooling.preview)
+  // `Font(GoogleFont("Roboto Flex"/"Lobster Two"), provider)` — the catalog's typefaces resolve as
+  // downloadable Google fonts (fetched + cached by the renderer's ShadowFontsContractCompat) rather
+  // than vendored `res/font/*.ttf`, so the module ships no font bytes and every packed bundle drops
+  // ~2 MB while staying self-contained. Version from the Compose BOM above.
+  implementation("androidx.compose.ui:ui-text-google-fonts")
   // @ScrollingPreview(END) — full-screen Wear components (EdgeButton, scaling
   // lists) reveal their bottom-anchored chrome only after the scroll settles, so
   // the catalog captures them scrolled to the end rather than at the resting top.

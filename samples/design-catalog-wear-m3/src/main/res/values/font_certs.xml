@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Certificates array referenced by GoogleFont.Provider (WearCatalogFonts.kt) for GMS Fonts.
+        On-device production use requires the real GMS signing certificates (normally pulled in via
+        `play-services-base`); under Robolectric the renderer's ShadowFontsContractCompat
+        short-circuits before signature verification, so a local empty array is sufficient to
+        exercise the downloadable-font path without the Play Services dependency. This catalog is
+        only ever rendered, never shipped to a device. Mirrors `:samples:android`'s font_certs.xml.
+    -->
+    <array name="com_google_android_gms_fonts_certs" />
+</resources>
