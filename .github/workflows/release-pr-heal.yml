@@ -5,10 +5,8 @@ name: Release PR Heal
 #
 # WHY THIS EXISTS
 # ---------------
-# The root and clients release trains each have their OWN manifest file
-# (`.release-please-manifest.json` / `clients-release-please-manifest.json`), so
-# they no longer collide by construction — this job is the belt-and-suspenders
-# fallback for the ways a release PR can still wedge.
+# This job is the belt-and-suspenders fallback for the ways a release PR can
+# wedge.
 #
 # A release PR can go CONFLICTING when it carries a full-file manifest snapshot
 # that goes stale on main (release-please normally rebases the open PR on every
@@ -20,19 +18,13 @@ name: Release PR Heal
 # main into the release branch and resolves the manifest by taking each
 # package's NEWEST version — exactly the correct release-please resolution.
 #
-# (Before the split there was a THIRD way to wedge: root and clients shared one
-# manifest, and the two adjacent version lines conflicted whenever one line
-# released while the other's PR was open. Separate manifest files removed that
-# class entirely; this job still covers the stale-snapshot / failed-rebase case
-# above for either train.)
-#
 # SAFETY RAILS
 # ------------
 #   * Only touches branches named `release-please--…` (release-please's own).
-#   * Only auto-resolves when a single release-please manifest file (root or
-#     clients) is the *sole* conflicted file. Any other conflict (CHANGELOG, an
-#     extra-file, more than one file) is left untouched and surfaced as a job
-#     failure for a human to look at.
+#   * Only auto-resolves when the release-please manifest file is the *sole*
+#     conflicted file. Any other conflict (CHANGELOG, an extra-file, more than
+#     one file) is left untouched and surfaced as a job failure for a human to
+#     look at.
 #   * Manifest resolution is a strict per-key semver max — never invents or
 #     downgrades a version; if either side isn't plain `X.Y.Z`, it bails.
 #   * Commits as github-actions[bot], which by house rule only ever lands on
@@ -118,13 +110,11 @@ jobs:
             fi
 
             conflicted="$(git diff --name-only --diff-filter=U)"
-            # Auto-resolve only a LONE release-please manifest conflict. We run two
-            # release trains (root + clients), each with its own manifest file, so the
-            # conflicted file may be either one — but never both at once (disjoint
-            # files). A multi-file value won't match either exact pattern and falls to
-            # the human path, as does any non-manifest conflict (CHANGELOG, extra-file).
+            # Auto-resolve only a LONE release-please manifest conflict. A multi-file
+            # value won't match the exact pattern and falls to the human path, as does
+            # any non-manifest conflict (CHANGELOG, extra-file).
             case "${conflicted}" in
-              .release-please-manifest.json | clients-release-please-manifest.json) ;;
+              .release-please-manifest.json) ;;
               *)
                 echo "::warning::PR #${num} conflict isn't a lone release manifest — leaving for a human:"
                 echo "${conflicted}"

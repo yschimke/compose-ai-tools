@@ -16,9 +16,6 @@ kotlin = "2.4.0"
 kotlinCoreLibraries = "2.0.21"
 agp = "9.2.1"
 ktfmt = "0.26.0"
-# Gradle Play Publisher (Triplet) — drives `:clients:*` release publishing to the Play internal
-# track + Play Store listing assets (`src/main/play/...`). Only the session-viewer client apps use it.
-play-publisher = "4.0.0"
 tapmoc = "0.4.2"
 robolectric = "4.16.1"
 roborazzi = "1.67.0"
@@ -220,12 +217,12 @@ okhttp = "5.4.0"
 jmdns = "3.6.3"
 
 [libraries]
+# Ktor HTTP client (OkHttp engine) — backs the `:cli` / `:bundle-viewer` bundle downloader. Same
+# `ktor` version ref as the server below so the two can't skew and re-trip the strict slf4j pin in
+# :cli. (The `ktor-client-websockets` entry was dropped when the session-viewer clients — its only
+# consumer — moved to yschimke/compose-preview-client; see issue #2533.)
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
-# WebSocket client plugin for the streamed-frame lane the mobile/wear session-viewer clients consume
-# (`:clients:core`). Runs over the OkHttp engine so one engine serves both the existing bundle
-# downloader and the new live-frame transport; same `ktor` version ref as the server above.
-ktor-client-websockets = { module = "io.ktor:ktor-client-websockets", version.ref = "ktor" }
 # Embedded Ktor server (CIO engine — pure-Kotlin/coroutines, no Netty) backing the
 # `compose-preview serve` LAN preview server. Same `ktor` version ref as the client so the two
 # can't skew and re-trip the strict slf4j pin in :cli (see cli/build.gradle.kts constraints).
@@ -357,4 +354,3 @@ tapmoc = { id = "com.gradleup.tapmoc", version.ref = "tapmoc" }
 # Metro compiler plugin — `:samples:android-metro-viewmodel` applies this to
 # get `@DependencyGraph` / `@Inject` / `@ContributesIntoMap` codegen.
 metro = { id = "dev.zacsweers.metro", version.ref = "metro" }
-play-publisher = { id = "com.github.triplet.play", version.ref = "play-publisher" }
