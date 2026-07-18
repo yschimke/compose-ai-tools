@@ -39,6 +39,17 @@ android {
 
   buildFeatures { compose = true }
 
+  // English-only resource table. wear-compose / compose-ui ship their strings translated into ~86
+  // locales, so the merged unit-test resource APK (`apk-for-local-test.ap_`, which every packed
+  // bundle carries) devotes ~500 KB of its `resources.arsc` to ~13 000 translated string values —
+  // for strings this English-only Compose catalog never displays. The renderer runs single-locale
+  // (Robolectric's default en_US resolves to the unqualified `()` config), so the other 85 locales
+  // are pure dead weight. `localeFilters` drops them at resource-merge time — the APK is born
+  // small,
+  // no post-hoc `resources.arsc` surgery, bundles stay self-contained. The default (English) config
+  // is always retained, so every specimen still renders its real text.
+  androidResources { localeFilters += listOf("en") }
+
   testOptions { unitTests.all { it.jvmArgs("-Xmx2048m") } }
 }
 
