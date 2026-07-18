@@ -31,7 +31,7 @@ services:
       # front-page nav — reachable at /<system>/ (and ?session=<system>). <system>@<owner>/<repo>
       # points serve at each app's design-artifacts/<system> branch; those branches are in
       # trust/producers.json so they badge Trusted(Branch).
-      SERVE_CATALOGS_UNLISTED: "${SERVE_CATALOGS_UNLISTED:-meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose,cadence@yschimke/cadence}"
+      SERVE_CATALOGS_UNLISTED: "${SERVE_CATALOGS_UNLISTED:-meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose}"
       SERVE_TRUST_STORE: "${SERVE_TRUST_STORE:-trust/producers.json}"
       SERVE_WASM_DIR: "${SERVE_WASM_DIR:-compose-m3=samples/cmp-wasm-catalog/build/wasmDist}"
       # Live (daemon-backed) server-side re-render. Now that compose-m3 is a

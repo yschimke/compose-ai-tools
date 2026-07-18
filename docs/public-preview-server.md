@@ -24,7 +24,7 @@
    alongside `--catalogs-unlisted meshcore-mobile@yschimke/meshcore-mobile` from the app's own repo.
    `--catalogs-unlisted` serves a system exactly like `--catalogs` but groups it under a separate
    **"Apps"** section on the front page instead of the **"Design systems"** section — the app
-   catalogs (meshcore-mobile, cadence, …) still surface on the landing page, just under their own
+   catalogs (meshcore-mobile, …) still surface on the landing page, just under their own
    heading and kept off the in-catalog "Design systems" nav row. Reachable at `/<system>/` (and
    `?session=`) like any catalog. Every catalog's branch (whatever repo) must be in the
    `--trust-store` to badge `Trusted(Branch)`; otherwise it serves `Unverified` (the data tiers serve
@@ -122,7 +122,7 @@ compose-preview serve \
   --public \                              # open every route (no token)
   --catalogs compose-m3,wear-m3,remote-m3 \  # published design systems, listed on the front-page index
   --catalogs-unlisted \                   # served at /<system>/ but hidden from the nav; each from its own repo
-      meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose,cadence@yschimke/cadence \
+      meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose \
   --trust-store trust/producers.json \    # who we trust (must list every catalog's branch/repo)
   --host 0.0.0.0 --port 8080
 
@@ -191,7 +191,7 @@ out — which also means a bare image pull self-heals a box without editing its 
 
 The **catalog set is baked into the image the same way**: the entrypoint defaults `SERVE_CATALOGS`
 to `compose-m3,wear-m3,remote-m3` (front-page index) and `SERVE_CATALOGS_UNLISTED` to
-`meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose,cadence@yschimke/cadence`
+`meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose`
 (served at `/<system>/`, off the nav). So a bare `docker pull` / Watchtower update serves them
 without editing the box's compose. Override either with your own comma list, or `none` to serve none
 of that kind (empty inherits the baked default). The `deploy/vps` from-source path still sets these
