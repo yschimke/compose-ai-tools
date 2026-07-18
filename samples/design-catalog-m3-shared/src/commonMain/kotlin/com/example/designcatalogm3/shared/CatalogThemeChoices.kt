@@ -1,9 +1,19 @@
 package com.example.designcatalogm3.shared
 
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.TextUnitType
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /**
  * The catalog's selectable **theme-override choices**, shared so every render tier resolves them
@@ -117,6 +127,20 @@ private fun schemeRoles(s: ColorScheme): List<Pair<String, Color>> =
     "surfaceContainerHighest" to s.surfaceContainerHighest,
     "surfaceContainerLow" to s.surfaceContainerLow,
     "surfaceContainerLowest" to s.surfaceContainerLowest,
+    // The M3 "fixed" accent roles — exposed by the current `ColorScheme` API and read by the
+    // `compose/theme` token export, so an app that customises them must round-trip too.
+    "primaryFixed" to s.primaryFixed,
+    "primaryFixedDim" to s.primaryFixedDim,
+    "onPrimaryFixed" to s.onPrimaryFixed,
+    "onPrimaryFixedVariant" to s.onPrimaryFixedVariant,
+    "secondaryFixed" to s.secondaryFixed,
+    "secondaryFixedDim" to s.secondaryFixedDim,
+    "onSecondaryFixed" to s.onSecondaryFixed,
+    "onSecondaryFixedVariant" to s.onSecondaryFixedVariant,
+    "tertiaryFixed" to s.tertiaryFixed,
+    "tertiaryFixedDim" to s.tertiaryFixedDim,
+    "onTertiaryFixed" to s.onTertiaryFixed,
+    "onTertiaryFixedVariant" to s.onTertiaryFixedVariant,
   )
 
 /**
@@ -201,6 +225,18 @@ private fun applyColorRoles(base: ColorScheme, roles: Map<String, Color>): Color
     surfaceContainerHighest = roles["surfaceContainerHighest"] ?: base.surfaceContainerHighest,
     surfaceContainerLow = roles["surfaceContainerLow"] ?: base.surfaceContainerLow,
     surfaceContainerLowest = roles["surfaceContainerLowest"] ?: base.surfaceContainerLowest,
+    primaryFixed = roles["primaryFixed"] ?: base.primaryFixed,
+    primaryFixedDim = roles["primaryFixedDim"] ?: base.primaryFixedDim,
+    onPrimaryFixed = roles["onPrimaryFixed"] ?: base.onPrimaryFixed,
+    onPrimaryFixedVariant = roles["onPrimaryFixedVariant"] ?: base.onPrimaryFixedVariant,
+    secondaryFixed = roles["secondaryFixed"] ?: base.secondaryFixed,
+    secondaryFixedDim = roles["secondaryFixedDim"] ?: base.secondaryFixedDim,
+    onSecondaryFixed = roles["onSecondaryFixed"] ?: base.onSecondaryFixed,
+    onSecondaryFixedVariant = roles["onSecondaryFixedVariant"] ?: base.onSecondaryFixedVariant,
+    tertiaryFixed = roles["tertiaryFixed"] ?: base.tertiaryFixed,
+    tertiaryFixedDim = roles["tertiaryFixedDim"] ?: base.tertiaryFixedDim,
+    onTertiaryFixed = roles["onTertiaryFixed"] ?: base.onTertiaryFixed,
+    onTertiaryFixedVariant = roles["onTertiaryFixedVariant"] ?: base.onTertiaryFixedVariant,
   )
 
 /** `#AARRGGBB`/`AARRGGBB`/`RRGGBB` (opaque) → [Color], or null when unparseable. */
@@ -225,4 +261,166 @@ private fun colorToHex(c: Color): String {
       (channel(c.green).toLong() shl 8) or
       channel(c.blue).toLong()
   return argb.toString(16).uppercase().padStart(8, '0')
+}
+
+// --- Shapes -------------------------------------------------------------------------------------
+
+/** Knob key the theme wrappers read for the M3 [Shapes] override. */
+const val CATALOG_SHAPES_KNOB = "theme.shapes"
+
+/**
+ * Prefix marking a `theme.shapes` value as a **serialized app shape set** rather than a named
+ * choice — `shapes:xs=<dp>,s=<dp>,m=<dp>,l=<dp>,xl=<dp>`. The five M3 size tokens as corner radii
+ * in dp. See [serializeCatalogShapes] / [catalogShapes].
+ */
+const val CATALOG_SHAPES_PREFIX = "shapes:"
+
+/**
+ * Resolve a `theme.shapes` value to a [Shapes]. A `shapes:`-prefixed value overrides only the
+ * corner sizes it carries (omitted tokens keep the stock M3 corner); any other / absent /
+ * unparseable value yields the stock M3 [Shapes] — never throws. Only uniform [RoundedCornerShape]
+ * dp corners are expressed here; an app's per-component shape overrides still apply where a
+ * component sets its own. Shared by the desktop and Wasm theme wrappers so a `theme.shapes`
+ * override renders identically.
+ */
+fun catalogShapes(value: String): Shapes {
+  if (!value.startsWith(CATALOG_SHAPES_PREFIX)) return Shapes()
+  val sizes = HashMap<String, Dp>()
+  for (pair in value.removePrefix(CATALOG_SHAPES_PREFIX).split(",")) {
+    val entry = pair.trim()
+    if (entry.isEmpty()) continue
+    val sep = entry.indexOf('=')
+    if (sep <= 0) continue
+    val dp = entry.substring(sep + 1).trim().toFloatOrNull() ?: continue
+    sizes[entry.substring(0, sep).trim()] = dp.dp
+  }
+  if (sizes.isEmpty()) return Shapes()
+  val base = Shapes()
+  return base.copy(
+    extraSmall = sizes["xs"]?.let { RoundedCornerShape(it) } ?: base.extraSmall,
+    small = sizes["s"]?.let { RoundedCornerShape(it) } ?: base.small,
+    medium = sizes["m"]?.let { RoundedCornerShape(it) } ?: base.medium,
+    large = sizes["l"]?.let { RoundedCornerShape(it) } ?: base.large,
+    extraLarge = sizes["xl"]?.let { RoundedCornerShape(it) } ?: base.extraLarge,
+  )
+}
+
+/**
+ * Serialize an app's five M3 corner sizes into the `theme.shapes` wire form [catalogShapes]
+ * decodes. Takes the dp values directly — a built
+ * [androidx.compose.foundation.shape.CornerBasedShape] doesn't expose its size portably, so a
+ * consumer passes the sizes it built its `RoundedCornerShape`s from.
+ */
+fun serializeCatalogShapes(
+  extraSmall: Dp,
+  small: Dp,
+  medium: Dp,
+  large: Dp,
+  extraLarge: Dp,
+): String =
+  CATALOG_SHAPES_PREFIX +
+    "xs=${extraSmall.value},s=${small.value},m=${medium.value}," +
+    "l=${large.value},xl=${extraLarge.value}"
+
+// --- Typography (metrics) -----------------------------------------------------------------------
+
+/** Knob key the theme wrappers read for the M3 [Typography] **metrics** override. */
+const val CATALOG_TYPOGRAPHY_KNOB = "theme.typography"
+
+/**
+ * Prefix marking a `theme.typography` value as **serialized app type metrics** —
+ * `typo:<role>=<sizeSp>/<lineHeightSp>/<letterSpacingSp>/<weight>,…`, one entry per M3 type role.
+ * Carries only the numeric scale (size / line-height / letter-spacing / weight); the **typeface**
+ * still comes from the `theme.font` knob, because a font *file* can't ride a string knob. `-` in
+ * any slot means "leave the base role's value". See [serializeCatalogTypography] /
+ * [catalogApplyTypography].
+ */
+const val CATALOG_TYPOGRAPHY_PREFIX = "typo:"
+
+/** The 15 M3 type roles, paired name→getter — drives emit and the round-trip test. */
+private val TYPE_ROLES: List<Pair<String, (Typography) -> TextStyle>> =
+  listOf(
+    "displayLarge" to { it.displayLarge },
+    "displayMedium" to { it.displayMedium },
+    "displaySmall" to { it.displaySmall },
+    "headlineLarge" to { it.headlineLarge },
+    "headlineMedium" to { it.headlineMedium },
+    "headlineSmall" to { it.headlineSmall },
+    "titleLarge" to { it.titleLarge },
+    "titleMedium" to { it.titleMedium },
+    "titleSmall" to { it.titleSmall },
+    "bodyLarge" to { it.bodyLarge },
+    "bodyMedium" to { it.bodyMedium },
+    "bodySmall" to { it.bodySmall },
+    "labelLarge" to { it.labelLarge },
+    "labelMedium" to { it.labelMedium },
+    "labelSmall" to { it.labelSmall },
+  )
+
+/** A specified sp [TextUnit] as its float value; `-` otherwise (so the decoder keeps the base). */
+private fun spOrDash(tu: TextUnit): String =
+  if (tu.type == TextUnitType.Sp) tu.value.toString() else "-"
+
+/**
+ * Serialize a [Typography]'s per-role **metrics** into the `theme.typography` wire form
+ * [catalogApplyTypography] overlays. A consumer calls this on its brand `Typography`; the faces are
+ * carried separately via `theme.font`, so only the scale travels here.
+ */
+fun serializeCatalogTypography(typography: Typography): String =
+  CATALOG_TYPOGRAPHY_PREFIX +
+    TYPE_ROLES.joinToString(",") { (name, get) ->
+      val s = get(typography)
+      "$name=${spOrDash(s.fontSize)}/${spOrDash(s.lineHeight)}/${spOrDash(s.letterSpacing)}/" +
+        (s.fontWeight?.weight?.toString() ?: "-")
+    }
+
+/**
+ * Overlay serialized type metrics ([serializeCatalogTypography]) onto [base] — which already
+ * carries the typeface from the `theme.font` knob — replacing only the slots a role supplies.
+ * Returns [base] unchanged when [value] isn't a `typo:` blob or carries nothing usable. Tolerant:
+ * an unparseable slot (`-` or garbage) keeps the base role's value.
+ */
+fun catalogApplyTypography(base: Typography, value: String): Typography {
+  if (!value.startsWith(CATALOG_TYPOGRAPHY_PREFIX)) return base
+  val specs = HashMap<String, String>()
+  for (pair in value.removePrefix(CATALOG_TYPOGRAPHY_PREFIX).split(",")) {
+    val entry = pair.trim()
+    if (entry.isEmpty()) continue
+    val sep = entry.indexOf('=')
+    if (sep <= 0) continue
+    specs[entry.substring(0, sep).trim()] = entry.substring(sep + 1).trim()
+  }
+  if (specs.isEmpty()) return base
+  return base.copy(
+    displayLarge = applyRoleMetrics(base.displayLarge, specs["displayLarge"]),
+    displayMedium = applyRoleMetrics(base.displayMedium, specs["displayMedium"]),
+    displaySmall = applyRoleMetrics(base.displaySmall, specs["displaySmall"]),
+    headlineLarge = applyRoleMetrics(base.headlineLarge, specs["headlineLarge"]),
+    headlineMedium = applyRoleMetrics(base.headlineMedium, specs["headlineMedium"]),
+    headlineSmall = applyRoleMetrics(base.headlineSmall, specs["headlineSmall"]),
+    titleLarge = applyRoleMetrics(base.titleLarge, specs["titleLarge"]),
+    titleMedium = applyRoleMetrics(base.titleMedium, specs["titleMedium"]),
+    titleSmall = applyRoleMetrics(base.titleSmall, specs["titleSmall"]),
+    bodyLarge = applyRoleMetrics(base.bodyLarge, specs["bodyLarge"]),
+    bodyMedium = applyRoleMetrics(base.bodyMedium, specs["bodyMedium"]),
+    bodySmall = applyRoleMetrics(base.bodySmall, specs["bodySmall"]),
+    labelLarge = applyRoleMetrics(base.labelLarge, specs["labelLarge"]),
+    labelMedium = applyRoleMetrics(base.labelMedium, specs["labelMedium"]),
+    labelSmall = applyRoleMetrics(base.labelSmall, specs["labelSmall"]),
+  )
+}
+
+/**
+ * Overlay one role's `<sizeSp>/<lineHeightSp>/<letterSpacingSp>/<weight>` [spec] onto [style],
+ * leaving any slot the spec didn't carry (`-` / missing / unparseable) at the base value.
+ */
+private fun applyRoleMetrics(style: TextStyle, spec: String?): TextStyle {
+  if (spec.isNullOrEmpty()) return style
+  val parts = spec.split("/")
+  return style.copy(
+    fontSize = parts.getOrNull(0)?.toFloatOrNull()?.sp ?: style.fontSize,
+    lineHeight = parts.getOrNull(1)?.toFloatOrNull()?.sp ?: style.lineHeight,
+    letterSpacing = parts.getOrNull(2)?.toFloatOrNull()?.sp ?: style.letterSpacing,
+    fontWeight = parts.getOrNull(3)?.toIntOrNull()?.let { FontWeight(it) } ?: style.fontWeight,
+  )
 }

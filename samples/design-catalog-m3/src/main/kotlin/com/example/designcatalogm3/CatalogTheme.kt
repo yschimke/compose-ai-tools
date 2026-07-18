@@ -24,10 +24,14 @@ import com.example.designcatalogm3.shared.CATALOG_FONT_KNOB
 import com.example.designcatalogm3.shared.CATALOG_FONT_LOBSTER_TWO
 import com.example.designcatalogm3.shared.CATALOG_FONT_ROBOTO_FLEX
 import com.example.designcatalogm3.shared.CATALOG_PALETTE_M3
+import com.example.designcatalogm3.shared.CATALOG_SHAPES_KNOB
+import com.example.designcatalogm3.shared.CATALOG_TYPOGRAPHY_KNOB
 import com.example.designcatalogm3.shared.LocalGenericFonts
 import com.example.designcatalogm3.shared.LocalNamedFonts
+import com.example.designcatalogm3.shared.catalogApplyTypography
 import com.example.designcatalogm3.shared.catalogColorScheme
 import com.example.designcatalogm3.shared.catalogOverrideString
+import com.example.designcatalogm3.shared.catalogShapes
 import com.example.designcatalogm3.shared.catalogTypography
 
 /**
@@ -64,9 +68,22 @@ fun CatalogSticker(content: @Composable () -> Unit) {
   val font = catalogFont(catalogOverrideString(CATALOG_FONT_KNOB, CATALOG_FONT_ROBOTO_FLEX))
   val colorScheme =
     catalogColorScheme(catalogOverrideString(CATALOG_COLORS_KNOB, CATALOG_PALETTE_M3), dark)
+  // Shapes + typography-metrics overrides ride the same in-composition knob surface as colors /
+  // font, so the preview server can re-skin every sticker's corners and type scale
+  // (`knob.theme.shapes` / `knob.theme.typography`) with no preview change. Absent either knob,
+  // both
+  // resolve to the stock M3 shapes / the font-only type scale, so an un-overridden render stays
+  // pixel-identical.
+  val shapes = catalogShapes(catalogOverrideString(CATALOG_SHAPES_KNOB, ""))
+  val typography =
+    catalogApplyTypography(
+      catalogTypography(font),
+      catalogOverrideString(CATALOG_TYPOGRAPHY_KNOB, ""),
+    )
   CatalogStickerFrame(
     colorScheme = colorScheme,
-    typography = catalogTypography(font),
+    typography = typography,
+    shapes = shapes,
     content = content,
   )
 }
@@ -101,13 +118,14 @@ fun catalogFont(name: String): FontFamily =
 fun CatalogStickerFrame(
   colorScheme: androidx.compose.material3.ColorScheme,
   typography: androidx.compose.material3.Typography,
+  shapes: androidx.compose.material3.Shapes = androidx.compose.material3.Shapes(),
   content: @Composable () -> Unit,
 ) {
   CompositionLocalProvider(
     LocalGenericFonts provides CatalogGenericFonts,
     LocalNamedFonts provides CatalogNamedFonts,
   ) {
-    MaterialTheme(colorScheme = colorScheme, typography = typography) {
+    MaterialTheme(colorScheme = colorScheme, typography = typography, shapes = shapes) {
       Surface(color = Color.Transparent, contentColor = MaterialTheme.colorScheme.onSurface) {
         Box(Modifier.padding(16.dp)) { content() }
       }

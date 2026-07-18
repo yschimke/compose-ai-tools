@@ -16,7 +16,13 @@ class CatalogColorSchemeTest {
 
   @Test
   fun `serialize then parse round-trips the full role set for both modes`() {
-    val light = lightColorScheme(primary = Color(0xFF00695C), secondary = Color(0xFF80CBC4))
+    val light =
+      lightColorScheme(
+        primary = Color(0xFF00695C),
+        secondary = Color(0xFF80CBC4),
+        // A "fixed" accent role — proves the M3 fixed roles round-trip too, not just the base set.
+        primaryFixed = Color(0xFF112233),
+      )
     val dark = darkColorScheme(primary = Color(0xFF4DD0E1), tertiary = Color(0xFFFFE082))
     val blob = serializeCatalogColorScheme(light, dark)
 
@@ -27,6 +33,7 @@ class CatalogColorSchemeTest {
     assertEquals(light.primary, decodedLight.primary)
     assertEquals(light.secondary, decodedLight.secondary)
     assertEquals(light.surface, decodedLight.surface)
+    assertEquals(light.primaryFixed, decodedLight.primaryFixed)
     assertEquals(dark.primary, decodedDark.primary)
     assertEquals(dark.tertiary, decodedDark.tertiary)
     // Re-serializing the decoded schemes reproduces the blob → every carried role round-trips.
