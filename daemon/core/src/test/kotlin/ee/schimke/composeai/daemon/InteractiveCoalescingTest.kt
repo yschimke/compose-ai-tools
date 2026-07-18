@@ -48,7 +48,9 @@ class InteractiveCoalescingTest {
   fun burst_inputs_during_in_flight_render_coalesce_into_one_followup_render() {
     val tmp = Files.createTempDirectory("interactive-coalescing").toFile()
     val pngFile = File(tmp, "preview-A.png").apply { writeBytes(testPngBytes(seed = 0)) }
-    val host = SlowFakeHost(pngFile, renderDelayMs = 200)
+    // The first render blocks on a gate the test opens, so overlap is guaranteed by construction
+    // rather than by racing a wall-clock render delay — the coalescing arithmetic is deterministic.
+    val host = SlowFakeHost(pngFile)
 
     val (_, serverThread, clientToServerOut, received, exitLatch) = bringUpServer(host)
     resourcesToClose.add(AutoCloseable { runCatching { clientToServerOut.close() } })
@@ -65,11 +67,7 @@ class InteractiveCoalescingTest {
       startResp!!["result"]!!.jsonObject["frameStreamId"]!!.jsonPrimitive.contentOrNull!!
     val session = host.lastSession()!!
 
-    // Fire 5 inputs back-to-back — faster than the 200ms render cadence. With coalescing, only
-    // the first input triggers a render; inputs 2-5 queue up while render 1 is in flight, then
-    // dispatch as a batch driving exactly one follow-up render. Without coalescing this burst
-    // would produce 5 renders (one per input), each waiting 200ms — taking >1 s total.
-    repeat(5) { i ->
+    fun writeClick(i: Int) =
       writeFrame(
         clientToServerOut,
         """
@@ -79,16 +77,37 @@ class InteractiveCoalescingTest {
         """
           .trimIndent(),
       )
-    }
 
-    // Collect every renderFinished notification within a generous window. With coalescing we
-    // expect ≤ 2 renders total (one for the first input, one for the batch-drain). 5 renders
-    // would fail this — that's the load-bearing assertion.
+    // Input 1 claims the in-flight slot and enters render(), where it blocks on the gate — so the
+    // slot stays held for the rest of the burst.
+    writeClick(0)
+    assertTrue(
+      "first render should enter render() and hold the in-flight slot",
+      session.awaitFirstRenderStarted(5_000),
+    )
+
+    // Inputs 2-5 arrive while render 1 is in flight, so they queue rather than each spawning a
+    // render. The sentinel request is processed by the same read loop *after* those four inputs,
+    // so its response proves all four were handled (enqueued) before we release render 1 — no
+    // wall-clock guessing about whether they landed in time.
+    repeat(4) { i -> writeClick(i + 1) }
+    writeFrame(clientToServerOut, """{"jsonrpc":"2.0","id":50,"method":"test/ping"}""")
+    assertNotNull(
+      "sentinel response proves inputs 2-5 were read + queued",
+      pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 50 },
+    )
+
+    // Release render 1. It completes, its worker sees the four queued inputs, re-claims the slot,
+    // and dispatches them as a single batch driving exactly one follow-up render. Two renders
+    // total for five inputs — the coalescing contract.
+    session.releaseFirstRender()
+
+    // Collect renderFinished until it goes quiet (nothing new for a short spell) or the deadline.
     val finishedFrames = mutableListOf<JsonObject>()
-    val deadline = System.currentTimeMillis() + 2_500
+    val deadline = System.currentTimeMillis() + 5_000
     while (System.currentTimeMillis() < deadline) {
       val msg =
-        pollUntil(received, timeoutMs = (deadline - System.currentTimeMillis()).coerceAtLeast(50)) {
+        pollUntil(received, timeoutMs = 500) {
           it["method"]?.jsonPrimitive?.contentOrNull == "renderFinished"
         }
       if (msg == null) break
@@ -147,6 +166,11 @@ class InteractiveCoalescingTest {
         host = host,
         daemonVersion = "test",
         onExit = { _ -> exitLatch.countDown() },
+        // Disable the live interactive frame loop (INTERACTIVE_FRAME_INTERVAL_MS). This test
+        // measures *input* coalescing (§ 9.6) in isolation; the periodic frame loop drives renders
+        // independent of inputs, so leaving it on injected ~10 timing-dependent `renderFinished`
+        // over the collection window and made the ≤ 2 assertion flaky.
+        interactiveFrameIntervalMs = 0L,
       )
     val thread = Thread({ server.run() }, "interactive-coalescing-server").apply { isDaemon = true }
     thread.start()
@@ -224,12 +248,12 @@ class InteractiveCoalescingTest {
 }
 
 /**
- * Test [RenderHost] whose [InteractiveSession] sleeps for [renderDelayMs] inside `render` so the
- * coalescing test can fire inputs faster than the renderer drains them. Records dispatch and render
- * counters so the test can assert on the coalescing arithmetic.
+ * Test [RenderHost] whose [InteractiveSession] holds its **first** `render` open on a gate the test
+ * controls, so the coalescing test can queue a burst of inputs behind an unambiguously in-flight
+ * render without racing a wall-clock delay. Records dispatch and render counters so the test can
+ * assert on the coalescing arithmetic.
  */
-private class SlowFakeHost(private val pngFile: File, private val renderDelayMs: Long) :
-  RenderHost {
+private class SlowFakeHost(private val pngFile: File) : RenderHost {
 
   private val sessions = ConcurrentHashMap<Long, SlowSession>()
   private val nextSessionKey = java.util.concurrent.atomic.AtomicLong(1)
@@ -243,7 +267,7 @@ private class SlowFakeHost(private val pngFile: File, private val renderDelayMs:
       classLoaderHashCode = 0,
       classLoaderName = "slow-fake",
       pngPath = pngFile.absolutePath,
-      metrics = mapOf("tookMs" to renderDelayMs),
+      metrics = mapOf("tookMs" to 0L),
     )
   }
 
@@ -256,7 +280,7 @@ private class SlowFakeHost(private val pngFile: File, private val renderDelayMs:
     onSessionClosed: (() -> Unit)?,
     overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
   ): InteractiveSession {
-    val session = SlowSession(previewId, pngFile, renderDelayMs)
+    val session = SlowSession(previewId, pngFile)
     sessions[nextSessionKey.getAndIncrement()] = session
     return session
   }
@@ -264,14 +288,23 @@ private class SlowFakeHost(private val pngFile: File, private val renderDelayMs:
   fun lastSession(): SlowSession? = sessions.entries.maxByOrNull { it.key }?.value
 }
 
-private class SlowSession(
-  override val previewId: String,
-  private val pngFile: File,
-  private val renderDelayMs: Long,
-) : InteractiveSession {
+private class SlowSession(override val previewId: String, private val pngFile: File) :
+  InteractiveSession {
 
   val dispatchCount = AtomicInteger(0)
   val renderCount = AtomicInteger(0)
+
+  // The first render() blocks on [firstRenderGate] until the test opens it, signalling entry via
+  // [firstRenderStarted] first. This pins the in-flight slot deterministically while the test
+  // queues the rest of the burst; every later render returns immediately.
+  private val firstRender = java.util.concurrent.atomic.AtomicBoolean(true)
+  private val firstRenderStarted = CountDownLatch(1)
+  private val firstRenderGate = CountDownLatch(1)
+
+  fun awaitFirstRenderStarted(timeoutMs: Long): Boolean =
+    firstRenderStarted.await(timeoutMs, TimeUnit.MILLISECONDS)
+
+  fun releaseFirstRender() = firstRenderGate.countDown()
 
   override fun dispatch(input: InteractiveInputParams) {
     require(input.kind == InteractiveInputKind.CLICK) // test only sends clicks
@@ -279,14 +312,18 @@ private class SlowSession(
   }
 
   override fun render(requestId: Long, advanceTimeMs: Long?): RenderResult {
-    Thread.sleep(renderDelayMs) // simulate a slow render so subsequent inputs queue up
+    if (firstRender.compareAndSet(true, false)) {
+      firstRenderStarted.countDown()
+      // Hold the in-flight slot open until the test has queued the rest of the burst.
+      firstRenderGate.await(10, TimeUnit.SECONDS)
+    }
     renderCount.incrementAndGet()
     return RenderResult(
       id = requestId,
       classLoaderHashCode = 0,
       classLoaderName = "slow-session",
       pngPath = pngFile.absolutePath,
-      metrics = mapOf("tookMs" to renderDelayMs),
+      metrics = mapOf("tookMs" to 0L),
     )
   }
 
