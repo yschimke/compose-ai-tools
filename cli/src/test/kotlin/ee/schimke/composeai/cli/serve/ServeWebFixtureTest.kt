@@ -693,7 +693,12 @@ class ServeWebFixtureTest {
     // JVM),
     // defaulting to generic Live / Snapshot.
     assertTrue(viewer.contains("id=\"cp-backend\""), "viewer stage carries the backend badge")
-    assertTrue(wasmViewer.contains("\"CMP-WASM\""), "badge hard-codes only the wasm tier label")
+    // The badge now prefixes a lane icon (▶ live / ▪ static) — the visible signal the Static⇄Live
+    // toggle flipped — but still hard-codes the CMP-WASM tier label for the in-browser app.
+    assertTrue(
+      wasmViewer.contains("\"▶ CMP-WASM\""),
+      "badge hard-codes the wasm tier label with the live icon",
+    )
     assertTrue(
       viewer.contains("data-live-backend=\"Live\"") &&
         viewer.contains("data-snapshot-backend=\"Snapshot\""),
@@ -719,13 +724,18 @@ class ServeWebFixtureTest {
   fun `viewer mounts the Wasm tier only when a wasm app backs the session`() {
     val card = previews.first { it.id.endsWith("CardPreview") }
     val withWasm = ServeWeb.viewerPage(card, token, wasmSrc = "/wasm/compose-m3/?id=card-filled")
-    // The render mode is a radio group: PNG (default) / Live Compose / Wasm — the last only when a
-    // wasm app backs the session.
+    // The visible mode control is now a single Static⇄Live toggle; the transport radios (png / live
+    // / wasm) live hidden behind it for the transition JS to drive. The wasm radio is present only
+    // when a wasm app backs the session.
+    assertTrue(
+      withWasm.contains("id=\"cp-live-toggle\""),
+      "expected the single Static⇄Live preview toggle",
+    )
     assertTrue(
       withWasm.contains("name=\"cp-mode\" value=\"png\"") &&
         withWasm.contains("name=\"cp-mode\" value=\"live\"") &&
         withWasm.contains("name=\"cp-mode\" value=\"wasm\""),
-      "expected the PNG / Live Compose / Wasm radio group",
+      "expected the hidden png / live / wasm transport radios",
     )
     assertTrue(withWasm.contains("id=\"cp-wasm\""), "expected the Wasm iframe")
     assertTrue(withWasm.contains("data-wasm-src=\"/wasm/compose-m3/?id=card-filled\""))
@@ -771,19 +781,26 @@ class ServeWebFixtureTest {
       withWasm.contains("preloadWasmFonts"),
       "no page-side font preload (the app's index.html owns the prefetch)",
     )
-    // The in-browser tier can drop the sticker background (component only on the checkerboard).
-    assertTrue(
-      withWasm.contains("id=\"cp-wasm-bg\"") && withWasm.contains("Component only (no background)"),
-      "expected the background toggle",
+    // The old "Component only (no background)" wasm checkbox was removed — it was confusing (it
+    // three-way-cycled the background), so the in-browser app now always renders its themed
+    // background.
+    assertFalse(withWasm.contains("id=\"cp-wasm-bg\""), "the Component-only toggle is gone")
+    assertFalse(
+      withWasm.contains("Component only"),
+      "no Component-only option (the app renders its own background)",
     )
-    assertTrue(withWasm.contains("\"background=off\""), "background knob forwarded to the app")
+    assertFalse(
+      withWasm.contains("\"background=off\""),
+      "no background=off forwarded to the app anymore",
+    )
 
-    // No wasmSrc → snapshot viewer has no Wasm mode: PNG + Live radios only, no Wasm radio/iframe.
+    // No wasmSrc → snapshot viewer has no Wasm mode: png + live mode inputs only, no Wasm
+    // input/iframe.
     val plain = ServeWeb.viewerPage(card, token)
     assertTrue(!plain.contains("name=\"cp-mode\" value=\"wasm\""))
     assertTrue(!plain.contains("id=\"cp-wasm\""))
     assertTrue(!plain.contains("id=\"cp-wasm-bg\""))
-    assertTrue(plain.contains("name=\"cp-mode\" value=\"png\""), "PNG radio always present")
+    assertTrue(plain.contains("name=\"cp-mode\" value=\"png\""), "png mode input always present")
   }
 
   @Test
@@ -823,35 +840,39 @@ class ServeWebFixtureTest {
   }
 
   @Test
-  fun `viewer offers the SVG render mode only when the session can export SVG`() {
+  fun `SVG is an on-screen format toggle and an export format when the session can export SVG`() {
     val card = previews.first { it.id.endsWith("CardPreview") }
-    // A session that can export SVG (a catalog / daemon) adds an SVG radio to the render-mode
-    // group,
-    // gated on the same hasSvgExport flag as the SVG direct-link row.
+    // SVG isn't part of the awkward PNG/live radio group any more, but it's still an on-screen
+    // format: a dedicated toggle beside the Live toggle swaps the static snapshot between the
+    // raster
+    // PNG and the vector SVG. Offered only when the session can export SVG (hasSvgExport).
     val svgView = ServeWeb.viewerPage(card, token, hasSvgExport = true)
     assertTrue(
-      svgView.contains("name=\"cp-mode\" value=\"svg\"") && svgView.contains("id=\"cp-mode-svg\""),
-      "an SVG-exporting session offers the SVG render-mode radio",
+      svgView.contains("id=\"cp-svg-toggle\"") && svgView.contains("class=\"cp-fmt-toggle\""),
+      "an SVG-exporting session offers the on-screen SVG format toggle",
     )
     // The SVG lane reuses the snapshot <img> but swaps the render extension; the viewer JS carries
     // the snapshotExt seam and stamps the backend badge with SVG.
     assertTrue(
-      svgView.contains("var snapshotExt = \".png\";") &&
-        svgView.contains("snapshotExt = \".svg\";"),
+      svgView.contains("var snapshotExt = \".png\";") && svgView.contains("? \".svg\" : \".png\""),
       "the snapshot lane flips its render extension between PNG and SVG",
     )
     assertTrue(
-      svgView.contains("if (mode === \"svg\") return \"SVG\";"),
+      svgView.contains("if (mode === \"svg\") return \"▪ SVG\";"),
       "the backend badge names the SVG lane",
     )
-
-    // No SVG export → no SVG radio, and the snapshot lane never leaves the raster PNG.
-    val plain = ServeWeb.viewerPage(card, token)
-    assertFalse(
-      plain.contains("name=\"cp-mode\" value=\"svg\""),
-      "a session without SVG export shows no SVG radio",
+    // The SVG export also surfaces as a copyable/downloadable URL row plus the "Full page (scroll)"
+    // toggle.
+    assertTrue(
+      svgView.contains("id=\"cp-url-svg\"") && svgView.contains("id=\"cp-scroll-long\""),
+      "an SVG-exporting session offers the SVG download row and its Full-page toggle",
     )
-    assertFalse(plain.contains("id=\"cp-mode-svg\""), "no SVG radio id without SVG export")
+
+    // No SVG export → no SVG toggle, no SVG URL row, and no scroll toggle.
+    val plain = ServeWeb.viewerPage(card, token)
+    assertFalse(plain.contains("id=\"cp-svg-toggle\""), "no SVG toggle without SVG export")
+    assertFalse(plain.contains("id=\"cp-url-svg\""), "no SVG export row without SVG support")
+    assertFalse(plain.contains("id=\"cp-scroll-long\""), "no Full-page toggle without SVG export")
   }
 
   @Test
@@ -962,10 +983,19 @@ class ServeWebFixtureTest {
     assertTrue(staticView.contains("value=\"1.0\" disabled"), "font scale disabled")
     assertTrue(staticView.contains("id=\"cp-device\" disabled"), "device disabled")
     assertTrue(staticView.contains("id=\"cp-orientation\" disabled"), "orientation disabled")
-    assertTrue(staticView.contains("id=\"cp-live\" disabled"), "Live Compose radio disabled")
+    assertTrue(
+      staticView.contains("id=\"cp-live\" tabindex=\"-1\" disabled"),
+      "live transport radio disabled",
+    )
+    // With no live lane at all, the single Static⇄Live toggle is itself disabled.
+    assertTrue(
+      staticView.contains("id=\"cp-live-toggle\"") &&
+        staticView.contains("aria-pressed=\"false\" disabled"),
+      "the Static⇄Live toggle is disabled on a pure static bundle",
+    )
     assertTrue(
       staticView.contains("id=\"cp-uiMode\" disabled"),
-      "theme disabled without a Wasm app",
+      "Day/Night disabled without a Wasm app",
     )
     assertFalse(
       staticView.contains("id=\"cp-talkBack\""),
@@ -984,12 +1014,20 @@ class ServeWebFixtureTest {
         token,
         wasmSrc = "/wasm/compose-m3/?id=card-filled",
       )
-    assertTrue(wasmView.contains("id=\"cp-uiMode\">"), "theme enabled with a Wasm app")
+    assertTrue(wasmView.contains("id=\"cp-uiMode\">"), "Day/Night enabled with a Wasm app")
     assertTrue(
       wasmView.contains("step=\"0.1\" value=\"1.0\">"),
       "font scale enabled with a Wasm app",
     )
     assertTrue(wasmView.contains("autocomplete=\"off\">"), "locale enabled with a Wasm app")
+    // Locale is a datalist-backed input, not a fixed <select>: presets drop down, but any BCP-47
+    // tag the server accepts can still be typed (the reviewer's arbitrary-locale case, e.g. en-GB).
+    assertTrue(
+      wasmView.contains("id=\"cp-localeTag\" type=\"text\" list=\"cp-localeTag-list\"") &&
+        wasmView.contains("<datalist id=\"cp-localeTag-list\">") &&
+        wasmView.contains("value=\"en-GB\""),
+      "locale keeps free BCP-47 entry (datalist input with presets)",
+    )
     assertTrue(
       wasmView.contains("public-preview-server.md#running-one\">Enable a local preview server."),
       "wasm-snapshot note also links to local preview server instructions",
@@ -1010,7 +1048,7 @@ class ServeWebFixtureTest {
       "static-snapshot flag on the viewer",
     )
     assertTrue(
-      wasmView.contains("else if (staticSnapshot && wasmToggle) {"),
+      wasmView.contains("if (wasmToggle) { setMode(\"wasm\"); return; }"),
       "static-snapshot wasm controls auto-enable the in-browser tier",
     )
 
@@ -1027,8 +1065,8 @@ class ServeWebFixtureTest {
         wasmSrc = "/wasm/compose-m3/?id=card-filled",
       )
     assertTrue(
-      liveCatalogWasm.contains("id=\"cp-live\"> Live Compose"),
-      "live catalog leaves the Live Compose radio enabled (not disabled)",
+      liveCatalogWasm.contains("id=\"cp-live\" tabindex=\"-1\">"),
+      "live catalog leaves the live transport radio enabled (not disabled)",
     )
     assertTrue(
       liveCatalogWasm.contains("data-static-snapshot=\"true\""),
@@ -1117,33 +1155,33 @@ class ServeWebFixtureTest {
       catalogKnobs.contains("setOverrides\", overrides: overrides()"),
       "live-stream setOverrides sends liveOverrides() (knobs included), not the display-only map",
     )
-    // The server-render display controls (Device / Locale / Font scale / Orientation / …) are baked
-    // disabled on the static snapshot, but a live catalog's carried daemon CAN re-render them — so
-    // entering Live Compose must re-enable them (and leaving restores the baked-static disabled
-    // state). Without this, "Live Compose" streamed frames yet the locale/device/etc. controls
-    // stayed greyed out and every axis change did nothing (the reported Wear regression). The
-    // mode-transition JS calls syncServerControls(), which flips the disabled state on when Live is
-    // the active mode and canRenderOverrides.
+    // A live catalog's carried daemon re-renders an override on demand (canRenderOverrides), so the
+    // display controls (Size / Device / Locale / Orientation / Day-Night / …) render ENABLED right
+    // in the static snapshot — editing one re-points /render, which the daemon serves freshly. This
+    // is the fix for "most override modes disabled for CMP": they no longer sit greyed out until a
+    // live stream is opened.
     assertTrue(
       catalogKnobs.contains("function syncServerControls()"),
-      "the viewer has a syncServerControls() that re-enables display controls in Live mode",
+      "the viewer has a syncServerControls() that keeps the display controls in sync",
     )
     assertTrue(
       catalogKnobs.contains("syncServerControls();"),
       "syncServerControls() is invoked on every mode transition",
     )
     assertTrue(
-      catalogKnobs.contains("!!(live && live.checked) && canRenderOverrides"),
-      "display controls re-enable only when Live is active AND the daemon can render overrides",
+      catalogKnobs.contains("!staticSnapshot || canRenderOverrides || !!(live && live.checked)"),
+      "display controls are live whenever the server can render an override (on-demand or streaming)",
     )
-    // The server-render-only controls (device/orientation/size) render disabled in the baked markup
-    // (restored when not live); Locale is in the wasm-honoured trio and is disabled on this
-    // no-Wasm static snapshot too, so it's inert until Live Compose flips it on.
+    // The server-render controls render ENABLED in the baked markup (canRenderOverrides), not
+    // disabled-until-live: device, size, orientation, locale all take effect immediately via
+    // on-demand /render.
     assertTrue(
-      catalogKnobs.contains("id=\"cp-device\" disabled") &&
-        catalogKnobs.contains("id=\"cp-localeTag\"") &&
-        catalogKnobs.contains("autocomplete=\"off\" disabled"),
-      "display controls (incl. locale) render baked-disabled until Live Compose re-enables them",
+      catalogKnobs.contains("id=\"cp-device\">") &&
+        catalogKnobs.contains("id=\"cp-sizeMode\">") &&
+        !catalogKnobs.contains(
+          "id=\"cp-localeTag\" type=\"text\" list=\"cp-localeTag-list\" placeholder=\"e.g. en-GB, zh-Hant-TW\" autocomplete=\"off\" disabled"
+        ),
+      "display controls (size/device/locale) render enabled on an on-demand-render catalog",
     )
     // A plain static bundle (no daemon) still shows the knobs as DISABLED, informational controls.
     val staticKnobs = ServeWeb.viewerPage(knobPreview, token)

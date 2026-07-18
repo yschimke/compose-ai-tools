@@ -185,6 +185,47 @@ object ServeWeb {
     .cp-nav-empty[hidden] { display: none; }
     .cp-viewer:not(.cp-nav-open) .cp-nav { display: none; }
     .cp-viewer:not(.cp-controls-open) .cp-controls { display: none; }
+    /* Collapsible override groups: each axis-set is a <details class="cp-group"> the viewer
+       expands/collapses on its own. The summary is the group title with a rotating disclosure
+       caret; the body holds the labelled controls. Replaces the old flat control stack so the
+       overrides panel reads as a small set of named, foldable groups. */
+    .cp-group { border: 1px solid #e3e3e8; border-radius: 8px; background: #fff; }
+    .cp-group > summary { cursor: pointer; list-style: none; display: flex; align-items: center;
+      gap: 6px; padding: 8px 10px; font-size: 0.78rem; font-weight: 600; color: #45454c;
+      user-select: none; }
+    .cp-group > summary::-webkit-details-marker { display: none; }
+    .cp-group > summary::before { content: "\25B8"; font-size: 0.72rem; color: #8a8a92;
+      transition: transform 0.12s ease; }
+    .cp-group[open] > summary::before { transform: rotate(90deg); }
+    .cp-group > summary:hover { color: #3a3a8a; }
+    .cp-group-body { display: flex; flex-direction: column; gap: 12px; padding: 0 10px 12px; }
+    /* The single Static⇄Live preview toggle (replaces the old PNG/SVG/Live/Wasm radio row). Off =
+       the baked / on-demand snapshot; on = the interactive lane (daemon stream, or the in-browser
+       Wasm app). The hidden mode radios behind it are what the transport JS actually reads. */
+    .cp-preview-mode { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .cp-live-toggle { display: inline-flex; align-items: center; gap: 7px; font: inherit;
+      font-size: 0.8rem; font-weight: 600; padding: 6px 14px; border-radius: 999px;
+      border: 1px solid #d7d7de; background: #fff; color: #45454c; cursor: pointer; }
+    .cp-live-toggle:hover:not(:disabled) { background: #f0f0f3; }
+    .cp-live-toggle:disabled { opacity: 0.5; cursor: default; }
+    .cp-live-toggle[aria-pressed="true"] { background: #e7f4ea; border-color: #b6e0c2; color: #1e7a34; }
+    .cp-live-dot { width: 9px; height: 9px; border-radius: 50%; background: #b9b9c6; flex: none; }
+    .cp-live-toggle[aria-pressed="true"] .cp-live-dot { background: #1e9c3f;
+      box-shadow: 0 0 0 3px rgba(30, 156, 63, 0.2); }
+    .cp-mode-hint { font-size: 0.72rem; color: #6b6b70; }
+    /* The SVG format toggle sits beside the Live toggle (only when the session can export SVG).
+       It swaps the static snapshot between the raster PNG and the resolution-independent vector
+       render; pressing it while Live is on drops back to the static SVG. */
+    .cp-fmt-toggle { display: inline-flex; align-items: center; font: inherit; font-size: 0.78rem;
+      font-weight: 600; padding: 6px 12px; border-radius: 999px; border: 1px solid #d7d7de;
+      background: #fff; color: #45454c; cursor: pointer; }
+    .cp-fmt-toggle:hover { background: #f0f0f3; }
+    .cp-fmt-toggle[aria-pressed="true"] { background: #ececff; border-color: #c4c4f5; color: #3a3a8a; }
+    /* The mode radios are kept in the DOM (the transport JS drives them) but visually removed —
+       the single toggle above is the only visible mode control. */
+    .cp-modes-inputs { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    /* Backend badge flips its accent green when a live lane drives the stage (see backendBadgeScript). */
+    .cp-backend[data-live="true"] { background: rgba(30, 122, 52, 0.82); }
     @media (prefers-color-scheme: dark) {
       body { color: #e6e6e9; background: #161618; }
       .cp-sub, .cp-id, .cp-status, .cp-about-links, .cp-sys-desc, .cp-sys-foot { color: #a0a0a8; }
@@ -227,6 +268,16 @@ object ServeWeb {
       .cp-nav-item[aria-current="page"] { background: #26264a; color: #c9c9ff; }
       .cp-nav-thumb { background: repeating-conic-gradient(#26262b 0% 25%, #1d1d20 0% 50%) 50% / 8px 8px; }
       .cp-nav-empty { color: #a0a0a8; }
+      .cp-group { background: #1d1d20; border-color: #34343a; }
+      .cp-group > summary { color: #c9c9d0; }
+      .cp-group > summary:hover { color: #c9c9ff; }
+      .cp-live-toggle { background: #1d1d20; border-color: #34343a; color: #c9c9d0; }
+      .cp-live-toggle:hover:not(:disabled) { background: #26262b; }
+      .cp-live-toggle[aria-pressed="true"] { background: #14361f; border-color: #2c6b40; color: #6cd98a; }
+      .cp-fmt-toggle { background: #1d1d20; border-color: #34343a; color: #c9c9d0; }
+      .cp-fmt-toggle:hover { background: #26262b; }
+      .cp-fmt-toggle[aria-pressed="true"] { background: #26264a; border-color: #45458a; color: #c9c9ff; }
+      .cp-mode-hint { color: #a0a0a8; }
     }
     """
       .trimIndent()
@@ -742,13 +793,21 @@ object ServeWeb {
       var root = document.querySelector(".cp-viewer");
       var badge = document.getElementById("cp-backend");
       if (!root || !badge) return;
+      // The badge carries an icon that flips with the lane: ▶ for an interactive live lane (the
+      // daemon stream or the in-browser Wasm app), ▪ for the static snapshot — the visible signal
+      // that the Static⇄Live toggle changed state (paired with a green accent via data-live).
+      function isLive(mode) { return mode === "wasm" || mode === "live"; }
       function label(mode) {
-        if (mode === "wasm") return "CMP-WASM";
-        if (mode === "live") return root.getAttribute("data-live-backend") || "Live";
-        if (mode === "svg") return "SVG";
-        return root.getAttribute("data-snapshot-backend") || "Snapshot";
+        if (mode === "wasm") return "▶ CMP-WASM";
+        if (mode === "live") return "▶ " + (root.getAttribute("data-live-backend") || "Live");
+        if (mode === "svg") return "▪ SVG";
+        return "▪ " + (root.getAttribute("data-snapshot-backend") || "Snapshot");
       }
-      function refresh() { badge.textContent = label(root.getAttribute("data-mode")); }
+      function refresh() {
+        var mode = root.getAttribute("data-mode");
+        badge.textContent = label(mode);
+        badge.setAttribute("data-live", isLive(mode) ? "true" : "false");
+      }
       new MutationObserver(refresh).observe(root, { attributes: true, attributeFilter: ["data-mode"] });
       refresh();
     })();
@@ -1162,39 +1221,22 @@ object ServeWeb {
       if (wasmSrc != null)
         "<iframe id=\"cp-wasm\" hidden sandbox=\"$wasmSandbox\" title=\"$label (Wasm)\"></iframe>"
       else ""
-    // The render mode is a radio group — PNG (baked snapshot, default), Live Compose (daemon
-    // stream), Wasm (in-browser CMP app). The Wasm option + its background checkbox appear only
-    // when
-    // a Wasm app backs the session; the Live radio is present but disabled when no stream is
-    // offered.
-    // Ids `cp-live` / `cp-wasm-toggle` are kept on the radios so the transition JS resolves them.
-    val wasmModeRadio =
+    // The render mode is a single Static⇄Live toggle now, not a radio row. Behind it sit the mode
+    // radios the transport JS still drives (`cp-mode-png` = static snapshot, `cp-live` = daemon
+    // stream, `cp-wasm-toggle` = in-browser Wasm) — kept in the DOM but visually removed. SVG is no
+    // longer an on-screen mode; it's an export format in the Direct-links group. The Wasm radio is
+    // present only when a Wasm app backs the session.
+    val wasmModeInput =
       if (wasmSrc != null)
-        "<label class=\"cp-live-row\"><input type=\"radio\" name=\"cp-mode\" value=\"wasm\" " +
-          "id=\"cp-wasm-toggle\"> Wasm</label>"
+        "<input type=\"radio\" name=\"cp-mode\" value=\"wasm\" id=\"cp-wasm-toggle\" tabindex=\"-1\">"
       else ""
-    val wasmBgRow =
-      if (wasmSrc != null)
-        "<label class=\"cp-live-row\"><input id=\"cp-wasm-bg\" type=\"checkbox\"> " +
-          "Component only (no background)</label>"
-      else ""
-    // SVG mode reuses the snapshot lane (the same `<img>`) but points it at the vector
-    // `/render/<id>.svg` instead of the raster `.png`. Offered only when the session can export SVG
-    // ([hasSvgExport]) — the same gate as the SVG direct-link row.
-    val svgModeRadio =
+    // The SVG format toggle — swaps the static snapshot between the raster PNG and the vector SVG
+    // render. Offered only when the session can export SVG ([hasSvgExport]), the same gate as the
+    // SVG direct-link row.
+    val svgFmtToggle =
       if (hasSvgExport)
-        "<label class=\"cp-live-row\"><input type=\"radio\" name=\"cp-mode\" value=\"svg\" " +
-          "id=\"cp-mode-svg\"> SVG</label>"
-      else ""
-    // "Full page (scroll)" — in SVG mode, points the vector `<img>` (and the copyable SVG link) at
-    // `/render/<id>.svg?scroll=long`, the full-page export of a scrolling preview (a Wear scrolling
-    // screen slice-stitched into a tall capsule, or a phone LazyColumn grown tall) instead of the
-    // viewport-sized SVG. Enabled by the JS only while SVG is the active mode; the raster PNG lane
-    // ignores it. Same [hasSvgExport] gate as the SVG radio.
-    val scrollLongRow =
-      if (hasSvgExport)
-        "<label class=\"cp-live-row\"><input id=\"cp-scroll-long\" type=\"checkbox\" disabled> " +
-          "Full page (scroll)</label>"
+        "<button type=\"button\" id=\"cp-svg-toggle\" class=\"cp-fmt-toggle\" " +
+          "aria-pressed=\"false\" title=\"Show the vector (SVG) render\">SVG</button>"
       else ""
     val deviceOptions =
       COMMON_DEVICES.joinToString("\n") { (value, name) ->
@@ -1209,28 +1251,49 @@ object ServeWeb {
     // iframe's
     // ?uiMode, so it stays live there. Live daemon sessions (canApplyOverrides) keep everything on.
     val staticSnapshot = !canApplyOverrides
-    // Server-render-only controls (no client-side path): disabled on a static snapshot.
-    val serverDis = if (staticSnapshot) " disabled" else ""
+    // Whether the server can produce a *fresh, overridden* render at all — either the default
+    // snapshot lane re-renders ([canApplyOverrides]) OR a carried catalog daemon re-renders an
+    // override on demand ([canRenderOverrides], the published-CMP-catalog case). When true the
+    // server-render controls (size, device, locale, …) are LIVE even before the Live toggle is
+    // flipped: editing one re-points `/render`, which the daemon serves freshly. This is what makes
+    // "most override modes" work for a CMP catalog (compose-m3) instead of sitting greyed out until
+    // a live stream is opened.
+    val overridesLive = canApplyOverrides || canRenderOverrides
+    // Server-render controls (size / device / orientation / background): enabled whenever the
+    // server can render an override ([overridesLive]); a plain static bundle (neither) keeps them
+    // disabled with the note.
+    val serverDis = if (overridesLive) "" else " disabled"
     // The "Live (stream)" toggle keys off [hasLiveStream], NOT staticSnapshot: a trusted-catalog
     // live session serves static baked snapshots (staticSnapshot=true) yet still offers the daemon
     // stream on demand. For plain daemon / static sessions hasLiveStream tracks canApplyOverrides,
     // so
     // this is unchanged there.
     val liveDis = if (hasLiveStream) "" else " disabled"
-    // Controls the in-browser Wasm app also honours — theme (uiMode), font scale (density), locale
-    // (layout direction): live whenever the server can render OR a Wasm app backs the session.
-    val wasmDis = if (staticSnapshot && wasmSrc == null) " disabled" else ""
+    // Whether the single Static⇄Live preview toggle has any interactive lane to switch to — the
+    // daemon stream ([hasLiveStream]) or the in-browser Wasm app ([wasmSrc]). Disabled (with the
+    // note) on a pure static bundle with neither.
+    val liveToggleDis = if (hasLiveStream || wasmSrc != null) "" else " disabled"
+    // Controls the in-browser Wasm app also honours — day/night (uiMode), font scale (density),
+    // locale (layout direction): live whenever the server can render an override OR a Wasm app
+    // backs
+    // the session.
+    val wasmDis = if (overridesLive || wasmSrc != null) "" else " disabled"
+    // The static-snapshot note is only shown when overrides genuinely can't re-render on the server
+    // ([overridesLive] false): a plain static bundle, or a Wasm-only published catalog (where
+    // day/night, font scale, locale &amp; knobs apply in the browser but size/device/orientation
+    // need a live server). A catalog whose carried daemon re-renders on demand ([overridesLive]
+    // true) needs no note — its controls all take effect.
     val snapshotNote =
       when {
-        !staticSnapshot -> ""
+        overridesLive -> ""
         wasmSrc != null ->
-          "<div class=\"cp-note\">Pre-rendered snapshot — pick “Wasm” to interact: " +
-            "Theme, Font scale, Locale, background &amp; declared knob values apply in the browser. " +
-            "Device/Orientation need the live server. " +
+          "<div class=\"cp-note\">Pre-rendered snapshot — turn on <strong>Live preview</strong> to " +
+            "interact. Day/Night, Font scale, Locale, background &amp; declared knob values apply in " +
+            "the browser; Size, Device &amp; Orientation need the live server. " +
             "<a href=\"$LOCAL_SERVER_DOCS\">Enable a local preview server.</a></div>"
         else ->
-          "<div class=\"cp-note\">Pre-rendered snapshot — overrides (device, locale, font scale, " +
-            "orientation) need the live server, not a published catalog. " +
+          "<div class=\"cp-note\">Pre-rendered snapshot — overrides (size, device, locale, font " +
+            "scale, orientation) need the live server, not a published catalog. " +
             "<a href=\"$LOCAL_SERVER_DOCS\">Enable a local preview server.</a></div>"
       }
     val backendLabel = WebEscaping.htmlEscape(snapshotBackend ?: "Snapshot")
@@ -1266,7 +1329,7 @@ object ServeWeb {
             }
         }
         """
-        <label>App theme
+        <label>Theme
           <select id="cp-themeProvider" class="cp-knob-theme"$themeDis>
             <option value="">(default)</option>
             $body
@@ -1361,70 +1424,121 @@ object ServeWeb {
         <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$wasmFrame<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         <div class="cp-controls" id="cp-controls">
           $snapshotNote
-          <div class="cp-modes" role="radiogroup" aria-label="Render mode">
-            <label class="cp-live-row"><input type="radio" name="cp-mode" value="png" id="cp-mode-png" checked> PNG</label>
-            $svgModeRadio
-            <label class="cp-live-row"><input type="radio" name="cp-mode" value="live" id="cp-live"$liveDis> Live Compose</label>
-            $wasmModeRadio
+          <div class="cp-preview-mode">
+            <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false"$liveToggleDis>
+              <span class="cp-live-dot" aria-hidden="true"></span>
+              <span id="cp-live-toggle-label">Live preview</span>
+            </button>
+            $svgFmtToggle
+            <span class="cp-mode-hint" id="cp-mode-hint"></span>
+            <!-- The mode radios the transport JS drives; visually removed (the toggle above is the
+                 only visible mode control). png = static snapshot, live = daemon stream, wasm =
+                 in-browser app. -->
+            <span class="cp-modes-inputs" aria-hidden="true">
+              <input type="radio" name="cp-mode" value="png" id="cp-mode-png" tabindex="-1" checked>
+              <input type="radio" name="cp-mode" value="live" id="cp-live" tabindex="-1"$liveDis>
+              $wasmModeInput
+            </span>
           </div>
-          $wasmBgRow
-          $scrollLongRow
-          <label>Theme
-            <select id="cp-uiMode"$wasmDis>
-              <option value="">(default)</option>
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
-            </select>
-          </label>
-          $themeSelectorHtml
-          <label>Device
-            <select id="cp-device"$serverDis>
-              <option value="">(default)</option>
-              $deviceOptions
-            </select>
-          </label>
-          <label>Locale (BCP-47)
-            <input id="cp-localeTag" type="text" placeholder="e.g. ar, ja-JP" autocomplete="off"$wasmDis>
-          </label>
-          <label>Font scale: <span id="cp-fontScale-val">default</span>
-            <input id="cp-fontScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0"$wasmDis>
-          </label>
-          <label>Orientation
-            <select id="cp-orientation"$serverDis>
-              <option value="">(default)</option>
-              <option value="portrait">Portrait</option>
-              <option value="landscape">Landscape</option>
-            </select>
-          </label>
-          <label>Background
-            <select id="cp-background"$serverDis>
-              <option value="">(default)</option>
-              <option value="clear">Clear (crisp outline)</option>
-            </select>
-          </label>
-          <div class="cp-size">
-            <label>Size
-              <select id="cp-sizeMode"$serverDis>
-                <option value="">(default)</option>
-                <option value="fixed">Fixed size</option>
-                <option value="max">Max</option>
-                <option value="min">Min</option>
-                <option value="within">Within (min–max)</option>
-              </select>
-            </label>
-            <div class="cp-size-row" id="cp-size-fixed" hidden>
-              <label>Width (dp)<input id="cp-fixedW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
-              <label>Height (dp)<input id="cp-fixedH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
+          <details class="cp-group" open>
+            <summary>Appearance</summary>
+            <div class="cp-group-body">
+              <label>Day / Night
+                <select id="cp-uiMode"$wasmDis>
+                  <option value="">Auto</option>
+                  <option value="light">Light</option>
+                  <option value="dark">Dark</option>
+                </select>
+              </label>
+              $themeSelectorHtml
+              <label>Background
+                <select id="cp-background"$serverDis>
+                  <option value="">(default)</option>
+                  <option value="clear">Clear (crisp outline)</option>
+                </select>
+              </label>
             </div>
-            <div class="cp-size-row" id="cp-size-min" hidden>
-              <label>Min width (dp)<input id="cp-minW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
-              <label>Min height (dp)<input id="cp-minH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
+          </details>
+          <details class="cp-group" open>
+            <summary>Size</summary>
+            <div class="cp-group-body">
+              <div class="cp-size">
+                <label>Size mode
+                  <select id="cp-sizeMode"$serverDis>
+                    <option value="">(default)</option>
+                    <option value="fixed">Fixed size</option>
+                    <option value="max">Max</option>
+                    <option value="min">Min</option>
+                    <option value="within">Within (min–max)</option>
+                  </select>
+                </label>
+                <div class="cp-size-row" id="cp-size-fixed" hidden>
+                  <label>Width (dp)<input id="cp-fixedW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
+                  <label>Height (dp)<input id="cp-fixedH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
+                </div>
+                <div class="cp-size-row" id="cp-size-min" hidden>
+                  <label>Min width (dp)<input id="cp-minW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
+                  <label>Min height (dp)<input id="cp-minH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
+                </div>
+                <div class="cp-size-row" id="cp-size-max" hidden>
+                  <label>Max width (dp)<input id="cp-maxW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
+                  <label>Max height (dp)<input id="cp-maxH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
+                </div>
+              </div>
             </div>
-            <div class="cp-size-row" id="cp-size-max" hidden>
-              <label>Max width (dp)<input id="cp-maxW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
-              <label>Max height (dp)<input id="cp-maxH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
+          </details>
+          <details class="cp-group">
+            <summary>Locale &amp; text</summary>
+            <div class="cp-group-body">
+              <label>Locale
+                <input id="cp-localeTag" type="text" list="cp-localeTag-list" placeholder="e.g. en-GB, zh-Hant-TW" autocomplete="off"$wasmDis>
+                <!-- A datalist, not a fixed <select>: the presets (pseudolocales, RTL, common
+                     tags) drop down for quick picking, but any valid BCP-47 tag the server
+                     accepts can still be typed in. -->
+                <datalist id="cp-localeTag-list">
+                  <option value="en-XA" label="Accented (pseudo)"></option>
+                  <option value="ar-XB" label="Bidi / RTL (pseudo)"></option>
+                  <option value="ar" label="Arabic (RTL)"></option>
+                  <option value="he" label="Hebrew (RTL)"></option>
+                  <option value="fa" label="Persian (RTL)"></option>
+                  <option value="en-US"></option>
+                  <option value="en-GB"></option>
+                  <option value="de-DE"></option>
+                  <option value="fr-FR"></option>
+                  <option value="es-ES"></option>
+                  <option value="pt-BR"></option>
+                  <option value="ru-RU"></option>
+                  <option value="ja-JP"></option>
+                  <option value="ko-KR"></option>
+                  <option value="zh-CN"></option>
+                  <option value="zh-Hant-TW"></option>
+                  <option value="hi-IN"></option>
+                  <option value="th-TH"></option>
+                </datalist>
+              </label>
+              <label>Font scale: <span id="cp-fontScale-val">default</span>
+                <input id="cp-fontScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0"$wasmDis>
+              </label>
             </div>
-          </div>
+          </details>
+          <details class="cp-group">
+            <summary>Device</summary>
+            <div class="cp-group-body">
+              <label>Device
+                <select id="cp-device"$serverDis>
+                  <option value="">(default)</option>
+                  $deviceOptions
+                </select>
+              </label>
+              <label>Orientation
+                <select id="cp-orientation"$serverDis>
+                  <option value="">(default)</option>
+                  <option value="portrait">Portrait</option>
+                  <option value="landscape">Landscape</option>
+                </select>
+              </label>
+            </div>
+          </details>
           $overlaysHtml
           $featureControlsHtml
           ${overrideKnobsHtml(preview, canApplyOverrides || canRenderOverrides, wasmSrc != null)}
@@ -1946,7 +2060,6 @@ object ServeWeb {
       var stage = document.querySelector(".cp-stage");
       var wasmFrame = document.getElementById("cp-wasm");
       var wasmToggle = document.getElementById("cp-wasm-toggle");
-      var wasmBg = document.getElementById("cp-wasm-bg");
       var wasmSrc = root.getAttribute("data-wasm-src") || "";
       // Set once the app has painted its first frame (its "cp-wasm-ready" message). Until then a
       // control change re-points ?query (initial load); after, it posts an override patch so the
@@ -1995,7 +2108,6 @@ object ServeWeb {
         var loc = document.getElementById("cp-localeTag");
         if (loc && loc.value) parts.push("localeTag=" + encodeURIComponent(loc.value));
         if (fontScaleTouched && fs) parts.push("fontScale=" + encodeURIComponent(fs.value));
-        if (wasmBg && wasmBg.checked) parts.push("background=off");
         parts.push("bgPhase=" + encodeURIComponent(wasmBgPhase()));
         // Author-declared knobs also apply in the browser: the wasm catalog seeds its
         // `catalogOverride*` from these `knob.<key>` params. Mirror query() — omit a knob still at
@@ -2144,93 +2256,119 @@ object ServeWeb {
         }
         if (live.checked && ws && ws.readyState === 1) {
           ws.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
-        } else if (staticSnapshot && wasmToggle) {
-          // Static snapshot backed by a Wasm app: the baked PNG can't honour theme/font-scale/locale
-          // (only the in-browser tier can), and /render can't re-render a published catalog. So a
-          // wasm-honoured control change auto-enables the Wasm tier and applies there, instead of
-          // firing a dead refreshSnapshot the user sees as "the control does nothing". (staticSnapshot
-          // marks a non-renderable snapshot lane — true even for a live catalog whose Live toggle is
-          // enabled; device/orientation stay disabled, so only the wasm-honoured controls reach here.)
-          setMode("wasm");
-        } else if (!live.checked) {
-          refreshSnapshot();
+          return;
         }
+        // Not in an interactive lane. Whenever the server can produce a fresh overridden render — a
+        // live daemon session (!staticSnapshot) OR a published catalog whose carried daemon
+        // re-renders on demand (canRenderOverrides) — just re-point /render. This is what lets Size,
+        // Locale, Device, … take effect for a CMP catalog while still showing static snapshots, so
+        // the controls aren't dead until a live stream is opened.
+        if (!staticSnapshot || canRenderOverrides) { refreshSnapshot(); return; }
+        // Pure static published catalog whose only interactive lane is the in-browser app: the
+        // wasm-honoured controls (day/night, font scale, locale) can only apply in the browser, so
+        // auto-enable the Wasm tier and let it apply the change, instead of a dead /render the
+        // catalog can't serve. (Size/Device stay disabled here — the Wasm app can't honour them.)
+        if (wasmToggle) { setMode("wasm"); return; }
+        refreshSnapshot();
       }
 
-      // Render-mode radio group (PNG / SVG / Live Compose / Wasm). Selecting one tears down the
-      // other transport and enters the chosen one. PNG and SVG both drive the baked snapshot lane —
-      // same <img>, different render extension (snapshotExt). closeStream / closeWasm are
-      // idempotent, so a mode switch can safely tear down both regardless of the prior state; live
-      // and wasm reset snapshotExt so a later fallback refresh serves the raster PNG, not a stale
-      // ".svg".
+      // The single Static⇄Live toggle drives these transports. "live" opens the daemon stream,
+      // "wasm" mounts the in-browser app, "png" (the default) is the static snapshot. closeStream /
+      // closeWasm are idempotent, so a switch safely tears down both regardless of the prior state.
+      // The static lane additionally honours the SVG format toggle: the same <img>, pointed at the
+      // vector `/render/<id>.svg` instead of the raster `.png`. A live lane (stream / wasm) is raster
+      // frames, so entering it clears SVG.
+      var svgToggle = document.getElementById("cp-svg-toggle");
+      function svgOn() {
+        return !!(svgToggle && svgToggle.getAttribute("aria-pressed") === "true");
+      }
       function enterMode(m) {
         // A mode switch always clears a prior lane's error; the new lane re-raises its own if it fails.
         clearModeError();
-        if (m === "live") { snapshotExt = ".png"; closeWasm(); openStream(); }
-        else if (m === "wasm") { snapshotExt = ".png"; closeStream(); openWasm(); }
-        else if (m === "svg") {
-          // SVG reuses the snapshot lane; closeStream/closeWasm reset data-mode to "snapshot", so
-          // stamp "svg" afterwards for the backend badge, then swap the vector into the <img>.
-          closeStream(); closeWasm(); snapshotExt = ".svg";
-          root.setAttribute("data-mode", "svg"); refreshSnapshot();
-        } else { snapshotExt = ".png"; closeStream(); closeWasm(); refreshSnapshot(); }
+        if (m === "live") {
+          snapshotExt = ".png";
+          if (svgToggle) svgToggle.setAttribute("aria-pressed", "false");
+          closeWasm();
+          openStream();
+        } else if (m === "wasm") {
+          snapshotExt = ".png";
+          if (svgToggle) svgToggle.setAttribute("aria-pressed", "false");
+          closeStream();
+          openWasm();
+        } else {
+          closeStream();
+          closeWasm();
+          // Static snapshot lane: raster PNG, or the vector SVG when the format toggle is on.
+          snapshotExt = svgOn() ? ".svg" : ".png";
+          if (svgOn()) root.setAttribute("data-mode", "svg");
+          refreshSnapshot();
+        }
         syncOverlayToggles();
         syncServerControls();
-        syncScrollToggle();
+        updateLiveToggle();
       }
-      // "Full page (scroll)" is only meaningful for the SVG lane; enable it iff SVG is the active
-      // mode (like the live-only overlay toggles), so it reads as inert under PNG / Live / Wasm.
-      function syncScrollToggle() {
-        if (scrollLong) scrollLong.disabled = snapshotExt !== ".svg";
+      // SVG format toggle: swap the static snapshot between raster and vector. Pressing it while a
+      // live lane is active drops back to the static vector render; pressing it in the static lane
+      // swaps the extension in place.
+      if (svgToggle) {
+        svgToggle.addEventListener("click", function () {
+          var turnOn = !svgOn();
+          svgToggle.setAttribute("aria-pressed", turnOn ? "true" : "false");
+          if (turnOn && (live.checked || wasmActive())) {
+            setMode("png"); // enterMode("png") reads svgOn() → renders the .svg
+          } else {
+            snapshotExt = turnOn ? ".svg" : ".png";
+            root.setAttribute("data-mode", turnOn ? "svg" : "snapshot");
+            refreshSnapshot();
+          }
+        });
       }
+      // "Full page (scroll)" re-renders the on-screen SVG when it's the active format, and always
+      // reshapes the copyable/downloadable SVG export URL (withScroll scopes it to the `.svg` lane).
       if (scrollLong) {
         scrollLong.addEventListener("change", function () {
-          if (snapshotExt === ".svg") refreshSnapshot(); else refreshLinks();
+          if (snapshotExt === ".svg") refreshSnapshot();
+          else refreshLinks();
         });
       }
       // The live-only overlay toggles (talkBack / touchOverlay) are meaningful only while the daemon
-      // holds the composition, so they're enabled iff Live Compose is the active mode and greyed out
-      // (like the static-snapshot controls) otherwise. Called on every mode transition.
+      // holds the composition, so they're enabled iff the live stream is the active mode and greyed
+      // out otherwise. Called on every mode transition.
       var overlayToggles = document.querySelectorAll(".cp-overlay");
       function syncOverlayToggles() {
         var on = !!(live && live.checked);
         Array.prototype.forEach.call(overlayToggles, function (el) { el.disabled = !on; });
       }
-      // The server-render display controls (Theme / Device / Locale / Font scale / Orientation /
-      // Background / Size) are baked-disabled on a static snapshot — a published catalog's PNG can't
-      // honour them. But a trusted-catalog live session (staticSnapshot yet canRenderOverrides) CAN
-      // re-render every one of them through its carried daemon over the live socket, so enable them
-      // while Live Compose is the active mode and restore the baked-static disabled state otherwise.
-      // Without this the Live lane streamed frames but its overrides (locale, device, …) stayed
-      // greyed out, so "Live Compose" looked interactive yet every axis control did nothing. A
-      // change to a re-enabled control routes through onControlsChanged, which pushes a fresh
-      // setOverrides down the open stream (or, on the snapshot-fallback lane, re-renders via
-      // /render) — both paths honour the override, so this is correct regardless of which lane the
-      // socket resolved to. The Wasm-honoured trio (uiMode / localeTag / fontScale) is left enabled
-      // on a Wasm-backed static snapshot exactly as the baked markup had it, so leaving Live mode
-      // there doesn't wrongly disable the in-browser controls.
+      // Enable/disable the display controls to match what the active session can actually render.
+      // A server-render control (Size / Device / Orientation / Background) takes effect whenever the
+      // server can produce a fresh overridden render: a live daemon session (!staticSnapshot), a
+      // catalog whose carried daemon re-renders on demand (canRenderOverrides), or an active live
+      // stream. The wasm-honoured trio (Day/Night / Locale / Font scale) additionally applies in the
+      // in-browser app, so it's also enabled whenever a Wasm app backs the session. This is what
+      // makes "most override modes" live for a CMP catalog (compose-m3) instead of greyed out until
+      // a stream is opened; the server-rendered markup already reflects this, and this keeps it in
+      // sync across mode transitions.
       var serverOnlyControlIds =
         ["device", "orientation", "background", "sizeMode",
          "fixedW", "fixedH", "minW", "minH", "maxW", "maxH"];
       var wasmHonouredControlIds = ["uiMode", "localeTag", "fontScale"];
       function syncServerControls() {
-        var liveOn = !!(live && live.checked) && canRenderOverrides;
+        var canServerRender = !staticSnapshot || canRenderOverrides || !!(live && live.checked);
         serverOnlyControlIds.forEach(function (id) {
           var el = document.getElementById("cp-" + id);
-          if (el) el.disabled = liveOn ? false : staticSnapshot;
+          if (el) el.disabled = !canServerRender;
         });
         wasmHonouredControlIds.forEach(function (id) {
           var el = document.getElementById("cp-" + id);
-          if (el) el.disabled = liveOn ? false : (staticSnapshot && !wasmSrc);
+          if (el) el.disabled = !(canServerRender || wasmSrc);
         });
       }
-      // Programmatic switch (e.g. a wasm-only control auto-enabling Wasm): tick the radio so the UI
-      // reflects it, then run the transition.
+      // Programmatic switch (the live toggle, or a wasm-only control auto-enabling Wasm): tick the
+      // hidden mode radio so its state is consistent, then run the transition.
       function setMode(m) {
         var r = document.getElementById(
           m === "live" ? "cp-live" :
-          m === "wasm" ? "cp-wasm-toggle" :
-          m === "svg" ? "cp-mode-svg" : "cp-mode-png");
+          m === "wasm" ? "cp-wasm-toggle" : "cp-mode-png");
         if (r) r.checked = true;
         enterMode(m);
       }
@@ -2239,6 +2377,34 @@ object ServeWeb {
         function (r) {
           r.addEventListener("change", function () { if (r.checked) enterMode(r.value); });
         });
+      // The single Static⇄Live preview toggle. Off = the baked / on-demand snapshot; on = the best
+      // interactive lane this session offers (the daemon stream when present, else the in-browser
+      // Wasm app). Overrides still take effect while static (a catalog re-renders /render on
+      // demand), so this toggle is specifically about *interacting* with the running composition —
+      // clicking, scrolling, typing. The corner backend badge flips its icon/accent to match (see
+      // backendBadgeScript).
+      var liveToggle = document.getElementById("cp-live-toggle");
+      var liveToggleLabel = document.getElementById("cp-live-toggle-label");
+      var modeHint = document.getElementById("cp-mode-hint");
+      function liveTransportAvailable() { return (live && !live.disabled) || !!wasmToggle; }
+      function bestLiveMode() { return (live && !live.disabled) ? "live" : (wasmToggle ? "wasm" : null); }
+      function anyLiveActive() { return !!(live && live.checked) || !!(wasmToggle && wasmToggle.checked); }
+      function updateLiveToggle() {
+        if (!liveToggle) return;
+        var on = anyLiveActive();
+        liveToggle.setAttribute("aria-pressed", on ? "true" : "false");
+        liveToggle.disabled = !liveTransportAvailable();
+        if (modeHint) {
+          modeHint.textContent = on ? "interactive — click / scroll the preview"
+            : (liveTransportAvailable() ? "static snapshot" : "static snapshot (no live lane)");
+        }
+      }
+      if (liveToggle) {
+        liveToggle.addEventListener("click", function () {
+          if (anyLiveActive()) { setMode("png"); }
+          else { var m = bestLiveMode(); if (m) setMode(m); }
+        });
+      }
       // Keep the live canvas overlay tracking the snapshot's slot when the page reflows (the Wasm
       // overlay has its own resize hook below; this covers a live session with no Wasm app).
       window.addEventListener("resize", function () {
@@ -2266,13 +2432,6 @@ object ServeWeb {
             wasmFrame.contentWindow.postMessage(wasmOverridePatch(), "*");
           }
         });
-        if (wasmBg) {
-          wasmBg.addEventListener("change", function () {
-            // Background is an in-browser knob: auto-enable the Wasm tier if it isn't on yet.
-            if (!wasmActive()) { setMode("wasm"); return; }
-            onControlsChanged();
-          });
-        }
       }
       if (fs) {
         fs.addEventListener("input", function () {
@@ -2366,6 +2525,10 @@ object ServeWeb {
       document.querySelectorAll(".cp-feature").forEach(function (el) {
         el.addEventListener("change", onKnobChanged);
       });
+      // Reconcile the control enabled-state + the toggle's initial look with the session's
+      // capabilities (matches the server-rendered markup; keeps them in sync after hydration).
+      syncServerControls();
+      updateLiveToggle();
       refreshSnapshot();
     })();
     """
@@ -2512,12 +2675,27 @@ object ServeWeb {
       </div>
       """
         .trimIndent()
-    val svgRow = if (hasSvgExport) "\n" + row("SVG", "svg") else ""
+    // The SVG lane is export-only now (no on-screen SVG mode). Its download row carries the
+    // "Full page (scroll)" toggle, which points the copyable/downloadable SVG URL at the full-page
+    // `?scroll=long` export of a scrolling preview (a tall Wear capsule / grown LazyColumn) instead
+    // of the viewport-sized SVG. The viewer JS (`withScroll`) folds it into the `.svg` URL only.
+    val svgRow =
+      if (hasSvgExport)
+        "\n" +
+          row("SVG", "svg") +
+          "\n<label class=\"cp-live-row\"><input id=\"cp-scroll-long\" type=\"checkbox\"> " +
+          "Full page (scroll) — SVG only</label>"
+      else ""
     return """
-      <div class="cp-links">
-        <div class="cp-knobs-head">Direct links — the current view as a URL (overrides applied)</div>
-        ${row("PNG", "png")}$svgRow
-      </div>
+      <details class="cp-group">
+        <summary>Export &amp; direct links</summary>
+        <div class="cp-group-body">
+          <div class="cp-links">
+            <div class="cp-knobs-head">The current view as a URL (overrides applied)</div>
+            ${row("PNG", "png")}$svgRow
+          </div>
+        </div>
+      </details>
       """
       .trimIndent()
   }
