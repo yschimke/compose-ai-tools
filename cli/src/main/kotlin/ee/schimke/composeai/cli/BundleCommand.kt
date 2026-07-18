@@ -1,5 +1,10 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.cli.serve.RenderOutcome
+import ee.schimke.composeai.cli.serve.ServeBundleDaemon
+import ee.schimke.composeai.cli.serve.ServeRenderHost
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -813,10 +818,16 @@ private class RenderSubcommand(private val args: List<String>) {
   private val verbose: Boolean = "--verbose" in args || "-v" in args
 
   fun run() {
-    val path = args.firstOrNull { !it.startsWith("-") }
+    // Positional bundle path, skipping any valued flag (`--knob k=v`, `--output dir`) value.
+    val path = CliFlags.firstPositional(args)
     val outDir = args.flagValue("--output") ?: args.flagValue("-o")
+    // Repeatable `--knob key=value` theme overrides (e.g. `theme.colors=scheme:…`); see
+    // [parseKnobOverrides] for the split rules.
+    val knobs: Map<String, PreviewOverrideValue> = parseKnobOverrides(args)
     if (path == null) {
-      System.err.println("Usage: compose-preview bundle render <bundle.png | URL> [-o <dir>]")
+      System.err.println(
+        "Usage: compose-preview bundle render <bundle.png | URL> [-o <dir>] [--knob key=value …]"
+      )
       exitProcess(64)
     }
     val file =
@@ -830,6 +841,15 @@ private class RenderSubcommand(private val args: List<String>) {
       File(outDir ?: (file.absoluteFile.parent.toString() + "/${file.nameWithoutExtension}-render"))
         .absoluteFile
     target.mkdirs()
+
+    // Theme overrides can't ride the source subprocess renderer (BundleRenderer →
+    // DesktopRendererMain, positional args). Render via the DAEMON path instead — the same one
+    // `serve` uses for `/render?knob…` — which applies `PreviewOverrides.namedOverrides` to the
+    // PUBLISHED bundle with no source rebuild. See [renderBundleWithOverrides].
+    if (knobs.isNotEmpty()) {
+      if (!renderBundleWithOverrides(file, target, knobs, verbose)) exitProcess(1)
+      return
+    }
 
     val renderer = BundleRenderer(bundleFile = file, outputDir = target, verbose = verbose)
     val result =
@@ -856,6 +876,113 @@ private class RenderSubcommand(private val args: List<String>) {
     if (!result.allOk) exitProcess(1)
   }
 }
+
+/**
+ * Parse repeatable `--knob key=value` flags into theme overrides. Each entry is split on its FIRST
+ * `=` so a serialized value keeps its own `=`/`,`/`;` (e.g. `theme.colors=scheme:l=primary:…`).
+ * Entries with no `=`, or a blank key, are dropped. Theme knobs are all string-valued, so every
+ * value becomes a [PreviewOverrideValue.StringValue]. A repeated key takes its last value.
+ */
+internal fun parseKnobOverrides(args: List<String>): Map<String, PreviewOverrideValue> =
+  args
+    .flagValuesAll("--knob")
+    .mapNotNull { entry ->
+      val i = entry.indexOf('=')
+      if (i <= 0) return@mapNotNull null
+      val key = entry.substring(0, i).trim()
+      if (key.isEmpty()) null else key to PreviewOverrideValue.StringValue(entry.substring(i + 1))
+    }
+    .toMap()
+
+/**
+ * Render every preview of [bundleFile] to a PNG in [outDir] under theme [overrides] — the daemon
+ * path `serve` uses for `/render?knob…`, wired to write files. Reuses
+ * [ServeBundleDaemon.materialize]
+ * + [ServeRenderHost], so a PUBLISHED bundle re-skins with NO source rebuild: the override rides
+ *   `PreviewOverrides.namedOverrides` → the daemon's connector extension →
+ *   `PreviewOverrideController`. A local `--bundle` path is rendered as-is (same trust posture as
+ *   `bundle daemon`); the daemon just runs the bundle the operator handed it. Returns true iff
+ *   every preview rendered.
+ */
+private fun renderBundleWithOverrides(
+  bundleFile: File,
+  outDir: File,
+  overrides: Map<String, PreviewOverrideValue>,
+  verbose: Boolean,
+): Boolean {
+  val log: (String) -> Unit = { if (verbose) System.err.println("[bundle render] $it") }
+  val workspace = File(outDir, ".daemon").also { it.mkdirs() }
+  val state = ServeBundleDaemon.materialize(bundleFile, workspace, system = "bundle", onLog = log)
+  if (state == null) {
+    System.err.println(
+      "bundle render: can't stand up a render daemon for this bundle — --knob theme overrides need " +
+        "a 'desktop'/'android' backend bundle and the matching daemon sidecars (build them with " +
+        ":cli:installDist). Re-run without --knob for the stock render."
+    )
+    return false
+  }
+  val host =
+    try {
+      ServeRenderHost.open(
+        descriptorPath = state.descriptor,
+        workspaceRoot = state.workspaceRoot,
+        workspaceName = state.workspaceName,
+        previews = state.previews,
+        label = state.label,
+        declaredThemes = state.declaredThemes,
+        onLog = log,
+      )
+    } catch (e: Exception) {
+      System.err.println("bundle render: failed to launch the render daemon (${e.message})")
+      if (verbose) e.printStackTrace()
+      return false
+    }
+  val failures =
+    try {
+      renderPreviewsToDir(host, outDir, PreviewOverrides(namedOverrides = overrides))
+    } finally {
+      host.close()
+    }
+  for (f in failures) System.err.println("  FAIL  $f")
+  return failures.isEmpty()
+}
+
+/**
+ * Render every preview [host] exposes to `<outDir>/<sanitized id>.png` under [seed], returning the
+ * list of human-readable failure descriptions (empty iff every preview rendered). The theme [seed]
+ * — `PreviewOverrides.namedOverrides` — is applied identically to every preview. Factored out of
+ * [renderBundleWithOverrides] so the render-and-write loop is unit-testable against a
+ * [ServeRenderHost] built over a fake [ee.schimke.composeai.render.session.RenderSession] — no
+ * daemon subprocess, no native renderer. Does not close [host]; the caller owns its lifecycle.
+ */
+internal fun renderPreviewsToDir(
+  host: ServeRenderHost,
+  outDir: File,
+  seed: PreviewOverrides,
+  log: (String) -> Unit = ::println,
+): List<String> {
+  var rendered = 0
+  val failures = mutableListOf<String>()
+  for (preview in host.previews) {
+    when (val outcome = host.render(preview.id, seed)) {
+      is RenderOutcome.Ok -> {
+        File(outDir, sanitizeBundleRenderName(preview.id) + ".png").writeBytes(outcome.png)
+        rendered++
+        log("  ok    ${preview.id}")
+      }
+      is RenderOutcome.Failed -> failures += "${preview.id} (${outcome.reason})"
+      RenderOutcome.NotFound -> failures += "${preview.id} (not found)"
+    }
+  }
+  log("rendered $rendered / ${host.previews.size} preview(s) themed → ${outDir.path}")
+  return failures
+}
+
+/** Filesystem-safe filename for a preview id — any char outside `[A-Za-z0-9._-]` becomes `_`. */
+internal fun sanitizeBundleRenderName(id: String): String =
+  buildString(id.length) {
+    for (c in id) append(if (c.isLetterOrDigit() || c == '.' || c == '_' || c == '-') c else '_')
+  }
 
 /**
  * Escape a preview id for the `-PbundlePreviewIds=` Gradle property: `,` and `\` are

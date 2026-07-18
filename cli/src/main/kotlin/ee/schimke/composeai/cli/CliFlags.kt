@@ -107,6 +107,8 @@ internal object CliFlags {
       // bundle externalize
       "--res-out",
       "--ext",
+      // bundle render — repeatable theme override (theme.colors=scheme:…) applied via the daemon
+      "--knob",
     )
 
   /**
