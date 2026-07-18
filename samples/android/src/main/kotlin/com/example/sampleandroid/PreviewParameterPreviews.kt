@@ -94,3 +94,36 @@ fun BodyTextPreview(@PreviewParameter(TextSampleProvider::class, limit = 3) body
     )
   }
 }
+
+/**
+ * Regression fixture for issue #2493: a `private` `PreviewParameterProvider`. Declaring a provider
+ * private is idiomatic Kotlin and renders fine in Android Studio, but a private top-level class
+ * compiles to a *package-private* JVM class — so the renderer, which lives in a different package,
+ * must open the constructor and `getValues()` accessor with `isAccessible` to enumerate it. Before
+ * the fix this threw `IllegalAccessException` at shard-load time and sank the whole render batch.
+ * Public preview function + file-private provider (legal because both live in this file) so the
+ * fan-out flows through the normal capture pipeline and the visual-diff bot renders it on every PR.
+ */
+private class BadgeProvider : PreviewParameterProvider<String> {
+  override val values: Sequence<String> = sequenceOf("NEW", "BETA", "PRO")
+}
+
+@Preview(
+  name = "Private Provider Badge",
+  showBackground = true,
+  backgroundColor = 0xFFFFFFFF,
+  widthDp = 200,
+)
+@Composable
+fun PrivateProviderBadgePreview(@PreviewParameter(BadgeProvider::class) label: String) {
+  MaterialTheme {
+    Card(modifier = Modifier.padding(12.dp)) {
+      Text(
+        text = label,
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.Bold,
+      )
+    }
+  }
+}

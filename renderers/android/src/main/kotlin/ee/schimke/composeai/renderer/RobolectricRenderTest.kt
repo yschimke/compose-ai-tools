@@ -138,7 +138,17 @@ object PreviewManifestLoader {
             it.params.kind != PreviewKind.LOTTIE &&
             it.params.kind != PreviewKind.SVG
         }
-        .map { it to expandParameterProvider(it) }
+        .map { entry ->
+          // `expandParameterProvider` already isolates provider-load failures; this outer guard is
+          // belt-and-suspenders so any *other* unexpected throw while expanding one entry drops just
+          // that entry rather than failing the whole shard's `@Parameters` load (issue #2493).
+          entry to
+            runCatching { expandParameterProvider(entry) }
+              .getOrElse { e ->
+                System.err.println("Failed to expand preview '${entry.id}': ${e.message}")
+                emptyList()
+              }
+        }
     val expanded = expandedByEntry.flatMap { it.second }
     // Tier filter (set by the plugin via TierSystemPropProvider). When
     // `fast`, drop heavyweight captures and annotation-sourced data
@@ -242,13 +252,29 @@ object PreviewManifestLoader {
         ?: return listOf(PreviewRow(entry, emptyList()))
     val limit = entry.params.previewParameterLimit.coerceAtLeast(0)
     if (limit == 0) return emptyList()
-    val values = loadProviderValues(providerFqn, limit)
+    val values =
+      try {
+        loadProviderValues(providerFqn, limit)
+      } catch (e: Throwable) {
+        // Isolate the failure: one unloadable provider must not throw out of the JUnit
+        // `@Parameters` method and sink the whole shard (issue #2493). Emit a per-preview
+        // `.error.json` so the failing preview surfaces its cause on the panel instead of silently
+        // vanishing, then drop only this preview from the shard.
+        System.err.println(
+          "@PreviewParameter(provider = $providerFqn) on '${entry.id}' failed to load: ${e.message}"
+        )
+        providerErrorOutputFile(entry)?.let { RenderErrorSidecar.write(it, e) }
+        return emptyList()
+      }
     if (values.isEmpty()) {
       System.err.println(
         "@PreviewParameter(provider = $providerFqn) on '${entry.id}' produced no values — skipping."
       )
       return emptyList()
     }
+    // Provider loaded cleanly this run — drop any stale base error card a prior failed run left at
+    // the unsuffixed output path, so a now-fixed provider doesn't keep haunting the panel.
+    providerErrorOutputFile(entry)?.let { RenderErrorSidecar.deleteStale(it) }
     val suffixes = PreviewParameterLabels.suffixesFor(values)
     val rows = values.mapIndexed { idx, value ->
       val paramSuffix = suffixes[idx]
@@ -340,50 +366,88 @@ object PreviewManifestLoader {
     return if (dot > slash) path.substring(0, dot) + suffix + path.substring(dot) else path + suffix
   }
 
+  /**
+   * Enumerate a `PreviewParameterProvider`'s values reflectively.
+   *
+   * Throws [ProviderLoadException] on any hard failure (class missing, no no-arg constructor,
+   * missing/throwing `getValues()`) so the caller can isolate the failing preview and surface it as
+   * a per-preview error card rather than letting the throw sink the whole shard. Returns an empty
+   * list only when the provider legitimately yields no values.
+   */
   private fun loadProviderValues(providerFqn: String, limit: Int): List<Any?> {
     val clazz =
       try {
         Class.forName(providerFqn)
       } catch (e: ClassNotFoundException) {
-        System.err.println(
-          "@PreviewParameter: provider class $providerFqn not found on test classpath — skipping."
-        )
-        return emptyList()
+        throw ProviderLoadException("provider class $providerFqn not found on the test classpath", e)
       }
     val instance =
-      runCatching {
-          val ctor = clazz.getDeclaredConstructor()
-          ctor.isAccessible = true
-          ctor.newInstance()
-        }
-        .getOrElse { e ->
-          System.err.println(
-            "@PreviewParameter: couldn't instantiate $providerFqn via nullary constructor: ${e.message}"
-          )
-          return emptyList()
-        }
+      try {
+        val ctor = clazz.getDeclaredConstructor()
+        // `private` providers (idiomatic Kotlin, and rendered fine by Android Studio) compile to
+        // package-private JVM classes, so their no-arg constructor isn't reflectively callable from
+        // this package without opening it up first — see issue #2493.
+        ctor.isAccessible = true
+        ctor.newInstance()
+      } catch (e: Throwable) {
+        throw ProviderLoadException(
+          "couldn't instantiate $providerFqn via its no-arg constructor",
+          e,
+        )
+      }
     // `PreviewParameterProvider<T>` exposes `values: Sequence<T>` as a Kotlin
     // property — its JVM signature is `getValues(): Sequence`. Look up the
     // method by name to avoid taking a compile-time dependency on the
     // provider interface (which lives in the consumer's Compose artifact).
     val getValues =
-      runCatching { clazz.getMethod("getValues") }
-        .getOrElse {
-          System.err.println(
-            "@PreviewParameter: $providerFqn has no getValues() — not a PreviewParameterProvider?"
-          )
-          return emptyList()
-        }
-    @Suppress("UNCHECKED_CAST")
-    val sequence = getValues.invoke(instance) as? Sequence<Any?> ?: return emptyList()
-    // `Sequence.take(Int).toList()` is the Kotlin stdlib contract —
-    // drives the sequence lazily up to `limit` without requiring
-    // reflective access into package-private iterator implementations
-    // (`kotlin.jvm.internal.ArrayIterator`, which `Method.invoke`
-    // rejects with IllegalAccessException from outside the stdlib
-    // module).
-    return sequence.take(limit).toList()
+      try {
+        clazz.getMethod("getValues")
+      } catch (e: Throwable) {
+        throw ProviderLoadException(
+          "$providerFqn has no getValues() — not a PreviewParameterProvider?",
+          e,
+        )
+      }
+    // Same package-private-class problem as the constructor above: a public `getValues()` declared
+    // on a package-private class throws `IllegalAccessException` from `Method.invoke` unless the
+    // member is opened up first. This is the crash in issue #2493.
+    getValues.isAccessible = true
+    return try {
+      @Suppress("UNCHECKED_CAST")
+      val sequence = getValues.invoke(instance) as? Sequence<Any?> ?: return emptyList()
+      // `Sequence.take(Int).toList()` is the Kotlin stdlib contract —
+      // drives the sequence lazily up to `limit` without requiring
+      // reflective access into package-private iterator implementations
+      // (`kotlin.jvm.internal.ArrayIterator`, which `Method.invoke`
+      // rejects with IllegalAccessException from outside the stdlib
+      // module).
+      sequence.take(limit).toList()
+    } catch (e: Throwable) {
+      throw ProviderLoadException("$providerFqn.getValues() failed", e)
+    }
   }
+
+  /**
+   * Resolve the base output PNG for [entry] the same way [RobolectricRenderTestBase.outputFileFor]
+   * does, so a provider-load error card lands where the panel already looks for this preview's
+   * render. `null` when no output dir is configured or the entry declares no output at all.
+   */
+  private fun providerErrorOutputFile(entry: RenderPreviewEntry): File? {
+    val outputDir = System.getProperty("composeai.render.outputDir")?.let(::File) ?: return null
+    entry.captures.firstOrNull()?.let { capture ->
+      val leaf = capture.renderOutput.substringAfterLast('/').ifEmpty { "${entry.id}.png" }
+      return File(outputDir, leaf)
+    }
+    entry.dataProducts.firstOrNull()?.let { product ->
+      val rootDir = outputDir.parentFile ?: outputDir
+      return File(rootDir, product.output)
+    }
+    return null
+  }
+
+  /** Thrown by [loadProviderValues] on a hard provider-load failure so the caller can isolate it. */
+  private class ProviderLoadException(message: String, cause: Throwable?) :
+    RuntimeException(message, cause)
 }
 
 /**
