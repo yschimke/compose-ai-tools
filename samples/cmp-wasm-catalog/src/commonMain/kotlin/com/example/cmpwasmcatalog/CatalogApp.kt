@@ -37,12 +37,16 @@ import com.example.designcatalogm3.shared.CATALOG_FONT_GOOGLE_SANS_FLEX
 import com.example.designcatalogm3.shared.CATALOG_FONT_KNOB
 import com.example.designcatalogm3.shared.CATALOG_FONT_ROBOTO_FLEX
 import com.example.designcatalogm3.shared.CATALOG_PALETTE_M3
+import com.example.designcatalogm3.shared.CATALOG_SHAPES_KNOB
+import com.example.designcatalogm3.shared.CATALOG_TYPOGRAPHY_KNOB
 import com.example.designcatalogm3.shared.CatalogComponent
 import com.example.designcatalogm3.shared.LocalGenericFonts
 import com.example.designcatalogm3.shared.LocalNamedFonts
+import com.example.designcatalogm3.shared.catalogApplyTypography
 import com.example.designcatalogm3.shared.catalogColorScheme
 import com.example.designcatalogm3.shared.catalogComponentIds
 import com.example.designcatalogm3.shared.catalogOverrideString
+import com.example.designcatalogm3.shared.catalogShapes
 import com.example.designcatalogm3.shared.catalogTypography
 
 /**
@@ -112,6 +116,16 @@ fun CatalogApp(
     catalogColorScheme(catalogOverrideString(CATALOG_COLORS_KNOB, CATALOG_PALETTE_M3), dark)
   val fontName = catalogOverrideString(CATALOG_FONT_KNOB, CATALOG_FONT_ROBOTO_FLEX)
   val resolvedFont = resolveCatalogFont(fontName, fontFamily, namedFamilies)
+  // Shapes + typography-metrics overrides resolve through the same shared choices, so the live Wasm
+  // corners / type scale track the desktop-baked snapshot. No seed ⇒ stock M3 shapes + the
+  // font-only
+  // type scale (the baked default).
+  val shapes = catalogShapes(catalogOverrideString(CATALOG_SHAPES_KNOB, ""))
+  val typography =
+    catalogApplyTypography(
+      catalogTypography(resolvedFont),
+      catalogOverrideString(CATALOG_TYPOGRAPHY_KNOB, ""),
+    )
   // Re-point density's fontScale (preserving the real pixel density) and the layout direction, so
   // the viewer's font-scale + locale controls take effect client-side — same overrides the server
   // render honours, just running in the browser sandbox.
@@ -128,7 +142,7 @@ fun CatalogApp(
     LocalGenericFonts provides genericFamilies,
     LocalNamedFonts provides namedFamilies,
   ) {
-    MaterialTheme(colorScheme = scheme, typography = catalogTypography(resolvedFont)) {
+    MaterialTheme(colorScheme = scheme, typography = typography, shapes = shapes) {
       if (id in catalogComponentIds) {
         Box(
           modifier =
