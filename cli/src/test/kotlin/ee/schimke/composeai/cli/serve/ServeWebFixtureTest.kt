@@ -851,7 +851,8 @@ class ServeWebFixtureTest {
       "SVG is not an on-screen render mode",
     )
     assertTrue(
-      svgView.contains("var snapshotExt = \".png\";") && !svgView.contains("snapshotExt = \".svg\";"),
+      svgView.contains("var snapshotExt = \".png\";") &&
+        !svgView.contains("snapshotExt = \".svg\";"),
       "the on-screen snapshot lane stays raster PNG (SVG is export-only)",
     )
     assertFalse(
@@ -1015,7 +1016,15 @@ class ServeWebFixtureTest {
       wasmView.contains("step=\"0.1\" value=\"1.0\">"),
       "font scale enabled with a Wasm app",
     )
-    assertTrue(wasmView.contains("id=\"cp-localeTag\">"), "locale enabled with a Wasm app")
+    assertTrue(wasmView.contains("autocomplete=\"off\">"), "locale enabled with a Wasm app")
+    // Locale is a datalist-backed input, not a fixed <select>: presets drop down, but any BCP-47
+    // tag the server accepts can still be typed (the reviewer's arbitrary-locale case, e.g. en-GB).
+    assertTrue(
+      wasmView.contains("id=\"cp-localeTag\" type=\"text\" list=\"cp-localeTag-list\"") &&
+        wasmView.contains("<datalist id=\"cp-localeTag-list\">") &&
+        wasmView.contains("value=\"en-GB\""),
+      "locale keeps free BCP-47 entry (datalist input with presets)",
+    )
     assertTrue(
       wasmView.contains("public-preview-server.md#running-one\">Enable a local preview server."),
       "wasm-snapshot note also links to local preview server instructions",
@@ -1166,7 +1175,9 @@ class ServeWebFixtureTest {
     assertTrue(
       catalogKnobs.contains("id=\"cp-device\">") &&
         catalogKnobs.contains("id=\"cp-sizeMode\">") &&
-        catalogKnobs.contains("id=\"cp-localeTag\">"),
+        !catalogKnobs.contains(
+          "id=\"cp-localeTag\" type=\"text\" list=\"cp-localeTag-list\" placeholder=\"e.g. en-GB, zh-Hant-TW\" autocomplete=\"off\" disabled"
+        ),
       "display controls (size/device/locale) render enabled on an on-demand-render catalog",
     )
     // A plain static bundle (no daemon) still shows the knobs as DISABLED, informational controls.

@@ -1254,7 +1254,8 @@ object ServeWeb {
     // note) on a pure static bundle with neither.
     val liveToggleDis = if (hasLiveStream || wasmSrc != null) "" else " disabled"
     // Controls the in-browser Wasm app also honours — day/night (uiMode), font scale (density),
-    // locale (layout direction): live whenever the server can render an override OR a Wasm app backs
+    // locale (layout direction): live whenever the server can render an override OR a Wasm app
+    // backs
     // the session.
     val wasmDis = if (overridesLive || wasmSrc != null) "" else " disabled"
     // The static-snapshot note is only shown when overrides genuinely can't re-render on the server
@@ -1469,31 +1470,30 @@ object ServeWeb {
             <summary>Locale &amp; text</summary>
             <div class="cp-group-body">
               <label>Locale
-                <select id="cp-localeTag"$wasmDis>
-                  <option value="">(default)</option>
-                  <optgroup label="Pseudolocales (layout stress-test)">
-                    <option value="en-XA">Accented — en-XA</option>
-                    <option value="ar-XB">Bidi / RTL — ar-XB</option>
-                  </optgroup>
-                  <optgroup label="Right-to-left">
-                    <option value="ar">Arabic — ar</option>
-                    <option value="he">Hebrew — he</option>
-                    <option value="fa">Persian — fa</option>
-                  </optgroup>
-                  <optgroup label="Common">
-                    <option value="en-US">English — en-US</option>
-                    <option value="de-DE">German — de-DE</option>
-                    <option value="fr-FR">French — fr-FR</option>
-                    <option value="es-ES">Spanish — es-ES</option>
-                    <option value="pt-BR">Portuguese — pt-BR</option>
-                    <option value="ru-RU">Russian — ru-RU</option>
-                    <option value="ja-JP">Japanese — ja-JP</option>
-                    <option value="ko-KR">Korean — ko-KR</option>
-                    <option value="zh-CN">Chinese — zh-CN</option>
-                    <option value="hi-IN">Hindi — hi-IN</option>
-                    <option value="th-TH">Thai — th-TH</option>
-                  </optgroup>
-                </select>
+                <input id="cp-localeTag" type="text" list="cp-localeTag-list" placeholder="e.g. en-GB, zh-Hant-TW" autocomplete="off"$wasmDis>
+                <!-- A datalist, not a fixed <select>: the presets (pseudolocales, RTL, common
+                     tags) drop down for quick picking, but any valid BCP-47 tag the server
+                     accepts can still be typed in. -->
+                <datalist id="cp-localeTag-list">
+                  <option value="en-XA" label="Accented (pseudo)"></option>
+                  <option value="ar-XB" label="Bidi / RTL (pseudo)"></option>
+                  <option value="ar" label="Arabic (RTL)"></option>
+                  <option value="he" label="Hebrew (RTL)"></option>
+                  <option value="fa" label="Persian (RTL)"></option>
+                  <option value="en-US"></option>
+                  <option value="en-GB"></option>
+                  <option value="de-DE"></option>
+                  <option value="fr-FR"></option>
+                  <option value="es-ES"></option>
+                  <option value="pt-BR"></option>
+                  <option value="ru-RU"></option>
+                  <option value="ja-JP"></option>
+                  <option value="ko-KR"></option>
+                  <option value="zh-CN"></option>
+                  <option value="zh-Hant-TW"></option>
+                  <option value="hi-IN"></option>
+                  <option value="th-TH"></option>
+                </datalist>
               </label>
               <label>Font scale: <span id="cp-fontScale-val">default</span>
                 <input id="cp-fontScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0"$wasmDis>
@@ -2620,7 +2620,8 @@ object ServeWeb {
     // of the viewport-sized SVG. The viewer JS (`withScroll`) folds it into the `.svg` URL only.
     val svgRow =
       if (hasSvgExport)
-        "\n" + row("SVG", "svg") +
+        "\n" +
+          row("SVG", "svg") +
           "\n<label class=\"cp-live-row\"><input id=\"cp-scroll-long\" type=\"checkbox\"> " +
           "Full page (scroll) — SVG only</label>"
       else ""
