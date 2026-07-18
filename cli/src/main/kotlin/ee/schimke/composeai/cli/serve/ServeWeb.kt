@@ -1137,7 +1137,13 @@ object ServeWeb {
     sessionId: String? = null,
     trust: String? = null,
     isPublic: Boolean = false,
-    catalogs: List<String> = emptyList(),
+    /**
+     * Whether this server publishes a front-door home index (`/`) to link back to — true when it
+     * serves ANY catalog, listed (`--catalogs`) OR unlisted app (`--catalogs-unlisted`). Gates the
+     * "← All design systems" back button, so an app-only server's landings still link home. False
+     * (default) for a plain single-module `serve` with no index, which shows no back button.
+     */
+    hasHomeIndex: Boolean = false,
     /**
      * URL prefix for this session's own links (`/<system>` when served under a path, empty for the
      * root-mounted default/legacy session). Card/render/zip links are prefixed with it and drop the
@@ -1239,7 +1245,7 @@ object ServeWeb {
     // A catalog page links HOME (the front-door index) rather than sideways to its siblings: the
     // old design-systems nav row is replaced by a single back button, shown whenever this server
     // publishes catalogs (i.e. a home index exists to go back to).
-    val back = if (catalogs.isNotEmpty()) backButton(token, isPublic) + "\n" else ""
+    val back = if (hasHomeIndex) backButton(token, isPublic) + "\n" else ""
     // The catalog-provenance strip (delivery branch, generation date, tool versions, regenerate
     // link), shown under the header for a served design-system catalog.
     val prov = provenance?.let { provenanceSection(it) + "\n" } ?: ""

@@ -391,7 +391,10 @@ class ServeHttpServer(
           webSessionId,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           isPublic = isPublic,
-          catalogs = catalogSessions,
+          // A back-to-home button whenever this server publishes a front-door index — listed
+          // catalogs OR unlisted app catalogs (mirrors handleLanding's home-index condition), so an
+          // app-only server's landings still link home.
+          hasHomeIndex = catalogSessions.isNotEmpty() || appCatalogSessions.isNotEmpty(),
           basePath = basePath,
           version = BUNDLE_VERSION,
           // Catalog provenance (delivery branch, generation date, tool versions) for the strip

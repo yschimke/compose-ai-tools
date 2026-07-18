@@ -197,7 +197,7 @@ class ServeWebFixtureTest {
         token,
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         isPublic = true,
-        catalogs = listOf("compose-m3", "wear-m3"),
+        hasHomeIndex = true,
         version = version,
         provenance = provenance,
       )
@@ -334,7 +334,7 @@ class ServeWebFixtureTest {
         sessionId = "meshcore-mobile",
         trust = "branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile",
         isPublic = true,
-        catalogs = listOf("compose-m3", "wear-m3"),
+        hasHomeIndex = true,
         basePath = "/meshcore-mobile",
         version = version,
       )
@@ -407,7 +407,7 @@ class ServeWebFixtureTest {
         token,
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         isPublic = true,
-        catalogs = listOf("compose-m3", "wear-m3"),
+        hasHomeIndex = true,
         version = version,
       )
     // A catalog whose components carry baked non-default states: the landing folds each to ONE card
@@ -419,7 +419,7 @@ class ServeWebFixtureTest {
         token,
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         isPublic = true,
-        catalogs = listOf("compose-m3", "wear-m3"),
+        hasHomeIndex = true,
         version = version,
       )
     // The default-state viewer for that catalog: renders the `<nav class="cp-states">` switcher of
@@ -946,14 +946,15 @@ class ServeWebFixtureTest {
 
   @Test
   fun `a catalog landing shows a back-to-home button instead of a sideways catalog nav`() {
-    // A catalog server (catalogs non-empty) replaces the old design-systems nav row with a single
-    // back button that links HOME (the front-door index at /), token-gated here.
-    val front =
-      ServeWeb.landingPage(moduleLabel, previews, token, catalogs = listOf("compose-m3", "wear-m3"))
+    // A server that publishes a home index (hasHomeIndex) replaces the old design-systems nav row
+    // with a single back button that links HOME (the front-door index at /), token-gated here. The
+    // flag — not a catalog list — gates it, so an app-only server (--catalogs-unlisted, no listed
+    // catalogs) whose landings still have a home index keeps a way back.
+    val front = ServeWeb.landingPage(moduleLabel, previews, token, hasHomeIndex = true)
     assertFalse(front.contains("class=\"cp-systems\""), "the sideways design-systems nav is gone")
     assertTrue(
       front.contains("class=\"cp-back\" href=\"/?token=$token\""),
-      "a catalog landing links back to the home index",
+      "a landing with a home index links back to it",
     )
     // No sideways links to the other catalogs any more.
     assertFalse(
@@ -963,19 +964,13 @@ class ServeWebFixtureTest {
 
     // Public mode: the back button is token-free (every route is open).
     val public =
-      ServeWeb.landingPage(
-        moduleLabel,
-        previews,
-        token,
-        isPublic = true,
-        catalogs = listOf("compose-m3", "wear-m3"),
-      )
+      ServeWeb.landingPage(moduleLabel, previews, token, isPublic = true, hasHomeIndex = true)
     assertTrue(
       public.contains("class=\"cp-back\" href=\"/\""),
       "the public back button is token-free",
     )
 
-    // No catalogs → no back button (a plain, non-catalog module landing).
+    // No home index → no back button (a plain, single-module `serve` with nothing to go back to).
     assertFalse(
       ServeWeb.landingPage(moduleLabel, previews, token).contains("class=\"cp-back\""),
       "a plain module landing shows no back button",
@@ -990,7 +985,7 @@ class ServeWebFixtureTest {
         themedPreviews,
         token,
         isPublic = true,
-        catalogs = listOf("compose-m3", "wear-m3"),
+        hasHomeIndex = true,
         version = version,
         provenance =
           ServeWeb.CatalogProvenance(
