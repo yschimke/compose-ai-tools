@@ -5,9 +5,18 @@
 #
 # Pin a version with IMAGE_TAG=0.16.33 in .env (a bare tag); defaults to the latest tag.
 #
-# Auto-updates: the optional `watchtower` service (below) watches the :latest tag
-# and pulls + recreates `preview` when a new release image is published. Leave
-# IMAGE_TAG unset (it defaults to `latest`) for that to work. See README.md.
+# Auto-updates are ZERO-DOWNTIME: the `rollout` service (below) polls GHCR and,
+# when a new :latest is published, hands `preview` to docker-rollout — a fresh
+# replica boots alongside the live one, Docker waits for its /healthz healthcheck,
+# Caddy drains traffic onto it (dynamic upstreams + passive health), then the old
+# replica retires. `watchtower` still rolls `caddy` (fixed 80/443 ports can't be
+# scaled). Leave IMAGE_TAG unset (defaults to `latest`) for updates. See README.md.
+#
+# `name:` pins the Compose project name so the `rollout` container's `docker
+# compose`/`docker rollout` targets the SAME project as the host regardless of the
+# clone directory. Migrating a box first started without it is a one-time
+# `docker compose down && up -d` (see README → Auto-updates).
+name: compose-preview
 services:
   preview:
     image: "ghcr.io/yschimke/compose-preview-host:${IMAGE_TAG:-latest}"
@@ -81,18 +90,57 @@ services:
     # Set PREVIEW_MEM_LIMIT in .env (e.g. `PREVIEW_MEM_LIMIT=4g`) to cap it on a shared host, which
     # also lowers the derived seat budget to match.
     mem_limit: "${PREVIEW_MEM_LIMIT:-0}"
-    # Opt this service in to Watchtower auto-updates. Caddy is opted in too (below)
-    # via its baked-config image, so both the server and the reverse-proxy config
-    # roll automatically.
-    labels:
-      com.centurylinklabs.watchtower.enable: "true"
+    # Liveness for the rolling update. docker-rollout (driven by the `rollout`
+    # service) waits for a freshly-started replica to report `healthy` BEFORE it
+    # retires the old one, so this is the gate that makes updates zero-downtime.
+    # `/healthz` is the app's ungated liveness route (returns "ok" once the HTTP
+    # server is listening); `start_period` covers the cold-start catalog fetch +
+    # warm render so a slow boot isn't counted as a failure.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    # NOT Watchtower-managed: Watchtower does an in-place stop→recreate (downtime).
+    # `preview` is updated by docker-rollout instead (see the `rollout` service),
+    # which needs the service to stay scalable — so no `container_name`, no
+    # published host ports (only `expose` above), which is already the case.
 
-  # Auto-update: poll GHCR for a new :latest digest and recreate `preview` (and
-  # `caddy`) when the release / preview-caddy-image workflow publishes one.
-  # --label-enable scopes it to the labelled services; --cleanup prunes the
-  # superseded image. Comment this service out to manage updates manually
-  # (docker compose pull && up -d). For a private GHCR package, mount a registry
-  # config: `- ~/.docker/config.json:/config.json:ro`. See README.md.
+  # Zero-downtime updater for `preview`: poll GHCR for a new :latest digest and,
+  # when one lands, roll the service with docker-rollout (boot a new replica →
+  # wait for its /healthz healthcheck → drain onto it → retire the old one) so
+  # live traffic never sees a stop→recreate gap. Needs the Docker socket (like
+  # Watchtower) and the compose project mounted read-only so it can pull + scale.
+  # The docker-rollout plugin is the vendored ./docker-rollout, mounted into the
+  # CLI plugins dir. For a private GHCR package the host daemon's creds are used
+  # for the pull (docker login ghcr.io on the host) — no in-container config.
+  # Set ROLLOUT_INTERVAL in .env to change the poll cadence (default 1200s).
+  rollout:
+    image: docker:27-cli
+    restart: always
+    depends_on:
+      - preview
+    environment:
+      ROLLOUT_INTERVAL: "${ROLLOUT_INTERVAL:-1200}"
+      ROLLOUT_HEALTH_TIMEOUT: "${ROLLOUT_HEALTH_TIMEOUT:-300}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # The compose project (compose file + .env) so `docker compose`/`docker
+      # rollout` can pull and scale `preview`. Read-only: compose never writes here.
+      - ./:/workspace:ro
+      # The vendored docker-rollout plugin → the CLI plugins dir (adds `docker rollout`).
+      - ./docker-rollout:/usr/local/lib/docker/cli-plugins/docker-rollout:ro
+    working_dir: /workspace
+    entrypoint: ["/bin/sh", "/workspace/rollout.sh", "--loop"]
+
+  # Auto-update for `caddy` only: poll GHCR and recreate `caddy` when the
+  # preview-caddy-image workflow publishes a new baked-Caddyfile image. `preview`
+  # is intentionally NOT labelled here — it's rolled by the `rollout` service
+  # above (zero-downtime) instead of Watchtower's in-place recreate. --label-enable
+  # scopes Watchtower to the labelled services (just `caddy`); --cleanup prunes the
+  # superseded image. Comment this out to manage caddy manually. For a private GHCR
+  # package, mount a registry config: `- ~/.docker/config.json:/config.json:ro`.
   watchtower:
     # Maintained fork of the (now-stale) containrrr/watchtower: the upstream image's
     # baked Docker SDK negotiates API 1.25, which modern engines reject ("client

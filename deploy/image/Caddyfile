@@ -19,7 +19,33 @@
 	# the upstream request on client disconnect — an abandoned /render/*.png|svg tab
 	# would then hold a render slot for the whole cold-render budget. WS doesn't need
 	# it (hijacked); render endpoints must keep cancel-on-disconnect.
-	reverse_proxy preview:8080 {
+	reverse_proxy {
+		# Zero-downtime rollout support. During a docker-rollout swap the `preview`
+		# service briefly has TWO replicas (old still serving + new booting), then one
+		# again. Resolve the service name via Docker's embedded DNS (127.0.0.11 inside
+		# the compose network) on a short refresh so the upstream set tracks that
+		# without a Caddy reload — a plain `reverse_proxy preview:8080` resolves once
+		# and would keep pointing at the retired container.
+		dynamic a {
+			name preview
+			port 8080
+			refresh 3s
+			resolvers 127.0.0.11
+		}
+
+		# Retry across replicas so the swap is invisible to clients: a request that
+		# lands on a just-started replica before it's accepting connections gets a dial
+		# refusal, which Caddy retries against the healthy replica within
+		# lb_try_duration (nothing was written upstream yet, so this is safe to retry).
+		# docker-rollout keeps the OLD replica up until the new one passes its /healthz
+		# healthcheck, so there's always a warm backend to retry onto. Deliberately no
+		# passive `fail_duration` / `unhealthy_status`: in steady state there's a single
+		# backend, and benching it on a transient error or an app-level 5xx would
+		# self-inflict an outage with no alternative to fail over to.
+		lb_policy least_conn
+		lb_try_duration 10s
+		lb_try_interval 250ms
+
 		transport http {
 			dial_timeout 30s
 		}

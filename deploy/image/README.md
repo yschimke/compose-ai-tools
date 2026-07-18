@@ -62,20 +62,51 @@ DOMAIN=preview.example.com ./setup.sh
 Pin a version with `IMAGE_TAG=0.16.33` in `.env` (a bare tag; defaults to the
 `latest` tag when unset).
 
-## Auto-updates (Watchtower)
+## Auto-updates (zero-downtime)
 
-`docker-compose.yml` includes a
-[Watchtower](https://github.com/nicholas-fedor/watchtower) service that **watches the
-`:latest` tag and updates the `preview` container when a new release image is
-published** — so the chain is hands-off:
+Updates are **rolling** — existing traffic keeps being served on the old
+container until the new one is up and healthy, so a deploy never 502s. Two
+services split the work:
 
-> merge → cut a `v*` release → `preview-host-image.yml` publishes `:latest` →
-> Watchtower pulls it → server updates
+- **`rollout`** updates the `preview` server with
+  [docker-rollout](https://github.com/wowu/docker-rollout). It polls GHCR and,
+  when a new `:latest` lands, boots a **second** `preview` replica alongside the
+  live one, waits for that replica's `/healthz` healthcheck to pass, lets Caddy
+  drain traffic onto it, then retires the old replica. The chain stays hands-off:
 
-It polls hourly (`--interval 3600`), is scoped to the labelled services
-(`--label-enable` — the `preview` server **and** `caddy`, see below), and
-`--cleanup` prunes the old image. It needs the Docker socket (root-equivalent on
-the host — fine for your own box).
+  > merge → cut a `v*` release → `preview-host-image.yml` publishes `:latest` →
+  > `rollout` pulls it → new replica boots + goes healthy → traffic drains over →
+  > old replica retired
+
+- **`watchtower`** updates only the `caddy` reverse-proxy (below). Caddy publishes
+  fixed `80`/`443` ports, so it can't be scaled/rolled; Watchtower's in-place
+  recreate is a ~1s proxy blip, and only when the baked-Caddyfile image changes.
+
+**How the swap stays seamless.** `preview` has a Docker `healthcheck` on the
+app's ungated `/healthz` liveness route; docker-rollout won't retire the old
+replica until the new one reports `healthy`. Meanwhile the Caddyfile proxies to
+`preview` via **dynamic upstreams** (re-resolving the service's Docker DNS every
+few seconds) with cross-replica **retry**, so during the brief two-replica
+overlap a request that hits the still-booting replica is retried onto the warm
+one. Net effect: no dropped requests across an update.
+
+Both `rollout` and `watchtower` poll every `1200`s (set `ROLLOUT_INTERVAL` in
+`.env` to change the rollout cadence) and need the Docker socket (root-equivalent
+on the host — fine for your own box). `rollout` also mounts this directory
+read-only so it can `docker compose pull` + scale `preview`; the vendored
+[`docker-rollout`](./docker-rollout) plugin is mounted into the container's CLI
+plugins dir (no runtime download).
+
+> **Manual rollout.** `setup.sh` also installs the plugin on the host, so you can
+> force a zero-downtime update by hand with `sudo docker rollout preview` (or
+> `./rollout.sh`, which pulls first and only rolls if the image changed).
+
+> **Adopting this on a box first started before the project name was pinned.**
+> `docker-compose.yml` now sets `name: compose-preview` so the `rollout`
+> container's Compose commands target the same project as the host. A box brought
+> up before that change ran under the directory-derived project name, so adopt it
+> once with `docker compose down && docker compose up -d` from this directory
+> (one brief restart; rolling from then on).
 
 **The reverse-proxy config auto-deploys too.** The `caddy` service runs
 `ghcr.io/…/compose-preview-caddy:latest` — a `caddy:2` image with
@@ -112,21 +143,25 @@ Pin a specific config with `CADDY_IMAGE_TAG=sha-<commit>` in `.env`.
 > release.
 
 Requirements / options:
-- **Leave `IMAGE_TAG` unset (it defaults to the `latest` tag)** — Watchtower only
-  tracks a moving tag. A pinned `IMAGE_TAG=0.16.32` won't auto-update (by design).
+- **Leave `IMAGE_TAG` unset (it defaults to the `latest` tag)** — both pollers only
+  track a moving tag. A pinned `IMAGE_TAG=0.16.32` won't auto-update (by design).
   The value is a bare tag like `latest`, not `:latest` — the compose image string
   already supplies the colon (`…host:${IMAGE_TAG:-latest}`).
-- **Brief downtime on update:** recreating `preview` restarts it (a ~1 min window
-  where it does its startup render and Caddy 502s), then it's back. Fine for a
-  single-instance host; not zero-downtime.
-- **Private GHCR package:** mount registry creds — add
-  `- ~/.docker/config.json:/config.json:ro` to the `watchtower` service (after
-  `docker login ghcr.io`). Public packages need nothing.
-- **Notify instead of auto-update:** add `--monitor-only` to the `command` (plus a
-  [shoutrrr](https://containrrr.dev/shoutrrr/) `WATCHTOWER_NOTIFICATION_URL`) to get
-  pinged on a new version and pull manually.
-- **Don't want it at all:** comment out the `watchtower` service and update by hand
-  with `docker compose pull && docker compose up -d`.
+- **Zero-downtime updates:** the old `preview` keeps serving until the new replica
+  is healthy, so there's no 502 window (contrast the old Watchtower recreate, which
+  restarted `preview` in place for ~1 min). The swap briefly runs **two** `preview`
+  replicas; on a memory-tight shared host cap the transient overlap with
+  `PREVIEW_MEM_LIMIT` (which also lowers the derived live-seat budget per replica).
+- **Private GHCR package:** mount registry creds so the in-container pull can
+  authenticate — add `- ~/.docker/config.json:/root/.docker/config.json:ro` to the
+  `rollout` service (for `preview`) and `- ~/.docker/config.json:/config.json:ro`
+  to `watchtower` (for `caddy`), after `docker login ghcr.io`. Public packages need
+  nothing.
+- **Pause auto-rollout:** comment out the `rollout` service and update `preview` by
+  hand with `sudo docker rollout preview` (still zero-downtime) or the blunt
+  `docker compose pull preview && docker compose up -d preview` (recreates in place).
+- **Don't want any of it:** comment out both `rollout` and `watchtower` and update
+  by hand with `docker compose pull && docker compose up -d`.
 
 ### Even simpler (no Caddy/TLS — quick test)
 
@@ -145,8 +180,10 @@ docker run -d --restart always -p 8080:8080 \
 | `Dockerfile` | Downloads the released CLI, warm-renders `sample-project/`. |
 | `sample-project/` | Self-contained Compose Desktop module (foundation-only previews) + Gradle wrapper. Applies the published plugin via auto-inject. |
 | `entrypoint.sh` | Maps `$PORT`/`$SERVE_TOKEN` onto serve flags; generous `--timeout`. |
-| `docker-compose.yml` + `Caddyfile` | Pull the image + Caddy auto-HTTPS + Watchtower auto-updates. |
-| `setup.sh` | Install Docker, write `.env`, pull + start. |
+| `docker-compose.yml` + `Caddyfile` | Pull the image + Caddy auto-HTTPS + zero-downtime (`rollout`) / Watchtower auto-updates. |
+| `rollout.sh` | Poll loop / one-shot that pulls `preview` and rolls it via docker-rollout. |
+| `docker-rollout` | Vendored [docker-rollout](https://github.com/wowu/docker-rollout) CLI plugin (adds `docker rollout`). |
+| `setup.sh` | Install Docker + the docker-rollout plugin, write `.env`, pull + start. |
 
 ## Serving a different project
 
