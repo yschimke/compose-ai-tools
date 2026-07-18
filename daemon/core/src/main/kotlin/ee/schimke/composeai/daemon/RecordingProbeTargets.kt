@@ -21,8 +21,11 @@ import ee.schimke.composeai.daemon.protocol.SemanticsInputTarget
  * - `testTag` → nodes whose `testTag` equals it (the pre-#2519 behaviour).
  * - `role` + `text` → nodes whose `role` equals it **and** whose [effectiveText] equals the text,
  *   so a `Button { Text("Add") }` (role on the button, text merged up from the child) matches.
- * - `text` alone → nodes whose [effectiveText] (or [contentDescription], for an icon-only control)
- *   equals it.
+ * - `text` alone → nodes whose **own** `text` (or [contentDescription], for an icon-only control)
+ *   equals it — deliberately *not* [effectiveText]. A merged-text container and the child text node
+ *   it merged always coexist in the flat snapshot, so matching merged text here would return both
+ *   for `text: "Add"` and make `assert.textEquals` ambiguous; the child text node carries the
+ *   visible text for a text-only find, mirroring the desktop `hasText` finder.
  * - `role` alone → nodes whose `role` equals it.
  */
 
@@ -77,8 +80,10 @@ fun resolveProbeTarget(
     )
   }
   if (text != null) {
+    // Own text (not merged) so the merged-text container and its child text node don't both match
+    // and make assert.textEquals ambiguous; contentDescription covers icon-only controls.
     return ProbeTargetResolution.Matched(
-      nodes.filter { it.effectiveText() == text || it.contentDescription == text }
+      nodes.filter { it.text == text || it.contentDescription == text }
     )
   }
   if (role != null) {

@@ -165,12 +165,25 @@ class AndroidRecordingSession(
     var frameWidthPx = 0
     var frameHeightPx = 0
     val evidence = mutableListOf<RecordingScriptEvidence>()
-    // `assert.pixels` events (issue #2519) diff against the frame written for their timeline
-    // position, which isn't on disk until that frame's iteration finishes — so each reserves its
-    // evidence slot here and the diff runs in a post-loop pass, keeping evidence in timeline order.
+    // `assert.pixels` events (issue #2519) freeze the frame bytes at the assertion's own timeline
+    // position — before any later same-bucket event — mirroring the desktop session, so the golden
+    // check observes the UI as of the assertion rather than after a same-bucket input. Each reserves
+    // its evidence slot here and the diff runs in a post-loop pass, keeping evidence in timeline
+    // order.
     val pendingPixels = mutableListOf<PendingPixelAssert>()
     for (frameIndex in 0 until totalFrames) {
       val tMs: Long = frameIndex.toLong() * 1000L / fps.toLong()
+
+      // A bucket's virtual clock must advance to `tMs` exactly once, whether the advancing render is
+      // an `assert.pixels` snapshot mid-drain or the final written-frame render. `advanceFor` hands
+      // the full delta to the first render of the bucket and 0 to the rest.
+      var bucketAdvanceApplied = false
+      fun advanceForThisBucket(): Long =
+        if (bucketAdvanceApplied) 0L
+        else {
+          bucketAdvanceApplied = true
+          if (frameIndex == 0) 0L else tMs - lastFrameTimeMs
+        }
 
       // Drain script events whose virtual tMs has elapsed by this frame's tMs and dispatch each
       // through the held-rule loop. Translation back through the InteractiveInputParams shape
@@ -179,11 +192,25 @@ class AndroidRecordingSession(
       while (nextEventIdx < sortedEvents.size && sortedEvents[nextEventIdx].tMs <= tMs) {
         val e = sortedEvents[nextEventIdx]
         if (e.kind == RecordingScriptDataExtensions.ASSERT_PIXELS_EVENT) {
-          // Defer to the frame written for this bucket (below): on Android every same-bucket event
-          // is dispatched before the single render, so "the frame at this tMs" is the only
-          // well-defined snapshot — the on-disk `frame-NNNNN.png` for this frameIndex. Reserve a
-          // FAILED placeholder so a (bug) skipped finalization fails closed.
-          pendingPixels.add(PendingPixelAssert(evidence.size, frameIndex, e))
+          // Render + freeze the frame *now*, at this assertion's position in the drain (after the
+          // events before it, before the ones after it) — the same "before later same-bucket
+          // events" snapshot the desktop session takes. The advance is charged to the bucket once
+          // (above); a later same-bucket event then dispatches against the already-advanced clock
+          // and shows up in the final written frame, not in this frozen snapshot.
+          val snapshotSrc =
+            interactive
+              .render(
+                requestId = RenderHost.nextRequestId(),
+                advanceTimeMs = advanceForThisBucket(),
+              )
+              .pngPath
+              ?: error(
+                "AndroidRecordingSession: interactive.render returned no pngPath for assert.pixels " +
+                  "at frame $frameIndex"
+              )
+          pendingPixels.add(
+            PendingPixelAssert(evidence.size, captureScaledFrameBytes(snapshotSrc), e)
+          )
           evidence.add(failedEvidence(e, "assert.pixels: not evaluated"))
         } else {
           val ctx = SimpleRecordingDispatchContext(tNanos = tMs * 1_000_000L, tMs = tMs)
@@ -192,10 +219,15 @@ class AndroidRecordingSession(
         nextEventIdx++
       }
 
-      val advanceTimeMs = if (frameIndex == 0) 0L else tMs - lastFrameTimeMs
-      lastFrameTimeMs = tMs
+      // The written-frame render; `advanceForThisBucket()` must be called before `lastFrameTimeMs`
+      // is bumped so it can compute `tMs - lastFrameTimeMs` (it returns 0 here when an earlier
+      // assert.pixels render already advanced this bucket).
       val rendered =
-        interactive.render(requestId = RenderHost.nextRequestId(), advanceTimeMs = advanceTimeMs)
+        interactive.render(
+          requestId = RenderHost.nextRequestId(),
+          advanceTimeMs = advanceForThisBucket(),
+        )
+      lastFrameTimeMs = tMs
       val srcPath =
         rendered.pngPath
           ?: error(
@@ -208,10 +240,10 @@ class AndroidRecordingSession(
         frameHeightPx = dims.second
       }
     }
-    // Post-loop: every frame is on disk now, so diff each deferred assert.pixels against the frame
-    // written for its timeline position.
+    // Post-loop: diff each frozen assert.pixels snapshot against its baseline (deferred to keep
+    // evidence in timeline order; the pixels were frozen at the assertion above).
     for (p in pendingPixels) {
-      evidence[p.evidenceIndex] = evaluatePixelAssert(p.event, p.frameIndex)
+      evidence[p.evidenceIndex] = evaluatePixelAssert(p.event, p.snapshotPng)
     }
     val tookMs = (System.nanoTime() - startNs) / 1_000_000L
     System.err.println(
@@ -230,28 +262,47 @@ class AndroidRecordingSession(
   }
 
   /**
-   * A deferred `assert.pixels` event (issue #2519): the diff of the frame written for [frameIndex]
-   * against the baseline runs after the playback loop (once every frame is on disk) and its result
-   * replaces the placeholder evidence at [evidenceIndex] so the event keeps its timeline position.
+   * A deferred `assert.pixels` event (issue #2519): [snapshotPng] is the frame frozen at the event's
+   * timeline position during playback (scaled the same way the written frames are); the diff against
+   * the baseline runs after the loop and its result replaces the placeholder evidence at
+   * [evidenceIndex] so the event keeps its position. Not a `data class` — it holds a `ByteArray` and
+   * is only ever appended to a list (no equality needed).
    */
   private class PendingPixelAssert(
     val evidenceIndex: Int,
-    val frameIndex: Int,
+    val snapshotPng: ByteArray,
     val event: RecordingScriptEvent,
   )
 
   /**
-   * Golden-image assertion on the Android backend (issue #2519): diff the frame written for
-   * [frameIndex] (`frame-NNNNN.png`, the same file the encoder reads) against the committed baseline
-   * PNG named by the event's `inputText` (resolved CLI-side against `--baseline-dir`). The pure
-   * verdict lives in [pixelAssertVerdict] in `:daemon:core` — the same one the desktop backend uses,
-   * reusing the `PixelDiff` comparator. On failure it writes actual/expected/diff PNGs under
-   * [encodedDir] so the drift is inspectable without re-running. Fail-closed: a missing baseline, a
-   * missing frame, or a dimension mismatch is FAILED, never a silent pass.
+   * Render [srcPngPath] (an `interactive.render` output, the raw natural-size frame) through the
+   * same [copyAndMaybeScale] the written frames use, and return the scaled PNG bytes. A baseline is
+   * captured from a written (scaled) `frame-NNNNN.png`, so the frozen `assert.pixels` snapshot has
+   * to be scaled identically for the diff to be apples-to-apples. Uses a short-lived temp file under
+   * [framesDir] because `copyAndMaybeScale` writes to disk.
+   */
+  private fun captureScaledFrameBytes(srcPngPath: String): ByteArray {
+    val tmp = File.createTempFile("assert-pixels-snapshot-", ".png", framesDir)
+    return try {
+      copyAndMaybeScale(File(srcPngPath), tmp, scale)
+      tmp.readBytes()
+    } finally {
+      tmp.delete()
+    }
+  }
+
+  /**
+   * Golden-image assertion on the Android backend (issue #2519): diff the [actualPng] snapshot
+   * (frozen at the event's position in [stopScripted]) against the committed baseline PNG named by
+   * the event's `inputText` (resolved CLI-side against `--baseline-dir`). The pure verdict lives in
+   * [pixelAssertVerdict] in `:daemon:core` — the same one the desktop backend uses, reusing the
+   * `PixelDiff` comparator. On failure it writes actual/expected/diff PNGs under [encodedDir] so the
+   * drift is inspectable without re-running. Fail-closed: a missing baseline, a missing frame, or a
+   * dimension mismatch is FAILED, never a silent pass.
    */
   private fun evaluatePixelAssert(
     event: RecordingScriptEvent,
-    frameIndex: Int,
+    actualPng: ByteArray,
   ): RecordingScriptEvidence {
     val baselinePath =
       event.inputText
@@ -259,14 +310,12 @@ class AndroidRecordingSession(
           event,
           "assert.pixels requires the baseline PNG path in the 'inputText' field",
         )
-    val frameFile = File(framesDir, "frame-${"%05d".format(frameIndex)}.png")
-    val actualPng = frameFile.takeIf { it.isFile }?.readBytes()
     val baselineBytes = File(baselinePath).takeIf { it.isFile }?.readBytes()
     return when (val verdict = pixelAssertVerdict(actualPng, baselineBytes)) {
       AssertionVerdict.Passed ->
         appliedEvidence(event, "assert.pixels matched baseline '${File(baselinePath).name}'")
       is AssertionVerdict.Failed -> {
-        if (actualPng != null && baselineBytes != null) {
+        if (baselineBytes != null) {
           // Best-effort diagnostics — never let an artefact-write failure mask the real verdict.
           try {
             val diffDir = File(encodedDir, "pixel-diff-t${event.tMs}ms").apply { mkdirs() }

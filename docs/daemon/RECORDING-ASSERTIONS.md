@@ -153,11 +153,13 @@ compose-preview record --preview MyForm --script form.json --out form.gif --base
 - **Both backends (issue #2519).** Desktop and Android both write a `frame-NNNNN.png` per frame and
   diff the frame at the event's `tMs` against the baseline. The pure verdict (`pixelAssertVerdict`)
   lives in `:daemon:core` (relocated there from `:daemon:desktop` when Android gained the feature),
-  reusing the `PixelDiff` comparator (also in `:daemon:core`). Desktop snapshots the frame *before*
-  any later same-bucket event; Android renders one frame per bucket *after* dispatching every
-  same-bucket event, so on Android the golden check observes the on-disk frame written for that
-  `tMs` (a same-bucket input dispatched before the assert is therefore reflected in it). Both write
-  `actual/expected/diff.png` next to the encoded output on failure.
+  reusing the `PixelDiff` comparator (also in `:daemon:core`). Both **freeze the frame at the
+  assertion's own timeline position — before any later same-bucket event** — so the golden check
+  observes the UI as of the assertion, not after a same-bucket input. Android does this by rendering
+  and capturing the frame bytes when the `assert.pixels` is drained (charging the bucket's
+  virtual-clock advance to that render so the bucket still advances exactly once), rather than
+  reusing the post-dispatch frame it writes to disk. Both write `actual/expected/diff.png` next to
+  the encoded output on failure.
 
 ## What we borrowed (and what we deliberately didn't)
 

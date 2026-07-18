@@ -274,6 +274,54 @@ class AndroidRecordingSessionTest {
   }
 
   /**
+   * Issue #2519 — `assert.pixels` freezes the frame at the assertion's timeline position, *before* a
+   * later same-bucket input, mirroring the desktop session (rather than diffing the post-input frame
+   * that lands on disk). The fake renders `sourcePng` until an input lands and `postDispatchPng`
+   * after; an `assert.pixels` ordered before a same-tMs `input.click` must match the pre-input
+   * baseline. Without the freeze it would compare the post-click frame and fail.
+   */
+  @Test
+  fun scriptedPixelAssertionFreezesBeforeLaterSameBucketInput() {
+    val framesDir = tempFolder.newFolder("pixels-freeze-frames")
+    val encodedDir = tempFolder.newFolder("pixels-freeze-encoded")
+    val sourceDir = tempFolder.newFolder("pixels-freeze-source")
+    val preInput = File(sourceDir, "pre.png")
+    ImageIO.write(solidArgb(8, 8, 0xFF3366CC.toInt()), "png", preInput) // blue, pre-click
+    val postInput = File(sourceDir, "post.png")
+    ImageIO.write(solidArgb(8, 8, 0xFFCC3366.toInt()), "png", postInput) // red, post-click
+    val baseline = File(sourceDir, "baseline.png")
+    ImageIO.write(solidArgb(8, 8, 0xFF3366CC.toInt()), "png", baseline) // matches the pre-click frame
+
+    val interactive = RecordingDeltaSession(preInput).apply { postDispatchPng = postInput }
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-pixels-freeze",
+        fps = FPS,
+        scale = 1.0f,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    // Same bucket (tMs = 0): the assertion is ordered before the click, so it must observe the
+    // pre-click (blue) frame even though the click (which flips the frame to red) shares the bucket.
+    session.postScript(
+      listOf(
+        RecordingScriptEvent(tMs = 0L, kind = "assert.pixels", inputText = baseline.absolutePath),
+        RecordingScriptEvent(tMs = 0L, kind = "input.click", pixelX = 4, pixelY = 4),
+      )
+    )
+    val asserts = session.stop().scriptEvents.filter { it.kind == "assert.pixels" }
+    assertEquals(1, asserts.size)
+    assertEquals(
+      "assert.pixels must freeze the pre-input frame; got ${asserts[0].message}",
+      RecordingScriptEventStatus.APPLIED,
+      asserts[0].status,
+    )
+  }
+
+  /**
    * Issue #1966 — `assert.a11y` runs Android ATF against the held composition and fails the
    * recording when findings breach the threshold (`inputText`: `errors` default | `warnings`).
    * Verdict comes from the shared `evaluateA11yAssertion`; capture rides the `captureA11yFindings`
@@ -2140,13 +2188,21 @@ class AndroidRecordingSessionTest {
       return override ?: super.dispatchNavigation(actionKind, deepLinkUri, backProgress, backEdge)
     }
 
+    /**
+     * When non-null, [render] returns this frame instead of [sourcePng] once at least one dispatch
+     * has landed — a minimal "the UI changed after an input" model, so a test can prove
+     * `assert.pixels` freezes the *pre-input* frame at the assertion's timeline position.
+     */
+    var postDispatchPng: File? = null
+
     override fun render(requestId: Long, advanceTimeMs: Long?): RenderResult {
       renderAdvances.add(advanceTimeMs)
+      val png = postDispatchPng?.takeIf { dispatchCount > 0 } ?: sourcePng
       return RenderResult(
         id = requestId,
         classLoaderHashCode = 0,
         classLoaderName = "recording-delta-session",
-        pngPath = sourcePng.absolutePath,
+        pngPath = png.absolutePath,
         metrics = mapOf("tookMs" to 0L),
       )
     }
