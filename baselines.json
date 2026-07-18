@@ -205,6 +205,18 @@
       "sha256": "8343292c6659933e32abce58ed9183c03ea6c8998c24931fed7cc4add0d11612",
       "size": 99248
     },
+    "serve-landing-sections.dark.png": {
+      "fixture": "serve-landing-sections",
+      "theme": "dark",
+      "sha256": "946347685c43c6f5431a5b4681a5706926bb62f26c3b51c9c0cae02c9adbe4c0",
+      "size": 76294
+    },
+    "serve-landing-sections.light.png": {
+      "fixture": "serve-landing-sections",
+      "theme": "light",
+      "sha256": "ba878e06063a5ff6c54b255f0d8242a901aa1a209d50d0bf764794f61a620ba6",
+      "size": 75738
+    },
     "serve-landing-states.dark.png": {
       "fixture": "serve-landing-states",
       "theme": "dark",

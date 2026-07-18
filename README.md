@@ -130,6 +130,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-landing-public/dark](renders/serve-landing-public.dark.png) |
 | `light` | ![serve-landing-public/light](renders/serve-landing-public.light.png) |
 
+## serve-landing-sections
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-sections/dark](renders/serve-landing-sections.dark.png) |
+| `light` | ![serve-landing-sections/light](renders/serve-landing-sections.light.png) |
+
 ## serve-landing-states
 
 | Theme | Capture |
