@@ -1,11 +1,16 @@
 package ee.schimke.composeai.daemon
 
 /**
- * Pure verdict logic for the `assert.pixels` recording event (issue #1967): diff a recorded frame
- * against a committed baseline PNG and decide pass/fail, reusing the [PixelDiff] comparator that
- * the preview-review pipeline already uses. Kept free of file IO and the recording session so it's
- * unit-testable from raw PNG bytes — the session ([DesktopRecordingSession]) handles reading the
- * frame + baseline off disk and turning this verdict into `RecordingScriptEvidence`.
+ * Pure verdict logic for the `assert.pixels` recording event (issues #1967, #2519): diff a recorded
+ * frame against a committed baseline PNG and decide pass/fail, reusing the [PixelDiff] comparator
+ * that the preview-review pipeline already uses. Kept free of file IO and the recording session so
+ * it is unit-testable from raw PNG bytes — the backend session (`DesktopRecordingSession` /
+ * `AndroidRecordingSession`) handles reading the frame + baseline off disk and turning this verdict
+ * into `RecordingScriptEvidence`.
+ *
+ * Lives in `:daemon:core` (alongside [PixelDiff]) so **both** the desktop and Android recording
+ * sessions share one implementation: each writes its frames the same way (a `frame-NNNNN.png` per
+ * frame) and feeds the frame + baseline bytes here.
  *
  * Fail-closed: a missing baseline or a missing recorded frame is a [AssertionVerdict.Failed], never
  * a silent pass — the script asked to pin pixels, so an un-runnable check is a failure. `PixelDiff`

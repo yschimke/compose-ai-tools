@@ -82,11 +82,12 @@ class AndroidRecordingSessionTest {
   }
 
   /**
-   * Issue #1964 — `assert.visible` / `assert.notVisible` resolve against the probe semantics
-   * snapshot ([InteractiveSession.captureProbeSemantics]) by testTag, producing APPLIED / FAILED
-   * evidence via the shared `evaluateVisibilityAssertion`. `ref` targets fail with a clear message
-   * (the probe snapshot carries no refs). Uses the fake [RecordingDeltaSession] with canned probe
-   * nodes, so no Robolectric sandbox is needed.
+   * Issues #1964, #2519 — `assert.visible` / `assert.notVisible` resolve against the probe semantics
+   * snapshot ([InteractiveSession.captureProbeSemantics]) by `testTag`, `role`+`text`, or `text`,
+   * producing APPLIED / FAILED evidence via the shared `evaluateVisibilityAssertion`. `role`+`text`
+   * matches a container via its merged descendant text (a bare `Button { Text("Add") }`); `ref`
+   * targets fail with a clear message (the probe snapshot carries no refs). Uses the fake
+   * [RecordingDeltaSession] with canned probe nodes, so no Robolectric sandbox is needed.
    */
   @Test
   fun scriptedVisibilityAssertionsResolveAgainstProbeSnapshot() {
@@ -103,6 +104,8 @@ class AndroidRecordingSessionTest {
         probeNodesResult =
           listOf(
             RecordingProbeNode(testTag = "target-box", clickable = true),
+            // A bare `Button { Text("Add") }`: role on the container, text merged up from the child.
+            RecordingProbeNode(role = "Button", clickable = true, mergedText = "Add"),
             RecordingProbeNode(text = "Hello"),
           )
       }
@@ -127,12 +130,86 @@ class AndroidRecordingSessionTest {
         assertEvent("assert.notVisible", SemanticsInputTarget(testTag = "nope")), // APPLIED
         assertEvent("assert.notVisible", SemanticsInputTarget(testTag = "target-box")), // FAILED
         assertEvent("assert.visible", SemanticsInputTarget(ref = "r1")), // FAILED (no refs)
-        // role+text isn't resolvable against a flat probe snapshot; must FAIL, never silently pass.
-        assertEvent("assert.notVisible", SemanticsInputTarget(role = "Button", text = "Hello")),
+        // role+text now resolves via the container's merged text — the button is on screen.
+        assertEvent(
+          "assert.visible",
+          SemanticsInputTarget(role = "Button", text = "Add"),
+        ), // APPLIED
+        assertEvent("assert.visible", SemanticsInputTarget(text = "Hello")), // APPLIED (text only)
+        // role+text with the wrong text matches nothing → notVisible passes.
+        assertEvent(
+          "assert.notVisible",
+          SemanticsInputTarget(role = "Button", text = "Missing"),
+        ), // APPLIED
       )
     )
     val result = session.stop()
     val asserts = result.scriptEvents.filter { it.kind.startsWith("assert.") }
+    assertEquals(8, asserts.size)
+    assertEquals(RecordingScriptEventStatus.APPLIED, asserts[0].status)
+    assertEquals(RecordingScriptEventStatus.FAILED, asserts[1].status)
+    assertEquals(RecordingScriptEventStatus.APPLIED, asserts[2].status)
+    assertEquals(RecordingScriptEventStatus.FAILED, asserts[3].status)
+    assertEquals(RecordingScriptEventStatus.FAILED, asserts[4].status)
+    assertTrue(
+      "a ref target should explain refs aren't in the snapshot; got ${asserts[4].message}",
+      asserts[4].message?.contains("ref") == true,
+    )
+    assertEquals(RecordingScriptEventStatus.APPLIED, asserts[5].status)
+    assertEquals(RecordingScriptEventStatus.APPLIED, asserts[6].status)
+    assertEquals(RecordingScriptEventStatus.APPLIED, asserts[7].status)
+  }
+
+  /**
+   * Issue #2519 — `assert.textEquals` on Android resolves the target against the probe snapshot and
+   * compares the resolved node's (merged) text to the expected `inputText`. A tag-on-container /
+   * role+text shape resolves the merged descendant text the user sees; a wrong expected string, a
+   * `ref` target, or a target that matches no node fails. Fake session, no sandbox.
+   */
+  @Test
+  fun scriptedTextEqualsAssertionsResolveAgainstProbeSnapshot() {
+    val framesDir = tempFolder.newFolder("texteq-frames")
+    val encodedDir = tempFolder.newFolder("texteq-encoded")
+    val sourcePng = File(tempFolder.newFolder("texteq-source"), "source.png")
+    ImageIO.write(
+      java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB),
+      "png",
+      sourcePng,
+    )
+    val interactive =
+      RecordingDeltaSession(sourcePng).apply {
+        probeNodesResult =
+          listOf(
+            // Tag-on-container: own text null, merged text "Submit" from the child.
+            RecordingProbeNode(testTag = "submit", role = "Button", mergedText = "Submit"),
+            RecordingProbeNode(text = "Hello"),
+          )
+      }
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-texteq",
+        fps = FPS,
+        scale = 1.0f,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    fun textEq(target: SemanticsInputTarget, expected: String?) =
+      RecordingScriptEvent(tMs = 0L, kind = "assert.textEquals", target = target, inputText = expected)
+
+    session.postScript(
+      listOf(
+        textEq(SemanticsInputTarget(testTag = "submit"), "Submit"), // APPLIED (merged text)
+        textEq(SemanticsInputTarget(testTag = "submit"), "Nope"), // FAILED (text differs)
+        textEq(SemanticsInputTarget(text = "Hello"), "Hello"), // APPLIED (own text)
+        textEq(SemanticsInputTarget(testTag = "absent"), "Submit"), // FAILED (no match)
+        textEq(SemanticsInputTarget(ref = "r1"), "Submit"), // FAILED (ref unsupported)
+        textEq(SemanticsInputTarget(testTag = "submit"), null), // FAILED (no expected)
+      )
+    )
+    val asserts = session.stop().scriptEvents.filter { it.kind == "assert.textEquals" }
     assertEquals(6, asserts.size)
     assertEquals(RecordingScriptEventStatus.APPLIED, asserts[0].status)
     assertEquals(RecordingScriptEventStatus.FAILED, asserts[1].status)
@@ -140,13 +217,60 @@ class AndroidRecordingSessionTest {
     assertEquals(RecordingScriptEventStatus.FAILED, asserts[3].status)
     assertEquals(RecordingScriptEventStatus.FAILED, asserts[4].status)
     assertTrue(
-      "non-testTag target should explain it resolves by testTag; got ${asserts[4].message}",
-      asserts[4].message?.contains("testTag") == true,
+      "a ref target should explain refs aren't in the snapshot; got ${asserts[4].message}",
+      asserts[4].message?.contains("ref") == true,
     )
-    // The dangerous case: a role+text assert.notVisible must NOT pass just because the flat
-    // snapshot
-    // can't see a role+text node — it fails as unsupported instead of silently passing.
     assertEquals(RecordingScriptEventStatus.FAILED, asserts[5].status)
+  }
+
+  /**
+   * Issue #2519 — `assert.pixels` on Android diffs the frame written for the event's tMs against a
+   * committed baseline PNG (path in `inputText`), reusing the shared `pixelAssertVerdict` /
+   * `PixelDiff`. The fake session renders every frame from `sourcePng`, so a baseline byte-identical
+   * to it passes, a different-content baseline fails, and a missing baseline fails closed.
+   */
+  @Test
+  fun scriptedPixelAssertionsDiffTheWrittenFrameAgainstTheBaseline() {
+    val framesDir = tempFolder.newFolder("pixels-frames")
+    val encodedDir = tempFolder.newFolder("pixels-encoded")
+    val sourceDir = tempFolder.newFolder("pixels-source")
+    val sourcePng = File(sourceDir, "source.png")
+    // A solid-blue frame is what every render returns; the matching baseline is byte-identical.
+    ImageIO.write(solidArgb(8, 8, 0xFF3366CC.toInt()), "png", sourcePng)
+    val matchingBaseline = File(sourceDir, "match.png")
+    ImageIO.write(solidArgb(8, 8, 0xFF3366CC.toInt()), "png", matchingBaseline)
+    val driftingBaseline = File(sourceDir, "drift.png")
+    ImageIO.write(solidArgb(8, 8, 0xFFCC3366.toInt()), "png", driftingBaseline)
+
+    val interactive = RecordingDeltaSession(sourcePng)
+    val session =
+      AndroidRecordingSession(
+        previewId = INTERACTIVE_PREVIEW_ID,
+        recordingId = "test-rec-pixels",
+        fps = FPS,
+        scale = 1.0f,
+        interactive = interactive,
+        framesDir = framesDir,
+        encodedDir = encodedDir,
+      )
+
+    fun pixels(baseline: String?) =
+      RecordingScriptEvent(tMs = 0L, kind = "assert.pixels", inputText = baseline)
+
+    session.postScript(
+      listOf(
+        pixels(matchingBaseline.absolutePath), // APPLIED
+        pixels(driftingBaseline.absolutePath), // FAILED (drift)
+        pixels(File(sourceDir, "missing.png").absolutePath), // FAILED (no baseline)
+        pixels(null), // FAILED (no path)
+      )
+    )
+    val asserts = session.stop().scriptEvents.filter { it.kind == "assert.pixels" }
+    assertEquals(4, asserts.size)
+    assertEquals(RecordingScriptEventStatus.APPLIED, asserts[0].status)
+    assertEquals(RecordingScriptEventStatus.FAILED, asserts[1].status)
+    assertEquals(RecordingScriptEventStatus.FAILED, asserts[2].status)
+    assertEquals(RecordingScriptEventStatus.FAILED, asserts[3].status)
   }
 
   /**
@@ -2031,6 +2155,12 @@ class AndroidRecordingSessionTest {
       closed = true
     }
   }
+
+  /** A solid `argb`-filled image, used to build byte-stable golden frames / baselines. */
+  private fun solidArgb(width: Int, height: Int, argb: Int): java.awt.image.BufferedImage =
+    java.awt.image.BufferedImage(width, height, java.awt.image.BufferedImage.TYPE_INT_ARGB).apply {
+      for (y in 0 until height) for (x in 0 until width) setRGB(x, y, argb)
+    }
 
   companion object {
     private const val INTERACTIVE_PREVIEW_ID = "recording-clicktoggle"

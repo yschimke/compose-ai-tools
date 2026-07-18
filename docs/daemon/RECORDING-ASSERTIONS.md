@@ -67,22 +67,25 @@ recording as a gating check.
 | Backend | `assert.visible` / `assert.notVisible` | `assert.textEquals` | `assert.a11y` | `assert.pixels` |
 |---------|----------------------------------------|---------------------|---------------|-----------------|
 | Desktop | ✅ (resolved against the live unmerged semantics tree) | ✅ | ❌ — desktop a11y is overlay-only (no ATF findings); not advertised | ✅ (diffs the frame it wrote against the baseline) |
-| Android | ✅ (resolved against the probe-semantics snapshot, by `testTag` only) | ❌ — `record_preview` rejects it | ✅ (ATF against the held View hierarchy) | ❌ — not advertised yet (follow-up) |
+| Android | ✅ (resolved against the probe-semantics snapshot: `testTag` / `role`+`text` / `text`) | ✅ | ✅ (ATF against the held View hierarchy) | ✅ (diffs the frame it wrote against the baseline) |
 
-Desktop advertises `RecordingScriptDataExtensions.assertionDescriptor` (all three) and resolves via
-`state.scene.composeSemanticsRoot()`. Android (issue #1964) advertises the narrower
-`assertionVisibilityDescriptor` and resolves visibility against the already-bridged
-`captureProbeSemantics()` snapshot — the same path the `recording.probe` event uses, so no new
-sandbox command is needed. The pure verdict logic (`evaluateVisibilityAssertion`) lives in
+Desktop advertises `RecordingScriptDataExtensions.assertionDescriptor` (all four) and resolves via
+`state.scene.composeSemanticsRoot()`. Android (issues #1964, #2519) advertises
+`assertionAndroidDescriptor` (visible / notVisible / textEquals / pixels) and resolves targets
+against the already-bridged `captureProbeSemantics()` snapshot — the same path the `recording.probe`
+event uses, so no new sandbox command is needed. The pure verdict logic
+(`evaluateVisibilityAssertion` / `evaluateTextEqualsAssertion` / `pixelAssertVerdict`) lives in
 `:daemon:core` so both backends share one implementation.
 
-**Android limitations (today):** assertions resolve by **`testTag` only**. The probe snapshot is a
-flat node list, so a `role`+`text` target can't be matched reliably — a `Button { Text("Add") }`
-emits the `role` on the button and the `text` on a separate child, so checking both on one node
-matches nothing and would make `assert.notVisible` *wrongly pass* while the control is on screen.
-`ref` (no refs in the snapshot) and `role`+`text` both fail with a clear message rather than risk a
-false pass; `assert.textEquals` isn't advertised at all. Enriching the snapshot to support
-`role`+`text` is a follow-up.
+**Android targets (issue #2519):** the probe snapshot is a flat node list, but each retained node
+now carries its **merged descendant text** (`RecordingProbeNode.mergedText`), so `testTag`,
+`role`+`text`, and `text` alone all resolve. A `Button { Text("Add") }` emits the `role` on the
+button and the `text` on a child; the button node carries the child's merged text, so a
+`role`+`text` (or `assert.textEquals`) target matches the control the user sees rather than failing
+closed. The pure resolver `resolveProbeTarget` (in `:daemon:core`) mirrors the desktop resolver's
+precedence (testTag → role+text → text) and reads a node's *effective* text (own text, else merged
+descendant text). The one shape it can't resolve is a `ref` target — no refs survive into the flat
+snapshot — which fails with a clear message rather than risk a false `assert.notVisible` pass.
 
 ### Accessibility assertions (`assert.a11y`)
 
@@ -147,12 +150,14 @@ compose-preview record --preview MyForm --script form.json --out form.gif --base
   `diff.png` next to the encoded output so the drift is inspectable without re-running.
 - **Fail-closed.** A missing baseline or a dimension mismatch is `FAILED`, never a silent pass — the
   script asked to pin pixels.
-- **Desktop-only today.** The Android backend renders frames the same way, so extending
-  `assert.pixels` there is a mechanical follow-up, but it's not advertised yet so `record_preview`
-  rejects it on Android. The pure verdict (`pixelAssertVerdict`) lives in `:daemon:desktop` and is
-  unit-tested from raw PNG bytes; it reuses the `PixelDiff` comparator, which this change relocated
-  from the (unpublished) `:daemon:harness` into the published `:daemon:core` so the released
-  `daemon-desktop` runtime can depend on it.
+- **Both backends (issue #2519).** Desktop and Android both write a `frame-NNNNN.png` per frame and
+  diff the frame at the event's `tMs` against the baseline. The pure verdict (`pixelAssertVerdict`)
+  lives in `:daemon:core` (relocated there from `:daemon:desktop` when Android gained the feature),
+  reusing the `PixelDiff` comparator (also in `:daemon:core`). Desktop snapshots the frame *before*
+  any later same-bucket event; Android renders one frame per bucket *after* dispatching every
+  same-bucket event, so on Android the golden check observes the on-disk frame written for that
+  `tMs` (a same-bucket input dispatched before the assert is therefore reflected in it). Both write
+  `actual/expected/diff.png` next to the encoded output on failure.
 
 ## What we borrowed (and what we deliberately didn't)
 
@@ -192,10 +197,9 @@ land (each is a separate follow-up, not in this PR):
   [above](#accessibility-assertions-asserta11y). Runs ATF against the held View hierarchy and fails
   the recording on findings at the chosen threshold. Desktop has no ATF backend, so it stays
   Android-only for now.
-- **Pixel / golden assertions** — **Shipped (desktop)** as `assert.pixels`, see
+- **Pixel / golden assertions** — **Shipped (both backends)** as `assert.pixels`, see
   [above](#pixel-assertions-assertpixels). Diffs the recorded frame against a committed baseline PNG
-  via `PixelDiff`. Android is a mechanical follow-up (it writes frames the same way; just not
-  advertised yet).
+  via `PixelDiff`; Android landed alongside the text/target enrichment in issue #2519.
 
 ## Code map
 
@@ -203,20 +207,26 @@ land (each is a separate follow-up, not in this PR):
   (`daemon/core/.../RecordingScriptHandlerRegistry.kt`).
 - Event kinds + descriptors: `RecordingScriptDataExtensions.ASSERT_VISIBLE_EVENT` /
   `ASSERT_NOT_VISIBLE_EVENT` / `ASSERT_TEXT_EQUALS_EVENT` / `ASSERT_A11Y_EVENT` / `ASSERT_PIXELS_EVENT`;
-  `assertionDescriptor` (desktop — visibility, text, **and pixels**), `assertionVisibilityDescriptor`
-  (Android, visibility only), and `assertionA11yDescriptor` (Android, a11y)
-  (`data/render/core/.../DataExtensionPlan.kt`).
-- Verdict logic (pure, unit-tested): `evaluateVisibilityAssertion` / `evaluateTextEqualsAssertion` /
-  `resolvedNodeText` / `evaluateA11yAssertion` + `A11yAssertThreshold`
-  (`daemon/core/.../RecordingAssertions.kt`); `pixelAssertVerdict` (golden-image, reuses `PixelDiff`)
-  (`daemon/desktop/.../PixelAssertions.kt`).
+  `assertionDescriptor` (desktop — visibility, text, **and pixels**), `assertionAndroidDescriptor`
+  (Android — visibility, text, **and pixels**, resolved against the flat probe snapshot), and
+  `assertionA11yDescriptor` (Android, a11y) (`data/render/core/.../DataExtensionPlan.kt`).
+- Verdict logic (pure, unit-tested, all in `:daemon:core`): `evaluateVisibilityAssertion` /
+  `evaluateTextEqualsAssertion` / `resolvedNodeText` / `evaluateA11yAssertion` + `A11yAssertThreshold`
+  (`daemon/core/.../RecordingAssertions.kt`); `resolveProbeTarget` / `effectiveText` (the Android
+  flat-snapshot resolver, `daemon/core/.../RecordingProbeTargets.kt`); `pixelAssertVerdict`
+  (golden-image, reuses `PixelDiff`, `daemon/core/.../PixelAssertions.kt`).
+- Probe-snapshot enrichment: `RecordingProbeNode.mergedText` (`daemon/core/.../protocol/Messages.kt`)
+  populated by `ComposeSemanticsNode.toProbeNodes()`
+  (`data/layoutinspector/connector/.../ComposeSemanticsDataProduct.kt`).
 - Handler wiring: `DesktopRecordingSession.assertVisibilityHandler` /
   `assertTextEqualsHandler` (advertised by `DesktopHost`); `AndroidRecordingSession`'s
-  `assertVisibilityHandler` resolving against `captureProbeSemantics()` and `assertA11yHandler`
-  resolving against `captureA11yFindings()` — the latter bridged by the `CaptureA11yFindings`
-  interactive command running `AccessibilityChecker.check` sandbox-side in `RobolectricHost`
-  (advertised by `RobolectricHost`).
-- Pixel-assert wiring: `DesktopRecordingSession.evaluatePixelAssert` (post-playback diff of the
-  written `frame-NNNNN.png` against the baseline, writes `actual/expected/diff.png` on failure).
+  `assertVisibilityHandler` / `assertTextEqualsHandler` resolving against `captureProbeSemantics()`
+  via `resolveProbeTarget`, and `assertA11yHandler` resolving against `captureA11yFindings()` — the
+  latter bridged by the `CaptureA11yFindings` interactive command running `AccessibilityChecker.check`
+  sandbox-side in `RobolectricHost` (advertised by `RobolectricHost`).
+- Pixel-assert wiring: `DesktopRecordingSession.evaluatePixelAssert` (snapshots the frame at the
+  event's position) and `AndroidRecordingSession.evaluatePixelAssert` (diffs the on-disk
+  `frame-NNNNN.png` written for the event's `tMs`); both a post-playback diff against the baseline,
+  writing `actual/expected/diff.png` on failure.
 - CLI gate: `RecordPreviewCommand` — `--baseline-dir` resolves `assert.pixels` baseline paths; fails
   any non-`APPLIED` `assert.*` evidence, prints each, exits 2.

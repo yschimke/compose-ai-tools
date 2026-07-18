@@ -2256,6 +2256,15 @@ data class RecordingScriptParams(val recordingId: String, val events: List<Recor
  * testTag/text/ contentDescription at capture time — without one of those there is no stable finder
  * to assert on.
  *
+ * [mergedText] carries the **merged text of this node's descendants** (issue #2519), so a
+ * tag-on-the-container or role-bearing shape like `Button(Modifier.testTag("submit")) {
+ * Text("Submit") }` — whose own [text] is null while the visible text sits on a child — still
+ * exposes what the user sees. It mirrors Compose's merged semantics (depth-first, newline-joined,
+ * the same separator [resolvedNodeText][ee.schimke.composeai.daemon.resolvedNodeText] uses) so the
+ * flat snapshot can answer `role`+`text` targets and `assert.textEquals` on the Android backend
+ * without a live tree. The *effective* text of a node is its own [text] when present, else
+ * [mergedText] (see [effectiveText][ee.schimke.composeai.daemon.effectiveText]).
+ *
  * [RecordingTestGenerator] diffs a probe's node list against the previous probe's to turn each
  * `recording.probe` into the strongest stable assertion (a node appeared, a node disappeared, text
  * became present) instead of a hand-filled TODO stub.
@@ -2267,6 +2276,7 @@ data class RecordingProbeNode(
   val contentDescription: String? = null,
   val role: String? = null,
   val clickable: Boolean = false,
+  val mergedText: String? = null,
 )
 
 /**
