@@ -380,6 +380,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `FilledTonalButtonSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/FilledTonalButtonSticker.png" width="150" /> |
 | `IconButtonSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/IconButtonSticker.png" width="150" /> |
 | `IconSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/IconSticker.png" width="150" /> |
+| `IndeterminateCircularProgressGif` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/IndeterminateCircularProgressGif.gif" width="150" /> |
+| `IndeterminateCircularProgressSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/IndeterminateCircularProgressSticker.png" width="150" /> |
 | `ListHeaderSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/ListHeaderSticker.png" width="150" /> |
 | `OutlinedButtonSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/OutlinedButtonSticker.png" width="150" /> |
 | `OutlinedCardSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/OutlinedCardSticker.png" width="150" /> |

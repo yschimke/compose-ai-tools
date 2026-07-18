@@ -2591,6 +2591,22 @@
     "sha256": "26e61d8f611d522bc894cf86e7e65f4015feb471ead72417b620100520e1192f",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.IndeterminateCircularProgressGif": {
+    "captureLabel": "",
+    "functionName": "IndeterminateCircularProgressGif",
+    "module": "samples:design-catalog-wear-m3",
+    "renderBasename": "IndeterminateCircularProgressGif.gif",
+    "sha256": "641f1d3fca095210fa0cf15d357171114d3a4cdc321298790a6a71c4bc1a04b4",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.IndeterminateCircularProgressSticker": {
+    "captureLabel": "",
+    "functionName": "IndeterminateCircularProgressSticker",
+    "module": "samples:design-catalog-wear-m3",
+    "renderBasename": "IndeterminateCircularProgressSticker.png",
+    "sha256": "bbd56c89412e7d252431047035ab61f4fc13248ed619e8db1878b989a419c181",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
+  },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ListHeaderSticker": {
     "captureLabel": "",
     "functionName": "ListHeaderSticker",
