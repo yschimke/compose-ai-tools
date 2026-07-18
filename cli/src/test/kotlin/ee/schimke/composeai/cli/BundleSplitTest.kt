@@ -141,4 +141,78 @@ class BundleSplitTest {
     val a2 = splitBundleZip(sheetZip(), SplitMode.VIEW_ONLY).first { it.id == "A" }
     assertContentEquals(a1.zipBytes, a2.zipBytes)
   }
+
+  /**
+   * An Android sheet also carries the app-resource payload under `android/` (the merged
+   * `resources.ap_` table, manifest, and generated R classes) plus an `androidResources` manifest
+   * pointer — the carriage a detached daemon needs to resolve `stringResource(R.string.…)`.
+   */
+  private fun androidSheetZip(): ByteArray {
+    val entries =
+      linkedMapOf(
+        "bundle.json" to
+          """
+          {"schemaVersion":8,"backend":"android","previewIds":["A"],
+           "coverPreviewId":"A","resolution":"coordinates",
+           "classpath":[{"kind":"module","path":"classes/app.jar"}],
+           "androidResources":{"resourceApkPath":"android/resources.ap_",
+             "mergedManifestPath":"android/AndroidManifest.xml",
+             "rClassesJarPath":"android/r-classes.jar",
+             "applicationPackage":"com.example.app"},
+           "intermediateRepresentations":[],"dataExtensions":[]}
+          """
+            .trimIndent()
+            .encodeToByteArray(),
+        "previews.json" to """{"schemaVersion":8,"previews":[{"id":"A"}]}""".encodeToByteArray(),
+        "previews/A.png" to "PNG-A".encodeToByteArray(),
+        "classes/app.jar" to ByteArray(2048) { 1 },
+        "android/resources.ap_" to ByteArray(1024) { 7 },
+        "android/AndroidManifest.xml" to "<manifest/>".encodeToByteArray(),
+        "android/r-classes.jar" to ByteArray(512) { 9 },
+      )
+    val baos = ByteArrayOutputStream()
+    ZipOutputStream(baos).use { zout ->
+      for ((name, bytes) in entries) {
+        zout.putNextEntry(ZipEntry(name))
+        zout.write(bytes)
+        zout.closeEntry()
+      }
+    }
+    return baos.toByteArray()
+  }
+
+  @Test
+  fun `full split carries the android app-resource payload so a detached daemon resolves stringResource`() {
+    val a = splitBundleZip(androidSheetZip(), SplitMode.FULL).first { it.id == "A" }
+    val entries = readEntries(a.zipBytes)
+
+    // The whole `android/` carriage travels into the per-preview bundle — the merged resource APK,
+    // the manifest, and the generated R classes — matching what the monolithic pack carries.
+    assertTrue("android/resources.ap_" in entries, "merged resource APK must travel")
+    assertTrue("android/AndroidManifest.xml" in entries, "merged manifest must travel")
+    assertTrue("android/r-classes.jar" in entries, "generated R classes must travel")
+    assertContentEquals(ByteArray(1024) { 7 }, entries.getValue("android/resources.ap_"))
+
+    // The manifest keeps its `androidResources` pointer, now backed by the carried files.
+    val manifest =
+      json.parseToJsonElement(entries.getValue("bundle.json").decodeToString()).jsonObject
+    val res = manifest["androidResources"]!!.jsonObject
+    assertEquals("android/resources.ap_", res["resourceApkPath"]!!.jsonPrimitive.content)
+    assertEquals("com.example.app", res["applicationPackage"]!!.jsonPrimitive.content)
+  }
+
+  @Test
+  fun `view-only split drops the android payload and its manifest pointer`() {
+    val a = splitBundleZip(androidSheetZip(), SplitMode.VIEW_ONLY).first { it.id == "A" }
+    val entries = readEntries(a.zipBytes)
+
+    // A baked, non-re-rendering sticker carries no `android/` payload…
+    assertFalse(entries.keys.any { it.startsWith("android/") })
+    // …and doesn't advertise a `resources.ap_` table it isn't shipping.
+    val manifest =
+      json.parseToJsonElement(entries.getValue("bundle.json").decodeToString()).jsonObject
+    assertFalse("androidResources" in manifest)
+    // The baked image still travels.
+    assertTrue("previews/A.png" in entries)
+  }
 }
