@@ -1405,11 +1405,16 @@ object ServeWeb {
     val overlaysHtml =
       if (hasLiveStream)
         """
-        <div class="cp-overlays">
-          <div class="cp-overlays-head">Overlays (Live Compose)</div>
-          <label class="cp-live-row"><input class="cp-overlay" id="cp-talkBack" type="checkbox" disabled> Accessibility (TalkBack)</label>
-          <label class="cp-live-row"><input class="cp-overlay" id="cp-touchOverlay" type="checkbox" disabled> Show touches</label>
-        </div>
+        <details class="cp-group" data-cp-group="overlays">
+          <summary>Overlays</summary>
+          <div class="cp-group-body">
+            <div class="cp-overlays">
+              <div class="cp-overlays-head">Overlays (Live Compose)</div>
+              <label class="cp-live-row"><input class="cp-overlay" id="cp-talkBack" type="checkbox" disabled> Accessibility (TalkBack)</label>
+              <label class="cp-live-row"><input class="cp-overlay" id="cp-touchOverlay" type="checkbox" disabled> Show touches</label>
+            </div>
+          </div>
+        </details>
         """
           .trimIndent()
       else ""
@@ -1441,10 +1446,15 @@ object ServeWeb {
       if (featureRows.isEmpty()) ""
       else
         """
-        <div class="cp-overlays">
-          <div class="cp-overlays-head">Detected features</div>
-          $featureRows
-        </div>
+        <details class="cp-group" data-cp-group="features">
+          <summary>Detected features</summary>
+          <div class="cp-group-body">
+            <div class="cp-overlays">
+              <div class="cp-overlays-head">Detected features</div>
+              $featureRows
+            </div>
+          </div>
+        </details>
         """
           .trimIndent()
     // Left-hand component nav drawer (default closed) and its toggle — only when the session
@@ -1498,7 +1508,8 @@ object ServeWeb {
               $wasmModeInput
             </span>
           </div>
-          <details class="cp-group" open>
+          ${downloadLinksHtml(hasSvgExport)}
+          <details class="cp-group" data-cp-group="appearance">
             <summary>Appearance</summary>
             <div class="cp-group-body">
               <label>Day / Night
@@ -1517,7 +1528,7 @@ object ServeWeb {
               </label>
             </div>
           </details>
-          <details class="cp-group" open>
+          <details class="cp-group" data-cp-group="size">
             <summary>Size</summary>
             <div class="cp-group-body">
               <div class="cp-size">
@@ -1545,7 +1556,7 @@ object ServeWeb {
               </div>
             </div>
           </details>
-          <details class="cp-group">
+          <details class="cp-group" data-cp-group="locale">
             <summary>Locale &amp; text</summary>
             <div class="cp-group-body">
               <label>Locale
@@ -1579,7 +1590,7 @@ object ServeWeb {
               </label>
             </div>
           </details>
-          <details class="cp-group">
+          <details class="cp-group" data-cp-group="device">
             <summary>Device</summary>
             <div class="cp-group-body">
               <label>Device
@@ -1600,13 +1611,13 @@ object ServeWeb {
           $overlaysHtml
           $featureControlsHtml
           ${overrideKnobsHtml(preview, canApplyOverrides || canRenderOverrides, wasmSrc != null)}
-          ${downloadLinksHtml(hasSvgExport)}
           <div class="cp-status" id="cp-status"></div>
         </div>
       </div>
       <!-- Backdrop shown behind an open drawer on mobile (drawers become bottom sheets there);
            tapping it dismisses the sheet. Inert on desktop. -->
       <div class="cp-scrim" id="cp-scrim" aria-hidden="true"></div>
+      <script>${groupStickyScript()}</script>
       <script>${drawerScript()}</script>
       <script>${viewerThemeStickyScript()}</script>
       <script>${viewerScript()}</script>
@@ -2645,6 +2656,35 @@ object ServeWeb {
   }
 
   /**
+   * Makes each collapsible controls group (`<details class="cp-group" data-cp-group="…">`) remember
+   * its open/closed state across navigations, keyed by its stable group id in `localStorage`
+   * (`cp-grp.<id>`). The server renders the defaults (Export open, everything else collapsed); a
+   * stored preference then overrides that default so a viewer who opened, say, Overrides once keeps
+   * it open on the next preview. Runs before the other viewer scripts so the panel opens in its
+   * remembered shape immediately. Silently no-ops when `localStorage` is unavailable.
+   */
+  private fun groupStickyScript(): String =
+    """
+    (function () {
+      var groups = document.querySelectorAll("details.cp-group[data-cp-group]");
+      function key(g) { return "cp-grp." + g.getAttribute("data-cp-group"); }
+      for (var i = 0; i < groups.length; i++) {
+        (function (g) {
+          try {
+            var v = localStorage.getItem(key(g));
+            if (v === "1") g.open = true;
+            else if (v === "0") g.open = false;
+          } catch (e) {}
+          g.addEventListener("toggle", function () {
+            try { localStorage.setItem(key(g), g.open ? "1" : "0"); } catch (e) {}
+          });
+        })(groups[i]);
+      }
+    })();
+    """
+      .trimIndent()
+
+  /**
    * Toggle wiring for the two viewer drawers. Each toggle flips an open-state class on `.cp-viewer`
    * (`cp-controls-open` for the right overrides drawer, `cp-nav-open` for the left component nav)
    * and mirrors it into `aria-expanded`; the drawers themselves show/hide purely via CSS on those
@@ -2782,7 +2822,7 @@ object ServeWeb {
           "Full page (scroll) — SVG only</label>"
       else ""
     return """
-      <details class="cp-group">
+      <details class="cp-group" data-cp-group="export" open>
         <summary>Export &amp; direct links</summary>
         <div class="cp-group-body">
           <div class="cp-links">
@@ -2873,12 +2913,15 @@ object ServeWeb {
           "<label class=\"cp-live-row\"><input type=\"checkbox\" $attrs$checked$dis> $label</label>"
         } else {
           val inputType = if (d.type == "int" || d.type == "float") "number" else "text"
-          // A font knob (declared via `previewOverrideFont` / `catalogOverrideFont`) carries
-          // autocomplete suggestions and/or the Google Fonts flag — render it as a combobox: a
-          // free-text `<input list>` bound to a `<datalist>` (declared names first, then the full
-          // fonts.google.com list). Any other string knob stays a plain text input.
-          val fontField = d.googleFonts || d.suggestions.isNotEmpty()
-          if (fontField) {
+          // Any knob that carries discovered options — a font knob (declared via
+          // `previewOverrideFont` / `catalogOverrideFont`, with autocomplete suggestions and/or the
+          // Google Fonts flag) or any other knob with declared `suggestions` (e.g. `theme.colors`)
+          // —
+          // renders as a combobox "like Locale": a free-text `<input list>` bound to a `<datalist>`
+          // (declared names first, then, for a font knob, the full fonts.google.com list). Any knob
+          // with no options stays a plain text/number input.
+          val hasOptions = d.googleFonts || d.suggestions.isNotEmpty()
+          if (hasOptions) {
             val listId = "cp-dl-" + wireKey.replace(Regex("[^A-Za-z0-9_-]"), "-")
             val options = fontDatalistOptions(d.suggestions, d.googleFonts)
             """
@@ -2907,10 +2950,15 @@ object ServeWeb {
         else -> "Declared overrides — static bundle, values are baked in."
       }
     return """
-      <div class="cp-knobs">
-        <div class="cp-knobs-head">$note</div>
-        $rows
-      </div>
+      <details class="cp-group" data-cp-group="overrides">
+        <summary>Overrides</summary>
+        <div class="cp-group-body">
+          <div class="cp-knobs">
+            <div class="cp-knobs-head">$note</div>
+            $rows
+          </div>
+        </div>
+      </details>
       """
       .trimIndent()
   }

@@ -377,7 +377,23 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
               
             </span>
           </div>
-          <details class="cp-group" open>
+                <details class="cp-group" data-cp-group="export" open>
+        <summary>Export &amp; direct links</summary>
+        <div class="cp-group-body">
+          <div class="cp-links">
+            <div class="cp-knobs-head">The current view as a URL (overrides applied)</div>
+            <div class="cp-link-row">
+  <span class="cp-link-kind">PNG</span>
+  <input id="cp-url-png" class="cp-url" type="text" readonly aria-label="PNG URL"
+    title="Click to copy the URL">
+  <button type="button" class="cp-copyimg" data-copyimg-target="cp-url-png"
+    data-copyimg-ext=".png">Copy PNG</button>
+  <a id="cp-dl-png" class="cp-dl" download>Download</a>
+</div>
+          </div>
+        </div>
+      </details>
+          <details class="cp-group" data-cp-group="appearance">
             <summary>Appearance</summary>
             <div class="cp-group-body">
               <label>Day / Night
@@ -396,7 +412,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
               </label>
             </div>
           </details>
-          <details class="cp-group" open>
+          <details class="cp-group" data-cp-group="size">
             <summary>Size</summary>
             <div class="cp-group-body">
               <div class="cp-size">
@@ -424,7 +440,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
               </div>
             </div>
           </details>
-          <details class="cp-group">
+          <details class="cp-group" data-cp-group="locale">
             <summary>Locale &amp; text</summary>
             <div class="cp-group-body">
               <label>Locale
@@ -458,7 +474,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
               </label>
             </div>
           </details>
-          <details class="cp-group">
+          <details class="cp-group" data-cp-group="device">
             <summary>Device</summary>
             <div class="cp-group-body">
               <label>Device
@@ -484,28 +500,28 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
           
           
           
-                <details class="cp-group">
-        <summary>Export &amp; direct links</summary>
-        <div class="cp-group-body">
-          <div class="cp-links">
-            <div class="cp-knobs-head">The current view as a URL (overrides applied)</div>
-            <div class="cp-link-row">
-  <span class="cp-link-kind">PNG</span>
-  <input id="cp-url-png" class="cp-url" type="text" readonly aria-label="PNG URL"
-    title="Click to copy the URL">
-  <button type="button" class="cp-copyimg" data-copyimg-target="cp-url-png"
-    data-copyimg-ext=".png">Copy PNG</button>
-  <a id="cp-dl-png" class="cp-dl" download>Download</a>
-</div>
-          </div>
-        </div>
-      </details>
           <div class="cp-status" id="cp-status"></div>
         </div>
       </div>
       <!-- Backdrop shown behind an open drawer on mobile (drawers become bottom sheets there);
            tapping it dismisses the sheet. Inert on desktop. -->
       <div class="cp-scrim" id="cp-scrim" aria-hidden="true"></div>
+      <script>(function () {
+  var groups = document.querySelectorAll("details.cp-group[data-cp-group]");
+  function key(g) { return "cp-grp." + g.getAttribute("data-cp-group"); }
+  for (var i = 0; i < groups.length; i++) {
+    (function (g) {
+      try {
+        var v = localStorage.getItem(key(g));
+        if (v === "1") g.open = true;
+        else if (v === "0") g.open = false;
+      } catch (e) {}
+      g.addEventListener("toggle", function () {
+        try { localStorage.setItem(key(g), g.open ? "1" : "0"); } catch (e) {}
+      });
+    })(groups[i]);
+  }
+})();</script>
       <script>(function () {
   var viewer = document.querySelector(".cp-viewer");
   if (!viewer) return;
