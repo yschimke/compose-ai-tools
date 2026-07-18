@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
@@ -59,6 +60,7 @@ import androidx.wear.compose.material3.lazy.transformedHeight
 import androidx.wear.compose.material3.timeTextCurvedText
 import ee.schimke.composeai.overrides.previewOverrideBoolean
 import ee.schimke.composeai.overrides.previewOverrideString
+import ee.schimke.composeai.preview.AnimatedPreview
 import ee.schimke.composeai.preview.ScrollMode
 import ee.schimke.composeai.preview.ScrollingPreview
 import ee.schimke.composeai.preview.slots.PreviewSlot
@@ -488,6 +490,33 @@ fun CircularProgressSticker() =
   // Determinate at a fixed 66% (matching the remote `Progress/Circular` parallel) rather than the
   // animated indeterminate overload, so the static capture is deterministic and the pair lines up.
   WearSticker { CircularProgressIndicator(progress = { 0.66f }, modifier = Modifier.size(72.dp)) }
+
+// The **indeterminate** counterpart to [CircularProgressSticker]: the animated Wear M3 progress
+// ring — the no-`progress` overload — sweeping continuously rather than sitting at a fixed value.
+// In the live interactive stream the held composition's clock advances by the wall-clock delta, so
+// the sweep actually animates (`CircularProgressIndicator`'s indeterminate mode is a
+// `rememberInfiniteTransition`); a static capture freezes it at the paused-clock frame, which is
+// deterministic because the renderer parks infinite animations at a fixed advance (see AGENTS.md —
+// "indeterminate CircularProgressIndicator" is a called-out case). Sized to match the determinate
+// sticker so the pair frames alike.
+@CatalogWearModes
+@Composable
+fun IndeterminateCircularProgressSticker() =
+  WearSticker { CircularProgressIndicator(modifier = Modifier.size(72.dp)) }
+
+// The same indeterminate ring captured as an **animated GIF** — the shareable, self-playing form of
+// the spinner (the static sticker above only moves in the live interactive lane). `@AnimatedPreview`
+// drives the paused clock across the animation window and encodes `renders/<id>.gif`;
+// `showCurves = false` keeps it a screenshot-only GIF (no debug curve-plot panel), and the duration
+// auto-detects from the indeterminate `InfiniteTransition`'s iteration so the loop is seamless.
+// Standalone, not a `catalog.spec` component: the sticker-sheet join represents each component as a
+// static PNG, so a GIF-primary preview travels in the bundle as `previews/<id>.gif` (same treatment
+// as `CardScalingScrollGif`) rather than becoming a grid sticker.
+@Preview(showBackground = false)
+@AnimatedPreview(showCurves = false)
+@Composable
+fun IndeterminateCircularProgressGif() =
+  WearSticker { CircularProgressIndicator(modifier = Modifier.size(72.dp)) }
 
 // ---------------------------------------------------------------------------
 // Text options — exercises the maxLines / overflow product on a round screen.

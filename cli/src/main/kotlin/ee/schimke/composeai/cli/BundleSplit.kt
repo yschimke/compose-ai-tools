@@ -104,9 +104,22 @@ internal fun splitBundleZip(
       ?: emptyList()
   val previewsArray = previews["previews"]?.jsonArray ?: JsonArray(emptyList())
 
-  // Shared re-render classpath — copied into every FULL bundle, omitted for VIEW_ONLY.
+  // Shared re-render carriage — copied into every FULL bundle, omitted for VIEW_ONLY. Besides
+  // the classpath (`classes/app.jar` + `libs/`), this carries the Android app-resource payload
+  // under `android/` (the merged `resources.ap_` table, `AndroidManifest.xml`, and the generated
+  // `r-classes.jar`): a detached daemon re-rendering an Android per-preview bundle needs the
+  // app's own `0x7f` table for `stringResource(R.string.…)` / `colorResource(…)` to resolve —
+  // the same table the monolithic `pack` bundle carries (via
+  // `BundlePreviewTask.resolveAndroidResources`, re-registered by
+  // `AndroidBundleResources.daemonClasspath`). Without it every app-resource lookup misses and
+  // renders the `⟦res 0x7f…⟧` placeholder — which only surfaces once an override forces a live
+  // per-preview re-render (a plain browse serves the baked PNG/SVG), so a per-variant knob edit
+  // on a Wear/Android sticker showed the placeholder instead of the real label.
   val shared = entries.filterKeys {
-    it == "classes/app.jar" || it.startsWith("libs/") || it == "report.json"
+    it == "classes/app.jar" ||
+      it.startsWith("libs/") ||
+      it == "report.json" ||
+      it.startsWith("android/")
   }
   val fullMode = mode == SplitMode.FULL
 
@@ -181,6 +194,12 @@ private fun perPreviewManifest(manifest: JsonObject, id: String, fullMode: Boole
         // View-only carries no re-render classpath, so record that honestly.
         "classpath" -> put(key, if (fullMode) value else JsonArray(emptyList()))
         "resolution" -> put(key, if (fullMode) value else JsonPrimitive("view-only"))
+        // The Android app-resource carriage rides the FULL re-render set (the `android/` entries
+        // copied above); a VIEW_ONLY bundle ships none of it, so drop the manifest pointer too
+        // rather than advertise a `resources.ap_` table the zip doesn't carry (mirrors emptying
+        // `classpath`). A FULL bundle keeps the pointer, now backed by the carried `android/`
+        // files.
+        "androidResources" -> if (fullMode) put(key, value)
         // Keep only this preview's intermediate representation (empty for classpath-backed
         // previews).
         "intermediateRepresentations" ->

@@ -71,7 +71,8 @@
     {
       "name": "Communication",
       "components": [
-        { "componentId": "Progress/Circular", "preview": "CircularProgressSticker" }
+        { "componentId": "Progress/Circular", "preview": "CircularProgressSticker" },
+        { "componentId": "Progress/Circular/Indeterminate", "preview": "IndeterminateCircularProgressSticker", "caption": "Indeterminate (animated) progress ring — the no-progress overload sweeps continuously; animates in the live preview." }
       ]
     },
     {
