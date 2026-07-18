@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 248 preview(s) across 18 module(s) · 34 error(s) · 3 warning(s) · 37 info._
+_Auto-generated from `compose-preview/a11y/main`. 249 preview(s) across 18 module(s) · 34 error(s) · 3 warning(s) · 37 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -1290,6 +1290,12 @@ _No findings._
 ### `IconSticker`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/IconSticker.a11y.png" width="400" />
+
+_No findings._
+
+### `IndeterminateCircularProgressSticker`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/IndeterminateCircularProgressSticker.png" width="400" />
 
 _No findings._
 

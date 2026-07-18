@@ -2448,6 +2448,16 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "",
+      "cleanBasename": "IndeterminateCircularProgressSticker.png",
+      "findings": [],
+      "functionName": "IndeterminateCircularProgressSticker",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.IndeterminateCircularProgressSticker",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "ListHeaderSticker.a11y.png",
       "cleanBasename": "ListHeaderSticker.png",
       "findings": [],
