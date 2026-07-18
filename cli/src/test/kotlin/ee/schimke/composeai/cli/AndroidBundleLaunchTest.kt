@@ -53,6 +53,21 @@ class AndroidBundleLaunchTest {
     assertEquals("true", props["roborazzi.test.record"])
     assertTrue(!props.containsKey("composeai.render.manifest"))
     assertTrue(!props.containsKey("composeai.render.outputDir"))
+    // The shared GoogleFont cache dir rides these too, so a downloadable Font(GoogleFont(...))
+    // resolves on a detached/serve render instead of silently falling back to the platform default.
+    assertTrue(props.getValue("composeai.fonts.cacheDir").isNotBlank())
+  }
+
+  @Test
+  fun `font cache dir is injectable and forwarded to the renderer`() {
+    val props =
+      AndroidBundleLaunch(fontsCacheDir = "/cache/composeai/fonts").robolectricSystemProperties()
+    assertEquals("/cache/composeai/fonts", props["composeai.fonts.cacheDir"])
+    // Also present on the one-shot render batch props.
+    val batch =
+      AndroidBundleLaunch(fontsCacheDir = "/cache/composeai/fonts")
+        .systemProperties("/tmp/previews.json", "/tmp/out")
+    assertEquals("/cache/composeai/fonts", batch["composeai.fonts.cacheDir"])
   }
 
   @Test

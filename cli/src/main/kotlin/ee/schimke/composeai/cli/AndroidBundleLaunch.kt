@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.io.composeAiCacheDir
 import java.io.File
 import java.util.Properties
 import okio.FileSystem
@@ -42,6 +43,14 @@ class AndroidBundleLaunch(
    */
   private val useConsumerApplication: Boolean = false,
   private val fileSystem: FileSystem = SystemFileSystem,
+  /**
+   * Absolute path of the shared, machine-local GoogleFont download cache the renderer's
+   * `ShadowFontsContractCompat` reads via the `composeai.fonts.cacheDir` system property. Defaults
+   * to `$XDG_CACHE_HOME/composeai/fonts` (else `~/.cache/composeai/fonts`) — the SAME directory the
+   * Gradle plugin's `composeAiFontsCacheDir` computes, so a `bundle`/serve render reuses the faces
+   * the pack-time render already downloaded. Injected for tests.
+   */
+  private val fontsCacheDir: String = composeAiCacheDir("fonts").absolutePath,
 ) {
 
   /** Clamped to Robolectric 4.16.x's supported `android-all` range — see [MIN_SDK] / [MAX_SDK]. */
@@ -64,10 +73,15 @@ class AndroidBundleLaunch(
     )
 
   /**
-   * Robolectric render flags shared by the one-shot renderer ([BundleRenderer]) and the daemon
-   * ([BundleDaemonCommand]). Mirrors the `robolectric.*` half of
-   * `AndroidPreviewClasspath.buildSystemProperties(...)`. The daemon uses just these — it routes
-   * previews via `composeai.daemon.userClassDirs` / `previewsJsonPath`, not the render-batch props.
+   * Robolectric render flags — plus the shared GoogleFont download cache dir — shared by the
+   * one-shot renderer ([BundleRenderer]), the detached daemon ([BundleDaemonCommand]), and the
+   * serve host ([ee.schimke.composeai.cli.serve.ServeBundleDaemon], which forwards this map as its
+   * backend `extraSystemProperties`). Mirrors the `robolectric.*` flags and
+   * `composeai.fonts.cacheDir` from `AndroidPreviewClasspath.buildSystemProperties(...)`, so a
+   * downloadable `Font(GoogleFont(...))` resolves the same on a detached/serve render as it does
+   * under Gradle — without it the shadow's cache is disabled and such text silently falls back to
+   * the platform default. The daemon uses just these — it routes previews via
+   * `composeai.daemon.userClassDirs` / `previewsJsonPath`, not the render-batch props.
    */
   fun robolectricSystemProperties(): Map<String, String> =
     linkedMapOf(
@@ -76,6 +90,7 @@ class AndroidBundleLaunch(
       "robolectric.conscryptMode" to "OFF",
       "robolectric.pixelCopyRenderMode" to "hardware",
       "roborazzi.test.record" to "true",
+      "composeai.fonts.cacheDir" to fontsCacheDir,
     )
 
   /**

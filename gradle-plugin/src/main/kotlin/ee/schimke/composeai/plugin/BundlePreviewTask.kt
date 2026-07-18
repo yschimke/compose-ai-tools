@@ -878,13 +878,20 @@ abstract class BundlePreviewTask : DefaultTask() {
       )
       return null
     }
-    zipFiles[ANDROID_RESOURCE_APK_PATH] = apkFile.readBytes()
+    // Drop merged-AAR file resources a Compose render never inflates (Wear gesture-animation
+    // vectors, call icons, notification templates, …) before packing. The compiled `resources.arsc`
+    // is left byte-for-byte intact — this only stops shipping file bytes nothing resolves — and the
+    // module's own `res/` files are always retained. See [AndroidResourcePruner].
+    val prunedApk = AndroidResourcePruner.prune(apkFile.readBytes(), moduleOwnFileResourceKeys())
+    zipFiles[ANDROID_RESOURCE_APK_PATH] = prunedApk.bytes
     zipFiles[ANDROID_MERGED_MANIFEST_PATH] = manifestFile.readBytes()
     val rClassesJar = packAndroidRClasses()
     if (rClassesJar != null) zipFiles[ANDROID_R_CLASSES_JAR_PATH] = rClassesJar
     logger.lifecycle(
       "composePreviewBundle — carried Android resources for detached render " +
-        "(apk=${apkFile.length()}B, manifest=${manifestFile.length()}B, " +
+        "(apk=${prunedApk.bytes.size}B, was ${apkFile.length()}B — dropped " +
+        "${prunedApk.droppedEntries} unused file resources / ${prunedApk.bytesSaved}B; " +
+        "manifest=${manifestFile.length()}B, " +
         "rClasses=${if (rClassesJar != null) "${rClassesJar.size}B" else "none"})"
     )
     return BundleAndroidResources(
@@ -893,6 +900,30 @@ abstract class BundlePreviewTask : DefaultTask() {
       rClassesJarPath = if (rClassesJar != null) ANDROID_R_CLASSES_JAR_PATH else null,
       applicationPackage = pkg,
     )
+  }
+
+  /**
+   * Resource identities (`"<typeBase>/<name>"`) the module authors in its own `src/<sourceSet>/res`
+   * — the file resources [AndroidResourcePruner] must retain (a catalog's own icons its code may
+   * `painterResource`) as opposed to the merged-dependency file resources it drops. `values`
+   * directories are skipped: those compile into `resources.arsc`, which the pruner never touches.
+   */
+  private fun moduleOwnFileResourceKeys(): Set<String> {
+    val srcDir = moduleProjectDir.asFile.orNull?.let { File(it, "src") } ?: return emptySet()
+    if (!srcDir.isDirectory) return emptySet()
+    val keys = mutableSetOf<String>()
+    srcDir.listFiles()?.forEach { sourceSet ->
+      val resDir = File(sourceSet, "res")
+      if (!resDir.isDirectory) return@forEach
+      resDir.listFiles()?.forEach { typeDir ->
+        val typeBase = typeDir.name.substringBefore('-')
+        if (!typeDir.isDirectory || typeBase == "values") return@forEach
+        typeDir.listFiles()?.forEach { f ->
+          if (f.isFile) keys += "$typeBase/${AndroidResourcePruner.resourceNameOf(f.name)}"
+        }
+      }
+    }
+    return keys
   }
 
   /**

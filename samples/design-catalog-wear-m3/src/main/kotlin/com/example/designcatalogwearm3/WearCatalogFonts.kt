@@ -1,12 +1,15 @@
+@file:Suppress("RestrictedApiAndroidX")
+
 package com.example.designcatalogwearm3
 
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.googlefonts.Font as GoogleFontFont
+import androidx.compose.ui.text.googlefonts.GoogleFont
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ee.schimke.composeai.preview.ColorCatalog
@@ -20,22 +23,45 @@ import ee.schimke.composeai.preview.TypographyCatalog
  * catalogs draw real specimen sheets (unlike the desktop M3 module, whose sheets await #2135).
  *
  * The two typefaces are declared as `@TypographyCatalog` specimens so the sheet shows each face on
- * the same type scale:
- * * **Roboto Flex** — the default, loaded from the vendored `res/font/roboto_flex.ttf` (the variable
- *   Roboto Flex from fonts.google.com's `ofl/robotoflex`).
+ * the same type scale, and resolve as **downloadable Google fonts** rather than vendored TTFs — so
+ * the module ships no `res/font` faces and every packed bundle stays ~2 MB smaller while remaining
+ * self-contained (the renderer fetches + caches the face; see [googleFontProvider]):
+ * * **Roboto Flex** — the default, `GoogleFont("Roboto Flex")` (the variable Roboto Flex from
+ *   fonts.google.com's `ofl/robotoflex`).
  * * **Google Sans Flex** — a named face that isn't distributed on fonts.google.com (Google Sans is a
  *   Google-brand font), so it degrades to the platform sans until a face is supplied; the choice is
  *   declared regardless.
  */
 
-/** Roboto Flex — the catalog's default typeface, loaded from the vendored variable font resource. */
-val RobotoFlex: FontFamily = FontFamily(Font(R.font.roboto_flex, weight = FontWeight.Normal))
+/**
+ * The GMS Fonts provider the catalog's typefaces resolve through. On a device it reaches Google Play
+ * Services; under the renderer's Robolectric harness `ShadowFontsContractCompat` intercepts the
+ * request and hands back a TTF from the shared `~/.cache/composeai/fonts/` cache (downloaded once
+ * from `fonts.googleapis.com`), so no font bytes are vendored or packed into the bundle. The cert
+ * array is empty: the shadow short-circuits before signature verification, and this catalog is only
+ * ever rendered, never shipped to a device (mirrors `:samples:android`'s `FontPreviewWrapper`).
+ */
+private val googleFontProvider =
+  GoogleFont.Provider(
+    providerAuthority = "com.google.android.gms.fonts",
+    providerPackage = "com.google.android.gms",
+    certificates = R.array.com_google_android_gms_fonts_certs,
+  )
+
+/** Roboto Flex — the catalog's default typeface, resolved as a downloadable Google font. */
+val RobotoFlex: FontFamily =
+  FontFamily(
+    GoogleFontFont(GoogleFont("Roboto Flex"), googleFontProvider, weight = FontWeight.Normal)
+  )
 
 /** Google Sans Flex — declared choice; graceful sans fallback until a brand face is supplied. */
 val GoogleSansFlex: FontFamily = FontFamily.SansSerif
 
-/** Lobster Two — a display face vendored from fonts.google.com's `ofl/lobstertwo`. */
-val LobsterTwo: FontFamily = FontFamily(Font(R.font.lobster_two, weight = FontWeight.Normal))
+/** Lobster Two — a selectable display face, resolved as a downloadable Google font. */
+val LobsterTwo: FontFamily =
+  FontFamily(
+    GoogleFontFont(GoogleFont("Lobster Two"), googleFontProvider, weight = FontWeight.Normal)
+  )
 
 // --- Roboto Flex type-scale specimens (the default face) ------------------------------------------
 
