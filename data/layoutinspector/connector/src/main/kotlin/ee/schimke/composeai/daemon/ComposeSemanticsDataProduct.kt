@@ -574,20 +574,52 @@ fun ComposeSemanticsNode.toProbeNodes(): List<RecordingProbeNode> = buildList {
     val testTag = node.testTag?.takeIf { it.isNotBlank() }
     val text = node.text?.takeIf { it.isNotBlank() }
     val contentDescription = node.label?.takeIf { it.isNotBlank() && it != text }
-    if (testTag != null || text != null || contentDescription != null) {
+    val role = node.role?.takeIf { it.isNotBlank() }
+    // Merged text of the descendants (issue #2519): the container's visible text lives on a child
+    // in the unmerged tree (`Button { Text("Add") }`), so carry it here — mirroring Compose's
+    // merged semantics — so the flat snapshot can resolve `role`+`text` targets and answer
+    // `assert.textEquals` without a live tree. Own text wins over this at resolution time.
+    val mergedText = node.mergedDescendantText()
+    // Keep a node when it has a stable finder (testTag / rendered text / content description) or is
+    // a role-bearing container whose merged descendant text makes it a `role`+`text` finder — a
+    // bare `Button { Text("Add") }` carries neither testTag nor own text, and dropping it would
+    // make a `role`+`text` assertion fail closed on a control that is plainly on screen.
+    if (
+      testTag != null ||
+        text != null ||
+        contentDescription != null ||
+        (role != null && mergedText != null)
+    ) {
       add(
         RecordingProbeNode(
           testTag = testTag,
           text = text,
           contentDescription = contentDescription,
-          role = node.role?.takeIf { it.isNotBlank() },
+          role = role,
           clickable = node.clickable,
+          mergedText = mergedText,
         )
       )
     }
     node.children.forEach(::visit)
   }
   visit(this@toProbeNodes)
+}
+
+/**
+ * Merged text of this node's **descendants** (issue #2519), depth-first and newline-joined — the
+ * same separator Compose's merged semantics (and the desktop `resolvedNodeText`) use. Excludes the
+ * node's own [ComposeSemanticsNode.text] so a resolver can prefer own text and fall back to this;
+ * null when no descendant draws text.
+ */
+private fun ComposeSemanticsNode.mergedDescendantText(): String? {
+  val parts = mutableListOf<String>()
+  fun collect(n: ComposeSemanticsNode) {
+    n.text?.takeIf { it.isNotBlank() }?.let { parts.add(it) }
+    n.children.forEach(::collect)
+  }
+  children.forEach(::collect)
+  return parts.joinToString("\n").ifEmpty { null }
 }
 
 /**

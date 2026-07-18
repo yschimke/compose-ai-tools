@@ -30,8 +30,9 @@ class ComposeSemanticsProbeNodesTest {
   @Test
   fun flattensOnlyNodesWithAStableFinder() {
     // A clickable test-tagged button wrapping a text label, plus a structural container with no
-    // finder. The container is dropped; the button keeps testTag + role + clickable, the label
-    // keeps its text.
+    // finder. The container is dropped; the button keeps testTag + role + clickable and carries the
+    // child's merged text (issue #2519) so a `role`+`text` / `assert.textEquals` resolver sees it,
+    // the label keeps its own text.
     val root =
       node(
         "root",
@@ -49,7 +50,42 @@ class ComposeSemanticsProbeNodesTest {
 
     assertEquals(
       listOf(
-        RecordingProbeNode(testTag = "addItem", role = "Button", clickable = true),
+        RecordingProbeNode(
+          testTag = "addItem",
+          role = "Button",
+          clickable = true,
+          mergedText = "Add",
+        ),
+        RecordingProbeNode(text = "Add"),
+      ),
+      root.toProbeNodes(),
+    )
+  }
+
+  @Test
+  fun keepsARoleBearingContainerWhoseTextLivesOnAChild() {
+    // A bare `Button { Text("Add") }` — no testTag, no own text, no content description. Before
+    // issue #2519 this button node was dropped (no stable finder), so a `role`+`text` assertion
+    // failed closed on a control that is plainly on screen. It is now kept via its merged
+    // descendant
+    // text, alongside the standalone text node.
+    val root =
+      node(
+        "root",
+        children =
+          listOf(
+            node(
+              "button",
+              role = "Button",
+              clickable = true,
+              children = listOf(node("label", text = "Add")),
+            )
+          ),
+      )
+
+    assertEquals(
+      listOf(
+        RecordingProbeNode(role = "Button", clickable = true, mergedText = "Add"),
         RecordingProbeNode(text = "Add"),
       ),
       root.toProbeNodes(),

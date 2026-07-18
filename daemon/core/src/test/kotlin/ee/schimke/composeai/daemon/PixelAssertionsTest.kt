@@ -8,10 +8,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Unit tests for the pure [pixelAssertVerdict] golden-image verdict logic (issue #1967) — the part
- * of the `assert.pixels` recording handler that doesn't need a held scene or file IO. The wired
- * handler (deferred post-loop diff against the frame the session wrote) is covered by the
- * integration test in `DesktopRecordingSessionTest`.
+ * Unit tests for the pure [pixelAssertVerdict] golden-image verdict logic (issues #1967, #2519) —
+ * the part of the `assert.pixels` recording handler that doesn't need a held scene or file IO.
+ * Lives in `:daemon:core` alongside the verdict it covers (relocated from `:daemon:desktop` when
+ * Android gained `assert.pixels` too). The wired handlers (deferred post-loop diff against the
+ * frame each session wrote) are covered by the integration tests in `DesktopRecordingSessionTest` /
+ * `AndroidRecordingSessionTest`.
  */
 class PixelAssertionsTest {
 

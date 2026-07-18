@@ -165,8 +165,25 @@ class AndroidRecordingSession(
     var frameWidthPx = 0
     var frameHeightPx = 0
     val evidence = mutableListOf<RecordingScriptEvidence>()
+    // `assert.pixels` events (issue #2519) freeze the frame bytes at the assertion's own timeline
+    // position — before any later same-bucket event — mirroring the desktop session, so the golden
+    // check observes the UI as of the assertion rather than after a same-bucket input. Each reserves
+    // its evidence slot here and the diff runs in a post-loop pass, keeping evidence in timeline
+    // order.
+    val pendingPixels = mutableListOf<PendingPixelAssert>()
     for (frameIndex in 0 until totalFrames) {
       val tMs: Long = frameIndex.toLong() * 1000L / fps.toLong()
+
+      // A bucket's virtual clock must advance to `tMs` exactly once, whether the advancing render is
+      // an `assert.pixels` snapshot mid-drain or the final written-frame render. `advanceFor` hands
+      // the full delta to the first render of the bucket and 0 to the rest.
+      var bucketAdvanceApplied = false
+      fun advanceForThisBucket(): Long =
+        if (bucketAdvanceApplied) 0L
+        else {
+          bucketAdvanceApplied = true
+          if (frameIndex == 0) 0L else tMs - lastFrameTimeMs
+        }
 
       // Drain script events whose virtual tMs has elapsed by this frame's tMs and dispatch each
       // through the held-rule loop. Translation back through the InteractiveInputParams shape
@@ -174,15 +191,43 @@ class AndroidRecordingSession(
       // doesn't matter on the host side (the underlying session has its own streamId).
       while (nextEventIdx < sortedEvents.size && sortedEvents[nextEventIdx].tMs <= tMs) {
         val e = sortedEvents[nextEventIdx]
-        val ctx = SimpleRecordingDispatchContext(tNanos = tMs * 1_000_000L, tMs = tMs)
-        evidence.add(scriptHandlers.dispatch(e, ctx))
+        if (e.kind == RecordingScriptDataExtensions.ASSERT_PIXELS_EVENT) {
+          // Render + freeze the frame *now*, at this assertion's position in the drain (after the
+          // events before it, before the ones after it) — the same "before later same-bucket
+          // events" snapshot the desktop session takes. The advance is charged to the bucket once
+          // (above); a later same-bucket event then dispatches against the already-advanced clock
+          // and shows up in the final written frame, not in this frozen snapshot.
+          val snapshotSrc =
+            interactive
+              .render(
+                requestId = RenderHost.nextRequestId(),
+                advanceTimeMs = advanceForThisBucket(),
+              )
+              .pngPath
+              ?: error(
+                "AndroidRecordingSession: interactive.render returned no pngPath for assert.pixels " +
+                  "at frame $frameIndex"
+              )
+          pendingPixels.add(
+            PendingPixelAssert(evidence.size, captureScaledFrameBytes(snapshotSrc), e)
+          )
+          evidence.add(failedEvidence(e, "assert.pixels: not evaluated"))
+        } else {
+          val ctx = SimpleRecordingDispatchContext(tNanos = tMs * 1_000_000L, tMs = tMs)
+          evidence.add(scriptHandlers.dispatch(e, ctx))
+        }
         nextEventIdx++
       }
 
-      val advanceTimeMs = if (frameIndex == 0) 0L else tMs - lastFrameTimeMs
-      lastFrameTimeMs = tMs
+      // The written-frame render; `advanceForThisBucket()` must be called before `lastFrameTimeMs`
+      // is bumped so it can compute `tMs - lastFrameTimeMs` (it returns 0 here when an earlier
+      // assert.pixels render already advanced this bucket).
       val rendered =
-        interactive.render(requestId = RenderHost.nextRequestId(), advanceTimeMs = advanceTimeMs)
+        interactive.render(
+          requestId = RenderHost.nextRequestId(),
+          advanceTimeMs = advanceForThisBucket(),
+        )
+      lastFrameTimeMs = tMs
       val srcPath =
         rendered.pngPath
           ?: error(
@@ -194,6 +239,11 @@ class AndroidRecordingSession(
         frameWidthPx = dims.first
         frameHeightPx = dims.second
       }
+    }
+    // Post-loop: diff each frozen assert.pixels snapshot against its baseline (deferred to keep
+    // evidence in timeline order; the pixels were frozen at the assertion above).
+    for (p in pendingPixels) {
+      evidence[p.evidenceIndex] = evaluatePixelAssert(p.event, p.snapshotPng)
     }
     val tookMs = (System.nanoTime() - startNs) / 1_000_000L
     System.err.println(
@@ -209,6 +259,77 @@ class AndroidRecordingSession(
       frameHeightPx = frameHeightPx,
       scriptEvents = evidence,
     )
+  }
+
+  /**
+   * A deferred `assert.pixels` event (issue #2519): [snapshotPng] is the frame frozen at the event's
+   * timeline position during playback (scaled the same way the written frames are); the diff against
+   * the baseline runs after the loop and its result replaces the placeholder evidence at
+   * [evidenceIndex] so the event keeps its position. Not a `data class` — it holds a `ByteArray` and
+   * is only ever appended to a list (no equality needed).
+   */
+  private class PendingPixelAssert(
+    val evidenceIndex: Int,
+    val snapshotPng: ByteArray,
+    val event: RecordingScriptEvent,
+  )
+
+  /**
+   * Render [srcPngPath] (an `interactive.render` output, the raw natural-size frame) through the
+   * same [copyAndMaybeScale] the written frames use, and return the scaled PNG bytes. A baseline is
+   * captured from a written (scaled) `frame-NNNNN.png`, so the frozen `assert.pixels` snapshot has
+   * to be scaled identically for the diff to be apples-to-apples. Uses a short-lived temp file under
+   * [framesDir] because `copyAndMaybeScale` writes to disk.
+   */
+  private fun captureScaledFrameBytes(srcPngPath: String): ByteArray {
+    val tmp = File.createTempFile("assert-pixels-snapshot-", ".png", framesDir)
+    return try {
+      copyAndMaybeScale(File(srcPngPath), tmp, scale)
+      tmp.readBytes()
+    } finally {
+      tmp.delete()
+    }
+  }
+
+  /**
+   * Golden-image assertion on the Android backend (issue #2519): diff the [actualPng] snapshot
+   * (frozen at the event's position in [stopScripted]) against the committed baseline PNG named by
+   * the event's `inputText` (resolved CLI-side against `--baseline-dir`). The pure verdict lives in
+   * [pixelAssertVerdict] in `:daemon:core` — the same one the desktop backend uses, reusing the
+   * `PixelDiff` comparator. On failure it writes actual/expected/diff PNGs under [encodedDir] so the
+   * drift is inspectable without re-running. Fail-closed: a missing baseline, a missing frame, or a
+   * dimension mismatch is FAILED, never a silent pass.
+   */
+  private fun evaluatePixelAssert(
+    event: RecordingScriptEvent,
+    actualPng: ByteArray,
+  ): RecordingScriptEvidence {
+    val baselinePath =
+      event.inputText
+        ?: return failedEvidence(
+          event,
+          "assert.pixels requires the baseline PNG path in the 'inputText' field",
+        )
+    val baselineBytes = File(baselinePath).takeIf { it.isFile }?.readBytes()
+    return when (val verdict = pixelAssertVerdict(actualPng, baselineBytes)) {
+      AssertionVerdict.Passed ->
+        appliedEvidence(event, "assert.pixels matched baseline '${File(baselinePath).name}'")
+      is AssertionVerdict.Failed -> {
+        if (baselineBytes != null) {
+          // Best-effort diagnostics — never let an artefact-write failure mask the real verdict.
+          try {
+            val diffDir = File(encodedDir, "pixel-diff-t${event.tMs}ms").apply { mkdirs() }
+            PixelDiff.writeDiffArtefacts(actualPng, baselineBytes, diffDir)
+          } catch (t: Throwable) {
+            System.err.println(
+              "compose-ai-daemon: assert.pixels diff-artefact write failed at t=${event.tMs}ms: " +
+                "${t.javaClass.simpleName}: ${t.message}"
+            )
+          }
+        }
+        failedEvidence(event, verdict.reason)
+      }
+    }
   }
 
   private fun stopLive(): RecordingResult {
@@ -308,6 +429,11 @@ class AndroidRecordingSession(
             RecordingScriptDataExtensions.ASSERT_NOT_VISIBLE_EVENT,
             assertVisibilityHandler(expectVisible = false),
           )
+          // `assert.textEquals` (issue #2519) — resolves the target against the probe snapshot and
+          // compares the resolved node's (merged) text to the expected string in `inputText`. The
+          // snapshot now carries each node's merged descendant text, so a tag-on-container /
+          // role+text shape resolves the text the user sees.
+          put(RecordingScriptDataExtensions.ASSERT_TEXT_EQUALS_EVENT, assertTextEqualsHandler())
           // Accessibility assertion (issue #1966) — `assert.a11y` runs Android ATF against the held
           // composition's View hierarchy and fails the recording when findings breach the
           // threshold.
@@ -383,16 +509,14 @@ class AndroidRecordingSession(
   /**
    * Maestro-style visibility assertion on the Android backend. Resolves the event's target against
    * the **probe semantics snapshot** ([InteractiveSession.captureProbeSemantics], already bridged
-   * across the sandbox/host classloader boundary) and records APPLIED / FAILED via the shared
-   * [evaluateVisibilityAssertion].
+   * across the sandbox/host classloader boundary) via the shared [resolveProbeTarget] and records
+   * APPLIED / FAILED through the shared [evaluateVisibilityAssertion].
    *
-   * **`testTag` only (today).** The probe snapshot is a *flat* node list, so it can't reliably
-   * match a `role`+`text` target: common controls like `Button { Text("Add") }` emit the `role` on
-   * the button node and the `text` on a separate child, so checking both on one node would match
-   * nothing — making `assert.notVisible` *wrongly pass* while the control is on screen. `testTag`
-   * lands on a single node, so it resolves cleanly. `ref` (no refs in the snapshot) and
-   * `role`+`text` both fail with a clear message rather than risk a false pass; enriching the
-   * snapshot for `role`+`text` is a follow-up. A missing/empty target is itself a failed assertion.
+   * **Targets (issue #2519).** The snapshot is a *flat* node list, but each retained node now
+   * carries its merged descendant text ([RecordingProbeNode.mergedText]), so `testTag`, `role`+`text`
+   * (a `Button { Text("Add") }` matches via the button's merged text), and `text` alone all resolve.
+   * `ref` still has no counterpart in the snapshot and fails with a clear message rather than risk a
+   * false `assert.notVisible` pass. A missing/empty target is itself a failed assertion.
    */
   private fun assertVisibilityHandler(expectVisible: Boolean): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, _ ->
@@ -400,24 +524,72 @@ class AndroidRecordingSession(
         event.target
           ?: return@RecordingScriptEventHandler failedEvidence(
             event,
-            "${event.kind} requires a 'target' (testTag) to assert on",
+            "${event.kind} requires a 'target' (testTag / role+text / text) to assert on",
           )
-      val tag = target.testTag
-      if (tag.isNullOrBlank()) {
-        return@RecordingScriptEventHandler failedEvidence(
-          event,
-          "${event.kind}: the Android recording backend resolves assertions by testTag only " +
-            "(its probe snapshot is a flat node list); ref and role+text targets aren't supported " +
-            "yet — set a testTag",
-        )
-      }
       val probeNodes = interactive.captureProbeSemantics().orEmpty()
-      val matchCount = probeNodes.count { it.testTag == tag }
-      when (
-        val verdict = evaluateVisibilityAssertion(expectVisible, matchCount, target.toString())
-      ) {
-        AssertionVerdict.Passed -> appliedEvidence(event, "${event.kind} satisfied")
-        is AssertionVerdict.Failed -> failedEvidence(event, verdict.reason)
+      when (val resolution = resolveProbeTarget(probeNodes, target)) {
+        is ProbeTargetResolution.Unsupported ->
+          failedEvidence(event, "${event.kind}: ${resolution.reason}")
+        is ProbeTargetResolution.Matched ->
+          when (
+            val verdict =
+              evaluateVisibilityAssertion(expectVisible, resolution.nodes.size, target.toString())
+          ) {
+            AssertionVerdict.Passed -> appliedEvidence(event, "${event.kind} satisfied")
+            is AssertionVerdict.Failed -> failedEvidence(event, verdict.reason)
+          }
+      }
+    }
+
+  /**
+   * `assert.textEquals` on the Android backend (issue #2519). Resolves the event's target against
+   * the flat probe snapshot via [resolveProbeTarget], requires it to land on exactly one node, and
+   * fails unless that node's [effectiveText] (own text, else merged descendant text) equals the
+   * expected string carried in the event's existing `inputText` field. Mirrors the desktop
+   * `assertTextEqualsHandler`, reusing the shared pure [evaluateTextEqualsAssertion]. A missing
+   * target/expected, an unsupported (`ref`) target, or a target that matches no node — or more than
+   * one, so "the text" is ambiguous — is a failed assertion.
+   */
+  private fun assertTextEqualsHandler(): RecordingScriptEventHandler =
+    RecordingScriptEventHandler { event, _ ->
+      val expected =
+        event.inputText
+          ?: return@RecordingScriptEventHandler failedEvidence(
+            event,
+            "${event.kind} requires the expected text in the 'inputText' field",
+          )
+      val target =
+        event.target
+          ?: return@RecordingScriptEventHandler failedEvidence(
+            event,
+            "${event.kind} requires a 'target' (testTag / role+text / text) to assert on",
+          )
+      val probeNodes = interactive.captureProbeSemantics().orEmpty()
+      when (val resolution = resolveProbeTarget(probeNodes, target)) {
+        is ProbeTargetResolution.Unsupported ->
+          failedEvidence(event, "${event.kind}: ${resolution.reason}")
+        is ProbeTargetResolution.Matched ->
+          when (resolution.nodes.size) {
+            0 -> failedEvidence(event, "${event.kind}: $target matched no node")
+            1 ->
+              when (
+                val verdict =
+                  evaluateTextEqualsAssertion(
+                    expected,
+                    resolution.nodes.single().effectiveText(),
+                    target.toString(),
+                  )
+              ) {
+                AssertionVerdict.Passed -> appliedEvidence(event, "${event.kind} satisfied")
+                is AssertionVerdict.Failed -> failedEvidence(event, verdict.reason)
+              }
+            else ->
+              failedEvidence(
+                event,
+                "${event.kind}: $target matched ${resolution.nodes.size} nodes; " +
+                  "narrow it to assert text",
+              )
+          }
       }
     }
 

@@ -361,16 +361,18 @@ object RecordingScriptDataExtensions {
     )
 
   /**
-   * Visibility-only assertion descriptor for backends that wire `assert.visible` /
-   * `assert.notVisible` but not yet `assert.textEquals` — the Android backend today, which resolves
-   * visibility against its flat probe-semantics snapshot (issue #1964). That snapshot only supports
-   * `testTag` targets: it can't reliably match `role`+`text` (a `Button { Text(...) }` emits the
-   * role and text on separate flat nodes, so checking both on one node matches nothing) and carries
-   * no refs. So `record_preview` advertises only these two events here, and the handler rejects
-   * non-`testTag` targets rather than risk a false pass; `assert.textEquals` isn't advertised at
-   * all.
+   * Assertion descriptor for the Android backend (issue #2519). It resolves against the flat
+   * probe-semantics snapshot, which now carries each node's **merged descendant text**, so it
+   * advertises `assert.visible` / `assert.notVisible` / `assert.textEquals` — resolvable by
+   * `testTag`, `role`+`text` (a `Button { Text(...) }` matches via the button's merged text), or
+   * `text` alone — plus `assert.pixels`, which diffs the recorded frame the same way desktop does.
+   * The one shape it can't resolve is a `ref` target (no refs survive into the flat snapshot),
+   * which the handler fails with a clear message rather than risk a false pass. `assert.a11y` rides
+   * its own [assertionA11yDescriptor]. (This is the descriptor formerly known as
+   * `assertionVisibilityDescriptor`, back when Android was `testTag`-only and text/pixels weren't
+   * wired.)
    */
-  val assertionVisibilityDescriptor: DataExtensionDescriptor =
+  val assertionAndroidDescriptor: DataExtensionDescriptor =
     DataExtensionDescriptor(
       id = DataExtensionId("assertion"),
       displayName = "Recording assertions",
@@ -379,13 +381,31 @@ object RecordingScriptDataExtensions {
           RecordingScriptEventDescriptor(
             id = ASSERT_VISIBLE_EVENT,
             displayName = "Assert visible",
-            summary = "Fails the recording unless the target (testTag) matches a node.",
+            summary =
+              "Fails the recording unless the target (testTag / role+text / text) matches a node.",
             supported = true,
           ),
           RecordingScriptEventDescriptor(
             id = ASSERT_NOT_VISIBLE_EVENT,
             displayName = "Assert not visible",
-            summary = "Fails the recording if the target (testTag) matches any node.",
+            summary =
+              "Fails the recording if the target (testTag / role+text / text) matches any node.",
+            supported = true,
+          ),
+          RecordingScriptEventDescriptor(
+            id = ASSERT_TEXT_EQUALS_EVENT,
+            displayName = "Assert text equals",
+            summary =
+              "Fails the recording unless the target node's (merged) text equals the expected " +
+                "string (carried in the event's inputText field).",
+            supported = true,
+          ),
+          RecordingScriptEventDescriptor(
+            id = ASSERT_PIXELS_EVENT,
+            displayName = "Assert pixels",
+            summary =
+              "Fails the recording unless the recorded frame at this tMs matches the baseline " +
+                "PNG (path in the event's inputText field) within PixelDiff tolerance.",
             supported = true,
           ),
         ),
