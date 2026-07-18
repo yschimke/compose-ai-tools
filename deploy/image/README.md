@@ -104,9 +104,20 @@ plugins dir (no runtime download).
 > **Adopting this on a box first started before the project name was pinned.**
 > `docker-compose.yml` now sets `name: compose-preview` so the `rollout`
 > container's Compose commands target the same project as the host. A box brought
-> up before that change ran under the directory-derived project name, so adopt it
-> once with `docker compose down && docker compose up -d` from this directory
-> (one brief restart; rolling from then on).
+> up before that change ran under the **directory-derived** project name (`image`
+> when deployed the documented way, from `deploy/image/`). Because the new `name:`
+> takes precedence, a plain `docker compose down` here would target the *new,
+> empty* `compose-preview` project and leave the old stack running — colliding on
+> ports 80/443. So stop the **old** project by name first, then start the pinned
+> one:
+>
+> ```bash
+> docker compose ls                # find the old project name (e.g. `image`)
+> docker compose -p image down     # stop the OLD stack explicitly
+> docker compose up -d             # start the pinned `compose-preview` project
+> ```
+>
+> One brief restart; rolling from then on.
 
 **The reverse-proxy config auto-deploys too.** The `caddy` service runs
 `ghcr.io/…/compose-preview-caddy:latest` — a `caddy:2` image with

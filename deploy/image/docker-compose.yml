@@ -14,8 +14,10 @@
 #
 # `name:` pins the Compose project name so the `rollout` container's `docker
 # compose`/`docker rollout` targets the SAME project as the host regardless of the
-# clone directory. Migrating a box first started without it is a one-time
-# `docker compose down && up -d` (see README → Auto-updates).
+# clone directory. Migrating a box first started without it needs a one-time stop
+# of the OLD directory-derived project first (`docker compose -p <old> down`, e.g.
+# `-p image`) THEN `up -d` — a plain `down` would target this new name and leave
+# the old stack colliding on 80/443. See README → Auto-updates.
 name: compose-preview
 services:
   preview:

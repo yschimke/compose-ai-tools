@@ -63,18 +63,28 @@ roll_once() {
     log "could not resolve pulled image for '$SERVICE' — skipping"
     return 0
   fi
-  if [ -z "$before" ]; then
-    log "'$SERVICE' not running — starting via rollout"
-    docker rollout --timeout "$HEALTH_TIMEOUT" "$SERVICE"
-    return 0
-  fi
-  if [ "$before" = "$after" ]; then
+  if [ -n "$before" ] && [ "$before" = "$after" ]; then
     log "'$SERVICE' already up to date"
     return 0
   fi
-  log "new image for '$SERVICE' — rolling (health timeout ${HEALTH_TIMEOUT}s)"
-  docker rollout --timeout "$HEALTH_TIMEOUT" "$SERVICE"
-  log "'$SERVICE' rolled"
+  if [ -z "$before" ]; then
+    log "'$SERVICE' not running — starting via rollout"
+  else
+    log "new image for '$SERVICE' — rolling (health timeout ${HEALTH_TIMEOUT}s)"
+  fi
+  # Capture and return the rollout's own exit status. Don't rely on `set -e` here:
+  # errexit is suppressed whenever roll_once runs on the left of `||` (the poll
+  # loop below) or in an `if` condition, so a failed `docker rollout` would
+  # otherwise fall through to the success log and a 0 return — reporting a failed
+  # rollout as rolled. Inside the `else`, `$?` still holds the rollout exit code.
+  if docker rollout --timeout "$HEALTH_TIMEOUT" "$SERVICE"; then
+    log "'$SERVICE' rolled"
+    return 0
+  else
+    rc=$?
+    log "docker rollout failed (exit $rc)"
+    return "$rc"
+  fi
 }
 
 if [ "${1:-}" = "--loop" ]; then
