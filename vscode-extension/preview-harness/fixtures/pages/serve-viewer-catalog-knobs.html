@@ -204,6 +204,14 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-live-toggle[aria-pressed="true"] .cp-live-dot { background: #1e9c3f;
   box-shadow: 0 0 0 3px rgba(30, 156, 63, 0.2); }
 .cp-mode-hint { font-size: 0.72rem; color: #6b6b70; }
+/* The SVG format toggle sits beside the Live toggle (only when the session can export SVG).
+   It swaps the static snapshot between the raster PNG and the resolution-independent vector
+   render; pressing it while Live is on drops back to the static SVG. */
+.cp-fmt-toggle { display: inline-flex; align-items: center; font: inherit; font-size: 0.78rem;
+  font-weight: 600; padding: 6px 12px; border-radius: 999px; border: 1px solid #d7d7de;
+  background: #fff; color: #45454c; cursor: pointer; }
+.cp-fmt-toggle:hover { background: #f0f0f3; }
+.cp-fmt-toggle[aria-pressed="true"] { background: #ececff; border-color: #c4c4f5; color: #3a3a8a; }
 /* The mode radios are kept in the DOM (the transport JS drives them) but visually removed —
    the single toggle above is the only visible mode control. */
 .cp-modes-inputs { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
@@ -257,6 +265,9 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   .cp-live-toggle { background: #1d1d20; border-color: #34343a; color: #c9c9d0; }
   .cp-live-toggle:hover:not(:disabled) { background: #26262b; }
   .cp-live-toggle[aria-pressed="true"] { background: #14361f; border-color: #2c6b40; color: #6cd98a; }
+  .cp-fmt-toggle { background: #1d1d20; border-color: #34343a; color: #c9c9d0; }
+  .cp-fmt-toggle:hover { background: #26262b; }
+  .cp-fmt-toggle[aria-pressed="true"] { background: #26264a; border-color: #45458a; color: #c9c9ff; }
   .cp-mode-hint { color: #a0a0a8; }
 }</style>
         <!-- Apply the sticky Background/Transparent choice before first paint (no checkerboard flash). -->
@@ -280,6 +291,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
               <span class="cp-live-dot" aria-hidden="true"></span>
               <span id="cp-live-toggle-label">Live preview</span>
             </button>
+            <button type="button" id="cp-svg-toggle" class="cp-fmt-toggle" aria-pressed="false" title="Show the vector (SVG) render">SVG</button>
             <span class="cp-mode-hint" id="cp-mode-hint"></span>
             <!-- The mode radios the transport JS drives; visually removed (the toggle above is the
                  only visible mode control). png = static snapshot, live = daemon stream, wasm =
@@ -1240,21 +1252,61 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   // The single Static⇄Live toggle drives these transports. "live" opens the daemon stream,
   // "wasm" mounts the in-browser app, "png" (the default) is the static snapshot. closeStream /
   // closeWasm are idempotent, so a switch safely tears down both regardless of the prior state.
-  // SVG is no longer an on-screen mode — it's an export format in the Direct-links group.
+  // The static lane additionally honours the SVG format toggle: the same <img>, pointed at the
+  // vector `/render/<id>.svg` instead of the raster `.png`. A live lane (stream / wasm) is raster
+  // frames, so entering it clears SVG.
+  var svgToggle = document.getElementById("cp-svg-toggle");
+  function svgOn() {
+    return !!(svgToggle && svgToggle.getAttribute("aria-pressed") === "true");
+  }
   function enterMode(m) {
     // A mode switch always clears a prior lane's error; the new lane re-raises its own if it fails.
     clearModeError();
-    if (m === "live") { closeWasm(); openStream(); }
-    else if (m === "wasm") { closeStream(); openWasm(); }
-    else { closeStream(); closeWasm(); refreshSnapshot(); }
+    if (m === "live") {
+      snapshotExt = ".png";
+      if (svgToggle) svgToggle.setAttribute("aria-pressed", "false");
+      closeWasm();
+      openStream();
+    } else if (m === "wasm") {
+      snapshotExt = ".png";
+      if (svgToggle) svgToggle.setAttribute("aria-pressed", "false");
+      closeStream();
+      openWasm();
+    } else {
+      closeStream();
+      closeWasm();
+      // Static snapshot lane: raster PNG, or the vector SVG when the format toggle is on.
+      snapshotExt = svgOn() ? ".svg" : ".png";
+      if (svgOn()) root.setAttribute("data-mode", "svg");
+      refreshSnapshot();
+    }
     syncOverlayToggles();
     syncServerControls();
     updateLiveToggle();
   }
-  // "Full page (scroll)" only shapes the copyable/downloadable SVG export URL (withScroll scopes
-  // it to the `.svg` lane), so it's always live and just refreshes the links on change.
+  // SVG format toggle: swap the static snapshot between raster and vector. Pressing it while a
+  // live lane is active drops back to the static vector render; pressing it in the static lane
+  // swaps the extension in place.
+  if (svgToggle) {
+    svgToggle.addEventListener("click", function () {
+      var turnOn = !svgOn();
+      svgToggle.setAttribute("aria-pressed", turnOn ? "true" : "false");
+      if (turnOn && (live.checked || wasmActive())) {
+        setMode("png"); // enterMode("png") reads svgOn() → renders the .svg
+      } else {
+        snapshotExt = turnOn ? ".svg" : ".png";
+        root.setAttribute("data-mode", turnOn ? "svg" : "snapshot");
+        refreshSnapshot();
+      }
+    });
+  }
+  // "Full page (scroll)" re-renders the on-screen SVG when it's the active format, and always
+  // reshapes the copyable/downloadable SVG export URL (withScroll scopes it to the `.svg` lane).
   if (scrollLong) {
-    scrollLong.addEventListener("change", refreshLinks);
+    scrollLong.addEventListener("change", function () {
+      if (snapshotExt === ".svg") refreshSnapshot();
+      else refreshLinks();
+    });
   }
   // The live-only overlay toggles (talkBack / touchOverlay) are meaningful only while the daemon
   // holds the composition, so they're enabled iff the live stream is the active mode and greyed
@@ -1467,6 +1519,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   function label(mode) {
     if (mode === "wasm") return "▶ CMP-WASM";
     if (mode === "live") return "▶ " + (root.getAttribute("data-live-backend") || "Live");
+    if (mode === "svg") return "▪ SVG";
     return "▪ " + (root.getAttribute("data-snapshot-backend") || "Snapshot");
   }
   function refresh() {

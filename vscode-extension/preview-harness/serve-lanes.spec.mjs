@@ -179,8 +179,19 @@ test("viewer wires the knob into every render lane", async ({ page }) => {
     })
     .toBeGreaterThan(0);
 
-  // SVG is export-only now: the copyable SVG URL still tracks the override (asserted
-  // above via #cp-url-svg); there is no on-screen SVG render mode to switch to.
+  // SVG format toggle: the same <img> repoints at the override SVG and loads.
+  await page.click("#cp-svg-toggle");
+  await expect(page.locator("#cp-img")).toHaveAttribute(
+    "src",
+    new RegExp(`\\.svg.*knob\\.label=${OVERRIDE}`),
+  );
+  await expect
+    .poll(() => page.locator("#cp-img").evaluate((im) => im.naturalWidth), {
+      timeout: 30000,
+    })
+    .toBeGreaterThan(0);
+  // Toggle SVG back off before exercising the live lane.
+  await page.click("#cp-svg-toggle");
 
   // Live mode: flipping the single Static⇄Live toggle must actually open the stream. A
   // failed activation now routes through #cp-error (and CLEARS #cp-status), so checking

@@ -840,34 +840,37 @@ class ServeWebFixtureTest {
   }
 
   @Test
-  fun `SVG is an export format, not an on-screen render mode`() {
+  fun `SVG is an on-screen format toggle and an export format when the session can export SVG`() {
     val card = previews.first { it.id.endsWith("CardPreview") }
-    // SVG is no longer a viewer render mode (it made the PNG/live/SVG choice awkward) — it's an
-    // export format in the Direct-links group, gated on hasSvgExport. So no SVG mode radio, and the
-    // on-screen lane never leaves the raster PNG.
+    // SVG isn't part of the awkward PNG/live radio group any more, but it's still an on-screen
+    // format: a dedicated toggle beside the Live toggle swaps the static snapshot between the
+    // raster
+    // PNG and the vector SVG. Offered only when the session can export SVG (hasSvgExport).
     val svgView = ServeWeb.viewerPage(card, token, hasSvgExport = true)
-    assertFalse(
-      svgView.contains("name=\"cp-mode\" value=\"svg\"") || svgView.contains("id=\"cp-mode-svg\""),
-      "SVG is not an on-screen render mode",
+    assertTrue(
+      svgView.contains("id=\"cp-svg-toggle\"") && svgView.contains("class=\"cp-fmt-toggle\""),
+      "an SVG-exporting session offers the on-screen SVG format toggle",
+    )
+    // The SVG lane reuses the snapshot <img> but swaps the render extension; the viewer JS carries
+    // the snapshotExt seam and stamps the backend badge with SVG.
+    assertTrue(
+      svgView.contains("var snapshotExt = \".png\";") && svgView.contains("? \".svg\" : \".png\""),
+      "the snapshot lane flips its render extension between PNG and SVG",
     )
     assertTrue(
-      svgView.contains("var snapshotExt = \".png\";") &&
-        !svgView.contains("snapshotExt = \".svg\";"),
-      "the on-screen snapshot lane stays raster PNG (SVG is export-only)",
+      svgView.contains("if (mode === \"svg\") return \"▪ SVG\";"),
+      "the backend badge names the SVG lane",
     )
-    assertFalse(
-      svgView.contains("if (mode === \"svg\") return \"SVG\";"),
-      "the backend badge no longer names an on-screen SVG lane",
-    )
-    // The SVG export still surfaces: its copyable/downloadable URL row and the "Full page (scroll)"
-    // toggle that shapes that SVG URL only.
+    // The SVG export also surfaces as a copyable/downloadable URL row plus the "Full page (scroll)"
+    // toggle.
     assertTrue(
       svgView.contains("id=\"cp-url-svg\"") && svgView.contains("id=\"cp-scroll-long\""),
       "an SVG-exporting session offers the SVG download row and its Full-page toggle",
     )
 
-    // No SVG export → no SVG URL row and no scroll toggle either.
+    // No SVG export → no SVG toggle, no SVG URL row, and no scroll toggle.
     val plain = ServeWeb.viewerPage(card, token)
+    assertFalse(plain.contains("id=\"cp-svg-toggle\""), "no SVG toggle without SVG export")
     assertFalse(plain.contains("id=\"cp-url-svg\""), "no SVG export row without SVG support")
     assertFalse(plain.contains("id=\"cp-scroll-long\""), "no Full-page toggle without SVG export")
   }
