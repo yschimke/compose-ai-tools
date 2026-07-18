@@ -876,6 +876,53 @@ class ServeWebFixtureTest {
   }
 
   @Test
+  fun `pages are mobile-responsive with a viewport meta and a narrow breakpoint`() {
+    // Every page carries the viewport meta (so mobile browsers don't zoom out to a desktop width)
+    // and the shared stylesheet includes the narrow breakpoint that collapses the viewer's
+    // stage + overrides row into a single stacked column and drops the flex items' min-width so
+    // nothing overflows a ~320px screen.
+    // A representative viewer with siblings (so the component nav drawer is present too).
+    val viewer = ServeWeb.viewerPage(previews.first(), token, siblings = previews)
+    assertTrue(
+      viewer.contains("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"),
+      "the page declares a mobile viewport",
+    )
+    assertTrue(
+      viewer.contains("@media (max-width: 640px) {"),
+      "the stylesheet has a narrow-viewport breakpoint",
+    )
+    assertTrue(
+      viewer.contains(".cp-stage, .cp-controls, .cp-nav { flex: 1 1 100%; min-width: 0; }"),
+      "stage/overrides/nav stack full-width and drop their min-width on a phone",
+    )
+    // Usability: on mobile the two drawers become bottom sheets reachable from a sticky toggle bar
+    // (so overrides + the component list are one tap away, not a long scroll below a tall preview),
+    // with a scrim behind the open sheet.
+    assertTrue(
+      viewer.contains(".cp-viewer-bar { position: sticky; top: 0;"),
+      "the drawer toggle bar is sticky on mobile",
+    )
+    assertTrue(
+      viewer.contains(".cp-viewer.cp-controls-open .cp-controls,") &&
+        viewer.contains("position: fixed; left: 0; right: 0; bottom: 0;"),
+      "open drawers render as fixed bottom sheets on mobile",
+    )
+    assertTrue(
+      viewer.contains("id=\"cp-scrim\"") && viewer.contains(".cp-scrim.cp-scrim-on"),
+      "a dismiss scrim backs the open bottom sheet",
+    )
+    // The overrides drawer collapses on load on a phone so the preview leads (JS-driven; the
+    // server markup still defaults it open for desktop).
+    assertTrue(
+      viewer.contains("if (isMobile()) setOpen(\"cp-controls-open\", false);"),
+      "the overrides drawer starts collapsed on a phone",
+    )
+    // The breakpoint ships on the landing pages too (shared stylesheet).
+    val landing = ServeWeb.landingPage(moduleLabel, previews, token)
+    assertTrue(landing.contains("@media (max-width: 640px) {"), "landing is responsive too")
+  }
+
+  @Test
   fun `landing lists served catalogs as session nav links, marking the current one`() {
     // Default session (sessionId null): every catalog is a link to its canonical /<system>/ path.
     val front =
