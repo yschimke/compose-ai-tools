@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.16.55](https://github.com/yschimke/compose-ai-tools/compare/v0.16.54...v0.16.55) (2026-07-18)
+
+
+### Features
+
+* **daemon:** Android recording assertions — textEquals, role/text targets, pixels ([#2519](https://github.com/yschimke/compose-ai-tools/issues/2519)) ([#2549](https://github.com/yschimke/compose-ai-tools/issues/2549)) ([5d08201](https://github.com/yschimke/compose-ai-tools/commit/5d08201668c599d32e09586d9ba64c741fe00181))
+* **deploy/image:** zero-downtime preview updates via docker-rollout ([#2557](https://github.com/yschimke/compose-ai-tools/issues/2557)) ([57b5a66](https://github.com/yschimke/compose-ai-tools/commit/57b5a662af72b76e889425aede5a6897340bf950))
+* **overrides:** honour wrapped-axis size bounds in the Android backend and standalone renderer ([#2554](https://github.com/yschimke/compose-ai-tools/issues/2554)) ([0fe519f](https://github.com/yschimke/compose-ai-tools/commit/0fe519f43011223bd3b2081b814d161fa4016c90))
+* **serve:** make the preview viewer responsive on mobile ([#2547](https://github.com/yschimke/compose-ai-tools/issues/2547)) ([1bc34ec](https://github.com/yschimke/compose-ai-tools/commit/1bc34ec8d22b5c1085c02a79d2f6634bcc35a2ec))
+* **serve:** reorganize preview overrides into sticky collapsible sections ([#2550](https://github.com/yschimke/compose-ai-tools/issues/2550)) ([cc8e2c8](https://github.com/yschimke/compose-ai-tools/commit/cc8e2c8fbf2c026f5118a3791dc3e6e6228f29f0))
+* **serve:** surface version on the home page and catalog provenance ([#2553](https://github.com/yschimke/compose-ai-tools/issues/2553)) ([15ee1ba](https://github.com/yschimke/compose-ai-tools/commit/15ee1ba2d2e3d2adeded67c8d2f2b32aec36c250))
+
+
+### Bug Fixes
+
+* **renderer:** render private @PreviewParameter providers without sinking the shard ([#2548](https://github.com/yschimke/compose-ai-tools/issues/2548)) ([c60f9ea](https://github.com/yschimke/compose-ai-tools/commit/c60f9ea0cf3ca8f171ce3be13b05894871d2931f))
+
 ## [0.16.54](https://github.com/yschimke/compose-ai-tools/compare/v0.16.53...v0.16.54) (2026-07-18)
 
 
