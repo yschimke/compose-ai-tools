@@ -486,6 +486,17 @@ const result = await writeCatalog(catalog, outPath, { sourceRoot });
 const previewBase =
   values["preview-base"] || process.env.PREVIEW_SERVER_BASE || DEFAULT_PREVIEW_BASE;
 
+// The repo whose `design-artifacts/<system>` branch this bundle publishes to — it
+// owns the htmlpreview links (index/compare/matches) the README emits and the raw
+// asset URLs the cross-system page bakes. Comes from `--source-repo` (each
+// design-artifacts workflow passes its own `${GITHUB_REPOSITORY}`), then
+// $GITHUB_REPOSITORY, and finally this repo. Getting this right is why a bundle
+// published from a *sibling* repo (e.g. meshcore-mobile, which runs this generator
+// against a compose-ai-tools checkout) links its README at its OWN branch instead
+// of 404-ing against compose-ai-tools.
+const repo =
+  values["source-repo"] || process.env.GITHUB_REPOSITORY || "yschimke/compose-ai-tools";
+
 // Bundle the in-browser CMP Wasm app into the branch (out/web/wasm/) and record
 // a `webRender` descriptor in catalog.json. `compose-preview serve --catalogs`
 // reads that descriptor and fetches these exact files from the same trusted
@@ -778,7 +789,6 @@ if (spec.compareWith) {
     // fetched manifest may be one generation stale (both branches regenerate in the
     // same workflow run), but the baked image URLs point at the branch tip, so the
     // pixels stay current — only a brand-new sibling component waits a run.
-    const repo = values["source-repo"] || process.env.GITHUB_REPOSITORY || "yschimke/compose-ai-tools";
     const otherCatalogUrl = `https://raw.githubusercontent.com/${repo}/design-artifacts/${spec.compareWith}/catalog.json`;
     const otherManifest = await fetchJsonBestEffort(otherCatalogUrl);
     if (otherManifest) {
@@ -843,6 +853,7 @@ await writeFile(
     imageCount: result.imageCount,
     wireframeCount,
     figmaSvgCount,
+    repo,
     previewBase,
     crossSystem,
   }),
