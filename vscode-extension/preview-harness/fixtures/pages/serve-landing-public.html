@@ -17,7 +17,26 @@ a:hover { text-decoration: underline; }
 .cp-about-title { margin: 0 0 6px; font-size: 0.95rem; font-weight: 600; }
 .cp-about-body { margin: 0 0 8px; font-size: 0.84rem; line-height: 1.45; color: #45454c; }
 .cp-about-body code { font-size: 0.8rem; padding: 0 3px; border-radius: 4px; background: #f0f0f3; }
-.cp-about-links { margin: 0; font-size: 0.8rem; color: #6b6b70; }
+.cp-about-links { margin: 0; font-size: 0.8rem; color: #6b6b70; display: flex; flex-wrap: wrap;
+  align-items: center; gap: 6px; }
+.cp-about-links a { display: inline-flex; align-items: center; gap: 4px; }
+.cp-gh { width: 15px; height: 15px; vertical-align: text-bottom; }
+.cp-about-ver { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.74rem;
+  padding: 1px 7px; border-radius: 999px; border: 1px solid #d7d7de; background: #fff;
+  color: #45454c; }
+/* Catalog "back to home" button — replaces the in-catalog design-systems nav row. */
+.cp-back { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 14px;
+  font-size: 0.82rem; padding: 5px 12px; border-radius: 999px; border: 1px solid #d7d7de;
+  background: #fff; color: #45454c; }
+.cp-back:hover { background: #f0f0f3; text-decoration: none; }
+/* Provenance strip: how/when/from-what this catalog was generated (branch, date, versions,
+   a link to re-run the generating workflow). Shown near the catalog header. */
+.cp-prov { margin: 0 0 18px; padding: 10px 14px; border: 1px solid #e3e3e8; border-radius: 10px;
+  background: #fff; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.78rem;
+  color: #6b6b70; max-width: 720px; }
+.cp-prov-item { display: inline-flex; align-items: center; gap: 5px; }
+.cp-prov-item .cp-prov-key { color: #8a8a92; }
+.cp-prov-item code { font-size: 0.74rem; padding: 0 4px; border-radius: 4px; background: #f0f0f3; }
 .cp-systems { margin: 0 0 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
   font-size: 0.85rem; }
 .cp-systems-label { font-weight: 600; color: #6b6b70; }
@@ -235,6 +254,12 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   .cp-systems a, .cp-systems-cur { border-color: #34343a; }
   .cp-systems a { background: #1d1d20; }
   .cp-systems-cur { background: #26264a; border-color: #45458a; color: #c9c9ff; }
+  .cp-about-ver { background: #1d1d20; border-color: #34343a; color: #c9c9d0; }
+  .cp-back { background: #1d1d20; border-color: #34343a; color: #c9c9d0; }
+  .cp-back:hover { background: #26262b; }
+  .cp-prov { background: #1d1d20; border-color: #34343a; color: #a0a0a8; }
+  .cp-prov-item .cp-prov-key { color: #7a7a82; }
+  .cp-prov-item code { background: #2a2a30; }
   .cp-search { border-color: #34343a; background: #1d1d20; }
   .cp-count, .cp-empty { color: #a0a0a8; }
   .cp-theme { border-color: #34343a; }
@@ -332,25 +357,15 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
         <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
       <body>
-                <section class="cp-about">
-  <p class="cp-about-title">compose-preview · public preview server</p>
-  <p class="cp-about-body">Browse rendered Compose &amp; Compose&nbsp;Multiplatform design
-    catalogs live. CMP components run <strong>in your browser</strong> (Kotlin/Wasm, sandboxed);
-    everything else is served as pre-rendered snapshots. The server never re-runs untrusted code
-    — catalogs are trusted via signature or their published <code>design-artifacts</code> branch,
-    and anything unverified is badged.</p>
-  <p class="cp-about-links">
-    <a href="https://github.com/yschimke/compose-ai-tools">source</a> ·
-    <a href="/version">/version</a>
-  </p>
-</section>
-      <nav class="cp-systems" aria-label="Design systems">
-        <span class="cp-systems-label">Design systems</span>
-        <a href="/compose-m3/">compose-m3</a>
-<a href="/wear-m3/">wear-m3</a>
-      </nav>
+                <a class="cp-back" href="/">← All design systems</a>
 <p class="cp-head">:samples:cmp <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ branch:yschimke/compose-ai-tools@design-artifacts/compose-m3</span></p>
-        <p class="cp-sub">6 preview(s) · click one to view with overrides ·
+        <section class="cp-prov" aria-label="Catalog provenance">
+  <span class="cp-prov-item"><span class="cp-prov-key">catalog</span> <a href="https://github.com/yschimke/compose-ai-tools/tree/design-artifacts/compose-m3"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> yschimke/compose-ai-tools@design-artifacts/compose-m3</a></span>
+  <span class="cp-prov-item"><span class="cp-prov-key">generated</span> 2026-07-17 09:30 UTC</span>
+  <span class="cp-prov-item"><span class="cp-prov-key">rendered by</span> compose-ai-tools <code>0.16.54</code> · design-parity <code>0.1.25</code></span>
+  <span class="cp-prov-item"><a href="https://github.com/yschimke/compose-ai-tools/actions/workflows/design-artifacts.yml">regenerate ↗</a></span>
+</section>
+<p class="cp-sub">6 preview(s) · click one to view with overrides ·
           <a href="/bundle.zip">download all (.zip)</a></p>
         <div class="cp-searchbar">
   <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
@@ -463,5 +478,17 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   reflectBg();
   apply();
 })();</script>
+<section class="cp-about">
+  <p class="cp-about-title">compose-preview · public preview server</p>
+  <p class="cp-about-body">Browse rendered Compose &amp; Compose&nbsp;Multiplatform design
+    catalogs live. CMP components run <strong>in your browser</strong> (Kotlin/Wasm, sandboxed);
+    everything else is served as pre-rendered snapshots. The server never re-runs untrusted code
+    — catalogs are trusted via signature or their published <code>design-artifacts</code> branch,
+    and anything unverified is badged.</p>
+  <p class="cp-about-links">
+    <a href="https://github.com/yschimke/compose-ai-tools"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> source</a> ·
+    <a href="/version">/version</a> · <span class="cp-about-ver">v0.0.0-fixture</span>
+  </p>
+</section>
       </body>
     </html>

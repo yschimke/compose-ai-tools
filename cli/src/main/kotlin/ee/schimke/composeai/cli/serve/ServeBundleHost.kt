@@ -48,6 +48,13 @@ class ServeBundleHost(
    * per preview; null for a plain uploaded bundle (which then 404s the `.svg` lane).
    */
   private val figmaDir: File? = null,
+  /**
+   * Provenance of a served design-system catalog (the trusted `repo@branch` it was fetched from,
+   * when it was generated, and the compose-ai-tools + design-parity versions that produced it),
+   * populated by [ServeCatalogStore] from the catalog's `catalog.json` + fetch origin. Null for a
+   * plain uploaded bundle (no such metadata). Surfaced on the catalog landing's provenance strip.
+   */
+  val provenance: ServeWeb.CatalogProvenance? = null,
   private val fileSystem: FileSystem = SystemFileSystem,
 ) : ServeHost {
 

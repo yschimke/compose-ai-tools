@@ -26,7 +26,26 @@ object ServeWeb {
     .cp-about-title { margin: 0 0 6px; font-size: 0.95rem; font-weight: 600; }
     .cp-about-body { margin: 0 0 8px; font-size: 0.84rem; line-height: 1.45; color: #45454c; }
     .cp-about-body code { font-size: 0.8rem; padding: 0 3px; border-radius: 4px; background: #f0f0f3; }
-    .cp-about-links { margin: 0; font-size: 0.8rem; color: #6b6b70; }
+    .cp-about-links { margin: 0; font-size: 0.8rem; color: #6b6b70; display: flex; flex-wrap: wrap;
+      align-items: center; gap: 6px; }
+    .cp-about-links a { display: inline-flex; align-items: center; gap: 4px; }
+    .cp-gh { width: 15px; height: 15px; vertical-align: text-bottom; }
+    .cp-about-ver { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.74rem;
+      padding: 1px 7px; border-radius: 999px; border: 1px solid #d7d7de; background: #fff;
+      color: #45454c; }
+    /* Catalog "back to home" button — replaces the in-catalog design-systems nav row. */
+    .cp-back { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 14px;
+      font-size: 0.82rem; padding: 5px 12px; border-radius: 999px; border: 1px solid #d7d7de;
+      background: #fff; color: #45454c; }
+    .cp-back:hover { background: #f0f0f3; text-decoration: none; }
+    /* Provenance strip: how/when/from-what this catalog was generated (branch, date, versions,
+       a link to re-run the generating workflow). Shown near the catalog header. */
+    .cp-prov { margin: 0 0 18px; padding: 10px 14px; border: 1px solid #e3e3e8; border-radius: 10px;
+      background: #fff; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.78rem;
+      color: #6b6b70; max-width: 720px; }
+    .cp-prov-item { display: inline-flex; align-items: center; gap: 5px; }
+    .cp-prov-item .cp-prov-key { color: #8a8a92; }
+    .cp-prov-item code { font-size: 0.74rem; padding: 0 4px; border-radius: 4px; background: #f0f0f3; }
     .cp-systems { margin: 0 0 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
       font-size: 0.85rem; }
     .cp-systems-label { font-weight: 600; color: #6b6b70; }
@@ -244,6 +263,12 @@ object ServeWeb {
       .cp-systems a, .cp-systems-cur { border-color: #34343a; }
       .cp-systems a { background: #1d1d20; }
       .cp-systems-cur { background: #26264a; border-color: #45458a; color: #c9c9ff; }
+      .cp-about-ver { background: #1d1d20; border-color: #34343a; color: #c9c9d0; }
+      .cp-back { background: #1d1d20; border-color: #34343a; color: #c9c9d0; }
+      .cp-back:hover { background: #26262b; }
+      .cp-prov { background: #1d1d20; border-color: #34343a; color: #a0a0a8; }
+      .cp-prov-item .cp-prov-key { color: #7a7a82; }
+      .cp-prov-item code { background: #2a2a30; }
       .cp-search { border-color: #34343a; background: #1d1d20; }
       .cp-count, .cp-empty { color: #a0a0a8; }
       .cp-theme { border-color: #34343a; }
@@ -409,14 +434,33 @@ object ServeWeb {
     return " <span class=\"$cls\" title=\"producer trust: $full\">$icon $word</span>"
   }
 
+  /** Canonical source repo, used for the "source" / branch / workflow links. */
+  private const val SOURCE_REPO = "yschimke/compose-ai-tools"
+
+  /** Inline GitHub mark (Octicons, MIT). Rendered beside the "source" link and the version. */
+  private const val GITHUB_ICON =
+    "<svg class=\"cp-gh\" viewBox=\"0 0 16 16\" aria-hidden=\"true\" fill=\"currentColor\">" +
+      "<path d=\"M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 " +
+      "0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53." +
+      "63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 " +
+      "0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 " +
+      "1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 " +
+      "3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 " +
+      "8.01 0 0016 8c0-4.42-3.58-8-8-8z\"/></svg>"
+
   /**
    * Public-mode "about" intro: a short, static explanation of what the host is and its safety
-   * model, shown only when [landingPage] is asked for [isPublic]. Deliberately carries **no**
-   * version string (that lives at `/version`) so a release never churns the committed HTML golden.
-   * Links out to the source repo and the machine-readable `/version`.
+   * model, shown only when [landingPage] / [homeIndexPage] are asked for [isPublic]. The running
+   * server [version] (the CLI's `BUNDLE_VERSION`) is surfaced beside the `source` (GitHub) and
+   * `/version` links so the live build is visible on the front door; callers that want a stable
+   * golden pass a fixed string rather than the release version.
    */
-  private fun aboutSection(): String =
-    """
+  private fun aboutSection(version: String?): String {
+    val ver =
+      version
+        ?.takeIf { it.isNotBlank() }
+        ?.let { " · <span class=\"cp-about-ver\">v${WebEscaping.htmlEscape(it)}</span>" } ?: ""
+    return """
     <section class="cp-about">
       <p class="cp-about-title">compose-preview · public preview server</p>
       <p class="cp-about-body">Browse rendered Compose &amp; Compose&nbsp;Multiplatform design
@@ -425,42 +469,87 @@ object ServeWeb {
         — catalogs are trusted via signature or their published <code>design-artifacts</code> branch,
         and anything unverified is badged.</p>
       <p class="cp-about-links">
-        <a href="https://github.com/yschimke/compose-ai-tools">source</a> ·
-        <a href="/version">/version</a>
+        <a href="https://github.com/$SOURCE_REPO">$GITHUB_ICON source</a> ·
+        <a href="/version">/version</a>$ver
       </p>
     </section>
     """
       .trimIndent()
+  }
 
   /**
-   * Design-system nav: a pill row linking each served `--catalogs` system to its canonical
-   * `/<system>/` landing, so the public front door lists the catalogs instead of hiding them behind
-   * the query. The current session (when it is one of the catalogs) renders as a non-link,
-   * current-marked pill. Empty [catalogs] ⇒ no row.
+   * A "back to all design systems" button for a catalog landing — replaces the in-catalog
+   * design-systems nav row, so a catalog page links **home** (the front-door index at `/`) rather
+   * than sideways to its siblings. Token-free in [isPublic] mode; a token-gated box keeps the token.
    */
-  private fun catalogNav(
-    catalogs: List<String>,
-    token: String,
-    sessionId: String?,
-    isPublic: Boolean,
-  ): String {
-    if (catalogs.isEmpty()) return ""
-    // Public routes are open, so a nav pill needs no token; token-gated boxes keep it.
+  private fun backButton(token: String, isPublic: Boolean): String {
     val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
-    val links =
-      catalogs.joinToString("\n") { sys ->
-        val name = WebEscaping.htmlEscape(sys)
-        if (sys == sessionId) {
-          "<span class=\"cp-systems-cur\" aria-current=\"page\">$name</span>"
-        } else {
-          "<a href=\"/${WebEscaping.urlEncodeSegment(sys)}/$suffix\">$name</a>"
+    return """<a class="cp-back" href="/$suffix">← All design systems</a>"""
+  }
+
+  /**
+   * Provenance of a served design-system catalog: the trusted GitHub [repo]/[branch] it was fetched
+   * from, when it was [generatedAt] (ISO-8601), and the [toolVersion] (compose-ai-tools) +
+   * [designParityVersion] that produced it. Threaded from [ServeCatalogStore] (which knows the
+   * repo/branch) + the catalog's own `catalog.json` metadata. Null fields are simply omitted.
+   */
+  data class CatalogProvenance(
+    val repo: String,
+    val branch: String,
+    val generatedAt: String? = null,
+    val toolVersion: String? = null,
+    val designParityVersion: String? = null,
+  )
+
+  /** "2026-07-17T12:34:56.789Z" → "2026-07-17 12:34 UTC"; anything unparseable is shown verbatim. */
+  private fun prettyDate(iso: String): String {
+    val m = Regex("""^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})""").find(iso) ?: return iso
+    return "${m.groupValues[1]} ${m.groupValues[2]} UTC"
+  }
+
+  /**
+   * The catalog-provenance strip shown on a catalog landing: a link to the trusted delivery
+   * [branch][CatalogProvenance.branch] on GitHub, the generation date, the compose-ai-tools +
+   * design-parity versions it was rendered with, and a link to re-run the `design-artifacts`
+   * workflow that regenerates it. Empty [prov] fields drop their item.
+   */
+  private fun provenanceSection(prov: CatalogProvenance): String {
+    val repo = WebEscaping.htmlEscape(prov.repo)
+    val branch = WebEscaping.htmlEscape(prov.branch)
+    // Branch names carry a `/` (`design-artifacts/compose-m3`); it's a valid path in a tree URL.
+    val branchUrl = "https://github.com/${prov.repo}/tree/${prov.branch}"
+    val actionUrl = "https://github.com/${prov.repo}/actions/workflows/design-artifacts.yml"
+    val items = buildList {
+      add(
+        "<span class=\"cp-prov-item\"><span class=\"cp-prov-key\">catalog</span> " +
+          "<a href=\"$branchUrl\">$GITHUB_ICON $repo@$branch</a></span>"
+      )
+      prov.generatedAt
+        ?.takeIf { it.isNotBlank() }
+        ?.let {
+          add(
+            "<span class=\"cp-prov-item\"><span class=\"cp-prov-key\">generated</span> " +
+              "${WebEscaping.htmlEscape(prettyDate(it))}</span>"
+          )
         }
+      val tool = prov.toolVersion?.takeIf { it.isNotBlank() }
+      val dp = prov.designParityVersion?.takeIf { it.isNotBlank() }
+      if (tool != null || dp != null) {
+        val parts = buildList {
+          if (tool != null) add("compose-ai-tools <code>${WebEscaping.htmlEscape(tool)}</code>")
+          if (dp != null) add("design-parity <code>${WebEscaping.htmlEscape(dp)}</code>")
+        }
+        add(
+          "<span class=\"cp-prov-item\"><span class=\"cp-prov-key\">rendered by</span> " +
+            "${parts.joinToString(" · ")}</span>"
+        )
       }
+      add("<span class=\"cp-prov-item\"><a href=\"$actionUrl\">regenerate ↗</a></span>")
+    }
     return """
-      <nav class="cp-systems" aria-label="Design systems">
-        <span class="cp-systems-label">Design systems</span>
-        $links
-      </nav>
+      <section class="cp-prov" aria-label="Catalog provenance">
+        ${items.joinToString("\n        ")}
+      </section>
       """
       .trimIndent()
   }
@@ -927,8 +1016,14 @@ object ServeWeb {
     token: String,
     isPublic: Boolean = false,
     apps: List<HomeSystem> = emptyList(),
+    /**
+     * Running server version (the CLI's `BUNDLE_VERSION`), surfaced in the about box beside the
+     * source/`/version` links so the live build is visible on the front door. Null omits it; the
+     * fixture golden passes a fixed string so a release never churns the committed HTML.
+     */
+    version: String? = null,
   ): String {
-    val about = if (isPublic) aboutSection() + "\n" else ""
+    val about = if (isPublic) aboutSection(version) + "\n" else ""
     // Public routes are open — no token param on the cards; a token-gated box keeps it.
     val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     fun card(s: HomeSystem): String {
@@ -1053,6 +1148,19 @@ object ServeWeb {
      * tests.
      */
     thumbCrop: (String) -> ContentCrop? = { null },
+    /**
+     * Running server version (the CLI's `BUNDLE_VERSION`), surfaced in the (now bottom-of-page)
+     * about box beside the source/`/version` links. Null omits it; the fixture golden passes a
+     * fixed string so a release never churns the committed HTML.
+     */
+    version: String? = null,
+    /**
+     * Provenance of a served design-system catalog (delivery branch, generation date, the
+     * compose-ai-tools + design-parity versions it was rendered with). When present it renders a
+     * provenance strip under the catalog header with a link to regenerate it. Null for a plain
+     * uploaded bundle / non-catalog module (no such metadata).
+     */
+    provenance: CatalogProvenance? = null,
   ): String {
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
     // A dark-first system (Wear) puts every unthemed card on the dark stage; explicit light/dark
@@ -1121,9 +1229,16 @@ object ServeWeb {
       } else {
         groups.joinToString("\n") { if (it.swappable) swapCard(it) else singleCard(it.default) }
       }
-    val about = if (isPublic) aboutSection() + "\n" else ""
-    val nav =
-      if (catalogs.isNotEmpty()) catalogNav(catalogs, token, sessionId, isPublic) + "\n" else ""
+    // The "about" intro now sits at the BOTTOM of a catalog page (below the grid) so the catalog's
+    // own content leads; it still appears only for the public server.
+    val about = if (isPublic) "\n" + aboutSection(version) else ""
+    // A catalog page links HOME (the front-door index) rather than sideways to its siblings: the
+    // old design-systems nav row is replaced by a single back button, shown whenever this server
+    // publishes catalogs (i.e. a home index exists to go back to).
+    val back = if (catalogs.isNotEmpty()) backButton(token, isPublic) + "\n" else ""
+    // The catalog-provenance strip (delivery branch, generation date, tool versions, regenerate
+    // link), shown under the header for a served design-system catalog.
+    val prov = provenance?.let { provenanceSection(it) + "\n" } ?: ""
     // The Light/Dark toggle shows only when at least one component is baked in BOTH themes, i.e.
     // the
     // grid has something to swap. A catalog with no light/dark pairs (mostly theme-neutral app
@@ -1144,12 +1259,12 @@ object ServeWeb {
       title = "$moduleLabel — compose-preview",
       body =
         """
-        $about$nav<p class="cp-head">${WebEscaping.htmlEscape(moduleLabel)}${trustBadge(trust)}</p>
-        $themeToggle<p class="cp-sub">${previews.size} preview(s) · click one to view with overrides ·
+        $back<p class="cp-head">${WebEscaping.htmlEscape(moduleLabel)}${trustBadge(trust)}</p>
+        $prov$themeToggle<p class="cp-sub">${previews.size} preview(s) · click one to view with overrides ·
           <a href="$basePath/bundle.zip$q">download all (.zip)</a></p>
         $searchBox<div class="cp-grid" id="cp-grid">
         $cards
-        </div>$emptyState$filterScript
+        </div>$emptyState$filterScript$about
         """
           .trimIndent(),
     )

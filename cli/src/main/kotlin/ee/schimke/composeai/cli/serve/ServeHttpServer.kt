@@ -393,6 +393,10 @@ class ServeHttpServer(
           isPublic = isPublic,
           catalogs = catalogSessions,
           basePath = basePath,
+          version = BUNDLE_VERSION,
+          // Catalog provenance (delivery branch, generation date, tool versions) for the strip
+          // under the header; null for a plain (non-catalog) module session.
+          provenance = catalogBundleHost(renderHost)?.provenance,
           // Crop each card's thumbnail to the component's figma-svg content box (cheap baked
           // reads),
           // so a Wear sticker shows the component, not the empty watch canvas around it.
@@ -428,7 +432,13 @@ class ServeHttpServer(
         homeSystemsFor(catalogSessions) to homeSystemsFor(appCatalogSessions)
       }
     call.respondText(
-      ServeWeb.homeIndexPage(systems, token, isPublic = isPublic, apps = apps),
+      ServeWeb.homeIndexPage(
+        systems,
+        token,
+        isPublic = isPublic,
+        apps = apps,
+        version = BUNDLE_VERSION,
+      ),
       ContentType.Text.Html,
     )
   }
