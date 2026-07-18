@@ -82,6 +82,11 @@ kotlin {
     val desktopMain by getting {
       dependencies { implementation(project(":data-preview-overrides-runtime")) }
     }
+
+    // JVM-runnable unit tests for the pure-Kotlin theme-choice logic (the `theme.colors` serialized
+    // app-palette round-trip). Desktop is the JVM target the renderer builds, so `desktopTest` runs
+    // under `check` without dragging a wasmJs test toolchain in.
+    val desktopTest by getting { dependencies { implementation(kotlin("test")) } }
   }
 }
 
