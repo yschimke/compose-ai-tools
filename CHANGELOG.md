@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.56](https://github.com/yschimke/compose-ai-tools/compare/v0.16.55...v0.16.56) (2026-07-18)
+
+
+### Bug Fixes
+
+* **cli:** carry the android resource payload into split per-preview bundles ([#2559](https://github.com/yschimke/compose-ai-tools/issues/2559)) ([6c3ee07](https://github.com/yschimke/compose-ai-tools/commit/6c3ee07ec57c3d6e8ae6fc0607c05fc868c9c564))
+
 ## [0.16.55](https://github.com/yschimke/compose-ai-tools/compare/v0.16.54...v0.16.55) (2026-07-18)
 
 
