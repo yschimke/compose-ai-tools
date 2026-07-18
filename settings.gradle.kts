@@ -115,15 +115,10 @@ includeBuild("gradle-plugin")
 
 include(":cli")
 
-// Mobile + Wear "session viewer" client apps and their shared engine. `:clients:core` is the
-// pure-JVM streamed-frame client (connects to `compose-preview serve`'s `WS /ws/{previewId}` lane,
-// decodes pushed frames, forwards pointer/key input, parses the tapped session link + the mDNS
-// discovery contract). `:clients:mobile` / `:clients:wear` are the Android / Wear OS shells on top.
-// Co-located with the service they consume (the `serve` server lives in `:cli`).
-include(":clients:core")
-include(":clients:mobile")
-include(":clients:wear")
-
+// The mobile + Wear "session viewer" client apps (`:clients:*`) were split out to their own repo,
+// yschimke/compose-preview-client (issue #2533). They consumed `compose-preview serve` purely
+// through the wire contract (docs/serve/SESSION-VIEWER-PROTOCOL.md), never a code dependency, so the
+// lift was clean. Nothing in this build depends on them.
 
 // Published wire-format DTOs (`PreviewResult`, `PreviewManifest`, the v1 a11y mirror types, …).
 // Lives outside `:cli` so external consumers (contrib scripting, future MCP integrations,

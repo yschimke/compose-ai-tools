@@ -66,9 +66,6 @@ class DecideSkip(unittest.TestCase):
     def test_deploy_only(self):
         self.assertEqual(decide(["deploy/preview-host/Dockerfile"]), "false")
 
-    def test_clients_only(self):
-        self.assertEqual(decide(["clients/core/src/main/kotlin/Client.kt"]), "false")
-
     def test_renders_and_docs(self):
         self.assertEqual(decide(["renders/samples/android/Foo.png", "docs/x.md"]), "false")
 

@@ -26,7 +26,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to create, e.g. v0.16.35 (or clients-v0.3.0)'
+        description: 'Tag to create, e.g. v0.16.35'
         required: true
         type: string
       sha:
@@ -61,8 +61,8 @@ jobs:
           # Validate the WHOLE string, not just a prefix: a glob like `v[0-9]*`
           # would let `v0foo` or `v0.16.34/foo` through and create a bogus
           # release-looking ref while reporting success.
-          if [[ ! "${TAG}" =~ ^(v|clients-v)[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::refusing to create '${TAG}' — expected v<major>.<minor>.<patch> or clients-v<major>.<minor>.<patch> (digits and dots only)."
+          if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::refusing to create '${TAG}' — expected v<major>.<minor>.<patch> (digits and dots only)."
             exit 1
           fi
 

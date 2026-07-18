@@ -8,7 +8,6 @@
     "renders/**",
     "vscode-extension/**",
     "deploy/**",
-    "clients/**",
     "scripts/**",
     ".githooks/**",
     ".idea/**",
