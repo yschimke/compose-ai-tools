@@ -83,6 +83,47 @@ fun catalogColorScheme(name: String, dark: Boolean): ColorScheme {
   }
 }
 
+/** A display mode a catalog theme can be rendered in. */
+enum class CatalogThemeMode {
+  LIGHT,
+  DARK,
+}
+
+/** Light + dark — the both-modes result, shared so the common case allocates once. */
+private val CATALOG_THEME_MODES_BOTH = setOf(CatalogThemeMode.LIGHT, CatalogThemeMode.DARK)
+
+/**
+ * The display mode(s) the `theme.colors` value [name] is actually designed for. A theme baked or
+ * shown in a mode it doesn't define renders an auto-derived variant its author never intended (a
+ * light-only brand palette force-darkened to muddy greys), so a consumer that enumerates variants —
+ * an exporter baking per-mode PNGs, the landing's Light/Dark selector — should offer only these
+ * modes rather than a fixed both, or half the output is unusable.
+ * - A **serialized app palette** ([CATALOG_COLORS_SCHEME_PREFIX] blob) is inferred from which mode
+ *   segments actually carry usable roles: only `l=…` ⇒ light-only, only `d=…` ⇒ dark-only, both ⇒
+ *   both. Inference reuses [parseCatalogColorScheme], so it can never disagree with what
+ *   [catalogColorScheme] would render; a blob with no usable mode (malformed/empty) falls back to
+ *   both, mirroring [catalogColorScheme]'s stock-M3 fallback for an unparseable value.
+ * - A **named palette** is declared: [CATALOG_PALETTE_CORAL] is light-only and
+ *   [CATALOG_PALETTE_TEAL] is dark-only (each a fixed-tone scheme [catalogColorScheme] returns
+ *   regardless of the requested mode), while [CATALOG_PALETTE_M3] and any unknown name are the
+ *   stock M3 scheme — both modes.
+ *
+ * Always non-empty. Documented per theme in `docs/design/m3-catalog-app-palette.md`.
+ */
+fun catalogThemeModes(name: String): Set<CatalogThemeMode> {
+  if (name.startsWith(CATALOG_COLORS_SCHEME_PREFIX)) {
+    val modes = mutableSetOf<CatalogThemeMode>()
+    if (parseCatalogColorScheme(name, dark = false) != null) modes += CatalogThemeMode.LIGHT
+    if (parseCatalogColorScheme(name, dark = true) != null) modes += CatalogThemeMode.DARK
+    return if (modes.isEmpty()) CATALOG_THEME_MODES_BOTH else modes
+  }
+  return when (name) {
+    CATALOG_PALETTE_CORAL -> setOf(CatalogThemeMode.LIGHT)
+    CATALOG_PALETTE_TEAL -> setOf(CatalogThemeMode.DARK)
+    else -> CATALOG_THEME_MODES_BOTH
+  }
+}
+
 /**
  * The M3 [ColorScheme] roles carried in a serialized app palette, paired name→value. One list
  * drives both [serializeCatalogColorScheme] (emit) and the round-trip test; [applyColorRoles]
@@ -144,6 +185,15 @@ private fun schemeRoles(s: ColorScheme): List<Pair<String, Color>> =
   )
 
 /**
+ * The recognized M3 role names a serialized palette may carry — the keys [applyColorRoles] reads
+ * and [schemeRoles] emits. A blob key outside this set is a typo or a future role: it's skipped, so
+ * it never counts as a "usable role" for [parseCatalogColorScheme] (nor a supported mode for
+ * [catalogThemeModes]). Role names don't depend on the scheme's tones, so any instance seeds it.
+ */
+private val CATALOG_SCHEME_ROLE_NAMES: Set<String> =
+  schemeRoles(lightColorScheme()).mapTo(HashSet()) { it.first }
+
+/**
  * Serialize a [light] + [dark] [ColorScheme] pair into the `theme.colors` wire form
  * [catalogColorScheme] decodes: `scheme:l=<role>:<AARRGGBB>,…;d=<role>:<AARRGGBB>,…`. A consumer
  * (e.g. an app publishing the M3 catalog under its own theme) calls this on its brand schemes and
@@ -178,7 +228,10 @@ fun parseCatalogColorScheme(value: String, dark: Boolean): ColorScheme? {
     val sep = entry.indexOf(':')
     if (sep <= 0) continue
     val color = parseHexColor(entry.substring(sep + 1)) ?: continue
-    roles[entry.substring(0, sep).trim()] = color
+    val role = entry.substring(0, sep).trim()
+    // Only a RECOGNIZED role counts — an unknown/typo'd name (e.g. `primry`) is skipped, so a
+    // segment of only unknown roles leaves the map empty → null (not a falsely "usable" mode).
+    if (role in CATALOG_SCHEME_ROLE_NAMES) roles[role] = color
   }
   if (roles.isEmpty()) return null
   return applyColorRoles(if (dark) darkColorScheme() else lightColorScheme(), roles)
