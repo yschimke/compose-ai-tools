@@ -26,12 +26,12 @@ services:
       # serves the in-browser CMP tier from the image's local wasm build via
       # SERVE_WASM_DIR. For a token-gated box, set SERVE_PUBLIC=0 + SERVE_TOKEN.
       SERVE_PUBLIC: "${SERVE_PUBLIC:-1}"
-      SERVE_CATALOGS: "${SERVE_CATALOGS:-compose-m3,wear-m3,remote-m3}"
-      # App design systems published from their OWN repos, served but hidden from the
-      # front-page nav — reachable at /<system>/ (and ?session=<system>). <system>@<owner>/<repo>
-      # points serve at each app's design-artifacts/<system> branch; those branches are in
-      # trust/producers.json so they badge Trusted(Branch).
-      SERVE_CATALOGS_UNLISTED: "${SERVE_CATALOGS_UNLISTED:-meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose}"
+      SERVE_CATALOGS: "${SERVE_CATALOGS:-compose-m3,wear-m3,remote-m3,meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose}"
+      # cadence is served UNLISTED from its own repo — reachable at /cadence/ (and ?session=cadence)
+      # but kept OFF the front-page index. (meshcore-mobile / homeassistant-remotecompose are LISTED
+      # above so they DO show on the front page.) <system>@<owner>/<repo> points serve at each app's
+      # design-artifacts/<system> branch; those branches are in trust/producers.json → Trusted(Branch).
+      SERVE_CATALOGS_UNLISTED: "${SERVE_CATALOGS_UNLISTED:-cadence@yschimke/cadence}"
       SERVE_TRUST_STORE: "${SERVE_TRUST_STORE:-trust/producers.json}"
       SERVE_WASM_DIR: "${SERVE_WASM_DIR:-compose-m3=samples/cmp-wasm-catalog/build/wasmDist}"
       # Live (daemon-backed) server-side re-render. Now that compose-m3 is a

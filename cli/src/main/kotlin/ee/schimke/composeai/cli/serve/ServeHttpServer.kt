@@ -96,10 +96,11 @@ class ServeHttpServer(
   private val catalogSessions: List<String> = emptyList(),
   /**
    * App catalogs registered UNLISTED (`--catalogs-unlisted`), e.g. `["meshcore-mobile","cadence"]`.
-   * Served at `/<system>/` exactly like [catalogSessions], but grouped under a separate "Apps"
-   * section on the front-page index and kept OFF the in-catalog "Design systems" nav row. Empty ⇒
-   * no Apps section (the historical behaviour, where unlisted catalogs were reachable only by their
-   * path / `?session=`).
+   * Served at `/<system>/` exactly like [catalogSessions], but kept OFF the front door: NOT listed
+   * on the `/` systems index and NOT on the in-catalog "Design systems" nav row — reachable only by
+   * their path / `?session=` (shareable by direct link). This lets an app catalog be published
+   * without advertising it on the public landing. They still count toward whether a home index
+   * exists, so an app's own landing keeps a "← back" link whenever the server also lists systems.
    */
   private val appCatalogSessions: List<String> = emptyList(),
   portRange: Int = DEFAULT_PORT_RANGE,
@@ -426,22 +427,14 @@ class ServeHttpServer(
 
   /**
    * The public server's front-page index: the published design systems ([catalogSessions]) under a
-   * "Design systems" section and the app catalogs ([appCatalogSessions]) under a separate "Apps"
-   * section, each a card linking to its `/<system>/` catalog. See [homeSystemsFor].
+   * "Design systems" section, each a card linking to its `/<system>/` catalog. The unlisted app
+   * catalogs ([appCatalogSessions]) are intentionally NOT indexed here — they're served at
+   * `/<system>/` but stay off the front door. See [homeSystemsFor].
    */
   private suspend fun RoutingContext.handleHomeIndex() {
-    val (systems, apps) =
-      withContext(Dispatchers.IO) {
-        homeSystemsFor(catalogSessions) to homeSystemsFor(appCatalogSessions)
-      }
+    val systems = withContext(Dispatchers.IO) { homeSystemsFor(catalogSessions) }
     call.respondText(
-      ServeWeb.homeIndexPage(
-        systems,
-        token,
-        isPublic = isPublic,
-        apps = apps,
-        version = BUNDLE_VERSION,
-      ),
+      ServeWeb.homeIndexPage(systems, token, isPublic = isPublic, version = BUNDLE_VERSION),
       ContentType.Text.Html,
     )
   }

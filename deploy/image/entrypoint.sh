@@ -30,13 +30,13 @@ fi
 # The published catalog set is BAKED INTO THE IMAGE (same `:=` + `none` convention
 # as SERVE_TRUST_STORE below), so a bare `docker pull` / Watchtower auto-update
 # self-heals without editing the box's compose. Front-page systems:
-: "${SERVE_CATALOGS:=compose-m3,wear-m3,remote-m3}"
+: "${SERVE_CATALOGS:=compose-m3,wear-m3,remote-m3,meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose}"
 [[ "${SERVE_CATALOGS}" != "none" ]] && args+=(--catalogs "${SERVE_CATALOGS}")
-# …and the app design systems we publish UNLISTED from their own repos — reachable at
-# /<system>/ (and ?session=<system>) but off the front-page nav. <system>@<owner>/<repo>
-# points at a per-repo design-artifacts branch, which must be trusted (see the store
-# below) to badge Trusted. Override with your own list, or `none` to serve none.
-: "${SERVE_CATALOGS_UNLISTED:=meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose}"
+# …and cadence, served UNLISTED from its own repo — reachable at /cadence/ (and ?session=cadence)
+# but kept OFF the front-page index. (meshcore-mobile / homeassistant-remotecompose are LISTED above
+# so they show on the front page.) <system>@<owner>/<repo> points at a per-repo design-artifacts
+# branch, which must be trusted (see the store below) to badge Trusted. `none` serves none.
+: "${SERVE_CATALOGS_UNLISTED:=cadence@yschimke/cadence}"
 [[ "${SERVE_CATALOGS_UNLISTED}" != "none" ]] && args+=(--catalogs-unlisted "${SERVE_CATALOGS_UNLISTED}")
 # Default to the baked branch-trust store so the published design-artifacts catalogs
 # badge as Trusted(Branch) out of the box. `:=` fills it when SERVE_TRUST_STORE is

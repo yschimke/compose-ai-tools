@@ -1166,16 +1166,15 @@ object ServeWeb {
    * point of `preview.coo.ee` is the catalogs, so the landing lists them rather than hiding them
    * behind a nav pill). Non-catalog `serve` (no `--catalogs`) keeps the plain [landingPage].
    *
-   * [systems] are the published design systems (the `--catalogs` set) shown under "Design systems";
-   * [apps] are the app catalogs (the `--catalogs-unlisted` set, e.g. meshcore-mobile / cadence)
-   * shown under a separate "Apps" section so they surface on the front door too — while staying off
-   * the in-catalog "Design systems" nav row. Either group may be empty.
+   * [systems] are the published design systems (the `--catalogs` set), shown under "Design
+   * systems". The `--catalogs-unlisted` app catalogs are deliberately NOT indexed here — they're
+   * served at `/<system>/` (shareable by direct link) but stay off the front door entirely, so an
+   * operator can publish an app catalog without advertising it on the public landing.
    */
   fun homeIndexPage(
     systems: List<HomeSystem>,
     token: String,
     isPublic: Boolean = false,
-    apps: List<HomeSystem> = emptyList(),
     /**
      * Running server version (the CLI's `BUNDLE_VERSION`), surfaced in the about box beside the
      * source/`/version` links so the live build is visible on the front door. Null omits it; the
@@ -1230,16 +1229,11 @@ object ServeWeb {
       """
         .trimIndent()
     val body =
-      if (systems.isEmpty() && apps.isEmpty()) {
+      if (systems.isEmpty()) {
         "<p class=\"cp-head\">Design systems</p>\n" +
           "<p class=\"cp-sub\">No design systems are configured on this server.</p>"
       } else {
-        buildList {
-            if (systems.isNotEmpty())
-              add(section("Design systems", systems, "design system(s)", "cp-grid"))
-            if (apps.isNotEmpty()) add(section("Apps", apps, "app(s)", "cp-grid-apps"))
-          }
-          .joinToString("\n")
+        section("Design systems", systems, "design system(s)", "cp-grid")
       }
     return document(
       title = "Design systems — compose-preview",

@@ -21,14 +21,13 @@
 
    A catalog entry may name a **per-system source repo** as `<system>@<owner>/<repo>`, so one server
    can serve systems published to *different* repos — e.g. `compose-m3,wear-m3` from this repo
-   alongside `--catalogs-unlisted meshcore-mobile@yschimke/meshcore-mobile` from the app's own repo.
-   `--catalogs-unlisted` serves a system exactly like `--catalogs` but groups it under a separate
-   **"Apps"** section on the front page instead of the **"Design systems"** section — the app
-   catalogs (meshcore-mobile, …) still surface on the landing page, just under their own
-   heading and kept off the in-catalog "Design systems" nav row. Reachable at `/<system>/` (and
-   `?session=`) like any catalog. Every catalog's branch (whatever repo) must be in the
-   `--trust-store` to badge `Trusted(Branch)`; otherwise it serves `Unverified` (the data tiers serve
-   either way).
+   alongside `meshcore-mobile@yschimke/meshcore-mobile` from the app's own repo (both listed on the
+   front page). `--catalogs-unlisted` serves a system exactly like `--catalogs` but keeps it **off the
+   front door** — an unlisted catalog (e.g. `cadence`) is **not** listed on the `/` index and is kept
+   off the in-catalog "Design systems" nav row. It's reachable only at `/<system>/` (and `?session=`),
+   shareable by direct link, so you can publish a catalog without advertising it on the public landing.
+   Every catalog's branch (whatever repo) must be in the `--trust-store` to badge `Trusted(Branch)`;
+   otherwise it serves `Unverified` (the data tiers serve either way).
 
 ## Tabbed catalog pages
 
@@ -120,14 +119,14 @@ gzipped) is cached and revalidated cheaply (304) instead of re-downloaded each v
 compose-preview serve \
   --module :samples:design-catalog-m3 \   # a base module (used only for ?session=/legacy; `/` is the index)
   --public \                              # open every route (no token)
-  --catalogs compose-m3,wear-m3,remote-m3 \  # published design systems, listed on the front-page index
-  --catalogs-unlisted \                   # served at /<system>/ but hidden from the nav; each from its own repo
-      meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose \
+  --catalogs \                            # listed on the front-page index; app systems may come from their own repo
+      compose-m3,wear-m3,remote-m3,meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose \
+  --catalogs-unlisted cadence@yschimke/cadence \  # served at /cadence/ but NOT on the front page
   --trust-store trust/producers.json \    # who we trust (must list every catalog's branch/repo)
   --host 0.0.0.0 --port 8080
 
-# The listed systems open at https://preview.coo.ee/compose-m3/ ; the unlisted app
-# systems at https://preview.coo.ee/meshcore-mobile/ (not on the front page, but shareable).
+# The listed systems open at https://preview.coo.ee/compose-m3/ (and /meshcore-mobile/, etc.);
+# cadence is served unlisted at https://preview.coo.ee/cadence/ (not on the front page, but shareable).
 ```
 
 - **`--public`** drops the token gate (the deployed server is meant to be open). It is **safe by
@@ -177,9 +176,9 @@ to get the pure module-less server above.
 Both container profiles take this config from env (the entrypoint maps `SERVE_PUBLIC`,
 `SERVE_CATALOGS`, `SERVE_CATALOGS_UNLISTED`, `SERVE_TRUST_STORE`, `SERVE_WASM_DIR`,
 `SERVE_ACCEPT_BUNDLES` → flags) and put **Caddy** in front for TLS. They default to the **open public
-profile** (`SERVE_PUBLIC=1`, catalogs `compose-m3,wear-m3,remote-m3` on the front-page index, plus the app systems
-`meshcore-mobile` / `homeassistant-remotecompose` served unlisted at `/<system>/` from their own
-repos via `SERVE_CATALOGS_UNLISTED`); set `SERVE_PUBLIC=0` + `SERVE_TOKEN` for a token-gated box.
+profile** (`SERVE_PUBLIC=1`, catalogs `compose-m3,wear-m3,remote-m3` plus the app systems `meshcore-mobile` /
+`homeassistant-remotecompose` on the front-page index, and `cadence` served unlisted at `/cadence/` — off the
+front page — via `SERVE_CATALOGS_UNLISTED`); set `SERVE_PUBLIC=0` + `SERVE_TOKEN` for a token-gated box.
 
 The prebuilt `deploy/image` **bakes a branch-trust store** at `/trust/producers.json` (trusting
 `design-artifacts/*` on `yschimke/compose-ai-tools`, `yschimke/meshcore-mobile`, and
@@ -190,9 +189,9 @@ Mount your own over that path (or set `SERVE_TRUST_STORE` to it) to pin differen
 out — which also means a bare image pull self-heals a box without editing its compose.)
 
 The **catalog set is baked into the image the same way**: the entrypoint defaults `SERVE_CATALOGS`
-to `compose-m3,wear-m3,remote-m3` (front-page index) and `SERVE_CATALOGS_UNLISTED` to
-`meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose`
-(served at `/<system>/`, off the nav). So a bare `docker pull` / Watchtower update serves them
+to `compose-m3,wear-m3,remote-m3,meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose`
+(front-page index) and `SERVE_CATALOGS_UNLISTED` to `cadence@yschimke/cadence` (served at `/cadence/`,
+off the front page). So a bare `docker pull` / Watchtower update serves them
 without editing the box's compose. Override either with your own comma list, or `none` to serve none
 of that kind (empty inherits the baked default). The `deploy/vps` from-source path still sets these
 in its compose (it builds `main`, so the flags exist immediately; the prebuilt image needs a CLI
@@ -323,9 +322,9 @@ to match. Set `SERVE_LIVE_SEATS` explicitly to override the budget directly, or 
 
 ## Endpoints
 
-`GET /` — with `--catalogs` / `--catalogs-unlisted`, the **systems index** (a "Design systems"
-section for the listed catalogs and an "Apps" section for the unlisted app catalogs, one card each);
-otherwise the served module's preview grid · `GET /p/{id}?session=<s>` viewer ·
+`GET /` — with `--catalogs`, the **systems index** (a "Design systems" section listing the listed
+catalogs, one card each; the `--catalogs-unlisted` app catalogs are served at `/<system>/` but not
+indexed here); otherwise the served module's preview grid · `GET /p/{id}?session=<s>` viewer ·
 `GET /render/{id}.png` PNG ·
 `GET /api/previews` JSON (now includes `trust`) · `POST /bundles/{name}` upload (returns `trust`) ·
 `GET /wasm/{system}/…` in-browser CMP app (ungated static assets) · `GET /healthz` ·
