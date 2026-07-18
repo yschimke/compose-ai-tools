@@ -2030,6 +2030,16 @@ open class RobolectricHost(
         System.setProperty("roborazzi.test.record", "true")
       }
 
+      // Missing-resource fallback — same opt-in the one-shot `RenderEngine.render` path reads (the
+      // detached live / serve daemons set it; see `RenderEngine.PLACEHOLDER_MISSING_RESOURCES_PROP`).
+      // Without mirroring it here, a preview whose `stringResource(...)` isn't in the packed /
+      // child-loader resource table renders fine as a static sticker (the one-shot path substitutes a
+      // placeholder) but throws `Resources$NotFoundException` the instant live mode is enabled — the
+      // throw surfaces as the `acquireInteractiveSession` start error and the panel shows "input
+      // requires a live stream — unavailable". Applied as a `LocalContext` wrap in `setContent` below.
+      val placeholderMissingResources =
+        System.getProperty(RenderEngine.PLACEHOLDER_MISSING_RESOURCES_PROP) == "true"
+
       val classLoader: ClassLoader =
         slot.childLoaderRef.get()
           ?: Thread.currentThread().contextClassLoader
@@ -2212,14 +2222,43 @@ open class RobolectricHost(
                     androidx.compose.runtime.SideEffect {
                       recreateRegistryRef.set(recreateRegistry)
                     }
-                    androidx.compose.runtime.CompositionLocalProvider(
-                      androidx.compose.ui.platform.LocalInspectionMode provides
-                        (start.inspectionMode ?: false),
-                      ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
-                        start.clearBackground,
-                      androidx.compose.runtime.saveable.LocalSaveableStateRegistry provides
-                        recreateRegistry,
-                    ) {
+                    // Missing-resource fallback: wrap `LocalContext` so a `stringResource` /
+                    // `colorResource` / `context.getString` miss falls back to a placeholder instead
+                    // of throwing `Resources$NotFoundException` and aborting the held session. Mirrors
+                    // the one-shot `RenderEngine.render` path; gated on the same opt-in prop resolved
+                    // above so a non-serve daemon still fails loudly. Provided outermost (like the
+                    // one-shot path) so every override extension and the preview content see the
+                    // guarded context.
+                    val heldBaseContext = androidx.compose.ui.platform.LocalContext.current
+                    val heldPlaceholderContext =
+                      if (placeholderMissingResources)
+                        androidx.compose.runtime.remember(heldBaseContext) {
+                          heldBaseContext.wrappedForPlaceholderResources()
+                        }
+                      else null
+                    val heldProviders =
+                      buildList {
+                          if (heldPlaceholderContext != null) {
+                            add(
+                              androidx.compose.ui.platform.LocalContext provides
+                                heldPlaceholderContext
+                            )
+                          }
+                          add(
+                            androidx.compose.ui.platform.LocalInspectionMode provides
+                              (start.inspectionMode ?: false)
+                          )
+                          add(
+                            ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
+                              start.clearBackground
+                          )
+                          add(
+                            androidx.compose.runtime.saveable.LocalSaveableStateRegistry provides
+                              recreateRegistry
+                          )
+                        }
+                        .toTypedArray()
+                    androidx.compose.runtime.CompositionLocalProvider(*heldProviders) {
                       androidx.compose.foundation.layout.Box(
                         modifier = androidx.compose.ui.Modifier.fillMaxSize()
                       ) {
