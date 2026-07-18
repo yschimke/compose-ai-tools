@@ -931,8 +931,93 @@ class AndroidInteractiveSessionTest {
     }
   }
 
+  @Test
+  fun missingResourceHeldSessionFallsBackToPlaceholderUnderTheServeOptIn() {
+    // Regression for the `wear-m3` live-mode failure: a preview whose `stringResource(...)` isn't in
+    // the packed / child-loader resource table renders fine as a static sticker (the one-shot
+    // `RenderEngine.render` path substitutes a placeholder under
+    // `PLACEHOLDER_MISSING_RESOURCES_PROP`) but the held interactive path used to route the miss
+    // straight to the raw table → `Resources$NotFoundException`, which failed `interactive/start` and
+    // surfaced as "input requires a live stream — unavailable". The fix mirrors the placeholder
+    // `LocalContext` wrap into `runHeldInteractiveSession`.
+    System.setProperty(
+      RenderEngine.OUTPUT_DIR_PROP,
+      tempFolder.newFolder("interactive-missing-resource").absolutePath,
+    )
+    System.setProperty("roborazzi.test.record", "true")
+    val priorPlaceholder = System.getProperty(RenderEngine.PLACEHOLDER_MISSING_RESOURCES_PROP)
+    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    host.start()
+    try {
+      // Negative control: without the opt-in, the missing lookup throws and the throw fails the
+      // acquire — proving the fixture genuinely exercises the NotFoundException path the fix guards.
+      System.clearProperty(RenderEngine.PLACEHOLDER_MISSING_RESOURCES_PROP)
+      try {
+        host
+          .acquireInteractiveSession(
+            previewId = MISSING_RESOURCE_PREVIEW_ID,
+            classLoader = javaClass.classLoader!!,
+          )
+          .close()
+        fail(
+          "without the placeholder opt-in, a missing stringResource must fail acquire with " +
+            "Resources\$NotFoundException"
+        )
+      } catch (expected: UnsupportedOperationException) {
+        assertTrue(
+          "acquire failure should carry the NotFoundException cause; got: ${expected.message}",
+          expected.message!!.contains("NotFound"),
+        )
+      }
+
+      // With the opt-in the detached serve / bundle daemons set, the miss degrades to a placeholder
+      // and the held session comes up and renders instead of erroring.
+      System.setProperty(RenderEngine.PLACEHOLDER_MISSING_RESOURCES_PROP, "true")
+      val session =
+        host.acquireInteractiveSession(
+          previewId = MISSING_RESOURCE_PREVIEW_ID,
+          classLoader = javaClass.classLoader!!,
+        )
+      try {
+        val result = session.render(requestId = RenderHost.nextRequestId())
+        assertNotNull(
+          "held render must produce a PNG once the missing resource falls back to a placeholder",
+          result.pngPath,
+        )
+        val img = decode(File(result.pngPath!!))
+        // The fixture paints green when the (placeholder) label is non-blank — i.e. the fallback
+        // supplied a string rather than throwing.
+        val greenPct = pixelMatchPct(img, GREEN_RGB, perChannelTolerance = 8)
+        assertTrue(
+          "placeholder fallback should let the fixture paint green (got " +
+            "${"%.2f".format(greenPct * 100)}%) — a miss that threw would have failed the render",
+          greenPct >= 0.95,
+        )
+      } finally {
+        session.close()
+      }
+    } finally {
+      if (priorPlaceholder == null) {
+        System.clearProperty(RenderEngine.PLACEHOLDER_MISSING_RESOURCES_PROP)
+      } else {
+        System.setProperty(RenderEngine.PLACEHOLDER_MISSING_RESOURCES_PROP, priorPlaceholder)
+      }
+      host.shutdown()
+    }
+  }
+
   private fun previewSpecResolver(): (String) -> RenderSpec? = { previewId ->
     when (previewId) {
+      MISSING_RESOURCE_PREVIEW_ID ->
+        RenderSpec(
+          className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+          functionName = "MissingStringResourceSquare",
+          widthPx = INTERACTIVE_WIDTH_PX,
+          heightPx = INTERACTIVE_HEIGHT_PX,
+          density = 1.0f,
+          showBackground = true,
+          outputBaseName = "interactive-missing-resource",
+        )
       INTERACTIVE_PREVIEW_ID ->
         RenderSpec(
           className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
@@ -1065,6 +1150,7 @@ class AndroidInteractiveSessionTest {
     private const val RELEASE_POSITION_PREVIEW_ID = "interactive-release-position"
     private const val ROTARY_PREVIEW_ID = "interactive-rsb"
     private const val NOTIFICATION_PREVIEW_ID = "interactive-notification"
+    private const val MISSING_RESOURCE_PREVIEW_ID = "interactive-missing-resource"
     private const val INTERACTIVE_WIDTH_PX = 96
     private const val INTERACTIVE_HEIGHT_PX = 96
     private const val RED_RGB = 0xEF5350

@@ -270,6 +270,27 @@ fun ResourceReadingPreview() {
 }
 
 /**
+ * Reads a **missing** app-package string id (`0x7f0f9999`, the same id
+ * [PlaceholderFallbackResourcesTest] probes) so the `stringResource` lookup is absent from the
+ * module's resource table — the exact failure shape the `wear-m3` `CheckboxButtonChecked` sticker
+ * hits on the live preview server when the packed / child-loader resource table doesn't carry its
+ * `label_sync` string.
+ *
+ * Under the missing-resource placeholder fallback (`RenderEngine.PLACEHOLDER_MISSING_RESOURCES_PROP`)
+ * the miss degrades to an obvious placeholder (a non-blank string), so this paints green. Without the
+ * fallback the lookup throws `Resources$NotFoundException`; on the interactive held path that throw
+ * fails `acquireInteractiveSession` and the panel shows "input requires a live stream — unavailable".
+ * Passing a raw int rather than an `R.string.*` constant keeps the miss guaranteed — the id is never
+ * added to the resource table.
+ */
+@Composable
+fun MissingStringResourceSquare() {
+  val label = stringResource(0x7f0f9999)
+  val color = if (label.isNotBlank()) Color(0xFF66BB6A) else Color(0xFFEF5350)
+  Box(modifier = Modifier.fillMaxSize().background(color))
+}
+
+/**
  * Stateful fixture for the v3 Android-interactive test ([AndroidInteractiveSessionTest]). Paints
  * red on first composition; flips to green when any pointer-down event lands. Same shape as the
  * desktop `ClickToggleSquare` fixture in `daemon/desktop`'s testFixtures so the two backends'
