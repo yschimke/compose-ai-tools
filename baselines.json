@@ -1,60 +1,4 @@
 {
-  "clients:mobile/ee.schimke.composeai.clients.mobile.SessionViewerAppKt.ConnectScreenDiscoveredPreview_Connect \u2014 discovered": {
-    "captureLabel": "",
-    "functionName": "ConnectScreenDiscoveredPreview",
-    "module": "clients:mobile",
-    "renderBasename": "ConnectScreenDiscoveredPreview_Connect_discovered.png",
-    "sha256": "ae501c9e21b2ac3e832da62101a45f168bde29e4584225ac45b9d226a4f77ef7",
-    "sourceFile": "src/main/kotlin/ee/schimke/composeai/clients/mobile/SessionViewerApp.kt"
-  },
-  "clients:mobile/ee.schimke.composeai.clients.mobile.SessionViewerAppKt.ConnectScreenEmptyPreview_Connect \u2014 empty": {
-    "captureLabel": "",
-    "functionName": "ConnectScreenEmptyPreview",
-    "module": "clients:mobile",
-    "renderBasename": "ConnectScreenEmptyPreview_Connect_empty.png",
-    "sha256": "da16f7f558e15c4d28d27e2661ca233ceef4e5b4b92bf256d77a29c9ca9db6e2",
-    "sourceFile": "src/main/kotlin/ee/schimke/composeai/clients/mobile/SessionViewerApp.kt"
-  },
-  "clients:mobile/ee.schimke.composeai.clients.mobile.SessionViewerAppKt.ConnectingOverlayPreview_Status \u2014 connecting": {
-    "captureLabel": "",
-    "functionName": "ConnectingOverlayPreview",
-    "module": "clients:mobile",
-    "renderBasename": "ConnectingOverlayPreview_Status_connecting.png",
-    "sha256": "cac7f289a0e1d0041ab1236b928a258de10789fe6521cefae161888271d6cc4a",
-    "sourceFile": "src/main/kotlin/ee/schimke/composeai/clients/mobile/SessionViewerApp.kt"
-  },
-  "clients:mobile/ee.schimke.composeai.clients.mobile.SessionViewerAppKt.FailedOverlayPreview_Status \u2014 failed": {
-    "captureLabel": "",
-    "functionName": "FailedOverlayPreview",
-    "module": "clients:mobile",
-    "renderBasename": "FailedOverlayPreview_Status_failed.png",
-    "sha256": "200a768b46d40c688423c7fe684ff3b513c0ad7761b6f85dde414c1d9ee34072",
-    "sourceFile": "src/main/kotlin/ee/schimke/composeai/clients/mobile/SessionViewerApp.kt"
-  },
-  "clients:wear/ee.schimke.composeai.clients.wear.SessionViewerAppKt.WearConnectPreview_Wear connect": {
-    "captureLabel": "",
-    "functionName": "WearConnectPreview",
-    "module": "clients:wear",
-    "renderBasename": "WearConnectPreview_Wear_connect.png",
-    "sha256": "4df55908eb04e1a8475c9b1d0514654b98c333a60d419d6e7f909e5d3324c7a8",
-    "sourceFile": "src/main/kotlin/ee/schimke/composeai/clients/wear/SessionViewerApp.kt"
-  },
-  "clients:wear/ee.schimke.composeai.clients.wear.SessionViewerAppKt.WearConnectingPreview_Wear connecting": {
-    "captureLabel": "",
-    "functionName": "WearConnectingPreview",
-    "module": "clients:wear",
-    "renderBasename": "WearConnectingPreview_Wear_connecting.png",
-    "sha256": "656fc513ae2c78e3911658faa2e81e8c402926c5d469cbc568fb22d268fa366c",
-    "sourceFile": "src/main/kotlin/ee/schimke/composeai/clients/wear/SessionViewerApp.kt"
-  },
-  "clients:wear/ee.schimke.composeai.clients.wear.SessionViewerAppKt.WearFailedPreview_Wear failed": {
-    "captureLabel": "",
-    "functionName": "WearFailedPreview",
-    "module": "clients:wear",
-    "renderBasename": "WearFailedPreview_Wear_failed.png",
-    "sha256": "bc588eaf9d708c35206f6e2439e0e0f5ca5367166898ff8524719976824facad",
-    "sourceFile": "src/main/kotlin/ee/schimke/composeai/clients/wear/SessionViewerApp.kt"
-  },
   "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
     "captureLabel": "",
     "functionName": "FocusOverlayPreview",
@@ -3092,7 +3036,7 @@
     "functionName": "ActivityListLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round.png",
-    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
+    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
