@@ -32,6 +32,10 @@ class GoogleFontsWoff2Resolver(
   private val offline: Boolean = false,
   private val fileSystem: FileSystem = SystemFileSystem,
   private val httpGet: (String, String) -> ByteArray? = ::defaultFontHttpGet,
+  // Bounded retries around the fetch (see [downloadWithRetry]); injectable so tests can drop the
+  // sleep and drive the failure sequence deterministically.
+  private val maxAttempts: Int = DEFAULT_MAX_ATTEMPTS,
+  private val sleep: (Long) -> Unit = { Thread.sleep(it) },
 ) : FigmaFontResolver {
 
   override fun woff2(family: String, weight: Int, italic: Boolean): ByteArray? {
@@ -42,7 +46,7 @@ class GoogleFontsWoff2Resolver(
         return runCatching { fileSystem.read(it.path.toPath()) { readByteArray() } }.getOrNull()
       }
     if (offline) return null
-    val bytes = download(family, weight, italic) ?: return null
+    val bytes = downloadWithRetry(family, weight, italic) ?: return null
     cacheFile?.let { f ->
       runCatching {
         f.parentFile?.mkdirs()
@@ -50,6 +54,29 @@ class GoogleFontsWoff2Resolver(
       }
     }
     return bytes
+  }
+
+  /**
+   * [download] wrapped in bounded retries with exponential backoff. A whole-catalog render fires
+   * its first font fetches the instant the daemon subprocess starts — a cold DNS/TLS path that
+   * intermittently times out. A single such failure used to *permanently* degrade whichever
+   * previews raced the cold start: their SVGs fell back to a named `sans-serif` (rendering with a
+   * substitute typeface), while later previews — served from the now-warm disk cache — embedded the
+   * real face. Retrying the transient failure keeps one slow first connection from stranding a
+   * sticker. A genuinely unresolvable family (Google has no such face, so every attempt returns
+   * null) just exhausts the attempts and returns null — the same degradation as before, after a
+   * bounded wait.
+   */
+  private fun downloadWithRetry(family: String, weight: Int, italic: Boolean): ByteArray? {
+    var attempt = 1
+    while (true) {
+      download(family, weight, italic)?.let {
+        return it
+      }
+      if (attempt >= maxAttempts) return null
+      sleep(RETRY_BASE_DELAY_MS shl (attempt - 1))
+      attempt++
+    }
   }
 
   private fun download(family: String, weight: Int, italic: Boolean): ByteArray? {
@@ -63,6 +90,12 @@ class GoogleFontsWoff2Resolver(
     "${slugify(family)}-$weight${if (italic) "-italic" else ""}.woff2"
 
   companion object {
+    /** Total fetch attempts (initial + retries) before giving up on a transient network failure. */
+    const val DEFAULT_MAX_ATTEMPTS: Int = 3
+
+    /** First retry backoff (ms); doubles per attempt — 300, 600 for the default 3 attempts. */
+    private const val RETRY_BASE_DELAY_MS: Long = 300L
+
     private const val MODERN_UA =
       "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) " +
         "Chrome/120.0.0.0 Safari/537.36"
