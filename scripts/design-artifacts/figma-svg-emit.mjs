@@ -29,6 +29,23 @@ export function figmaSvgByFunction(bundle) {
 }
 
 /**
+ * Fold {@link figmaSvgByFunction} across several bundles, later bundles overriding earlier ones for
+ * the same function name — matching generate-design-catalog's `--extra-renders` candidate fold, where
+ * the supplementary bundle wins. Crucially a function present in ONLY a later bundle (an
+ * `--extra-renders`-only sticker, e.g. a screen rendered from a second CMP-desktop module) is *added*,
+ * so an extra render carries its editable vector into the catalog too — not just its raster PNG.
+ * Reading only the primary bundle silently dropped those vectors. Falsy bundles are skipped.
+ */
+export function figmaSvgByFunctions(bundles) {
+  const out = new Map();
+  for (const bundle of bundles) {
+    if (!bundle) continue;
+    for (const [fn, entry] of figmaSvgByFunction(bundle)) out.set(fn, entry);
+  }
+  return out;
+}
+
+/**
  * The hybrid raster crops carried for preview [id] as `previews/<id>.figma-raster/<node>.png`.
  * Returns a Map name→bytes; empty for the common vector-only sticker.
  */
