@@ -16,6 +16,14 @@
     {
       "repo": "yschimke/cadence",
       "branch": "design-artifacts/*"
+    },
+    {
+      "repo": "joreilly/Confetti",
+      "branch": "design-artifacts/*"
+    },
+    {
+      "repo": "yschimke/Confetti",
+      "branch": "design-artifacts/*"
     }
   ]
 }
