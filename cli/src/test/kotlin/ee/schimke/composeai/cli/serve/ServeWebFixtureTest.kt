@@ -994,6 +994,18 @@ class ServeWebFixtureTest {
       both.contains("id=\"cp-live-toggle\""),
       "the daemon 'Live preview' toggle stays alongside it",
     )
+    // While the in-browser lane is active, the daemon-only controls (size/device/orientation/
+    // background + the app-theme selector) can't be honoured by the iframe, so syncServerControls
+    // disables them on the wasm lane rather than leaving dead-but-enabled knobs.
+    assertTrue(
+      both.contains("var onWasm = wasmActive();") &&
+        both.contains("!onWasm && (!staticSnapshot || canRenderOverrides"),
+      "server-only controls are gated off while the Wasm lane is active",
+    )
+    assertTrue(
+      both.contains("themeProviderEl.disabled = onWasm ||"),
+      "the app-theme selector is disabled while the Wasm lane is active",
+    )
 
     // Case B — wasm app but NO daemon lane: the single Static⇄Live toggle already drops into wasm
     // as
