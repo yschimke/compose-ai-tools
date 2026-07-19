@@ -8,8 +8,11 @@ import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -155,5 +158,90 @@ class BundleRenderKnobTest {
       File(outDir, "com.example.Filled.png").exists(),
       "a failed render must not leave a PNG behind",
     )
+  }
+
+  private fun sha256(bytes: ByteArray): String =
+    java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") {
+      "%02x".format(it)
+    }
+
+  @Test
+  fun `materializeExternalResources returns null for a self-contained bundle`() {
+    assertNull(materializeExternalResources(emptyList(), null, tempDir("ext")))
+  }
+
+  @Test
+  fun `materializeExternalResources requires a pool when the bundle externalized resources`() {
+    val res = BundleReader.ExternalResource("fonts/Roboto-Regular.ttf", sha256(byteArrayOf(1)), 1)
+    val e =
+      assertFailsWith<IllegalStateException> {
+        materializeExternalResources(listOf(res), null, tempDir("ext"))
+      }
+    assertTrue(e.message!!.contains("--res"), "the error tells the user to pass --res")
+  }
+
+  @Test
+  fun `materializeExternalResources rehydrates each resource at its recorded classpath path`() {
+    val pool = tempDir("pool")
+    val dest = tempDir("ext")
+    val bytes = "ROBOTO-REGULAR-TTF-BYTES".toByteArray()
+    val sha = sha256(bytes)
+    File(pool, sha).writeBytes(bytes)
+    val res = BundleReader.ExternalResource("fonts/Roboto-Regular.ttf", sha, bytes.size.toLong())
+
+    val out = materializeExternalResources(listOf(res), pool, dest)
+
+    assertEquals(dest, out)
+    assertContentEquals(
+      bytes,
+      File(dest, "fonts/Roboto-Regular.ttf").readBytes(),
+      "the font is materialized at its recorded /fonts/… path",
+    )
+  }
+
+  @Test
+  fun `materializeExternalResources fails closed on a missing pool entry`() {
+    val res = BundleReader.ExternalResource("fonts/X.ttf", sha256(byteArrayOf(9)), 1)
+    val e =
+      assertFailsWith<IllegalStateException> {
+        materializeExternalResources(listOf(res), tempDir("pool"), tempDir("ext"))
+      }
+    assertTrue(e.message!!.contains("missing from the pool"))
+  }
+
+  @Test
+  fun `materializeExternalResources fails closed on a size mismatch`() {
+    val pool = tempDir("pool")
+    val bytes = "abc".toByteArray()
+    val sha = sha256(bytes)
+    File(pool, sha).writeBytes(bytes)
+    val res = BundleReader.ExternalResource("fonts/X.ttf", sha, 999L) // declared size is wrong
+    assertFailsWith<IllegalStateException> {
+      materializeExternalResources(listOf(res), pool, tempDir("ext"))
+    }
+  }
+
+  @Test
+  fun `materializeExternalResources fails closed on a sha256 mismatch`() {
+    val pool = tempDir("pool")
+    val bytes = "real-bytes".toByteArray()
+    val declaredSha = sha256("different-bytes".toByteArray())
+    File(pool, declaredSha).writeBytes(bytes) // the pool file doesn't hash to its name
+    val res = BundleReader.ExternalResource("fonts/X.ttf", declaredSha, bytes.size.toLong())
+    assertFailsWith<IllegalStateException> {
+      materializeExternalResources(listOf(res), pool, tempDir("ext"))
+    }
+  }
+
+  @Test
+  fun `materializeExternalResources rejects a path escaping the output dir`() {
+    val pool = tempDir("pool")
+    val bytes = "x".toByteArray()
+    val sha = sha256(bytes)
+    File(pool, sha).writeBytes(bytes)
+    val res = BundleReader.ExternalResource("../evil.ttf", sha, bytes.size.toLong())
+    assertFailsWith<IllegalStateException> {
+      materializeExternalResources(listOf(res), pool, tempDir("ext"))
+    }
   }
 }

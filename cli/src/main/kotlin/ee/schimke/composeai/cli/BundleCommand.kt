@@ -825,9 +825,14 @@ private class RenderSubcommand(private val args: List<String>) {
     // Repeatable `--knob key=value` theme overrides (e.g. `theme.colors=scheme:…`); see
     // [parseKnobOverrides] for the split rules.
     val knobs: Map<String, PreviewOverrideValue> = parseKnobOverrides(args)
+    // `--res <dir>` supplies a PUBLISHED bundle's externalized resource pool (the content-addressed
+    // `bundle/res/<sha>` dir published beside the bundle on its design-artifacts branch), needed to
+    // daemon-render a bundle whose fonts were lifted out by `bundle externalize`.
+    val resPool = args.flagValue("--res")?.let { File(it) }
     if (path == null) {
       System.err.println(
-        "Usage: compose-preview bundle render <bundle.png | URL> [-o <dir>] [--knob key=value …]"
+        "Usage: compose-preview bundle render <bundle.png | URL> [-o <dir>] [--knob key=value …] " +
+          "[--res <pool-dir>]"
       )
       exitProcess(64)
     }
@@ -848,7 +853,7 @@ private class RenderSubcommand(private val args: List<String>) {
     // `serve` uses for `/render?knob…` — which applies `PreviewOverrides.namedOverrides` to the
     // PUBLISHED bundle with no source rebuild. See [renderBundleWithOverrides].
     if (knobs.isNotEmpty()) {
-      if (!renderBundleWithOverrides(file, target, knobs, verbose)) exitProcess(1)
+      if (!renderBundleWithOverrides(file, target, knobs, resPool, verbose)) exitProcess(1)
       return
     }
 
@@ -909,6 +914,7 @@ private fun renderBundleWithOverrides(
   bundleFile: File,
   outDir: File,
   overrides: Map<String, PreviewOverrideValue>,
+  resPoolDir: File?,
   verbose: Boolean,
 ): Boolean {
   val log: (String) -> Unit = { if (verbose) System.err.println("[bundle render] $it") }
@@ -918,7 +924,24 @@ private fun renderBundleWithOverrides(
   // would leak bytecode/resources into whatever the caller publishes. Torn down once we're done.
   val workspace = Files.createTempDirectory("bundle-render-daemon").toFile()
   try {
-    val state = ServeBundleDaemon.materialize(bundleFile, workspace, system = "bundle", onLog = log)
+    // A PUBLISHED bundle externalizes its fonts to a content-addressed pool; rehydrate them (from
+    // --res) onto the daemon classpath at their original resource paths, or the render fails
+    // "catalog font resource missing". Fail-closed — a font missing would silently corrupt output.
+    val extResourceDir =
+      try {
+        resolveExternalResources(bundleFile, resPoolDir, File(workspace, "extres"))
+      } catch (e: Exception) {
+        System.err.println("bundle render: ${e.message}")
+        return false
+      }
+    val state =
+      ServeBundleDaemon.materialize(
+        bundleFile,
+        workspace,
+        system = "bundle",
+        extraClasspathDirs = listOfNotNull(extResourceDir),
+        onLog = log,
+      )
     if (state == null) {
       System.err.println(
         "bundle render: can't stand up a render daemon for this bundle — --knob theme overrides need " +
@@ -956,6 +979,76 @@ private fun renderBundleWithOverrides(
     workspace.deleteRecursively()
   }
 }
+
+/**
+ * Rehydrate [bundleFile]'s externalized resources (fonts lifted out by `bundle externalize`,
+ * recorded in the manifest's `externalResources` as path+sha256+size) from the local
+ * content-addressed [pool] (`bundle/res/<sha>`, published beside the bundle on its design-artifacts
+ * branch) into [destDir], each materialized at its recorded classpath path so a daemon render
+ * resolves `/fonts/…` exactly as it did with the resource inline. Returns [destDir] when the bundle
+ * externalized anything, or `null` when it is self-contained (no `--res` needed). Throws
+ * (fail-closed) if the bundle externalized resources but no [pool] was given, or a declared
+ * resource is missing / fails its sha256+size check.
+ */
+private fun resolveExternalResources(bundleFile: File, pool: File?, destDir: File): File? {
+  val resources =
+    runCatching { BundleReader.readMetadata(bundleFile).manifest.externalResources }
+      .getOrDefault(emptyList())
+  return materializeExternalResources(resources, pool, destDir)
+}
+
+/**
+ * Core of [resolveExternalResources], split out so the rehydration is unit-testable without a real
+ * bundle: given the manifest's [resources], copy each from the [pool] (keyed by sha256) to its
+ * recorded path under [destDir], verifying size + sha256 and rejecting path traversal. Empty
+ * [resources] ⇒ `null` (self-contained). A non-empty list with a null/absent [pool], a missing pool
+ * entry, or any integrity failure throws [IllegalStateException].
+ */
+internal fun materializeExternalResources(
+  resources: List<BundleReader.ExternalResource>,
+  pool: File?,
+  destDir: File,
+): File? {
+  if (resources.isEmpty()) return null
+  checkNotNull(pool) {
+    "this bundle externalized ${resources.size} resource(s) (e.g. fonts) — re-run with " +
+      "--res <pool-dir> pointing at its content-addressed pool (published at bundle/res/ on the " +
+      "design-artifacts branch)"
+  }
+  check(pool.isDirectory) { "--res pool '${pool.path}' is not a directory" }
+  destDir.mkdirs()
+  val destRoot = destDir.canonicalFile.toPath()
+  for (res in resources) {
+    val sha = res.sha256
+    check(sha.length == 64 && sha.all { it in '0'..'9' || it in 'a'..'f' }) {
+      "external resource sha256 '$sha' is malformed"
+    }
+    check(res.path.isNotBlank() && !res.path.startsWith("/") && ".." !in res.path.split("/")) {
+      "external resource path '${res.path}' is invalid"
+    }
+    val src = File(pool, sha)
+    check(src.isFile) {
+      "external resource ${res.path} (sha $sha) is missing from the pool ${pool.path}"
+    }
+    val bytes = src.readBytes()
+    check(bytes.size.toLong() == res.size) {
+      "external resource ${res.path}: pool bytes ${bytes.size} != declared size ${res.size}"
+    }
+    check(resSha256Hex(bytes) == sha) { "external resource ${res.path}: sha256 mismatch" }
+    val dest = File(destDir, res.path)
+    check(dest.canonicalFile.toPath().startsWith(destRoot)) {
+      "external resource path '${res.path}' escapes the output dir"
+    }
+    dest.parentFile?.mkdirs()
+    dest.writeBytes(bytes)
+  }
+  return destDir
+}
+
+private fun resSha256Hex(bytes: ByteArray): String =
+  java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") {
+    "%02x".format(it)
+  }
 
 /**
  * Render every preview [host] exposes to `<outDir>/<sanitized id>.png` under [seed], returning the
