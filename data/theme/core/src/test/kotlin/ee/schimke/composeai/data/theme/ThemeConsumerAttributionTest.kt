@@ -53,8 +53,19 @@ class ThemeConsumerAttributionTest {
       "labelLarge" to labelLarge,
     )
 
+  // extraSmall..large distinct; `collapsed` shares `small`'s value (a design system that reuses one
+  // corner across two roles) so shape, like colour, must emit every matching role.
+  private val shapes =
+    linkedMapOf(
+      "extraSmall" to "RoundedCornerShape(4.0.dp, 4.0.dp, 4.0.dp, 4.0.dp)",
+      "small" to "RoundedCornerShape(8.0.dp, 8.0.dp, 8.0.dp, 8.0.dp)",
+      "medium" to "RoundedCornerShape(12.0.dp, 12.0.dp, 12.0.dp, 12.0.dp)",
+      "large" to "RoundedCornerShape(16.0.dp, 16.0.dp, 16.0.dp, 16.0.dp)",
+      "collapsed" to "RoundedCornerShape(8.0.dp, 8.0.dp, 8.0.dp, 8.0.dp)",
+    )
+
   private val resolved =
-    ResolvedThemeTokens(colorScheme = colorScheme, typography = typography, shapes = emptyMap())
+    ResolvedThemeTokens(colorScheme = colorScheme, typography = typography, shapes = shapes)
 
   private fun tokensFor(nodeId: String, nodes: List<NodeThemeFacts>): List<String> =
     ThemeConsumerAttribution.attribute(nodes, resolved).single { it.nodeId == nodeId }.tokens
@@ -117,6 +128,62 @@ class ThemeConsumerAttributionTest {
     val tokens = tokensFor("5", listOf(NodeThemeFacts(nodeId = "5", textStyle = titleSmall.copy())))
 
     assertEquals(setOf("titleSmall", "labelLarge"), tokens.toSet())
+  }
+
+  @Test
+  fun `attributes a node's resolved shape to its scale role`() {
+    val tokens =
+      tokensFor(
+        "6",
+        listOf(
+          NodeThemeFacts(
+            nodeId = "6",
+            shape = "RoundedCornerShape(12.0.dp, 12.0.dp, 12.0.dp, 12.0.dp)",
+          )
+        ),
+      )
+
+    assertEquals(listOf("medium"), tokens)
+  }
+
+  @Test
+  fun `shape shared across roles reports every matching role`() {
+    val tokens =
+      tokensFor(
+        "7",
+        listOf(
+          NodeThemeFacts(nodeId = "7", shape = "RoundedCornerShape(8.0.dp, 8.0.dp, 8.0.dp, 8.0.dp)")
+        ),
+      )
+
+    assertEquals(setOf("small", "collapsed"), tokens.toSet())
+  }
+
+  @Test
+  fun `a node attributes colour, typography and shape together`() {
+    val node =
+      NodeThemeFacts(
+        nodeId = "8",
+        foregroundColor = "#FFB3261E",
+        textStyle = titleMedium.copy(fontFamily = null),
+        shape = "RoundedCornerShape(16.0.dp, 16.0.dp, 16.0.dp, 16.0.dp)",
+      )
+
+    assertEquals(
+      ThemeConsumer(nodeId = "8", tokens = listOf("error", "titleMedium", "large")),
+      ThemeConsumerAttribution.attribute(listOf(node), resolved).single(),
+    )
+  }
+
+  @Test
+  fun `a shape that matches no scale role is dropped`() {
+    assertEquals(
+      emptyList<ThemeConsumer>(),
+      ThemeConsumerAttribution.attribute(
+        listOf(NodeThemeFacts(nodeId = "9", shape = "CutCornerShape(3.0.dp)")),
+        resolved,
+      ),
+    )
   }
 
   @Test
