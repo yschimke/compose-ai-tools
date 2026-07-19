@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.16.58](https://github.com/yschimke/compose-ai-tools/compare/v0.16.57...v0.16.58) (2026-07-19)
+
+
+### Features
+
+* **serve:** surface the in-browser (Wasm) tier as its own viewer toggle ([#2575](https://github.com/yschimke/compose-ai-tools/issues/2575)) ([f71d502](https://github.com/yschimke/compose-ai-tools/commit/f71d502d0365f01602268881b0e66aa6915b641b))
+* **theme:** attribute the shape leg of the M3 triad to component nodes ([#2574](https://github.com/yschimke/compose-ai-tools/issues/2574)) ([2d8f656](https://github.com/yschimke/compose-ai-tools/commit/2d8f656c17bc0fac06d606ec6e8798ea5aae4347))
+* **theme:** capture the node shape leg of the M3 triad from the render ([#2578](https://github.com/yschimke/compose-ai-tools/issues/2578)) ([8160fd5](https://github.com/yschimke/compose-ai-tools/commit/8160fd524db01bb702c741f830af7e5949445409))
+
+
+### Bug Fixes
+
+* **design-artifacts:** carry figma-svg + wireframes from the --extra-renders bundle ([#2576](https://github.com/yschimke/compose-ai-tools/issues/2576)) ([d9bf043](https://github.com/yschimke/compose-ai-tools/commit/d9bf0433b9ac8c695d3c825ccba9235d7b02862e))
+
 ## [0.16.57](https://github.com/yschimke/compose-ai-tools/compare/v0.16.56...v0.16.57) (2026-07-19)
 
 
