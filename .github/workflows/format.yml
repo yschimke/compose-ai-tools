@@ -23,5 +23,10 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      # Read-only BuildFetch remote cache: pull cached task outputs instead of
+      # building cold. No rw-token — ci.yml stays the sole cache writer.
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Run ktfmt check
         run: ./gradlew ktfmtCheckAll

@@ -66,6 +66,11 @@ jobs:
           # default git credentials aren't needed here. (zizmor: artipacked)
           persist-credentials: false
       - uses: ./.github/actions/setup
+      # Read-only BuildFetch remote cache: pull cached task outputs instead of
+      # building cold. No rw-token — ci.yml stays the sole cache writer.
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - uses: ./.github/actions/apply
         with:
           # In-repo CI uses the CLI built from the current checkout so PRs
@@ -98,6 +103,11 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      # Read-only BuildFetch remote cache: pull cached task outputs instead of
+      # building cold. No rw-token — ci.yml stays the sole cache writer.
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - uses: ./.github/actions/apply
         with:
           cli-version: source
