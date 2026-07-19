@@ -87,6 +87,57 @@ class FigmaFontEmbedTest {
   }
 
   @Test
+  fun resolverRetriesTransientFailureThenSucceeds() {
+    // The first CSS fetch fails (a cold DNS/TLS path on a fresh daemon subprocess); the retry
+    // succeeds. The face must embed rather than be permanently stranded on one transient miss.
+    val css = "/* latin */ src: url(https://fonts.gstatic.com/lat.woff2) format('woff2');"
+    var cssAttempts = 0
+    val http: (String, String) -> ByteArray? = { url, _ ->
+      when {
+        url.contains("css2") -> if (++cssAttempts >= 2) css.toByteArray() else null
+        url.endsWith("lat.woff2") -> byteArrayOf(1, 2, 3, 4)
+        else -> null
+      }
+    }
+    val slept = mutableListOf<Long>()
+    val resolver =
+      GoogleFontsWoff2Resolver(
+        cacheDir = dir,
+        offline = false,
+        httpGet = http,
+        sleep = { slept.add(it) },
+      )
+
+    assertArrayEquals(byteArrayOf(1, 2, 3, 4), resolver.woff2("Roboto Flex", 500, false))
+    assertEquals("retried the failed CSS fetch once", 2, cssAttempts)
+    assertEquals("backed off once between the two attempts", listOf(300L), slept)
+  }
+
+  @Test
+  fun resolverGivesUpAfterMaxAttempts() {
+    // A genuinely unresolvable family exhausts the bounded attempts and returns null (the same
+    // degradation as before, just after a bounded wait) — it never loops forever.
+    var attempts = 0
+    val http: (String, String) -> ByteArray? = { _, _ ->
+      attempts++
+      null
+    }
+    val slept = mutableListOf<Long>()
+    val resolver =
+      GoogleFontsWoff2Resolver(
+        cacheDir = dir,
+        offline = false,
+        httpGet = http,
+        maxAttempts = 3,
+        sleep = { slept.add(it) },
+      )
+
+    assertEquals(null, resolver.woff2("No Such Family", 400, false))
+    assertEquals("one CSS fetch per attempt", 3, attempts)
+    assertEquals("exponential backoff between attempts", listOf(300L, 600L), slept)
+  }
+
+  @Test
   fun offlineResolverReturnsNullOnCacheMiss() {
     val http: (String, String) -> ByteArray? = { _, _ ->
       error("must not hit network when offline")

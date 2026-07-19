@@ -206,11 +206,22 @@ object ComposeFigmaSvgDataProducer {
       // A meaningful generic (serif/monospace) maps to a concrete embeddable family; a bare
       // cursive/fantasy has none, so skip embedding and let the text fall back to the generic.
       val name = FigmaLayeredSvg.embedFamily(captured, DEFAULT_EMBED_FAMILY) ?: return
-      resolver.woff2(name, weight, italic)?.let {
-        faces["$name|$weight|$italic|woff2"] =
-          FigmaSvgFontFace(name, weight, italic, Base64.getEncoder().encodeToString(it))
-        if (captured != null) overrides[captured] = name
+      val bytes = resolver.woff2(name, weight, italic)
+      if (bytes == null) {
+        // Fail loud: embedding was asked for (a resolver is present) but this concrete face didn't
+        // resolve — the `<text>` degrades to a named generic and the SVG renders with a substitute
+        // typeface (and, as an `<img>`, can't recover it). Surface it so a degraded bundle doesn't
+        // publish silently; a deliberately-offline render prints the same line, which is fine.
+        System.err.println(
+          "ComposeFigmaSvg: could not embed font \"$name\" " +
+            "(weight=$weight${if (italic) ", italic" else ""}) — the figma-svg text falls back to a " +
+            "generic family and will render with a substitute typeface"
+        )
+        return
       }
+      faces["$name|$weight|$italic|woff2"] =
+        FigmaSvgFontFace(name, weight, italic, Base64.getEncoder().encodeToString(bytes))
+      if (captured != null) overrides[captured] = name
     }
     // First gather the code points each face draws (across every `<text>` and wrapped `<tspan>`
     // that
