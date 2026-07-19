@@ -97,29 +97,49 @@ object ThemeConsumerCapture {
 
   /**
    * The `Shape.toString()` declared by the first shape-bearing modifier — `background(color,
-   * shape)`, `clip(shape)` (routed through `graphicsLayer`), or `border(..., shape)` — or `null`
-   * when none carries one. Reads the inspector `shape` element first, then a reflected `shape`
-   * field, foundation-free, mirroring `ModifierTokenResolver.shapeOf`. `internal` so the extraction
-   * is unit-testable against a real modifier chain without a render.
+   * shape)`, `clip(shape)` (routed through `graphicsLayer`), `border(..., shape)`, or a Wear
+   * scaling card's `paint(BackgroundPainter)` — or `null` when none carries one. Reads the
+   * inspector `shape` element first, then a reflected `shape` field, then a
+   * `BackgroundPainter.shape`, foundation-free, mirroring `ModifierTokenResolver.shapeOf`.
+   * `internal` so the extraction is unit-testable against a real modifier chain without a render.
    */
   internal fun shapeStringOf(modifiers: List<Any>): String? {
     for (mod in modifiers) {
-      val fromElement =
-        (mod as? InspectableValue)?.inspectableElements?.firstOrNull { it.name == "shape" }?.value
-          as? Shape
-      val shape =
-        fromElement
-          ?: runCatching {
-              mod.javaClass.getDeclaredField("shape").apply { isAccessible = true }.get(mod)
-                as? Shape
-            }
-            .getOrNull()
+      val shape = mod.shapeFromModifier() ?: mod.shapeFromBackgroundPainter()
       // `Modifier.background(color)` defaults its shape to `RectangleShape`; a plain rectangle is
       // never a theme shape role, so skip it and keep scanning for a real (rounded/cut) shape.
       if (shape != null && shape != RectangleShape) return shape.toString()
     }
     return null
   }
+
+  /** The inspector `shape` element, or a reflected `shape` field on the modifier element. */
+  private fun Any.shapeFromModifier(): Shape? {
+    val fromElement =
+      (this as? InspectableValue)?.inspectableElements?.firstOrNull { it.name == "shape" }?.value
+        as? Shape
+    return fromElement
+      ?: runCatching {
+          javaClass.getDeclaredField("shape").apply { isAccessible = true }.get(this) as? Shape
+        }
+        .getOrNull()
+  }
+
+  /**
+   * A Wear scaling card (`TransformingLazyColumn` + `SurfaceTransformation`) fills through a
+   * `Modifier.paint(BackgroundPainter)` whose rounded/morphing shape rides on the *painter*
+   * (`BackgroundPainter.shape`), not the modifier — so without this such a card gets no
+   * `NodeThemeFacts.shape` even though `ModifierTokenResolver` resolves the same node's shape (it
+   * carries the identical fallback). Best-effort reflection, foundation-free.
+   */
+  private fun Any.shapeFromBackgroundPainter(): Shape? =
+    runCatching {
+        val painter = javaClass.getDeclaredField("painter").apply { isAccessible = true }.get(this)
+        if (painter?.javaClass?.simpleName != "BackgroundPainter") return null
+        painter.javaClass.getDeclaredField("shape").apply { isAccessible = true }.get(painter)
+          as? Shape
+      }
+      .getOrNull()
 
   private fun SemanticsConfiguration.layoutThemeFacts(): LayoutThemeFacts? {
     val action = getOrNull(SemanticsActions.GetTextLayoutResult)?.action ?: return null

@@ -6,6 +6,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -45,5 +46,31 @@ class ThemeConsumerCaptureShapeTest {
   @Test
   fun `no shape-bearing modifier yields null`() {
     assertNull(ThemeConsumerCapture.shapeStringOf(elements(Modifier.padding(4.dp))))
+  }
+
+  // A Wear scaling card fills through `Modifier.paint(BackgroundPainter)`, whose shape rides on the
+  // painter, not the modifier — matched reflectively by simple-name + a `painter`/`shape` field.
+  // These fakes reproduce that field shape without a Wear-compose dependency on the test classpath.
+  private class BackgroundPainter(@JvmField val shape: Shape)
+
+  private class PaintModifier(@JvmField val painter: Any)
+
+  @Test
+  fun `reads the shape from a BackgroundPainter behind a paint modifier`() {
+    val shape = RoundedCornerShape(20.dp)
+    assertEquals(
+      shape.toString(),
+      ThemeConsumerCapture.shapeStringOf(listOf(PaintModifier(BackgroundPainter(shape)))),
+    )
+  }
+
+  @Test
+  fun `a non-BackgroundPainter behind a paint modifier yields null`() {
+    class OtherPainter(@JvmField val shape: Shape)
+    assertNull(
+      ThemeConsumerCapture.shapeStringOf(
+        listOf(PaintModifier(OtherPainter(RoundedCornerShape(20.dp))))
+      )
+    )
   }
 }
