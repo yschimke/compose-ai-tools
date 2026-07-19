@@ -60,6 +60,13 @@ class BundleRenderer(
   private val verbose: Boolean = false,
   private val logSink: (String) -> Unit = { System.err.println(it) },
   private val fileSystem: FileSystem = SystemFileSystem,
+  /**
+   * A published bundle's externalized resource pool (`bundle/res/<sha>`, from `--res`). When the
+   * bundle lifted its fonts out of `classes/app.jar` via `bundle externalize`, they're rehydrated
+   * back into the expanded classes dir so the subprocess renderer resolves `/fonts/…`. Null for a
+   * self-contained bundle (nothing to rehydrate).
+   */
+  private val resPoolDir: File? = null,
 ) {
 
   /** Outcome of one bundle render — surfaced for the CLI's exit-code logic and test assertions. */
@@ -90,6 +97,15 @@ class BundleRenderer(
 
     val manifest = BUNDLE_JSON.decodeFromString(BundleReader.Manifest.serializer(), bundleJsonBytes)
     val previews = MANIFEST_JSON.decodeFromString(PreviewManifest.serializer(), previewsJsonBytes)
+
+    // A published bundle externalized its fonts out of `classes/app.jar` (via `bundle externalize`)
+    // to stay slim; rehydrate the `--res` pool back into the expanded classes dir — already first
+    // on
+    // the render classpath — so the subprocess renderer resolves `/fonts/…`. No-op for a
+    // self-contained bundle; fail-closed when it externalized resources but no pool was supplied,
+    // or
+    // an entry fails its sha256/size check.
+    materializeExternalResources(manifest.externalResources, resPoolDir, classesDir)
 
     // A preview that isn't replayed from an intermediate representation needs its class from
     // `classes/app.jar`; a fully IR-backed bundle legitimately omits it. Re-impose the fast-fail

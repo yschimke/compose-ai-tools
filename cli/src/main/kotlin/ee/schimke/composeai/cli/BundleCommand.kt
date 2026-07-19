@@ -857,7 +857,8 @@ private class RenderSubcommand(private val args: List<String>) {
       return
     }
 
-    val renderer = BundleRenderer(bundleFile = file, outputDir = target, verbose = verbose)
+    val renderer =
+      BundleRenderer(bundleFile = file, outputDir = target, verbose = verbose, resPoolDir = resPool)
     val result =
       try {
         renderer.run()
