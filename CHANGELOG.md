@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.16.57](https://github.com/yschimke/compose-ai-tools/compare/v0.16.56...v0.16.57) (2026-07-19)
+
+
+### Features
+
+* **catalog:** infer each theme's supported light/dark mode(s) ([#2569](https://github.com/yschimke/compose-ai-tools/issues/2569)) ([a417c52](https://github.com/yschimke/compose-ai-tools/commit/a417c52bd56354775b1bc53af682f29cf4fa2980))
+* **cli:** add `bundle render --knob` to re-theme a published bundle offline ([#2571](https://github.com/yschimke/compose-ai-tools/issues/2571)) ([9695daf](https://github.com/yschimke/compose-ai-tools/commit/9695dafabd613781fd184ff59ed568dff89b21b3))
+* **design-catalog-m3:** decode an app-supplied palette on the theme.colors knob ([#2562](https://github.com/yschimke/compose-ai-tools/issues/2562)) ([52021c5](https://github.com/yschimke/compose-ai-tools/commit/52021c57b536fe9b7483306508e51c66d244f351))
+* **design-catalog-m3:** re-skin catalog shapes & typography via theme knobs ([#2564](https://github.com/yschimke/compose-ai-tools/issues/2564)) ([220b5fd](https://github.com/yschimke/compose-ai-tools/commit/220b5fd45204a37372bcc5244d09b32a11806d28))
+* **serve:** list app catalogs on the front page; keep cadence unlisted ([#2568](https://github.com/yschimke/compose-ai-tools/issues/2568)) ([2e5512f](https://github.com/yschimke/compose-ai-tools/commit/2e5512fa4ff6cd54f9a7a10afcccd3887a7254e0))
+* **serve:** tab the catalog landing page by section ([#2561](https://github.com/yschimke/compose-ai-tools/issues/2561)) ([535c869](https://github.com/yschimke/compose-ai-tools/commit/535c869217a5536c2c09efd5ef99d44666516a92))
+
+
+### Bug Fixes
+
+* **design-artifacts:** link README htmlpreview URLs at the publishing repo ([#2567](https://github.com/yschimke/compose-ai-tools/issues/2567)) ([8a27d45](https://github.com/yschimke/compose-ai-tools/commit/8a27d45c43bed5260408bb57ecdde8f8d07fd8db))
+* **wear-m3:** keep the catalog's own authored locales ([#2566](https://github.com/yschimke/compose-ai-tools/issues/2566)) ([f5ab9f9](https://github.com/yschimke/compose-ai-tools/commit/f5ab9f9d5a9b94f6d34ae7c6e2b490958465c98d))
+
+
+### Performance Improvements
+
+* **wear-m3:** shrink catalog resource payload 1.86 MB → 57 KB ([#2563](https://github.com/yschimke/compose-ai-tools/issues/2563)) ([86c0e8c](https://github.com/yschimke/compose-ai-tools/commit/86c0e8cebad146822695bc6b278f4bed303cee14))
+
 ## [0.16.56](https://github.com/yschimke/compose-ai-tools/compare/v0.16.55...v0.16.56) (2026-07-18)
 
 
