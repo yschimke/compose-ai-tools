@@ -973,6 +973,46 @@ class ServeWebFixtureTest {
   }
 
   @Test
+  fun `a dedicated In-browser Wasm toggle shows only when a wasm app and a daemon lane are both present`() {
+    val card = previews.first { it.id.endsWith("CardPreview") }
+    // Case C — daemon live lane + wasm app: "Live preview" would prefer the daemon (bestLiveMode)
+    // and hide the wasm lane, so a distinct "In-browser (Wasm)" toggle is added beside it.
+    val both =
+      ServeWeb.viewerPage(
+        card,
+        token,
+        sessionId = "compose-m3",
+        hasLiveStream = true,
+        wasmSrc = "/wasm/compose-m3/?id=card-filled",
+        wasmSameOrigin = true,
+      )
+    assertTrue(
+      both.contains("id=\"cp-wasm-btn\"") && both.contains("In-browser (Wasm)"),
+      "with both a daemon lane and a wasm app, the viewer adds the In-browser (Wasm) toggle",
+    )
+    assertTrue(
+      both.contains("id=\"cp-live-toggle\""),
+      "the daemon 'Live preview' toggle stays alongside it",
+    )
+
+    // Case B — wasm app but NO daemon lane: the single Static⇄Live toggle already drops into wasm
+    // as
+    // its only interactive lane, so a separate button would be redundant.
+    val wasmOnly = ServeWeb.viewerPage(card, token, wasmSrc = "/wasm/compose-m3/?id=card-filled")
+    assertFalse(
+      wasmOnly.contains("id=\"cp-wasm-btn\""),
+      "a wasm-only session keeps the single toggle (no redundant In-browser button)",
+    )
+
+    // Case A — daemon lane but no wasm app: nothing to add.
+    val daemonOnly = ServeWeb.viewerPage(card, token, canApplyOverrides = true)
+    assertFalse(
+      daemonOnly.contains("id=\"cp-wasm-btn\""),
+      "a daemon-only session shows no In-browser (Wasm) toggle",
+    )
+  }
+
+  @Test
   fun `live canvas fits the daemon frame aspect-preserved inside the snapshot box`() {
     // The live lane is pinned to the baked snapshot's box (so a differently-sized frame doesn't
     // resize the stage), but a <canvas> stretches its buffer to its CSS box — filling that box

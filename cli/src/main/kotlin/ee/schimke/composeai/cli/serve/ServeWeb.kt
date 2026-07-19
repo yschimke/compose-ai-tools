@@ -1623,6 +1623,21 @@ object ServeWeb {
         "<button type=\"button\" id=\"cp-svg-toggle\" class=\"cp-fmt-toggle\" " +
           "aria-pressed=\"false\" title=\"Show the vector (SVG) render\">SVG</button>"
       else ""
+    // A dedicated "In-browser (Wasm)" toggle, shown only when the session carries BOTH a daemon
+    // live
+    // lane ([hasLiveStream]) and a Wasm app ([wasmSrc]). The single Static⇄Live toggle prefers the
+    // daemon (bestLiveMode), which otherwise leaves the Wasm tier unreachable from the viewer even
+    // though it's registered. Omitted when no Wasm app backs the session, and when there's no
+    // daemon
+    // (the Static⇄Live toggle already drops into Wasm as its only interactive lane). Reuses the
+    // `.cp-live-toggle` styling so it reads as a peer of "Live preview".
+    val wasmToggleBtn =
+      if (wasmSrc != null && hasLiveStream)
+        "<button type=\"button\" id=\"cp-wasm-btn\" class=\"cp-live-toggle\" aria-pressed=\"false\" " +
+          "title=\"Run this component in your browser (Kotlin/Wasm)\">" +
+          "<span class=\"cp-live-dot\" aria-hidden=\"true\"></span><span>In-browser (Wasm)</span>" +
+          "</button>"
+      else ""
     val deviceOptions =
       COMMON_DEVICES.joinToString("\n") { (value, name) ->
         val v = WebEscaping.htmlEscape(value)
@@ -1824,6 +1839,7 @@ object ServeWeb {
               <span class="cp-live-dot" aria-hidden="true"></span>
               <span id="cp-live-toggle-label">Live preview</span>
             </button>
+            $wasmToggleBtn
             $svgFmtToggle
             <span class="cp-mode-hint" id="cp-mode-hint"></span>
             <!-- The mode radios the transport JS drives; visually removed (the toggle above is the
@@ -2784,24 +2800,44 @@ object ServeWeb {
       // backendBadgeScript).
       var liveToggle = document.getElementById("cp-live-toggle");
       var liveToggleLabel = document.getElementById("cp-live-toggle-label");
+      // The dedicated in-browser Wasm toggle (present only when the session has BOTH a daemon lane
+      // and a Wasm app). When it's here, "Live preview" owns the daemon lane and this owns the Wasm
+      // lane, so the Wasm tier is reachable rather than hidden behind bestLiveMode()'s daemon
+      // preference. Null in the daemon-only / wasm-only cases, where the single toggle stays generic.
+      var wasmBtn = document.getElementById("cp-wasm-btn");
       var modeHint = document.getElementById("cp-mode-hint");
       function liveTransportAvailable() { return (live && !live.disabled) || !!wasmToggle; }
       function bestLiveMode() { return (live && !live.disabled) ? "live" : (wasmToggle ? "wasm" : null); }
       function anyLiveActive() { return !!(live && live.checked) || !!(wasmToggle && wasmToggle.checked); }
       function updateLiveToggle() {
-        if (!liveToggle) return;
-        var on = anyLiveActive();
-        liveToggle.setAttribute("aria-pressed", on ? "true" : "false");
-        liveToggle.disabled = !liveTransportAvailable();
+        var liveOn = !!(live && live.checked);
+        var wasmOn = !!(wasmToggle && wasmToggle.checked);
+        if (liveToggle) {
+          // With a separate Wasm button, "Live preview" reflects the daemon lane alone; without one
+          // it's the generic interactive toggle that lights for either lane.
+          var livePressed = wasmBtn ? liveOn : (liveOn || wasmOn);
+          liveToggle.setAttribute("aria-pressed", livePressed ? "true" : "false");
+          liveToggle.disabled = !liveTransportAvailable();
+        }
+        if (wasmBtn) { wasmBtn.setAttribute("aria-pressed", wasmOn ? "true" : "false"); }
         if (modeHint) {
-          modeHint.textContent = on ? "interactive — click / scroll the preview"
+          modeHint.textContent = (liveOn || wasmOn) ? "interactive — click / scroll the preview"
             : (liveTransportAvailable() ? "static snapshot" : "static snapshot (no live lane)");
         }
       }
       if (liveToggle) {
         liveToggle.addEventListener("click", function () {
-          if (anyLiveActive()) { setMode("png"); }
+          if (wasmBtn) {
+            // Daemon lane specifically — the Wasm button owns the in-browser lane.
+            if (live && live.checked) { setMode("png"); }
+            else if (live && !live.disabled) { setMode("live"); }
+          } else if (anyLiveActive()) { setMode("png"); }
           else { var m = bestLiveMode(); if (m) setMode(m); }
+        });
+      }
+      if (wasmBtn) {
+        wasmBtn.addEventListener("click", function () {
+          if (wasmActive()) { setMode("png"); } else { setMode("wasm"); }
         });
       }
       // Keep the live canvas overlay tracking the snapshot's slot when the page reflows (the Wasm
