@@ -97,9 +97,20 @@ The colors axis on its own:
 
 Overrides resolve in-composition, so a value reaches a live render through `compose-preview serve`
 (`/render/<id>.png?knob.theme.colors=scheme:…`, `&knob.theme.shapes=shapes:…`,
-`&knob.theme.typography=typo:…`) or the daemon RPC. Baking the re-themed PNGs into a published bundle
-is a follow-up (a `--knob` seam on `bundle pack`), which lets an app surface the re-skinned catalog as
-its own tab.
+`&knob.theme.typography=typo:…`) or the daemon RPC. The same override seed re-skins an **already
+published** bundle offline, with no source rebuild:
+
+```
+compose-preview bundle render <bundle.png> --knob theme.colors=scheme:… -o <dir>
+```
+
+stands up the bundle's own render daemon (the path `serve` uses for `/render?knob…`) and writes one
+re-themed PNG per preview. Because it runs the published bundle — not the app's source — a consumer
+that only has the `.png` (e.g. meshcore reusing the compose-m3 stickersheet under its own theme) can
+bake the re-skinned catalog and surface it as its own tab. `--knob` is repeatable and each
+`key=value` splits on the first `=`, so a serialized `scheme:…` blob keeps its own `=`/`,`/`;`
+separators; the flag is inert without a `desktop`/`android` backend bundle plus the `:cli:installDist`
+daemon sidecars (re-run without `--knob` for the stock, override-free render).
 
 Encode/decode round-trips are covered by
 [`CatalogColorSchemeTest`](../../samples/design-catalog-m3-shared/src/desktopTest/kotlin/com/example/designcatalogm3/shared/CatalogColorSchemeTest.kt)
