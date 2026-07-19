@@ -404,6 +404,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
               <span class="cp-live-dot" aria-hidden="true"></span>
               <span id="cp-live-toggle-label">Live preview</span>
             </button>
+            <button type="button" id="cp-wasm-btn" class="cp-live-toggle" aria-pressed="false" title="Run this component in your browser (Kotlin/Wasm)"><span class="cp-live-dot" aria-hidden="true"></span><span>In-browser (Wasm)</span></button>
             
             <span class="cp-mode-hint" id="cp-mode-hint"></span>
             <!-- The mode radios the transport JS drives; visually removed (the toggle above is the
@@ -1469,15 +1470,32 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
      "fixedW", "fixedH", "minW", "minH", "maxW", "maxH"];
   var wasmHonouredControlIds = ["uiMode", "localeTag", "fontScale"];
   function syncServerControls() {
-    var canServerRender = !staticSnapshot || canRenderOverrides || !!(live && live.checked);
+    // The in-browser Wasm lane only honours the wasm-honoured trio (uiMode/locale/fontScale) +
+    // knobs (see wasmOverridePatch); size/device/orientation/background and the app-theme
+    // selector re-point /render, which the iframe ignores. So while Wasm is the active lane they
+    // are dead — disable them (even on a catalog that can otherwise re-render) and restore them
+    // when the lane leaves Wasm. Called on every mode transition, so the states track the lane.
+    var onWasm = wasmActive();
+    var canServerRender =
+      !onWasm && (!staticSnapshot || canRenderOverrides || !!(live && live.checked));
     serverOnlyControlIds.forEach(function (id) {
       var el = document.getElementById("cp-" + id);
       if (el) el.disabled = !canServerRender;
     });
+    // The wasm-honoured trio stays live in the in-browser lane (the app applies it), so it's
+    // enabled whenever the server can render OR a Wasm app backs the session.
     wasmHonouredControlIds.forEach(function (id) {
       var el = document.getElementById("cp-" + id);
       if (el) el.disabled = !(canServerRender || wasmSrc);
     });
+    // The app-theme (themeProvider) selector is a daemon-only override the Wasm app doesn't
+    // honour: dead in the in-browser lane. Disable it there; otherwise mirror its server-side
+    // gate (enabled iff the host can render an override — canApplyOverrides || canRenderOverrides,
+    // i.e. !staticSnapshot || canRenderOverrides).
+    var themeProviderEl = document.getElementById("cp-themeProvider");
+    if (themeProviderEl) {
+      themeProviderEl.disabled = onWasm || !(!staticSnapshot || canRenderOverrides);
+    }
   }
   // Programmatic switch (the live toggle, or a wasm-only control auto-enabling Wasm): tick the
   // hidden mode radio so its state is consistent, then run the transition.
@@ -1501,24 +1519,44 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   // backendBadgeScript).
   var liveToggle = document.getElementById("cp-live-toggle");
   var liveToggleLabel = document.getElementById("cp-live-toggle-label");
+  // The dedicated in-browser Wasm toggle (present only when the session has BOTH a daemon lane
+  // and a Wasm app). When it's here, "Live preview" owns the daemon lane and this owns the Wasm
+  // lane, so the Wasm tier is reachable rather than hidden behind bestLiveMode()'s daemon
+  // preference. Null in the daemon-only / wasm-only cases, where the single toggle stays generic.
+  var wasmBtn = document.getElementById("cp-wasm-btn");
   var modeHint = document.getElementById("cp-mode-hint");
   function liveTransportAvailable() { return (live && !live.disabled) || !!wasmToggle; }
   function bestLiveMode() { return (live && !live.disabled) ? "live" : (wasmToggle ? "wasm" : null); }
   function anyLiveActive() { return !!(live && live.checked) || !!(wasmToggle && wasmToggle.checked); }
   function updateLiveToggle() {
-    if (!liveToggle) return;
-    var on = anyLiveActive();
-    liveToggle.setAttribute("aria-pressed", on ? "true" : "false");
-    liveToggle.disabled = !liveTransportAvailable();
+    var liveOn = !!(live && live.checked);
+    var wasmOn = !!(wasmToggle && wasmToggle.checked);
+    if (liveToggle) {
+      // With a separate Wasm button, "Live preview" reflects the daemon lane alone; without one
+      // it's the generic interactive toggle that lights for either lane.
+      var livePressed = wasmBtn ? liveOn : (liveOn || wasmOn);
+      liveToggle.setAttribute("aria-pressed", livePressed ? "true" : "false");
+      liveToggle.disabled = !liveTransportAvailable();
+    }
+    if (wasmBtn) { wasmBtn.setAttribute("aria-pressed", wasmOn ? "true" : "false"); }
     if (modeHint) {
-      modeHint.textContent = on ? "interactive — click / scroll the preview"
+      modeHint.textContent = (liveOn || wasmOn) ? "interactive — click / scroll the preview"
         : (liveTransportAvailable() ? "static snapshot" : "static snapshot (no live lane)");
     }
   }
   if (liveToggle) {
     liveToggle.addEventListener("click", function () {
-      if (anyLiveActive()) { setMode("png"); }
+      if (wasmBtn) {
+        // Daemon lane specifically — the Wasm button owns the in-browser lane.
+        if (live && live.checked) { setMode("png"); }
+        else if (live && !live.disabled) { setMode("live"); }
+      } else if (anyLiveActive()) { setMode("png"); }
       else { var m = bestLiveMode(); if (m) setMode(m); }
+    });
+  }
+  if (wasmBtn) {
+    wasmBtn.addEventListener("click", function () {
+      if (wasmActive()) { setMode("png"); } else { setMode("wasm"); }
     });
   }
   // Keep the live canvas overlay tracking the snapshot's slot when the page reflows (the Wasm
