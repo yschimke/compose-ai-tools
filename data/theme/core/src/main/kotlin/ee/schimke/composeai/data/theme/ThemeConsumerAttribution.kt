@@ -14,6 +14,14 @@ data class NodeThemeFacts(
   val foregroundColor: String? = null,
   val backgroundColor: String? = null,
   val textStyle: TypographyToken? = null,
+  /**
+   * The node's resolved clip/container shape, formatted like [ResolvedThemeTokens.shapes] values (a
+   * `Shape.toString()`, e.g. `RoundedCornerShape(...)`), or `null` when the node draws no
+   * theme-derived shape. Completes the M3 triad — colour, typography, **shape** — so a node that
+   * clips to `MaterialTheme.shapes.medium` attributes the `medium` corner token, the third leg the
+   * design-parity token diff and the importable bundles want (#2179 / shape parity).
+   */
+  val shape: String? = null,
 )
 
 /**
@@ -30,6 +38,9 @@ data class NodeThemeFacts(
  *   `onError`, and `surface` == `background`). When a node's background resolves to a known
  *   container role the foreground is disambiguated to that container's `on*` counterpart; otherwise
  *   every candidate role is emitted so the consumer can decide rather than silently guess.
+ * - **Shape** — matched on the resolved `Shape.toString()` against the theme's shape scale. Two
+ *   roles can share a value (an uncustomised theme leaves `extraSmall`..`large` distinct, but a
+ *   design system may collapse some), so every matching role is emitted, mirroring colour.
  *
  * A node is only emitted as a [ThemeConsumer] when it read at least one token — nodes that hardcode
  * non-theme values produce no entry.
@@ -57,6 +68,7 @@ object ThemeConsumerAttribution {
     tokens += disambiguateForeground(fgRoles, bgRoles)
     tokens += bgRoles
     textStyle?.let { style -> tokens += typographyTokensFor(style, resolved.typography) }
+    shape?.let { value -> tokens += shapeTokensFor(value, resolved.shapes) }
     return if (tokens.isEmpty()) null else ThemeConsumer(nodeId = nodeId, tokens = tokens.toList())
   }
 
@@ -84,6 +96,10 @@ object ThemeConsumerAttribution {
     val target = style.copy(fontFamily = null)
     return typography.filterValues { it.copy(fontFamily = null) == target }.keys.toList()
   }
+
+  /** Shape-scale role names whose resolved value equals the node's resolved [shape]. */
+  private fun shapeTokensFor(shape: String, shapes: Map<String, String>): List<String> =
+    shapes.filterValues { it == shape }.keys.toList()
 
   /** Material 3 container/surface role → the `on*` role whose value is its content colour. */
   private val CONTAINER_TO_ON: Map<String, String> =
