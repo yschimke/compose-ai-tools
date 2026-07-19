@@ -51,7 +51,7 @@ import { renderCrossSystemHtml } from "./render-cross-system-html.mjs";
 import { renderReadmeMd } from "./render-readme-md.mjs";
 import {
   figmaRastersForId,
-  figmaSvgByFunction,
+  figmaSvgByFunctions,
   rewriteRasterHrefs,
 } from "./figma-svg-emit.mjs";
 import { buildCodeConnectManifest } from "./figma-code-connect-emit.mjs";
@@ -399,8 +399,12 @@ const { candidates, bundle } = await loadCandidates(rendersPath);
 // from what the desktop daemon (`bundle.previews`) would draw (e.g. the focus ring CMP can't paint),
 // so the live-preview bridge below MUST NOT map them to a desktop preview — they stay baked-only.
 const overriddenFunctions = new Set();
+let extraBundle = null;
 if (values["extra-renders"]) {
-  const { candidates: extra } = await loadCandidates(resolve(values["extra-renders"]));
+  const { candidates: extra, bundle: extraRenderBundle } = await loadCandidates(
+    resolve(values["extra-renders"]),
+  );
+  extraBundle = extraRenderBundle;
   const overridden = new Set(extra.map(functionOf));
   for (const fn of overridden) overriddenFunctions.add(fn);
   for (let i = candidates.length - 1; i >= 0; i--) {
@@ -625,7 +629,12 @@ if (values["publish-live-bundle"]) {
 // captures the slot containers + resolved design tokens (background / border /
 // corner / padding) a redline needs. Where no tree was carried, fall back to the
 // a11y-greenline wireframe (touch-target rects only).
+// Wireframes + figma-svg read from BOTH the primary and the `--extra-renders` bundle: an extra render
+// that ADDS a function (not just overrides a same-named one) carries its own layout tree + editable
+// figma-svg, which must land in the catalog too — otherwise a screen rendered from a second module is
+// PNG-only. Extra wins on a name clash, matching the candidate fold above.
 const layoutByFn = layoutByFunction(bundle);
+if (extraBundle) for (const [fn, v] of layoutByFunction(extraBundle)) layoutByFn.set(fn, v);
 const fnByComponentId = new Map(
   spec.groups.flatMap((g) => g.components.map((c) => [c.componentId, c.preview])),
 );
@@ -658,7 +667,7 @@ for (const component of catalog.components) {
 // this is the *design* SVG — a designer imports it into Figma for an editable
 // component rather than a flat screenshot. Written under figma/<slug>.svg; the
 // index links it. Components whose render produced no drawing layers are skipped.
-const figmaSvgByFn = figmaSvgByFunction(bundle);
+const figmaSvgByFn = figmaSvgByFunctions([bundle, extraBundle]);
 const figmaDir = join(outPath, "figma");
 await mkdir(figmaDir, { recursive: true });
 const figmaSvgSlugs = new Set();
@@ -677,7 +686,14 @@ for (const component of catalog.components) {
   // A hybrid sticker's `<image href="figma-raster/<node>.png">` layers reference crops carried in
   // the bundle. Copy them under a per-slug dir and rewrite the href prefix so they resolve next to
   // figma/<slug>.svg (per-slug avoids <node>.png name collisions across components).
-  const rasters = figmaRastersForId(bundle, carried.id);
+  // A hybrid sticker's raster crops live in whichever bundle carried its figma-svg; an id is unique
+  // to one bundle, so merging both is safe (the other returns empty).
+  const rasters = extraBundle
+    ? new Map([
+        ...figmaRastersForId(bundle, carried.id),
+        ...figmaRastersForId(extraBundle, carried.id),
+      ])
+    : figmaRastersForId(bundle, carried.id);
   if (rasters.size) {
     figmaSvgHybridSlugs.add(componentSlug);
     const rasterDir = `${componentSlug}.figma-raster`;

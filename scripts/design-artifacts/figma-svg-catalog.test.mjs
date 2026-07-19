@@ -14,6 +14,7 @@ import { renderReadmeMd } from "./render-readme-md.mjs";
 import {
   figmaRastersForId,
   figmaSvgByFunction,
+  figmaSvgByFunctions,
   rewriteRasterHrefs,
 } from "./figma-svg-emit.mjs";
 
@@ -95,6 +96,31 @@ test("figmaSvgByFunction prefers the light variant and keeps the preview id", ()
   const byFn = figmaSvgByFunction(bundle);
   assert.equal(byFn.get("Fab").id, "Fab_Light");
   assert.match(byFn.get("Fab").svg, /light/);
+});
+
+test("figmaSvgByFunctions folds an --extra-renders bundle in (adds extra-only fns; extra wins)", () => {
+  const primary = {
+    previews: [{ id: "Card_Light", functionName: "Card" }],
+    entries: { "previews/Card_Light.figma.svg": enc("<svg><!--primary card--></svg>") },
+  };
+  const extra = {
+    previews: [
+      { id: "Card_Light", functionName: "Card" }, // same-named: extra overrides
+      { id: "Chat_Light", functionName: "Chat" }, // extra-only: must be added, not dropped
+    ],
+    entries: {
+      "previews/Card_Light.figma.svg": enc("<svg><!--extra card--></svg>"),
+      "previews/Chat_Light.figma.svg": enc("<svg><!--extra chat--></svg>"),
+    },
+  };
+  const byFn = figmaSvgByFunctions([primary, extra]);
+  // The regression this guards: an extra-renders-only function used to be dropped (primary-only read).
+  assert.ok(byFn.has("Chat"), "extra-only function carries its figma-svg");
+  assert.match(byFn.get("Chat").svg, /extra chat/);
+  // On a name clash the extra bundle wins, matching the candidate fold.
+  assert.match(byFn.get("Card").svg, /extra card/);
+  // Falsy bundles are skipped (the primary-only, no-extra-renders case).
+  assert.deepEqual([...figmaSvgByFunctions([primary, null]).keys()], ["Card"]);
 });
 
 test("figmaRastersForId returns only that preview's crops", () => {
