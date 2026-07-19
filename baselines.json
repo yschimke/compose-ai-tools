@@ -256,14 +256,14 @@
     "serve-viewer-catalog-knobs.dark.png": {
       "fixture": "serve-viewer-catalog-knobs",
       "theme": "dark",
-      "sha256": "6877eaa77a45099df06d084fab6c9dc64919fcd0c23bd8cce380e85633dd4d3e",
-      "size": 54133
+      "sha256": "f4b1fa33fea5bb1552964cd175580f1f2e41dea82f51a2c1e0af5ee7b7075c97",
+      "size": 56503
     },
     "serve-viewer-catalog-knobs.light.png": {
       "fixture": "serve-viewer-catalog-knobs",
       "theme": "light",
-      "sha256": "1e2d99ebaac78ba9db5ea020cf6361420046369ae617618e1e383f6960ab29cd",
-      "size": 54142
+      "sha256": "400215212956412b082ef362318d40bceea7a119b98b259418f736972a8d958d",
+      "size": 56562
     },
     "serve-viewer-focus.dark.png": {
       "fixture": "serve-viewer-focus",
@@ -328,14 +328,14 @@
     "serve-viewer-wasm-live.dark.png": {
       "fixture": "serve-viewer-wasm-live",
       "theme": "dark",
-      "sha256": "150a55cf7429e14da3df5ead5347cd4089103b301bbffdc0bd93477febf1c3d8",
-      "size": 58488
+      "sha256": "243b2eb4cbdd70c860db4dbf4f81df1f3c3b4cbd7cd0f06e850941770ffbeef9",
+      "size": 60734
     },
     "serve-viewer-wasm-live.light.png": {
       "fixture": "serve-viewer-wasm-live",
       "theme": "light",
-      "sha256": "1c5824e73543748a83dff7ffd1bc03ae42893cfee7eef1aa2b8eb8f9c24236d1",
-      "size": 58837
+      "sha256": "bc152795cad24c17653853f059b4c98fa5022126cb94a016531d3f6d1e038a56",
+      "size": 60983
     },
     "serve-viewer-wasm.dark.png": {
       "fixture": "serve-viewer-wasm",
