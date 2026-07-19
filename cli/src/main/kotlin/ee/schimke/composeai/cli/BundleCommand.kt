@@ -9,6 +9,7 @@ import ee.schimke.composeai.io.SystemFileSystem
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.nio.file.Files
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -911,40 +912,49 @@ private fun renderBundleWithOverrides(
   verbose: Boolean,
 ): Boolean {
   val log: (String) -> Unit = { if (verbose) System.err.println("[bundle render] $it") }
-  val workspace = File(outDir, ".daemon").also { it.mkdirs() }
-  val state = ServeBundleDaemon.materialize(bundleFile, workspace, system = "bundle", onLog = log)
-  if (state == null) {
-    System.err.println(
-      "bundle render: can't stand up a render daemon for this bundle — --knob theme overrides need " +
-        "a 'desktop'/'android' backend bundle and the matching daemon sidecars (build them with " +
-        ":cli:installDist). Re-run without --knob for the stock render."
-    )
-    return false
-  }
-  val host =
-    try {
-      ServeRenderHost.open(
-        descriptorPath = state.descriptor,
-        workspaceRoot = state.workspaceRoot,
-        workspaceName = state.workspaceName,
-        previews = state.previews,
-        label = state.label,
-        declaredThemes = state.declaredThemes,
-        onLog = log,
+  // Materialize the daemon workspace in a private temp dir — NOT under outDir. `materialize`
+  // extracts the bundle's classes/libs/manifests here, which are implementation artifacts; the
+  // command's contract is that outDir holds only the rendered PNGs, so a `.daemon` tree beside them
+  // would leak bytecode/resources into whatever the caller publishes. Torn down once we're done.
+  val workspace = Files.createTempDirectory("bundle-render-daemon").toFile()
+  try {
+    val state = ServeBundleDaemon.materialize(bundleFile, workspace, system = "bundle", onLog = log)
+    if (state == null) {
+      System.err.println(
+        "bundle render: can't stand up a render daemon for this bundle — --knob theme overrides need " +
+          "a 'desktop'/'android' backend bundle and the matching daemon sidecars (build them with " +
+          ":cli:installDist). Re-run without --knob for the stock render."
       )
-    } catch (e: Exception) {
-      System.err.println("bundle render: failed to launch the render daemon (${e.message})")
-      if (verbose) e.printStackTrace()
       return false
     }
-  val failures =
-    try {
-      renderPreviewsToDir(host, outDir, PreviewOverrides(namedOverrides = overrides))
-    } finally {
-      host.close()
-    }
-  for (f in failures) System.err.println("  FAIL  $f")
-  return failures.isEmpty()
+    val host =
+      try {
+        ServeRenderHost.open(
+          descriptorPath = state.descriptor,
+          workspaceRoot = state.workspaceRoot,
+          workspaceName = state.workspaceName,
+          previews = state.previews,
+          label = state.label,
+          declaredThemes = state.declaredThemes,
+          onLog = log,
+        )
+      } catch (e: Exception) {
+        System.err.println("bundle render: failed to launch the render daemon (${e.message})")
+        if (verbose) e.printStackTrace()
+        return false
+      }
+    val failures =
+      try {
+        renderPreviewsToDir(host, outDir, PreviewOverrides(namedOverrides = overrides))
+      } finally {
+        host.close()
+      }
+    for (f in failures) System.err.println("  FAIL  $f")
+    return failures.isEmpty()
+  } finally {
+    // host.close() (inner finally) has already stopped the daemon subprocess before we delete.
+    workspace.deleteRecursively()
+  }
 }
 
 /**
