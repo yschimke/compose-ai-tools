@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.61](https://github.com/yschimke/compose-ai-tools/compare/v0.16.60...v0.16.61) (2026-07-20)
+
+
+### Bug Fixes
+
+* **design-artifacts:** stamp spec group sections onto the built catalog manifest ([#2594](https://github.com/yschimke/compose-ai-tools/issues/2594)) ([355c571](https://github.com/yschimke/compose-ai-tools/commit/355c571780e161535fa5d951ff99156dea1fce28))
+
 ## [0.16.60](https://github.com/yschimke/compose-ai-tools/compare/v0.16.59...v0.16.60) (2026-07-20)
 
 
