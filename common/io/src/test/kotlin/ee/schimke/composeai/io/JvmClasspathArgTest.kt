@@ -16,10 +16,7 @@ class JvmClasspathArgTest {
     assertTrue(token.startsWith("@"), "expected an @argfile token, got: $token")
     val file = File(token.removePrefix("@"))
     assertTrue(file.isFile, "argfile should exist on disk")
-    assertEquals(
-      "-classpath \"${cp.joinToString(File.pathSeparator)}\"\n",
-      file.readText(),
-    )
+    assertEquals("-classpath \"${cp.joinToString(File.pathSeparator)}\"\n", file.readText())
   }
 
   @Test
