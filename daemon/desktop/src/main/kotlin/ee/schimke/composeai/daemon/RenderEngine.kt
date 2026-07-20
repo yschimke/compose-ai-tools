@@ -254,13 +254,6 @@ class RenderEngine(
     val previousContext = Thread.currentThread().contextClassLoader
     Thread.currentThread().contextClassLoader = classLoader
 
-    // Second half of applying `localeTag` (the first is [localeProviders] below): point the JVM
-    // default Locale at the override so CMP `stringResource(...)` — which reads
-    // `androidx.compose.ui.text.intl.Locale.current` (the JVM default on desktop), not the
-    // `LocalProvidableLocaleList` composition local — resolves translated copy. Restored in
-    // [tearDown] and both setUp failure paths below. See [overrideJvmDefaultLocale].
-    val previousDefaultLocale = overrideJvmDefaultLocale(effectiveLocaleTag(spec.localeTag))
-
     val localeProviders = localeProviders(spec.localeTag)
     val themeFallbackCapture =
       if (previewContextCapture?.shouldCapture(spec.previewId, spec.renderMode) == true) {
@@ -318,13 +311,22 @@ class RenderEngine(
       try {
         ImageComposeScene(width = sceneWidthPx, height = sceneHeightPx, density = density)
       } catch (t: Throwable) {
-        // Ensure we don't leave the context classloader installed (or the JVM default Locale
-        // switched) if scene allocation fails before the SceneState is even handed back to the
-        // caller (caller never gets a chance to call tearDown in that case).
+        // Ensure we don't leave the context classloader installed if scene allocation fails before
+        // the SceneState is even handed back to the caller (caller never gets a chance to call
+        // tearDown in that case).
         Thread.currentThread().contextClassLoader = previousContext
-        restoreJvmDefaultLocale(previousDefaultLocale)
         throw t
       }
+    // Second half of applying `localeTag` (the first is [localeProviders]): point the JVM default
+    // Locale at the override for the *composition* only. CMP `stringResource(...)` reads
+    // `androidx.compose.ui.text.intl.Locale.current` (the JVM default on desktop, not the
+    // `LocalProvidableLocaleList` composition local), and resolves at composition time — so the
+    // switch must be live while `setContent` composes but must NOT persist on the returned
+    // `SceneState`. Keeping it on the held state would let a locale-overridden
+    // interactive/recording
+    // session leak its locale onto every other render in the same daemon until it closed;
+    // [renderOnce] re-applies it around each frame instead. See [overrideJvmDefaultLocale].
+    val previousDefaultLocale = overrideJvmDefaultLocale(effectiveLocaleTag(spec.localeTag))
     try {
       trace.section("compose:setContent") {
         scene.setContent {
@@ -513,14 +515,17 @@ class RenderEngine(
       }
     } catch (t: Throwable) {
       // setContent threw — close the scene to avoid leaking the Skia surface and restore the
-      // context classloader + JVM default Locale before propagating.
+      // context classloader before propagating.
       try {
         scene.close()
       } finally {
         Thread.currentThread().contextClassLoader = previousContext
-        restoreJvmDefaultLocale(previousDefaultLocale)
       }
       throw t
+    } finally {
+      // Composition is done (or threw) — drop the process-global locale switch so it never outlives
+      // the composition window, whether or not the scene is held past this point.
+      restoreJvmDefaultLocale(previousDefaultLocale)
     }
     return SceneState(
       spec = spec,
@@ -529,7 +534,6 @@ class RenderEngine(
       density = density,
       outputFile = outputFile,
       previousContext = previousContext,
-      previousDefaultLocale = previousDefaultLocale,
       slotTableCapture = slotTableCapture,
       themeFallbackCapture = themeFallbackCapture,
       lottieProgressState = lottieProgressState,
@@ -573,11 +577,24 @@ class RenderEngine(
     // Harmless for the one-shot path — nothing is pending right after setUp.
     androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
 
-    // Render two frames so any LaunchedEffect / animations have a tick to settle. Same reasoning
-    // as `:renderer-desktop`'s renderPreview.
-    trace.section("compose:frame") { renderFrame(state, useWallClockFrameTime) }
+    // Re-apply the `localeTag` JVM-default-Locale override for the frame render (see
+    // [setUp] — it is deliberately not held on [SceneState] across idle time). A held
+    // interactive/recording session recomposes here on each input, and
+    // `rememberResourceEnvironment`
+    // re-reads `androidx.compose.ui.text.intl.Locale.current`, so the override must be live for the
+    // frame to keep resolving CMP `stringResource(...)` in the target locale; restored immediately
+    // after the capture so the switch never spans two renders.
+    val previousDefaultLocale = overrideJvmDefaultLocale(effectiveLocaleTag(state.spec.localeTag))
     val rawImage =
-      trace.section("compose:captureFrame") { renderFrame(state, useWallClockFrameTime) }
+      try {
+        // Render two frames so any LaunchedEffect / animations have a tick to settle. Same
+        // reasoning
+        // as `:renderer-desktop`'s renderPreview.
+        trace.section("compose:frame") { renderFrame(state, useWallClockFrameTime) }
+        trace.section("compose:captureFrame") { renderFrame(state, useWallClockFrameTime) }
+      } finally {
+        restoreJvmDefaultLocale(previousDefaultLocale)
+      }
     // AS-parity wrap crop: a no-size preview measured smaller than the sandbox, so crop the frame
     // to
     // the composable's intrinsic size on wrapped axes (content is placed at 0,0). Everything
@@ -822,7 +839,6 @@ class RenderEngine(
       state.scene.close()
     } finally {
       Thread.currentThread().contextClassLoader = state.previousContext
-      restoreJvmDefaultLocale(state.previousDefaultLocale)
     }
   }
 
@@ -840,12 +856,6 @@ class RenderEngine(
     val density: Density,
     val outputFile: File,
     internal val previousContext: ClassLoader?,
-    /**
-     * The JVM default [java.util.Locale] captured before a `localeTag` override switched it, or
-     * `null` when the render carried no override. [tearDown] restores it so the process-global
-     * locale switch never outlives the scene. See [RenderEngine.overrideJvmDefaultLocale].
-     */
-    internal val previousDefaultLocale: java.util.Locale? = null,
     internal val slotTableCapture: PreviewSlotTableCapture?,
     internal val themeFallbackCapture: MaterialThemeFallbackCapture?,
     /**
