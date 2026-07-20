@@ -305,6 +305,118 @@ class OverrideIntegrationTest {
     }
   }
 
+  /**
+   * `localeTag` must reach `androidx.compose.ui.text.intl.Locale.current` — the locale CMP string
+   * resources (`components-resources`) resolve from via `rememberResourceEnvironment()`. On
+   * Skiko/desktop that reads the JVM default `Locale`, **not** the `LocalProvidableLocaleList`
+   * composition local `localeProviders` sets, so before the fix a `@Preview(locale = "de")`
+   * override flipped layout direction but `stringResource(...)` still rendered the base (English)
+   * copy — every locale render came out pixel-identical to English. [LocaleAwareSquare] paints its
+   * language subtag (green = `de`, blue = `ar`, red = base), so this proves the override now
+   * reaches the locale `stringResource` reads. The trailing base render proves
+   * [RenderEngine.tearDown] restores the process-global default `Locale` — the switch never leaks
+   * past a render.
+   */
+  @Test
+  fun localeTagOverrideReachesComposeResourceLocale() {
+    val outputDir = tempFolder.newFolder("renders-locale")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "locale-aware",
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "LocaleAwareSquare",
+              widthPx = 32,
+              heightPx = 32,
+              density = 1.0f,
+              outputBaseName = "locale-aware",
+            )
+          )
+      )
+    val host = PreviewManifestRouter(manifest = manifest)
+    host.start()
+    try {
+      val base = renderAndDecode(host, "previewId=locale-aware", "locale-base")
+      val german = renderAndDecode(host, "previewId=locale-aware;localeTag=de", "locale-de")
+      val arabic = renderAndDecode(host, "previewId=locale-aware;localeTag=ar", "locale-ar")
+
+      val baseRedPct = pixelMatchPct(base, expectedRgb = 0xEF5350, perChannelTolerance = 8)
+      assertTrue(
+        "no override should read the base locale (red); got ${"%.2f".format(baseRedPct * 100)}%",
+        baseRedPct >= 0.95,
+      )
+      val germanGreenPct = pixelMatchPct(german, expectedRgb = 0x66BB6A, perChannelTolerance = 8)
+      assertTrue(
+        "localeTag=de must reach androidx.compose.ui.text.intl.Locale.current so CMP " +
+          "stringResource localizes; got ${"%.2f".format(germanGreenPct * 100)}% green — the " +
+          "locale axis is back to rendering English",
+        germanGreenPct >= 0.95,
+      )
+      val arabicBluePct = pixelMatchPct(arabic, expectedRgb = 0x42A5F5, perChannelTolerance = 8)
+      assertTrue(
+        "localeTag=ar must reach Locale.current too; got ${"%.2f".format(arabicBluePct * 100)}% blue",
+        arabicBluePct >= 0.95,
+      )
+
+      // The JVM default Locale switch must not outlive the render: an un-overridden render after
+      // two
+      // overridden ones reads the base locale (red) again.
+      val baseAfter = renderAndDecode(host, "previewId=locale-aware", "locale-base-after")
+      val baseAfterRedPct =
+        pixelMatchPct(baseAfter, expectedRgb = 0xEF5350, perChannelTolerance = 8)
+      assertTrue(
+        "the JVM default Locale must be restored after an override render; got " +
+          "${"%.2f".format(baseAfterRedPct * 100)}% red",
+        baseAfterRedPct >= 0.95,
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  /**
+   * Regression guard for the held-session locale leak: `setUp` applies the `localeTag` JVM-default
+   * `Locale` override only for the *composition* window, not for the lifetime of the returned
+   * `SceneState`. A held interactive/recording session can keep its `SceneState` alive (idle)
+   * between renders, and `Locale.setDefault` is process-global — so if the override persisted on
+   * the held state, any *other* render in the same daemon during that idle window would inherit the
+   * wrong locale and mis-resolve CMP `stringResource(...)`. This asserts the JVM default is already
+   * restored by the time `setUp` returns the held scene.
+   */
+  @Test
+  fun localeOverrideDoesNotOutliveTheHeldScene() {
+    val outputDir = tempFolder.newFolder("renders-locale-held")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val original = java.util.Locale.getDefault()
+    val engine = RenderEngine()
+    val state =
+      engine.setUp(
+        RenderSpec(
+          previewId = "locale-held",
+          className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+          functionName = "LocaleAwareSquare",
+          widthPx = 32,
+          heightPx = 32,
+          density = 1.0f,
+          localeTag = "de",
+        )
+      )
+    try {
+      assertEquals(
+        "the held scene must not keep the process-global JVM default Locale switched to the " +
+          "override — that would leak `de` onto every other render in the daemon until it closed",
+        original.language,
+        java.util.Locale.getDefault().language,
+      )
+    } finally {
+      engine.tearDown(state)
+      java.util.Locale.setDefault(original)
+    }
+  }
+
   @Test
   fun wallpaperOverrideDrivesAmbientPrimaryColor() {
     val outputDir = tempFolder.newFolder("renders-wallpaper")

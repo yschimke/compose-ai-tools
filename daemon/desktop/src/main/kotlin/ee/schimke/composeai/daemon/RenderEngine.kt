@@ -317,6 +317,16 @@ class RenderEngine(
         Thread.currentThread().contextClassLoader = previousContext
         throw t
       }
+    // Second half of applying `localeTag` (the first is [localeProviders]): point the JVM default
+    // Locale at the override for the *composition* only. CMP `stringResource(...)` reads
+    // `androidx.compose.ui.text.intl.Locale.current` (the JVM default on desktop, not the
+    // `LocalProvidableLocaleList` composition local), and resolves at composition time — so the
+    // switch must be live while `setContent` composes but must NOT persist on the returned
+    // `SceneState`. Keeping it on the held state would let a locale-overridden
+    // interactive/recording
+    // session leak its locale onto every other render in the same daemon until it closed;
+    // [renderOnce] re-applies it around each frame instead. See [overrideJvmDefaultLocale].
+    val previousDefaultLocale = overrideJvmDefaultLocale(effectiveLocaleTag(spec.localeTag))
     try {
       trace.section("compose:setContent") {
         scene.setContent {
@@ -512,6 +522,10 @@ class RenderEngine(
         Thread.currentThread().contextClassLoader = previousContext
       }
       throw t
+    } finally {
+      // Composition is done (or threw) — drop the process-global locale switch so it never outlives
+      // the composition window, whether or not the scene is held past this point.
+      restoreJvmDefaultLocale(previousDefaultLocale)
     }
     return SceneState(
       spec = spec,
@@ -563,11 +577,24 @@ class RenderEngine(
     // Harmless for the one-shot path — nothing is pending right after setUp.
     androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
 
-    // Render two frames so any LaunchedEffect / animations have a tick to settle. Same reasoning
-    // as `:renderer-desktop`'s renderPreview.
-    trace.section("compose:frame") { renderFrame(state, useWallClockFrameTime) }
+    // Re-apply the `localeTag` JVM-default-Locale override for the frame render (see
+    // [setUp] — it is deliberately not held on [SceneState] across idle time). A held
+    // interactive/recording session recomposes here on each input, and
+    // `rememberResourceEnvironment`
+    // re-reads `androidx.compose.ui.text.intl.Locale.current`, so the override must be live for the
+    // frame to keep resolving CMP `stringResource(...)` in the target locale; restored immediately
+    // after the capture so the switch never spans two renders.
+    val previousDefaultLocale = overrideJvmDefaultLocale(effectiveLocaleTag(state.spec.localeTag))
     val rawImage =
-      trace.section("compose:captureFrame") { renderFrame(state, useWallClockFrameTime) }
+      try {
+        // Render two frames so any LaunchedEffect / animations have a tick to settle. Same
+        // reasoning
+        // as `:renderer-desktop`'s renderPreview.
+        trace.section("compose:frame") { renderFrame(state, useWallClockFrameTime) }
+        trace.section("compose:captureFrame") { renderFrame(state, useWallClockFrameTime) }
+      } finally {
+        restoreJvmDefaultLocale(previousDefaultLocale)
+      }
     // AS-parity wrap crop: a no-size preview measured smaller than the sandbox, so crop the frame
     // to
     // the composable's intrinsic size on wrapped axes (content is placed at 0,0). Everything
@@ -1345,17 +1372,54 @@ class RenderEngine(
         .getOrNull()
     }
 
+    /**
+     * The base BCP-47 tag actually applied for a `localeTag` override, or `null` when the spec
+     * carries no (blank) override. Pseudolocales (`en-XA`, `ar-XB`) fold to their base (`en` /
+     * `ar`) — they aren't real BCP-47 locales, so `LocaleList("en-XA")` / `Locale.forLanguageTag`
+     * would throw or silently degrade depending on the JVM's ICU build. Shared by [localeProviders]
+     * (the composition `LocalProvidableLocaleList`) and the JVM-default-`Locale` override in
+     * [setUp] so both steer off the same effective tag. The visual pseudolocalisation knob
+     * (LayoutDirection.Rtl for `ar-XB`) is applied separately by
+     * `PseudolocaleOverrideExtensionDesktop`'s around-composable; text-content pseudolocalisation
+     * is Android-only — see `site/reference/pseudolocale.md`.
+     */
+    internal fun effectiveLocaleTag(localeTag: String?): String? {
+      val tag = localeTag?.takeIf { it.isNotBlank() } ?: return null
+      return ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(tag)?.baseTag ?: tag
+    }
+
+    /**
+     * Point the JVM default [java.util.Locale] at the [effectiveTag] override for a render's
+     * duration and return the previous default so [setUp]/[tearDown] can restore it — or `null`
+     * when there is no override (nothing to restore).
+     *
+     * This is the second half of applying `localeTag`, complementing [localeProviders]. CMP string
+     * resources (`org.jetbrains.compose.components:components-resources`) resolve their locale via
+     * `rememberResourceEnvironment()` → `androidx.compose.ui.text.intl.Locale.current`, which on
+     * Skiko/desktop reads the JVM default `Locale` — **not** the `LocalProvidableLocaleList`
+     * composition local [localeProviders] sets (that local only steers ui-text locale-aware layout
+     * + the RTL direction). Without this, a `@Preview(locale = "de")` override reached the layout
+     *   direction but `stringResource(...)` still rendered the base (English) copy.
+     *
+     * Serialized-render assumption: the daemon renders one scene at a time on the compose thread —
+     * the same assumption the `contextClassLoader` install in [setUp] already relies on — so this
+     * process-global switch can't race a concurrent render.
+     */
+    internal fun overrideJvmDefaultLocale(effectiveTag: String?): java.util.Locale? {
+      effectiveTag ?: return null
+      val previous = java.util.Locale.getDefault()
+      java.util.Locale.setDefault(java.util.Locale.forLanguageTag(effectiveTag))
+      return previous
+    }
+
+    /** Restore a JVM default [java.util.Locale] captured by [overrideJvmDefaultLocale]. */
+    internal fun restoreJvmDefaultLocale(previous: java.util.Locale?) {
+      if (previous != null) java.util.Locale.setDefault(previous)
+    }
+
     private fun localeProviders(localeTag: String?): Array<ProvidedValue<*>> {
-      val tag = localeTag?.takeIf { it.isNotBlank() } ?: return emptyArray()
       val local = localProvidableLocaleListOrNull() ?: return emptyArray()
-      // Pseudolocales (`en-XA`, `ar-XB`) aren't real BCP-47 locales — `LocaleList("en-XA")` either
-      // throws or silently degrades depending on the JVM's ICU build. Substitute the base locale
-      // (`en` / `ar`) so locale-sensitive Compose text rendering resolves cleanly. The visual
-      // pseudolocalisation knob (LayoutDirection.Rtl for ar-XB) is provided by
-      // `PseudolocaleOverrideExtensionDesktop`'s around-composable; text-content
-      // pseudolocalisation is Android-only — see `site/reference/pseudolocale.md`.
-      val effectiveTag =
-        ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(tag)?.baseTag ?: tag
+      val effectiveTag = effectiveLocaleTag(localeTag) ?: return emptyArray()
       // A real RTL locale (`ar`, `he`, `fa`, …) also flips the layout, matching a real device —
       // `ar-XB` (whose RTL is provided by `PseudolocaleOverrideExtensionDesktop`) isn't the only
       // RTL case. `effectiveTag` is the base locale, so a pseudolocale never double-provides here.

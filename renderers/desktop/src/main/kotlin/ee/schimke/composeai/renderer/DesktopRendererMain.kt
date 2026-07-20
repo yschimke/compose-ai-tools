@@ -722,6 +722,42 @@ internal fun systemThemeFromUiMode(uiMode: Int): androidx.compose.ui.SystemTheme
     else -> androidx.compose.ui.SystemTheme.Unknown
   }
 
+/**
+ * The base BCP-47 tag actually applied for a `localeTag` override, or `null` for a blank override.
+ * Pseudolocales (`en-XA`, `ar-XB`) fold to their base (both `en`) — they aren't real BCP-47
+ * locales, so `Locale.forLanguageTag("en-XA")` would degrade depending on the JVM's ICU build. The
+ * visual pseudolocalisation (RTL flip for `ar-XB`) is applied separately by [renderPreview].
+ */
+internal fun effectiveLocaleTag(localeTag: String?): String? {
+  val tag = localeTag?.takeIf { it.isNotBlank() } ?: return null
+  return ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(tag)?.baseTag ?: tag
+}
+
+/**
+ * Point the JVM default [java.util.Locale] at the (base) [localeTag] override for a render and
+ * return the previous default so [renderPreview] can restore it — or `null` when there is no
+ * override (nothing to restore).
+ *
+ * CMP string resources (`org.jetbrains.compose.components:components-resources`) resolve their
+ * locale via `rememberResourceEnvironment()` → `androidx.compose.ui.text.intl.Locale.current`,
+ * which on Skiko/desktop reads the JVM default `Locale` — **not** `LocalLayoutDirection` or any
+ * composition local. Without this a `@Preview(locale = "de")` only flipped the layout direction
+ * (for RTL) and left `stringResource(...)` rendering the base (English) copy. Mirrors the daemon
+ * desktop `RenderEngine`, so a batch bundle re-render localises the same way `compose-preview
+ * serve` does.
+ */
+internal fun overrideJvmDefaultLocale(localeTag: String?): java.util.Locale? {
+  val effectiveTag = effectiveLocaleTag(localeTag) ?: return null
+  val previous = java.util.Locale.getDefault()
+  java.util.Locale.setDefault(java.util.Locale.forLanguageTag(effectiveTag))
+  return previous
+}
+
+/** Restore a JVM default [java.util.Locale] captured by [overrideJvmDefaultLocale]. */
+internal fun restoreJvmDefaultLocale(previous: java.util.Locale?) {
+  if (previous != null) java.util.Locale.setDefault(previous)
+}
+
 @OptIn(androidx.compose.ui.InternalComposeUiApi::class)
 internal fun renderPreview(
   className: String,
@@ -764,201 +800,218 @@ internal fun renderPreview(
   // preview's `previewOverride*` lookups accumulate a clean set (drained into the sidecar below).
   ee.schimke.composeai.overrides.PreviewOverrideController.clearDeclarations()
 
-  // `@Preview(fontScale = ...)` rides on `Density.fontScale`. Threading it through the scene's
-  // constructor makes the override visible to layout (sp → px) before the first measure pass; we
-  // also re-provide the same `Density` as `LocalDensity` below since some ui-text/text-foundation
-  // paths read it directly during composition rather than via the scene density. Mirrors the
-  // daemon's desktop RenderEngine (issue: @Preview(fontScale) was ignored on the CMP pipeline).
-  val sceneDensity = Density(density, fontScale)
-  // A min bound larger than the default sandbox needs the scene enlarged to fit, otherwise the
-  // composable is clipped to the scene before the intrinsic-size crop runs. Only widen (never
-  // shrink) on a wrapped axis; the crop still trims the PNG back to the measured intrinsic size.
-  val sceneWidthPx = if (wrapWidth) maxOf(widthPx, minWidthPx ?: 0, maxWidthPx ?: 0) else widthPx
-  val sceneHeightPx =
-    if (wrapHeight) maxOf(heightPx, minHeightPx ?: 0, maxHeightPx ?: 0) else heightPx
-  val scene =
-    ImageComposeScene(width = sceneWidthPx, height = sceneHeightPx, density = sceneDensity)
+  // Second half of applying `localeTag` (the first is the RTL flip below): point the JVM default
+  // Locale at the override so CMP `stringResource(...)` — which reads
+  // `androidx.compose.ui.text.intl.Locale.current`, the JVM default on desktop, not a composition
+  // local — resolves translated copy. Restored in the `finally` so a thrown render (or the next
+  // in-process render in the functional tests) never inherits the switch. See
+  // [overrideJvmDefaultLocale].
+  val previousDefaultLocale = overrideJvmDefaultLocale(localeTag)
+  try {
 
-  // Measured content size in pixels, captured from the wrapping Box via
-  // onGloballyPositioned. Only read when at least one axis wraps.
-  var measured: IntSize? = null
+    // `@Preview(fontScale = ...)` rides on `Density.fontScale`. Threading it through the scene's
+    // constructor makes the override visible to layout (sp → px) before the first measure pass; we
+    // also re-provide the same `Density` as `LocalDensity` below since some ui-text/text-foundation
+    // paths read it directly during composition rather than via the scene density. Mirrors the
+    // daemon's desktop RenderEngine (issue: @Preview(fontScale) was ignored on the CMP pipeline).
+    val sceneDensity = Density(density, fontScale)
+    // A min bound larger than the default sandbox needs the scene enlarged to fit, otherwise the
+    // composable is clipped to the scene before the intrinsic-size crop runs. Only widen (never
+    // shrink) on a wrapped axis; the crop still trims the PNG back to the measured intrinsic size.
+    val sceneWidthPx = if (wrapWidth) maxOf(widthPx, minWidthPx ?: 0, maxWidthPx ?: 0) else widthPx
+    val sceneHeightPx =
+      if (wrapHeight) maxOf(heightPx, minHeightPx ?: 0, maxHeightPx ?: 0) else heightPx
+    val scene =
+      ImageComposeScene(width = sceneWidthPx, height = sceneHeightPx, density = sceneDensity)
 
-  // Pseudolocale (`en-XA`, `ar-XB`): ar-XB flips `LocalLayoutDirection` to RTL so the captured
-  // PNG mirrors layout. en-XA is a no-op visually on desktop — CMP's
-  // `org.jetbrains.compose.resources.stringResource` doesn't go through `LocalContext.resources`,
-  // so the Resources-subclass trick the Android connector uses doesn't apply here. See the
-  // platform-support note in `site/reference/pseudolocale.md`.
-  val pseudolocale = ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(localeTag)
-  // `@Preview(uiMode = 32)` (`UI_MODE_NIGHT_YES`) must flip the composition to dark, not just tint
-  // the system-bar chrome below. Compose Desktop's `isSystemInDarkTheme()` reads
-  // `LocalSystemTheme.current` (foundation-desktop's `DarkTheme.skiko.kt`), so provide it from the
-  // night bit — otherwise a dark `@Preview` renders its content in light colours (the cover PNG
-  // disagreed with the daemon's figma-svg/semantics, which already do this in RenderEngine).
-  val systemTheme = systemThemeFromUiMode(uiMode)
-  scene.setContent {
-    val baseProviders: @Composable (@Composable () -> Unit) -> Unit = { inner ->
-      if (pseudolocale?.isRtl == true) {
-        CompositionLocalProvider(
-          LocalInspectionMode provides true,
-          LocalDensity provides sceneDensity,
-          androidx.compose.ui.LocalSystemTheme provides systemTheme,
-          androidx.compose.ui.platform.LocalLayoutDirection provides
-            androidx.compose.ui.unit.LayoutDirection.Rtl,
-        ) {
-          inner()
-        }
-      } else {
-        CompositionLocalProvider(
-          LocalInspectionMode provides true,
-          LocalDensity provides sceneDensity,
-          androidx.compose.ui.LocalSystemTheme provides systemTheme,
-        ) {
-          inner()
-        }
-      }
-    }
-    baseProviders {
-      val bgColor =
-        when {
-          backgroundColor != 0L -> Color(backgroundColor.toInt())
-          showBackground -> Color.White
-          else -> Color.Transparent
-        }
-      val body: @Composable () -> Unit = {
-        if (wrapWidth || wrapHeight) {
-          // AS-parity wrap: measure the composable with unbounded
-          // constraints on wrapped axes (keep the sandbox constraint
-          // on fixed axes), capture the child's pixel size, then
-          // size the outer Box to exactly that. The .layout modifier
-          // lets us both observe and bound the child's size in a
-          // single measurement pass — more reliable under
-          // ImageComposeScene than onGloballyPositioned, which is
-          // tied to a post-layout effect pass the scene doesn't
-          // always flush.
-          // Bounded sandbox constraints (not Infinity) — matches
-          // Android Studio's preview pane. `fillMaxWidth` / LazyColumn
-          // / etc. require bounded constraints; they'd throw from
-          // `InlineClassHelper` under an Infinity max. Small
-          // composables (`Modifier.size(100.dp)`) still measure at
-          // their intrinsic size and get cropped to that below;
-          // `fillMax*` composables measure at the sandbox size and
-          // no crop happens on that axis.
-          Box(
-            // `propagateMinConstraints = true` pushes the wrapped-axis *min* bound (the Min /
-            // Within size modes) down onto the composable itself, not just this wrapping box. With
-            // the default (false) the box grows to the min bound but relaxes the child's min to 0,
-            // so a wrap-content component (a Button, a badge) stays at its intrinsic size in the
-            // corner of an enlarged frame instead of filling the requested size. A min of 0 (the
-            // AS-parity / Max case) is a no-op, so this is safe for every mode.
-            propagateMinConstraints = true,
-            modifier =
-              Modifier.layout { measurable, constraints ->
-                  // Relax the min constraint on wrapped axes so
-                  // small composables can shrink below the
-                  // sandbox; keep the max bounded (the parent's
-                  // maxWidth/maxHeight) so `fillMax*` / LazyColumn
-                  // still have a finite viewport. Size-mode bounds
-                  // (Max / Min / Within) clamp that further: a max
-                  // bound lowers the ceiling, a min bound raises the
-                  // floor, both clamped into the (already-enlarged)
-                  // sandbox so a bound larger than the scene can't
-                  // make an impossible constraint.
-                  val maxWBound =
-                    maxWidthPx?.coerceAtMost(constraints.maxWidth) ?: constraints.maxWidth
-                  val maxHBound =
-                    maxHeightPx?.coerceAtMost(constraints.maxHeight) ?: constraints.maxHeight
-                  val minWBound = (minWidthPx ?: 0).coerceIn(0, maxWBound)
-                  val minHBound = (minHeightPx ?: 0).coerceIn(0, maxHBound)
-                  val wrappedConstraints =
-                    Constraints(
-                      minWidth = if (wrapWidth) minWBound else constraints.minWidth,
-                      maxWidth = if (wrapWidth) maxWBound else constraints.maxWidth,
-                      minHeight = if (wrapHeight) minHBound else constraints.minHeight,
-                      maxHeight = if (wrapHeight) maxHBound else constraints.maxHeight,
-                    )
-                  val placeable = measurable.measure(wrappedConstraints)
-                  measured = IntSize(placeable.width, placeable.height)
-                  layout(placeable.width, placeable.height) { placeable.place(0, 0) }
-                }
-                .background(bgColor),
+    // Measured content size in pixels, captured from the wrapping Box via
+    // onGloballyPositioned. Only read when at least one axis wraps.
+    var measured: IntSize? = null
+
+    // Pseudolocale (`en-XA`, `ar-XB`): ar-XB flips `LocalLayoutDirection` to RTL so the captured
+    // PNG mirrors layout. en-XA is a no-op visually on desktop — CMP's
+    // `org.jetbrains.compose.resources.stringResource` doesn't go through `LocalContext.resources`,
+    // so the Resources-subclass trick the Android connector uses doesn't apply here. See the
+    // platform-support note in `site/reference/pseudolocale.md`.
+    val pseudolocale = ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(localeTag)
+    // `@Preview(uiMode = 32)` (`UI_MODE_NIGHT_YES`) must flip the composition to dark, not just
+    // tint
+    // the system-bar chrome below. Compose Desktop's `isSystemInDarkTheme()` reads
+    // `LocalSystemTheme.current` (foundation-desktop's `DarkTheme.skiko.kt`), so provide it from
+    // the
+    // night bit — otherwise a dark `@Preview` renders its content in light colours (the cover PNG
+    // disagreed with the daemon's figma-svg/semantics, which already do this in RenderEngine).
+    val systemTheme = systemThemeFromUiMode(uiMode)
+    scene.setContent {
+      val baseProviders: @Composable (@Composable () -> Unit) -> Unit = { inner ->
+        if (pseudolocale?.isRtl == true) {
+          CompositionLocalProvider(
+            LocalInspectionMode provides true,
+            LocalDensity provides sceneDensity,
+            androidx.compose.ui.LocalSystemTheme provides systemTheme,
+            androidx.compose.ui.platform.LocalLayoutDirection provides
+              androidx.compose.ui.unit.LayoutDirection.Rtl,
           ) {
-            InvokeComposable(composableMethod, null, previewArgs)
+            inner()
           }
         } else {
-          Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
-            InvokeComposable(composableMethod, null, previewArgs)
+          CompositionLocalProvider(
+            LocalInspectionMode provides true,
+            LocalDensity provides sceneDensity,
+            androidx.compose.ui.LocalSystemTheme provides systemTheme,
+          ) {
+            inner()
           }
         }
       }
-      // `@PreviewWrapper(Provider::class)` — instantiate the provider reflectively
-      // so the renderer stays compatible with apps on stable Compose (no
-      // `PreviewWrapperProvider` on classpath).
-      val wrapped: @Composable () -> Unit = {
-        if (wrapperClassName != null) {
-          InvokeWrappedComposable(wrapperClassName, body)
-        } else {
-          body()
+      baseProviders {
+        val bgColor =
+          when {
+            backgroundColor != 0L -> Color(backgroundColor.toInt())
+            showBackground -> Color.White
+            else -> Color.Transparent
+          }
+        val body: @Composable () -> Unit = {
+          if (wrapWidth || wrapHeight) {
+            // AS-parity wrap: measure the composable with unbounded
+            // constraints on wrapped axes (keep the sandbox constraint
+            // on fixed axes), capture the child's pixel size, then
+            // size the outer Box to exactly that. The .layout modifier
+            // lets us both observe and bound the child's size in a
+            // single measurement pass — more reliable under
+            // ImageComposeScene than onGloballyPositioned, which is
+            // tied to a post-layout effect pass the scene doesn't
+            // always flush.
+            // Bounded sandbox constraints (not Infinity) — matches
+            // Android Studio's preview pane. `fillMaxWidth` / LazyColumn
+            // / etc. require bounded constraints; they'd throw from
+            // `InlineClassHelper` under an Infinity max. Small
+            // composables (`Modifier.size(100.dp)`) still measure at
+            // their intrinsic size and get cropped to that below;
+            // `fillMax*` composables measure at the sandbox size and
+            // no crop happens on that axis.
+            Box(
+              // `propagateMinConstraints = true` pushes the wrapped-axis *min* bound (the Min /
+              // Within size modes) down onto the composable itself, not just this wrapping box.
+              // With
+              // the default (false) the box grows to the min bound but relaxes the child's min to
+              // 0,
+              // so a wrap-content component (a Button, a badge) stays at its intrinsic size in the
+              // corner of an enlarged frame instead of filling the requested size. A min of 0 (the
+              // AS-parity / Max case) is a no-op, so this is safe for every mode.
+              propagateMinConstraints = true,
+              modifier =
+                Modifier.layout { measurable, constraints ->
+                    // Relax the min constraint on wrapped axes so
+                    // small composables can shrink below the
+                    // sandbox; keep the max bounded (the parent's
+                    // maxWidth/maxHeight) so `fillMax*` / LazyColumn
+                    // still have a finite viewport. Size-mode bounds
+                    // (Max / Min / Within) clamp that further: a max
+                    // bound lowers the ceiling, a min bound raises the
+                    // floor, both clamped into the (already-enlarged)
+                    // sandbox so a bound larger than the scene can't
+                    // make an impossible constraint.
+                    val maxWBound =
+                      maxWidthPx?.coerceAtMost(constraints.maxWidth) ?: constraints.maxWidth
+                    val maxHBound =
+                      maxHeightPx?.coerceAtMost(constraints.maxHeight) ?: constraints.maxHeight
+                    val minWBound = (minWidthPx ?: 0).coerceIn(0, maxWBound)
+                    val minHBound = (minHeightPx ?: 0).coerceIn(0, maxHBound)
+                    val wrappedConstraints =
+                      Constraints(
+                        minWidth = if (wrapWidth) minWBound else constraints.minWidth,
+                        maxWidth = if (wrapWidth) maxWBound else constraints.maxWidth,
+                        minHeight = if (wrapHeight) minHBound else constraints.minHeight,
+                        maxHeight = if (wrapHeight) maxHBound else constraints.maxHeight,
+                      )
+                    val placeable = measurable.measure(wrappedConstraints)
+                    measured = IntSize(placeable.width, placeable.height)
+                    layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+                  }
+                  .background(bgColor),
+            ) {
+              InvokeComposable(composableMethod, null, previewArgs)
+            }
+          } else {
+            Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
+              InvokeComposable(composableMethod, null, previewArgs)
+            }
+          }
         }
-      }
-      // `@Preview(showSystemUi = true)` on a phone-shape capture wraps the composition in the
-      // synthetic [SystemBarsFrame] (issue #1930). Desktop/Skiko has no Android SystemUI process,
-      // so without this the canvas comes back at the right device size but chrome-less; the frame
-      // simulates the status + gesture-nav bars to match the Android renderer. showSystemUi pins
-      // both axes to the device frame (no wrap-content crop), so wrapping outside `body` is safe.
-      // kind is always COMPOSE here — LOTTIE short-circuits in main() before reaching
-      // renderPreview,
-      // and desktop never produces TILE captures — so the gate reduces to showSystemUi + non-round.
-      if (shouldApplySystemBars(showSystemUi, device, kind = null)) {
-        SystemBarsFrame(uiMode = uiMode) { wrapped() }
-      } else {
-        wrapped()
+        // `@PreviewWrapper(Provider::class)` — instantiate the provider reflectively
+        // so the renderer stays compatible with apps on stable Compose (no
+        // `PreviewWrapperProvider` on classpath).
+        val wrapped: @Composable () -> Unit = {
+          if (wrapperClassName != null) {
+            InvokeWrappedComposable(wrapperClassName, body)
+          } else {
+            body()
+          }
+        }
+        // `@Preview(showSystemUi = true)` on a phone-shape capture wraps the composition in the
+        // synthetic [SystemBarsFrame] (issue #1930). Desktop/Skiko has no Android SystemUI process,
+        // so without this the canvas comes back at the right device size but chrome-less; the frame
+        // simulates the status + gesture-nav bars to match the Android renderer. showSystemUi pins
+        // both axes to the device frame (no wrap-content crop), so wrapping outside `body` is safe.
+        // kind is always COMPOSE here — LOTTIE short-circuits in main() before reaching
+        // renderPreview,
+        // and desktop never produces TILE captures — so the gate reduces to showSystemUi +
+        // non-round.
+        if (shouldApplySystemBars(showSystemUi, device, kind = null)) {
+          SystemBarsFrame(uiMode = uiMode) { wrapped() }
+        } else {
+          wrapped()
+        }
       }
     }
-  }
 
-  // Render two frames for animations/effects to settle
-  scene.render()
-  val image = scene.render()
+    // Render two frames for animations/effects to settle
+    scene.render()
+    val image = scene.render()
 
-  val pngData =
-    image.encodeToData(EncodedImageFormat.PNG)
-      ?: throw IllegalStateException("Failed to encode image to PNG")
+    val pngData =
+      image.encodeToData(EncodedImageFormat.PNG)
+        ?: throw IllegalStateException("Failed to encode image to PNG")
 
-  outputFile.parentFile?.mkdirs()
+    outputFile.parentFile?.mkdirs()
 
-  // Crop to the measured content bounds on wrapped axes. `measured` is
-  // populated during the Modifier.layout measure pass in the wrap branch
-  // above — if it somehow wasn't set (shouldn't happen, but defensive),
-  // fall back to the sandbox dimensions and write the uncropped PNG.
-  if ((wrapWidth || wrapHeight) && measured != null) {
-    val m = measured!!
-    // Ceiling is the (possibly enlarged) scene dimension, not the raw widthPx/heightPx — a min
-    // bound larger than the original frame grew the scene, and the crop must keep that extent.
-    val cropW = (if (wrapWidth) m.width else widthPx).coerceIn(1, sceneWidthPx)
-    val cropH = (if (wrapHeight) m.height else heightPx).coerceIn(1, sceneHeightPx)
-    val decoded = ByteArrayInputStream(pngData.bytes).use { ImageIO.read(it) }
-    if (decoded != null && (cropW < decoded.width || cropH < decoded.height)) {
-      val sub =
-        decoded.getSubimage(
-          0,
-          0,
-          cropW.coerceAtMost(decoded.width),
-          cropH.coerceAtMost(decoded.height),
-        )
-      fileSystem.write(outputFile.path.toPath()) { ImageIO.write(sub, "PNG", outputStream()) }
+    // Crop to the measured content bounds on wrapped axes. `measured` is
+    // populated during the Modifier.layout measure pass in the wrap branch
+    // above — if it somehow wasn't set (shouldn't happen, but defensive),
+    // fall back to the sandbox dimensions and write the uncropped PNG.
+    if ((wrapWidth || wrapHeight) && measured != null) {
+      val m = measured!!
+      // Ceiling is the (possibly enlarged) scene dimension, not the raw widthPx/heightPx — a min
+      // bound larger than the original frame grew the scene, and the crop must keep that extent.
+      val cropW = (if (wrapWidth) m.width else widthPx).coerceIn(1, sceneWidthPx)
+      val cropH = (if (wrapHeight) m.height else heightPx).coerceIn(1, sceneHeightPx)
+      val decoded = ByteArrayInputStream(pngData.bytes).use { ImageIO.read(it) }
+      if (decoded != null && (cropW < decoded.width || cropH < decoded.height)) {
+        val sub =
+          decoded.getSubimage(
+            0,
+            0,
+            cropW.coerceAtMost(decoded.width),
+            cropH.coerceAtMost(decoded.height),
+          )
+        fileSystem.write(outputFile.path.toPath()) { ImageIO.write(sub, "PNG", outputStream()) }
+      } else {
+        fileSystem.write(outputFile.path.toPath()) { write(pngData.bytes) }
+      }
     } else {
       fileSystem.write(outputFile.path.toPath()) { write(pngData.bytes) }
     }
-  } else {
-    fileSystem.write(outputFile.path.toPath()) { write(pngData.bytes) }
+
+    scene.close()
+
+    // After a successful render, write the editable knobs this preview declared via
+    // `previewOverride*`
+    // as the `renders/<stem>.overrides.json` sidecar `BundlePreviewTask` packs into the bundle.
+    writePreviewOverridesSidecar(outputFile, fileSystem)
+  } finally {
+    restoreJvmDefaultLocale(previousDefaultLocale)
   }
-
-  scene.close()
-
-  // After a successful render, write the editable knobs this preview declared via
-  // `previewOverride*`
-  // as the `renders/<stem>.overrides.json` sidecar `BundlePreviewTask` packs into the bundle.
-  writePreviewOverridesSidecar(outputFile, fileSystem)
 }
 
 private val overridesSidecarJson =
