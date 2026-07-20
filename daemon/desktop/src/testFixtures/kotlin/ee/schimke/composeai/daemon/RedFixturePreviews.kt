@@ -542,6 +542,26 @@ fun FontScaleAwareSquare() {
 }
 
 /**
+ * Reads `androidx.compose.ui.text.intl.Locale.current` — the exact source CMP string resources
+ * resolve their locale from (`rememberResourceEnvironment()` → `Locale.current`, which on
+ * Skiko/desktop is the JVM default `Locale`) — and encodes its language subtag as a solid fill:
+ * green for German (`de`), blue for Arabic (`ar`), red for anything else (the base / English case).
+ * A pure-pixel signal proving a `localeTag` override reaches the locale CMP `stringResource(...)`
+ * reads, without needing a generated `Res` / `composeResources` set on the test classpath. Used by
+ * [OverrideIntegrationTest.localeTagOverrideReachesComposeResourceLocale].
+ */
+@Composable
+fun LocaleAwareSquare() {
+  val bg =
+    when (androidx.compose.ui.text.intl.Locale.current.language) {
+      "de" -> Color(0xFF66BB6A) // green
+      "ar" -> Color(0xFF42A5F5) // blue
+      else -> Color(0xFFEF5350) // red (base / English)
+    }
+  Box(modifier = Modifier.fillMaxSize().background(bg))
+}
+
+/**
  * Reads the *ambient* `MaterialTheme.colorScheme.primary` (no inner [MaterialTheme] wrap) so a
  * `WallpaperOverrideExtension` applied at the outer `AroundComposable` phase visibly drives the
  * background colour. Used by the wallpaper override integration tests.
