@@ -111,6 +111,8 @@ internal object CliFlags {
       "--knob",
       // bundle render — content-addressed pool dir for a published bundle's externalized resources
       "--res",
+      // bundle repack — dir of re-rendered preview PNGs swapped into the bundle's baked previews
+      "--renders",
     )
 
   /**

@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli
 import ee.schimke.composeai.cli.serve.RenderOutcome
 import ee.schimke.composeai.cli.serve.ServeBundleDaemon
 import ee.schimke.composeai.cli.serve.ServeRenderHost
+import ee.schimke.composeai.cli.serve.SvgOutcome
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import ee.schimke.composeai.io.SystemFileSystem
@@ -72,6 +73,7 @@ class BundleCommand(args: List<String>) : Command(args) {
       "embed" -> EmbedSubcommand(subArgs).run()
       "externalize" -> ExternalizeSubcommand(subArgs).run()
       "render" -> RenderSubcommand(subArgs).run()
+      "repack" -> RepackSubcommand(subArgs).run()
       "keygen" -> KeygenSubcommand(subArgs).run()
       "sign" -> SignSubcommand(subArgs).run()
       "verify" -> VerifySubcommand(subArgs).run()
@@ -106,7 +108,8 @@ class BundleCommand(args: List<String>) : Command(args) {
         compose-preview bundle extract <bundle.png | URL> [-o <dir>]
         compose-preview bundle embed   <bundle.png | URL> [-o <dir|file.png>] [--title T] [--external-images] [--in-bundle]
         compose-preview bundle externalize <bundle.png | URL> --res-out <dir> [-o <file.png>] [--ext ttf,otf,woff,woff2] [--json]
-        compose-preview bundle render  <bundle.png | URL> [-o <dir>]   (v1: stub — prints what would render)
+        compose-preview bundle render  <bundle.png | URL> [-o <dir>] [--knob k=v …] [--res <pool>] [--svg]  (re-render previews; --knob re-themes, --svg also exports vectors)
+        compose-preview bundle repack  <bundle.png | URL> --renders <dir> -o <out.png>  (swap baked previews for re-rendered PNGs + figma.svg)
         compose-preview bundle keygen  [-o <key.pem>] [--key-id <id>]  (mint an Ed25519 signing keypair)
         compose-preview bundle sign    <bundle.png> --key <private-key> --key-id <id> [--producer <name>]
         compose-preview bundle verify  <bundle.png | URL> [--trust <store.json>] [--origin <repo@branch>]
@@ -829,10 +832,15 @@ private class RenderSubcommand(private val args: List<String>) {
     // `bundle/res/<sha>` dir published beside the bundle on its design-artifacts branch), needed to
     // daemon-render a bundle whose fonts were lifted out by `bundle externalize`.
     val resPool = args.flagValue("--res")?.let { File(it) }
+    // `--svg` also exports each re-themed preview's editable vector (`compose/figma-svg`) beside
+    // its
+    // PNG, so `bundle repack` can swap the baked `previews/<id>.figma.svg` too — the catalog ships
+    // both raster and vector per sticker. Only the daemon/`--knob` path can produce it.
+    val withSvg = "--svg" in args
     if (path == null) {
       System.err.println(
         "Usage: compose-preview bundle render <bundle.png | URL> [-o <dir>] [--knob key=value …] " +
-          "[--res <pool-dir>]"
+          "[--res <pool-dir>] [--svg]"
       )
       exitProcess(64)
     }
@@ -853,8 +861,18 @@ private class RenderSubcommand(private val args: List<String>) {
     // `serve` uses for `/render?knob…` — which applies `PreviewOverrides.namedOverrides` to the
     // PUBLISHED bundle with no source rebuild. See [renderBundleWithOverrides].
     if (knobs.isNotEmpty()) {
-      if (!renderBundleWithOverrides(file, target, knobs, resPool, verbose)) exitProcess(1)
+      if (!renderBundleWithOverrides(file, target, knobs, resPool, withSvg, verbose)) exitProcess(1)
       return
+    }
+
+    if (withSvg) {
+      // --svg re-exports the vector from a themed daemon render; without --knob there's nothing to
+      // re-theme (the bundle already ships its baked figma.svg), so the stock render can't honour
+      // it.
+      System.err.println(
+        "bundle render: --svg exports re-themed vectors and only applies with --knob; the stock " +
+          "render already carries the bundle's baked figma.svg. Ignoring --svg."
+      )
     }
 
     val renderer =
@@ -881,6 +899,136 @@ private class RenderSubcommand(private val args: List<String>) {
       }
     }
     if (!result.allOk) exitProcess(1)
+  }
+}
+
+/**
+ * `bundle repack <bundle> --renders <dir> -o <out.png>` — write a copy of [bundleFile] with its
+ * baked per-preview artifacts swapped for the re-renders in `--renders` (the output of `bundle
+ * render --knob … [--svg]`): each `<id>.png` replaces `previews/<id>.png`, and each `<id>.svg`
+ * replaces the editable vector `previews/<id>.figma.svg`. Pure zip surgery: every other entry
+ * (previews.json, bundle.json, classes/, libs/, JSON sidecars) and the leading PNG cover are
+ * preserved verbatim, so the result is a drop-in re-themed bundle the catalog exporter
+ * (`generate-design-catalog.mjs --renders`) consumes exactly like the original. A render whose
+ * filename matches no baked slot is skipped (reported), so a partial re-render repacks what it
+ * produced.
+ */
+private class RepackSubcommand(private val args: List<String>) {
+  private val verbose: Boolean = "--verbose" in args || "-v" in args
+
+  fun run() {
+    val path = CliFlags.firstPositional(args)
+    val rendersDir = args.flagValue("--renders")?.let { File(it) }
+    val out = args.flagValue("--output") ?: args.flagValue("-o")
+    if (path == null || rendersDir == null || out == null) {
+      System.err.println(
+        "Usage: compose-preview bundle repack <bundle.png | URL> --renders <dir> -o <out.png>"
+      )
+      exitProcess(64)
+    }
+    if (!rendersDir.isDirectory) {
+      System.err.println("bundle repack: --renders '${rendersDir.path}' is not a directory")
+      exitProcess(1)
+    }
+    val source =
+      try {
+        BundleSource.resolveToFile(path)
+      } catch (e: IllegalArgumentException) {
+        System.err.println(e.message)
+        exitProcess(1)
+      }
+    val outFile = File(out).absoluteFile
+    val outcome =
+      try {
+        repackRethemedPreviews(source, rendersDir, outFile)
+      } catch (e: IllegalStateException) {
+        System.err.println("bundle repack: ${e.message}")
+        exitProcess(1)
+      }
+    val svgNote = if (outcome.svg > 0) " (${outcome.png} png, ${outcome.svg} svg)" else ""
+    println("repacked ${outcome.repacked} re-themed artifact(s)$svgNote → ${outFile.path}")
+    if (outcome.unmatched.isNotEmpty()) {
+      System.err.println(
+        "  ${outcome.unmatched.size} render(s) had no matching baked preview — skipped"
+      )
+      if (verbose) outcome.unmatched.forEach { System.err.println("    skip $it") }
+    }
+  }
+}
+
+/**
+ * Result of [repackRethemedPreviews]: how many baked raster [png] and vector [svg] slots were
+ * swapped, and the render filenames that matched no baked preview slot. [repacked] is the total.
+ */
+internal data class RepackOutcome(val png: Int, val svg: Int, val unmatched: List<String>) {
+  val repacked: Int
+    get() = png + svg
+}
+
+/**
+ * Core of `bundle repack`: write [outFile] as a copy of [source] with its baked per-preview
+ * artifacts replaced by the re-renders in [rendersDir] — a `<id>.png` swaps `previews/<id>.png`,
+ * and a `<id>.svg` (from `bundle render --knob --svg`) swaps the editable vector
+ * `previews/<id>.figma.svg`. Only top-level preview artifacts are swappable slots: nested
+ * figma-raster crops (`previews/<id>.figma-raster/…`) and the JSON sidecars (semantics / layout /
+ * overrides) are NOT re-themed here, so they stay verbatim, as does the leading PNG cover and every
+ * other zip entry. The result is a drop-in re-themed bundle. Throws [IllegalStateException] if no
+ * render matched a baked slot.
+ */
+internal fun repackRethemedPreviews(source: File, rendersDir: File, outFile: File): RepackOutcome {
+  // Top-level baked artifacts we can swap: the raster `previews/<id>.png` and its vector sibling
+  // `previews/<id>.figma.svg`. A path with a further `/` after the previews/ prefix is a nested
+  // figma-raster crop, not a swap target.
+  val baked =
+    zipEntryNames(BundleReader.extractZipBytes(source))
+      .filter {
+        it.startsWith("$BUNDLE_PREVIEWS_DIR/") &&
+          '/' !in it.removePrefix("$BUNDLE_PREVIEWS_DIR/") &&
+          (it.endsWith(".png") || it.endsWith(BUNDLE_FIGMA_SVG_SUFFIX))
+      }
+      .toSet()
+  val renders =
+    (rendersDir.listFiles { f -> f.isFile && (f.name.endsWith(".png") || f.name.endsWith(".svg")) }
+        ?: emptyArray())
+      .sortedBy { it.name }
+  val entries = LinkedHashMap<String, ByteArray>()
+  val unmatched = mutableListOf<String>()
+  var png = 0
+  var svg = 0
+  for (f in renders) {
+    // A `<id>.svg` render re-skins the baked `previews/<id>.figma.svg`; a `<id>.png`, the raster.
+    val isSvg = f.name.endsWith(".svg")
+    val target =
+      if (isSvg) "$BUNDLE_PREVIEWS_DIR/${f.name.removeSuffix(".svg")}$BUNDLE_FIGMA_SVG_SUFFIX"
+      else "$BUNDLE_PREVIEWS_DIR/${f.name}"
+    if (target in baked) {
+      entries[target] = f.readBytes()
+      if (isSvg) svg++ else png++
+    } else {
+      unmatched += f.name
+    }
+  }
+  check(entries.isNotEmpty()) {
+    "none of the ${renders.size} render(s) in ${rendersDir.path} matched a baked preview " +
+      "(previews/<id>.png or previews/<id>$BUNDLE_FIGMA_SVG_SUFFIX) in ${source.name} — " +
+      "nothing to repack"
+  }
+  outFile.parentFile?.mkdirs()
+  // Copy the whole polyglot (leading PNG cover + every zip entry) then swap the baked previews in
+  // place; the cover thumbnail stays the source's, the re-themed pixels live in the zip.
+  source.copyTo(outFile, overwrite = true)
+  injectRawZipEntries(outFile, entries)
+  return RepackOutcome(png, svg, unmatched)
+}
+
+/** The file (non-directory) entry names in [zip], in iteration order. */
+internal fun zipEntryNames(zip: ByteArray): List<String> = buildList {
+  ZipInputStream(ByteArrayInputStream(zip)).use { zin ->
+    while (true) {
+      val e = zin.nextEntry ?: break
+      if (!e.isDirectory) add(e.name)
+      zin.closeEntry()
+    }
   }
 }
 
@@ -916,6 +1064,7 @@ private fun renderBundleWithOverrides(
   outDir: File,
   overrides: Map<String, PreviewOverrideValue>,
   resPoolDir: File?,
+  withSvg: Boolean,
   verbose: Boolean,
 ): Boolean {
   val log: (String) -> Unit = { if (verbose) System.err.println("[bundle render] $it") }
@@ -969,7 +1118,12 @@ private fun renderBundleWithOverrides(
       }
     val failures =
       try {
-        renderPreviewsToDir(host, outDir, PreviewOverrides(namedOverrides = overrides))
+        renderPreviewsToDir(
+          host,
+          outDir,
+          PreviewOverrides(namedOverrides = overrides),
+          withSvg = withSvg,
+        )
       } finally {
         host.close()
       }
@@ -1058,27 +1212,55 @@ private fun resSha256Hex(bytes: ByteArray): String =
  * [renderBundleWithOverrides] so the render-and-write loop is unit-testable against a
  * [ServeRenderHost] built over a fake [ee.schimke.composeai.render.session.RenderSession] — no
  * daemon subprocess, no native renderer. Does not close [host]; the caller owns its lifecycle.
+ *
+ * When [withSvg] is set and the host can export vectors ([ServeRenderHost.hasSvgExport]), each
+ * successfully-rendered preview also writes its re-themed `compose/figma-svg` to
+ * `<outDir>/<sanitized id>.svg` — the editable vector `bundle repack` swaps into the baked
+ * `previews/<id>.figma.svg`. SVG is a **best-effort companion**: the PNG re-theme is the contract,
+ * so a host with no figma-svg lane (a single note is logged) or a per-preview SVG failure (logged,
+ * not fatal) leaves the PNG output intact and does NOT add to the returned failures.
  */
 internal fun renderPreviewsToDir(
   host: ServeRenderHost,
   outDir: File,
   seed: PreviewOverrides,
+  withSvg: Boolean = false,
   log: (String) -> Unit = ::println,
 ): List<String> {
   var rendered = 0
+  var svgWritten = 0
   val failures = mutableListOf<String>()
+  val exportSvg = withSvg && host.hasSvgExport
+  if (withSvg && !host.hasSvgExport) {
+    log("  note  --svg requested but this bundle has no figma-svg export — writing PNG only")
+  }
   for (preview in host.previews) {
     when (val outcome = host.render(preview.id, seed)) {
       is RenderOutcome.Ok -> {
-        File(outDir, sanitizeBundleRenderName(preview.id) + ".png").writeBytes(outcome.png)
+        val base = sanitizeBundleRenderName(preview.id)
+        File(outDir, "$base.png").writeBytes(outcome.png)
         rendered++
         log("  ok    ${preview.id}")
+        if (exportSvg) {
+          when (val svg = host.renderSvg(preview.id, seed)) {
+            is SvgOutcome.Ok -> {
+              File(outDir, "$base.svg").writeBytes(svg.svg)
+              svgWritten++
+            }
+            is SvgOutcome.Failed -> log("  svg?  ${preview.id} (${svg.reason})")
+            SvgOutcome.NotFound -> log("  svg?  ${preview.id} (no vector export)")
+          }
+        }
       }
       is RenderOutcome.Failed -> failures += "${preview.id} (${outcome.reason})"
       RenderOutcome.NotFound -> failures += "${preview.id} (not found)"
     }
   }
-  log("rendered $rendered / ${host.previews.size} preview(s) themed → ${outDir.path}")
+  log(
+    "rendered $rendered / ${host.previews.size} preview(s) themed" +
+      (if (exportSvg) " (+ $svgWritten svg)" else "") +
+      " → ${outDir.path}"
+  )
   return failures
 }
 

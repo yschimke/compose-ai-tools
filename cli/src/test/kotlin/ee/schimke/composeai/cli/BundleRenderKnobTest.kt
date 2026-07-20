@@ -160,6 +160,60 @@ class BundleRenderKnobTest {
     )
   }
 
+  @Test
+  fun `renderPreviewsToDir with withSvg writes a re-themed SVG beside each PNG`() {
+    // A figma-svg-capable backend (FakeRenderSession default) → --svg exports the editable vector
+    // beside the raster, the pair `bundle repack` swaps into previews/<id>.png + .figma.svg.
+    val session = FakeRenderSession(tempDir("render-root"))
+    val outDir = tempDir("render-out")
+    val host =
+      ServeRenderHost(
+        session = session,
+        previews =
+          listOf(
+            ServePreview("com.example.Filled", "Filled"),
+            ServePreview("com.example.Tonal", "Tonal"),
+          ),
+        renderTimeoutSeconds = 30,
+      )
+    val seed =
+      PreviewOverrides(namedOverrides = mapOf("theme.colors" to s("scheme:l=primary:FF00695C")))
+
+    val failures = host.use { renderPreviewsToDir(it, outDir, seed, withSvg = true, log = {}) }
+
+    assertEquals(emptyList(), failures)
+    for (id in listOf("com.example.Filled", "com.example.Tonal")) {
+      assertTrue(File(outDir, "$id.png").exists(), "$id PNG written")
+      assertTrue(File(outDir, "$id.svg").exists(), "$id SVG written beside the PNG")
+    }
+  }
+
+  @Test
+  fun `renderPreviewsToDir with withSvg but no vector export writes only PNG and still succeeds`() {
+    // A backend without the compose/figma-svg product reports the kinds as unknown → hasSvgExport
+    // false. --svg is best-effort: the PNG re-theme lands, no .svg is written, and it is NOT a
+    // failure.
+    val session = FakeRenderSession(tempDir("render-root"), figmaSvgAvailable = false)
+    val outDir = tempDir("render-out")
+    val host =
+      ServeRenderHost(
+        session = session,
+        previews = listOf(ServePreview("com.example.Filled", "Filled")),
+        renderTimeoutSeconds = 30,
+      )
+
+    val failures = host.use {
+      renderPreviewsToDir(it, outDir, PreviewOverrides(), withSvg = true, log = {})
+    }
+
+    assertEquals(emptyList(), failures)
+    assertTrue(File(outDir, "com.example.Filled.png").exists(), "PNG still written")
+    assertFalse(
+      File(outDir, "com.example.Filled.svg").exists(),
+      "no SVG when the backend can't export it",
+    )
+  }
+
   private fun sha256(bytes: ByteArray): String =
     java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") {
       "%02x".format(it)
