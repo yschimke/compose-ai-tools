@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.16.60](https://github.com/yschimke/compose-ai-tools/compare/v0.16.59...v0.16.60) (2026-07-20)
+
+
+### Features
+
+* **design-artifacts:** fold a borrowed catalog in as a re-themed tab (merge-catalog-section) ([#2586](https://github.com/yschimke/compose-ai-tools/issues/2586)) ([de451c9](https://github.com/yschimke/compose-ai-tools/commit/de451c9be9972672032838dda41b34e4bc392fb1))
+
+
+### Bug Fixes
+
+* **design-artifacts:** fold only nested assets when merging catalogs ([#2590](https://github.com/yschimke/compose-ai-tools/issues/2590)) ([574db23](https://github.com/yschimke/compose-ai-tools/commit/574db2337d3f3908297fb514eb8491714ca46ec7))
+* **renderer:** propagate min-size bound onto the component, not just the wrapper box ([#2588](https://github.com/yschimke/compose-ai-tools/issues/2588)) ([2e9af6f](https://github.com/yschimke/compose-ai-tools/commit/2e9af6fc078a684cbb1a761f58aa9bbbe2fbdff0))
+
 ## [0.16.59](https://github.com/yschimke/compose-ai-tools/compare/v0.16.58...v0.16.59) (2026-07-20)
 
 
