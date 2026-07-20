@@ -17,28 +17,28 @@
  *  - strips each borrowed image's `livePreview` deep link (it targets the
  *    borrowed system's own server path, which would mis-link inside the host
  *    catalog — the borrowed section is baked-PNG here),
- *  - copies the borrowed catalog's asset tree (images / wireframes / figma-svg /
- *    …, everything except the top-level `catalog.json` + token projections) into
- *    the primary out dir at the same relative paths, refusing to clobber a
- *    differing primary file,
+ *  - folds the borrowed catalog's per-component assets — the files under its
+ *    subdirectories (`images/`, `wireframes/`, `figma/`) — into the primary out
+ *    dir at the same relative paths, refusing to clobber a differing primary
+ *    file,
  *  - appends the borrowed components to the primary `catalog.json` and rewrites
  *    it in place.
  *
- * The primary catalog's own `meta`, `themeTokens`, and token/Figma projections
- * are kept as-is; the borrowed catalog's token files are NOT merged (its
+ * A catalog's **top-level** files stay the host's: the manifest (`catalog.json`,
+ * merged separately above), the token/Figma projections, the `code-connect.json`
+ * mappings, and the generated `index.html` / `compare.html` / `README.md` pages
+ * — each is derived from that catalog's own component set, and both catalogs
+ * (produced by the same generator) carry them, so copying the borrowed ones would
+ * collide. The host's generated pages therefore don't reflect the folded section;
+ * the preview server renders tabs from the merged `catalog.json`, and a caller
+ * that needs the static pages refreshed re-runs the generator's page renderers
+ * over the merged catalog. The borrowed token files aren't merged either (the
  * re-themed pixels already carry the host palette — a token-set union is a
  * possible fast-follow). componentIds must not collide across the two catalogs.
  */
 import { parseArgs } from "node:util";
 import { readFile, writeFile, mkdir, readdir, stat } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
-
-/** Top-level manifest / token files that describe a catalog, not its assets. */
-const CATALOG_META_FILES = new Set([
-  "catalog.json",
-  "tokens.dtcg.json",
-  "figma-variables.json",
-]);
 
 /**
  * Pure manifest merge: return a new primary manifest with [borrowed]'s components
@@ -86,18 +86,30 @@ async function sameBytes(a, b) {
 }
 
 /**
- * Copy the borrowed catalog's asset tree (everything but the top-level
- * {@link CATALOG_META_FILES}) from [fromDir] into [intoDir] at the same relative
- * paths. Returns the number of files copied. Throws if a destination already
- * exists with different bytes (a real collision — same relative asset path, two
- * different images).
+ * Fold the borrowed catalog's per-component assets — the files under its
+ * subdirectories (`images/`, `wireframes/`, `figma/`, …) — from [fromDir] into
+ * [intoDir] at the same relative paths. Returns the number of files copied.
+ * Throws if a NESTED asset already exists in the host with different bytes (a
+ * real collision — same asset path, two different images).
+ *
+ * Only nested files are folded: every **top-level** file a catalog emits is
+ * catalog-level, not a per-component asset — the manifest (`catalog.json`), the
+ * token projections (`tokens.dtcg.json` / `figma-variables.json`), the
+ * `code-connect.json` mappings, and the generated gallery pages (`index.html` /
+ * `compare.html` / `README.md`). Each is derived from that catalog's own
+ * component set, so the host keeps its own; copying the borrowed ones would both
+ * collide with the host's same-named page (different bytes → abort) and be wrong
+ * in the host. Skipping *every* top-level file (rather than a fixed denylist)
+ * stays correct if the generator grows a new top-level artifact.
  */
 async function copyAssets(fromDir, intoDir) {
   let copied = 0;
   for (const src of await listFiles(fromDir)) {
     const rel = relative(fromDir, src);
-    // Skip the borrowed catalog's own top-level manifest + token projections.
-    if (!rel.includes(sep) && CATALOG_META_FILES.has(rel)) continue;
+    // Top-level files are catalog-level (manifest / tokens / code-connect /
+    // generated pages), not per-component assets — the host keeps its own. Every
+    // foldable asset lives in a subdirectory (images/ / wireframes/ / figma/).
+    if (!rel.includes(sep)) continue;
     const dest = join(intoDir, rel);
     const existing = await stat(dest).catch(() => null);
     if (existing) {
