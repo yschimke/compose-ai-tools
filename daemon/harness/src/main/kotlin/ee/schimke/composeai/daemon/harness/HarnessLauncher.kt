@@ -1,6 +1,7 @@
 package ee.schimke.composeai.daemon.harness
 
 import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.io.classpathArgFile
 import java.io.File
 import okio.FileSystem
 import okio.Path.Companion.toPath
@@ -90,7 +91,6 @@ class FakeHarnessLauncher(
       "FakeHarnessLauncher.spawn: fixtureDir '${fixtureDir.absolutePath}' is not a directory"
     }
     val javaBin = File(System.getProperty("java.home"), "bin/java")
-    val cpString = classpath.joinToString(File.pathSeparator) { it.absolutePath }
     val command =
       buildList<String> {
         add(javaBin.absolutePath)
@@ -117,8 +117,8 @@ class FakeHarnessLauncher(
           add("-Dcomposeai.daemon.history.autoPruneIntervalMs=$pruneAutoIntervalMs")
         addHistorySyspropsIfSet()
         addAll(extraJvmArgs)
-        add("-cp")
-        add(cpString)
+        // @argfile so a large harness classpath can't overflow the OS arg limit — see classpathArgFile.
+        add(classpathArgFile(classpath.map { it.absolutePath }))
         add(mainClass)
       }
     return ProcessBuilder(command)
@@ -182,7 +182,6 @@ class RealDesktopHarnessLauncher(
     }
     val javaBin = File(System.getProperty("java.home"), "bin/java")
     val fullClasspath = classpath + extraClasspath
-    val cpString = fullClasspath.joinToString(File.pathSeparator) { it.absolutePath }
     val command =
       buildList<String> {
         add(javaBin.absolutePath)
@@ -193,8 +192,8 @@ class RealDesktopHarnessLauncher(
         add("-Dcomposeai.daemon.discoveryWatchdogMs=500")
         addHistorySyspropsIfSet()
         addAll(extraJvmArgs)
-        add("-cp")
-        add(cpString)
+        // @argfile so a large harness classpath can't overflow the OS arg limit — see classpathArgFile.
+        add(classpathArgFile(fullClasspath.map { it.absolutePath }))
         add("ee.schimke.composeai.daemon.DaemonMain")
       }
     return ProcessBuilder(command)
@@ -299,7 +298,6 @@ class RealAndroidHarnessLauncher(
     }
     val javaBin = File(System.getProperty("java.home"), "bin/java")
     val fullClasspath = classpath + extraClasspath
-    val cpString = fullClasspath.joinToString(File.pathSeparator) { it.absolutePath }
     val command =
       buildList<String> {
         add(javaBin.absolutePath)
@@ -338,8 +336,8 @@ class RealAndroidHarnessLauncher(
         add("-Dcomposeai.daemon.idleTimeoutMs=2000")
         addHistorySyspropsIfSet()
         addAll(extraJvmArgs)
-        add("-cp")
-        add(cpString)
+        // @argfile so a large harness classpath can't overflow the OS arg limit — see classpathArgFile.
+        add(classpathArgFile(fullClasspath.map { it.absolutePath }))
         add("ee.schimke.composeai.daemon.DaemonMain")
       }
     return ProcessBuilder(command)
