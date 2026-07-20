@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.1](https://github.com/yschimke/compose-ai-tools/compare/v0.17.0...v0.17.1) (2026-07-20)
+
+
+### Bug Fixes
+
+* **render:** localize CMP string resources for @Preview(locale=…) on desktop ([#2597](https://github.com/yschimke/compose-ai-tools/issues/2597)) ([17c86ba](https://github.com/yschimke/compose-ai-tools/commit/17c86ba6d077bdee6f67f2d114caf4c97c7e2d1f))
+
 ## [0.17.0](https://github.com/yschimke/compose-ai-tools/compare/v0.16.61...v0.17.0) (2026-07-20)
 
 
