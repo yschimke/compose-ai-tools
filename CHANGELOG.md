@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.0](https://github.com/yschimke/compose-ai-tools/compare/v0.16.61...v0.17.0) (2026-07-20)
+
+
+### Miscellaneous Chores
+
+* release as 0.17.0 ([#2598](https://github.com/yschimke/compose-ai-tools/issues/2598)) ([ea005f1](https://github.com/yschimke/compose-ai-tools/commit/ea005f1cc1cb6df25298bb71c45b7d0436c55e2e))
+
 ## [0.16.61](https://github.com/yschimke/compose-ai-tools/compare/v0.16.60...v0.16.61) (2026-07-20)
 
 
