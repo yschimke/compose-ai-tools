@@ -183,7 +183,8 @@ class SubprocessDaemonClientFactory : DaemonClientFactory {
         descriptor.systemProperties.forEach { (k, v) -> add("-D$k=$v") }
         // A full-app render classpath (hundreds of jars) overflows the OS arg limit if passed as a
         // literal `-cp`, which silently drops the daemon (e.g. --with-semantics capture). Pass it
-        // via a Java @argfile so argv stays short regardless of classpath size (see classpathArgFile).
+        // via a Java @argfile so argv stays short regardless of classpath size (see
+        // classpathArgFile).
         add(classpathArgFile(descriptor.classpath))
         add(descriptor.mainClass)
       }
