@@ -413,7 +413,15 @@ class RenderEngine(
                 } else {
                   Modifier.fillMaxSize().background(bgColor)
                 }
-              Box(modifier = boxModifier) {
+              // `propagateMinConstraints = true` pushes the wrapped-axis *min* bound (the Min /
+              // Within size modes) down onto the composable itself, not just the wrapping box. With
+              // the default (false) the outer box grows to the min bound but relaxes the child's
+              // min
+              // to 0, so a wrap-content component (a Button, a badge) stays at its intrinsic size
+              // in
+              // the corner of an enlarged frame instead of filling the requested size. A min of 0
+              // (the AS-parity / Max case) propagates as a no-op, so this is safe for every mode.
+              Box(modifier = boxModifier, propagateMinConstraints = true) {
                 ComposeDataExtensionPipeline.Apply(
                   extensions = previewOverrideExtensions.plan(spec.overrides),
                   previewId = spec.previewId,

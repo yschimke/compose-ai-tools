@@ -844,6 +844,13 @@ internal fun renderPreview(
           // `fillMax*` composables measure at the sandbox size and
           // no crop happens on that axis.
           Box(
+            // `propagateMinConstraints = true` pushes the wrapped-axis *min* bound (the Min /
+            // Within size modes) down onto the composable itself, not just this wrapping box. With
+            // the default (false) the box grows to the min bound but relaxes the child's min to 0,
+            // so a wrap-content component (a Button, a badge) stays at its intrinsic size in the
+            // corner of an enlarged frame instead of filling the requested size. A min of 0 (the
+            // AS-parity / Max case) is a no-op, so this is safe for every mode.
+            propagateMinConstraints = true,
             modifier =
               Modifier.layout { measurable, constraints ->
                   // Relax the min constraint on wrapped axes so
@@ -873,7 +880,7 @@ internal fun renderPreview(
                   measured = IntSize(placeable.width, placeable.height)
                   layout(placeable.width, placeable.height) { placeable.place(0, 0) }
                 }
-                .background(bgColor)
+                .background(bgColor),
           ) {
             InvokeComposable(composableMethod, null, previewArgs)
           }
