@@ -511,7 +511,20 @@ class RenderEngine(
                         } else {
                           Modifier.fillMaxSize()
                         }
-                      Box(modifier = contentBoxModifier) {
+                      // On a wrapped axis, `propagateMinConstraints = true` pushes the wrapped-axis
+                      // *min* bound (the Min / Within size modes) down onto the composable itself,
+                      // not just the wrapping box — with the default (false) the outer box grows to
+                      // the min bound but relaxes the child's min to 0, so a wrap-content component
+                      // stays at its intrinsic size in the corner of an enlarged frame instead of
+                      // filling the requested size. Scoped to wrapped renders only: the fixed-frame
+                      // branch above is `fillMaxSize`, whose tight min would otherwise be forwarded
+                      // into the root composable and stretch wrap-content content that must stay
+                      // small in an explicitly-sized frame. Mirrors the desktop daemon + standalone
+                      // renderer.
+                      Box(
+                        modifier = contentBoxModifier,
+                        propagateMinConstraints = spec.wrapWidth || spec.wrapHeight,
+                      ) {
                         if (isProtolayoutIr) {
                           // v5 IR replay — inflate the captured protolayout `Layout` + `Resources`
                           // protos through `TileRenderer`, with no reference to the tile function

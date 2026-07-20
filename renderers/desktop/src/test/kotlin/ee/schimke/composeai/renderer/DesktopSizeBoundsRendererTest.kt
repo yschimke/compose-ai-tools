@@ -40,11 +40,12 @@ class DesktopSizeBoundsRendererTest {
     minHeightPx: Int? = null,
     maxWidthPx: Int? = null,
     maxHeightPx: Int? = null,
+    functionName: String = "WrapContentSticker",
   ): File {
     val out = File(tempFolder.newFolder(base), "$base.png")
     renderPreview(
       className = stickerClass,
-      functionName = "WrapContentSticker",
+      functionName = functionName,
       // Generous 800×1600 px wrap sandbox (like the daemon test) so the *bound*, not the frame,
       // decides the measured intrinsic size the crop keeps.
       widthPx = 800,
@@ -78,6 +79,39 @@ class DesktopSizeBoundsRendererTest {
     val (w, h) = dims(renderSticker("desktop-size-min-400", minWidthPx = 400, minHeightPx = 400))
     assertEquals("min width bound raises the crop floor", 400, w)
     assertEquals("min height bound raises the crop floor", 400, h)
+  }
+
+  /**
+   * The min bound must reach the *component*, not just the wrapping box. [MinFillSticker]'s root is
+   * a wrap-content green box (56.dp intrinsic); with the min propagated it fills the 400×400 crop,
+   * so a pixel deep inside the frame is the component's green. Before the fix the min landed only
+   * on the renderer's wrapper and that pixel was the white harness background — the "wrapper box
+   * takes the size but the component stays unsized" bug.
+   */
+  @Test
+  fun minBoundReachesTheComponentNotJustTheWrapperBox() {
+    val out =
+      renderSticker(
+        "desktop-size-min-fill-400",
+        minWidthPx = 400,
+        minHeightPx = 400,
+        functionName = "MinFillSticker",
+      )
+    val (w, h) = dims(out)
+    assertEquals("min width bound raises the crop floor", 400, w)
+    assertEquals("min height bound raises the crop floor", 400, h)
+    val img = ByteArrayInputStream(out.readBytes()).use { ImageIO.read(it) } ?: error("no decode")
+    // Deep inside the frame (350,350), well past the 112 px badge in the corner: green means the
+    // component itself took the min size; white would mean only the wrapper box did.
+    val argb = img.getRGB(350, 350)
+    val r = argb shr 16 and 0xFF
+    val g = argb shr 8 and 0xFF
+    val b = argb and 0xFF
+    assertTrue(
+      "component must fill the min area — expected green (#1B5E20-ish) at (350,350), got " +
+        "rgb($r,$g,$b)",
+      g > r + 40 && g > b + 40,
+    )
   }
 
   @Test

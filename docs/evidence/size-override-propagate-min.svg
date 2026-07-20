@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="470" viewBox="0 0 880 470" font-family="-apple-system,Segoe UI,Roboto,sans-serif">
+  <rect width="880" height="470" fill="#ffffff"/>
+  <text x="440" y="34" text-anchor="middle" font-size="20" font-weight="700" fill="#1a1a1a">Size mode “Min 400 × 400” on a wrap-content component</text>
+
+  <!-- BEFORE -->
+  <text x="220" y="72" text-anchor="middle" font-size="16" font-weight="600" fill="#b71c1c">Before — min lands on the wrapper box only</text>
+  <!-- 400x400 frame (scaled 0.5 => 200px) -->
+  <rect x="120" y="90" width="200" height="200" fill="#ffffff" stroke="#c9c9c9" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <!-- component stays intrinsic size (56dp badge + no fill) top-left -->
+  <rect x="120" y="90" width="60" height="60" fill="#1b5e20"/>
+  <circle cx="150" cy="120" r="20" fill="#b71c1c"/>
+  <text x="220" y="312" text-anchor="middle" font-size="12.5" fill="#555">frame = 400, component = 56dp in the corner</text>
+
+  <!-- arrow -->
+  <path d="M355 190 h50" stroke="#888" stroke-width="2" fill="none" marker-end="url(#a)"/>
+  <defs><marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="#888"/></marker></defs>
+
+  <!-- AFTER -->
+  <text x="640" y="72" text-anchor="middle" font-size="16" font-weight="600" fill="#1b5e20">After — min propagates to the component</text>
+  <rect x="540" y="90" width="200" height="200" fill="#ffffff" stroke="#c9c9c9" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <!-- component now fills the min area -->
+  <rect x="540" y="90" width="200" height="200" fill="#1b5e20"/>
+  <circle cx="570" cy="120" r="20" fill="#b71c1c"/>
+  <text x="640" y="312" text-anchor="middle" font-size="12.5" fill="#555">frame = 400, component fills 400 × 400</text>
+
+  <!-- caption -->
+  <text x="440" y="372" text-anchor="middle" font-size="13.5" fill="#333">The wrapping Box measured itself to the min bound but relaxed the child’s min to 0</text>
+  <text x="440" y="394" text-anchor="middle" font-size="13.5" fill="#333">(default <tspan font-family="monospace">propagateMinConstraints = false</tspan>), so the component never received the size.</text>
+  <text x="440" y="424" text-anchor="middle" font-size="13.5" fill="#1a1a1a">Fix: <tspan font-family="monospace">Box(propagateMinConstraints = true)</tspan> on the three size-bound render paths.</text>
+  <text x="440" y="450" text-anchor="middle" font-size="11.5" fill="#888">Schematic proxy — the Skiko renderer cannot run in this Nix sandbox (Ubuntu libGL vs Nix glibc); CI renders the real pixels.</text>
+</svg>
