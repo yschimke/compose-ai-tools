@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.2](https://github.com/yschimke/compose-ai-tools/compare/v0.17.1...v0.17.2) (2026-07-20)
+
+
+### Bug Fixes
+
+* **daemon:** spawn the render daemon via a classpath [@argfile](https://github.com/argfile) to survive large modules ([#2601](https://github.com/yschimke/compose-ai-tools/issues/2601)) ([3e91712](https://github.com/yschimke/compose-ai-tools/commit/3e917124306a0866d1822971c54ea292dffb4a52))
+
 ## [0.17.1](https://github.com/yschimke/compose-ai-tools/compare/v0.17.0...v0.17.1) (2026-07-20)
 
 
