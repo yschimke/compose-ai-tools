@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.16.59](https://github.com/yschimke/compose-ai-tools/compare/v0.16.58...v0.16.59) (2026-07-20)
+
+
+### Features
+
+* **cli:** re-theme a published bundle into a drop-in re-themed bundle (render --res/--svg + repack) ([#2582](https://github.com/yschimke/compose-ai-tools/issues/2582)) ([0bfee3c](https://github.com/yschimke/compose-ai-tools/commit/0bfee3ce722802a318350a23031c1c9387ee5a77))
+
+
+### Bug Fixes
+
+* **deps:** update gradle minor/patch ([#2584](https://github.com/yschimke/compose-ai-tools/issues/2584)) ([cd1b54a](https://github.com/yschimke/compose-ai-tools/commit/cd1b54adbb9858b826d7972052708f2a56bf4234))
+* **figma-svg:** retry Google-Fonts fetch so a cold-start blip doesn't strand a preview ([#2580](https://github.com/yschimke/compose-ai-tools/issues/2580)) ([d345215](https://github.com/yschimke/compose-ai-tools/commit/d3452151ab6c09310f8872634f681f3899e5089d))
+
 ## [0.16.58](https://github.com/yschimke/compose-ai-tools/compare/v0.16.57...v0.16.58) (2026-07-19)
 
 
