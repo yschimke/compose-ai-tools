@@ -62,6 +62,7 @@ import { DEFAULT_PREVIEW_BASE, livePreviewUrl } from "./live-preview.mjs";
 import { buildFontsManifest, fontsPayloadsFromBundle } from "./render-fonts-manifest.mjs";
 import { candidatePreviewBundle } from "./bundle-previews.mjs";
 import { bridgeLivePreviewIds } from "./bridge-live-preview-ids.mjs";
+import { applySpecSections } from "./apply-spec-sections.mjs";
 
 /**
  * Best-effort fetch + parse of a JSON URL, with a short timeout. Returns null on
@@ -593,6 +594,14 @@ if (values["publish-live-bundle"]) {
 {
   const catalogJsonPath = join(outPath, "catalog.json");
   const manifest = JSON.parse(await readFile(catalogJsonPath, "utf8"));
+  // Re-stamp each spec group's top-level `section` (the preview-server tab) onto
+  // the manifest: the pinned buildCatalog drops `source.section`, so without this
+  // a sectioned spec (meshcore's Themes / Components / Screens) collapses to one
+  // untabbed bucket. No-op for specs with no group `section` (compose-m3 et al.).
+  const stampedSections = applySpecSections(manifest, spec);
+  if (stampedSections > 0) {
+    console.log(`[${spec.system}] stamped section on ${stampedSections} component(s) from spec groups`);
+  }
   for (const component of manifest.components ?? []) {
     for (const image of component.images ?? []) {
       if (image.path) image.livePreview = livePreviewUrl(previewBase, manifest.system, image.path);
