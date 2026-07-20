@@ -94,27 +94,71 @@ test("mergeCatalogSection folds assets in and rewrites catalog.json", async () =
   );
   await writeFile(join(into, "images/Device_Card/x.png"), "HOST-IMG");
 
-  // Borrowed catalog: one component, its image, and a token file that must NOT copy.
+  // Borrowed catalog: one component + its image, plus the top-level files every
+  // generated catalog carries (manifest / tokens / code-connect / pages) — none
+  // of which must be copied into the host.
   await mkdir(join(from, "images/Buttons_Filled"), { recursive: true });
   await writeFile(join(from, "catalog.json"), JSON.stringify(manifest([comp("Buttons/Filled")])));
   await writeFile(join(from, "images/Buttons_Filled/x.png"), "M3-IMG");
   await writeFile(join(from, "tokens.dtcg.json"), "{}");
+  await writeFile(join(from, "code-connect.json"), "{}");
+  await writeFile(join(from, "index.html"), "<html>m3</html>");
+  await writeFile(join(from, "README.md"), "# m3");
 
   const res = await mergeCatalogSection({ into, from, section: "Material 3" });
 
   assert.equal(res.componentsAdded, 1);
-  assert.equal(res.filesCopied, 1); // the borrowed image, not tokens.dtcg.json
+  assert.equal(res.filesCopied, 1); // only the nested image, none of the top-level files
 
   const merged = JSON.parse(await readFile(join(into, "catalog.json"), "utf8"));
   assert.deepEqual(
     merged.components.map((c) => [c.componentId, c.section]),
     [["Device/Card", "Components"], ["Buttons/Filled", "Material 3"]],
   );
-  // Borrowed image copied in; borrowed token file NOT copied.
+  // Borrowed image copied in; none of the borrowed top-level files leaked over.
   assert.equal(await readFile(join(into, "images/Buttons_Filled/x.png"), "utf8"), "M3-IMG");
-  assert.equal(await stat(join(into, "tokens.dtcg.json")).then(() => true, () => false), false);
+  for (const f of ["tokens.dtcg.json", "code-connect.json", "index.html", "README.md"]) {
+    assert.equal(
+      await stat(join(into, f)).then(() => true, () => false),
+      false,
+      `borrowed top-level ${f} must not be copied`,
+    );
+  }
   // Host image untouched.
   assert.equal(await readFile(join(into, "images/Device_Card/x.png"), "utf8"), "HOST-IMG");
+});
+
+test("mergeCatalogSection does not abort when both catalogs have differing top-level pages", async () => {
+  // The real case: host + borrowed are BOTH generated catalogs, so each carries
+  // its own index.html / code-connect.json / README.md with different bytes.
+  // Those are catalog-level, not assets — the merge must skip them, not collide.
+  const root = await mkdtemp(join(tmpdir(), "merge-catalog-pages-"));
+  const into = join(root, "into");
+  const from = join(root, "from");
+
+  await mkdir(join(into, "images/Host"), { recursive: true });
+  await writeFile(join(into, "catalog.json"), JSON.stringify(manifest([comp("Host/One")])));
+  await writeFile(join(into, "images/Host/x.png"), "HOST-IMG");
+  await writeFile(join(into, "index.html"), "<html>HOST</html>");
+  await writeFile(join(into, "code-connect.json"), '{"Host/One":{}}');
+
+  await mkdir(join(from, "images/M3"), { recursive: true });
+  await writeFile(join(from, "catalog.json"), JSON.stringify(manifest([comp("M3/Two")])));
+  await writeFile(join(from, "images/M3/x.png"), "M3-IMG");
+  await writeFile(join(from, "index.html"), "<html>M3-DIFFERENT</html>");
+  await writeFile(join(from, "code-connect.json"), '{"M3/Two":{}}');
+
+  const res = await mergeCatalogSection({ into, from, section: "Material 3" });
+
+  assert.equal(res.componentsAdded, 1);
+  assert.equal(res.filesCopied, 1); // only images/M3/x.png
+  // Host's own top-level pages are preserved verbatim (not clobbered, not aborted).
+  assert.equal(await readFile(join(into, "index.html"), "utf8"), "<html>HOST</html>");
+  assert.equal(await readFile(join(into, "code-connect.json"), "utf8"), '{"Host/One":{}}');
+  // The borrowed component + its asset still landed.
+  assert.equal(await readFile(join(into, "images/M3/x.png"), "utf8"), "M3-IMG");
+  const merged = JSON.parse(await readFile(join(into, "catalog.json"), "utf8"));
+  assert.equal(merged.components.some((c) => c.componentId === "M3/Two"), true);
 });
 
 test("mergeCatalogSection refuses to overwrite a differing asset", async () => {
