@@ -30,7 +30,7 @@ fi
 # The published catalog set is BAKED INTO THE IMAGE (same `:=` + `none` convention
 # as SERVE_TRUST_STORE below), so a bare `docker pull` / Watchtower auto-update
 # self-heals without editing the box's compose. Front-page systems:
-: "${SERVE_CATALOGS:=compose-m3,wear-m3,remote-m3,meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose,confetti-wear@yschimke/Confetti}"
+: "${SERVE_CATALOGS:=compose-m3,wear-m3,remote-m3,meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose,confetti-wear@joreilly/Confetti}"
 [[ "${SERVE_CATALOGS}" != "none" ]] && args+=(--catalogs "${SERVE_CATALOGS}")
 # …and cadence, served UNLISTED from its own repo — reachable at /cadence/ (and ?session=cadence)
 # but kept OFF the front-page index. (meshcore-mobile / homeassistant-remotecompose are LISTED above
