@@ -119,7 +119,7 @@ services:
   # for the pull (docker login ghcr.io on the host) — no in-container config.
   # Set ROLLOUT_INTERVAL in .env to change the poll cadence (default 1200s).
   rollout:
-    image: docker:27-cli
+    image: docker:28-cli
     restart: always
     depends_on:
       - preview
