@@ -1,5 +1,6 @@
 package ee.schimke.composeai.mcp
 
+import ee.schimke.composeai.io.classpathArgFile
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import java.io.File
 import java.util.concurrent.TimeUnit
@@ -175,14 +176,16 @@ class SubprocessDaemonClientFactory : DaemonClientFactory {
     }
     val javaBin =
       descriptor.javaLauncher ?: File(System.getProperty("java.home"), "bin/java").absolutePath
-    val cpString = descriptor.classpath.joinToString(File.pathSeparator)
     val command =
       buildList<String> {
         add(javaBin)
         addAll(descriptor.jvmArgs)
         descriptor.systemProperties.forEach { (k, v) -> add("-D$k=$v") }
-        add("-cp")
-        add(cpString)
+        // A full-app render classpath (hundreds of jars) overflows the OS arg limit if passed as a
+        // literal `-cp`, which silently drops the daemon (e.g. --with-semantics capture). Pass it
+        // via a Java @argfile so argv stays short regardless of classpath size (see
+        // classpathArgFile).
+        add(classpathArgFile(descriptor.classpath))
         add(descriptor.mainClass)
       }
     val process =
