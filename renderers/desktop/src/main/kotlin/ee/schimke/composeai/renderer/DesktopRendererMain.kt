@@ -697,6 +697,10 @@ private fun loadProviderValues(providerFqn: String, limit: Int): List<Any?> {
         )
         return emptyList()
       }
+  // A `private` provider (idiomatic Kotlin, renders fine in Android Studio) compiles to a
+  // package-private JVM class; `getValues.invoke` from outside the package then throws
+  // IllegalAccessException without this. Mirrors the Android renderer fix for issue #2493.
+  getValues.isAccessible = true
   @Suppress("UNCHECKED_CAST")
   val sequence = getValues.invoke(instance) as? Sequence<Any?> ?: return emptyList()
   // `Sequence.take(Int)` is lazy and `.toList()` drives it — bounds the

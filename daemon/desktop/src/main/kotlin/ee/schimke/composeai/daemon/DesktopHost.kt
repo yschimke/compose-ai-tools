@@ -292,12 +292,21 @@ open class DesktopHost(
       "Use shutdown() to stop the host, not submit(Shutdown)."
     }
     val typed = request as RenderRequest.Render
-    requests.put(typed)
+    // Register the result slot *before* enqueuing the request so the render worker always finds an
+    // existing queue (it delivers via a plain `results[id]?.put`, never `computeIfAbsent`).
+    // Otherwise a worker that finishes *after* we give up on timeout below would resurrect a fresh
+    // entry that nobody ever drains — a per-timeout leak of the queue plus its RenderResult.
     val resultQueue = results.computeIfAbsent(typed.id) { LinkedBlockingQueue() }
+    requests.put(typed)
     val raw =
-      resultQueue.poll(timeoutMs, TimeUnit.MILLISECONDS)
-        ?: error("DesktopHost.submit($typed) timed out after ${timeoutMs}ms")
-    results.remove(typed.id)
+      try {
+        resultQueue.poll(timeoutMs, TimeUnit.MILLISECONDS)
+          ?: error("DesktopHost.submit($typed) timed out after ${timeoutMs}ms")
+      } finally {
+        // Remove on every exit path — success, timeout, or a re-thrown engine Throwable — so the
+        // map never retains a completed request's slot.
+        results.remove(typed.id)
+      }
     // The render loop posts either a [RenderResult] (success / stub) or a [Throwable] (engine
     // body threw). Re-throw the Throwable so `JsonRpcServer.submitRenderAsync`'s catch surfaces
     // it as a `renderFailed` notification — the path the v1 `S5RenderFailedRealModeTest` covers.
@@ -680,7 +689,10 @@ open class DesktopHost(
               // leaking reflection details into S5RenderFailedRealModeTest's assertions.
               unwrapInvocationTarget(t)
             }
-          results.computeIfAbsent(request.id) { LinkedBlockingQueue() }.put(result)
+          // Deliver into the slot `submit` registered before enqueuing this request. Use a plain
+          // lookup, never `computeIfAbsent`: if `submit` already gave up (timeout) and removed the
+          // slot, drop the result here instead of resurrecting an entry no one will ever drain.
+          results[request.id]?.put(result)
         }
       }
     }

@@ -318,6 +318,18 @@ export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
             logger?.appendLine(`[daemon] process exited with code=${code}`);
             resolve(code);
         });
+        // A spawn failure (a bad/non-executable javaLauncher that still passed the statSync
+        // pre-check, EACCES, a fork failure) emits 'error' on the ChildProcess, and because the
+        // process never started no 'exit' follows. Without a listener Node re-throws it as an
+        // uncaught exception in the extension host; instead log it and resolve `exited` so the
+        // argfile temp-dir cleanup fires. The `initialize` handshake below then fails gracefully
+        // via the stdin/stdout stream-error path DaemonClient already handles.
+        child.on("error", (err) => {
+            logger?.appendLine(
+                `[daemon] process failed to start: ${err.message}`,
+            );
+            resolve(exitCode);
+        });
     });
     // `java` reads the @argfile during launch, so it's safe to remove once the
     // process exits — whether that's a clean shutdown, a crash, or the SIGTERM
