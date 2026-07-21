@@ -99,14 +99,44 @@ jobs:
       - name: Install desktop (Skiko) render deps
         run: |
           sudo apt-get update
-          # `fonts-noto-*` are FALLBACK faces (lowest fontconfig priority) so a
-          # `@Preview(locale = "ja"/"ar"/…)` catalog variant renders real glyphs
-          # instead of tofu on runners whose base image lacks CJK/Arabic/emoji.
-          # A catalog's own declared FontFamily still wins; Noto only fills gaps.
+          # `fonts-noto-*` are FALLBACK faces so a `@Preview(locale = "ja"/"ar"/…)`
+          # catalog variant renders real glyphs instead of tofu on runners whose
+          # base image lacks CJK/Arabic/emoji. A catalog's own declared FontFamily
+          # still wins (Compose matches it by name, never via the generic aliases);
+          # Noto only fills the codepoints the catalog's own fonts don't provide.
+          #
+          # Record the generic Latin defaults BEFORE the install: fonts-noto-core
+          # carries Noto Sans/Serif and fontconfig's 60-latin.conf ranks Noto
+          # ahead of DejaVu, so installing it would otherwise silently switch the
+          # generic sans/serif/mono default to Noto — broad baseline churn instead
+          # of missing-glyph fill. (fc-match is present on the runner; if it can't
+          # read a generic, fall back to the historical DejaVu default.)
+          prev_sans="$(fc-match -f '%{family}\n' sans-serif 2>/dev/null | head -n1 | cut -d, -f1)"
+          prev_serif="$(fc-match -f '%{family}\n' serif 2>/dev/null | head -n1 | cut -d, -f1)"
+          prev_mono="$(fc-match -f '%{family}\n' monospace 2>/dev/null | head -n1 | cut -d, -f1)"
+          : "${prev_sans:=DejaVu Sans}"
+          : "${prev_serif:=DejaVu Serif}"
+          : "${prev_mono:=DejaVu Sans Mono}"
           sudo apt-get install -y --no-install-recommends \
             xvfb libgl1 libglx-mesa0 libgl1-mesa-dri libfreetype6 libfontconfig1 fontconfig \
             fonts-noto-cjk fonts-noto-core fonts-noto-color-emoji
+          # Pin the generics back to the recorded defaults so Noto stays
+          # fallback-only. Strong prepend beats 60-latin's Noto preference.
+          {
+            echo '<?xml version="1.0"?>'
+            echo '<!DOCTYPE fontconfig SYSTEM "fonts.dtd">'
+            echo '<fontconfig>'
+            for pair in "sans-serif:$prev_sans" "serif:$prev_serif" "monospace:$prev_mono"; do
+              generic="${pair%%:*}"; family="${pair#*:}"
+              [ -n "$family" ] || continue
+              printf '  <match target="pattern"><test qual="any" name="family"><string>%s</string></test><edit name="family" mode="prepend" binding="strong"><string>%s</string></edit></match>\n' "$generic" "$family"
+            done
+            echo '</fontconfig>'
+          } | sudo tee /etc/fonts/conf.d/99-preserve-generic-latin-default.conf >/dev/null
           fc-cache -f >/dev/null
+          echo "generic sans-serif → $(fc-match -f '%{family}\n' sans-serif) (was: ${prev_sans})"
+          echo "generic serif      → $(fc-match -f '%{family}\n' serif) (was: ${prev_serif})"
+          echo "generic monospace  → $(fc-match -f '%{family}\n' monospace) (was: ${prev_mono})"
 
       # The export engine lives in the (private) design-parity repo, but its
       # building blocks are published to npm. The driver
