@@ -105,8 +105,24 @@ if [[ ! -d "$target_dir/.git" ]]; then
 else
   (
     cd "$target_dir"
+    # Reconcile `origin` with the requested URL first. A checkout materialised
+    # before the default repo changed (e.g. the old joreilly/Confetti default,
+    # persisted at `/tmp/compose-preview-external-e2e` across local/cloud
+    # reruns) still has `origin` pointing at the stale remote, so fetching
+    # without this would silently pull the old repo and defeat a URL switch.
+    # `set-url` is idempotent when it already matches; fall back to `add` if the
+    # remote is somehow absent. CI is unaffected (fresh `RUNNER_TEMP` each run
+    # takes the `.git`-absent branch above) — this is purely for reused dirs.
+    current_url="$(git remote get-url origin 2>/dev/null || echo)"
+    if [[ "$current_url" != "$repo_url" ]]; then
+      git remote set-url origin "$repo_url" 2>/dev/null ||
+        git remote add origin "$repo_url"
+    fi
     current="$(git rev-parse HEAD)"
-    if [[ "$current" != "$repo_ref"* ]]; then
+    # Re-fetch when HEAD isn't already at the requested ref OR when the remote
+    # URL just changed — the latter forces a move onto the new repo's content
+    # even if the old checkout's HEAD happened to match `$repo_ref`.
+    if [[ "$current" != "$repo_ref"* || "$current_url" != "$repo_url" ]]; then
       git fetch --depth 1 origin "$repo_ref"
       # `--force` discards uncommitted edits in the existing checkout
       # before moving HEAD. Required because the catalog rewrite below
