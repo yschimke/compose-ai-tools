@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.17.4](https://github.com/yschimke/compose-ai-tools/compare/v0.17.3...v0.17.4) (2026-07-21)
+
+
+### Features
+
+* **design-catalog:** add Confetti mobile Material 3 catalog ([#2617](https://github.com/yschimke/compose-ai-tools/issues/2617)) ([d85b203](https://github.com/yschimke/compose-ai-tools/commit/d85b2030f464557789799c94566c1d540c0238b7))
+* **serve:** systematise per-system stage + hero on the public front door ([#2614](https://github.com/yschimke/compose-ai-tools/issues/2614)) ([410a913](https://github.com/yschimke/compose-ai-tools/commit/410a913291c55a580a62a539f18cd780f552f5fd))
+
+
+### Bug Fixes
+
+* **auto-inject:** apply the preview plugin under the exclusiveContent shape ([#2616](https://github.com/yschimke/compose-ai-tools/issues/2616)) ([58bccde](https://github.com/yschimke/compose-ai-tools/commit/58bccde5c39fd3d2ca94b861cea2d1f5dc379128))
+* **cli:** fail Android bundle render batch on subprocess timeout ([#2620](https://github.com/yschimke/compose-ai-tools/issues/2620)) ([7334aff](https://github.com/yschimke/compose-ai-tools/commit/7334affb867abad0db643662c3f4dfaba517b5b7))
+
 ## [0.17.3](https://github.com/yschimke/compose-ai-tools/compare/v0.17.2...v0.17.3) (2026-07-21)
 
 
