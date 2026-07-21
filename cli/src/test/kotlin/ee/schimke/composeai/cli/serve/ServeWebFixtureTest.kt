@@ -298,6 +298,8 @@ class ServeWebFixtureTest {
             previewCount = 18,
             trust = "branch:yschimke/compose-ai-tools@design-artifacts/wear-m3",
             heroPreviewId = "button-filled__ideal__default__light",
+            // Wear is dark-first: the hero backs on the dark stage, not the default white.
+            darkStage = true,
           ),
           ServeWeb.HomeSystem(
             system = "remote-m3",
@@ -325,6 +327,17 @@ class ServeWebFixtureTest {
             trust =
               "branch:yschimke/homeassistant-remotecompose@design-artifacts/homeassistant-remotecompose",
             heroPreviewId = null,
+          ),
+          // A Wear app (Confetti): dark-first stage, and its hero is a conference SCREEN — the most
+          // representative view of the app — rather than a single component.
+          ServeWeb.HomeSystem(
+            system = "confetti-wear",
+            title = "Confetti (Wear)",
+            subtitle = "dev.johnoreilly.confetti",
+            previewCount = 12,
+            trust = "branch:joreilly/Confetti@design-artifacts/confetti-wear",
+            heroPreviewId = "conference-screen__ideal__default__dark",
+            darkStage = true,
           ),
         ),
         token,
@@ -771,6 +784,42 @@ class ServeWebFixtureTest {
         )
       ),
       "the hero pick prefers a default-state, light, filled-button render",
+    )
+    // When the catalog carries screens (an app, not a component library), a Screens-section preview
+    // is the hero — the most representative view — beating any single component, even a filled
+    // button.
+    assertEquals(
+      "conference-screen__ideal__default__dark",
+      ServeWeb.representativePreviewId(
+        listOf(
+          ServePreview("button-filled__ideal__default__light", "Filled default"),
+          ServePreview(
+            "conference-screen__ideal__default__dark",
+            "Conference",
+            section = "Screens",
+          ),
+          ServePreview("bookmarks-screen__ideal__default__dark", "Bookmarks", section = "Screens"),
+        )
+      ),
+      "a catalog with screens fronts a screen, not a component",
+    )
+    // The dark stage is DECLARED by the catalog (display.surface) first; the system-name heuristic
+    // is only the fallback, so nothing is hardcoded per app.
+    assertTrue(
+      ServeWeb.SystemDisplay.resolveDarkFirst("anything", "dark"),
+      "a declared dark surface wins regardless of the system name",
+    )
+    assertFalse(
+      ServeWeb.SystemDisplay.resolveDarkFirst("wear-m3", "light"),
+      "a declared light surface overrides the wear-name dark-first heuristic",
+    )
+    assertTrue(
+      ServeWeb.SystemDisplay.resolveDarkFirst("confetti-wear", null),
+      "fallback: a Wear/watch system id is dark-first when nothing is declared",
+    )
+    assertFalse(
+      ServeWeb.SystemDisplay.resolveDarkFirst("compose-m3", null),
+      "fallback: a non-Wear system stays on the light stage",
     )
 
     // The sticky theme toggle appears only for a catalog with light/dark pairs, and each paired

@@ -276,6 +276,10 @@ class ServeCatalogStore(
         title = catalog.title?.takeIf { it.isNotBlank() },
         subtitle =
           catalog.library.filter { it.isNotBlank() }.take(2).joinToString(" · ").ifBlank { null },
+        // Declared presentation hints (stage surface + hero preview), so the front door / grid read
+        // the system's own choice instead of inferring it.
+        stageSurface = catalog.display?.surface?.takeIf { it.isNotBlank() },
+        declaredHero = catalog.display?.hero?.takeIf { it.isNotBlank() },
         figmaDir = figmaDir,
         provenance =
           ServeWeb.CatalogProvenance(
@@ -685,6 +689,12 @@ class ServeCatalogStore(
      */
     val designParity: String? = null,
     val components: List<Component> = emptyList(),
+    /**
+     * Optional presentation hints the system declared (stage surface + hero preview), written by
+     * `generate-design-catalog.mjs` from the spec's `display`. The server reads these instead of
+     * inferring the stage / hero from the system name.
+     */
+    val display: CatalogDisplay? = null,
     /** Optional in-browser render descriptor (the CMP-Wasm app carried in the branch). */
     val webRender: WebRender? = null,
     /** Optional buildable source for trusted server-side re-render (`--allow-render-trusted`). */
@@ -696,6 +706,13 @@ class ServeCatalogStore(
      */
     val liveBundle: LiveBundle? = null,
   )
+
+  /**
+   * `catalog.json`'s `display`: how the system wants to be presented — the stage [surface] its
+   * stickers are drawn for (`light`/`dark`) and the [hero] preview (componentId or preview id) to
+   * feature on the index. Both optional; the server falls back to its own defaults when absent.
+   */
+  @Serializable data class CatalogDisplay(val surface: String? = null, val hero: String? = null)
 
   /** `catalog.json`'s `liveBundle`: the executable bundle at `<path><file>` on this branch. */
   @Serializable private data class LiveBundle(val path: String = "", val file: String = "")

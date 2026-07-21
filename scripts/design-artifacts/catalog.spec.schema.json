@@ -54,6 +54,21 @@
       "type": "string",
       "description": "Optional slug of a sibling system to pair against on the cross-system compare page; components carry `parallel` handles into it."
     },
+    "display": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Optional presentation hints carried onto catalog.json so the preview server reads them instead of inferring — the stage surface and the hero preview to feature on the index.",
+      "properties": {
+        "surface": {
+          "enum": ["light", "dark"],
+          "description": "The stage background this system's stickers are drawn for. `dark` for a dark-first platform (Wear OS), so a light-on-transparent sticker isn't washed out on a white stage. Absent ⇒ light."
+        },
+        "hero": {
+          "type": "string",
+          "description": "The representative preview to feature as the system's hero — a componentId (e.g. \"Template/TimeText\") or a flattened preview id. Absent ⇒ the server picks one (prefer a screen, else a canonical component)."
+        }
+      }
+    },
     "groups": {
       "type": "array",
       "minItems": 1,
