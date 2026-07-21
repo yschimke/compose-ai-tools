@@ -99,8 +99,14 @@ jobs:
       - name: Install desktop (Skiko) render deps
         run: |
           sudo apt-get update
+          # `fonts-noto-*` are FALLBACK faces (lowest fontconfig priority) so a
+          # `@Preview(locale = "ja"/"ar"/…)` catalog variant renders real glyphs
+          # instead of tofu on runners whose base image lacks CJK/Arabic/emoji.
+          # A catalog's own declared FontFamily still wins; Noto only fills gaps.
           sudo apt-get install -y --no-install-recommends \
-            xvfb libgl1 libglx-mesa0 libgl1-mesa-dri libfreetype6 libfontconfig1 fontconfig
+            xvfb libgl1 libglx-mesa0 libgl1-mesa-dri libfreetype6 libfontconfig1 fontconfig \
+            fonts-noto-cjk fonts-noto-core fonts-noto-color-emoji
+          fc-cache -f >/dev/null
 
       # The export engine lives in the (private) design-parity repo, but its
       # building blocks are published to npm. The driver
