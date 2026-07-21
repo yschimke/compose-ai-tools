@@ -33,9 +33,9 @@ import android.content.Context
  *
  * The bundled metadata is loaded **synchronously** on the calling thread (a direct executor) under
  * `LOAD_STRATEGY_MANUAL`, then the load state is polled with the main looper idled between checks —
- * Robolectric's looper is `PAUSED`, so nothing advances on its own. `setReplaceAll(true)` forces
- * *every* emoji through the bundled font (not just those the system font lacks) so the preview is a
- * faithful, exhaustive picture of the app's emoji rendering.
+ * Robolectric's looper is `PAUSED`, so nothing advances on its own. `replaceAll` is left at its
+ * default (`false`), so only emoji the platform font can't render fall through to the bundled font —
+ * matching what a default emoji2 consumer draws on-device rather than force-restyling every glyph.
  */
 internal object EmojiCompatRenderSupport {
 
@@ -80,9 +80,12 @@ internal object EmojiCompatRenderSupport {
     configClass
       .getMethod("setMetadataLoadStrategy", Int::class.javaPrimitiveType)
       .invoke(config, manual)
-    // Replace every emoji (not only glyphs missing from the system font) so the preview is a
-    // complete picture of the app's bundled emoji, matching a consumer that sets replaceAll.
-    configClass.getMethod("setReplaceAll", Boolean::class.javaPrimitiveType).invoke(config, true)
+    // Leave `replaceAll` at its default (false): EmojiCompat replaces only emoji the platform font
+    // can't render, matching what a default emoji2 consumer draws on-device. Forcing replaceAll=true
+    // would push glyphs the platform already covers through the bundled font too, making the preview
+    // diverge from the app in the opposite direction — and the renderer can't know the consumer
+    // opted into replaceAll. Gap-fill still fixes the case that matters: newer / ZWJ emoji the frozen
+    // preview font lacks get the bundled glyph, while system-covered emoji stay on the platform font.
 
     val instance = emojiCompatClass.getMethod("init", configClass).invoke(null, config)
     emojiCompatClass.getMethod("load").invoke(instance)
