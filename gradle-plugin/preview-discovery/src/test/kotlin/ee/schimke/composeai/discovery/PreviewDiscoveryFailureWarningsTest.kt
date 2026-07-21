@@ -26,6 +26,20 @@ class PreviewDiscoveryFailureWarningsTest {
 
   @get:Rule val tempDir = TemporaryFolder()
 
+  /** Runs discovery over a single class dir with no dependency jars (`failOnEmpty = false`). */
+  private fun discover(classDir: File): PreviewDiscovery.Outcome =
+    PreviewDiscovery.discover(
+      PreviewDiscovery.Input(
+        classDirs = listOf(classDir),
+        dependencyJars = emptyList(),
+        sourceFiles = emptyList(),
+        moduleName = ":wearApp",
+        variantName = "debug",
+        projectDirectory = classDir,
+        failOnEmpty = false,
+      )
+    )
+
   @Test
   fun `failure path carries per-method skip-reason warnings`() {
     val classDir = tempDir.newFolder("classes")
@@ -153,6 +167,69 @@ class PreviewDiscoveryFailureWarningsTest {
     assertThat(joined).contains("@WearPreviewLargeRound")
     assertThat(joined).contains("com.example.wear.WearPreviewLargeRound")
     assertThat(joined).contains("#2613")
+  }
+
+  @Test
+  fun `a known off-classpath wear device multi-preview is expanded from the built-in table`() {
+    // Issue #2613 follow-up: the reported `@WearPreviewLargeRound` on a `main` method, wear tooling
+    // wired only into screenshotTest so the annotation class is off the discovery classpath. It's a
+    // well-known AndroidX annotation, so discovery expands it from the built-in spec table (one
+    // large-round device variant) instead of dropping it or merely warning.
+    val classDir = tempDir.newFolder("classes")
+    writeMethodWithAnnotationClass(
+      classDir,
+      internalName = "test/SessionDetailsViewKt",
+      methodName = "SessionDetailViewPreview",
+      annotationDescriptor = "Landroidx/wear/compose/ui/tooling/preview/WearPreviewLargeRound;",
+    )
+
+    val outcome = discover(classDir)
+    assertThat(outcome).isInstanceOf(PreviewDiscovery.Outcome.Success::class.java)
+    val success = outcome as PreviewDiscovery.Outcome.Success
+    val previews = success.manifest.previews
+    assertThat(previews).hasSize(1)
+    val preview = previews.single()
+    assertThat(preview.functionName).isEqualTo("SessionDetailViewPreview")
+    assertThat(preview.params.device).isEqualTo("id:wearos_large_round")
+    assertThat(preview.params.group).isEqualTo("Devices - Large Round")
+    // A known, now-expanded annotation must NOT trip the off-classpath warning.
+    assertThat(success.warnings.joinToString("\n")).doesNotContain("WearPreviewLargeRound")
+  }
+
+  @Test
+  fun `a known off-classpath wear font-scale multi-preview fans out to all six variants`() {
+    val classDir = tempDir.newFolder("classes")
+    writeMethodWithAnnotationClass(
+      classDir,
+      internalName = "test/HomeKt",
+      methodName = "HomePreview",
+      annotationDescriptor = "Landroidx/wear/compose/ui/tooling/preview/WearPreviewFontScales;",
+    )
+
+    val success = discover(classDir) as PreviewDiscovery.Outcome.Success
+    val previews = success.manifest.previews
+    assertThat(previews).hasSize(6)
+    assertThat(previews.map { it.params.fontScale })
+      .containsExactly(0.94f, 1.0f, 1.06f, 1.12f, 1.18f, 1.24f)
+    // Every wear font-scale variant renders on the small-round device.
+    assertThat(previews.map { it.params.device }.toSet()).containsExactly("id:wearos_small_round")
+  }
+
+  @Test
+  fun `a known off-classpath compose PreviewFontScale multi-preview fans out to all seven variants`() {
+    val classDir = tempDir.newFolder("classes")
+    writeMethodWithAnnotationClass(
+      classDir,
+      internalName = "test/ScreenKt",
+      methodName = "ScreenPreview",
+      annotationDescriptor = "Landroidx/compose/ui/tooling/preview/PreviewFontScale;",
+    )
+
+    val success = discover(classDir) as PreviewDiscovery.Outcome.Success
+    val previews = success.manifest.previews
+    assertThat(previews).hasSize(7)
+    assertThat(previews.map { it.params.name })
+      .containsExactly("85%", "100%", "115%", "130%", "150%", "180%", "200%")
   }
 
   @Test
