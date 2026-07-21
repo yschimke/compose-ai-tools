@@ -9,6 +9,7 @@ import ee.schimke.composeai.cli.bundleSidecarSearchDescription
 import ee.schimke.composeai.cli.extractBundleClassesAndManifest
 import ee.schimke.composeai.cli.locateBundleSidecarJars
 import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.io.composeAiCacheDir
 import ee.schimke.composeai.mcp.DaemonLaunchDescriptor
 import java.io.File
 import kotlinx.serialization.json.Json
@@ -436,8 +437,22 @@ internal object ServeBundleDaemon {
       // -Dapple.awt.UIElement=true runs the desktop daemon JVM as a macOS background agent
       // (no Dock icon / focus steal). Launch -D so it lands before AWT inits; macOS-only.
       jvmArgs = listOf("--enable-native-access=ALL-UNNAMED", "-Dapple.awt.UIElement=true"),
-      extraSystemProperties = emptyMap(),
+      extraSystemProperties = desktopFontSystemProperties(),
     )
+  }
+
+  /**
+   * Font-related props the desktop daemon needs, mirroring the Android launch's
+   * [AndroidBundleLaunch.robolectricSystemProperties]. The `compose/figma-svg` export embeds fonts
+   * by default, so the daemon fetches generic faces (e.g. Roboto) from Google Fonts; point it at
+   * the SAME shared cache the Android path and Gradle plugin use so those downloads are cached, and
+   * forward this process's `composeai.svg.embedFonts` / `composeai.fonts.offline` choices when set
+   * so a `-Dcomposeai.svg.embedFonts=false` opt-out reaches the child daemon.
+   */
+  private fun desktopFontSystemProperties(): Map<String, String> = buildMap {
+    put("composeai.fonts.cacheDir", composeAiCacheDir("fonts").absolutePath)
+    System.getProperty("composeai.fonts.offline")?.let { put("composeai.fonts.offline", it) }
+    System.getProperty("composeai.svg.embedFonts")?.let { put("composeai.svg.embedFonts", it) }
   }
 
   /**
