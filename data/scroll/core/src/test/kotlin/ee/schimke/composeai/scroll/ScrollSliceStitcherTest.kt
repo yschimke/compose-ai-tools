@@ -164,6 +164,36 @@ class ScrollSliceStitcherTest {
     assertEquals(false, out.exists())
   }
 
+  @Test
+  fun `a redundant end-of-scroll slice adds no duplicated band`() {
+    // Issue #2299: three honest slices (80 px real motion each), then a FOURTH slice identical to
+    // the third — the list has reached its end and stopped moving — while the scroller still
+    // reports
+    // advancing 80 more (a `TransformingLazyColumn` / `LazyList` whose `maxValue` overshoots pins
+    // the
+    // last item at the bottom). Without the no-move guard the stitcher trusts that reported
+    // advance,
+    // and — because the hint-narrowed search can't see the true ~0 shift — re-paints the third
+    // slice's tail as a duplicate band lower down (the ghost streak below the last item).
+    val source = buildSource(width = 40, height = 500)
+    val viewport = 100
+    val actualOffsets = listOf(0, 80, 160, 160)
+    val reportedOffsets = listOf(0, 80, 160, 240)
+    val slices =
+      actualOffsets.zip(reportedOffsets).mapIndexed { i, (actual, reported) ->
+        SliceCapture(reported.toFloat(), writeSlice(source, actual, viewport, "redundant_$i"))
+      }
+
+    val out = tmp.newFile("stitched_redundant.png")
+    stitchSlices(slices, viewport, out) ?: error("stitchSlices returned null")
+
+    val stitched = ImageIO.read(out)
+    // The redundant fourth slice must contribute nothing: the output equals the honest three-slice
+    // stitch (viewport 100 + 2 × 80 = 260), not 340 with a duplicated tail.
+    assertEquals(260, stitched.height)
+    assertPixelsEqual(source.getSubimage(0, 0, source.width, 260), stitched)
+  }
+
   /**
    * Build a tall "source" image where every pixel has a pseudo-random colour derived from both (x,
    * y). Two properties matter for the test:
