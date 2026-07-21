@@ -1572,6 +1572,22 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   window.addEventListener("resize", function () {
     if (live && live.checked && !canvas.hidden) fitLiveCanvas();
   });
+  // Re-pin the active overlay whenever the snapshot image itself loads — its first render, or a
+  // re-render at a new size. positionOverlay/fitLiveCanvas measure `img.getBoundingClientRect()`,
+  // which only becomes final once the new bytes are decoded, so without this an overlay picked
+  // (e.g. Live selected before the first /render lands) or a re-rendered snapshot kept the stale
+  // box until the next window resize (issue #2359).
+  img.addEventListener("load", function () {
+    if (live && live.checked && !canvas.hidden) fitLiveCanvas();
+    // Mirror the Wasm resize handler: the checkerboard phase moves with the overlay box, so
+    // re-hand the patch (which carries bgPhase) to a ready app — not just reposition the frame.
+    if (wasmActive()) {
+      positionWasmFrame();
+      if (wasmReady && wasmFrame.contentWindow) {
+        wasmFrame.contentWindow.postMessage(wasmOverridePatch(), "*");
+      }
+    }
+  });
   if (wasmToggle) {
     // The app posts "cp-wasm-ready" once its first frame is on the canvas — the swap signal.
     // Match on source (the known frame's contentWindow), not e.origin — robust regardless of
