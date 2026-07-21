@@ -160,6 +160,9 @@ open class DesktopHost(
    * Script-event descriptors this host's [DesktopRecordingSession] dispatches:
    *
    * - `recording.probe` — timeline marker.
+   * - `assertion` — golden-image / visibility asserts evaluated by [DesktopRecordingSession] (issue
+   *
+   * #1967); omitting it makes the MCP layer reject `assert.*` up front.
    * - `input.touch` — click + pointer up/down/move via `ImageComposeScene.sendPointerEvent`.
    * - `input.keyboard` — keyDown / keyUp via Skiko `sendKeyEvent` + the Android-keycode → Compose
    *   `Key` translation table in `DesktopKeyDispatch.kt`. Wired by issue #1203.
