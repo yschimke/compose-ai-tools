@@ -80,6 +80,9 @@ class ServeCatalogStoreTest {
     )
     val host = registered.getValue("compose-m3")
     assertTrue(host.trust is BundleVerifier.Verdict.Trusted)
+    // This catalog carries no liveBundle, so it's registered baked-only and records WHY — surfaced
+    // by the viewer banner + /api/previews so a visitor sees it's snapshot-only, not guessing.
+    assertEquals(listOf(ServeDegradation.CATALOG_BAKED_ONLY), host.degradations.map { it.code })
     // The traversal entry (../../etc/passwd.png) is rejected; only the two image-dir PNGs land, and
     // their ids are flattened to a single route-safe segment (the subdir '/' → '__') so /p/{name}
     // and /render/{name}.png can actually open them.
@@ -552,6 +555,12 @@ class ServeCatalogStoreTest {
     // The builder was never reached (fail-closed), and the static baked host serves instead.
     assertFalse(builderCalled, "live builder must not run when a declared font can't be fetched")
     assertTrue(registered["compose-m3"] != null, "static host registered as the fallback")
+    // The baked host explains that a declared live bundle was the intent but couldn't be brought up
+    // — a distinct reason from "no live bundle published", so the banner/API don't mislead.
+    assertEquals(
+      listOf(ServeDegradation.LIVEBUNDLE_UNAVAILABLE),
+      registered.getValue("compose-m3").degradations.map { it.code },
+    )
   }
 
   @Test

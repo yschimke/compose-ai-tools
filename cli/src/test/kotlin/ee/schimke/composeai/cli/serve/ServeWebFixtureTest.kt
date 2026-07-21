@@ -1769,6 +1769,29 @@ class ServeWebFixtureTest {
   }
 
   @Test
+  fun `degrade banner explains why a session is snapshot-only and is absent when live`() {
+    val degraded = listOf(ServeDegradation.catalogBakedOnly())
+
+    // The catalog-level reason renders as a banner under the header on BOTH the landing and viewer
+    // (checked on the rendered `class="cp-degrade"` section, since the CSS always defines the
+    // class).
+    val landing = ServeWeb.landingPage(moduleLabel, previews, token, degradations = degraded)
+    assertTrue(landing.contains("class=\"cp-degrade\""), "expected a degradation banner")
+    assertTrue(landing.contains("publishes no live bundle"), "expected the baked-only reason text")
+
+    val viewer = ServeWeb.viewerPage(previews.first(), token, degradations = degraded)
+    assertTrue(viewer.contains("class=\"cp-degrade\""), "expected the banner on the viewer too")
+    assertTrue(viewer.contains("publishes no live bundle"))
+
+    // A fully-live session (no degradations, the default) renders no banner section.
+    assertTrue(
+      !ServeWeb.landingPage(moduleLabel, previews, token).contains("class=\"cp-degrade\""),
+      "a live/undegraded session must not render a banner",
+    )
+    assertTrue(!ServeWeb.viewerPage(previews.first(), token).contains("class=\"cp-degrade\""))
+  }
+
+  @Test
   fun `theme toggle shows only when the grid has light-dark pairs to swap`() {
     // A theme-PAIRED catalog: each component is baked in both __light and __dark, so those two
     // previews collapse into ONE swap card and the toggle re-points it between them — the toggle

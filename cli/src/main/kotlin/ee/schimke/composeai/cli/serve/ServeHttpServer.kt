@@ -408,6 +408,9 @@ class ServeHttpServer(
           // The catalog's declared stage surface (`display.surface`), so a dark-first system's
           // unthemed cards sit on the dark stage instead of the default white.
           declaredSurface = catalogBundleHost(renderHost)?.stageSurface,
+          // Why the catalog is snapshot-only, when it is (no live bundle, unverified, …) — shown as
+          // a banner under the header so a browser sees it before opening a preview.
+          degradations = renderHost.degradations,
         ),
         ContentType.Text.Html,
       )
@@ -492,6 +495,9 @@ class ServeHttpServer(
           // Producer-trust verdict for a bundle/catalog session (signature / branch / provenance /
           // unverified); null for a live daemon-backed module session.
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
+          // Why the session is snapshot-only (no live lane), when it is — read off the host so a
+          // programmatic client sees the same reason the viewer banner shows.
+          degradations = renderHost.degradations.map { DegradationDto(it.code, it.detail) },
           previews =
             renderHost.previews.map { p ->
               PreviewDto(
@@ -745,6 +751,10 @@ class ServeHttpServer(
           // The catalog's declared stage surface (`display.surface`), so an unthemed preview backs
           // on the dark stage for a dark-first system instead of the default white.
           declaredSurface = catalogBundleHost(renderHost)?.stageSurface,
+          // Why this session is snapshot-only, when it is — the banner under the header explains
+          // the
+          // catalog-level reason (no live bundle, unverified, …) alongside the per-control note.
+          degradations = renderHost.degradations,
         ),
         ContentType.Text.Html,
       )
@@ -1152,8 +1162,17 @@ private data class PreviewsResponse(
    * module (trust applies to detached bundles/catalogs, not the operator's own served module).
    */
   val trust: String? = null,
+  /**
+   * Why this session is snapshot-only, when it is — an interactive/live lane the viewer would
+   * otherwise offer is unavailable and the server fell back to baked PNGs (e.g. the catalog
+   * publishes no `liveBundle`). Empty for a fully-live session. Each entry carries a stable [code]
+   * plus a human [detail]. Additive since `compose-preview-serve/v2`. See [ServeDegradation].
+   */
+  val degradations: List<DegradationDto> = emptyList(),
   val previews: List<PreviewDto>,
 )
+
+@Serializable private data class DegradationDto(val code: String, val detail: String)
 
 @Serializable
 private data class PreviewDto(

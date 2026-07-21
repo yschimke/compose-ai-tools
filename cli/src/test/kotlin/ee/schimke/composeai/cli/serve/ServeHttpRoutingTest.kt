@@ -47,6 +47,7 @@ class ServeHttpRoutingTest {
   private fun bundle(
     label: String,
     overrides: List<PreviewOverrideDeclaration> = emptyList(),
+    degradations: List<ServeDegradation> = emptyList(),
   ): ServeBundleHost {
     val dir = Files.createTempDirectory("routing-$label").toFile().also { it.deleteOnExit() }
     File(dir, "index.html").writeText("<html></html>")
@@ -60,13 +61,20 @@ class ServeHttpRoutingTest {
         )
       File(dir, "previews/$previewId.overrides.json").writeText(sidecar)
     }
-    return ServeBundleHost(dir, label = label)
+    return ServeBundleHost(dir, label = label, degradations = degradations)
   }
 
   private val registry = ServeSessionRegistry(open = { null })
   private val server: ServeHttpServer by lazy {
     registry.register("default-mod", host = bundle("default-mod"), pinned = true)
     registry.register("compose-m3", host = bundle("compose-m3", listOf(labelKnob)), pinned = true)
+    // A baked-only session carrying a degradation reason — reachable at /baked-only/… but kept off
+    // catalogSessions so the home-index test is unaffected. Exercises the /api/previews surfacing.
+    registry.register(
+      "baked-only",
+      host = bundle("baked-only", degradations = listOf(ServeDegradation.catalogBakedOnly())),
+      pinned = true,
+    )
     ServeHttpServer(
         host = "127.0.0.1",
         requestedPort = 0,
@@ -165,6 +173,21 @@ class ServeHttpRoutingTest {
     assertTrue(api.contains("\"overrides\":["), "overrides array present: $api")
     assertTrue(api.contains("\"key\":\"label\""), "declared knob key: $api")
     assertTrue(api.contains("\"value\":\"Tap me\""), "declared knob default value: $api")
+    // A fully-served (non-degraded) session carries an empty degradations array.
+    assertTrue(
+      api.contains("\"degradations\":[]"),
+      "empty degradations for a live-capable session: $api",
+    )
+  }
+
+  @Test
+  fun `api previews surfaces the degradation reason for a snapshot-only session`() {
+    val (code, api) = get("/baked-only/api/previews")
+    assertEquals(200, code)
+    // The session-level reason rides alongside `trust`, so a programmatic client (the Figma plugin)
+    // sees WHY the session is snapshot-only without scraping the viewer HTML.
+    assertTrue(api.contains("\"code\":\"catalog-baked-only\""), "degradation code: $api")
+    assertTrue(api.contains("publishes no live bundle"), "human detail: $api")
   }
 
   @Test

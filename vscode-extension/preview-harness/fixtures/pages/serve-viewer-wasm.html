@@ -87,6 +87,11 @@ html.cp-js .cp-section-head { display: none; }
   font-size: 0.7rem; font-weight: 600; vertical-align: middle; white-space: nowrap; }
 .cp-badge--trusted { background: #e7f4ea; color: #1e7a34; border: 1px solid #b6e0c2; }
 .cp-badge--unverified { background: #fdf0e3; color: #8a5300; border: 1px solid #f0d3a8; }
+.cp-degrade { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px;
+  margin: 0 0 12px; padding: 8px 12px; border-radius: 8px; font-size: 0.8rem; line-height: 1.4;
+  background: #fdf0e3; color: #8a5300; border: 1px solid #f0d3a8; }
+.cp-degrade-icon { font-weight: 700; }
+.cp-degrade-item { display: inline; }
 .cp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
 .cp-syslist { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
 .cp-syslist .cp-imgwrap { min-height: 120px; }
@@ -307,6 +312,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   .cp-bg-btn[aria-pressed="true"] { background: #26264a; color: #c9c9ff; }
   .cp-badge--trusted { background: #14361f; color: #6cd98a; border-color: #2c6b40; }
   .cp-badge--unverified { background: #3a2a12; color: #e6b067; border-color: #6b4f24; }
+  .cp-degrade { background: #3a2a12; color: #e6b067; border-color: #6b4f24; }
   .cp-drawer-toggle { background: #1d1d20; border-color: #34343a; color: #c9c9d0; }
   .cp-drawer-toggle:hover { background: #26262b; }
   .cp-drawer-toggle[aria-expanded="true"] { background: #26264a; border-color: #45458a; color: #c9c9ff; }

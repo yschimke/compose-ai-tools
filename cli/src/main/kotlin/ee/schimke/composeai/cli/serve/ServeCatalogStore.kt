@@ -268,7 +268,11 @@ class ServeCatalogStore(
     // catalog ids. This is ALWAYS what a viewer sees; a live builder below fronts it with a daemon
     // rather than replacing it, so the published /p/<id> links keep resolving. Built lazily so the
     // registry can rebuild it on each resume of a live session.
-    val bakedFallback: () -> ServeBundleHost = {
+    // [degradations] explains why the session is snapshot-only (surfaced by the viewer +
+    // /api/previews). It is EMPTY when this baked host merely *fronts* a live daemon (the live
+    // builders below call `bakedFallback(emptyList())` — that session isn't degraded); it is
+    // populated only at the terminal registration, where the baked host IS the session.
+    val bakedFallback: (List<ServeDegradation>) -> ServeBundleHost = { degradations ->
       ServeBundleHost(
         dir,
         safe,
@@ -295,6 +299,7 @@ class ServeCatalogStore(
                 ?.ifBlank { null },
             designParityVersion = catalog.designParity?.takeIf { it.isNotBlank() },
           ),
+        degradations = degradations,
       )
     }
 
@@ -314,10 +319,20 @@ class ServeCatalogStore(
     // whole declared bundle file has fetched cleanly (fail-closed, like fetchWasmApp above). The
     // builder fronts [bakedFallback] with the daemon (see ServeCatalogLiveHost), so the baked
     // catalog still serves browsing + the ids the daemon can't render.
+    // Captures WHY a declared liveBundle didn't yield a live session, so the terminal baked host
+    // can
+    // explain it (instead of the generic "no live bundle"). Null unless the catalog declared a
+    // liveBundle we then couldn't use.
+    var liveBundleFallback: ServeDegradation? = null
     val liveBundle = catalog.liveBundle
     if (verdict is BundleVerifier.Verdict.Trusted && liveBundle != null) {
       val bundleFile = fetchLiveBundle(liveBundle, base, dir, safe)
-      if (bundleFile != null) {
+      if (bundleFile == null) {
+        liveBundleFallback =
+          ServeDegradation.liveBundleUnavailable(
+            "the bundle could not be fetched from the delivery branch"
+          )
+      } else {
         // Rehydrate any resources the bundle externalized (fonts lifted out of classes/app.jar)
         // from
         // the branch's content-addressed pool into a shared cache + a materialized classpath dir.
@@ -346,12 +361,33 @@ class ServeCatalogStore(
               }
             }
             if (
-              buildTrustedBundle(safe, bundleFile, res.dir, alias, bakedFallback, fetchPerPreview)
+              buildTrustedBundle(
+                safe,
+                bundleFile,
+                res.dir,
+                alias,
+                { bakedFallback(emptyList()) },
+                fetchPerPreview,
+              )
             ) {
               return Result.Ok(safe, count, "${BundleVerifier.summary(verdict)} (live bundle)")
             }
+            // Declared + fetched + rehydrated, but the builder didn't stand a daemon up — most
+            // often
+            // because server-side re-render isn't enabled on this box (`--allow-render-trusted`
+            // off), or the backend isn't runnable here. Fall through to source/static with a
+            // reason.
+            liveBundleFallback =
+              ServeDegradation.liveBundleUnavailable(
+                "server-side re-render is not enabled on this server"
+              )
           }
-          ResRehydrate.Unavailable -> {} // fall through to source/static
+          // Fall through to source/static — a declared resource couldn't be rehydrated.
+          ResRehydrate.Unavailable ->
+            liveBundleFallback =
+              ServeDegradation.liveBundleUnavailable(
+                "a required font or resource could not be rehydrated"
+              )
         }
       }
     }
@@ -365,12 +401,30 @@ class ServeCatalogStore(
       verdict is BundleVerifier.Verdict.Trusted &&
         src != null &&
         src.module.isNotBlank() &&
-        buildTrustedSource(safe, CatalogSource(src.repo, src.ref, src.module), alias, bakedFallback)
+        buildTrustedSource(
+          safe,
+          CatalogSource(src.repo, src.ref, src.module),
+          alias,
+          { bakedFallback(emptyList()) },
+        )
     ) {
       return Result.Ok(safe, count, "${BundleVerifier.summary(verdict)} (live)")
     }
 
-    val host = bakedFallback()
+    // Terminal: no live lane stood up, so register the baked host AND record why it's
+    // snapshot-only.
+    // Priority: a specific liveBundle failure (fetched/rehydrated/started) > an unverified catalog
+    // that DID declare a live lane (trust is the blocker) > the plain "no live bundle published"
+    // case (meshcore's app catalog, remote-m3, …).
+    val degradation =
+      liveBundleFallback
+        ?: when {
+          verdict is BundleVerifier.Verdict.Unverified &&
+            (liveBundle != null || (src != null && src.module.isNotBlank())) ->
+            ServeDegradation.unverifiedNoRerender()
+          else -> ServeDegradation.catalogBakedOnly()
+        }
+    val host = bakedFallback(listOf(degradation))
     register(safe, host)
     return Result.Ok(safe, host.previews.size, BundleVerifier.summary(verdict))
   }

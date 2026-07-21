@@ -96,6 +96,31 @@ badge):
 
 ![Unverified session badge on the viewer page](images/serve-trust-badge-unverified.png)
 
+### Why a session is snapshot-only — the degradation banner
+
+When a session can only serve **baked PNG snapshots** — an interactive/live lane the viewer would
+otherwise offer is unavailable — the landing + viewer show an amber **banner under the header** that
+says *why*, instead of leaving a visitor to guess from a dead "Live preview" toggle. The reason is
+computed once, at catalog-load time (the point the fallback is actually decided, where it was
+previously only logged to the server's stderr), and carried on the host so the same string appears in
+the viewer and in `/api/previews`. The current reasons (`ServeDegradation`):
+
+- **`catalog-baked-only`** — the delivery branch publishes no `liveBundle` this server can run (an app
+  catalog that hasn't opted into the live tier, `remote-m3`, …). This is the common case.
+- **`livebundle-unavailable`** — a `liveBundle` was declared but couldn't be brought up (its bundle or
+  an externalized font failed to fetch/verify, or server-side re-render isn't enabled here); the
+  detail names the cause.
+- **`unverified-no-rerender`** — a live-capable catalog verified as `unverified`, so re-render is
+  refused fail-closed (the trust badge already shows the amber verdict; the banner states the
+  consequence).
+
+The banner complements the viewer's per-control `cp-note` (which explains what an individual override
+needs); a fully-live session shows neither. The programmatic form rides `/api/previews` as a
+`degradations` array (`[{ "code", "detail" }]`), empty for a live session, so a client (the Figma
+plugin) reads the same reason without scraping HTML.
+
+![The degradation banner on a baked-only catalog's viewer](images/serve-degrade-banner.png)
+
 ### Format (each its own renderer; none executes code on the server)
 
 | Format | In-browser | Server render | Data-only / safe | Server render needs trust |

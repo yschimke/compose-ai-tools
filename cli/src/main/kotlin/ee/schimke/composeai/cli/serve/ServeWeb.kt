@@ -96,6 +96,11 @@ object ServeWeb {
       font-size: 0.7rem; font-weight: 600; vertical-align: middle; white-space: nowrap; }
     .cp-badge--trusted { background: #e7f4ea; color: #1e7a34; border: 1px solid #b6e0c2; }
     .cp-badge--unverified { background: #fdf0e3; color: #8a5300; border: 1px solid #f0d3a8; }
+    .cp-degrade { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px;
+      margin: 0 0 12px; padding: 8px 12px; border-radius: 8px; font-size: 0.8rem; line-height: 1.4;
+      background: #fdf0e3; color: #8a5300; border: 1px solid #f0d3a8; }
+    .cp-degrade-icon { font-weight: 700; }
+    .cp-degrade-item { display: inline; }
     .cp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
     .cp-syslist { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
     .cp-syslist .cp-imgwrap { min-height: 120px; }
@@ -316,6 +321,7 @@ object ServeWeb {
       .cp-bg-btn[aria-pressed="true"] { background: #26264a; color: #c9c9ff; }
       .cp-badge--trusted { background: #14361f; color: #6cd98a; border-color: #2c6b40; }
       .cp-badge--unverified { background: #3a2a12; color: #e6b067; border-color: #6b4f24; }
+      .cp-degrade { background: #3a2a12; color: #e6b067; border-color: #6b4f24; }
       .cp-drawer-toggle { background: #1d1d20; border-color: #34343a; color: #c9c9d0; }
       .cp-drawer-toggle:hover { background: #26262b; }
       .cp-drawer-toggle[aria-expanded="true"] { background: #26264a; border-color: #45458a; color: #c9c9ff; }
@@ -462,6 +468,28 @@ object ServeWeb {
     val word = if (unverified) "unverified" else "trusted"
     val full = WebEscaping.htmlEscape(trust)
     return " <span class=\"$cls\" title=\"producer trust: $full\">$icon $word</span>"
+  }
+
+  /**
+   * The session-level **"why snapshot-only" banner** — one amber `<section>` under the header
+   * listing each [ServeDegradation]'s human [detail][ServeDegradation.detail] (e.g. "this catalog
+   * publishes no live bundle"). Empty string when [degradations] is empty (a fully-live session or
+   * a plain module), so no banner renders. This explains the *session-level* reason a live lane is
+   * absent; the viewer's per-control `cp-note` still explains what each individual override needs.
+   */
+  private fun degradeBanner(degradations: List<ServeDegradation>): String {
+    if (degradations.isEmpty()) return ""
+    val items =
+      degradations.joinToString("\n        ") {
+        "<span class=\"cp-degrade-item\">${WebEscaping.htmlEscape(it.detail)}</span>"
+      }
+    return """
+      <section class="cp-degrade" role="note" aria-label="Why this preview is snapshot-only">
+        <span class="cp-degrade-icon" aria-hidden="true">ⓘ</span>
+        $items
+      </section>
+      """
+      .trimIndent() + "\n"
   }
 
   /** Canonical source repo, used for the "source" / branch / workflow links. */
@@ -1416,6 +1444,12 @@ object ServeWeb {
      * relying on its id.
      */
     declaredSurface: String? = null,
+    /**
+     * Why this catalog is snapshot-only, when it is (no live bundle, unverified, …). When
+     * non-empty, a banner under the header explains it. Empty ⇒ no banner (a fully-live session, or
+     * a plain module). See [ServeDegradation] / [degradeBanner].
+     */
+    degradations: List<ServeDegradation> = emptyList(),
   ): String {
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
     // A dark-first system (Wear) puts every unthemed card on the dark stage; explicit light/dark
@@ -1569,7 +1603,7 @@ object ServeWeb {
       body =
         """
         $back<p class="cp-head">${WebEscaping.htmlEscape(moduleLabel)}${trustBadge(trust)}</p>
-        $prov$themeToggle<p class="cp-sub">${previews.size} preview(s) · click one to view with overrides ·
+        ${degradeBanner(degradations)}$prov$themeToggle<p class="cp-sub">${previews.size} preview(s) · click one to view with overrides ·
           <a href="$basePath/bundle.zip$q">download all (.zip)</a></p>
         $searchBox$tabBar$gridBlock$emptyState$filterScript$about
         """
@@ -1679,6 +1713,13 @@ object ServeWeb {
      * an unthemed preview's stage backs on dark. Null ⇒ the system-name dark-first heuristic.
      */
     declaredSurface: String? = null,
+    /**
+     * Why this session is snapshot-only, when it is (no live bundle, unverified, …). When
+     * non-empty, a banner under the header explains the catalog-level reason — complementing the
+     * per-control `cp-note` (which explains what each override needs). Empty ⇒ no banner. See
+     * [degradeBanner].
+     */
+    degradations: List<ServeDegradation> = emptyList(),
   ): String {
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
@@ -1924,7 +1965,7 @@ object ServeWeb {
     val body =
       """
       <p class="cp-head"><a href="$basePath/$q">← previews</a>${trustBadge(trust)}</p>
-      <p class="cp-sub" title="$idText">$label</p>
+      ${degradeBanner(degradations)}<p class="cp-sub" title="$idText">$label</p>
       $stateSwitcher
       <div class="cp-viewer-bar">
         $navToggle
