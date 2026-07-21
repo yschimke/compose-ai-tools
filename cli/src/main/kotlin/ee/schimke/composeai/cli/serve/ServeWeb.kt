@@ -2869,7 +2869,14 @@ object ServeWeb {
       // box until the next window resize (issue #2359).
       img.addEventListener("load", function () {
         if (live && live.checked && !canvas.hidden) fitLiveCanvas();
-        if (wasmActive()) positionWasmFrame();
+        // Mirror the Wasm resize handler: the checkerboard phase moves with the overlay box, so
+        // re-hand the patch (which carries bgPhase) to a ready app — not just reposition the frame.
+        if (wasmActive()) {
+          positionWasmFrame();
+          if (wasmReady && wasmFrame.contentWindow) {
+            wasmFrame.contentWindow.postMessage(wasmOverridePatch(), "*");
+          }
+        }
       });
       if (wasmToggle) {
         // The app posts "cp-wasm-ready" once its first frame is on the canvas — the swap signal.
