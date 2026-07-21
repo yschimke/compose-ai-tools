@@ -447,6 +447,73 @@ runs:
         python3 -m pip install --quiet 'pixelmatch==0.4.0' 'Pillow>=10' \
           || echo "pixelmatch install failed; falling back to strict-bytes diff" >&2
 
+    - name: Install fallback CJK / Arabic / emoji fonts
+      if: steps.scope.outputs.mode != 'skip'
+      shell: bash
+      run: |
+        # Deterministic multilingual rendering. Skiko resolves any glyph a
+        # preview's own FontFamily doesn't cover through the system fontconfig
+        # set, so a `@Preview(locale = "ja" / "ar" / …)` renders tofu on a runner
+        # that happens to lack CJK / Arabic / emoji faces. Install the Noto
+        # fallbacks so those previews render the same on every runner.
+        #
+        # FALLBACK ONLY — apps keep control of their own typography, and the
+        # existing Latin default is preserved unchanged:
+        #   * A preview's declared FontFamily (and any face an app bundles into
+        #     the font path ahead of its render — e.g. its branded .ttf copied
+        #     into ~/.local/share/fonts + fc-cache, as design-parity does) wins:
+        #     Compose matches those by family name and never consults the generic
+        #     sans/serif/mono aliases. An app that ships its own CJK font renders
+        #     in that font, exactly as on-device.
+        #   * fonts-noto-core also carries Noto Sans/Serif, and fontconfig's
+        #     60-latin.conf ranks Noto ahead of DejaVu for the generic families.
+        #     Left alone, installing it would silently switch every default-font
+        #     preview's Latin text to Noto — broad baseline churn, not just
+        #     missing-glyph fill. So we pin the generics back to whatever they
+        #     resolved to *before* the install, keeping Noto a pure last-resort
+        #     fill for the codepoints the prior default lacks (CJK, Arabic, …).
+
+        # 1. Record the pre-install generic defaults so we can preserve them.
+        #    fc-match ships with the runner's base fontconfig; if it can't read a
+        #    generic (empty), fall back to the historical DejaVu default rather
+        #    than leaving the generic unpinned (and so churnable).
+        prev_sans="$(fc-match -f '%{family}\n' sans-serif 2>/dev/null | head -n1 | cut -d, -f1)"
+        prev_serif="$(fc-match -f '%{family}\n' serif 2>/dev/null | head -n1 | cut -d, -f1)"
+        prev_mono="$(fc-match -f '%{family}\n' monospace 2>/dev/null | head -n1 | cut -d, -f1)"
+        : "${prev_sans:=DejaVu Sans}"
+        : "${prev_serif:=DejaVu Serif}"
+        : "${prev_mono:=DejaVu Sans Mono}"
+
+        # 2. Install the Noto fallbacks.
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          fonts-noto-cjk fonts-noto-core fonts-noto-color-emoji
+
+        # 3. Pin the generic families back to the recorded defaults so Noto stays
+        #    fallback-only. A strong prepend beats 60-latin's Noto preference; the
+        #    prior default lands first and Noto is only reached for glyphs it
+        #    lacks. If a generic didn't resolve (empty), skip it rather than pin
+        #    an empty family.
+        {
+          echo '<?xml version="1.0"?>'
+          echo '<!DOCTYPE fontconfig SYSTEM "fonts.dtd">'
+          echo '<fontconfig>'
+          for pair in "sans-serif:$prev_sans" "serif:$prev_serif" "monospace:$prev_mono"; do
+            generic="${pair%%:*}"; family="${pair#*:}"
+            [ -n "$family" ] || continue
+            printf '  <match target="pattern"><test qual="any" name="family"><string>%s</string></test><edit name="family" mode="prepend" binding="strong"><string>%s</string></edit></match>\n' "$generic" "$family"
+          done
+          echo '</fontconfig>'
+        } | sudo tee /etc/fonts/conf.d/99-preserve-generic-latin-default.conf >/dev/null
+
+        fc-cache -f >/dev/null
+
+        # 4. Log the resolved generics so any render shift is traceable to a font
+        #    change rather than a silent default swap.
+        echo "generic sans-serif → $(fc-match -f '%{family}\n' sans-serif) (was: ${prev_sans:-none})"
+        echo "generic serif      → $(fc-match -f '%{family}\n' serif) (was: ${prev_serif:-none})"
+        echo "generic monospace  → $(fc-match -f '%{family}\n' monospace) (was: ${prev_mono:-none})"
+
     - name: Run pipelines
       id: pipelines
       if: steps.scope.outputs.mode != 'skip'
