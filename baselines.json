@@ -375,6 +375,14 @@
     "sha256": "f53c4be2e7d155fe5c36967b7badcccc3ab751e25f61b7e0338cf886d0a152c9",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/ColorGallery.kt"
   },
+  "samples:android/com.example.sampleandroid.EmojiCompatComparisonPreviewKt.EmojiCompatComparisonPreview_EmojiCompat comparison": {
+    "captureLabel": "",
+    "functionName": "EmojiCompatComparisonPreview",
+    "module": "samples:android",
+    "renderBasename": "EmojiCompatComparisonPreview_EmojiCompat_comparison.png",
+    "sha256": "65c8f5048693d28076012e4fbf1c0ab0e24dcb91b110108909fa4286ad4918b4",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/EmojiCompatComparisonPreview.kt"
+  },
   "samples:android/com.example.sampleandroid.FontPreviewShowcaseKt.FontWrapperShowcasePreview_Dark": {
     "captureLabel": "",
     "functionName": "FontWrapperShowcasePreview",
@@ -3452,7 +3460,7 @@
     "functionName": "ActivityListLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round.png",
-    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
+    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
