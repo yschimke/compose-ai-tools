@@ -2423,20 +2423,22 @@ object PreviewDiscovery {
 
   /**
    * FQNs among [annotations] that look like preview-family annotations — a multi-preview
-   * meta-annotation or user wrapper whose simple name contains `Preview` — yet which
-   * [resolveMultiPreview] can't expand into any `@Preview`, so the preview is dropped with no
-   * diagnostic. Issue #2613: `@WearPreviewLargeRound` in an app's `main` source set, whose wear
-   * tooling artifact was wired only into `screenshotTest`, vanished this way — its annotation class
-   * isn't on the discovery classpath, so the meta-annotation closure has no reachable `@Preview`.
+   * meta-annotation whose simple name contains `Preview` — whose annotation class is NOT on the
+   * discovery classpath, so [resolveMultiPreview] can't reach the `@Preview`(s) inside them and the
+   * preview is dropped with no diagnostic. Issue #2613: `@WearPreviewLargeRound` in an app's `main`
+   * source set, whose wear tooling artifact was wired only into `screenshotTest`, vanished this
+   * way.
    *
-   * Keyed on the *resolution result* (`resolveMultiPreview(...).isEmpty()`) rather than on
-   * `getClassInfo == null`: ClassGraph hands back a non-null placeholder `ClassInfo` for an
-   * annotation class that's merely referenced (never scanned), so a null check misses exactly this
-   * case. Deliberately narrow to avoid false positives: reachable multi-preview annotations resolve
-   * to a non-empty list (skipped), the capture/wrapper/parameter annotations we own are excluded
-   * via [NON_EXPANDING_PREVIEW_FQNS], and the `contains("Preview")` name filter excludes unrelated
-   * annotations (`@Composable`, `@JvmStatic`, …). Direct `@Preview` / `Preview.Container` are
-   * handled elsewhere.
+   * Keyed on the annotation class being **absent from the scan** (`getClassInfo == null`). The scan
+   * doesn't `enableExternalClasses()`, so ClassGraph returns null — never a placeholder — for a
+   * class it only saw referenced, which is precisely the off-classpath case. This is what
+   * distinguishes a genuinely-dropped preview from a *reachable* annotation that merely happens to
+   * contain `Preview` in its name and isn't a multi-preview (a project's own `@PreviewOnly`
+   * marker): the latter is scanned, so `getClassInfo` is non-null and it is not flagged — no
+   * misleading "classpath" WARN on healthy modules (Codex review, PR #2631). `isExternalClass` is
+   * folded in defensively in case external-class scanning is ever enabled. The
+   * capture/wrapper/parameter annotations we own are excluded via [NON_EXPANDING_PREVIEW_FQNS], and
+   * direct `@Preview` / `Preview.Container` are handled elsewhere.
    */
   private fun unexpandablePreviewAnnotationNames(
     annotations: List<AnnotationInfo>,
@@ -2448,7 +2450,7 @@ object PreviewDiscovery {
       .filterNot { it.name in NON_EXPANDING_PREVIEW_FQNS }
       .filter { ann ->
         ann.name.substringAfterLast('.').contains("Preview") &&
-          resolveMultiPreview(ann, scanResult, mutableSetOf()).isEmpty()
+          scanResult.getClassInfo(ann.name).let { it == null || it.isExternalClass }
       }
       .map { it.name }
       .distinct()
