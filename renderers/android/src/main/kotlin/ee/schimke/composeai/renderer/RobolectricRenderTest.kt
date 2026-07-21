@@ -791,6 +791,12 @@ abstract class RobolectricRenderTestBase(
     // [PixelSystemFontAliases].
     PixelSystemFontAliases.seedSystemFontMap()
 
+    // When the consumer ships `emoji2-bundled`, initialise EmojiCompat with its bundled config so
+    // emoji route through the app's own version-pinned NotoColorEmoji rather than the platform
+    // fallback — closing the preview↔device emoji fidelity gap. No-op otherwise. See
+    // [EmojiCompatRenderSupport].
+    EmojiCompatRenderSupport.ensureInitialized(appContext)
+
     applyPreviewQualifiers(
       widthDp = widthDp,
       heightDp = heightDp,
