@@ -16,11 +16,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import com.example.designcatalogm3.shared.CatalogComponent
 import com.example.designcatalogm3.shared.generated.resources.Res
@@ -160,8 +158,14 @@ fun SlottedCardSlotsSticker() = CatalogSticker {
 //     direction, not text (`org.jetbrains.compose.resources` doesn't go through
 //     `LocalContext.resources`), so `en-XA` accent-expansion isn't visible here; the `ar-XB` bidi
 //     pseudolocale is, so it's the one that carries visible evidence.
-//   * **direction** forces `LocalLayoutDirection = Rtl` directly.
-//   * **fontScale** provides a `LocalDensity` with `fontScale = 2f` (large-text / dynamic-type).
+//   * **direction** forces `LocalLayoutDirection = Rtl` directly (layout direction is a composition
+//     property the renderer captures, so an override is faithful in both the PNG and the SVG
+// export).
+//   * **fontScale** is set on the `@Preview` itself (`fontScale = 2f`), not via a `LocalDensity`
+//     override: the design-artifacts SVG export reads `fontScale` from the render spec (the preview
+//     params), so driving it from the annotation keeps the PNG and the exported SVG/text metadata
+// in
+//     lockstep at 2.0 (large-text / dynamic-type).
 
 // Button — filled.
 @Preview(name = "Light", locale = "ar-XB", group = "modes")
@@ -176,14 +180,10 @@ fun FilledButtonRtl() =
     Sticker("button-filled")
   }
 
-@CatalogModes
+@Preview(name = "Light", fontScale = 2f, group = "modes")
+@Preview(name = "Dark", fontScale = 2f, uiMode = 32, group = "modes")
 @Composable
-fun FilledButtonLargeFont() =
-  CompositionLocalProvider(
-    LocalDensity provides Density(density = LocalDensity.current.density, fontScale = 2f)
-  ) {
-    Sticker("button-filled")
-  }
+fun FilledButtonLargeFont() = Sticker("button-filled")
 
 // List row — the on switch (a settings-style selection row).
 @Preview(name = "Light", locale = "ar-XB", group = "modes")
@@ -198,14 +198,10 @@ fun SwitchOnRtl() =
     Sticker("switch-on")
   }
 
-@CatalogModes
+@Preview(name = "Light", fontScale = 2f, group = "modes")
+@Preview(name = "Dark", fontScale = 2f, uiMode = 32, group = "modes")
 @Composable
-fun SwitchOnLargeFont() =
-  CompositionLocalProvider(
-    LocalDensity provides Density(density = LocalDensity.current.density, fontScale = 2f)
-  ) {
-    Sticker("switch-on")
-  }
+fun SwitchOnLargeFont() = Sticker("switch-on")
 
 /**
  * Every sticker is the shared component (deterministic frame) inside the catalog theme wrapper. All
