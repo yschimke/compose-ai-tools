@@ -133,6 +133,45 @@ their own full-screen frame rather than the centred component sticker:
   `Template/EdgeButton` (list anchored by the screen-hugging `EdgeButton`), each
   captured at every round breakpoint.
 
+## Authoring & validating the spec
+
+`catalog.spec.json` is hand-authored, and each component's `preview` must equal
+an **exact `@Preview` function name** in the module — a mistyped or renamed name
+renders nothing and only surfaces as a late "missing" entry at the end of the
+(long) render. Two build-free helpers in `scripts/design-artifacts/` close that
+gap by scanning the module's Kotlin source directly (no Gradle build, no render):
+
+- **Scaffold a starting spec** from the `@Preview` functions a module declares —
+  one flat `Components` group, every discovered preview a component to caption and
+  regroup:
+
+  ```sh
+  node scripts/design-artifacts/init-catalog-spec.mjs \
+    --module :app --system meshcore-mobile --title "MeshCore Mobile" \
+    --out catalog.spec.json
+  ```
+
+- **Validate an existing spec** — resolves every `preview` (component and variant)
+  against the discovered functions, suggests a fix for near-miss typos, flags
+  structural problems (duplicate `componentId`, folded previews, malformed
+  variants), and lists `@Preview`s not yet in the catalog. Exits non-zero on
+  errors, so it runs as a pre-flight in `design-artifacts.yml` before the render:
+
+  ```sh
+  node scripts/design-artifacts/validate-catalog-spec.mjs --spec catalog.spec.json
+  ```
+
+  The module is taken from the spec's `module` field; override with `--module-dir`
+  / `--src`, and pass `--preview-annotation <Name>` for a multipreview annotation
+  imported from another module. Discovery recognises `@Preview` and any
+  `annotation class` meta-annotated with it (`@CatalogModes`, `@CatalogTemplate`,
+  …). The authoritative check remains the render + completeness gate; this is the
+  fast local/CI pre-flight.
+
+The spec shape is described by
+[`scripts/design-artifacts/catalog.spec.schema.json`](../../scripts/design-artifacts/catalog.spec.schema.json)
+(referenced via `$schema` in each sample spec for editor validation).
+
 ## Adding a component
 
 1. Author a `@Composable` wrapped in the module's sticker theme, annotated with
@@ -142,4 +181,6 @@ their own full-screen frame rather than the centred component sticker:
    (Wear).
 2. Add it to `catalog.spec.json` under its group with a caption and, if known,
    the seed-kit frame reference.
-3. The next render + export picks it up automatically — no harness change.
+3. Validate the spec (`node scripts/design-artifacts/validate-catalog-spec.mjs
+   --spec <spec>`) to confirm the `preview` name resolves before rendering.
+4. The next render + export picks it up automatically — no harness change.

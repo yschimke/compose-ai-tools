@@ -152,6 +152,15 @@ jobs:
         working-directory: scripts/design-artifacts
         run: npm ci
 
+      # Fast, build-free pre-flight: resolve every spec `preview` against the
+      # @Preview functions the module actually declares BEFORE the ~90-minute
+      # render. A mistyped/renamed `preview` fails here in seconds instead of as a
+      # late "missing" entry that trips the completeness gate at the end. Structural
+      # errors (duplicate componentId, malformed variant) fail here too. Uses only
+      # node built-ins (no npm deps). Coverage warnings don't fail the job.
+      - name: Validate catalog spec
+        run: node scripts/design-artifacts/validate-catalog-spec.mjs --spec "${{ matrix.spec }}"
+
       # Published previews pin their preview-runtimes to a RELEASED version
       # (`composeaiReleasedRuntimeVersion`, bumped by release-please on each release). Sonatype →
       # Maven Central propagation lags a release, so a regen kicked right after a release (or by the
