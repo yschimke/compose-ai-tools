@@ -17,6 +17,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.LayoutDirection
 import com.example.designcatalogm3.shared.CatalogComponent
 import com.example.designcatalogm3.shared.generated.resources.Res
 import com.example.designcatalogm3.shared.generated.resources.msg_deploy
@@ -142,6 +145,63 @@ fun SlottedCardSlotsSticker() = CatalogSticker {
 @CatalogModes @Composable fun RadioUnselected() = Sticker("radiobutton-unselected")
 
 @CatalogModes @Composable fun SegmentedToggle() = Sticker("segmentedbutton")
+
+// --- Internationalisation / accessibility axes ---
+//
+// The same two representative components — the filled button and the on switch — rendered under the
+// i18n/a11y dimensions, declared as named `props` variants (`locale` / `direction` / `fontScale`)
+// on their parent sticker in `catalog.spec.json`, mirroring the `content: icon+label` content-axis
+// variant. Pure Compose, no renderer change:
+//   * **pseudolocale** reuses the repo's existing pseudolocale-in-previews mechanism —
+//     `@Preview(locale = "ar-XB")`, the `Pseudolocale.BIDI` tag the desktop renderer recognises and
+//     flips to RTL (see `:samples:cmp`'s `CmpPseudoBidi`). Desktop CMP pseudolocalises layout
+//     direction, not text (`org.jetbrains.compose.resources` doesn't go through
+//     `LocalContext.resources`), so `en-XA` accent-expansion isn't visible here; the `ar-XB` bidi
+//     pseudolocale is, so it's the one that carries visible evidence.
+//   * **direction** forces `LocalLayoutDirection = Rtl` directly (layout direction is a composition
+//     property the renderer captures, so an override is faithful in both the PNG and the SVG
+// export).
+//   * **fontScale** is set on the `@Preview` itself (`fontScale = 2f`), not via a `LocalDensity`
+//     override: the design-artifacts SVG export reads `fontScale` from the render spec (the preview
+//     params), so driving it from the annotation keeps the PNG and the exported SVG/text metadata
+// in
+//     lockstep at 2.0 (large-text / dynamic-type).
+
+// Button — filled.
+@Preview(name = "Light", locale = "ar-XB", group = "modes")
+@Preview(name = "Dark", locale = "ar-XB", uiMode = 32, group = "modes")
+@Composable
+fun FilledButtonPseudo() = Sticker("button-filled")
+
+@CatalogModes
+@Composable
+fun FilledButtonRtl() =
+  CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+    Sticker("button-filled")
+  }
+
+@Preview(name = "Light", fontScale = 2f, group = "modes")
+@Preview(name = "Dark", fontScale = 2f, uiMode = 32, group = "modes")
+@Composable
+fun FilledButtonLargeFont() = Sticker("button-filled")
+
+// List row — the on switch (a settings-style selection row).
+@Preview(name = "Light", locale = "ar-XB", group = "modes")
+@Preview(name = "Dark", locale = "ar-XB", uiMode = 32, group = "modes")
+@Composable
+fun SwitchOnPseudo() = Sticker("switch-on")
+
+@CatalogModes
+@Composable
+fun SwitchOnRtl() =
+  CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+    Sticker("switch-on")
+  }
+
+@Preview(name = "Light", fontScale = 2f, group = "modes")
+@Preview(name = "Dark", fontScale = 2f, uiMode = 32, group = "modes")
+@Composable
+fun SwitchOnLargeFont() = Sticker("switch-on")
 
 /**
  * Every sticker is the shared component (deterministic frame) inside the catalog theme wrapper. All

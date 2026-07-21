@@ -27,7 +27,10 @@
             { "state": "pressed", "preview": "FilledButtonPressed", "caption": "Held PressInteraction → pressed state layer." },
             { "state": "keyboard-focus", "preview": "FilledButtonFocused", "caption": "Keyboard focus (focus-visible) → M3 inset focus ring. This is the directional/keyboard focus indicator, not the pointer/hover state layer." },
             { "state": "disabled", "preview": "FilledButtonDisabled", "caption": "Disabled state." },
-            { "props": { "content": "icon+label" }, "preview": "FilledButtonIconLabel", "caption": "Content axis (not a state): leading icon + label, vs the label-only default." }
+            { "props": { "content": "icon+label" }, "preview": "FilledButtonIconLabel", "caption": "Content axis (not a state): leading icon + label, vs the label-only default." },
+            { "props": { "locale": "ar-XB" }, "preview": "FilledButtonPseudo", "caption": "i18n axis: the ar-XB bidi pseudolocale — flips the button to RTL layout so mirroring bugs surface (desktop CMP pseudolocalises layout direction, not text)." },
+            { "props": { "direction": "rtl" }, "preview": "FilledButtonRtl", "caption": "i18n axis: forced RTL layout direction (LocalLayoutDirection = Rtl)." },
+            { "props": { "fontScale": "2.0" }, "preview": "FilledButtonLargeFont", "caption": "Accessibility axis: 2× font scale (LocalDensity fontScale = 2.0) — large-text / dynamic-type stress." }
           ]
         },
         { "componentId": "Button/Tonal", "preview": "FilledTonalButtonSticker", "caption": "Secondary, still prominent." },
@@ -46,7 +49,12 @@
         { "componentId": "Checkbox/Checked", "preview": "CheckboxChecked",
           "variants": [ { "state": "unchecked", "preview": "CheckboxUnchecked", "caption": "Unchecked state." } ] },
         { "componentId": "Switch/On", "preview": "SwitchOn",
-          "variants": [ { "state": "off", "preview": "SwitchOff", "caption": "Off state." } ] },
+          "variants": [
+            { "state": "off", "preview": "SwitchOff", "caption": "Off state." },
+            { "props": { "locale": "ar-XB" }, "preview": "SwitchOnPseudo", "caption": "i18n axis: the ar-XB bidi pseudolocale — flips the row to RTL layout (desktop CMP pseudolocalises layout direction, not text)." },
+            { "props": { "direction": "rtl" }, "preview": "SwitchOnRtl", "caption": "i18n axis: forced RTL layout direction (LocalLayoutDirection = Rtl)." },
+            { "props": { "fontScale": "2.0" }, "preview": "SwitchOnLargeFont", "caption": "Accessibility axis: 2× font scale (LocalDensity fontScale = 2.0) — large-text / dynamic-type stress." }
+          ] },
         { "componentId": "RadioButton/Selected", "preview": "RadioSelected",
           "variants": [ { "state": "unselected", "preview": "RadioUnselected", "caption": "Unselected state." } ] },
         { "componentId": "Slider", "preview": "SliderMid" },
