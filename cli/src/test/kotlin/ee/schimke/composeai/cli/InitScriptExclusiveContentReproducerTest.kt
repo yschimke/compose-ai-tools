@@ -263,7 +263,14 @@ class InitScriptExclusiveContentReproducerTest {
       .writeText("rootProject.name = \"stubs\"\ninclude(\":preview\", \":agp\")\n")
     File(build, "build.gradle.kts").writeText("")
 
-    fun stub(module: String, group: String, pluginId: String, pkg: String, cls: String, msg: String) {
+    fun stub(
+      module: String,
+      group: String,
+      pluginId: String,
+      pkg: String,
+      cls: String,
+      msg: String,
+    ) {
       val dir = File(build, module).apply { mkdirs() }
       File(dir, "build.gradle.kts")
         .writeText(
