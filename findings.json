@@ -406,6 +406,24 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "EmojiCompatComparisonPreview_EmojiCompat_comparison.a11y.png",
+      "cleanBasename": "EmojiCompatComparisonPreview_EmojiCompat_comparison.png",
+      "findings": [
+        {
+          "boundsInScreen": "42,121,1263,213",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"\ud83d\udc4b \ud83c\udf0d \ud83d\ude80 \u2728 \ud83c\udfa8 \ud83e\ude77 \ud83e\ude76 \ud83e\udee9 \ud83e\uddd1\u200d\ud83d\ude80 \ud83e\udef1\ud83c\udffd\u200d\ud83e\udef2\ud83c\udfff\" is identical to that of 1 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        }
+      ],
+      "functionName": "EmojiCompatComparisonPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.EmojiCompatComparisonPreviewKt.EmojiCompatComparisonPreview_EmojiCompat comparison",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/EmojiCompatComparisonPreview.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "ExpandedSurfacePreview_Surface_expanded.a11y.png",
       "cleanBasename": "ExpandedSurfacePreview_Surface_expanded.png",
       "findings": [
@@ -1488,6 +1506,196 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "AndroidMakersTheme_Dark.a11y.png",
+      "cleanBasename": "AndroidMakersTheme_Dark.png",
+      "findings": [],
+      "functionName": "AndroidMakersTheme",
+      "module": "design-catalog-confetti",
+      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.AndroidMakersTheme_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "BookmarkAddSticker_Dark.a11y.png",
+      "cleanBasename": "BookmarkAddSticker_Dark.png",
+      "findings": [],
+      "functionName": "BookmarkAddSticker",
+      "module": "design-catalog-confetti",
+      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.BookmarkAddSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "BookmarkOnSticker_Dark.a11y.png",
+      "cleanBasename": "BookmarkOnSticker_Dark.png",
+      "findings": [],
+      "functionName": "BookmarkOnSticker",
+      "module": "design-catalog-confetti",
+      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.BookmarkOnSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "BottomBarSticker_Dark.a11y.png",
+      "cleanBasename": "BottomBarSticker_Dark.png",
+      "findings": [],
+      "functionName": "BottomBarSticker",
+      "module": "design-catalog-confetti",
+      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.BottomBarSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "BreakSticker_Dark.a11y.png",
+      "cleanBasename": "BreakSticker_Dark.png",
+      "findings": [],
+      "functionName": "BreakSticker",
+      "module": "design-catalog-confetti",
+      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.BreakSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "ConfettiBrandTheme_Dark.a11y.png",
+      "cleanBasename": "ConfettiBrandTheme_Dark.png",
+      "findings": [],
+      "functionName": "ConfettiBrandTheme",
+      "module": "design-catalog-confetti",
+      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.ConfettiBrandTheme_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "DayTabRowSticker_Dark.a11y.png",
+      "cleanBasename": "DayTabRowSticker_Dark.png",
+      "findings": [],
+      "functionName": "DayTabRowSticker",
+      "module": "design-catalog-confetti",
+      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.DayTabRowSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "DevFestTheme_Dark.a11y.png",
+      "cleanBasename": "DevFestTheme_Dark.png",
+      "findings": [],
+      "functionName": "DevFestTheme",
+      "module": "design-catalog-confetti",
+      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.DevFestTheme_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "DroidconTheme_Dark.a11y.png",
+      "cleanBasename": "DroidconTheme_Dark.png",
+      "findings": [],
+      "functionName": "DroidconTheme",
+      "module": "design-catalog-confetti",
+      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.DroidconTheme_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "KotlinConfTheme_Dark.a11y.png",
+      "cleanBasename": "KotlinConfTheme_Dark.png",
+      "findings": [],
+      "functionName": "KotlinConfTheme",
+      "module": "design-catalog-confetti",
+      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.KotlinConfTheme_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "LightningPillSticker_Dark.a11y.png",
+      "cleanBasename": "LightningPillSticker_Dark.png",
+      "findings": [],
+      "functionName": "LightningPillSticker",
+      "module": "design-catalog-confetti",
+      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.LightningPillSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "LightningSessionCard_Dark.a11y.png",
+      "cleanBasename": "LightningSessionCard_Dark.png",
+      "findings": [],
+      "functionName": "LightningSessionCard",
+      "module": "design-catalog-confetti",
+      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.LightningSessionCard_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "ScheduleScreenTemplate_Dark.a11y.png",
+      "cleanBasename": "ScheduleScreenTemplate_Dark.png",
+      "findings": [],
+      "functionName": "ScheduleScreenTemplate",
+      "module": "design-catalog-confetti",
+      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.ScheduleScreenTemplate_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
+      "variant": "pixel_8"
+    },
+    {
+      "annotatedBasename": "SearchFieldSticker_Dark.a11y.png",
+      "cleanBasename": "SearchFieldSticker_Dark.png",
+      "findings": [],
+      "functionName": "SearchFieldSticker",
+      "module": "design-catalog-confetti",
+      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.SearchFieldSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "SessionCardBookmarked_Dark.a11y.png",
+      "cleanBasename": "SessionCardBookmarked_Dark.png",
+      "findings": [],
+      "functionName": "SessionCardBookmarked",
+      "module": "design-catalog-confetti",
+      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.SessionCardBookmarked_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "SessionCardSticker_Dark.a11y.png",
+      "cleanBasename": "SessionCardSticker_Dark.png",
+      "findings": [],
+      "functionName": "SessionCardSticker",
+      "module": "design-catalog-confetti",
+      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.SessionCardSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "SpeakerGridCellSticker_Dark.a11y.png",
+      "cleanBasename": "SpeakerGridCellSticker_Dark.png",
+      "findings": [],
+      "functionName": "SpeakerGridCellSticker",
+      "module": "design-catalog-confetti",
+      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.SpeakerGridCellSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "SpeakerListItemSticker_Dark.a11y.png",
+      "cleanBasename": "SpeakerListItemSticker_Dark.png",
+      "findings": [],
+      "functionName": "SpeakerListItemSticker",
+      "module": "design-catalog-confetti",
+      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.SpeakerListItemSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "TimeHeaderSticker_Dark.a11y.png",
+      "cleanBasename": "TimeHeaderSticker_Dark.png",
+      "findings": [],
+      "functionName": "TimeHeaderSticker",
+      "module": "design-catalog-confetti",
+      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.TimeHeaderSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "FilledButtonFocused_Dark.a11y.png",
       "cleanBasename": "FilledButtonFocused_Dark.png",
       "findings": [],
@@ -1628,12 +1836,42 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "FilledButtonLargeFont_Dark.a11y.png",
+      "cleanBasename": "FilledButtonLargeFont_Dark.png",
+      "findings": [],
+      "functionName": "FilledButtonLargeFont",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonLargeFont_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "FilledButtonPressed_Dark.a11y.png",
       "cleanBasename": "FilledButtonPressed_Dark.png",
       "findings": [],
       "functionName": "FilledButtonPressed",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonPressed_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "FilledButtonPseudo_Dark.a11y.png",
+      "cleanBasename": "FilledButtonPseudo_Dark.png",
+      "findings": [],
+      "functionName": "FilledButtonPseudo",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonPseudo_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "FilledButtonRtl_Dark.a11y.png",
+      "cleanBasename": "FilledButtonRtl_Dark.png",
+      "findings": [],
+      "functionName": "FilledButtonRtl",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonRtl_Dark",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -1804,6 +2042,36 @@
       "functionName": "SwitchOn",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.SwitchOn_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "SwitchOnLargeFont_Dark.a11y.png",
+      "cleanBasename": "SwitchOnLargeFont_Dark.png",
+      "findings": [],
+      "functionName": "SwitchOnLargeFont",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.SwitchOnLargeFont_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "SwitchOnPseudo_Dark.a11y.png",
+      "cleanBasename": "SwitchOnPseudo_Dark.png",
+      "findings": [],
+      "functionName": "SwitchOnPseudo",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.SwitchOnPseudo_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "SwitchOnRtl_Dark.a11y.png",
+      "cleanBasename": "SwitchOnRtl_Dark.png",
+      "findings": [],
+      "functionName": "SwitchOnRtl",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.SwitchOnRtl_Dark",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -2444,6 +2712,16 @@
       "functionName": "IconSticker",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.IconSticker",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "IndeterminateCircularProgressSticker.png",
+      "findings": [],
+      "functionName": "IndeterminateCircularProgressSticker",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.IndeterminateCircularProgressSticker",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
     },
