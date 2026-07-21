@@ -1725,7 +1725,10 @@ open class RobolectricHost(
                   densityAware = false,
                 )
               },
-              LayoutInspectorExtension.factory,
+              // LayoutInspectorExtension is shared now; it reads the captured semantics root + slot
+              // tables via the primitive producer overload (output-equivalent to the PreviewContext
+              // path), so Desktop can run the same class.
+              RenderDataArtifactExtensionFactory { LayoutInspectorExtension() },
               ComposeFigmaSvgExtension.factory,
               I18nTranslationsExtension.factory,
               NavigationExtension.factory,

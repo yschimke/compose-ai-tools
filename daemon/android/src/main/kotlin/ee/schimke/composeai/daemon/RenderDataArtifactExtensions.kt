@@ -86,6 +86,12 @@ object RenderDataArtifactContextKeys {
   val Density: ExtensionContextKey<Float> = RenderArtifactContextKeys.Density
 
   /**
+   * Composition slot tables captured for the render — the layout-inspector walk's second input
+   * alongside [SemanticsRoot]. Delegates to [RenderArtifactContextKeys.SlotTables].
+   */
+  val SlotTables = RenderArtifactContextKeys.SlotTables
+
+  /**
    * Render font scale (`spec.fontScale`, the multiplier `RuntimeEnvironment.setFontScale` applied).
    * Threaded so the `compose/figma-svg` export can size `sp` text as `sp × density × fontScale` —
    * matching the render, whose layer geometry was measured with the scaled text. Absent ⇒ 1.0.
