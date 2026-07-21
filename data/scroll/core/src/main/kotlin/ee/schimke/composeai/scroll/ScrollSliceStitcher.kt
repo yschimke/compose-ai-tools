@@ -524,18 +524,25 @@ private fun findOverlapShift(
   // move always matches strictly better at its true offset, so this can't drop real content).
   val rowWidth = prevLum.firstOrNull()?.size ?: 0
   var zeroWeightedMean = Double.POSITIVE_INFINITY
+  var zeroPlainMean = Double.POSITIVE_INFINITY
   if (rowWidth > 0) {
     val n = minOf(sliceH, rowLimit)
-    var weightSum = 0.0
-    var weightedCost = 0.0
-    for (k in 0 until n) {
-      val w = max(prevW[k], nextW[k])
-      if (w > 0.0) {
-        weightedCost += w * rowSad(prevLum[k], nextLum[k])
-        weightSum += w
+    if (n > 0) {
+      var weightSum = 0.0
+      var weightedCost = 0.0
+      var plainCost = 0.0
+      for (k in 0 until n) {
+        val sad = rowSad(prevLum[k], nextLum[k])
+        plainCost += sad
+        val w = max(prevW[k], nextW[k])
+        if (w > 0.0) {
+          weightedCost += w * sad
+          weightSum += w
+        }
       }
+      zeroPlainMean = plainCost / n
+      if (weightSum > 0.0) zeroWeightedMean = weightedCost / weightSum
     }
-    if (weightSum > 0.0) zeroWeightedMean = weightedCost / weightSum
   }
 
   val lo: Int
@@ -590,11 +597,16 @@ private fun findOverlapShift(
   // No-move decision (issue #2299): the zero-offset match is near-identical in absolute terms AND
   // no
   // worse than the best in-window shift. A real move matches strictly better at its true offset, so
-  // `zeroWeightedMean <= bestWeightedScore` only holds when nothing actually scrolled — then report
-  // 0 so the caller paints no seam band (no duplicated tail).
+  // the zero-offset score only ties/wins when nothing actually scrolled — then report 0 so the
+  // caller paints no seam band (no duplicated tail). Compare against the PLAIN (unweighted) score,
+  // not the weighted one: on solid/blank overlaps the weighted matcher finds no candidate
+  // (`bestWeightedScore == +∞`), which would make a weighted `<=` vacuously true and let a static
+  // header at zero offset mask a real scroll step (Codex review, PR #2629). Plain SAD weights every
+  // row equally, so a small static header can't hide scrolled content below it.
   if (
     rowWidth > 0 &&
-      zeroWeightedMean <= bestWeightedScore &&
+      bestPlainScore.isFinite() &&
+      zeroPlainMean <= bestPlainScore &&
       zeroWeightedMean / rowWidth <= NO_MOVE_MAX_SAD_PER_PIXEL
   ) {
     return 0
