@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   stripComments,
+  blankStringContents,
   discoverPreviews,
   specPreviewRefs,
   editDistance,
@@ -64,6 +65,29 @@ test("discoverPreviews honours extraAnnotations for imported multipreview marker
     discoverPreviews([src], { extraAnnotations: ["ImportedModes"] }).previews,
     ["Imported"],
   );
+});
+
+test("blankStringContents empties string bodies but keeps quotes and structure", () => {
+  const out = blankStringContents('val a = "has (parens) and fun x()"; val b = 1');
+  assert.ok(!out.includes("(parens)"));
+  assert.ok(out.includes('val a = "'));
+  assert.ok(out.includes("val b = 1"));
+});
+
+test("discoverPreviews survives parens inside a @Preview string argument", () => {
+  // Regression: the arg list must not end early at the '(' inside the string,
+  // which would leave the fun regex staring at '(' and drop the preview.
+  const src = `
+    @Preview(name = "Now Playing (debug overlay)", widthDp = 400)
+    @Composable
+    fun NowPlaying() = Unit
+  `;
+  assert.deepEqual(discoverPreviews([src]).previews, ["NowPlaying"]);
+});
+
+test("discoverPreviews handles one level of nested parens in annotation args", () => {
+  const src = `@Preview(widthDp = dpFrom(400)) @Composable fun Nested() = Unit`;
+  assert.deepEqual(discoverPreviews([src]).previews, ["Nested"]);
 });
 
 test("discoverPreviews handles keyword modifiers and multi-line annotation args", () => {

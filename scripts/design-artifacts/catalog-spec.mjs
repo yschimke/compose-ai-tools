@@ -17,11 +17,12 @@
 const PREVIEW_ANNOTATION = "Preview";
 
 // A leading run of Kotlin annotations, e.g. `@CatalogModes @Preview(name = "x") `.
-// Each annotation is `@Name` optionally followed by a `(...)` argument list.
-// `[^()]*` keeps the arg matcher from swallowing across a real declaration; it
-// tolerates multi-line/comma args (newlines are matched) but not nested parens
-// inside an annotation argument (rare in preview annotations).
-const ANNOTATION = String.raw`@[\w.]+(?:\s*\([^()]*\))?`;
+// Each annotation is `@Name` optionally followed by a `(...)` argument list. The
+// arg matcher allows one level of nested parens (`@Preview(widthDp = f(1))`);
+// discovery also blanks string-literal *contents* first (see blankStringContents),
+// so parens inside a string argument (`@Preview(name = "Now Playing (x)")`) can't
+// prematurely end the match.
+const ANNOTATION = String.raw`@[\w.]+(?:\s*\((?:[^()]|\([^()]*\))*\))?`;
 const LEADING_ANNOTATIONS = String.raw`((?:${ANNOTATION}\s*)+)`;
 // Modifiers that may sit between the annotation run and the `fun` / `annotation`
 // keyword (`@Preview @Composable private fun X`). `@Composable` is itself an
@@ -78,6 +79,49 @@ export function stripComments(source) {
   return out;
 }
 
+/** Replace the *contents* of every string / char literal with spaces (quotes
+ *  kept), so parens, braces, `@`, and `fun` inside a string can't be mistaken for
+ *  code during discovery. Runs after stripComments. `@Preview(name = "a (b)")`
+ *  becomes `@Preview(name = "      ")`, so the annotation arg list closes cleanly. */
+export function blankStringContents(source) {
+  let out = "";
+  let i = 0;
+  const n = source.length;
+  const blank = (s) => s.replace(/[^\n]/g, " ");
+  while (i < n) {
+    const c = source[i];
+    if (c === '"' && source[i + 1] === '"' && source[i + 2] === '"') {
+      out += '"""';
+      i += 3;
+      let inner = "";
+      while (i < n && !(source[i] === '"' && source[i + 1] === '"' && source[i + 2] === '"')) {
+        inner += source[i++];
+      }
+      out += blank(inner) + '"""';
+      i += 3;
+    } else if (c === '"' || c === "'") {
+      const quote = c;
+      out += c;
+      i++;
+      let inner = "";
+      while (i < n && source[i] !== quote) {
+        if (source[i] === "\\" && i + 1 < n) {
+          inner += source[i] + source[i + 1];
+          i += 2;
+        } else {
+          inner += source[i++];
+        }
+      }
+      out += blank(inner);
+      if (i < n) out += source[i++]; // closing quote
+    } else {
+      out += c;
+      i++;
+    }
+  }
+  return out;
+}
+
 /** The set of `@Name` identifiers named in a leading-annotation run. */
 function annotationNames(run) {
   const names = new Set();
@@ -105,7 +149,7 @@ function annotationNames(run) {
  *   annotation names recognised (built-in `Preview` + discovered + extra).
  */
 export function discoverPreviews(sources, opts = {}) {
-  const texts = sources.map(stripComments);
+  const texts = sources.map((s) => blankStringContents(stripComments(s)));
 
   // Preview markers: the built-in annotation, any caller-supplied extras, plus
   // multipreview annotation classes discovered below.

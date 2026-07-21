@@ -110,6 +110,18 @@
           "type": "string",
           "description": "Optional componentId of the counterpart in the `compareWith` sibling system, paired side-by-side on the cross-system compare page."
         },
+        "component": {
+          "type": "string",
+          "description": "Optional Code Connect override: the production composable name the sticker maps to (takes priority over the inferred target when building code-connect.json)."
+        },
+        "import": {
+          "type": "string",
+          "description": "Optional Code Connect override: the import line for `component`."
+        },
+        "source": {
+          "type": "string",
+          "description": "Optional Code Connect override: the source location (path or URL) for `component`."
+        },
         "variants": {
           "type": "array",
           "description": "Extra state/content renders folded onto this sticker; each is its own @Preview.",
