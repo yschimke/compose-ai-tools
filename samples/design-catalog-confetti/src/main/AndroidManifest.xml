@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Preview-only module: no launcher activity (see :samples:design-catalog-m3). A phone module: it
-     declares no watch hardware uses-feature, so the compose-preview plugin renders these stickers at
-     the phone default density/width rather than retargeting them to the round Wear watch canvas.
-     (The plugin detects Wear by substring-matching the merged manifest, so this comment deliberately
-     avoids spelling the watch feature id.) -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application android:label="Design Catalog Confetti" />
-</manifest>
