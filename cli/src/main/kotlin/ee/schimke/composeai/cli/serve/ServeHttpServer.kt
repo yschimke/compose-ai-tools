@@ -712,7 +712,13 @@ class ServeHttpServer(
           // preview, so an unaliased (Android-only) variant reports false and its override controls
           // (knobs, App theme) render disabled/informational rather than enabled-but-dead.
           canRenderOverrides = renderHost.canRenderOverridesFor(preview.id),
-          hasSvgExport = renderHost.hasSvgExport,
+          // Per-preview: a catalog advertises SVG globally as soon as it carries a `figma/` dir,
+          // but
+          // a preview whose slug has no baked `figma/<slug>.svg` still 404s the `.svg` lane, so
+          // gate
+          // the SVG control on this preview's actual availability rather than the session-wide
+          // flag.
+          hasSvgExport = renderHost.hasSvgExportFor(preview.id),
           hasLiveStream = renderHost.hasLiveStream,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           wasmSrc = wasmSrc,

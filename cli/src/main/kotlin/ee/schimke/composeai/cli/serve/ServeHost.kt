@@ -84,6 +84,16 @@ interface ServeHost : AutoCloseable {
     get() = false
 
   /**
+   * Whether [renderSvg] can produce a `compose/figma-svg` export for **this specific** [previewId]
+   * — a per-preview refinement of [hasSvgExport]. A static catalog advertises SVG globally as soon
+   * as it carries a `figma/` dir, but an individual preview whose component slug has no baked
+   * `figma/<slug>.svg` still 404s the `.svg` lane; the viewer gates its SVG control on this so it
+   * isn't offered on a preview that would then render "failed" (issue #2352). Defaults to the
+   * session-wide [hasSvgExport] — a daemon-backed host exports any of its previews.
+   */
+  fun hasSvgExportFor(previewId: String): Boolean = hasSvgExport
+
+  /**
    * Whether a **live daemon stream** ("Live (stream)") is available for this session — distinct
    * from [canApplyOverrides], which governs whether the *snapshot* lane re-renders on override
    * edits. The two usually coincide (a plain [ServeRenderHost] has both; a static [ServeBundleHost]

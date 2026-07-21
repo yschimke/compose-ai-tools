@@ -171,6 +171,22 @@ class ServeBundleHost(
    * an unknown id, or a preview whose component carried no figma-svg. Overrides don't apply
    * (static).
    */
+  // Per-preview SVG availability (issue #2352). `hasSvgExport` is true for the whole session as
+  // soon
+  // as the catalog carries a `figma/` dir, but a specific preview whose component slug has no baked
+  // `figma/<slug>.svg` still 404s the `.svg` lane (see `renderSvg`). Gate the viewer's SVG control
+  // on
+  // the actual file so it isn't offered on a preview that would render "failed". Same slug lookup
+  // as
+  // `renderSvg`, minus the read.
+  override fun hasSvgExportFor(previewId: String): Boolean {
+    val figma = figmaDir ?: return false
+    if (previewId !in previewIds) return false
+    val svgFile =
+      File(figma, "${previewId.substringBefore(SLUG_SEPARATOR)}$SVG_SUFFIX").toOkioPath()
+    return fileSystem.exists(svgFile)
+  }
+
   override fun renderSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome {
     val figma = figmaDir ?: return SvgOutcome.NotFound
     if (previewId !in previewIds) return SvgOutcome.NotFound

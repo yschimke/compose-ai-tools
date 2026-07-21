@@ -168,6 +168,29 @@ class ServeBundleHostTest {
   }
 
   @Test
+  fun `hasSvgExportFor gates the SVG control on the preview's own baked vector`() {
+    val dir =
+      bundle("button-filled__ideal__default__dark" to byteArrayOf(1), "badge__x" to byteArrayOf(2))
+
+    // A plain bundle (no figmaDir) advertises no SVG for any preview.
+    val plain = ServeBundleHost(dir, label = "b")
+    assertFalse(plain.hasSvgExportFor("button-filled__ideal__default__dark"))
+
+    // A figma dir carrying only `button-filled.svg`: the session-wide flag is true because a figma
+    // dir exists, but per preview only `button-filled` has a vector — `badge` (no svg) and an
+    // unknown
+    // id must report false so the viewer doesn't offer an SVG control that would render "failed"
+    // (issue #2352).
+    val figma = File(dir, "figma").apply { mkdirs() }
+    File(figma, "button-filled.svg").writeText("<svg/>")
+    val host = ServeBundleHost(dir, label = "b", figmaDir = figma)
+    assertTrue(host.hasSvgExport, "session-wide flag stays true because a figma dir exists")
+    assertTrue(host.hasSvgExportFor("button-filled__ideal__default__dark"))
+    assertFalse(host.hasSvgExportFor("badge__x"), "slug badge carried no baked svg")
+    assertFalse(host.hasSvgExportFor("nope__x"), "unknown id")
+  }
+
+  @Test
   fun `renderSvg does not inline a raster href that escapes the figma dir`() {
     val dir = bundle("button-filled__ideal__default__dark" to byteArrayOf(1))
     val figma = File(dir, "figma").apply { mkdirs() }
