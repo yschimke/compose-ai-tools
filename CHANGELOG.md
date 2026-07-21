@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.17.5](https://github.com/yschimke/compose-ai-tools/compare/v0.17.4...v0.17.5) (2026-07-21)
+
+
+### Features
+
+* **renderer:** render emoji through emoji2-bundled when the consumer ships it ([#2623](https://github.com/yschimke/compose-ai-tools/issues/2623)) ([da96214](https://github.com/yschimke/compose-ai-tools/commit/da962140bbd50add2375a16ee712b240be1f3b68))
+
+
+### Bug Fixes
+
+* **scroll:** drop redundant end-of-scroll slices in the long-scroll stitcher ([#2629](https://github.com/yschimke/compose-ai-tools/issues/2629)) ([5e12fc8](https://github.com/yschimke/compose-ai-tools/commit/5e12fc8ae448d5b35a013f8bc15fd813d7e6e205))
+* **svg:** embed text fonts in the layered SVG export by default ([#2626](https://github.com/yschimke/compose-ai-tools/issues/2626)) ([bf0300a](https://github.com/yschimke/compose-ai-tools/commit/bf0300ac1406636213ad45c3887641b419dca080))
+
 ## [0.17.4](https://github.com/yschimke/compose-ai-tools/compare/v0.17.3...v0.17.4) (2026-07-21)
 
 
