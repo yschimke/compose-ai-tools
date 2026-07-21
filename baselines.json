@@ -1783,6 +1783,22 @@
     "sha256": "2630560880513c5a6d70775cf7661ccbd22dc5d80551e0bedf87434ae5a37b38",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonLargeFont_Dark": {
+    "captureLabel": "",
+    "functionName": "FilledButtonLargeFont",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "FilledButtonLargeFont_Dark.png",
+    "sha256": "595efacbc8ece59cd369163a7b6c91ed3540df900cb91bba296d46412c0f1e64",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonLargeFont_Light": {
+    "captureLabel": "",
+    "functionName": "FilledButtonLargeFont",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "FilledButtonLargeFont_Light.png",
+    "sha256": "b6c517f8d6c4f43178e9513cf3569dc9261da66683bd6958870eb782e6421374",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonPressed_Dark": {
     "captureLabel": "",
     "functionName": "FilledButtonPressed",
@@ -1797,6 +1813,38 @@
     "module": "samples:design-catalog-m3",
     "renderBasename": "FilledButtonPressed_Light.png",
     "sha256": "cea3cc96b1ea02e6792a8662c10e624642ab772010f62e19b8e4714312b94f21",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonPseudo_Dark": {
+    "captureLabel": "",
+    "functionName": "FilledButtonPseudo",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "FilledButtonPseudo_Dark.png",
+    "sha256": "35b0252735fb815b38acf5859bdc2710f54f245e7564501be91bc1f1522cf962",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonPseudo_Light": {
+    "captureLabel": "",
+    "functionName": "FilledButtonPseudo",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "FilledButtonPseudo_Light.png",
+    "sha256": "77ea17232341fbb9687cb3bebcace1106641e6b73dd535526e29db08b1edb9ea",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonRtl_Dark": {
+    "captureLabel": "",
+    "functionName": "FilledButtonRtl",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "FilledButtonRtl_Dark.png",
+    "sha256": "35b0252735fb815b38acf5859bdc2710f54f245e7564501be91bc1f1522cf962",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonRtl_Light": {
+    "captureLabel": "",
+    "functionName": "FilledButtonRtl",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "FilledButtonRtl_Light.png",
+    "sha256": "77ea17232341fbb9687cb3bebcace1106641e6b73dd535526e29db08b1edb9ea",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButton_Dark": {
@@ -2069,6 +2117,54 @@
     "module": "samples:design-catalog-m3",
     "renderBasename": "SwitchOff_Light.png",
     "sha256": "f43eae91d951ca43de0d27898b7cc78572943042ceaa0034caf309ef2470c7b7",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SwitchOnLargeFont_Dark": {
+    "captureLabel": "",
+    "functionName": "SwitchOnLargeFont",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "SwitchOnLargeFont_Dark.png",
+    "sha256": "4f60ce5d7c1ff1bfc81be27a57ec234186e0c1e8dadc0259aac50de660e39dcb",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SwitchOnLargeFont_Light": {
+    "captureLabel": "",
+    "functionName": "SwitchOnLargeFont",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "SwitchOnLargeFont_Light.png",
+    "sha256": "56653f06167a33c39267c576b1daa0f99ba9c49ea70d819f782baba07530f43c",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SwitchOnPseudo_Dark": {
+    "captureLabel": "",
+    "functionName": "SwitchOnPseudo",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "SwitchOnPseudo_Dark.png",
+    "sha256": "4c60c32de1e5abff269108620014217b9cb71368a67bc24c9bcd8e58e9e4be25",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SwitchOnPseudo_Light": {
+    "captureLabel": "",
+    "functionName": "SwitchOnPseudo",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "SwitchOnPseudo_Light.png",
+    "sha256": "615058f6f0aac73d63adb49c1b3ed0cd679e18903772a01c3a60d130b0cd2e7f",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SwitchOnRtl_Dark": {
+    "captureLabel": "",
+    "functionName": "SwitchOnRtl",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "SwitchOnRtl_Dark.png",
+    "sha256": "4c60c32de1e5abff269108620014217b9cb71368a67bc24c9bcd8e58e9e4be25",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SwitchOnRtl_Light": {
+    "captureLabel": "",
+    "functionName": "SwitchOnRtl",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "SwitchOnRtl_Light.png",
+    "sha256": "615058f6f0aac73d63adb49c1b3ed0cd679e18903772a01c3a60d130b0cd2e7f",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SwitchOn_Dark": {
@@ -3052,7 +3148,7 @@
     "functionName": "ActivityListLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round.png",
-    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
+    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
