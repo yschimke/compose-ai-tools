@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.io.composeAiCacheDir
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.zip.ZipInputStream
@@ -269,8 +270,24 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       // -Dapple.awt.UIElement=true runs the desktop daemon JVM as a macOS background agent
       // (no Dock icon / focus steal). Launch -D so it lands before AWT inits; macOS-only.
       jvmArgs = listOf("--enable-native-access=ALL-UNNAMED", "-Dapple.awt.UIElement=true"),
-      sysProps = emptyList(),
+      sysProps = desktopFontSysProps(),
     )
+  }
+
+  /**
+   * Font-related `-D` props the desktop daemon needs, mirroring what the Android launch forwards
+   * via [AndroidBundleLaunch.robolectricSystemProperties]. The `compose/figma-svg` export embeds
+   * fonts by default, so the daemon fetches generic faces (e.g. Roboto) from Google Fonts; without
+   * `composeai.fonts.cacheDir` those downloads would be uncached (re-fetched every launch), and
+   * without forwarding `composeai.svg.embedFonts` a `-Dcomposeai.svg.embedFonts=false` opt-out set
+   * on this CLI process would never reach the child daemon. Point at the SAME shared cache the
+   * Android path and the Gradle plugin use, and forward the parent's embed/offline choices when
+   * set.
+   */
+  private fun desktopFontSysProps(): List<String> = buildList {
+    add("-Dcomposeai.fonts.cacheDir=${composeAiCacheDir("fonts").absolutePath}")
+    System.getProperty("composeai.fonts.offline")?.let { add("-Dcomposeai.fonts.offline=$it") }
+    System.getProperty("composeai.svg.embedFonts")?.let { add("-Dcomposeai.svg.embedFonts=$it") }
   }
 
   /**

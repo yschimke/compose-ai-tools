@@ -10,6 +10,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -221,16 +222,15 @@ class RenderEngineTest {
   }
 
   @Test
-  fun figmaSvgExportEmbedsGoogleFontsWhenEnabled() {
-    // Parity with the desktop export: with `-Dcomposeai.figma.embedFonts=true` the Android export
-    // embeds each text node's face as an `@font-face` WOFF2 so the SVG renders the real typeface.
-    // We
-    // pre-seed the shared font cache (`composeai.fonts.cacheDir`) so the resolver serves from disk
-    // —
-    // deterministic, no network in CI. The `SerifTextPreview` fixture is `FontFamily.Serif`, so the
-    // export must embed a concrete *serif* (Noto Serif) — not the Roboto sans default, which used
-    // to
-    // erase serif/monospace specimens' identity.
+  fun figmaSvgExportEmbedsGoogleFontsByDefault() {
+    // Parity with the desktop export: font embedding is ON by default, so the Android export embeds
+    // each text node's face as an `@font-face` WOFF2 (the SVG renders the real typeface instead of a
+    // browser-substituted `sans-serif`) WITHOUT any opt-in flag — the default that leaves the
+    // meshcore-mobile stickers looking right. We pre-seed the shared font cache
+    // (`composeai.fonts.cacheDir`) so the resolver serves from disk — deterministic, no network in
+    // CI. The `SerifTextPreview` fixture is `FontFamily.Serif`, so the export must embed a concrete
+    // *serif* (Noto Serif) — not the Roboto sans default, which used to erase serif/monospace
+    // specimens' identity.
     val outputDir = tempFolder.newFolder("renders-figma-fonts")
     val fontCache = tempFolder.newFolder("font-cache")
     // The generic `serif` family maps to Noto Serif; text weight defaults to 400. Seed all
@@ -240,7 +240,8 @@ class RenderEngineTest {
     for (w in listOf(400, 500, 700)) File(fontCache, "noto-serif-$w.woff2").writeBytes(sentinel)
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
     System.setProperty("roborazzi.test.record", "true")
-    System.setProperty("composeai.figma.embedFonts", "true")
+    // Deliberately DON'T set `composeai.svg.embedFonts` — embedding must happen on the default.
+    System.clearProperty("composeai.svg.embedFonts")
     System.setProperty("composeai.fonts.cacheDir", fontCache.absolutePath)
     val host = RobolectricHost()
     host.start()
@@ -272,7 +273,44 @@ class RenderEngineTest {
       assertTrue("text must name the serif face", text.contains("""font-family="Noto Serif""""))
     } finally {
       host.shutdown()
-      System.clearProperty("composeai.figma.embedFonts")
+      System.clearProperty("composeai.svg.embedFonts")
+      System.clearProperty("composeai.fonts.cacheDir")
+    }
+  }
+
+  @Test
+  fun figmaSvgExportStaysVectorOnlyWhenEmbeddingDisabled() {
+    // The opt-out: `composeai.svg.embedFonts=false` turns embedding off, so the export stays
+    // vector-only (no `@font-face`) and the `<text>` keeps its named `sans-serif` fallback — the
+    // pre-default behaviour, still reachable for anyone who wants the smaller vector-only SVG.
+    val outputDir = tempFolder.newFolder("renders-figma-novec")
+    val fontCache = tempFolder.newFolder("font-cache-novec")
+    for (w in listOf(400, 500, 700)) File(fontCache, "noto-serif-$w.woff2").writeBytes(byteArrayOf(1))
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    System.setProperty("composeai.svg.embedFonts", "false")
+    System.setProperty("composeai.fonts.cacheDir", fontCache.absolutePath)
+    val host = RobolectricHost()
+    host.start()
+    try {
+      host.submit(
+        RenderRequest.Render(
+          payload =
+            "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+              "functionName=SerifTextPreview;" +
+              "widthPx=200;heightPx=80;density=1.0;showBackground=true;outputBaseName=figma-novec"
+        ),
+        timeoutMs = 120_000,
+      )
+
+      val svg =
+        outputDir.parentFile!!.resolve("data").resolve("figma-novec").resolve("compose-figma.svg")
+      assertTrue("figma SVG must be produced: ${svg.absolutePath}", svg.exists())
+      val text = svg.readText()
+      assertFalse("disabled export must NOT embed an @font-face", text.contains("@font-face"))
+    } finally {
+      host.shutdown()
+      System.clearProperty("composeai.svg.embedFonts")
       System.clearProperty("composeai.fonts.cacheDir")
     }
   }

@@ -210,15 +210,16 @@ jobs:
           # Without this the layered SVGs emit `font-family="<face>, sans-serif"`
           # and a browser substitutes a wider fallback, so text drifts off the
           # boxes we measured against the catalog face (the button-label centering
-          # skew seen on the published stickers). The daemon's figma-svg export
-          # gates font embedding on `composeai.figma.embedFonts`; the daemon is
-          # spawned as a subprocess of `bundle pack`, so it inherits this via
-          # JAVA_TOOL_OPTIONS. It fetches the catalog face (Roboto Flex) as WOFF2
+          # skew seen on the published stickers). Font embedding is on by default
+          # (`composeai.svg.embedFonts`, off only when set to `false`); this explicit
+          # `true` is belt-and-braces. The daemon is spawned as a subprocess of
+          # `bundle pack`, so it inherits the flag via JAVA_TOOL_OPTIONS. It fetches
+          # the catalog face (Roboto Flex) as WOFF2
           # from the same Google-Fonts source (and cache) the renderer already uses
           # for the PNGs — with bounded retries so a cold-start network blip doesn't
           # strand a preview — and degrades to `sans-serif` if the face stays
           # unreachable, so this never fails a render, only improves it.
-          JAVA_TOOL_OPTIONS: -Dcomposeai.figma.embedFonts=true
+          JAVA_TOOL_OPTIONS: -Dcomposeai.svg.embedFonts=true
           # Force Mesa's software GL path (no GPU on the runner) for the desktop
           # Skiko render; inert for the Robolectric (Android) catalog rows.
           LIBGL_ALWAYS_SOFTWARE: '1'
@@ -245,7 +246,7 @@ jobs:
         env:
           EXTRA_MODULE: ${{ matrix.androidExtraModule }}
           SYSTEM: ${{ matrix.system }}
-          JAVA_TOOL_OPTIONS: -Dcomposeai.figma.embedFonts=true
+          JAVA_TOOL_OPTIONS: -Dcomposeai.svg.embedFonts=true
         run: |
           set -euo pipefail
           compose-preview bundle pack --module "$EXTRA_MODULE" --with-semantics \
