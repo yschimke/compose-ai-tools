@@ -19,6 +19,19 @@
    served module's own preview grid at `/`.) This replaces showing an arbitrary default module at the
    root — the point of the public server is the catalogs, so the landing leads with them.
 
+   Two per-system display choices are **systematised** in one place (`ServeWeb.SystemDisplay`), so
+   the front door and each catalog grid agree:
+   - **Hero** — the card fronts the *most representative* preview: a real `Screens`-section preview
+     (an app's actual screen, primary view preferred) when the catalog has one, else a canonical
+     component. So Confetti leads with a conference screen while a component library like `compose-m3`
+     leads with a button.
+   - **Stage** — a **dark-first** system (Wear OS is black-watch-face-first — `wear-m3`,
+     `confetti-wear`, …) backs its hero on a dark stage instead of the default white, so a
+     light-on-transparent Wear sticker isn't washed out. `SystemDisplay.isDarkFirst` decides, from an
+     explicit list plus a Wear/watch id heuristic; extend the list to pin any other dark-first system.
+
+   ![Front-door index — Wear systems (wear-m3, confetti-wear) on dark stages, phone/desktop on white](images/serve-home-index-stage-after.png)
+
    A catalog entry may name a **per-system source repo** as `<system>@<owner>/<repo>`, so one server
    can serve systems published to *different* repos — e.g. `compose-m3,wear-m3` from this repo
    alongside `meshcore-mobile@yschimke/meshcore-mobile` from the app's own repo (both listed on the

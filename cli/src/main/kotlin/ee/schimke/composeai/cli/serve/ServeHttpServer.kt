@@ -462,6 +462,9 @@ class ServeHttpServer(
           heroPreviewId = heroId,
           // Frame the hero to its component box too, so the front-page Wear card isn't a speck.
           heroCrop = heroId?.let { bundle?.contentCrop(it) },
+          // Dark-first (Wear) systems back their hero on the dark stage — the single per-system
+          // policy in ServeWeb.SystemDisplay, so the front door and the catalog grid agree.
+          darkStage = ServeWeb.SystemDisplay.isDarkFirst(system),
         )
       } finally {
         lease.close()
