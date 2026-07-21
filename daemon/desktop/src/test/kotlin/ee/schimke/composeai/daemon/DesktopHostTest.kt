@@ -111,16 +111,20 @@ class DesktopHostTest {
   }
 
   /**
-   * With a resolver wired, `recordingScriptEventDescriptors()` advertises three extensions:
-   * `recording` (probe, supported), `input.touch` (4 pointer events, supported), and
-   * `input.keyboard` (2 key events, roadmap). The Wear-only `input.rsb` lives on the Android host;
-   * desktop daemons skip it.
+   * With a resolver wired, `recordingScriptEventDescriptors()` advertises four extensions:
+   * `recording` (probe, supported), `assertion` (golden-image / visibility asserts the desktop
+   * `DesktopRecordingSession` dispatches, issue #1967), `input.touch` (4 pointer events,
+   * supported), and `input.keyboard` (2 key events, roadmap). The Wear-only `input.rsb` lives on
+   * the Android host; desktop daemons skip it.
    */
   @Test
   fun recordingScriptEventDescriptorsAdvertiseSupportedExtensions() {
     val descriptors = DesktopHost(previewSpecResolver = { null }).recordingScriptEventDescriptors()
     val advertisedExtensionIds = descriptors.map { it.id.value }.toSet()
-    assertEquals(setOf("recording", "input.touch", "input.keyboard"), advertisedExtensionIds)
+    assertEquals(
+      setOf("recording", "assertion", "input.touch", "input.keyboard"),
+      advertisedExtensionIds,
+    )
     assertTrue(
       "input.rsb is Wear-only and must NOT appear on the desktop host",
       "input.rsb" !in advertisedExtensionIds,
