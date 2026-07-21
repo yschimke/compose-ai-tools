@@ -23,9 +23,9 @@ import org.gradle.testkit.runner.TaskOutcome
  * does NOT add repositories or inject a raw coordinate (either would crash configuration); instead
  * it resolves the plugin classpath through the project's own settings-managed repositories via a
  * detached configuration and injects the resolved JARs as `files(...)` — landing the plugin on the
- * module's own buildscript classloader without touching `buildscript.repositories`. The
- * `configures cleanly` test pins the no-crash behavior; the `applies the plugin` test pins that the
- * files() path actually applies the plugin when the coordinate is resolvable.
+ * module's own buildscript classloader without touching `buildscript.repositories`. The `configures
+ * cleanly` test pins the no-crash behavior; the `applies the plugin` test pins that the files()
+ * path actually applies the plugin when the coordinate is resolvable.
  *
  * PR #1483 tried to dodge the validation with an `initscript { classpath ... }` load, but that
  * broke plugins-that-reference-AGP at runtime (`NoClassDefFoundError:
