@@ -81,6 +81,11 @@ dependencies {
   // the shadow in `renderer-android` swaps the GMS provider lookup for a
   // shared local cache under `~/.cache/composeai/fonts/`.
   implementation("androidx.compose.ui:ui-text-google-fonts")
+  // Bundles a version-pinned NotoColorEmoji + EmojiCompat. Demonstrates the renderer's
+  // `EmojiCompatRenderSupport`: when a consumer ships `emoji2-bundled`, previews render emoji from
+  // this bundled font (matching on-device) instead of the platform fallback. Exercised by
+  // `EmojiCompatComparisonPreview`.
+  implementation("androidx.emoji2:emoji2-bundled:1.5.0")
   // Roborazzi's per-preview clock control annotation. Source-retained
   // metadata read by `DiscoverPreviewsTask` — the annotation itself has no
   // runtime behaviour in production builds.
