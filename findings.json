@@ -1506,196 +1506,6 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "AndroidMakersTheme_Dark.a11y.png",
-      "cleanBasename": "AndroidMakersTheme_Dark.png",
-      "findings": [],
-      "functionName": "AndroidMakersTheme",
-      "module": "design-catalog-confetti",
-      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.AndroidMakersTheme_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "BookmarkAddSticker_Dark.a11y.png",
-      "cleanBasename": "BookmarkAddSticker_Dark.png",
-      "findings": [],
-      "functionName": "BookmarkAddSticker",
-      "module": "design-catalog-confetti",
-      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.BookmarkAddSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "BookmarkOnSticker_Dark.a11y.png",
-      "cleanBasename": "BookmarkOnSticker_Dark.png",
-      "findings": [],
-      "functionName": "BookmarkOnSticker",
-      "module": "design-catalog-confetti",
-      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.BookmarkOnSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "BottomBarSticker_Dark.a11y.png",
-      "cleanBasename": "BottomBarSticker_Dark.png",
-      "findings": [],
-      "functionName": "BottomBarSticker",
-      "module": "design-catalog-confetti",
-      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.BottomBarSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "BreakSticker_Dark.a11y.png",
-      "cleanBasename": "BreakSticker_Dark.png",
-      "findings": [],
-      "functionName": "BreakSticker",
-      "module": "design-catalog-confetti",
-      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.BreakSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "ConfettiBrandTheme_Dark.a11y.png",
-      "cleanBasename": "ConfettiBrandTheme_Dark.png",
-      "findings": [],
-      "functionName": "ConfettiBrandTheme",
-      "module": "design-catalog-confetti",
-      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.ConfettiBrandTheme_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "DayTabRowSticker_Dark.a11y.png",
-      "cleanBasename": "DayTabRowSticker_Dark.png",
-      "findings": [],
-      "functionName": "DayTabRowSticker",
-      "module": "design-catalog-confetti",
-      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.DayTabRowSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "DevFestTheme_Dark.a11y.png",
-      "cleanBasename": "DevFestTheme_Dark.png",
-      "findings": [],
-      "functionName": "DevFestTheme",
-      "module": "design-catalog-confetti",
-      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.DevFestTheme_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "DroidconTheme_Dark.a11y.png",
-      "cleanBasename": "DroidconTheme_Dark.png",
-      "findings": [],
-      "functionName": "DroidconTheme",
-      "module": "design-catalog-confetti",
-      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.DroidconTheme_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "KotlinConfTheme_Dark.a11y.png",
-      "cleanBasename": "KotlinConfTheme_Dark.png",
-      "findings": [],
-      "functionName": "KotlinConfTheme",
-      "module": "design-catalog-confetti",
-      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.KotlinConfTheme_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "LightningPillSticker_Dark.a11y.png",
-      "cleanBasename": "LightningPillSticker_Dark.png",
-      "findings": [],
-      "functionName": "LightningPillSticker",
-      "module": "design-catalog-confetti",
-      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.LightningPillSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "LightningSessionCard_Dark.a11y.png",
-      "cleanBasename": "LightningSessionCard_Dark.png",
-      "findings": [],
-      "functionName": "LightningSessionCard",
-      "module": "design-catalog-confetti",
-      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.LightningSessionCard_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "ScheduleScreenTemplate_Dark.a11y.png",
-      "cleanBasename": "ScheduleScreenTemplate_Dark.png",
-      "findings": [],
-      "functionName": "ScheduleScreenTemplate",
-      "module": "design-catalog-confetti",
-      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.ScheduleScreenTemplate_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
-      "variant": "pixel_8"
-    },
-    {
-      "annotatedBasename": "SearchFieldSticker_Dark.a11y.png",
-      "cleanBasename": "SearchFieldSticker_Dark.png",
-      "findings": [],
-      "functionName": "SearchFieldSticker",
-      "module": "design-catalog-confetti",
-      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.SearchFieldSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "SessionCardBookmarked_Dark.a11y.png",
-      "cleanBasename": "SessionCardBookmarked_Dark.png",
-      "findings": [],
-      "functionName": "SessionCardBookmarked",
-      "module": "design-catalog-confetti",
-      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.SessionCardBookmarked_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "SessionCardSticker_Dark.a11y.png",
-      "cleanBasename": "SessionCardSticker_Dark.png",
-      "findings": [],
-      "functionName": "SessionCardSticker",
-      "module": "design-catalog-confetti",
-      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.SessionCardSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "SpeakerGridCellSticker_Dark.a11y.png",
-      "cleanBasename": "SpeakerGridCellSticker_Dark.png",
-      "findings": [],
-      "functionName": "SpeakerGridCellSticker",
-      "module": "design-catalog-confetti",
-      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.SpeakerGridCellSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "SpeakerListItemSticker_Dark.a11y.png",
-      "cleanBasename": "SpeakerListItemSticker_Dark.png",
-      "findings": [],
-      "functionName": "SpeakerListItemSticker",
-      "module": "design-catalog-confetti",
-      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.SpeakerListItemSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "TimeHeaderSticker_Dark.a11y.png",
-      "cleanBasename": "TimeHeaderSticker_Dark.png",
-      "findings": [],
-      "functionName": "TimeHeaderSticker",
-      "module": "design-catalog-confetti",
-      "previewId": "com.example.designcatalogconfetti.CatalogPreviewsKt.TimeHeaderSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogconfetti/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
       "annotatedBasename": "FilledButtonFocused_Dark.a11y.png",
       "cleanBasename": "FilledButtonFocused_Dark.png",
       "findings": [],
@@ -3227,6 +3037,16 @@
       "previewId": "com.example.samplewear.GesturesKt.ScrollIndicatorStickerPreview",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
       "variant": ""
+    },
+    {
+      "annotatedBasename": "com.example.samplewear.PreviewsKt.SettingsMainScreenLongPreview_Devices - Large Round.a11y.png",
+      "cleanBasename": "",
+      "findings": [],
+      "functionName": "SettingsMainScreenLongPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.PreviewsKt.SettingsMainScreenLongPreview_Devices - Large Round",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt",
+      "variant": "wearos_large_round"
     },
     {
       "annotatedBasename": "FocusableMenu_Glimmer_Input.a11y.png",

@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 275 preview(s) across 19 module(s) · 34 error(s) · 3 warning(s) · 38 info._
+_Auto-generated from `compose-preview/a11y/main`. 257 preview(s) across 18 module(s) · 34 error(s) · 3 warning(s) · 38 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -782,122 +782,6 @@ _No findings._
 ### `SharedRedBoxPreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp-shared/SharedRedBoxPreview.a11y.png" width="400" />
-
-_No findings._
-
-## design-catalog-confetti
-
-### `AndroidMakersTheme`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/AndroidMakersTheme_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `BookmarkAddSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/BookmarkAddSticker_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `BookmarkOnSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/BookmarkOnSticker_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `BottomBarSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/BottomBarSticker_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `BreakSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/BreakSticker_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `ConfettiBrandTheme`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/ConfettiBrandTheme_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `DayTabRowSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/DayTabRowSticker_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `DevFestTheme`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/DevFestTheme_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `DroidconTheme`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/DroidconTheme_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `KotlinConfTheme`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/KotlinConfTheme_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `LightningPillSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/LightningPillSticker_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `LightningSessionCard`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/LightningSessionCard_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `ScheduleScreenTemplate` · `pixel_8`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/ScheduleScreenTemplate_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `SearchFieldSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/SearchFieldSticker_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `SessionCardBookmarked`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/SessionCardBookmarked_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `SessionCardSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/SessionCardSticker_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `SpeakerGridCellSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/SpeakerGridCellSticker_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `SpeakerListItemSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/SpeakerListItemSticker_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `TimeHeaderSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/TimeHeaderSticker_Dark.a11y.png" width="400" />
 
 _No findings._
 
@@ -1751,6 +1635,12 @@ _No findings._
 ### `ScrollIndicatorStickerPreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/ScrollIndicatorStickerPreview.png" width="400" />
+
+_No findings._
+
+### `SettingsMainScreenLongPreview` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/com.example.samplewear.PreviewsKt.SettingsMainScreenLongPreview_Devices - Large Round.a11y.png" width="400" />
 
 _No findings._
 
