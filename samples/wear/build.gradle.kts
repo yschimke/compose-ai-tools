@@ -39,6 +39,8 @@ dependencies {
   implementation(platform(libs.compose.bom.stable))
   implementation(libs.compose.ui)
   implementation(libs.compose.foundation)
+  // Issue #2299 long-scroll regression fixture uses `Icons.Default.*` in list-item buttons.
+  implementation("androidx.compose.material:material-icons-extended")
   implementation(libs.activity.compose)
   implementation(libs.wear.compose.material3)
   implementation(libs.wear.compose.foundation)

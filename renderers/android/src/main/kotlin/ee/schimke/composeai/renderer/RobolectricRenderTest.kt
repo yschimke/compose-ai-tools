@@ -1731,6 +1731,20 @@ private fun handleLongCaptureInternal(
     val finalFrameFile = File(slicesDir, "final_frame.png")
     rule.onRoot().captureRoboImage(file = finalFrameFile, roborazziOptions = sliceRoborazziOptions)
 
+    // DEBUG (issue #2299): when COMPOSEAI_KEEP_SCROLL_SLICES is set, dump the exact stitch inputs
+    // (viewport / round flag / per-slice scrolledLayoutPx) so the pure-JVM stitcher can be replayed
+    // locally without a full render. Paired with the gated `deleteRecursively()` below.
+    if (System.getenv("COMPOSEAI_KEEP_SCROLL_SLICES") != null) {
+      File(slicesDir, "meta.txt")
+        .writeText(
+          buildString {
+            appendLine("viewportLayoutPx=$viewportLayoutPx")
+            appendLine("isRound=$isRound")
+            slices.forEachIndexed { i, s -> appendLine("slice_$i.png ${s.scrolledLayoutPx}") }
+          }
+        )
+    }
+
     stitchSlicesWithFinalFrame(
       slices = slices,
       finalFrameFile = finalFrameFile,
@@ -1744,7 +1758,7 @@ private fun handleLongCaptureInternal(
     )
     return true
   } finally {
-    slicesDir.deleteRecursively()
+    if (System.getenv("COMPOSEAI_KEEP_SCROLL_SLICES") == null) slicesDir.deleteRecursively()
   }
 }
 
