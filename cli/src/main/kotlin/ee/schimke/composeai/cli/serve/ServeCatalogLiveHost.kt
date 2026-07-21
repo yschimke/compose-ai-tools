@@ -183,6 +183,16 @@ class ServeCatalogLiveHost(
    */
   override val hasSvgExport: Boolean = baked.hasSvgExport || live.hasSvgExport
 
+  /**
+   * Per-preview SVG availability (issue #2352): narrows [hasSvgExport] to a specific preview so the
+   * viewer doesn't offer the SVG control where the `.svg` lane would 404. A daemon-twinned id can
+   * export its variant vector when the daemon lane can ([live.hasSvgExport]); an unmapped
+   * (Android-only) id only when the baked catalog carried its slug's `figma/<slug>.svg`. Mirrors
+   * [renderSvg]'s routing and never advertises more broadly than [hasSvgExport].
+   */
+  override fun hasSvgExportFor(previewId: String): Boolean =
+    (previewId in alias && live.hasSvgExport) || baked.hasSvgExportFor(previewId)
+
   /** The "Live (stream)" toggle is offered (unlike a plain static catalog). */
   override val hasLiveStream: Boolean = true
 

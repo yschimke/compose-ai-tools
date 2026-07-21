@@ -103,6 +103,16 @@ class ServePerPreviewLiveHost(
   override fun canRenderOverridesFor(previewId: String): Boolean = previewId in alias
 
   /**
+   * Per-preview SVG availability (issue #2352): narrows [hasSvgExport] so the viewer doesn't offer
+   * the SVG control where the `.svg` lane would 404. A daemon-twinned id can export via its
+   * per-preview daemon; an unmapped id only when the baked catalog carried its slug vector. Guarded
+   * by [hasSvgExport] so it never advertises more broadly than the session already does. Mirrors
+   * [renderSvg]'s routing.
+   */
+  override fun hasSvgExportFor(previewId: String): Boolean =
+    hasSvgExport && (previewId in alias || baked.hasSvgExportFor(previewId))
+
+  /**
    * Ordinary browsing serves the baked catalog PNG; an override the baked PNG can't represent
    * routes to that preview's own daemon. An unmapped id, or one whose per-preview daemon can't be
    * resolved, falls back to baked.
