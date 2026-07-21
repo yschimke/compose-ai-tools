@@ -82,6 +82,16 @@ on:
         required: false
         type: boolean
         default: true
+      publish:
+        description: 'Force-push out/ to design-artifacts/<system>. Set false to hand the generated bundle off (via upload-out) to a follow-up job that post-processes it — e.g. folding in an extra re-themed section — before publishing.'
+        required: false
+        type: boolean
+        default: true
+      upload-out:
+        description: 'Upload the generated out/ directory as an artifact (<system>-catalog-out) so a downstream job can download, post-process, and publish it. Independent of `publish`.'
+        required: false
+        type: boolean
+        default: false
       commit-user-name:
         description: 'Author/committer name for the generated delivery-branch commit.'
         required: false
@@ -213,7 +223,16 @@ jobs:
             "${source_args[@]}" \
             "${incomplete[@]}"
 
+      - name: Upload catalog bundle
+        if: ${{ inputs.upload-out }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.system }}-catalog-out
+          path: ${{ github.workspace }}/out
+          if-no-files-found: error
+
       - name: Publish to design-artifacts/${{ inputs.system }}
+        if: ${{ inputs.publish }}
         env:
           GH_TOKEN: ${{ github.token }}
           SYSTEM: ${{ inputs.system }}
