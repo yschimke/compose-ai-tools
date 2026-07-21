@@ -39,9 +39,15 @@ import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
 import ee.schimke.composeai.data.render.PreviewBackends
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.PreviewDeviceSpec
+import ee.schimke.composeai.data.render.extensions.ExtensionContextData
+import ee.schimke.composeai.data.render.extensions.ExtensionPostCaptureContext
+import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
+import ee.schimke.composeai.data.render.extensions.PostCaptureProcessor
+import ee.schimke.composeai.data.render.extensions.RecordingDataProductStore
 import ee.schimke.composeai.data.render.extensions.compose.ComposeDataExtensionPipeline
 import ee.schimke.composeai.data.render.extensions.compose.RecordingExtensionCompositionSink
 import ee.schimke.composeai.data.render.extensions.loadPreviewWrapperClass
+import ee.schimke.composeai.data.render.extensions.provides
 import ee.schimke.composeai.data.theme.ThemePayload
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.preview.lottie.LottiePreview
@@ -106,6 +112,15 @@ class RenderEngine(
     PreviewOverrideExtensions.Empty,
   private val frameNanoTime: () -> Long = System::nanoTime,
   private val fileSystem: FileSystem = SystemFileSystem,
+  /**
+   * Always-on post-capture data-artifact extensions, mirroring the Android engine's
+   * `builtDataArtifactExtensions` seam. Each [PostCaptureProcessor] runs after the PNG capture,
+   * reading the [RenderArtifactContextKeys] the engine populates. Defaults to the portable
+   * always-on set (currently [ComposeSemanticsExtension], shared with the Android daemon); more
+   * sidecars migrate off the inline block onto this seam in follow-ups.
+   */
+  private val dataArtifactExtensions: List<PlannedDataExtension> =
+    listOf(ComposeSemanticsExtension()),
 ) {
 
   /**
@@ -654,17 +669,10 @@ class RenderEngine(
           // instead of dropping out (#1908). dp-valued tokens (padding/gap/colours) don't use it.
           val density = state.spec.density
           val payload = ComposeSemanticsDataProducer.buildPayload(root, density)
-          // `compose-semantics.json` — the plain `compose/semantics` data product the Android
-          // ComposeSemanticsExtension writes per render. The desktop backend previously fed this
-          // tree only into the wireframe / spatial / a11y views and never wrote the sidecar, so
-          // `bundle pack --with-semantics` and design-parity found no semantics on desktop (#1885
-          // follow-up). Write it from the same captured root.
-          ComposeSemanticsDataProducer.writeArtifacts(
-            rootDir = dataDir,
-            previewId = previewId,
-            root = root,
-            density = density,
-          )
+          // `compose-semantics.json` (`compose/semantics`) is now written by the shared
+          // ComposeSemanticsExtension via the post-capture PostCaptureProcessor loop below, not
+          // inline here — the same seam the Android engine uses. The `payload` above is still built
+          // for the wireframe / spatial / figma-svg exports that follow.
           // `layout-inspector.json` — the `layout/inspector` data product. Previously Android-only:
           // the desktop registry advertised the kind but nothing wrote the file, so `data/fetch`
           // degraded to `NotAvailable` (#1903). Write it from the same captured root + slot tables,
@@ -744,6 +752,50 @@ class RenderEngine(
         "RenderEngine: wireframe write failed for ${state.spec.outputBaseName}: " +
           "${t.javaClass.simpleName}: ${t.message}"
       )
+    }
+
+    // Post-capture data-artifact extensions — the portable PostCaptureProcessor seam shared with
+    // the
+    // Android engine (its `builtDataArtifactExtensions` loop). compose/semantics is produced here
+    // through the shared ComposeSemanticsExtension rather than an inline `writeArtifacts` call; the
+    // remaining sidecars above migrate onto this loop in follow-ups. Each processor is wrapped in
+    // try/catch so one failing never strands the PNG or the other sidecars.
+    run {
+      val semanticsRoot = state.scene.semanticsOwners.firstOrNull()?.unmergedRootSemanticsNode
+      if (semanticsRoot != null && dataArtifactExtensions.isNotEmpty()) {
+        // Key the per-preview dir the same way the removed inline call did — `previewId`, falling
+        // back to `outputBaseName` — so the written path is byte-for-byte unchanged.
+        val previewId = state.spec.previewId ?: state.spec.outputBaseName
+        val contextData =
+          ExtensionContextData.of(
+            RenderArtifactContextKeys.RootDir provides dataDir,
+            RenderArtifactContextKeys.OutputBaseName provides previewId,
+            RenderArtifactContextKeys.SemanticsRoot provides semanticsRoot,
+            RenderArtifactContextKeys.Density provides state.spec.density,
+          )
+        val productStore = RecordingDataProductStore()
+        for (ext in dataArtifactExtensions) {
+          if (ext !is PostCaptureProcessor) continue
+          try {
+            trace.section("dataArtifact:${ext.id}") {
+              ext.process(
+                ExtensionPostCaptureContext(
+                  extensionId = ext.id,
+                  previewId = state.spec.previewId,
+                  renderMode = state.spec.renderMode,
+                  products = productStore.scopedFor(ext),
+                  data = contextData,
+                )
+              )
+            }
+          } catch (t: Throwable) {
+            System.err.println(
+              "RenderEngine: ${ext.id} data write failed for ${state.spec.outputBaseName}: " +
+                "${t.javaClass.simpleName}: ${t.message}"
+            )
+          }
+        }
+      }
     }
 
     // Accessibility (desktop, overlay-only) — extract Compose semantics from the held scene and

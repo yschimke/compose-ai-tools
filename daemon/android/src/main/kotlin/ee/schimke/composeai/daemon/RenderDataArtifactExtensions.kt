@@ -41,16 +41,19 @@ class RenderDataArtifactExtensions(val factories: List<RenderDataArtifactExtensi
  * typed-key pattern other post-capture extensions already use.
  */
 object RenderDataArtifactContextKeys {
-  /** Per-preview data-product output root (`<dataDir>/<previewId>/<file>`). */
-  val RootDir: ExtensionContextKey<File> =
-    ExtensionContextKey(name = "render-data-artifact.rootDir", type = File::class.java)
+  /**
+   * Per-preview data-product output root (`<rootDir>/<previewId>/<file>`). Delegates to the shared
+   * [RenderArtifactContextKeys] so the Android and Desktop engines populate the same key instance
+   * that the portable `PostCaptureProcessor` adapters read.
+   */
+  val RootDir: ExtensionContextKey<File> = RenderArtifactContextKeys.RootDir
 
   /**
    * File-system base name (`spec.outputBaseName`) — used by extensions that key their per-preview
    * directory off the renderer-generated output name rather than the protocol-level previewId.
+   * Delegates to [RenderArtifactContextKeys.OutputBaseName].
    */
-  val OutputBaseName: ExtensionContextKey<String> =
-    ExtensionContextKey(name = "render-data-artifact.outputBaseName", type = String::class.java)
+  val OutputBaseName: ExtensionContextKey<String> = RenderArtifactContextKeys.OutputBaseName
 
   /**
    * Protocol-level preview identifier (`spec.previewId`), if the caller supplied one. Distinct from
@@ -73,20 +76,15 @@ object RenderDataArtifactContextKeys {
   val OutputPng: ExtensionContextKey<File> =
     ExtensionContextKey(name = "render-data-artifact.outputPng", type = File::class.java)
 
-  /** Captured root semantics node for the rendered preview. */
-  val SemanticsRoot: ExtensionContextKey<SemanticsNode> =
-    ExtensionContextKey(
-      name = "render-data-artifact.semanticsRoot",
-      type = SemanticsNode::class.java,
-    )
+  /** Captured root semantics node for the rendered preview. Delegates to the shared key. */
+  val SemanticsRoot: ExtensionContextKey<SemanticsNode> = RenderArtifactContextKeys.SemanticsRoot
 
   /**
    * Render density (`spec.density`, dp = px / density). Threaded so producers that resolve a
    * percent-based corner radius (`CircleShape`) against a node's measured px size can express it in
    * dp (issue #1908); other token fields carry dp directly and don't need it.
    */
-  val Density: ExtensionContextKey<Float> =
-    ExtensionContextKey(name = "render-data-artifact.density", type = Float::class.javaObjectType)
+  val Density: ExtensionContextKey<Float> = RenderArtifactContextKeys.Density
 
   /**
    * Render font scale (`spec.fontScale`, the multiplier `RuntimeEnvironment.setFontScale` applied).
