@@ -447,6 +447,29 @@ runs:
         python3 -m pip install --quiet 'pixelmatch==0.4.0' 'Pillow>=10' \
           || echo "pixelmatch install failed; falling back to strict-bytes diff" >&2
 
+    - name: Install fallback CJK / Arabic / emoji fonts
+      if: steps.scope.outputs.mode != 'skip'
+      shell: bash
+      run: |
+        # Deterministic multilingual rendering. Skiko resolves any glyph a
+        # preview's own FontFamily doesn't cover through the system fontconfig
+        # set, so a `@Preview(locale = "ja" / "ar" / …)` renders tofu on a runner
+        # that happens to lack CJK / Arabic / emoji faces. Install the Noto
+        # fallbacks so those previews render the same on every runner.
+        #
+        # FALLBACK ONLY — apps keep control of their own typography. These land
+        # in the shared system font path (the lowest fontconfig priority). A
+        # preview's declared FontFamily, and any faces the app bundles into the
+        # font path ahead of its render (e.g. its branded .ttf copied into
+        # ~/.local/share/fonts + fc-cache, as design-parity already does), still
+        # win; Noto only fills the codepoints the app's own fonts don't provide.
+        # So an app that ships its own CJK font overrides Noto for CJK, exactly
+        # as on-device.
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          fonts-noto-cjk fonts-noto-core fonts-noto-color-emoji
+        fc-cache -f >/dev/null
+
     - name: Run pipelines
       id: pipelines
       if: steps.scope.outputs.mode != 'skip'
