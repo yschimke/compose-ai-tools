@@ -156,14 +156,24 @@ internal object ModifierTokenResolver {
   }
 
   /**
-   * The shadow elevation of a `graphicsLayer` modifier in dp, or null when it casts no shadow.
-   * `GraphicsLayerScope.shadowElevation` is a raw **pixel** value (a `Modifier.shadow(elevation:
-   * Dp)` converts dp→px before setting it), and the inspector reports it in px too — so both the
-   * inspector `shadowElevation` element and the reflected field are divided by [density] to recover
-   * dp. Zero (a clip-only graphicsLayer) returns null.
+   * The shadow elevation of a `graphicsLayer`/`shadow` modifier in dp, or null when it casts no
+   * shadow. Two shapes carry it, so both are probed:
+   * - A `graphicsLayer { shadowElevation = … }` (what `Surface`/`Card`/`FAB` cast their Material
+   *   shadow through) exposes `GraphicsLayerScope.shadowElevation`, a raw **pixel** value — the
+   *   inspector reports it in px too, so both the inspector `shadowElevation` element and the
+   *   reflected field are divided by [density] to recover dp.
+   * - A bare `Modifier.shadow(elevation: Dp)` lowers to a `ShadowGraphicsLayerElement` (also
+   *   matched by the `GraphicsLayer` name gate) that keeps its **`Dp` `elevation`** instead —
+   *   already dp, so it is read as-is with no `/ density`. Without this fallback such a node
+   *   resolved null and the figma-svg export dropped its `feDropShadow` (issue #2357).
+   *
+   * Zero / non-positive (a clip-only graphicsLayer) returns null.
+   *
+   * Non-private for the direct unit test in this module.
    */
-  private fun shadowElevationDp(mod: Any, elements: Map<String, Any?>, density: Float): Double? {
+  internal fun shadowElevationDp(mod: Any, elements: Map<String, Any?>, density: Float): Double? {
     if (density <= 0f) return null
+    // `graphicsLayer` shadowElevation — a raw pixel value → recover dp by dividing by density.
     val px =
       floatValue(elements["shadowElevation"])
         ?: runCatching {
@@ -173,9 +183,26 @@ internal object ModifierTokenResolver {
               .getFloat(mod)
           }
           .getOrNull()
+    if (px != null) {
+      if (px <= 0f) return null
+      return roundedDp(px / density).toDouble()
+    }
+    // `Modifier.shadow(elevation: Dp)` → `ShadowGraphicsLayerElement.elevation` is a `Dp` (already
+    // dp, unlike the px `shadowElevation`), so take it verbatim. `floatValue` reads either the
+    // inspector element or the reflected `elevation` field (a `Dp` value class, inlined to a
+    // float).
+    val elevationDp =
+      floatValue(elements["elevation"])
+        ?: runCatching {
+            mod.javaClass
+              .getDeclaredField("elevation")
+              .apply { isAccessible = true }
+              .let { floatValue(it.get(mod)) }
+          }
+          .getOrNull()
         ?: return null
-    if (px <= 0f) return null
-    return roundedDp(px / density).toDouble()
+    if (elevationDp <= 0f) return null
+    return roundedDp(elevationDp).toDouble()
   }
 
   /** Reads a bare Float/Double, or a value class's `value` float (e.g. a `Dp`), as a Float. */
