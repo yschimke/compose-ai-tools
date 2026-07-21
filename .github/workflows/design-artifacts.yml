@@ -76,14 +76,6 @@ jobs:
             # No wasm tier: Remote Compose is an Android-only alpha
             # (androidx.wear.compose.remote / androidx.compose.remote, compileSdk 37),
             # with no wasmJs target — same as Wear.
-          - system: confetti
-            module: 'samples:design-catalog-confetti'
-            spec: 'samples/design-catalog-confetti/catalog.spec.json'
-            # A phone (Android/Robolectric) M3 catalog modelled on the Confetti app.
-            # Publish the Android bundle as a `liveBundle` so a serve box carrying the
-            # Android daemon can live re-render it per-variant (same treatment as Wear).
-            # No wasm tier (it's a plain androidx material3 Android module).
-            androidLiveBundle: '1'
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:

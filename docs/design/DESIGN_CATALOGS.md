@@ -29,7 +29,6 @@ and breakpoints that matter.
 | --- | --- | --- |
 | `samples/design-catalog-m3` | Compose Material 3 (+ Adaptive, planned) | ✅ template |
 | `samples/design-catalog-wear-m3` | Wear Compose M3 | ✅ |
-| `samples/design-catalog-confetti` | Confetti app (mobile Compose M3) | ✅ |
 | `samples/design-catalog-remote-m3` | Remote Compose (Wear Compose Remote M3 + `remote-creation-compose`) | ✅ |
 | `samples/design-catalog-glimmer` | Glimmer (Android XR) | planned (see `samples/xr-glimmer`) |
 | `samples/design-catalog-glance` | Glance app widgets + Wear widgets | planned |
@@ -44,19 +43,10 @@ colours, so there is no light/dark split). It carries the alpha Remote Compose
 runtime and `compileSdk 37`, diverging from the rest of the repo; see its
 `build.gradle.kts` and `:samples:remotecompose`.
 
-The **Confetti** catalog is the first **app-modelled** sheet rather than a
-component-system one: instead of cataloguing a library's widgets, its stickers
-reproduce a real app's signature surfaces (Confetti's session cards, bookmark
-toggle, speaker rows, day tabs, and schedule scaffold) in standalone `material3`,
-and it adds a **Conference themes** group that shows the same components re-branded
-from each conference's `themeColor` seed — the phone counterpart of the Wear
-catalog's self-contained, Robolectric-rendered shape. It's the template to copy
-when onboarding another app's design (via the `init-catalog-spec` flow below).
-
-![Confetti catalog component stickers, the per-conference theme group, and a dark-mode
-row](confetti-catalog-stickers.png)
-
-![Confetti schedule scaffold template, light and dark](confetti-catalog-schedule.png)
+An **app-modelled** catalog — one whose stickers render a real app's own surfaces
+rather than a component library's widgets — lives in that app's repo instead of
+here (e.g. the Confetti app publishes its own mobile + Wear sheets via the reusable
+workflow below); this repo's catalogs are the per-component-system sheets.
 
 Each module carries a `catalog.spec.json` (the Phase-0 inventory: groups,
 captions, primary modes, breakpoints, and the seed-kit frame per component).

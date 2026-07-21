@@ -237,13 +237,6 @@ include(":samples:wear")
 // `docs/design/DESIGN_CATALOGS.md` and the M3 sibling `:samples:design-catalog-m3`).
 include(":samples:design-catalog-wear-m3")
 
-// Confetti **mobile** design catalog — one `@Preview` per component in light + dark, modelled on the
-// Confetti conference app (joreilly/confetti): session cards, the bookmark toggle, speaker rows, the
-// day tabs, the schedule scaffold, and the per-conference brand themes. The phone counterpart of the
-// Wear catalog (same self-contained Robolectric-rendered Android shape), exported as a sticker sheet
-// (see `docs/design/DESIGN_CATALOGS.md`).
-include(":samples:design-catalog-confetti")
-
 include(":samples:xr-glimmer")
 
 include(":samples:xr-spatial")
