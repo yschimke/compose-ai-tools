@@ -203,7 +203,20 @@ jobs:
       # module's @Preview functions BEFORE the (long) render, so a mistyped or
       # renamed name fails here in seconds instead of as a late "missing" entry.
       - name: Validate catalog spec
-        run: node compose-ai-tools/scripts/design-artifacts/validate-catalog-spec.mjs --spec "${{ inputs.spec }}"
+        env:
+          SPEC: ${{ inputs.spec }}
+          MODULE: ${{ inputs.module }}
+          EXTRA_MODULE: ${{ inputs.extra-module }}
+        run: |
+          set -euo pipefail
+          # Gradle path (":app", "a:b") → directory ("app", "a/b").
+          to_dir() { printf '%s' "${1#:}" | tr ':' '/'; }
+          args=(--spec "$SPEC" --module-dir "$(to_dir "$MODULE")")
+          # A catalog whose previews span the primary + one extra module must
+          # resolve names against BOTH, or the extra module's previews read as
+          # "missing" and fail the pre-flight.
+          if [ -n "$EXTRA_MODULE" ]; then args+=(--src "$(to_dir "$EXTRA_MODULE")"); fi
+          node compose-ai-tools/scripts/design-artifacts/validate-catalog-spec.mjs "${args[@]}"
 
       # Stage bundled fallback fonts into fontconfig before any render, so a
       # desktop (Skiko) render resolves glyphs a preview's FontFamily doesn't
