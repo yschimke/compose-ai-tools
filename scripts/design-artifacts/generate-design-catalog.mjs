@@ -320,6 +320,10 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
     ...(opts.renderer ? { renderer: opts.renderer } : {}),
     ...(opts.designParity ? { designParity: opts.designParity } : {}),
     generatedAt: opts.generatedAt ?? new Date().toISOString(),
+    // Presentation hints the system declares (stage surface + hero preview),
+    // carried through onto catalog.json so the preview server reads them instead
+    // of inferring — see catalog.spec.schema.json `display`.
+    ...(spec.display ? { display: spec.display } : {}),
   };
 
   const catalog = buildCatalog(meta, sources, opts.themeTokens);
@@ -607,6 +611,11 @@ if (values["publish-live-bundle"]) {
       if (image.path) image.livePreview = livePreviewUrl(previewBase, manifest.system, image.path);
     }
   }
+  // Stamp the spec's `display` (stage surface + hero preview) onto the manifest. Like the
+  // `livePreview`/`section` stamps above, this is a post-process because the pinned
+  // `@design-parity/catalog-export` predates `display` in `toCatalogManifest`; once a release
+  // carrying it lands and the dep is bumped, `buildCatalog` writes it and this can be dropped.
+  if (spec.display) manifest.display = spec.display;
   if (webRender) manifest.webRender = webRender;
   if (liveBundle) manifest.liveBundle = liveBundle;
   // Buildable source for trusted server-side re-render (opt-in consumer side).

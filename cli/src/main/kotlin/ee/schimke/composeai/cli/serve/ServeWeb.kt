@@ -602,9 +602,13 @@ object ServeWeb {
    * ([basePath]) or, for the legacy `?session=` form, the session id — and resolved through the
    * single per-system policy in [SystemDisplay] rather than an inline name check here.
    */
-  private fun isDarkFirstSystem(basePath: String, sessionId: String?): Boolean {
+  private fun isDarkFirstSystem(
+    basePath: String,
+    sessionId: String?,
+    declaredSurface: String? = null,
+  ): Boolean {
     val system = basePath.trim('/').ifBlank { sessionId ?: "" }
-    return SystemDisplay.isDarkFirst(system)
+    return SystemDisplay.resolveDarkFirst(system, declaredSurface)
   }
 
   /**
@@ -1215,7 +1219,8 @@ object ServeWeb {
           ?.let { "\n            <div class=\"cp-sys-desc\">${WebEscaping.htmlEscape(it)}</div>" }
           ?: ""
       // A dark-first (Wear) system backs its hero on the dark stage — same `data-bg-theme` hook the
-      // catalog grid and viewer use — so a light-on-transparent Wear sticker isn't washed out on white.
+      // catalog grid and viewer use — so a light-on-transparent Wear sticker isn't washed out on
+      // white.
       val bg = if (s.darkStage) " data-bg-theme=\"dark\"" else ""
       return """
       <a class="cp-card cp-sys"$bg href="/$sysSeg/$suffix">
@@ -1265,23 +1270,41 @@ object ServeWeb {
    *
    * A system is **dark-first** when it targets a dark-first platform — Wear OS is
    * black-watch-face-first, so a light-on-transparent Wear sticker on the default white stage reads
-   * with unreadable content. Resolved as: an explicit [darkFirstSystems] entry (declared intent),
-   * else a Wear/watch id heuristic (token match, so `confetti-wear` hits as well as `wear-m3`).
-   * Extend [darkFirstSystems] to pin a dark-first system whose id doesn't self-describe.
+   * with unreadable content.
+   *
+   * The authoritative signal is what the **catalog itself declares** (`catalog.json`'s
+   * `display.surface`, from the spec) — pass it to [resolveDarkFirst]. Only when a catalog declares
+   * nothing does this fall back to [isDarkFirst], a generic Wear/watch id heuristic (token match,
+   * so `confetti-wear` hits as well as `wear-m3`) — a best-effort default, not a hardcoded per-app
+   * list.
    */
   object SystemDisplay {
-    /** Systems explicitly served on a dark stage (their stickers are drawn for a dark surface). */
-    private val darkFirstSystems = setOf("wear-m3", "confetti-wear")
-
-    /** A Wear / watch system id, matched on a `-`/`_` token so `confetti-wear` and `wear-m3` hit. */
+    /**
+     * A Wear / watch system id, matched on a `-`/`_` token so `confetti-wear` and `wear-m3` hit.
+     */
     private val darkFirstIdPattern = Regex("(^|[-_])(wear|watch)([-_]|$)")
 
-    /** Whether [system] should be drawn on a DARK stage (front-door hero + catalog grid). */
+    /**
+     * Fallback dark-first guess from the system id alone, for a catalog that declares no
+     * `display.surface`. Generic (any Wear/watch system), never per-app.
+     */
     fun isDarkFirst(system: String): Boolean {
       val s = system.trim('/').lowercase()
       if (s.isBlank()) return false
-      return s in darkFirstSystems || darkFirstIdPattern.containsMatchIn(s)
+      return darkFirstIdPattern.containsMatchIn(s)
     }
+
+    /**
+     * Resolve whether [system] draws on a DARK stage, preferring the catalog's declared
+     * [surface][declaredSurface] (`"light"`/`"dark"`) and falling back to the [isDarkFirst] id
+     * heuristic only when the catalog declared nothing.
+     */
+    fun resolveDarkFirst(system: String, declaredSurface: String?): Boolean =
+      when (declaredSurface?.trim()?.lowercase()) {
+        "dark" -> true
+        "light" -> false
+        else -> isDarkFirst(system)
+      }
   }
 
   /**
@@ -1290,8 +1313,8 @@ object ServeWeb {
    * edge case. The primary rule is **prefer a real screen** (the most representative view of an
    * *app*): when the catalog carries any `Screens`-section preview, a screen always wins over a
    * single component — so an app like Confetti fronts a conference screen while a component library
-   * (compose-m3, no screens) falls straight through to its component hero. Within that, scores each:
-   * a non-default state (disabled/pressed/…) is pushed down; light beats dark; a canonical
+   * (compose-m3, no screens) falls straight through to its component hero. Within that, scores
+   * each: a non-default state (disabled/pressed/…) is pushed down; light beats dark; a canonical
    * button/filled hero is preferred. Ties break on the id so the choice is deterministic (stable
    * goldens). Null when there are no previews.
    */
@@ -1386,12 +1409,19 @@ object ServeWeb {
      * uploaded bundle / non-catalog module (no such metadata).
      */
     provenance: CatalogProvenance? = null,
+    /**
+     * The catalog's declared stage surface (`catalog.json`'s `display.surface`: `"light"`/`"dark"`)
+     * — decides whether unthemed cards sit on the dark stage. Null ⇒ fall back to the system-name
+     * dark-first heuristic ([isDarkFirstSystem]). So a system declares its own surface rather than
+     * relying on its id.
+     */
+    declaredSurface: String? = null,
   ): String {
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
     // A dark-first system (Wear) puts every unthemed card on the dark stage; explicit light/dark
     // variants keep their own token. Only affects the background — the Light/Dark filter axis below
     // still keys off the explicit-only [cardTheme].
-    val darkFirst = isDarkFirstSystem(basePath, sessionId)
+    val darkFirst = isDarkFirstSystem(basePath, sessionId, declaredSurface)
     // Collapse per-theme variants into one card each so the Light/Dark control swaps a card between
     // its baked light/dark render *in place*, rather than filtering two cards. A single-theme /
     // theme-neutral card carries no swap data and the toggle leaves it alone.
@@ -1644,6 +1674,11 @@ object ServeWeb {
      * the drawer and its toggle are omitted — there is nothing to navigate between.
      */
     siblings: List<ServePreview> = emptyList(),
+    /**
+     * The catalog's declared stage surface (`catalog.json`'s `display.surface`) — decides whether
+     * an unthemed preview's stage backs on dark. Null ⇒ the system-name dark-first heuristic.
+     */
+    declaredSurface: String? = null,
   ): String {
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
@@ -1879,8 +1914,9 @@ object ServeWeb {
     // separate from the filter's data-card-theme; the viewer JS re-syncs it on a Theme (uiMode)
     // change so a re-render in the opposite theme doesn't clash with a stale backing color.
     val bgThemeAttr =
-      bgTheme(preview.id, isDarkFirstSystem(basePath, sessionId))?.let { " data-bg-theme=\"$it\"" }
-        ?: ""
+      bgTheme(preview.id, isDarkFirstSystem(basePath, sessionId, declaredSurface))?.let {
+        " data-bg-theme=\"$it\""
+      } ?: ""
     // The component-state switcher: plain links to this component's other baked states (same
     // theme).
     // Empty for a single-state component / a stateless preview, so nothing renders there.

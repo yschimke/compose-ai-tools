@@ -405,6 +405,9 @@ class ServeHttpServer(
           // reads),
           // so a Wear sticker shows the component, not the empty watch canvas around it.
           thumbCrop = { id -> catalogBundleHost(renderHost)?.contentCrop(id) },
+          // The catalog's declared stage surface (`display.surface`), so a dark-first system's
+          // unthemed cards sit on the dark stage instead of the default white.
+          declaredSurface = catalogBundleHost(renderHost)?.stageSurface,
         ),
         ContentType.Text.Html,
       )
@@ -452,7 +455,10 @@ class ServeHttpServer(
       try {
         val host = lease.host
         val bundle = catalogBundleHost(host)
-        val heroId = ServeWeb.representativePreviewId(host.previews)
+        // Prefer the catalog's declared hero (`display.hero`); fall back to the representative
+        // pick.
+        val heroId =
+          bundle?.declaredHeroPreviewId ?: ServeWeb.representativePreviewId(host.previews)
         ServeWeb.HomeSystem(
           system = system,
           title = bundle?.title?.takeIf { it.isNotBlank() } ?: host.label,
@@ -462,9 +468,11 @@ class ServeHttpServer(
           heroPreviewId = heroId,
           // Frame the hero to its component box too, so the front-page Wear card isn't a speck.
           heroCrop = heroId?.let { bundle?.contentCrop(it) },
-          // Dark-first (Wear) systems back their hero on the dark stage — the single per-system
-          // policy in ServeWeb.SystemDisplay, so the front door and the catalog grid agree.
-          darkStage = ServeWeb.SystemDisplay.isDarkFirst(system),
+          // Dark stage from the catalog's declared surface (`display.surface`), falling back to the
+          // system-name heuristic — resolved in one place (ServeWeb.SystemDisplay) so the front
+          // door
+          // and the catalog grid agree.
+          darkStage = ServeWeb.SystemDisplay.resolveDarkFirst(system, bundle?.stageSurface),
         )
       } finally {
         lease.close()
@@ -734,6 +742,9 @@ class ServeHttpServer(
           gesturesRenderable = renderHost.gesturesRenderable,
           // The session's full preview list feeds the left-hand component nav drawer.
           siblings = renderHost.previews,
+          // The catalog's declared stage surface (`display.surface`), so an unthemed preview backs
+          // on the dark stage for a dark-first system instead of the default white.
+          declaredSurface = catalogBundleHost(renderHost)?.stageSurface,
         ),
         ContentType.Text.Html,
       )

@@ -6,6 +6,10 @@
   "library": ["androidx.wear.compose:compose-material3"],
   "module": "samples:design-catalog-wear-m3",
   "modes": ["smallRound", "largeRound"],
+  "display": {
+    "surface": "dark",
+    "hero": "Template/TimeText"
+  },
   "referenceKits": [
     "https://www.figma.com/community/file/1506418396052412186/m3-wear-os-apps-design-kit",
     "https://www.figma.com/community/file/1507852095734722321/m3-wear-os-tiles-design-kit"

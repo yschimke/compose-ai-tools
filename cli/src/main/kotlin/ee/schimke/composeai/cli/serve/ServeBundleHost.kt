@@ -43,6 +43,18 @@ class ServeBundleHost(
    */
   val subtitle: String? = null,
   /**
+   * The stage background surface the catalog declared (`catalog.json`'s `display.surface`) —
+   * `"light"` / `"dark"` / null. When `"dark"`, the front door and grid back this system's stickers
+   * on a dark stage. Null ⇒ the server falls back to its name-based default.
+   */
+  val stageSurface: String? = null,
+  /**
+   * The hero preview the catalog declared (`display.hero`) — a `componentId` (e.g.
+   * `"Template/TimeText"`) or a flattened preview id. Resolved against [previews] by
+   * [declaredHeroPreviewId]; null ⇒ the server picks a representative itself.
+   */
+  val declaredHero: String? = null,
+  /**
    * The local dir holding a catalog's `figma/<slug>.svg` exports (+ `<slug>.figma-raster/` crops),
    * populated by [ServeCatalogStore]. When set, {@link renderSvg} serves the baked editable vector
    * per preview; null for a plain uploaded bundle (which then 404s the `.svg` lane).
@@ -94,6 +106,22 @@ class ServeBundleHost(
         )
       }
       .toList()
+
+  /**
+   * The catalog's declared hero ([declaredHero]) resolved to one of this host's actual preview ids,
+   * or null when nothing was declared / the declaration matches no preview. Accepts a full preview
+   * id, or a `componentId` / preview-function name matched against a preview's slug head (the
+   * segment before `__`) using the same slug normalisation the exporter used — so a spec can name
+   * `"Template/TimeText"` and hit `template-timetext__ideal__…`. The server uses this as the front
+   * door hero before falling back to its own representative pick.
+   */
+  val declaredHeroPreviewId: String? by lazy {
+    val hero = declaredHero?.takeIf { it.isNotBlank() } ?: return@lazy null
+    val exact = previews.firstOrNull { it.id == hero }
+    if (exact != null) return@lazy exact.id
+    val wanted = heroSlug(hero)
+    previews.firstOrNull { heroSlug(it.id.substringBefore(SLUG_SEPARATOR)) == wanted }?.id
+  }
 
   /**
    * Best-effort read of the catalog's `previews/variants.json` state/theme manifest. Mirrors
@@ -265,6 +293,16 @@ class ServeBundleHost(
     private const val SVG_SUFFIX = ".svg"
     /** A preview id folds the component slug and variant as `<slug>__<variant>`. */
     private const val SLUG_SEPARATOR = "__"
+
+    /**
+     * Normalise a declared hero (a `componentId` like `"Template/TimeText"` or a preview-function
+     * name) to the slug the exporter bakes into preview ids — mirrors `@design-parity`'s `slug()`
+     * (non-`[a-zA-Z0-9._-]` → `-`, trim, lowercase), so `display.hero` resolves against the served
+     * ids regardless of how the author wrote it.
+     */
+    private fun heroSlug(value: String): String =
+      value.replace(Regex("[^a-zA-Z0-9._-]+"), "-").trim('-').lowercase().ifBlank { "x" }
+
     private const val OVERRIDES_SUFFIX = ".overrides.json"
     private const val PREVIEWS_JSON = "previews.json"
     private val OVERRIDES_JSON = Json { ignoreUnknownKeys = true }
