@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import androidx.compose.runtime.tooling.CompositionData
 import androidx.compose.ui.semantics.SemanticsNode
 import ee.schimke.composeai.data.render.extensions.ExtensionContextKey
 import java.io.File
@@ -50,4 +51,18 @@ object RenderArtifactContextKeys {
    */
   val Density: ExtensionContextKey<Float> =
     ExtensionContextKey(name = "render-data-artifact.density", type = Float::class.javaObjectType)
+
+  /**
+   * Composition slot tables captured for the render, the layout-inspector walk's second input
+   * alongside [SemanticsRoot]. Desktop holds these directly after `scene.render()`; Android
+   * snapshots them from its slot-table capture. Threading them here lets the shared
+   * `layout/inspector` + `figma-svg` producers reach the same tree both backends' inline paths
+   * used.
+   */
+  @Suppress("UNCHECKED_CAST")
+  val SlotTables: ExtensionContextKey<List<CompositionData>> =
+    ExtensionContextKey(
+      name = "render-data-artifact.slotTables",
+      type = List::class.java as Class<List<CompositionData>>,
+    )
 }

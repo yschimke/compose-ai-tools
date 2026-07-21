@@ -127,6 +127,7 @@ class RenderEngine(
         pngGenerator = { payload, destPng -> DesktopSemanticsWireframe.generate(payload, destPng) },
         densityAware = true,
       ),
+      LayoutInspectorExtension(),
     ),
 ) {
 
@@ -680,21 +681,9 @@ class RenderEngine(
           // ComposeSemanticsExtension via the post-capture PostCaptureProcessor loop below, not
           // inline here — the same seam the Android engine uses. The `payload` above is still built
           // for the wireframe / spatial / figma-svg exports that follow.
-          // `layout-inspector.json` — the `layout/inspector` data product. Previously Android-only:
-          // the desktop registry advertised the kind but nothing wrote the file, so `data/fetch`
-          // degraded to `NotAvailable` (#1903). Write it from the same captured root + slot tables,
-          // through the CMP-portable `LayoutInspectorDataProducer` overload. This is the canonical
-          // home for the modifier-derived design `tokens` the producer now resolves once and
-          // mirrors
-          // onto `compose/semantics`. The Z-sorted child walk is valid here because
-          // `scene.render()` has already measured + drawn (and thus Z-sorted) the layout tree.
-          LayoutInspectorDataProducer.writeArtifacts(
-            rootDir = dataDir,
-            previewId = previewId,
-            root = root,
-            slotTables = state.slotTableCapture?.snapshot().orEmpty(),
-            density = density,
-          )
+          // `layout-inspector.json` (`layout/inspector`) is now written by the shared
+          // LayoutInspectorExtension via the post-capture loop below — the same seam and the same
+          // CMP-portable producer overload (captured root + slot tables) the inline call used.
           // `compose/semantics-wireframe` (SVG + baked PNG) and `compose/spatial-semantics` are now
           // written by the shared ComposeSemanticsWireframeExtension via the post-capture loop
           // below — the same seam the Android engine uses. `payload` above is still built for the
@@ -770,6 +759,10 @@ class RenderEngine(
                 state.spec.previewId?.let { add(RenderArtifactContextKeys.PreviewId provides it) }
                 add(RenderArtifactContextKeys.SemanticsRoot provides semanticsRoot)
                 add(RenderArtifactContextKeys.Density provides state.spec.density)
+                add(
+                  RenderArtifactContextKeys.SlotTables provides
+                    state.slotTableCapture?.snapshot().orEmpty()
+                )
               }
               .toTypedArray()
           )

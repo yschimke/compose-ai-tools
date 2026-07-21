@@ -722,6 +722,7 @@ class RenderEngine(
                     add(RenderDataArtifactContextKeys.SemanticsRoot provides it)
                   }
                   add(RenderDataArtifactContextKeys.Density provides spec.density)
+                  add(RenderDataArtifactContextKeys.SlotTables provides slotTableCapture.snapshot())
                   add(RenderDataArtifactContextKeys.FontScale provides (spec.fontScale ?: 1.0f))
                   add(RenderDataArtifactContextKeys.OutputPng provides outputFile)
                   add(RenderDataArtifactContextKeys.HeldActivity provides rule.activity)
