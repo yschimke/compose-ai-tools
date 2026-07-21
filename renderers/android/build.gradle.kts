@@ -249,6 +249,10 @@ dependencies {
   testImplementation("androidx.compose.ui:ui-test-junit4")
   testImplementation("androidx.compose.ui:ui-test-manifest")
   testImplementation("androidx.compose.ui:ui-tooling-data")
+  // `EmojiCompatRenderSupportTest` drives the reflective bundled-config init against the real
+  // emoji2 API. Test-only — the renderer keeps NO production dependency on emoji2 (the support
+  // helper resolves everything reflectively and no-ops when the artifact is absent).
+  testImplementation("androidx.emoji2:emoji2-bundled:1.5.0")
   // GoogleFont detector's unit test constructs a real
   // `Font(GoogleFont("Roboto"), provider)` so the reflective FQCN check
   // runs against an actual `GoogleFontImpl` instance. Test-only — the

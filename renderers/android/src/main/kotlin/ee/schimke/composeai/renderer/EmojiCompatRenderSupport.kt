@@ -102,4 +102,13 @@ internal object EmojiCompatRenderSupport {
       org.robolectric.Shadows.shadowOf(looper).idle()
     }
   }
+
+  /**
+   * Clears the once-per-process [attempted] guard so a unit test can drive [ensureInitialized] from
+   * a clean slate. Test-only — production code relies on the guard firing exactly once per render
+   * JVM.
+   */
+  internal fun resetForTest() {
+    attempted = false
+  }
 }
