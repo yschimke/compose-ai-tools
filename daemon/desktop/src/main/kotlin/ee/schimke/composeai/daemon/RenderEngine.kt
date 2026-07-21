@@ -1831,14 +1831,18 @@ private fun DeviceDimensions.DeviceSpec.previewDeviceSpec(): PreviewDeviceSpec =
 
 /**
  * The Google-Fonts WOFF2 resolver for the `compose/figma-svg` export, or null when font embedding
- * is off. On when `composeai.figma.embedFonts=true`, or implicitly when fidelity is being measured
- * (`composeai.figma.fidelity=true`) so the score reflects the embedded face rather than the
- * browser's substitute. Reuses the renderer's font cache dir / offline switch so a face is
- * downloaded at most once per environment.
+ * is explicitly off. Embedding is **on by default** — a null/`sans-serif` `<text>` renders with a
+ * substituted typeface, so embedding the real face only ever improves the export and degrades right
+ * back to `sans-serif` when the face can't be resolved (offline / network error). Opt out with
+ * `composeai.figma.embedFonts=false`; measuring fidelity (`composeai.figma.fidelity=true`) forces it
+ * back on regardless, so the score reflects the embedded face rather than the browser's substitute.
+ * Reuses the renderer's font cache dir / offline switch so a face is downloaded at most once per
+ * environment.
  */
 private fun figmaFontResolver(): FigmaFontResolver? {
   fun on(prop: String) = System.getProperty(prop)?.lowercase() == "true"
-  if (!on("composeai.figma.embedFonts") && !on("composeai.figma.fidelity")) return null
+  val disabled = System.getProperty("composeai.figma.embedFonts")?.lowercase() == "false"
+  if (disabled && !on("composeai.figma.fidelity")) return null
   return GoogleFontsWoff2Resolver(
     cacheDir = System.getProperty("composeai.fonts.cacheDir")?.let { File(it) },
     offline = on("composeai.fonts.offline"),

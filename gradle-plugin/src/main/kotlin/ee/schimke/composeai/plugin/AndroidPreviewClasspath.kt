@@ -252,7 +252,7 @@ internal object AndroidPreviewClasspath {
     rendersDir: String,
     fontsCacheDir: String,
     fontsOffline: String,
-    figmaEmbedFonts: String = "false",
+    figmaEmbedFonts: String = "true",
   ): Map<String, String> =
     linkedMapOf(
       // Belt-and-braces for the graphics/looper modes. Config now
@@ -291,10 +291,12 @@ internal object AndroidPreviewClasspath {
       // shows the fallback font rather than silently fetching from
       // `fonts.googleapis.com`.
       "composeai.fonts.offline" to fontsOffline,
-      // `-Dcomposeai.figma.embedFonts=true` (or `-PcomposePreview.figmaEmbedFonts=true`) opts the
-      // `compose/figma-svg` export into embedding each text node's face as an `@font-face`. Read in
-      // the daemon JVM by `ComposeFigmaSvgExtension`, so it must be forwarded here — else the flag
-      // set on the Gradle invocation never reaches the daemon and the export stays vector-only.
+      // Controls whether the `compose/figma-svg` export embeds each text node's face as an
+      // `@font-face` (so the layered SVG renders the real typeface instead of a browser-substituted
+      // `sans-serif`). ON by default; opt out with `-Dcomposeai.figma.embedFonts=false` (or
+      // `-PcomposePreview.figmaEmbedFonts=false`). Read in the daemon JVM by `ComposeFigmaSvgExtension`,
+      // so it must be forwarded here — else the value set on the Gradle invocation never reaches the
+      // daemon.
       "composeai.figma.embedFonts" to figmaEmbedFonts,
     )
 }
@@ -321,14 +323,16 @@ internal fun composeAiFontsCacheDir(project: Project): String {
 }
 
 /**
- * The resolved value to forward as the daemon JVM's `composeai.figma.embedFonts`, so
- * `-Dcomposeai.figma.embedFonts=true` on the Gradle invocation reaches the daemon that reads it.
+ * The resolved value to forward as the daemon JVM's `composeai.figma.embedFonts`, so a
+ * `-Dcomposeai.figma.embedFonts=…` on the Gradle invocation reaches the daemon that reads it.
  * Sourced from that system property first (the documented flag, matching the desktop render), then
- * a `-PcomposePreview.figmaEmbedFonts` Gradle property, else `"false"`. Provider-based so the
- * configuration cache records the property reads as inputs.
+ * a `-PcomposePreview.figmaEmbedFonts` Gradle property, else `"true"` — font embedding is on by
+ * default (it degrades to `sans-serif` offline, so it only ever improves the export), and opting
+ * out means passing `false` explicitly. Provider-based so the configuration cache records the
+ * property reads as inputs.
  */
 internal fun composeAiFigmaEmbedFonts(project: Project): org.gradle.api.provider.Provider<String> =
   project.providers
     .systemProperty("composeai.figma.embedFonts")
     .orElse(project.providers.gradleProperty("composePreview.figmaEmbedFonts"))
-    .orElse("false")
+    .orElse("true")

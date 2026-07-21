@@ -64,16 +64,17 @@ class ComposeFigmaSvgExtension : PostCaptureProcessor {
   }
 
   /**
-   * The Google-Fonts WOFF2 resolver for the export, or null when embedding is off. On when
-   * `composeai.figma.embedFonts=true` — the plugin forwards that flag into the daemon JVM (see
-   * `AndroidPreviewClasspath.buildSystemProperties`). Unlike desktop this doesn't also honour the
-   * fidelity flag: the fidelity harness is desktop-only, so there's nothing to imply embedding for
-   * here. Reuses the renderer's font cache dir / offline switch so a face is downloaded at most
-   * once per environment.
+   * The Google-Fonts WOFF2 resolver for the export, or null when embedding is explicitly off.
+   * Embedding is **on by default** — a null/`sans-serif` `<text>` renders with a substituted
+   * typeface, so the export only ever improves by embedding the real face, and it degrades right
+   * back to `sans-serif` when the face can't be resolved (offline / network error). Opt out with
+   * `composeai.figma.embedFonts=false`; the plugin forwards that value into the daemon JVM (see
+   * `AndroidPreviewClasspath.buildSystemProperties`). Reuses the renderer's font cache dir / offline
+   * switch so a face is downloaded at most once per environment.
    */
   private fun figmaFontResolver(): FigmaFontResolver? {
     fun on(prop: String) = System.getProperty(prop)?.lowercase() == "true"
-    if (!on("composeai.figma.embedFonts")) return null
+    if (System.getProperty("composeai.figma.embedFonts")?.lowercase() == "false") return null
     return GoogleFontsWoff2Resolver(
       cacheDir = System.getProperty("composeai.fonts.cacheDir")?.let { java.io.File(it) },
       offline = on("composeai.fonts.offline"),
