@@ -234,6 +234,49 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `SharedBlueBoxPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp-shared/SharedBlueBoxPreview_Blue.png" width="150" /> |
 | `SharedRedBoxPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp-shared/SharedRedBoxPreview.png" width="150" /> |
 
+## samples:design-catalog-confetti
+
+| Preview | Image |
+|---------|-------|
+| `AndroidMakersTheme` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/AndroidMakersTheme_Dark.png" width="150" /> |
+| `AndroidMakersTheme` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/AndroidMakersTheme_Light.png" width="150" /> |
+| `BookmarkAddSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/BookmarkAddSticker_Dark.png" width="150" /> |
+| `BookmarkAddSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/BookmarkAddSticker_Light.png" width="150" /> |
+| `BookmarkOnSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/BookmarkOnSticker_Dark.png" width="150" /> |
+| `BookmarkOnSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/BookmarkOnSticker_Light.png" width="150" /> |
+| `BottomBarSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/BottomBarSticker_Dark.png" width="150" /> |
+| `BottomBarSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/BottomBarSticker_Light.png" width="150" /> |
+| `BreakSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/BreakSticker_Dark.png" width="150" /> |
+| `BreakSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/BreakSticker_Light.png" width="150" /> |
+| `ConfettiBrandTheme` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/ConfettiBrandTheme_Dark.png" width="150" /> |
+| `ConfettiBrandTheme` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/ConfettiBrandTheme_Light.png" width="150" /> |
+| `DayTabRowSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/DayTabRowSticker_Dark.png" width="150" /> |
+| `DayTabRowSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/DayTabRowSticker_Light.png" width="150" /> |
+| `DevFestTheme` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/DevFestTheme_Dark.png" width="150" /> |
+| `DevFestTheme` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/DevFestTheme_Light.png" width="150" /> |
+| `DroidconTheme` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/DroidconTheme_Dark.png" width="150" /> |
+| `DroidconTheme` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/DroidconTheme_Light.png" width="150" /> |
+| `KotlinConfTheme` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/KotlinConfTheme_Dark.png" width="150" /> |
+| `KotlinConfTheme` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/KotlinConfTheme_Light.png" width="150" /> |
+| `LightningPillSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/LightningPillSticker_Dark.png" width="150" /> |
+| `LightningPillSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/LightningPillSticker_Light.png" width="150" /> |
+| `LightningSessionCard` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/LightningSessionCard_Dark.png" width="150" /> |
+| `LightningSessionCard` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/LightningSessionCard_Light.png" width="150" /> |
+| `ScheduleScreenTemplate` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/ScheduleScreenTemplate_Dark.png" width="150" /> |
+| `ScheduleScreenTemplate` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/ScheduleScreenTemplate_Light.png" width="150" /> |
+| `SearchFieldSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/SearchFieldSticker_Dark.png" width="150" /> |
+| `SearchFieldSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/SearchFieldSticker_Light.png" width="150" /> |
+| `SessionCardBookmarked` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/SessionCardBookmarked_Dark.png" width="150" /> |
+| `SessionCardBookmarked` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/SessionCardBookmarked_Light.png" width="150" /> |
+| `SessionCardSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/SessionCardSticker_Dark.png" width="150" /> |
+| `SessionCardSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/SessionCardSticker_Light.png" width="150" /> |
+| `SpeakerGridCellSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/SpeakerGridCellSticker_Dark.png" width="150" /> |
+| `SpeakerGridCellSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/SpeakerGridCellSticker_Light.png" width="150" /> |
+| `SpeakerListItemSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/SpeakerListItemSticker_Dark.png" width="150" /> |
+| `SpeakerListItemSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/SpeakerListItemSticker_Light.png" width="150" /> |
+| `TimeHeaderSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/TimeHeaderSticker_Dark.png" width="150" /> |
+| `TimeHeaderSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-confetti/TimeHeaderSticker_Light.png" width="150" /> |
+
 ## samples:design-catalog-m3
 
 | Preview | Image |
