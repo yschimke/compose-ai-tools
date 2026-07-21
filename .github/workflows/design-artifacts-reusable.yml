@@ -82,6 +82,41 @@ on:
         required: false
         type: boolean
         default: true
+      publish:
+        description: 'Force-push out/ to design-artifacts/<system>. Set false to hand the generated bundle off (via upload-out) to a follow-up job that post-processes it — e.g. folding in an extra re-themed section — before publishing.'
+        required: false
+        type: boolean
+        default: true
+      upload-out:
+        description: 'Upload the generated out/ directory as an artifact (<system>-catalog-out) so a downstream job can download, post-process, and publish it. Independent of `publish`.'
+        required: false
+        type: boolean
+        default: false
+      stage-font-globs:
+        description: 'Whitespace-separated repo-relative globs of font files (.ttf/.otf) to stage into fontconfig BEFORE rendering — for a desktop (Skiko) render that must resolve glyphs (CJK/Arabic/…) from a bundled face rather than a system fallback. Empty ⇒ no staging.'
+        required: false
+        type: string
+        default: ''
+      fold-artifact:
+        description: 'Name of an artifact (uploaded by a prior caller job) holding a pre-built render bundle to fold in as its own top-level section AFTER generate — e.g. a re-themed sibling catalog. Empty ⇒ no fold-in. Requires fold-bundle, fold-spec, fold-section.'
+        required: false
+        type: string
+        default: ''
+      fold-bundle:
+        description: 'Path (within the downloaded fold-artifact) to the render bundle .png to build the folded section from.'
+        required: false
+        type: string
+        default: ''
+      fold-spec:
+        description: 'Path to the catalog.spec.json describing the folded bundle (may live under the checked-out compose-ai-tools/, e.g. compose-ai-tools/samples/design-catalog-m3/catalog.spec.json).'
+        required: false
+        type: string
+        default: ''
+      fold-section:
+        description: 'Top-level section/tab name for the folded-in catalog.'
+        required: false
+        type: string
+        default: ''
       commit-user-name:
         description: 'Author/committer name for the generated delivery-branch commit.'
         required: false
@@ -168,7 +203,35 @@ jobs:
       # module's @Preview functions BEFORE the (long) render, so a mistyped or
       # renamed name fails here in seconds instead of as a late "missing" entry.
       - name: Validate catalog spec
-        run: node compose-ai-tools/scripts/design-artifacts/validate-catalog-spec.mjs --spec "${{ inputs.spec }}"
+        env:
+          SPEC: ${{ inputs.spec }}
+          MODULE: ${{ inputs.module }}
+          EXTRA_MODULE: ${{ inputs.extra-module }}
+        run: |
+          set -euo pipefail
+          # Gradle path (":app", "a:b") → directory ("app", "a/b").
+          to_dir() { printf '%s' "${1#:}" | tr ':' '/'; }
+          args=(--spec "$SPEC" --module-dir "$(to_dir "$MODULE")")
+          # A catalog whose previews span the primary + one extra module must
+          # resolve names against BOTH, or the extra module's previews read as
+          # "missing" and fail the pre-flight.
+          if [ -n "$EXTRA_MODULE" ]; then args+=(--src "$(to_dir "$EXTRA_MODULE")"); fi
+          node compose-ai-tools/scripts/design-artifacts/validate-catalog-spec.mjs "${args[@]}"
+
+      # Stage bundled fallback fonts into fontconfig before any render, so a
+      # desktop (Skiko) render resolves glyphs a preview's FontFamily doesn't
+      # cover (CJK/Arabic/…) from the staged face instead of a system fallback.
+      - name: Stage fonts for rendering
+        if: ${{ inputs.stage-font-globs != '' }}
+        env:
+          FONT_GLOBS: ${{ inputs.stage-font-globs }}
+        run: |
+          set -euo pipefail
+          command -v fc-cache >/dev/null 2>&1 || { sudo apt-get update && sudo apt-get install -y --no-install-recommends fontconfig; }
+          mkdir -p "$HOME/.local/share/fonts"
+          shopt -s nullglob
+          for g in $FONT_GLOBS; do cp $g "$HOME/.local/share/fonts/"; done
+          fc-cache -f "$HOME/.local/share/fonts" >/dev/null
 
       # CMP desktop (Skiko) links libGL; install Mesa's software GL + a font stack.
       - name: Install desktop (Skiko) render deps
@@ -213,7 +276,45 @@ jobs:
             "${source_args[@]}" \
             "${incomplete[@]}"
 
+      - name: Download section bundle to fold in
+        if: ${{ inputs.fold-artifact != '' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.fold-artifact }}
+          path: ${{ github.workspace }}/fold-in
+
+      # Build a catalog from the caller-produced bundle and fold it into out/ as
+      # its own top-level section (e.g. a re-themed sibling system as a tab).
+      - name: Fold in extra section
+        if: ${{ inputs.fold-artifact != '' }}
+        env:
+          FOLD_BUNDLE: ${{ inputs.fold-bundle }}
+          FOLD_SPEC: ${{ inputs.fold-spec }}
+          FOLD_SECTION: ${{ inputs.fold-section }}
+        run: |
+          set -euo pipefail
+          incomplete=()
+          if [ "${{ inputs.allow-incomplete }}" = "true" ]; then incomplete=(--allow-incomplete); fi
+          node compose-ai-tools/scripts/design-artifacts/generate-design-catalog.mjs \
+            --spec "$FOLD_SPEC" \
+            --renders "$GITHUB_WORKSPACE/fold-in/$FOLD_BUNDLE" \
+            --out "$GITHUB_WORKSPACE/out-fold" \
+            "${incomplete[@]}"
+          node compose-ai-tools/scripts/design-artifacts/merge-catalog-section.mjs \
+            --into "$GITHUB_WORKSPACE/out" \
+            --from "$GITHUB_WORKSPACE/out-fold" \
+            --section "$FOLD_SECTION"
+
+      - name: Upload catalog bundle
+        if: ${{ inputs.upload-out }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.system }}-catalog-out
+          path: ${{ github.workspace }}/out
+          if-no-files-found: error
+
       - name: Publish to design-artifacts/${{ inputs.system }}
+        if: ${{ inputs.publish }}
         env:
           GH_TOKEN: ${{ github.token }}
           SYSTEM: ${{ inputs.system }}

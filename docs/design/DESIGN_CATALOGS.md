@@ -109,9 +109,17 @@ jobs:
 ```
 
 Author the spec with `init-catalog-spec` and check it with `validate-catalog-spec`
-(see below) before the first run. Catalog-specific lanes some systems add here —
-compose-m3's re-theme fold-in, a Wasm tier — stay in a bespoke workflow; the
-reusable one covers the common single-module (± one extra module) case.
+(see below) before the first run.
+
+For the two bespoke needs a catalog like MeshCore has, the reusable workflow
+exposes generic hooks rather than forcing a copy: `stage-font-globs` stages
+bundled faces into fontconfig before rendering (so a desktop render resolves
+CJK/Arabic glyphs from the app's fonts), and `fold-artifact` + `fold-bundle` +
+`fold-spec` + `fold-section` fold a **caller-produced** bundle in as its own
+top-level section after generate. A caller runs its bespoke lane (e.g. re-theming
+a sibling catalog) in a prior job that uploads the bundle artifact, then passes it
+to the reusable workflow — so the render/generate/publish stays shared while the
+bespoke step lives in the caller. A Wasm tier still needs a bespoke workflow.
 
 ## Rendering a catalog
 
