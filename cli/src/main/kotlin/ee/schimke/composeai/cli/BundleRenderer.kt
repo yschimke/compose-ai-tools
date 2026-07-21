@@ -285,22 +285,8 @@ class BundleRenderer(
     outputDir.mkdirs()
     val (exitCode, tail) = spawnAndroidRenderer(launch, classpath, previewsJsonFile, outputDir)
 
-    // AndroidRendererMain renders the whole manifest into outputDir. Reconcile per-preview by the
-    // manifest capture's renderOutput leaf — the exact name `RobolectricRenderTest.outputFileFor`
-    // writes — NOT `safeFilename(id).png` (the renderer normalizes ids, e.g.
-    // `com.example.FooKt.CardPreview` → `CardPreview.png`, so an id-derived name would miss the
-    // file and falsely fail the preview).
-    val succeeded = mutableListOf<RenderedPreview>()
-    val failed = mutableListOf<FailedPreview>()
-    for (preview in renderable) {
-      val outFile = outputDir.resolve(androidOutputLeaf(preview))
-      if (outFile.isFile && outFile.length() > 0) {
-        succeeded += RenderedPreview(preview.id, outFile)
-        if (verbose) logSink("rendered ${preview.id} → ${outFile.path}")
-      } else {
-        failed += FailedPreview(preview.id, exitCode, tail)
-      }
-    }
+    val (succeeded, failed) = reconcileAndroidRenders(renderable, outputDir, exitCode, tail)
+    if (verbose) succeeded.forEach { logSink("rendered ${it.id} → ${it.outputFile.path}") }
     if (failed.isNotEmpty()) {
       logSink("bundle render (android): ${failed.size} preview(s) produced no PNG (exit=$exitCode)")
       if (verbose) logSink(tail)
@@ -353,7 +339,8 @@ class BundleRenderer(
     return if (finished) {
       proc.exitValue() to tail
     } else {
-      124 to (tail + "\n[render subprocess timed out after ${RENDER_PROCESS_TIMEOUT_SECONDS}s]")
+      RENDER_TIMEOUT_EXIT to
+        (tail + "\n[render subprocess timed out after ${RENDER_PROCESS_TIMEOUT_SECONDS}s]")
     }
   }
 
@@ -645,6 +632,38 @@ class BundleRenderer(
       return if (leaf.isNullOrEmpty()) "${preview.id}.png" else leaf
     }
 
+    /**
+     * Reconcile the Android batch renderer's exit code + produced PNGs into per-preview
+     * succeeded/failed lists. [AndroidRendererMain] renders the whole manifest into [outputDir];
+     * each preview is matched by its capture's `renderOutput` leaf (the exact name
+     * `RobolectricRenderTest.outputFileFor` writes — NOT an id-derived name, which the renderer
+     * normalizes, e.g. `com.example.FooKt.CardPreview` → `CardPreview.png`).
+     *
+     * A force-killed run (timeout → [RENDER_TIMEOUT_EXIT]) fails *every* preview regardless of
+     * on-disk PNGs: it may have written some before the kill, and [outputDir] can hold stale PNGs
+     * from a prior run — either would falsely pass the file check. A normal non-zero exit keeps
+     * partial-success semantics (some previews render, others don't), matching the desktop path.
+     */
+    internal fun reconcileAndroidRenders(
+      renderable: List<PreviewInfo>,
+      outputDir: File,
+      exitCode: Int,
+      tail: String,
+    ): Pair<List<RenderedPreview>, List<FailedPreview>> {
+      val timedOut = exitCode == RENDER_TIMEOUT_EXIT
+      val succeeded = mutableListOf<RenderedPreview>()
+      val failed = mutableListOf<FailedPreview>()
+      for (preview in renderable) {
+        val outFile = outputDir.resolve(androidOutputLeaf(preview))
+        if (!timedOut && outFile.isFile && outFile.length() > 0) {
+          succeeded += RenderedPreview(preview.id, outFile)
+        } else {
+          failed += FailedPreview(preview.id, exitCode, tail)
+        }
+      }
+      return succeeded to failed
+    }
+
     /** Compose Desktop's default density = 2.625× (~xxhdpi). Same constant as the renderer. */
     private const val DEFAULT_DENSITY: Float = 2.625f
 
@@ -655,6 +674,9 @@ class BundleRenderer(
      */
     private const val RENDER_PROCESS_TIMEOUT_SECONDS = 600L
     private const val DRAIN_FLUSH_MILLIS = 2000L
+
+    /** Exit code [runRenderProcess] returns when it force-kills a subprocess past the timeout. */
+    private const val RENDER_TIMEOUT_EXIT = 124
 
     private val BUNDLE_JSON = Json {
       ignoreUnknownKeys = true

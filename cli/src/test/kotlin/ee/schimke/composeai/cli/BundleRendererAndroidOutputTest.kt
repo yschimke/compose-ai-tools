@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli
 
+import java.io.File
+import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -72,5 +74,57 @@ class BundleRendererAndroidOutputTest {
     val filtered = BundleRenderer.filterPreviewsJson(raw, drop = emptySet())
     assertTrue(filtered.contains("a.Foo"))
     assertTrue(filtered.contains("a.Bar"))
+  }
+
+  private fun writePng(dir: File, leaf: String) {
+    dir.resolve(leaf).writeBytes(byteArrayOf(1, 2, 3))
+  }
+
+  @Test
+  fun `exit 0 with all PNGs present marks every preview succeeded`() {
+    val dir = createTempDirectory("android-reconcile").toFile()
+    val previews =
+      listOf(preview("a.FooKt.One", "renders/One.png"), preview("a.FooKt.Two", "renders/Two.png"))
+    writePng(dir, "One.png")
+    writePng(dir, "Two.png")
+
+    val (succeeded, failed) =
+      BundleRenderer.reconcileAndroidRenders(previews, dir, exitCode = 0, tail = "")
+
+    assertEquals(setOf("a.FooKt.One", "a.FooKt.Two"), succeeded.map { it.id }.toSet())
+    assertTrue(failed.isEmpty())
+  }
+
+  @Test
+  fun `non-zero exit keeps partial success for previews that produced a PNG`() {
+    val dir = createTempDirectory("android-reconcile").toFile()
+    val previews =
+      listOf(preview("a.FooKt.One", "renders/One.png"), preview("a.FooKt.Two", "renders/Two.png"))
+    // Only One rendered; Two never produced a PNG (e.g. it threw). Partial success is preserved.
+    writePng(dir, "One.png")
+
+    val (succeeded, failed) =
+      BundleRenderer.reconcileAndroidRenders(previews, dir, exitCode = 1, tail = "boom")
+
+    assertEquals(listOf("a.FooKt.One"), succeeded.map { it.id })
+    assertEquals(listOf("a.FooKt.Two"), failed.map { it.id })
+  }
+
+  @Test
+  fun `timeout fails every preview even when PNGs are present on disk`() {
+    val dir = createTempDirectory("android-reconcile").toFile()
+    val previews =
+      listOf(preview("a.FooKt.One", "renders/One.png"), preview("a.FooKt.Two", "renders/Two.png"))
+    // Both PNGs exist (written before the force-kill, or stale from a prior run), but exit 124
+    // means the run never completed — so neither may be trusted.
+    writePng(dir, "One.png")
+    writePng(dir, "Two.png")
+
+    val (succeeded, failed) =
+      BundleRenderer.reconcileAndroidRenders(previews, dir, exitCode = 124, tail = "timed out")
+
+    assertTrue(succeeded.isEmpty())
+    assertEquals(setOf("a.FooKt.One", "a.FooKt.Two"), failed.map { it.id }.toSet())
+    assertTrue(failed.all { it.exitCode == 124 })
   }
 }
