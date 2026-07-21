@@ -1,0 +1,231 @@
+name: Design Artifacts (reusable)
+
+# Reusable design-catalog publish pipeline, callable from any repo that owns a
+# `catalog.spec.json` + a renderable `@Preview` module. Collapses the ~200-line
+# per-repo copy of this job into a `uses:` call:
+#
+#   jobs:
+#     publish:
+#       # Guard against forks pushing a branch into your repo:
+#       if: ${{ github.repository == 'you/your-repo' }}
+#       permissions:
+#         contents: write
+#       uses: yschimke/compose-ai-tools/.github/workflows/design-artifacts-reusable.yml@main
+#       with:
+#         system: your-system
+#         spec: catalog.spec.json
+#         module: ':app'
+#       secrets: inherit   # optional; only needed for buildfetch-ro-token
+#
+# The pipeline: install the released compose-preview CLI → validate the spec
+# (fast, build-free) → render the module(s) with `bundle pack --with-semantics` →
+# join to the spec with generate-design-catalog.mjs → force-push the importable
+# bundle to `design-artifacts/<system>`, which the public preview server
+# (preview.coo.ee) serves at /<system>/.
+#
+# Bespoke lanes some catalogs add (e.g. compose-m3's re-theme fold-in, a Wasm
+# tier) are intentionally out of scope — a caller that needs them keeps its own
+# workflow. This covers the common single-module (± one extra module) app catalog.
+
+on:
+  workflow_call:
+    inputs:
+      system:
+        description: 'Catalog slug; the delivery branch is design-artifacts/<system>.'
+        required: true
+        type: string
+      spec:
+        description: 'Path to catalog.spec.json in the caller repo.'
+        required: true
+        type: string
+      module:
+        description: 'Gradle module path to render (e.g. ":app").'
+        required: true
+        type: string
+      extra-module:
+        description: 'Optional second module folded in via --extra-renders (previews override same-named functions in the primary render).'
+        required: false
+        type: string
+        default: ''
+      cli-version:
+        description: 'compose-preview CLI version for the install action: a literal version, "latest", or "catalog".'
+        required: false
+        type: string
+        default: 'latest'
+      catalog-key:
+        description: 'When cli-version=catalog, the [versions] key to read from the Gradle version catalog.'
+        required: false
+        type: string
+        default: 'composePreviewPlugin'
+      catalog-path:
+        description: 'When cli-version=catalog, the version-catalog path.'
+        required: false
+        type: string
+        default: 'gradle/libs.versions.toml'
+      driver-ref:
+        description: 'compose-ai-tools ref checked out for the export driver (scripts/design-artifacts).'
+        required: false
+        type: string
+        default: 'main'
+      desktop-render:
+        description: 'Set true for a CMP desktop (Skiko) render — installs Mesa software GL + fonts and runs the render under xvfb. Leave false for an Android/Robolectric render (SDK is preinstalled on ubuntu-latest).'
+        required: false
+        type: boolean
+        default: false
+      allow-incomplete:
+        description: 'Publish even if some previews fail to render or lack semantics (use for the first run while tuning the spec).'
+        required: false
+        type: boolean
+        default: false
+      live-rerender-source:
+        description: 'When true, record source:{repo,ref,module} in catalog.json so a trusted, toolchain-equipped serve box can live-rerender. Inert on the public desktop-only server.'
+        required: false
+        type: boolean
+        default: true
+      commit-user-name:
+        description: 'Author/committer name for the generated delivery-branch commit.'
+        required: false
+        type: string
+        default: 'github-actions[bot]'
+      commit-user-email:
+        description: 'Author/committer email for the generated delivery-branch commit.'
+        required: false
+        type: string
+        default: '41898282+github-actions[bot]@users.noreply.github.com'
+      runs-on:
+        description: 'Runner label.'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+      timeout-minutes:
+        description: 'Job timeout.'
+        required: false
+        type: number
+        default: 60
+    secrets:
+      buildfetch_ro_token:
+        description: 'Optional read-only BuildFetch Gradle remote-cache token, to pull cached task outputs instead of building cold.'
+        required: false
+
+permissions: {}
+
+jobs:
+  generate:
+    name: ${{ inputs.system }}
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: write
+    env:
+      # The preview ids can contain an em-dash; force UTF-8 so `bundle pack --id`
+      # round-trips and the generator's join stays exact.
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+      # Read-only BuildFetch cache (safe at job scope): pull task outputs instead
+      # of building cold. Empty when the secret isn't provided.
+      BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN: ${{ secrets.buildfetch_ro_token }}
+    steps:
+      - name: Check out the calling repo
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Install the released compose-preview CLI, pinned to the plugin version when
+      # cli-version=catalog so the CLI and the applied plugin stay in lockstep.
+      - name: Install compose-preview CLI
+        uses: yschimke/compose-ai-tools/.github/actions/install@main
+        with:
+          version: ${{ inputs.cli-version }}
+          catalog-key: ${{ inputs.catalog-key }}
+          catalog-path: ${{ inputs.catalog-path }}
+          github-token: ${{ github.token }}
+
+      # The export driver + its render helpers live in compose-ai-tools; check it
+      # out (public repo) so we can run scripts/design-artifacts/.
+      - name: Check out compose-ai-tools (export driver)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: yschimke/compose-ai-tools
+          ref: ${{ inputs.driver-ref }}
+          path: compose-ai-tools
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: Install export engine (pinned npm packages)
+        working-directory: compose-ai-tools/scripts/design-artifacts
+        run: npm ci
+
+      # Fast, build-free pre-flight: resolve every spec `preview` against the
+      # module's @Preview functions BEFORE the (long) render, so a mistyped or
+      # renamed name fails here in seconds instead of as a late "missing" entry.
+      - name: Validate catalog spec
+        run: node compose-ai-tools/scripts/design-artifacts/validate-catalog-spec.mjs --spec "${{ inputs.spec }}"
+
+      # CMP desktop (Skiko) links libGL; install Mesa's software GL + a font stack.
+      - name: Install desktop (Skiko) render deps
+        if: ${{ inputs.desktop-render }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb libgl1 libglx-mesa0 libgl1-mesa-dri libfreetype6 libfontconfig1 fontconfig
+
+      - name: Render catalog bundle
+        run: |
+          set -euo pipefail
+          run() { if [ "${{ inputs.desktop-render }}" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
+          run compose-preview bundle pack --module "${{ inputs.module }}" --with-semantics \
+            -o "$GITHUB_WORKSPACE/bundle.png" --timeout 600
+
+      - name: Render extra module
+        if: ${{ inputs.extra-module != '' }}
+        run: |
+          set -euo pipefail
+          run() { if [ "${{ inputs.desktop-render }}" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
+          run compose-preview bundle pack --module "${{ inputs.extra-module }}" --with-semantics \
+            -o "$GITHUB_WORKSPACE/extra-bundle.png" --timeout 600
+
+      - name: Generate importable catalog
+        run: |
+          set -euo pipefail
+          extra=()
+          if [ -n "${{ inputs.extra-module }}" ]; then extra=(--extra-renders "$GITHUB_WORKSPACE/extra-bundle.png"); fi
+          source_args=()
+          if [ "${{ inputs.live-rerender-source }}" = "true" ]; then
+            source_args=(--source-repo "${GITHUB_REPOSITORY}" --source-ref "${GITHUB_REF_NAME}" --source-module "${{ inputs.module }}")
+          fi
+          incomplete=()
+          if [ "${{ inputs.allow-incomplete }}" = "true" ]; then incomplete=(--allow-incomplete); fi
+          node compose-ai-tools/scripts/design-artifacts/generate-design-catalog.mjs \
+            --spec "${{ inputs.spec }}" \
+            --renders "$GITHUB_WORKSPACE/bundle.png" \
+            "${extra[@]}" \
+            --out "$GITHUB_WORKSPACE/out" \
+            --renderer "$(compose-preview --version | head -1)" \
+            "${source_args[@]}" \
+            "${incomplete[@]}"
+
+      - name: Publish to design-artifacts/${{ inputs.system }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SYSTEM: ${{ inputs.system }}
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/out"
+          git init -q
+          git checkout -q -b "design-artifacts/${SYSTEM}"
+          git config user.name '${{ inputs.commit-user-name }}'
+          git config user.email '${{ inputs.commit-user-email }}'
+          git add -A
+          git commit -q -m "chore(design-artifacts): regenerate ${SYSTEM} catalog ($(date -u +%F))"
+          git push --force \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "HEAD:refs/heads/design-artifacts/${SYSTEM}"
