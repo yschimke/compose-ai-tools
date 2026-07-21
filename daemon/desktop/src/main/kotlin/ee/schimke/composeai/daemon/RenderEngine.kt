@@ -116,11 +116,18 @@ class RenderEngine(
    * Always-on post-capture data-artifact extensions, mirroring the Android engine's
    * `builtDataArtifactExtensions` seam. Each [PostCaptureProcessor] runs after the PNG capture,
    * reading the [RenderArtifactContextKeys] the engine populates. Defaults to the portable
-   * always-on set (currently [ComposeSemanticsExtension], shared with the Android daemon); more
-   * sidecars migrate off the inline block onto this seam in follow-ups.
+   * always-on set shared with the Android daemon; more sidecars migrate off the inline block onto
+   * this seam in follow-ups. The wireframe extension is handed the desktop Skia PNG baker and
+   * `densityAware = true` so its output matches the density-resolved payload the inline path wrote.
    */
   private val dataArtifactExtensions: List<PlannedDataExtension> =
-    listOf(ComposeSemanticsExtension()),
+    listOf(
+      ComposeSemanticsExtension(),
+      ComposeSemanticsWireframeExtension(
+        pngGenerator = { payload, destPng -> DesktopSemanticsWireframe.generate(payload, destPng) },
+        densityAware = true,
+      ),
+    ),
 ) {
 
   /**
@@ -688,24 +695,10 @@ class RenderEngine(
             slotTables = state.slotTableCapture?.snapshot().orEmpty(),
             density = density,
           )
-          ComposeSemanticsWireframeDataProducer.writeSvg(
-            rootDir = dataDir,
-            previewId = previewId,
-            payload = payload,
-          )
-          DesktopSemanticsWireframe.generate(
-            payload = payload,
-            destPng =
-              dataDir.resolve(previewId).resolve(ComposeSemanticsWireframeDataProducer.FILE_PNG),
-          )
-          // Unified spatial-semantics tree (`compose/spatial-semantics`) — the degenerate
-          // single-panel case for an ordinary preview: one `panel` at identity pose carrying this
-          // same 2D tree. The XR batch render writes the real multi-panel tree to the same file.
-          SpatialSemanticsDataProducer.writeSinglePanel(
-            rootDir = dataDir,
-            previewId = previewId,
-            payload = payload,
-          )
+          // `compose/semantics-wireframe` (SVG + baked PNG) and `compose/spatial-semantics` are now
+          // written by the shared ComposeSemanticsWireframeExtension via the post-capture loop
+          // below — the same seam the Android engine uses. `payload` above is still built for the
+          // layout-inspector + figma-svg exports that remain inline.
           // `compose/figma-svg` — the layered, editable SVG export (design fidelity, not the
           // schematic wireframe). Reuses the same captured root: the layout tree carries the
           // composable names + container tokens, the semantics `payload` carries editable text.
@@ -768,10 +761,17 @@ class RenderEngine(
         val previewId = state.spec.previewId ?: state.spec.outputBaseName
         val contextData =
           ExtensionContextData.of(
-            RenderArtifactContextKeys.RootDir provides dataDir,
-            RenderArtifactContextKeys.OutputBaseName provides previewId,
-            RenderArtifactContextKeys.SemanticsRoot provides semanticsRoot,
-            RenderArtifactContextKeys.Density provides state.spec.density,
+            *buildList {
+                add(RenderArtifactContextKeys.RootDir provides dataDir)
+                add(RenderArtifactContextKeys.OutputBaseName provides previewId)
+                // Thread the protocol previewId when present so extensions that key their dir off
+                // it
+                // (the wireframe/spatial producer) resolve the same path the inline call did.
+                state.spec.previewId?.let { add(RenderArtifactContextKeys.PreviewId provides it) }
+                add(RenderArtifactContextKeys.SemanticsRoot provides semanticsRoot)
+                add(RenderArtifactContextKeys.Density provides state.spec.density)
+              }
+              .toTypedArray()
           )
         val productStore = RecordingDataProductStore()
         for (ext in dataArtifactExtensions) {

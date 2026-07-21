@@ -28,6 +28,14 @@ object RenderArtifactContextKeys {
   val OutputBaseName: ExtensionContextKey<String> =
     ExtensionContextKey(name = "render-data-artifact.outputBaseName", type = String::class.java)
 
+  /**
+   * Protocol-level preview identifier (`spec.previewId`), when the caller supplied one. Distinct
+   * from [OutputBaseName]; extensions that key their per-preview directory off the protocol id (so
+   * `data/fetch` finds the artefact) prefer this and fall back to [OutputBaseName].
+   */
+  val PreviewId: ExtensionContextKey<String> =
+    ExtensionContextKey(name = "render-data-artifact.previewId", type = String::class.java)
+
   /** Captured root semantics node for the rendered preview. */
   val SemanticsRoot: ExtensionContextKey<SemanticsNode> =
     ExtensionContextKey(

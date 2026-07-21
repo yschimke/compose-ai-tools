@@ -1715,7 +1715,16 @@ open class RobolectricHost(
               // the Desktop engine, targets {Android, Desktop}); it carries no Android-Context
               // factory, so wrap it inline here.
               RenderDataArtifactExtensionFactory { ComposeSemanticsExtension() },
-              ComposeSemanticsWireframeExtension.factory,
+              // ComposeSemanticsWireframeExtension is shared too; Android supplies the Robolectric
+              // PNG baker and densityAware=false to preserve its current (density=1f) payload.
+              RenderDataArtifactExtensionFactory {
+                ComposeSemanticsWireframeExtension(
+                  pngGenerator = { payload, destPng ->
+                    AndroidSemanticsWireframe.generate(payload, destPng)
+                  },
+                  densityAware = false,
+                )
+              },
               LayoutInspectorExtension.factory,
               ComposeFigmaSvgExtension.factory,
               I18nTranslationsExtension.factory,

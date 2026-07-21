@@ -58,10 +58,9 @@ object RenderDataArtifactContextKeys {
   /**
    * Protocol-level preview identifier (`spec.previewId`), if the caller supplied one. Distinct from
    * [OutputBaseName]; some extensions (fonts) historically prefer this when present and fall back
-   * to the base name otherwise.
+   * to the base name otherwise. Delegates to [RenderArtifactContextKeys.PreviewId].
    */
-  val PreviewId: ExtensionContextKey<String> =
-    ExtensionContextKey(name = "render-data-artifact.previewId", type = String::class.java)
+  val PreviewId: ExtensionContextKey<String> = RenderArtifactContextKeys.PreviewId
 
   /** BCP-47 locale tag the render was performed with, when the request specified one. */
   val RenderedLocale: ExtensionContextKey<String> =
