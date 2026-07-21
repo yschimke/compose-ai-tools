@@ -6,6 +6,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
 
@@ -17,18 +18,20 @@ import org.gradle.testkit.runner.TaskOutcome
  * 'buildscript.repositories'.`
  *
  * Asserts that the rendered init script's `allprojects { buildscript { repositories { ... } } }`
- * sub-block is suppressed when the settings file matches this shape AND that the classpath
- * dependency injection is also skipped for modules without their own `buildscript { repositories {
- * ... } }` — adding the dep there would crash configuration with `Cannot resolve external
- * dependency ... because no repositories are defined`, short-circuiting the entire Tooling API
- * query (the 0.11.8 regression; the bug filed against the v0.11.8 follow-up to PRs #1483/#1490).
+ * sub-block is suppressed when the settings file matches this shape, so it never trips the
+ * validation. For a module without its own `buildscript { repositories { ... } }`, the init script
+ * does NOT add repositories or inject a raw coordinate (either would crash configuration); instead
+ * it resolves the plugin classpath through the project's own settings-managed repositories via a
+ * detached configuration and injects the resolved JARs as `files(...)` — landing the plugin on the
+ * module's own buildscript classloader without touching `buildscript.repositories`. The
+ * `configures cleanly` test pins the no-crash behavior; the `applies the plugin` test pins that the
+ * files() path actually applies the plugin when the coordinate is resolvable.
  *
  * PR #1483 tried to dodge the validation with an `initscript { classpath ... }` load, but that
  * broke plugins-that-reference-AGP at runtime (`NoClassDefFoundError:
  * com/android/build/api/variant/AndroidComponentsExtension` — init-script-loaded plugins sit on a
- * sibling classloader of AGP). The current fix keeps the plugin on the project's buildscript
- * classloader and forks per-project: modules with their own buildscript repos get the classpath dep
- * injected (resolution can succeed via those); modules without are skipped entirely.
+ * sibling classloader of AGP). The current fix keeps the plugin on the project's OWN buildscript
+ * classloader (via the resolved files()), which preserves AGP visibility.
  *
  * Uses TestKit's default Gradle (the wrapper version) so the test fires the same validation that
  * production users hit; older Gradle wouldn't see the validation at all.
@@ -91,10 +94,12 @@ class InitScriptExclusiveContentReproducerTest {
     // 0.11.8 fix sidestepped that validation but still injected the classpath dep, which then
     // failed with "Cannot resolve external dependency ... because no repositories are defined"
     // for any module without its own buildscript { repositories { ... } } — that crashed the
-    // whole Tooling API query (the 0.11.8 follow-up regression). The current fix skips both
-    // the repos add and the classpath dep injection on modules that have no buildscript repos
-    // of their own, so configuration completes cleanly. Modules silently miss the plugin in
-    // this branch — auto-inject is meant to be invisible.
+    // whole Tooling API query (the 0.11.8 follow-up regression). The current fix neither adds
+    // repos nor injects a raw coordinate for such modules: it resolves the plugin classpath via a
+    // detached configuration and injects files(). Here the coordinate ("0.11.9") isn't published
+    // to any repo the consumer declares, so resolution fails, is swallowed (runCatching), and the
+    // branch degrades to a no-op — configuration still completes cleanly with no crash. The
+    // `applies the plugin` test below covers the resolvable case.
     val project = createConfettiShapedProject()
     val initScript = materializeInitScript(tempDir(), "0.11.9")
 
@@ -169,5 +174,150 @@ class InitScriptExclusiveContentReproducerTest {
         "scanner false-positive would silently disable auto-inject for vanilla consumers; " +
         "output:\n$output",
     )
+  }
+
+  @Test
+  fun `init script applies the plugin via detached-config files() in the exclusiveContent shape`() {
+    // The Confetti :androidApp fix, end to end: in the exclusiveContent shape a module WITHOUT its
+    // own buildscript repos can't add to buildscript.repositories, so the init script resolves the
+    // plugin classpath through the project's settings-managed repos via a detached configuration
+    // and injects files(). This proves that, when the coordinate IS resolvable, the plugin actually
+    // applies to the module — not just that configuration doesn't crash. Two stub plugins are
+    // published to a local maven repo: `ee.schimke.composeai.preview` (prints a marker on apply)
+    // and a fake `com.android.application` (the withPlugin host id that triggers auto-inject).
+    val repo = tempDir("compose-preview-repro-repo-")
+    publishStubPlugins(repo)
+
+    val root = tempDir()
+    // Confetti shape: exclusiveContent shared into pluginManagement + DRM; the stub repo in both so
+    // the plugins-DSL (com.android.application) AND the detached-config resolution find the stubs.
+    // `:app` declares NO buildscript repositories of its own — the exact repo-less shape.
+    File(root, "settings.gradle.kts")
+      .writeText(
+        """
+        pluginManagement {
+            repositories {
+                maven { url = uri("${repo.toURI()}") }
+                mavenCentral()
+                exclusiveContent {
+                    forRepository { maven { url = uri("https://example.com/m2") } }
+                    filter { includeVersionByRegex("com.example.snap", ".*", ".*SNAPSHOT.*") }
+                }
+                gradlePluginPortal()
+            }
+        }
+        dependencyResolutionManagement {
+            repositories {
+                maven { url = uri("${repo.toURI()}") }
+                exclusiveContent {
+                    forRepository { maven { url = uri("https://example.com/m2") } }
+                    filter { includeVersionByRegex("com.example.snap", ".*", ".*SNAPSHOT.*") }
+                }
+            }
+        }
+        rootProject.name = "confetti-repro-apply"
+        include(":app")
+        """
+          .trimIndent()
+      )
+    File(root, "build.gradle.kts").writeText("// root build script — intentionally empty\n")
+    val app = File(root, "app").apply { mkdirs() }
+    File(app, "build.gradle.kts")
+      .writeText("""plugins { id("com.android.application") version "1.0" }""")
+
+    val initScript = materializeInitScript(tempDir(), "1.0")
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(root)
+        .withArguments(":app:help", "--init-script", initScript.absolutePath, "--stacktrace")
+        .forwardOutput()
+        .build()
+
+    assertFalse(
+      result.output.contains("exclusive repository content"),
+      "init script tripped the exclusiveContent validation; full output:\n${result.output}",
+    )
+    assertEquals(
+      TaskOutcome.SUCCESS,
+      result.task(":app:help")?.outcome,
+      "expected :app:help to succeed; got:\n${result.output}",
+    )
+    assertTrue(
+      result.output.contains("COMPOSE-PREVIEW-APPLIED to :app"),
+      "expected the compose-preview plugin to be auto-injected and applied to :app via the " +
+        "detached-config files() path; full output:\n${result.output}",
+    )
+  }
+
+  /**
+   * Publishes two stub Gradle plugins to [repo] via a nested TestKit build: the compose-preview
+   * plugin (id `ee.schimke.composeai.preview`, prints a marker on apply) and a fake
+   * `com.android.application` (the withPlugin host id that triggers auto-inject). Kept as separate
+   * subprojects so distinct implementation artifacts are published — resolving the compose-preview
+   * marker must not drag in the fake-AGP descriptor.
+   */
+  private fun publishStubPlugins(repo: File) {
+    val build = tempDir("compose-preview-repro-stubs-")
+    File(build, "settings.gradle.kts")
+      .writeText("rootProject.name = \"stubs\"\ninclude(\":preview\", \":agp\")\n")
+    File(build, "build.gradle.kts").writeText("")
+
+    fun stub(module: String, group: String, pluginId: String, pkg: String, cls: String, msg: String) {
+      val dir = File(build, module).apply { mkdirs() }
+      File(dir, "build.gradle.kts")
+        .writeText(
+          """
+          plugins {
+              `java-gradle-plugin`
+              `maven-publish`
+          }
+          group = "$group"
+          version = "1.0"
+          gradlePlugin {
+              plugins {
+                  create("$module") {
+                      id = "$pluginId"
+                      implementationClass = "$pkg.$cls"
+                  }
+              }
+          }
+          publishing { repositories { maven { url = uri("${repo.toURI()}") } } }
+          """
+            .trimIndent()
+        )
+      val src = File(dir, "src/main/java/$pkg").apply { mkdirs() }
+      File(src, "$cls.java")
+        .writeText(
+          """
+          package $pkg;
+          import org.gradle.api.Plugin;
+          import org.gradle.api.Project;
+          public class $cls implements Plugin<Project> {
+              public void apply(Project p) { System.out.println("$msg to " + p.getPath()); }
+          }
+          """
+            .trimIndent()
+        )
+    }
+
+    stub(
+      module = "preview",
+      group = "ee.schimke.composeai.preview",
+      pluginId = "ee.schimke.composeai.preview",
+      pkg = "cp",
+      cls = "PreviewPlugin",
+      msg = "COMPOSE-PREVIEW-APPLIED",
+    )
+    stub(
+      module = "agp",
+      group = "com.android.tools.build",
+      pluginId = "com.android.application",
+      pkg = "agp",
+      cls = "FakeAgpPlugin",
+      msg = "FAKE-AGP-APPLIED",
+    )
+
+    GradleRunner.create().withProjectDir(build).withArguments("publish", "--stacktrace").build()
   }
 }

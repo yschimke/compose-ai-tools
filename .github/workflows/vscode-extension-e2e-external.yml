@@ -3,11 +3,9 @@ name: VS Code Extension E2E (external consumer)
 # Companion to `vscode-extension-e2e.yml`. That workflow drives the
 # extension against `:samples:cmp` / `:samples:wear`, both wired via
 # `includeBuild("gradle-plugin")` — the dev-loop path. This workflow drives
-# the extension against `yschimke/Confetti` — a public fork of
-# joreilly/Confetti kept in lockstep with upstream that declares the
-# `composeai.preview` alias on the tested modules (tracking `main`, override
-# repo/ref via `EXTERNAL_REPO_URL` / `EXTERNAL_REPO_REF`), with the plugin
-# resolved through the consumer's `gradle/libs.versions.toml` against the local
+# the extension against `joreilly/Confetti` (tracking `main`, override via
+# `EXTERNAL_REPO_REF` from workflow_dispatch), with the plugin resolved
+# through the consumer's `gradle/libs.versions.toml` against the local
 # SNAPSHOT just `publishToMavenLocal`'d. That closes the published-
 # plugin-coordinate gap: the in-repo suite can't catch regressions where the
 # plugin works fine via `includeBuild` but fails as a published artifact

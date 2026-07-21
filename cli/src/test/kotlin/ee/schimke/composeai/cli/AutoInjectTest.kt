@@ -324,7 +324,9 @@ class AutoInjectTest {
       "expected the set to be populated during settingsEvaluated",
     )
     assertTrue(
-      script.contains("projectDir !in composeAiPreviewPreAppliedDirs"),
+      script.contains(
+        "val composeAiPreviewIsPreApplied = projectDir in composeAiPreviewPreAppliedDirs"
+      ),
       "expected the buildscript block to be guarded per-project on the directory set",
     )
     assertTrue(
@@ -552,7 +554,7 @@ class AutoInjectTest {
     )
     assertTrue(
       script.contains(
-        "if (!composeAiPreviewSettingsHasExclusiveContent) {\n                repositories {"
+        "if (!composeAiPreviewSettingsHasExclusiveContent) {\n                    repositories {"
       ),
       "expected the buildscript repositories add to be guarded — must keep the dependency add " +
         "and the apply hooks reachable when exclusiveContent is present",
@@ -771,10 +773,12 @@ class AutoInjectTest {
   }
 
   @Test
-  fun `init script gates buildscript classpath dep injection on per-project buildscript repos in exclusiveContent branch`() {
-    // Successor to the 0.11.8 follow-up regression: in the exclusiveContent branch, the
-    // classpath dep is unresolvable on modules without their own buildscript repos. Pins the
-    // wire shape so that the scanner and the per-project skip both survive future refactors.
+  fun `init script forks the exclusiveContent branch on per-project buildscript repos`() {
+    // In the exclusiveContent branch, a module WITHOUT its own buildscript repos can't add to
+    // buildscript.repositories (Gradle 9.3+). Instead of dropping the plugin there, it resolves
+    // the classpath via a detached configuration and injects files() (see the dedicated test
+    // below); modules WITH their own repos take the plain coordinate path. Pins the wire shape so
+    // the scanner and the per-project fork survive future refactors.
     val script = renderInitScript("0.11.9")
     assertTrue(
       script.contains(
@@ -796,20 +800,48 @@ class AutoInjectTest {
     )
     assertTrue(
       script.contains(
-        "val composeAiPreviewSkipExclusiveContentClasspathDep =\n        composeAiPreviewSettingsHasExclusiveContent &&\n            projectDir !in composeAiPreviewProjectsWithOwnBuildscriptRepos"
+        "val composeAiPreviewNeedsResolvedClasspathInject =\n        composeAiPreviewSettingsHasExclusiveContent &&\n            projectDir !in composeAiPreviewProjectsWithOwnBuildscriptRepos"
       ),
-      "expected the per-project skip flag in allprojects",
+      "expected the per-project fork flag in allprojects",
     )
-    assertTrue(
-      script.contains(
-        "if ((composeAiPreviewSkipExclusiveContentClasspathDep ||\n        composeAiPreviewHasPreAppliedDescendant) &&\n        projectDir !in composeAiPreviewPreAppliedDirs) return@allprojects"
-      ),
-      "expected the apply hooks to short-circuit for skipped modules (otherwise " +
-        "pluginManager.apply would fail with 'Plugin with id ... not found')",
+    assertFalse(
+      script.contains("composeAiPreviewSkipExclusiveContentClasspathDep"),
+      "the old skip-and-drop flag must be gone — the branch now resolves + injects",
     )
     assertFalse(
       script.contains("[compose-preview] settings.gradle.kts declares exclusiveContent in"),
       "init script should not emit lifecycle logs nudging the user to apply the plugin",
+    )
+  }
+
+  @Test
+  fun `init script resolves and injects the plugin classpath as files in the repo-less exclusiveContent branch`() {
+    // The fix for the Confetti :androidApp failure: a module in the exclusiveContent shape
+    // WITHOUT its own buildscript repos resolves the plugin classpath through the project's own
+    // (settings-managed) repositories via a detached configuration and injects the resolved JARs
+    // as files() — landing the plugin on the module's OWN buildscript classloader (alongside AGP)
+    // without touching buildscript.repositories. Previously this branch returned early and the
+    // module silently missed the plugin.
+    val script = renderInitScript("0.11.9")
+    assertTrue(
+      script.contains(
+        "fun org.gradle.api.Project.composeAiPreviewResolvePluginClasspath(): Set<java.io.File> {"
+      ),
+      "expected the detached-configuration classpath resolver helper",
+    )
+    assertTrue(
+      script.contains(
+        "configurations.detachedConfiguration(composeAiPreviewMarker).files.toSet()"
+      ),
+      "expected resolution via a detached configuration (not a buildscript.repositories add)",
+    )
+    assertTrue(
+      script.contains("add(\"classpath\", composeAiPreviewClasspathFiles)"),
+      "expected the resolved files to be injected onto the buildscript classpath",
+    )
+    assertTrue(
+      script.contains("composeAiPreviewCachedPluginClasspath?.let { return it }"),
+      "expected the resolved classpath to be memoised across modules",
     )
   }
 
@@ -832,13 +864,13 @@ class AutoInjectTest {
     )
     assertTrue(
       script.contains(
-        "if (!composeAiPreviewSkipExclusiveContentClasspathDep &&\n        !composeAiPreviewHasPreAppliedDescendant &&\n        projectDir !in composeAiPreviewPreAppliedDirs) {"
+        "if (!composeAiPreviewIsPreApplied && !composeAiPreviewHasPreAppliedDescendant) {"
       ),
-      "expected the buildscript classpath injection to also be gated on the descendant flag",
+      "expected the buildscript classpath injection to be gated on the pre-applied + descendant flags",
     )
     assertTrue(
       script.contains(
-        "if ((composeAiPreviewSkipExclusiveContentClasspathDep ||\n        composeAiPreviewHasPreAppliedDescendant) &&\n        projectDir !in composeAiPreviewPreAppliedDirs) return@allprojects"
+        "if (composeAiPreviewHasPreAppliedDescendant && !composeAiPreviewIsPreApplied) {\n        return@allprojects\n    }"
       ),
       "expected the apply hooks to short-circuit for ancestors of pre-applied modules too",
     )

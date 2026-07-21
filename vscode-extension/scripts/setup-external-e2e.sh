@@ -1,27 +1,10 @@
 #!/usr/bin/env bash
 # Prepares an external (third-party) Gradle/Kotlin project as the workspace
 # for the VS Code extension e2e suite at `e2eExternal.test.ts`. Built around
-# yschimke/Confetti by default — a public fork of joreilly/Confetti (a
-# real-world Compose Multiplatform + Wear OS consumer) that declares
-# `alias(libs.plugins.composeai.preview)` on the modules under test
-# (`:androidApp`, `:wearApp`) — but the same shape works for any repo whose
-# `gradle/libs.versions.toml` pins our plugin version through
-# `composeai-preview`.
-#
-# Why the fork and not joreilly/Confetti upstream: the suite drives the
-# *published-coordinate* apply path, which requires the module under test to
-# actually apply the plugin. Confetti uses the `exclusiveContent`
-# pluginManagement shape, under which Gradle 9.3+ forbids the init-script
-# auto-inject from adding to `buildscript.repositories` (see
-# `initScript.ts` / `InitScriptExclusiveContentReproducerTest`), so a
-# module that doesn't declare the plugin itself is deliberately skipped —
-# there is no clean way to auto-apply it. joreilly upstream declares the
-# alias on `:wearApp` but not `:androidApp`, so `:androidApp` silently loses
-# the plugin and `resolveModule` returns null. The fork keeps the alias on
-# the tested modules so the plugin applies cleanly through the catalog
-# alias, exactly as a correctly-configured consumer would. The fork is kept
-# in lockstep with upstream, so this still exercises real KMP/AGP/Compose
-# drift.
+# joreilly/Confetti by default — a real-world Compose Multiplatform + Wear OS
+# consumer that already declares `alias(libs.plugins.composeai.preview)` —
+# but the same shape works for any repo whose `gradle/libs.versions.toml`
+# pins our plugin version through `composeai-preview`.
 #
 # Why a separate suite: the in-repo `:samples:*` e2e wires the plugin via
 # `includeBuild("gradle-plugin")`, which is the perfectly-aligned dev-loop
@@ -37,7 +20,7 @@
 #   scripts/setup-external-e2e.sh [TARGET_DIR]
 #
 # Env (override defaults):
-#   EXTERNAL_REPO_URL   git URL (default: https://github.com/yschimke/Confetti.git)
+#   EXTERNAL_REPO_URL   git URL (default: https://github.com/joreilly/Confetti.git)
 #   EXTERNAL_REPO_REF   commit SHA / tag / branch (default: pinned SHA below)
 #   PLUGIN_VERSION      plugin coordinate to inject (default: read from
 #                       `.release-please-manifest.json` and bump to
@@ -50,7 +33,7 @@
 
 set -euo pipefail
 
-DEFAULT_REPO_URL="https://github.com/yschimke/Confetti.git"
+DEFAULT_REPO_URL="https://github.com/joreilly/Confetti.git"
 # Track `main` rather than a pinned SHA. Lets the suite pick up upstream
 # fixes (e.g. catalog dep adjustments needed for new plugin task wiring)
 # without requiring a separate bump PR, and the catalog rewrite below
@@ -105,24 +88,8 @@ if [[ ! -d "$target_dir/.git" ]]; then
 else
   (
     cd "$target_dir"
-    # Reconcile `origin` with the requested URL first. A checkout materialised
-    # before the default repo changed (e.g. the old joreilly/Confetti default,
-    # persisted at `/tmp/compose-preview-external-e2e` across local/cloud
-    # reruns) still has `origin` pointing at the stale remote, so fetching
-    # without this would silently pull the old repo and defeat a URL switch.
-    # `set-url` is idempotent when it already matches; fall back to `add` if the
-    # remote is somehow absent. CI is unaffected (fresh `RUNNER_TEMP` each run
-    # takes the `.git`-absent branch above) — this is purely for reused dirs.
-    current_url="$(git remote get-url origin 2>/dev/null || echo)"
-    if [[ "$current_url" != "$repo_url" ]]; then
-      git remote set-url origin "$repo_url" 2>/dev/null ||
-        git remote add origin "$repo_url"
-    fi
     current="$(git rev-parse HEAD)"
-    # Re-fetch when HEAD isn't already at the requested ref OR when the remote
-    # URL just changed — the latter forces a move onto the new repo's content
-    # even if the old checkout's HEAD happened to match `$repo_ref`.
-    if [[ "$current" != "$repo_ref"* || "$current_url" != "$repo_url" ]]; then
+    if [[ "$current" != "$repo_ref"* ]]; then
       git fetch --depth 1 origin "$repo_ref"
       # `--force` discards uncommitted edits in the existing checkout
       # before moving HEAD. Required because the catalog rewrite below
