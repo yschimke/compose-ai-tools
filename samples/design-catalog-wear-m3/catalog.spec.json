@@ -1,4 +1,5 @@
 {
+  "$schema": "https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/design-artifacts/catalog.spec.schema.json",
   "$comment": "Phase-0 catalog spec for Wear Compose Material 3. Code-led: the render is authoritative; the kit references are for the one-off seed import only. Wear is dark-first, so the primary modes are the round size breakpoints (small/large round) rather than light/dark. A component's `variants` fold extra state renders (pressed/focused/disabled/off/…) onto the same sticker: the default preview is what the grid shows, and each variant's render becomes a secondary image (tagged with its `state`) surfaced in the single-component view, so state stickers live under their parent instead of a flat 'States' group.",
   "system": "wear-m3",
   "title": "Wear Compose Material 3",
