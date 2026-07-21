@@ -5,6 +5,7 @@ import ee.schimke.composeai.io.TemporaryDirectory
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import kotlinx.serialization.json.Json
@@ -325,11 +326,35 @@ class BundleRenderer(
       add(classpath)
       add("ee.schimke.composeai.renderer.AndroidRendererMainKt")
     }
-    val pb = ProcessBuilder(command).redirectErrorStream(true)
+    return runRenderProcess(ProcessBuilder(command), tailLines = 40)
+  }
+
+  /**
+   * Start a render subprocess, drain its merged stdout/stderr on a daemon thread, and wait up to
+   * [RENDER_PROCESS_TIMEOUT_SECONDS]. Reading the pipe on a separate thread (rather than
+   * `readText()` on the caller) means a subprocess that hangs without closing stdout can't block us
+   * past the timeout — `destroyForcibly()` closes the stream and ends the drain thread. Returns
+   * exit code (124 on timeout) and the last [tailLines] lines of output.
+   */
+  private fun runRenderProcess(pb: ProcessBuilder, tailLines: Int): Pair<Int, String> {
+    pb.redirectErrorStream(true)
     val proc = pb.start()
-    val output = proc.inputStream.bufferedReader().readText()
-    val exitCode = proc.waitFor()
-    return exitCode to output.lines().takeLast(40).joinToString("\n")
+    val sb = StringBuilder()
+    val drain =
+      Thread { proc.inputStream.bufferedReader().forEachLine { sb.appendLine(it) } }
+        .apply {
+          isDaemon = true
+          start()
+        }
+    val finished = proc.waitFor(RENDER_PROCESS_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+    if (!finished) proc.destroyForcibly()
+    drain.join(DRAIN_FLUSH_MILLIS)
+    val tail = sb.toString().lines().takeLast(tailLines).joinToString("\n")
+    return if (finished) {
+      proc.exitValue() to tail
+    } else {
+      124 to (tail + "\n[render subprocess timed out after ${RENDER_PROCESS_TIMEOUT_SECONDS}s]")
+    }
   }
 
   /** Locate the Android renderer sidecar jars — Android twin of [locateRendererClasspath]. */
@@ -463,12 +488,7 @@ class BundleRenderer(
         .toMutableList()
         .apply { addAll(args) }
         .let { ProcessBuilder(it) }
-    pb.redirectErrorStream(true)
-    val proc = pb.start()
-    val output = proc.inputStream.bufferedReader().readText()
-    val exitCode = proc.waitFor()
-    val tail = output.lines().takeLast(20).joinToString("\n")
-    return exitCode to tail
+    return runRenderProcess(pb, tailLines = 20)
   }
 
   internal fun buildRendererArgs(preview: PreviewInfo, outFile: File): List<String> {
@@ -627,6 +647,14 @@ class BundleRenderer(
 
     /** Compose Desktop's default density = 2.625× (~xxhdpi). Same constant as the renderer. */
     private const val DEFAULT_DENSITY: Float = 2.625f
+
+    /**
+     * Upper bound on a single render subprocess (cold JVM start + one preview). Matches the
+     * generous Gradle-render ceiling in [serve.GradleRevisionBuilder]; a wedged render (composition
+     * that never settles, native Skiko stall) is force-killed rather than hanging `bundle render`.
+     */
+    private const val RENDER_PROCESS_TIMEOUT_SECONDS = 600L
+    private const val DRAIN_FLUSH_MILLIS = 2000L
 
     private val BUNDLE_JSON = Json {
       ignoreUnknownKeys = true
