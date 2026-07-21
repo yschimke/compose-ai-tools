@@ -19,6 +19,7 @@ const SAMPLE_SPECS = [
   "samples/design-catalog-m3/catalog.spec.json",
   "samples/design-catalog-wear-m3/catalog.spec.json",
   "samples/design-catalog-remote-m3/catalog.spec.json",
+  "samples/design-catalog-confetti/catalog.spec.json",
 ];
 
 for (const rel of SAMPLE_SPECS) {

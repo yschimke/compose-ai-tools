@@ -1,0 +1,90 @@
+{
+  "$schema": "https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/design-artifacts/catalog.spec.schema.json",
+  "$comment": "Phase-0 catalog spec for the Confetti mobile (Compose Material 3) sheet. Code-led: the render is authoritative. Modelled on the Confetti conference app (joreilly/confetti) — the stickers reproduce its signature surfaces (session cards, the bookmark toggle, speaker rows, the schedule scaffold) in standalone material3, plus the per-conference brand themes the app derives from each conference's themeColor seed. Primary modes are the M3 light/dark pair. A component's `variants` fold extra state renders (bookmarked/off) onto the same sticker.",
+  "system": "confetti",
+  "title": "Confetti (Mobile Material 3)",
+  "library": ["androidx.compose.material3:material3"],
+  "module": "samples:design-catalog-confetti",
+  "modes": ["light", "dark"],
+  "groups": [
+    {
+      "name": "Sessions",
+      "components": [
+        {
+          "componentId": "Session/Card",
+          "preview": "SessionCardSticker",
+          "caption": "The signature session row — bold title, speakers, and room, with the bookmark toggle.",
+          "variants": [
+            { "state": "bookmarked", "preview": "SessionCardBookmarked", "caption": "Bookmarked — the ribbon fills and tints to primary." }
+          ]
+        },
+        {
+          "componentId": "Session/Lightning",
+          "preview": "LightningSessionCard",
+          "caption": "A lightning-talk session — the primaryContainer bolt pill above the title."
+        },
+        {
+          "componentId": "Session/Break",
+          "preview": "BreakSticker",
+          "caption": "A break row — title + time span, no room and no bookmark."
+        }
+      ]
+    },
+    {
+      "name": "Bookmark",
+      "components": [
+        {
+          "componentId": "Bookmark",
+          "preview": "BookmarkAddSticker",
+          "caption": "The bookmark toggle — the outlined add-bookmark ribbon.",
+          "variants": [
+            { "state": "bookmarked", "preview": "BookmarkOnSticker", "caption": "Bookmarked — filled ribbon tinted primary." }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Headers",
+      "components": [
+        { "componentId": "Header/Time", "preview": "TimeHeaderSticker", "caption": "The sticky section header — a clock icon + time between two dividers." },
+        { "componentId": "LightningPill", "preview": "LightningPillSticker", "caption": "The lightning-talk pill on its own — a primaryContainer capsule with the bolt." }
+      ]
+    },
+    {
+      "name": "Speakers",
+      "components": [
+        { "componentId": "Speaker/ListItem", "preview": "SpeakerListItemSticker", "caption": "A speaker row — 64dp circular avatar, name, tagline." },
+        { "componentId": "Speaker/GridCell", "preview": "SpeakerGridCellSticker", "caption": "A speaker grid cell — 150dp rounded avatar over the centred name." }
+      ]
+    },
+    {
+      "name": "Navigation",
+      "components": [
+        { "componentId": "DayTabs", "preview": "DayTabRowSticker", "caption": "The schedule day tabs — one tab per conference day." },
+        { "componentId": "BottomBar", "preview": "BottomBarSticker", "caption": "The bottom navigation — Schedule, Speakers, Bookmarks, Venue." }
+      ]
+    },
+    {
+      "name": "Search",
+      "components": [
+        { "componentId": "SearchField", "preview": "SearchFieldSticker", "caption": "The rounded search field — leading magnifier, trailing clear, no indicator line." }
+      ]
+    },
+    {
+      "name": "Conference themes",
+      "components": [
+        { "componentId": "Theme/Confetti", "preview": "ConfettiBrandTheme", "caption": "The default Confetti purple brand, applied to a session card + token swatches." },
+        { "componentId": "Theme/KotlinConf", "preview": "KotlinConfTheme", "caption": "Re-branded from KotlinConf's JetBrains-purple seed (#7F52FF)." },
+        { "componentId": "Theme/DevFest", "preview": "DevFestTheme", "caption": "Re-branded from DevFest's Google-blue seed (#4285F4)." },
+        { "componentId": "Theme/droidcon", "preview": "DroidconTheme", "caption": "Re-branded from droidcon's green seed (#00D775)." },
+        { "componentId": "Theme/AndroidMakers", "preview": "AndroidMakersTheme", "caption": "Re-branded from Android Makers' amber seed (#E59A4F)." }
+      ]
+    },
+    {
+      "name": "Scaffold templates",
+      "components": [
+        { "componentId": "Template/Schedule", "preview": "ScheduleScreenTemplate", "caption": "The full schedule screen — CenterAlignedTopAppBar, day tabs, time header, session rows, break, and bottom nav, on a phone with system chrome." }
+      ]
+    }
+  ]
+}
