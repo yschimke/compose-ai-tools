@@ -1299,6 +1299,25 @@ object PreviewDiscovery {
       } else {
         annotations.flatMap { resolveMultiPreview(it, scanResult, mutableSetOf()) }
       }
+    // Issue #2613: a preview-family annotation whose class isn't on the discovery classpath is
+    // dropped silently by `resolveMultiPreview` (its `getClassInfo` lookup returns null), so the
+    // preview vanishes from the manifest with no diagnostic — a strict catalog render later fails
+    // with `missing renders` and no clue why. Surface it as a WARN. Scoped to the `directPreviews`
+    // empty branch: that's exactly where `resolveMultiPreview` ran and could have silently dropped
+    // an unreachable annotation (and the mixed case where a sibling annotation still resolved).
+    if (directPreviews.isEmpty()) {
+      for (fqn in unexpandablePreviewAnnotationNames(annotations, scanResult)) {
+        val simple = fqn.substringAfterLast('.')
+        warnings.add(
+          "composePreview: '${classInfo.name}.${method.name}' carries @$simple ($fqn) but " +
+            "discovery could not expand it into any @Preview — the annotation class is not on the " +
+            "discovery classpath for source set '${input.variantName}'. This usually means the " +
+            "tooling artifact that defines @$simple is wired into a test-only source set (e.g. " +
+            "screenshotTestImplementation) rather than the main/implementation classpath, so the " +
+            "preview is silently missing until it is resolvable there. See issue #2613."
+        )
+      }
+    }
     if (directPreviews.isEmpty() && resolvedMultiPreviews.isEmpty()) return
 
     // @PreviewWrapper and @ScrollingPreview are both non-repeatable and apply
@@ -2377,6 +2396,63 @@ object PreviewDiscovery {
     }
     return result
   }
+
+  // Preview-adjacent annotations we own that legitimately never expand into a `@Preview` — they
+  // modify, wrap, or parameterise a preview rather than declare one. Their simple names all contain
+  // `Preview`, so the unexpandable-annotation heuristic below (which matches on
+  // `contains("Preview")`
+  // — the wear multi-preview annotations put `Preview` mid-name, e.g. `WearPreviewLargeRound`) must
+  // exclude them explicitly or it would warn on every `@ScrollingPreview` / `@PreviewParameter`.
+  // The
+  // direct-preview FQNs — plain / desktop / tile / notification / glance / XR `@Preview` — are
+  // excluded separately by [isDirectPreview].
+  private val NON_EXPANDING_PREVIEW_FQNS =
+    setOf(
+      SCROLLING_PREVIEW_FQN,
+      ANIMATED_PREVIEW_FQN,
+      FOCUSED_PREVIEW_FQN,
+      AMBIENT_PREVIEW_FQN,
+      GESTURE_HINT_PREVIEW_FQN,
+      LAUNCHER_WIDGET_PREVIEW_FQN,
+      LAUNCHER_WIDGET_RESIZE_FQN,
+      PREVIEW_PARAMETER_FQN,
+      PREVIEW_WRAPPER_FQN,
+      PREVIEW_WRAPPER_CLASS_FQN,
+      ROBO_COMPOSE_PREVIEW_OPTIONS_FQN,
+    )
+
+  /**
+   * FQNs among [annotations] that look like preview-family annotations — a multi-preview
+   * meta-annotation or user wrapper whose simple name contains `Preview` — yet which
+   * [resolveMultiPreview] can't expand into any `@Preview`, so the preview is dropped with no
+   * diagnostic. Issue #2613: `@WearPreviewLargeRound` in an app's `main` source set, whose wear
+   * tooling artifact was wired only into `screenshotTest`, vanished this way — its annotation class
+   * isn't on the discovery classpath, so the meta-annotation closure has no reachable `@Preview`.
+   *
+   * Keyed on the *resolution result* (`resolveMultiPreview(...).isEmpty()`) rather than on
+   * `getClassInfo == null`: ClassGraph hands back a non-null placeholder `ClassInfo` for an
+   * annotation class that's merely referenced (never scanned), so a null check misses exactly this
+   * case. Deliberately narrow to avoid false positives: reachable multi-preview annotations resolve
+   * to a non-empty list (skipped), the capture/wrapper/parameter annotations we own are excluded
+   * via [NON_EXPANDING_PREVIEW_FQNS], and the `contains("Preview")` name filter excludes unrelated
+   * annotations (`@Composable`, `@JvmStatic`, …). Direct `@Preview` / `Preview.Container` are
+   * handled elsewhere.
+   */
+  private fun unexpandablePreviewAnnotationNames(
+    annotations: List<AnnotationInfo>,
+    scanResult: ScanResult,
+  ): List<String> =
+    annotations
+      .asSequence()
+      .filterNot { isDirectPreview(it) || isPreviewContainer(it) }
+      .filterNot { it.name in NON_EXPANDING_PREVIEW_FQNS }
+      .filter { ann ->
+        ann.name.substringAfterLast('.').contains("Preview") &&
+          resolveMultiPreview(ann, scanResult, mutableSetOf()).isEmpty()
+      }
+      .map { it.name }
+      .distinct()
+      .toList()
 
   private fun resolveMultiPreview(
     ann: AnnotationInfo,

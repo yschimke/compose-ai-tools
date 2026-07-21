@@ -117,6 +117,45 @@ class PreviewDiscoveryFailureWarningsTest {
   }
 
   @Test
+  fun `an unexpandable preview-family annotation warns instead of vanishing silently`() {
+    // Issue #2613: a method whose only preview annotation is a multi-preview meta-annotation
+    // (`@WearPreviewLargeRound`) whose annotation class is NOT on the discovery classpath — the
+    // classic shape of wear tooling wired only into `screenshotTest`. `resolveMultiPreview` can't
+    // see the `@Preview` inside it (its `getClassInfo` returns null) so the preview used to vanish
+    // with no diagnostic. Discovery must now emit an actionable WARN naming the method +
+    // annotation.
+    val classDir = tempDir.newFolder("classes")
+    writeMethodWithAnnotationClass(
+      classDir,
+      internalName = "test/SessionDetailsViewKt",
+      methodName = "SessionDetailViewPreview",
+      annotationDescriptor = "Lcom/example/wear/WearPreviewLargeRound;",
+    )
+
+    val outcome =
+      PreviewDiscovery.discover(
+        PreviewDiscovery.Input(
+          classDirs = listOf(classDir),
+          dependencyJars = emptyList(),
+          sourceFiles = emptyList(),
+          moduleName = ":wearApp",
+          variantName = "debug",
+          projectDirectory = classDir,
+          failOnEmpty = false,
+        )
+      )
+
+    assertThat(outcome).isInstanceOf(PreviewDiscovery.Outcome.Success::class.java)
+    val success = outcome as PreviewDiscovery.Outcome.Success
+    assertThat(success.manifest.previews).isEmpty()
+    val joined = success.warnings.joinToString("\n")
+    assertThat(joined).contains("test.SessionDetailsViewKt.SessionDetailViewPreview")
+    assertThat(joined).contains("@WearPreviewLargeRound")
+    assertThat(joined).contains("com.example.wear.WearPreviewLargeRound")
+    assertThat(joined).contains("#2613")
+  }
+
+  @Test
   fun `Failure warnings default to empty for source-compatibility`() {
     // Existing callers constructing Failure positionally (reason, diagnostics) must keep
     // working — `warnings` is a new optional field with an empty default.
@@ -151,6 +190,44 @@ class PreviewDiscoveryFailureWarningsTest {
     val av: AnnotationVisitor =
       mv.visitAnnotation("Landroidx/compose/ui/tooling/preview/Preview;", true)
     av.visitEnd()
+    mv.visitCode()
+    mv.visitInsn(Opcodes.RETURN)
+    mv.visitMaxs(0, 0)
+    mv.visitEnd()
+    cw.visitEnd()
+
+    val classFile = File(outDir, "$internalName.class")
+    classFile.parentFile.mkdirs()
+    classFile.writeBytes(cw.toByteArray())
+  }
+
+  /**
+   * Writes a minimal `.class` file with one public static parameterless method carrying
+   * [annotationDescriptor] — an annotation whose own class is deliberately NOT written to [outDir],
+   * so the ClassGraph scan records the annotation on the method (parsed from the method's own
+   * bytecode) but `getClassInfo` for the annotation returns null. Mirrors an app `main` method
+   * tagged with a wear multi-preview annotation whose tooling artifact is absent from the discovery
+   * classpath (issue #2613).
+   */
+  private fun writeMethodWithAnnotationClass(
+    outDir: File,
+    internalName: String,
+    methodName: String,
+    annotationDescriptor: String,
+  ) {
+    val cw = ClassWriter(0)
+    cw.visit(
+      Opcodes.V17,
+      Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL or Opcodes.ACC_SUPER,
+      internalName,
+      null,
+      "java/lang/Object",
+      null,
+    )
+    val mv = cw.visitMethod(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, methodName, "()V", null, null)
+    // `visible = false` mirrors the wear preview annotations' BINARY retention (they land in
+    // RuntimeInvisibleAnnotations); ClassGraph reads both visible and invisible annotations.
+    mv.visitAnnotation(annotationDescriptor, false).visitEnd()
     mv.visitCode()
     mv.visitInsn(Opcodes.RETURN)
     mv.visitMaxs(0, 0)
