@@ -104,9 +104,9 @@ class AndroidPreviewClasspathTest {
   }
 
   @Test
-  fun `buildSystemProperties forwards the figma-embed-fonts flag into the daemon jvm`() {
+  fun `buildSystemProperties forwards the svg-embed-fonts flag into the daemon jvm`() {
     // Regression: the daemon JVM only sees the system properties this map forwards, so the
-    // `composeai.figma.embedFonts` value must land here or the Android export never honours it
+    // `composeai.svg.embedFonts` value must land here or the Android export never honours it
     // (the value set on the Gradle invocation wouldn't reach the daemon).
     val props =
       AndroidPreviewClasspath.buildSystemProperties(
@@ -114,9 +114,9 @@ class AndroidPreviewClasspathTest {
         rendersDir = "renders",
         fontsCacheDir = "cache",
         fontsOffline = "false",
-        figmaEmbedFonts = "false",
+        svgEmbedFonts = "false",
       )
-    assertThat(props).containsEntry("composeai.figma.embedFonts", "false")
+    assertThat(props).containsEntry("composeai.svg.embedFonts", "false")
     // On by default when the caller doesn't override it — the export embeds the real face so the
     // layered SVG stops falling back to a substituted `sans-serif`.
     assertThat(
@@ -127,7 +127,7 @@ class AndroidPreviewClasspathTest {
           fontsOffline = "false",
         )
       )
-      .containsEntry("composeai.figma.embedFonts", "true")
+      .containsEntry("composeai.svg.embedFonts", "true")
   }
 
   private fun writeAndroidJar(file: File) {

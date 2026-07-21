@@ -240,8 +240,8 @@ class RenderEngineTest {
     for (w in listOf(400, 500, 700)) File(fontCache, "noto-serif-$w.woff2").writeBytes(sentinel)
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
     System.setProperty("roborazzi.test.record", "true")
-    // Deliberately DON'T set `composeai.figma.embedFonts` — embedding must happen on the default.
-    System.clearProperty("composeai.figma.embedFonts")
+    // Deliberately DON'T set `composeai.svg.embedFonts` — embedding must happen on the default.
+    System.clearProperty("composeai.svg.embedFonts")
     System.setProperty("composeai.fonts.cacheDir", fontCache.absolutePath)
     val host = RobolectricHost()
     host.start()
@@ -273,14 +273,14 @@ class RenderEngineTest {
       assertTrue("text must name the serif face", text.contains("""font-family="Noto Serif""""))
     } finally {
       host.shutdown()
-      System.clearProperty("composeai.figma.embedFonts")
+      System.clearProperty("composeai.svg.embedFonts")
       System.clearProperty("composeai.fonts.cacheDir")
     }
   }
 
   @Test
   fun figmaSvgExportStaysVectorOnlyWhenEmbeddingDisabled() {
-    // The opt-out: `composeai.figma.embedFonts=false` turns embedding off, so the export stays
+    // The opt-out: `composeai.svg.embedFonts=false` turns embedding off, so the export stays
     // vector-only (no `@font-face`) and the `<text>` keeps its named `sans-serif` fallback — the
     // pre-default behaviour, still reachable for anyone who wants the smaller vector-only SVG.
     val outputDir = tempFolder.newFolder("renders-figma-novec")
@@ -288,7 +288,7 @@ class RenderEngineTest {
     for (w in listOf(400, 500, 700)) File(fontCache, "noto-serif-$w.woff2").writeBytes(byteArrayOf(1))
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
     System.setProperty("roborazzi.test.record", "true")
-    System.setProperty("composeai.figma.embedFonts", "false")
+    System.setProperty("composeai.svg.embedFonts", "false")
     System.setProperty("composeai.fonts.cacheDir", fontCache.absolutePath)
     val host = RobolectricHost()
     host.start()
@@ -310,7 +310,7 @@ class RenderEngineTest {
       assertFalse("disabled export must NOT embed an @font-face", text.contains("@font-face"))
     } finally {
       host.shutdown()
-      System.clearProperty("composeai.figma.embedFonts")
+      System.clearProperty("composeai.svg.embedFonts")
       System.clearProperty("composeai.fonts.cacheDir")
     }
   }

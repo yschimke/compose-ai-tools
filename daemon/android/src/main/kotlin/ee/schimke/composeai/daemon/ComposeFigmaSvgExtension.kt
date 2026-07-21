@@ -68,13 +68,13 @@ class ComposeFigmaSvgExtension : PostCaptureProcessor {
    * Embedding is **on by default** — a null/`sans-serif` `<text>` renders with a substituted
    * typeface, so the export only ever improves by embedding the real face, and it degrades right
    * back to `sans-serif` when the face can't be resolved (offline / network error). Opt out with
-   * `composeai.figma.embedFonts=false`; the plugin forwards that value into the daemon JVM (see
+   * `composeai.svg.embedFonts=false`; the plugin forwards that value into the daemon JVM (see
    * `AndroidPreviewClasspath.buildSystemProperties`). Reuses the renderer's font cache dir / offline
    * switch so a face is downloaded at most once per environment.
    */
   private fun figmaFontResolver(): FigmaFontResolver? {
     fun on(prop: String) = System.getProperty(prop)?.lowercase() == "true"
-    if (System.getProperty("composeai.figma.embedFonts")?.lowercase() == "false") return null
+    if (System.getProperty("composeai.svg.embedFonts")?.lowercase() == "false") return null
     return GoogleFontsWoff2Resolver(
       cacheDir = System.getProperty("composeai.fonts.cacheDir")?.let { java.io.File(it) },
       offline = on("composeai.fonts.offline"),
