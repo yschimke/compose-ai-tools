@@ -15,15 +15,27 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalScrollCaptureInProgress
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
+import androidx.wear.compose.foundation.lazy.TransformingLazyColumnItemScope
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.material3.Button
+import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.CardDefaults
+import androidx.wear.compose.material3.Icon
+import androidx.wear.compose.material3.lazy.TransformationSpec
 import androidx.wear.compose.material3.CircularProgressIndicator
 import androidx.wear.compose.material3.CircularProgressIndicatorDefaults
 import androidx.wear.compose.material3.EdgeButton
@@ -313,6 +325,113 @@ fun ActivityListGifPreview() {
   MaterialTheme {
     AppScaffold(timeText = { TimeText(timeSource = FixedPreviewTimeSource) }) {
       LongActivityListScreen()
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Regression fixture for issue #2299. A settings list of plain `Button`s (icon
+// + label, `surfaceContainer` colours, `minimumVerticalContentPadding`) inside
+// a `ScreenScaffold` with NO `edgeButton` slot — the last item ("About") is an
+// ordinary list button. This is the exact shape from the report, kept so the
+// long-scroll stitch is exercised on a tail that is a dark list item rather
+// than a bright Wear `EdgeButton`: the stitcher's EdgeButton content-anchor
+// path declines (brightness / purple-cast gate), so the generic final-frame
+// overlay path composes the tail — where a stray slice fragment used to be
+// left as a ghost streak below the last item.
+// ---------------------------------------------------------------------------
+
+private data class SettingsItem(val id: Int, val title: String, val icon: ImageVector? = null)
+
+private val settingsList =
+  listOf(
+    SettingsItem(id = 1, title = "Notifications", icon = Icons.Default.Notifications),
+    SettingsItem(id = 2, title = "Privacy", icon = Icons.Default.Lock),
+    SettingsItem(id = 3, title = "Display", icon = Icons.Default.PlayArrow),
+    SettingsItem(id = 4, title = "Sound & vibration", icon = Icons.Default.VolumeUp),
+    SettingsItem(id = 5, title = "About", icon = Icons.Default.Info),
+  )
+
+@Composable
+private fun SettingsMainScreen(
+  items: List<SettingsItem>,
+  onItemClick: (SettingsItem) -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  val listState = rememberTransformingLazyColumnState()
+  val transformationSpec = rememberTransformationSpec()
+
+  ScreenScaffold(
+    scrollState = listState,
+    scrollIndicator = {
+      if (!LocalScrollCaptureInProgress.current) {
+        ScrollIndicator(state = listState)
+      }
+    },
+  ) { contentPadding ->
+    TransformingLazyColumn(contentPadding = contentPadding, state = listState, modifier = modifier) {
+      item {
+        ListHeader(
+          modifier =
+            Modifier.fillMaxWidth()
+              .transformedHeight(this, transformationSpec)
+              .minimumVerticalContentPadding(ListHeaderDefaults.minimumTopListContentPadding),
+          transformation = SurfaceTransformation(transformationSpec),
+        ) {
+          Text(text = "Settings", style = MaterialTheme.typography.titleMedium)
+        }
+      }
+      items(items = items, key = { it.id }) { item ->
+        SettingsActionButton(
+          item = item,
+          onItemClick = { onItemClick(item) },
+          transformationSpec = transformationSpec,
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun TransformingLazyColumnItemScope.SettingsActionButton(
+  item: SettingsItem,
+  transformationSpec: TransformationSpec,
+  onItemClick: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  Button(
+    onClick = onItemClick,
+    label = { Text(text = item.title, style = MaterialTheme.typography.labelMedium) },
+    icon = {
+      item.icon?.let {
+        Icon(
+          painter = rememberVectorPainter(image = it),
+          contentDescription = null,
+          modifier = Modifier.size(ButtonDefaults.IconSize),
+        )
+      }
+    },
+    colors =
+      ButtonDefaults.buttonColors(
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+      ),
+    modifier =
+      modifier
+        .fillMaxWidth()
+        .transformedHeight(this, transformationSpec)
+        .minimumVerticalContentPadding(ButtonDefaults.minimumVerticalListContentPadding),
+    transformation = SurfaceTransformation(transformationSpec),
+  )
+}
+
+@WearPreviewLargeRound
+@ScrollingPreview(modes = [ScrollMode.LONG])
+@Composable
+fun SettingsMainScreenLongPreview() {
+  MaterialTheme {
+    AppScaffold(timeText = { TimeText(timeSource = FixedPreviewTimeSource) }) {
+      SettingsMainScreen(items = settingsList, onItemClick = {})
     }
   }
 }

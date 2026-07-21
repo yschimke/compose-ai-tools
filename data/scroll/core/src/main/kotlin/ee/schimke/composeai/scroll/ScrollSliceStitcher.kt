@@ -510,6 +510,41 @@ private fun findOverlapShift(
   val maxShift = sliceH - 1
   if (maxShift < 1) return 0
 
+  // End-of-scroll overreport guard (issue #2299) — score a ZERO shift now, decide after the search.
+  // A scroller can keep reporting a growing offset after the visible content has already reached
+  // its
+  // end (a `LazyList`/`TransformingLazyColumn` whose `maxValue` overshoots pins the last item at
+  // the
+  // bottom), so consecutive slices are essentially identical. The hint-narrowed window below starts
+  // at `hintPx / 3`, so it can't see the true ~0 shift and is forced to a spurious large one —
+  // which
+  // re-paints the last item's tail lower down as a ghost band. `zeroWeightedMean` is the weighted
+  // per-row SAD at no offset; the actual no-move decision is made at the return below, gated on it
+  // being both near-identical in absolute terms AND no worse than the best real shift (a genuine
+  // move always matches strictly better at its true offset, so this can't drop real content).
+  val rowWidth = prevLum.firstOrNull()?.size ?: 0
+  var zeroWeightedMean = Double.POSITIVE_INFINITY
+  var zeroPlainMean = Double.POSITIVE_INFINITY
+  if (rowWidth > 0) {
+    val n = minOf(sliceH, rowLimit)
+    if (n > 0) {
+      var weightSum = 0.0
+      var weightedCost = 0.0
+      var plainCost = 0.0
+      for (k in 0 until n) {
+        val sad = rowSad(prevLum[k], nextLum[k])
+        plainCost += sad
+        val w = max(prevW[k], nextW[k])
+        if (w > 0.0) {
+          weightedCost += w * sad
+          weightSum += w
+        }
+      }
+      zeroPlainMean = plainCost / n
+      if (weightSum > 0.0) zeroWeightedMean = weightedCost / weightSum
+    }
+  }
+
   val lo: Int
   val hi: Int
   if (hintPx > 0) {
@@ -557,6 +592,24 @@ private fun findOverlapShift(
         bestWeightedD = d
       }
     }
+  }
+
+  // No-move decision (issue #2299): the zero-offset match is near-identical in absolute terms AND
+  // no
+  // worse than the best in-window shift. A real move matches strictly better at its true offset, so
+  // the zero-offset score only ties/wins when nothing actually scrolled — then report 0 so the
+  // caller paints no seam band (no duplicated tail). Compare against the PLAIN (unweighted) score,
+  // not the weighted one: on solid/blank overlaps the weighted matcher finds no candidate
+  // (`bestWeightedScore == +∞`), which would make a weighted `<=` vacuously true and let a static
+  // header at zero offset mask a real scroll step (Codex review, PR #2629). Plain SAD weights every
+  // row equally, so a small static header can't hide scrolled content below it.
+  if (
+    rowWidth > 0 &&
+      bestPlainScore.isFinite() &&
+      zeroPlainMean <= bestPlainScore &&
+      zeroWeightedMean / rowWidth <= NO_MOVE_MAX_SAD_PER_PIXEL
+  ) {
+    return 0
   }
 
   return if (bestWeightedD >= 0) bestWeightedD else bestPlainD
@@ -644,6 +697,17 @@ private const val MIN_ANCHOR_VARIATION = 200.0
  * 20–60+.
  */
 private const val ANCHOR_MATCH_MAX_SAD_PER_PIXEL = 8.0
+
+/**
+ * Per-pixel weighted-SAD ceiling under which two consecutive slices count as "no visible motion" —
+ * the scroller reported an advance but the content stayed put (end-of-scroll `maxValue` overshoot),
+ * so the pair reveals no new rows. A genuine mid-scroll pair (the driver strides ~80% of the
+ * viewport) shifts content far and scores well above this at zero offset; an end-of-scroll pair
+ * that only jitters the pinned last item scores far below it. Measured on the issue-#2299 fixture:
+ * the redundant tail pair scored ~13 vs ~34 for a real move, so 20 sits with margin on both sides.
+ * See the guard in [findOverlapShift].
+ */
+private const val NO_MOVE_MAX_SAD_PER_PIXEL = 20.0
 
 /**
  * Minimum extent (as a fraction of image width) for a row to qualify as "inside" the Wear
