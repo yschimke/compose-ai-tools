@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 274 preview(s) across 19 module(s) · 34 error(s) · 3 warning(s) · 37 info._
+_Auto-generated from `compose-preview/a11y/main`. 275 preview(s) across 19 module(s) · 34 error(s) · 3 warning(s) · 38 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -120,6 +120,14 @@ _No findings._
 |--:|---|---|---|---|
 | 1 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "The quick brown fox (700)" is identical to that of 3 other item(s). |
 | 2 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "The quick brown fox (400)" is identical to that of 4 other item(s). |
+
+### `EmojiCompatComparisonPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/EmojiCompatComparisonPreview_EmojiCompat_comparison.a11y.png" width="400" />
+
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "👋 🌍 🚀 ✨ 🎨 🩷 🩶 🫩 🧑‍🚀 🫱🏽‍🫲🏿" is identical to that of 1 other item(s). |
 
 ### `ExpandedSurfacePreview`
 

@@ -406,6 +406,24 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "EmojiCompatComparisonPreview_EmojiCompat_comparison.a11y.png",
+      "cleanBasename": "EmojiCompatComparisonPreview_EmojiCompat_comparison.png",
+      "findings": [
+        {
+          "boundsInScreen": "42,121,1263,213",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"\ud83d\udc4b \ud83c\udf0d \ud83d\ude80 \u2728 \ud83c\udfa8 \ud83e\ude77 \ud83e\ude76 \ud83e\udee9 \ud83e\uddd1\u200d\ud83d\ude80 \ud83e\udef1\ud83c\udffd\u200d\ud83e\udef2\ud83c\udfff\" is identical to that of 1 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        }
+      ],
+      "functionName": "EmojiCompatComparisonPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.EmojiCompatComparisonPreviewKt.EmojiCompatComparisonPreview_EmojiCompat comparison",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/EmojiCompatComparisonPreview.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "ExpandedSurfacePreview_Surface_expanded.a11y.png",
       "cleanBasename": "ExpandedSurfacePreview_Surface_expanded.png",
       "findings": [
