@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 249 preview(s) across 18 module(s) · 34 error(s) · 3 warning(s) · 37 info._
+_Auto-generated from `compose-preview/a11y/main`. 274 preview(s) across 19 module(s) · 34 error(s) · 3 warning(s) · 37 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -777,6 +777,122 @@ _No findings._
 
 _No findings._
 
+## design-catalog-confetti
+
+### `AndroidMakersTheme`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/AndroidMakersTheme_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `BookmarkAddSticker`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/BookmarkAddSticker_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `BookmarkOnSticker`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/BookmarkOnSticker_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `BottomBarSticker`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/BottomBarSticker_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `BreakSticker`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/BreakSticker_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `ConfettiBrandTheme`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/ConfettiBrandTheme_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `DayTabRowSticker`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/DayTabRowSticker_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `DevFestTheme`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/DevFestTheme_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `DroidconTheme`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/DroidconTheme_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `KotlinConfTheme`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/KotlinConfTheme_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `LightningPillSticker`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/LightningPillSticker_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `LightningSessionCard`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/LightningSessionCard_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `ScheduleScreenTemplate` · `pixel_8`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/ScheduleScreenTemplate_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `SearchFieldSticker`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/SearchFieldSticker_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `SessionCardBookmarked`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/SessionCardBookmarked_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `SessionCardSticker`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/SessionCardSticker_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `SpeakerGridCellSticker`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/SpeakerGridCellSticker_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `SpeakerListItemSticker`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/SpeakerListItemSticker_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `TimeHeaderSticker`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-confetti/TimeHeaderSticker_Dark.a11y.png" width="400" />
+
+_No findings._
+
 ## design-catalog-m3
 
 ### `AppScaffoldTemplate` · `pixel_8`
@@ -857,9 +973,27 @@ _No findings._
 
 _No findings._
 
+### `FilledButtonLargeFont`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/FilledButtonLargeFont_Dark.a11y.png" width="400" />
+
+_No findings._
+
 ### `FilledButtonPressed`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/FilledButtonPressed_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `FilledButtonPseudo`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/FilledButtonPseudo_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `FilledButtonRtl`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/FilledButtonRtl_Dark.a11y.png" width="400" />
 
 _No findings._
 
@@ -962,6 +1096,24 @@ _No findings._
 ### `SwitchOn`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/SwitchOn_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `SwitchOnLargeFont`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/SwitchOnLargeFont_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `SwitchOnPseudo`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/SwitchOnPseudo_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `SwitchOnRtl`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/SwitchOnRtl_Dark.a11y.png" width="400" />
 
 _No findings._
 
