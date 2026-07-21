@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.17.3](https://github.com/yschimke/compose-ai-tools/compare/v0.17.2...v0.17.3) (2026-07-21)
+
+
+### Features
+
+* **design-artifacts:** add catalog-spec init/validate tooling + schema ([#2606](https://github.com/yschimke/compose-ai-tools/issues/2606)) ([16d034c](https://github.com/yschimke/compose-ai-tools/commit/16d034c587a4afd391164609039dc3698db16a4f))
+* render i18n/a11y axes (locale/direction/fontScale) in the Compose M3 catalog ([#220](https://github.com/yschimke/compose-ai-tools/issues/220)) ([#2612](https://github.com/yschimke/compose-ai-tools/issues/2612)) ([bbbfac5](https://github.com/yschimke/compose-ai-tools/commit/bbbfac581314d5e6ceeeb89ed0a2a54adefbe12c))
+
+
+### Bug Fixes
+
+* **deps:** update gradle minor/patch to v1.3.2 ([#2608](https://github.com/yschimke/compose-ai-tools/issues/2608)) ([0304a1a](https://github.com/yschimke/compose-ai-tools/commit/0304a1a398f38c5dbc22081a3cdeacaaec7f61da))
+* **figma-svg:** resolve Modifier.shadow elevation for drop-shadow export ([#2603](https://github.com/yschimke/compose-ai-tools/issues/2603)) ([2c6e3ba](https://github.com/yschimke/compose-ai-tools/commit/2c6e3ba52a2c18424f170191f9d4a5e408e4bdbd))
+* resource-leak and subprocess-hang fixes from an architecture review ([#2611](https://github.com/yschimke/compose-ai-tools/issues/2611)) ([ff63c36](https://github.com/yschimke/compose-ai-tools/commit/ff63c36c93113bbb89bdb8bac35bc73ca497a464))
+* **serve:** gate the SVG control on per-preview export availability ([#2605](https://github.com/yschimke/compose-ai-tools/issues/2605)) ([e0fd4be](https://github.com/yschimke/compose-ai-tools/commit/e0fd4beaddef1fc601446cd2d3b48da52ed8b40f))
+* **serve:** re-pin overlays when the snapshot image loads ([#2607](https://github.com/yschimke/compose-ai-tools/issues/2607)) ([3651797](https://github.com/yschimke/compose-ai-tools/commit/365179778f44dbcdc920f24e232c043065c11c4a))
+
 ## [0.17.2](https://github.com/yschimke/compose-ai-tools/compare/v0.17.1...v0.17.2) (2026-07-20)
 
 
