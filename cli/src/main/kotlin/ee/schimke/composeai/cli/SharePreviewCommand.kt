@@ -444,10 +444,23 @@ class SharePreviewCommand(
   private fun exec(cmd: List<String>): ExecResult {
     return try {
       val p = ProcessBuilder(cmd).redirectErrorStream(false).start()
+      // Drain stderr on a separate thread. With separate stdout/stderr pipes, reading stdout to EOF
+      // first (as this did) deadlocks when the child fills the ~64 KB stderr buffer before closing
+      // stdout — e.g. a `git push` whose server hook is chatty on stderr. Consuming both pipes
+      // concurrently is the only safe ordering, and it lets the `waitFor` timeout actually fire.
+      val stderrHolder = arrayOfNulls<String>(1)
+      val stderrThread =
+        Thread { stderrHolder[0] = p.errorStream.bufferedReader().use { it.readText() } }
+          .apply {
+            isDaemon = true
+            start()
+          }
       val stdout = p.inputStream.bufferedReader().use { it.readText() }
-      val stderr = p.errorStream.bufferedReader().use { it.readText() }
-      if (!p.waitFor(120, TimeUnit.SECONDS)) {
-        p.destroyForcibly()
+      val finished = p.waitFor(120, TimeUnit.SECONDS)
+      if (!finished) p.destroyForcibly()
+      stderrThread.join(TimeUnit.SECONDS.toMillis(5))
+      val stderr = stderrHolder[0] ?: ""
+      if (!finished) {
         ExecResult(124, stdout, stderr + "\n[command timed out]")
       } else {
         ExecResult(p.exitValue(), stdout, stderr)
