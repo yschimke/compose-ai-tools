@@ -1711,7 +1711,10 @@ open class RobolectricHost(
             listOf(
               FontsRecorderExtension.factory,
               ResourcesRecorderExtension.factory,
-              ComposeSemanticsExtension.factory,
+              // ComposeSemanticsExtension now lives in :data-layoutinspector-connector (shared with
+              // the Desktop engine, targets {Android, Desktop}); it carries no Android-Context
+              // factory, so wrap it inline here.
+              RenderDataArtifactExtensionFactory { ComposeSemanticsExtension() },
               ComposeSemanticsWireframeExtension.factory,
               LayoutInspectorExtension.factory,
               ComposeFigmaSvgExtension.factory,

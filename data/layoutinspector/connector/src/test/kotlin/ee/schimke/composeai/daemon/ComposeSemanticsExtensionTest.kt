@@ -12,36 +12,42 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
+/**
+ * Pins the portability contract of the shared [ComposeSemanticsExtension]: an after-capture,
+ * capture-phase processor targeting *both* backends, so the Android daemon (via a factory wrapper)
+ * and the Desktop daemon (constructed directly) register the same class instead of each carrying
+ * their own `compose/semantics` production. Lives here next to the moved class; replaces the former
+ * `:daemon:android` copy.
+ */
 class ComposeSemanticsExtensionTest {
-
   @Test
-  fun `extension declares after-capture hook only`() {
-    val extension = ComposeSemanticsExtension()
-    assertEquals("compose/semantics", extension.id.value)
-    assertEquals(setOf(DataExtensionHookKind.AfterCapture), extension.hooks)
-    assertEquals(DataExtensionPhase.Capture, extension.constraints.phase)
-    assertEquals(setOf(DataExtensionTarget.Android), extension.targets)
+  fun `is an after-capture capture-phase processor targeting both backends`() {
+    val ext = ComposeSemanticsExtension()
+    assertEquals(ComposeSemanticsDataProducer.KIND, ext.id.value)
+    assertEquals(setOf(DataExtensionHookKind.AfterCapture), ext.hooks)
+    assertEquals(DataExtensionPhase.Capture, ext.constraints.phase)
+    assertEquals(setOf(DataExtensionTarget.Android, DataExtensionTarget.Desktop), ext.targets)
   }
 
   @Test
   fun `process fails fast when the captured semantics root is missing`() {
-    val extension = ComposeSemanticsExtension()
+    val ext = ComposeSemanticsExtension()
     val rootDir = Files.createTempDirectory("compose-semantics-extension-test").toFile()
     try {
       val store = RecordingDataProductStore()
       val context =
         ExtensionPostCaptureContext(
-          extensionId = extension.id,
+          extensionId = ext.id,
           previewId = null,
           renderMode = null,
-          products = store.scopedFor(extension),
+          products = store.scopedFor(ext),
           data =
             ExtensionContextData.of(
-              RenderDataArtifactContextKeys.RootDir provides rootDir,
-              RenderDataArtifactContextKeys.OutputBaseName provides "preview-base",
+              RenderArtifactContextKeys.RootDir provides rootDir,
+              RenderArtifactContextKeys.OutputBaseName provides "preview-base",
             ),
         )
-      assertThrows(IllegalStateException::class.java) { extension.process(context) }
+      assertThrows(IllegalStateException::class.java) { ext.process(context) }
     } finally {
       rootDir.deleteRecursively()
     }
