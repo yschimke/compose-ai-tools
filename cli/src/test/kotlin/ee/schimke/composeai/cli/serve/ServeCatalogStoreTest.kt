@@ -749,6 +749,13 @@ class ServeCatalogStoreTest {
     val wasmDir = registeredWasm.getValue("compose-m3")
     assertTrue(File(wasmDir, "index.html").isFile, "index.html landed")
     assertTrue(File(wasmDir, "composeApp.wasm").isFile && File(wasmDir, "skiko.wasm").isFile)
+    // The in-browser Wasm tier IS a live lane (the viewer's Live toggle switches to it), so this
+    // session is NOT baked-only even though it carries no server-side liveBundle — no banner
+    // reason.
+    assertTrue(
+      registered.getValue("compose-m3").degradations.isEmpty(),
+      "a Wasm-backed session must not be flagged snapshot-only",
+    )
   }
 
   @Test
@@ -758,6 +765,13 @@ class ServeCatalogStoreTest {
     store(TrustStore.EMPTY, wasmFetcher(catalog, missing = setOf("composeApp.wasm")))
       .load("compose-m3")
     assertTrue(registeredWasm.isEmpty(), "incomplete app must not register")
+    // With no live lane (Wasm failed to register, no liveBundle), the session IS baked-only and
+    // says
+    // so — the flag tracks actual registration, not the mere `webRender` declaration.
+    assertEquals(
+      listOf(ServeDegradation.CATALOG_BAKED_ONLY),
+      registered.getValue("compose-m3").degradations.map { it.code },
+    )
   }
 
   @Test

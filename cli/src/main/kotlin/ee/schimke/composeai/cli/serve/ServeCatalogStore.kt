@@ -253,7 +253,7 @@ class ServeCatalogStore(
     // dir. Best-effort — a fetch failure just leaves the catalog without the in-browser tier (the
     // PNG + data tiers still serve). The file list is enumerated by the trusted catalog, not the
     // client, and each file is path-contained + size-capped like the images.
-    fetchWasmApp(catalog.webRender, base, dir, safe)
+    val wasmRegistered = fetchWasmApp(catalog.webRender, base, dir, safe)
 
     val verdict =
       if (trust.trustsBranch(repo, branch))
@@ -411,20 +411,30 @@ class ServeCatalogStore(
       return Result.Ok(safe, count, "${BundleVerifier.summary(verdict)} (live)")
     }
 
-    // Terminal: no live lane stood up, so register the baked host AND record why it's
-    // snapshot-only.
-    // Priority: a specific liveBundle failure (fetched/rehydrated/started) > an unverified catalog
-    // that DID declare a live lane (trust is the blocker) > the plain "no live bundle published"
-    // case (meshcore's app catalog, remote-m3, …).
-    val degradation =
-      liveBundleFallback
-        ?: when {
-          verdict is BundleVerifier.Verdict.Unverified &&
-            (liveBundle != null || (src != null && src.module.isNotBlank())) ->
-            ServeDegradation.unverifiedNoRerender()
-          else -> ServeDegradation.catalogBakedOnly()
-        }
-    val host = bakedFallback(listOf(degradation))
+    // Terminal: no server-side live lane stood up, so register the baked host AND record why it's
+    // snapshot-only — UNLESS the in-browser Wasm tier was registered, which IS a live lane (the
+    // viewer's Live toggle switches to it). A Wasm-backed session isn't baked-only, so it carries
+    // no
+    // session-level degradation; the viewer's per-control `cp-note` already explains which
+    // overrides
+    // the Wasm tier can't cover (size/device/orientation).
+    // Priority when we DO record one: a specific liveBundle failure (fetched/rehydrated/started) >
+    // an
+    // unverified catalog that DID declare a live lane (trust is the blocker) > the plain "no live
+    // bundle published" case (meshcore's app catalog, remote-m3, …).
+    val degradations =
+      if (wasmRegistered) emptyList()
+      else
+        listOf(
+          liveBundleFallback
+            ?: when {
+              verdict is BundleVerifier.Verdict.Unverified &&
+                (liveBundle != null || (src != null && src.module.isNotBlank())) ->
+                ServeDegradation.unverifiedNoRerender()
+              else -> ServeDegradation.catalogBakedOnly()
+            }
+        )
+    val host = bakedFallback(degradations)
     register(safe, host)
     return Result.Ok(safe, host.previews.size, BundleVerifier.summary(verdict))
   }
@@ -434,11 +444,16 @@ class ServeCatalogStore(
    * the dir. The file list comes from the trusted [render] (not a client); each entry is confined
    * to the declared `path`, rejected on traversal, and size-capped by [fetch]. Needs at least an
    * `index.html` to be usable. No-op for a null / non-`compose-wasm` descriptor.
+   *
+   * Returns true iff the in-browser Wasm tier was actually registered — the caller uses this to
+   * decide whether the session still has a live (in-browser) lane, so it must NOT record a
+   * baked-only degradation even when there's no server-side `liveBundle`. A declared-but-incomplete
+   * app (any fetch/traversal failure) returns false, leaving the session genuinely snapshot-only.
    */
-  private fun fetchWasmApp(render: WebRender?, base: String, dir: File, system: String) {
-    if (render == null || render.kind != WEB_RENDER_COMPOSE_WASM) return
+  private fun fetchWasmApp(render: WebRender?, base: String, dir: File, system: String): Boolean {
+    if (render == null || render.kind != WEB_RENDER_COMPOSE_WASM) return false
     val prefix = render.path.trim('/')
-    if (prefix.isEmpty() || render.files.isEmpty()) return
+    if (prefix.isEmpty() || render.files.isEmpty()) return false
     val wasmDir = File(dir, WEB_WASM_DIR)
     // **Fail closed, all-or-nothing.** Register the app only if *every* declared file is fetched
     // and
@@ -446,9 +461,10 @@ class ServeCatalogStore(
     // traversal/escaping entry, or a list longer than the cap) would make the viewer advertise "Run
     // in browser (Wasm)" only for the iframe to 404 its module/wasm fetches. The file list is the
     // trusted catalog's complete manifest, so any missing/invalid entry means "don't offer it".
-    fun fail(reason: String) {
+    fun fail(reason: String): Boolean {
       wasmDir.deleteRecursively()
       System.err.println("serve: $system web/wasm/ incomplete ($reason) — in-browser tier disabled")
+      return false
     }
     if (render.files.size > MAX_WASM_FILES) return fail("more than $MAX_WASM_FILES files declared")
     val wasmRoot = wasmDir.canonicalFile.toPath()
@@ -464,6 +480,7 @@ class ServeCatalogStore(
     }
     if (!File(wasmDir, "index.html").isFile) return fail("no index.html")
     registerWasm(system, wasmDir)
+    return true
   }
 
   /**
