@@ -88,6 +88,41 @@ For editable Figma layers the per-sticker `figma/<slug>.svg` is the
 rendered *variant matrices* onto a Figma canvas via the Figma MCP server for
 live review.
 
+## Publishing from another repo (reusable workflow)
+
+A consumer repo that owns a `catalog.spec.json` + a renderable `@Preview` module
+(an app modelling its own surfaces, like the Confetti catalog) doesn't need to
+copy this job. The reusable
+[`design-artifacts-reusable.yml`](../../.github/workflows/design-artifacts-reusable.yml)
+(`on: workflow_call`) does the whole pipeline — install CLI → **validate spec** →
+render module(s) → generate → force-push `design-artifacts/<system>` — behind one
+`uses:` call:
+
+```yaml
+# .github/workflows/design-artifacts.yml in the consumer repo
+on:
+  schedule: [{ cron: '0 6 * * 1' }]
+  workflow_dispatch:
+jobs:
+  publish:
+    if: ${{ github.repository == 'you/your-repo' }}   # don't let forks push
+    permissions:
+      contents: write
+    uses: yschimke/compose-ai-tools/.github/workflows/design-artifacts-reusable.yml@main
+    with:
+      system: your-system         # → design-artifacts/your-system, served at /your-system/
+      spec: catalog.spec.json
+      module: ':app'
+      # extra-module: ':your-components'   # optional, folded in via --extra-renders
+      # desktop-render: true               # for a CMP desktop (Skiko) render
+    secrets: inherit               # optional; only for buildfetch_ro_token
+```
+
+Author the spec with `init-catalog-spec` and check it with `validate-catalog-spec`
+(see below) before the first run. Catalog-specific lanes some systems add here —
+compose-m3's re-theme fold-in, a Wasm tier — stay in a bespoke workflow; the
+reusable one covers the common single-module (± one extra module) case.
+
 ## Rendering a catalog
 
 ```sh
