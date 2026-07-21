@@ -120,7 +120,9 @@ describe("renderInitScript", () => {
             "expected the set to be populated during settingsEvaluated",
         );
         assert.ok(
-            script.includes("projectDir !in composeAiPreviewPreAppliedDirs"),
+            script.includes(
+                "val composeAiPreviewIsPreApplied = projectDir in composeAiPreviewPreAppliedDirs",
+            ),
             "expected the buildscript block to be guarded per-project on the directory set",
         );
         // Catalog alias resolution: the scanner must look at gradle/libs.versions.toml
@@ -155,13 +157,13 @@ describe("renderInitScript", () => {
         );
         assert.ok(
             script.includes(
-                "if (!composeAiPreviewSkipExclusiveContentClasspathDep &&\n        !composeAiPreviewHasPreAppliedDescendant &&\n        projectDir !in composeAiPreviewPreAppliedDirs) {",
+                "if (!composeAiPreviewIsPreApplied && !composeAiPreviewHasPreAppliedDescendant) {",
             ),
-            "expected the injection to be gated on the descendant flag",
+            "expected the injection to be gated on the pre-applied + descendant flags",
         );
         assert.ok(
             script.includes(
-                "if ((composeAiPreviewSkipExclusiveContentClasspathDep ||\n        composeAiPreviewHasPreAppliedDescendant) &&\n        projectDir !in composeAiPreviewPreAppliedDirs) return@allprojects",
+                "if (composeAiPreviewHasPreAppliedDescendant && !composeAiPreviewIsPreApplied) {\n        return@allprojects\n    }",
             ),
             "expected the apply hooks to short-circuit for ancestors of pre-applied modules",
         );
@@ -197,13 +199,12 @@ describe("renderInitScript", () => {
         );
     });
 
-    it("gates buildscript classpath injection on per-project buildscript repos in the exclusiveContent branch", () => {
-        // Successor to the 0.11.8 follow-up regression: simply skipping the repositories add
-        // (the 0.11.8 fix) wasn't enough — modules without their own buildscript repos still
-        // got the classpath dep injected and crashed with "Cannot resolve external dependency
-        // ... because no repositories are defined", short-circuiting the entire Tooling API
-        // query. The fix forks per-project: modules with their own buildscript repos get the
-        // dep injected (resolution can succeed); modules without are skipped entirely.
+    it("forks the exclusiveContent branch on per-project buildscript repos", () => {
+        // In the exclusiveContent shape Gradle 9.3+ forbids adding to buildscript.repositories,
+        // so the branch forks per-project: modules with their own buildscript repos get the
+        // plain coordinate dep injected (their repos resolve it); modules WITHOUT resolve the
+        // plugin classpath via a detached configuration and inject files() instead (see the
+        // dedicated test below). Neither path adds to buildscript.repositories.
         const script = renderInitScript();
         assert.ok(
             script.includes(
@@ -231,21 +232,64 @@ describe("renderInitScript", () => {
         );
         assert.ok(
             script.includes(
-                "if (!composeAiPreviewSettingsHasExclusiveContent) {\n                repositories {",
+                "if (!composeAiPreviewSettingsHasExclusiveContent) {\n                    repositories {",
             ),
             "expected the buildscript repositories add to be guarded by the exclusiveContent flag",
         );
         assert.ok(
             script.includes(
-                "val composeAiPreviewSkipExclusiveContentClasspathDep =\n        composeAiPreviewSettingsHasExclusiveContent &&\n            projectDir !in composeAiPreviewProjectsWithOwnBuildscriptRepos",
+                "val composeAiPreviewNeedsResolvedClasspathInject =\n        composeAiPreviewSettingsHasExclusiveContent &&\n            projectDir !in composeAiPreviewProjectsWithOwnBuildscriptRepos",
             ),
-            "expected the per-project skip flag derived from settings flag + buildscript repos scan",
+            "expected the per-project flag derived from settings flag + buildscript repos scan",
         );
         assert.ok(
             !script.includes(
                 "if (composeAiPreviewSettingsHasExclusiveContent) return@allprojects",
             ),
             "the global early-return for exclusiveContent is wrong — must fork per-project",
+        );
+    });
+
+    it("resolves + injects the plugin classpath as files() in the repo-less exclusiveContent branch", () => {
+        // The fix for the Confetti :androidApp failure: a module in the exclusiveContent shape
+        // WITHOUT its own buildscript repos can't add to buildscript.repositories (Gradle 9.3+),
+        // so we resolve the plugin classpath through the project's own (settings-managed) repos
+        // via a detached configuration and inject the resolved JARs as files() — landing the
+        // plugin on the module's OWN buildscript classloader (alongside AGP) without touching
+        // buildscript.repositories. Previously this branch returned early and the module silently
+        // missed the plugin.
+        const script = renderInitScript();
+        assert.ok(
+            script.includes(
+                "fun org.gradle.api.Project.composeAiPreviewResolvePluginClasspath(): Set<java.io.File> {",
+            ),
+            "expected the detached-configuration classpath resolver helper",
+        );
+        assert.ok(
+            script.includes(
+                "configurations.detachedConfiguration(composeAiPreviewMarker).files.toSet()",
+            ),
+            "expected resolution via a detached configuration (not a buildscript.repositories add)",
+        );
+        assert.ok(
+            script.includes(
+                'add("classpath", composeAiPreviewClasspathFiles)',
+            ),
+            "expected the resolved files to be injected onto the buildscript classpath",
+        );
+        // The resolved set is memoised so a large multi-module build resolves once.
+        assert.ok(
+            script.includes(
+                "composeAiPreviewCachedPluginClasspath?.let { return it }",
+            ),
+            "expected the resolved classpath to be memoised across modules",
+        );
+        // Regression guard: the old behavior returned early for this branch, dropping the plugin.
+        assert.ok(
+            !script.includes(
+                "composeAiPreviewSkipExclusiveContentClasspathDep",
+            ),
+            "the old skip-and-drop flag must be gone — the branch now resolves + injects",
         );
     });
 

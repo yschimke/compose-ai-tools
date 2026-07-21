@@ -401,17 +401,46 @@ gradle.settingsEvaluated {
     }
 }
 
+// Resolves the compose-preview plugin's buildscript classpath — the plugin marker, its
+// implementation JAR, and their transitive deps — through THIS project's own repositories (the
+// settings-level dependencyResolutionManagement repos in the exclusiveContent shape, where
+// `mavenLocal()` / the plugin repo were seeded above). Returned as raw files so the caller can
+// inject them via `buildscript { dependencies { classpath(files(...)) } }` WITHOUT adding to
+// `buildscript.repositories` — the add Gradle 9.3+ forbids under exclusiveContent (#1482). A
+// detached configuration resolves against the project's repository handler, so it is unaffected by
+// that validation, and the files land on the module's OWN buildscript classloader alongside AGP
+// (unlike an initscript/parent classloader, which can't see AGP types — the reason the
+// `initscript { classpath }` route was reverted in #1483). The resolved set is identical across
+// modules, so memoise the first success and reuse it (one resolution per build, not per module).
+// Empty on any resolution failure so the caller degrades to a no-op instead of crashing the query.
+var composeAiPreviewCachedPluginClasspath: Set<java.io.File>? = null
+
+fun org.gradle.api.Project.composeAiPreviewResolvePluginClasspath(): Set<java.io.File> {
+    composeAiPreviewCachedPluginClasspath?.let { return it }
+    val composeAiPreviewMarker =
+        dependencies.create(
+            "ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:${'$'}pluginVersion"
+        )
+    val composeAiPreviewResolved =
+        runCatching {
+            configurations.detachedConfiguration(composeAiPreviewMarker).files.toSet()
+        }.getOrDefault(emptySet())
+    if (composeAiPreviewResolved.isNotEmpty()) {
+        composeAiPreviewCachedPluginClasspath = composeAiPreviewResolved
+    }
+    return composeAiPreviewResolved
+}
+
 allprojects {
     if (composeAiPreviewIsIncludedBuild) return@allprojects
-    // In the exclusiveContent shape we can't add repositories to buildscript.repositories
-    // (Gradle 9.3+ rejects it; issues #1470, #1482), so projects that don't already have
-    // their own buildscript repos have no way to resolve our classpath dep — adding it
-    // there would only produce `Cannot resolve external dependency ... because no
-    // repositories are defined` at configuration time, which short-circuits the entire
-    // Tooling API query (the 0.11.8 regression). Skip the injection wholesale for those
-    // projects; they silently miss the plugin, and the user's recourse is the
-    // plugins { } DSL apply.
-    val composeAiPreviewSkipExclusiveContentClasspathDep =
+    // In the exclusiveContent shape Gradle 9.3+ rejects adding to buildscript.repositories from
+    // any project (issues #1470, #1482), so a project without its own `buildscript { repositories
+    // { ... } }` can't resolve our classpath coordinate that way. Rather than drop auto-inject
+    // for those modules (which silently left e.g. Confetti's `:androidApp` plugin-less), resolve
+    // the plugin classpath ourselves through the project's settings-managed repos and inject the
+    // files — see composeAiPreviewResolvePluginClasspath above. Modules that DO declare their own
+    // buildscript repos still take the plain coordinate path below (their repos resolve it).
+    val composeAiPreviewNeedsResolvedClasspathInject =
         composeAiPreviewSettingsHasExclusiveContent &&
             projectDir !in composeAiPreviewProjectsWithOwnBuildscriptRepos
 
@@ -429,43 +458,56 @@ allprojects {
     val composeAiPreviewHasPreAppliedDescendant =
         subprojects.any { it.projectDir in composeAiPreviewPreAppliedDirs }
 
-    if (!composeAiPreviewSkipExclusiveContentClasspathDep &&
-        !composeAiPreviewHasPreAppliedDescendant &&
-        projectDir !in composeAiPreviewPreAppliedDirs) {
-        buildscript {
-            // When the settings file declares `exclusiveContent { ... }` in `pluginManagement {
-            // repositories { ... } }`, Gradle 9.3+ rejects any attempt to *add* repositories to
-            // `buildscript.repositories` from any project (issues #1470, #1482). We still add
-            // the classpath dependency though — at this point we've confirmed the project has
-            // its own buildscript { repositories { ... } } declared (via the scan above), so
-            // resolution can succeed via those repos. Outside the exclusiveContent branch we
-            // both add our repos and add the dep, the original auto-inject happy path.
-            if (!composeAiPreviewSettingsHasExclusiveContent) {
-                repositories {
-                    gradlePluginPortal()
-                    mavenCentral()
-                    google()
-                    if (useMavenLocal) mavenLocal()
+    val composeAiPreviewIsPreApplied = projectDir in composeAiPreviewPreAppliedDirs
+
+    if (!composeAiPreviewIsPreApplied && !composeAiPreviewHasPreAppliedDescendant) {
+        if (composeAiPreviewNeedsResolvedClasspathInject) {
+            // exclusiveContent + no own buildscript repos: resolve + inject files() so the plugin
+            // lands on this module's buildscript classloader without touching
+            // buildscript.repositories. Empty means we couldn't resolve it (e.g. a released plugin
+            // not in the consumer's repos) — degrade to a no-op, exactly as this branch did before
+            // it learned to inject.
+            val composeAiPreviewClasspath = composeAiPreviewResolvePluginClasspath()
+            if (composeAiPreviewClasspath.isEmpty()) return@allprojects
+            val composeAiPreviewClasspathFiles = files(composeAiPreviewClasspath)
+            buildscript {
+                dependencies {
+                    add("classpath", composeAiPreviewClasspathFiles)
                 }
             }
-            dependencies {
-                add(
-                    "classpath",
-                    "ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:${'$'}pluginVersion",
-                )
+        } else {
+            buildscript {
+                // Only add repositories when the settings don't declare exclusiveContent — Gradle
+                // 9.3+ rejects the add otherwise (issues #1470, #1482). In the
+                // exclusiveContent-with-own-repos case the module's own buildscript repositories
+                // resolve the coordinate. Outside the exclusiveContent branch we both add our
+                // repos and the dep, the original auto-inject happy path.
+                if (!composeAiPreviewSettingsHasExclusiveContent) {
+                    repositories {
+                        gradlePluginPortal()
+                        mavenCentral()
+                        google()
+                        if (useMavenLocal) mavenLocal()
+                    }
+                }
+                dependencies {
+                    add(
+                        "classpath",
+                        "ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:${'$'}pluginVersion",
+                    )
+                }
             }
         }
     }
 
-    // No buildscript classpath dep was injected and the project doesn't pre-apply, so
-    // `pluginManager.apply(...)` from the withPlugin hooks would fail with "Plugin with id
-    // ... not found." Skipping the hooks keeps the failure mode quiet — non-preview
-    // projects (e.g. Confetti's :backend) configure cleanly with no diagnostic noise. The
-    // ancestor-of-pre-applied case (above) is gated the same way: its injection was skipped, so
-    // its hooks must be too.
-    if ((composeAiPreviewSkipExclusiveContentClasspathDep ||
-        composeAiPreviewHasPreAppliedDescendant) &&
-        projectDir !in composeAiPreviewPreAppliedDirs) return@allprojects
+    // Skip the apply hooks only for an ancestor of a pre-applied module (its injection was skipped
+    // above, and applying here would leak into the descendant's classpath). A pre-applied module
+    // keeps its hooks — they no-op via the hasPlugin guard. Non-preview projects (e.g. Confetti's
+    // :backend) that never apply an Android/Compose plugin configure cleanly regardless: their
+    // withPlugin hooks simply never fire.
+    if (composeAiPreviewHasPreAppliedDescendant && !composeAiPreviewIsPreApplied) {
+        return@allprojects
+    }
 
     fun applyComposeAiPreview() {
         if (plugins.hasPlugin("ee.schimke.composeai.preview")) return

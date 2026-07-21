@@ -75,13 +75,20 @@ export function renderInitScript(
 // \`COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1\` still forces the seed on for
 // non-SNAPSHOT runs.
 
-// Auto-inject is suppressed when the consumer's settings file declares
-// \`exclusiveContent { ... }\` inside \`pluginManagement { repositories { ... } }\`
-// (or shares its repos via \`listOf(repositories, dependencyResolutionManagement
-// .repositories).forEach\` — the Confetti shape). Gradle 9.3+ rejects adding to
-// \`buildscript.repositories\` once exclusiveContent is in
-// \`settings.pluginManagement.repositories\`, so the \`allprojects { buildscript {
-// ... } }\` injection below would fail every project's configuration.
+// Gradle 9.3+ rejects adding to \`buildscript.repositories\` once
+// \`exclusiveContent { ... }\` is declared in \`settings.pluginManagement
+// .repositories\` (directly, or shared via \`listOf(repositories,
+// dependencyResolutionManagement.repositories).forEach\` — the Confetti shape;
+// issue #1482). So in that shape a module without its own \`buildscript {
+// repositories { ... } }\` has no repository to resolve our classpath
+// coordinate from. Rather than drop auto-inject there (which silently left
+// e.g. Confetti's \`:androidApp\` plugin-less), we resolve the plugin's
+// classpath through the project's own (settings-managed) repositories via a
+// detached configuration and inject the resolved JARs with \`classpath(files(
+// ...))\` — that lands the plugin on the module's OWN buildscript classloader,
+// alongside AGP (unlike an initscript/settings/parent classloader, which
+// can't see AGP types — the reason the \`initscript { classpath }\` route was
+// reverted in #1483), and never touches \`buildscript.repositories\`.
 
 import org.gradle.api.configuration.BuildFeatures
 import org.gradle.kotlin.dsl.support.serviceOf
@@ -329,12 +336,53 @@ gradle.settingsEvaluated {
     }
 }
 
+// Resolves the compose-preview plugin's buildscript classpath — the plugin
+// marker, its implementation JAR, and their transitive deps — through THIS
+// project's own repositories (the settings-level dependencyResolutionManagement
+// repos in the exclusiveContent shape, where \`mavenLocal()\` / the plugin repo
+// were seeded above). Returned as raw files so the caller can inject them via
+// \`buildscript { dependencies { classpath(files(...)) } }\` WITHOUT adding to
+// \`buildscript.repositories\` — the add Gradle 9.3+ forbids under exclusiveContent
+// (#1482). A detached configuration resolves against the project's repository
+// handler, so it is unaffected by that validation. Empty set on any resolution
+// failure (e.g. a released plugin whose coordinate isn't in the consumer's
+// project repos) so the caller degrades to a no-op instead of crashing the
+// Tooling API model query.
+var composeAiPreviewCachedPluginClasspath: Set<java.io.File>? = null
+
+fun org.gradle.api.Project.composeAiPreviewResolvePluginClasspath(): Set<java.io.File> {
+    // The resolved classpath is identical across every module (same coordinate,
+    // same settings-managed repos), so memoise the first successful resolution
+    // and reuse it — a large multi-module build then resolves once, not once
+    // per Android module. Only cache on success so a module that transiently
+    // can't resolve doesn't poison the memo.
+    composeAiPreviewCachedPluginClasspath?.let { return it }
+    val composeAiPreviewMarker =
+        dependencies.create(
+            "ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:$pluginVersion"
+        )
+    val composeAiPreviewResolved =
+        runCatching {
+            configurations.detachedConfiguration(composeAiPreviewMarker).files.toSet()
+        }.getOrDefault(emptySet())
+    if (composeAiPreviewResolved.isNotEmpty()) {
+        composeAiPreviewCachedPluginClasspath = composeAiPreviewResolved
+    }
+    return composeAiPreviewResolved
+}
+
 allprojects {
     if (composeAiPreviewIsIncludedBuild) return@allprojects
-    // In the exclusiveContent shape, modules without their own buildscript repos have no way
-    // to resolve our classpath dep — adding it would crash configuration. Skip both the
-    // injection and the apply hooks for those modules.
-    val composeAiPreviewSkipExclusiveContentClasspathDep =
+
+    // In the exclusiveContent shape, Gradle 9.3+ rejects *adding* to
+    // buildscript.repositories (#1482), so a module without its own \`buildscript {
+    // repositories { ... } }\` can't resolve our classpath coordinate. For those
+    // modules resolve the plugin classpath ourselves (through the project's
+    // settings-managed repos) and inject the files — see
+    // composeAiPreviewResolvePluginClasspath above. Modules that DO declare their
+    // own buildscript repos still take the plain coordinate path below (their
+    // repos resolve it).
+    val composeAiPreviewNeedsResolvedClasspathInject =
         composeAiPreviewSettingsHasExclusiveContent &&
             projectDir !in composeAiPreviewProjectsWithOwnBuildscriptRepos
 
@@ -348,34 +396,54 @@ allprojects {
     val composeAiPreviewHasPreAppliedDescendant =
         subprojects.any { it.projectDir in composeAiPreviewPreAppliedDirs }
 
-    if (!composeAiPreviewSkipExclusiveContentClasspathDep &&
-        !composeAiPreviewHasPreAppliedDescendant &&
-        projectDir !in composeAiPreviewPreAppliedDirs) {
-        buildscript {
-            // When the settings file declares exclusiveContent in pluginManagement.repositories,
-            // Gradle 9.3+ rejects *adding* to buildscript.repositories (issue #1482). The
-            // outer guard above means we only reach here for modules whose own buildscript
-            // already declares repositories, so resolution can succeed via those.
-            if (!composeAiPreviewSettingsHasExclusiveContent) {
-                repositories {
-                    gradlePluginPortal()
-                    mavenCentral()
-                    google()
-                    if (useMavenLocal) mavenLocal()
+    val composeAiPreviewIsPreApplied = projectDir in composeAiPreviewPreAppliedDirs
+
+    if (!composeAiPreviewIsPreApplied && !composeAiPreviewHasPreAppliedDescendant) {
+        if (composeAiPreviewNeedsResolvedClasspathInject) {
+            // exclusiveContent + no own buildscript repos: resolve + inject files()
+            // so the plugin lands on this module's buildscript classloader without
+            // touching buildscript.repositories. Empty means we couldn't resolve it
+            // (e.g. released plugin not in the consumer's repos) — degrade to a
+            // no-op, exactly as this branch did before it learned to inject.
+            val composeAiPreviewClasspath = composeAiPreviewResolvePluginClasspath()
+            if (composeAiPreviewClasspath.isEmpty()) return@allprojects
+            val composeAiPreviewClasspathFiles = files(composeAiPreviewClasspath)
+            buildscript {
+                dependencies {
+                    add("classpath", composeAiPreviewClasspathFiles)
                 }
             }
-            dependencies {
-                add(
-                    "classpath",
-                    "ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:$pluginVersion",
-                )
+        } else {
+            buildscript {
+                // Only add repositories when the settings don't declare
+                // exclusiveContent — Gradle 9.3+ rejects the add otherwise (#1482).
+                // In the exclusiveContent-with-own-repos case the module's own
+                // buildscript repositories resolve the coordinate.
+                if (!composeAiPreviewSettingsHasExclusiveContent) {
+                    repositories {
+                        gradlePluginPortal()
+                        mavenCentral()
+                        google()
+                        if (useMavenLocal) mavenLocal()
+                    }
+                }
+                dependencies {
+                    add(
+                        "classpath",
+                        "ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:$pluginVersion",
+                    )
+                }
             }
         }
     }
 
-    if ((composeAiPreviewSkipExclusiveContentClasspathDep ||
-        composeAiPreviewHasPreAppliedDescendant) &&
-        projectDir !in composeAiPreviewPreAppliedDirs) return@allprojects
+    // Skip the apply hooks only for an ancestor of a pre-applied module (its
+    // injection was skipped above, and applying here would leak into the
+    // descendant's classpath). A pre-applied module keeps its hooks — they no-op
+    // via the hasPlugin guard.
+    if (composeAiPreviewHasPreAppliedDescendant && !composeAiPreviewIsPreApplied) {
+        return@allprojects
+    }
 
     fun applyComposeAiPreview() {
         if (plugins.hasPlugin("ee.schimke.composeai.preview")) return
