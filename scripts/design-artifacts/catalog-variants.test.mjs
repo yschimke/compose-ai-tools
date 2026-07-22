@@ -87,6 +87,52 @@ test("foldVariants reports a props-only variant that did not render, labelled by
   assert.deepEqual(missing, ["Button/Filled [content=icon+label]"]);
 });
 
+test("foldVariants folds a theme variant, pairing a split dark @Preview onto the light default", () => {
+  // A screen whose light and dark renders are two SEPARATE @Preview functions
+  // (FooScreen / FooScreenDark) — the app pattern the catalog server can't pair
+  // by function name on its own. A `theme` variant links the dark function's
+  // render onto the light component so it folds into one __light/__dark card the
+  // viewer swaps between, keeping a night-mode browse on the baked PNG.
+  const byFunction = new Map([
+    // The dark function renders dark, but its image carries whatever theme tag the
+    // render produced — the variant's `theme` re-tags it authoritatively.
+    ["FooScreenDark", { images: [img("default", "dark")] }],
+  ]);
+  const component = {
+    componentId: "Screen/Foo",
+    variants: [{ theme: "dark", preview: "FooScreenDark" }],
+  };
+  const { ideal, missing } = foldVariants([img("default", "light")], component, byFunction);
+  assert.deepEqual(missing, []);
+  // 1 light default + 1 dark variant → a pair the server folds into one swap card.
+  assert.equal(ideal.length, 2);
+  assert.equal(ideal[0].theme, "light");
+  assert.equal(ideal[1].theme, "dark");
+  assert.equal(ideal[1].state, "default"); // a theme variant keeps the default state
+});
+
+test("foldVariants re-tags a mis-tagged theme variant render authoritatively", () => {
+  // Belt-and-suspenders: even if the dark function's render came back tagged
+  // "light" (a preview that forgot uiMode = NIGHT_YES), the `theme` axis forces
+  // the tag so the pair still resolves to __light/__dark rather than collapsing.
+  const byFunction = new Map([["FooScreenDark", { images: [img("default", "light")] }]]);
+  const { ideal } = foldVariants(
+    [img("default", "light")],
+    { componentId: "Screen/Foo", variants: [{ theme: "dark", preview: "FooScreenDark" }] },
+    byFunction,
+  );
+  assert.equal(ideal[1].theme, "dark");
+});
+
+test("foldVariants reports a theme variant that did not render, labelled by its theme", () => {
+  const { missing } = foldVariants(
+    [img("default", "light")],
+    { componentId: "Screen/Foo", variants: [{ theme: "dark", preview: "Missing" }] },
+    new Map(),
+  );
+  assert.deepEqual(missing, ["Screen/Foo [dark]"]);
+});
+
 // --- index.html: default in the grid, states in the zoom view -----------------
 
 const catalogWithStates = () => ({
