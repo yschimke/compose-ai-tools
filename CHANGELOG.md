@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.17.8](https://github.com/yschimke/compose-ai-tools/compare/v0.17.7...v0.17.8) (2026-07-22)
+
+
+### Features
+
+* **design-artifacts:** link split light/dark screen previews via a theme variant ([#2654](https://github.com/yschimke/compose-ai-tools/issues/2654)) ([6effd55](https://github.com/yschimke/compose-ai-tools/commit/6effd554d9ba8946cf134978355652295254dc38))
+* **figma-svg:** ship a figma-svg per preview variant, not one per component ([#2653](https://github.com/yschimke/compose-ai-tools/issues/2653)) ([308d917](https://github.com/yschimke/compose-ai-tools/commit/308d917da404ad6e480e5838c254c69b26d3d2cb))
+* **resources:** record render failures/fallbacks into the bundle and surface them ([#2649](https://github.com/yschimke/compose-ai-tools/issues/2649)) ([2bff200](https://github.com/yschimke/compose-ai-tools/commit/2bff20009eb390bcc3849a8cba71057e233ceb74))
+* **vscode:** show resource render errors in the manifest icon hover ([#2651](https://github.com/yschimke/compose-ai-tools/issues/2651)) ([ac442f0](https://github.com/yschimke/compose-ai-tools/commit/ac442f06bacedcf3eb28290e529d59f70ab47ffb))
+
+
+### Bug Fixes
+
+* **android:** resolve wireframe corner-radius tokens density-aware, matching desktop ([#2652](https://github.com/yschimke/compose-ai-tools/issues/2652)) ([8c3a02e](https://github.com/yschimke/compose-ai-tools/commit/8c3a02e24d145fc4fc443463e7ca074dc1d60fd3))
+* don't let a placeholder overlay dictate the figma-svg container corner ([#2645](https://github.com/yschimke/compose-ai-tools/issues/2645)) ([94e305b](https://github.com/yschimke/compose-ai-tools/commit/94e305beb6b0b3b3c168aeffd085d1832065c528))
+* **serve:** stop the thumbnail crop window overflowing narrow grid cards ([#2648](https://github.com/yschimke/compose-ai-tools/issues/2648)) ([ed71ec0](https://github.com/yschimke/compose-ai-tools/commit/ed71ec00411128c63c1224a5daa1bb32f59598bb))
+
 ## [0.17.7](https://github.com/yschimke/compose-ai-tools/compare/v0.17.6...v0.17.7) (2026-07-22)
 
 
