@@ -65,4 +65,31 @@ object RenderArtifactContextKeys {
       name = "render-data-artifact.slotTables",
       type = List::class.java as Class<List<CompositionData>>,
     )
+
+  /**
+   * The captured frame PNG (`<outputDir>/<outputBaseName>.png`). Threaded so the
+   * `compose/figma-svg` hybrid export can crop opaque-component `<image>` layers out of the frame
+   * without re-rendering.
+   */
+  val OutputPng: ExtensionContextKey<File> =
+    ExtensionContextKey(name = "render-data-artifact.outputPng", type = File::class.java)
+
+  /**
+   * Render font scale (`spec.fontScale`). Threaded so the `compose/figma-svg` export can size `sp`
+   * text as `sp × density × fontScale`, matching the render whose geometry was measured with the
+   * scaled text. Absent ⇒ 1.0.
+   */
+  val FontScale: ExtensionContextKey<Float> =
+    ExtensionContextKey(name = "render-data-artifact.fontScale", type = Float::class.javaObjectType)
+
+  /**
+   * Whether the render's device masks its frame to a circle (round Wear). The `compose/figma-svg`
+   * export must clip to the same circle so its full-frame background doesn't paint the corners the
+   * render clipped away. Android derives it from the preview device; desktop leaves it `false`.
+   */
+  val RoundClip: ExtensionContextKey<Boolean> =
+    ExtensionContextKey(
+      name = "render-data-artifact.roundClip",
+      type = Boolean::class.javaObjectType,
+    )
 }

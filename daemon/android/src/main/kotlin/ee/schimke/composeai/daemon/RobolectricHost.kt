@@ -1729,7 +1729,11 @@ open class RobolectricHost(
               // tables via the primitive producer overload (output-equivalent to the PreviewContext
               // path), so Desktop can run the same class.
               RenderDataArtifactExtensionFactory { LayoutInspectorExtension() },
-              ComposeFigmaSvgExtension.factory,
+              // ComposeFigmaSvgExtension is shared now; Android injects its own font resolver (no
+              // fidelity-measurement exception) and reads the round clip from the preview device.
+              RenderDataArtifactExtensionFactory {
+                ComposeFigmaSvgExtension(fontResolver = { androidFigmaFontResolver() })
+              },
               I18nTranslationsExtension.factory,
               NavigationExtension.factory,
             )

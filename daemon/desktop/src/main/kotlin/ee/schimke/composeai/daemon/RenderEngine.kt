@@ -128,6 +128,7 @@ class RenderEngine(
         densityAware = true,
       ),
       LayoutInspectorExtension(),
+      ComposeFigmaSvgExtension(fontResolver = ::figmaFontResolver),
     ),
 ) {
 
@@ -663,78 +664,10 @@ class RenderEngine(
       }
     }
 
-    // Compose semantics (`compose/semantics` JSON sidecar) + wireframe — both derive from the held
-    // scene's unmerged semantics root, matching the unmerged tree the Android producer uses so both
-    // backends emit the same data. Always-on (requiresRerender = false) like the Android
-    // post-capture extension, and wrapped in try/catch so a walk/bake failure never strands the
-    // outputs.
-    try {
-      val root = state.scene.semanticsOwners.firstOrNull()?.unmergedRootSemanticsNode
-      if (root != null) {
-        trace.section("wireframe") {
-          val previewId = state.spec.previewId ?: state.spec.outputBaseName
-          // Pass the render density so percent-based corner radii (`CircleShape`) resolve to dp
-          // instead of dropping out (#1908). dp-valued tokens (padding/gap/colours) don't use it.
-          val density = state.spec.density
-          val payload = ComposeSemanticsDataProducer.buildPayload(root, density)
-          // `compose-semantics.json` (`compose/semantics`) is now written by the shared
-          // ComposeSemanticsExtension via the post-capture PostCaptureProcessor loop below, not
-          // inline here — the same seam the Android engine uses. The `payload` above is still built
-          // for the wireframe / spatial / figma-svg exports that follow.
-          // `layout-inspector.json` (`layout/inspector`) is now written by the shared
-          // LayoutInspectorExtension via the post-capture loop below — the same seam and the same
-          // CMP-portable producer overload (captured root + slot tables) the inline call used.
-          // `compose/semantics-wireframe` (SVG + baked PNG) and `compose/spatial-semantics` are now
-          // written by the shared ComposeSemanticsWireframeExtension via the post-capture loop
-          // below — the same seam the Android engine uses. `payload` above is still built for the
-          // layout-inspector + figma-svg exports that remain inline.
-          // `compose/figma-svg` — the layered, editable SVG export (design fidelity, not the
-          // schematic wireframe). Reuses the same captured root: the layout tree carries the
-          // composable names + container tokens, the semantics `payload` carries editable text.
-          LayoutInspectorDataProducer.buildPayload(
-              root = root,
-              slotTables = state.slotTableCapture?.snapshot().orEmpty(),
-              density = density,
-            )
-            ?.let { layout ->
-              ComposeFigmaSvgDataProducer.writeSvg(
-                rootDir = dataDir,
-                previewId = previewId,
-                layout = layout,
-                semantics = payload,
-                density = density,
-                // Emit sp text at the render's font scale so the vector matches the render (which
-                // sized its text — and the boxes measured around it — via Density(density,
-                // fontScale)).
-                fontScale = state.spec.fontScale ?: 1.0f,
-                // Hand the just-written frame PNG so opaque components (Image/Icon/Canvas/charts)
-                // export as `<image>` layers backed by a real background-free crop of the frame.
-                frameImage = state.outputFile,
-                // Embed the real (Google-downloadable) face so `<text>` renders faithfully instead
-                // of a substituted `sans-serif`. Opt-in; also on when fidelity is being measured so
-                // the score reflects the embedded font. Reuses the renderer's own font cache dir.
-                fontResolver = figmaFontResolver(),
-              )
-              // Fidelity harness (opt-in via -Dcomposeai.figma.fidelity=true): rasterise the SVG we
-              // just wrote and score it against this render, dropping a `render | figma-svg | diff`
-              // composite so drift in the vector export is measurable where the renderer runs.
-              if (FigmaSvgFidelity.enabled()) {
-                val previewDir = dataDir.resolve(previewId)
-                FigmaSvgFidelity.write(
-                  previewDir = previewDir,
-                  svgFile = previewDir.resolve(ComposeFigmaSvgDataProducer.FILE_SVG),
-                  renderPng = state.outputFile,
-                )
-              }
-            }
-        }
-      }
-    } catch (t: Throwable) {
-      System.err.println(
-        "RenderEngine: wireframe write failed for ${state.spec.outputBaseName}: " +
-          "${t.javaClass.simpleName}: ${t.message}"
-      )
-    }
+    // compose/semantics, compose/semantics-wireframe, compose/spatial-semantics, layout/inspector,
+    // and compose/figma-svg are all written by the shared post-capture extensions in the loop below
+    // (the same seam the Android engine uses). The desktop-only figma-svg fidelity harness runs
+    // after that loop, once the SVG has been written.
 
     // Post-capture data-artifact extensions — the portable PostCaptureProcessor seam shared with
     // the
@@ -763,6 +696,12 @@ class RenderEngine(
                   RenderArtifactContextKeys.SlotTables provides
                     state.slotTableCapture?.snapshot().orEmpty()
                 )
+                add(RenderArtifactContextKeys.FontScale provides (state.spec.fontScale ?: 1.0f))
+                add(RenderArtifactContextKeys.OutputPng provides state.outputFile)
+                // Desktop leaves round-Wear clipping off, as its inline figma-svg export always
+                // did;
+                // converging with Android's device-derived clip is a separate visual change.
+                add(RenderArtifactContextKeys.RoundClip provides false)
               }
               .toTypedArray()
           )
@@ -784,6 +723,25 @@ class RenderEngine(
           } catch (t: Throwable) {
             System.err.println(
               "RenderEngine: ${ext.id} data write failed for ${state.spec.outputBaseName}: " +
+                "${t.javaClass.simpleName}: ${t.message}"
+            )
+          }
+        }
+        // Desktop-only figma-svg fidelity harness (opt-in via -Dcomposeai.figma.fidelity=true): the
+        // shared ComposeFigmaSvgExtension in the loop above wrote compose/figma-svg; rasterise it
+        // and score against this render, dropping a `render | figma-svg | diff` composite. Android
+        // has no equivalent.
+        if (FigmaSvgFidelity.enabled()) {
+          try {
+            val previewDir = dataDir.resolve(previewId)
+            FigmaSvgFidelity.write(
+              previewDir = previewDir,
+              svgFile = previewDir.resolve(ComposeFigmaSvgDataProducer.FILE_SVG),
+              renderPng = state.outputFile,
+            )
+          } catch (t: Throwable) {
+            System.err.println(
+              "RenderEngine: figma-svg fidelity failed for ${state.spec.outputBaseName}: " +
                 "${t.javaClass.simpleName}: ${t.message}"
             )
           }
