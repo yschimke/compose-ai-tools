@@ -118,9 +118,11 @@ internal object ModifierTokenResolver {
       // expose `PlaceholderDefaults.shape` (= `ShapeTokens.CornerFull`, a 50% pill) as an
       // inspectable `shape`, and ride on the *caller's* chain outside the component's own Surface
       // shape — so as the first shape-bearing modifier they hijack the container corner and a
-      // placeholdered `TitleCard`/`Button` (modest corner) exports as a full pill (`rx = height/2`).
+      // placeholdered `TitleCard`/`Button` (modest corner) exports as a full pill (`rx =
+      // height/2`).
       // Skip their shape so the real `clip`/`paint`/`background` shape later in the chain wins.
-      val nodeShape = if (isPlaceholderShapeModifier(name, simpleName)) null else shapeOf(mod, elements)
+      val nodeShape =
+        if (isPlaceholderShapeModifier(name, simpleName)) null else shapeOf(mod, elements)
       if (nodeShape != null) {
         if (cornerRadius == null) cornerRadius = nodeShape.cornerRadiusWire(minSidePx, density)
         // A `RoundedCornerShape(<px>f)` has no dp `cornerRadius`; capture its raw-pixel radii so
