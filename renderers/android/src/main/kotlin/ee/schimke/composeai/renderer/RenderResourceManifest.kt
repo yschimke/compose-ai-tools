@@ -98,3 +98,28 @@ data class RenderResourceManifest(
   val resources: List<RenderResourcePreview> = emptyList(),
   val manifestReferences: List<RenderManifestReference> = emptyList(),
 )
+
+/** Sidecar filename the resource renderer writes its per-capture failures/fallbacks into. */
+const val RENDER_ERRORS_SIDECAR = "resource-render-errors.json"
+
+/**
+ * One capture that did NOT produce a PNG, and why. Written to [RENDER_ERRORS_SIDECAR] in the bundle
+ * so the reason survives past the CI log and can be surfaced later (CLI / preview server / VS Code).
+ * Keyed by `(id, renderOutput)` so a consumer can line an entry up with the exact missing render.
+ *
+ * [status]:
+ * - `failed` — the drawable threw while rasterising (a resource the platform can't draw).
+ * - `skipped` — a known, expected degradation (wrong drawable type, no mask shape, no `<monochrome>`
+ *   layer, …).
+ * - `not-found` — the resource id didn't resolve on the consumer's `R` class.
+ */
+@Serializable
+data class RenderErrorEntry(
+  val id: String,
+  val renderOutput: String,
+  val status: String,
+  val message: String,
+)
+
+/** Envelope for [RENDER_ERRORS_SIDECAR]. An empty [entries] means "ran clean, nothing to report". */
+@Serializable data class RenderErrorReport(val entries: List<RenderErrorEntry> = emptyList())

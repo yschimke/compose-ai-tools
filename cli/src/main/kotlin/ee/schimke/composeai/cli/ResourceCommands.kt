@@ -69,7 +69,31 @@ data class ResourceCaptureResult(
   val sha256: String? = null,
   /** True when sha256 differs from the prior `compose-preview show-resources` run. */
   val changed: Boolean? = null,
+  /**
+   * Why this capture produced no PNG, from the renderer's `resource-render-errors.json` sidecar
+   * (`failed` = the drawable couldn't be rasterised; `skipped` = a known degradation; `not-found` =
+   * the resource id didn't resolve). `null` when the capture rendered. Lets a consumer (the CI
+   * comment, the preview server, VS Code) show *why* a render is missing instead of just that it
+   * is.
+   */
+  val error: String? = null,
+  /** `failed` | `skipped` | `not-found` — the [error]'s category; `null` when [error] is null. */
+  val errorStatus: String? = null,
 )
+
+/** Sidecar the resource renderer writes its per-capture failures/fallbacks into (see renderer). */
+private const val RESOURCE_RENDER_ERRORS_SIDECAR = "resource-render-errors.json"
+
+@Serializable
+private data class ResourceRenderError(
+  val id: String = "",
+  val renderOutput: String = "",
+  val status: String = "",
+  val message: String = "",
+)
+
+@Serializable
+private data class ResourceRenderErrorReport(val entries: List<ResourceRenderError> = emptyList())
 
 @Serializable
 data class ResourcePreviewResult(
@@ -238,10 +262,14 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
           "${filtered.size} resource preview(s):"
       )
       for (r in missing) {
+        val nullCaptures = r.captures.filter { it.pngPath == null }
         val nullVariants =
-          r.captures
-            .filter { it.pngPath == null }
-            .joinToString(", ") { it.renderOutput.ifBlank { "default" } }
+          nullCaptures
+            .joinToString(", ") { c ->
+              val label = c.renderOutput.ifBlank { "default" }
+              // Append the renderer's reason (from the sidecar) so the log says *why* it's missing.
+              if (c.error != null) "$label (${c.errorStatus ?: "error"}: ${c.error})" else label
+            }
             .ifEmpty { "default" }
         val moduleTag = if (r.module.isNotBlank()) " (${r.module})" else ""
         System.err.println("  - ${r.id}$moduleTag — no PNG for: $nullVariants")
@@ -281,6 +309,27 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
     return resourceJson.decodeFromString(fileSystem.read(manifestFile.path.toPath()) { readUtf8() })
   }
 
+  /**
+   * Reads the renderer's `resource-render-errors.json` sidecar for [module], returning a
+   * `renderOutput -> error` map so [buildResourceResults] can attach the reason a capture produced
+   * no PNG. Empty when the sidecar is absent (an older renderer) or reports nothing.
+   */
+  private fun readRenderErrors(module: PreviewModule): Map<String, ResourceRenderError> {
+    val sidecar =
+      module.projectDir.resolve("build/compose-previews/$RESOURCE_RENDER_ERRORS_SIDECAR")
+    if (!sidecar.exists()) return emptyMap()
+    return try {
+      resourceJson
+        .decodeFromString<ResourceRenderErrorReport>(
+          fileSystem.read(sidecar.path.toPath()) { readUtf8() }
+        )
+        .entries
+        .associateBy { it.renderOutput }
+    } catch (_: Exception) {
+      emptyMap()
+    }
+  }
+
   private fun readAllResourceManifests(
     modules: List<PreviewModule>
   ): List<Pair<PreviewModule, ResourceManifest>> = modules.mapNotNull { module ->
@@ -294,6 +343,7 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
     for ((module, manifest) in manifests) {
       val prior = readResourceState(module).shas
       val updated = mutableMapOf<String, String>()
+      val renderErrors = readRenderErrors(module)
 
       for (resource in manifest.resources) {
         val captureResults =
@@ -315,12 +365,17 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
                 else -> prior[key] != sha
               }
             if (sha != null) updated[key] = sha
+            // Attach the renderer's reason only when the PNG is actually missing — a stale sidecar
+            // entry for a capture that later rendered shouldn't mask a good render.
+            val renderError = if (pngFile == null) renderErrors[capture.renderOutput] else null
             ResourceCaptureResult(
               variant = capture.variant,
               renderOutput = capture.renderOutput,
               pngPath = pngFile?.absolutePath,
               sha256 = sha,
               changed = changed,
+              error = renderError?.message,
+              errorStatus = renderError?.status,
             )
           }
         val first = captureResults.firstOrNull()

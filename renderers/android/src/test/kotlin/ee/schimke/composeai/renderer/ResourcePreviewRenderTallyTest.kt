@@ -1,6 +1,8 @@
 package ee.schimke.composeai.renderer
 
 import java.io.IOException
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -84,6 +86,42 @@ class ResourcePreviewRenderTallyTest {
     )
     // A pure rasterisation failure (no IOException anywhere in the chain) is NOT fatal.
     assertTrue(!ResourcePreviewRenderTest.isOutputFailure(UnsupportedOperationException("no draw")))
+  }
+
+  @Test
+  fun `render-errors sidecar report round-trips through JSON`() {
+    // The sidecar is the on-disk contract the CLI / preview server / VS Code read to surface why a
+    // resource render is missing — pin its shape so a rename/field change is a deliberate break.
+    val report =
+      RenderErrorReport(
+        entries =
+          listOf(
+            RenderErrorEntry(
+              id = "mipmap/ic_launcher",
+              renderOutput = "renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_circle.png",
+              status = "failed",
+              message = "RuntimeException: can't rasterise",
+            ),
+            RenderErrorEntry(
+              id = "drawable/foo",
+              renderOutput = "renders/resources/drawable/foo.png",
+              status = "skipped",
+              message = "no <monochrome> layer for THEMED_LIGHT",
+            ),
+          )
+      )
+    val json = Json { ignoreUnknownKeys = true }
+    val decoded = json.decodeFromString<RenderErrorReport>(json.encodeToString(report))
+    assertEquals(report, decoded)
+    assertEquals("failed", decoded.entries[0].status)
+    assertEquals("mipmap/ic_launcher", decoded.entries[0].id)
+  }
+
+  @Test
+  fun `an empty render-errors report is the clean-run signal`() {
+    val json = Json { ignoreUnknownKeys = true }
+    val decoded = json.decodeFromString<RenderErrorReport>(json.encodeToString(RenderErrorReport()))
+    assertTrue(decoded.entries.isEmpty())
   }
 
   @Test
