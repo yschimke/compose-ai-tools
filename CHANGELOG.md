@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.17.6](https://github.com/yschimke/compose-ai-tools/compare/v0.17.5...v0.17.6) (2026-07-22)
+
+
+### Features
+
+* **discovery:** expand known off-classpath multi-preview annotations, warn on the rest ([#2631](https://github.com/yschimke/compose-ai-tools/issues/2631)) ([4f0058e](https://github.com/yschimke/compose-ai-tools/commit/4f0058e122d84970c1fb4d28990c26c0abaea683))
+* **serve:** surface why a preview session is snapshot-only ([#2635](https://github.com/yschimke/compose-ai-tools/issues/2635)) ([efa94d0](https://github.com/yschimke/compose-ai-tools/commit/efa94d0ad94ee427b53a61ef074aae7bb62cd78f))
+
+
+### Bug Fixes
+
+* **resources:** tolerate un-rasterisable resources instead of hard-failing the render ([#2638](https://github.com/yschimke/compose-ai-tools/issues/2638)) ([d141707](https://github.com/yschimke/compose-ai-tools/commit/d141707b5872a9a8290c354ba5d91a9e54e017c8))
+
 ## [0.17.5](https://github.com/yschimke/compose-ai-tools/compare/v0.17.4...v0.17.5) (2026-07-21)
 
 
