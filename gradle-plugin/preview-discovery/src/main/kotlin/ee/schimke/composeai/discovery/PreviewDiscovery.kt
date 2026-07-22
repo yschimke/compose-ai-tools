@@ -1299,7 +1299,35 @@ object PreviewDiscovery {
       } else {
         annotations.flatMap { resolveMultiPreview(it, scanResult, mutableSetOf()) }
       }
-    if (directPreviews.isEmpty() && resolvedMultiPreviews.isEmpty()) return
+    // Issue #2613: a preview annotated only with a multi-preview annotation whose class is off the
+    // discovery classpath (e.g. wear tooling wired into `screenshotTest`, so
+    // `@WearPreviewLargeRound`
+    // resolves there but not in `main`) resolves to nothing and vanishes silently. For the
+    // well-known AndroidX / Wear annotations we expand them from a built-in spec table so they
+    // still
+    // render; for any others we can't recognise, warn so the silent drop is at least visible.
+    // Scoped to the `directPreviews`-empty branch — that's where `resolveMultiPreview` ran and
+    // could
+    // have dropped an unreachable annotation (including the mixed case where a sibling resolved).
+    val builtInSpecs: List<BuiltInPreviewSpec> =
+      if (directPreviews.isEmpty()) annotations.flatMap { builtInExpansionFor(it, scanResult) }
+      else emptyList()
+    if (directPreviews.isEmpty()) {
+      for (fqn in unexpandablePreviewAnnotationNames(annotations, scanResult)) {
+        if (fqn in BUILT_IN_MULTIPREVIEW_EXPANSIONS) continue // expanded from the table below
+        val simple = fqn.substringAfterLast('.')
+        warnings.add(
+          "composePreview: '${classInfo.name}.${method.name}' carries @$simple ($fqn) but " +
+            "discovery could not expand it into any @Preview — the annotation class is not on the " +
+            "discovery classpath for source set '${input.variantName}'. This usually means the " +
+            "tooling artifact that defines @$simple is wired into a test-only source set (e.g. " +
+            "screenshotTestImplementation) rather than the main/implementation classpath, so the " +
+            "preview is silently missing until it is resolvable there. See issue #2613."
+        )
+      }
+    }
+    if (directPreviews.isEmpty() && resolvedMultiPreviews.isEmpty() && builtInSpecs.isEmpty())
+      return
 
     // @PreviewWrapper and @ScrollingPreview are both non-repeatable and apply
     // to every @Preview on the function (including expansions from
@@ -1423,6 +1451,31 @@ object PreviewDiscovery {
           launcherWidgetResizeSpec,
           timings,
           previewParameter,
+          previewSourceFile,
+          inferredTargets,
+        )
+      )
+    }
+
+    // Built-in expansion of known off-classpath multi-preview annotations (issue #2613). Each
+    // synthesised spec runs through the same [buildPreviewInfo] tail as a real `@Preview`, so it
+    // fans out the function's `@ScrollingPreview` / `@AnimatedPreview` / … captures and infers
+    // targets identically.
+    for (spec in builtInSpecs) {
+      previews.add(
+        buildPreviewInfo(
+          classInfo,
+          method,
+          spec.toParams(wrapperFqn, previewParameter),
+          scrollSpecs,
+          animationSpec,
+          focusSpecs,
+          focusGifSpec,
+          ambientSpec,
+          gestureHintSpec,
+          launcherWidgetSpec,
+          launcherWidgetResizeSpec,
+          timings,
           previewSourceFile,
           inferredTargets,
         )
@@ -1571,7 +1624,7 @@ object PreviewDiscovery {
   )
 
   private fun buildOutputPlan(
-    ann: AnnotationInfo,
+    kind: PreviewKind,
     previewId: String,
     scrolls: List<ScrollCapture>,
     animation: AnimationCapture?,
@@ -1583,21 +1636,21 @@ object PreviewDiscovery {
     launcherWidgetResize: LauncherWidgetResizeSpec?,
     timings: List<Long>,
   ): PreviewOutputPlan {
-    val isTile = ann.name == TILE_PREVIEW_FQN
+    val isTile = kind == PreviewKind.TILE
     // Notification previews aren't composable either — no `mainClock`, no scrollables, no focus
     // owner. Treat them the same as tiles for every dimensional fan-out so the single-capture
     // path runs unmodified.
-    val isNotification = ann.name == NOTIFICATION_PREVIEW_FQN
+    val isNotification = kind == PreviewKind.NOTIFICATION
     // Glance preview functions are technically `@Composable`, but they're a closed Glance
     // composition driven by `composeForPreview(...)` rather than the standard Compose machinery.
     // Treat them the same way as tile / notification for fan-out gating — no scroll / animation
     // / focus drive, no `mainClock` tick, the renderer handles the whole materialise + inflate
     // in one shot.
-    val isGlanceAppWidget = ann.name == GLANCE_APPWIDGET_PREVIEW_FQN
+    val isGlanceAppWidget = kind == PreviewKind.GLANCE_APPWIDGET
     // XR subspace previews aren't captured to a single image and have no `mainClock` / scrollable /
     // focus owner here — the `:renderer-xr` task drives the whole recover-and-write in one shot.
     // Gate them out of every dimensional fan-out the same way as tile / notification / glance.
-    val isXrSubspace = ann.name == XR_SUBSPACE_PREVIEW_FQN
+    val isXrSubspace = kind == PreviewKind.XR_SUBSPACE
     // XR subspace previews don't render a PNG through the Robolectric path — the opt-in
     // `composePreviewRenderXr` task writes a `scene.json` (+ one `<panelId>.png` texture per panel)
     // into `renders/<sanitizedId>/`, and the optional `composePreviewCompositeXr` task bakes a
@@ -2378,6 +2431,237 @@ object PreviewDiscovery {
     return result
   }
 
+  // Preview-adjacent annotations we own that legitimately never expand into a `@Preview` — they
+  // modify, wrap, or parameterise a preview rather than declare one. Their simple names all contain
+  // `Preview`, so the unexpandable-annotation heuristic below (which matches on
+  // `contains("Preview")`
+  // — the wear multi-preview annotations put `Preview` mid-name, e.g. `WearPreviewLargeRound`) must
+  // exclude them explicitly or it would warn on every `@ScrollingPreview` / `@PreviewParameter`.
+  // The
+  // direct-preview FQNs — plain / desktop / tile / notification / glance / XR `@Preview` — are
+  // excluded separately by [isDirectPreview].
+  private val NON_EXPANDING_PREVIEW_FQNS =
+    setOf(
+      SCROLLING_PREVIEW_FQN,
+      ANIMATED_PREVIEW_FQN,
+      FOCUSED_PREVIEW_FQN,
+      AMBIENT_PREVIEW_FQN,
+      GESTURE_HINT_PREVIEW_FQN,
+      LAUNCHER_WIDGET_PREVIEW_FQN,
+      LAUNCHER_WIDGET_RESIZE_FQN,
+      PREVIEW_PARAMETER_FQN,
+      PREVIEW_WRAPPER_FQN,
+      PREVIEW_WRAPPER_CLASS_FQN,
+      ROBO_COMPOSE_PREVIEW_OPTIONS_FQN,
+    )
+
+  /**
+   * FQNs among [annotations] that look like preview-family annotations — a multi-preview
+   * meta-annotation whose simple name contains `Preview` — whose annotation class is NOT on the
+   * discovery classpath, so [resolveMultiPreview] can't reach the `@Preview`(s) inside them and the
+   * preview is dropped with no diagnostic. Issue #2613: `@WearPreviewLargeRound` in an app's `main`
+   * source set, whose wear tooling artifact was wired only into `screenshotTest`, vanished this
+   * way.
+   *
+   * Keyed on the annotation class being **absent from the scan** (`getClassInfo == null`). The scan
+   * doesn't `enableExternalClasses()`, so ClassGraph returns null — never a placeholder — for a
+   * class it only saw referenced, which is precisely the off-classpath case. This is what
+   * distinguishes a genuinely-dropped preview from a *reachable* annotation that merely happens to
+   * contain `Preview` in its name and isn't a multi-preview (a project's own `@PreviewOnly`
+   * marker): the latter is scanned, so `getClassInfo` is non-null and it is not flagged — no
+   * misleading "classpath" WARN on healthy modules (Codex review, PR #2631). `isExternalClass` is
+   * folded in defensively in case external-class scanning is ever enabled. The
+   * capture/wrapper/parameter annotations we own are excluded via [NON_EXPANDING_PREVIEW_FQNS], and
+   * direct `@Preview` / `Preview.Container` are handled elsewhere.
+   */
+  private fun unexpandablePreviewAnnotationNames(
+    annotations: List<AnnotationInfo>,
+    scanResult: ScanResult,
+  ): List<String> =
+    annotations
+      .asSequence()
+      .filterNot { isDirectPreview(it) || isPreviewContainer(it) }
+      .filterNot { it.name in NON_EXPANDING_PREVIEW_FQNS }
+      .filter { ann ->
+        ann.name.substringAfterLast('.').contains("Preview") &&
+          scanResult.getClassInfo(ann.name).let { it == null || it.isExternalClass }
+      }
+      .map { it.name }
+      .distinct()
+      .toList()
+
+  /**
+   * A single `@Preview` expansion of a well-known AndroidX / Wear multi-preview annotation, used as
+   * a built-in fallback when the annotation class is off the discovery classpath (issue #2613).
+   * Only the fields these annotations actually vary are modelled.
+   */
+  private data class BuiltInPreviewSpec(
+    val name: String? = null,
+    val group: String? = null,
+    val device: String? = null,
+    val fontScale: Float = 1.0f,
+    val uiMode: Int = 0,
+    val showSystemUi: Boolean = false,
+    val showBackground: Boolean = false,
+    val backgroundColor: Long = 0L,
+  )
+
+  // Every wear `@Preview` sets showBackground / showSystemUi / backgroundColor=0xff000000 and
+  // labels
+  // the variant with `group`, never `name` (verbatim from
+  // androidx.wear.compose:compose-ui-tooling).
+  private fun wearSpec(device: String, group: String, fontScale: Float = 1.0f) =
+    BuiltInPreviewSpec(
+      group = group,
+      device = device,
+      fontScale = fontScale,
+      showSystemUi = true,
+      showBackground = true,
+      backgroundColor = 0xff000000L,
+    )
+
+  /**
+   * Stable, documented `@Preview` expansions of the well-known AndroidX / Wear multi-preview
+   * annotations, transcribed verbatim from the AndroidX sources (wear:
+   * `androidx.wear.compose:compose-ui-tooling`; compose: `androidx.compose.ui:ui-tooling-preview`
+   * `MultiPreviews.kt`). Consulted only when the annotation class is off the discovery classpath —
+   * see [builtInExpansionFor] — so a preview annotated only with e.g. `@WearPreviewLargeRound` in a
+   * `main` source set (its wear tooling wired into `screenshotTest`) still renders instead of
+   * vanishing. `@PreviewDynamicColors` is intentionally absent: its only axis is `wallpaper=`,
+   * which this pipeline doesn't model, so its four variants would render identically — the
+   * off-classpath WARN is more honest than four duplicate PNGs.
+   */
+  private val BUILT_IN_MULTIPREVIEW_EXPANSIONS: Map<String, List<BuiltInPreviewSpec>> =
+    mapOf(
+      "androidx.wear.compose.ui.tooling.preview.WearPreviewLargeRound" to
+        listOf(wearSpec("id:wearos_large_round", "Devices - Large Round")),
+      "androidx.wear.compose.ui.tooling.preview.WearPreviewSmallRound" to
+        listOf(wearSpec("id:wearos_small_round", "Devices - Small Round")),
+      "androidx.wear.compose.ui.tooling.preview.WearPreviewSquare" to
+        listOf(wearSpec("id:wearos_square", "Devices - Small Square")),
+      "androidx.wear.compose.ui.tooling.preview.WearPreviewDevices" to
+        listOf(
+          wearSpec("id:wearos_large_round", "Devices - Large Round"),
+          wearSpec("id:wearos_small_round", "Devices - Small Round"),
+        ),
+      "androidx.wear.compose.ui.tooling.preview.WearPreviewFontScales" to
+        listOf(
+          wearSpec("id:wearos_small_round", "Fonts - Small", 0.94f),
+          wearSpec("id:wearos_small_round", "Fonts - Normal", 1.0f),
+          wearSpec("id:wearos_small_round", "Fonts - Medium", 1.06f),
+          wearSpec("id:wearos_small_round", "Fonts - Large", 1.12f),
+          wearSpec("id:wearos_small_round", "Fonts - Larger", 1.18f),
+          wearSpec("id:wearos_small_round", "Fonts - Largest", 1.24f),
+        ),
+      "androidx.compose.ui.tooling.preview.PreviewLightDark" to
+        listOf(
+          BuiltInPreviewSpec(name = "Light"),
+          // uiMode = UI_MODE_NIGHT_YES (0x20) or UI_MODE_TYPE_NORMAL (0x01) = 0x21
+          BuiltInPreviewSpec(name = "Dark", uiMode = 0x21),
+        ),
+      "androidx.compose.ui.tooling.preview.PreviewFontScale" to
+        listOf(
+          BuiltInPreviewSpec(name = "85%", fontScale = 0.85f),
+          BuiltInPreviewSpec(name = "100%", fontScale = 1.0f),
+          BuiltInPreviewSpec(name = "115%", fontScale = 1.15f),
+          BuiltInPreviewSpec(name = "130%", fontScale = 1.3f),
+          BuiltInPreviewSpec(name = "150%", fontScale = 1.5f),
+          BuiltInPreviewSpec(name = "180%", fontScale = 1.8f),
+          BuiltInPreviewSpec(name = "200%", fontScale = 2.0f),
+        ),
+      "androidx.compose.ui.tooling.preview.PreviewScreenSizes" to
+        listOf(
+          BuiltInPreviewSpec(
+            name = "Phone",
+            device = "spec:width=411dp,height=891dp",
+            showSystemUi = true,
+          ),
+          BuiltInPreviewSpec(
+            name = "Phone - Landscape",
+            device = "spec:width=411dp,height=891dp,orientation=landscape,dpi=420",
+            showSystemUi = true,
+          ),
+          BuiltInPreviewSpec(
+            name = "Unfolded Foldable",
+            device = "spec:width=673dp,height=841dp",
+            showSystemUi = true,
+          ),
+          BuiltInPreviewSpec(
+            name = "Tablet",
+            device = "spec:width=1280dp,height=800dp,dpi=240,orientation=portrait",
+            showSystemUi = true,
+          ),
+          BuiltInPreviewSpec(
+            name = "Tablet - Landscape",
+            device = "spec:width=1280dp,height=800dp,dpi=240",
+            showSystemUi = true,
+          ),
+          BuiltInPreviewSpec(
+            name = "Desktop",
+            device = "spec:width=1920dp,height=1080dp,dpi=160",
+            showSystemUi = true,
+          ),
+        ),
+    )
+
+  /**
+   * The built-in [BuiltInPreviewSpec] expansion for [ann], but ONLY when its annotation class is
+   * off the discovery classpath (`getClassInfo == null`; `isExternalClass` folded in defensively).
+   * An on-classpath copy is resolved from its real `@Preview` definitions by [resolveMultiPreview]
+   * instead, so a project that shadows the annotation keeps its own definition and we never
+   * double-expand.
+   */
+  private fun builtInExpansionFor(
+    ann: AnnotationInfo,
+    scanResult: ScanResult,
+  ): List<BuiltInPreviewSpec> {
+    if (isDirectPreview(ann) || isPreviewContainer(ann)) return emptyList()
+    val specs = BUILT_IN_MULTIPREVIEW_EXPANSIONS[ann.name] ?: return emptyList()
+    val ci = scanResult.getClassInfo(ann.name)
+    return if (ci == null || ci.isExternalClass) specs else emptyList()
+  }
+
+  /**
+   * Builds [PreviewParams] from a built-in spec, resolving the device to concrete dims/density the
+   * same way [extractPreviewParams] does for a real `@Preview`, and threading the function-level
+   * `@PreviewWrapper` / `@PreviewParameter` bindings through.
+   */
+  private fun BuiltInPreviewSpec.toParams(
+    wrapperClassName: String?,
+    previewParameter: Pair<String, Int>?,
+  ): PreviewParams {
+    val effectiveWidth: Int?
+    val effectiveHeight: Int?
+    val effectiveDensity: Float?
+    if (device != null || showSystemUi) {
+      val dims = DeviceDimensions.resolve(device, null, null)
+      effectiveWidth = dims.widthDp
+      effectiveHeight = dims.heightDp
+      effectiveDensity = dims.density
+    } else {
+      effectiveWidth = null
+      effectiveHeight = null
+      effectiveDensity = DeviceDimensions.DEFAULT_DENSITY
+    }
+    return PreviewParams(
+      name = name,
+      device = device,
+      widthDp = effectiveWidth,
+      heightDp = effectiveHeight,
+      density = effectiveDensity,
+      fontScale = fontScale,
+      showSystemUi = showSystemUi,
+      showBackground = showBackground,
+      backgroundColor = backgroundColor,
+      uiMode = uiMode,
+      group = group,
+      wrapperClassName = wrapperClassName,
+      previewParameterProviderClassName = previewParameter?.first,
+      previewParameterLimit = previewParameter?.second ?: Int.MAX_VALUE,
+      kind = PreviewKind.COMPOSE,
+    )
+  }
+
   private fun resolveMultiPreview(
     ann: AnnotationInfo,
     scanResult: ScanResult,
@@ -2417,12 +2701,53 @@ object PreviewDiscovery {
     inferredTargets: Lazy<List<PreviewTarget>>,
   ): PreviewInfo {
     val params = extractPreviewParams(ann, wrapperClassName, previewParameter)
+    return buildPreviewInfo(
+      classInfo,
+      method,
+      params,
+      scrolls,
+      animation,
+      focuses,
+      focusGif,
+      ambient,
+      gestureHint,
+      launcherWidget,
+      launcherWidgetResize,
+      timings,
+      previewSourceFile,
+      inferredTargets,
+    )
+  }
+
+  /**
+   * Assembles a [PreviewInfo] from already-resolved [params] — the shared tail of [makePreview]
+   * (which sources [params] from a real `@Preview` [AnnotationInfo]) and the built-in multi-preview
+   * expansion (which builds [params] from a [BuiltInPreviewSpec] table when the annotation class is
+   * off the discovery classpath — issue #2613). Keeping the id/suffix/output-plan/target assembly
+   * in one place means a synthesised preview fans out captures (scroll/animation/focus/…) and
+   * infers targets identically to a real one.
+   */
+  private fun buildPreviewInfo(
+    classInfo: ClassInfo,
+    method: MethodInfo,
+    params: PreviewParams,
+    scrolls: List<ScrollCapture>,
+    animation: AnimationCapture?,
+    focuses: List<FocusCapture>,
+    focusGif: FocusGifCapture?,
+    ambient: AmbientCapture?,
+    gestureHint: GestureHintCapture?,
+    launcherWidget: LauncherWidgetCapture?,
+    launcherWidgetResize: LauncherWidgetResizeSpec?,
+    timings: List<Long>,
+    previewSourceFile: String?,
+    inferredTargets: Lazy<List<PreviewTarget>>,
+  ): PreviewInfo {
     val fqn = "${classInfo.name}.${method.name}"
-    val suffix = buildVariantSuffix(params)
-    val id = fqn + suffix
+    val id = fqn + buildVariantSuffix(params)
     val outputPlan =
       buildOutputPlan(
-        ann,
+        params.kind,
         id,
         scrolls,
         animation,
