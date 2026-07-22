@@ -40,9 +40,28 @@ export interface VariantImage {
     base64: string;
 }
 
+/**
+ * One capture that produced no PNG, and why — read from the renderer's
+ * `resource-render-errors.json` sidecar. Lets the hover explain a missing
+ * variant ("⚠ render failed: …") instead of silently dropping it.
+ */
+export interface ResourceRenderError {
+    /** Module-relative path matched against `ResourceCapture.renderOutput`. */
+    renderOutput: string;
+    /** `failed` | `skipped` | `not-found`. */
+    status: string;
+    message: string;
+}
+
 export interface VariantHoverInput {
     resource: ResourcePreview;
     images: VariantImage[];
+    /**
+     * Per-capture render errors (from the `resource-render-errors.json` sidecar). A capture with no
+     * image but a matching error is rendered as a warning line; a capture with neither is skipped
+     * silently (the host chose not to render that variant). Optional for back-compat.
+     */
+    errors?: ResourceRenderError[];
 }
 
 /**
@@ -70,32 +89,70 @@ export function buildResourceVariantHoverMarkdown(
     const byOutput = new Map(
         input.images.map((i) => [i.renderOutput, i.base64]),
     );
+    const errorsByOutput = new Map(
+        (input.errors ?? []).map((e) => [e.renderOutput, e]),
+    );
     const imgs: string[] = [];
+    const errorLines: string[] = [];
     for (const capture of input.resource.captures) {
         const base64 = byOutput.get(capture.renderOutput);
-        if (!base64) {
+        if (base64) {
+            const mime = capture.renderOutput.toLowerCase().endsWith(".gif")
+                ? "image/gif"
+                : "image/png";
+            const label = captureLabel(capture);
+            imgs.push(
+                `<img src="data:${mime};base64,${base64}" ` +
+                    `width="${VARIANT_HOVER_IMG_PX}" ` +
+                    `height="${VARIANT_HOVER_IMG_PX}" ` +
+                    `alt="${escapeAttr(label)}" ` +
+                    `title="${escapeAttr(label)}" />`,
+            );
             continue;
         }
-        const mime = capture.renderOutput.toLowerCase().endsWith(".gif")
-            ? "image/gif"
-            : "image/png";
-        const label = captureLabel(capture);
-        imgs.push(
-            `<img src="data:${mime};base64,${base64}" ` +
-                `width="${VARIANT_HOVER_IMG_PX}" ` +
-                `height="${VARIANT_HOVER_IMG_PX}" ` +
-                `alt="${escapeAttr(label)}" ` +
-                `title="${escapeAttr(label)}" />`,
-        );
+        // No image for this capture. If the renderer recorded why (a failed / skipped / not-found
+        // capture), surface it so the user sees the reason instead of a silently-missing variant.
+        // `status` and `message` come from the sidecar — escaped before interpolation.
+        const err = errorsByOutput.get(capture.renderOutput);
+        if (err) {
+            errorLines.push(
+                `⚠ ${escapeMarkdown(captureLabel(capture))} — ` +
+                    `${escapeMarkdown(friendlyErrorStatus(err.status))}: ` +
+                    `${escapeMarkdown(err.message)}`,
+            );
+        }
+        // else: skip silently — the host chose not to render this variant (e.g. a fast-tier run).
     }
-    if (imgs.length === 0) {
+    if (imgs.length === 0 && errorLines.length === 0) {
         lines.push("");
         lines.push("_No rendered captures available._");
         return lines.join("\n");
     }
-    lines.push("");
-    lines.push(imgs.join(" "));
+    if (imgs.length > 0) {
+        lines.push("");
+        lines.push(imgs.join(" "));
+    }
+    if (errorLines.length > 0) {
+        lines.push("");
+        for (const line of errorLines) {
+            lines.push(line);
+        }
+    }
     return lines.join("\n");
+}
+
+/** Human-readable label for a sidecar render-error [status]. */
+function friendlyErrorStatus(status: string): string {
+    switch (status) {
+        case "failed":
+            return "render failed";
+        case "skipped":
+            return "skipped";
+        case "not-found":
+            return "resource not found";
+        default:
+            return status;
+    }
 }
 
 /**

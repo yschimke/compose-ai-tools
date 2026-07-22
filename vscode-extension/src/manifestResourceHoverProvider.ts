@@ -1,7 +1,10 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { GradleService } from "./gradleService";
-import { readVariantImages } from "./manifestResourceHoverImages";
+import {
+    readResourceRenderErrors,
+    readVariantImages,
+} from "./manifestResourceHoverImages";
 import { findManifestIconReferences } from "./manifestIconReferences";
 import { buildResourceVariantHoverMarkdown } from "./resourceVariantHover";
 
@@ -57,12 +60,20 @@ export class ManifestResourceHoverProvider implements vscode.HoverProvider {
             "compose-previews",
         );
         const images = readVariantImages(resource, moduleRoot);
-        if (images.length === 0) {
+        // Render errors for THIS resource's captures (from the sidecar), so a missing variant shows
+        // *why* it's missing instead of vanishing from the hover.
+        const captureOutputs = new Set(
+            resource.captures.map((c) => c.renderOutput),
+        );
+        const errors = readResourceRenderErrors(moduleRoot).filter((e) =>
+            captureOutputs.has(e.renderOutput),
+        );
+        if (images.length === 0 && errors.length === 0) {
             return undefined;
         }
 
         const md = new vscode.MarkdownString(
-            buildResourceVariantHoverMarkdown({ resource, images }),
+            buildResourceVariantHoverMarkdown({ resource, images, errors }),
         );
         // `resources.json` is workspace-controlled (could be authored by an
         // attacker if a victim opens a hostile project). The hover only needs
