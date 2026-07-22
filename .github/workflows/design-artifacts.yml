@@ -60,22 +60,11 @@ jobs:
             # folds it in (--extra-renders) so the keyboard-focus variant keeps its
             # real ring. Its previews override same-named CMP functions.
             androidExtraModule: 'samples:design-catalog-m3-android'
-          - system: wear-m3
-            module: 'samples:design-catalog-wear-m3'
-            spec: 'samples/design-catalog-wear-m3/catalog.spec.json'
-            # Publish the Android bundle as a `liveBundle` so a serve box that carries
-            # the Android (Robolectric) daemon renders Wear live + per-variant (the SVG
-            # lane in particular — the baked per-slug vector collapses state variants).
-            # No wasm tier (androidx.wear.compose has no wasmJs target), so it's flagged
-            # explicitly rather than piggy-backing on `wasmModule`. Inert until a box with
-            # the Android daemon fronts it (else serve falls back to the baked PNGs).
-            androidLiveBundle: '1'
-          - system: remote-m3
-            module: 'samples:design-catalog-remote-m3'
-            spec: 'samples/design-catalog-remote-m3/catalog.spec.json'
-            # No wasm tier: Remote Compose is an Android-only alpha
-            # (androidx.wear.compose.remote / androidx.compose.remote, compileSdk 37),
-            # with no wasmJs target — same as Wear.
+          # wear-m3 and remote-m3 moved to the `wear-m3` / `remote-m3` jobs below,
+          # which delegate to the reusable workflow. compose-m3 stays here: its Wasm
+          # tier + released-runtime Maven-Central gate are repo-internal machinery
+          # that (per DESIGN_CATALOGS.md's convention) doesn't belong in the shared
+          # consumer workflow.
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -371,3 +360,48 @@ jobs:
           git push --force \
             "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
             "HEAD:refs/heads/design-artifacts/$SYSTEM"
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # wear-m3 / remote-m3 delegate to the shared reusable workflow (same one
+  # external consumers use), building the CLI from source (cli-source: build) so
+  # they still publish HEAD's renderer output. They're Android (Robolectric)
+  # renders with no Wasm tier, so they fit the common pipeline; only their split
+  # lane differs — wear carries a live bundle (full split), remote-m3 is baked
+  # (view-only). See DESIGN_CATALOGS.md's reference-caller convention.
+  # ───────────────────────────────────────────────────────────────────────────
+  wear-m3:
+    name: wear-m3
+    if: ${{ github.repository == 'yschimke/compose-ai-tools' }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/design-artifacts-reusable.yml
+    with:
+      system: wear-m3
+      spec: samples/design-catalog-wear-m3/catalog.spec.json
+      module: 'samples:design-catalog-wear-m3'
+      cli-source: build
+      # Android Robolectric daemon can re-render Wear, so carry a live bundle and
+      # split it full (each per-preview bundle keeps its re-render classpath).
+      publish-live-bundle: true
+      split-per-preview: true
+      split-mode: full
+    secrets:
+      buildfetch_ro_token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
+
+  remote-m3:
+    name: remote-m3
+    if: ${{ github.repository == 'yschimke/compose-ai-tools' }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/design-artifacts-reusable.yml
+    with:
+      system: remote-m3
+      spec: samples/design-catalog-remote-m3/catalog.spec.json
+      module: 'samples:design-catalog-remote-m3'
+      cli-source: build
+      # Remote Compose has no runnable desktop daemon on the serve host, so it
+      # stays baked: split view-only (addressable stickers, no re-render classpath).
+      split-per-preview: true
+      split-mode: view-only
+    secrets:
+      buildfetch_ro_token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}

@@ -88,10 +88,20 @@ on:
         type: boolean
         default: false
       split-per-preview:
-        description: 'After generate, split the carried liveBundle into one addressable bundle per preview under bundle/previews/<id>, for the serve host per-preview live lane. The extra module (if any) is split --view-only (baked, no per-preview re-render classpath). Requires publish-live-bundle.'
+        description: 'After generate, split the render into one addressable bundle per preview under bundle/previews/<id>, for the serve host per-preview live lane. The extra module (if any) is split --view-only (baked, no per-preview re-render classpath). full mode requires publish-live-bundle (see split-mode).'
         required: false
         type: boolean
         default: false
+      split-mode:
+        description: "Per-preview split mode when split-per-preview is set: 'full' (each bundle carries its re-render classpath from the externalised liveBundle — a desktop/live tier; requires publish-live-bundle) or 'view-only' (baked, no classpath, split from the raw render — an Android/baked tier)."
+        required: false
+        type: string
+        default: 'full'
+      cli-source:
+        description: "How to obtain the compose-preview CLI: 'released' installs it via the install action (the default; what external consumers use), or 'build' builds it from the checked-out compose-ai-tools (driver-ref) with ./gradlew :cli:installDist — for compose-ai-tools' own catalogs, which must publish HEAD's renderer output, not a released one."
+        required: false
+        type: string
+        default: 'released'
       publish:
         description: 'Force-push out/ to design-artifacts/<system>. Set false to hand the generated bundle off (via upload-out) to a follow-up job that post-processes it — e.g. folding in an extra re-themed section — before publishing.'
         required: false
@@ -184,6 +194,7 @@ jobs:
       # Install the released compose-preview CLI, pinned to the plugin version when
       # cli-version=catalog so the CLI and the applied plugin stay in lockstep.
       - name: Install compose-preview CLI
+        if: ${{ inputs.cli-source == 'released' }}
         uses: yschimke/compose-ai-tools/.github/actions/install@main
         with:
           version: ${{ inputs.cli-version }}
@@ -200,6 +211,18 @@ jobs:
           ref: ${{ inputs.driver-ref }}
           path: compose-ai-tools
           persist-credentials: false
+
+      # Build the CLI from the compose-ai-tools checkout instead of installing a
+      # release — so compose-ai-tools' own catalogs render against HEAD's renderer.
+      # Its bin/ goes on $GITHUB_PATH, shadowing nothing (the released install step
+      # is skipped for cli-source=build).
+      - name: Build compose-preview CLI from source
+        if: ${{ inputs.cli-source == 'build' }}
+        working-directory: compose-ai-tools
+        run: |
+          set -euo pipefail
+          ./gradlew :cli:installDist --no-daemon
+          echo "$GITHUB_WORKSPACE/compose-ai-tools/cli/build/install/compose-preview/bin" >> "$GITHUB_PATH"
 
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -289,18 +312,26 @@ jobs:
             "${live[@]}" \
             "${incomplete[@]}"
 
-      # Split the carried liveBundle into one re-renderable bundle per preview for
-      # the serve host's per-preview live lane. The externalised bundle the generate
-      # step wrote under out/bundle/ (fonts lifted to bundle/res/) is the split
-      # source, so each per-preview bundle inherits the slimmed classpath + shared
-      # font pool. The extra module is split --view-only (baked; no per-preview
-      # re-render classpath on this branch).
+      # Split the render into one addressable bundle per preview for the serve
+      # host's per-preview live lane.
+      #   full      → split the externalised liveBundle the generate step wrote
+      #               under out/bundle/ (fonts lifted to bundle/res/), so each
+      #               per-preview bundle inherits the slimmed classpath + shared
+      #               font pool and serve can re-render it. Needs publish-live-bundle.
+      #   view-only → split the raw render (no live bundle), dropping the classpath
+      #               but keeping the baked image + sidecars — for an Android/baked tier.
+      # The extra module (if any) is always split --view-only.
       - name: Split into per-preview bundles
         if: ${{ inputs.split-per-preview }}
         run: |
           set -euo pipefail
-          compose-preview bundle split "$GITHUB_WORKSPACE/out/bundle/bundle.png" \
-            -o "$GITHUB_WORKSPACE/out/bundle/previews"
+          if [ "${{ inputs.split-mode }}" = "view-only" ]; then
+            compose-preview bundle split "$GITHUB_WORKSPACE/bundle.png" --view-only \
+              -o "$GITHUB_WORKSPACE/out/bundle/previews"
+          else
+            compose-preview bundle split "$GITHUB_WORKSPACE/out/bundle/bundle.png" \
+              -o "$GITHUB_WORKSPACE/out/bundle/previews"
+          fi
           if [ -n "${{ inputs.extra-module }}" ] && [ -f "$GITHUB_WORKSPACE/extra-bundle.png" ]; then
             compose-preview bundle split "$GITHUB_WORKSPACE/extra-bundle.png" --view-only \
               -o "$GITHUB_WORKSPACE/out/bundle/previews"
