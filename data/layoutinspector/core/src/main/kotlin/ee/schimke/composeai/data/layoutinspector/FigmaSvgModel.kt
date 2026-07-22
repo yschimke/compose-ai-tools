@@ -892,6 +892,14 @@ data class FigmaSvgModel(
      * export. Each layout node keeps only its closest text and each text lands on its closest
      * layout node (favouring the tight `Text` leaf over a looser wrapper), so text is neither
      * dropped nor duplicated across nested layers that share bounds.
+     *
+     * The "favour the tight leaf" rule is what the tie-break enforces: a `Text` and a wrapper that
+     * shares its bounds (a slot `Box`, a `fillMaxWidth` parent) match a run equally well, and the
+     * text MUST land on the leaf. If the wrapper wins, the leaf is left text-less — and a leaf that
+     * also carries a `drawWithContent` draw (Wear M3 `Modifier.placeholder` is one) is then treated
+     * as un-vectorisable canvas chrome and rasterised out of the frame, baking its glyphs into an
+     * `<image>` that doubles the `<text>` the wrapper emits (the "text rendered twice" bug). Nodes
+     * are collected with their tree depth so a bounds tie resolves to the deepest (innermost) node.
      */
     private fun assignTextToLayers(
       layoutRoot: LayoutInspectorNode,
@@ -899,14 +907,18 @@ data class FigmaSvgModel(
       density: Float,
       fontScale: Float,
     ): Map<String, FigmaSvgText> {
-      val candidates = mutableListOf<Pair<String, IntArray>>()
-      fun collect(n: LayoutInspectorNode) {
+      val candidates = mutableListOf<Triple<String, IntArray, Int>>()
+      fun collect(n: LayoutInspectorNode, depth: Int) {
         candidates.add(
-          n.nodeId to intArrayOf(n.bounds.left, n.bounds.top, n.bounds.right, n.bounds.bottom)
+          Triple(
+            n.nodeId,
+            intArrayOf(n.bounds.left, n.bounds.top, n.bounds.right, n.bounds.bottom),
+            depth,
+          )
         )
-        n.children.forEach(::collect)
+        n.children.forEach { collect(it, depth + 1) }
       }
-      collect(layoutRoot)
+      collect(layoutRoot, 0)
 
       val textByNodeId = HashMap<String, FigmaSvgText>()
       val bestDistForNode = HashMap<String, Int>()
@@ -917,15 +929,20 @@ data class FigmaSvgModel(
         if (content != null && b != null) {
           var bestId: String? = null
           var bestDist = Int.MAX_VALUE
-          for ((id, lb) in candidates) {
+          var bestDepth = -1
+          for ((id, lb, depth) in candidates) {
             val d0 = abs(lb[0] - b[0])
             val d1 = abs(lb[1] - b[1])
             val d2 = abs(lb[2] - b[2])
             val d3 = abs(lb[3] - b[3])
             if (maxOf(d0, d1, d2, d3) <= BOUNDS_TOLERANCE_PX) {
               val d = d0 + d1 + d2 + d3
-              if (d < bestDist) {
+              // Closest match wins; on an exact tie prefer the DEEPER (innermost) node — the real
+              // `Text` leaf over a wrapper that shares its bounds — so the leaf keeps its editable
+              // text and a `drawWithContent`/placeholder leaf isn't rasterised as canvas chrome.
+              if (d < bestDist || (d == bestDist && depth > bestDepth)) {
                 bestDist = d
+                bestDepth = depth
                 bestId = id
               }
             }
