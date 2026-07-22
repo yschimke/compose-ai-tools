@@ -1,7 +1,5 @@
 package ee.schimke.composeai.daemon
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
@@ -25,7 +23,6 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.SystemTheme
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.semantics.SemanticsNode
@@ -323,14 +320,28 @@ class RenderEngine(
     // scene before the intrinsic-size crop runs. Only widen (never shrink) the scene here — the
     // crop still trims the PNG back to the measured intrinsic size.
     val sizeOverrides = spec.overrides
-    val sceneWidthPx =
-      if (spec.wrapWidth)
-        maxOf(spec.widthPx, sizeOverrides?.minWidthPx ?: 0, sizeOverrides?.maxWidthPx ?: 0)
-      else spec.widthPx
-    val sceneHeightPx =
-      if (spec.wrapHeight)
-        maxOf(spec.heightPx, sizeOverrides?.minHeightPx ?: 0, sizeOverrides?.maxHeightPx ?: 0)
-      else spec.heightPx
+    // Scene sizing + the AS-parity wrap-measure box are shared with the one-shot
+    // `:renderer-desktop`
+    // fork via [ee.schimke.composeai.renderer.composePreviewSceneSize] /
+    // [ee.schimke.composeai.renderer.ComposePreviewContentBox], so a `compose-preview serve` render
+    // and a batch bundle re-render size the same preview identically.
+    val sizeBounds =
+      ee.schimke.composeai.renderer.PreviewSizeBounds(
+        minWidthPx = sizeOverrides?.minWidthPx,
+        minHeightPx = sizeOverrides?.minHeightPx,
+        maxWidthPx = sizeOverrides?.maxWidthPx,
+        maxHeightPx = sizeOverrides?.maxHeightPx,
+      )
+    val sceneSize =
+      ee.schimke.composeai.renderer.composePreviewSceneSize(
+        widthPx = spec.widthPx,
+        heightPx = spec.heightPx,
+        wrapWidth = spec.wrapWidth,
+        wrapHeight = spec.wrapHeight,
+        sizeBounds = sizeBounds,
+      )
+    val sceneWidthPx = sceneSize.width
+    val sceneHeightPx = sceneSize.height
     val scene =
       try {
         ImageComposeScene(width = sceneWidthPx, height = sceneHeightPx, density = density)
@@ -399,67 +410,22 @@ class RenderEngine(
                   spec.showBackground -> Color.White
                   else -> Color.Transparent
                 }
-              // AS-parity wrap: on a wrapped axis, measure the composable with a relaxed (min = 0)
-              // constraint against the sandbox max and size the box to the child's intrinsic size,
-              // so the captured tree (and the figma-svg / wireframe / semantics derived from it)
-              // reflects the preview's natural size instead of a fixed frame that clips or reflows
-              // wide content. `.background` paints on that intrinsic box so the sticker's backdrop
-              // is
-              // content-sized, not sandbox-sized. Fixed axes keep the sandbox constraint so
-              // `fillMax*` / LazyColumn still have a finite viewport (mirrors DesktopRendererMain).
-              val boxModifier =
-                if (spec.wrapWidth || spec.wrapHeight) {
-                  Modifier.layout { measurable, constraints ->
-                      // Size-mode bounds (Max / Min / Within) clamp the wrapped-axis measure: a max
-                      // bound lowers the sandbox ceiling so the composable can't grow past it; a
-                      // min
-                      // bound raises the floor so it can't collapse below it. Both are clamped to
-                      // the
-                      // scene's available space so a bound larger than the (already-enlarged) scene
-                      // can't produce an impossible constraint. Absent bounds keep the AS-parity
-                      // wrap
-                      // behaviour (min = 0, max = sandbox).
-                      val maxWBound =
-                        sizeOverrides?.maxWidthPx?.coerceAtMost(constraints.maxWidth)
-                          ?: constraints.maxWidth
-                      val maxHBound =
-                        sizeOverrides?.maxHeightPx?.coerceAtMost(constraints.maxHeight)
-                          ?: constraints.maxHeight
-                      val minWBound = (sizeOverrides?.minWidthPx ?: 0).coerceIn(0, maxWBound)
-                      val minHBound = (sizeOverrides?.minHeightPx ?: 0).coerceIn(0, maxHBound)
-                      val wrapped =
-                        androidx.compose.ui.unit.Constraints(
-                          minWidth = if (spec.wrapWidth) minWBound else constraints.minWidth,
-                          maxWidth = if (spec.wrapWidth) maxWBound else constraints.maxWidth,
-                          minHeight = if (spec.wrapHeight) minHBound else constraints.minHeight,
-                          maxHeight = if (spec.wrapHeight) maxHBound else constraints.maxHeight,
-                        )
-                      val placeable = measurable.measure(wrapped)
-                      // Record the intrinsic size so renderOnce can crop the PNG to it on wrapped
-                      // axes — otherwise a no-size preview's frame is the whole sandbox with
-                      // content
-                      // in the corner, not the natural-size capture (matches DesktopRendererMain).
-                      measuredContent[0] = placeable.width
-                      measuredContent[1] = placeable.height
-                      layout(placeable.width, placeable.height) { placeable.place(0, 0) }
-                    }
-                    .background(bgColor)
-                } else {
-                  Modifier.fillMaxSize().background(bgColor)
-                }
-              // On a wrapped axis, `propagateMinConstraints = true` pushes the wrapped-axis *min*
-              // bound (the Min / Within size modes) down onto the composable itself, not just the
-              // wrapping box — with the default (false) the outer box grows to the min bound but
-              // relaxes the child's min to 0, so a wrap-content component (a Button, a badge) stays
-              // at its intrinsic size in the corner of an enlarged frame instead of filling the
-              // requested size. Scoped to wrapped renders only: the fixed-frame branch above is
-              // `fillMaxSize`, whose tight min would otherwise be forwarded into the root
-              // composable
-              // and stretch wrap-content content that must stay small in an explicitly-sized frame
-              // (RenderEngineWrapContentTest's wrap-off case). Mirrors DesktopRendererMain.
-              Box(
-                modifier = boxModifier,
-                propagateMinConstraints = spec.wrapWidth || spec.wrapHeight,
+              // The AS-parity wrap-measure box (and its fixed-axis `fillMaxSize` counterpart) is
+              // shared with the one-shot `:renderer-desktop` fork via [ComposePreviewContentBox],
+              // so
+              // both size the preview and capture its intrinsic bounds identically.
+              // `measuredContent`
+              // is written only on a wrapped axis, then read by [renderOnce] to crop the PNG to the
+              // composable's natural size instead of the whole sandbox.
+              ee.schimke.composeai.renderer.ComposePreviewContentBox(
+                wrapWidth = spec.wrapWidth,
+                wrapHeight = spec.wrapHeight,
+                backgroundColor = bgColor,
+                sizeBounds = sizeBounds,
+                onMeasured = { w, h ->
+                  measuredContent[0] = w
+                  measuredContent[1] = h
+                },
               ) {
                 ComposeDataExtensionPipeline.Apply(
                   extensions = previewOverrideExtensions.plan(spec.overrides),
