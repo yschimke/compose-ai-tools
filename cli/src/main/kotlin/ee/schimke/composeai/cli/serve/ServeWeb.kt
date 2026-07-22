@@ -114,10 +114,12 @@ object ServeWeb {
     .cp-imgwrap { display: flex; align-items: center; justify-content: center; min-height: 88px;
       background: #fff; padding: 12px; }
     .cp-imgwrap img { max-width: 100%; max-height: 240px; height: auto; display: block; }
-    /* A framed thumbnail: a fixed-size clip window (inline width/height = the component box) that
-       crops away a sticker's empty watch canvas. The render <img> inside is absolutely positioned,
-       sized + offset inline so only the component shows. Overrides the fit-to-box rule above. */
-    .cp-crop { position: relative; overflow: hidden; display: block; }
+    /* A framed thumbnail: a clip window whose aspect-ratio is the component box, that crops away a
+       sticker's empty watch canvas. The window's natural width is the box (so it never upscales past
+       1x), but `max-width: 100%` lets it shrink to a narrow grid card instead of overflowing it —
+       the render <img> inside is absolutely positioned and sized + offset in PERCENTAGES of the box,
+       so the whole frame scales as one when the card is narrower than the box. Overrides fit-to-box. */
+    .cp-crop { position: relative; overflow: hidden; display: block; max-width: 100%; }
     .cp-imgwrap .cp-crop img { position: absolute; max-width: none; max-height: none; margin: 0; }
     /* Sticker backing: the preview server shows components on a solid surface by DEFAULT, so a
        transparent sticker reads like a real component instead of washing out. The header's
@@ -1193,10 +1195,31 @@ object ServeWeb {
   ): String {
     val img = "<img$extraImgAttrs alt=\"$alt\" src=\"$src\">"
     if (crop == null) return img
+    // Geometry in PERCENTAGES of the box, not fixed px: the box sizes itself by aspect-ratio and
+    // may
+    // shrink under `max-width: 100%` on a narrow grid card, and the absolutely-positioned render
+    // scales with it (a fixed-px window overflowed the card and clipped wide components). `height`
+    // stays auto (the img keeps the render's aspect); `left` %s resolve against the box width,
+    // `top`
+    // against its aspect-ratio height.
+    val w = cropPct(crop.imgW, crop.boxW)
+    val l = cropPct(crop.left, crop.boxW)
+    val t = cropPct(crop.top, crop.boxH)
     val cropped =
-      "<img$extraImgAttrs alt=\"$alt\" src=\"$src\" " +
-        "style=\"width:${crop.imgW}px;height:${crop.imgH}px;left:${crop.left}px;top:${crop.top}px\">"
-    return "<span class=\"cp-crop\" style=\"width:${crop.boxW}px;height:${crop.boxH}px\">$cropped</span>"
+      "<img$extraImgAttrs alt=\"$alt\" src=\"$src\" style=\"width:${w}%;left:${l}%;top:${t}%\">"
+    return "<span class=\"cp-crop\" style=\"width:${crop.boxW}px;aspect-ratio:${crop.boxW}/${crop.boxH}\">$cropped</span>"
+  }
+
+  /**
+   * A crop dimension as a percentage of its box axis (e.g. `imgW/boxW`), formatted for a CSS
+   * length: up to 4 decimals, locale-independent, trailing zeros trimmed (`0`, `119.5833`,
+   * `-422.9167`). Kept exact enough that the framed component lands on the same pixels the old
+   * fixed-px window did.
+   */
+  private fun cropPct(numerator: Int, denominator: Int): String {
+    val v = numerator * 100.0 / denominator
+    val s = String.format(java.util.Locale.ROOT, "%.4f", v)
+    return if (s.contains('.')) s.trimEnd('0').trimEnd('.') else s
   }
 
   /**
