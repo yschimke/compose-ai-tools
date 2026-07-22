@@ -75,113 +75,138 @@ class ResourcePreviewRenderTest {
         continue
       }
 
-      for (capture in preview.captures) {
-        val qualifiers = capture.variant?.qualifiers
-        if (!qualifiers.isNullOrEmpty()) {
-          RuntimeEnvironment.setQualifiers(qualifiers)
+      // Issue #2589: isolate each capture. An un-rasterisable resource — an adaptive launcher icon
+      // (`mipmap/ic_launcher[_round]`) or a vector Robolectric's NATIVE graphics can't draw — used
+      // to throw out of this loop and fail the whole `composePreviewRenderAndroidResources` test,
+      // which the CLI reports as `rc=2` (`Resource render failed`) BEFORE its `--missing-renders`
+      // policy can downgrade it. `tallyRenders` catches per capture and records it as a missing
+      // render instead, so one un-rasterisable resource is surfaced as a warning (the same as a
+      // missing `@Preview` render) rather than redding the whole check on a renderer limitation.
+      val (renderedHere, missingHere) =
+        tallyRenders(
+          preview.captures,
+          onError = { capture, t ->
+            System.err.println(
+              "compose-preview: failed to rasterise ${preview.id} (${capture.renderOutput}): " +
+                "${t.javaClass.simpleName}: ${t.message}; skipping capture — a renderer limitation " +
+                "(e.g. an adaptive launcher icon or a vector NATIVE graphics can't draw), not a " +
+                "preview error. Surfaced as a missing render (issue #2589)."
+            )
+          },
+        ) { capture ->
+          renderCapture(context, resId, preview, capture, outputRoot)
         }
-        val drawable: Drawable? = ContextCompat.getDrawable(context, resId)
-        if (drawable == null) {
+      rendered += renderedHere
+      missing += missingHere
+    }
+    println("compose-preview resource render: $rendered file(s), $missing capture(s) missing")
+  }
+
+  /**
+   * Renders one [capture] of [preview] to disk. Returns `true` when a file was written, `false` when
+   * the capture was deliberately skipped for a known reason (a null drawable, a missing mask shape,
+   * a wrong drawable type, an absent `<monochrome>` layer, …). Unexpected failures — a resource the
+   * platform simply can't rasterise under Robolectric — are left to propagate; [renderResources]
+   * catches them per capture and records them as missing renders (issue #2589) rather than aborting
+   * the whole batch.
+   */
+  private fun renderCapture(
+    context: android.content.Context,
+    resId: Int,
+    preview: RenderResourcePreview,
+    capture: RenderResourceCapture,
+    outputRoot: File,
+  ): Boolean {
+    val qualifiers = capture.variant?.qualifiers
+    if (!qualifiers.isNullOrEmpty()) {
+      RuntimeEnvironment.setQualifiers(qualifiers)
+    }
+    val drawable: Drawable = ContextCompat.getDrawable(context, resId)
+        ?: run {
           System.err.println(
             "compose-preview: ContextCompat.getDrawable returned null for ${preview.id} " +
               "at qualifiers=${qualifiers ?: "<default>"}; skipping capture"
           )
-          missing++
-          continue
+          return false
         }
-        val outFile = resolveOutputPath(outputRoot, capture.renderOutput)
-        outFile.parentFile?.mkdirs()
+    val outFile = resolveOutputPath(outputRoot, capture.renderOutput)
+    outFile.parentFile?.mkdirs()
 
-        when (preview.type) {
-          RenderResourceType.VECTOR -> {
-            val bitmap = renderStaticDrawable(drawable)
-            try {
-              outFile.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            } finally {
-              bitmap.recycle()
-            }
-            rendered++
+    when (preview.type) {
+      RenderResourceType.VECTOR -> {
+        val bitmap = renderStaticDrawable(drawable)
+        try {
+          outFile.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        } finally {
+          bitmap.recycle()
+        }
+      }
+      RenderResourceType.ADAPTIVE_ICON -> {
+        val shape = capture.variant?.shape
+        val style = capture.variant?.style ?: RenderAdaptiveStyle.FULL_COLOR
+        if (style != RenderAdaptiveStyle.LEGACY && shape == null) {
+          System.err.println(
+            "compose-preview: adaptive icon ${preview.id} ${style.name} capture has no shape; " +
+              "skipping"
+          )
+          return false
+        }
+        val adaptive = drawable as? AdaptiveIconDrawable
+        if (adaptive == null) {
+          System.err.println(
+            "compose-preview: ${preview.id} resolved as ${drawable.javaClass.simpleName}, " +
+              "not AdaptiveIconDrawable; skipping ${shape?.name ?: style.name} capture"
+          )
+          return false
+        }
+        val bitmap = renderAdaptiveIcon(adaptive, shape, style, preview.id) ?: return false
+        try {
+          outFile.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        } finally {
+          bitmap.recycle()
+        }
+      }
+      RenderResourceType.ANIMATED_VECTOR -> {
+        val animatable = drawable as? Animatable
+        if (animatable == null) {
+          System.err.println(
+            "compose-preview: ${preview.id} resolved as ${drawable.javaClass.simpleName}, " +
+              "not Animatable; skipping animated capture"
+          )
+          return false
+        }
+        if (capture.variant?.filmstrip == true) {
+          val fractions = capture.filmstripFractions
+          if (fractions.isEmpty()) {
+            System.err.println(
+              "compose-preview: ${preview.id} filmstrip capture has no fractions; skipping"
+            )
+            return false
           }
-          RenderResourceType.ADAPTIVE_ICON -> {
-            val shape = capture.variant?.shape
-            val style = capture.variant?.style ?: RenderAdaptiveStyle.FULL_COLOR
-            if (style != RenderAdaptiveStyle.LEGACY && shape == null) {
-              System.err.println(
-                "compose-preview: adaptive icon ${preview.id} ${style.name} capture has no " +
-                  "shape; skipping"
-              )
-              missing++
-              continue
-            }
-            val adaptive = drawable as? AdaptiveIconDrawable
-            if (adaptive == null) {
-              System.err.println(
-                "compose-preview: ${preview.id} resolved as ${drawable.javaClass.simpleName}, " +
-                  "not AdaptiveIconDrawable; skipping ${shape?.name ?: style.name} capture"
-              )
-              missing++
-              continue
-            }
-            val bitmap = renderAdaptiveIcon(adaptive, shape, style, preview.id)
-            if (bitmap == null) {
-              missing++
-              continue
-            }
-            try {
-              outFile.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            } finally {
-              bitmap.recycle()
-            }
-            rendered++
-          }
-          RenderResourceType.ANIMATED_VECTOR -> {
-            val animatable = drawable as? Animatable
-            if (animatable == null) {
-              System.err.println(
-                "compose-preview: ${preview.id} resolved as ${drawable.javaClass.simpleName}, " +
-                  "not Animatable; skipping animated capture"
-              )
-              missing++
-              continue
-            }
-            if (capture.variant?.filmstrip == true) {
-              val fractions = capture.filmstripFractions
-              if (fractions.isEmpty()) {
-                System.err.println(
-                  "compose-preview: ${preview.id} filmstrip capture has no fractions; skipping"
-                )
-                missing++
-                continue
-              }
-              renderAnimatedVectorFilmstrip(drawable, animatable, fractions, outFile)
-            } else {
-              renderAnimatedVector(drawable, animatable, outFile)
-            }
-            rendered++
-          }
-          RenderResourceType.NINE_PATCH -> {
-            val ninePatch = drawable as? NinePatchDrawable
-            if (ninePatch == null) {
-              System.err.println(
-                "compose-preview: ${preview.id} resolved as ${drawable.javaClass.simpleName}, " +
-                  "not NinePatchDrawable; skipping nine-patch capture"
-              )
-              missing++
-              continue
-            }
-            val stretch = capture.variant?.stretch ?: RenderNinePatchStretch.INTRINSIC
-            val bitmap = renderNinePatch(ninePatch, stretch)
-            try {
-              outFile.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            } finally {
-              bitmap.recycle()
-            }
-            rendered++
-          }
+          renderAnimatedVectorFilmstrip(drawable, animatable, fractions, outFile)
+        } else {
+          renderAnimatedVector(drawable, animatable, outFile)
+        }
+      }
+      RenderResourceType.NINE_PATCH -> {
+        val ninePatch = drawable as? NinePatchDrawable
+        if (ninePatch == null) {
+          System.err.println(
+            "compose-preview: ${preview.id} resolved as ${drawable.javaClass.simpleName}, " +
+              "not NinePatchDrawable; skipping nine-patch capture"
+          )
+          return false
+        }
+        val stretch = capture.variant?.stretch ?: RenderNinePatchStretch.INTRINSIC
+        val bitmap = renderNinePatch(ninePatch, stretch)
+        try {
+          outFile.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        } finally {
+          bitmap.recycle()
         }
       }
     }
-    println("compose-preview resource render: $rendered file(s), $missing capture(s) missing")
+    return true
   }
 
   /**
@@ -682,8 +707,33 @@ class ResourcePreviewRenderTest {
     return img
   }
 
-  private companion object {
+  internal companion object {
     val json = Json { ignoreUnknownKeys = true }
+
+    /**
+     * Renders each of [items] with [render], returning `(rendered, missing)`. A `false` return is a
+     * deliberately-skipped capture (counted missing); a thrown exception is caught, reported via
+     * [onError], and also counted missing — so one un-rasterisable resource can't abort the batch
+     * (issue #2589). Pure and side-effect-free apart from [render] / [onError], so the isolation
+     * contract is unit-testable without a Robolectric drawable that actually throws.
+     */
+    fun <T> tallyRenders(
+      items: List<T>,
+      onError: (T, Throwable) -> Unit,
+      render: (T) -> Boolean,
+    ): Pair<Int, Int> {
+      var rendered = 0
+      var missing = 0
+      for (item in items) {
+        try {
+          if (render(item)) rendered++ else missing++
+        } catch (t: Throwable) {
+          onError(item, t)
+          missing++
+        }
+      }
+      return rendered to missing
+    }
 
     /**
      * Hard ceiling on AVD GIF length. Looping animators (`repeatCount=-1`, e.g. the sample's pulse)
