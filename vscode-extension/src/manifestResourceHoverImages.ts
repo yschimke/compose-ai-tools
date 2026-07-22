@@ -7,7 +7,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { VariantImage } from "./resourceVariantHover";
+import { ResourceRenderError, VariantImage } from "./resourceVariantHover";
 import { ResourcePreview } from "./types";
 
 /**
@@ -55,4 +55,42 @@ export function readVariantImages(
         }
     }
     return out;
+}
+
+/**
+ * Reads the renderer's `resource-render-errors.json` sidecar (written inside the render task's
+ * declared output tree, `renders/resources/`) and returns its entries. Tolerates an absent or
+ * malformed sidecar (returns `[]`) — an older renderer, or a run that produced nothing.
+ * [moduleBuildRoot] is the module's `build/compose-previews` dir, same anchor as [readVariantImages].
+ */
+export function readResourceRenderErrors(
+    moduleBuildRoot: string,
+): ResourceRenderError[] {
+    const sidecar = path.resolve(
+        moduleBuildRoot,
+        "renders",
+        "resources",
+        "resource-render-errors.json",
+    );
+    try {
+        const parsed = JSON.parse(fs.readFileSync(sidecar, "utf8"));
+        const entries: unknown[] = Array.isArray(parsed?.entries)
+            ? (parsed.entries as unknown[])
+            : [];
+        return entries
+            .filter(
+                (e: unknown): e is Record<string, unknown> =>
+                    typeof e === "object" &&
+                    e !== null &&
+                    typeof (e as Record<string, unknown>).renderOutput ===
+                        "string",
+            )
+            .map((e) => ({
+                renderOutput: String(e.renderOutput),
+                status: String(e.status ?? ""),
+                message: String(e.message ?? ""),
+            }));
+    } catch {
+        return [];
+    }
 }

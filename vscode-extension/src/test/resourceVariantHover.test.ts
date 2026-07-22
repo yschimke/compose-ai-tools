@@ -235,3 +235,91 @@ describe("buildResourceVariantHoverMarkdown", () => {
         assert.match(md, /\*\*command​:workbench/);
     });
 });
+
+describe("buildResourceVariantHoverMarkdown — render errors", () => {
+    it("shows a ⚠ line with the reason for a capture that has no image but a sidecar error", () => {
+        const md = buildResourceVariantHoverMarkdown({
+            resource: VECTOR,
+            images: [],
+            errors: [
+                {
+                    renderOutput:
+                        "renders/resources/drawable/ic_compose_logo_xhdpi.png",
+                    status: "failed",
+                    message: "RuntimeException: can't rasterise",
+                },
+            ],
+        });
+        assert.match(md, /⚠/);
+        assert.match(md, /render failed/);
+        assert.match(md, /can't rasterise/);
+        // Not the "nothing available" fallback — we DID have something to say.
+        assert.doesNotMatch(md, /No rendered captures available/);
+    });
+
+    it("maps each status to a friendly label", () => {
+        const skip = buildResourceVariantHoverMarkdown({
+            resource: VECTOR,
+            images: [],
+            errors: [
+                {
+                    renderOutput:
+                        "renders/resources/drawable/ic_compose_logo_xhdpi.png",
+                    status: "skipped",
+                    message: "no monochrome layer",
+                },
+            ],
+        });
+        assert.match(skip, /skipped: no monochrome layer/);
+    });
+
+    it("renders images and error lines together for a partially-failed adaptive icon", () => {
+        const md = buildResourceVariantHoverMarkdown({
+            resource: ADAPTIVE,
+            images: [
+                {
+                    renderOutput: "renders/resources/mipmap/full.png",
+                    base64: "QUJD",
+                },
+            ],
+            errors: [
+                {
+                    renderOutput: "renders/resources/mipmap/themed-light.png",
+                    status: "failed",
+                    message: "boom",
+                },
+            ],
+        });
+        assert.match(md, /<img /); // the one that rendered
+        assert.match(md, /⚠/);
+        assert.match(md, /Themed light/);
+        assert.match(md, /render failed: boom/);
+    });
+
+    it("still returns the empty fallback when there is neither an image nor an error", () => {
+        const md = buildResourceVariantHoverMarkdown({
+            resource: VECTOR,
+            images: [],
+            errors: [],
+        });
+        assert.match(md, /No rendered captures available/);
+    });
+
+    it("escapes the error message so a crafted sidecar can't inject markup", () => {
+        const md = buildResourceVariantHoverMarkdown({
+            resource: VECTOR,
+            images: [],
+            errors: [
+                {
+                    renderOutput:
+                        "renders/resources/drawable/ic_compose_logo_xhdpi.png",
+                    status: "failed",
+                    message: "<img src=x onerror=alert(1)>",
+                },
+            ],
+        });
+        // The `<` is backslash-escaped (same policy as the resource id), so markdown renders it as
+        // literal text rather than an HTML tag — no `<img …>` reaches the DOM unescaped.
+        assert.match(md, /\\<img src=x/);
+    });
+});
