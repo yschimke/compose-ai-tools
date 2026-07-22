@@ -14,15 +14,16 @@ import org.junit.Test
 
 /**
  * Pins the shared [ComposeSemanticsWireframeExtension]: an after-capture, capture-phase processor
- * targeting both backends, over the shared [RenderArtifactContextKeys]. The Android daemon supplies
- * the Robolectric PNG baker + `densityAware = false`; the Desktop daemon supplies the Skia baker +
- * `densityAware = true`. Lives here next to the moved class; replaces the former `:daemon:android`
- * copy.
+ * targeting both backends, over the shared [RenderArtifactContextKeys]. Both daemons now supply
+ * their own PNG baker + `densityAware = true` (Robolectric on Android, Skia on Desktop); the
+ * density-dependent token resolution itself is pinned by
+ * `DesktopSemanticsTokensTest.circle_shape_corner_radius_resolves_to_density_independent_dp`. Lives
+ * here next to the moved class; replaces the former `:daemon:android` copy.
  */
 class ComposeSemanticsWireframeExtensionTest {
 
   private fun extension() =
-    ComposeSemanticsWireframeExtension(pngGenerator = { _, _ -> }, densityAware = false)
+    ComposeSemanticsWireframeExtension(pngGenerator = { _, _ -> }, densityAware = true)
 
   @Test
   fun `is an after-capture capture-phase processor targeting both backends`() {

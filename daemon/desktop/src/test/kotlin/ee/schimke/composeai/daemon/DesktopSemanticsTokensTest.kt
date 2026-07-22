@@ -119,6 +119,29 @@ class DesktopSemanticsTokensTest {
   }
 
   @Test
+  fun circle_shape_corner_radius_resolves_to_density_independent_dp() {
+    // A `CircleShape` is a *percent* (50%) corner: its radius is a fraction of the measured **px**
+    // size, so expressing it as dp needs the render density (dp = px / density). A 48dp box is 96px
+    // at density 2 and 48px at density 1 — the circle radius differs in px but must resolve to the
+    // *same* dp. Without density (Android's former `densityAware = false`, i.e. density = 1f) the
+    // density-2 capture would mislabel the raw px radius as dp. This is the shared
+    // `buildPayload(root, density)` path the Android wireframe / spatial payload now uses via
+    // `RobolectricHost`'s `densityAware = true` (#1908).
+    fun radiusAt(density: Float): String? =
+      buildTree(density = density) {
+          Box(Modifier.testTag("pill").size(48.dp).background(Color(0xFF006A60), CircleShape))
+        }
+        .find("pill")
+        ?.tokens
+        ?.cornerRadius
+
+    val atOne = radiusAt(1f)
+    val atTwo = radiusAt(2f)
+    assertNotNull("a CircleShape must resolve a dp corner radius", atOne)
+    assertEquals("the resolved dp radius must be density-independent", atOne, atTwo)
+  }
+
+  @Test
   fun node_without_container_tokens_emits_null() {
     // Plain text carries text-layout fields (layoutForegroundColor etc.) but no container tokens.
     val root = buildTree { Text("just text", modifier = Modifier.testTag("label")) }

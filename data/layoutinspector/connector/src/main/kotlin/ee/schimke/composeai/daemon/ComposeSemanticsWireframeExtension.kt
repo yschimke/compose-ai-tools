@@ -22,10 +22,12 @@ import java.io.File
  * - **[pngGenerator]** — the wireframe raster is baked with a platform toolkit (Robolectric canvas
  *   on Android, Skia on Desktop). Each daemon passes its own `SemanticsWireframe.generate`.
  * - **[densityAware]** — whether the payload resolves density-dependent tokens (percent corner
- *   radii → dp, #1908). Desktop passes `true` (real `spec.density`); Android passes `false`
- *   (`density = 1f`), preserving each backend's current output exactly. Unifying the two — making
- *   Android density-aware here too — is a deliberate follow-up gated on visual review, not folded
- *   into this refactor.
+ *   radii → dp, density-dependent font-variation axes; #1908). Both backends now pass `true` and
+ *   read the real `spec.density` off [RenderArtifactContextKeys.Density], so a `CircleShape` corner
+ *   radius resolves to the same dp on Android and Desktop instead of Android's former px-as-dp at
+ *   `density = 1f`. Only the resolved *token* values change; the wireframe raster is drawn from px
+ *   bounds + labels, so it is unaffected. The flag remains a constructor parameter (rather than a
+ *   hard-coded `true`) so a backend can still opt a payload out where density isn't meaningful.
  */
 class ComposeSemanticsWireframeExtension(
   private val pngGenerator: (ComposeSemanticsPayload, File) -> Unit,
