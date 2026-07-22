@@ -121,6 +121,22 @@ a sibling catalog) in a prior job that uploads the bundle artifact, then passes 
 to the reusable workflow — so the render/generate/publish stays shared while the
 bespoke step lives in the caller. A Wasm tier still needs a bespoke workflow.
 
+### Convention: the reference caller drives common features
+
+**meshcore-mobile is the reference consumer of the reusable workflow, and it
+drives what "common" means.** When a caller needs a new catalog-pipeline
+capability, the rule is: **add it as a generic input to the reusable workflow and
+consume it from the caller — never fork a bespoke copy of the pipeline.** That is
+how font-staging, section fold-in, two-module validation, and the live-bundle /
+per-preview-split lanes each became reusable inputs after MeshCore first needed
+them. The test for "generic" is whether it's a capability any catalog could want
+(it belongs upstream) versus machinery specific to one repo's internals — a
+**Wasm tier**, a **build-from-source CLI to publish HEAD's renderer**, a
+**release-runtime Maven-Central gate** — which stays in that repo's own workflow.
+The payoff is that every consumer's pipeline can't silently drift from the shared
+one; the cost is one small upstream input per new feature, paid by the caller
+that introduces it.
+
 ## Rendering a catalog
 
 ```sh
