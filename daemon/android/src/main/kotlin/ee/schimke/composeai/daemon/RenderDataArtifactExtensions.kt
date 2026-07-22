@@ -68,12 +68,10 @@ object RenderDataArtifactContextKeys {
 
   /**
    * The captured frame PNG for the rendered preview (`<outputDir>/<outputBaseName>.png`). Threaded
-   * so extensions that composite raster crops out of the render — the `compose/figma-svg` hybrid
-   * export cropping opaque-component `<image>` layers — can read the frame the engine already wrote
-   * without re-rendering.
+   * so the `compose/figma-svg` hybrid export can crop opaque-component `<image>` layers out of the
+   * frame without re-rendering. Delegates to [RenderArtifactContextKeys.OutputPng].
    */
-  val OutputPng: ExtensionContextKey<File> =
-    ExtensionContextKey(name = "render-data-artifact.outputPng", type = File::class.java)
+  val OutputPng: ExtensionContextKey<File> = RenderArtifactContextKeys.OutputPng
 
   /** Captured root semantics node for the rendered preview. Delegates to the shared key. */
   val SemanticsRoot: ExtensionContextKey<SemanticsNode> = RenderArtifactContextKeys.SemanticsRoot
@@ -92,12 +90,16 @@ object RenderDataArtifactContextKeys {
   val SlotTables = RenderArtifactContextKeys.SlotTables
 
   /**
-   * Render font scale (`spec.fontScale`, the multiplier `RuntimeEnvironment.setFontScale` applied).
-   * Threaded so the `compose/figma-svg` export can size `sp` text as `sp × density × fontScale` —
-   * matching the render, whose layer geometry was measured with the scaled text. Absent ⇒ 1.0.
+   * Render font scale (`spec.fontScale`). Sizes `sp` text in the `compose/figma-svg` export.
+   * Delegates to [RenderArtifactContextKeys.FontScale].
    */
-  val FontScale: ExtensionContextKey<Float> =
-    ExtensionContextKey(name = "render-data-artifact.fontScale", type = Float::class.javaObjectType)
+  val FontScale: ExtensionContextKey<Float> = RenderArtifactContextKeys.FontScale
+
+  /**
+   * Whether the render's device masks its frame to a circle (round Wear), so the `compose/figma-svg`
+   * export clips to the same circle. Delegates to [RenderArtifactContextKeys.RoundClip].
+   */
+  val RoundClip = RenderArtifactContextKeys.RoundClip
 
   /**
    * The held [`androidx.activity.ComponentActivity`] the rule launched for this render. Threaded to

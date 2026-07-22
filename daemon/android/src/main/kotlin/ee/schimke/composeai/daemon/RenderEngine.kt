@@ -728,6 +728,9 @@ class RenderEngine(
                   add(RenderDataArtifactContextKeys.HeldActivity provides rule.activity)
                   layoutInspectorPreviewContext?.let {
                     add(RenderDataArtifactContextKeys.LayoutInspectorPreviewContext provides it)
+                    // Round-Wear clip for the shared figma-svg export — the same
+                    // `previewContext.device.isRound` the inline Android extension read.
+                    add(RenderDataArtifactContextKeys.RoundClip provides it.device.isRound)
                   }
                 }
               val extensionContextData =
