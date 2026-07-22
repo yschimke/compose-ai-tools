@@ -308,7 +308,7 @@ export function renderIndexHtml(catalog, opts = {}) {
      the component instead of floating in an empty frame; a no-op for close-cropped (phone) renders
      where the bbox already fills the frame. */
   .shot--framed { overflow:hidden; padding:0; min-height:0; position:relative; place-items:stretch;
-    margin:16px auto; border-radius:8px; }
+    margin:16px auto; border-radius:8px; max-width:100%; }
   .shot--framed img { position:absolute; max-width:none; max-height:none; }
   .shot--missing { color:var(--muted); font-style:italic; }
   .meta { padding:10px 12px 12px; border-top:1px solid var(--line); }
@@ -380,16 +380,20 @@ ${details}
       if (!(rw > 0 && rh > 0)) return;
       if (box.vw >= rw * 0.9 && box.vh >= rh * 0.9) return; // already close-cropped
       var cap = 240, scale = Math.min(1, cap / Math.max(box.vw, box.vh));
-      var dw = Math.max(1, Math.round(box.vw * scale)), dh = Math.max(1, Math.round(box.vh * scale));
+      var dw = Math.max(1, Math.round(box.vw * scale));
       shot.classList.add("shot--framed");
+      // Size the window by aspect-ratio at its natural (capped) width, with max-width:100% so it
+      // shrinks to a narrow grid card instead of overflowing it; frame the render in PERCENTAGES of
+      // the box so the whole thing scales as one. (A fixed-px window overflowed the card and clipped
+      // wide components.) Height stays auto — the img keeps the render's aspect.
+      var pct = function (n, d) { return +(n / d * 100).toFixed(4); };
       shot.style.width = dw + "px";
-      shot.style.height = dh + "px";
-      img.style.width = Math.round(rw * scale) + "px";
-      img.style.height = Math.round(rh * scale) + "px";
-      // (tx,ty) is negative for a centred component, so tx*scale shifts the render to bring the
-      // component's top-left to the clip origin.
-      img.style.left = Math.round(box.tx * scale) + "px";
-      img.style.top = Math.round(box.ty * scale) + "px";
+      shot.style.aspectRatio = box.vw + " / " + box.vh;
+      img.style.width = pct(rw, box.vw) + "%";
+      // (tx,ty) is negative for a centred component, so it shifts the render to bring the component's
+      // top-left to the clip origin; as a % of the box axis it scales with the shrunk window.
+      img.style.left = pct(box.tx, box.vw) + "%";
+      img.style.top = pct(box.ty, box.vh) + "%";
     }
     if (img.complete) apply();
     else img.addEventListener("load", apply);

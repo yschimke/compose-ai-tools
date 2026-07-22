@@ -6,9 +6,10 @@ import kotlin.test.assertTrue
 
 /**
  * Pins the HTML wiring of the server-side thumbnail crop: when a card's [ContentCrop] is present
- * the render `<img>` is wrapped in a fixed-size `.cp-crop` clip window (so a Wear sticker shows the
- * component, not its watch canvas); when absent the card keeps the plain fit-to-box `<img>` — so a
- * phone/desktop catalog and the plain-module landing are untouched.
+ * the render `<img>` is wrapped in a `.cp-crop` clip window sized by aspect-ratio (so a Wear
+ * sticker shows the component, not its watch canvas) and framed in PERCENTAGES so it shrinks with a
+ * narrow grid card instead of overflowing it; when absent the card keeps the plain fit-to-box
+ * `<img>` — so a phone/desktop catalog and the plain-module landing are untouched.
  */
 class ServeWebThumbCropTest {
 
@@ -18,7 +19,7 @@ class ServeWebThumbCropTest {
     ContentCrop(boxW = 120, boxH = 48, imgW = 454, imgH = 454, left = -167, top = -203)
 
   @Test
-  fun `a catalog card with a crop wraps the image in a sized clip window`() {
+  fun `a catalog card with a crop wraps the image in an aspect-sized clip window`() {
     val html =
       ServeWeb.landingPage(
         "wear-m3",
@@ -27,13 +28,17 @@ class ServeWebThumbCropTest {
         basePath = "/wear-m3",
         thumbCrop = { crop },
       )
+    // The window's natural width is the box, but it sizes by aspect-ratio (so `max-width: 100%` can
+    // shrink it on a narrow card) rather than a fixed height.
     assertTrue(
-      html.contains("class=\"cp-crop\" style=\"width:120px;height:48px\""),
-      "clip window sized to the box",
+      html.contains("class=\"cp-crop\" style=\"width:120px;aspect-ratio:120/48\""),
+      "clip window sized to the box by aspect-ratio",
     )
+    // Render img framed in percentages of the box (454/120, -167/120, -203/48), so the whole frame
+    // scales as one when the window shrinks.
     assertTrue(
-      html.contains("style=\"width:454px;height:454px;left:-167px;top:-203px\""),
-      "render img sized + offset to show only the component",
+      html.contains("style=\"width:378.3333%;left:-139.1667%;top:-422.9167%\""),
+      "render img sized + offset in box-percentages to show only the component",
     )
   }
 
@@ -59,7 +64,7 @@ class ServeWebThumbCropTest {
       )
     val html = ServeWeb.homeIndexPage(listOf(system), token = "t", isPublic = true)
     assertTrue(
-      html.contains("class=\"cp-crop\" style=\"width:120px;height:48px\""),
+      html.contains("class=\"cp-crop\" style=\"width:120px;aspect-ratio:120/48\""),
       "hero framed to its box",
     )
   }
