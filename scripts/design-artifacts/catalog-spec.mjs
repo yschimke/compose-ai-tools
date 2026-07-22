@@ -326,8 +326,11 @@ export function validateSpec(spec, opts = {}) {
             } else {
               pushMulti(previewToPaths, v.preview, vp);
             }
-            if (v?.state === undefined && v?.props === undefined) {
-              warnings.push(`${vp} has neither \`state\` nor \`props\` — it won't be distinguishable from the default`);
+            if (v?.state === undefined && v?.props === undefined && v?.theme === undefined) {
+              warnings.push(`${vp} has neither \`state\`, \`props\` nor \`theme\` — it won't be distinguishable from the default`);
+            }
+            if (v?.theme !== undefined && v.theme !== "light" && v.theme !== "dark") {
+              errors.push(`${vp}.theme must be "light" or "dark" when present`);
             }
           });
         }

@@ -2,13 +2,21 @@
  * Fold a catalog spec component's `variants` onto its default render.
  *
  * A catalog spec component names one default `preview` plus, optionally, a list
- * of `variants` — each its own `@Preview` function, tagged by one of two axes:
- * a `state` (`pressed`, `focused`, `disabled`, `off`, `unchecked`, …) or named
- * `props` (a content axis, e.g. `content: icon+label`). This helper joins them:
- * the default preview's images stay first (they keep their own `state`, usually
- * `"default"`, so the grid hero is the resting component), and every variant's
- * images are appended, **re-tagged** — a `state` variant replaces `Image.state`,
- * a `props` variant merges onto `Image.props` while keeping the default state.
+ * of `variants` — each its own `@Preview` function, tagged by one of three axes:
+ * a `state` (`pressed`, `focused`, `disabled`, `off`, `unchecked`, …), named
+ * `props` (a content axis, e.g. `content: icon+label`), or a `theme`
+ * (`light`/`dark`). This helper joins them: the default preview's images stay
+ * first (they keep their own `state`, usually `"default"`, so the grid hero is
+ * the resting component), and every variant's images are appended, **re-tagged**
+ * — a `state` variant replaces `Image.state`, a `props` variant merges onto
+ * `Image.props` while keeping the default state, and a `theme` variant replaces
+ * `Image.theme` so a screen whose light and dark renders are two separate
+ * `@Preview` functions (`FooScreen` + `FooScreenDark`) folds into one component
+ * carrying both a `…__light` and a `…__dark` sticker. That pairing is what lets
+ * the preview server serve the baked dark PNG for a night-mode browse instead of
+ * bumping the request onto the live render daemon — the light/dark render is the
+ * point of `@LightDarkPreview`, and this is its multi-function counterpart for
+ * previews that already split the two themes across two functions.
  * The result is one sticker whose variants the catalog manifest gives
  * collision-free paths (`images/<id>/ideal__<state>[__theme][__size][__k-v…].png`,
  * the props segment keeping a props-only variant distinct from the default), and
@@ -42,17 +50,19 @@ export function foldVariants(defaultImages, component, byFunction) {
       const tagged = { ...image };
       if (variant.state !== undefined) tagged.state = variant.state;
       if (variant.props) tagged.props = { ...image.props, ...variant.props };
+      if (variant.theme !== undefined) tagged.theme = variant.theme;
       ideal.push(tagged);
     }
   }
   return { ideal, missing };
 }
 
-/** A short label for a variant, for the missing-render report: its state and/or props. */
+/** A short label for a variant, for the missing-render report: its state, props and/or theme. */
 function variantLabel(variant) {
   const parts = [
     ...(variant.state ? [variant.state] : []),
     ...Object.entries(variant.props ?? {}).map(([k, v]) => `${k}=${v}`),
+    ...(variant.theme ? [variant.theme] : []),
   ];
   return parts.join(", ") || variant.preview;
 }

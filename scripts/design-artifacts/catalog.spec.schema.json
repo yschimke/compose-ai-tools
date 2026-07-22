@@ -148,7 +148,7 @@
       "type": "object",
       "required": ["preview"],
       "additionalProperties": false,
-      "description": "A secondary render of the parent component, tagged by `state` (pressed/focused/disabled/…) or by named `props` content axes. Give at least one so it's distinguishable from the default.",
+      "description": "A secondary render of the parent component, tagged by `state` (pressed/focused/disabled/…), named `props` content axes, or a `theme` (light/dark, for a screen whose two themes are separate @Preview functions). Give at least one so it's distinguishable from the default.",
       "properties": {
         "preview": {
           "type": "string",
@@ -164,6 +164,11 @@
           "type": "object",
           "description": "Named content axes distinguishing this variant (e.g. { \"content\": \"icon+label\" } or { \"locale\": \"de\" }).",
           "additionalProperties": true
+        },
+        "theme": {
+          "type": "string",
+          "enum": ["light", "dark"],
+          "description": "Pairs a separate-function theme render onto this component so it folds into one …__light/…__dark swap card — use when a screen's light and dark renders are two @Preview functions (e.g. FooScreen + FooScreenDark) rather than one multipreview. The dark render must set uiMode = UI_MODE_NIGHT_YES so its pixels are actually dark; this tag makes the pairing authoritative."
         }
       }
     }

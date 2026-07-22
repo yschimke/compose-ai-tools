@@ -174,7 +174,7 @@ test("validateSpec warns about @Preview functions absent from the catalog", () =
   assert.ok(warnings.some((w) => w.includes("Unused")));
 });
 
-test("validateSpec warns when a variant has neither state nor props", () => {
+test("validateSpec warns when a variant has neither state, props nor theme", () => {
   const spec = {
     system: "s",
     title: "T",
@@ -186,7 +186,49 @@ test("validateSpec warns when a variant has neither state nor props", () => {
     ],
   };
   const { warnings } = validateSpec(spec);
-  assert.ok(warnings.some((w) => w.includes("neither `state` nor `props`")));
+  assert.ok(warnings.some((w) => w.includes("neither `state`, `props` nor `theme`")));
+});
+
+test("validateSpec accepts a theme variant and still resolves its preview name", () => {
+  const spec = {
+    system: "s",
+    title: "T",
+    groups: [
+      {
+        name: "G",
+        components: [
+          {
+            componentId: "Screen/Foo",
+            preview: "FooScreen",
+            variants: [{ theme: "dark", preview: "FooScreenDark" }],
+          },
+        ],
+      },
+    ],
+  };
+  // A theme variant is distinguishable, so no "neither state/props/theme" warning…
+  const { warnings, errors } = validateSpec(spec, {
+    knownPreviews: ["FooScreen", "FooScreenDark"],
+  });
+  assert.deepEqual(errors, []);
+  assert.ok(!warnings.some((w) => w.includes("won't be distinguishable")));
+});
+
+test("validateSpec rejects a theme variant whose value is not light/dark", () => {
+  const spec = {
+    system: "s",
+    title: "T",
+    groups: [
+      {
+        name: "G",
+        components: [
+          { componentId: "A", preview: "P", variants: [{ theme: "midnight", preview: "PDark" }] },
+        ],
+      },
+    ],
+  };
+  const { errors } = validateSpec(spec);
+  assert.ok(errors.some((e) => e.includes('theme must be "light" or "dark"')));
 });
 
 test("buildSkeletonSpec produces an editable one-group spec", () => {
