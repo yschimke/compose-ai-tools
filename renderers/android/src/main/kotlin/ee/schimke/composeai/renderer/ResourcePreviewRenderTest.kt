@@ -85,6 +85,9 @@ class ResourcePreviewRenderTest {
       val (renderedHere, missingHere) =
         tallyRenders(
           preview.captures,
+          // Output/filesystem failures (ENOSPC, permissions, uncreatable dir) stay fatal — only
+          // in-memory rasterisation failures are downgraded to missing renders (issue #2589).
+          fatal = ::isOutputFailure,
           onError = { capture, t ->
             System.err.println(
               "compose-preview: failed to rasterise ${preview.id} (${capture.renderOutput}): " +
@@ -714,11 +717,18 @@ class ResourcePreviewRenderTest {
      * Renders each of [items] with [render], returning `(rendered, missing)`. A `false` return is a
      * deliberately-skipped capture (counted missing); a thrown exception is caught, reported via
      * [onError], and also counted missing — so one un-rasterisable resource can't abort the batch
-     * (issue #2589). Pure and side-effect-free apart from [render] / [onError], so the isolation
-     * contract is unit-testable without a Robolectric drawable that actually throws.
+     * (issue #2589).
+     *
+     * [fatal] guards the downgrade: when it returns `true` for a caught throwable, that throwable is
+     * re-thrown so the whole task fails. This keeps genuine output/filesystem failures (a dir that
+     * can't be created, ENOSPC, a write error) hard — only in-memory rasterisation failures should
+     * be swallowed as missing renders. See [isOutputFailure]. Pure and side-effect-free apart from
+     * [render] / [onError] / [fatal], so the isolation contract is unit-testable without a
+     * Robolectric drawable that actually throws.
      */
     fun <T> tallyRenders(
       items: List<T>,
+      fatal: (Throwable) -> Boolean = { false },
       onError: (T, Throwable) -> Unit,
       render: (T) -> Boolean,
     ): Pair<Int, Int> {
@@ -728,11 +738,29 @@ class ResourcePreviewRenderTest {
         try {
           if (render(item)) rendered++ else missing++
         } catch (t: Throwable) {
+          if (fatal(t)) throw t
           onError(item, t)
           missing++
         }
       }
       return rendered to missing
+    }
+
+    /**
+     * `true` when [t] (or anything in its cause chain) is an [java.io.IOException] — i.e. the
+     * renderer got as far as trying to write output and the filesystem failed (missing/uncreatable
+     * dir, ENOSPC, permissions, a path collision). Those must fail the task, not be downgraded to a
+     * missing render (Codex review, PR #2638): rasterising a drawable is in-memory and surfaces as a
+     * `RuntimeException` / `Error`, so this cleanly separates "can't draw this resource" (tolerated)
+     * from "couldn't write the output" (fatal).
+     */
+    fun isOutputFailure(t: Throwable): Boolean {
+      var cur: Throwable? = t
+      while (cur != null) {
+        if (cur is java.io.IOException) return true
+        cur = cur.cause
+      }
+      return false
     }
 
     /**

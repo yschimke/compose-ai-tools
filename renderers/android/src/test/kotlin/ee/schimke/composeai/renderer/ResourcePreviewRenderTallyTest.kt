@@ -1,6 +1,8 @@
 package ee.schimke.composeai.renderer
 
+import java.io.IOException
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -50,6 +52,38 @@ class ResourcePreviewRenderTallyTest {
       ResourcePreviewRenderTest.tallyRenders(listOf("x", "y", "z"), onError = { _, _ -> }) { true }
     assertEquals(3, rendered)
     assertEquals(0, missing)
+  }
+
+  @Test
+  fun `a fatal (output) failure is re-thrown, not downgraded to missing`() {
+    // Codex review, PR #2638: an I/O / output failure (ENOSPC, unwritable dir, a failed PNG write)
+    // must still fail the task rather than be swallowed as a missing render — otherwise CI can pass
+    // green under `--missing-renders warn` while the renderer couldn't write its output.
+    val errors = mutableListOf<String>()
+    val boom = IOException("No space left on device")
+    val thrown =
+      assertThrows(IOException::class.java) {
+        ResourcePreviewRenderTest.tallyRenders(
+          listOf("ok", "write-fails"),
+          fatal = ResourcePreviewRenderTest::isOutputFailure,
+          onError = { item, t -> errors.add("$item:${t.message}") },
+        ) { item ->
+          if (item == "write-fails") throw boom else true
+        }
+      }
+    assertEquals(boom, thrown)
+    // A fatal failure propagates immediately — it is NOT routed through onError as a missing render.
+    assertTrue("fatal failures must not be reported as missing", errors.isEmpty())
+  }
+
+  @Test
+  fun `isOutputFailure sees an IOException wrapped in a runtime exception`() {
+    assertTrue(ResourcePreviewRenderTest.isOutputFailure(IOException("boom")))
+    assertTrue(
+      ResourcePreviewRenderTest.isOutputFailure(RuntimeException("wrap", IOException("disk full")))
+    )
+    // A pure rasterisation failure (no IOException anywhere in the chain) is NOT fatal.
+    assertTrue(!ResourcePreviewRenderTest.isOutputFailure(UnsupportedOperationException("no draw")))
   }
 
   @Test
