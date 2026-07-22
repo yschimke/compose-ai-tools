@@ -52,6 +52,8 @@ import { renderReadmeMd } from "./render-readme-md.mjs";
 import {
   figmaRastersForId,
   figmaSvgByFunctions,
+  figmaSvgByIds,
+  figmaVariantSvgPath,
   rewriteRasterHrefs,
 } from "./figma-svg-emit.mjs";
 import { buildCodeConnectManifest } from "./figma-code-connect-emit.mjs";
@@ -679,6 +681,20 @@ for (const component of catalog.components) {
   wireframeCount += 1;
 }
 
+// The written manifest (catalog.json), re-read from disk — NOT the in-memory
+// `catalog`: `buildCatalog` keeps a component's captures under `variants.ideal`
+// (each with a source `uri`), while the manifest carries the flattened `images[]`
+// with the bundle-relative `path` every artifact must reference, plus the
+// `previewId` the stamp pass above bridged onto each image.
+//
+// Read here rather than just before the index render because two consumers need
+// it: the per-variant figma-svg emit below mirrors `images[]` path for path, and
+// `renderIndexHtml` / `renderCompareHtml` / `renderCrossSystemHtml` read
+// `component.images` to show the stickers (and to group them by `state` in the
+// zoom view). Nothing between the write above and the renders below touches
+// catalog.json, so moving the read earlier is behaviour-preserving.
+const indexManifest = JSON.parse(await readFile(join(outPath, "catalog.json"), "utf8"));
+
 // Editable, design-fidelity vectors next to the raster PNGs: the layered
 // `compose/figma-svg` export (real fills / strokes / corner radii + editable
 // text) carried per sticker in the bundle. Unlike the schematic wireframe above
@@ -727,6 +743,85 @@ for (const component of catalog.components) {
   figmaSvgCount += 1;
 }
 
+// Per-variant vectors, mirroring the raster set 1:1:
+//
+//   images/<slug>/ideal__default__dark__compact.png   (written by the export engine)
+//   figma/<slug>/ideal__default__dark__compact.svg    (written here)
+//
+// The loop above ships exactly ONE vector per component (`figmaSvgByFunction` prefers
+// the light preview), yet the bundle carries a `previews/<id>.figma.svg` for *every*
+// rendered preview — the dark, locale and size vectors are rendered, carried, then
+// dropped on the floor by that per-function collapse. This loop ships them.
+//
+// It's driven from the manifest's `images[]` rather than from a naming scheme of its
+// own: each image already carries the `previewId` that keys the bundle's vectors plus
+// the bundle-relative `path` the export engine chose for it, so mapping `images/` →
+// `figma/` and `.png` → `.svg` inherits that collision-safe naming and guarantees a
+// vector can't drift away from the PNG it depicts.
+//
+// The `previewId` it keys on is stamped onto each image by `bridgeLivePreviewIds`
+// above, which runs for a carried liveBundle OR a `--source-module` (the workflow
+// always passes the latter, so every published catalog is covered). An image it
+// deliberately left unbridged — a state with no desktop source, or a function the
+// Android-only supplement overrode — carries no previewId and is skipped silently:
+// there is no daemon-rendered vector for it to be missing. An image that HAS a
+// previewId but no carried vector is a *gap*, counted and reported below, because a
+// silently missing vector is precisely the failure this emit exists to prevent.
+//
+// Vectors are folded across BOTH bundles (`figmaSvgByIds`), exactly like the
+// per-function fold and the raster merge above: an `--extra-renders`-only preview
+// exists in the supplementary bundle alone, so a primary-only read would emit no
+// per-variant vector at all for every screen rendered from a second module.
+//
+// Purely additive: `figma/<slug>.svg` and its per-slug crop dir stay exactly where
+// they are, since index.html, compare.html, design-parity's FIGMA_IMPORT.md and the
+// meshcore-mobile seeding runbook all reference that path today. The per-variant set
+// lives in a `figma/<slug>/` *directory*, so the two never collide.
+const figmaSvgsById = figmaSvgByIds([bundle, extraBundle]);
+let figmaVariantSvgCount = 0;
+let figmaVariantGapCount = 0;
+for (const component of indexManifest.components ?? []) {
+  for (const image of component.images ?? []) {
+    if (!image.previewId) continue;
+    const target = figmaVariantSvgPath(image.path);
+    if (!target) continue;
+    const carried = figmaSvgsById.get(image.previewId);
+    if (!carried) {
+      figmaVariantGapCount += 1;
+      continue;
+    }
+    let svg = carried;
+    const variantPath = join(outPath, target);
+    const variantDir = dirname(variantPath);
+    const variantBase = basename(target, ".svg");
+    // Same two-bundle merge as the back-compat loop: a hybrid sticker's crops live in
+    // whichever bundle carried its figma-svg, and a preview id belongs to one bundle,
+    // so merging is safe (the other side returns empty).
+    const rasters = extraBundle
+      ? new Map([
+          ...figmaRastersForId(bundle, image.previewId),
+          ...figmaRastersForId(extraBundle, image.previewId),
+        ])
+      : figmaRastersForId(bundle, image.previewId);
+    if (rasters.size) {
+      // Hybrid crops get a sibling dir keyed by the *variant* basename, not the slug:
+      // a component's light and dark vectors share one `figma/<slug>/` dir and each
+      // carries its own `<node>.png`, so a per-slug dir would have them overwrite each
+      // other. Sitting next to the SVG, the rewritten relative href resolves as-is.
+      svg = rewriteRasterHrefs(svg, variantBase);
+      const rasterDir = join(variantDir, `${variantBase}.figma-raster`);
+      await mkdir(rasterDir, { recursive: true });
+      for (const [name, bytes] of rasters) {
+        await writeFile(join(rasterDir, name), Buffer.from(bytes));
+        figmaRasterCount += 1;
+      }
+    }
+    await mkdir(variantDir, { recursive: true });
+    await writeFile(variantPath, svg, "utf8");
+    figmaVariantSvgCount += 1;
+  }
+}
+
 // Figma Code Connect manifest next to the figma-svg vectors: one mapping per component binding its
 // Figma layer (by componentId) to the **production composable** it renders, plus the repo source. It
 // carries everything `send_code_connect_mappings` needs except the node id, which only exists once a
@@ -770,18 +865,6 @@ await writeFile(
 console.log(
   `[${spec.system}] code-connect → ${codeConnect.mappings.length} mapping(s) (code-connect.json)`,
 );
-
-// Browsable index next to catalog.json + images/ — a designer can open this
-// straight from the branch to skim every component (its a11y greenlines and the
-// editable wireframe) before importing the tokens/images into a design tool.
-//
-// Render from the written manifest (catalog.json), NOT the in-memory `catalog`:
-// `buildCatalog` keeps a component's captures under `variants.ideal` (each with a
-// source `uri`), while the manifest carries the flattened `images[]` with the
-// bundle-relative `path` the page must reference. `renderIndexHtml` reads
-// `component.images`, so passing the manifest is what makes the stickers actually
-// show (and lets the zoom view group them by `state`).
-const indexManifest = JSON.parse(await readFile(join(outPath, "catalog.json"), "utf8"));
 
 // Cross-system component-parallel page (matches.html): pair every component with
 // its declared counterpart in the sibling system named by `spec.compareWith`,
@@ -859,6 +942,13 @@ if (spec.compareWith) {
   }
 }
 
+// Browsable index next to catalog.json + images/ — a designer can open this
+// straight from the branch to skim every component (its a11y greenlines and the
+// editable wireframe) before importing the tokens/images into a design tool.
+// Rendered from `indexManifest` (the written manifest, read above), NOT the
+// in-memory `catalog`: `renderIndexHtml` reads `component.images`, which only the
+// manifest carries — passing the in-memory catalog makes every card fall back to
+// the "no render" placeholder.
 const indexPath = join(outPath, "index.html");
 await writeFile(
   indexPath,
@@ -898,8 +988,17 @@ console.log(
   `[${spec.system}] ${catalog.components.length} component(s), ${result.imageCount} image(s), ` +
     `${wireframeCount} wireframe(s) (${layoutWireframeCount} from layout-inspector, ` +
     `${wireframeCount - layoutWireframeCount} greenline), ${figmaSvgCount} figma-svg ` +
-    `(${figmaRasterCount} raster crop(s)) → ${result.manifestPath}`,
+    `(${figmaRasterCount} raster crop(s)), ${figmaVariantSvgCount} per-variant figma-svg ` +
+    `→ ${result.manifestPath}`,
 );
+// An image with a previewId but no carried vector means the per-variant set is no longer 1:1 with
+// the raster set — surface it rather than letting the vector vanish quietly.
+if (figmaVariantGapCount) {
+  console.warn(
+    `[${spec.system}] ${figmaVariantGapCount} render(s) had no figma-svg carried for their ` +
+      `previewId — no per-variant vector emitted for those`,
+  );
+}
 console.log(`[${spec.system}] index → ${indexPath}`);
 console.log(`[${spec.system}] compare → ${comparePath}`);
 console.log(`[${spec.system}] readme → ${readmePath}`);
