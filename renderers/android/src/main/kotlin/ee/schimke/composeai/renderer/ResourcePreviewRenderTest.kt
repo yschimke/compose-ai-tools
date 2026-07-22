@@ -18,6 +18,7 @@ import java.awt.Graphics2D
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -63,14 +64,19 @@ class ResourcePreviewRenderTest {
 
     var rendered = 0
     var missing = 0
+    // Every failure / fallback that leaves a capture without a PNG is recorded here and written to a
+    // `resource-render-errors.json` sidecar in the bundle, so the reason survives past the CI log and
+    // can be surfaced later (CLI / preview server / VS Code) rather than being invisible.
+    val errors = mutableListOf<RenderErrorEntry>()
     for (preview in manifest.resources) {
       val (resType, resName) = preview.id.split('/', limit = 2).let { it[0] to it[1] }
       val resId = context.resources.getIdentifier(resName, resType, packageName)
       if (resId == 0) {
-        System.err.println(
-          "compose-preview: resource ${preview.id} not found on the consumer's R class " +
-            "(package=$packageName); skipping ${preview.captures.size} capture(s)"
-        )
+        val reason = "resource not found on the consumer's R class (package=$packageName)"
+        System.err.println("compose-preview: ${preview.id} $reason; skipping")
+        for (capture in preview.captures) {
+          errors += RenderErrorEntry(preview.id, capture.renderOutput, "not-found", reason)
+        }
         missing += preview.captures.size
         continue
       }
@@ -89,29 +95,62 @@ class ResourcePreviewRenderTest {
           // in-memory rasterisation failures are downgraded to missing renders (issue #2589).
           fatal = ::isOutputFailure,
           onError = { capture, t ->
+            val message = "${t.javaClass.simpleName}: ${t.message}"
             System.err.println(
               "compose-preview: failed to rasterise ${preview.id} (${capture.renderOutput}): " +
-                "${t.javaClass.simpleName}: ${t.message}; skipping capture — a renderer limitation " +
-                "(e.g. an adaptive launcher icon or a vector NATIVE graphics can't draw), not a " +
-                "preview error. Surfaced as a missing render (issue #2589)."
+                "$message; skipping capture — a renderer limitation (e.g. an adaptive launcher icon " +
+                "or a vector NATIVE graphics can't draw), not a preview error. Surfaced as a " +
+                "missing render (issue #2589)."
             )
+            errors += RenderErrorEntry(preview.id, capture.renderOutput, "failed", message)
           },
         ) { capture ->
-          renderCapture(context, resId, preview, capture, outputRoot)
+          val skipReason = renderCapture(context, resId, preview, capture, outputRoot)
+          if (skipReason == null) {
+            true
+          } else {
+            System.err.println(
+              "compose-preview: ${preview.id} (${capture.renderOutput}) — skipped: $skipReason"
+            )
+            errors += RenderErrorEntry(preview.id, capture.renderOutput, "skipped", skipReason)
+            false
+          }
         }
       rendered += renderedHere
       missing += missingHere
     }
+    writeRenderErrorsSidecar(outputRoot, errors)
     println("compose-preview resource render: $rendered file(s), $missing capture(s) missing")
   }
 
   /**
-   * Renders one [capture] of [preview] to disk. Returns `true` when a file was written, `false` when
-   * the capture was deliberately skipped for a known reason (a null drawable, a missing mask shape,
-   * a wrong drawable type, an absent `<monochrome>` layer, …). Unexpected failures — a resource the
-   * platform simply can't rasterise under Robolectric — are left to propagate; [renderResources]
-   * catches them per capture and records them as missing renders (issue #2589) rather than aborting
-   * the whole batch.
+   * Writes the [errors] to `resource-render-errors.json` **inside** the `renders/resources/` subtree
+   * ([outputRoot] is the `renders/` dir the PNGs are written under; the captures land under
+   * `resources/`). It must live inside the Gradle task's declared output tree
+   * (`resourcesRendersSubtree` = `renders/resources`) — a sidecar in the parent dir would be left
+   * stale or dropped by up-to-date / build-cache flows while the PNG subtree is still considered
+   * valid (Codex review, PR #2649). Always written — an empty `entries` list is a positive "the
+   * renderer ran and everything rendered" signal, distinct from "the sidecar is absent (old
+   * renderer)". Keyed by `(id, renderOutput)` so a consumer can line an error up with the exact
+   * missing PNG. This is the on-disk contract the CLI / preview server / VS Code read to surface
+   * *why* a resource render is missing.
+   */
+  private fun writeRenderErrorsSidecar(outputRoot: File, errors: List<RenderErrorEntry>) {
+    val dir = File(outputRoot, RENDER_ERRORS_SIDECAR_SUBTREE)
+    dir.mkdirs()
+    val sidecar = File(dir, RENDER_ERRORS_SIDECAR)
+    sidecar.writeText(json.encodeToString(RenderErrorReport(entries = errors)))
+  }
+
+  /**
+   * Renders one [capture] of [preview] to disk. Returns `null` when a file was written, or a short
+   * human-readable **skip reason** when the capture was deliberately skipped for a known reason (a
+   * null drawable, a missing mask shape, a wrong drawable type, an absent `<monochrome>` layer, …).
+   * The reason is recorded into the bundle's `resource-render-errors.json` sidecar (and logged) so it
+   * can be surfaced later in the CLI / preview server / VS Code, instead of only living in the CI
+   * log. Unexpected failures — a resource the platform simply can't rasterise under Robolectric —
+   * are left to propagate; [renderResources] catches them per capture and records them the same way
+   * (issue #2589) rather than aborting the whole batch.
    */
   private fun renderCapture(
     context: android.content.Context,
@@ -119,19 +158,14 @@ class ResourcePreviewRenderTest {
     preview: RenderResourcePreview,
     capture: RenderResourceCapture,
     outputRoot: File,
-  ): Boolean {
+  ): String? {
     val qualifiers = capture.variant?.qualifiers
     if (!qualifiers.isNullOrEmpty()) {
       RuntimeEnvironment.setQualifiers(qualifiers)
     }
-    val drawable: Drawable = ContextCompat.getDrawable(context, resId)
-        ?: run {
-          System.err.println(
-            "compose-preview: ContextCompat.getDrawable returned null for ${preview.id} " +
-              "at qualifiers=${qualifiers ?: "<default>"}; skipping capture"
-          )
-          return false
-        }
+    val drawable: Drawable =
+      ContextCompat.getDrawable(context, resId)
+        ?: return "getDrawable returned null at qualifiers=${qualifiers ?: "<default>"}"
     val outFile = resolveOutputPath(outputRoot, capture.renderOutput)
     outFile.parentFile?.mkdirs()
 
@@ -148,21 +182,16 @@ class ResourcePreviewRenderTest {
         val shape = capture.variant?.shape
         val style = capture.variant?.style ?: RenderAdaptiveStyle.FULL_COLOR
         if (style != RenderAdaptiveStyle.LEGACY && shape == null) {
-          System.err.println(
-            "compose-preview: adaptive icon ${preview.id} ${style.name} capture has no shape; " +
-              "skipping"
-          )
-          return false
+          return "adaptive-icon ${style.name} capture has no mask shape"
         }
         val adaptive = drawable as? AdaptiveIconDrawable
         if (adaptive == null) {
-          System.err.println(
-            "compose-preview: ${preview.id} resolved as ${drawable.javaClass.simpleName}, " +
-              "not AdaptiveIconDrawable; skipping ${shape?.name ?: style.name} capture"
-          )
-          return false
+          return "resolved as ${drawable.javaClass.simpleName}, not AdaptiveIconDrawable " +
+            "(${shape?.name ?: style.name})"
         }
-        val bitmap = renderAdaptiveIcon(adaptive, shape, style, preview.id) ?: return false
+        val bitmap =
+          renderAdaptiveIcon(adaptive, shape, style, preview.id)
+            ?: return "no <monochrome> layer for ${style.name}"
         try {
           outFile.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         } finally {
@@ -172,19 +201,12 @@ class ResourcePreviewRenderTest {
       RenderResourceType.ANIMATED_VECTOR -> {
         val animatable = drawable as? Animatable
         if (animatable == null) {
-          System.err.println(
-            "compose-preview: ${preview.id} resolved as ${drawable.javaClass.simpleName}, " +
-              "not Animatable; skipping animated capture"
-          )
-          return false
+          return "resolved as ${drawable.javaClass.simpleName}, not Animatable"
         }
         if (capture.variant?.filmstrip == true) {
           val fractions = capture.filmstripFractions
           if (fractions.isEmpty()) {
-            System.err.println(
-              "compose-preview: ${preview.id} filmstrip capture has no fractions; skipping"
-            )
-            return false
+            return "filmstrip capture has no fractions"
           }
           renderAnimatedVectorFilmstrip(drawable, animatable, fractions, outFile)
         } else {
@@ -194,11 +216,7 @@ class ResourcePreviewRenderTest {
       RenderResourceType.NINE_PATCH -> {
         val ninePatch = drawable as? NinePatchDrawable
         if (ninePatch == null) {
-          System.err.println(
-            "compose-preview: ${preview.id} resolved as ${drawable.javaClass.simpleName}, " +
-              "not NinePatchDrawable; skipping nine-patch capture"
-          )
-          return false
+          return "resolved as ${drawable.javaClass.simpleName}, not NinePatchDrawable"
         }
         val stretch = capture.variant?.stretch ?: RenderNinePatchStretch.INTRINSIC
         val bitmap = renderNinePatch(ninePatch, stretch)
@@ -209,7 +227,7 @@ class ResourcePreviewRenderTest {
         }
       }
     }
-    return true
+    return null
   }
 
   /**
