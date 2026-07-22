@@ -67,7 +67,19 @@ function variantKey(componentId, state, props, theme) {
   return theme ? `${base}${NUL}theme=${theme}` : base;
 }
 
-export function bridgeLivePreviewIds(manifest, spec, bundle, overriddenFunctions) {
+/**
+ * [bundles] is every bundle whose previews can back this catalog — the primary render plus any
+ * `--extra-renders` supplement — mirroring how `figmaSvgByFunctions` folds them. A single bundle
+ * is accepted too, so existing callers keep working.
+ *
+ * Reading only the primary bundle silently dropped every `--extra-renders`-only component: its
+ * previews never entered the id maps below, so its images got no `previewId` at all. That is not
+ * cosmetic — `previewId` is what `ServeCatalogStore` aliases on (so those components had no live
+ * lane) and what the per-variant figma-svg emit keys on (so they got no editable vectors). It hid
+ * well because "no previewId" is also the legitimate outcome for a deliberately-unbridged image,
+ * so a wholly-unbridged component looked no different from an intentional skip.
+ */
+export function bridgeLivePreviewIds(manifest, spec, bundles, overriddenFunctions) {
   const previewForState = new Map();
   for (const group of spec.groups ?? []) {
     for (const component of group.components ?? []) {
@@ -94,11 +106,18 @@ export function bridgeLivePreviewIds(manifest, spec, bundle, overriddenFunctions
   // function (first wins — state variants never share a function).
   const daemonIdFor = new Map();
   const unthemedIdFor = new Map();
-  for (const preview of bundle.previews ?? []) {
-    const fn = preview.functionName ?? preview.id;
-    const theme = themeOfPreviewId(preview.id);
-    if (theme) daemonIdFor.set(`${fn}\0${theme}`, preview.id);
-    else if (!unthemedIdFor.has(fn)) unthemedIdFor.set(fn, preview.id);
+  // Earlier bundles win, matching `figmaSvgByFunctions`' fold: the primary render is the
+  // authority, and a supplement only contributes previews the primary doesn't have. Falsy
+  // entries are skipped so callers can pass `[bundle, extraBundle]` with no extra render.
+  for (const bundle of Array.isArray(bundles) ? bundles : [bundles]) {
+    if (!bundle) continue;
+    for (const preview of bundle.previews ?? []) {
+      const fn = preview.functionName ?? preview.id;
+      const theme = themeOfPreviewId(preview.id);
+      if (theme) {
+        if (!daemonIdFor.has(`${fn}\0${theme}`)) daemonIdFor.set(`${fn}\0${theme}`, preview.id);
+      } else if (!unthemedIdFor.has(fn)) unthemedIdFor.set(fn, preview.id);
+    }
   }
   let mapped = 0;
   for (const component of manifest.components ?? []) {

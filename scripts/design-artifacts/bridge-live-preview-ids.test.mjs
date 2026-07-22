@@ -241,6 +241,91 @@ test("theme and state coexist: a themed variant of a non-default state keys on b
   );
 });
 
+test("an --extra-renders-only component bridges from the supplementary bundle", () => {
+  // Regression: the bridge took a single bundle, so a component whose previews live ONLY in the
+  // `--extra-renders` supplement (a screen rendered from a second CMP-desktop module) got no
+  // `previewId` on any image — costing it both the live lane and, once the per-variant figma-svg
+  // emit keyed off previewId, every editable vector. It hid because "no previewId" is also the
+  // legitimate outcome for a deliberately-skipped image.
+  const spec = {
+    system: "meshcore-mobile",
+    groups: [
+      {
+        components: [
+          { componentId: "Button/Filled", preview: "FilledButton" },
+          { componentId: "Chat/Contact", preview: "ContactChatPreview" },
+        ],
+      },
+    ],
+  };
+  const primary = { previews: [{ id: "app.CatalogKt.FilledButton", functionName: "FilledButton" }] };
+  const extra = {
+    previews: [{ id: "cmp.ChatKt.ContactChatPreview", functionName: "ContactChatPreview" }],
+  };
+  const manifest = {
+    system: "meshcore-mobile",
+    components: [
+      { componentId: "Button/Filled", images: [{ state: "default" }] },
+      { componentId: "Chat/Contact", images: [{ state: "default" }] },
+    ],
+  };
+
+  bridgeLivePreviewIds(manifest, spec, [primary, extra], new Set());
+
+  assert.equal(manifest.components[0].images[0].previewId, "app.CatalogKt.FilledButton");
+  // The one that used to come back undefined.
+  assert.equal(manifest.components[1].images[0].previewId, "cmp.ChatKt.ContactChatPreview");
+});
+
+test("a falsy bundle in the list is skipped (no --extra-renders)", () => {
+  const spec = {
+    system: "wear-m3",
+    groups: [{ components: [{ componentId: "Button/Filled", preview: "FilledButton" }] }],
+  };
+  const bundle = { previews: [{ id: "pkg.CatalogKt.FilledButton", functionName: "FilledButton" }] };
+  const manifest = {
+    system: "wear-m3",
+    components: [{ componentId: "Button/Filled", images: [{ state: "default" }] }],
+  };
+
+  bridgeLivePreviewIds(manifest, spec, [bundle, null], new Set());
+
+  assert.equal(manifest.components[0].images[0].previewId, "pkg.CatalogKt.FilledButton");
+});
+
+test("the primary bundle wins when both carry the same function", () => {
+  const spec = {
+    system: "meshcore-mobile",
+    groups: [{ components: [{ componentId: "Button/Filled", preview: "FilledButton" }] }],
+  };
+  const primary = { previews: [{ id: "app.CatalogKt.FilledButton", functionName: "FilledButton" }] };
+  const extra = { previews: [{ id: "cmp.CatalogKt.FilledButton", functionName: "FilledButton" }] };
+  const manifest = {
+    system: "meshcore-mobile",
+    components: [{ componentId: "Button/Filled", images: [{ state: "default" }] }],
+  };
+
+  bridgeLivePreviewIds(manifest, spec, [primary, extra], new Set());
+
+  assert.equal(manifest.components[0].images[0].previewId, "app.CatalogKt.FilledButton");
+});
+
+test("a bare bundle (not an array) is still accepted", () => {
+  const spec = {
+    system: "wear-m3",
+    groups: [{ components: [{ componentId: "Button/Filled", preview: "FilledButton" }] }],
+  };
+  const bundle = { previews: [{ id: "pkg.CatalogKt.FilledButton", functionName: "FilledButton" }] };
+  const manifest = {
+    system: "wear-m3",
+    components: [{ componentId: "Button/Filled", images: [{ state: "default" }] }],
+  };
+
+  bridgeLivePreviewIds(manifest, spec, bundle, new Set());
+
+  assert.equal(manifest.components[0].images[0].previewId, "pkg.CatalogKt.FilledButton");
+});
+
 test("overridden functions (Android-only supplement) get no daemon id", () => {
   const spec = {
     system: "wear-m3",

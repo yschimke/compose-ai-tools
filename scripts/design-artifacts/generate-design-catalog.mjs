@@ -634,7 +634,10 @@ if (values["publish-live-bundle"]) {
   // too: `ServeCatalogStore` builds the alias solely from `image.previewId`, so without this a
   // `--allow-render-trusted` box would pay the Gradle build yet reach the daemon for no catalog id.
   if (liveBundle || values["source-module"]) {
-    bridgeLivePreviewIds(manifest, spec, bundle, overriddenFunctions);
+    // Both bundles: an `--extra-renders`-only component's previews live solely in the
+    // supplement, so passing just the primary left every one of its images with no
+    // `previewId` — no live lane for it, and no per-variant figma-svg.
+    bridgeLivePreviewIds(manifest, spec, [bundle, extraBundle], overriddenFunctions);
   }
   await writeFile(catalogJsonPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 }
@@ -780,8 +783,19 @@ for (const component of catalog.components) {
 const figmaSvgsById = figmaSvgByIds([bundle, extraBundle]);
 let figmaVariantSvgCount = 0;
 let figmaVariantGapCount = 0;
+// Components with at least one image carrying no `previewId`. Some of those are legitimate
+// (`bridgeLivePreviewIds` deliberately skips a state with no desktop source, and any function
+// the Android-only supplement overrode) — but a component where NONE of the images bridged is
+// the signature of a whole bundle never reaching the bridge, which is how the
+// `--extra-renders` module silently lost every per-variant vector once already. Silence is
+// what made that expensive, so name them.
+const unbridgedComponents = new Map();
 for (const component of indexManifest.components ?? []) {
   for (const image of component.images ?? []) {
+    const seen = unbridgedComponents.get(component.componentId) ?? { unbridged: 0, total: 0 };
+    seen.total += 1;
+    if (!image.previewId) seen.unbridged += 1;
+    unbridgedComponents.set(component.componentId, seen);
     if (!image.previewId) continue;
     const target = figmaVariantSvgPath(image.path);
     if (!target) continue;
@@ -997,6 +1011,32 @@ if (figmaVariantGapCount) {
   console.warn(
     `[${spec.system}] ${figmaVariantGapCount} render(s) had no figma-svg carried for their ` +
       `previewId — no per-variant vector emitted for those`,
+  );
+}
+// An image with NO previewId never even reaches the vector lookup. Some of that is deliberate
+// (a state with no desktop source, a function the Android-only supplement overrode), so this is
+// informational — but a component where EVERY image is unbridged means its previews never
+// reached `bridgeLivePreviewIds` at all, which costs it both the live lane and its per-variant
+// vectors. That failure shipped once precisely because it was silent, so name the components.
+const fullyUnbridged = [...unbridgedComponents]
+  .filter(([, c]) => c.unbridged === c.total)
+  .map(([id]) => id);
+const partiallyUnbridged = [...unbridgedComponents].filter(
+  ([, c]) => c.unbridged > 0 && c.unbridged < c.total,
+).length;
+if (fullyUnbridged.length) {
+  const shown = fullyUnbridged.slice(0, 8).join(", ");
+  const more = fullyUnbridged.length > 8 ? `, +${fullyUnbridged.length - 8} more` : "";
+  console.warn(
+    `[${spec.system}] ${fullyUnbridged.length} component(s) had NO image bridged to a preview ` +
+      `id — no live lane and no per-variant vectors for them: ${shown}${more}. If that is a whole ` +
+      `module, check every render bundle is passed to bridgeLivePreviewIds.`,
+  );
+}
+if (partiallyUnbridged) {
+  console.log(
+    `[${spec.system}] ${partiallyUnbridged} component(s) had some images unbridged ` +
+      `(expected for states with no desktop source or overridden by the supplement)`,
   );
 }
 console.log(`[${spec.system}] index → ${indexPath}`);
