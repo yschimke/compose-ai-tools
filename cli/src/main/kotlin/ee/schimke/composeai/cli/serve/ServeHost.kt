@@ -27,6 +27,20 @@ interface ServeHost : AutoCloseable {
   val declaredThemes: List<ServeTheme>
     get() = emptyList()
 
+  /**
+   * Structured reasons this session is **degraded** — an interactive/live lane the viewer would
+   * otherwise offer is unavailable, so the server falls back to baked PNG snapshots. Recorded at
+   * catalog-load time by [ServeCatalogStore] (the point the fallback is decided, where it was
+   * previously only logged to stderr) so the viewer + `/api/previews` can explain *why* a session
+   * is snapshot-only rather than leaving the visitor to guess. Empty for a fully-live session (a
+   * daemon-backed module, or a catalog served live from a carried bundle) — a non-empty list is the
+   * signal the viewer shows its "why snapshot-only" banner. Defaults to empty; only
+   * [ServeBundleHost] (the baked host [ServeCatalogStore] terminally registers) carries a populated
+   * list.
+   */
+  val degradations: List<ServeDegradation>
+    get() = emptyList()
+
   /** Human label for the tenant (module Gradle path, `module@rev`, or a bundle name). */
   val label: String
 

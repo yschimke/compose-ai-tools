@@ -253,7 +253,7 @@ class ServeCatalogStore(
     // dir. Best-effort — a fetch failure just leaves the catalog without the in-browser tier (the
     // PNG + data tiers still serve). The file list is enumerated by the trusted catalog, not the
     // client, and each file is path-contained + size-capped like the images.
-    fetchWasmApp(catalog.webRender, base, dir, safe)
+    val wasmRegistered = fetchWasmApp(catalog.webRender, base, dir, safe)
 
     val verdict =
       if (trust.trustsBranch(repo, branch))
@@ -268,7 +268,11 @@ class ServeCatalogStore(
     // catalog ids. This is ALWAYS what a viewer sees; a live builder below fronts it with a daemon
     // rather than replacing it, so the published /p/<id> links keep resolving. Built lazily so the
     // registry can rebuild it on each resume of a live session.
-    val bakedFallback: () -> ServeBundleHost = {
+    // [degradations] explains why the session is snapshot-only (surfaced by the viewer +
+    // /api/previews). It is EMPTY when this baked host merely *fronts* a live daemon (the live
+    // builders below call `bakedFallback(emptyList())` — that session isn't degraded); it is
+    // populated only at the terminal registration, where the baked host IS the session.
+    val bakedFallback: (List<ServeDegradation>) -> ServeBundleHost = { degradations ->
       ServeBundleHost(
         dir,
         safe,
@@ -295,6 +299,7 @@ class ServeCatalogStore(
                 ?.ifBlank { null },
             designParityVersion = catalog.designParity?.takeIf { it.isNotBlank() },
           ),
+        degradations = degradations,
       )
     }
 
@@ -314,10 +319,20 @@ class ServeCatalogStore(
     // whole declared bundle file has fetched cleanly (fail-closed, like fetchWasmApp above). The
     // builder fronts [bakedFallback] with the daemon (see ServeCatalogLiveHost), so the baked
     // catalog still serves browsing + the ids the daemon can't render.
+    // Captures WHY a declared liveBundle didn't yield a live session, so the terminal baked host
+    // can
+    // explain it (instead of the generic "no live bundle"). Null unless the catalog declared a
+    // liveBundle we then couldn't use.
+    var liveBundleFallback: ServeDegradation? = null
     val liveBundle = catalog.liveBundle
     if (verdict is BundleVerifier.Verdict.Trusted && liveBundle != null) {
       val bundleFile = fetchLiveBundle(liveBundle, base, dir, safe)
-      if (bundleFile != null) {
+      if (bundleFile == null) {
+        liveBundleFallback =
+          ServeDegradation.liveBundleUnavailable(
+            "the bundle could not be fetched from the delivery branch"
+          )
+      } else {
         // Rehydrate any resources the bundle externalized (fonts lifted out of classes/app.jar)
         // from
         // the branch's content-addressed pool into a shared cache + a materialized classpath dir.
@@ -346,12 +361,33 @@ class ServeCatalogStore(
               }
             }
             if (
-              buildTrustedBundle(safe, bundleFile, res.dir, alias, bakedFallback, fetchPerPreview)
+              buildTrustedBundle(
+                safe,
+                bundleFile,
+                res.dir,
+                alias,
+                { bakedFallback(emptyList()) },
+                fetchPerPreview,
+              )
             ) {
               return Result.Ok(safe, count, "${BundleVerifier.summary(verdict)} (live bundle)")
             }
+            // Declared + fetched + rehydrated, but the builder didn't stand a daemon up — most
+            // often
+            // because server-side re-render isn't enabled on this box (`--allow-render-trusted`
+            // off), or the backend isn't runnable here. Fall through to source/static with a
+            // reason.
+            liveBundleFallback =
+              ServeDegradation.liveBundleUnavailable(
+                "server-side re-render is not enabled on this server"
+              )
           }
-          ResRehydrate.Unavailable -> {} // fall through to source/static
+          // Fall through to source/static — a declared resource couldn't be rehydrated.
+          ResRehydrate.Unavailable ->
+            liveBundleFallback =
+              ServeDegradation.liveBundleUnavailable(
+                "a required font or resource could not be rehydrated"
+              )
         }
       }
     }
@@ -365,12 +401,40 @@ class ServeCatalogStore(
       verdict is BundleVerifier.Verdict.Trusted &&
         src != null &&
         src.module.isNotBlank() &&
-        buildTrustedSource(safe, CatalogSource(src.repo, src.ref, src.module), alias, bakedFallback)
+        buildTrustedSource(
+          safe,
+          CatalogSource(src.repo, src.ref, src.module),
+          alias,
+          { bakedFallback(emptyList()) },
+        )
     ) {
       return Result.Ok(safe, count, "${BundleVerifier.summary(verdict)} (live)")
     }
 
-    val host = bakedFallback()
+    // Terminal: no server-side live lane stood up, so register the baked host AND record why it's
+    // snapshot-only — UNLESS the in-browser Wasm tier was registered, which IS a live lane (the
+    // viewer's Live toggle switches to it). A Wasm-backed session isn't baked-only, so it carries
+    // no
+    // session-level degradation; the viewer's per-control `cp-note` already explains which
+    // overrides
+    // the Wasm tier can't cover (size/device/orientation).
+    // Priority when we DO record one: a specific liveBundle failure (fetched/rehydrated/started) >
+    // an
+    // unverified catalog that DID declare a live lane (trust is the blocker) > the plain "no live
+    // bundle published" case (meshcore's app catalog, remote-m3, …).
+    val degradations =
+      if (wasmRegistered) emptyList()
+      else
+        listOf(
+          liveBundleFallback
+            ?: when {
+              verdict is BundleVerifier.Verdict.Unverified &&
+                (liveBundle != null || (src != null && src.module.isNotBlank())) ->
+                ServeDegradation.unverifiedNoRerender()
+              else -> ServeDegradation.catalogBakedOnly()
+            }
+        )
+    val host = bakedFallback(degradations)
     register(safe, host)
     return Result.Ok(safe, host.previews.size, BundleVerifier.summary(verdict))
   }
@@ -380,11 +444,16 @@ class ServeCatalogStore(
    * the dir. The file list comes from the trusted [render] (not a client); each entry is confined
    * to the declared `path`, rejected on traversal, and size-capped by [fetch]. Needs at least an
    * `index.html` to be usable. No-op for a null / non-`compose-wasm` descriptor.
+   *
+   * Returns true iff the in-browser Wasm tier was actually registered — the caller uses this to
+   * decide whether the session still has a live (in-browser) lane, so it must NOT record a
+   * baked-only degradation even when there's no server-side `liveBundle`. A declared-but-incomplete
+   * app (any fetch/traversal failure) returns false, leaving the session genuinely snapshot-only.
    */
-  private fun fetchWasmApp(render: WebRender?, base: String, dir: File, system: String) {
-    if (render == null || render.kind != WEB_RENDER_COMPOSE_WASM) return
+  private fun fetchWasmApp(render: WebRender?, base: String, dir: File, system: String): Boolean {
+    if (render == null || render.kind != WEB_RENDER_COMPOSE_WASM) return false
     val prefix = render.path.trim('/')
-    if (prefix.isEmpty() || render.files.isEmpty()) return
+    if (prefix.isEmpty() || render.files.isEmpty()) return false
     val wasmDir = File(dir, WEB_WASM_DIR)
     // **Fail closed, all-or-nothing.** Register the app only if *every* declared file is fetched
     // and
@@ -392,9 +461,10 @@ class ServeCatalogStore(
     // traversal/escaping entry, or a list longer than the cap) would make the viewer advertise "Run
     // in browser (Wasm)" only for the iframe to 404 its module/wasm fetches. The file list is the
     // trusted catalog's complete manifest, so any missing/invalid entry means "don't offer it".
-    fun fail(reason: String) {
+    fun fail(reason: String): Boolean {
       wasmDir.deleteRecursively()
       System.err.println("serve: $system web/wasm/ incomplete ($reason) — in-browser tier disabled")
+      return false
     }
     if (render.files.size > MAX_WASM_FILES) return fail("more than $MAX_WASM_FILES files declared")
     val wasmRoot = wasmDir.canonicalFile.toPath()
@@ -410,6 +480,7 @@ class ServeCatalogStore(
     }
     if (!File(wasmDir, "index.html").isFile) return fail("no index.html")
     registerWasm(system, wasmDir)
+    return true
   }
 
   /**

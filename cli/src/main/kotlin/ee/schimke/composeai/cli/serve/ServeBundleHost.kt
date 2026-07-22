@@ -67,6 +67,13 @@ class ServeBundleHost(
    * plain uploaded bundle (no such metadata). Surfaced on the catalog landing's provenance strip.
    */
   val provenance: ServeWeb.CatalogProvenance? = null,
+  /**
+   * Why this session is snapshot-only, when it is — populated by [ServeCatalogStore] for the baked
+   * host it terminally registers (e.g. a catalog with no `liveBundle`), and left empty for a plain
+   * uploaded bundle or for the baked host that merely *fronts* a live daemon (that session isn't
+   * degraded). Surfaced by the viewer banner + `/api/previews`. See [ServeDegradation].
+   */
+  override val degradations: List<ServeDegradation> = emptyList(),
   private val fileSystem: FileSystem = SystemFileSystem,
 ) : ServeHost {
 
