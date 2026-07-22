@@ -315,8 +315,12 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
    * no PNG. Empty when the sidecar is absent (an older renderer) or reports nothing.
    */
   private fun readRenderErrors(module: PreviewModule): Map<String, ResourceRenderError> {
+    // Inside the render task's declared output subtree (`renders/resources`) so up-to-date /
+    // build-cache flows carry it with the PNGs — see the renderer's `writeRenderErrorsSidecar`.
     val sidecar =
-      module.projectDir.resolve("build/compose-previews/$RESOURCE_RENDER_ERRORS_SIDECAR")
+      module.projectDir.resolve(
+        "build/compose-previews/renders/resources/$RESOURCE_RENDER_ERRORS_SIDECAR"
+      )
     if (!sidecar.exists()) return emptyMap()
     return try {
       resourceJson

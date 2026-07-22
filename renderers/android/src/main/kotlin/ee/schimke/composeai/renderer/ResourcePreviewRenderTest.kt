@@ -124,18 +124,21 @@ class ResourcePreviewRenderTest {
   }
 
   /**
-   * Writes the [errors] to `resource-render-errors.json`, next to the `renders/` tree (i.e. in the
-   * `build/compose-previews/` root — [outputRoot] is the `renders/` dir the PNGs are written under).
-   * Always written — an empty `entries` list is a positive "the renderer ran and everything
-   * rendered" signal that consumers can distinguish from "the sidecar is absent because an old
-   * renderer produced it". Keyed by `(id, renderOutput)` so a consumer can correlate an error with
-   * the exact missing PNG. This is the on-disk contract the CLI / preview server / VS Code read to
-   * surface *why* a resource render is missing.
+   * Writes the [errors] to `resource-render-errors.json` **inside** the `renders/resources/` subtree
+   * ([outputRoot] is the `renders/` dir the PNGs are written under; the captures land under
+   * `resources/`). It must live inside the Gradle task's declared output tree
+   * (`resourcesRendersSubtree` = `renders/resources`) — a sidecar in the parent dir would be left
+   * stale or dropped by up-to-date / build-cache flows while the PNG subtree is still considered
+   * valid (Codex review, PR #2649). Always written — an empty `entries` list is a positive "the
+   * renderer ran and everything rendered" signal, distinct from "the sidecar is absent (old
+   * renderer)". Keyed by `(id, renderOutput)` so a consumer can line an error up with the exact
+   * missing PNG. This is the on-disk contract the CLI / preview server / VS Code read to surface
+   * *why* a resource render is missing.
    */
   private fun writeRenderErrorsSidecar(outputRoot: File, errors: List<RenderErrorEntry>) {
-    val root = outputRoot.parentFile ?: outputRoot
-    root.mkdirs()
-    val sidecar = File(root, RENDER_ERRORS_SIDECAR)
+    val dir = File(outputRoot, RENDER_ERRORS_SIDECAR_SUBTREE)
+    dir.mkdirs()
+    val sidecar = File(dir, RENDER_ERRORS_SIDECAR)
     sidecar.writeText(json.encodeToString(RenderErrorReport(entries = errors)))
   }
 

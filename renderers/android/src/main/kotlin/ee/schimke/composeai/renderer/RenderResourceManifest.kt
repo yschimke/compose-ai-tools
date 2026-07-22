@@ -103,6 +103,14 @@ data class RenderResourceManifest(
 const val RENDER_ERRORS_SIDECAR = "resource-render-errors.json"
 
 /**
+ * Subtree (under the renders output dir) the sidecar is written into — the `resources/` dir the
+ * captures land under, which is the Gradle render task's *declared* output (`renders/resources`).
+ * Keeping the sidecar inside the declared tree is what makes up-to-date / build-cache flows carry it
+ * alongside the PNGs instead of leaving it stale (Codex review, PR #2649).
+ */
+const val RENDER_ERRORS_SIDECAR_SUBTREE = "resources"
+
+/**
  * One capture that did NOT produce a PNG, and why. Written to [RENDER_ERRORS_SIDECAR] in the bundle
  * so the reason survives past the CI log and can be surfaced later (CLI / preview server / VS Code).
  * Keyed by `(id, renderOutput)` so a consumer can line an entry up with the exact missing render.
