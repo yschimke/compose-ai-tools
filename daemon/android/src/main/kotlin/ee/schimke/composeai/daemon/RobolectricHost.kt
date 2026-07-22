@@ -1716,13 +1716,18 @@ open class RobolectricHost(
               // factory, so wrap it inline here.
               RenderDataArtifactExtensionFactory { ComposeSemanticsExtension() },
               // ComposeSemanticsWireframeExtension is shared too; Android supplies the Robolectric
-              // PNG baker and densityAware=false to preserve its current (density=1f) payload.
+              // PNG baker and — like Desktop — renders density-aware, so a percent/CircleShape corner
+              // radius (and density-dependent font-variation axes) resolves against the real render
+              // density (`spec.density`, provided on the `RenderArtifactContextKeys.Density` key
+              // above) instead of px-as-dp at density=1 (#1908). Only the resolved *token* values in
+              // the `compose/semantics-wireframe` + `compose/spatial-semantics` payloads change; the
+              // wireframe raster is drawn from px bounds + labels, so it's byte-identical.
               RenderDataArtifactExtensionFactory {
                 ComposeSemanticsWireframeExtension(
                   pngGenerator = { payload, destPng ->
                     AndroidSemanticsWireframe.generate(payload, destPng)
                   },
-                  densityAware = false,
+                  densityAware = true,
                 )
               },
               // LayoutInspectorExtension is shared now; it reads the captured semantics root + slot
