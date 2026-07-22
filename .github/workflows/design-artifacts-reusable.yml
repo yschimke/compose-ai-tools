@@ -82,6 +82,16 @@ on:
         required: false
         type: boolean
         default: true
+      publish-live-bundle:
+        description: 'Carry the executable primary render bundle onto the branch under bundle/ and record liveBundle:{path,file} in catalog.json, so a serve box that bakes the matching (Android/desktop) daemon re-renders the previews live instead of replaying baked PNGs.'
+        required: false
+        type: boolean
+        default: false
+      split-per-preview:
+        description: 'After generate, split the carried liveBundle into one addressable bundle per preview under bundle/previews/<id>, for the serve host per-preview live lane. The extra module (if any) is split --view-only (baked, no per-preview re-render classpath). Requires publish-live-bundle.'
+        required: false
+        type: boolean
+        default: false
       publish:
         description: 'Force-push out/ to design-artifacts/<system>. Set false to hand the generated bundle off (via upload-out) to a follow-up job that post-processes it — e.g. folding in an extra re-themed section — before publishing.'
         required: false
@@ -267,6 +277,8 @@ jobs:
           fi
           incomplete=()
           if [ "${{ inputs.allow-incomplete }}" = "true" ]; then incomplete=(--allow-incomplete); fi
+          live=()
+          if [ "${{ inputs.publish-live-bundle }}" = "true" ]; then live=(--publish-live-bundle); fi
           node compose-ai-tools/scripts/design-artifacts/generate-design-catalog.mjs \
             --spec "${{ inputs.spec }}" \
             --renders "$GITHUB_WORKSPACE/bundle.png" \
@@ -274,7 +286,25 @@ jobs:
             --out "$GITHUB_WORKSPACE/out" \
             --renderer "$(compose-preview --version | head -1)" \
             "${source_args[@]}" \
+            "${live[@]}" \
             "${incomplete[@]}"
+
+      # Split the carried liveBundle into one re-renderable bundle per preview for
+      # the serve host's per-preview live lane. The externalised bundle the generate
+      # step wrote under out/bundle/ (fonts lifted to bundle/res/) is the split
+      # source, so each per-preview bundle inherits the slimmed classpath + shared
+      # font pool. The extra module is split --view-only (baked; no per-preview
+      # re-render classpath on this branch).
+      - name: Split into per-preview bundles
+        if: ${{ inputs.split-per-preview }}
+        run: |
+          set -euo pipefail
+          compose-preview bundle split "$GITHUB_WORKSPACE/out/bundle/bundle.png" \
+            -o "$GITHUB_WORKSPACE/out/bundle/previews"
+          if [ -n "${{ inputs.extra-module }}" ] && [ -f "$GITHUB_WORKSPACE/extra-bundle.png" ]; then
+            compose-preview bundle split "$GITHUB_WORKSPACE/extra-bundle.png" --view-only \
+              -o "$GITHUB_WORKSPACE/out/bundle/previews"
+          fi
 
       - name: Download section bundle to fold in
         if: ${{ inputs.fold-artifact != '' }}
