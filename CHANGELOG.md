@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.17.7](https://github.com/yschimke/compose-ai-tools/compare/v0.17.6...v0.17.7) (2026-07-22)
+
+
+### Features
+
+* **deploy:** serve confetti-mobile on the public preview server ([#2643](https://github.com/yschimke/compose-ai-tools/issues/2643)) ([f494d27](https://github.com/yschimke/compose-ai-tools/commit/f494d27bb69dbc2d7085db0ec5fd858cc29c18ea))
+
+
+### Bug Fixes
+
+* **resources:** keep output/filesystem failures fatal in the resource render ([#2642](https://github.com/yschimke/compose-ai-tools/issues/2642)) ([e768e24](https://github.com/yschimke/compose-ai-tools/commit/e768e2444a80e2dfc2c205f8b685fa219d6e3925))
+
 ## [0.17.6](https://github.com/yschimke/compose-ai-tools/compare/v0.17.5...v0.17.6) (2026-07-22)
 
 
