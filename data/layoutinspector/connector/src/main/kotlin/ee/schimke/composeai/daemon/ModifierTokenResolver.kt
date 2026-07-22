@@ -113,7 +113,16 @@ internal object ModifierTokenResolver {
       // Shape comes from any shape-bearing modifier: `background(color, shape)`, `clip(shape)`
       // (which Compose routes through `graphicsLayer`), or `border(..., shape)`. A plain rectangle
       // yields null for both fields and is skipped.
-      val nodeShape = shapeOf(mod, elements)
+      //
+      // NOT a placeholder overlay, though: Wear M3 `Modifier.placeholder`/`placeholderShimmer`
+      // expose `PlaceholderDefaults.shape` (= `ShapeTokens.CornerFull`, a 50% pill) as an
+      // inspectable `shape`, and ride on the *caller's* chain outside the component's own Surface
+      // shape — so as the first shape-bearing modifier they hijack the container corner and a
+      // placeholdered `TitleCard`/`Button` (modest corner) exports as a full pill (`rx =
+      // height/2`).
+      // Skip their shape so the real `clip`/`paint`/`background` shape later in the chain wins.
+      val nodeShape =
+        if (isPlaceholderShapeModifier(name, simpleName)) null else shapeOf(mod, elements)
       if (nodeShape != null) {
         if (cornerRadius == null) cornerRadius = nodeShape.cornerRadiusWire(minSidePx, density)
         // A `RoundedCornerShape(<px>f)` has no dp `cornerRadius`; capture its raw-pixel radii so
@@ -458,6 +467,18 @@ internal object ModifierTokenResolver {
     if (start == null && top == null && end == null && bottom == null) return null
     return ComposeSemanticsInsets(start = start, top = top, end = end, bottom = bottom)
   }
+
+  /**
+   * True for the Wear M3 `Modifier.placeholder` / `Modifier.placeholderShimmer` elements. Their
+   * inspectable `shape` is the *placeholder overlay's* shape (`PlaceholderDefaults.shape` =
+   * `ShapeTokens.CornerFull`, a 50% pill), never the container's shape — and because the modifier
+   * rides on the caller's chain ahead of the component's own Surface shape, sourcing the container
+   * corner from it exports a placeholdered `TitleCard`/`Button` as a full pill. Matched by the
+   * inspector `nameFallback` (`placeholder`/`placeholderShimmer`) or the element class name
+   * (`PlaceholderElement`, `PlaceholderShimmerElement`, …).
+   */
+  internal fun isPlaceholderShapeModifier(name: String?, simpleName: String): Boolean =
+    name == "placeholder" || name == "placeholderShimmer" || simpleName.startsWith("Placeholder")
 
   /** The inspector `shape` element, or a reflected `shape` field on the modifier element. */
   private fun shapeOf(mod: Any, elements: Map<String, Any?>): Shape? {
