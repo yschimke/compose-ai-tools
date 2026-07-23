@@ -116,6 +116,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-landing/dark](renders/serve-landing.dark.png) |
 | `light` | ![serve-landing/light](renders/serve-landing.light.png) |
 
+## serve-landing-grouped
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-grouped/dark](renders/serve-landing-grouped.dark.png) |
+| `light` | ![serve-landing-grouped/light](renders/serve-landing-grouped.light.png) |
+
 ## serve-landing-path
 
 | Theme | Capture |
@@ -158,6 +165,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-landing-variants/dark](renders/serve-landing-variants.dark.png) |
 | `light` | ![serve-landing-variants/light](renders/serve-landing-variants.light.png) |
 
+## serve-notfound
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-notfound/dark](renders/serve-notfound.dark.png) |
+| `light` | ![serve-notfound/light](renders/serve-notfound.light.png) |
+
 ## serve-status
 
 | Theme | Capture |
@@ -192,6 +206,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | --- | --- |
 | `dark` | ![serve-viewer-gestures/dark](renders/serve-viewer-gestures.dark.png) |
 | `light` | ![serve-viewer-gestures/light](renders/serve-viewer-gestures.light.png) |
+
+## serve-viewer-nav-collapsed
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-nav-collapsed/dark](renders/serve-viewer-nav-collapsed.dark.png) |
+| `light` | ![serve-viewer-nav-collapsed/light](renders/serve-viewer-nav-collapsed.light.png) |
 
 ## serve-viewer-path
 
