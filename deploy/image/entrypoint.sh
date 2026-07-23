@@ -130,6 +130,17 @@ if [[ "${SERVE_ACCEPT_BUNDLES:-}" == "1" || "${SERVE_ACCEPT_BUNDLES:-}" == "true
     args+=(--accept-bundles-from "${SERVE_ACCEPT_BUNDLES_FROM}")
 fi
 
+# Extra Maven repositories the live-daemon classpath resolver may fetch from, beyond Maven Central +
+# Google Maven. A served catalog whose module pulls deps from a non-default repo (e.g.
+# meshcore-mobile's jitpack.io deps like usb-serial-for-android) otherwise has those coordinates
+# skipped, so its live daemon can't build its classpath and the catalog falls back to baked PNGs.
+# Defaults to jitpack.io (the baked meshcore-mobile catalog needs it); override with your own comma
+# list — add a snapshot repo another catalog needs (e.g. Confetti's Apollo snapshots) — or set `none`
+# to send only Central + Google. Empty inherits this baked default.
+: "${SERVE_EXTRA_MAVEN_REPOS:=https://jitpack.io}"
+[[ "${SERVE_EXTRA_MAVEN_REPOS}" != "none" && -n "${SERVE_EXTRA_MAVEN_REPOS}" ]] &&
+  args+=(--extra-maven-repos "${SERVE_EXTRA_MAVEN_REPOS}")
+
 # Generous render/build timeout so a slow host's first render doesn't trip the
 # CLI's 300s default (the warm cache is baked in, so it's normally fast anyway).
 args+=(--timeout "${SERVE_TIMEOUT:-1800}")

@@ -194,6 +194,20 @@ class ServeCommand(args: List<String>) : Command(args) {
       ?.filter { it.isNotEmpty() } ?: emptyList()
 
   /**
+   * Extra remote Maven repository base URLs the live-daemon classpath resolver may fetch from, on
+   * top of Maven Central + Google Maven (`--extra-maven-repos <url>[,<url>…]`; env
+   * `SERVE_EXTRA_MAVEN_REPOS`). A served catalog whose module pulls deps from a non-default repo —
+   * e.g. `https://jitpack.io`, an Apollo/JetBrains snapshot repo — otherwise has those coordinates
+   * skipped by the resolver, leaving the daemon's classpath incomplete so a class that references
+   * them fails at bootstrap and the catalog falls back to baked PNGs (`livebundle-unavailable`).
+   * Empty by default. Operator-curated: only repos the deployer trusts should be listed, since the
+   * server will fetch artifacts from them when resolving a trusted catalog's live bundle.
+   */
+  private val extraMavenRepos: List<String> =
+    args.flagValue("--extra-maven-repos")?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
+      ?: emptyList()
+
+  /**
    * Path to the producer-trust store (`--trust-store <file>`): the JSON allowlist of trusted
    * signing keys / branches / CI identities ([TrustStore]). Uploaded bundles are verified against
    * it and the verdict is surfaced in the API + viewer. Absent ⇒ the empty, fail-closed store
@@ -910,7 +924,13 @@ class ServeCommand(args: List<String>) : Command(args) {
       // the bundle (no build); a non-desktop/foreign/empty bundle returns null → falls to baked.
       if (allowRenderTrusted && verdict is BundleVerifier.Verdict.Trusted) {
         val destDir = File(root, "${spec.name}-live").apply { mkdirs() }
-        val state = ServeBundleDaemon.materialize(bundleFile, destDir, spec.name)
+        val state =
+          ServeBundleDaemon.materialize(
+            bundleFile,
+            destDir,
+            spec.name,
+            extraMavenRepos = extraMavenRepos,
+          )
         val host = state?.let { openHost(it) }
         if (state != null && host != null) {
           registry.register(spec.name, state, host = host)
@@ -1115,6 +1135,7 @@ class ServeCommand(args: List<String>) : Command(args) {
           ppFile,
           ppDest,
           system,
+          extraMavenRepos = extraMavenRepos,
           extraClasspathDirs = listOfNotNull(externalResourcesDir),
         ) ?: return@ServePerPreviewDaemonPool null
       openHost(ppState)
@@ -1131,6 +1152,7 @@ class ServeCommand(args: List<String>) : Command(args) {
           bundleFile,
           destDir,
           system,
+          extraMavenRepos = extraMavenRepos,
           extraClasspathDirs = listOfNotNull(externalResourcesDir),
         )
         ?.copy(
