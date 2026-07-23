@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.17.11](https://github.com/yschimke/compose-ai-tools/compare/v0.17.10...v0.17.11) (2026-07-23)
+
+
+### Features
+
+* **deploy:** default SERVE_EXTRA_MAVEN_REPOS to all required catalog repos ([#2666](https://github.com/yschimke/compose-ai-tools/issues/2666)) ([731fbc4](https://github.com/yschimke/compose-ai-tools/commit/731fbc4873f72e2962ebdf01d44aec7e680c52cd))
+* **serve:** resolve live-bundle deps from extra Maven repos (SERVE_EXTRA_MAVEN_REPOS) ([#2665](https://github.com/yschimke/compose-ai-tools/issues/2665)) ([74a8150](https://github.com/yschimke/compose-ai-tools/commit/74a815045dbbcb0b644a4dc4745614e0b89ceac3))
+
 ## [0.17.10](https://github.com/yschimke/compose-ai-tools/compare/v0.17.9...v0.17.10) (2026-07-23)
 
 
