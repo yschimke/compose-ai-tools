@@ -737,7 +737,11 @@ abstract class BundlePreviewTask : DefaultTask() {
     val rendersRoot = rendersDir.orNull?.asFile ?: return null
     val rel =
       preview.captures.firstOrNull()?.renderOutput?.takeIf { it.isNotEmpty() } ?: return null
-    val stem = rel.substringAfterLast('/').removeSuffix(".png")
+    // Anchor to the primary capture's leaf, stripping its actual extension the way the writer's
+    // `pngFile.nameWithoutExtension` does — so a non-PNG primary capture (e.g. an animated `.gif`
+    // still) resolves the sidecar the renderer actually wrote, not a `<leaf>.png`-shaped guess.
+    val leaf = rel.substringAfterLast('/')
+    val stem = if ('.' in leaf) leaf.substringBeforeLast('.') else leaf
     val f = File(rendersRoot, "$stem.$BUNDLE_REMOTECOMPOSE_SIDECAR_EXT")
     return if (f.isFile && f.length() > 0) f.readBytes() else null
   }

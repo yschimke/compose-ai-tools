@@ -595,6 +595,10 @@ abstract class RobolectricRenderTestBase(
     // Drop any named-override knobs a prior preview declared so this preview's `previewOverride*`
     // lookups accumulate a clean set (drained into the overrides sidecar below).
     ee.schimke.composeai.overrides.PreviewOverrideController.clearDeclarations()
+    // Same for the Remote Compose knob declarations (reflectively — the alpha-gated connector may be
+    // absent), so preview B doesn't serialize the Remote Compose knobs preview A declared in the same
+    // JVM into its `renders/<stem>.remotecompose.json` sidecar.
+    clearRemoteComposeDeclarations()
     // Seed any `@OverrideVariant` values onto the controller so this synthetic variant preview's
     // `previewOverride*` reads resolve to the flipped knob(s). Replaces the whole seed map, so an
     // ordinary preview (null overrides → empty map) clears the prior variant's seeds — no leakage
@@ -721,6 +725,24 @@ abstract class RobolectricRenderTestBase(
    * `remotecompose.json` suffix is kept in lockstep with
    * `PreviewBundleFormat.BUNDLE_REMOTECOMPOSE_SIDECAR_EXT`.
    */
+  /**
+   * Reflectively drop the process-static Remote Compose declarations before a render, mirroring the
+   * `PreviewOverrideController.clearDeclarations()` call in the render loop. Reflective so this
+   * renderer keeps no hard dependency on the alpha-gated `:data-remotecompose-connector` — a no-op
+   * when the connector isn't on the classpath.
+   */
+  private fun clearRemoteComposeDeclarations() {
+    try {
+      val cls = Class.forName("ee.schimke.composeai.daemon.RemoteComposeController")
+      val instance = cls.getField("INSTANCE").get(null)
+      cls.getMethod("clearDeclarations").invoke(instance)
+    } catch (_: ClassNotFoundException) {
+      // No Remote Compose runtime on the classpath — nothing to clear.
+    } catch (_: ReflectiveOperationException) {
+      // Best-effort: a reflective miss must not derail the render path.
+    }
+  }
+
   private fun writeRemoteComposeSidecar(pngFile: File) {
     val dir = pngFile.parentFile ?: return
     val sidecar = File(dir, "${pngFile.nameWithoutExtension}.remotecompose.json")
