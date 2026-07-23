@@ -121,6 +121,10 @@ class ServeStreamSession(
       }
       RenderOutcome.NotFound -> send(ServeStreamProtocol.errorMessage("no such preview"))
       is RenderOutcome.Failed -> send(ServeStreamProtocol.errorMessage(outcome.reason))
+      // Daemon mid-render — skip this frame silently rather than tear the stream down with an
+      // error; the next frame request retries once the daemon frees. (A catalog host serves baked
+      // instead of returning Busy, so this is only reachable for a bare daemon-backed stream.)
+      RenderOutcome.Busy -> {}
     }
   }
 }

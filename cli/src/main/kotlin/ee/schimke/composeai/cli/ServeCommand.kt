@@ -1356,6 +1356,9 @@ class ServeCommand(args: List<String>) : Command(args) {
             null
           }
           RenderOutcome.NotFound -> null
+          // Sequential single-thread export — the per-daemon lock is never contended, so Busy
+          // shouldn't occur; treat it like a skip (no PNG) if it somehow does.
+          RenderOutcome.Busy -> null
         }
       }
 

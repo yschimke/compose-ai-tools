@@ -1033,6 +1033,13 @@ class ServeHttpServer(
           status = HttpStatusCode.ServiceUnavailable,
         )
       }
+      RenderOutcome.Busy -> {
+        // The daemon was mid-render; the request backed off in ~DAEMON_BUSY_WAIT rather than pin
+        // this render slot. Fast 503 + Retry-After (a catalog host would have served baked; a bare
+        // bundle host has no baked fallback).
+        call.response.headers.append(HttpHeaders.RetryAfter, "2")
+        call.respondText("render busy; retry shortly", status = HttpStatusCode.ServiceUnavailable)
+      }
       is RenderOutcome.Ok ->
         call.respondText(StorybookCompat.iframePage(storyId, outcome.png), ContentType.Text.Html)
       RenderOutcome.NotFound -> call.respondText("no such story", status = HttpStatusCode.NotFound)
@@ -1249,6 +1256,15 @@ class ServeHttpServer(
               call.response.headers.append(HttpHeaders.RetryAfter, "2")
               call.respondText(
                 "render queue saturated; retry shortly",
+                status = HttpStatusCode.ServiceUnavailable,
+              )
+            }
+            RenderOutcome.Busy -> {
+              // Daemon mid-render; backed off in ~DAEMON_BUSY_WAIT instead of pinning this slot.
+              // A catalog host serves baked instead of returning Busy; a bare bundle host 503s.
+              call.response.headers.append(HttpHeaders.RetryAfter, "2")
+              call.respondText(
+                "render busy; retry shortly",
                 status = HttpStatusCode.ServiceUnavailable,
               )
             }
