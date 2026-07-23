@@ -246,9 +246,9 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `BadgeSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/BadgeSticker_Dark.png" width="150" /> |
 | `BadgeSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/BadgeSticker_Light.png" width="150" /> |
 | `CheckboxChecked` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/CheckboxChecked_Dark.png" width="150" /> |
+| `CheckboxChecked` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/CheckboxChecked_Dark_VARIANT_unchecked.png" width="150" /> |
 | `CheckboxChecked` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/CheckboxChecked_Light.png" width="150" /> |
-| `CheckboxUnchecked` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/CheckboxUnchecked_Dark.png" width="150" /> |
-| `CheckboxUnchecked` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/CheckboxUnchecked_Light.png" width="150" /> |
+| `CheckboxChecked` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/CheckboxChecked_Light_VARIANT_unchecked.png" width="150" /> |
 | `CircularProgressSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/CircularProgressSticker_Dark.png" width="150" /> |
 | `CircularProgressSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/CircularProgressSticker_Light.png" width="150" /> |
 | `ElevatedButtonSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/ElevatedButtonSticker_Dark.png" width="150" /> |
@@ -278,9 +278,9 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `FilledTonalButtonSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilledTonalButtonSticker_Dark.png" width="150" /> |
 | `FilledTonalButtonSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilledTonalButtonSticker_Light.png" width="150" /> |
 | `FilterChipSelected` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilterChipSelected_Dark.png" width="150" /> |
+| `FilterChipSelected` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilterChipSelected_Dark_VARIANT_unselected.png" width="150" /> |
 | `FilterChipSelected` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilterChipSelected_Light.png" width="150" /> |
-| `FilterChipUnselected` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilterChipUnselected_Dark.png" width="150" /> |
-| `FilterChipUnselected` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilterChipUnselected_Light.png" width="150" /> |
+| `FilterChipSelected` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilterChipSelected_Light_VARIANT_unselected.png" width="150" /> |
 | `LinearProgressSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/LinearProgressSticker_Dark.png" width="150" /> |
 | `LinearProgressSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/LinearProgressSticker_Light.png" width="150" /> |
 | `OutlinedButtonDisabled` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/OutlinedButtonDisabled_Dark.png" width="150" /> |
@@ -292,9 +292,9 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `OutlinedTextFieldSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/OutlinedTextFieldSticker_Dark.png" width="150" /> |
 | `OutlinedTextFieldSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/OutlinedTextFieldSticker_Light.png" width="150" /> |
 | `RadioSelected` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/RadioSelected_Dark.png" width="150" /> |
+| `RadioSelected` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/RadioSelected_Dark_VARIANT_unselected.png" width="150" /> |
 | `RadioSelected` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/RadioSelected_Light.png" width="150" /> |
-| `RadioUnselected` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/RadioUnselected_Dark.png" width="150" /> |
-| `RadioUnselected` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/RadioUnselected_Light.png" width="150" /> |
+| `RadioSelected` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/RadioSelected_Light_VARIANT_unselected.png" width="150" /> |
 | `SegmentedToggle` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SegmentedToggle_Dark.png" width="150" /> |
 | `SegmentedToggle` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SegmentedToggle_Light.png" width="150" /> |
 | `SliderMid` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SliderMid_Dark.png" width="150" /> |
@@ -303,8 +303,6 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `SlottedCardSlotsSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SlottedCardSlotsSticker_Light.png" width="150" /> |
 | `SlottedCardSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SlottedCardSticker_Dark.png" width="150" /> |
 | `SlottedCardSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SlottedCardSticker_Light.png" width="150" /> |
-| `SwitchOff` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SwitchOff_Dark.png" width="150" /> |
-| `SwitchOff` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SwitchOff_Light.png" width="150" /> |
 | `SwitchOnLargeFont` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SwitchOnLargeFont_Dark.png" width="150" /> |
 | `SwitchOnLargeFont` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SwitchOnLargeFont_Light.png" width="150" /> |
 | `SwitchOnPseudo` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SwitchOnPseudo_Dark.png" width="150" /> |
@@ -312,7 +310,9 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `SwitchOnRtl` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SwitchOnRtl_Dark.png" width="150" /> |
 | `SwitchOnRtl` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SwitchOnRtl_Light.png" width="150" /> |
 | `SwitchOn` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SwitchOn_Dark.png" width="150" /> |
+| `SwitchOn` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SwitchOn_Dark_VARIANT_off.png" width="150" /> |
 | `SwitchOn` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SwitchOn_Light.png" width="150" /> |
+| `SwitchOn` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SwitchOn_Light_VARIANT_off.png" width="150" /> |
 | `TextBrandedSpecimen` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextBrandedSpecimen_Dark.png" width="150" /> |
 | `TextBrandedSpecimen` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextBrandedSpecimen_Light.png" width="150" /> |
 | `TextButtonSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextButtonSticker_Dark.png" width="150" /> |
@@ -372,13 +372,12 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `BlankListLayout · scroll end` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/BlankListLayout_Extra_Large_Round.png" width="150" /> |
 | `BlankListLayout · scroll end` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/BlankListLayout_Large_Round.png" width="150" /> |
 | `BlankListLayout · scroll end` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/BlankListLayout_Small_Round.png" width="150" /> |
-| `ButtonDisabled` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/ButtonDisabled.png" width="150" /> |
 | `ButtonFocused` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/ButtonFocused.png" width="150" /> |
 | `ButtonGroupSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/ButtonGroupSticker.png" width="150" /> |
 | `ButtonPressed` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/ButtonPressed.png" width="150" /> |
 | `CardSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/CardSticker.png" width="150" /> |
 | `CheckboxButtonChecked` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/CheckboxButtonChecked.png" width="150" /> |
-| `CheckboxButtonUnchecked` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/CheckboxButtonUnchecked.png" width="150" /> |
+| `CheckboxButtonChecked` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/CheckboxButtonChecked_VARIANT_unchecked.png" width="150" /> |
 | `ChildButtonSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/ChildButtonSticker.png" width="150" /> |
 | `CircularProgressSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/CircularProgressSticker.png" width="150" /> |
 | `ColorSchemeSpecimen` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/ColorSchemeSpecimen.png" width="150" /> |
@@ -390,6 +389,7 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `EdgeButtonSticker · scroll end` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/EdgeButtonSticker_Large_Round.png" width="150" /> |
 | `EdgeButtonSticker · scroll end` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/EdgeButtonSticker_Small_Round.png" width="150" /> |
 | `FilledButton` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/FilledButton.png" width="150" /> |
+| `FilledButton` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/FilledButton_VARIANT_disabled.png" width="150" /> |
 | `FilledTonalButtonSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/FilledTonalButtonSticker.png" width="150" /> |
 | `IconButtonSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/IconButtonSticker.png" width="150" /> |
 | `IconSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/IconSticker.png" width="150" /> |
@@ -404,8 +404,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `ScalingListSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/ScalingListSticker_Extra_Large_Round.png" width="150" /> |
 | `ScalingListSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/ScalingListSticker_Large_Round.png" width="150" /> |
 | `ScalingListSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/ScalingListSticker_Small_Round.png" width="150" /> |
-| `SwitchButtonOff` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/SwitchButtonOff.png" width="150" /> |
 | `SwitchButtonOn` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/SwitchButtonOn.png" width="150" /> |
+| `SwitchButtonOn` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/SwitchButtonOn_VARIANT_off.png" width="150" /> |
 | `TextMaxLinesTruncated` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/TextMaxLinesTruncated.png" width="150" /> |
 | `TimeTextScaffoldTemplate` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/TimeTextScaffoldTemplate_Extra_Large_Round.png" width="150" /> |
 | `TimeTextScaffoldTemplate` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/TimeTextScaffoldTemplate_Large_Round.png" width="150" /> |
