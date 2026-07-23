@@ -50,6 +50,41 @@ class ServeRenderHostTest {
   }
 
   @Test
+  fun `renderFailed completes the wait immediately instead of sleeping out the budget`() {
+    // Regression for the serve cold-render investigation: only `renderFinished` completed the
+    // pending latch, so a preview whose render body threw (daemon sends `renderFailed` within
+    // seconds) left the host sleeping out its ENTIRE render budget under renderLock — 180s per
+    // broken-preview render on the CLI, 900s on the public server. Profiled on confetti-mobile:
+    // this single behaviour was the whole "cold Android renders take minutes" symptom.
+    lateinit var session: FakeRenderSession
+    session =
+      FakeRenderSession(
+        newRenderRoot(),
+        renderHook = { _, _ -> session.emitFailed(previewId, "java.lang.NullPointerException") },
+      )
+    host(session).use { h ->
+      val startedMs = System.currentTimeMillis()
+      val outcome = h.render(previewId, PreviewOverrides())
+      val tookMs = System.currentTimeMillis() - startedMs
+      assertTrue(outcome is RenderOutcome.Failed, "expected Failed, got $outcome")
+      assertTrue(
+        outcome.reason.contains("NullPointerException"),
+        "failure reason should carry the daemon's error message, got '${outcome.reason}'",
+      )
+      // The host is built with renderTimeoutSeconds = 30; anything near that means we slept out
+      // the budget rather than completing on the failure event.
+      assertTrue(tookMs < 10_000, "render should fail fast on renderFailed, took ${tookMs}ms")
+      // A failed render proves nothing about warmth: the next render must still get the cold
+      // budget, and a subsequent success must work unaffected.
+      val ok =
+        FakeRenderSession(newRenderRoot()).let { fresh ->
+          host(fresh).use { it2 -> it2.render(previewId, PreviewOverrides()) }
+        }
+      assertTrue(ok is RenderOutcome.Ok)
+    }
+  }
+
+  @Test
   fun `different overrides each render`() {
     val session = FakeRenderSession(newRenderRoot())
     host(session).use { h ->
