@@ -380,7 +380,11 @@ up **right now** (backend, active streams, how long each has been up), the effec
 **recent daemon startup failures** (the render/live daemon a session tried to open but couldn't — the
 reason that was previously only logged to stderr). The status snapshot never wakes an idle daemon: a
 catalog's liveness is read from the resident-session snapshot, not by resuming it, so a monitor can
-poll it freely. `GET /status.json` (equivalently `GET /status?format=json`) is the machine-readable
+poll it freely.
+
+![The /status page — catalogs and their trust/liveness, the render daemons running now, the effective config, and recent daemon startup failures](images/serve-status.png)
+
+`GET /status.json` (equivalently `GET /status?format=json`) is the machine-readable
 form — a stable schema built for a monitor or a **Home Assistant** REST sensor:
 
 ```json
