@@ -195,4 +195,63 @@ class PreviewManifestRouterRoutingTest {
       routed.contains("kind=GLANCE_APPWIDGET"),
     )
   }
+
+  @Test
+  fun `routePayload derives uiMode=dark from the manifest night bit`() {
+    // A `_Dark` multipreview variant differs from its `_Light` sibling ONLY by
+    // `@Preview(uiMode = UI_MODE_NIGHT_YES)`. Dropping the bit rendered both variants identically
+    // (theme = whatever the previous render's night qualifier left behind), so the bundled
+    // layout/semantics/figma-svg data products for the two variants were byte-equal and the
+    // published catalog SVG's theme was render-order-dependent.
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "screen_Dark",
+              className = "com.example.PreviewsKt",
+              functionName = "Screen",
+              // UI_MODE_NIGHT_YES (0x20) | UI_MODE_TYPE_NORMAL (0x01)
+              params = PreviewParamsEntry(widthDp = 411, heightDp = 914, uiMode = 0x21),
+            ),
+            PreviewManifestEntry(
+              id = "screen_Light",
+              className = "com.example.PreviewsKt",
+              functionName = "Screen",
+              // UI_MODE_NIGHT_NO (0x10) | UI_MODE_TYPE_NORMAL (0x01)
+              params = PreviewParamsEntry(widthDp = 411, heightDp = 914, uiMode = 0x11),
+            ),
+          )
+      )
+    val router = PreviewManifestRouter(manifest = manifest)
+
+    val dark = router.routePayload("previewId=screen_Dark")
+    val light = router.routePayload("previewId=screen_Light")
+
+    assertTrue("night bit must emit uiMode=dark. payload=$dark", dark.contains("uiMode=dark"))
+    // The no-night case must emit an EXPLICIT light: Robolectric qualifiers apply incrementally
+    // (`setQualifiers("+…")`), so omitting the token would inherit the previous render's `night`.
+    assertTrue("non-night must emit uiMode=light. payload=$light", light.contains("uiMode=light"))
+  }
+
+  @Test
+  fun `routePayload lets an inbound uiMode override win over the manifest bit`() {
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "screen",
+              className = "com.example.PreviewsKt",
+              functionName = "Screen",
+              params = PreviewParamsEntry(widthDp = 411, heightDp = 914, uiMode = 0x21),
+            )
+          )
+      )
+    val routed =
+      PreviewManifestRouter(manifest = manifest).routePayload("previewId=screen;uiMode=light")
+
+    assertTrue("inbound override wins. payload=$routed", routed.contains("uiMode=light"))
+    assertFalse("manifest bit must not double-emit. payload=$routed", routed.contains("uiMode=dark"))
+  }
 }

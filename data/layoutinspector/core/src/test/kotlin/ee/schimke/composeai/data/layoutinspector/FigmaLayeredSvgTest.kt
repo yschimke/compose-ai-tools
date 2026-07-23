@@ -871,6 +871,96 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun aCoil3AsyncImageContentPainterRastersFromTheFrameInHybridMode() {
+    // Coil 3's `AsyncImage` draws through its own `ContentPainterElement` (inspector name
+    // `content`, carrying `request`/`imageLoader` but no `painter` property) on a `Layout` whose
+    // measure policy is a lambda in coil's `internal/utils.kt` — so the node's component reads
+    // `UtilsKt`, matching neither the Image/AsyncImage opaque names nor the `paint` fill modifier,
+    // and the speaker photo silently vanished from the hybrid export (Confetti `speakerdetails`).
+    // The content painter must raster exactly like an unresolved `Modifier.paint`.
+    val node =
+      LayoutInspectorNode(
+        nodeId = "photo",
+        component = "UtilsKt",
+        bounds = bounds(223, 280, 853, 910),
+        size = LayoutInspectorSize(630, 630),
+        modifiers =
+          listOf(
+            LayoutInspectorModifier(
+              name = "content",
+              properties =
+                mapOf(
+                  "request" to "ImageRequest(context=..., data=https://example.com/avatar.png)",
+                  "imageLoader" to "coil3.RealImageLoader@5af8a2df",
+                  "contentScale" to "androidx.compose.ui.layout.ContentScale\$Companion\$Fit\$1@1",
+                ),
+              bounds = bounds(223, 280, 853, 910),
+            )
+          ),
+      )
+    val svg =
+      FigmaLayeredSvg.render(
+        FigmaSvgModel.from(LayoutInspectorPayload(node), captureCanvasDraws = true)
+      )
+    assertTrue("a Coil content painter must raster as an <image>", svg.contains("<image "))
+    assertTrue(
+      "image spans the photo box",
+      svg.contains("""width="630"""") && svg.contains("""height="630""""),
+    )
+  }
+
+  @Test
+  fun aCoil2ContentPainterModifierClassNameFallbackRastersInHybridMode() {
+    // Coil 2's `ContentPainterModifier` names itself via `debugInspectorInfo`, which is compiled
+    // out of release artifacts — so the capture falls back to the element's class name. That
+    // spelling must raster the same way as Coil 3's `content`.
+    val node =
+      LayoutInspectorNode(
+        nodeId = "avatar",
+        component = "UtilsKt",
+        bounds = bounds(0, 0, 96, 96),
+        size = LayoutInspectorSize(96, 96),
+        modifiers =
+          listOf(
+            LayoutInspectorModifier(
+              name = "ContentPainterModifier",
+              properties = emptyMap(),
+              bounds = bounds(0, 0, 96, 96),
+            )
+          ),
+      )
+    val svg =
+      FigmaLayeredSvg.render(
+        FigmaSvgModel.from(LayoutInspectorPayload(node), captureCanvasDraws = true)
+      )
+    assertTrue("a Coil 2 content painter must raster as an <image>", svg.contains("<image "))
+  }
+
+  @Test
+  fun aCoilContentPainterStaysAGroupInVectorOnlyMode() {
+    // With no frame to crop from (vector-only export) there are no pixels to recover — the node
+    // must fall through to a plain group exactly as before, not emit an <image> with a dangling
+    // href.
+    val node =
+      LayoutInspectorNode(
+        nodeId = "photo",
+        component = "UtilsKt",
+        bounds = bounds(0, 0, 240, 240),
+        size = LayoutInspectorSize(240, 240),
+        modifiers =
+          listOf(
+            LayoutInspectorModifier(
+              name = "content",
+              properties = emptyMap(),
+              bounds = bounds(0, 0, 240, 240),
+            )
+          ),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(node)))
+    assertFalse("vector-only export must not reference a raster", svg.contains("<image "))
+  }
+
+  @Test
   fun aColorPainterFillWithAColorFilterRastersBecauseTheTintCannotVectorise() {
     // `Modifier.paint(ColorPainter(...), colorFilter = tint(...))` stringifies its painter as
     // `ColorPainter(...)`, but the resolver leaves `backgroundColor` null because the re-tint can't

@@ -811,8 +811,28 @@ data class FigmaSvgModel(
       it.name.equals(MIN_INTERACTIVE_MODIFIER, ignoreCase = true)
     }
 
-    /** The `Modifier.paint`/`PainterElement` names that project a painter as a container fill. */
-    private val PAINT_FILL_MODIFIERS = setOf("paint", "PainterElement")
+    /**
+     * The modifier names that project a painter as a container fill: `Modifier.paint` (inspector
+     * name `paint`, class-name fallback `PainterElement`) plus Coil's content painter — the
+     * modifier `AsyncImage` actually draws through. Coil's `AsyncImage` never surfaces as a node
+     * *name* the opaque-by-name matcher can hit: the library ships without composition source
+     * info, so its `Layout` falls back to the measure-policy class — a lambda in coil's
+     * `internal/utils.kt`, i.e. the layer reads `UtilsKt` — and the photo silently vanished from
+     * the export (the Confetti `speakerdetails` sticker). Coil 3's `ContentPainterElement` names
+     * itself `content` in its `inspectableProperties`; `ContentPainterModifier` is Coil 2's
+     * element, whose `debugInspectorInfo` name is compiled out in release artifacts so it
+     * surfaces as its class name. Both carry no `painter` property, so
+     * [hasUnvectorizablePaintFill] treats them as an unreadable painter and the hybrid export
+     * crops the drawn region from the frame.
+     */
+    private val PAINT_FILL_MODIFIERS =
+      setOf(
+        "paint",
+        "PainterElement",
+        "content",
+        "ContentPainterElement",
+        "ContentPainterModifier",
+      )
 
     /**
      * True when this node is filled by a `Modifier.paint` painter we can't turn into a flat colour.
@@ -827,6 +847,10 @@ data class FigmaSvgModel(
      * re-tinting filter can't collapse to a flat token — so that (visible) fill must raster too,
      * not be treated as vectorisable. A `ColorPainter` with no filter that still didn't resolve is
      * a fully transparent fill (no visible pixels) and is left alone.
+     *
+     * A matched modifier with no `painter` property at all is also unvectorisable: Coil's content
+     * painter exposes `request`/`imageLoader` but never the painter itself, and there's nothing a
+     * vector export could read from it — raster.
      */
     private fun LayoutInspectorNode.hasUnvectorizablePaintFill(): Boolean {
       val paint = modifiers.firstOrNull { it.name in PAINT_FILL_MODIFIERS } ?: return false

@@ -131,7 +131,18 @@ class PreviewManifestRouter(
       // of the desktop router; keep both in lockstep so a single payload drives both.
       inbound["localeTag"]?.let { append("localeTag=").append(it).append(';') }
       inbound["fontScale"]?.let { append("fontScale=").append(it).append(';') }
-      inbound["uiMode"]?.let { append("uiMode=").append(it).append(';') }
+      // uiMode: an inbound override wins; otherwise derive from the manifest-declared
+      // `@Preview(uiMode = …)` — the axis a `_Dark`/`_Light` multipreview varies on. Dropping it
+      // rendered every such variant identically, so the bundled data products (layout/semantics/
+      // figma-svg) for `Foo_Dark` and `Foo_Light` were byte-equal and the published SVG's theme
+      // was whatever the session's previous render left behind. Unlike the desktop twin, the
+      // no-night case emits an explicit `light`: Robolectric qualifiers are applied incrementally
+      // (`setQualifiers("+…")` in `RenderEngine.applyPreviewQualifiers`), so an absent token
+      // inherits the previous render's `night` bit and the theme becomes render-order-dependent.
+      // An explicit `notnight` reset is Studio's default for `uiMode = 0` previews.
+      append("uiMode=")
+        .append(inbound["uiMode"] ?: if (uiModeIsNight(resolved.uiMode)) "dark" else "light")
+        .append(';')
       inbound["orientation"]?.let { append("orientation=").append(it).append(';') }
       inbound["captureAdvanceMs"]?.let { append("captureAdvanceMs=").append(it).append(';') }
       inbound["inspectionMode"]?.let { append("inspectionMode=").append(it).append(';') }
@@ -202,6 +213,9 @@ private fun PreviewManifestEntry.renderSpec(): RenderSpec {
     wrapperClassName = resolved.wrapperClassName,
     wrapWidth = resolved.wrapWidth,
     wrapHeight = resolved.wrapHeight,
+    // The manifest-declared night bit, so a held session composes the same theme the one-shot
+    // render painted. Mirrors the desktop router's resolver.
+    uiMode = if (uiModeIsNight(resolved.uiMode)) RenderSpec.SpecUiMode.DARK else null,
   )
 }
 
@@ -252,12 +266,20 @@ data class PreviewManifestEntry(
    * `params.kind` instead. [resolved] consults the flat field first, then the nested one.
    */
   val kind: String? = null,
+  /**
+   * Flat-schema mirror of `@Preview(uiMode = ...)` (Configuration bits). Optional; when null the
+   * resolver consults the nested `params.uiMode`. Only the `UI_MODE_NIGHT_*` bits are consumed —
+   * they select the `night`/`notnight` resource qualifier for the render. Mirrors the desktop
+   * router.
+   */
+  val uiMode: Int? = null,
 ) {
   fun resolved(): ResolvedRenderParams {
     val p = params
     val density = density ?: p?.density ?: 2.0f
     val device = device ?: p?.device
     val kind = kind ?: p?.kind
+    val uiMode = uiMode ?: p?.uiMode ?: 0
     // A preview that declares an explicit size — or is pinned to a fixed frame by a device or a
     // non-Compose surface (tile / notification / Glance, whose render helpers consume the concrete
     // widthPx/heightPx) — keeps that frame. One that declares NONE renders wrap-content (AS-parity):
@@ -294,6 +316,7 @@ data class PreviewManifestEntry(
       wrapperClassName = wrapperClassName,
       wrapWidth = wrapWidth,
       wrapHeight = wrapHeight,
+      uiMode = uiMode,
     )
   }
 
@@ -320,8 +343,8 @@ data class PreviewManifestEntry(
 /**
  * Subset of the plugin's [PreviewParams][ee.schimke.composeai.plugin.PreviewParams] the daemon's
  * render path consumes. Any plugin-side fields the daemon doesn't yet care about (fontScale,
- * locale, uiMode, group, …) are silently dropped via `ignoreUnknownKeys = true`. Add them here when
- * the daemon grows the matching render-path support.
+ * locale, group, …) are silently dropped via `ignoreUnknownKeys = true`. Add them here when the
+ * daemon grows the matching render-path support.
  */
 @Serializable
 data class PreviewParamsEntry(
@@ -331,6 +354,13 @@ data class PreviewParamsEntry(
   val density: Float? = null,
   val showBackground: Boolean = false,
   val backgroundColor: Long = 0L,
+  /**
+   * Raw Configuration bits from `@Preview(uiMode = ...)`. Only the `UI_MODE_NIGHT_*` bits are
+   * consumed — they drive the `night`/`notnight` resource qualifier so a `_Dark` multipreview
+   * variant actually renders dark (and its captured layout/semantics/figma-svg data products
+   * differ from the `_Light` sibling's). Mirrors the desktop router.
+   */
+  val uiMode: Int = 0,
   /**
    * `"COMPOSE"` / `"TILE"` / `"NOTIFICATION"` / `"GLANCE_APPWIDGET"` — mirrors
    * `ee.schimke.composeai.discovery.PreviewKind`. Forwarded through the router so the daemon's
@@ -372,4 +402,6 @@ data class ResolvedRenderParams(
    */
   val wrapWidth: Boolean = false,
   val wrapHeight: Boolean = false,
+  /** Raw `@Preview(uiMode = ...)` Configuration bits; 0 = unset. See [PreviewParamsEntry.uiMode]. */
+  val uiMode: Int = 0,
 )
