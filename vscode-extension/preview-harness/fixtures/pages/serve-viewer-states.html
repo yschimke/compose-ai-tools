@@ -412,7 +412,8 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
         <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
       <body>
-              <p class="cp-head"><a href="/?token=demo-token-fixture&session=compose-m3">← previews</a> <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ branch:yschimke/compose-ai-tools@design-artifacts/compose-m3</span></p>
+        <main class="cp-main">
+              <h1 class="cp-head"><a href="/?token=demo-token-fixture&session=compose-m3">← previews</a> <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ branch:yschimke/compose-ai-tools@design-artifacts/compose-m3</span></h1>
       <p class="cp-sub" title="checkbox__ideal__default__light">Checkbox · Checked (light)</p>
             <nav class="cp-states" aria-label="Component state">
         <a class="cp-state-btn" href="/p/checkbox__ideal__default__light?token=demo-token-fixture&session=compose-m3" aria-current="page">Default</a>
@@ -428,13 +429,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
         <input type="search" class="cp-nav-search" id="cp-nav-search" placeholder="Filter components" autocomplete="off" aria-label="Filter components">
         <ul class="cp-nav-list" id="cp-nav-list">
         <li><a class="cp-nav-item" href="/p/checkbox__ideal__default__light?token=demo-token-fixture&session=compose-m3" aria-current="page" title="checkbox__ideal__default__light" data-search="Checkbox · Checked (light) checkbox__ideal__default__light"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/checkbox__ideal__default__light.png?token=demo-token-fixture&session=compose-m3"><span class="cp-nav-name">Checkbox · Checked (light)</span></a></li>
-<li><a class="cp-nav-item" href="/p/checkbox__ideal__default__dark?token=demo-token-fixture&session=compose-m3" title="checkbox__ideal__default__dark" data-search="Checkbox · Checked (dark) checkbox__ideal__default__dark"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/checkbox__ideal__default__dark.png?token=demo-token-fixture&session=compose-m3"><span class="cp-nav-name">Checkbox · Checked (dark)</span></a></li>
-<li><a class="cp-nav-item" href="/p/checkbox__ideal__unchecked__light?token=demo-token-fixture&session=compose-m3" title="checkbox__ideal__unchecked__light" data-search="Checkbox · Unchecked (light) checkbox__ideal__unchecked__light"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/checkbox__ideal__unchecked__light.png?token=demo-token-fixture&session=compose-m3"><span class="cp-nav-name">Checkbox · Unchecked (light)</span></a></li>
-<li><a class="cp-nav-item" href="/p/checkbox__ideal__unchecked__dark?token=demo-token-fixture&session=compose-m3" title="checkbox__ideal__unchecked__dark" data-search="Checkbox · Unchecked (dark) checkbox__ideal__unchecked__dark"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/checkbox__ideal__unchecked__dark.png?token=demo-token-fixture&session=compose-m3"><span class="cp-nav-name">Checkbox · Unchecked (dark)</span></a></li>
 <li><a class="cp-nav-item" href="/p/radiobutton__ideal__default__light?token=demo-token-fixture&session=compose-m3" title="radiobutton__ideal__default__light" data-search="Radio · Selected (light) radiobutton__ideal__default__light"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/radiobutton__ideal__default__light.png?token=demo-token-fixture&session=compose-m3"><span class="cp-nav-name">Radio · Selected (light)</span></a></li>
-<li><a class="cp-nav-item" href="/p/radiobutton__ideal__default__dark?token=demo-token-fixture&session=compose-m3" title="radiobutton__ideal__default__dark" data-search="Radio · Selected (dark) radiobutton__ideal__default__dark"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/radiobutton__ideal__default__dark.png?token=demo-token-fixture&session=compose-m3"><span class="cp-nav-name">Radio · Selected (dark)</span></a></li>
-<li><a class="cp-nav-item" href="/p/radiobutton__ideal__unselected__light?token=demo-token-fixture&session=compose-m3" title="radiobutton__ideal__unselected__light" data-search="Radio · Unselected (light) radiobutton__ideal__unselected__light"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/radiobutton__ideal__unselected__light.png?token=demo-token-fixture&session=compose-m3"><span class="cp-nav-name">Radio · Unselected (light)</span></a></li>
-<li><a class="cp-nav-item" href="/p/radiobutton__ideal__unselected__dark?token=demo-token-fixture&session=compose-m3" title="radiobutton__ideal__unselected__dark" data-search="Radio · Unselected (dark) radiobutton__ideal__unselected__dark"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/radiobutton__ideal__unselected__dark.png?token=demo-token-fixture&session=compose-m3"><span class="cp-nav-name">Radio · Unselected (dark)</span></a></li>
         </ul>
         <p class="cp-nav-empty" id="cp-nav-empty" hidden>No components match.</p>
       </aside>
@@ -1756,5 +1751,6 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   new MutationObserver(refresh).observe(root, { attributes: true, attributeFilter: ["data-mode"] });
   refresh();
 })();</script>
+        </main>
       </body>
     </html>

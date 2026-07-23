@@ -536,7 +536,10 @@ object ServeWeb {
     val ver =
       version
         ?.takeIf { it.isNotBlank() }
-        ?.let { " · <span class=\"cp-about-ver\">v${WebEscaping.htmlEscape(it)}</span>" } ?: ""
+        ?.let {
+          " · <span class=\"cp-about-ver\" title=\"running preview-server build\">" +
+            "server v${WebEscaping.htmlEscape(it)}</span>"
+        } ?: ""
     return """
     <section class="cp-about">
       <p class="cp-about-title">compose-preview · public preview server</p>
@@ -687,6 +690,21 @@ object ServeWeb {
       parts.indices.lastOrNull { it >= 1 && (parts[it] == "light" || parts[it] == "dark") }
     return if (themeIdx == null) id
     else parts.filterIndexed { i, _ -> i != themeIdx }.joinToString("__")
+  }
+
+  /**
+   * The component's **identity across every render axis** — its slug head, with the state / theme /
+   * props / size axes all dropped. `button-filled__ideal__pressed__dark`,
+   * `button-filled__ideal__default__light`, and `…__light__content-icon-label` all key to
+   * `button-filled`. It's the part before the `__ideal` quality marker
+   * ([ServeCatalogStore.previewIdFor] emits `<slug>__ideal__…`); a preview with no `__ideal` marker
+   * (a plain uploaded bundle screen) falls back to its theme-stripped [baseKey], so such previews
+   * still key apart from one another. Used to collapse the viewer's component nav to ONE entry per
+   * component (mirroring the grid), independent of which variant is being viewed.
+   */
+  private fun componentKey(p: ServePreview): String {
+    val idx = p.id.indexOf("__ideal")
+    return if (idx > 0) p.id.substring(0, idx) else baseKey(p.id)
   }
 
   /**
@@ -990,6 +1008,54 @@ object ServeWeb {
       }
   }
 
+  /** Prettier display names for a few component families whose bare title-case reads badly. */
+  private val FAMILY_DISPLAY_NAMES =
+    mapOf(
+      "fab" to "FAB",
+      "textfield" to "Text fields",
+      "radiobutton" to "Radio buttons",
+      "segmentedbutton" to "Segmented buttons",
+    )
+
+  /**
+   * The component **family** a card belongs to — the first token of its [componentKey] slug head
+   * (`button-filled` → `button`, `textfield-outlined` → `textfield`, `badge` → `badge`). Used only
+   * as a *fallback* grouping for a catalog that authored no [sections][ServePreview.section].
+   */
+  private fun cardFamily(card: GridCard): String =
+    componentKey(card.default).substringBefore("__").substringBefore('-').ifBlank {
+      componentKey(card.default)
+    }
+
+  /** A human family heading: a curated name, else the token title-cased (`switch` → `Switch`). */
+  private fun familyDisplayName(family: String): String =
+    FAMILY_DISPLAY_NAMES[family] ?: family.replace('-', ' ').replaceFirstChar { it.uppercaseChar() }
+
+  /**
+   * A **synthesized** sub-grouping for a section-less catalog: bucket [cards] by [cardFamily] so
+   * the flat grid gains labelled dividers (Buttons, Cards, Text fields, …) like an authored catalog
+   * — the fix for a large first-party catalog (compose-m3's 84 tiles) rendering as one undivided
+   * wall. Purely a fallback: a catalog that authored its own sections goes through [buildSections]
+   * and never reaches here.
+   *
+   * Returns null (⇒ keep the plain flat grid) unless the grouping is actually *useful*: it needs at
+   * least two families AND at least one family with more than one card — otherwise every card would
+   * get its own lone header, which is noisier than no grouping at all. Families keep first-seen
+   * (catalog) order; cards keep their order within a family.
+   */
+  private fun synthesizeGroups(cards: List<GridCard>): List<LandingGroup>? {
+    if (cards.size < 2) return null
+    val byFamily = LinkedHashMap<String, LandingGroup>()
+    for (card in cards) {
+      byFamily
+        .getOrPut(cardFamily(card)) { LandingGroup(familyDisplayName(cardFamily(card))) }
+        .cards
+        .add(card)
+    }
+    if (byFamily.size < 2 || byFamily.values.none { it.cards.size > 1 }) return null
+    return byFamily.values.toList()
+  }
+
   /**
    * The sticky light/dark control for the catalog header. Persists to `localStorage['cp-theme']`
    * (shared with the viewer's Theme select). [catalogFilterScript] wires it to *swap* each
@@ -1044,7 +1110,11 @@ object ServeWeb {
    * collapse. All tab handling is emitted as inline additions that are empty for a flat catalog, so
    * a section-less catalog's script is byte-for-byte unchanged.
    */
-  private fun catalogFilterScript(hasThemes: Boolean, hasTabs: Boolean): String {
+  private fun catalogFilterScript(
+    hasThemes: Boolean,
+    hasTabs: Boolean,
+    hasGroups: Boolean,
+  ): String {
     val themeInit =
       if (hasThemes)
         """
@@ -1098,11 +1168,15 @@ object ServeWeb {
     // line, so the emitted script for a plain catalog is byte-for-byte identical to the pre-tabs
     // one.
     // `cp-js` on <html> hides the redundant per-section <h2> (the tab bar labels the section).
+    // A `.cp-subgroup` divider is present for BOTH an authored tabbed catalog and a synthesized
+    // flat-grouped one, so its emptied-on-search collapse lives under [hasGroups], separate from
+    // the tab-only machinery below.
+    val groupDecls =
+      if (hasGroups) "\n      var navGroups = document.querySelectorAll(\".cp-subgroup\");" else ""
     val tabDecls =
       if (hasTabs)
         "\n      var tabBtns = document.querySelectorAll(\".cp-tab\");" +
           "\n      var tabSections = document.querySelectorAll(\".cp-section\");" +
-          "\n      var tabGroups = document.querySelectorAll(\".cp-subgroup\");" +
           "\n      var current = tabBtns.length ? tabBtns[0].getAttribute(\"data-tab\") : null;" +
           "\n      document.documentElement.classList.add(\"cp-js\");"
       else ""
@@ -1115,10 +1189,13 @@ object ServeWeb {
     val hiddenExpr = if (hasTabs) "!(searchOk && tabOk)" else "!searchOk"
     val shownCond = if (hasTabs) "searchOk && tabOk" else "searchOk"
     // After the per-card pass, collapse any sub-group / section left with no visible card.
-    val tabPost =
+    val groupPost =
+      if (hasGroups)
+        "\n        navGroups.forEach(function (g) { g.hidden = !g.querySelector(\".cp-card:not([hidden])\"); });"
+      else ""
+    val sectionPost =
       if (hasTabs)
-        "\n        tabGroups.forEach(function (g) { g.hidden = !g.querySelector(\".cp-card:not([hidden])\"); });" +
-          "\n        tabSections.forEach(function (s) { s.hidden = !s.querySelector(\".cp-card:not([hidden])\"); });"
+        "\n        tabSections.forEach(function (s) { s.hidden = !s.querySelector(\".cp-card:not([hidden])\"); });"
       else ""
     val tabWiring =
       if (hasTabs)
@@ -1137,7 +1214,7 @@ object ServeWeb {
       var input = document.getElementById("cp-search");
       var count = document.getElementById("cp-count");
       var empty = document.getElementById("cp-empty");
-      var total = cards.length;$tabDecls
+      var total = cards.length;$groupDecls$tabDecls
       $themeInit
       function apply() {
         $applyTheme
@@ -1151,8 +1228,8 @@ object ServeWeb {
           c.hidden = $hiddenExpr;
           if ($shownCond) shown++;
         });
-        if (count) count.textContent = q === "" ? "" : (shown + " of " + total);
-        if (empty) empty.hidden = shown !== 0;$tabPost
+        if (count) count.textContent = q === "" ? (total + " preview" + (total === 1 ? "" : "s")) : (shown + " of " + total);
+        if (empty) empty.hidden = shown !== 0;$groupPost$sectionPost
       }
       if (input) input.addEventListener("input", apply);
       $themeWiring$tabWiring
@@ -1399,7 +1476,7 @@ object ServeWeb {
     }
     fun section(heading: String, list: List<HomeSystem>, noun: String, gridId: String): String =
       """
-      <p class="cp-head">$heading</p>
+      <h1 class="cp-head">$heading</h1>
       <p class="cp-sub">${list.size} $noun · pick one to browse its components and
         open a live, customisable preview.</p>
       <div class="cp-grid cp-syslist" id="$gridId">
@@ -1409,7 +1486,7 @@ object ServeWeb {
         .trimIndent()
     val body =
       if (systems.isEmpty()) {
-        "<p class=\"cp-head\">Design systems</p>\n" +
+        "<h1 class=\"cp-head\">Design systems</h1>\n" +
           "<p class=\"cp-sub\">No design systems are configured on this server.</p>"
       } else {
         section("Design systems", systems, "design system(s)", "cp-grid")
@@ -1419,6 +1496,27 @@ object ServeWeb {
       body =
         """
         $about$body
+        """
+          .trimIndent(),
+    )
+  }
+
+  /**
+   * A styled **404** page for a browser that followed a dead link to a catalog or preview page
+   * (`/nope-catalog/`, `/<system>/p/does-not-exist`) — so a broken navigation lands on the site's
+   * own chrome with a way back home, rather than a bare `text/plain` "not found" dead-end. The
+   * render / API lanes keep their plain-text 404; this is only for the HTML page routes. The back
+   * link is built like [backButton] so it keeps the token on a gated ([isPublic] false) server.
+   */
+  fun notFoundPage(message: String, token: String, isPublic: Boolean): String {
+    val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
+    return document(
+      title = "Not found — compose-preview",
+      body =
+        """
+        <h1 class="cp-head">Not found</h1>
+        <p class="cp-sub">${WebEscaping.htmlEscape(message)}</p>
+        <a class="cp-back" href="/$suffix">← All design systems</a>
         """
           .trimIndent(),
     )
@@ -1561,7 +1659,7 @@ object ServeWeb {
     val mode = if (view.public) "public (open)" else "token-gated"
     val body =
       """
-      <p class="cp-head">Server status$healthBadge</p>
+      <h1 class="cp-head">Server status$healthBadge</h1>
       <p class="cp-sub">compose-preview serve · $mode$ver</p>
       <section class="cp-about">
         <p class="cp-about-title">Status &amp; monitoring</p>
@@ -1843,9 +1941,15 @@ object ServeWeb {
       }
     // A catalog whose previews carry sections renders as TABS (one per section, e.g. Themes /
     // Components / Screens / Animations) over per-section panels, with the component `group` as a
-    // sub-heading inside a tab. A plain (section-less) catalog keeps the single flat grid below.
+    // sub-heading inside a tab. A section-less catalog keeps a single flat grid — but still gains
+    // synthesized family sub-group dividers ([synthesizeGroups]) when that helps a large catalog
+    // scan, so compose-m3's 84 tiles read as grouped clusters instead of one undivided wall.
     val sections = buildSections(groups)
     val hasTabs = sections.isNotEmpty()
+    val synthGroups = if (hasTabs) null else synthesizeGroups(groups)
+    // Any `.cp-subgroup` dividers present (authored tabs OR synthesized flat groups) → the filter
+    // script must collapse an emptied sub-group on search, independent of the tab machinery.
+    val hasGroups = hasTabs || synthGroups != null
     val tabBar =
       if (!hasTabs) ""
       else
@@ -1871,7 +1975,22 @@ object ServeWeb {
     // template's 8-space indent, which survives `trimIndent` because the interpolated cards sit at
     // column 0) so a section-less catalog's committed golden is byte-for-byte unchanged.
     val gridBlock =
-      if (!hasTabs) {
+      if (!hasTabs && synthGroups != null) {
+        // Section-less catalog with synthesized family dividers: a flat grid of labelled
+        // sub-groups (no tab bar). `#cp-grid` still wraps it for the search box's aria-controls.
+        buildString {
+          append("<div class=\"cp-grid-groups\" id=\"cp-grid\">\n")
+          synthGroups.forEach { g ->
+            append("<div class=\"cp-subgroup\">\n")
+            if (g.name != null)
+              append("<h2 class=\"cp-group-head\">${WebEscaping.htmlEscape(g.name)}</h2>\n")
+            append("<div class=\"cp-cards\">\n")
+            g.cards.forEach { append(cardHtml(it)).append("\n") }
+            append("</div>\n</div>\n")
+          }
+          append("</div>")
+        }
+      } else if (!hasTabs) {
         "<div class=\"cp-grid\" id=\"cp-grid\">\n        $cards\n        </div>"
       } else {
         buildString {
@@ -1918,12 +2037,13 @@ object ServeWeb {
         "\n<p id=\"cp-empty\" class=\"cp-empty\" hidden>No previews match your filter.</p>"
       else ""
     val filterScript =
-      if (hasPreviews) "\n<script>${catalogFilterScript(hasThemes, hasTabs)}</script>" else ""
+      if (hasPreviews) "\n<script>${catalogFilterScript(hasThemes, hasTabs, hasGroups)}</script>"
+      else ""
     return document(
       title = "$moduleLabel — compose-preview",
       body =
         """
-        $back<p class="cp-head">${WebEscaping.htmlEscape(moduleLabel)}${trustBadge(trust)}</p>
+        $back<h1 class="cp-head">${WebEscaping.htmlEscape(moduleLabel)}${trustBadge(trust)}</h1>
         ${degradeBanner(degradations)}$prov$themeToggle<p class="cp-sub">${previews.size} preview(s) · click one to view with overrides ·
           <a href="$basePath/bundle.zip$q">download all (.zip)</a></p>
         $searchBox$tabBar$gridBlock$emptyState$filterScript$about
@@ -2292,7 +2412,7 @@ object ServeWeb {
       listOf(stateSwitcher, variantSwitcher).filter { it.isNotBlank() }.joinToString("\n")
     val body =
       """
-      <p class="cp-head"><a href="$basePath/$q">← previews</a>${trustBadge(trust)}</p>
+      <h1 class="cp-head"><a href="$basePath/$q">← previews</a>${trustBadge(trust)}</h1>
       ${degradeBanner(degradations)}<p class="cp-sub" title="$idText">$label</p>
       $switchers
       <div class="cp-viewer-bar">
@@ -3488,17 +3608,28 @@ object ServeWeb {
     basePath: String,
     q: String,
   ): String {
-    // Nothing to navigate to when the list is empty or holds only the current preview.
-    if (siblings.none { it.id != preview.id }) return ""
+    // Collapse to ONE entry per component — the same folding the landing grid does — so the nav
+    // reads as a list of components, not of every baked state/theme/props/size permutation
+    // (`button-filled` once, not ~14 times). Each entry links to the component's default render;
+    // the viewer's own state/variant switchers reach that component's other axes. `aria-current`
+    // pins the component being viewed, even when the current preview is a folded (non-default)
+    // variant that has no card of its own.
+    val representatives =
+      groupPreviews(siblings.filterNot { isNonDefaultState(it) || hasNonDefaultProps(it) }).map {
+        it.default
+      }
+    // Nothing to navigate to when the collapsed list is empty or holds only the current component.
+    val currentKey = componentKey(preview)
+    if (representatives.none { componentKey(it) != currentKey }) return ""
     val items =
-      siblings.joinToString("\n") { p ->
+      representatives.joinToString("\n") { p ->
         val segItem = WebEscaping.urlEncodeSegment(p.id)
         val labelItem = WebEscaping.htmlEscape(p.label)
         val idItem = WebEscaping.htmlEscape(p.id)
         // data-search folds label + id so the drawer filter matches either. aria-current pins the
         // one we're viewing (styled as active, and it stays visible even under a filter miss so the
         // list never looks empty-of-self).
-        val current = if (p.id == preview.id) " aria-current=\"page\"" else ""
+        val current = if (componentKey(p) == currentKey) " aria-current=\"page\"" else ""
         // A small thumbnail render to the left of the name — the same baked PNG the landing cards
         // use, so the nav reads like a mini gallery. `alt=""` since the name label beside it
         // already
@@ -3646,7 +3777,9 @@ object ServeWeb {
         <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
       <body>
+        <main class="cp-main">
         $body
+        </main>
       </body>
     </html>
     """

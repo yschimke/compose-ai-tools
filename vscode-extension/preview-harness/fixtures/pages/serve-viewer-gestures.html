@@ -412,7 +412,8 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
         <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
       <body>
-              <p class="cp-head"><a href="/?token=demo-token-fixture&session=wear-m3">← previews</a></p>
+        <main class="cp-main">
+              <h1 class="cp-head"><a href="/?token=demo-token-fixture&session=wear-m3">← previews</a></h1>
       <p class="cp-sub" title="com.example.OneHandedPreview">One-handed</p>
       
       <div class="cp-viewer-bar">
@@ -1757,5 +1758,6 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   new MutationObserver(refresh).observe(root, { attributes: true, attributeFilter: ["data-mode"] });
   refresh();
 })();</script>
+        </main>
       </body>
     </html>

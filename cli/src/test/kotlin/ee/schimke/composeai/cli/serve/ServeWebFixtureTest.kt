@@ -318,6 +318,27 @@ class ServeWebFixtureTest {
       ),
     )
 
+  // A section-LESS catalog whose components fall into families (button ×3, card ×2, plus singleton
+  // fab / badge). Authors no `section` metadata, so the landing can't tab it — instead ServeWeb
+  // *synthesizes* family sub-group dividers (Button / Card / FAB / Badge) so a large flat catalog
+  // reads as grouped clusters. Each component carries a light+dark pair, so the golden also
+  // exercises the sticky theme toggle inside the synthesized groups. Captured so the visual-diff
+  // bot covers the synthesized-grouping layout.
+  private val groupedPreviews =
+    listOf("button-filled", "button-outlined", "button-tonal", "card-elevated", "card-filled")
+      .flatMap { slug ->
+        val name = slug.replace('-', ' ').replaceFirstChar { it.uppercaseChar() }
+        listOf("light", "dark").map { theme ->
+          ServePreview("${slug}__ideal__default__$theme", "$name ($theme)", theme = theme)
+        }
+      } +
+      listOf(
+        ServePreview("fab__ideal__default__light", "FAB (light)", theme = "light"),
+        ServePreview("fab__ideal__default__dark", "FAB (dark)", theme = "dark"),
+        ServePreview("badge__ideal__default__light", "Badge (light)", theme = "light"),
+        ServePreview("badge__ideal__default__dark", "Badge (dark)", theme = "dark"),
+      )
+
   @Test
   fun `serve web fixtures are in sync with ServeWeb`() {
     val pagesDir = File(repoRoot(), "vscode-extension/preview-harness/fixtures/pages")
@@ -623,6 +644,35 @@ class ServeWebFixtureTest {
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         siblings = variantPreviews,
       )
+    // A section-less catalog rendered with SYNTHESIZED family sub-groups (Button / Card / FAB /
+    // Badge dividers over the flat grid) — the fix for a large ungrouped catalog reading as one
+    // undivided wall. Captured so the visual-diff bot covers the synthesized-grouping layout.
+    val landingGrouped =
+      ServeWeb.landingPage(
+        "compose-m3",
+        groupedPreviews,
+        token,
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        isPublic = true,
+        hasHomeIndex = true,
+        version = version,
+      )
+    // A viewer whose sibling list spans several components each with many baked variants (a
+    // button-filled with RTL/locale/font variants, plus checkbox/radiobutton states). The component
+    // nav COLLAPSES to one entry per component (button-filled once, not ~8 times), mirroring the
+    // grid. Captured so the visual-diff bot covers the de-duplicated nav drawer.
+    val viewerNavCollapsed =
+      ServeWeb.viewerPage(
+        variantPreviews.first(),
+        token,
+        sessionId = "compose-m3",
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        siblings = variantPreviews + statefulPreviews,
+      )
+    // The styled 404 a browser gets when it follows a dead link to a catalog or preview page —
+    // the site's own chrome with a "back to design systems" link, not a bare text/plain dead-end.
+    val notFound =
+      ServeWeb.notFoundPage("That preview does not exist in this catalog.", token, isPublic = true)
 
     // The server STATUS page (GET /status): a snapshot of the running host — published catalogs +
     // their trust/liveness, the render daemons up now, the effective config, and recent daemon
@@ -738,6 +788,9 @@ class ServeWebFixtureTest {
       File(pagesDir, "serve-status.html").writeText(serveStatus)
       File(pagesDir, "serve-landing-variants.html").writeText(landingVariants)
       File(pagesDir, "serve-viewer-variants.html").writeText(viewerVariants)
+      File(pagesDir, "serve-landing-grouped.html").writeText(landingGrouped)
+      File(pagesDir, "serve-viewer-nav-collapsed.html").writeText(viewerNavCollapsed)
+      File(pagesDir, "serve-notfound.html").writeText(notFound)
       writePlaceholderPng(File(pagesDir, "_render-placeholder.png"))
       return
     }
@@ -940,6 +993,56 @@ class ServeWebFixtureTest {
         statesNav.contains("/p/checkbox__ideal__unchecked__light"),
       "the viewer state switcher marks Default active and links the same-theme sibling",
     )
+    assertGolden(File(pagesDir, "serve-landing-grouped.html"), landingGrouped)
+    // A section-less catalog gains SYNTHESIZED family sub-group dividers (as <h2 cp-group-head>)
+    // over
+    // a flat grid — no tab bar — so a large ungrouped catalog reads as clustered families.
+    assertTrue(
+      landingGrouped.contains("class=\"cp-grid-groups\"") &&
+        landingGrouped.contains("<h2 class=\"cp-group-head\">Button</h2>") &&
+        landingGrouped.contains("<h2 class=\"cp-group-head\">Card</h2>") &&
+        landingGrouped.contains("<h2 class=\"cp-group-head\">FAB</h2>"),
+      "a section-less catalog renders synthesized family sub-group dividers",
+    )
+    assertFalse(
+      landingGrouped.contains("role=\"tablist\""),
+      "synthesized family grouping renders no tab bar (it is a flat grouped grid, not tabs)",
+    )
+    assertGolden(File(pagesDir, "serve-viewer-nav-collapsed.html"), viewerNavCollapsed)
+    // The component nav collapses to ONE entry per component: button-filled's ~8 baked variants +
+    // checkbox/radiobutton states yield exactly three nav items, button-filled listed once.
+    val collapsedNav =
+      viewerNavCollapsed.substringAfter("id=\"cp-nav-list\"").substringBefore("</ul>")
+    assertEquals(
+      3,
+      Regex("class=\"cp-nav-item\"").findAll(collapsedNav).count(),
+      "the component nav lists one entry per component, not per baked variant",
+    )
+    assertEquals(
+      1,
+      Regex("href=\"[^\"]*button-filled").findAll(collapsedNav).count(),
+      "the multi-variant component appears exactly once in the nav",
+    )
+    assertGolden(File(pagesDir, "serve-notfound.html"), notFound)
+    // The 404 is a full styled document with a heading, the message, and a link back home — not a
+    // bare text/plain dead-end.
+    assertTrue(
+      notFound.contains("<!doctype html>") &&
+        notFound.contains("<h1 class=\"cp-head\">Not found</h1>") &&
+        notFound.contains("That preview does not exist in this catalog.") &&
+        notFound.contains("class=\"cp-back\""),
+      "the 404 page is styled chrome with a back-home link",
+    )
+    // Every page wraps its content in a single <main> landmark and leads with an <h1>.
+    for ((name, html) in
+      listOf("home" to homeIndex, "landing" to landingPublic, "viewer" to viewer)) {
+      assertEquals(
+        1,
+        Regex("<main class=\"cp-main\">").findAll(html).count(),
+        "the $name page has exactly one <main> landmark",
+      )
+      assertTrue(html.contains("<h1 class=\"cp-head\""), "the $name page leads with an <h1>")
+    }
     assertTrue(
       File(pagesDir, "_render-placeholder.png").isFile,
       "missing _render-placeholder.png — regenerate with UPDATE_SERVE_WEB_FIXTURES=true",
@@ -1526,7 +1629,7 @@ class ServeWebFixtureTest {
         isPublic = true,
         version = "1.2.3",
       )
-    assertTrue(home.contains("class=\"cp-about-ver\">v1.2.3<"), "the running version is shown")
+    assertTrue(home.contains(">server v1.2.3<"), "the running server version is shown")
     assertTrue(home.contains("class=\"cp-gh\""), "the source link carries the GitHub icon")
     // A null version simply omits the pill (no dangling separator crash).
     val noVer = ServeWeb.homeIndexPage(emptyList(), token, isPublic = true)

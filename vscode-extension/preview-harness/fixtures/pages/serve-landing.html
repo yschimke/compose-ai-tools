@@ -412,7 +412,8 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
         <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
       <body>
-                <p class="cp-head">:samples:cmp <span class="cp-badge cp-badge--trusted" title="producer trust: signature:compose-ai-tools-ci">✓ signature:compose-ai-tools-ci</span></p>
+        <main class="cp-main">
+                <h1 class="cp-head">:samples:cmp <span class="cp-badge cp-badge--trusted" title="producer trust: signature:compose-ai-tools-ci">✓ signature:compose-ai-tools-ci</span></h1>
         <p class="cp-sub">6 preview(s) · click one to view with overrides ·
           <a href="/bundle.zip?token=demo-token-fixture">download all (.zip)</a></p>
         <div class="cp-searchbar">
@@ -500,7 +501,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
       c.hidden = !searchOk;
       if (searchOk) shown++;
     });
-    if (count) count.textContent = q === "" ? "" : (shown + " of " + total);
+    if (count) count.textContent = q === "" ? (total + " preview" + (total === 1 ? "" : "s")) : (shown + " of " + total);
     if (empty) empty.hidden = shown !== 0;
   }
   if (input) input.addEventListener("input", apply);
@@ -526,5 +527,6 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   reflectBg();
   apply();
 })();</script>
+        </main>
       </body>
     </html>
