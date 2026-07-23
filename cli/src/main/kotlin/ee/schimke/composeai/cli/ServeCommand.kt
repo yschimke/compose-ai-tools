@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.cli.serve.BundleVerifier
+import ee.schimke.composeai.cli.serve.DaemonStartupLog
 import ee.schimke.composeai.cli.serve.GitWorktrees
 import ee.schimke.composeai.cli.serve.GradleRevisionBuilder
 import ee.schimke.composeai.cli.serve.RenderOutcome
@@ -236,6 +237,14 @@ class ServeCommand(args: List<String>) : Command(args) {
    * section instead of the "Design systems" nav.
    */
   private val registeredUnlistedCatalogs = mutableListOf<String>()
+
+  /**
+   * Recent daemon **startup failures** — the render/live daemon a session tried to (re)open but
+   * couldn't. [openHost] (the single choke point every registry-driven relaunch funnels through)
+   * records into this instead of silently dropping the exception, so `/status` + `/status.json` can
+   * surface what has been going wrong without scraping stderr.
+   */
+  private val daemonLog = DaemonStartupLog()
 
   /**
    * Per-catalog per-preview daemon pools built by [buildTrustedCatalogBundle], keyed by system.
@@ -632,6 +641,11 @@ class ServeCommand(args: List<String>) : Command(args) {
             .also { it.prewarm() }
         else daemon
       }
+      // Previously the exception was swallowed to a silent null; record it so the reason survives
+      // on
+      // the /status page instead of only reaching stderr. The host still degrades to null as
+      // before.
+      .onFailure { daemonLog.record(state.label, it.message ?: it.toString()) }
       .getOrNull()
 
   /** Build the `--accept-bundles` upload store (temp-dir backed), wired to [registry]. */
@@ -697,6 +711,11 @@ class ServeCommand(args: List<String>) : Command(args) {
         catalogSessions = registeredCatalogs.toList(),
         appCatalogSessions = registeredUnlistedCatalogs.toList(),
         maxLiveSeats = liveSeats,
+        daemonLog = daemonLog,
+        allowRenderTrusted = allowRenderTrusted,
+        trustStoreConfigured = trustStorePath != null,
+        catalogRefreshSeconds = catalogRefreshSeconds,
+        acceptBundlesEnabled = acceptBundles,
       )
 
     // Advertise on the LAN over mDNS when bound to a reachable interface (`--lan`), so the mobile /

@@ -533,6 +533,97 @@ class ServeWebFixtureTest {
         siblings = statefulPreviews,
       )
 
+    // The server STATUS page (GET /status): a snapshot of the running host — published catalogs +
+    // their trust/liveness, the render daemons up now, the effective config, and recent daemon
+    // startup failures. A representative spread (a live+running catalog, a degraded baked one, an
+    // unlisted one, a running desktop daemon, and one recent failure so the amber "degraded" badge
+    // +
+    // failure table are captured) with fixed figures so the golden stays stable across runs.
+    val serveStatus =
+      ServeWeb.statusPage(
+        ServeWeb.StatusView(
+          version = version,
+          public = true,
+          overallOk = false,
+          summary =
+            listOf(
+              ServeWeb.Stat("Catalogs", "3"),
+              ServeWeb.Stat("Live daemons running", "1"),
+              ServeWeb.Stat("Active streams", "2"),
+              ServeWeb.Stat("Live seats", "3 free / 5"),
+              ServeWeb.Stat("Known sessions", "4"),
+              ServeWeb.Stat("Uptime", "3d 4h"),
+            ),
+          config =
+            listOf(
+              ServeWeb.Stat("Access", "public (open)"),
+              ServeWeb.Stat("Bind", "0.0.0.0:8080"),
+              ServeWeb.Stat("Trusted re-render", "on"),
+              ServeWeb.Stat("Trust store", "configured"),
+              ServeWeb.Stat("Catalog refresh", "600s"),
+              ServeWeb.Stat("Live seats", "5"),
+              ServeWeb.Stat("Render slots", "4"),
+              ServeWeb.Stat("Accept uploads", "off"),
+            ),
+          catalogs =
+            listOf(
+              ServeWeb.StatusCatalog(
+                id = "compose-m3",
+                title = "Compose Material 3",
+                listed = true,
+                trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+                previews = 42,
+                live = true,
+                running = true,
+                degradation = null,
+                provenance =
+                  "yschimke/compose-ai-tools@design-artifacts/compose-m3 · 2026-07-17T09:30:00.000Z",
+              ),
+              ServeWeb.StatusCatalog(
+                id = "remote-m3",
+                title = "Remote Compose Material 3",
+                listed = true,
+                trust = "branch:yschimke/compose-ai-tools@design-artifacts/remote-m3",
+                previews = 6,
+                live = false,
+                running = false,
+                degradation = "this delivery branch publishes no live bundle this server can run",
+                provenance =
+                  "yschimke/compose-ai-tools@design-artifacts/remote-m3 · 2026-07-17T09:30:00.000Z",
+              ),
+              ServeWeb.StatusCatalog(
+                id = "cadence",
+                title = "Cadence",
+                listed = false,
+                trust = "unverified",
+                previews = 11,
+                live = true,
+                running = false,
+                degradation = null,
+                provenance = null,
+              ),
+            ),
+          servers =
+            listOf(
+              ServeWeb.StatusServer(
+                id = "compose-m3",
+                label = "compose-m3 (live bundle)",
+                backend = "desktop",
+                activeStreams = 2,
+                upForText = "12m 5s",
+              )
+            ),
+          failures =
+            listOf(
+              ServeWeb.StatusFailure(
+                whenText = "2026-07-17 09:41 UTC",
+                session = "wear-m3",
+                reason = "daemon launch timed out after 300s",
+              )
+            ),
+        )
+      )
+
     if (update) {
       pagesDir.mkdirs()
       File(pagesDir, "serve-landing.html").writeText(landing)
@@ -551,6 +642,7 @@ class ServeWebFixtureTest {
       File(pagesDir, "serve-landing-states.html").writeText(landingStates)
       File(pagesDir, "serve-landing-sections.html").writeText(landingSections)
       File(pagesDir, "serve-viewer-states.html").writeText(viewerStates)
+      File(pagesDir, "serve-status.html").writeText(serveStatus)
       writePlaceholderPng(File(pagesDir, "_render-placeholder.png"))
       return
     }
@@ -630,6 +722,24 @@ class ServeWebFixtureTest {
     assertGolden(File(pagesDir, "serve-landing-states.html"), landingStates)
     assertGolden(File(pagesDir, "serve-landing-sections.html"), landingSections)
     assertGolden(File(pagesDir, "serve-viewer-states.html"), viewerStates)
+    assertGolden(File(pagesDir, "serve-status.html"), serveStatus)
+    // The status page leads with the header health badge, links to the machine-readable JSON, and
+    // renders the catalog / running-daemon / failure tables. A recent failure ⇒ the amber
+    // "degraded" badge; a live+running catalog reads "live · running"; a baked one shows its
+    // reason.
+    assertTrue(
+      serveStatus.contains("Server status") && serveStatus.contains("href=\"/status.json\""),
+      "status page headers the status and links its JSON form",
+    )
+    assertTrue(
+      serveStatus.contains("recent daemon failure(s)") &&
+        serveStatus.contains("daemon launch timed out after 300s"),
+      "a recent failure surfaces the degraded badge and the failure row",
+    )
+    assertTrue(
+      serveStatus.contains("live · running") && serveStatus.contains("baked PNG"),
+      "the catalog table distinguishes a running live catalog from a baked one",
+    )
     // A sectioned catalog renders a tab bar (role=tablist) with one tab per section, in authored
     // order (Themes → Components → Screens), each carrying its card count; a flat catalog shows
     // none.

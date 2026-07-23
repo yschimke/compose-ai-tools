@@ -139,6 +139,39 @@ class ServeSessionRegistryTest {
     }
   }
 
+  @Test
+  fun `runningDaemons snapshots resident hosts and peekHost never resumes`() {
+    val clock = AtomicLong(0)
+    val opener = Opener()
+    ServeSessionRegistry(
+        open = opener,
+        idleTimeoutMillis = 100,
+        reaperIntervalMillis = 0,
+        clock = clock::get,
+      )
+      .use { reg ->
+        val heavy = stateFor("wear-m3").copy(liveSeatWeight = 2)
+        reg.register("wear-m3", heavy)
+        reg.register("compose-m3", stateFor("compose-m3"))
+        assertNotNull(reg.acquire("wear-m3"))
+        assertNotNull(reg.acquire("compose-m3"))
+
+        val running = reg.runningDaemons()
+        assertEquals(listOf("compose-m3", "wear-m3"), running.map { it.id }, "id-sorted")
+        val wear = running.single { it.id == "wear-m3" }
+        assertEquals(2, wear.liveSeatWeight, "the state's live-seat weight is surfaced")
+        assertTrue(wear.hasLiveStream, "a daemon-backed host advertises a live stream")
+        assertEquals(0L, wear.startedAt, "started-at is stamped when the daemon opens")
+
+        // Suspend, then confirm peek/runningDaemons see it as gone WITHOUT resuming it.
+        clock.set(200)
+        assertEquals(2, reg.suspendIdle())
+        assertNull(reg.peekHost("wear-m3"), "peek returns null for a suspended session")
+        assertTrue(reg.runningDaemons().isEmpty(), "a suspended daemon drops out of runningDaemons")
+        assertEquals(2, opener.opened.get(), "peek/runningDaemons never re-opened a daemon")
+      }
+  }
+
   /** Minimal [ServeHost] that only records whether it was closed. */
   private class RecordingHost : ServeHost {
     var closed = false

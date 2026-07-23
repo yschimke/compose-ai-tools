@@ -92,6 +92,23 @@ html.cp-js .cp-section-head { display: none; }
   background: #fdf0e3; color: #8a5300; border: 1px solid #f0d3a8; }
 .cp-degrade-icon { font-weight: 700; }
 .cp-degrade-item { display: inline; }
+/* Status page (GET /status): stat tiles, config grid, and the catalog/daemon/failure tables. */
+.cp-status-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 10px; margin: 0 0 22px; max-width: 860px; }
+.cp-stat { border: 1px solid #e3e3e8; border-radius: 10px; background: #fff; padding: 10px 14px; }
+.cp-stat-key { font-size: 0.71rem; text-transform: uppercase; letter-spacing: 0.04em; color: #8a8a92; }
+.cp-stat-val { margin-top: 3px; font-size: 1.05rem; font-weight: 600; color: #1b1b1f; }
+.cp-status-sec { margin: 26px 0 12px; font-size: 1rem; font-weight: 600; }
+.cp-status-scroll { overflow-x: auto; max-width: 100%; margin: 0 0 8px; }
+.cp-table { border-collapse: collapse; font-size: 0.82rem; max-width: 860px; min-width: 100%; }
+.cp-table th { text-align: left; font-weight: 600; color: #6b6b70; font-size: 0.72rem;
+  text-transform: uppercase; letter-spacing: 0.03em; padding: 6px 12px 6px 0;
+  border-bottom: 1px solid #e3e3e8; white-space: nowrap; }
+.cp-table td { padding: 8px 12px 8px 0; border-bottom: 1px solid #f0f0f3; vertical-align: top; }
+.cp-table tr:last-child td { border-bottom: none; }
+.cp-table code { font-size: 0.76rem; padding: 0 4px; border-radius: 4px; background: #f0f0f3; }
+.cp-ok { color: #1e7a34; font-weight: 600; }
+.cp-muted { color: #8a8a92; font-size: 0.76rem; }
 .cp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
 .cp-syslist { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
 .cp-syslist .cp-imgwrap { min-height: 120px; }
