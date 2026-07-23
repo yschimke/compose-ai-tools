@@ -133,7 +133,8 @@ class AndroidPreviewClasspathTest {
   @Test
   fun `buildSystemProperties forwards the font fail-on-fallback flag into the render jvm`() {
     // The render / daemon JVM reads `composeai.fonts.failOnFallback`; if this map doesn't forward
-    // it, `-Dcomposeai.fonts.failOnFallback=false` set on the Gradle invocation never reaches it and
+    // it, `-Dcomposeai.fonts.failOnFallback=false` set on the Gradle invocation never reaches it
+    // and
     // the opt-out (warn instead of fail) is unreachable — the P2 this regression-guards.
     assertThat(
         AndroidPreviewClasspath.buildSystemProperties(

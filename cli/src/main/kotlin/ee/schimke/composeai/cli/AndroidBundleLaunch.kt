@@ -90,11 +90,11 @@ class AndroidBundleLaunch(
     put("robolectric.pixelCopyRenderMode", "hardware")
     put("roborazzi.test.record", "true")
     put("composeai.fonts.cacheDir", fontsCacheDir)
-    // An unresolved downloadable font fails its preview by default (see `FontResolutionDiagnostics`).
-    // Forward the opt-out when this process was started with it, so a detached/serve operator can set
-    // `-Dcomposeai.fonts.failOnFallback=false` on the CLI JVM and have the child daemon honour it —
-    // otherwise a cold-cache render on the live server would fail previews with no way to downgrade
-    // to a warning. Unset ⇒ absent ⇒ the renderer's own default (fatal) applies.
+    // An unresolved downloadable font fails its preview by default (`FontResolutionDiagnostics`).
+    // Forward the opt-out when this process carries it, so a detached/serve operator can set
+    // `-Dcomposeai.fonts.failOnFallback=false` on the CLI JVM and the child daemon honours it —
+    // else a cold-cache render on the live server fails previews with no downgrade path. Unset ⇒
+    // absent ⇒ the renderer's own default (fatal) applies.
     System.getProperty("composeai.fonts.failOnFallback")?.let {
       put("composeai.fonts.failOnFallback", it)
     }

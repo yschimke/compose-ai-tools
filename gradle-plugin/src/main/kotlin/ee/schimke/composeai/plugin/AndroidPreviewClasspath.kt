@@ -237,8 +237,8 @@ internal object AndroidPreviewClasspath {
    * Static system properties (graphicsMode, looperMode, conscryptMode, pixelCopyRenderMode,
    * roborazzi.test.record, composeai.render.manifest, composeai.render.outputDir,
    * composeai.fonts.cacheDir, composeai.fonts.offline, composeai.svg.embedFonts,
-   * composeai.fonts.failOnFallback). Caller passes the
-   * resolved values for the path-bearing / opt-in ones; the helper returns the full map.
+   * composeai.fonts.failOnFallback). Caller passes the resolved values for the path-bearing /
+   * opt-in ones; the helper returns the full map.
    *
    * Note: the dynamic per-task ArgumentProviders (a11y, tier) stay inline because they need lazy
    * `Provider<>` evaluation at task execution time.
@@ -353,8 +353,8 @@ internal fun composeAiSvgEmbedFonts(project: Project): org.gradle.api.provider.P
  * `-Dcomposeai.fonts.failOnFallback=…` (or `-PcomposePreview.fontsFailOnFallback=…`) on the Gradle
  * invocation reaches the forked JVM that actually reads it. Sourced from the system property first
  * (the documented flag, matching the renderer), then the Gradle property, else `"true"` — a
- * downloadable font that falls back to Roboto fails its preview by default; opting out (warn +
- * keep the PNG) means passing `false` explicitly. Mirrors [composeAiSvgEmbedFonts].
+ * downloadable font that falls back to Roboto fails its preview by default; opting out (warn + keep
+ * the PNG) means passing `false` explicitly. Mirrors [composeAiSvgEmbedFonts].
  */
 internal fun composeAiFontsFailOnFallback(
   project: Project
