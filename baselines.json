@@ -241,6 +241,18 @@
       "sha256": "3a1027d4a382845dccbe3af33ed654e54d5bf72809c081d0e60aed1d4be1cc1b",
       "size": 72617
     },
+    "serve-landing-variants.dark.png": {
+      "fixture": "serve-landing-variants",
+      "theme": "dark",
+      "sha256": "dffc8bec48931cf7d741b9d0ef5d505c9a9ca3c7253f08001fa3a957162722b9",
+      "size": 69026
+    },
+    "serve-landing-variants.light.png": {
+      "fixture": "serve-landing-variants",
+      "theme": "light",
+      "sha256": "098bafec5eacdaba111bce6e274afde1bbe2db5481f00dfdb76d9bfd5ef148e4",
+      "size": 68635
+    },
     "serve-landing.dark.png": {
       "fixture": "serve-landing",
       "theme": "dark",
@@ -336,6 +348,18 @@
       "theme": "light",
       "sha256": "5e7cfbf4edd52741b7e24738df1c0134f7d51672a4d003107f101ef4adcfd02d",
       "size": 37796
+    },
+    "serve-viewer-variants.dark.png": {
+      "fixture": "serve-viewer-variants",
+      "theme": "dark",
+      "sha256": "9a2843bb3f0ca7d4640729b8b1a9ab149fea2e5e30083312f610071f6de5eb6f",
+      "size": 59137
+    },
+    "serve-viewer-variants.light.png": {
+      "fixture": "serve-viewer-variants",
+      "theme": "light",
+      "sha256": "8d8b19143d68e1eb70e1294c0351ace26f7d0639c247962fa49dfb3aa46b83e5",
+      "size": 59303
     },
     "serve-viewer-wasm-live.dark.png": {
       "fixture": "serve-viewer-wasm-live",

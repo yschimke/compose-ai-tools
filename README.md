@@ -151,6 +151,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-landing-themed/dark](renders/serve-landing-themed.dark.png) |
 | `light` | ![serve-landing-themed/light](renders/serve-landing-themed.light.png) |
 
+## serve-landing-variants
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-variants/dark](renders/serve-landing-variants.dark.png) |
+| `light` | ![serve-landing-variants/light](renders/serve-landing-variants.light.png) |
+
 ## serve-status
 
 | Theme | Capture |
@@ -206,6 +213,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | --- | --- |
 | `dark` | ![serve-viewer-themes/dark](renders/serve-viewer-themes.dark.png) |
 | `light` | ![serve-viewer-themes/light](renders/serve-viewer-themes.light.png) |
+
+## serve-viewer-variants
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-variants/dark](renders/serve-viewer-variants.dark.png) |
+| `light` | ![serve-viewer-variants/light](renders/serve-viewer-variants.light.png) |
 
 ## serve-viewer-wasm
 
