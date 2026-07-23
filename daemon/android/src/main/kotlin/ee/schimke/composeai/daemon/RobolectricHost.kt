@@ -437,6 +437,22 @@ open class RobolectricHost(
     if (sandboxCount == 1) "compose-ai-daemon-host" else "compose-ai-daemon-host-$i"
 
   /**
+   * Number of sandbox slots that have finished booting, in slot order (slots boot sequentially, so
+   * ready slots are always the contiguous prefix `0 until readySlotCount`). [chooseSlotIndex]
+   * dispatches across only this prefix so a render never lands on a slot that's still
+   * bootstrapping in the background (see [start]'s background-boot mode). Equals [sandboxCount]
+   * once the pool completes — at which point dispatch is bit-identical with the pre-background
+   * behaviour.
+   */
+  private val readySlotCount = java.util.concurrent.atomic.AtomicInteger(0)
+
+  /** Background pool-boot thread (see [start]); null when background boot isn't active. */
+  @Volatile private var backgroundBootWorker: Thread? = null
+
+  /** Test seam: current ready-slot count (see [readySlotCount]). */
+  internal fun readySlotCountForTest(): Int = readySlotCount.get()
+
+  /**
    * Starts the host thread AND blocks until the Robolectric sandbox is fully bootstrapped.
    *
    * After this returns, [submit] is guaranteed to find a hot sandbox — no per-submit sandbox-ready
@@ -453,6 +469,17 @@ open class RobolectricHost(
    * rather than rendering against a half-built host. Blocking here in [start] delivers that —
    * `JsonRpcServer.run()` only enters its read loop once we return.
    *
+   * **Background pool boot** (`-Dcomposeai.daemon.backgroundSandboxBoot=true`, default off): with a
+   * pool (`sandboxCount > 1`), [start] blocks only until **slot 0** is ready and boots slots
+   * 1..N-1 on a background thread. Sandbox boot is the dominant cold-start cost (~11.6 s measured
+   * per sandbox on a warm `android-all` cache — see the serve cold-render handover), so a
+   * 3-sandbox pool otherwise keeps `initialize` (and therefore serve's first live render) waiting
+   * ~35 s for capacity it doesn't need yet. Dispatch routes only across ready slots
+   * ([readySlotCount]) until the pool completes, so `daemonReady = firstSandboxReady` and the
+   * remaining boots never sit on the request path. Off by default so in-process hosts and the
+   * Gradle-plugin launch keep the strict all-sandboxes-ready contract their tests pin;
+   * `ServeBundleDaemon` and the deploy image opt serve-spawned Android daemons in.
+   *
    * Configurable via `composeai.daemon.sandboxBootTimeoutMs` (default 600_000 = 10 minutes). On
    * timeout the daemon refuses to start; the client surfaces the failure via initialize never
    * returning rather than via per-render timeouts.
@@ -461,29 +488,127 @@ open class RobolectricHost(
     StartupTimings.mark("RobolectricHost.start() entered")
     DaemonHostBridge.reset()
     DaemonHostBridge.configureSlotCount(sandboxCount)
+    readySlotCount.set(0)
     val timeoutMs =
       System.getProperty(SANDBOX_BOOT_TIMEOUT_PROP)?.toLongOrNull()
         ?: DEFAULT_SANDBOX_BOOT_TIMEOUT_MS
+    // Read per-start (not at construction) so tests can flip the sysprop around start().
+    val backgroundBoot =
+      sandboxCount > 1 &&
+        (System.getProperty(BACKGROUND_BOOT_PROP)?.toBooleanStrictOrNull() ?: false)
 
     // SANDBOX-POOL.md — boot sandboxes sequentially, one worker at a time. We could in principle
     // start them concurrently (each sandbox is independent now that the cache-key fix lands and
     // `SandboxManager.getAndroidSandbox` is internally synchronized), but sequenced boots keep
     // diagnosis simple if a future Robolectric upgrade reintroduces a global-state path. Total
-    // cold-start is proportional to N × per-sandbox-boot — on warm cache 5–15s × N — acceptable
-    // for typical pool sizes.
+    // cold-start is proportional to N × per-sandbox-boot — on warm cache 5–15s × N — which is why
+    // background boot moves slots 1..N-1 off the [start] critical path.
+    val eagerCount = if (backgroundBoot) 1 else sandboxCount
     var bootedThrough = -1
     try {
-      for (i in 0 until sandboxCount) {
+      for (i in 0 until eagerCount) {
         bootSlotWithRetries(i, timeoutMs)
         bootedThrough = i
+        readySlotCount.set(i + 1)
       }
     } catch (t: Throwable) {
       runCatching { abortPartialStart(bootedThrough) }
       throw t
     }
     StartupTimings.mark(
-      if (sandboxCount == 1) "sandbox-ready latch fired" else "all sandbox-ready latches fired"
+      when {
+        sandboxCount == 1 -> "sandbox-ready latch fired"
+        backgroundBoot ->
+          "sandbox-ready latch fired (slot 0; ${sandboxCount - 1} more booting in background)"
+        else -> "all sandbox-ready latches fired"
+      }
     )
+    if (backgroundBoot) {
+      backgroundBootWorker =
+        Thread({ bootRemainingSlotsInBackground(timeoutMs) }, "compose-ai-daemon-pool-boot").apply {
+          // Daemon thread: a JVM exiting mid-pool-boot shouldn't be held open by the booter (the
+          // sandbox workers it spawns are non-daemon, but JsonRpcServer exits via System.exit).
+          isDaemon = true
+          start()
+        }
+    }
+  }
+
+  /**
+   * Background-boot path for slots 1..N-1 (see [start]). Sequential like the eager path; stops at
+   * the first slot that fails permanently — [DaemonHostBridge.registerSandbox] claims the first
+   * *free* slot, so booting a later worker past a dead slot would register into the dead slot's
+   * index and strand its own ready latch. A permanent slot failure therefore caps the pool at
+   * [readySlotCount] instead of aborting the whole daemon (the eager path's behaviour): the live
+   * lane degrades to fewer sandboxes rather than collapsing to baked PNGs.
+   *
+   * After each slot comes up it gets a best-effort [warmSlotRender] so its first affinity-routed
+   * real render doesn't pay the per-sandbox first-render init (Compose runtime, HardwareRenderer
+   * native pipeline, font + text stack, PNG encode).
+   */
+  private fun bootRemainingSlotsInBackground(timeoutMs: Long) {
+    for (i in 1 until sandboxCount) {
+      if (DaemonHostBridge.shutdown.get()) return
+      try {
+        bootSlotWithRetries(i, timeoutMs)
+      } catch (t: Throwable) {
+        System.err.println(
+          "RobolectricHost: background boot of sandbox slot $i failed permanently " +
+            "(${t.javaClass.simpleName}: ${t.message}); continuing with ${readySlotCount.get()} " +
+            "ready sandbox(es) — renders stay up on the booted slots."
+        )
+        return
+      }
+      readySlotCount.set(i + 1)
+      StartupTimings.mark("sandbox $i ready (background boot)")
+      if (DaemonHostBridge.shutdown.get()) return
+      warmSlotRender(i)
+    }
+  }
+
+  /**
+   * Best-effort boot-time warm render against [slotIdx] (background-booted slots only; slot 0 is
+   * the live request path and is warmed by serve's own `prewarm()` throwaway render). Renders the
+   * daemon-shipped [DaemonWarmupPreview] — deliberately not a user preview, so it can't inherit a
+   * broken/heavy first catalog entry — which pays the generic per-sandbox first-render costs off
+   * the request path. Failures are logged and swallowed: a cold slot is a latency problem, not a
+   * correctness one. Disable with `-Dcomposeai.daemon.warmRenderOnBoot=false`.
+   */
+  private fun warmSlotRender(slotIdx: Int) {
+    val enabled = System.getProperty(WARM_RENDER_PROP)?.toBooleanStrictOrNull() ?: true
+    if (!enabled) return
+    val id = RenderHost.nextRequestId()
+    val startedAt = System.nanoTime()
+    try {
+      publishChildLoaderForSlot(slotIdx)
+      val payload =
+        "className=$WARMUP_PREVIEW_CLASS;functionName=$WARMUP_PREVIEW_FUNCTION;" +
+          "widthPx=64;heightPx=64;density=1.0;showBackground=true;" +
+          "outputBaseName=__warmup-slot-$slotIdx"
+      DaemonHostBridge.slot(slotIdx).requests.put(RenderRequest.Render(id = id, payload = payload))
+      val resultQueue = DaemonHostBridge.results.computeIfAbsent(id) { LinkedBlockingQueue() }
+      val raw = resultQueue.poll(WARM_RENDER_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+      val tookMs = (System.nanoTime() - startedAt) / 1_000_000
+      when {
+        raw == null ->
+          System.err.println(
+            "compose-ai-daemon: warm render on slot $slotIdx timed out after ${tookMs}ms"
+          )
+        raw is Throwable ->
+          System.err.println(
+            "compose-ai-daemon: warm render on slot $slotIdx failed after ${tookMs}ms " +
+              "(${raw.javaClass.simpleName}: ${raw.message})"
+          )
+        else -> StartupTimings.mark("sandbox $slotIdx warm render done (${tookMs}ms)")
+      }
+    } catch (t: Throwable) {
+      System.err.println(
+        "compose-ai-daemon: warm render on slot $slotIdx threw " +
+          "(${t.javaClass.simpleName}: ${t.message}); continuing"
+      )
+    } finally {
+      DaemonHostBridge.results.remove(id)
+    }
   }
 
   /**
@@ -760,17 +885,30 @@ open class RobolectricHost(
     payload: String,
     id: Long,
     interactiveSlotPinned: Boolean = false,
-  ): Int = chooseSlotIndex(RenderRequest.Render(id = id, payload = payload), interactiveSlotPinned)
+  ): Int =
+    // Tests probe the steady-state dispatch (all slots booted), independent of whether this host
+    // instance ever started — pass the full pool size rather than the live ready count.
+    chooseSlotIndex(
+      RenderRequest.Render(id = id, payload = payload),
+      interactiveSlotPinned,
+      dispatchSlotCount = sandboxCount,
+    )
 
   private fun chooseSlotIndex(
     render: RenderRequest.Render,
     interactiveSlotPinned: Boolean = activeInteractiveStreamId.get() != null,
+    // Background boot (see [start]) brings slots up one at a time; dispatch across only the ready
+    // prefix so a render never queues on a still-bootstrapping sandbox. Affinity shifts as slots
+    // come up (mod 1 → mod 2 → …) which only costs cache warmth, not correctness — the same
+    // preview re-keys at most N-1 times and then stays stable for the daemon's lifetime.
+    dispatchSlotCount: Int = readySlotCount.get().coerceAtLeast(1),
   ): Int {
-    if (sandboxCount == 1) return 0
+    val slots = dispatchSlotCount.coerceIn(1, sandboxCount)
+    if (slots == 1) return 0
     val previewId = parsePreviewIdFromPayload(render.payload)
     val key: Int = previewId?.hashCode() ?: render.id.hashCode()
-    if (!interactiveSlotPinned) return Math.floorMod(key, sandboxCount)
-    val normalSlotCount = sandboxCount - 1
+    if (!interactiveSlotPinned) return Math.floorMod(key, slots)
+    val normalSlotCount = slots - 1
     val normalSlot = Math.floorMod(key, normalSlotCount)
     return if (normalSlot < INTERACTIVE_SLOT_INDEX) normalSlot else normalSlot + 1
   }
@@ -1077,6 +1215,20 @@ open class RobolectricHost(
     inspectionMode: Boolean? = spec.inspectionMode,
     onSessionClosed: (() -> Unit)? = null,
   ): AndroidInteractiveSession {
+    // Background pool boot (see [start]): slot 1 may still be bootstrapping when the first
+    // `interactive/start` arrives. Wait briefly for it rather than failing outright — the slot's
+    // ready latch also counts down on a *failed* boot, so gate on the classloader actually being
+    // registered. A slot that never comes up (permanent background-boot failure) times out here
+    // and surfaces the same clean Unsupported the caller already handles with a v1 fallback.
+    val interactiveSlot = DaemonHostBridge.slot(INTERACTIVE_SLOT_INDEX)
+    interactiveSlot.awaitSandboxReady(INTERACTIVE_START_TIMEOUT_MS)
+    if (interactiveSlot.sandboxClassLoaderRef.get() == null) {
+      throw UnsupportedOperationException(
+        "RobolectricHost: interactive slot $INTERACTIVE_SLOT_INDEX is not booted " +
+          "(ready ${readySlotCount.get()}/$sandboxCount sandboxes) — still warming in the " +
+          "background, or its boot failed permanently. Retry shortly."
+      )
+    }
     val streamId = "android-stream-${nextStreamCounter.getAndIncrement()}"
     if (!activeInteractiveStreamId.compareAndSet(null, streamId)) {
       val held = activeInteractiveStreamId.get() ?: "<concurrent close>"
@@ -1449,6 +1601,37 @@ open class RobolectricHost(
     const val DEFAULT_SANDBOX_BOOT_TIMEOUT_MS: Long = 10L * 60L * 1000L
 
     /**
+     * Sysprop opting a pooled host into background pool boot (see [start]): block only until
+     * sandbox 0 is ready, boot slots 1..N-1 on a background thread, and dispatch across the ready
+     * prefix in the meantime. Cuts a pooled daemon's `initialize`-ready time from N× to 1× the
+     * per-sandbox boot cost (~11.6 s measured warm-cache). Default **false** so in-process hosts
+     * and the Gradle-plugin launch keep the strict all-sandboxes-ready [start] contract;
+     * `ServeBundleDaemon` sets it for serve-spawned Android daemons and the deploy image sets it
+     * via `JAVA_TOOL_OPTIONS`.
+     */
+    const val BACKGROUND_BOOT_PROP: String = "composeai.daemon.backgroundSandboxBoot"
+
+    /**
+     * Sysprop gating the boot-time warm render each background-booted slot gets (see
+     * [warmSlotRender]). Default **true** — only consulted when background boot is active, since
+     * the warm render rides the background boot thread.
+     */
+    const val WARM_RENDER_PROP: String = "composeai.daemon.warmRenderOnBoot"
+
+    /**
+     * Budget for one boot-time warm render. Generous versus a warm frame (~seconds) because the
+     * warm render *is* the sandbox's cold first render — HardwareRenderer native init + font stack
+     * — but bounded so a wedged warm can't pin the background boot thread forever.
+     */
+    const val WARM_RENDER_TIMEOUT_MS: Long = 120_000L
+
+    /** FQN of the file facade carrying [DaemonWarmupPreview] (see WarmupPreviews.kt). */
+    const val WARMUP_PREVIEW_CLASS: String = "ee.schimke.composeai.daemon.WarmupPreviewsKt"
+
+    /** Function name of the boot-time warmup composable. */
+    const val WARMUP_PREVIEW_FUNCTION: String = "DaemonWarmupPreview"
+
+    /**
      * How many times [start] re-launches a single sandbox slot whose first boot attempt failed
      * before it gives up and aborts the host. A transient per-sandbox bootstrap failure (e.g.
      * `Unable to load Robolectric native runtime library` on a memory-pressured pooled boot) then
@@ -1515,8 +1698,16 @@ open class RobolectricHost(
     // Belt-and-braces: also enqueue a Shutdown on every slot's queue so each worker wakes from
     // poll() promptly rather than waiting out the 100ms cycle.
     DaemonHostBridge.slots().forEach { runCatching { it.requests.put(RenderRequest.Shutdown) } }
+    // Background pool boot: give the booter a moment to observe the shutdown flag so it stops
+    // spawning/awaiting further workers before we start joining them.
+    backgroundBootWorker?.let { runCatching { it.join(2_000) } }
     workerThreads.forEach { it.join(timeoutMs) }
-    val stuck = workerThreads.filter { it.isAlive }
+    // A worker whose sandbox never registered (still inside Robolectric bootstrap when shutdown
+    // raced a background pool boot) can't see the poison pill and legitimately outlives the join —
+    // same "orphaned in this JVM" outcome [abortPartialStart] documents, and the daemon exits via
+    // System.exit anyway. Only a *ready* slot's worker refusing to exit is a real bug.
+    val ready = readySlotCount.get()
+    val stuck = workerThreads.filterIndexed { i, t -> t.isAlive && i < ready }
     if (stuck.isNotEmpty()) {
       error(
         "RobolectricHost worker(s) did not exit within ${timeoutMs}ms after shutdown: " +
@@ -1607,6 +1798,11 @@ open class RobolectricHost(
      * contract clean.
      */
     private val engine: RenderEngine by lazy {
+      // Opt-in atrace mirror for the render-phase spans (see [AndroidxTraceSections]). Installed
+      // here — inside the sandbox, before the first render — so the registration lands on the
+      // sandbox classloader's copy of the trace producer and `android.os.Trace` resolves to the
+      // real android-all implementation rather than the host-side android.jar stub.
+      AndroidxTraceSections.installIfEnabled()
       // [AmbientPreviewOverrideExtension] (and its companion [AmbientInputDispatchObserver]
       // registered alongside [acquireRecordingSession]) reach `LocalAmbientModeManager` /
       // `AmbientMode` from `androidx.wear.compose.foundation` and `AmbientLifecycleObserver` from
@@ -1888,7 +2084,14 @@ open class RobolectricHost(
         slot.childLoaderRef.get()
           ?: Thread.currentThread().contextClassLoader
           ?: RenderEngine::class.java.classLoader
-      return engine.render(spec, id, classLoader, sandboxStats = sandboxStats)
+      // Whole-render atrace span bracketing every per-phase section the engine opens — gives a
+      // capture one parent slice per render, named by preview. No-op unless
+      // `-Dcomposeai.daemon.atrace=true` (see [AndroidxTraceSections]).
+      return AndroidxTraceSections.traced(
+        "composeai:render:${spec.previewId ?: spec.outputBaseName}"
+      ) {
+        engine.render(spec, id, classLoader, sandboxStats = sandboxStats)
+      }
     }
 
     /**

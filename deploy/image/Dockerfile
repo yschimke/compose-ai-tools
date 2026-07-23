@@ -128,6 +128,11 @@ RUN set -eu; \
 # so it's an ARG: bump it when the bundled robolectric or ANDROID_SDK_PLATFORM changes
 # (it's the `android-all-instrumented-<ver>` dir that appears under ~/.m2 after a first
 # render). Best-effort — the daemon still fetches at runtime if this is stale/missing.
+# Verified against Robolectric 4.17-beta-2 (the version the 0.17.12+ daemon sidecar bundles):
+# `DefaultSdkProvider` still maps SDK 35 → android-all 15 / build 13954326 with
+# PREINSTRUMENTED_VERSION = 7, so this coordinate is a cache HIT and no runtime re-download
+# happens on a cold boot. Re-verify (jar constant `PREINSTRUMENTED_VERSION` + the SDK 35 row in
+# `DefaultSdkProvider`) whenever `robolectric` bumps in gradle/libs.versions.toml.
 ARG ANDROID_ALL_VERSION=15-robolectric-13954326-i7
 # Download to a temp path and move on success. A partial jar left at the real
 # `jarPath()` would be worse than no prefetch: Robolectric 4.16.1's MavenArtifactFetcher
@@ -183,13 +188,21 @@ COPY --from=android-daemon /opt/android-sdk /opt/android-sdk
 # slots) to cut that footprint ~40%. RobolectricHost also now retries a transient per-sandbox boot
 # failure, so the two changes together keep the Wear live lane up instead of collapsing it to the
 # baked-PNG snapshot. Desktop (CMP) daemons ignore this knob.
+#
+# backgroundSandboxBoot — RobolectricHost's fast cold path: `initialize` returns once ONE sandbox
+# is ready (~12 s warm-cache) instead of all `sandboxCount` (~35 s at 3), the remaining sandboxes
+# boot on a background thread with a boot-time warm render each, and dispatch routes across the
+# ready slots meanwhile. Serve fronts the daemon with baked PNGs while it warms, so nothing here
+# needs the strict all-ready contract. `ServeBundleDaemon` already defaults bundle-spawned Android
+# daemons in; carrying it in JAVA_TOOL_OPTIONS extends the same behaviour to the Gradle
+# source-build catalog path (its daemon JVMs inherit this env). Desktop daemons ignore the knob.
 ENV PATH="/opt/compose-preview/bin:${PATH}" \
     SERVE_IDLE_EXIT=0 \
     SERVE_TIMEOUT=1800 \
     COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1 \
     ANDROID_HOME=/opt/android-sdk \
     ANDROID_SDK_ROOT=/opt/android-sdk \
-    JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70 -Dcomposeai.cli.libDaemonAndroidDir=/opt/lib-daemon-android -Dcomposeai.serve.warmInBackground=true -Dcomposeai.serve.renderTimeoutSeconds=900 -Dcomposeai.serve.frameRenderTimeoutSeconds=120 -Dcomposeai.daemon.sandboxCount=3 -Dcomposeai.daemon.sandboxBootTimeoutMs=1800000"
+    JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70 -Dcomposeai.cli.libDaemonAndroidDir=/opt/lib-daemon-android -Dcomposeai.serve.warmInBackground=true -Dcomposeai.serve.renderTimeoutSeconds=900 -Dcomposeai.serve.frameRenderTimeoutSeconds=120 -Dcomposeai.daemon.sandboxCount=3 -Dcomposeai.daemon.sandboxBootTimeoutMs=1800000 -Dcomposeai.daemon.backgroundSandboxBoot=true"
 
 WORKDIR /project
 # Carry the project + warmed Gradle cache + module build outputs so the first

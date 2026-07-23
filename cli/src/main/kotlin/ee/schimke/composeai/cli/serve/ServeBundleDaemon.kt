@@ -504,8 +504,31 @@ internal object ServeBundleDaemon {
       variant = "android",
       daemonClasspath = (daemonJars + listOf(androidJar)).map { it.absolutePath },
       jvmArgs = launch.jvmArgs(),
-      extraSystemProperties = launch.robolectricSystemProperties(),
+      extraSystemProperties =
+        launch.robolectricSystemProperties() + androidColdStartSystemProperties(),
     )
+  }
+
+  /**
+   * Cold-start knobs for a serve-spawned Android/Robolectric daemon. Serve fronts the daemon with
+   * baked PNGs while it warms ([ServeCatalogLiveHost]'s warm-in-background lane), so nothing here
+   * needs the strict all-sandboxes-ready `initialize` contract the Gradle-plugin/VS Code launch
+   * keeps — opt into `RobolectricHost`'s background pool boot by default: `initialize` returns once
+   * ONE sandbox can render (~12 s warm-cache instead of N×), the rest of the pool boots off the
+   * request path, and each background slot gets a boot-time warm render. An explicit
+   * `-Dcomposeai.daemon.backgroundSandboxBoot=…` on the serve JVM (e.g. via `JAVA_TOOL_OPTIONS`)
+   * wins, so operators can opt a deployment out; `composeai.daemon.warmRenderOnBoot` is forwarded
+   * when set for the same reason. Command-line `-D`s land after `JAVA_TOOL_OPTIONS` on the child
+   * JVM, so the value emitted here is authoritative for the daemon.
+   */
+  private fun androidColdStartSystemProperties(): Map<String, String> = buildMap {
+    put(
+      "composeai.daemon.backgroundSandboxBoot",
+      System.getProperty("composeai.daemon.backgroundSandboxBoot") ?: "true",
+    )
+    System.getProperty("composeai.daemon.warmRenderOnBoot")?.let {
+      put("composeai.daemon.warmRenderOnBoot", it)
+    }
   }
 
   /**
