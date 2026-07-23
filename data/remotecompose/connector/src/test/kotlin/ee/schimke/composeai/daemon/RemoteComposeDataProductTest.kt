@@ -245,6 +245,26 @@ class RemoteComposeDataProductTest {
   }
 
   @Test
+  fun dispose_via_set_null_keeps_declarations_for_post_render_snapshot() {
+    // On Android the around-composable's onDispose runs before the host's onRender snapshot, so
+    // dispose (modelled by `set(null)`) must NOT drop declarations — otherwise the knobs vanish
+    // before `declarationsFor` reads them. Regression guard for the P1 on the bridge PR.
+    val controller = RemoteComposeController
+    controller.recordDeclaration(
+      RemoteComposeKnobDeclaration("label", RemoteNamedValue.StringValue("Filled"))
+    )
+    controller.set(
+      RemoteComposeOverride(namedValues = mapOf("label" to RemoteNamedValue.StringValue("seed")))
+    )
+    controller.set(null) // simulates the around-composable's onDispose
+    assertEquals(
+      "declarations must survive dispose for the host's post-render snapshot",
+      listOf("label"),
+      controller.declarations().map { it.name },
+    )
+  }
+
+  @Test
   fun on_render_captures_declared_knobs_in_payload() {
     val registry = RemoteComposeDataProductRegistry()
     RemoteComposeController.recordDeclaration(
