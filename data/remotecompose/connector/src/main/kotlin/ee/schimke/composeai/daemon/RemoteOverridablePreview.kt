@@ -86,29 +86,45 @@ fun RemoteOverridablePreview(
     )
   // Same capture pattern as upstream `RemotePreview` — `runBlocking` inside `remember` so the
   // document materialises once per (profile, content) pair without re-capturing across
-  // recompositions.
-  val remoteDocument =
+  // recompositions. Collect the knobs the content declares during the capture (via the
+  // `rememberOverridable*` wrappers) so they can be re-recorded on every render below.
+  val captured =
     remember(profile, content) {
-      runBlocking {
-        val bytes =
-          captureSingleRemoteDocument(
-              context,
-              displayInfo,
-              RemoteDensity.from(displayInfo),
-              LayoutDirection.Ltr,
-              profile = profile,
-              content = content,
-            )
-            .bytes
-        // Offer the captured RC doc so a bundle can carry + replay it without this composable's
-        // bytecode; the render harness drains it into the `renders/<stem>.rcdoc` sidecar that
-        // `BundlePreviewTask.resolvePreviewIr` packs. No-op outside a daemon/test render (no
-        // current
-        // preview id). Best-effort — never fail the render over IR capture. See IrSidecarChannel.
-        runCatching { IrSidecarChannel.offer(IrSidecarChannel.FORMAT_REMOTECOMPOSE, bytes) }
-        RemoteDocument(bytes)
+      RemoteComposeController.collectingDeclarations {
+        runBlocking {
+          val bytes =
+            captureSingleRemoteDocument(
+                context,
+                displayInfo,
+                RemoteDensity.from(displayInfo),
+                LayoutDirection.Ltr,
+                profile = profile,
+                content = content,
+              )
+              .bytes
+          // Offer the captured RC doc so a bundle can carry + replay it without this composable's
+          // bytecode; the render harness drains it into the `renders/<stem>.rcdoc` sidecar that
+          // `BundlePreviewTask.resolvePreviewIr` packs. No-op outside a daemon/test render (no
+          // current preview id). Best-effort — never fail the render over IR capture. See
+          // IrSidecarChannel.
+          runCatching { IrSidecarChannel.offer(IrSidecarChannel.FORMAT_REMOTECOMPOSE, bytes) }
+          RemoteDocument(bytes)
+        }
       }
     }
+  val remoteDocument = captured.first
+  val declaredKnobs = captured.second
+
+  // Re-record the captured knobs on EVERY render. The memoized capture above records them only once
+  // (during the outer composition phase); on the daemon path `RemoteComposeOverrideExtension`'s
+  // render-start `clearDeclarations()` runs afterwards (from a `DisposableEffect`, the apply phase),
+  // so without this a `renderNow` / `data/fetch` render would surface no knobs. A `SideEffect` lands
+  // in the apply phase after that clear (Compose runs every `RememberObserver` before any
+  // `SideEffect`). Idempotent, so the standalone Gradle path (which clears before rendering) is
+  // unaffected.
+  androidx.compose.runtime.SideEffect {
+    declaredKnobs.forEach { RemoteComposeController.recordDeclaration(it) }
+  }
 
   // Snapshot the seeded overrides at composition time. The map is from `RemoteComposeController`
   // (process-static state), seeded by `RemoteComposeOverrideExtension` from
