@@ -1,6 +1,8 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.daemon.protocol.Orientation
+import ee.schimke.composeai.daemon.protocol.RemoteComposeProfile
+import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import kotlin.test.Test
@@ -473,5 +475,119 @@ class ServeOverridesTest {
     assertEquals(PreviewMode.LIVE, PreviewMode.parse("live"))
     assertNull(PreviewMode.parse("bogus"))
     assertNull(PreviewMode.parse(null))
+  }
+
+  @Test
+  fun `no remote compose params leaves the facet null`() {
+    assertNull(ok(emptyMap()).remoteCompose)
+    // A generic knob alone must NOT synthesise a remoteCompose facet.
+    assertNull(ok(mapOf("knob.label" to "Hi")).remoteCompose)
+  }
+
+  @Test
+  fun `rc named seeds map to typed remote named values`() {
+    val rc =
+      ok(
+          mapOf(
+            "rc.label" to "Tap me",
+            "rc.count" to "int:3",
+            "rc.ratio" to "float:0.5",
+            "rc.gap" to "dp:8",
+            "rc.on" to "bool:true",
+            "rc.stopColor" to "color:#FF8800",
+          )
+        )
+        .remoteCompose
+    assertNotNull(rc)
+    assertEquals(RemoteNamedValue.StringValue("Tap me"), rc.namedValues["label"])
+    assertEquals(RemoteNamedValue.IntValue(3), rc.namedValues["count"])
+    assertEquals(RemoteNamedValue.FloatValue(0.5f), rc.namedValues["ratio"])
+    assertEquals(RemoteNamedValue.DpValue(8f), rc.namedValues["gap"])
+    assertEquals(RemoteNamedValue.BooleanValue(true), rc.namedValues["on"])
+    assertEquals(RemoteNamedValue.ColorValue("#FF8800"), rc.namedValues["stopColor"])
+    assertNull(rc.profile)
+  }
+
+  @Test
+  fun `a bare rc value is a string`() {
+    val rc = ok(mapOf("rc.label" to "Ship it")).remoteCompose
+    assertEquals(RemoteNamedValue.StringValue("Ship it"), rc?.namedValues?.get("label"))
+  }
+
+  @Test
+  fun `an unknown rc kind prefix is treated as part of the string`() {
+    // `weird` isn't a known kind, so the whole value is the string — never a hard error.
+    val rc = ok(mapOf("rc.label" to "weird:value")).remoteCompose
+    assertEquals(RemoteNamedValue.StringValue("weird:value"), rc?.namedValues?.get("label"))
+  }
+
+  @Test
+  fun `a malformed typed rc value is rejected`() {
+    for (bad in listOf("rc.count" to "int:x", "rc.ratio" to "float:nan!", "rc.gap" to "dp:big")) {
+      val parsed = ServeOverrides.parse(mapOf(bad))
+      assertTrue(parsed is OverrideParse.Invalid, "expected Invalid for $bad, got $parsed")
+    }
+  }
+
+  @Test
+  fun `blank rc name or value is skipped`() {
+    // `rc.` with no name, and a present-but-blank value, both drop out rather than seeding.
+    assertNull(ok(mapOf("rc." to "x", "rc.label" to "")).remoteCompose)
+  }
+
+  @Test
+  fun `rc profile parses known wire names and rejects unknown`() {
+    assertEquals(
+      RemoteComposeProfile.ANDROIDX,
+      ok(mapOf("rcProfile" to "androidx")).remoteCompose?.profile,
+    )
+    assertEquals(
+      RemoteComposeProfile.WEAR_WIDGETS,
+      ok(mapOf("rcProfile" to "wearWidgets")).remoteCompose?.profile,
+    )
+    // Case-insensitive on the wire name.
+    assertEquals(
+      RemoteComposeProfile.WIDGETS_V6,
+      ok(mapOf("rcProfile" to "WIDGETSV6")).remoteCompose?.profile,
+    )
+    assertTrue(ServeOverrides.parse(mapOf("rcProfile" to "bogus")) is OverrideParse.Invalid)
+  }
+
+  @Test
+  fun `rc profile alone populates the facet`() {
+    val rc = ok(mapOf("rcProfile" to "androidx9")).remoteCompose
+    assertNotNull(rc)
+    assertEquals(RemoteComposeProfile.ANDROIDX9, rc.profile)
+    assertTrue(rc.namedValues.isEmpty())
+  }
+
+  @Test
+  fun `isOverrideParam accepts fixed rc and knob keys and rejects others`() {
+    assertTrue(ServeOverrides.isOverrideParam("uiMode"))
+    assertTrue(ServeOverrides.isOverrideParam("rcProfile"))
+    assertTrue(ServeOverrides.isOverrideParam("rc.label"))
+    assertTrue(ServeOverrides.isOverrideParam("knob.count"))
+    assertTrue(!ServeOverrides.isOverrideParam("cacheBuster"))
+  }
+
+  @Test
+  fun `cache key differs when a remote compose facet changes`() {
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("rc.label" to "A"))),
+      ServeOverrides.cacheKey("preview.A", ok(emptyMap())),
+    )
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("rc.label" to "A"))),
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("rc.label" to "B"))),
+    )
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("rcProfile" to "androidx"))),
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("rcProfile" to "androidx9"))),
+    )
+    // Order-independent + stable for equal seeds.
+    assertEquals(
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("rc.a" to "1", "rc.b" to "2"))),
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("rc.b" to "2", "rc.a" to "1"))),
+    )
   }
 }
