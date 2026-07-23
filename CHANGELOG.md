@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.17.12](https://github.com/yschimke/compose-ai-tools/compare/v0.17.11...v0.17.12) (2026-07-23)
+
+
+### Features
+
+* **deploy:** persist runtime download caches across image rolls ([#2668](https://github.com/yschimke/compose-ai-tools/issues/2668)) ([a1e5fe4](https://github.com/yschimke/compose-ai-tools/commit/a1e5fe40dac2e36b2306bd9cd868971ee70d05d8))
+
+
+### Bug Fixes
+
+* **cli:** pin android.app.Application for detached daemon renders (fixes live Android catalogs) ([#2669](https://github.com/yschimke/compose-ai-tools/issues/2669)) ([9525958](https://github.com/yschimke/compose-ai-tools/commit/9525958912c29a99625a0e17bd4211af618eb62c))
+
 ## [0.17.11](https://github.com/yschimke/compose-ai-tools/compare/v0.17.10...v0.17.11) (2026-07-23)
 
 
