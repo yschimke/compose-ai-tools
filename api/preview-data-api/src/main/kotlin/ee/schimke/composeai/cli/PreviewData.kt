@@ -104,6 +104,41 @@ data class Capture(
   val gestureHint: JsonElement? = null,
 )
 
+/**
+ * Design-catalog role. Mirrors `CatalogRole` in gradle-plugin/PreviewData.kt — string-typed decode
+ * would lose the closed set, so it's modelled as an enum; unknown future roles are handled by the
+ * caller (the field itself is nullable on [PreviewInfo]).
+ */
+@Serializable
+enum class CatalogRole {
+  COMPONENT,
+  VARIANT,
+}
+
+/**
+ * One `key=value` content/i18n/a11y axis of a [CatalogRole.VARIANT]. Mirrors `CatalogVariantProp`.
+ */
+@Serializable data class CatalogVariantProp(val key: String, val value: String)
+
+/**
+ * Design-catalog identity a preview carries via `@CatalogComponent` / `@CatalogVariant`. Mirrors
+ * `CatalogEntry` in gradle-plugin/PreviewData.kt so this wire-format API exposes the same metadata
+ * discovery writes to `previews.json` — otherwise `ignoreUnknownKeys` would silently drop it for
+ * `compose-preview show --json`, contrib scripting, and MCP readers. `null` for non-catalog
+ * previews.
+ */
+@Serializable
+data class CatalogEntry(
+  val role: CatalogRole,
+  val componentId: String,
+  val group: String? = null,
+  val section: String? = null,
+  val caption: String? = null,
+  val reference: String? = null,
+  val state: String? = null,
+  val props: List<CatalogVariantProp> = emptyList(),
+)
+
 @Serializable
 data class PreviewInfo(
   val id: String,
@@ -113,6 +148,7 @@ data class PreviewInfo(
   val params: PreviewParams = PreviewParams(),
   val captures: List<Capture> = listOf(Capture()),
   val dataProducts: List<PreviewDataProduct> = emptyList(),
+  val catalog: CatalogEntry? = null,
 )
 
 @Serializable

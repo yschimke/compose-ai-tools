@@ -403,6 +403,25 @@ object PreviewDiscovery {
               }
               .map { it.name }
               .toSet()
+          // File-level `@CatalogGroup` defaults, resolved by source file so a catalog preview that
+          // is a *member* function (whose `classInfo` is its containing class, not the file facade
+          // that Kotlin writes `@file:CatalogGroup` onto) still picks up the file's group. Both the
+          // facade `…Kt` class and any member class in the same file resolve to the same
+          // module-relative source path, so keying by that path unifies the top-level and member
+          // cases. Built up-front because a member class may be method-walked before its facade.
+          val catalogGroupsByFile = HashMap<String, CatalogGroupDefault>()
+          for (classInfo in scanResult.allClasses) {
+            if (classInfo.name !in projectClassFqns) continue
+            val groupAnn = classInfo.getAnnotationInfo(CATALOG_GROUP_FQN) ?: continue
+            val file = sourceFilePath(classInfo, input) ?: continue
+            catalogGroupsByFile.putIfAbsent(
+              file,
+              CatalogGroupDefault(
+                name = annStringOrNull(groupAnn, "name"),
+                section = annStringOrNull(groupAnn, "section"),
+              ),
+            )
+          }
           for (classInfo in scanResult.allClasses) {
             // Method-walk only project classes. Library JARs stay on the
             // ClassGraph classpath so `scanResult.getClassInfo` can resolve
@@ -428,6 +447,7 @@ object PreviewDiscovery {
                 previews,
                 input,
                 warnings,
+                catalogGroupsByFile,
               )
             }
             // `@ColorCatalog` / `@TypographyCatalog` / `@ShapeCatalog` design tokens: an annotated
@@ -871,9 +891,17 @@ object PreviewDiscovery {
   }
 
   /**
+   * A file-level `@CatalogGroup` default, resolved once per source file (see the
+   * `catalogGroupsByFile` pre-pass) so a member-function preview picks it up as well as a top-level
+   * one.
+   */
+  private data class CatalogGroupDefault(val name: String?, val section: String?)
+
+  /**
    * Design-catalog identity for a preview function from `@CatalogComponent` / `@CatalogVariant`,
-   * with the file-level `@CatalogGroup` (emitted onto the file's `…Kt` facade class, i.e.
-   * [classInfo]) supplying the group/section default. Returns `null` when the function carries
+   * with [fileGroup] (the file-level `@CatalogGroup`, resolved by source file so member-function
+   * previews get it too — Kotlin writes `@file:CatalogGroup` onto the file facade, not the
+   * containing class) supplying the group/section default. Returns `null` when the function carries
    * neither annotation — the common, non-catalog case, which leaves [PreviewInfo.catalog] absent.
    *
    * `@CatalogVariant` takes precedence if somehow both are present: a variant belongs *under*
@@ -883,9 +911,9 @@ object PreviewDiscovery {
    * `Components`.
    */
   private fun extractCatalogEntry(
-    classInfo: ClassInfo,
     method: MethodInfo,
     annotations: List<AnnotationInfo>,
+    fileGroup: CatalogGroupDefault?,
   ): CatalogEntry? {
     annotations
       .firstOrNull { it.name == CATALOG_VARIANT_FQN }
@@ -900,15 +928,12 @@ object PreviewDiscovery {
         )
       }
     val component = annotations.firstOrNull { it.name == CATALOG_COMPONENT_FQN } ?: return null
-    val fileGroup = classInfo.getAnnotationInfo(CATALOG_GROUP_FQN)
     return CatalogEntry(
       role = CatalogRole.COMPONENT,
       componentId = annStringOrDefault(component, "id", method.name),
       group =
-        annStringOrNull(component, "group")
-          ?: fileGroup?.let { annStringOrNull(it, "name") }
-          ?: DEFAULT_CATALOG_COMPONENT_GROUP,
-      section = fileGroup?.let { annStringOrNull(it, "section") },
+        annStringOrNull(component, "group") ?: fileGroup?.name ?: DEFAULT_CATALOG_COMPONENT_GROUP,
+      section = fileGroup?.section,
       caption = annStringOrNull(component, "caption"),
       reference = annStringOrNull(component, "reference"),
     )
@@ -1364,6 +1389,7 @@ object PreviewDiscovery {
     previews: MutableList<PreviewInfo>,
     input: Input,
     warnings: MutableList<String>,
+    catalogGroupsByFile: Map<String, CatalogGroupDefault>,
   ) {
     // Resolve the method's preview annotations up-front so we can bail
     // before any per-method work (and before the "skipping @Preview"
@@ -1492,7 +1518,8 @@ object PreviewDiscovery {
     // a
     // whole — every `@Preview` expansion of one function shares the same component id / variant
     // tag — so it's resolved once here and stamped onto each entry this method contributes below.
-    val catalogEntry = extractCatalogEntry(classInfo, method, annotations)
+    val catalogEntry =
+      extractCatalogEntry(method, annotations, catalogGroupsByFile[previewSourceFile])
     val firstNewPreviewIndex = previews.size
     fun tagWithCatalog() {
       if (catalogEntry == null) return

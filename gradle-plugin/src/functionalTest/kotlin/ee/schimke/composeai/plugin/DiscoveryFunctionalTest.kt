@@ -287,6 +287,13 @@ class DiscoveryFunctionalTest {
 
         // No catalog annotation at all: stays out of the inventory (catalog == null).
         @Preview @Composable fun NotACatalogPreview() {}
+
+        // A *member* preview: its `classInfo` is this object, not the file facade that carries
+        // `@file:CatalogGroup`, so it must still resolve the file group by source file.
+        object MemberStickers {
+          @CatalogComponent
+          @Preview @Composable fun MemberSticker() {}
+        }
         """
           .trimIndent()
       )
@@ -332,6 +339,14 @@ class DiscoveryFunctionalTest {
 
     // A preview with no catalog annotation stays out of the inventory.
     assertThat(byFn.getValue("NotACatalogPreview").catalog).isNull()
+
+    // A member-function preview still inherits the file `@CatalogGroup`, resolved by source file
+    // (its classInfo is the enclosing object, not the file facade the annotation lands on).
+    val member = byFn.getValue("MemberSticker").catalog
+    assertThat(member).isNotNull()
+    assertThat(member!!.componentId).isEqualTo("MemberSticker")
+    assertThat(member.group).isEqualTo("Buttons")
+    assertThat(member.section).isEqualTo("Components")
   }
 
   @Test
