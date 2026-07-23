@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.17.9](https://github.com/yschimke/compose-ai-tools/compare/v0.17.8...v0.17.9) (2026-07-23)
+
+
+### Bug Fixes
+
+* **cli:** strip manifest &lt;application android:name&gt; for the daemon render ([#2659](https://github.com/yschimke/compose-ai-tools/issues/2659)) ([ad50bbe](https://github.com/yschimke/compose-ai-tools/commit/ad50bbe35a97075924720577ec30dca5edcf0b52))
+* **design-artifacts:** bridge preview ids from every render bundle, not just the primary ([#2657](https://github.com/yschimke/compose-ai-tools/issues/2657)) ([4c70da1](https://github.com/yschimke/compose-ai-tools/commit/4c70da1c32d5454b48a0d321ffad139862f3f40a))
+* **design-artifacts:** key the live-preview bridge on theme, not just state/props ([#2656](https://github.com/yschimke/compose-ai-tools/issues/2656)) ([65c0ab0](https://github.com/yschimke/compose-ai-tools/commit/65c0ab09574d435f39ae650749f9812a6cadcd07))
+
 ## [0.17.8](https://github.com/yschimke/compose-ai-tools/compare/v0.17.7...v0.17.8) (2026-07-22)
 
 
