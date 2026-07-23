@@ -1,9 +1,12 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.overrides.PreviewOverrideType
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import ee.schimke.composeai.data.overrides.PreviewOverridesPayload
+import ee.schimke.composeai.data.remotecompose.RemoteComposeDeclarationsPayload
+import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -45,9 +48,14 @@ class ServeHttpRoutingTest {
       default = PreviewOverrideValue.StringValue("Tap me"),
     )
 
+  /** A declared Remote Compose knob, carried into the bundle as a `remotecompose.json` sidecar. */
+  private val rcColorKnob =
+    RemoteComposeKnobDeclaration("shaderColor", RemoteNamedValue.ColorValue("#FF7DE2FF"))
+
   private fun bundle(
     label: String,
     overrides: List<PreviewOverrideDeclaration> = emptyList(),
+    remoteComposeKnobs: List<RemoteComposeKnobDeclaration> = emptyList(),
     degradations: List<ServeDegradation> = emptyList(),
   ): ServeBundleHost {
     val dir = Files.createTempDirectory("routing-$label").toFile().also { it.deleteOnExit() }
@@ -62,13 +70,25 @@ class ServeHttpRoutingTest {
         )
       File(dir, "previews/$previewId.overrides.json").writeText(sidecar)
     }
+    if (remoteComposeKnobs.isNotEmpty()) {
+      val sidecar =
+        Json.encodeToString(
+          RemoteComposeDeclarationsPayload.serializer(),
+          RemoteComposeDeclarationsPayload(remoteComposeKnobs),
+        )
+      File(dir, "previews/$previewId.remotecompose.json").writeText(sidecar)
+    }
     return ServeBundleHost(dir, label = label, degradations = degradations)
   }
 
   private val registry = ServeSessionRegistry(open = { null })
   private val server: ServeHttpServer by lazy {
     registry.register("default-mod", host = bundle("default-mod"), pinned = true)
-    registry.register("compose-m3", host = bundle("compose-m3", listOf(labelKnob)), pinned = true)
+    registry.register(
+      "compose-m3",
+      host = bundle("compose-m3", listOf(labelKnob), listOf(rcColorKnob)),
+      pinned = true,
+    )
     // A baked-only session carrying a degradation reason — reachable at /baked-only/… but kept off
     // catalogSessions so the home-index test is unaffected. Exercises the /api/previews surfacing.
     registry.register(
@@ -223,6 +243,12 @@ class ServeHttpRoutingTest {
     assertTrue(api.contains("\"overrides\":["), "overrides array present: $api")
     assertTrue(api.contains("\"key\":\"label\""), "declared knob key: $api")
     assertTrue(api.contains("\"value\":\"Tap me\""), "declared knob default value: $api")
+    // The declared Remote Compose knob (from the `.remotecompose.json` sidecar) surfaces too, with
+    // its typed default (the `kind` discriminator + argb the connector round-trips).
+    assertTrue(api.contains("\"remoteComposeKnobs\":["), "rc knobs array present: $api")
+    assertTrue(api.contains("\"name\":\"shaderColor\""), "declared rc knob name: $api")
+    assertTrue(api.contains("\"kind\":\"color\""), "rc knob typed default kind: $api")
+    assertTrue(api.contains("\"argb\":\"#FF7DE2FF\""), "rc knob default argb: $api")
     // A fully-served (non-degraded) session carries an empty degradations array.
     assertTrue(
       api.contains("\"degradations\":[]"),
