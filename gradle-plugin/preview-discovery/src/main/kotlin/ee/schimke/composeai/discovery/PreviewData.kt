@@ -590,6 +590,40 @@ enum class PreviewExtensionUsageMode {
   SUGGESTED_EXTRA_PREVIEW,
 }
 
+/** Kind of a seeded `previewOverride*` value — mirrors `PreviewOverrideValue`'s subtypes. */
+@Serializable
+enum class OverrideSeedKind {
+  STRING,
+  BOOLEAN,
+  INT,
+  FLOAT,
+  COLOR,
+}
+
+/**
+ * One seeded `previewOverride*` value for an [OverrideVariantSpec], sourced from an
+ * `@OverrideVariant` annotation entry (`"key=value"` / `"key#index=value"`). [raw] is the verbatim
+ * string; the renderer parses it into a typed `PreviewOverrideValue` of [kind] and seeds it under
+ * `seedKey(key, index)`. Discovery keeps it stringly-typed so the plugin classpath needn't carry
+ * the overrides runtime.
+ */
+@Serializable
+data class OverrideSeed(
+  val key: String,
+  val index: Int? = null,
+  val kind: OverrideSeedKind,
+  val raw: String,
+)
+
+/**
+ * A named override variant sourced from an `@OverrideVariant` annotation. Discovery emits one extra
+ * synthetic [PreviewInfo] per variant (per multipreview member), carrying these [seeds] on
+ * [PreviewInfo.overrides]; the renderer seeds them via `PreviewOverrideController.set(...)` before
+ * composing, so the same preview function renders once more with the knob(s) flipped. [name] is the
+ * `_VARIANT_<name>` render-output tag and the variant's catalog `state`.
+ */
+@Serializable data class OverrideVariantSpec(val name: String, val seeds: List<OverrideSeed>)
+
 @Serializable
 data class PreviewInfo(
   val id: String,
@@ -597,6 +631,13 @@ data class PreviewInfo(
   val className: String,
   val sourceFile: String? = null,
   val params: PreviewParams = PreviewParams(),
+  /**
+   * Non-null on a synthetic override-variant preview (from `@OverrideVariant`): the
+   * `previewOverride*` values the renderer seeds before composing this variant. `null` on an
+   * ordinary preview, whose `previewOverride*` reads resolve to their author defaults. See
+   * [OverrideVariantSpec].
+   */
+  val overrides: OverrideVariantSpec? = null,
   /**
    * All snapshots this preview produces. Always at least one element: a static preview has a single
    * capture with null dimensions; an animated / scrolled preview can have many.
