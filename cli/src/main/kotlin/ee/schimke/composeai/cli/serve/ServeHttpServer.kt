@@ -123,11 +123,36 @@ class ServeHttpServer(
    * puts a live daemon behind a catalog. See [LiveSeatLimiter].
    */
   maxLiveSeats: Int = 0,
+  /**
+   * Recent daemon **startup failures** — the render/live daemon a session tried to (re)open but
+   * couldn't. Populated by [ServeCommand.openHost] (the single choke point every registry-driven
+   * relaunch passes through) and surfaced on `/status` + `/status.json`. Null ⇒ no log wired
+   * (tests, or a build that doesn't record them); the status page then shows an empty failure list.
+   */
+  private val daemonLog: DaemonStartupLog? = null,
+  /**
+   * Whether `--allow-render-trusted` is set (trusted catalogs get a live server-side render lane).
+   */
+  private val allowRenderTrusted: Boolean = false,
+  /**
+   * Whether a producer-trust store was configured (`--trust-store`); shown in the status config.
+   */
+  private val trustStoreConfigured: Boolean = false,
+  /** Catalog auto-refresh interval in seconds (`--catalog-refresh-interval`); `0` ⇒ disabled. */
+  private val catalogRefreshSeconds: Long = 0,
+  /** Whether `POST /bundles` runtime uploads are accepted (`--accept-bundles`). */
+  private val acceptBundlesEnabled: Boolean = false,
 ) {
   /** The actual bound port — may differ from the requested one if it was taken (auto-picked). */
   val port: Int = pickPort(host, requestedPort, portRange)
 
-  private val renderSemaphore = Semaphore(maxConcurrentRenders.coerceAtLeast(1))
+  /** Concurrent-render slot count (the `/render` load-shed bound), surfaced on `/status`. */
+  private val renderSlots: Int = maxConcurrentRenders.coerceAtLeast(1)
+
+  /** Wall-clock the server was constructed — the basis for the `/status` uptime figure. */
+  private val startedAtMillis: Long = System.currentTimeMillis()
+
+  private val renderSemaphore = Semaphore(renderSlots)
 
   /**
    * Live-seat limiter: a permit **budget** ([maxLiveSeats]) charged per session by its backend
@@ -157,6 +182,16 @@ class ServeHttpServer(
             ContentType.Application.Json,
           )
         }
+
+        // `/status` — the operator/observer view of this running host: published catalogs + their
+        // trust/liveness, the render daemons up right now, the effective config, and recent daemon
+        // startup failures. HTML by default (`?format=json` for the machine form); `/status.json`
+        // is
+        // the canonical JSON a monitor / Home Assistant sensor polls. Both are gated like the rest
+        // (open in `--public`, else token-required) — the running-daemon + config detail is more
+        // sensitive than `/version`/`/healthz`, so a private box keeps it behind the token.
+        get("/status") { handleStatus(json = false) }
+        get("/status.json") { handleStatus(json = true) }
 
         // In-browser CMP tier: serve the static Wasm app for a registered system at
         // `/wasm/<system>/<file>`. Ungated (generic client code, no session data) so the viewer's
@@ -442,6 +477,246 @@ class ServeHttpServer(
     call.respondText(
       ServeWeb.homeIndexPage(systems, token, isPublic = isPublic, version = BUNDLE_VERSION),
       ContentType.Text.Html,
+    )
+  }
+
+  /**
+   * `GET /status` (HTML, or JSON with `?format=json`) and `GET /status.json` (JSON): a live
+   * snapshot of this host — published catalogs + their trust/liveness, the render daemons up right
+   * now, the effective config, and recent daemon startup failures. Gated like the API routes (open
+   * in `--public`, else token-required). The JSON form is the canonical machine surface for a
+   * monitor / Home Assistant sensor; the HTML form is its human face.
+   */
+  private suspend fun RoutingContext.handleStatus(json: Boolean) {
+    if (rejectBadToken()) return
+    val wantJson = json || call.request.queryParameters["format"].equals("json", ignoreCase = true)
+    val data = withContext(Dispatchers.IO) { buildStatusData() }
+    if (wantJson) {
+      call.respondText(
+        JSON.encodeToString(StatusResponse.serializer(), data.toResponse()),
+        ContentType.Application.Json,
+      )
+    } else {
+      call.respondText(ServeWeb.statusPage(data.toView(), token), ContentType.Text.Html)
+    }
+  }
+
+  /**
+   * Raw catalog metadata for the status snapshot — projected to HTML rows and JSON by [StatusData].
+   */
+  private data class CatalogStat(
+    val id: String,
+    val listed: Boolean,
+    val title: String?,
+    val trust: String?,
+    val previews: Int?,
+    /** Has a live (daemon-backed) render lane — a running daemon, or a suspended live catalog. */
+    val live: Boolean,
+    /** A live daemon for this catalog is up right now. */
+    val running: Boolean,
+    val degradation: String?,
+    val provenance: ServeWeb.CatalogProvenance?,
+  )
+
+  /**
+   * Raw status snapshot; the single source both the HTML page and the JSON response project from.
+   */
+  private inner class StatusData(
+    val nowMillis: Long,
+    val catalogs: List<CatalogStat>,
+    val running: List<ServeSessionRegistry.RunningDaemon>,
+    val failures: List<DaemonStartupLog.Failure>,
+  ) {
+    val uptimeSeconds: Long = ((nowMillis - startedAtMillis) / 1000).coerceAtLeast(0)
+    /** Live daemons (a render daemon is up), excluding pinned static baked hosts. */
+    val liveDaemons: List<ServeSessionRegistry.RunningDaemon> = running.filter { it.hasLiveStream }
+    val activeStreams: Int = liveDaemons.sumOf { it.activeStreams }
+
+    private fun backendOf(weight: Int): String = if (weight >= 2) "android" else "desktop"
+
+    fun toResponse(): StatusResponse =
+      StatusResponse(
+        version = BUNDLE_VERSION,
+        public = isPublic,
+        status = if (failures.isEmpty()) "ok" else "degraded",
+        uptimeSeconds = uptimeSeconds,
+        catalogs =
+          CatalogSummaryDto(
+            total = catalogs.size,
+            listed = catalogs.count { it.listed },
+            unlisted = catalogs.count { !it.listed },
+            trusted = catalogs.count { it.trust != null && it.trust != "unverified" },
+            degraded = catalogs.count { it.degradation != null },
+          ),
+        daemons =
+          DaemonSummaryDto(
+            known = sessions.activeCount(),
+            running = liveDaemons.size,
+            activeStreams = activeStreams,
+            liveSeatsTotal = if (liveSeats.unbounded) 0 else liveSeats.totalPermits,
+            liveSeatsAvailable = if (liveSeats.unbounded) -1 else liveSeats.availablePermits(),
+            liveSeatsUnbounded = liveSeats.unbounded,
+          ),
+        config =
+          ConfigDto(
+            host = host,
+            port = port,
+            allowRenderTrusted = allowRenderTrusted,
+            trustStore = trustStoreConfigured,
+            acceptBundles = acceptBundlesEnabled,
+            catalogRefreshSeconds = catalogRefreshSeconds,
+            maxConcurrentRenders = renderSlots,
+            liveSeats = liveSeats.totalPermits,
+          ),
+        catalogList =
+          catalogs.map { c ->
+            CatalogDto(
+              id = c.id,
+              listed = c.listed,
+              title = c.title,
+              trust = c.trust,
+              previews = c.previews,
+              live = c.live,
+              running = c.running,
+              degradation = c.degradation,
+              repo = c.provenance?.repo,
+              branch = c.provenance?.branch,
+              generatedAt = c.provenance?.generatedAt,
+              path = "/${c.id}/",
+            )
+          },
+        runningServers =
+          liveDaemons.map { d ->
+            RunningServerDto(
+              id = d.id,
+              label = d.label,
+              backend = backendOf(d.liveSeatWeight),
+              seatWeight = d.liveSeatWeight,
+              activeStreams = d.activeStreams,
+              uptimeSeconds = d.startedAt?.let { ((nowMillis - it) / 1000).coerceAtLeast(0) },
+            )
+          },
+        recentDaemonFailures = failures.map { FailureDto(it.atEpochMillis, it.session, it.reason) },
+      )
+
+    fun toView(): ServeWeb.StatusView {
+      val seatsText =
+        if (liveSeats.unbounded) "unbounded"
+        else "${liveSeats.availablePermits()} free / ${liveSeats.totalPermits}"
+      val summary =
+        listOf(
+          ServeWeb.Stat("Catalogs", catalogs.size.toString()),
+          ServeWeb.Stat("Live daemons running", liveDaemons.size.toString()),
+          ServeWeb.Stat("Active streams", activeStreams.toString()),
+          ServeWeb.Stat("Live seats", seatsText),
+          ServeWeb.Stat("Known sessions", sessions.activeCount().toString()),
+          ServeWeb.Stat("Uptime", formatDuration(uptimeSeconds)),
+        )
+      val config =
+        listOf(
+          ServeWeb.Stat("Access", if (isPublic) "public (open)" else "token-gated"),
+          ServeWeb.Stat("Bind", "$host:$port"),
+          ServeWeb.Stat("Trusted re-render", if (allowRenderTrusted) "on" else "off"),
+          ServeWeb.Stat("Trust store", if (trustStoreConfigured) "configured" else "none"),
+          ServeWeb.Stat(
+            "Catalog refresh",
+            if (catalogRefreshSeconds > 0) "${catalogRefreshSeconds}s" else "disabled",
+          ),
+          ServeWeb.Stat(
+            "Live seats",
+            if (liveSeats.unbounded) "unbounded" else liveSeats.totalPermits.toString(),
+          ),
+          ServeWeb.Stat("Render slots", renderSlots.toString()),
+          ServeWeb.Stat("Accept uploads", if (acceptBundlesEnabled) "on" else "off"),
+        )
+      return ServeWeb.StatusView(
+        version = BUNDLE_VERSION,
+        public = isPublic,
+        overallOk = failures.isEmpty(),
+        summary = summary,
+        config = config,
+        catalogs =
+          catalogs.map { c ->
+            ServeWeb.StatusCatalog(
+              id = c.id,
+              title = c.title ?: c.id,
+              listed = c.listed,
+              trust = c.trust,
+              previews = c.previews ?: 0,
+              live = c.live,
+              running = c.running,
+              degradation = c.degradation,
+              provenance =
+                c.provenance?.let { p ->
+                  buildString {
+                    append(p.repo).append('@').append(p.branch)
+                    p.generatedAt?.let { append(" · ").append(it) }
+                  }
+                },
+            )
+          },
+        servers =
+          liveDaemons.map { d ->
+            ServeWeb.StatusServer(
+              id = d.id,
+              label = d.label,
+              backend = backendOf(d.liveSeatWeight),
+              activeStreams = d.activeStreams,
+              upForText =
+                d.startedAt?.let { formatDuration(((nowMillis - it) / 1000).coerceAtLeast(0)) }
+                  ?: "—",
+            )
+          },
+        failures =
+          failures.map { f ->
+            ServeWeb.StatusFailure(
+              whenText = formatInstant(f.atEpochMillis),
+              session = f.session,
+              reason = f.reason,
+            )
+          },
+      )
+    }
+  }
+
+  /**
+   * Assemble the status snapshot. Catalog liveness is read purely from
+   * [ServeSessionRegistry.runningDaemons] (a non-resuming snapshot) so a poll never wakes an idle
+   * daemon: a pinned static baked host is always resident (present, no live stream); a live catalog
+   * is present-with-live-stream when its daemon is up and **absent** when suspended. Catalog
+   * metadata (title/trust/provenance) is read via [ServeSessionRegistry.peekHost] — also
+   * non-resuming — so a suspended live catalog shows minimal detail rather than being
+   * force-resumed.
+   */
+  private fun buildStatusData(): StatusData {
+    val running = sessions.runningDaemons()
+    val byId = running.associateBy { it.id }
+    val entries = catalogSessions.map { it to true } + appCatalogSessions.map { it to false }
+    val catalogs = entries.map { (id, listed) ->
+      val daemon = byId[id]
+      val host = sessions.peekHost(id)
+      val bundle = host?.let { catalogBundleHost(it) }
+      // Liveness from the resident snapshot only (never resume): absent ⇒ a suspended live
+      // catalog; present-with-live-stream ⇒ its daemon is up; present-without ⇒ static baked host.
+      val running = daemon?.hasLiveStream == true
+      val live = daemon == null || daemon.hasLiveStream
+      CatalogStat(
+        id = id,
+        listed = listed,
+        title = bundle?.title?.takeIf { it.isNotBlank() } ?: host?.label,
+        trust = bundle?.let { BundleVerifier.summary(it.trust) },
+        previews = host?.previews?.size,
+        live = live,
+        running = running,
+        degradation = host?.degradations?.firstOrNull()?.detail,
+        provenance = bundle?.provenance,
+      )
+    }
+    return StatusData(
+      nowMillis = System.currentTimeMillis(),
+      catalogs = catalogs,
+      running = running,
+      failures = daemonLog?.recent().orEmpty(),
     )
   }
 
@@ -1084,6 +1359,34 @@ class ServeHttpServer(
     private val JSON = Json { encodeDefaults = true }
 
     /**
+     * A compact human duration for the status page (`3d 4h`, `12m 5s`, `42s`). Deterministic given
+     * [seconds], so a fixture that passes fixed inputs renders a stable golden.
+     */
+    internal fun formatDuration(seconds: Long): String {
+      val s = seconds.coerceAtLeast(0)
+      val d = s / 86_400
+      val h = (s % 86_400) / 3_600
+      val m = (s % 3_600) / 60
+      val sec = s % 60
+      return when {
+        d > 0 -> "${d}d ${h}h"
+        h > 0 -> "${h}h ${m}m"
+        m > 0 -> "${m}m ${sec}s"
+        else -> "${sec}s"
+      }
+    }
+
+    /** An epoch-millis instant as `YYYY-MM-DD HH:MM UTC` for the status page's failure table. */
+    internal fun formatInstant(epochMillis: Long): String {
+      val dt =
+        java.time.OffsetDateTime.ofInstant(
+          java.time.Instant.ofEpochMilli(epochMillis),
+          java.time.ZoneOffset.UTC,
+        )
+      return java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'").format(dt)
+    }
+
+    /**
      * Content type for a Wasm-app asset by extension. `application/wasm` matters: the browser's
      * `WebAssembly.instantiateStreaming` rejects a wasm served as `octet-stream`. `.mjs`/`.js` must
      * be a JS type so the ES-module loader runs.
@@ -1151,6 +1454,104 @@ private data class VersionResponse(
   /** True when the box serves token-free (public preview server); false for a token-gated serve. */
   val public: Boolean,
 )
+
+/**
+ * `GET /status.json` (and `GET /status?format=json`): the machine-readable server-status snapshot a
+ * monitor or a Home Assistant REST sensor polls. Flat-ish on purpose so `status` and the grouped
+ * counts (`catalogs`, `daemons`) map cleanly onto sensor states/attributes; the detail lives in the
+ * `catalogList` / `runningServers` / `recentDaemonFailures` arrays.
+ */
+@Serializable
+private data class StatusResponse(
+  val schema: String = "compose-preview-serve/status/v1",
+  /** The host CLI's released version ([BUNDLE_VERSION]). */
+  val version: String,
+  /** True when the box serves token-free (public preview server). */
+  val public: Boolean,
+  /** `ok` when there are no recent daemon startup failures, else `degraded`. */
+  val status: String,
+  /** Seconds since the server started. */
+  val uptimeSeconds: Long,
+  val catalogs: CatalogSummaryDto,
+  val daemons: DaemonSummaryDto,
+  val config: ConfigDto,
+  val catalogList: List<CatalogDto>,
+  val runningServers: List<RunningServerDto>,
+  val recentDaemonFailures: List<FailureDto>,
+)
+
+@Serializable
+private data class CatalogSummaryDto(
+  val total: Int,
+  val listed: Int,
+  val unlisted: Int,
+  val trusted: Int,
+  val degraded: Int,
+)
+
+@Serializable
+private data class DaemonSummaryDto(
+  /** Total known sessions (resident + suspended). */
+  val known: Int,
+  /** Live (daemon-backed) render sessions up right now. */
+  val running: Int,
+  val activeStreams: Int,
+  /** Live-seat permit budget; `0` ⇒ unbounded. */
+  val liveSeatsTotal: Int,
+  /** Free permits; `-1` ⇒ unbounded. */
+  val liveSeatsAvailable: Int,
+  val liveSeatsUnbounded: Boolean,
+)
+
+@Serializable
+private data class ConfigDto(
+  val host: String,
+  val port: Int,
+  val allowRenderTrusted: Boolean,
+  val trustStore: Boolean,
+  val acceptBundles: Boolean,
+  /** Catalog auto-refresh interval; `0` ⇒ disabled. */
+  val catalogRefreshSeconds: Long,
+  val maxConcurrentRenders: Int,
+  /** Live-seat permit budget; `0` ⇒ unbounded. */
+  val liveSeats: Int,
+)
+
+@Serializable
+private data class CatalogDto(
+  val id: String,
+  val listed: Boolean,
+  val title: String? = null,
+  /**
+   * [BundleVerifier.summary] verdict, or null for a suspended live catalog / non-catalog session.
+   */
+  val trust: String? = null,
+  val previews: Int? = null,
+  /** Has a live daemon-backed render lane (running now, or a suspended live catalog). */
+  val live: Boolean,
+  /** A live daemon for this catalog is up right now. */
+  val running: Boolean,
+  val degradation: String? = null,
+  val repo: String? = null,
+  val branch: String? = null,
+  val generatedAt: String? = null,
+  /** Canonical catalog path (`/<id>/`). */
+  val path: String,
+)
+
+@Serializable
+private data class RunningServerDto(
+  val id: String,
+  val label: String,
+  /** `desktop` / `android`, derived from the live-seat weight. */
+  val backend: String,
+  val seatWeight: Int,
+  val activeStreams: Int,
+  val uptimeSeconds: Long? = null,
+)
+
+@Serializable
+private data class FailureDto(val atEpochMillis: Long, val session: String, val reason: String)
 
 @Serializable
 private data class PreviewsResponse(

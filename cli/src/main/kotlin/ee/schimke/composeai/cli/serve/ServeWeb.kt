@@ -101,6 +101,23 @@ object ServeWeb {
       background: #fdf0e3; color: #8a5300; border: 1px solid #f0d3a8; }
     .cp-degrade-icon { font-weight: 700; }
     .cp-degrade-item { display: inline; }
+    /* Status page (GET /status): stat tiles, config grid, and the catalog/daemon/failure tables. */
+    .cp-status-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+      gap: 10px; margin: 0 0 22px; max-width: 860px; }
+    .cp-stat { border: 1px solid #e3e3e8; border-radius: 10px; background: #fff; padding: 10px 14px; }
+    .cp-stat-key { font-size: 0.71rem; text-transform: uppercase; letter-spacing: 0.04em; color: #8a8a92; }
+    .cp-stat-val { margin-top: 3px; font-size: 1.05rem; font-weight: 600; color: #1b1b1f; }
+    .cp-status-sec { margin: 26px 0 12px; font-size: 1rem; font-weight: 600; }
+    .cp-status-scroll { overflow-x: auto; max-width: 100%; margin: 0 0 8px; }
+    .cp-table { border-collapse: collapse; font-size: 0.82rem; max-width: 860px; min-width: 100%; }
+    .cp-table th { text-align: left; font-weight: 600; color: #6b6b70; font-size: 0.72rem;
+      text-transform: uppercase; letter-spacing: 0.03em; padding: 6px 12px 6px 0;
+      border-bottom: 1px solid #e3e3e8; white-space: nowrap; }
+    .cp-table td { padding: 8px 12px 8px 0; border-bottom: 1px solid #f0f0f3; vertical-align: top; }
+    .cp-table tr:last-child td { border-bottom: none; }
+    .cp-table code { font-size: 0.76rem; padding: 0 4px; border-radius: 4px; background: #f0f0f3; }
+    .cp-ok { color: #1e7a34; font-weight: 600; }
+    .cp-muted { color: #8a8a92; font-size: 0.76rem; }
     .cp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
     .cp-syslist { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
     .cp-syslist .cp-imgwrap { min-height: 120px; }
@@ -1310,6 +1327,190 @@ object ServeWeb {
         """
           .trimIndent(),
     )
+  }
+
+  /** A labelled figure (a stat tile / config row) on the [statusPage]. */
+  data class Stat(val key: String, val value: String)
+
+  /** One published catalog's row on the [statusPage] — its trust, size, liveness, provenance. */
+  data class StatusCatalog(
+    val id: String,
+    val title: String,
+    val listed: Boolean,
+    /** [BundleVerifier.summary] verdict string, or null for a non-catalog session. */
+    val trust: String?,
+    val previews: Int,
+    /** The catalog has a live daemon lane (server-side re-render), even if idle right now. */
+    val live: Boolean,
+    /** A live daemon for this catalog is up **right now**. */
+    val running: Boolean,
+    /**
+     * Why the catalog is snapshot-only, when it is (a [ServeDegradation] detail); null otherwise.
+     */
+    val degradation: String?,
+    /** `repo@branch · date` provenance for a fetched catalog; null for a plain bundle. */
+    val provenance: String?,
+  )
+
+  /** One currently-running render daemon's row on the [statusPage]. */
+  data class StatusServer(
+    val id: String,
+    val label: String,
+    /** `desktop` / `android` (derived from the live-seat weight), or `static` for a baked host. */
+    val backend: String,
+    val activeStreams: Int,
+    /** Human "up for" duration, or "—" when unknown. */
+    val upForText: String,
+  )
+
+  /** One recent daemon startup failure's row on the [statusPage]. */
+  data class StatusFailure(val whenText: String, val session: String, val reason: String)
+
+  /**
+   * The rendered model for the [statusPage] — pre-formatted so the page is a pure projection (and
+   * the golden fixture is deterministic). [summary] are the headline stat tiles; [config] is the
+   * effective-configuration grid; the three lists are the catalog / running-daemon / recent-failure
+   * tables.
+   */
+  data class StatusView(
+    val version: String,
+    val public: Boolean,
+    /** No recent daemon startup failures — the healthy case (drives the header badge). */
+    val overallOk: Boolean,
+    val summary: List<Stat>,
+    val config: List<Stat>,
+    val catalogs: List<StatusCatalog>,
+    val servers: List<StatusServer>,
+    val failures: List<StatusFailure>,
+  )
+
+  /**
+   * A styled **server status** page (`GET /status`): what this `serve` host publishes and its trust
+   * / liveness, which render daemons are up right now, the effective configuration, and any recent
+   * daemon startup failures. The same snapshot is available as JSON at `/status.json` (or
+   * `/status?format=json`) for a monitor or a Home Assistant REST sensor — this is its human face.
+   *
+   * [token] threads through the generated links exactly as the landing/home renderers do: a
+   * token-gated server ([StatusView.public] false) keeps `?token=` on the gated links
+   * (`/status.json` and each catalog `/<system>/`) so clicking them doesn't hit the intentional
+   * 404; a `--public` server drops it (the routes need none). The always-ungated `/version` /
+   * `/healthz` links stay bare either way.
+   */
+  fun statusPage(view: StatusView, token: String): String {
+    fun esc(s: String) = WebEscaping.htmlEscape(s)
+    // Gated-link suffix: token-gated ⇒ carry the token; public ⇒ nothing (routes are open).
+    val suffix = if (view.public) "" else "?token=" + WebEscaping.urlEncodeSegment(token)
+    fun stat(s: Stat) =
+      "<div class=\"cp-stat\"><div class=\"cp-stat-key\">${esc(s.key)}</div>" +
+        "<div class=\"cp-stat-val\">${esc(s.value)}</div></div>"
+
+    val healthBadge =
+      if (view.overallOk) " <span class=\"cp-badge cp-badge--trusted\">✓ healthy</span>"
+      else
+        " <span class=\"cp-badge cp-badge--unverified\">⚠ ${view.failures.size} recent " +
+          "daemon failure(s)</span>"
+
+    val summaryGrid = view.summary.joinToString("\n") { stat(it) }
+    val configGrid = view.config.joinToString("\n") { stat(it) }
+
+    val catalogRows =
+      if (view.catalogs.isEmpty())
+        "<tr><td colspan=\"4\" class=\"cp-muted\">No catalogs configured on this server.</td></tr>"
+      else
+        view.catalogs.joinToString("\n") { c ->
+          val idSeg = WebEscaping.urlEncodeSegment(c.id)
+          val listed = if (c.listed) "" else " <span class=\"cp-muted\">(unlisted)</span>"
+          val prov = c.provenance?.let { "<div class=\"cp-muted\">${esc(it)}</div>" } ?: ""
+          val stateCell =
+            when {
+              c.running -> "<span class=\"cp-ok\">live · running</span>"
+              c.live -> "live · idle"
+              else -> "<span class=\"cp-muted\">baked PNG</span>"
+            }
+          val degrade = c.degradation?.let { "<div class=\"cp-muted\">${esc(it)}</div>" } ?: ""
+          "<tr>" +
+            "<td><a href=\"/$idSeg/$suffix\">${esc(c.title)}</a>$listed" +
+            "<div class=\"cp-muted\">${esc(c.id)}</div>$prov</td>" +
+            "<td>${compactTrustBadge(c.trust).ifBlank { "<span class=\"cp-muted\">—</span>" }}</td>" +
+            "<td>${c.previews}</td>" +
+            "<td>$stateCell$degrade</td>" +
+            "</tr>"
+        }
+
+    val serverRows =
+      if (view.servers.isEmpty())
+        "<tr><td colspan=\"4\" class=\"cp-muted\">No render daemons are running right now — they " +
+          "start on demand and suspend when idle.</td></tr>"
+      else
+        view.servers.joinToString("\n") { s ->
+          "<tr>" +
+            "<td>${esc(s.label)}<div class=\"cp-muted\">${esc(s.id)}</div></td>" +
+            "<td><code>${esc(s.backend)}</code></td>" +
+            "<td>${s.activeStreams}</td>" +
+            "<td>${esc(s.upForText)}</td>" +
+            "</tr>"
+        }
+
+    val failureSection =
+      if (view.failures.isEmpty()) "<p class=\"cp-sub\">No recent daemon startup failures.</p>"
+      else
+        "<div class=\"cp-status-scroll\"><table class=\"cp-table\">" +
+          "<thead><tr><th>When</th><th>Session</th><th>Reason</th></tr></thead><tbody>" +
+          view.failures.joinToString("\n") { f ->
+            "<tr><td>${esc(f.whenText)}</td><td>${esc(f.session)}</td>" +
+              "<td>${esc(f.reason)}</td></tr>"
+          } +
+          "</tbody></table></div>"
+
+    val ver = " <span class=\"cp-about-ver\">v${esc(view.version)}</span>"
+    val mode = if (view.public) "public (open)" else "token-gated"
+    val body =
+      """
+      <p class="cp-head">Server status$healthBadge</p>
+      <p class="cp-sub">compose-preview serve · $mode$ver</p>
+      <section class="cp-about">
+        <p class="cp-about-title">Status &amp; monitoring</p>
+        <p class="cp-about-body">A live snapshot of this preview server — the catalogs it publishes,
+          the render daemons running now, its configuration, and recent daemon startup failures. The
+          same data is available as JSON for a monitor or Home Assistant sensor.</p>
+        <p class="cp-about-links">
+          <a href="/status.json$suffix">/status.json</a> ·
+          <a href="/version">/version</a> ·
+          <a href="/healthz">/healthz</a>
+        </p>
+      </section>
+
+      <div class="cp-status-grid">
+      $summaryGrid
+      </div>
+
+      <p class="cp-status-sec">Catalogs</p>
+      <div class="cp-status-scroll"><table class="cp-table">
+        <thead><tr><th>Catalog</th><th>Trust</th><th>Previews</th><th>State</th></tr></thead>
+        <tbody>
+        $catalogRows
+        </tbody>
+      </table></div>
+
+      <p class="cp-status-sec">Running servers</p>
+      <div class="cp-status-scroll"><table class="cp-table">
+        <thead><tr><th>Session</th><th>Backend</th><th>Streams</th><th>Up for</th></tr></thead>
+        <tbody>
+        $serverRows
+        </tbody>
+      </table></div>
+
+      <p class="cp-status-sec">Configuration</p>
+      <div class="cp-status-grid">
+      $configGrid
+      </div>
+
+      <p class="cp-status-sec">Recent daemon startup failures</p>
+      $failureSection
+      """
+        .trimIndent()
+
+    return document(title = "Server status — compose-preview", body = body)
   }
 
   /**

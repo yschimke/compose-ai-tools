@@ -66,6 +66,28 @@ class ServeSessionRegistry(
     @Volatile var lastAccess: Long,
     /** Open long-lived holders (e.g. WebSocket connections) keeping this session resident. */
     @Volatile var leases: Int = 0,
+    /**
+     * Wall-clock when [host] last transitioned suspended→resident (null while suspended). The basis
+     * for the "up for" figure the `/status` page shows per running daemon; reset each time the
+     * daemon is re-opened so it reflects the *current* run, not the session's first-ever open.
+     */
+    @Volatile var startedAt: Long? = null,
+  )
+
+  /**
+   * A read-only snapshot of one **currently-resident** session (its host is live right now), for
+   * the `/status` page's "running servers" view. [hasLiveStream] distinguishes a live daemon-backed
+   * host (a render daemon is up) from a pinned static bundle host that merely replays baked PNGs.
+   */
+  data class RunningDaemon(
+    val id: String,
+    val label: String,
+    val pinned: Boolean,
+    val hasLiveStream: Boolean,
+    val liveSeatWeight: Int,
+    val activeStreams: Int,
+    val leases: Int,
+    val startedAt: Long?,
   )
 
   /** A live hold on a session that keeps it from being suspended until [close] (idempotent). */
@@ -134,7 +156,10 @@ class ServeSessionRegistry(
       val prior = sessions[sessionId]
       // Registered sessions (the current-checkout default, bundle/catalog hosts) are never GC'd:
       // forked = false keeps them permanently resumable regardless of pinning.
-      sessions[sessionId] = Entry(state, host, pinned, forked = false, lastAccess = clock())
+      sessions[sessionId] =
+        Entry(state, host, pinned, forked = false, lastAccess = clock()).also {
+          if (host != null) it.startedAt = clock()
+        }
       prior?.host?.takeIf { it !== host }
     }
     replaced?.let { runCatching { it.close() } }
@@ -219,6 +244,7 @@ class ServeSessionRegistry(
           now - entry.lastAccess >= idleTimeoutMillis
       ) {
         entry.host = null
+        entry.startedAt = null
         runCatching { host.close() }
         suspended++
       }
@@ -253,6 +279,13 @@ class ServeSessionRegistry(
     }
     stale.size
   }
+
+  /**
+   * The resident host for [sessionId] **without** resuming a suspended one — for read-only status
+   * introspection (`/status`) that must not wake an idle daemon (a monitor/Home Assistant poll
+   * shouldn't keep every live catalog's daemon alive). Null when unknown or currently suspended.
+   */
+  fun peekHost(sessionId: String): ServeHost? = lock.withLock { sessions[sessionId]?.host }
 
   /** Total known sessions (resident + suspended). */
   fun activeCount(): Int = lock.withLock { sessions.size }
@@ -300,7 +333,34 @@ class ServeSessionRegistry(
     val state = entry.state ?: return null
     val resumed = open(state) ?: return null
     entry.host = resumed
+    entry.startedAt = clock()
     return resumed
+  }
+
+  /**
+   * A snapshot of every **currently-resident** session (host live right now) for the `/status`
+   * page's "running servers" view — id-sorted for stable output. Reads each host's cheap
+   * [ServeHost.activeStreamCount]/[ServeHost.hasLiveStream] getters under the lock (neither
+   * re-enters the registry). Suspended sessions are omitted; a caller wanting only live *daemons*
+   * filters on [RunningDaemon.hasLiveStream] (a pinned static bundle host is resident but runs no
+   * daemon).
+   */
+  fun runningDaemons(): List<RunningDaemon> = lock.withLock {
+    sessions
+      .mapNotNull { (id, entry) ->
+        val host = entry.host ?: return@mapNotNull null
+        RunningDaemon(
+          id = id,
+          label = host.label,
+          pinned = entry.pinned,
+          hasLiveStream = host.hasLiveStream,
+          liveSeatWeight = entry.state?.liveSeatWeight ?: 1,
+          activeStreams = runCatching { host.activeStreamCount() }.getOrDefault(0),
+          leases = entry.leases,
+          startedAt = entry.startedAt,
+        )
+      }
+      .sortedBy { it.id }
   }
 
   private companion object {

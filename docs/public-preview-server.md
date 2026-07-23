@@ -365,18 +365,60 @@ catalogs, one card each; the `--catalogs-unlisted` app catalogs are served at `/
 indexed here); otherwise the served module's preview grid · `GET /p/{id}?session=<s>` viewer ·
 `GET /render/{id}.png` PNG ·
 `GET /api/previews` JSON (now includes `trust`) · `POST /bundles/{name}` upload (returns `trust`) ·
-`GET /wasm/{system}/…` in-browser CMP app (ungated static assets) · `GET /healthz` ·
+`GET /wasm/{system}/…` in-browser CMP app (ungated static assets) · `GET /status` server status
+(HTML, or JSON with `?format=json`) · `GET /status.json` server status JSON · `GET /healthz` ·
 `GET /version`. In `--public` mode all are open **and links carry no `?token`** (the token gates
 nothing); otherwise the token gates everything but `/healthz`, `/version`, and `/wasm/` (static, no
-session data) and is threaded through every generated link.
+session data) and is threaded through every generated link. `/status` is gated like the API routes
+(open in `--public`, else token-required) — its running-daemon + config detail is more sensitive
+than the bare `/version`/`/healthz`, so a private box keeps it behind the token.
+
+`GET /status` is the operator/observer view of a running host: the catalogs it publishes (with their
+trust verdict, preview count, and whether each is served live or as baked PNGs), the render daemons
+up **right now** (backend, active streams, how long each has been up), the effective configuration
+(access mode, trusted re-render, live-seat budget, catalog-refresh interval, …), and a bounded log of
+**recent daemon startup failures** (the render/live daemon a session tried to open but couldn't — the
+reason that was previously only logged to stderr). The status snapshot never wakes an idle daemon: a
+catalog's liveness is read from the resident-session snapshot, not by resuming it, so a monitor can
+poll it freely.
+
+![The /status page — catalogs and their trust/liveness, the render daemons running now, the effective config, and recent daemon startup failures](images/serve-status.png)
+
+`GET /status.json` (equivalently `GET /status?format=json`) is the machine-readable
+form — a stable schema built for a monitor or a **Home Assistant** REST sensor:
+
+```json
+{ "schema": "compose-preview-serve/status/v1", "version": "0.16.5", "public": true,
+  "status": "ok", "uptimeSeconds": 3600,
+  "catalogs": { "total": 5, "listed": 4, "unlisted": 1, "trusted": 4, "degraded": 1 },
+  "daemons": { "known": 6, "running": 1, "activeStreams": 0,
+    "liveSeatsTotal": 5, "liveSeatsAvailable": 5, "liveSeatsUnbounded": false },
+  "config": { "host": "0.0.0.0", "port": 8080, "allowRenderTrusted": true, "trustStore": true,
+    "acceptBundles": false, "catalogRefreshSeconds": 600, "maxConcurrentRenders": 4, "liveSeats": 5 },
+  "catalogList": [ { "id": "compose-m3", "listed": true, "trust": "branch:…", "previews": 42,
+    "live": true, "running": false, "path": "/compose-m3/" } ],
+  "runningServers": [], "recentDaemonFailures": [] }
+```
+
+A Home Assistant REST sensor reads the top-level `status` (`ok`/`degraded`) as its state and lifts
+the grouped counts + arrays as attributes, e.g.:
+
+```yaml
+sensor:
+  - platform: rest
+    name: Preview server
+    resource: https://preview.coo.ee/status.json
+    value_template: "{{ value_json.status }}"
+    json_attributes: [version, uptimeSeconds, catalogs, daemons, recentDaemonFailures]
+```
 
 Every session-selecting route also has a **path form** where the leading `/{system}` segment picks
 the session instead of `?session=`: `GET /{system}/` index · `GET /{system}/p/{id}` viewer ·
 `GET /{system}/render/{id}.png` PNG · `GET /{system}/api/previews` JSON · `GET /{system}/bundle.zip`
 · `WS /{system}/ws/{id}` stream. This is the canonical public URL for a published catalog
 (`/compose-m3/`, `/meshcore-mobile/`, …); the `?session=` form stays for back-compat. The constant
-routes (`/healthz`, `/version`, `/bundle.zip`, `/wasm/…`) outrank the `/{system}` catch-all, so an
-unknown single segment just 404s like a bad session.
+routes (`/healthz`, `/version`, `/status`, `/status.json`, `/bundle.zip`, `/wasm/…`) outrank the
+`/{system}` catch-all, so an unknown single segment just 404s like a bad session.
 
 `GET /version` is the host's machine-readable identity — ungated so a deployer, Watchtower check, or
 the design-artifacts gallery can confirm which build is live without a token:
