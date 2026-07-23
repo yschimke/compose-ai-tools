@@ -60,7 +60,7 @@ https://preview.example.com/?token=<TOKEN>
 
 Endpoints (token via `?token=` or `X-Compose-Preview-Token`):
 `GET /` index · `GET /p/{id}` viewer · `GET /render/{id}.png` PNG · `GET /healthz`
-(unauthenticated).
+liveness · `GET /readyz` readiness (both unauthenticated).
 
 ## Operating it
 

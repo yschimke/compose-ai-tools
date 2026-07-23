@@ -45,6 +45,8 @@ Endpoints (all token-gated except `/healthz`), token via `?token=` or the
 - `GET /render/{id}.png?token=…` — PNG bytes (supports overrides, e.g. `&fontScale=1.3`)
 - `GET /api/previews?token=…` — preview list as JSON
 - `GET /healthz` — liveness (unauthenticated; used by the startup probe)
+- `GET /readyz` — readiness: green only once a preview actually renders (unauthenticated; the
+  `deploy/image` docker-rollout gate uses this instead of `/healthz`)
 
 ## Manual deploy (without deploy.sh)
 

@@ -37,7 +37,7 @@
 		# lands on a just-started replica before it's accepting connections gets a dial
 		# refusal, which Caddy retries against the healthy replica within
 		# lb_try_duration (nothing was written upstream yet, so this is safe to retry).
-		# docker-rollout keeps the OLD replica up until the new one passes its /healthz
+		# docker-rollout keeps the OLD replica up until the new one passes its /readyz
 		# healthcheck, so there's always a warm backend to retry onto. Deliberately no
 		# passive `fail_duration` / `unhealthy_status`: in steady state there's a single
 		# backend, and benching it on a transient error or an app-level 5xx would
