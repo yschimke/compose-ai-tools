@@ -107,6 +107,7 @@ class ServeBundleHost(
           overrides = readOverrides(id),
           state = meta?.state,
           theme = meta?.theme,
+          props = meta?.props,
           section = meta?.section,
           group = meta?.group,
           catalogOrder = meta?.order,

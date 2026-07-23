@@ -144,4 +144,100 @@ class ServeWebTest {
     val viewer = ServeWeb.viewerPage(plain[0], token = "t", basePath = "/bundle", siblings = plain)
     assertFalse(viewer.contains("class=\"cp-states\""), "no switcher without state metadata")
   }
+
+  // Button/Filled with its default render plus two props-axis variants (an RTL render and an ar-XB
+  // pseudo-locale), each in light + dark — the shape the compose-m3 catalog folds via `variants`.
+  private val buttonVariants =
+    listOf(
+      ServePreview(
+        "button-filled__ideal__default__light",
+        "Filled",
+        state = "default",
+        theme = "light",
+      ),
+      ServePreview(
+        "button-filled__ideal__default__dark",
+        "Filled",
+        state = "default",
+        theme = "dark",
+      ),
+      ServePreview(
+        "button-filled__ideal__default__light__direction-rtl",
+        "Filled · RTL",
+        state = "default",
+        theme = "light",
+        props = mapOf("direction" to "rtl"),
+      ),
+      ServePreview(
+        "button-filled__ideal__default__dark__direction-rtl",
+        "Filled · RTL",
+        state = "default",
+        theme = "dark",
+        props = mapOf("direction" to "rtl"),
+      ),
+      ServePreview(
+        "button-filled__ideal__default__light__locale-ar-xb",
+        "Filled · ar-XB",
+        state = "default",
+        theme = "light",
+        props = mapOf("locale" to "ar-XB"),
+      ),
+      ServePreview(
+        "button-filled__ideal__default__dark__locale-ar-xb",
+        "Filled · ar-XB",
+        state = "default",
+        theme = "dark",
+        props = mapOf("locale" to "ar-XB"),
+      ),
+    )
+
+  @Test
+  fun `the grid folds props variants into the default card`() {
+    val html =
+      ServeWeb.landingPage("compose-m3", buttonVariants, token = "t", basePath = "/compose-m3")
+
+    // Exactly one card — the default (a light/dark swap card), no separate RTL / locale card.
+    assertEquals(1, Regex("class=\"cp-card\"").findAll(html).count(), "one card per component")
+    assertTrue(html.contains("button-filled__ideal__default__light"), "default render is the card")
+    assertFalse(html.contains("direction-rtl"), "the RTL variant is folded out of the grid")
+    assertFalse(html.contains("locale-ar-xb"), "the locale variant is folded out of the grid")
+  }
+
+  @Test
+  fun `the viewer renders a same-theme variant switcher with the current variant active`() {
+    val current = buttonVariants[0] // default, light
+    val html =
+      ServeWeb.viewerPage(current, token = "t", basePath = "/compose-m3", siblings = buttonVariants)
+
+    assertTrue(html.contains("aria-label=\"Component variant\""), "variant switcher rendered")
+    val nav = html.substringAfter("aria-label=\"Component variant\"").substringBefore("</nav>")
+    // Links the SAME-THEME (light) RTL + locale variants…
+    assertTrue(
+      nav.contains("/compose-m3/p/button-filled__ideal__default__light__direction-rtl"),
+      "switcher links the same-theme RTL variant",
+    )
+    // …and never the dark render (that would jump the visitor's theme).
+    assertFalse(nav.contains("__dark__direction-rtl"), "switcher stays within the current theme")
+    // The default is marked active, and the variants carry human labels.
+    assertTrue(nav.contains("aria-current=\"page\">Default</a>"), "the default is marked active")
+    assertTrue(
+      nav.contains(">RTL</a>") && nav.contains(">Locale ar-XB</a>"),
+      "props variants render human labels",
+    )
+  }
+
+  @Test
+  fun `a component with no props variants renders no variant switcher`() {
+    val plain =
+      listOf(
+        ServePreview("button__ideal__default__light", "button", state = "default", theme = "light"),
+        ServePreview("button__ideal__default__dark", "button", state = "default", theme = "dark"),
+      )
+    val html =
+      ServeWeb.viewerPage(plain[0], token = "t", basePath = "/compose-m3", siblings = plain)
+    assertFalse(
+      html.contains("aria-label=\"Component variant\""),
+      "no variant switcher for a component without props variants",
+    )
+  }
 }
