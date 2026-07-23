@@ -18,17 +18,17 @@ package ee.schimke.composeai.preview
  * captures — one forced light (`UI_MODE_NIGHT_NO`) and one forced dark (`UI_MODE_NIGHT_YES`) —
  * regardless of the theme the `@Preview` itself declares. Both land as ordinary uiMode variants
  * (`…__light` / `…__dark`), which the catalog join already folds onto one component
- * (`mergeByFunction`) and the serve grid already presents as a single Light/Dark swap card. So night
- * mode has a baked sticker to serve and navigation stays instant and daemon-free; the daemon is left
- * for overrides a static PNG genuinely can't represent (device, font scale, locale, orientation,
- * author knobs).
+ * (`mergeByFunction`) and the serve grid already presents as a single Light/Dark swap card. So
+ * night mode has a baked sticker to serve and navigation stays instant and daemon-free; the daemon
+ * is left for overrides a static PNG genuinely can't represent (device, font scale, locale,
+ * orientation, author knobs).
  *
  * ## Use
  *
  * Put it on a `@Preview` whose body renders through a theme that honours the system night bit
- * (`isSystemInDarkTheme()` / the `uiMode` night qualifier) — an app screen wrapped in the app theme,
- * a themed component. A hard-coded single-palette body renders identically in both passes (two equal
- * stickers), so annotate only previews whose theme actually reacts to night mode.
+ * (`isSystemInDarkTheme()` / the `uiMode` night qualifier) — an app screen wrapped in the app
+ * theme, a themed component. A hard-coded single-palette body renders identically in both passes
+ * (two equal stickers), so annotate only previews whose theme actually reacts to night mode.
  *
  * ```
  * @Preview
