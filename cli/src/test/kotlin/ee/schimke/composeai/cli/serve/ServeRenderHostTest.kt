@@ -60,6 +60,56 @@ class ServeRenderHostTest {
   }
 
   @Test
+  fun `a render backs off to Busy when the daemon lock is held, not blocking the render budget`() {
+    // The host is built with renderTimeoutSeconds = 30. A cold render holding the per-daemon lock
+    // for that long must NOT make a concurrent render block for the whole budget (which, on the
+    // live server, pins a shared HTTP render slot and saturates the queue). It must back off to
+    // Busy near the bounded wait instead.
+    val firstHoldsLock = CountDownLatch(1)
+    val release = CountDownLatch(1)
+    val session =
+      FakeRenderSession(
+        newRenderRoot(),
+        renderHook = { call, emit ->
+          if (call == 1) {
+            // We're inside renderNow, i.e. under renderLock — signal, then block to model a slow
+            // cold render holding the lock.
+            firstHoldsLock.countDown()
+            release.await(30, TimeUnit.SECONDS)
+          }
+          emit("png-$call".toByteArray())
+        },
+      )
+    host(session).use { h ->
+      val pool = Executors.newSingleThreadExecutor()
+      try {
+        // Thread A: grabs the lock and blocks in its render.
+        pool.submit { h.render(previewId, PreviewOverrides(uiMode = UiMode.LIGHT)) }
+        assertTrue(firstHoldsLock.await(10, TimeUnit.SECONDS), "first render should take the lock")
+
+        // Thread B (this thread): a DIFFERENT override, so no cache hit — it must contend for the
+        // lock and back off rather than wait out the 30s budget.
+        val startNs = System.nanoTime()
+        val outcome = h.render(previewId, PreviewOverrides(uiMode = UiMode.DARK))
+        val elapsedMs = (System.nanoTime() - startNs) / 1_000_000
+
+        assertTrue(
+          outcome is RenderOutcome.Busy,
+          "a render blocked on the busy daemon must back off to Busy, got $outcome",
+        )
+        assertTrue(
+          elapsedMs < 10_000,
+          "Busy must return near the bounded wait (~2s), not the 30s budget; took ${elapsedMs}ms",
+        )
+      } finally {
+        release.countDown()
+        pool.shutdown()
+        pool.awaitTermination(30, TimeUnit.SECONDS)
+      }
+    }
+  }
+
+  @Test
   fun `gesturesRenderable follows the daemon's advertised gesture capability`() {
     // An Android-style backend advertises "gestures" ⇒ the viewer offers the hint control.
     host(FakeRenderSession(newRenderRoot(), supportedOverrides = listOf("gestures"))).use { h ->

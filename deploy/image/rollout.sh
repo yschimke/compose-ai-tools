@@ -4,7 +4,8 @@
 # This replaces Watchtower's in-place stop→recreate of `preview` (which 502s for
 # the whole ~1 min the new container spends booting + warm-rendering) with a
 # rolling swap: pull the new image, start a SECOND preview replica alongside the
-# live one, wait for its /healthz healthcheck to pass, let Caddy drain traffic
+# live one, wait for its /readyz healthcheck to pass (green only once a preview
+# actually renders — not merely once the port binds), let Caddy drain traffic
 # onto it (see Caddyfile — dynamic upstreams + passive health), then retire the
 # old replica. Existing traffic is served the entire time.
 #

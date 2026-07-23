@@ -7,8 +7,10 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
 import ee.schimke.composeai.daemon.protocol.RemoteComposeProfile
 import ee.schimke.composeai.daemon.protocol.RemoteHostAction
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
+import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
 import ee.schimke.composeai.data.remotecompose.RemoteComposePayload
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlinx.serialization.json.Json
 
 /**
  * Process-static state holder for the Remote Compose connector.
@@ -49,6 +51,13 @@ object RemoteComposeController {
 
   private val profileState: MutableState<RemoteComposeProfile?> = mutableStateOf(null)
 
+  // Editable named-value knobs the current render declared, keyed by name for dedup with first-seen
+  // order preserved (a re-declaration during recomposition replaces the entry in place). Mirrors
+  // `PreviewOverrideController.declarationsState` — the auto-capture surface the viewer renders
+  // controls from.
+  private val declarationsState: MutableState<Map<String, RemoteComposeKnobDeclaration>> =
+    mutableStateOf(emptyMap())
+
   /**
    * Optional allow-list for [recordHostAction]. `null` accepts every action; non-null filters by
    * `payload` membership. Snapshot of the override's `acceptedHostActions`.
@@ -58,6 +67,18 @@ object RemoteComposeController {
   /** Hooks notified whenever the named-value map or host-action buffer changes. */
   private val listeners: MutableList<() -> Unit> = CopyOnWriteArrayList()
 
+  /** Bridge scope key for a render that carries no previewId; mirrors the bridge's own sentinel. */
+  private const val NO_PREVIEW_SCOPE: String = ""
+
+  /**
+   * previewId of the render currently composing, stamped by the around-composable via [beginRender].
+   * Scopes the [bridgeForwarder] forwards so a pooled-sandbox run (`sandboxCount > 1`) doesn't leak
+   * one preview's declarations into another's host-side snapshot.
+   */
+  @Volatile private var activePreviewId: String? = null
+
+  private val json = Json { encodeDefaults = true }
+
   val namedValues: State<Map<String, RemoteNamedValue>>
     get() = namedValuesState
 
@@ -66,6 +87,65 @@ object RemoteComposeController {
 
   val profile: State<RemoteComposeProfile?>
     get() = profileState
+
+  /**
+   * Record an editable knob the preview just declared (via a `LocalRemoteComposeHost` named-value
+   * read, or an explicit `declareKnob`). Keyed by [RemoteComposeKnobDeclaration.name]; a repeat
+   * declaration of the same name (recomposition) replaces the prior entry while keeping its position
+   * so the viewer's control list stays stable. Idempotent — re-recording an identical declaration
+   * doesn't notify listeners. Mirrors `PreviewOverrideController.record`.
+   */
+  fun recordDeclaration(declaration: RemoteComposeKnobDeclaration) {
+    val current = declarationsState.value
+    if (current[declaration.name] != declaration) {
+      // LinkedHashMap preserves first-seen order even when replacing an existing name's value.
+      val next = LinkedHashMap(current)
+      next[declaration.name] = declaration
+      declarationsState.value = next
+      listeners.toList().forEach { it() }
+    }
+    // Cross-classloader forward for the Android sandbox. Serialise only when the bridge is present
+    // (a plain app / desktop daemon skips this entirely). Always forwarded — even when the in-CL
+    // value is unchanged — so a host reset the sandbox didn't observe is repopulated.
+    bridgeForwarder?.record(
+      bridgeScope(),
+      declaration.name,
+      json.encodeToString(RemoteComposeKnobDeclaration.serializer(), declaration),
+    )
+  }
+
+  /**
+   * Stamp the previewId whose composition is about to run, so subsequent [recordDeclaration] /
+   * [clearDeclarations] forwards land in this preview's bridge scope (not a concurrently-rendering
+   * preview's, under a pooled sandbox). Called by the around-composable before preview content
+   * composes; `null` (a render with no previewId) maps to the bridge's no-preview scope. Mirrors
+   * `PreviewOverrideController.beginRender`.
+   */
+  fun beginRender(previewId: String?) {
+    activePreviewId = previewId
+  }
+
+  /** Bridge scope key for the active render — the no-preview sentinel when unset. */
+  private fun bridgeScope(): String = activePreviewId ?: NO_PREVIEW_SCOPE
+
+  /** The knobs declared so far this render, in declaration order. */
+  fun declarations(): List<RemoteComposeKnobDeclaration> = declarationsState.value.values.toList()
+
+  /**
+   * Drop the recorded declarations at the start of a render pass, keeping named values / profile /
+   * host actions, so a held session re-rendering with a shrunk knob set doesn't carry stale
+   * declarations from an earlier pass. Called from [RemoteComposeOverrideExtension] before the pass
+   * re-records via the `named*` reads' `SideEffect`s. Mirrors
+   * `PreviewOverrideController.clearDeclarations`.
+   */
+  fun clearDeclarations() {
+    // Always reset the bridge scope (even when the in-classloader set is already empty) so a
+    // shrinking list's stale knobs drop from a reused sandbox's bridge entries — mirrors
+    // `PreviewOverrideController.clearDeclarations`.
+    bridgeForwarder?.reset(bridgeScope())
+    if (declarationsState.value.isEmpty()) return
+    declarationsState.value = emptyMap()
+  }
 
   /**
    * Read [name]'s current value, or `null` if no override / write has bound it. Caller decides the
@@ -154,9 +234,67 @@ object RemoteComposeController {
    * `PermissionsController.resetForNewSession`.
    */
   fun resetForNewSession() {
+    val scope = bridgeScope()
     namedValuesState.value = emptyMap()
     hostActionsState.value = emptyList()
     profileState.value = null
+    declarationsState.value = emptyMap()
+    activePreviewId = null
     acceptedActionPayloads = null
+    bridgeForwarder?.reset(scope)
+  }
+
+  /**
+   * Resolved once per JVM, cached even on failure. `null` means the bridge class isn't on the
+   * classpath (plain apps, the desktop daemon, connector unit tests) — every forward no-ops. Mirrors
+   * `PreviewOverrideController`'s `BridgeForwarder`.
+   */
+  private val bridgeForwarder: BridgeForwarder? by lazy { BridgeForwarder.tryLoad() }
+
+  /**
+   * Reflective handle to `ee.schimke.composeai.daemon.bridge.SandboxRemoteComposeBridge`, which lives
+   * in `:daemon:android` (a downstream module this connector does NOT depend on). Reached via
+   * `Class.forName` — same shape as `PreviewOverrideController`'s `BridgeForwarder`. In the
+   * production Android daemon the controller is sandbox-loaded and the bridge package is
+   * do-not-acquire on the sandbox classloader, so both sides observe the same single bridge instance.
+   */
+  private class BridgeForwarder(
+    private val recordMethod: java.lang.reflect.Method,
+    private val resetMethod: java.lang.reflect.Method,
+  ) {
+    fun record(previewId: String, name: String, json: String) {
+      try {
+        recordMethod.invoke(null, previewId, name, json)
+      } catch (_: ReflectiveOperationException) {
+        // Drop — the in-classloader controller state still serves the same-CL fast path.
+      }
+    }
+
+    fun reset(previewId: String) {
+      try {
+        resetMethod.invoke(null, previewId)
+      } catch (_: ReflectiveOperationException) {
+        // Same defensive drop.
+      }
+    }
+
+    companion object {
+      private const val BRIDGE_FQN: String =
+        "ee.schimke.composeai.daemon.bridge.SandboxRemoteComposeBridge"
+
+      fun tryLoad(): BridgeForwarder? =
+        try {
+          val cls = Class.forName(BRIDGE_FQN, true, RemoteComposeController::class.java.classLoader)
+          BridgeForwarder(
+            recordMethod =
+              cls.getMethod("record", String::class.java, String::class.java, String::class.java),
+            resetMethod = cls.getMethod("reset", String::class.java),
+          )
+        } catch (_: ClassNotFoundException) {
+          null
+        } catch (_: NoSuchMethodException) {
+          null
+        }
+    }
   }
 }

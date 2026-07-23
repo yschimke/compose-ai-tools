@@ -412,7 +412,8 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
         <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
       <body>
-              <p class="cp-head"><a href="/?token=demo-token-fixture&session=compose-m3">← previews</a> <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ branch:yschimke/compose-ai-tools@design-artifacts/compose-m3</span></p>
+        <main class="cp-main">
+              <h1 class="cp-head"><a href="/?token=demo-token-fixture&session=compose-m3">← previews</a> <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ branch:yschimke/compose-ai-tools@design-artifacts/compose-m3</span></h1>
       <p class="cp-sub" title="com.example.CardPreview">Card</p>
       
       <div class="cp-viewer-bar">
@@ -1748,5 +1749,6 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   new MutationObserver(refresh).observe(root, { attributes: true, attributeFilter: ["data-mode"] });
   refresh();
 })();</script>
+        </main>
       </body>
     </html>

@@ -214,9 +214,18 @@ class ServeCatalogLiveHost(
    * re-render; an unmapped Android-only variant always replays baked.
    */
   override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
-    val daemonId = daemonIdForOverrideRender(previewId, overrides)
-    return if (daemonId != null) liveHostFor(daemonId).render(daemonId, overrides)
-    else baked.render(previewId, overrides)
+    val daemonId =
+      daemonIdForOverrideRender(previewId, overrides) ?: return baked.render(previewId, overrides)
+    // Only await the daemon when it's warm and free. A cold Android render can take minutes, and
+    // blocking the browse — and the HTTP render slot it holds — on it is what saturates the whole
+    // server. A not-yet-warm daemon serves baked now and warms in the background; a warm daemon
+    // that reports [RenderOutcome.Busy] (the bounded-lock back-off — another render in flight)
+    // likewise falls back to baked instead of pinning a slot. This mirrors [renderSvg]'s warm gate.
+    if (daemonWarmOrScheduling(daemonId)) {
+      val live = liveHostFor(daemonId).render(daemonId, overrides)
+      if (live !is RenderOutcome.Busy) return live
+    }
+    return baked.render(previewId, overrides)
   }
 
   /**

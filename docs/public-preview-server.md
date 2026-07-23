@@ -373,9 +373,11 @@ indexed here); otherwise the served module's preview grid · `GET /p/{id}?sessio
 `GET /render/{id}.png` PNG ·
 `GET /api/previews` JSON (now includes `trust`) · `POST /bundles/{name}` upload (returns `trust`) ·
 `GET /wasm/{system}/…` in-browser CMP app (ungated static assets) · `GET /status` server status
-(HTML, or JSON with `?format=json`) · `GET /status.json` server status JSON · `GET /healthz` ·
-`GET /version`. In `--public` mode all are open **and links carry no `?token`** (the token gates
-nothing); otherwise the token gates everything but `/healthz`, `/version`, and `/wasm/` (static, no
+(HTML, or JSON with `?format=json`) · `GET /status.json` server status JSON · `GET /healthz`
+liveness · `GET /readyz` readiness (green only once a preview actually renders — the docker-rollout
+gate) · `GET /version`. In `--public` mode all are open **and links carry no `?token`** (the token
+gates nothing); otherwise the token gates everything but `/healthz`, `/readyz`, `/version`, and
+`/wasm/` (static, no
 session data) and is threaded through every generated link. `/status` is gated like the API routes
 (open in `--public`, else token-required) — its running-daemon + config detail is more sensitive
 than the bare `/version`/`/healthz`, so a private box keeps it behind the token.
@@ -424,7 +426,7 @@ the session instead of `?session=`: `GET /{system}/` index · `GET /{system}/p/{
 `GET /{system}/render/{id}.png` PNG · `GET /{system}/api/previews` JSON · `GET /{system}/bundle.zip`
 · `WS /{system}/ws/{id}` stream. This is the canonical public URL for a published catalog
 (`/compose-m3/`, `/meshcore-mobile/`, …); the `?session=` form stays for back-compat. The constant
-routes (`/healthz`, `/version`, `/status`, `/status.json`, `/bundle.zip`, `/wasm/…`) outrank the
+routes (`/healthz`, `/readyz`, `/version`, `/status`, `/status.json`, `/bundle.zip`, `/wasm/…`) outrank the
 `/{system}` catch-all, so an unknown single segment just 404s like a bad session.
 
 `GET /version` is the host's machine-readable identity — ungated so a deployer, Watchtower check, or

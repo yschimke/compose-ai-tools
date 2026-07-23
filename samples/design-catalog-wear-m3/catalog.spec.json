@@ -1,11 +1,16 @@
 {
   "$schema": "https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/design-artifacts/catalog.spec.schema.json",
-  "$comment": "Phase-0 catalog spec for Wear Compose Material 3. Code-led: the render is authoritative; the kit references are for the one-off seed import only. Wear is dark-first, so the primary modes are the round size breakpoints (small/large round) rather than light/dark. A component's `variants` fold extra state renders (pressed/focused/disabled/off/…) onto the same sticker: the default preview is what the grid shows, and each variant's render becomes a secondary image (tagged with its `state`) surfaced in the single-component view, so state stickers live under their parent instead of a flat 'States' group.",
+  "$comment": "Phase-0 catalog spec for Wear Compose Material 3. Code-led: the render is authoritative; the kit references are for the one-off seed import only. Wear is dark-first, so `modes` is the single dark component capture (`@CatalogWearModes`, `showBackground = false`) rather than a light/dark pair — a Wear component sticker is one transparent capture, not one-per-breakpoint. The round size breakpoints in `breakpoints` are what the FULL-SCREEN components (scaffold templates, scaling lists, the EdgeButton) fan out across via `@CatalogWearBreakpoints` (small/large/xl round); the centred component stickers are size-agnostic and don't. A component's `variants` fold extra state renders (pressed/focused/disabled/off/…) onto the same sticker: the default preview is what the grid shows, and each variant's render becomes a secondary image (tagged with its `state`) surfaced in the single-component view, so state stickers live under their parent instead of a flat 'States' group. State variants that differ only by a `previewOverride*` knob (off↔on, unchecked↔checked, disabled) ride the primary function via `@OverrideVariant` instead of a duplicated wrapper — the render still emits a distinct `_VARIANT_<state>` capture, so they fold in the same way.",
   "system": "wear-m3",
   "title": "Wear Compose Material 3",
   "library": ["androidx.wear.compose:compose-material3"],
   "module": "samples:design-catalog-wear-m3",
-  "modes": ["smallRound", "largeRound"],
+  "modes": ["dark"],
+  "breakpoints": [
+    { "size": "smallRound", "widthDp": 192 },
+    { "size": "largeRound", "widthDp": 227 },
+    { "size": "xlRound", "widthDp": 240 }
+  ],
   "display": {
     "surface": "dark",
     "hero": "Template/TimeText"

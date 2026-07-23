@@ -11,6 +11,7 @@ import androidx.compose.remote.creation.profile.RcPlatformProfiles
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import ee.schimke.composeai.daemon.protocol.DataFetchResult
@@ -22,16 +23,19 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
 import ee.schimke.composeai.daemon.protocol.RemoteComposeProfile
 import ee.schimke.composeai.daemon.protocol.RemoteHostAction
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
+import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
 import ee.schimke.composeai.data.remotecompose.RemoteComposePayload
 import ee.schimke.composeai.data.remotecompose.RemoteComposeProduct
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.extensions.DataExtension
 import ee.schimke.composeai.data.render.extensions.DataExtensionCapability
 import ee.schimke.composeai.data.render.extensions.DataExtensionConstraints
+import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
 import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
-import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExtension
+import ee.schimke.composeai.data.render.extensions.compose.AroundComposableHook
+import ee.schimke.composeai.data.render.extensions.compose.ExtensionComposeContext
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -84,6 +88,16 @@ interface RemoteComposeHost {
   @Composable fun namedColor(name: String, default: String): String
 
   /**
+   * Declare [name] as an editable named-value knob with [default] as its author fallback, so a
+   * consumer (the VS Code panel, the serve viewer) can render a control for it and write an edit
+   * back through `renderNow.overrides.remoteCompose.namedValues`. The typed `namedFloat` /
+   * `namedString` / … reads above already self-declare, so call this only for a value user code
+   * binds *without* reading it through the host — e.g. a name seeded straight into the player's
+   * `StateUpdater`. Recording is deduped by name and preserves declaration order.
+   */
+  fun declareKnob(name: String, default: RemoteNamedValue)
+
+  /**
    * Push a value computed by the remote runtime back into the controller so the next
    * `data/fetch?kind=compose/remotecompose` returns it. Use from inside a `RemotePreview` block
    * after the remote computation lands a new value the host should observe.
@@ -106,6 +120,7 @@ private object ControllerRemoteComposeHost : RemoteComposeHost {
 
   @Composable
   override fun namedFloat(name: String, default: Float): Float {
+    declareInComposition(name, RemoteNamedValue.FloatValue(default))
     val current by RemoteComposeController.namedValues
     return when (val v = current[name]) {
       is RemoteNamedValue.FloatValue -> v.value
@@ -117,12 +132,14 @@ private object ControllerRemoteComposeHost : RemoteComposeHost {
 
   @Composable
   override fun namedBoolean(name: String, default: Boolean): Boolean {
+    declareInComposition(name, RemoteNamedValue.BooleanValue(default))
     val current by RemoteComposeController.namedValues
     return (current[name] as? RemoteNamedValue.BooleanValue)?.value ?: default
   }
 
   @Composable
   override fun namedInt(name: String, default: Int): Int {
+    declareInComposition(name, RemoteNamedValue.IntValue(default))
     val current by RemoteComposeController.namedValues
     return when (val v = current[name]) {
       is RemoteNamedValue.IntValue -> v.value
@@ -133,18 +150,39 @@ private object ControllerRemoteComposeHost : RemoteComposeHost {
 
   @Composable
   override fun namedString(name: String, default: String): String {
+    declareInComposition(name, RemoteNamedValue.StringValue(default))
     val current by RemoteComposeController.namedValues
     return (current[name] as? RemoteNamedValue.StringValue)?.value ?: default
   }
 
   @Composable
   override fun namedColor(name: String, default: String): String {
+    declareInComposition(name, RemoteNamedValue.ColorValue(default))
     val current by RemoteComposeController.namedValues
     return (current[name] as? RemoteNamedValue.ColorValue)?.argb ?: default
   }
 
+  /**
+   * Record the read name as an editable knob from a `SideEffect`, not directly during composition:
+   * mirrors `ControllerPreviewOverrideHost`'s `previewOverride*`. A `SideEffect` runs after the
+   * `DisposableEffect` clear that [RemoteComposeOverrideExtension] performs at render start (Compose
+   * runs every `RememberObserver` before any `SideEffect`), so each pass's declaration set is rebuilt
+   * from scratch, and it never writes controller snapshot state mid-composition (which would risk a
+   * recompose loop).
+   */
+  @Composable
+  private fun declareInComposition(name: String, default: RemoteNamedValue) {
+    SideEffect {
+      RemoteComposeController.recordDeclaration(RemoteComposeKnobDeclaration(name, default))
+    }
+  }
+
   override fun setNamedValue(name: String, value: RemoteNamedValue) {
     RemoteComposeController.setNamedValue(name, value)
+  }
+
+  override fun declareKnob(name: String, default: RemoteNamedValue) {
+    RemoteComposeController.recordDeclaration(RemoteComposeKnobDeclaration(name, default))
   }
 
   override fun reportHostAction(action: RemoteHostAction) {
@@ -196,27 +234,49 @@ fun RemoteHostAction.toHostAction(): Action = hostAction(payload.rs, handlerId.r
  * * On enter — [RemoteComposeController.set] is called with the seed (clears the map / profile when
  *   null). `DisposableEffect(seed)` re-runs only when the override identity changes, so a
  *   subsequent `renderNow.overrides.remoteCompose` with the same shape doesn't churn.
- * * On dispose — clears the override and any captured host-action buffer (`resetForNewSession`).
- *   Matches `KeyboardOverrideExtension` / `PermissionsOverrideExtension` semantics.
+ * * On dispose — clears only the seed (named values / profile / accepted-action filter) via
+ *   [RemoteComposeController.set]`(null)`, **not** the recorded declarations or the sandbox bridge.
+ *   On Android the Compose test rule disposes the activity *before* `JsonRpcServer` calls
+ *   [RemoteComposeDataProductRegistry.onRender] → `declarationsFor`, so resetting the bridge here
+ *   would wipe the knobs before the host snapshots them. Declarations drop at the *next* render's
+ *   start via [RemoteComposeController.clearDeclarations] (after the host captured this render).
+ *   Mirrors `PreviewOverridesOverrideExtension`'s `onDispose { set(null) }`.
  *
  * Runs in [DataExtensionPhase.OuterEnvironment] so the composition local is in place before the
  * user-environment phase reaches preview content — `RemotePreview` blocks composed by user code see
  * the host.
  */
 class RemoteComposeOverrideExtension(private val seed: RemoteComposeOverride? = null) :
-  AroundComposableExtension(
-    id = ID,
-    constraints =
-      DataExtensionConstraints(
-        phase = DataExtensionPhase.OuterEnvironment,
-        provides = setOf(DataExtensionCapability(RemoteComposeDataProductRegistry.KIND)),
-      ),
-  ) {
+  AroundComposableHook {
+
+  override val id: DataExtensionId = ID
+
+  override val hooks: Set<DataExtensionHookKind> = setOf(DataExtensionHookKind.AroundComposable)
+
+  override val constraints: DataExtensionConstraints =
+    DataExtensionConstraints(
+      phase = DataExtensionPhase.OuterEnvironment,
+      provides = setOf(DataExtensionCapability(RemoteComposeDataProductRegistry.KIND)),
+    )
+
   @Composable
-  override fun AroundComposable(content: @Composable () -> Unit) {
+  override fun Around(context: ExtensionComposeContext, content: @Composable () -> Unit) {
+    // Stamp the active previewId before content composes so the sandbox-side declaration forwards
+    // land in this preview's bridge scope, not a concurrently-rendering preview's (pooled sandboxes).
+    // Plain call (not a SideEffect) so it runs during composition, ahead of any `named*` read in
+    // `content()`. Mirrors PreviewOverridesOverrideExtension.
+    RemoteComposeController.beginRender(context.previewId)
     DisposableEffect(seed) {
       RemoteComposeController.set(seed)
-      onDispose { RemoteComposeController.resetForNewSession() }
+      // Clear declarations at render start (mirrors PreviewOverridesOverrideExtension): a held
+      // session re-rendering with a shrunk knob set must not carry stale controls. A DisposableEffect
+      // runs as a RememberObserver, which Compose invokes before any SideEffect, so this clear always
+      // precedes the `named*` reads' SideEffect-recorded declarations for this pass.
+      RemoteComposeController.clearDeclarations()
+      // Dispose clears only the seed — NOT declarations or the bridge — so the host's post-dispose
+      // onRender snapshot still sees this render's knobs (see the lifecycle KDoc above). Mirrors
+      // PreviewOverridesOverrideExtension's `onDispose { set(null) }`.
+      onDispose { RemoteComposeController.set(null) }
     }
     CompositionLocalProvider(LocalRemoteComposeHost provides ControllerRemoteComposeHost) {
       content()
@@ -331,14 +391,90 @@ class RemoteComposeDataProductRegistry : DataProductRegistry {
     val namedValues = RemoteComposeController.namedValues.value
     val hostActions = RemoteComposeController.hostActions.value
     val profile = RemoteComposeController.profile.value
-    if (namedValues.isEmpty() && hostActions.isEmpty() && profile == null) {
+    val declarations = declarationsFor(previewId)
+    if (
+      namedValues.isEmpty() && hostActions.isEmpty() && profile == null && declarations.isEmpty()
+    ) {
       clear(previewId)
       return
     }
     capture(
       previewId,
-      RemoteComposePayload(namedValues = namedValues, hostActions = hostActions, profile = profile),
+      RemoteComposePayload(
+        namedValues = namedValues,
+        hostActions = hostActions,
+        profile = profile,
+        declarations = declarations,
+      ),
     )
+  }
+
+  /**
+   * The knobs declared by the render for [previewId]. The do-not-acquire [SandboxRemoteComposeBridge]
+   * is shared across the sandbox boundary, so prefer it when reachable (its JSON snapshot is decoded
+   * back into typed declarations) — on Android the in-classloader controller the host reads is a
+   * different, empty instance. Falls back to the in-CL `RemoteComposeController` when the bridge
+   * isn't on the classpath (the desktop daemon / connector unit tests, where the controller IS the
+   * source of truth) or the bridge has nothing for this preview. Mirrors
+   * `PreviewOverridesDataProductRegistry.declarationsFor`.
+   */
+  private fun declarationsFor(previewId: String): List<RemoteComposeKnobDeclaration> {
+    val controllerDeclarations = RemoteComposeController.declarations()
+    val bridge = SandboxRemoteComposeBridgeReader.tryLoad() ?: return controllerDeclarations
+    val bridgeJson = bridge.snapshot(previewId)
+    if (bridgeJson.isEmpty()) return controllerDeclarations
+    return bridgeJson.mapNotNull { entry ->
+      runCatching { json.decodeFromString(RemoteComposeKnobDeclaration.serializer(), entry) }
+        .getOrNull()
+    }
+  }
+
+  /**
+   * Reflective lookup of `ee.schimke.composeai.daemon.bridge.SandboxRemoteComposeBridge`. Cached per
+   * JVM. `null` means the bridge isn't on the classpath (connector-only unit tests; the desktop
+   * daemon has no sandbox). Mirrors `PreviewOverridesDataProductRegistry`'s
+   * `SandboxPreviewOverridesBridgeReader`.
+   */
+  private class SandboxRemoteComposeBridgeReader(
+    private val snapshotMethod: java.lang.reflect.Method
+  ) {
+    fun snapshot(scope: String): List<String> =
+      runCatching {
+          @Suppress("UNCHECKED_CAST")
+          (snapshotMethod.invoke(null, scope) as Array<String>).toList()
+        }
+        .getOrDefault(emptyList())
+
+    companion object {
+      private const val BRIDGE_FQN: String =
+        "ee.schimke.composeai.daemon.bridge.SandboxRemoteComposeBridge"
+
+      @Volatile private var resolved: SandboxRemoteComposeBridgeReader? = null
+      @Volatile private var attempted: Boolean = false
+
+      fun tryLoad(): SandboxRemoteComposeBridgeReader? {
+        if (attempted) return resolved
+        val reader =
+          try {
+            val cls =
+              Class.forName(
+                BRIDGE_FQN,
+                true,
+                SandboxRemoteComposeBridgeReader::class.java.classLoader,
+              )
+            SandboxRemoteComposeBridgeReader(
+              snapshotMethod = cls.getMethod("snapshot", String::class.java)
+            )
+          } catch (_: ClassNotFoundException) {
+            null
+          } catch (_: NoSuchMethodException) {
+            null
+          }
+        resolved = reader
+        attempted = true
+        return reader
+      }
+    }
   }
 
   companion object {
@@ -348,6 +484,7 @@ class RemoteComposeDataProductRegistry : DataProductRegistry {
     private val json = Json {
       encodeDefaults = true
       prettyPrint = false
+      ignoreUnknownKeys = true
     }
   }
 }

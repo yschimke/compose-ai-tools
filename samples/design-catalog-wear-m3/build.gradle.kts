@@ -4,11 +4,14 @@
 // (see `@design-parity/catalog-export` in yschimke/design-parity, and the M3
 // sibling `:samples:design-catalog-m3`).
 //
-// Code-led source of truth for the Wear M3 sheet. Wear is dark-first, so the
-// primary "modes" are the round size breakpoints (small + large round) supplied
-// by the `@WearPreviewSmallRound` / `@WearPreviewLargeRound` multipreviews rather
-// than a light/dark pair. Kept thin — `wear.compose.material3` + the Wear preview
-// tooling — so it builds against the stable Compose BOM.
+// Code-led source of truth for the Wear M3 sheet. Wear is dark-first, so component
+// stickers are a single transparent dark capture (`@CatalogWearModes`,
+// `showBackground = false`) rather than a light/dark pair; the round size
+// breakpoints (192/227/240 round) are fanned out only for the FULL-SCREEN
+// components (scaffold templates, scaling lists, EdgeButton) via
+// `@CatalogWearBreakpoints`, which uses the Wear tooling device ids directly. Kept
+// thin — `wear.compose.material3` + the Wear preview tooling — so it builds against
+// the stable Compose BOM.
 plugins {
   id("composeai.base-conventions")
   id("composeai.android-conventions")

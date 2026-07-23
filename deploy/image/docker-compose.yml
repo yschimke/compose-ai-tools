@@ -7,7 +7,8 @@
 #
 # Auto-updates are ZERO-DOWNTIME: the `rollout` service (below) polls GHCR and,
 # when a new :latest is published, hands `preview` to docker-rollout — a fresh
-# replica boots alongside the live one, Docker waits for its /healthz healthcheck,
+# replica boots alongside the live one, Docker waits for its /readyz healthcheck
+# (green only once a preview actually renders — see the `preview` healthcheck),
 # Caddy drains traffic onto it (dynamic upstreams + passive health), then the old
 # replica retires. `watchtower` still rolls `caddy` (fixed 80/443 ports can't be
 # scaled). Leave IMAGE_TAG unset (defaults to `latest`) for updates. See README.md.
@@ -105,14 +106,19 @@ services:
     # Set PREVIEW_MEM_LIMIT in .env (e.g. `PREVIEW_MEM_LIMIT=4g`) to cap it on a shared host, which
     # also lowers the derived seat budget to match.
     mem_limit: "${PREVIEW_MEM_LIMIT:-0}"
-    # Liveness for the rolling update. docker-rollout (driven by the `rollout`
+    # Readiness gate for the rolling update. docker-rollout (driven by the `rollout`
     # service) waits for a freshly-started replica to report `healthy` BEFORE it
     # retires the old one, so this is the gate that makes updates zero-downtime.
-    # `/healthz` is the app's ungated liveness route (returns "ok" once the HTTP
-    # server is listening); `start_period` covers the cold-start catalog fetch +
-    # warm render so a slow boot isn't counted as a failure.
+    # It MUST hit `/readyz`, not `/healthz`: `/healthz` returns "ok" the instant the
+    # HTTP listener binds (a static string — it proves nothing rendered), so a replica
+    # whose catalogs failed to load or whose render pipeline is dead would pass it and
+    # get promoted into a 500-ing server. `/readyz` goes green only after a
+    # representative preview has actually rendered, so the gate reflects "can serve
+    # traffic". `start_period` covers the cold-start catalog fetch + first render so a
+    # slow boot isn't counted as a failure (503 "warming" during the start period is
+    # expected and not a failure).
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/readyz"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -124,7 +130,7 @@ services:
 
   # Zero-downtime updater for `preview`: poll GHCR for a new :latest digest and,
   # when one lands, roll the service with docker-rollout (boot a new replica →
-  # wait for its /healthz healthcheck → drain onto it → retire the old one) so
+  # wait for its /readyz healthcheck → drain onto it → retire the old one) so
   # live traffic never sees a stop→recreate gap. Needs the Docker socket (like
   # Watchtower) and the compose project mounted read-only so it can pull + scale.
   # The docker-rollout plugin is the vendored ./docker-rollout, mounted into the

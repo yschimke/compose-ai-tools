@@ -141,6 +141,28 @@ data class AmbientCapture(
 /** Renderer-side mirror of the plugin's `GestureHintCapture`. */
 @Serializable data class GestureHintCapture(val showHints: Boolean = true)
 
+/** Renderer-side mirror of the plugin's `OverrideSeedKind`. */
+@Serializable
+enum class OverrideSeedKind {
+  STRING,
+  BOOLEAN,
+  INT,
+  FLOAT,
+  COLOR,
+}
+
+/** Renderer-side mirror of the plugin's `OverrideSeed`. */
+@Serializable
+data class OverrideSeed(
+  val key: String,
+  val index: Int? = null,
+  val kind: OverrideSeedKind,
+  val raw: String,
+)
+
+/** Renderer-side mirror of the plugin's `OverrideVariantSpec` (an `@OverrideVariant` seed set). */
+@Serializable data class OverrideVariantSpec(val name: String, val seeds: List<OverrideSeed>)
+
 /** Renderer-side mirror of the plugin's `LauncherWidgetCaptureResizeOrder`. */
 @Serializable
 enum class LauncherWidgetCaptureResizeOrder {
@@ -209,6 +231,12 @@ data class RenderPreviewEntry(
    * siblings and the PNG path it lands at. Always at least one element.
    */
   val captures: List<RenderPreviewCapture> = listOf(RenderPreviewCapture()),
+  /**
+   * Non-null on a synthetic `@OverrideVariant` preview: the `previewOverride*` values the renderer
+   * seeds via `PreviewOverrideController.set(...)` before composing this entry, so the same function
+   * renders once more with the knob(s) flipped. `null` on an ordinary preview (defaults resolve).
+   */
+  val overrides: OverrideVariantSpec? = null,
   /**
    * Annotation-sourced *rendered artefacts* for this preview — secondary images (each with a
    * `kind`, an output PNG, and a render cost), as opposed to the primary screenshots in [captures].
