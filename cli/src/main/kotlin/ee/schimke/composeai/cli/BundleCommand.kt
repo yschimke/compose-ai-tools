@@ -1254,6 +1254,9 @@ internal fun renderPreviewsToDir(
       }
       is RenderOutcome.Failed -> failures += "${preview.id} (${outcome.reason})"
       RenderOutcome.NotFound -> failures += "${preview.id} (not found)"
+      // This CLI renders previews sequentially on one thread, so the per-daemon lock is never
+      // contended — Busy shouldn't occur — but surface it as a failure rather than skip silently.
+      RenderOutcome.Busy -> failures += "${preview.id} (daemon busy)"
     }
   }
   log(

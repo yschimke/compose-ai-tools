@@ -173,6 +173,14 @@ sealed interface RenderOutcome {
 
   /** The render was attempted but rejected / failed / timed out. [reason] is human-readable. */
   data class Failed(val reason: String) : RenderOutcome
+
+  /**
+   * The per-daemon render lock was held by another in-flight render (a cold Android render can hold
+   * it for up to `renderTimeoutSeconds`, minutes on a public host), so this request **backed off**
+   * rather than block a shared HTTP render slot on that wait. NOT an error: the caller should serve
+   * the baked fallback immediately (or retry). See [ServeRenderHost.DAEMON_BUSY_WAIT_MS].
+   */
+  data object Busy : RenderOutcome
 }
 
 /** Result of a figma-svg render request — the SVG counterpart of [RenderOutcome]. */
@@ -284,7 +292,10 @@ internal constructor(
   // schema's additive fields (a v7 file read by this v-agnostic slot extractor).
   private val dataJson = Json { ignoreUnknownKeys = true }
 
-  private val renderLock = ReentrantLock()
+  // Fair (FIFO) so a waiter can't be starved and the longest-waiting render — an interactive
+  // browse — wins the daemon when it frees, ahead of the background prewarm re-acquiring the lock
+  // for the next warm render.
+  private val renderLock = ReentrantLock(/* fair= */ true)
 
   // Set under renderLock immediately before each renderNow; the (single) in-flight render's
   // renderFinished notification fills pngPath and trips the latch. Safe because the lock guarantees
@@ -351,10 +362,15 @@ internal constructor(
       return RenderOutcome.Ok(it)
     }
 
-    return renderLock.withLock {
+    // Bounded acquire (Fix 4): a cold render holds [renderLock] for up to renderTimeoutSeconds
+    // (minutes); don't pin the caller's HTTP render slot on that wait — back off to Busy so the
+    // caller serves baked instead. Waiting the [DAEMON_BUSY_WAIT_MS] window still rides out a fast
+    // warm re-emit.
+    if (!renderLock.tryLock(DAEMON_BUSY_WAIT_MS, TimeUnit.MILLISECONDS)) return RenderOutcome.Busy
+    try {
       // Double-check: another request may have filled the cache while we waited for the lock.
       cache.get(key)?.let {
-        return@withLock RenderOutcome.Ok(it)
+        return RenderOutcome.Ok(it)
       }
 
       // The daemon coalesces an override-bearing `renderNow` whose previewId already has one in
@@ -382,7 +398,7 @@ internal constructor(
           } catch (e: RenderSessionException) {
             val reason = "renderNow failed: ${e.message}"
             onLog(reason)
-            return@withLock RenderOutcome.Failed(reason)
+            return RenderOutcome.Failed(reason)
           }
 
         val rejected = ack.rejected.firstOrNull { it.id == previewId }
@@ -393,7 +409,7 @@ internal constructor(
           }
           val reason = "render rejected: ${rejected.reason}"
           onLog(reason)
-          return@withLock RenderOutcome.Failed(reason)
+          return RenderOutcome.Failed(reason)
         }
 
         // Cold start gets the generous budget; every frame after the first is capped so a wedged
@@ -410,7 +426,7 @@ internal constructor(
           staleRenders.merge(previewId, 1, Int::plus)
           val reason = "timed out after ${budget}s waiting for render"
           onLog(reason)
-          return@withLock RenderOutcome.Failed(reason)
+          return RenderOutcome.Failed(reason)
         }
         warmedUp.set(true)
         if (hasOverrides) overridesWarmedUp.set(true)
@@ -426,11 +442,13 @@ internal constructor(
       if (bytes == null) {
         val reason = "render produced no PNG"
         onLog(reason)
-        return@withLock RenderOutcome.Failed(reason)
+        return RenderOutcome.Failed(reason)
       }
 
       cache.put(key, bytes)
-      RenderOutcome.Ok(bytes)
+      return RenderOutcome.Ok(bytes)
+    } finally {
+      renderLock.unlock()
     }
   }
 
@@ -469,6 +487,9 @@ internal constructor(
       when (val pngOutcome = render(previewId, overrides)) {
         RenderOutcome.NotFound -> return@withLock SvgOutcome.NotFound
         is RenderOutcome.Failed -> return@withLock SvgOutcome.Failed(pngOutcome.reason)
+        // Unreachable in practice — render() re-enters the lock we already hold — but the caller
+        // falls back to the baked vector on any non-Ok, so a busy signal degrades gracefully.
+        RenderOutcome.Busy -> return@withLock SvgOutcome.Failed("daemon busy")
         is RenderOutcome.Ok -> {} // rendered; the SVG for these overrides is now on disk
       }
 
@@ -612,6 +633,9 @@ internal constructor(
       when (val pngOutcome = render(previewId, overrides)) {
         RenderOutcome.NotFound -> return@withLock SlotsOutcome.NotFound
         is RenderOutcome.Failed -> return@withLock SlotsOutcome.Failed(pngOutcome.reason)
+        // Unreachable in practice — render() re-enters the lock we already hold — but keep the
+        // match exhaustive and degrade to a clean failure rather than pretending we rendered.
+        RenderOutcome.Busy -> return@withLock SlotsOutcome.Failed("daemon busy")
         is RenderOutcome.Ok -> {} // rendered; the semantics for these overrides is now on disk
       }
 
@@ -852,6 +876,17 @@ internal constructor(
      */
     private const val MAX_COALESCED_RETRIES = 50
     private const val COALESCED_RETRY_BACKOFF_MS = 100L
+
+    /**
+     * How long a render waits for the per-daemon [renderLock] before reporting
+     * [RenderOutcome.Busy]. The lock is held for the whole render, and a cold Android render can
+     * hold it for `renderTimeoutSeconds` (minutes on a public host). Blocking that long pins a
+     * shared HTTP render slot ([ServeHttpServer.renderSemaphore]) and — enough times over —
+     * saturates the whole server. This caps the wait to a couple of seconds (enough to ride out a
+     * fast warm re-emit); past it the caller serves the baked fallback instead of blocking a slot
+     * on a busy daemon.
+     */
+    private const val DAEMON_BUSY_WAIT_MS = 2_000L
 
     private const val MAX_CACHE_ENTRIES = 256
 
