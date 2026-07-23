@@ -619,6 +619,9 @@ abstract class RobolectricRenderTestBase(
       // Write the editable knobs the preview declared via `previewOverride*` as the
       // `renders/<stem>.overrides.json` sidecar `BundlePreviewTask.resolvePreviewOverrides` packs.
       writeOverridesSidecar(pngFile)
+      // Same, for Remote Compose named-value knobs declared through `LocalRemoteComposeHost`:
+      // `renders/<stem>.remotecompose.json`, packed by `BundlePreviewTask.resolvePreviewRemoteCompose`.
+      writeRemoteComposeSidecar(pngFile)
     } catch (e: Throwable) {
       System.err.println(
         "Render failed for ${preview.className}.${preview.functionName}: ${e.message}"
@@ -704,6 +707,44 @@ abstract class RobolectricRenderTestBase(
       )
     } catch (e: Throwable) {
       System.err.println("Failed to write overrides sidecar: ${e.message}")
+    }
+  }
+
+  /**
+   * Write the Remote Compose named-value knobs the preview declared through `LocalRemoteComposeHost`
+   * as the `renders/<stem>.remotecompose.json` sidecar
+   * `BundlePreviewTask.resolvePreviewRemoteCompose` packs. An empty / absent set deletes any stale
+   * sidecar. Read **reflectively** so this renderer never hard-depends on the alpha-gated
+   * `:data-remotecompose-connector` (`RemoteComposeController` is only on the classpath when the
+   * consumer ships the `compose-remote` runtime — a non-Remote-Compose module renders exactly as
+   * before). Best-effort — a write failure must not derail the PNG render path. The
+   * `remotecompose.json` suffix is kept in lockstep with
+   * `PreviewBundleFormat.BUNDLE_REMOTECOMPOSE_SIDECAR_EXT`.
+   */
+  private fun writeRemoteComposeSidecar(pngFile: File) {
+    val dir = pngFile.parentFile ?: return
+    val sidecar = File(dir, "${pngFile.nameWithoutExtension}.remotecompose.json")
+    val json =
+      try {
+        val cls = Class.forName("ee.schimke.composeai.daemon.RemoteComposeController")
+        val instance = cls.getField("INSTANCE").get(null)
+        cls.getMethod("declarationsJson").invoke(instance) as String?
+      } catch (_: ClassNotFoundException) {
+        // The consumer doesn't ship the Remote Compose runtime — nothing to write.
+        null
+      } catch (_: ReflectiveOperationException) {
+        null
+      }
+    try {
+      if (json == null) {
+        if (sidecar.isFile && !sidecar.delete()) {
+          System.err.println("Failed to delete stale remotecompose sidecar: ${sidecar.absolutePath}")
+        }
+        return
+      }
+      sidecar.writeText(json)
+    } catch (e: Throwable) {
+      System.err.println("Failed to write remotecompose sidecar: ${e.message}")
     }
   }
 

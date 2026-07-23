@@ -6,6 +6,7 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
 import ee.schimke.composeai.daemon.protocol.RemoteComposeProfile
 import ee.schimke.composeai.daemon.protocol.RemoteHostAction
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
+import ee.schimke.composeai.data.remotecompose.RemoteComposeDeclarationsPayload
 import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
 import ee.schimke.composeai.data.remotecompose.RemoteComposePayload
 import ee.schimke.composeai.data.render.PreviewContext
@@ -17,6 +18,7 @@ import ee.schimke.composeai.data.render.extensions.compose.hasAroundComposableHo
 import kotlinx.serialization.json.Json
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -292,6 +294,27 @@ class RemoteComposeDataProductTest {
     assertEquals("label", payload.declarations[0].name)
     assertEquals(RemoteNamedValue.StringValue("Filled"), payload.declarations[0].default)
     assertEquals("shaderColor", payload.declarations[1].name)
+  }
+
+  @Test
+  fun declarationsJson_is_null_when_empty_and_a_payload_when_declared() {
+    val controller = RemoteComposeController
+    assertNull("no declarations → no sidecar", controller.declarationsJson())
+
+    controller.recordDeclaration(
+      RemoteComposeKnobDeclaration("label", RemoteNamedValue.StringValue("Filled"))
+    )
+    controller.recordDeclaration(
+      RemoteComposeKnobDeclaration("stopColor", RemoteNamedValue.ColorValue("#FF7DE2FF"))
+    )
+    val jsonStr = controller.declarationsJson()
+    assertNotNull(jsonStr)
+    val payload =
+      Json.decodeFromString(RemoteComposeDeclarationsPayload.serializer(), jsonStr!!)
+    assertEquals(2, payload.declarations.size)
+    assertEquals("label", payload.declarations[0].name)
+    assertEquals(RemoteNamedValue.StringValue("Filled"), payload.declarations[0].default)
+    assertEquals("stopColor", payload.declarations[1].name)
   }
 
   private fun stubRenderResult(): RenderResult =

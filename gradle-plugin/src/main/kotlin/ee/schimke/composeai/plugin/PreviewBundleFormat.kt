@@ -632,6 +632,18 @@ const val BUNDLE_SCHEMA_VERSION: Int = 8
 const val BUNDLE_OVERRIDES_SIDECAR_EXT: String = "overrides.json"
 
 /**
+ * File extension of the per-preview Remote Compose knob sidecar the render step writes next to the
+ * PNG (`renders/<stem>.remotecompose.json`) and the bundle packs under
+ * `previews/<id>.remotecompose.json`. Holds the serialized `compose/remotecompose`
+ * `RemoteComposeDeclarationsPayload` — the editable named-value knobs the preview declared through
+ * `LocalRemoteComposeHost` (a separate channel from the plain-Compose `overrides.json`, since a
+ * Remote Compose sticker's edits round-trip via `renderNow.overrides.remoteCompose` / the serve
+ * `rc.<name>=` param, not the generic knob lane). Kept in lockstep with the consumer runtime's
+ * writer (`RobolectricRenderTest.writeRemoteComposeSidecar`).
+ */
+const val BUNDLE_REMOTECOMPOSE_SIDECAR_EXT: String = "remotecompose.json"
+
+/**
  * File extension of the per-sheet catalog-token sidecar the render step writes under
  * `data/catalog-tokens/<id>.catalog.json` (issue #2167) and the bundle packs under
  * `previews/<id>.catalog.json`. Holds the resolved `@ColorCatalog` / `@TypographyCatalog` token

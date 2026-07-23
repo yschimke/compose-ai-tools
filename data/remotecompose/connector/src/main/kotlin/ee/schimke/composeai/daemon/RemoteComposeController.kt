@@ -7,6 +7,7 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
 import ee.schimke.composeai.daemon.protocol.RemoteComposeProfile
 import ee.schimke.composeai.daemon.protocol.RemoteHostAction
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
+import ee.schimke.composeai.data.remotecompose.RemoteComposeDeclarationsPayload
 import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
 import ee.schimke.composeai.data.remotecompose.RemoteComposePayload
 import java.util.concurrent.CopyOnWriteArrayList
@@ -130,6 +131,24 @@ object RemoteComposeController {
 
   /** The knobs declared so far this render, in declaration order. */
   fun declarations(): List<RemoteComposeKnobDeclaration> = declarationsState.value.values.toList()
+
+  /**
+   * The declared knobs serialised as a [RemoteComposeDeclarationsPayload] JSON string, or `null`
+   * when nothing was declared. Called **reflectively** by the standalone render step
+   * (`RobolectricRenderTest.writeRemoteComposeSidecar`) to emit the
+   * `renders/<stem>.remotecompose.json` bundle sidecar — reflection keeps the renderer free of a
+   * hard dependency on this alpha-gated connector, exactly like the bridge readers. Returning a
+   * ready JSON string (not the typed list) means the renderer never needs the
+   * `RemoteComposeKnobDeclaration` type on its classpath.
+   */
+  fun declarationsJson(): String? {
+    val decls = declarations()
+    if (decls.isEmpty()) return null
+    return json.encodeToString(
+      RemoteComposeDeclarationsPayload.serializer(),
+      RemoteComposeDeclarationsPayload(decls),
+    )
+  }
 
   /**
    * Drop the recorded declarations at the start of a render pass, keeping named values / profile /
