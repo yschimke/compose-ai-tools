@@ -564,6 +564,9 @@ abstract class RobolectricRenderTestBase(
       preview.captures.firstOrNull()?.let { outputFileFor(it, outputDir) }
         ?: outputFileFor(preview.dataProducts.first(), outputDir)
     RenderErrorSidecar.deleteStale(pngFile)
+    // Drop any font-fallback warnings sidecar from a prior run too, so a now-clean (or now-fatal)
+    // render doesn't leave yesterday's warning card beside the fresh PNG.
+    RenderWarningsSidecar.deleteStale(pngFile)
     // Drop any IR sidecar from a prior run before rendering. The renders dir is reused, and
     // `BundlePreviewTask.resolvePreviewIr` treats any non-empty sidecar as authoritative — so a
     // preview that stops producing IR (RC wrapper removed, tile serialization fails, kind
@@ -601,6 +604,9 @@ abstract class RobolectricRenderTestBase(
     // between previews. Same `ControllerPreviewOverrideHost` seam the daemon's `renderNow.overrides`
     // lane feeds; here the batch render owns the controller lifecycle directly.
     ee.schimke.composeai.overrides.PreviewOverrideController.set(overrideSeedMap(preview))
+    // Arm the per-preview downloadable-font tracker so a face that falls back to Roboto during THIS
+    // render is attributed to this preview (drained right after the render below).
+    FontResolutionDiagnostics.beginPreview()
     try {
       renderDefault(
         params = params,
@@ -613,6 +619,16 @@ abstract class RobolectricRenderTestBase(
         composeOptions = composeOptions,
         inspectionMode = inspectionMode,
       )
+      // A downloadable font that couldn't be resolved rendered in the platform fallback (Roboto) —
+      // wrong typeface for a branded preview. By default that's fatal (throw → the catch below drops
+      // the PNG and writes `.error.json`, same as any render failure). With
+      // `-Dcomposeai.fonts.failOnFallback=false` keep the PNG and record the fell-back faces in a
+      // non-fatal `<png>.warnings.json` instead.
+      val fontFallbacks = FontResolutionDiagnostics.drainPreview()
+      if (fontFallbacks.isNotEmpty() && FontResolutionDiagnostics.failOnFallback) {
+        throw FontFallbackException(fontFallbacks)
+      }
+      RenderWarningsSidecar.writeOrDelete(pngFile, fontFallbacks)
       // Render succeeded: if the preview's flavour captured an IR, write it beside the PNG as
       // the `renders/<stem>.<ext>` sidecar `BundlePreviewTask.resolvePreviewIr` packs.
       writeIrSidecar(pngFile, preview.id)
