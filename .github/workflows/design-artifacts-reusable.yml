@@ -87,6 +87,11 @@ on:
         required: false
         type: boolean
         default: false
+      embed-deps:
+        description: 'Pass --embed-deps to bundle pack so reachable third-party jars are carried inside the bundle under libs/ instead of referenced as Maven coordinates. Needed with publish-live-bundle when the module depends on artifacts the serve box cannot resolve from Maven Central (e.g. JitPack-only deps): without it the live daemon fails to build its classpath and the catalog silently falls back to baked PNGs (livebundle-unavailable). Larger bundle; leave off when every dep is on Central.'
+        required: false
+        type: boolean
+        default: false
       split-per-preview:
         description: 'After generate, split the render into one addressable bundle per preview under bundle/previews/<id>, for the serve host per-preview live lane. The extra module (if any) is split --view-only (baked, no per-preview re-render classpath). full mode requires publish-live-bundle (see split-mode).'
         required: false
@@ -278,16 +283,18 @@ jobs:
         run: |
           set -euo pipefail
           run() { if [ "${{ inputs.desktop-render }}" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
+          embed=(); if [ "${{ inputs.embed-deps }}" = "true" ]; then embed=(--embed-deps); fi
           run compose-preview bundle pack --module "${{ inputs.module }}" --with-semantics \
-            -o "$GITHUB_WORKSPACE/bundle.png" --timeout 600
+            "${embed[@]}" -o "$GITHUB_WORKSPACE/bundle.png" --timeout 600
 
       - name: Render extra module
         if: ${{ inputs.extra-module != '' }}
         run: |
           set -euo pipefail
           run() { if [ "${{ inputs.desktop-render }}" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
+          embed=(); if [ "${{ inputs.embed-deps }}" = "true" ]; then embed=(--embed-deps); fi
           run compose-preview bundle pack --module "${{ inputs.extra-module }}" --with-semantics \
-            -o "$GITHUB_WORKSPACE/extra-bundle.png" --timeout 600
+            "${embed[@]}" -o "$GITHUB_WORKSPACE/extra-bundle.png" --timeout 600
 
       - name: Generate importable catalog
         run: |
