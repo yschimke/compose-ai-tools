@@ -249,6 +249,17 @@ object PreviewDiscovery {
   // See `ThemeCatalog.kt`.
   internal const val THEME_CATALOG_FQN = "ee.schimke.composeai.preview.ThemeCatalog"
 
+  // Design-catalog inventory annotations — the code-side home for `catalog.spec.json`'s per-
+  // component metadata. `@CatalogComponent` / `@CatalogVariant` land on the `@Preview` FUNCTION;
+  // `@CatalogGroup` lands on the FILE (emitted onto the file's `…Kt` facade class). All BINARY /
+  // FQN-match, never loaded. See `CatalogComponent.kt` and [extractCatalogEntry].
+  internal const val CATALOG_COMPONENT_FQN = "ee.schimke.composeai.preview.CatalogComponent"
+  internal const val CATALOG_VARIANT_FQN = "ee.schimke.composeai.preview.CatalogVariant"
+  internal const val CATALOG_GROUP_FQN = "ee.schimke.composeai.preview.CatalogGroup"
+
+  // Fallback group for a `@CatalogComponent` with no `group` argument and no file `@CatalogGroup`.
+  private const val DEFAULT_CATALOG_COMPONENT_GROUP = "Components"
+
   // Whole-object catalog field types: a `@ColorCatalog` / `@TypographyCatalog` / `@ShapeCatalog`
   // annotation on a field of one of these types catalogs the *entire* theme object (the scheme /
   // type scale / shape scale) rather than a single token — dispatched by the field's declared type
@@ -860,6 +871,75 @@ object PreviewDiscovery {
   }
 
   /**
+   * Design-catalog identity for a preview function from `@CatalogComponent` / `@CatalogVariant`,
+   * with the file-level `@CatalogGroup` (emitted onto the file's `…Kt` facade class, i.e.
+   * [classInfo]) supplying the group/section default. Returns `null` when the function carries
+   * neither annotation — the common, non-catalog case, which leaves [PreviewInfo.catalog] absent.
+   *
+   * `@CatalogVariant` takes precedence if somehow both are present: a variant belongs *under*
+   * another component, so it never doubles as its own top-level component entry. Resolution honours
+   * the "good defaults, override with annotations" precedence — component id defaults to the
+   * function name, group to the per-component argument, else the file `@CatalogGroup`, else
+   * `Components`.
+   */
+  private fun extractCatalogEntry(
+    classInfo: ClassInfo,
+    method: MethodInfo,
+    annotations: List<AnnotationInfo>,
+  ): CatalogEntry? {
+    annotations
+      .firstOrNull { it.name == CATALOG_VARIANT_FQN }
+      ?.let { variant ->
+        val parent = annStringOrNull(variant, "of") ?: return null
+        return CatalogEntry(
+          role = CatalogRole.VARIANT,
+          componentId = parent,
+          caption = annStringOrNull(variant, "caption"),
+          state = annStringOrNull(variant, "state"),
+          props = annStringArray(variant, "props").mapNotNull(::parseCatalogProp),
+        )
+      }
+    val component = annotations.firstOrNull { it.name == CATALOG_COMPONENT_FQN } ?: return null
+    val fileGroup = classInfo.getAnnotationInfo(CATALOG_GROUP_FQN)
+    return CatalogEntry(
+      role = CatalogRole.COMPONENT,
+      componentId = annStringOrDefault(component, "id", method.name),
+      group =
+        annStringOrNull(component, "group")
+          ?: fileGroup?.let { annStringOrNull(it, "name") }
+          ?: DEFAULT_CATALOG_COMPONENT_GROUP,
+      section = fileGroup?.let { annStringOrNull(it, "section") },
+      caption = annStringOrNull(component, "caption"),
+      reference = annStringOrNull(component, "reference"),
+    )
+  }
+
+  /** Reads a `String` annotation parameter, returning `null` when absent or blank. */
+  private fun annStringOrNull(ann: AnnotationInfo, param: String): String? {
+    val raw = runCatching { ann.parameterValues.getValue(param) as? String }.getOrNull()
+    return raw?.takeIf { it.isNotBlank() }
+  }
+
+  /** Reads a `String[]` annotation parameter (ClassGraph yields an `Object[]`) as a list. */
+  private fun annStringArray(ann: AnnotationInfo, param: String): List<String> {
+    val raw = runCatching { ann.parameterValues.getValue(param) }.getOrNull() ?: return emptyList()
+    return when (raw) {
+      is Array<*> -> raw.filterIsInstance<String>()
+      is Iterable<*> -> raw.filterIsInstance<String>()
+      else -> emptyList()
+    }
+  }
+
+  /** Splits a `@CatalogVariant.props` `"key=value"` pair; `null` when malformed (no key). */
+  private fun parseCatalogProp(raw: String): CatalogVariantProp? {
+    val idx = raw.indexOf('=')
+    if (idx <= 0) return null
+    val key = raw.substring(0, idx).trim()
+    val value = raw.substring(idx + 1).trim()
+    return if (key.isEmpty()) null else CatalogVariantProp(key, value)
+  }
+
+  /**
    * Aggregates the collected `@ColorCatalog` / `@TypographyCatalog` / `@ShapeCatalog` tokens into
    * synthetic [PreviewKind.CATALOG] sheets: one per `group`, plus a module-wide "All <noun>" sheet
    * when there is more than one group (a single group would just duplicate itself). [idPrefix]
@@ -1408,6 +1488,19 @@ object PreviewDiscovery {
       )
     }
 
+    // Design-catalog identity (`@CatalogComponent` / `@CatalogVariant`) applies to the function as
+    // a
+    // whole — every `@Preview` expansion of one function shares the same component id / variant
+    // tag — so it's resolved once here and stamped onto each entry this method contributes below.
+    val catalogEntry = extractCatalogEntry(classInfo, method, annotations)
+    val firstNewPreviewIndex = previews.size
+    fun tagWithCatalog() {
+      if (catalogEntry == null) return
+      for (i in firstNewPreviewIndex until previews.size) {
+        previews[i] = previews[i].copy(catalog = catalogEntry)
+      }
+    }
+
     if (directPreviews.isNotEmpty()) {
       for (ann in directPreviews) {
         previews.add(
@@ -1431,6 +1524,7 @@ object PreviewDiscovery {
           )
         )
       }
+      tagWithCatalog()
       return
     }
 
@@ -1481,6 +1575,7 @@ object PreviewDiscovery {
         )
       )
     }
+    tagWithCatalog()
   }
 
   /**

@@ -590,6 +590,56 @@ enum class PreviewExtensionUsageMode {
   SUGGESTED_EXTRA_PREVIEW,
 }
 
+/**
+ * Whether a [CatalogEntry] describes a top-level component or a variant folded onto a parent.
+ * Mirrors the two annotation forms in the `preview-annotations` artifact — `@CatalogComponent`
+ * ([COMPONENT]) and `@CatalogVariant` ([VARIANT]).
+ */
+enum class CatalogRole {
+  COMPONENT,
+  VARIANT,
+}
+
+/**
+ * One named content/i18n/a11y axis distinguishing a [CatalogRole.VARIANT] from its parent's default
+ * render (e.g. `content = icon+label`, `locale = ar-XB`, `fontScale = 2.0`). Sourced from
+ * `@CatalogVariant.props` (`"key=value"` strings, since annotations can't hold a `Map`) and folded
+ * back into the export's `variants[].props` object.
+ */
+@Serializable data class CatalogVariantProp(val key: String, val value: String)
+
+/**
+ * Design-catalog identity discovered from the `@CatalogComponent` / `@CatalogVariant` /
+ * `@CatalogGroup` annotations in the `preview-annotations` artifact — the code-side source for the
+ * catalog metadata `catalog.spec.json` restated by hand (component id, group, section, caption,
+ * variant tagging). Attached to [PreviewInfo.catalog] when a preview carries the annotations; the
+ * design-artifacts export builds the catalog inventory from these entries and layers any matching
+ * spec entry on top as an override.
+ *
+ * The two [CatalogRole]s reuse one shape: [componentId] is the component's own id for a
+ * [CatalogRole.COMPONENT] and the *parent* component id (`@CatalogVariant.of`) for a
+ * [CatalogRole.VARIANT]. Fields that only apply to one role are `null`/empty on the other ([group]
+ * / [section] / [reference] are component-only; [state] / [props] are variant-only).
+ */
+@Serializable
+data class CatalogEntry(
+  val role: CatalogRole,
+  /** COMPONENT: this component's id. VARIANT: the parent component id (`@CatalogVariant.of`). */
+  val componentId: String,
+  /** Resolved group (per-component override, else file `@CatalogGroup`, else `Components`). */
+  val group: String? = null,
+  /** Optional top-level tab from the file `@CatalogGroup.section`. */
+  val section: String? = null,
+  /** One-line description shown under the sticker; `null` when the annotation left it blank. */
+  val caption: String? = null,
+  /** COMPONENT only: seed-kit handle for the one-off import. */
+  val reference: String? = null,
+  /** VARIANT only: the interaction/state this render shows (`pressed`, `disabled`, …). */
+  val state: String? = null,
+  /** VARIANT only: named content/i18n/a11y axes distinguishing this render from the default. */
+  val props: List<CatalogVariantProp> = emptyList(),
+)
+
 @Serializable
 data class PreviewInfo(
   val id: String,
@@ -617,6 +667,12 @@ data class PreviewInfo(
    * `Row { Foo(); Bar() }` returning both `Foo` and `Bar`).
    */
   val targets: List<PreviewTarget> = emptyList(),
+  /**
+   * Design-catalog identity from the `@CatalogComponent` / `@CatalogVariant` annotations, when the
+   * preview carries them. `null` for previews that aren't part of a published catalog (the common
+   * case) — the field is purely additive, so older manifests and non-catalog modules are unchanged.
+   */
+  val catalog: CatalogEntry? = null,
 )
 
 /**

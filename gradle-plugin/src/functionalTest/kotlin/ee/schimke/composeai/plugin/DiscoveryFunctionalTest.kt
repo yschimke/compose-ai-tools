@@ -218,6 +218,123 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
+  fun `composePreviewDiscover attaches @CatalogComponent and @CatalogVariant identity to previews`() {
+    val projectDir = createCmpTestProject()
+
+    // Declare the catalog-inventory annotations locally with the discovered FQNs so the test needs
+    // no external `preview-annotations` artifact — discovery matches by FQN + target, nothing else.
+    val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+    annDir.mkdirs()
+    File(annDir, "CatalogInventory.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION)
+        annotation class CatalogComponent(
+          val id: String = "",
+          val group: String = "",
+          val caption: String = "",
+          val reference: String = "",
+        )
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION)
+        annotation class CatalogVariant(
+          val of: String,
+          val state: String = "",
+          val caption: String = "",
+          val props: Array<String> = [],
+        )
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FILE)
+        annotation class CatalogGroup(val name: String, val section: String = "")
+        """
+          .trimIndent()
+      )
+
+    File(projectDir, "src/main/kotlin/test/Catalog.kt")
+      .writeText(
+        """
+        @file:CatalogGroup("Buttons", section = "Components")
+
+        package test
+
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.tooling.preview.Preview
+        import ee.schimke.composeai.preview.CatalogComponent
+        import ee.schimke.composeai.preview.CatalogGroup
+        import ee.schimke.composeai.preview.CatalogVariant
+
+        // Explicit slashed id + caption; group + section come from the file `@CatalogGroup`.
+        @CatalogComponent(id = "Button/Filled", caption = "Highest emphasis; the primary action.")
+        @Preview @Composable fun FilledButton() {}
+
+        // A variant folded under the parent, tagged by state + a content-axis prop.
+        @CatalogVariant(
+          of = "Button/Filled",
+          state = "pressed",
+          props = ["content=icon+label"],
+          caption = "Held press -> pressed state layer.",
+        )
+        @Preview @Composable fun FilledButtonPressed() {}
+
+        // No arguments: id defaults to the function name, group to the file `@CatalogGroup`.
+        @CatalogComponent
+        @Preview @Composable fun PlainSticker() {}
+
+        // No catalog annotation at all: stays out of the inventory (catalog == null).
+        @Preview @Composable fun NotACatalogPreview() {}
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val byFn = manifest.previews.associateBy { it.functionName }
+
+    // Explicit component: slashed id + caption from the annotation, group/section from the file.
+    val filled = byFn.getValue("FilledButton").catalog
+    assertThat(filled).isNotNull()
+    assertThat(filled!!.role).isEqualTo(CatalogRole.COMPONENT)
+    assertThat(filled.componentId).isEqualTo("Button/Filled")
+    assertThat(filled.group).isEqualTo("Buttons")
+    assertThat(filled.section).isEqualTo("Components")
+    assertThat(filled.caption).isEqualTo("Highest emphasis; the primary action.")
+
+    // Variant: parent id on componentId, state + parsed `key=value` prop, own caption.
+    val pressed = byFn.getValue("FilledButtonPressed").catalog
+    assertThat(pressed).isNotNull()
+    assertThat(pressed!!.role).isEqualTo(CatalogRole.VARIANT)
+    assertThat(pressed.componentId).isEqualTo("Button/Filled")
+    assertThat(pressed.state).isEqualTo("pressed")
+    assertThat(pressed.props).containsExactly(CatalogVariantProp("content", "icon+label"))
+
+    // Defaulted component: id falls back to the function name, group to the file default.
+    val plain = byFn.getValue("PlainSticker").catalog
+    assertThat(plain).isNotNull()
+    assertThat(plain!!.componentId).isEqualTo("PlainSticker")
+    assertThat(plain.group).isEqualTo("Buttons")
+    assertThat(plain.caption).isNull()
+
+    // A preview with no catalog annotation stays out of the inventory.
+    assertThat(byFn.getValue("NotACatalogPreview").catalog).isNull()
+  }
+
+  @Test
   fun `composePreviewDiscover aggregates @TypographyCatalog tokens into type-style sheets`() {
     val projectDir = createCmpTestProject()
 
