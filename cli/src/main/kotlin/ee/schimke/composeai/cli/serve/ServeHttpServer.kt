@@ -432,11 +432,18 @@ class ServeHttpServer(
    */
   private suspend fun RoutingContext.withLeasedSession(
     sessionId: String,
+    /**
+     * How to respond when the session can't be created/opened. Defaults to the bare `text/plain`
+     * 404 (correct for asset / API lanes); the HTML *page* routes (landing, viewer) pass an
+     * [respondNotFoundHtml] so a dead link lands on the styled site rather than plain text.
+     */
+    onMissing: (suspend RoutingContext.() -> Unit)? = null,
     block: suspend (ServeHost) -> Unit,
   ) {
     val lease = withContext(Dispatchers.IO) { sessions.lease(sessionId) }
     if (lease == null) {
-      call.respondText("not found", status = HttpStatusCode.NotFound)
+      if (onMissing != null) onMissing()
+      else call.respondText("not found", status = HttpStatusCode.NotFound)
       return
     }
     try {
@@ -444,6 +451,18 @@ class ServeHttpServer(
     } finally {
       withContext(Dispatchers.IO) { lease.close() }
     }
+  }
+
+  /**
+   * A styled HTML 404 for the browser-facing page routes (landing, viewer) — see
+   * [ServeWeb.notFoundPage]. Asset/API lanes keep their bare `text/plain` 404.
+   */
+  private suspend fun RoutingContext.respondNotFoundHtml(message: String) {
+    call.respondText(
+      ServeWeb.notFoundPage(message, token, isPublic),
+      ContentType.Text.Html,
+      HttpStatusCode.NotFound,
+    )
   }
 
   /** `GET /` (query) and `GET /{system}[/]` (path): the session's preview-list landing page. */
@@ -463,7 +482,10 @@ class ServeHttpServer(
       return
     }
     val (webSessionId, basePath) = webSessionAndBase(sessionInPath)
-    withLeasedSession(selectedSessionId(sessionInPath)) { renderHost ->
+    withLeasedSession(
+      selectedSessionId(sessionInPath),
+      onMissing = { respondNotFoundHtml("That design system was not found on this server.") },
+    ) { renderHost ->
       call.respondText(
         ServeWeb.landingPage(
           renderHost.label,
@@ -1093,11 +1115,14 @@ class ServeHttpServer(
     if (rejectBadToken()) return
     val sessionId = selectedSessionId(sessionInPath)
     val (webSessionId, basePath) = webSessionAndBase(sessionInPath)
-    withLeasedSession(sessionId) { renderHost ->
+    withLeasedSession(
+      sessionId,
+      onMissing = { respondNotFoundHtml("That design system was not found on this server.") },
+    ) { renderHost ->
       val previewId = call.parameters["name"]
       val preview = previewId?.let { id -> renderHost.previews.firstOrNull { it.id == id } }
       if (preview == null) {
-        call.respondText("no such preview", status = HttpStatusCode.NotFound)
+        respondNotFoundHtml("That preview does not exist in this catalog.")
         return@withLeasedSession
       }
       // Offer the in-browser Wasm tier when this catalog session has a Wasm app registered.

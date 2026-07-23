@@ -422,11 +422,20 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 <a class="cp-state-btn" href="/p/button-filled__ideal__default__light__fontscale-2.0?token=demo-token-fixture&session=compose-m3">Font 2.0×</a>
       </nav>
       <div class="cp-viewer-bar">
-        
+        <button type="button" class="cp-drawer-toggle" id="cp-nav-toggle" aria-expanded="false" aria-controls="cp-nav">☰ Components</button>
         <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
       <div class="cp-viewer cp-controls-open" data-bg-theme="light" data-preview-id="button-filled__ideal__default__light" data-mode="snapshot" data-modes="snapshot" data-static-snapshot="true" data-can-render-overrides="false" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2">
-        
+              <aside class="cp-nav" id="cp-nav" aria-label="Components">
+        <div class="cp-nav-head"><span>Components</span><button type="button" class="cp-nav-close" id="cp-nav-close" aria-label="Close component navigation">×</button></div>
+        <input type="search" class="cp-nav-search" id="cp-nav-search" placeholder="Filter components" autocomplete="off" aria-label="Filter components">
+        <ul class="cp-nav-list" id="cp-nav-list">
+        <li><a class="cp-nav-item" href="/p/button-filled__ideal__default__light?token=demo-token-fixture&session=compose-m3" aria-current="page" title="button-filled__ideal__default__light" data-search="Button · Filled (light) button-filled__ideal__default__light"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/button-filled__ideal__default__light.png?token=demo-token-fixture&session=compose-m3"><span class="cp-nav-name">Button · Filled (light)</span></a></li>
+<li><a class="cp-nav-item" href="/p/checkbox__ideal__default__light?token=demo-token-fixture&session=compose-m3" title="checkbox__ideal__default__light" data-search="Checkbox · Checked (light) checkbox__ideal__default__light"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/checkbox__ideal__default__light.png?token=demo-token-fixture&session=compose-m3"><span class="cp-nav-name">Checkbox · Checked (light)</span></a></li>
+<li><a class="cp-nav-item" href="/p/radiobutton__ideal__default__light?token=demo-token-fixture&session=compose-m3" title="radiobutton__ideal__default__light" data-search="Radio · Selected (light) radiobutton__ideal__default__light"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/radiobutton__ideal__default__light.png?token=demo-token-fixture&session=compose-m3"><span class="cp-nav-name">Radio · Selected (light)</span></a></li>
+        </ul>
+        <p class="cp-nav-empty" id="cp-nav-empty" hidden>No components match.</p>
+      </aside>
         <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="Button · Filled (light)"><canvas id="cp-canvas" hidden></canvas><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         <div class="cp-controls" id="cp-controls">
           <div class="cp-note">Pre-rendered snapshot — overrides (size, device, locale, font scale, orientation) need the live server, not a published catalog. <a href="https://github.com/yschimke/compose-ai-tools/blob/main/docs/public-preview-server.md#running-one">Enable a local preview server.</a></div>
