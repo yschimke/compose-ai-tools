@@ -815,24 +815,17 @@ data class FigmaSvgModel(
      * The modifier names that project a painter as a container fill: `Modifier.paint` (inspector
      * name `paint`, class-name fallback `PainterElement`) plus Coil's content painter — the
      * modifier `AsyncImage` actually draws through. Coil's `AsyncImage` never surfaces as a node
-     * *name* the opaque-by-name matcher can hit: the library ships without composition source
-     * info, so its `Layout` falls back to the measure-policy class — a lambda in coil's
+     * *name* the opaque-by-name matcher can hit: the library ships without composition source info,
+     * so its `Layout` falls back to the measure-policy class — a lambda in coil's
      * `internal/utils.kt`, i.e. the layer reads `UtilsKt` — and the photo silently vanished from
      * the export (the Confetti `speakerdetails` sticker). Coil 3's `ContentPainterElement` names
      * itself `content` in its `inspectableProperties`; `ContentPainterModifier` is Coil 2's
-     * element, whose `debugInspectorInfo` name is compiled out in release artifacts so it
-     * surfaces as its class name. Both carry no `painter` property, so
-     * [hasUnvectorizablePaintFill] treats them as an unreadable painter and the hybrid export
-     * crops the drawn region from the frame.
+     * element, whose `debugInspectorInfo` name is compiled out in release artifacts so it surfaces
+     * as its class name. Both carry no `painter` property, so [hasUnvectorizablePaintFill] treats
+     * them as an unreadable painter and the hybrid export crops the drawn region from the frame.
      */
     private val PAINT_FILL_MODIFIERS =
-      setOf(
-        "paint",
-        "PainterElement",
-        "content",
-        "ContentPainterElement",
-        "ContentPainterModifier",
-      )
+      setOf("paint", "PainterElement", "content", "ContentPainterElement", "ContentPainterModifier")
 
     /**
      * True when this node is filled by a `Modifier.paint` painter we can't turn into a flat colour.
