@@ -61,6 +61,7 @@ import androidx.wear.compose.material3.timeTextCurvedText
 import ee.schimke.composeai.overrides.previewOverrideBoolean
 import ee.schimke.composeai.overrides.previewOverrideString
 import ee.schimke.composeai.preview.AnimatedPreview
+import ee.schimke.composeai.preview.OverrideVariant
 import ee.schimke.composeai.preview.ScrollMode
 import ee.schimke.composeai.preview.ScrollingPreview
 import ee.schimke.composeai.preview.slots.PreviewSlot
@@ -69,10 +70,19 @@ import ee.schimke.composeai.preview.slots.PreviewSlot
 // Buttons — the Wear M3 emphasis levels plus the screen-hugging EdgeButton.
 // ---------------------------------------------------------------------------
 
+// The `disabled` state rides this same function via `@OverrideVariant` (seeding the `enabled` knob)
+// instead of a duplicated `ButtonDisabled` wrapper — the render emits a `_VARIANT_disabled` capture
+// that folds under this sticker. `pressed` / `focused` stay separate functions below: they need a
+// seeded `InteractionSource`, which isn't a `previewOverride*` knob.
 @CatalogWearModes
+@OverrideVariant(name = "disabled", booleans = ["enabled=false"])
 @Composable
 fun FilledButton() =
-  WearSticker { Button(onClick = {}) { Text(previewOverrideString("label", stringResource(R.string.label_filled))) } }
+  WearSticker {
+    Button(onClick = {}, enabled = previewOverrideBoolean("enabled", true)) {
+      Text(previewOverrideString("label", stringResource(R.string.label_filled)))
+    }
+  }
 
 @CatalogWearModes
 @Composable
@@ -398,7 +408,11 @@ fun EdgeButtonScaffoldTemplate() =
 // Selection controls.
 // ---------------------------------------------------------------------------
 
+// The off state rides this function via `@OverrideVariant` (seeding `checked = false`) instead of a
+// duplicated `SwitchButtonOff` — the render emits a `_VARIANT_off` capture that folds under this
+// sticker as the off state.
 @CatalogWearModes
+@OverrideVariant(name = "off", booleans = ["checked=false"])
 @Composable
 fun SwitchButtonOn() =
   WearSticker {
@@ -409,7 +423,10 @@ fun SwitchButtonOn() =
     )
   }
 
+// The unchecked state rides this function via `@OverrideVariant` (seeding `checked = false`) instead
+// of a duplicated `CheckboxButtonUnchecked`.
 @CatalogWearModes
+@OverrideVariant(name = "unchecked", booleans = ["checked=false"])
 @Composable
 fun CheckboxButtonChecked() =
   WearSticker {
@@ -572,34 +589,8 @@ fun ButtonFocused() =
     }
   }
 
-@CatalogWearModes
-@Composable
-fun ButtonDisabled() =
-  WearSticker {
-    Button(onClick = {}, enabled = false) { Text(previewOverrideString("label", stringResource(R.string.label_disabled))) }
-  }
-
-@CatalogWearModes
-@Composable
-fun SwitchButtonOff() =
-  WearSticker {
-    SwitchButton(
-      checked = previewOverrideBoolean("checked", false),
-      onCheckedChange = {},
-      label = { Text(previewOverrideString("label", stringResource(R.string.label_wifi))) },
-    )
-  }
-
-@CatalogWearModes
-@Composable
-fun CheckboxButtonUnchecked() =
-  WearSticker {
-    CheckboxButton(
-      checked = previewOverrideBoolean("checked", false),
-      onCheckedChange = {},
-      label = { Text(previewOverrideString("label", stringResource(R.string.label_sync))) },
-    )
-  }
+// (`ButtonDisabled`, `SwitchButtonOff`, `CheckboxButtonUnchecked` removed — those states now ride
+// their primary function via `@OverrideVariant`, seeding the `enabled` / `checked` knob.)
 
 // ---------------------------------------------------------------------------
 // Parallels of the Remote Compose Material 3 catalog. These mirror the extra

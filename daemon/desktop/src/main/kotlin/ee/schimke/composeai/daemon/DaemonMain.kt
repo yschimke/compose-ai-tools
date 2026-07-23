@@ -472,8 +472,21 @@ private fun previewIndexBackedSpecResolver(previewIndex: PreviewIndex): ((String
  * exercise the conversion without standing up a [PreviewIndex] + lambda.
  */
 internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
+  // `@OverrideVariant` baked seed for a synthetic variant preview → the base override layer. A live
+  // per-render `renderNow.overrides` is layered OVER this by `DesktopHost.specFromPreviewIdPayload`
+  // (`layeredOver`), so live wins per key and the baked seed applies even with zero live overrides.
+  val bakedOverrides =
+    info.overrides
+      ?.toNamedOverrides()
+      ?.takeIf { it.isNotEmpty() }
+      ?.let { ee.schimke.composeai.daemon.protocol.PreviewOverrides(namedOverrides = it) }
   val defaults =
-    RenderSpec(previewId = info.id, className = info.className, functionName = info.methodName)
+    RenderSpec(
+      previewId = info.id,
+      className = info.className,
+      functionName = info.methodName,
+      overrides = bakedOverrides,
+    )
   // A *missing* params block means "params unknown", NOT "params empty" — the incremental
   // source-change path (IncrementalDiscovery.toDto → PreviewIndex.applyDiff) replaces an edited
   // preview's index entry with a DTO that carries no params until the next full rediscovery. So a
@@ -528,6 +541,7 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
     wrapperClassName = params.wrapperClassName ?: defaults.wrapperClassName,
     kind = params.kind ?: defaults.kind,
     assetPath = params.assetPath ?: defaults.assetPath,
+    overrides = bakedOverrides,
   )
 }
 

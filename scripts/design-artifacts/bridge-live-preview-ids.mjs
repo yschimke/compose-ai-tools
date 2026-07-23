@@ -79,11 +79,19 @@ function variantKey(componentId, state, props, theme) {
  * well because "no previewId" is also the legitimate outcome for a deliberately-unbridged image,
  * so a wholly-unbridged component looked no different from an intentional skip.
  */
-export function bridgeLivePreviewIds(manifest, spec, bundles, overriddenFunctions) {
+export function bridgeLivePreviewIds(
+  manifest,
+  spec,
+  bundles,
+  overriddenFunctions,
+) {
   const previewForState = new Map();
   for (const group of spec.groups ?? []) {
     for (const component of group.components ?? []) {
-      previewForState.set(variantKey(component.componentId, "default"), component.preview);
+      previewForState.set(
+        variantKey(component.componentId, "default"),
+        component.preview,
+      );
       for (const v of component.variants ?? []) {
         // `v.theme` counts as a distinguishing axis alongside state/props: a theme-only
         // variant (the split light/dark screen case) carries neither, and was previously
@@ -91,7 +99,12 @@ export function bridgeLivePreviewIds(manifest, spec, bundles, overriddenFunction
         // silently took the LIGHT preview's id.
         if (v.preview && (v.state || v.props || v.theme)) {
           previewForState.set(
-            variantKey(component.componentId, v.state ?? "default", v.props, v.theme),
+            variantKey(
+              component.componentId,
+              v.state ?? "default",
+              v.props,
+              v.theme,
+            ),
             v.preview,
           );
         }
@@ -106,16 +119,21 @@ export function bridgeLivePreviewIds(manifest, spec, bundles, overriddenFunction
   // function (first wins — state variants never share a function).
   const daemonIdFor = new Map();
   const unthemedIdFor = new Map();
+  // Every preview id in the bundle, so the `@OverrideVariant` fallback below can confirm a
+  // reconstructed `<baseId>_VARIANT_<state>` id actually rendered before routing to it.
+  const allPreviewIds = new Set();
   // Earlier bundles win, matching `figmaSvgByFunctions`' fold: the primary render is the
   // authority, and a supplement only contributes previews the primary doesn't have. Falsy
   // entries are skipped so callers can pass `[bundle, extraBundle]` with no extra render.
   for (const bundle of Array.isArray(bundles) ? bundles : [bundles]) {
     if (!bundle) continue;
     for (const preview of bundle.previews ?? []) {
+      allPreviewIds.add(preview.id);
       const fn = preview.functionName ?? preview.id;
       const theme = themeOfPreviewId(preview.id);
       if (theme) {
-        if (!daemonIdFor.has(`${fn}\0${theme}`)) daemonIdFor.set(`${fn}\0${theme}`, preview.id);
+        if (!daemonIdFor.has(`${fn}\0${theme}`))
+          daemonIdFor.set(`${fn}\0${theme}`, preview.id);
       } else if (!unthemedIdFor.has(fn)) unthemedIdFor.set(fn, preview.id);
     }
   }
@@ -129,17 +147,57 @@ export function bridgeLivePreviewIds(manifest, spec, bundles, overriddenFunction
       const state = image.state ?? "default";
       const fn =
         (image.theme
-          ? previewForState.get(variantKey(component.componentId, state, image.props, image.theme))
-          : undefined) ?? previewForState.get(variantKey(component.componentId, state, image.props));
-      if (!fn || overriddenFunctions.has(fn)) continue;
-      // Prefer the theme-keyed daemon id when the sticker carries a theme; fall
-      // back to the un-themed function id for state-variant catalogs (Wear/Remote).
-      const daemonId =
-        (image.theme ? daemonIdFor.get(`${fn}\0${image.theme}`) : undefined) ??
-        unthemedIdFor.get(fn);
-      if (daemonId) {
-        image.previewId = daemonId;
-        mapped++;
+          ? previewForState.get(
+              variantKey(
+                component.componentId,
+                state,
+                image.props,
+                image.theme,
+              ),
+            )
+          : undefined) ??
+        previewForState.get(
+          variantKey(component.componentId, state, image.props),
+        );
+      if (fn && !overriddenFunctions.has(fn)) {
+        // Prefer the theme-keyed daemon id when the sticker carries a theme; fall
+        // back to the un-themed function id for state-variant catalogs (Wear/Remote).
+        const daemonId =
+          (image.theme
+            ? daemonIdFor.get(`${fn}\0${image.theme}`)
+            : undefined) ?? unthemedIdFor.get(fn);
+        if (daemonId) {
+          image.previewId = daemonId;
+          mapped++;
+          continue;
+        }
+      }
+      // `@OverrideVariant` fallback: a non-default state with NO spec `variants` entry is a
+      // synthetic `<baseId>_VARIANT_<state>` preview (discovery mints the id that way). Its
+      // functionName equals the base's, so `unthemedIdFor`/`daemonIdFor` only hold the BASE id;
+      // reconstruct the variant's daemon id from the base id + the `_VARIANT_<state>` tag (theme
+      // stays inside the base id, e.g. `SwitchOn_Light_VARIANT_off`), and route to it only when it
+      // actually rendered. Without this the `@OverrideVariant` states carry no `previewId`, so the
+      // live lane can't reach them and the per-variant figma-svg emit skips them.
+      if (
+        state !== "default" &&
+        !fn &&
+        (image.props == null || Object.keys(image.props).length === 0)
+      ) {
+        const baseFn = previewForState.get(
+          variantKey(component.componentId, "default"),
+        );
+        if (baseFn && !overriddenFunctions.has(baseFn)) {
+          const baseDaemonId =
+            (image.theme
+              ? daemonIdFor.get(`${baseFn}\0${image.theme}`)
+              : undefined) ?? unthemedIdFor.get(baseFn);
+          const variantId = baseDaemonId && `${baseDaemonId}_VARIANT_${state}`;
+          if (variantId && allPreviewIds.has(variantId)) {
+            image.previewId = variantId;
+            mapped++;
+          }
+        }
       }
     }
   }

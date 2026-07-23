@@ -45,6 +45,7 @@ import {
 import { buildCatalog, writeCatalog } from "@design-parity/catalog-export";
 
 import { foldVariants } from "./catalog-variants.mjs";
+import { variantStateFromId } from "./variant-state.mjs";
 import { renderIndexHtml } from "./render-index-html.mjs";
 import { renderCompareHtml } from "./render-compare-html.mjs";
 import { renderCrossSystemHtml } from "./render-cross-system-html.mjs";
@@ -61,7 +62,10 @@ import { targetsByFunction } from "./figma-code-connect-target.mjs";
 import { renderWireframeSvg, slug } from "./render-wireframe-svg.mjs";
 import { renderLayoutWireframeSvg } from "./render-layout-wireframe-svg.mjs";
 import { DEFAULT_PREVIEW_BASE, livePreviewUrl } from "./live-preview.mjs";
-import { buildFontsManifest, fontsPayloadsFromBundle } from "./render-fonts-manifest.mjs";
+import {
+  buildFontsManifest,
+  fontsPayloadsFromBundle,
+} from "./render-fonts-manifest.mjs";
 import { candidatePreviewBundle } from "./bundle-previews.mjs";
 import { bridgeLivePreviewIds } from "./bridge-live-preview-ids.mjs";
 import { applySpecSections } from "./apply-spec-sections.mjs";
@@ -91,9 +95,16 @@ async function fetchJsonBestEffort(url, { timeoutMs = 15000 } = {}) {
 /** Relative paths of every file under `dir` (forward-slashed), for the webRender manifest. */
 async function listFilesRecursive(dir) {
   const out = [];
-  for (const entry of await readdir(dir, { recursive: true, withFileTypes: true })) {
+  for (const entry of await readdir(dir, {
+    recursive: true,
+    withFileTypes: true,
+  })) {
     if (entry.isFile()) {
-      out.push(relative(dir, join(entry.parentPath ?? entry.path, entry.name)).split("\\").join("/"));
+      out.push(
+        relative(dir, join(entry.parentPath ?? entry.path, entry.name))
+          .split("\\")
+          .join("/"),
+      );
     }
   }
   return out;
@@ -117,7 +128,8 @@ async function loadCandidates(path) {
   const bundle = await readPreviewBundle(path);
   for (const preview of bundle.previews) {
     sanitizeNullSizes(preview.params);
-    for (const capture of preview.captures ?? []) sanitizeNullSizes(capture.params);
+    for (const capture of preview.captures ?? [])
+      sanitizeNullSizes(capture.params);
   }
   // `bundleToCandidates` represents every preview as a static PNG sticker — it looks up
   // `previews/<id>.png` and throws `InvalidBundleError` if it's missing. Feed it a filtered *view*
@@ -131,7 +143,22 @@ async function loadCandidates(path) {
         `candidate join (animated GIF / metadata sheet): ${dropped.join(", ")}`,
     );
   }
-  const candidates = bundleToCandidates(candidateBundle, (entry) => entry.functionName ?? entry.id);
+  const candidates = bundleToCandidates(
+    candidateBundle,
+    (entry) => entry.functionName ?? entry.id,
+  );
+  // `@OverrideVariant` synthetic previews share their base's `functionName`, so `mergeByFunction`
+  // (below) folds their images into the parent candidate. Stamp each one's `_VARIANT_<name>` suffix
+  // as `image.state` HERE — before the merge — so the fold surfaces it as a distinct secondary
+  // sticker (`state:<name>`) rather than an invisible duplicate of the default. This is the id→state
+  // linchpin: the corrected `image.state` flows into `catalog.json`, which the static site and the
+  // live catalog server (`ServeCatalogStore` → `variants.json` → `ServeWeb`) both fold off, so no
+  // downstream change is needed. Mirrors the spec-driven `foldVariants` state tag for the
+  // hand-written pressed/disabled state variants.
+  for (const candidate of candidates) {
+    const state = variantStateFromId(candidate.previewId ?? candidate.id);
+    if (state) for (const image of candidate.images ?? []) image.state = state;
+  }
   // Return the ORIGINAL (unfiltered) bundle: its raw `entries` carry the per-preview
   // `previews/<id>.layout.json` (layout-inspector tree) the wireframe is built from, and its full
   // `previews` list carries the catalog-token sheets `catalogTokensFromBundle` needs.
@@ -162,11 +189,11 @@ function layoutByFunction(bundle) {
     } catch {
       continue;
     }
-    if (tree) out.set(fn, { layout: tree, density: preview.params?.density ?? 1 });
+    if (tree)
+      out.set(fn, { layout: tree, density: preview.params?.density ?? 1 });
   }
   return out;
 }
-
 
 /**
  * Build a `functionName → { sourceFile }` lookup from the bundle's previews, so a Code Connect
@@ -223,7 +250,12 @@ function hasSemantics(candidate) {
   if (tree.themeTokens) return true;
   const r = tree.root;
   return Boolean(
-    r && ((r.children && r.children.length > 0) || r.role || r.label || r.bounds || r.tokens),
+    r &&
+    ((r.children && r.children.length > 0) ||
+      r.role ||
+      r.label ||
+      r.bounds ||
+      r.tokens),
   );
 }
 
@@ -236,9 +268,14 @@ function mergeByFunction(a, b) {
       : b.semantics?.theme === "light"
         ? b.semantics
         : a.semantics;
-  const merged = { componentId: a.componentId, images: [...a.images, ...b.images], semantics };
+  const merged = {
+    componentId: a.componentId,
+    images: [...a.images, ...b.images],
+    semantics,
+  };
   if (a.previewId ?? b.previewId) merged.previewId = a.previewId ?? b.previewId;
-  if (a.functionName ?? b.functionName) merged.functionName = a.functionName ?? b.functionName;
+  if (a.functionName ?? b.functionName)
+    merged.functionName = a.functionName ?? b.functionName;
   return merged;
 }
 
@@ -273,7 +310,10 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
   for (const candidate of candidates) {
     const fn = functionOf(candidate);
     const existing = byFunction.get(fn);
-    byFunction.set(fn, existing ? mergeByFunction(existing, candidate) : candidate);
+    byFunction.set(
+      fn,
+      existing ? mergeByFunction(existing, candidate) : candidate,
+    );
   }
 
   const sources = [];
@@ -286,7 +326,8 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
         missing.push(component.componentId);
         continue;
       }
-      if (!hasSemantics(candidate)) withoutSemantics.push(component.componentId);
+      if (!hasSemantics(candidate))
+        withoutSemantics.push(component.componentId);
       // Fold the component's state `variants` (pressed / focused / disabled / off
       // / …) onto the default render: the default images stay the grid hero, each
       // variant's render is appended re-tagged with its `state` so the single-
@@ -309,7 +350,8 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
       // Absent ⇒ an untabbed flat catalog, as before.
       if (group.section !== undefined) source.section = group.section;
       if (component.caption !== undefined) source.caption = component.caption;
-      if (component.reference !== undefined) source.reference = component.reference;
+      if (component.reference !== undefined)
+        source.reference = component.reference;
       if (candidate.semantics) source.semantics = candidate.semantics;
       sources.push(source);
     }
@@ -332,7 +374,6 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
   return { catalog, missing, withoutSemantics };
 }
 // --- end vendored join --------------------------------------------------------
-
 
 const { values } = parseArgs({
   options: {
@@ -451,17 +492,23 @@ const themeTokens = catalogTokens
 function designParityVersion() {
   try {
     const require = createRequire(import.meta.url);
-    return require("@design-parity/catalog-export/package.json").version || undefined;
+    return (
+      require("@design-parity/catalog-export/package.json").version || undefined
+    );
   } catch {
     return undefined;
   }
 }
 
-const { catalog, missing, withoutSemantics } = catalogFromCandidates(candidates, spec, {
-  ...(values.renderer ? { renderer: values.renderer } : {}),
-  ...(designParityVersion() ? { designParity: designParityVersion() } : {}),
-  ...(themeTokens ? { themeTokens } : {}),
-});
+const { catalog, missing, withoutSemantics } = catalogFromCandidates(
+  candidates,
+  spec,
+  {
+    ...(values.renderer ? { renderer: values.renderer } : {}),
+    ...(designParityVersion() ? { designParity: designParityVersion() } : {}),
+    ...(themeTokens ? { themeTokens } : {}),
+  },
+);
 
 // Completeness gate: `bundle pack --with-semantics` is best-effort and exits 0
 // even when the daemon never started or captured zero semantics. For a scheduled
@@ -472,9 +519,14 @@ if (missing.length > 0) {
   console.warn(`[${spec.system}] missing renders for: ${missing.join(", ")}`);
 }
 if (withoutSemantics.length > 0) {
-  console.warn(`[${spec.system}] no semantics for: ${withoutSemantics.join(", ")}`);
+  console.warn(
+    `[${spec.system}] no semantics for: ${withoutSemantics.join(", ")}`,
+  );
 }
-if (!values["allow-incomplete"] && (missing.length > 0 || withoutSemantics.length > 0)) {
+if (
+  !values["allow-incomplete"] &&
+  (missing.length > 0 || withoutSemantics.length > 0)
+) {
   console.error(
     `[${spec.system}] incomplete render — refusing to publish. ` +
       `Re-run the render, or pass --allow-incomplete to override.`,
@@ -483,7 +535,9 @@ if (!values["allow-incomplete"] && (missing.length > 0 || withoutSemantics.lengt
 }
 
 // Images in the bundle are relative to the render dir; resolve them from there.
-const sourceRoot = rendersPath.endsWith(".zip") ? dirname(rendersPath) : rendersPath;
+const sourceRoot = rendersPath.endsWith(".zip")
+  ? dirname(rendersPath)
+  : rendersPath;
 const result = await writeCatalog(catalog, outPath, { sourceRoot });
 
 // Inject the live-preview deep links into catalog.json. Done as a post-process
@@ -495,7 +549,9 @@ const result = await writeCatalog(catalog, outPath, { sourceRoot });
 // the server uses, so browsing this branch and customising the live render are
 // two ends of one workflow.
 const previewBase =
-  values["preview-base"] || process.env.PREVIEW_SERVER_BASE || DEFAULT_PREVIEW_BASE;
+  values["preview-base"] ||
+  process.env.PREVIEW_SERVER_BASE ||
+  DEFAULT_PREVIEW_BASE;
 
 // The repo whose `design-artifacts/<system>` branch this bundle publishes to — it
 // owns the htmlpreview links (index/compare/matches) the README emits and the raw
@@ -506,7 +562,9 @@ const previewBase =
 // against a compose-ai-tools checkout) links its README at its OWN branch instead
 // of 404-ing against compose-ai-tools.
 const repo =
-  values["source-repo"] || process.env.GITHUB_REPOSITORY || "yschimke/compose-ai-tools";
+  values["source-repo"] ||
+  process.env.GITHUB_REPOSITORY ||
+  "yschimke/compose-ai-tools";
 
 // Bundle the in-browser CMP Wasm app into the branch (out/web/wasm/) and record
 // a `webRender` descriptor in catalog.json. `compose-preview serve --catalogs`
@@ -536,7 +594,8 @@ if (values["wasm-dist"]) {
       available,
       committed,
     );
-    for (const warning of warnings) console.warn(`[${spec.system}] fonts: ${warning}`);
+    for (const warning of warnings)
+      console.warn(`[${spec.system}] fonts: ${warning}`);
     if (fontsManifest) {
       await writeFile(
         join(fontsDir, "fonts.json"),
@@ -584,7 +643,10 @@ if (values["publish-live-bundle"]) {
       { encoding: "utf8" },
     );
     const summary = JSON.parse(out);
-    const total = (summary.externalized ?? []).reduce((n, r) => n + (r.size ?? 0), 0);
+    const total = (summary.externalized ?? []).reduce(
+      (n, r) => n + (r.size ?? 0),
+      0,
+    );
     console.log(
       `[${spec.system}] externalized ${(summary.externalized ?? []).length} font resource(s) ` +
         `(${total} B) → bundle/res/  (bundle now ${summary.size} B)`,
@@ -606,11 +668,18 @@ if (values["publish-live-bundle"]) {
   // untabbed bucket. No-op for specs with no group `section` (compose-m3 et al.).
   const stampedSections = applySpecSections(manifest, spec);
   if (stampedSections > 0) {
-    console.log(`[${spec.system}] stamped section on ${stampedSections} component(s) from spec groups`);
+    console.log(
+      `[${spec.system}] stamped section on ${stampedSections} component(s) from spec groups`,
+    );
   }
   for (const component of manifest.components ?? []) {
     for (const image of component.images ?? []) {
-      if (image.path) image.livePreview = livePreviewUrl(previewBase, manifest.system, image.path);
+      if (image.path)
+        image.livePreview = livePreviewUrl(
+          previewBase,
+          manifest.system,
+          image.path,
+        );
     }
   }
   // Stamp the spec's `display` (stage surface + hero preview) onto the manifest. Like the
@@ -627,7 +696,9 @@ if (values["publish-live-bundle"]) {
       ref: values["source-ref"] ?? "",
       module: values["source-module"],
     };
-    console.log(`[${spec.system}] source → ${manifest.source.module}@${manifest.source.ref}`);
+    console.log(
+      `[${spec.system}] source → ${manifest.source.module}@${manifest.source.ref}`,
+    );
   }
   // Emit the catalog-id → daemon-id bridge whenever a live path can serve this catalog — a carried
   // liveBundle OR a buildable source. A source-only catalog (wear-m3 / remote-m3) needs the aliases
@@ -637,9 +708,18 @@ if (values["publish-live-bundle"]) {
     // Both bundles: an `--extra-renders`-only component's previews live solely in the
     // supplement, so passing just the primary left every one of its images with no
     // `previewId` — no live lane for it, and no per-variant figma-svg.
-    bridgeLivePreviewIds(manifest, spec, [bundle, extraBundle], overriddenFunctions);
+    bridgeLivePreviewIds(
+      manifest,
+      spec,
+      [bundle, extraBundle],
+      overriddenFunctions,
+    );
   }
-  await writeFile(catalogJsonPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  await writeFile(
+    catalogJsonPath,
+    `${JSON.stringify(manifest, null, 2)}\n`,
+    "utf8",
+  );
 }
 
 // Editable SVG wireframes next to the raster PNGs: one labelled shape per layout
@@ -657,9 +737,12 @@ if (values["publish-live-bundle"]) {
 // figma-svg, which must land in the catalog too — otherwise a screen rendered from a second module is
 // PNG-only. Extra wins on a name clash, matching the candidate fold above.
 const layoutByFn = layoutByFunction(bundle);
-if (extraBundle) for (const [fn, v] of layoutByFunction(extraBundle)) layoutByFn.set(fn, v);
+if (extraBundle)
+  for (const [fn, v] of layoutByFunction(extraBundle)) layoutByFn.set(fn, v);
 const fnByComponentId = new Map(
-  spec.groups.flatMap((g) => g.components.map((c) => [c.componentId, c.preview])),
+  spec.groups.flatMap((g) =>
+    g.components.map((c) => [c.componentId, c.preview]),
+  ),
 );
 const wireframesDir = join(outPath, "wireframes");
 await mkdir(wireframesDir, { recursive: true });
@@ -674,12 +757,19 @@ for (const component of catalog.components) {
   const carried = fn ? layoutByFn.get(fn) : undefined;
   let svg = null;
   if (carried) {
-    svg = renderLayoutWireframeSvg({ ...component, layout: carried.layout }, { density: carried.density });
+    svg = renderLayoutWireframeSvg(
+      { ...component, layout: carried.layout },
+      { density: carried.density },
+    );
     if (svg) layoutWireframeCount += 1;
   }
   if (!svg) svg = renderWireframeSvg(component); // greenline fallback
   if (!svg) continue;
-  await writeFile(join(wireframesDir, `${slug(component.componentId)}.svg`), svg, "utf8");
+  await writeFile(
+    join(wireframesDir, `${slug(component.componentId)}.svg`),
+    svg,
+    "utf8",
+  );
   wireframeSlugs.add(slug(component.componentId));
   wireframeCount += 1;
 }
@@ -696,7 +786,9 @@ for (const component of catalog.components) {
 // `component.images` to show the stickers (and to group them by `state` in the
 // zoom view). Nothing between the write above and the renders below touches
 // catalog.json, so moving the read earlier is behaviour-preserving.
-const indexManifest = JSON.parse(await readFile(join(outPath, "catalog.json"), "utf8"));
+const indexManifest = JSON.parse(
+  await readFile(join(outPath, "catalog.json"), "utf8"),
+);
 
 // Editable, design-fidelity vectors next to the raster PNGs: the layered
 // `compose/figma-svg` export (real fills / strokes / corner radii + editable
@@ -792,7 +884,10 @@ let figmaVariantGapCount = 0;
 const unbridgedComponents = new Map();
 for (const component of indexManifest.components ?? []) {
   for (const image of component.images ?? []) {
-    const seen = unbridgedComponents.get(component.componentId) ?? { unbridged: 0, total: 0 };
+    const seen = unbridgedComponents.get(component.componentId) ?? {
+      unbridged: 0,
+      total: 0,
+    };
     seen.total += 1;
     if (!image.previewId) seen.unbridged += 1;
     unbridgedComponents.set(component.componentId, seen);
@@ -851,7 +946,10 @@ const componentByComponentId = new Map(
   spec.groups.flatMap((g) =>
     g.components
       .filter((c) => c.component)
-      .map((c) => [c.componentId, { component: c.component, import: c.import, source: c.source }]),
+      .map((c) => [
+        c.componentId,
+        { component: c.component, import: c.import, source: c.source },
+      ]),
   ),
 );
 const codeConnect = buildCodeConnectManifest({
@@ -900,7 +998,8 @@ if (spec.compareWith) {
     const parallelById = {};
     for (const group of spec.groups ?? []) {
       for (const component of group.components ?? []) {
-        if (component.parallel) parallelById[component.componentId] = component.parallel;
+        if (component.parallel)
+          parallelById[component.componentId] = component.parallel;
       }
     }
     const otherComponents = (otherSpec.groups ?? []).flatMap((group) =>
@@ -947,7 +1046,10 @@ if (spec.compareWith) {
       }),
       "utf8",
     );
-    crossSystem = { system: spec.compareWith, title: otherSpec.title ?? spec.compareWith };
+    crossSystem = {
+      system: spec.compareWith,
+      title: otherSpec.title ?? spec.compareWith,
+    };
     console.log(`[${spec.system}] matches → ${matchesPath}`);
   } catch (err) {
     console.warn(
@@ -966,7 +1068,11 @@ if (spec.compareWith) {
 const indexPath = join(outPath, "index.html");
 await writeFile(
   indexPath,
-  renderIndexHtml(indexManifest, { wireframeSlugs, figmaSvgSlugs, crossSystem }),
+  renderIndexHtml(indexManifest, {
+    wireframeSlugs,
+    figmaSvgSlugs,
+    crossSystem,
+  }),
   "utf8",
 );
 
@@ -977,7 +1083,10 @@ await writeFile(
 const comparePath = join(outPath, "compare.html");
 await writeFile(
   comparePath,
-  renderCompareHtml(indexManifest, { figmaSvgSlugs, hybridSlugs: figmaSvgHybridSlugs }),
+  renderCompareHtml(indexManifest, {
+    figmaSvgSlugs,
+    hybridSlugs: figmaSvgHybridSlugs,
+  }),
   "utf8",
 );
 
@@ -1026,7 +1135,8 @@ const partiallyUnbridged = [...unbridgedComponents].filter(
 ).length;
 if (fullyUnbridged.length) {
   const shown = fullyUnbridged.slice(0, 8).join(", ");
-  const more = fullyUnbridged.length > 8 ? `, +${fullyUnbridged.length - 8} more` : "";
+  const more =
+    fullyUnbridged.length > 8 ? `, +${fullyUnbridged.length - 8} more` : "";
   console.warn(
     `[${spec.system}] ${fullyUnbridged.length} component(s) had NO image bridged to a preview ` +
       `id — no live lane and no per-variant vectors for them: ${shown}${more}. If that is a whole ` +

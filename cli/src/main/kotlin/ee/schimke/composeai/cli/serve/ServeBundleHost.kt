@@ -105,6 +105,18 @@ class ServeBundleHost(
           id = id,
           label = id,
           overrides = readOverrides(id),
+          // `state` comes only from a `catalog.json`-backed bundle's `variants.json`
+          // (`meta.state`).
+          // A plain module bundle has no manifest, so an `@OverrideVariant` synthetic preview
+          // (`Foo_VARIANT_off`) stays stateless and shows as its own grid card. It is NOT folded
+          // here
+          // from the id: `ServeWeb`'s state grouping keys off the flattened `__<state>__` catalog
+          // id,
+          // which a raw `_VARIANT_<name>` id doesn't carry, so marking it as a state would fold it
+          // out of the grid without a switcher link to reach it (it would vanish). Folding a
+          // raw-bundle variant needs `ServeWeb`'s `baseKey`/`stateInvariantKey` to understand the
+          // `_VARIANT_` suffix — a separate change. The catalog-served path already folds
+          // correctly.
           state = meta?.state,
           theme = meta?.theme,
           props = meta?.props,

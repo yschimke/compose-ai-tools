@@ -995,7 +995,13 @@ open class RobolectricHost(
       (inbound["inspectionMode"] ?: base.inspectionMode?.toString())?.let {
         append("inspectionMode=").append(it).append(';')
       }
-      inbound["overrides"]?.let { append("overrides=").append(it).append(';') }
+      // Layer the baked `@OverrideVariant` seed (`base.overrides`) UNDER the inbound live override
+      // token: a live per-render override wins per key, but the variant's baked seed still applies
+      // when the caller sends no override (catalog browsing). Mirrors the desktop host's
+      // `layeredOver(base.overrides)`; without it a live variant preview rendered its base state.
+      overridesTokenFor(inbound["overrides"], base.overrides)?.let {
+        append("overrides=").append(it).append(';')
+      }
       inbound["mode"]?.let { append("mode=").append(it).append(';') }
       (inbound["kind"]?.takeIf { it.isNotBlank() } ?: base.kind)
         ?.takeIf { it.isNotBlank() }
@@ -1008,6 +1014,47 @@ open class RobolectricHost(
       // variants that share one function, overwriting each other's render.
       append("outputBaseName=").append(previewId)
     }
+  }
+
+  private val overridesJson =
+    kotlinx.serialization.json.Json {
+      ignoreUnknownKeys = true
+      encodeDefaults = false
+    }
+
+  /**
+   * Merge the inbound live override token (a sparse per-render overlay) OVER the baked
+   * `@OverrideVariant` seed [baseOverrides], returning the re-encoded `overrides=` token — or the
+   * inbound token unchanged when there is no baked seed, or null when neither is present. Live wins
+   * per key; the baked seed is the floor. The base64(url, no-pad)/JSON shape matches
+   * `JsonRpcServer.encodeRenderPayload` so the sandbox's `parseFromPayloadOrNull` decodes it.
+   */
+  private fun overridesTokenFor(
+    inboundToken: String?,
+    baseOverrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
+  ): String? {
+    if (baseOverrides == null) return inboundToken
+    val inbound =
+      inboundToken?.let {
+        runCatching {
+            overridesJson.decodeFromString(
+              ee.schimke.composeai.daemon.protocol.PreviewOverrides.serializer(),
+              String(java.util.Base64.getUrlDecoder().decode(it), Charsets.UTF_8),
+            )
+          }
+          .getOrNull()
+      }
+    val merged = inbound.layeredOver(baseOverrides) ?: return inboundToken
+    return java.util.Base64.getUrlEncoder()
+      .withoutPadding()
+      .encodeToString(
+        overridesJson
+          .encodeToString(
+            ee.schimke.composeai.daemon.protocol.PreviewOverrides.serializer(),
+            merged,
+          )
+          .toByteArray(Charsets.UTF_8)
+      )
   }
 
   /** Parses a `;`-delimited `key=value` payload into a map; mirrors [PreviewManifestRouter]. */
