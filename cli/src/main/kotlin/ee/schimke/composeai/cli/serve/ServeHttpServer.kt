@@ -837,13 +837,7 @@ class ServeHttpServer(
           .entries()
           .mapNotNull { (key, values) ->
             val value = values.firstOrNull() ?: return@mapNotNull null
-            if (
-              key in ServeOverrides.SUPPORTED_KEYS || key.startsWith(ServeOverrides.KNOB_PREFIX)
-            ) {
-              key to value
-            } else {
-              null
-            }
+            if (ServeOverrides.isOverrideParam(key)) key to value else null
           }
           .toMap()
       val knobKinds =
@@ -1053,22 +1047,15 @@ class ServeHttpServer(
       val wantSvg = rawName.endsWith(".svg")
       val wantSlots = rawName.endsWith(".slots")
       val previewId = rawName.removeSuffix(".png").removeSuffix(".svg").removeSuffix(".slots")
-      // Forward the fixed render axes plus any author-declared knob params (`knob.<key>=…`, dynamic
-      // keys not in SUPPORTED_KEYS) so a live knob edit reaches ServeOverrides.parse instead of
-      // being
-      // silently dropped.
+      // Forward the fixed render axes plus any dynamic override params (`knob.<key>=…` knobs and
+      // `rc.<name>=…` Remote Compose seeds, neither in SUPPORTED_KEYS) so a live knob / Remote
+      // Compose edit reaches ServeOverrides.parse instead of being silently dropped.
       val overrideParams =
         call.request.queryParameters
           .entries()
           .mapNotNull { (key, values) ->
             val value = values.firstOrNull() ?: return@mapNotNull null
-            if (
-              key in ServeOverrides.SUPPORTED_KEYS || key.startsWith(ServeOverrides.KNOB_PREFIX)
-            ) {
-              key to value
-            } else {
-              null
-            }
+            if (ServeOverrides.isOverrideParam(key)) key to value else null
           }
           .toMap()
       // Type a bare `knob.<key>=<value>` from the preview's declared knobs (an explicit

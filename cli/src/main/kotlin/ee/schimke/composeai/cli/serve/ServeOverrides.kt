@@ -4,6 +4,9 @@ import ee.schimke.composeai.daemon.protocol.FocusOverride
 import ee.schimke.composeai.daemon.protocol.GestureOverride
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
+import ee.schimke.composeai.daemon.protocol.RemoteComposeProfile
+import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import java.security.MessageDigest
@@ -84,6 +87,12 @@ object ServeOverrides {
       // `clearBackground=true`; both map to `PreviewOverrides.clearBackground`.
       "background",
       "clearBackground",
+      // Remote Compose platform profile (`RcPlatformProfiles` variant) the daemon compiles the
+      // remote document against. Wire names match `RemoteComposeProfile` (androidx, androidx7…,
+      // widgetsV6/V7, wearWidgets). Daemon-only + Android-only — a desktop/static session ignores
+      // it. The per-name seeds ride the dynamic `rc.<name>=…` prefix ([RC_NAMED_PREFIX]), like the
+      // `knob.` knobs.
+      "rcProfile",
     )
 
   /**
@@ -101,10 +110,42 @@ object ServeOverrides {
   const val KNOB_PREFIX = "knob."
 
   /**
+   * Prefix for Remote Compose named-value seeds: `rc.<name>=<value>`, e.g. `rc.label=Tap me` or
+   * `rc.stopColor=color:%23FF8800`. These feed `PreviewOverrides.remoteCompose.namedValues` (the
+   * `RemoteComposeOverride` facet the `:data-remotecompose-connector` bridges into the running
+   * `RemoteDocumentPlayer`'s `StateUpdater`), which is a **separate channel** from the generic
+   * `knob.` overrides — a Remote Compose sticker's `rememberNamedRemote*` binding is reachable only
+   * through this facet, never the `compose/overrides` knob map. Unlike `knob.`, there is no
+   * per-preview declaration to infer the type from, so the value carries its own `<kind>:<value>`
+   * tag ([RC_KNOWN_KINDS], default `string`). Daemon-only + Android-only — a desktop/static session
+   * has no Remote Compose runtime and ignores it. Dynamic keys, so not listed in [SUPPORTED_KEYS].
+   */
+  const val RC_NAMED_PREFIX = "rc."
+
+  /**
+   * True when [key] is a param [parse] consumes — a fixed [SUPPORTED_KEYS] axis, an author-declared
+   * `knob.` knob, or an `rc.` Remote Compose seed. The HTTP `GET /render` handlers filter the query
+   * string through this so a dynamic knob/rc edit reaches [parse] instead of being dropped, while
+   * an unrelated param (a cache-buster, an analytics tag) never does. The `message.overrides` map
+   * the WebSocket live/stream sessions send is already scoped, so it is passed to [parse]
+   * wholesale.
+   */
+  fun isOverrideParam(key: String): Boolean =
+    key in SUPPORTED_KEYS || key.startsWith(KNOB_PREFIX) || key.startsWith(RC_NAMED_PREFIX)
+
+  /**
    * The `<kind>` tags an explicit `knob.<key>=<kind>:<value>` may carry (legacy /
    * declaration-less).
    */
   private val KNOWN_KINDS: Set<String> = setOf("string", "int", "float", "bool", "color")
+
+  /**
+   * The `<kind>` tags an `rc.<name>=<kind>:<value>` seed may carry. Superset of [KNOWN_KINDS] with
+   * `dp` — Remote Compose distinguishes a density-independent measure ([RemoteNamedValue.DpValue])
+   * from a raw float, matching the connector's `setUserLocalFloat` (dp) vs `setUserLocalFloat`
+   * (float) bind. A bare value with no recognised prefix is a `string`.
+   */
+  private val RC_KNOWN_KINDS: Set<String> = setOf("string", "int", "float", "dp", "bool", "color")
 
   /**
    * Map a `compose/overrides` declaration `type` to the [PreviewOverrideValue] wire kind. Shared
@@ -408,6 +449,66 @@ object ServeOverrides {
         }
     }
 
+    // Remote Compose profile (`rcProfile=<wire name>`). Absent → null (the connector's default
+    // ANDROIDX). An unknown value is a hard Invalid rather than a silently-ignored profile.
+    val rcProfile: RemoteComposeProfile? =
+      params["rcProfile"]
+        ?.takeIf { it.isNotBlank() }
+        ?.let {
+          when (it.lowercase()) {
+            "androidx" -> RemoteComposeProfile.ANDROIDX
+            "androidx7" -> RemoteComposeProfile.ANDROIDX7
+            "androidx8" -> RemoteComposeProfile.ANDROIDX8
+            "androidx9" -> RemoteComposeProfile.ANDROIDX9
+            "widgetsv6" -> RemoteComposeProfile.WIDGETS_V6
+            "widgetsv7" -> RemoteComposeProfile.WIDGETS_V7
+            "wearwidgets" -> RemoteComposeProfile.WEAR_WIDGETS
+            else ->
+              return OverrideParse.Invalid(
+                "rcProfile must be one of androidx/androidx7/androidx8/androidx9/widgetsV6/" +
+                  "widgetsV7/wearWidgets, got '$it'"
+              )
+          }
+        }
+
+    // Remote Compose named-value seeds (`rc.<name>=<value>`, own `<kind>:<value>` tag, default
+    // string). A malformed typed value is a hard Invalid, mirroring the `knob.` block.
+    val rcNamedValues = mutableMapOf<String, RemoteNamedValue>()
+    for ((rawKey, raw) in params) {
+      if (!rawKey.startsWith(RC_NAMED_PREFIX)) continue
+      val name = rawKey.removePrefix(RC_NAMED_PREFIX)
+      if (name.isBlank() || raw.isBlank()) continue
+      val sep = raw.indexOf(':')
+      val kind = if (sep > 0) raw.substring(0, sep).takeIf { it in RC_KNOWN_KINDS } else null
+      val value = if (kind != null) raw.substring(sep + 1) else raw
+      rcNamedValues[name] =
+        when (kind ?: "string") {
+          "string" -> RemoteNamedValue.StringValue(value)
+          "int" ->
+            value.toIntOrNull()?.let { RemoteNamedValue.IntValue(it) }
+              ?: return OverrideParse.Invalid("rc '$name' int must be an integer, got '$value'")
+          "float" ->
+            value.toFloatOrNull()?.let { RemoteNamedValue.FloatValue(it) }
+              ?: return OverrideParse.Invalid("rc '$name' float must be a number, got '$value'")
+          "dp" ->
+            value.toFloatOrNull()?.let { RemoteNamedValue.DpValue(it) }
+              ?: return OverrideParse.Invalid("rc '$name' dp must be a number, got '$value'")
+          "bool" ->
+            RemoteNamedValue.BooleanValue(value.equals("true", ignoreCase = true) || value == "1")
+          // Color carries the raw `#AARRGGBB` string; the connector strips `#` and skips a value it
+          // can't parse (a panel typo must not crash the render), so accept any string here.
+          "color" -> RemoteNamedValue.ColorValue(value)
+          else -> return OverrideParse.Invalid("rc '$name' has unknown kind '$kind'")
+        }
+    }
+
+    // Fold the two Remote Compose facets into one override, or leave null when neither is present
+    // so
+    // an rc-free render carries no `remoteCompose` payload (identical wire shape to before).
+    val remoteCompose: RemoteComposeOverride? =
+      if (rcProfile == null && rcNamedValues.isEmpty()) null
+      else RemoteComposeOverride(profile = rcProfile, namedValues = rcNamedValues)
+
     return OverrideParse.Ok(
       PreviewOverrides(
         widthPx = widthPx,
@@ -431,6 +532,7 @@ object ServeOverrides {
         gestures = gestures,
         clearBackground = clearBackground,
         namedOverrides = namedOverrides.ifEmpty { null },
+        remoteCompose = remoteCompose,
       )
     )
   }
@@ -468,6 +570,14 @@ object ServeOverrides {
       // key for order-independence; the value data classes have stable toString.
       append("named=")
       o.namedOverrides?.toSortedMap()?.forEach { (k, v) ->
+        append(k).append('=').append(v).append(';')
+      }
+      // Remote Compose facet participates for the same reason — an `rc.` seed / profile edit must
+      // re-render. Named values sorted for order-independence; the value/profile toStrings are
+      // stable. acceptedHostActions is never set from the serve query path, so it is omitted.
+      append("|rcProfile=").append(o.remoteCompose?.profile)
+      append("|rc=")
+      o.remoteCompose?.namedValues?.toSortedMap()?.forEach { (k, v) ->
         append(k).append('=').append(v).append(';')
       }
     }
