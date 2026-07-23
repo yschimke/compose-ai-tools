@@ -308,6 +308,13 @@ class ServeCatalogLiveHost(
   override fun activeStreamCount(): Int = live.activeStreamCount() + perPreviewStreamCount()
 
   /**
+   * The carried monolithic daemon's render stats. Per-preview pooled daemons keep their own
+   * (they're separate [ServeRenderHost]s owned by the pool); the monolithic lane is the one this
+   * composite routes through, so its numbers are what "this catalog's live lane" means here.
+   */
+  override fun renderPerfStats(): RenderPerfSnapshot? = live.renderPerfStats()
+
+  /**
    * Graft the daemon previews' per-preview metadata onto the baked browse surface. The daemon knows
    * its previews by descriptor id (`FilledButton_Dark`) and carries their author-declared knobs
    * ([ServePreview.overrides], from the bundle sidecars) plus the detected-feature flags

@@ -297,6 +297,11 @@ internal constructor(
   // for the next warm render.
   private val renderLock = ReentrantLock(/* fair= */ true)
 
+  // Serve-side render-latency accounting for `/status` (`renderStats`) — see [RenderPerfStats].
+  private val perfStats = RenderPerfStats()
+
+  override fun renderPerfStats(): RenderPerfSnapshot = perfStats.snapshot()
+
   // Set under renderLock immediately before each renderNow; the (single) in-flight render's
   // renderFinished notification fills pngPath and trips the latch. Safe because the lock guarantees
   // exactly one render in flight at a time.
@@ -359,17 +364,29 @@ internal constructor(
 
     val key = ServeOverrides.cacheKey(previewId, overrides)
     cache.get(key)?.let {
+      perfStats.recordCacheHit()
       return RenderOutcome.Ok(it)
     }
+
+    // Perf accounting for `/status` (`renderStats`): the round-trip clock starts at the cache
+    // miss, and "cold" is judged before the render — a render issued while this host has never
+    // completed one is the cold-start population the boot/warm work targets.
+    val perfStartNs = System.nanoTime()
+    val coldAtEntry = !warmedUp.get()
+    fun perfElapsedMs(): Long = (System.nanoTime() - perfStartNs) / 1_000_000
 
     // Bounded acquire (Fix 4): a cold render holds [renderLock] for up to renderTimeoutSeconds
     // (minutes); don't pin the caller's HTTP render slot on that wait — back off to Busy so the
     // caller serves baked instead. Waiting the [DAEMON_BUSY_WAIT_MS] window still rides out a fast
     // warm re-emit.
-    if (!renderLock.tryLock(DAEMON_BUSY_WAIT_MS, TimeUnit.MILLISECONDS)) return RenderOutcome.Busy
+    if (!renderLock.tryLock(DAEMON_BUSY_WAIT_MS, TimeUnit.MILLISECONDS)) {
+      perfStats.recordBusy()
+      return RenderOutcome.Busy
+    }
     try {
       // Double-check: another request may have filled the cache while we waited for the lock.
       cache.get(key)?.let {
+        perfStats.recordCacheHit()
         return RenderOutcome.Ok(it)
       }
 
@@ -398,6 +415,7 @@ internal constructor(
           } catch (e: RenderSessionException) {
             val reason = "renderNow failed: ${e.message}"
             onLog(reason)
+            perfStats.recordFailed(perfElapsedMs(), timeout = false)
             return RenderOutcome.Failed(reason)
           }
 
@@ -409,6 +427,7 @@ internal constructor(
           }
           val reason = "render rejected: ${rejected.reason}"
           onLog(reason)
+          perfStats.recordFailed(perfElapsedMs(), timeout = false)
           return RenderOutcome.Failed(reason)
         }
 
@@ -426,6 +445,7 @@ internal constructor(
           staleRenders.merge(previewId, 1, Int::plus)
           val reason = "timed out after ${budget}s waiting for render"
           onLog(reason)
+          perfStats.recordFailed(perfElapsedMs(), timeout = true)
           return RenderOutcome.Failed(reason)
         }
         warmedUp.set(true)
@@ -442,10 +462,12 @@ internal constructor(
       if (bytes == null) {
         val reason = "render produced no PNG"
         onLog(reason)
+        perfStats.recordFailed(perfElapsedMs(), timeout = false)
         return RenderOutcome.Failed(reason)
       }
 
       cache.put(key, bytes)
+      perfStats.recordOk(perfElapsedMs(), cold = coldAtEntry)
       return RenderOutcome.Ok(bytes)
     } finally {
       renderLock.unlock()
