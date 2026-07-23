@@ -355,8 +355,10 @@ abstract class RenderPreviewsTask : DefaultTask() {
       // Forward this preview's `@OverrideVariant` seeds (a synthetic variant preview carries a
       // non-null `overrides`) as JSON so DesktopRendererMain can seed `PreviewOverrideController`
       // before composing — the desktop counterpart of the Android renderer's per-preview seed. A
-      // per-render system property (not a positional arg) keeps it clear of the size-bound arg tail.
-      // Absent/blank ⇒ an ordinary preview whose `previewOverride*` reads resolve to their defaults.
+      // per-render system property (not a positional arg) keeps it clear of the size-bound arg
+      // tail.
+      // Absent/blank ⇒ an ordinary preview whose `previewOverride*` reads resolve to their
+      // defaults.
       preview.overrides?.let {
         systemProperty(
           "composeai.overrides.seed",
