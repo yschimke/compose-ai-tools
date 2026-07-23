@@ -164,6 +164,26 @@ internal class FakeRenderSession(
     listeners.forEach { it.onNotification("renderFinished", params) }
   }
 
+  /**
+   * Fire a `renderFailed` notification — the daemon's terminal event when the render body threw
+   * (e.g. a preview whose composition NPEs). Wire shape mirrors the daemon's `RenderFailedParams`
+   * (`{id, error: {kind, message}}`). Public so a [renderHook] can model a broken preview; the host
+   * must fail that render immediately instead of sleeping out its render budget.
+   */
+  fun emitFailed(id: String, message: String) {
+    val params = buildJsonObject {
+      put("id", id)
+      put(
+        "error",
+        buildJsonObject {
+          put("kind", "renderBody")
+          put("message", message)
+        },
+      )
+    }
+    listeners.forEach { it.onNotification("renderFailed", params) }
+  }
+
   override val workspaceRoot: String = renderRoot.absolutePath
   override val modulePath: String = ":sample"
   override val initializeResult: InitializeResult =

@@ -29,6 +29,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okio.FileSystem
 import okio.Path.Companion.toPath
@@ -309,6 +310,12 @@ internal constructor(
   private val pendingPreviewId = AtomicReference<String?>(null)
   private val pendingPngPath = AtomicReference<String?>(null)
 
+  // Set (instead of [pendingPngPath]) when the in-flight render's terminal event is
+  // `renderFailed` — the render body threw, e.g. a preview whose composition NPEs. Carrying the
+  // failure through the same latch turns "broken preview" into an immediate
+  // [RenderOutcome.Failed] instead of a full render-budget sleep under [renderLock].
+  private val pendingFailure = AtomicReference<String?>(null)
+
   // Count of timed-out renders per preview id whose `renderFinished` is still outstanding. A render
   // that timed out releases the lock, but the daemon still emits that render's `renderFinished`
   // later; since the notification carries only the preview id (no per-render correlation id), a
@@ -343,17 +350,34 @@ internal constructor(
 
   private val closed = AtomicBoolean(false)
   private val notificationHandle: AutoCloseable = session.onNotification { method, params ->
-    if (method != "renderFinished" || params == null) return@onNotification
+    if (params == null) return@onNotification
+    val isFinished = method == "renderFinished"
+    val isFailed = method == "renderFailed"
+    if (!isFinished && !isFailed) return@onNotification
     val id = params["id"]?.jsonPrimitive?.contentOrNull ?: return@onNotification
     // Drain the late event of a previously timed-out render (FIFO: it arrives before the current
     // render's own event) so it can't complete a fresh same-id render's latch with a stale PNG.
+    // Either terminal event drains — the daemon owes exactly one (finished OR failed) per render.
     if ((staleRenders[id] ?: 0) > 0) {
       staleRenders.compute(id) { _, v -> ((v ?: 0) - 1).takeIf { it > 0 } }
       return@onNotification
     }
     if (id != pendingPreviewId.get()) return@onNotification
-    // `unchanged` renders still carry a (re-used) pngPath, so this captures bytes either way.
-    params["pngPath"]?.jsonPrimitive?.contentOrNull?.let { pendingPngPath.set(it) }
+    if (isFinished) {
+      // `unchanged` renders still carry a (re-used) pngPath, so this captures bytes either way.
+      params["pngPath"]?.jsonPrimitive?.contentOrNull?.let { pendingPngPath.set(it) }
+    } else {
+      // `renderFailed` must complete the wait too. Without this the render body's failure (a
+      // preview whose composition throws) left the latch untouched and [render] slept out its
+      // ENTIRE cold budget — 900s on the public server — holding [renderLock] for a render the
+      // daemon had already reported dead seconds in. Profiled on the confetti-mobile bundle: a
+      // broken preview failed in ~4s and the host still burned the full 180s CLI budget per
+      // render of it, which read as "cold Android renders take minutes".
+      pendingFailure.set(
+        params["error"]?.jsonObject?.get("message")?.jsonPrimitive?.contentOrNull
+          ?: "daemon reported renderFailed"
+      )
+    }
     pendingLatch.get()?.countDown()
   }
 
@@ -403,6 +427,7 @@ internal constructor(
         pendingLatch.set(latch)
         pendingPreviewId.set(previewId)
         pendingPngPath.set(null)
+        pendingFailure.set(null)
 
         val ack =
           try {
@@ -446,6 +471,18 @@ internal constructor(
           val reason = "timed out after ${budget}s waiting for render"
           onLog(reason)
           perfStats.recordFailed(perfElapsedMs(), timeout = true)
+          return RenderOutcome.Failed(reason)
+        }
+        // The latch also trips on `renderFailed` — the daemon reported the render body threw.
+        // Fail immediately: sleeping out the budget here (the pre-fix behaviour, since only
+        // `renderFinished` completed the latch) held [renderLock] for minutes per broken preview
+        // and is what read as "cold Android renders take minutes" in the serve 503 investigation.
+        // No [staleRenders] entry — the daemon already delivered this render's terminal event —
+        // and [warmedUp] stays as-is: a failed render proves nothing about engine warmth.
+        pendingFailure.get()?.let { failure ->
+          val reason = "render failed: $failure"
+          onLog(reason)
+          perfStats.recordFailed(perfElapsedMs(), timeout = false)
           return RenderOutcome.Failed(reason)
         }
         warmedUp.set(true)
