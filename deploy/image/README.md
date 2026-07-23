@@ -71,7 +71,7 @@ services split the work:
 - **`rollout`** updates the `preview` server with
   [docker-rollout](https://github.com/wowu/docker-rollout). It polls GHCR and,
   when a new `:latest` lands, boots a **second** `preview` replica alongside the
-  live one, waits for that replica's `/healthz` healthcheck to pass, lets Caddy
+  live one, waits for that replica's `/readyz` healthcheck to pass, lets Caddy
   drain traffic onto it, then retires the old replica. The chain stays hands-off:
 
   > merge → cut a `v*` release → `preview-host-image.yml` publishes `:latest` →
@@ -83,8 +83,10 @@ services split the work:
   recreate is a ~1s proxy blip, and only when the baked-Caddyfile image changes.
 
 **How the swap stays seamless.** `preview` has a Docker `healthcheck` on the
-app's ungated `/healthz` liveness route; docker-rollout won't retire the old
-replica until the new one reports `healthy`. Meanwhile the Caddyfile proxies to
+app's ungated `/readyz` **readiness** route — green only once the new replica has
+actually rendered a preview, not merely bound its port (that's `/healthz`), so a
+replica with a broken render pipeline never gets promoted. docker-rollout won't
+retire the old replica until the new one reports `healthy`. Meanwhile the Caddyfile proxies to
 `preview` via **dynamic upstreams** (re-resolving the service's Docker DNS every
 few seconds) with cross-replica **retry**, so during the brief two-replica
 overlap a request that hits the still-booting replica is retried onto the warm

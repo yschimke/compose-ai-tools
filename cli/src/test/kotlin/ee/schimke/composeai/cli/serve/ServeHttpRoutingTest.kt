@@ -21,8 +21,9 @@ import okhttp3.Request
  * End-to-end routing check for [ServeHttpServer]: a real embedded server fronting two static
  * [ServeBundleHost] sessions, exercised over HTTP. Guards the two access forms — the legacy
  * `?session=` query lane and the canonical path lane (`/<system>/…`) — and, crucially, that the
- * constant top-level routes (`/healthz`, `/version`) still win over the `/{system}` catch-all in
- * Ktor's route scoring (a regression here would 404 liveness checks or shadow `/version`).
+ * constant top-level routes (`/healthz`, `/readyz`, `/version`) still win over the `/{system}`
+ * catch-all in Ktor's route scoring (a regression here would 404 liveness/readiness checks or
+ * shadow `/version`).
  *
  * Runs public (no token) so the assertions stay about routing, not the auth gate ([ServeAuthTest]).
  */
@@ -96,6 +97,15 @@ class ServeHttpRoutingTest {
     }
   }
 
+  /** Poll `/readyz` until it latches ready (the prober renders off the request path), up to ~5s. */
+  private fun awaitReady(): Boolean {
+    repeat(50) {
+      if (get("/readyz") == 200 to "ready") return true
+      Thread.sleep(100)
+    }
+    return false
+  }
+
   @AfterTest
   fun tearDown() {
     server.stop()
@@ -108,6 +118,46 @@ class ServeHttpRoutingTest {
     val (code, body) = get("/version")
     assertEquals(200, code)
     assertTrue(body.contains("compose-preview-serve/version/v1"), "version json: $body")
+  }
+
+  @Test
+  fun `readyz goes green once the default session renders a preview`() {
+    // The first poll kicks off the server-owned readiness prober; the default session (default-mod)
+    // carries a baked preview, so that render succeeds OFF the request path and latches ready — the
+    // signal docker-rollout gates the swap on. Unlike /healthz (a static "ok"), this only flips
+    // because a real render succeeded. Poll until green, exactly like a real healthcheck does.
+    assertTrue(awaitReady(), "readyz should latch ready after the default session renders")
+    // Latched: it stays green.
+    assertEquals(200 to "ready", get("/readyz"))
+  }
+
+  @Test
+  fun `readyz withholds ready when the default session cannot render`() {
+    // A server whose default session resolves to nothing (an empty registry) can't render a
+    // representative preview, so /readyz must report 503 "warming" — NOT a false green. This is the
+    // failure docker-rollout must catch: a replica up on the port but unable to serve. Its own
+    // server + registry so the class-level `server` fields are untouched.
+    val emptyRegistry = ServeSessionRegistry(open = { null })
+    val brokenServer =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused-in-public",
+          sessions = emptyRegistry,
+          defaultSessionId = "no-such-session",
+          isPublic = true,
+        )
+        .also { it.start() }
+    try {
+      val req = Request.Builder().url("http://127.0.0.1:${brokenServer.port}/readyz").build()
+      client.newCall(req).execute().use { r ->
+        assertEquals(503, r.code)
+        assertEquals("warming", r.body?.string())
+      }
+    } finally {
+      brokenServer.stop()
+      emptyRegistry.close()
+    }
   }
 
   @Test
