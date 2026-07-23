@@ -234,8 +234,13 @@ fun RemoteHostAction.toHostAction(): Action = hostAction(payload.rs, handlerId.r
  * * On enter — [RemoteComposeController.set] is called with the seed (clears the map / profile when
  *   null). `DisposableEffect(seed)` re-runs only when the override identity changes, so a
  *   subsequent `renderNow.overrides.remoteCompose` with the same shape doesn't churn.
- * * On dispose — clears the override and any captured host-action buffer (`resetForNewSession`).
- *   Matches `KeyboardOverrideExtension` / `PermissionsOverrideExtension` semantics.
+ * * On dispose — clears only the seed (named values / profile / accepted-action filter) via
+ *   [RemoteComposeController.set]`(null)`, **not** the recorded declarations or the sandbox bridge.
+ *   On Android the Compose test rule disposes the activity *before* `JsonRpcServer` calls
+ *   [RemoteComposeDataProductRegistry.onRender] → `declarationsFor`, so resetting the bridge here
+ *   would wipe the knobs before the host snapshots them. Declarations drop at the *next* render's
+ *   start via [RemoteComposeController.clearDeclarations] (after the host captured this render).
+ *   Mirrors `PreviewOverridesOverrideExtension`'s `onDispose { set(null) }`.
  *
  * Runs in [DataExtensionPhase.OuterEnvironment] so the composition local is in place before the
  * user-environment phase reaches preview content — `RemotePreview` blocks composed by user code see
@@ -268,7 +273,10 @@ class RemoteComposeOverrideExtension(private val seed: RemoteComposeOverride? = 
       // runs as a RememberObserver, which Compose invokes before any SideEffect, so this clear always
       // precedes the `named*` reads' SideEffect-recorded declarations for this pass.
       RemoteComposeController.clearDeclarations()
-      onDispose { RemoteComposeController.resetForNewSession() }
+      // Dispose clears only the seed — NOT declarations or the bridge — so the host's post-dispose
+      // onRender snapshot still sees this render's knobs (see the lifecycle KDoc above). Mirrors
+      // PreviewOverridesOverrideExtension's `onDispose { set(null) }`.
+      onDispose { RemoteComposeController.set(null) }
     }
     CompositionLocalProvider(LocalRemoteComposeHost provides ControllerRemoteComposeHost) {
       content()
