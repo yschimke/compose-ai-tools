@@ -2,7 +2,14 @@ package ee.schimke.composeai.cli
 
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.StringWriter
 import java.util.zip.ZipInputStream
+import javax.xml.parsers.DocumentBuilderFactory
+import javax.xml.transform.OutputKeys
+import javax.xml.transform.TransformerFactory
+import javax.xml.transform.dom.DOMSource
+import javax.xml.transform.stream.StreamResult
+import org.w3c.dom.Element
 
 /**
  * The Android app-resource carriage a **packed bundle** carries under `android/`, and the wiring
@@ -105,19 +112,127 @@ internal object AndroidBundleResources {
    * return the classpath entries (the `test-config` dir + optional `r-classes.jar`) to prepend to
    * the Robolectric daemon's `-cp`. Empty when the bundle carries no `android/` payload — the
    * render then falls back to framework resources only (unchanged pre-carriage behaviour).
+   *
+   * [useConsumerApplication] mirrors the daemon's own `composeai.daemon.useConsumerApplication`
+   * opt-in (read by `SandboxHoldingRunner.buildGlobalConfig`). It must carry the SAME value the
+   * caller forwards to the daemon subprocess: when the daemon is told to run the consumer's
+   * manifest `Application` (`true`), the manifest name is left intact so that opt-in works; when
+   * the daemon pins the framework `android.app.Application` (`false`, the default and the only
+   * value any current CLI path uses), the name is stripped so bootstrap can't crash on it. Pass it
+   * and the daemon `-D` from one source so the two never disagree.
    */
-  fun daemonClasspath(zipBytes: ByteArray, workDir: File, applicationPackage: String?): List<File> {
+  fun daemonClasspath(
+    zipBytes: ByteArray,
+    workDir: File,
+    applicationPackage: String?,
+    useConsumerApplication: Boolean = false,
+  ): List<File> {
     val res = extract(zipBytes, File(workDir, "android")) ?: return emptyList()
+    // Neutralize the merged manifest's `<application android:name>` before handing it to
+    // Robolectric — see [sanitizeManifestForDaemon]. The daemon pins `android.app.Application`
+    // (SandboxHoldingRunner.buildGlobalConfig), so the consumer Application never runs; but
+    // Robolectric still *resolves* the manifest-declared class name at sandbox bootstrap, and a
+    // custom `Application` that the bundle doesn't pack (the common case — an app's own
+    // `Application` subclass) then throws `ClassNotFoundException` and aborts the whole sandbox
+    // pool, collapsing the live lane to baked PNGs. Stripping the attribute keeps bootstrap on the
+    // framework `android.app.Application`, matching the config pin. When the daemon opts into the
+    // consumer Application ([useConsumerApplication]), the manifest is handed over untouched so the
+    // opt-in — which requires a Robolectric-safe, packed Application — still resolves and runs.
+    val manifestForConfig =
+      if (useConsumerApplication) res.mergedManifest
+      else sanitizeManifestForDaemon(res.mergedManifest)
     val testConfigDir =
       writeTestConfig(
         File(workDir, "test-config"),
         res.resourceApk,
-        res.mergedManifest,
+        manifestForConfig,
         applicationPackage,
       )
     return buildList {
       add(testConfigDir)
       res.rClassesJar?.let { add(it) }
     }
+  }
+
+  /** The Android resource namespace `android:*` attributes are qualified by. */
+  private const val ANDROID_NS = "http://schemas.android.com/apk/res/android"
+
+  /**
+   * Return a manifest file for the daemon's `android_merged_manifest` whose `<application>` no
+   * longer declares an `android:name`. When [mergedManifest] has no application-name attribute
+   * (default `Application`, or already stripped), or when it can't be parsed, [mergedManifest] is
+   * returned unchanged — so a bundle whose manifest was already daemon-safe pays no cost and a
+   * malformed manifest degrades to the pre-sanitize behaviour rather than the render failing here.
+   *
+   * The stripped copy is written next to the original as `AndroidManifest-daemon.xml` so the raw
+   * merged manifest stays on disk for diagnostics. Only `android:name` is removed; `android:theme`,
+   * `android:label`, and every child element (`<activity>`, `<service>`, …) are preserved — those
+   * are resolved lazily (only when launched), so they never fire at bootstrap the way the
+   * `Application` does.
+   */
+  private fun sanitizeManifestForDaemon(mergedManifest: File): File {
+    val original = runCatching { mergedManifest.readText() }.getOrNull() ?: return mergedManifest
+    val stripped = stripApplicationName(original) ?: return mergedManifest
+    val dest = File(mergedManifest.parentFile, "AndroidManifest-daemon.xml")
+    return runCatching {
+        dest.writeText(stripped)
+        System.err.println(
+          "[android-bundle] stripped <application android:name> from the daemon manifest " +
+            "(previews run on android.app.Application; the consumer Application is not bootstrapped)"
+        )
+        dest
+      }
+      .getOrDefault(mergedManifest)
+  }
+
+  /**
+   * Remove the `android:name` attribute from every `<application>` element in [manifestXml].
+   * Returns the rewritten XML when at least one attribute was removed, or `null` when there was
+   * nothing to strip (no `<application android:name>`) or the document couldn't be parsed — the
+   * caller treats `null` as "use the manifest as-is". Namespace-aware and XXE-safe (DOCTYPE and
+   * external entities disabled), so a hostile or unusual manifest can't reach the network or blow
+   * up parsing.
+   */
+  internal fun stripApplicationName(manifestXml: String): String? {
+    val doc =
+      runCatching {
+          val factory =
+            DocumentBuilderFactory.newInstance().apply {
+              isNamespaceAware = true
+              // XXE hardening: no DTDs, no external entities.
+              runCatching {
+                setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+              }
+              runCatching {
+                setFeature("http://xml.org/sax/features/external-general-entities", false)
+              }
+              runCatching {
+                setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+              }
+            }
+          factory.newDocumentBuilder().parse(ByteArrayInputStream(manifestXml.toByteArray()))
+        }
+        .getOrNull() ?: return null
+
+    val applications = doc.getElementsByTagName("application")
+    var removedAny = false
+    for (i in 0 until applications.length) {
+      val app = applications.item(i) as? Element ?: continue
+      if (app.hasAttributeNS(ANDROID_NS, "name")) {
+        app.removeAttributeNS(ANDROID_NS, "name")
+        removedAny = true
+      }
+    }
+    if (!removedAny) return null
+
+    return runCatching {
+        val writer = StringWriter()
+        TransformerFactory.newInstance()
+          .newTransformer()
+          .apply { setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "no") }
+          .transform(DOMSource(doc), StreamResult(writer))
+        writer.toString()
+      }
+      .getOrNull()
   }
 }
