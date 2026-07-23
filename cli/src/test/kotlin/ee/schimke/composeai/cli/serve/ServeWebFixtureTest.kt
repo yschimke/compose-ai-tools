@@ -1023,6 +1023,23 @@ class ServeWebFixtureTest {
       Regex("href=\"[^\"]*button-filled").findAll(collapsedNav).count(),
       "the multi-variant component appears exactly once in the nav",
     )
+    // Theme preservation: viewing a DARK preview, the collapsed nav links each OTHER component to
+    // its DARK render (not the light default) — the same theme-preserving behaviour the state and
+    // variant switchers already have, so navigating never snaps the visitor back to light.
+    val darkNav =
+      ServeWeb.viewerPage(
+          statefulPreviews.first { it.id == "checkbox__ideal__default__dark" },
+          token,
+          sessionId = "compose-m3",
+          siblings = statefulPreviews,
+        )
+        .substringAfter("id=\"cp-nav-list\"")
+        .substringBefore("</ul>")
+    assertTrue(
+      darkNav.contains("/p/radiobutton__ideal__default__dark") &&
+        !darkNav.contains("/p/radiobutton__ideal__default__light"),
+      "the collapsed nav preserves the viewer's theme (a dark preview links dark siblings)",
+    )
     assertGolden(File(pagesDir, "serve-notfound.html"), notFound)
     // The 404 is a full styled document with a heading, the message, and a link back home — not a
     // bare text/plain dead-end.

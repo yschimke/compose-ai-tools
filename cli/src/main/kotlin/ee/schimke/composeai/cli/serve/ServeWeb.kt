@@ -2385,7 +2385,11 @@ object ServeWeb {
     // carries
     // sibling previews to move between. The right-hand overrides drawer (.cp-controls) is always
     // present and defaults open (the `cp-controls-open` class on .cp-viewer).
-    val navDrawer = navDrawerHtml(preview, siblings, basePath, q)
+    // The theme the viewer is showing: the preview's explicit light/dark token, else the dark-first
+    // (Wear) default. Drives both the stage backing (below) and the collapsed component nav's link
+    // theme, so navigating from a dark preview stays dark.
+    val viewerTheme = bgTheme(preview.id, isDarkFirstSystem(basePath, sessionId, declaredSurface))
+    val navDrawer = navDrawerHtml(preview, siblings, basePath, q, viewerTheme)
     val navToggle =
       if (navDrawer.isEmpty()) ""
       else
@@ -2395,10 +2399,7 @@ object ServeWeb {
     // system (Wear) defaulting to dark — see the `.cp-viewer[data-bg-theme] .cp-stage` CSS. Kept
     // separate from the filter's data-card-theme; the viewer JS re-syncs it on a Theme (uiMode)
     // change so a re-render in the opposite theme doesn't clash with a stale backing color.
-    val bgThemeAttr =
-      bgTheme(preview.id, isDarkFirstSystem(basePath, sessionId, declaredSurface))?.let {
-        " data-bg-theme=\"$it\""
-      } ?: ""
+    val bgThemeAttr = viewerTheme?.let { " data-bg-theme=\"$it\"" } ?: ""
     // The component-state switcher: plain links to this component's other baked states (same
     // theme).
     // Empty for a single-state component / a stateless preview, so nothing renders there.
@@ -3607,16 +3608,29 @@ object ServeWeb {
     siblings: List<ServePreview>,
     basePath: String,
     q: String,
+    /**
+     * The theme the viewer is currently showing (`"light"`/`"dark"`, or null when neither the
+     * preview nor a dark-first catalog forces one). Each collapsed entry links to its component's
+     * render in THIS theme when it has one, so navigating from a dark preview (or anywhere in a
+     * dark-first Wear catalog) stays on the dark render instead of snapping back to light — the
+     * same theme-preserving behaviour as the state/variant switchers.
+     */
+    theme: String?,
   ): String {
     // Collapse to ONE entry per component — the same folding the landing grid does — so the nav
     // reads as a list of components, not of every baked state/theme/props/size permutation
-    // (`button-filled` once, not ~14 times). Each entry links to the component's default render;
-    // the viewer's own state/variant switchers reach that component's other axes. `aria-current`
-    // pins the component being viewed, even when the current preview is a folded (non-default)
-    // variant that has no card of its own.
+    // (`button-filled` once, not ~14 times). Each entry links to the component's render in the
+    // viewer's current [theme] (falling back to its default when it has no such variant); the
+    // viewer's own state/variant switchers reach that component's other axes. `aria-current` pins
+    // the component being viewed, even when the current preview is a folded (non-default) variant
+    // that has no card of its own.
     val representatives =
       groupPreviews(siblings.filterNot { isNonDefaultState(it) || hasNonDefaultProps(it) }).map {
-        it.default
+        when (theme) {
+          "dark" -> it.dark ?: it.default
+          "light" -> it.light ?: it.default
+          else -> it.default
+        }
       }
     // Nothing to navigate to when the collapsed list is empty or holds only the current component.
     val currentKey = componentKey(preview)
