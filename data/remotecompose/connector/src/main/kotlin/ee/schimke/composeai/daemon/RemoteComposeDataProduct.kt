@@ -11,6 +11,7 @@ import androidx.compose.remote.creation.profile.RcPlatformProfiles
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import ee.schimke.composeai.daemon.protocol.DataFetchResult
@@ -117,9 +118,7 @@ private object ControllerRemoteComposeHost : RemoteComposeHost {
 
   @Composable
   override fun namedFloat(name: String, default: Float): Float {
-    RemoteComposeController.recordDeclaration(
-      RemoteComposeKnobDeclaration(name, RemoteNamedValue.FloatValue(default))
-    )
+    declareInComposition(name, RemoteNamedValue.FloatValue(default))
     val current by RemoteComposeController.namedValues
     return when (val v = current[name]) {
       is RemoteNamedValue.FloatValue -> v.value
@@ -131,18 +130,14 @@ private object ControllerRemoteComposeHost : RemoteComposeHost {
 
   @Composable
   override fun namedBoolean(name: String, default: Boolean): Boolean {
-    RemoteComposeController.recordDeclaration(
-      RemoteComposeKnobDeclaration(name, RemoteNamedValue.BooleanValue(default))
-    )
+    declareInComposition(name, RemoteNamedValue.BooleanValue(default))
     val current by RemoteComposeController.namedValues
     return (current[name] as? RemoteNamedValue.BooleanValue)?.value ?: default
   }
 
   @Composable
   override fun namedInt(name: String, default: Int): Int {
-    RemoteComposeController.recordDeclaration(
-      RemoteComposeKnobDeclaration(name, RemoteNamedValue.IntValue(default))
-    )
+    declareInComposition(name, RemoteNamedValue.IntValue(default))
     val current by RemoteComposeController.namedValues
     return when (val v = current[name]) {
       is RemoteNamedValue.IntValue -> v.value
@@ -153,20 +148,31 @@ private object ControllerRemoteComposeHost : RemoteComposeHost {
 
   @Composable
   override fun namedString(name: String, default: String): String {
-    RemoteComposeController.recordDeclaration(
-      RemoteComposeKnobDeclaration(name, RemoteNamedValue.StringValue(default))
-    )
+    declareInComposition(name, RemoteNamedValue.StringValue(default))
     val current by RemoteComposeController.namedValues
     return (current[name] as? RemoteNamedValue.StringValue)?.value ?: default
   }
 
   @Composable
   override fun namedColor(name: String, default: String): String {
-    RemoteComposeController.recordDeclaration(
-      RemoteComposeKnobDeclaration(name, RemoteNamedValue.ColorValue(default))
-    )
+    declareInComposition(name, RemoteNamedValue.ColorValue(default))
     val current by RemoteComposeController.namedValues
     return (current[name] as? RemoteNamedValue.ColorValue)?.argb ?: default
+  }
+
+  /**
+   * Record the read name as an editable knob from a `SideEffect`, not directly during composition:
+   * mirrors `ControllerPreviewOverrideHost`'s `previewOverride*`. A `SideEffect` runs after the
+   * `DisposableEffect` clear that [RemoteComposeOverrideExtension] performs at render start (Compose
+   * runs every `RememberObserver` before any `SideEffect`), so each pass's declaration set is rebuilt
+   * from scratch, and it never writes controller snapshot state mid-composition (which would risk a
+   * recompose loop).
+   */
+  @Composable
+  private fun declareInComposition(name: String, default: RemoteNamedValue) {
+    SideEffect {
+      RemoteComposeController.recordDeclaration(RemoteComposeKnobDeclaration(name, default))
+    }
   }
 
   override fun setNamedValue(name: String, value: RemoteNamedValue) {
@@ -246,6 +252,11 @@ class RemoteComposeOverrideExtension(private val seed: RemoteComposeOverride? = 
   override fun AroundComposable(content: @Composable () -> Unit) {
     DisposableEffect(seed) {
       RemoteComposeController.set(seed)
+      // Clear declarations at render start (mirrors PreviewOverridesOverrideExtension): a held
+      // session re-rendering with a shrunk knob set must not carry stale controls. A DisposableEffect
+      // runs as a RememberObserver, which Compose invokes before any SideEffect, so this clear always
+      // precedes the `named*` reads' SideEffect-recorded declarations for this pass.
+      RemoteComposeController.clearDeclarations()
       onDispose { RemoteComposeController.resetForNewSession() }
     }
     CompositionLocalProvider(LocalRemoteComposeHost provides ControllerRemoteComposeHost) {

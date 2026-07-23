@@ -223,6 +223,28 @@ class RemoteComposeDataProductTest {
   }
 
   @Test
+  fun controller_clearDeclarations_keeps_named_values_and_profile() {
+    val controller = RemoteComposeController
+    controller.set(
+      RemoteComposeOverride(
+        profile = RemoteComposeProfile.ANDROIDX,
+        namedValues = mapOf("a" to RemoteNamedValue.IntValue(1)),
+      )
+    )
+    controller.recordDeclaration(
+      RemoteComposeKnobDeclaration("label", RemoteNamedValue.StringValue("x"))
+    )
+    controller.clearDeclarations()
+    assertTrue("declarations must clear", controller.declarations().isEmpty())
+    assertEquals(
+      "profile must survive a declarations-only clear",
+      RemoteComposeProfile.ANDROIDX,
+      controller.profile.value,
+    )
+    assertEquals(RemoteNamedValue.IntValue(1), controller.valueOf("a"))
+  }
+
+  @Test
   fun on_render_captures_declared_knobs_in_payload() {
     val registry = RemoteComposeDataProductRegistry()
     RemoteComposeController.recordDeclaration(

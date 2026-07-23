@@ -96,6 +96,18 @@ object RemoteComposeController {
   fun declarations(): List<RemoteComposeKnobDeclaration> = declarationsState.value.values.toList()
 
   /**
+   * Drop the recorded declarations at the start of a render pass, keeping named values / profile /
+   * host actions, so a held session re-rendering with a shrunk knob set doesn't carry stale
+   * declarations from an earlier pass. Called from [RemoteComposeOverrideExtension] before the pass
+   * re-records via the `named*` reads' `SideEffect`s. Mirrors
+   * `PreviewOverrideController.clearDeclarations`.
+   */
+  fun clearDeclarations() {
+    if (declarationsState.value.isEmpty()) return
+    declarationsState.value = emptyMap()
+  }
+
+  /**
    * Read [name]'s current value, or `null` if no override / write has bound it. Caller decides the
    * default (the `LocalRemoteComposeHost.namedFloat(name, default)` helpers default to the user-
    * supplied fallback when this returns null).
