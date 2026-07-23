@@ -112,8 +112,21 @@ internal object AndroidBundleResources {
    * return the classpath entries (the `test-config` dir + optional `r-classes.jar`) to prepend to
    * the Robolectric daemon's `-cp`. Empty when the bundle carries no `android/` payload — the
    * render then falls back to framework resources only (unchanged pre-carriage behaviour).
+   *
+   * [useConsumerApplication] mirrors the daemon's own `composeai.daemon.useConsumerApplication`
+   * opt-in (read by `SandboxHoldingRunner.buildGlobalConfig`). It must carry the SAME value the
+   * caller forwards to the daemon subprocess: when the daemon is told to run the consumer's
+   * manifest `Application` (`true`), the manifest name is left intact so that opt-in works; when
+   * the daemon pins the framework `android.app.Application` (`false`, the default and the only
+   * value any current CLI path uses), the name is stripped so bootstrap can't crash on it. Pass it
+   * and the daemon `-D` from one source so the two never disagree.
    */
-  fun daemonClasspath(zipBytes: ByteArray, workDir: File, applicationPackage: String?): List<File> {
+  fun daemonClasspath(
+    zipBytes: ByteArray,
+    workDir: File,
+    applicationPackage: String?,
+    useConsumerApplication: Boolean = false,
+  ): List<File> {
     val res = extract(zipBytes, File(workDir, "android")) ?: return emptyList()
     // Neutralize the merged manifest's `<application android:name>` before handing it to
     // Robolectric — see [sanitizeManifestForDaemon]. The daemon pins `android.app.Application`
@@ -122,8 +135,12 @@ internal object AndroidBundleResources {
     // custom `Application` that the bundle doesn't pack (the common case — an app's own
     // `Application` subclass) then throws `ClassNotFoundException` and aborts the whole sandbox
     // pool, collapsing the live lane to baked PNGs. Stripping the attribute keeps bootstrap on the
-    // framework `android.app.Application`, matching the config pin.
-    val manifestForConfig = sanitizeManifestForDaemon(res.mergedManifest)
+    // framework `android.app.Application`, matching the config pin. When the daemon opts into the
+    // consumer Application ([useConsumerApplication]), the manifest is handed over untouched so the
+    // opt-in — which requires a Robolectric-safe, packed Application — still resolves and runs.
+    val manifestForConfig =
+      if (useConsumerApplication) res.mergedManifest
+      else sanitizeManifestForDaemon(res.mergedManifest)
     val testConfigDir =
       writeTestConfig(
         File(workDir, "test-config"),

@@ -157,30 +157,60 @@ class AndroidBundleResourcesTest {
     assertNull(AndroidBundleResources.stripApplicationName("<manifest><application"))
   }
 
-  @Test
-  fun `daemonClasspath points test-config at a manifest with no custom application name`() {
-    val dir = Files.createTempDirectory("abr-sanitize").toFile()
+  private fun bundleWithApplicationManifest(): ByteArray {
     val manifest =
       """<manifest $androidNs package="ee.schimke.meshcore.app">
            <application android:name="ee.schimke.meshcore.app.MeshcoreApp"/>
          </manifest>"""
-    val zip =
-      zipOf(
-        mapOf(
-          "android/resources.ap_" to "APK".toByteArray(),
-          "android/AndroidManifest.xml" to manifest.toByteArray(),
-        )
+    return zipOf(
+      mapOf(
+        "android/resources.ap_" to "APK".toByteArray(),
+        "android/AndroidManifest.xml" to manifest.toByteArray(),
       )
+    )
+  }
 
-    val cp = AndroidBundleResources.daemonClasspath(zip, dir, "ee.schimke.meshcore.app")
-
-    val props = File(cp[0], "com/android/tools/test_config.properties").readText()
+  private fun manifestHandedToRobolectric(configRoot: File): String {
+    val props = File(configRoot, "com/android/tools/test_config.properties").readText()
     val manifestPath =
       props.lineSequence().first { it.startsWith("android_merged_manifest=") }.substringAfter('=')
-    val handedToRobolectric = File(manifestPath).readText()
+    return File(manifestPath).readText()
+  }
+
+  @Test
+  fun `daemonClasspath points test-config at a manifest with no custom application name`() {
+    val dir = Files.createTempDirectory("abr-sanitize").toFile()
+
+    val cp =
+      AndroidBundleResources.daemonClasspath(
+        bundleWithApplicationManifest(),
+        dir,
+        "ee.schimke.meshcore.app",
+      )
+
     assertTrue(
-      !handedToRobolectric.contains("MeshcoreApp"),
-      "the daemon manifest must not name a consumer Application: $handedToRobolectric",
+      !manifestHandedToRobolectric(cp[0]).contains("MeshcoreApp"),
+      "the daemon manifest must not name a consumer Application",
+    )
+  }
+
+  @Test
+  fun `daemonClasspath keeps the consumer application name when the daemon opts in`() {
+    val dir = Files.createTempDirectory("abr-optin").toFile()
+
+    // useConsumerApplication=true mirrors composeai.daemon.useConsumerApplication — the daemon will
+    // run the manifest Application, so the name must survive the manifest we hand it.
+    val cp =
+      AndroidBundleResources.daemonClasspath(
+        bundleWithApplicationManifest(),
+        dir,
+        "ee.schimke.meshcore.app",
+        useConsumerApplication = true,
+      )
+
+    assertTrue(
+      manifestHandedToRobolectric(cp[0]).contains("MeshcoreApp"),
+      "the opt-in must preserve the consumer Application declaration",
     )
   }
 }
