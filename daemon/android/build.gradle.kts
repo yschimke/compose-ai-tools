@@ -212,6 +212,12 @@ dependencies {
   compileOnly(libs.roborazzi)
   compileOnly(libs.roborazzi.compose)
 
+  // atrace-level render-phase sections (see AndroidxTraceSections). `implementation`, not
+  // compileOnly like the Compose stack above: the standalone lib-daemon-android sidecar has no
+  // consumer module to supply it, and the artifact is tiny + binary-stable so the version-skew
+  // rationale behind the compileOnly contract doesn't apply.
+  implementation(libs.androidx.tracing)
+
   // Test classpath: real runtime versions for the RobolectricHost
   // sandbox-reuse assertion. Protocol round-trip and JsonRpcServer
   // framing/integration tests now live in :daemon:core.

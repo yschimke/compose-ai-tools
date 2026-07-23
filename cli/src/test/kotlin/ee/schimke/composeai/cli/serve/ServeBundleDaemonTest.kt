@@ -211,6 +211,10 @@ class ServeBundleDaemonTest {
       parsed.systemProperties["robolectric.graphicsMode"] == "NATIVE",
       "android descriptor should carry the robolectric.* render flags",
     )
+    assertTrue(
+      parsed.systemProperties["composeai.daemon.backgroundSandboxBoot"] == "true",
+      "serve-spawned android daemons should default to background pool boot (fast cold start)",
+    )
 
     val host =
       try {

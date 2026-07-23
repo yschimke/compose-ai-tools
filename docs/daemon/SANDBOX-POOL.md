@@ -181,6 +181,58 @@ until that lands. Per-slot recycle
 is the other main remaining item — heap-driven recycle could restart
 one sandbox instead of the whole daemon JVM.
 
+## Background pool boot (cold-start fast path)
+
+`-Dcomposeai.daemon.backgroundSandboxBoot=true` (default **off**) changes
+`RobolectricHost.start()`'s contract for a pool: it blocks only until
+**slot 0** is registered, then boots slots 1..N-1 sequentially on a
+background daemon thread. Sandbox boot is the dominant cold-start cost
+(~11.6 s measured per sandbox on a warm `android-all` cache), so a
+3-sandbox pool otherwise holds `initialize` — and therefore serve's first
+live render — for ~35 s of capacity nothing needs yet.
+
+Semantics under background boot:
+
+- **Dispatch routes across the ready prefix.** `chooseSlotIndex` mods by
+  the ready-slot count, not `sandboxCount`, so a render never queues on a
+  still-bootstrapping sandbox. Affinity re-keys as slots come up (mod 1 →
+  mod 2 → …) — a cache-warmth cost only; once the pool completes,
+  dispatch is bit-identical with the eager path.
+- **Interactive waits for slot 1.** `acquireInteractiveSession` awaits
+  the interactive slot's readiness (bounded by the existing 30 s start
+  timeout) and throws the usual clean `Unsupported` if it isn't up yet —
+  callers already handle that with the v1 fallback.
+- **A permanent background slot failure caps the pool** at the slots
+  already booted (loudly logged) instead of aborting the daemon — the
+  eager path's whole-host abort only applies to slot 0. Boot-retry
+  behaviour per slot is unchanged.
+- **Boot-time warm render.** Each background-booted slot renders the
+  daemon-shipped `DaemonWarmupPreview` once (disable with
+  `-Dcomposeai.daemon.warmRenderOnBoot=false`), paying first-composition
+  + `HardwareRenderer` + font-stack + PNG-encode init off the request
+  path. The slot is published for dispatch only **after** its warm render
+  completes, so a live render can never queue behind the cold warm-up.
+  Slot 0 is left to serve's own `prewarm()` throwaway render.
+
+`ServeBundleDaemon` opts serve-spawned Android daemons in by default
+(serve fronts the daemon with baked PNGs while it warms, so nothing
+needs the strict all-ready `initialize`); the Gradle-plugin / VS Code
+launch keeps the eager contract. The deploy image also carries the flag
+in `JAVA_TOOL_OPTIONS` for the source-build catalog path.
+
+## atrace sections (`androidx.tracing`)
+
+`-Dcomposeai.daemon.atrace=true` (default **off**) installs
+`AndroidxTraceSections` inside each sandbox: every render-phase span the
+daemon's chrome-trace recorder already times (`compose:setContent`,
+`render:captureRoboImage`, `dataArtifact:*`, …) plus a whole-render
+`composeai:render:<previewId>` parent span is mirrored onto
+`android.os.Trace` via `androidx.tracing`, lining the daemon's phases up
+with the framework's and Compose's own sections in an atrace-level
+capture. Opt-in because Robolectric's `ShadowTrace` accumulates section
+history in static state with no test-lifecycle resets in a long-lived
+daemon.
+
 ## What this does NOT solve
 
 - **Cross-module sharing.** Different Compose / Kotlin / AGP versions

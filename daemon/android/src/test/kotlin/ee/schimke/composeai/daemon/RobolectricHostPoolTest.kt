@@ -172,6 +172,60 @@ class RobolectricHostPoolTest {
   }
 
   @Test
+  fun backgroundBootServesRendersBeforePoolCompletesAndWarmsTheLateSlot() {
+    // Cold-start fast path (`composeai.daemon.backgroundSandboxBoot=true`): start() blocks only
+    // until slot 0 is up, slots 1..N-1 boot on a background thread, and dispatch routes across
+    // the ready prefix meanwhile. Asserts the three load-bearing pieces:
+    //   1. a render succeeds immediately after start() (before the pool completes),
+    //   2. the background boot eventually completes the pool and steady-state dispatch spreads
+    //      across both sandboxes again,
+    //   3. the background-booted slot got its boot-time warm render (the __warmup-slot-1 PNG).
+    val outputDir = Files.createTempDirectory("pool-background-boot").toFile()
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    System.setProperty(RobolectricHost.BACKGROUND_BOOT_PROP, "true")
+    val host = RobolectricHost(sandboxCount = 2)
+    try {
+      host.start()
+      // Must not block on slot 1: a stub render right after start() succeeds on the ready prefix.
+      val first = host.submit(RenderRequest.Render(payload = "render-1"))
+      assertNotNull("render immediately after start() should succeed", first)
+
+      // Background boot completes the pool (generous bound — a sandbox boot is ~10s warm-cache).
+      val poolDeadline = System.currentTimeMillis() + 180_000
+      while (host.readySlotCountForTest() < 2 && System.currentTimeMillis() < poolDeadline) {
+        Thread.sleep(200)
+      }
+      assertEquals("background boot should complete the pool", 2, host.readySlotCountForTest())
+
+      // The late slot's boot-time warm render lands (it runs right after the slot turns ready).
+      val warmPng = File(outputDir, "__warmup-slot-1.png")
+      val warmDeadline =
+        System.currentTimeMillis() + RobolectricHost.WARM_RENDER_TIMEOUT_MS + 10_000
+      while (!warmPng.exists() && System.currentTimeMillis() < warmDeadline) {
+        Thread.sleep(200)
+      }
+      assertTrue("expected boot-time warm render PNG at $warmPng", warmPng.exists())
+
+      // Steady state: affinity dispatch spreads across both sandboxes, exactly like the
+      // non-background pool.
+      val results =
+        (0 until 16).map { i ->
+          host.submit(RenderRequest.Render(payload = "previewId=com.example.preview.Bg$i"))
+        }
+      assertEquals(
+        "steady-state dispatch should reach both sandboxes",
+        2,
+        results.map { it.classLoaderHashCode }.toSet().size,
+      )
+    } finally {
+      System.clearProperty(RobolectricHost.BACKGROUND_BOOT_PROP)
+      host.shutdown()
+      outputDir.deleteRecursively()
+    }
+  }
+
+  @Test
   fun rejectsLegacyHolderPlusFactory() {
     // The two constructor paths are mutually exclusive: use either the legacy holder or the
     // per-slot factory, not both.
