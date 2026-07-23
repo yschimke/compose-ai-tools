@@ -2437,60 +2437,16 @@ private fun AmbientCapture.toAmbientOverride(): AmbientOverride =
 
 /**
  * Builds the seed map for a synthetic `@OverrideVariant` preview from its
- * [RenderPreviewEntry.overrides], keyed by `seedKey` (`key` or `key[index]`) so
- * `ControllerPreviewOverrideHost` resolves each `previewOverride*` read to the flipped value.
- * Returns `null` for an ordinary preview (no overrides) or when nothing parsed — `set(null)` clears
- * all seeds. A seed whose raw value doesn't parse to its declared kind is dropped rather than
- * coerced, matching the host's type-strict `as?` read (a bad value would silently fall back to the
- * author default anyway).
+ * [RenderPreviewEntry.overrides] via the canonical
+ * [ee.schimke.composeai.data.overrides.OverrideVariantSpec.toNamedOverrides] (keyed by `seedKey`,
+ * type-strict, dropping unparseable seeds). Returns `null` for an ordinary preview or an empty
+ * result — `PreviewOverrideController.set(null)` then clears all seeds, so nothing leaks between
+ * previews.
  */
 private fun overrideSeedMap(
   preview: RenderPreviewEntry
-): Map<String, ee.schimke.composeai.data.overrides.PreviewOverrideValue>? {
-  val spec = preview.overrides ?: return null
-  val out = LinkedHashMap<String, ee.schimke.composeai.data.overrides.PreviewOverrideValue>()
-  for (seed in spec.seeds) {
-    val value = seed.toOverrideValue() ?: continue
-    out[if (seed.index == null) seed.key else "${seed.key}[${seed.index}]"] = value
-  }
-  return out.ifEmpty { null }
-}
-
-private fun OverrideSeed.toOverrideValue():
-  ee.schimke.composeai.data.overrides.PreviewOverrideValue? =
-  when (kind) {
-    OverrideSeedKind.STRING ->
-      ee.schimke.composeai.data.overrides.PreviewOverrideValue.StringValue(raw)
-    OverrideSeedKind.BOOLEAN ->
-      raw.trim().toBooleanStrictOrNull()?.let {
-        ee.schimke.composeai.data.overrides.PreviewOverrideValue.BooleanValue(it)
-      }
-    OverrideSeedKind.INT ->
-      raw.trim().toIntOrNull()?.let {
-        ee.schimke.composeai.data.overrides.PreviewOverrideValue.IntValue(it)
-      }
-    OverrideSeedKind.FLOAT ->
-      raw.trim().toFloatOrNull()?.let {
-        ee.schimke.composeai.data.overrides.PreviewOverrideValue.FloatValue(it)
-      }
-    OverrideSeedKind.COLOR ->
-      normalizeArgbHex(raw)?.let {
-        ee.schimke.composeai.data.overrides.PreviewOverrideValue.ColorValue(it)
-      }
-  }
-
-/** Normalises `#RRGGBB` / `#AARRGGBB` (with or without a leading `#`) to `#AARRGGBB`; null when not hex. */
-private fun normalizeArgbHex(raw: String): String? {
-  val s = raw.trim().removePrefix("#")
-  val hex =
-    when (s.length) {
-      6 -> "FF$s"
-      8 -> s
-      else -> return null
-    }
-  return if (hex.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }) "#${hex.uppercase()}"
-  else null
-}
+): Map<String, ee.schimke.composeai.data.overrides.PreviewOverrideValue>? =
+  preview.overrides?.toNamedOverrides()?.ifEmpty { null }
 
 /**
  * Maps the renderer-side [GestureHintCapture] (read from `previews.json`) onto the connector's

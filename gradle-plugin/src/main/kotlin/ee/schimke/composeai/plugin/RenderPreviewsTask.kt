@@ -352,6 +352,17 @@ abstract class RenderPreviewsTask : DefaultTask() {
           DeviceArtPrefetch.defaultCacheDir().absolutePath,
         )
       }
+      // Forward this preview's `@OverrideVariant` seeds (a synthetic variant preview carries a
+      // non-null `overrides`) as JSON so DesktopRendererMain can seed `PreviewOverrideController`
+      // before composing — the desktop counterpart of the Android renderer's per-preview seed. A
+      // per-render system property (not a positional arg) keeps it clear of the size-bound arg tail.
+      // Absent/blank ⇒ an ordinary preview whose `previewOverride*` reads resolve to their defaults.
+      preview.overrides?.let {
+        systemProperty(
+          "composeai.overrides.seed",
+          OVERRIDES_JSON.encodeToString(OverrideVariantSpec.serializer(), it),
+        )
+      }
       args =
         listOf(
           preview.className,
@@ -439,6 +450,9 @@ abstract class RenderPreviewsTask : DefaultTask() {
     }
   }
 }
+
+/** JSON used to (de)serialise `@OverrideVariant` seeds across the desktop renderer boundary. */
+private val OVERRIDES_JSON = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
 
 /** How many available preview names to list in a no-match `--preview` error before truncating. */
 private const val MAX_SUGGESTED_PREVIEW_NAMES = 20

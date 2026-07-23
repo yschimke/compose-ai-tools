@@ -46,20 +46,17 @@
     {
       "name": "Selection",
       "components": [
-        { "componentId": "Checkbox/Checked", "preview": "CheckboxChecked",
-          "variants": [ { "state": "unchecked", "preview": "CheckboxUnchecked", "caption": "Unchecked state." } ] },
+        { "componentId": "Checkbox/Checked", "preview": "CheckboxChecked", "caption": "Checked; the unchecked state folds in as an @OverrideVariant (checked = false)." },
         { "componentId": "Switch/On", "preview": "SwitchOn",
+          "caption": "On; the off state folds in as an @OverrideVariant (checked = false).",
           "variants": [
-            { "state": "off", "preview": "SwitchOff", "caption": "Off state." },
             { "props": { "locale": "ar-XB" }, "preview": "SwitchOnPseudo", "caption": "i18n axis: the ar-XB bidi pseudolocale — flips the row to RTL layout (desktop CMP pseudolocalises layout direction, not text)." },
             { "props": { "direction": "rtl" }, "preview": "SwitchOnRtl", "caption": "i18n axis: forced RTL layout direction (LocalLayoutDirection = Rtl)." },
             { "props": { "fontScale": "2.0" }, "preview": "SwitchOnLargeFont", "caption": "Accessibility axis: 2× font scale (LocalDensity fontScale = 2.0) — large-text / dynamic-type stress." }
           ] },
-        { "componentId": "RadioButton/Selected", "preview": "RadioSelected",
-          "variants": [ { "state": "unselected", "preview": "RadioUnselected", "caption": "Unselected state." } ] },
+        { "componentId": "RadioButton/Selected", "preview": "RadioSelected", "caption": "Selected; the unselected state folds in as an @OverrideVariant (selected = false)." },
         { "componentId": "Slider", "preview": "SliderMid" },
-        { "componentId": "Chip/Filter-Selected", "preview": "FilterChipSelected",
-          "variants": [ { "state": "unselected", "preview": "FilterChipUnselected", "caption": "Unselected state." } ] },
+        { "componentId": "Chip/Filter-Selected", "preview": "FilterChipSelected", "caption": "Selected; the unselected state folds in as an @OverrideVariant (selected = false)." },
         { "componentId": "Chip/Assist", "preview": "AssistChipSticker" },
         { "componentId": "SegmentedButton", "preview": "SegmentedToggle", "caption": "Single-choice toggle: selected + unselected segments." }
       ]

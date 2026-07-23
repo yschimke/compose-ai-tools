@@ -105,7 +105,16 @@ class ServeBundleHost(
           id = id,
           label = id,
           overrides = readOverrides(id),
-          state = meta?.state,
+          // A `catalog.json`-backed bundle carries `state` in `variants.json` (`meta.state`). A
+          // plain
+          // module bundle has no manifest, so an `@OverrideVariant` synthetic preview would
+          // otherwise
+          // stay stateless and show as its own grid card; recover its `_VARIANT_<name>` state from
+          // the
+          // id so `ServeWeb` folds it under the parent's state switcher, exactly as the catalog
+          // path
+          // does. `meta.state` still wins when a manifest is present.
+          state = meta?.state ?: variantStateFromId(id),
           theme = meta?.theme,
           props = meta?.props,
           section = meta?.section,
@@ -323,3 +332,12 @@ class ServeBundleHost(
     }
   }
 }
+
+/**
+ * Parse the `_VARIANT_<name>` suffix an `@OverrideVariant` synthetic preview id carries, or null
+ * for an ordinary id. Kept in lockstep with the JS `variantStateFromId`
+ * (`scripts/design-artifacts/variant-state.mjs`) and the Kotlin mint site (`overrideVariantPreview`
+ * in the plugin's `PreviewDiscovery.kt`) so the raw-bundle serve fold matches the catalog fold.
+ */
+internal fun variantStateFromId(id: String): String? =
+  Regex("_VARIANT_(.+)$").find(id)?.groupValues?.get(1)

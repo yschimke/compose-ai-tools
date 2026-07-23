@@ -88,6 +88,16 @@ data class PreviewInfoDto(
    * given `(previewId, render/scroll/long|gif)` pair).
    */
   val dataProducts: List<PreviewDataProductDto> = emptyList(),
+  /**
+   * `@OverrideVariant` seed for a synthetic variant preview (same `functionName` as its base, a
+   * `_VARIANT_<name>` id). Parsed straight into the canonical
+   * [ee.schimke.composeai.data.overrides.OverrideVariantSpec] — the wire shape the plugin emits —
+   * so the interactive resolver can seed it as the base override layer (`RenderSpec.overrides`)
+   * under any live per-render override. Optional; `null` on an ordinary preview. Not a plugin
+   * dependency: the type lives in the shared `:data-preview-overrides-core` this module already
+   * depends on for `PreviewOverrideValue`.
+   */
+  val overrides: ee.schimke.composeai.data.overrides.OverrideVariantSpec? = null,
 )
 
 /**

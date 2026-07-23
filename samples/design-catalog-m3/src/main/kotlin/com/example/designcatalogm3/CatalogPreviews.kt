@@ -29,6 +29,7 @@ import com.example.designcatalogm3.shared.generated.resources.msg_merged
 import com.example.designcatalogm3.shared.generated.resources.msg_specs
 import com.example.designcatalogm3.shared.generated.resources.template_title
 import ee.schimke.composeai.overrides.previewOverrideString
+import ee.schimke.composeai.preview.OverrideVariant
 import ee.schimke.composeai.preview.slots.LocalSlotMode
 import org.jetbrains.compose.resources.stringResource
 
@@ -67,15 +68,31 @@ import org.jetbrains.compose.resources.stringResource
 
 // --- Selection controls — checked/selected states (the primary mode to show). ---
 
-@CatalogModes @Composable fun CheckboxChecked() = Sticker("checkbox-checked")
+// Selection controls carry their unchecked/unselected/off state as an `@OverrideVariant` (seeding
+// the shared `checked` / `selected` knob) rather than a duplicated `*Unchecked` / `*Off` /
+// `*Unselected`
+// wrapper — the render emits a `_VARIANT_<state>` capture that folds under the primary sticker.
+@CatalogModes
+@OverrideVariant(name = "unchecked", booleans = ["checked=false"])
+@Composable
+fun CheckboxChecked() = Sticker("checkbox-checked")
 
-@CatalogModes @Composable fun SwitchOn() = Sticker("switch-on")
+@CatalogModes
+@OverrideVariant(name = "off", booleans = ["checked=false"])
+@Composable
+fun SwitchOn() = Sticker("switch-on")
 
-@CatalogModes @Composable fun RadioSelected() = Sticker("radiobutton-selected")
+@CatalogModes
+@OverrideVariant(name = "unselected", booleans = ["selected=false"])
+@Composable
+fun RadioSelected() = Sticker("radiobutton-selected")
 
 @CatalogModes @Composable fun SliderMid() = Sticker("slider")
 
-@CatalogModes @Composable fun FilterChipSelected() = Sticker("chip-filter-selected")
+@CatalogModes
+@OverrideVariant(name = "unselected", booleans = ["selected=false"])
+@Composable
+fun FilterChipSelected() = Sticker("chip-filter-selected")
 
 @CatalogModes @Composable fun AssistChipSticker() = Sticker("chip-assist")
 
@@ -136,13 +153,9 @@ fun SlottedCardSlotsSticker() = CatalogSticker {
 
 @CatalogModes @Composable fun OutlinedButtonDisabled() = Sticker("button-outlined-disabled")
 
-@CatalogModes @Composable fun SwitchOff() = Sticker("switch-off")
-
-@CatalogModes @Composable fun CheckboxUnchecked() = Sticker("checkbox-unchecked")
-
-@CatalogModes @Composable fun FilterChipUnselected() = Sticker("chip-filter-unselected")
-
-@CatalogModes @Composable fun RadioUnselected() = Sticker("radiobutton-unselected")
+// (`SwitchOff`, `CheckboxUnchecked`, `FilterChipUnselected`, `RadioUnselected` removed — those
+// states now ride their primary selection control via `@OverrideVariant`, seeding the shared
+// `checked` / `selected` knob.)
 
 @CatalogModes @Composable fun SegmentedToggle() = Sticker("segmentedbutton")
 

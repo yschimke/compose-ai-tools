@@ -26,8 +26,7 @@
         { "componentId": "Button/Filled", "preview": "FilledButton",
           "variants": [
             { "state": "pressed", "preview": "ButtonPressed", "caption": "Held PressInteraction → pressed state layer." },
-            { "state": "focused", "preview": "ButtonFocused", "caption": "Held FocusInteraction → focus indicator (rotary / D-pad)." },
-            { "state": "disabled", "preview": "ButtonDisabled", "caption": "Disabled state." }
+            { "state": "focused", "preview": "ButtonFocused", "caption": "Held FocusInteraction → focus indicator (rotary / D-pad)." }
           ]
         },
         { "componentId": "Button/Tonal", "preview": "FilledTonalButtonSticker" },
@@ -42,10 +41,8 @@
     {
       "name": "Selection",
       "components": [
-        { "componentId": "SwitchButton/On", "preview": "SwitchButtonOn",
-          "variants": [ { "state": "off", "preview": "SwitchButtonOff", "caption": "Off state." } ] },
-        { "componentId": "CheckboxButton/Checked", "preview": "CheckboxButtonChecked",
-          "variants": [ { "state": "unchecked", "preview": "CheckboxButtonUnchecked", "caption": "Unchecked state." } ] }
+        { "componentId": "SwitchButton/On", "preview": "SwitchButtonOn", "caption": "On state; the off state folds in as an @OverrideVariant (checked = false)." },
+        { "componentId": "CheckboxButton/Checked", "preview": "CheckboxButtonChecked", "caption": "Checked state; the unchecked state folds in as an @OverrideVariant (checked = false)." }
       ]
     },
     {

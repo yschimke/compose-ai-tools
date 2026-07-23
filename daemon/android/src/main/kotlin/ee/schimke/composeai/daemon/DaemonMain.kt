@@ -774,8 +774,21 @@ private fun previewIndexBackedSpecResolver(previewIndex: PreviewIndex): ((String
  * resource uiMode threaded through so a live Wear preview matches the one-shot render.
  */
 internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
+  // `@OverrideVariant` baked seed for a synthetic variant preview → the base override layer. The
+  // inbound live `renderNow.overrides` is layered OVER this in `RobolectricHost.reshapeRenderPayload`
+  // so live wins per key; the baked seed applies even with zero live overrides.
+  val bakedOverrides =
+    info.overrides
+      ?.toNamedOverrides()
+      ?.takeIf { it.isNotEmpty() }
+      ?.let { ee.schimke.composeai.daemon.protocol.PreviewOverrides(namedOverrides = it) }
   val defaults =
-    RenderSpec(previewId = info.id, className = info.className, functionName = info.methodName)
+    RenderSpec(
+      previewId = info.id,
+      className = info.className,
+      functionName = info.methodName,
+      overrides = bakedOverrides,
+    )
   val params = info.params ?: return defaults
   val density = params.density ?: defaults.density
   // AS-parity wrap-content, mirroring the batch resolver ([PreviewManifestEntry.resolved]) and the
@@ -819,6 +832,7 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
     orientation = defaults.orientation,
     kind = params.kind ?: defaults.kind,
     wrapperClassName = params.wrapperClassName ?: defaults.wrapperClassName,
+    overrides = bakedOverrides,
   )
 }
 

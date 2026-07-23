@@ -211,6 +211,32 @@ fun main(args: Array<String>) {
   val minHeightPx = args.getOrNull(29)?.toIntOrNull()?.takeIf { it > 0 }
   val maxWidthPx = args.getOrNull(30)?.toIntOrNull()?.takeIf { it > 0 }
   val maxHeightPx = args.getOrNull(31)?.toIntOrNull()?.takeIf { it > 0 }
+  // `@OverrideVariant` seed for a synthetic variant preview, forwarded by RenderPreviewsTask as the
+  // `composeai.overrides.seed` per-render system property (the desktop subprocess has no manifest
+  // to
+  // read `PreviewInfo.overrides` from). Decode the canonical `OverrideVariantSpec` and seed the
+  // controller before composing, so this preview's `previewOverride*` reads resolve to the flipped
+  // knob(s) — the desktop counterpart of the Android backend's per-preview seed. Absent/blank ⇒ an
+  // ordinary preview (controller stays empty → author defaults). Best-effort: a decode failure must
+  // not derail the render. Set once here (each subprocess renders one preview);
+  // `clearDeclarations()`
+  // below leaves seeds intact so the `.overrides.json` declaration drain still works.
+  System.getProperty("composeai.overrides.seed")
+    ?.takeIf { it.isNotBlank() }
+    ?.let { seedJson ->
+      runCatching {
+          kotlinx.serialization.json
+            .Json { ignoreUnknownKeys = true }
+            .decodeFromString(
+              ee.schimke.composeai.data.overrides.OverrideVariantSpec.serializer(),
+              seedJson,
+            )
+            .toNamedOverrides()
+        }
+        .getOrNull()
+        ?.takeIf { it.isNotEmpty() }
+        ?.let { ee.schimke.composeai.overrides.PreviewOverrideController.set(it) }
+    }
   if (previewKind == "LOTTIE") {
     val assetPath = args.getOrNull(19)?.takeIf { it.isNotBlank() }
     val sidecar = errorSidecarFor(outputFile)
