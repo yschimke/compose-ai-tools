@@ -544,7 +544,10 @@ open class RobolectricHost(
    *
    * After each slot comes up it gets a best-effort [warmSlotRender] so its first affinity-routed
    * real render doesn't pay the per-sandbox first-render init (Compose runtime, HardwareRenderer
-   * native pipeline, font + text stack, PNG encode).
+   * native pipeline, font + text stack, PNG encode). The warm render runs BEFORE the slot is
+   * published into [readySlotCount] — publishing first would let a live render hash onto the
+   * just-advertised slot and queue behind the cold warm-up, putting the very cost the warm-up
+   * absorbs back on the request path.
    */
   private fun bootRemainingSlotsInBackground(timeoutMs: Long) {
     for (i in 1 until sandboxCount) {
@@ -559,10 +562,10 @@ open class RobolectricHost(
         )
         return
       }
-      readySlotCount.set(i + 1)
-      StartupTimings.mark("sandbox $i ready (background boot)")
       if (DaemonHostBridge.shutdown.get()) return
       warmSlotRender(i)
+      readySlotCount.set(i + 1)
+      StartupTimings.mark("sandbox $i ready (background boot)")
     }
   }
 

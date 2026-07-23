@@ -210,7 +210,9 @@ Semantics under background boot:
   daemon-shipped `DaemonWarmupPreview` once (disable with
   `-Dcomposeai.daemon.warmRenderOnBoot=false`), paying first-composition
   + `HardwareRenderer` + font-stack + PNG-encode init off the request
-  path. Slot 0 is left to serve's own `prewarm()` throwaway render.
+  path. The slot is published for dispatch only **after** its warm render
+  completes, so a live render can never queue behind the cold warm-up.
+  Slot 0 is left to serve's own `prewarm()` throwaway render.
 
 `ServeBundleDaemon` opts serve-spawned Android daemons in by default
 (serve fronts the daemon with baked PNGs while it warms, so nothing
