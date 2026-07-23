@@ -19,8 +19,8 @@ import androidx.compose.remote.creation.compose.shapes.RemoteRoundedCornerShape
 import androidx.compose.remote.creation.compose.state.RemoteColor
 import androidx.compose.remote.creation.compose.state.rb
 import androidx.compose.remote.creation.compose.state.rdp
-import androidx.compose.remote.creation.compose.state.rememberNamedRemoteColor
-import androidx.compose.remote.creation.compose.state.rememberNamedRemoteString
+import ee.schimke.composeai.daemon.rememberOverridableRemoteColor
+import ee.schimke.composeai.daemon.rememberOverridableRemoteString
 import androidx.compose.remote.creation.compose.state.rf
 import androidx.compose.remote.creation.compose.state.rs
 import androidx.compose.runtime.Composable
@@ -167,7 +167,7 @@ fun CustomShapeRemoteButton() = RemoteSticker {
 @CatalogRemoteModes
 @Composable
 fun NamedLabelRemoteButton() = RemoteSticker {
-  val label = rememberNamedRemoteString("label", "Filled")
+  val label = rememberOverridableRemoteString("label", "Filled")
   RemoteButton(
     onClick = testAction,
     modifier = RemoteModifier.buttonSizeModifier(),
@@ -370,7 +370,7 @@ fun ColorSchemeRemote() = RemoteSticker {
 @CatalogRemoteModes
 @Composable
 fun ShaderGradientSticker() = RemoteSticker {
-  val shaderColor = rememberNamedRemoteColor("shaderColor", Color(0xFF7DE2FF))
+  val shaderColor = rememberOverridableRemoteColor("shaderColor", Color(0xFF7DE2FF))
   val brush =
     RemoteBrush.linearGradient(
       listOf(RemoteColor(Color(0xFF101820)), shaderColor, RemoteColor(Color(0xFFFFB86C)))
