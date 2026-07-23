@@ -6,6 +6,7 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
 import ee.schimke.composeai.daemon.protocol.RemoteComposeProfile
 import ee.schimke.composeai.daemon.protocol.RemoteHostAction
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
+import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
 import ee.schimke.composeai.data.remotecompose.RemoteComposePayload
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
@@ -13,6 +14,7 @@ import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.compose.AroundComposableHook
 import ee.schimke.composeai.data.render.extensions.compose.hasAroundComposableHook
+import kotlinx.serialization.json.Json
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -62,7 +64,7 @@ class RemoteComposeDataProductTest {
   fun capabilities_advertise_compose_remotecompose_as_inline_no_rerender_product() {
     val cap = RemoteComposeDataProductRegistry().capabilities.single()
     assertEquals("compose/remotecompose", cap.kind)
-    assertEquals(1, cap.schemaVersion)
+    assertEquals(2, cap.schemaVersion)
     assertEquals(DataProductTransport.INLINE, cap.transport)
     assertTrue(cap.attachable)
     assertTrue(cap.fetchable)
@@ -188,6 +190,88 @@ class RemoteComposeDataProductTest {
       DataProductRegistry.Outcome.NotAvailable,
       registry.fetch("preview-1", "compose/remotecompose", params = null, inline = true),
     )
+  }
+
+  @Test
+  fun controller_recordDeclaration_dedupes_by_name_and_preserves_order() {
+    val controller = RemoteComposeController
+    controller.recordDeclaration(
+      RemoteComposeKnobDeclaration("label", RemoteNamedValue.StringValue("Tap me"))
+    )
+    controller.recordDeclaration(
+      RemoteComposeKnobDeclaration("score", RemoteNamedValue.FloatValue(0f))
+    )
+    // Re-declaring "label" (recomposition) replaces its value but keeps first-seen position.
+    controller.recordDeclaration(
+      RemoteComposeKnobDeclaration("label", RemoteNamedValue.StringValue("Filled"))
+    )
+    val decls = controller.declarations()
+    assertEquals(2, decls.size)
+    assertEquals("label", decls[0].name)
+    assertEquals(RemoteNamedValue.StringValue("Filled"), decls[0].default)
+    assertEquals("score", decls[1].name)
+  }
+
+  @Test
+  fun controller_declarations_clear_on_reset() {
+    val controller = RemoteComposeController
+    controller.recordDeclaration(
+      RemoteComposeKnobDeclaration("label", RemoteNamedValue.StringValue("Tap me"))
+    )
+    controller.resetForNewSession()
+    assertTrue(controller.declarations().isEmpty())
+  }
+
+  @Test
+  fun controller_clearDeclarations_keeps_named_values_and_profile() {
+    val controller = RemoteComposeController
+    controller.set(
+      RemoteComposeOverride(
+        profile = RemoteComposeProfile.ANDROIDX,
+        namedValues = mapOf("a" to RemoteNamedValue.IntValue(1)),
+      )
+    )
+    controller.recordDeclaration(
+      RemoteComposeKnobDeclaration("label", RemoteNamedValue.StringValue("x"))
+    )
+    controller.clearDeclarations()
+    assertTrue("declarations must clear", controller.declarations().isEmpty())
+    assertEquals(
+      "profile must survive a declarations-only clear",
+      RemoteComposeProfile.ANDROIDX,
+      controller.profile.value,
+    )
+    assertEquals(RemoteNamedValue.IntValue(1), controller.valueOf("a"))
+  }
+
+  @Test
+  fun on_render_captures_declared_knobs_in_payload() {
+    val registry = RemoteComposeDataProductRegistry()
+    RemoteComposeController.recordDeclaration(
+      RemoteComposeKnobDeclaration("label", RemoteNamedValue.StringValue("Filled"))
+    )
+    RemoteComposeController.recordDeclaration(
+      RemoteComposeKnobDeclaration("shaderColor", RemoteNamedValue.ColorValue("#FF7DE2FF"))
+    )
+
+    registry.onRender(
+      previewId = "preview-1",
+      result = stubRenderResult(),
+      overrides = null,
+      previewContext = stubContext(),
+    )
+
+    val outcome = registry.fetch("preview-1", "compose/remotecompose", params = null, inline = true)
+    assertTrue(outcome is DataProductRegistry.Outcome.Ok)
+    val payload =
+      Json.decodeFromJsonElement(
+        RemoteComposePayload.serializer(),
+        (outcome as DataProductRegistry.Outcome.Ok).result.payload!!,
+      )
+    assertEquals(2, payload.declarations.size)
+    assertEquals("label", payload.declarations[0].name)
+    assertEquals(RemoteNamedValue.StringValue("Filled"), payload.declarations[0].default)
+    assertEquals("shaderColor", payload.declarations[1].name)
   }
 
   private fun stubRenderResult(): RenderResult =

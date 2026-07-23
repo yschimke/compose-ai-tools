@@ -14,8 +14,29 @@ import kotlinx.serialization.Serializable
  */
 object RemoteComposeProduct {
   const val KIND: String = "compose/remotecompose"
-  const val SCHEMA_VERSION: Int = 1
+  // v2 adds [RemoteComposePayload.declarations] — the auto-captured set of editable named-value
+  // knobs a preview declared this render, so the viewer can render a control per knob instead of
+  // relying on a hand-authored sidecar. Additive + defaulted, so a v1 reader that ignores the field
+  // still decodes a v2 payload.
+  const val SCHEMA_VERSION: Int = 2
 }
+
+/**
+ * One editable Remote Compose named-value knob a preview declared during its render — the auto-
+ * capture counterpart of a plain-Compose `compose/overrides`
+ * [ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration]. A knob is declared whenever
+ * user code reads a named value through `LocalRemoteComposeHost` (the typed `namedFloat` /
+ * `namedString` / … helpers self-declare) or calls
+ * `LocalRemoteComposeHost.current.declareKnob(...)` explicitly.
+ *
+ * [name] is the bare binding name (the same key `renderNow.overrides.remoteCompose.namedValues` and
+ * the serve `rc.<name>=…` param address); [default] is the author-supplied fallback, typed via the
+ * shared [RemoteNamedValue] sum so its variant carries the knob's kind (float / dp / int / string /
+ * bool / color). A consumer renders the matching control (slider, text field, colour swatch) and
+ * writes an edit back through the `remoteCompose` override facet.
+ */
+@Serializable
+data class RemoteComposeKnobDeclaration(val name: String, val default: RemoteNamedValue)
 
 /**
  * Wire-shape returned by `data/fetch?kind=compose/remotecompose`.
@@ -32,12 +53,19 @@ object RemoteComposeProduct {
  *   unboundedly.
  * * [profile] — the active platform profile (mirrors `RcPlatformProfiles`). Null when user code
  *   didn't bind one through `LocalRemoteComposeHost`.
+ * * [declarations] — the editable named-value knobs the preview declared this render, in
+ *   declaration order, deduped by name. Drives the viewer's per-knob controls (a slider / field /
+ *   swatch per entry). Empty when the preview reads no named values through
+ *   `LocalRemoteComposeHost` and never calls `declareKnob`. Distinct from [namedValues], which is
+ *   the *effective* value map (seeds + write-backs) — [declarations] is the *editable surface*
+ *   (name + author default + kind).
  */
 @Serializable
 data class RemoteComposePayload(
   val namedValues: Map<String, RemoteNamedValue> = emptyMap(),
   val hostActions: List<RemoteHostAction> = emptyList(),
   val profile: RemoteComposeProfile? = null,
+  val declarations: List<RemoteComposeKnobDeclaration> = emptyList(),
 ) {
   companion object {
     /**
