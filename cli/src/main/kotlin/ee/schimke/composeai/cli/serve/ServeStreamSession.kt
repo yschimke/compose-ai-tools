@@ -114,17 +114,41 @@ class ServeStreamSession(
   }
 
   private fun sendFrame(overrides: PreviewOverrides) {
-    when (val outcome = renderHost.render(previewId, overrides)) {
-      is RenderOutcome.Ok -> {
-        val (w, h) = WebEscaping.pngDimensions(outcome.png)
-        send(ServeStreamProtocol.frameMessage(seq.getAndIncrement(), w, h, outcome.png))
+    // The viewer sends its initial `setOverrides` on open and doesn't poll for frames, so a
+    // swallowed frame would leave the socket stuck at "connecting…". When the daemon is mid-render
+    // (RenderOutcome.Busy from the serve host's bounded lock), retry a few times as it frees, then
+    // surface an error rather than hang. (A catalog host serves baked instead of returning Busy, so
+    // Busy only reaches here for a bare daemon-backed stream.)
+    var busyAttempts = 0
+    while (true) {
+      when (val outcome = renderHost.render(previewId, overrides)) {
+        is RenderOutcome.Ok -> {
+          val (w, h) = WebEscaping.pngDimensions(outcome.png)
+          send(ServeStreamProtocol.frameMessage(seq.getAndIncrement(), w, h, outcome.png))
+          return
+        }
+        RenderOutcome.NotFound -> {
+          send(ServeStreamProtocol.errorMessage("no such preview"))
+          return
+        }
+        is RenderOutcome.Failed -> {
+          send(ServeStreamProtocol.errorMessage(outcome.reason))
+          return
+        }
+        RenderOutcome.Busy -> {
+          if (busyAttempts++ >= BUSY_FRAME_RETRIES) {
+            send(ServeStreamProtocol.errorMessage("render busy; please retry"))
+            return
+          }
+          Thread.sleep(BUSY_FRAME_RETRY_BACKOFF_MS)
+        }
       }
-      RenderOutcome.NotFound -> send(ServeStreamProtocol.errorMessage("no such preview"))
-      is RenderOutcome.Failed -> send(ServeStreamProtocol.errorMessage(outcome.reason))
-      // Daemon mid-render — skip this frame silently rather than tear the stream down with an
-      // error; the next frame request retries once the daemon frees. (A catalog host serves baked
-      // instead of returning Busy, so this is only reachable for a bare daemon-backed stream.)
-      RenderOutcome.Busy -> {}
     }
+  }
+
+  private companion object {
+    /** Retries when a snapshot frame's render backs off Busy before surfacing an error. */
+    private const val BUSY_FRAME_RETRIES = 2
+    private const val BUSY_FRAME_RETRY_BACKOFF_MS = 250L
   }
 }
