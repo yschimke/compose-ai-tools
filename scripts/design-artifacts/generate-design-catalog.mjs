@@ -45,6 +45,7 @@ import {
 import { buildCatalog, writeCatalog } from "@design-parity/catalog-export";
 
 import { foldVariants } from "./catalog-variants.mjs";
+import { inventoryFromPreviews, mergeCatalogGroups } from "./catalog-inventory.mjs";
 import { variantStateFromId } from "./variant-state.mjs";
 import { renderIndexHtml } from "./render-index-html.mjs";
 import { renderCompareHtml } from "./render-compare-html.mjs";
@@ -462,6 +463,48 @@ if (values["extra-renders"]) {
   console.log(
     `[${spec.system}] folded ${extra.length} extra render(s), overriding: ` +
       `${[...overridden].join(", ")}`,
+  );
+}
+
+// Annotation-derived inventory (compose-ai-tools Phase 2): components discovery
+// resolved from `@CatalogComponent` / `@CatalogVariant` / `@CatalogGroup` travel on
+// each preview's `catalog` field in `previews.json`. Build the inventory from them
+// and layer the committed `catalog.spec.json` on top as the override, so the spec
+// only has to carry the cover-sheet fields plus any per-component tweak. The result
+// is written back onto `spec.groups`, so the vendored join and every downstream
+// consumer (section stamping, wireframes, code-connect) see one effective spec.
+//
+// A catalog whose module doesn't use the annotations yet (every catalog today —
+// the annotations aren't in a released runtime) yields an empty inventory, so the
+// merge is a strict no-op and `spec.groups` is untouched: zero behaviour change
+// until a module opts in.
+//
+// Include the `--extra-renders` supplement's previews too: that bundle can carry an
+// annotated component the primary bundle doesn't (an Android-only render whose
+// function lives only in the supplement), and its candidate is already folded into
+// `candidates` above — so its `@CatalogComponent` must reach the inventory as well,
+// or the component would render but never enter `spec.groups`. Primary previews come
+// first, so a component present in both dedupes to the primary's annotation.
+const inventoryPreviews = [...bundle.previews, ...(extraBundle?.previews ?? [])];
+const { groups: annotationGroups, orphanVariants } =
+  inventoryFromPreviews(inventoryPreviews);
+if (orphanVariants.length > 0) {
+  console.warn(
+    `[${spec.system}] ${orphanVariants.length} @CatalogVariant(s) name a parent component that ` +
+      `carries no @CatalogComponent: ` +
+      orphanVariants.map((v) => `${v.preview}→${v.parentId}`).join(", "),
+  );
+}
+if (annotationGroups.length > 0) {
+  const specComponentCount = (spec.groups ?? []).reduce(
+    (n, g) => n + (g.components?.length ?? 0),
+    0,
+  );
+  spec.groups = mergeCatalogGroups(annotationGroups, spec.groups ?? []);
+  const mergedCount = spec.groups.reduce((n, g) => n + (g.components?.length ?? 0), 0);
+  console.log(
+    `[${spec.system}] merged annotation inventory: ${annotationGroups.reduce((n, g) => n + g.components.length, 0)} ` +
+      `annotated component(s) + ${specComponentCount} spec component(s) → ${mergedCount} total`,
   );
 }
 
