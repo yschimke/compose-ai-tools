@@ -210,10 +210,10 @@ internal object AndroidBundleResources {
 
     return runCatching {
         val writer = StringWriter()
-        TransformerFactory.newInstance().newTransformer().apply {
-          setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "no")
-        }
-        .transform(DOMSource(doc), StreamResult(writer))
+        TransformerFactory.newInstance()
+          .newTransformer()
+          .apply { setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "no") }
+          .transform(DOMSource(doc), StreamResult(writer))
         writer.toString()
       }
       .getOrNull()
