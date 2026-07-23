@@ -78,6 +78,27 @@ class ServeBundleStoreTest {
   }
 
   @Test
+  fun `remotecompose sidecars are extracted and surfaced as a preview's RC knobs`() {
+    // The upload path (POST / URL) must keep `.remotecompose.json` sidecars just like the
+    // `.overrides.json` ones — otherwise an uploaded bundle would silently drop
+    // `remoteComposeKnobs`
+    // that the live-bundle / directory paths carry.
+    val rc =
+      """{"declarations":[{"name":"shaderColor",""" +
+        """"default":{"kind":"color","argb":"#FF7DE2FF"}}]}"""
+    val zip =
+      zipOf(
+        "previews/com.example.Red.png" to byteArrayOf(1, 2, 3),
+        "previews/com.example.Red.remotecompose.json" to rc.toByteArray(),
+      )
+    val result = store().add("demo", zip, isSecurityChecked = true)
+    assertEquals(ServeBundleStore.Result.Ok("demo", 1), result)
+
+    val preview = registered.getValue("demo").previews.single { it.id == "com.example.Red" }
+    assertEquals(listOf("shaderColor"), preview.remoteComposeKnobs.map { it.name })
+  }
+
+  @Test
   fun `the root previews_json is extracted so an uploaded bundle surfaces its declared themes`() {
     val previewsJson =
       """

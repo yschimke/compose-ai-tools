@@ -18,13 +18,15 @@ import okhttp3.Request
  * a deployed public server useful without it building anything: clients contribute pre-rendered
  * results and get a shareable `?session=<name>` link back.
  *
- * Safety: only `previews/<id>.png` entries are extracted (everything else in the zip is ignored),
- * each written under a per-bundle directory with a zip-slip containment check, and the total
- * extracted size is capped. The URL case ([addFromUrl]) is an **SSRF** surface — a public server
- * fetching arbitrary URLs could be steered at internal metadata/services — so it is gated by
- * [allowedHosts]: only a URL whose host is on that operator-supplied allowlist is fetched, and an
- * empty allowlist refuses every URL (fail closed). [fetch] is injected so it can be stubbed in
- * tests; the host gate runs in [addFromUrl] regardless of which fetcher is wired.
+ * Safety: only the servable `previews/` entries are extracted — the baked `<id>.png` images, the
+ * per-preview knob sidecars (`<id>.overrides.json` / `<id>.remotecompose.json`), and the root
+ * `previews.json` manifest; everything else in the zip is ignored — each written under a per-bundle
+ * directory with a zip-slip containment check, and the total extracted size is capped. The URL case
+ * ([addFromUrl]) is an **SSRF** surface — a public server fetching arbitrary URLs could be steered
+ * at internal metadata/services — so it is gated by [allowedHosts]: only a URL whose host is on
+ * that operator-supplied allowlist is fetched, and an empty allowlist refuses every URL (fail
+ * closed). [fetch] is injected so it can be stubbed in tests; the host gate runs in [addFromUrl]
+ * regardless of which fetcher is wired.
  */
 class ServeBundleStore(
   private val root: File,
@@ -141,7 +143,11 @@ class ServeBundleStore(
     return allowedHosts.any { it.equals(host, ignoreCase = true) }
   }
 
-  /** Extract only `previews/<id>.png` entries into [dir] (zip-slip safe, size-capped). */
+  /**
+   * Extract the servable `previews/` entries (baked `<id>.png`, the `<id>.overrides.json` /
+   * `<id>.remotecompose.json` knob sidecars) plus the root `previews.json` into [dir] (zip-slip
+   * safe, size-capped). Returns the PNG count — only a baked image makes a servable preview.
+   */
   private fun extractPreviews(zipBytes: ByteArray, dir: File): Int {
     val rootPath = dir.canonicalFile.toPath()
     var count = 0
@@ -151,19 +157,21 @@ class ServeBundleStore(
       while (entry != null) {
         val name = entry.name.replace('\\', '/')
         val segments = name.split("/")
-        // Keep the baked PNGs (the servable images) and, since v8, the per-preview override
-        // sidecars
-        // (`previews/<id>.overrides.json`) so a served bundle can present its declared editable
-        // knobs.
+        // Keep the baked PNGs (the servable images) and the per-preview knob sidecars — both the
+        // plain-Compose `previews/<id>.overrides.json` and the Remote Compose
+        // `previews/<id>.remotecompose.json` — so a served upload can present its declared editable
+        // knobs. Dropping the RC sidecar here would silently strip `remoteComposeKnobs` from the
+        // upload path (POST / URL) while the live-bundle / directory paths kept them.
         val underPreviews = name.startsWith("$PREVIEWS_SUBDIR/") && ".." !in segments
         val isPng = underPreviews && name.endsWith(PNG_SUFFIX)
         val isOverrides = underPreviews && name.endsWith(OVERRIDES_SUFFIX)
+        val isRemoteCompose = underPreviews && name.endsWith(REMOTECOMPOSE_SUFFIX)
         // Also keep the root `previews.json` manifest so a served bundle can surface the app's
         // declared @ThemeCatalog themes (the synthetic THEME_CATALOG entries live only here, not in
         // the per-preview sidecars). A top-level file (no path segments), so it's exempt from the
         // `previews/` prefix check but still zip-slip guarded below.
         val isPreviewsJson = name == PREVIEWS_JSON
-        if (!entry.isDirectory && (isPng || isOverrides || isPreviewsJson)) {
+        if (!entry.isDirectory && (isPng || isOverrides || isRemoteCompose || isPreviewsJson)) {
           val target = File(dir, name)
           // Zip-slip guard: the resolved path must stay under the bundle dir.
           if (target.canonicalFile.toPath().startsWith(rootPath)) {
@@ -203,6 +211,7 @@ class ServeBundleStore(
     private const val PREVIEWS_SUBDIR = "previews"
     private const val PNG_SUFFIX = ".png"
     private const val OVERRIDES_SUFFIX = ".overrides.json"
+    private const val REMOTECOMPOSE_SUFFIX = ".remotecompose.json"
     private const val PREVIEWS_JSON = "previews.json"
     private const val DEFAULT_MAX_BYTES = 100L * 1024 * 1024 // 100 MB
 
