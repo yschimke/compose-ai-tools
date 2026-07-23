@@ -519,6 +519,14 @@ abstract class BundlePreviewTask : DefaultTask() {
       resolvePreviewOverrides(preview)?.let {
         overrideFiles["$BUNDLE_PREVIEWS_DIR/${preview.id}.$BUNDLE_OVERRIDES_SIDECAR_EXT"] = it
       }
+      // Per-preview Remote Compose knob sidecars (`renders/<stem>.remotecompose.json`), packed
+      // under `previews/<id>.remotecompose.json` — a separate channel from the plain-Compose
+      // `overrides.json` (its edits round-trip through `renderNow.overrides.remoteCompose`). Rides
+      // the same verbatim-copied `overrideFiles` map, so no `buildZip` signature change. Absent for
+      // previews that declared no Remote Compose knobs.
+      resolvePreviewRemoteCompose(preview)?.let {
+        overrideFiles["$BUNDLE_PREVIEWS_DIR/${preview.id}.$BUNDLE_REMOTECOMPOSE_SIDECAR_EXT"] = it
+      }
     }
 
     // Per-sheet catalog-token sidecars (issue #2167): the resolved `@ColorCatalog` /
@@ -714,6 +722,27 @@ abstract class BundlePreviewTask : DefaultTask() {
       preview.captures.firstOrNull()?.renderOutput?.takeIf { it.isNotEmpty() } ?: return null
     val stem = rel.substringAfterLast('/').removeSuffix(".png")
     val f = File(rendersRoot, "$stem.$BUNDLE_OVERRIDES_SIDECAR_EXT")
+    return if (f.isFile && f.length() > 0) f.readBytes() else null
+  }
+
+  /**
+   * Look for the per-preview Remote Compose knob sidecar the render step wrote next to [preview]'s
+   * PNG (`renders/<stem>.remotecompose.json`) — the serialized `RemoteComposeDeclarationsPayload`
+   * of the named-value knobs the preview declared through `LocalRemoteComposeHost`. Resolution
+   * mirrors [resolvePreviewOverrides]; the bytes are copied verbatim (the producer never parses
+   * them). `null` when the preview declared no Remote Compose knobs (every non-Remote-Compose
+   * preview).
+   */
+  private fun resolvePreviewRemoteCompose(preview: PreviewInfo): ByteArray? {
+    val rendersRoot = rendersDir.orNull?.asFile ?: return null
+    val rel =
+      preview.captures.firstOrNull()?.renderOutput?.takeIf { it.isNotEmpty() } ?: return null
+    // Anchor to the primary capture's leaf, stripping its actual extension the way the writer's
+    // `pngFile.nameWithoutExtension` does — so a non-PNG primary capture (e.g. an animated `.gif`
+    // still) resolves the sidecar the renderer actually wrote, not a `<leaf>.png`-shaped guess.
+    val leaf = rel.substringAfterLast('/')
+    val stem = if ('.' in leaf) leaf.substringBeforeLast('.') else leaf
+    val f = File(rendersRoot, "$stem.$BUNDLE_REMOTECOMPOSE_SIDECAR_EXT")
     return if (f.isFile && f.length() > 0) f.readBytes() else null
   }
 

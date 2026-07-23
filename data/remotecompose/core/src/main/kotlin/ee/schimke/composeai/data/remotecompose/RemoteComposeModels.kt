@@ -39,6 +39,20 @@ object RemoteComposeProduct {
 data class RemoteComposeKnobDeclaration(val name: String, val default: RemoteNamedValue)
 
 /**
+ * Bundle-sidecar shape for a preview's declared Remote Compose knobs — the payload of the
+ * `renders/<stem>.remotecompose.json` file the render step writes and the bundle packs under
+ * `previews/<id>.remotecompose.json`. The counterpart of the plain-Compose
+ * `ee.schimke.composeai.data.overrides.PreviewOverridesPayload`. A detached reader (the serve host,
+ * a viewer) decodes this to render a control per knob; the render manifest never parses it (it's
+ * copied verbatim). Distinct from [RemoteComposePayload], the live `data/fetch` shape — the sidecar
+ * carries only the editable surface, not the effective values / host actions / profile.
+ */
+@Serializable
+data class RemoteComposeDeclarationsPayload(
+  val declarations: List<RemoteComposeKnobDeclaration> = emptyList()
+)
+
+/**
  * Wire-shape returned by `data/fetch?kind=compose/remotecompose`.
  *
  * Three facets feed the panel's per-card chip:
