@@ -151,6 +151,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-landing-themed/dark](renders/serve-landing-themed.dark.png) |
 | `light` | ![serve-landing-themed/light](renders/serve-landing-themed.light.png) |
 
+## serve-status
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-status/dark](renders/serve-status.dark.png) |
+| `light` | ![serve-status/light](renders/serve-status.light.png) |
+
 ## serve-viewer
 
 | Theme | Capture |

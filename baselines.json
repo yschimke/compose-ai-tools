@@ -253,6 +253,18 @@
       "sha256": "8a9925f951d11181b0d5b9560d220aaf6c4ac06e8f3fbe7d1eda78fe201d1baf",
       "size": 40141
     },
+    "serve-status.dark.png": {
+      "fixture": "serve-status",
+      "theme": "dark",
+      "sha256": "a9767ae4887ca4a17937af6db02d23ccc540ea740b4943f3743ce4335eb6bd1d",
+      "size": 130216
+    },
+    "serve-status.light.png": {
+      "fixture": "serve-status",
+      "theme": "light",
+      "sha256": "5bfefbfa67b406be6074c649bb129eddbcc902181bd677c19d4f6980b543a5d1",
+      "size": 129196
+    },
     "serve-viewer-catalog-knobs.dark.png": {
       "fixture": "serve-viewer-catalog-knobs",
       "theme": "dark",
