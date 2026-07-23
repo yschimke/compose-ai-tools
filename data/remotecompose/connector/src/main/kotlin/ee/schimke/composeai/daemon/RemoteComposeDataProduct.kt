@@ -22,6 +22,7 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
 import ee.schimke.composeai.daemon.protocol.RemoteComposeProfile
 import ee.schimke.composeai.daemon.protocol.RemoteHostAction
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
+import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
 import ee.schimke.composeai.data.remotecompose.RemoteComposePayload
 import ee.schimke.composeai.data.remotecompose.RemoteComposeProduct
 import ee.schimke.composeai.data.render.PreviewContext
@@ -84,6 +85,16 @@ interface RemoteComposeHost {
   @Composable fun namedColor(name: String, default: String): String
 
   /**
+   * Declare [name] as an editable named-value knob with [default] as its author fallback, so a
+   * consumer (the VS Code panel, the serve viewer) can render a control for it and write an edit
+   * back through `renderNow.overrides.remoteCompose.namedValues`. The typed `namedFloat` /
+   * `namedString` / … reads above already self-declare, so call this only for a value user code
+   * binds *without* reading it through the host — e.g. a name seeded straight into the player's
+   * `StateUpdater`. Recording is deduped by name and preserves declaration order.
+   */
+  fun declareKnob(name: String, default: RemoteNamedValue)
+
+  /**
    * Push a value computed by the remote runtime back into the controller so the next
    * `data/fetch?kind=compose/remotecompose` returns it. Use from inside a `RemotePreview` block
    * after the remote computation lands a new value the host should observe.
@@ -106,6 +117,9 @@ private object ControllerRemoteComposeHost : RemoteComposeHost {
 
   @Composable
   override fun namedFloat(name: String, default: Float): Float {
+    RemoteComposeController.recordDeclaration(
+      RemoteComposeKnobDeclaration(name, RemoteNamedValue.FloatValue(default))
+    )
     val current by RemoteComposeController.namedValues
     return when (val v = current[name]) {
       is RemoteNamedValue.FloatValue -> v.value
@@ -117,12 +131,18 @@ private object ControllerRemoteComposeHost : RemoteComposeHost {
 
   @Composable
   override fun namedBoolean(name: String, default: Boolean): Boolean {
+    RemoteComposeController.recordDeclaration(
+      RemoteComposeKnobDeclaration(name, RemoteNamedValue.BooleanValue(default))
+    )
     val current by RemoteComposeController.namedValues
     return (current[name] as? RemoteNamedValue.BooleanValue)?.value ?: default
   }
 
   @Composable
   override fun namedInt(name: String, default: Int): Int {
+    RemoteComposeController.recordDeclaration(
+      RemoteComposeKnobDeclaration(name, RemoteNamedValue.IntValue(default))
+    )
     val current by RemoteComposeController.namedValues
     return when (val v = current[name]) {
       is RemoteNamedValue.IntValue -> v.value
@@ -133,18 +153,28 @@ private object ControllerRemoteComposeHost : RemoteComposeHost {
 
   @Composable
   override fun namedString(name: String, default: String): String {
+    RemoteComposeController.recordDeclaration(
+      RemoteComposeKnobDeclaration(name, RemoteNamedValue.StringValue(default))
+    )
     val current by RemoteComposeController.namedValues
     return (current[name] as? RemoteNamedValue.StringValue)?.value ?: default
   }
 
   @Composable
   override fun namedColor(name: String, default: String): String {
+    RemoteComposeController.recordDeclaration(
+      RemoteComposeKnobDeclaration(name, RemoteNamedValue.ColorValue(default))
+    )
     val current by RemoteComposeController.namedValues
     return (current[name] as? RemoteNamedValue.ColorValue)?.argb ?: default
   }
 
   override fun setNamedValue(name: String, value: RemoteNamedValue) {
     RemoteComposeController.setNamedValue(name, value)
+  }
+
+  override fun declareKnob(name: String, default: RemoteNamedValue) {
+    RemoteComposeController.recordDeclaration(RemoteComposeKnobDeclaration(name, default))
   }
 
   override fun reportHostAction(action: RemoteHostAction) {
@@ -331,13 +361,21 @@ class RemoteComposeDataProductRegistry : DataProductRegistry {
     val namedValues = RemoteComposeController.namedValues.value
     val hostActions = RemoteComposeController.hostActions.value
     val profile = RemoteComposeController.profile.value
-    if (namedValues.isEmpty() && hostActions.isEmpty() && profile == null) {
+    val declarations = RemoteComposeController.declarations()
+    if (
+      namedValues.isEmpty() && hostActions.isEmpty() && profile == null && declarations.isEmpty()
+    ) {
       clear(previewId)
       return
     }
     capture(
       previewId,
-      RemoteComposePayload(namedValues = namedValues, hostActions = hostActions, profile = profile),
+      RemoteComposePayload(
+        namedValues = namedValues,
+        hostActions = hostActions,
+        profile = profile,
+        declarations = declarations,
+      ),
     )
   }
 

@@ -7,6 +7,7 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
 import ee.schimke.composeai.daemon.protocol.RemoteComposeProfile
 import ee.schimke.composeai.daemon.protocol.RemoteHostAction
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
+import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
 import ee.schimke.composeai.data.remotecompose.RemoteComposePayload
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -49,6 +50,13 @@ object RemoteComposeController {
 
   private val profileState: MutableState<RemoteComposeProfile?> = mutableStateOf(null)
 
+  // Editable named-value knobs the current render declared, keyed by name for dedup with first-seen
+  // order preserved (a re-declaration during recomposition replaces the entry in place). Mirrors
+  // `PreviewOverrideController.declarationsState` — the auto-capture surface the viewer renders
+  // controls from.
+  private val declarationsState: MutableState<Map<String, RemoteComposeKnobDeclaration>> =
+    mutableStateOf(emptyMap())
+
   /**
    * Optional allow-list for [recordHostAction]. `null` accepts every action; non-null filters by
    * `payload` membership. Snapshot of the override's `acceptedHostActions`.
@@ -66,6 +74,26 @@ object RemoteComposeController {
 
   val profile: State<RemoteComposeProfile?>
     get() = profileState
+
+  /**
+   * Record an editable knob the preview just declared (via a `LocalRemoteComposeHost` named-value
+   * read, or an explicit `declareKnob`). Keyed by [RemoteComposeKnobDeclaration.name]; a repeat
+   * declaration of the same name (recomposition) replaces the prior entry while keeping its position
+   * so the viewer's control list stays stable. Idempotent — re-recording an identical declaration
+   * doesn't notify listeners. Mirrors `PreviewOverrideController.record`.
+   */
+  fun recordDeclaration(declaration: RemoteComposeKnobDeclaration) {
+    val current = declarationsState.value
+    if (current[declaration.name] == declaration) return
+    // LinkedHashMap preserves first-seen order even when replacing an existing name's value.
+    val next = LinkedHashMap(current)
+    next[declaration.name] = declaration
+    declarationsState.value = next
+    listeners.toList().forEach { it() }
+  }
+
+  /** The knobs declared so far this render, in declaration order. */
+  fun declarations(): List<RemoteComposeKnobDeclaration> = declarationsState.value.values.toList()
 
   /**
    * Read [name]'s current value, or `null` if no override / write has bound it. Caller decides the
@@ -157,6 +185,7 @@ object RemoteComposeController {
     namedValuesState.value = emptyMap()
     hostActionsState.value = emptyList()
     profileState.value = null
+    declarationsState.value = emptyMap()
     acceptedActionPayloads = null
   }
 }
